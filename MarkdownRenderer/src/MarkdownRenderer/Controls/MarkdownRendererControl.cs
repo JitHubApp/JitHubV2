@@ -52,7 +52,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     IMarkdownPerformanceLegacyParser, ISelectionAdornerHost, ISelectionCommandsHost, ISelectionDismissalHost,
     ISelectionHandlesHost, ISelectionContextMenuHost, IPointerInputSink, IPointerInteractionHost,
     IHorizontalOverflowPointerHost, IPointerInputRouterHost, IDeferredGestureLayoutHost, IEmbedRealizationHost,
-    ICodeBlockCopyButtonHost
+    ICodeBlockCopyButtonHost, IFocusRingHost
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
@@ -207,9 +207,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private bool _taskCommandAvailabilityRefreshQueued;
     // A deferred focus-plan refresh is value-only: it never keeps a snapshot,
     // box, or native resource alive while a geometry lease is busy.
-    private (long SnapshotGeneration, long AutomationDocumentGeneration,
-        long LayoutRevision, long RequestVersion, bool IsPending) _pendingFocusableItemsRefresh;
-    private long _focusableItemsRefreshRequestVersion;
+    private readonly FocusableItemsRefreshRequest _focusRefresh;
     private PendingLazyFocus? _pendingLazyFocus;
     private const int MaxPendingSpatialFocusKeys = 64;
     private readonly Queue<VirtualKey> _pendingSpatialFocusKeys = new();
@@ -230,15 +228,11 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private Point _pendingFocusResumePoint;
     private long _pendingFocusResumeGeneration;
     private bool _lastFocusNavigationHandled;
-    private long _focusRingPublicationTicket;
     private bool _hasPendingHorizontalOverflowRefresh;
     private long _pendingHorizontalOverflowRefreshGeneration;
     private int _pendingHorizontalOverflowRefreshBlockIndex;
     private double _pendingHorizontalOverflowRefreshOldOffset;
-    // XAML Border element used to show a focus ring around the focused item.
-    // Lives on the overlay at ZIndex 1 (above selection at -1, below embeds at 0).
-    private Microsoft.UI.Xaml.Controls.Border? _focusRing;
-    private Windows.UI.Color _focusRingBrushColor; // cached to avoid per-keystroke SolidColorBrush allocations
+    private readonly FocusRingPresenter _focusRing;
 
     // The provider may raise CacheInvalidated from a worker or system-event
     // callback. Keep the subscribed instance outside DependencyObject storage
@@ -1943,6 +1937,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _pointerInput = new PointerInputRouter(this, this, DispatcherQueue, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _handles, _document, _horizontalOverflowDrag, _touchGestures, _contextMenu, _adorner, _dragShield);
         _canvasPointerEvents = new CanvasPointerEvents(_surface, _pointerInput);
         _embeds = new EmbedRealization(this, this, _surface, _lifetime, _published, _viewport, DispatcherQueue, OnHostedEmbedKeyDown);
+        _focusRing = new FocusRingPresenter(this, _surface, _lifetime, _published, DispatcherQueue);
+        _focusRefresh = new FocusableItemsRefreshRequest(_published);
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         Loaded += (_, _) => OnLoadedInternal();
@@ -2070,7 +2066,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
         if (_pendingLazyFocus is not null)
         {
-            HideFocusRing();
+            _focusRing.Hide();
             _lastFocusEntryWasKeyboardTraversal = false;
             _lastFocusEntryWasKeyboardInput = false;
             return;
@@ -2472,6 +2468,16 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     string ICodeBlockCopyButtonHost.ResolveCodeBlockCopyButtonLabel(bool copied) =>
         copied ? ResolvedCodeBlockCopiedButtonLabel : ResolvedCodeBlockCopyButtonLabel;
 
+    XamlRoot? IFocusRingHost.XamlRoot => XamlRoot;
+
+    Windows.UI.Color? IFocusRingHost.FocusVisualColor => _themeSnapshot?.FocusVisualColor;
+
+    Layout.FocusableItem? IFocusRingHost.GetCurrentFocusableIdentity() => GetCurrentFocusableIdentity();
+
+    void IFocusRingHost.InvalidateInteractiveTextAdorner() => InvalidateInteractiveTextAdorner();
+
+    void IFocusRingHost.RequestFocusGeometryRetry() => RequestFocusGeometryRetry();
+
     double IDeferredGestureLayoutHost.RasterizationScale => XamlRoot?.RasterizationScale ?? 1;
 
     bool IDeferredGestureLayoutHost.IsPointOverEmbed(Point point) => _embeds.HitTargets.IsPointOverEmbed(point);
@@ -2784,7 +2790,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _adorner.DisposeForUnload();
         _cursor.Release();
         _handles.ReleaseForUnload();
-        _focusRing = null; // evicted from overlay above; lazily re-created on re-attach
+        _focusRing.ForgetEvictedRing();
         var snap = _published.Snapshot;
         _published.Snapshot = null;
         _automationDocumentGenerations.Invalidate();
@@ -4222,7 +4228,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _committedLocalization = localizationSnapshot;
         _committedImageDocumentId = imageDocumentId;
         _published.Generation = generation;
-        MarkFocusableItemsRefreshPending(snapshot, generation);
+        _focusRefresh.Mark(snapshot, generation);
         SynchronizeVectorCapacityObserver(snapshot);
         _snapshotPipelineStartTimestamp = pipelineStartTimestamp;
         _snapshotSourceUtf16Bytes = sourceUtf16Bytes;
@@ -4367,7 +4373,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         long overlayResetEnded = Stopwatch.GetTimestamp();
         _focusResumeItemIndex = -1;
         _pendingLazyFocus = null;
-        _focusRing = null;              // evicted from overlay; will be lazily re-created on demand
+        _focusRing.ForgetEvictedRing();
         bool realizationPlansReady = RebuildRealizationPlans(
             snapshot,
             preserveRealized: false,
@@ -5990,7 +5996,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return false;
         long hostedFocusPlanEpoch = -1;
         long hostedFocusPlanRevision = -1;
-        long focusRequestVersion = _pendingFocusableItemsRefresh.RequestVersion;
+        long focusRequestVersion = _focusRefresh.Pending.RequestVersion;
         IReadOnlyList<Layout.FocusableItem> collectedFocusableItems =
             Array.Empty<Layout.FocusableItem>();
         ImagePlanPublication? imagePlanPublication = null;
@@ -6111,7 +6117,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
             if (focusPlanCaptureFailure is not null)
             {
-                ClearFocusableItemsRefresh(focusRequestVersion);
+                _focusRefresh.Clear(focusRequestVersion);
                 System.Runtime.ExceptionServices.ExceptionDispatchInfo
                     .Capture(focusPlanCaptureFailure).Throw();
             }
@@ -6168,7 +6174,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         Volatile.Write(ref _publishedHostedFocusPlanGeneration, planGeneration);
         Volatile.Write(ref _publishedHostedFocusPlanRevision, hostedFocusPlanRevision);
         Volatile.Write(ref _publishedHostedFocusPlanEpoch, hostedFocusPlanEpoch);
-        CompleteFocusableItemsRefresh(
+        _focusRefresh.Complete(
             snapshot,
             planGeneration,
             hostedFocusPlanRevision,
@@ -6205,12 +6211,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return false;
         }
 
-        var pending = _pendingFocusableItemsRefresh;
-        return pending.RequestVersion == requestVersion &&
-            (!pending.IsPending ||
-             (pending.SnapshotGeneration == generation &&
-              pending.AutomationDocumentGeneration == snapshot.AutomationDocumentGeneration &&
-              pending.LayoutRevision == revision));
+        return _focusRefresh.Admits(snapshot, generation, revision, requestVersion);
     }
 
     private void RestoreFocusedHostedElementIfNeeded(DeclarativeHostedElementPlan plan)
@@ -6565,7 +6566,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 {
                     // Drain canceled image work so its retirement/active flag
                     // can complete, but do not probe or retry failed geometry.
-                    control.ClearFocusableItemsRefreshForCurrentSnapshot();
+                    control._focusRefresh.ClearForCurrentSnapshot();
                     control._imageRelayoutPayload?.PublishAfterWorkDrains();
                     return;
                 }
@@ -6597,7 +6598,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             if (!control.RequestGeometryRecoveryIfRequired(control._published.Snapshot))
                 control.RequestRebuild(RebuildReason.Full);
             else
-                control.ClearFocusableItemsRefreshForCurrentSnapshot();
+                control._focusRefresh.ClearForCurrentSnapshot();
             if (control._published.Snapshot is { } failedLayoutSnapshot)
                 control._pointerInput.OnLazyLayoutCompletion(failedLayoutSnapshot, succeeded: false);
         }
@@ -6614,7 +6615,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     {
         if (!force && (_bitmapOutputRecovery.IsPending || HasPendingLazyLayoutWork ||
             _hasPendingHorizontalOverflowRefresh ||
-            _pendingFocusableItemsRefresh.IsPending ||
+            _focusRefresh.Pending.IsPending ||
             _pendingSpatialFocusKeys.Count > 0 ||
             _pendingFocusGeometryRefresh ||
             _hasPendingFocusResumePoint))
@@ -6623,7 +6624,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (force)
         {
             ResetBitmapOutputRecovery();
-            ResetPendingFocusableItemsRefresh();
+            _focusRefresh.Reset();
         }
         var timer = _imageRelayoutRecoveryTimer;
         _imageRelayoutRecoveryTimer = null;
@@ -6639,7 +6640,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             _imageRelayoutActive ||
             _pendingImageRelayoutBlockIndices.Count > 0 ||
             _hasPendingHorizontalOverflowRefresh ||
-            _pendingFocusableItemsRefresh.IsPending ||
+            _focusRefresh.Pending.IsPending ||
             _pendingSpatialFocusKeys.Count > 0 ||
             _pendingFocusGeometryRefresh ||
             _hasPendingFocusResumePoint ||
@@ -6772,28 +6773,14 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _published.Snapshot is not { } snapshot)
             return;
 
-        MarkFocusableItemsRefreshPending(snapshot, _published.Generation);
+        _focusRefresh.Mark(snapshot, _published.Generation);
         if (!TryPublishPendingFocusableItems())
             StartImageRelayoutRecovery();
     }
 
-    private void MarkFocusableItemsRefreshPending(LayoutSnapshot snapshot, long generation)
-    {
-        long requestVersion = unchecked(_focusableItemsRefreshRequestVersion + 1);
-        if (requestVersion <= 0)
-            requestVersion = 1;
-        _focusableItemsRefreshRequestVersion = requestVersion;
-        _pendingFocusableItemsRefresh = (
-            generation,
-            snapshot.AutomationDocumentGeneration,
-            snapshot.LayoutRevision,
-            requestVersion,
-            true);
-    }
-
     private bool TryPublishPendingFocusableItems()
     {
-        var request = _pendingFocusableItemsRefresh;
+        var request = _focusRefresh.Pending;
         if (!request.IsPending)
             return true;
         if (_lifetime.IsDisposed || _lifetime.IsUnloaded)
@@ -6803,7 +6790,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         long generation = _published.Generation;
         if (snapshot is null)
         {
-            ResetPendingFocusableItemsRefresh();
+            _focusRefresh.Reset();
             return false;
         }
 
@@ -6814,32 +6801,27 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             // A newer snapshot supersedes the value-only request. Never follow
             // an old ticket into its retired graph; the current generation gets
             // a fresh request instead.
-            MarkFocusableItemsRefreshPending(snapshot, generation);
-            request = _pendingFocusableItemsRefresh;
+            _focusRefresh.Mark(snapshot, generation);
+            request = _focusRefresh.Pending;
         }
 
         if (snapshot.IsRetiringOrDisposed)
         {
-            ClearFocusableItemsRefresh(request.RequestVersion);
+            _focusRefresh.Clear(request.RequestVersion);
             return false;
         }
         if (snapshot.GeometryRecoveryRequired)
         {
             RequestGeometryRecoveryIfRequired(snapshot);
-            ClearFocusableItemsRefresh(request.RequestVersion);
+            _focusRefresh.Clear(request.RequestVersion);
             return false;
         }
 
         long revisionBefore = snapshot.LayoutRevision;
         if (request.LayoutRevision != revisionBefore)
         {
-            _pendingFocusableItemsRefresh = (
-                generation,
-                automationGeneration,
-                revisionBefore,
-                request.RequestVersion,
-                true);
-            request = _pendingFocusableItemsRefresh;
+            _focusRefresh.Retarget(generation, automationGeneration, revisionBefore, request.RequestVersion);
+            request = _focusRefresh.Pending;
         }
 
         if (!snapshot.TryBeginInteraction())
@@ -6871,7 +6853,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             snapshot.EndInteraction();
         }
 
-        if (!IsCurrentFocusableItemsRefresh(
+        if (!_focusRefresh.IsCurrent(
                 request,
                 snapshot,
                 generation,
@@ -6885,7 +6867,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
         // Diagnostics can reenter the dispatcher/control. Do not let a failed
         // older attempt clear or rebuild over a newer availability request.
-        if (!IsCurrentFocusableItemsRefresh(
+        if (!_focusRefresh.IsCurrent(
                 request,
                 snapshot,
                 generation,
@@ -6897,21 +6879,17 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (!collectedSuccessfully)
         {
             if (snapshot.IsRetiringOrDisposed || snapshot.GeometryRecoveryRequired)
-                ClearFocusableItemsRefresh(request.RequestVersion);
+                _focusRefresh.Clear(request.RequestVersion);
             else if (!ReferenceEquals(snapshot, _published.Snapshot) || generation != _published.Generation)
                 return false;
             else if (revisionBefore != snapshot.LayoutRevision)
             {
-                _pendingFocusableItemsRefresh = (
-                    generation,
-                    automationGeneration,
-                    snapshot.LayoutRevision,
-                    request.RequestVersion,
-                    true);
+                _focusRefresh.Retarget(
+                    generation, automationGeneration, snapshot.LayoutRevision, request.RequestVersion);
             }
             else
             {
-                ClearFocusableItemsRefresh(request.RequestVersion);
+                _focusRefresh.Clear(request.RequestVersion);
                 RequestRebuild(RebuildReason.Full);
             }
             return false;
@@ -6923,7 +6901,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             automationGeneration != snapshot.AutomationDocumentGeneration ||
             revisionUnderLease != revisionBefore ||
             revisionAfter != revisionBefore ||
-            !IsCurrentFocusableItemsRefresh(
+            !_focusRefresh.IsCurrent(
                 request,
                 snapshot,
                 generation,
@@ -6932,18 +6910,14 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             if (ReferenceEquals(snapshot, _published.Snapshot) &&
                 generation == _published.Generation &&
                 automationGeneration == snapshot.AutomationDocumentGeneration &&
-                IsCurrentFocusableItemsRefresh(
+                _focusRefresh.IsCurrent(
                     request,
                     snapshot,
                     generation,
                     automationGeneration))
             {
-                _pendingFocusableItemsRefresh = (
-                    generation,
-                    automationGeneration,
-                    revisionAfter,
-                    request.RequestVersion,
-                    true);
+                _focusRefresh.Retarget(
+                    generation, automationGeneration, revisionAfter, request.RequestVersion);
             }
             return false;
         }
@@ -6953,89 +6927,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _focusedItemIndex = focusedIdentity is { } identity
             ? FocusableItemQueries.FindFocusableItemIndex(collected, identity)
             : -1;
-        ClearFocusableItemsRefresh(request.RequestVersion);
+        _focusRefresh.Clear(request.RequestVersion);
         InvalidateAutomationLayout();
         return true;
     }
-
-    private bool IsCurrentFocusableItemsRefresh(
-        (long SnapshotGeneration, long AutomationDocumentGeneration,
-            long LayoutRevision, long RequestVersion, bool IsPending) request,
-        LayoutSnapshot snapshot,
-        long generation,
-        long automationGeneration)
-    {
-        var pending = _pendingFocusableItemsRefresh;
-        return request.IsPending &&
-            pending.IsPending &&
-            pending.RequestVersion == request.RequestVersion &&
-            pending.SnapshotGeneration == generation &&
-            pending.AutomationDocumentGeneration == automationGeneration &&
-            pending.LayoutRevision == request.LayoutRevision &&
-            ReferenceEquals(snapshot, _published.Snapshot) &&
-            generation == _published.Generation &&
-            automationGeneration == snapshot.AutomationDocumentGeneration;
-    }
-
-    private void CompleteFocusableItemsRefresh(
-        LayoutSnapshot snapshot,
-        long generation,
-        long revision,
-        long requestVersion)
-    {
-        var pending = _pendingFocusableItemsRefresh;
-        if (pending.IsPending &&
-            pending.RequestVersion == requestVersion &&
-            pending.SnapshotGeneration == generation &&
-            pending.AutomationDocumentGeneration == snapshot.AutomationDocumentGeneration &&
-            pending.LayoutRevision == revision &&
-            ReferenceEquals(snapshot, _published.Snapshot) &&
-            generation == _published.Generation &&
-            revision == snapshot.LayoutRevision)
-        {
-            _pendingFocusableItemsRefresh = (
-                pending.SnapshotGeneration,
-                pending.AutomationDocumentGeneration,
-                pending.LayoutRevision,
-                pending.RequestVersion,
-                false);
-        }
-    }
-
-    private void ClearFocusableItemsRefresh(long requestVersion)
-    {
-        var pending = _pendingFocusableItemsRefresh;
-        if (pending.IsPending && pending.RequestVersion == requestVersion)
-        {
-            _pendingFocusableItemsRefresh = (
-                pending.SnapshotGeneration,
-                pending.AutomationDocumentGeneration,
-                pending.LayoutRevision,
-                pending.RequestVersion,
-                false);
-        }
-    }
-
-    private void ClearFocusableItemsRefreshForCurrentSnapshot()
-    {
-        LayoutSnapshot? snapshot = _published.Snapshot;
-        if (snapshot is null)
-        {
-            ResetPendingFocusableItemsRefresh();
-            return;
-        }
-
-        var pending = _pendingFocusableItemsRefresh;
-        if (pending.IsPending &&
-            pending.SnapshotGeneration == _published.Generation &&
-            pending.AutomationDocumentGeneration == snapshot.AutomationDocumentGeneration)
-        {
-            ClearFocusableItemsRefresh(pending.RequestVersion);
-        }
-    }
-
-    private void ResetPendingFocusableItemsRefresh() =>
-        _pendingFocusableItemsRefresh = default;
 
     private void OnRegionsInvalidated(CanvasVirtualControl sender, CanvasRegionsInvalidatedEventArgs args)
     {
@@ -9081,7 +8976,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _pendingFocusResumeGeneration = 0;
         _hasPendingHorizontalOverflowRefresh = false;
         _pendingHorizontalOverflowRefreshGeneration = 0;
-        ++_focusRingPublicationTicket;
+        _focusRing.InvalidatePublication();
     }
 
     private void RequestFocusGeometryRetry()
@@ -9144,7 +9039,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             _ = Focus(FocusState.Keyboard);
             if (!IsCurrentPendingLazyFocus(pending))
                 return true;
-            HideFocusRing();
+            _focusRing.Hide();
             if (!IsCurrentPendingLazyFocus(pending))
                 return true;
 
@@ -9179,7 +9074,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             {
                 return true;
             }
-            HideFocusRing();
+            _focusRing.Hide();
             return true;
         }
 
@@ -9321,7 +9216,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     {
         if (_pendingLazyFocus is not null)
         {
-            HideFocusRing();
+            _focusRing.Hide();
             return;
         }
 
@@ -9338,7 +9233,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             HostedFocusResult result = TryFocusHostedElement(item, reverse);
             if (result == HostedFocusResult.Focused)
             {
-                if (_focusRing is not null) _focusRing.Visibility = Visibility.Collapsed;
+                _focusRing.Collapse();
                 return;
             }
 
@@ -9425,27 +9320,27 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     {
         if (_pendingLazyFocus is not null)
         {
-            HideFocusRing();
+            _focusRing.Hide();
             return;
         }
 
         var items = _focusableItems;
         if (items is null || _focusedItemIndex < 0 || _focusedItemIndex >= items.Count)
         {
-            HideFocusRing();
+            _focusRing.Hide();
             return;
         }
 
         var item = items[_focusedItemIndex];
         if (!item.IsLink && !item.IsVectorSemantic && !item.IsHorizontalOverflow)
         {
-            HideFocusRing();
+            _focusRing.Hide();
             return;
         }
 
         if (_published.Snapshot is not { } snapshot)
         {
-            HideFocusRing();
+            _focusRing.Hide();
             return;
         }
 
@@ -9460,118 +9355,11 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
         if (rect is not { Width: > 0, Height: > 0 })
         {
-            HideFocusRing();
+            _focusRing.Hide();
             return;
         }
 
-        QueueFocusRingPublication(generation, item, rect);
-    }
-
-    private void QueueFocusRingPublication(
-        long snapshotGeneration,
-        Layout.FocusableItem? item,
-        Rect? rect)
-    {
-        long ticket = ++_focusRingPublicationTicket;
-        bool queued = false;
-        try
-        {
-            queued = DispatcherQueue is { } dispatcher &&
-                dispatcher.TryEnqueue(() => ApplyFocusRingPublication(
-                    ticket, snapshotGeneration, item, rect));
-        }
-        catch (Exception)
-        {
-        }
-        if (!queued)
-        {
-            RequestFocusGeometryRetry();
-        }
-    }
-
-    private void ApplyFocusRingPublication(
-        long ticket,
-        long snapshotGeneration,
-        Layout.FocusableItem? item,
-        Rect? rect)
-    {
-        if (ticket != _focusRingPublicationTicket ||
-            _lifetime.IsDisposed || _lifetime.IsUnloaded ||
-            snapshotGeneration != _published.Generation)
-        {
-            return;
-        }
-
-        if (item is not { } expected ||
-            rect is not { Width: > 0, Height: > 0 } r ||
-            GetCurrentFocusableIdentity() is not { } current ||
-            !FocusableItemQueries.SameFocusableIdentity(current, expected))
-        {
-            if (_focusRing is not null)
-                _focusRing.Visibility = Visibility.Collapsed;
-            InvalidateInteractiveTextAdorner();
-            return;
-        }
-
-        if (!EnsureFocusRing())
-            return;
-        var focusRing = _focusRing!;
-
-        var focusVisual = _themeSnapshot?.FocusVisualColor
-                          ?? Windows.UI.Color.FromArgb(0xFF, 0x00, 0x78, 0xD4);
-        // Allocate a new SolidColorBrush only when the focus color actually changes;
-        // avoid per-keystroke GC pressure during Tab traversal.
-        if (focusRing.BorderBrush is null || focusVisual != _focusRingBrushColor)
-        {
-            _focusRingBrushColor = focusVisual;
-            focusRing.BorderBrush = new SolidColorBrush(focusVisual);
-        }
-
-        const double pad = 2.0;
-        Canvas.SetLeft(focusRing, r.X - pad);
-        Canvas.SetTop(focusRing, r.Y - pad);
-        focusRing.Width  = r.Width  + pad * 2;
-        focusRing.Height = r.Height + pad * 2;
-        focusRing.Visibility = Visibility.Visible;
-        InvalidateInteractiveTextAdorner();
-    }
-
-    private void HideFocusRing()
-    {
-        QueueFocusRingPublication(
-            _published.Generation,
-            item: null,
-            rect: null);
-    }
-
-    private bool EnsureFocusRing()
-    {
-        if (_focusRing is not null)
-            return true;
-
-        if (_surface.Overlay is null || _lifetime.IsUnloaded || XamlRoot is null)
-            return false;
-
-        var focusRing = new Microsoft.UI.Xaml.Controls.Border
-        {
-            BorderThickness = new Thickness(2),
-            CornerRadius = new CornerRadius(3),
-            IsHitTestVisible = false,
-        };
-        Canvas.SetZIndex(focusRing, 1);
-
-        try
-        {
-            _surface.Overlay.Children.Add(focusRing);
-        }
-        catch (System.Runtime.InteropServices.COMException ex)
-        {
-            MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] focus ring attach failed: {ex.Message}");
-            return false;
-        }
-
-        _focusRing = focusRing;
-        return true;
+        _focusRing.Publish(generation, item, rect);
     }
 
     private Rect? GetFocusableItemRect(Layout.FocusableItem item)
@@ -10000,7 +9788,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             return HostedFocusResult.Stale;
         }
 
-        HideFocusRing();
+        _focusRing.Hide();
         return HostedFocusResult.Deferred;
     }
 

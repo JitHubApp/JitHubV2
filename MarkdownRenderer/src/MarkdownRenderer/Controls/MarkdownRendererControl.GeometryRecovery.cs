@@ -56,11 +56,7 @@ public partial class MarkdownRendererControl
         TryGeometryRecoveryCleanup(_contextMenu.Close);
         TryGeometryRecoveryCleanup(_abbreviationTooltip.Hide);
         TryGeometryRecoveryCleanup(() => _cursor.SetShape(null));
-        TryGeometryRecoveryCleanup(() =>
-        {
-            if (_focusRing is not null)
-                _focusRing.Visibility = Visibility.Collapsed;
-        });
+        TryGeometryRecoveryCleanup(_focusRing.Collapse);
         TryGeometryRecoveryCleanup(() => _handles.SetVisibility(Visibility.Collapsed));
         TryGeometryRecoveryCleanup(_adorner.ReleaseSurface);
         TryGeometryRecoveryCleanup(InvalidateAutomationLayout);
