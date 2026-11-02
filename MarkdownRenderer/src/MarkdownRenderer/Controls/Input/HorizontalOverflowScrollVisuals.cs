@@ -8,7 +8,6 @@ using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Selection;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Automation;
-using Microsoft.UI.Xaml.Automation.Peers;
 using Windows.Foundation;
 
 namespace MarkdownRenderer.Controls.Input;
@@ -37,9 +36,7 @@ internal sealed class HorizontalOverflowScrollVisuals
     private int _pendingRetryBlockIndex;
     private double _pendingRetryOldOffset;
 
-    private bool _automationEventQueued;
-    private readonly Dictionary<IHorizontalOverflowBox, PendingHorizontalOverflowAutomationChange>
-        _pendingAutomationChanges = new(ReferenceEqualityComparer.Instance);
+    private readonly HorizontalOverflowScrollAutomationEvents _automationEvents;
 
     internal HorizontalOverflowScrollVisuals(
         IHorizontalOverflowScrollHost host,
@@ -59,6 +56,7 @@ internal sealed class HorizontalOverflowScrollVisuals
         _focus = focus;
         _embeds = embeds;
         _dispatcher = dispatcher;
+        _automationEvents = new HorizontalOverflowScrollAutomationEvents(host, lifetime, published, dispatcher);
     }
 
     /// <summary>True while a capture waits for the recovery clock.</summary>
@@ -72,11 +70,7 @@ internal sealed class HorizontalOverflowScrollVisuals
     }
 
     /// <summary>Drops queued automation notifications.</summary>
-    internal void ClearAutomationNotifications()
-    {
-        _automationEventQueued = false;
-        _pendingAutomationChanges.Clear();
-    }
+    internal void ClearAutomationNotifications() => _automationEvents.Clear();
 
     /// <summary>Publishes the scroll of <paramref name="target"/> from <paramref name="oldOffset"/>.</summary>
     internal void Refresh(IHorizontalOverflowBox target, double oldOffset)
@@ -397,7 +391,7 @@ internal sealed class HorizontalOverflowScrollVisuals
             return;
         if (_focus.FocusedIndex >= 0)
             _host.UpdateFocusRing();
-        QueueAutomationNotification(
+        _automationEvents.Queue(
             snapshot,
             state.SnapshotGeneration,
             target,
@@ -421,103 +415,6 @@ internal sealed class HorizontalOverflowScrollVisuals
             {
                 canvas.Invalidate(invalidation);
             }
-        }
-    }
-
-    private void QueueAutomationNotification(
-        LayoutSnapshot snapshot,
-        long snapshotGeneration,
-        IHorizontalOverflowBox target,
-        double oldOffset,
-        double newOffset,
-        double extent,
-        double viewport,
-        bool isRightToLeft)
-    {
-        if (!AutomationPeer.ListenerExists(AutomationEvents.PropertyChanged) ||
-            _lifetime.IsDisposed ||
-            _lifetime.IsUnloaded ||
-            !ReferenceEquals(snapshot, _published.Snapshot) ||
-            snapshotGeneration != _published.Generation ||
-            !snapshot.SemanticDocument.TryGetHorizontalOverflowNode(target, out _))
-        {
-            return;
-        }
-
-        double oldPhysicalPercent = MarkdownHorizontalScrollPolicy.GetPhysicalPercent(
-            oldOffset,
-            extent,
-            viewport,
-            isRightToLeft);
-        double newPhysicalPercent = MarkdownHorizontalScrollPolicy.GetPhysicalPercent(
-            newOffset,
-            extent,
-            viewport,
-            isRightToLeft);
-        if (Math.Abs(newPhysicalPercent - oldPhysicalPercent) <= 0.0001)
-            return;
-
-        if (_pendingAutomationChanges.TryGetValue(
-                target,
-                out PendingHorizontalOverflowAutomationChange pending) &&
-            ReferenceEquals(pending.Snapshot, snapshot))
-        {
-            _pendingAutomationChanges[target] = new(
-                pending.Snapshot,
-                pending.OldPhysicalPercent,
-                newPhysicalPercent);
-        }
-        else
-        {
-            _pendingAutomationChanges[target] = new(
-                snapshot,
-                oldPhysicalPercent,
-                newPhysicalPercent);
-        }
-
-        if (_automationEventQueued)
-            return;
-
-        _automationEventQueued = true;
-        DispatcherQueue? dispatcher = _dispatcher;
-        if (dispatcher is null || !dispatcher.TryEnqueue(
-                DispatcherQueuePriority.Low,
-                ProcessQueuedAutomationNotifications))
-        {
-            _automationEventQueued = false;
-            _pendingAutomationChanges.Clear();
-        }
-    }
-
-    private void ProcessQueuedAutomationNotifications()
-    {
-        _automationEventQueued = false;
-        var changes = new KeyValuePair<IHorizontalOverflowBox, PendingHorizontalOverflowAutomationChange>[
-            _pendingAutomationChanges.Count];
-        ((ICollection<KeyValuePair<IHorizontalOverflowBox, PendingHorizontalOverflowAutomationChange>>)
-            _pendingAutomationChanges).CopyTo(changes, 0);
-        _pendingAutomationChanges.Clear();
-
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _published.Snapshot is not { } currentSnapshot)
-            return;
-
-        MarkdownAutomationPeer? peer = _host.FindAutomationPeer();
-        if (peer is null)
-            return;
-
-        foreach (KeyValuePair<IHorizontalOverflowBox, PendingHorizontalOverflowAutomationChange> entry in changes)
-        {
-            PendingHorizontalOverflowAutomationChange change = entry.Value;
-            if (!ReferenceEquals(change.Snapshot, currentSnapshot) ||
-                !currentSnapshot.SemanticDocument.TryGetHorizontalOverflowNode(entry.Key, out _))
-            {
-                continue;
-            }
-
-            peer.NotifyHorizontalOverflowScrolled(
-                entry.Key,
-                change.OldPhysicalPercent,
-                change.NewPhysicalPercent);
         }
     }
 

@@ -21,7 +21,6 @@ internal sealed class PendingFocusGeometryWork
     private readonly FocusGeometryReader _geometry;
     private readonly FocusRingPresenter _focusRing;
     private readonly FocusedItemReveal _reveal;
-    private readonly HorizontalOverflowScrollVisuals _overflowScroll;
     private readonly SpatialFocusKeyQueue _queuedKeys;
     private readonly KeyboardFocusNavigator _navigator;
 
@@ -37,7 +36,6 @@ internal sealed class PendingFocusGeometryWork
         FocusGeometryReader geometry,
         FocusRingPresenter focusRing,
         FocusedItemReveal reveal,
-        HorizontalOverflowScrollVisuals overflowScroll,
         SpatialFocusKeyQueue queuedKeys,
         KeyboardFocusNavigator navigator)
     {
@@ -48,7 +46,6 @@ internal sealed class PendingFocusGeometryWork
         _geometry = geometry;
         _focusRing = focusRing;
         _reveal = reveal;
-        _overflowScroll = overflowScroll;
         _queuedKeys = queuedKeys;
         _navigator = navigator;
     }
@@ -142,14 +139,12 @@ internal sealed class PendingFocusGeometryWork
         }
     }
 
-    /// <summary>Drops all pending focus work and queued ring placements.</summary>
+    /// <summary>Drops the queued keys, geometry refresh and resume point.</summary>
     internal void Clear()
     {
         _queuedKeys.Clear();
         _refreshPending = false;
         _resumePoint = null;
-        _overflowScroll.ClearPendingRetry();
-        _focusRing.InvalidatePublication();
     }
 
     private void ReplayQueuedKey()

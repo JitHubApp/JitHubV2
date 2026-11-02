@@ -21,7 +21,7 @@ internal sealed class CanvasDeviceRecovery
     private readonly PublishedLayout _published;
     private readonly MarkdownViewSurface _surface;
     private readonly SelectionAdornerPresenter _adorner;
-    private readonly DispatcherQueue? _dispatcher;
+    private readonly DispatcherQueue _dispatcher;
 
     private bool _queued;
     private int _attempt;
@@ -33,7 +33,7 @@ internal sealed class CanvasDeviceRecovery
         PublishedLayout published,
         MarkdownViewSurface surface,
         SelectionAdornerPresenter adorner,
-        DispatcherQueue? dispatcher)
+        DispatcherQueue dispatcher)
     {
         _host = host;
         _lifetime = lifetime;
@@ -89,7 +89,7 @@ internal sealed class CanvasDeviceRecovery
 
         try
         {
-            var timer = (_dispatcher ?? throw new InvalidOperationException("The control has no dispatcher.")).CreateTimer();
+            var timer = _dispatcher.CreateTimer();
             timer.IsRepeating = false;
             timer.Interval = TimeSpan.FromMilliseconds(delayMs);
             timer.Tick += OnTimer;

@@ -19,7 +19,7 @@ internal sealed class RendererFocusEntry
     private readonly FocusRingPresenter _focusRing;
     private readonly FocusedItemCommit _commit;
     private readonly KeyboardFocusNavigator _navigator;
-    private readonly DispatcherQueue? _dispatcher;
+    private readonly DispatcherQueue _dispatcher;
 
     private bool _promoting;
     private bool _wasKeyboardTraversal;
@@ -37,7 +37,7 @@ internal sealed class RendererFocusEntry
         FocusRingPresenter focusRing,
         FocusedItemCommit commit,
         KeyboardFocusNavigator navigator,
-        DispatcherQueue? dispatcher)
+        DispatcherQueue dispatcher)
     {
         _host = host;
         _lifetime = lifetime;
@@ -118,12 +118,18 @@ internal sealed class RendererFocusEntry
     internal void OnLosingFocus() => _suppressNextPromotion = false;
 
     /// <summary>
+    /// Suppresses the promotion of the next entry. Set before work that can
+    /// move focus ahead of <see cref="FocusWithoutPromotion"/>.
+    /// </summary>
+    internal void SuppressNextPromotion() => _suppressNextPromotion = true;
+
+    /// <summary>
     /// Focuses the renderer programmatically without promoting the entry to
     /// an item. Returns whether focus moved.
     /// </summary>
     internal bool FocusWithoutPromotion()
     {
-        _suppressNextPromotion = true;
+        SuppressNextPromotion();
         bool focused = _host.FocusRendererProgrammatically();
         if (!focused)
         {
@@ -131,7 +137,7 @@ internal sealed class RendererFocusEntry
             return false;
         }
 
-        _dispatcher?.TryEnqueue(() => _suppressNextPromotion = false);
+        _dispatcher.TryEnqueue(() => _suppressNextPromotion = false);
         return true;
     }
 }

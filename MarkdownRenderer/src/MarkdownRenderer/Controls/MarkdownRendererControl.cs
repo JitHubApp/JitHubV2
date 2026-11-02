@@ -1004,6 +1004,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     internal bool FocusDocumentFromAutomation()
     {
+        _focusEntry.SuppressNextPromotion();
         _focus.ClearFocus();
         _focusRing.Update();
         return _focusEntry.FocusWithoutPromotion();
@@ -1846,7 +1847,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _focusCommit = new FocusedItemCommit(this, _lifetime, _published, _focus, _focusRing, _reveal, _hostedFocus, _embeds, DispatcherQueue);
         var queuedFocusKeys = new SpatialFocusKeyQueue();
         _navigator = new KeyboardFocusNavigator(this, _lifetime, _published, _focus, _focusGeometry, _focusRing, _overflowScroll, _embeds, _focusCommit, queuedFocusKeys, DispatcherQueue);
-        _focusGeometryWork = new PendingFocusGeometryWork(this, _lifetime, _published, _focus, _focusGeometry, _focusRing, _reveal, _overflowScroll, queuedFocusKeys, _navigator);
+        _focusGeometryWork = new PendingFocusGeometryWork(this, _lifetime, _published, _focus, _focusGeometry, _focusRing, _reveal, queuedFocusKeys, _navigator);
         _focusEntry = new RendererFocusEntry(this, _lifetime, _focus, _focusRing, _focusCommit, _navigator, DispatcherQueue);
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
@@ -2624,10 +2625,17 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         ReleaseLoadedResources();
     }
 
+    private void ClearPendingFocusGeometryWork()
+    {
+        _focusGeometryWork.Clear();
+        _overflowScroll.ClearPendingRetry();
+        _focusRing.InvalidatePublication();
+    }
+
     private void ReleaseLoadedResources()
     {
         ResetVectorCapacityObserver();
-        _focusGeometryWork.Clear();
+        ClearPendingFocusGeometryWork();
         Interlocked.Exchange(ref _deferredSceneStatusRefreshAfterPaint, 0);
         Interlocked.Exchange(ref _deferredSceneProbeAfterPaint, 0);
         _contextMenu.Close();
@@ -4115,7 +4123,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             _automationDocumentGenerations.Publish(automationDocumentIdentity));
         // Old subscriptions/dirty indices cannot cross this snapshot boundary,
         // including reentrant property notifications during the commit below.
-        _focusGeometryWork.Clear();
+        ClearPendingFocusGeometryWork();
         _imageSubscriptions.UnsubscribeAll();
         _pendingImageRelayoutBlockIndices.Clear();
         _imageRelayoutQueued = false;
@@ -7091,8 +7099,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                     if (retryImageBlockIndex is { } retryIndex)
                         _pendingImageRelayoutBlockIndices.Add(retryIndex);
                     if (retryCurrentImages)
-                        foreach (var image in _imageSubscriptions.Images)
-                            _pendingImageRelayoutBlockIndices.Add(image.BlockIndex);
+                        _imageSubscriptions.AddBlockIndicesTo(_pendingImageRelayoutBlockIndices);
                     if (snapshot.IsRetiringOrDisposed ||
                         (float)Math.Max(50, ActualWidth) != snapshot.Size.Width)
                         RequestRebuild(RebuildReason.Full);
@@ -7105,15 +7112,13 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                         // its source. Discard this private candidate and retry
                         // after release; do not reset capture or request a full
                         // rebuild solely because the user is interacting.
-                        foreach (var image in _imageSubscriptions.Images)
-                            _pendingImageRelayoutBlockIndices.Add(image.BlockIndex);
+                        _imageSubscriptions.AddBlockIndicesTo(_pendingImageRelayoutBlockIndices);
                     }
                     else if (!TryPublishRasterPlacement(snapshot, candidate, generation))
                     {
                         // A changed width/policy/raster invalidates the private
                         // proof. Rebuild rather than mutate the old tree here.
-                        foreach (var image in _imageSubscriptions.Images)
-                            _pendingImageRelayoutBlockIndices.Add(image.BlockIndex);
+                        _imageSubscriptions.AddBlockIndicesTo(_pendingImageRelayoutBlockIndices);
                         RequestRebuild(RebuildReason.Full);
                     }
                 }
@@ -7135,8 +7140,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             if (current && canceled && !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
                 ReferenceEquals(snapshot, _published.Snapshot) && snapshot?.GeometryRecoveryRequired != true)
             {
-                foreach (var image in _imageSubscriptions.Images)
-                    _pendingImageRelayoutBlockIndices.Add(image.BlockIndex);
+                _imageSubscriptions.AddBlockIndicesTo(_pendingImageRelayoutBlockIndices);
             }
             // The pending set is cleared before every snapshot replacement.
             // New-snapshot completions may accumulate while an old task drains.
@@ -7181,7 +7185,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         TryGeometryRecoveryCleanup(_pointerInput.Reset);
         TryGeometryRecoveryCleanup(ResetVectorCapacityObserver);
         _horizontalOverflowDrag.Clear();
-        _focusGeometryWork.Clear();
+        ClearPendingFocusGeometryWork();
         _adorner.ClearGeometry();
         // This tuple describes re-publication of this snapshot's geometry, not
         // an offside replacement candidate. It cannot repair a failed tree.

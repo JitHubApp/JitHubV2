@@ -43,6 +43,13 @@ internal sealed class ImageSubscriptions
 
     internal bool Contains(ImageBox image) => _images.Contains(image);
 
+    /// <summary>Adds the block index of every subscribed image to <paramref name="blockIndices"/>.</summary>
+    internal void AddBlockIndicesTo(SortedSet<int> blockIndices)
+    {
+        foreach (ImageBox image in _images)
+            blockIndices.Add(image.BlockIndex);
+    }
+
     /// <summary>
     /// Subscribes to <paramref name="image"/>. Returns false when it already
     /// is subscribed.

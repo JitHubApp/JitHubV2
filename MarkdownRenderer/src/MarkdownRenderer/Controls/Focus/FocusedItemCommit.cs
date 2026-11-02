@@ -26,7 +26,7 @@ internal sealed class FocusedItemCommit
     private readonly FocusedItemReveal _reveal;
     private readonly HostedElementFocus _hostedFocus;
     private readonly EmbedRealization _embeds;
-    private readonly DispatcherQueue? _dispatcher;
+    private readonly DispatcherQueue _dispatcher;
 
     internal FocusedItemCommit(
         IFocusedItemCommitHost host,
@@ -37,7 +37,7 @@ internal sealed class FocusedItemCommit
         FocusedItemReveal reveal,
         HostedElementFocus hostedFocus,
         EmbedRealization embeds,
-        DispatcherQueue? dispatcher)
+        DispatcherQueue dispatcher)
     {
         _host = host;
         _lifetime = lifetime;
@@ -83,45 +83,19 @@ internal sealed class FocusedItemCommit
 
         if (layoutState is FocusTargetLayoutState.RequiresRealization or FocusTargetLayoutState.Busy)
         {
-            // Keep native focus on the renderer while the target's top-level
-            // block is measured. This consumes the Tab instead of allowing XAML
-            // to advance beyond the renderer at a lazy-layout boundary.
-            _focus.BeginLazyFocus(new PendingLazyFocus(
+            WaitForLazyTarget(
                 snapshot,
                 snapshotGeneration,
                 item,
-                reverse));
-            var pending = _focus.PendingLazy!.Value;
-            _ = _host.FocusRenderer();
-            if (!_focus.IsCurrentLazyFocus(pending))
-                return true;
-            _focusRing.Hide();
-            if (!_focus.IsCurrentLazyFocus(pending))
-                return true;
-
-            if (layoutState == FocusTargetLayoutState.RequiresRealization)
-            {
-                _reveal.ScrollLazyTargetIntoView(estimatedBand, reverse);
-                if (!_focus.IsCurrentLazyFocus(pending))
-                    return true;
-                _host.RealizeLazyFocusTarget(snapshot, estimatedBand);
-            }
-
+                reverse,
+                layoutState == FocusTargetLayoutState.RequiresRealization,
+                estimatedBand);
             return true;
         }
 
         if (layoutState == FocusTargetLayoutState.Unavailable)
         {
-            // A retiring snapshot or malformed custom block index must never
-            // turn an already-consumed Tab into focus escape.
-            _focus.ClearLazyFocus();
-            _ = _host.FocusRenderer();
-            if (!ReferenceEquals(snapshot, _published.Snapshot) ||
-                snapshotGeneration != _published.Generation)
-            {
-                return true;
-            }
-            _focusRing.Hide();
+            HoldFocusOnRenderer(snapshot, snapshotGeneration);
             return true;
         }
 
@@ -130,7 +104,7 @@ internal sealed class FocusedItemCommit
         FocusCurrent(reverse);
         if (scrolled)
         {
-            _dispatcher?.TryEnqueue(() =>
+            _dispatcher.TryEnqueue(() =>
             {
                 if (_lifetime.IsUnloaded) return;
                 _embeds.RealizeVisible();
@@ -138,6 +112,58 @@ internal sealed class FocusedItemCommit
             });
         }
         return true;
+    }
+
+    /// <summary>
+    /// Keeps native focus on the renderer while the target's top-level block
+    /// is measured. This consumes the Tab instead of allowing XAML to advance
+    /// beyond the renderer at a lazy-layout boundary.
+    /// </summary>
+    private void WaitForLazyTarget(
+        LayoutSnapshot snapshot,
+        long snapshotGeneration,
+        FocusableItem item,
+        bool reverse,
+        bool requiresRealization,
+        LazyLayoutBand estimatedBand)
+    {
+        _focus.BeginLazyFocus(new PendingLazyFocus(
+            snapshot,
+            snapshotGeneration,
+            item,
+            reverse));
+        var pending = _focus.PendingLazy!.Value;
+        _ = _host.FocusRenderer();
+        if (!_focus.IsCurrentLazyFocus(pending))
+            return;
+        _focusRing.Hide();
+        if (!_focus.IsCurrentLazyFocus(pending))
+            return;
+
+        if (requiresRealization)
+        {
+            _reveal.ScrollLazyTargetIntoView(estimatedBand, reverse);
+            if (!_focus.IsCurrentLazyFocus(pending))
+                return;
+            _host.RealizeLazyFocusTarget(snapshot, estimatedBand);
+        }
+    }
+
+    /// <summary>
+    /// Keeps focus on the renderer when the target is unavailable. A retiring
+    /// snapshot or malformed custom block index must never turn an
+    /// already-consumed Tab into focus escape.
+    /// </summary>
+    private void HoldFocusOnRenderer(LayoutSnapshot snapshot, long snapshotGeneration)
+    {
+        _focus.ClearLazyFocus();
+        _ = _host.FocusRenderer();
+        if (!ReferenceEquals(snapshot, _published.Snapshot) ||
+            snapshotGeneration != _published.Generation)
+        {
+            return;
+        }
+        _focusRing.Hide();
     }
 
     /// <summary>

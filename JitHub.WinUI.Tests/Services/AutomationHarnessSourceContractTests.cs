@@ -635,7 +635,16 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("RequestRebuild(RebuildReason.Full);", completion, StringComparison.Ordinal);
         Assert.Contains("else if (retryImageBlockIndex.HasValue || retryCurrentImages)", completion, StringComparison.Ordinal);
         Assert.Contains("if (retryImageBlockIndex is { } retryIndex)", completion, StringComparison.Ordinal);
-        Assert.Contains("if (retryCurrentImages)\n                        foreach (var image in _imageSubscriptions.Images)", completion, StringComparison.Ordinal);
+        Assert.Contains("if (retryCurrentImages)\n                        _imageSubscriptions.AddBlockIndicesTo(_pendingImageRelayoutBlockIndices);", completion, StringComparison.Ordinal);
+        string subscriptionsSource = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "src",
+            "MarkdownRenderer",
+            "Controls",
+            "Images",
+            "ImageSubscriptions.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
+        Assert.Contains("foreach (ImageBox image in _images)\n            blockIndices.Add(image.BlockIndex);", subscriptionsSource, StringComparison.Ordinal);
         Assert.DoesNotContain("retryImageBlockIndices", completion, StringComparison.Ordinal);
         Assert.Contains("rootMeasureCommitted &&\n                        (canceled || capturedScrollOffset != _surface.Scroll?.VerticalOffset) ? null : anchor", completion, StringComparison.Ordinal);
 

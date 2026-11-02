@@ -32,7 +32,7 @@ internal sealed class KeyboardFocusNavigator
     private readonly EmbedRealization _embeds;
     private readonly FocusedItemCommit _commit;
     private readonly SpatialFocusKeyQueue _queuedKeys;
-    private readonly DispatcherQueue? _dispatcher;
+    private readonly DispatcherQueue _dispatcher;
 
     internal KeyboardFocusNavigator(
         IFocusGeometryRecoveryHost host,
@@ -45,7 +45,7 @@ internal sealed class KeyboardFocusNavigator
         EmbedRealization embeds,
         FocusedItemCommit commit,
         SpatialFocusKeyQueue queuedKeys,
-        DispatcherQueue? dispatcher)
+        DispatcherQueue dispatcher)
     {
         _host = host;
         _lifetime = lifetime;
@@ -339,7 +339,7 @@ internal sealed class KeyboardFocusNavigator
         if (suppressed.Count == 0)
             return;
 
-        _dispatcher?.TryEnqueue(() =>
+        _dispatcher.TryEnqueue(() =>
         {
             foreach (var (control, isTabStop) in suppressed)
                 control.IsTabStop = isTabStop;
