@@ -396,7 +396,7 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
         {
             if (TryGetFirstNonEmptyScrollRect(documentRects, out var rect))
             {
-                _peer.OwnerControl.ScrollDocumentRectIntoView(rect, alignToTop);
+                _peer.OwnerControl.AutomationScrolling.ScrollIntoView(rect, alignToTop);
                 return;
             }
         }

@@ -21,22 +21,15 @@ internal sealed class BlockScrollNavigation
     private readonly MarkdownViewport _viewport;
     private readonly LazyLayoutRealization _lazyLayout;
     private readonly FocusedItemReveal _reveal;
-    private readonly Action<Rect> _bringIntoExternalViewport;
     private (LayoutSnapshot Snapshot, long SnapshotGeneration, int BlockIndex)? _pending;
 
-    /// <summary>
-    /// <paramref name="bringIntoExternalViewport"/> scrolls the ancestor
-    /// viewport, without animation, when the renderer does not own its
-    /// scroll viewer.
-    /// </summary>
     internal BlockScrollNavigation(
         MarkdownViewLifetime lifetime,
         PublishedLayout published,
         MarkdownViewSurface surface,
         MarkdownViewport viewport,
         LazyLayoutRealization lazyLayout,
-        FocusedItemReveal reveal,
-        Action<Rect> bringIntoExternalViewport)
+        FocusedItemReveal reveal)
     {
         _lifetime = lifetime;
         _published = published;
@@ -44,7 +37,6 @@ internal sealed class BlockScrollNavigation
         _viewport = viewport;
         _lazyLayout = lazyLayout;
         _reveal = reveal;
-        _bringIntoExternalViewport = bringIntoExternalViewport;
     }
 
     /// <summary>
@@ -115,8 +107,9 @@ internal sealed class BlockScrollNavigation
         if (_surface.Scroll is not null)
             _surface.Scroll.ChangeView(null, Math.Max(0, targetTop - TopMargin), null, disableAnimation: true);
         else
-            _bringIntoExternalViewport(
-                new Rect(0, Math.Max(0, targetTop - TopMargin), 1, Math.Max(1, target.OwnerHeight)));
+            _surface.BringIntoExternalViewport(
+                new Rect(0, Math.Max(0, targetTop - TopMargin), 1, Math.Max(1, target.OwnerHeight)),
+                animate: false);
     }
 
     /// <summary>

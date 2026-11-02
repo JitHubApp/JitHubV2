@@ -137,6 +137,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private readonly MarkdownTouchSelectionSession _touchSelection = new();
     private readonly TouchSelectionRestore _touchRestore;
     private readonly RendererLocalization _localization;
+    private readonly AutomationScrolling _automationScrolling;
     private readonly TouchTapSuppressionPolicy _touchTapSuppression = new();
 
 
@@ -1141,55 +1142,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             link.External));
     }
 
-    internal bool TryGetAutomationScrollMetrics(
-        out double verticalOffset,
-        out double viewportHeight,
-        out double extentHeight)
-    {
-        if (_surface.Scroll is null)
-        {
-            verticalOffset = 0;
-            viewportHeight = 0;
-            extentHeight = 0;
-            return false;
-        }
-
-        verticalOffset = _surface.Scroll.VerticalOffset;
-        viewportHeight = _surface.Scroll.ViewportHeight;
-        extentHeight = _surface.Scroll.ExtentHeight;
-        return true;
-    }
-
-    internal void ScrollFromAutomation(ScrollAmount amount)
-    {
-        if (_surface.Scroll is null || amount == ScrollAmount.NoAmount)
-            return;
-        _reveal.NoteViewportRequest();
-
-        double delta = amount switch
-        {
-            ScrollAmount.LargeDecrement => -Math.Max(48, _surface.Scroll.ViewportHeight * 0.8),
-            ScrollAmount.SmallDecrement => -48,
-            ScrollAmount.SmallIncrement => 48,
-            ScrollAmount.LargeIncrement => Math.Max(48, _surface.Scroll.ViewportHeight * 0.8),
-            _ => 0,
-        };
-        double maximum = Math.Max(0, _surface.Scroll.ExtentHeight - _surface.Scroll.ViewportHeight);
-        double target = Math.Clamp(_surface.Scroll.VerticalOffset + delta, 0, maximum);
-        _surface.Scroll.ChangeView(null, target, null, disableAnimation: true);
-    }
-
-    internal void SetAutomationVerticalScrollPercent(double percent)
-    {
-        if (_surface.Scroll is null)
-            return;
-        _reveal.NoteViewportRequest();
-
-        double maximum = Math.Max(0, _surface.Scroll.ExtentHeight - _surface.Scroll.ViewportHeight);
-        double target = maximum * (Math.Clamp(percent, 0, 100) / 100);
-        _surface.Scroll.ChangeView(null, target, null, disableAnimation: true);
-    }
-
     /// <summary>
     /// Offset applied between the scroll viewport and document content. The
     /// renderer pins short documents to the top of the viewport, so this is
@@ -1217,6 +1169,9 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     /// <summary>Effective document-language LCID exposed through UI Automation.</summary>
     internal int AutomationCultureLcid => _localization.Culture.LCID;
+
+    /// <summary>UI Automation's scroll pattern and ScrollIntoView requests.</summary>
+    internal AutomationScrolling AutomationScrolling => _automationScrolling;
 
     /// <summary>Strings and culture resolved from the language snapshot of the committed layout.</summary>
     internal RendererLocalization Localization => _localization;
@@ -1365,28 +1320,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     internal CancellationToken GetAutomationPipelineCancellationToken(long generation) =>
         _rebuild.GetActiveToken(generation);
 
-    internal void ScrollDocumentRectIntoView(Windows.Foundation.Rect rect, bool alignToTop)
-    {
-        _reveal.NoteViewportRequest();
-        if (_surface.Scroll is null)
-        {
-            BringDocumentRectIntoExternalViewport(rect, animate: false, alignToTop ? 0 : 0.5);
-            return;
-        }
-        const double margin = 24.0;
-        double target = alignToTop
-            ? rect.Top
-            : rect.Top < _surface.Scroll.VerticalOffset + margin
-                ? rect.Top - margin
-                : rect.Bottom > _surface.Scroll.VerticalOffset + _surface.Scroll.ViewportHeight - margin
-                    ? rect.Bottom - _surface.Scroll.ViewportHeight + margin
-                    : _surface.Scroll.VerticalOffset;
-        // UI Automation's ScrollIntoView contract is immediate. An animated
-        // change can be superseded by lazy-layout realization before its first
-        // frame, leaving the requested range offscreen.
-        _surface.Scroll.ChangeView(null, Math.Max(0, target), null, disableAnimation: true);
-    }
-
     /// <summary>
     /// Initializes a renderer with either an owned scroll viewport or an
     /// externally supplied effective viewport.
@@ -1411,7 +1344,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _deviceRecovery = new CanvasDeviceRecovery(this, _lifetime, _published, _surface, _adorner, DispatcherQueue);
         _selectionCommands = new SelectionCommands(this, _published, _selection);
         _selectionDismissal = new SelectionDismissalHook(this, this, _surface, _lifetime, _published, _selection, _selectionCommands);
-        _autoScroll = new SelectionDragAutoScroll(_surface, _viewport, rect => BringDocumentRectIntoExternalViewport(rect, animate: false));
+        _autoScroll = new SelectionDragAutoScroll(_surface, _viewport);
         _dragShield = new SelectionDragShield(_surface, _viewport, this);
         _handles = new SelectionHandlesPresenter(this, this, this, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _adorner, _autoScroll);
         _contextMenu = new SelectionContextMenuPresenter(this, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _handles, _adorner, _selectionCommands);
@@ -1436,6 +1369,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _hostedFocus = new HostedElementFocus(this, _lifetime, _published, _focus, _hostedFocusPlan, _embeds, _focusRing);
         _overflowScroll = new HorizontalOverflowScrollVisuals(this, _surface, _lifetime, _published, _selection, _focus, _embeds, DispatcherQueue);
         _reveal = new FocusedItemReveal(this, _surface, _lifetime, _published, _viewport, _focus, _overflowScroll, DispatcherQueue);
+        _automationScrolling = new AutomationScrolling(_surface, _reveal);
         _focusCommit = new FocusedItemCommit(this, _lifetime, _published, _focus, _focusRing, _reveal, _hostedFocus, _embeds, DispatcherQueue);
         var queuedFocusKeys = new SpatialFocusKeyQueue();
         _navigator = new KeyboardFocusNavigator(this, _lifetime, _published, _focus, _focusGeometry, _focusRing, _overflowScroll, _embeds, _focusCommit, queuedFocusKeys, DispatcherQueue);
@@ -1443,7 +1377,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _focusEntry = new RendererFocusEntry(this, _lifetime, _focus, _focusRing, _focusCommit, _navigator, DispatcherQueue);
         _layoutPublisher = new LayoutCommitPublisher(this, _lifetime, _published, _layoutCommit, _surface, _recoveryClock, _pointerInput, _embeds, _imageSubscriptions, _imagePlans, _imageResidency, _focus, _focusRing, _focusCommit, _focusRefresh, _hostedFocusPlan);
         _lazyLayout = new LazyLayoutRealization(this, _lifetime, _published, _layoutCommit, _layoutPublisher, _surface, _viewport, _recoveryClock, _vectorCapacity, _pointerInput, _focus, _focusCommit);
-        _blockScroll = new BlockScrollNavigation(_lifetime, _published, _surface, _viewport, _lazyLayout, _reveal, rect => BringDocumentRectIntoExternalViewport(rect, animate: false));
+        _blockScroll = new BlockScrollNavigation(_lifetime, _published, _surface, _viewport, _lazyLayout, _reveal);
         _links = new LinkActivation(this, _blockScroll);
         _deferredScenes = new DeferredSceneReadiness(this, _lifetime, _published, _viewport, _rebuild);
         _imageReadiness = new VisibleImageReadiness(_published, _imagePlans, _viewport);
@@ -1516,28 +1450,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     internal bool TryGetViewport(out double top, out double height, out double width)
         => _viewport.TryGet(out top, out height, out width);
-
-    private bool BringDocumentRectIntoExternalViewport(Rect rect, bool animate, double alignmentRatio = 0)
-    {
-        if (_surface.OwnsScrollViewport || _surface.Root is null)
-            return false;
-
-        try
-        {
-            _surface.Root.StartBringIntoView(new BringIntoViewOptions
-            {
-                AnimationDesired = animate,
-                TargetRect = rect,
-                VerticalAlignmentRatio = Math.Clamp(alignmentRatio, 0, 1),
-                VerticalOffset = 0,
-            });
-            return true;
-        }
-        catch (InvalidOperationException)
-        {
-            return false;
-        }
-    }
 
     private void OnGettingFocus(UIElement sender, GettingFocusEventArgs e)
     {
@@ -1958,9 +1870,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         => FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer;
 
     void IFocusedItemRevealHost.RequestFocusGeometryRetry() => _focusGeometryWork.RequestRetry();
-
-    bool IFocusedItemRevealHost.BringDocumentRectIntoExternalViewport(Rect rect, bool animate, double alignmentRatio)
-        => BringDocumentRectIntoExternalViewport(rect, animate, alignmentRatio);
 
     bool IFocusedItemCommitHost.FocusRenderer() => Focus(FocusState.Keyboard);
 

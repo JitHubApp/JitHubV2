@@ -169,7 +169,7 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
     {
         get
         {
-            if (!_owner.TryGetAutomationScrollMetrics(out _, out double viewport, out double extent) ||
+            if (!_owner.AutomationScrolling.TryGetMetrics(out _, out double viewport, out double extent) ||
                 extent <= 0)
             {
                 return 100;
@@ -188,7 +188,7 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
         if (!VerticallyScrollable)
             throw new InvalidOperationException("The markdown document has no vertical overflow.");
 
-        _owner.ScrollFromAutomation(verticalAmount);
+        _owner.AutomationScrolling.Scroll(verticalAmount);
     }
 
     public void SetScrollPercent(double horizontalPercent, double verticalPercent)
@@ -202,7 +202,7 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
         if (!VerticallyScrollable)
             throw new InvalidOperationException("The markdown document has no vertical overflow.");
 
-        _owner.SetAutomationVerticalScrollPercent(verticalPercent);
+        _owner.AutomationScrolling.SetVerticalPercent(verticalPercent);
     }
 
     public ITextRangeProvider[] GetSelection()
@@ -929,7 +929,7 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
         out double viewport,
         out double maximum)
     {
-        if (!_owner.TryGetAutomationScrollMetrics(out offset, out viewport, out double extent))
+        if (!_owner.AutomationScrolling.TryGetMetrics(out offset, out viewport, out double extent))
         {
             maximum = 0;
             return false;

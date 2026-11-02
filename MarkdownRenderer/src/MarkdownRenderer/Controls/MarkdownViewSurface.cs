@@ -1,6 +1,8 @@
+using System;
 using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Windows.Foundation;
 
 namespace MarkdownRenderer.Controls;
 
@@ -102,6 +104,33 @@ internal sealed class MarkdownViewSurface
     {
         Canvas?.RemoveFromVisualTree();
         Canvas = null;
+    }
+
+    /// <summary>
+    /// Asks the ancestor viewport to bring a document rect into view when the
+    /// renderer does not own its scroll viewer. Returns false when it owns
+    /// one, is detached, or the request failed.
+    /// </summary>
+    public bool BringIntoExternalViewport(Rect rect, bool animate, double alignmentRatio = 0)
+    {
+        if (OwnsScrollViewport || Root is null)
+            return false;
+
+        try
+        {
+            Root.StartBringIntoView(new BringIntoViewOptions
+            {
+                AnimationDesired = animate,
+                TargetRect = rect,
+                VerticalAlignmentRatio = Math.Clamp(alignmentRatio, 0, 1),
+                VerticalOffset = 0,
+            });
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
     }
 
     /// <summary>Drops every element reference during disposal.</summary>
