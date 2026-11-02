@@ -281,7 +281,7 @@ public partial class MarkdownRendererControl
                     try
                     {
                         adopted = adoption.NewPlan.AdoptRealizedFromRasterCandidate(
-                            adoption.OldPlan, this, candidate, generation, candidate.LayoutRevision, epoch);
+                            adoption.OldPlan, _embedContext, candidate, generation, candidate.LayoutRevision, epoch);
                     }
                     catch (Exception exception)
                     {
@@ -296,7 +296,7 @@ public partial class MarkdownRendererControl
 
                     if (adopted && adoption.NewPlan.Realized is { } adoptedElement &&
                         !adoption.NewPlan.IsCurrentRasterActionOwner(
-                            this, candidate, generation, candidate.LayoutRevision, epoch, adoptedElement))
+                            _embedContext, candidate, generation, candidate.LayoutRevision, epoch, adoptedElement))
                         break;
 
                     if (!adopted && IsCurrentRasterCodeActionPublication(
@@ -307,7 +307,7 @@ public partial class MarkdownRendererControl
                         {
                             try
                             {
-                                adoption.NewPlan.Derealize(this);
+                                adoption.NewPlan.Derealize(_embedContext);
                             }
                             catch (Exception exception)
                             {
@@ -339,7 +339,7 @@ public partial class MarkdownRendererControl
                     {
                         try
                         {
-                            oldPlan.Derealize(this);
+                            oldPlan.Derealize(_embedContext);
                         }
                         catch (Exception exception)
                         {

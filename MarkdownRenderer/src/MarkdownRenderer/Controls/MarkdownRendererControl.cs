@@ -51,7 +51,7 @@ namespace MarkdownRenderer.Controls;
 public abstract partial class MarkdownRendererControl : UserControl, IDisposable, IAsyncDisposable, IMarkdownEnvironmentListener,
     IMarkdownPerformanceLegacyParser, ISelectionAdornerHost, ISelectionCommandsHost, ISelectionDismissalHost,
     ISelectionHandlesHost, ISelectionContextMenuHost, IPointerInputSink, IPointerInteractionHost,
-    IHorizontalOverflowPointerHost, IPointerInputRouterHost, IDeferredGestureLayoutHost
+    IHorizontalOverflowPointerHost, IPointerInputRouterHost, IDeferredGestureLayoutHost, IEmbedPlanHost
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
@@ -72,6 +72,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private readonly TouchGestureInteraction _touchGestures;
     private readonly PointerInputRouter _pointerInput;
     private readonly CanvasPointerEvents _canvasPointerEvents;
+    private readonly EmbedPlanContext _embedContext;
     private AppWindow? _windowLifecycleAppWindow;
     private WindowLifecycleSubscription? _windowLifecycleSubscription;
     private bool _scrollViewIntermediate;
@@ -245,13 +246,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private IMarkdownSvgRenderer? _subscribedSvgRenderer;
     private IMarkdownPerformanceSessionInternal? _subscribedPerformanceSession;
     private bool _canvasRenderHandlersAttached;
-    private readonly struct InlineEmbedPlacementUpdate(
-        WeakReference<InlineEmbedPlan> Plan,
-        Rect Rect)
-    {
-        public readonly WeakReference<InlineEmbedPlan> Plan = Plan;
-        public readonly Rect Rect = Rect;
-    }
     private readonly struct HorizontalOverflowVisualState(
         WeakReference<LayoutSnapshot> Snapshot,
         long SnapshotGeneration,
@@ -302,407 +296,11 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     private List<(Layout.Boxes.CodeBlockBox Box, Rect Rect, CodeBlockHostedElementKind Kind)> _codeBlockActionRects = new();
 
-    // Embed virtualisation. Plans capture each embed's position + factory
-    // delegate up front; realisation happens lazily as scrolling brings them
-    // into the viewport (plus an overscan band). Off-screen embeds beyond a
-    // wider derealisation band are removed from the visual tree and their
-    // factory's RecycleBlock hook is called. This keeps memory usage bounded
-    // for very long documents with many hosted controls.
-    private abstract class EmbedPlan
-    {
-        public Rect Rect;
-        public FrameworkElement? Realized;
-        public Layout.FocusableItem? FocusIdentity;
-        public virtual bool HasActiveWork => Realized is not null;
-        public abstract object LogicalOwner { get; }
-        public abstract void Realize(MarkdownRendererControl owner);
-        public abstract void Derealize(MarkdownRendererControl owner);
-        public abstract bool IsSameLogicalEmbed(EmbedPlan other);
-        public virtual void UpdatePlacement() => UpdatePlacement(snapEdges: true);
-
-        protected void UpdatePlacement(bool snapEdges)
-        {
-            FrameworkElement? element = Realized;
-            if (element is null) return;
-            // Rect was copied under the snapshot read lease. A hosted element
-            // can synchronously recycle/unload us from any DP callback.
-            Rect rect = Rect;
-            double left = Math.Round(rect.X);
-            double top = Math.Round(rect.Y);
-            double width = snapEdges ? Math.Round(rect.Right) - left : Math.Round(rect.Width);
-            double height = snapEdges ? Math.Round(rect.Bottom) - top : Math.Round(rect.Height);
-            element.Width = Math.Max(0, width);
-            if (!ReferenceEquals(Realized, element)) return;
-            element.Height = Math.Max(0, height);
-            if (!ReferenceEquals(Realized, element)) return;
-            Canvas.SetLeft(element, left);
-            if (!ReferenceEquals(Realized, element)) return;
-            Canvas.SetTop(element, top);
-            if (!ReferenceEquals(Realized, element)) return;
-            Canvas.SetZIndex(element, 2);
-        }
-    }
-    private sealed class BlockEmbedPlan : EmbedPlan
-    {
-        public Layout.Boxes.EmbedBox Box = null!;
-        public override object LogicalOwner => Box;
-        public override void Realize(MarkdownRendererControl owner)
-        {
-            if (Realized is not null) return;
-            long generation = owner._published.Generation;
-            try
-            {
-                var fe = Box.Factory.CreateBlock(Box.SourceBlock);
-                if (owner._lifetime.IsDisposed || owner._lifetime.IsUnloaded || generation != owner._published.Generation)
-                {
-                    try { Box.Factory.RecycleBlock(Box.SourceBlock, fe); } catch { }
-                    return;
-                }
-                Realized = fe;
-                Box.RealizedElement = fe;
-                UpdatePlacement();
-                if (!ReferenceEquals(Realized, fe) || owner._lifetime.IsDisposed || owner._lifetime.IsUnloaded)
-                    return;
-                fe.KeyDown += owner.OnHostedEmbedKeyDown;
-                owner._surface.Overlay!.Children.Add(fe);
-                // _blockEmbedRects rebuilt in RealizeVisibleEmbeds.
-            }
-            catch (Exception ex)
-            {
-                MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] EmbedBox factory threw: {ex.Message}");
-            }
-        }
-        public override void Derealize(MarkdownRendererControl owner)
-        {
-            if (Realized is null) return;
-            var fe = Realized;
-            Realized = null;
-            Box.RealizedElement = null;
-            fe.KeyDown -= owner.OnHostedEmbedKeyDown;
-            try { owner._surface.Overlay!.Children.Remove(fe); } catch { }
-            try { Box.Factory.RecycleBlock(Box.SourceBlock, fe); } catch { }
-            // Refresh _blockEmbedRects defensively (rebuilt fully each Realize cycle from realised plans).
-        }
-
-        public override bool IsSameLogicalEmbed(EmbedPlan other)
-            => other is BlockEmbedPlan block && ReferenceEquals(Box, block.Box);
-
-        public override void UpdatePlacement() => UpdatePlacement(snapEdges: false);
-    }
-    private sealed class InlineEmbedPlan : EmbedPlan
-    {
-        public Layout.Boxes.InlineContainerBox Icb = null!;
-        public InlineEmbedRun Run = null!;
-        public override object LogicalOwner => Icb;
-        public override void Realize(MarkdownRendererControl owner)
-        {
-            if (Realized is not null) return;
-            long generation = owner._published.Generation;
-            try
-            {
-                var fe = Run.ElementFactory();
-                if (owner._lifetime.IsDisposed || owner._lifetime.IsUnloaded || generation != owner._published.Generation)
-                {
-                    try { Run.Recycle?.Invoke(fe); } catch { }
-                    return;
-                }
-                Realized = fe;
-                Run.RealizedElement = fe;
-                UpdatePlacement();
-                if (!ReferenceEquals(Realized, fe) || owner._lifetime.IsDisposed || owner._lifetime.IsUnloaded)
-                    return;
-                fe.KeyDown += owner.OnHostedEmbedKeyDown;
-                owner._surface.Overlay!.Children.Add(fe);
-                // _embedRects rebuilt in RealizeVisibleEmbeds.
-            }
-            catch (Exception ex)
-            {
-                MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] inline embed factory threw: {ex.Message}");
-            }
-        }
-        public override void Derealize(MarkdownRendererControl owner)
-        {
-            if (Realized is null) return;
-            var fe = Realized;
-            Realized = null;
-            Run.RealizedElement = null;
-            fe.KeyDown -= owner.OnHostedEmbedKeyDown;
-            try { owner._surface.Overlay!.Children.Remove(fe); } catch { }
-            try { Run.Recycle?.Invoke(fe); }
-            catch (Exception ex)
-            {
-                MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] inline embed Recycle threw: {ex.Message}");
-            }
-        }
-
-        public override bool IsSameLogicalEmbed(EmbedPlan other)
-            => other is InlineEmbedPlan inline &&
-               ReferenceEquals(Icb, inline.Icb) &&
-               ReferenceEquals(Run, inline.Run);
-
-    }
     private readonly List<EmbedPlan> _embedPlans = new();
     private ViewportBandIndex? _embedPlanIndex;
     // Document ordinals stay sorted so hit-test rectangles retain their source
     // order while scroll work visits only the small active realization band.
     private readonly List<int> _activeEmbedOrdinals = new();
-    private sealed class CodeBlockActionPlan
-    {
-        public Layout.Boxes.CodeBlockBox Box = null!;
-        public Rect Rect;
-        public CodeBlockHostedElementKind Kind;
-        public Layout.FocusableItem? FocusIdentity;
-        public FrameworkElement? Realized;
-        private RoutedEventHandler? _clickHandler;
-        private int _feedbackVersion;
-        private bool _showsCopiedFeedback;
-
-        public void Realize(MarkdownRendererControl owner)
-        {
-            if (Realized is not null) return;
-            long generation = owner._published.Generation;
-            var (button, alreadyAttached) = owner.RentCodeBlockCopyButton();
-            if (owner._lifetime.IsDisposed || owner._lifetime.IsUnloaded || generation != owner._published.Generation)
-                return;
-            AutomationProperties.SetAutomationId(button, MarkdownAutomationIdentity.ForCodeCopy(Box));
-            if (owner._lifetime.IsDisposed || owner._lifetime.IsUnloaded || generation != owner._published.Generation)
-                return;
-            AttachHandlers(button, owner);
-            button.KeyDown += owner.OnHostedEmbedKeyDown;
-            Realized = button;
-            Box.RealizedCopyButton = button;
-            UpdatePlacement();
-            if (!ReferenceEquals(Realized, button) || owner._lifetime.IsDisposed || owner._lifetime.IsUnloaded)
-                return;
-            if (!alreadyAttached)
-                owner._surface.Overlay!.Children.Add(button);
-            button.Visibility = Visibility.Visible;
-            owner.RestoreFocusedCodeBlockActionIfNeeded(this);
-        }
-
-        public void Derealize(MarkdownRendererControl owner)
-        {
-            if (Realized is null) return;
-            var fe = Realized;
-            bool resetFeedback = _showsCopiedFeedback;
-            Box.RealizedCopyButton = null;
-            Realized = null;
-            _showsCopiedFeedback = false;
-            _feedbackVersion++;
-            if (fe is Button button)
-            {
-                if (_clickHandler is not null)
-                    button.Click -= _clickHandler;
-                button.KeyDown -= owner.OnHostedEmbedKeyDown;
-            }
-
-            owner.PreserveLogicalFocusBeforeDerealizingCodeBlockAction(fe);
-            if (resetFeedback && fe is Button copiedButton)
-                owner.SetCodeBlockCopyButtonState(copiedButton, copied: false);
-            if (fe is Button pooledButton)
-                owner.ReturnCodeBlockCopyButton(pooledButton);
-            else
-            {
-                try { owner._surface.Overlay!.Children.Remove(fe); } catch { }
-            }
-        }
-
-        public void AdoptRealizedFrom(CodeBlockActionPlan oldPlan, MarkdownRendererControl owner)
-        {
-            if (oldPlan.Realized is null) return;
-
-            var fe = oldPlan.Realized;
-            RoutedEventHandler? oldClickHandler = oldPlan._clickHandler;
-            oldPlan._clickHandler = null;
-            oldPlan._feedbackVersion++;
-            oldPlan._showsCopiedFeedback = false;
-            oldPlan.Box.RealizedCopyButton = null;
-            oldPlan.Realized = null;
-            Realized = fe;
-            Box.RealizedCopyButton = fe;
-            if (fe is Button button)
-            {
-                if (oldClickHandler is not null)
-                    button.Click -= oldClickHandler;
-                button.KeyDown -= owner.OnHostedEmbedKeyDown;
-                AttachHandlers(button, owner);
-                button.KeyDown += owner.OnHostedEmbedKeyDown;
-                AutomationProperties.SetAutomationId(button, MarkdownAutomationIdentity.ForCodeCopy(Box));
-                if (!ReferenceEquals(Realized, fe) || owner._lifetime.IsDisposed || owner._lifetime.IsUnloaded)
-                    return;
-                owner.SetCodeBlockCopyButtonState(button, copied: false);
-                if (!ReferenceEquals(Realized, fe) || owner._lifetime.IsDisposed || owner._lifetime.IsUnloaded)
-                    return;
-            }
-            UpdatePlacement();
-        }
-
-        public bool AdoptRealizedFromRasterCandidate(
-            CodeBlockActionPlan oldPlan,
-            MarkdownRendererControl owner,
-            LayoutSnapshot candidate,
-            long generation,
-            long layoutRevision,
-            long hostedFocusPlanEpoch)
-        {
-            if (!owner.IsCurrentRasterCodeActionPublication(
-                    candidate, generation, layoutRevision, hostedFocusPlanEpoch) ||
-                oldPlan.Realized is not Button button)
-                return false;
-
-            FrameworkElement fe = button;
-            RoutedEventHandler? oldClickHandler = oldPlan._clickHandler;
-            oldPlan._clickHandler = null;
-            oldPlan._feedbackVersion++;
-            oldPlan._showsCopiedFeedback = false;
-            oldPlan.Box.RealizedCopyButton = null;
-            oldPlan.Realized = null;
-            Realized = fe;
-            Box.RealizedCopyButton = fe;
-
-            if (oldClickHandler is not null)
-                button.Click -= oldClickHandler;
-            button.KeyDown -= owner.OnHostedEmbedKeyDown;
-            AttachHandlers(button, owner);
-            button.KeyDown += owner.OnHostedEmbedKeyDown;
-
-            AutomationProperties.SetAutomationId(button, MarkdownAutomationIdentity.ForCodeCopy(Box));
-            if (!IsCurrentRasterActionOwner(owner, candidate, generation, layoutRevision, hostedFocusPlanEpoch, fe))
-                return false;
-
-            if (!owner.SetCodeBlockCopyButtonStateForRasterCandidate(
-                    this, button, fe, candidate, generation, layoutRevision, hostedFocusPlanEpoch))
-                return false;
-
-            return UpdatePlacementForRasterCandidate(
-                owner, candidate, generation, layoutRevision, hostedFocusPlanEpoch, fe);
-        }
-
-        private void AttachHandlers(Button button, MarkdownRendererControl owner)
-        {
-            _clickHandler ??= (_, _) => owner.CopyCodeBlockToClipboard(this);
-            button.Click += _clickHandler;
-        }
-
-        public bool IsSameLogicalAction(CodeBlockActionPlan other)
-            => ReferenceEquals(Box, other.Box) && Kind == other.Kind;
-
-        public void UpdatePlacement()
-        {
-            FrameworkElement? element = Realized;
-            if (element is null) return;
-            double left = Math.Round(Rect.X);
-            double top = Math.Round(Rect.Y);
-            double width = Math.Round(Rect.X + Rect.Width) - left;
-            double height = Math.Round(Rect.Y + Rect.Height) - top;
-            if (double.IsNaN(element.Width) || Math.Abs(element.Width - width) > 0.1)
-                element.Width = width;
-            if (!ReferenceEquals(Realized, element)) return;
-            if (double.IsNaN(element.Height) || Math.Abs(element.Height - height) > 0.1)
-                element.Height = height;
-            if (!ReferenceEquals(Realized, element)) return;
-            double currentLeft = Canvas.GetLeft(element);
-            if (double.IsNaN(currentLeft) || Math.Abs(currentLeft - left) > 0.1)
-                Canvas.SetLeft(element, left);
-            if (!ReferenceEquals(Realized, element)) return;
-            double currentTop = Canvas.GetTop(element);
-            if (double.IsNaN(currentTop) || Math.Abs(currentTop - top) > 0.1)
-                Canvas.SetTop(element, top);
-            if (!ReferenceEquals(Realized, element)) return;
-            if (Canvas.GetZIndex(element) != 2)
-                Canvas.SetZIndex(element, 2);
-        }
-
-        private bool UpdatePlacementForRasterCandidate(
-            MarkdownRendererControl owner,
-            LayoutSnapshot candidate,
-            long generation,
-            long layoutRevision,
-            long hostedFocusPlanEpoch,
-            FrameworkElement element)
-        {
-            if (!IsCurrentRasterActionOwner(owner, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
-                return false;
-
-            double left = Math.Round(Rect.X);
-            double top = Math.Round(Rect.Y);
-            double width = Math.Round(Rect.X + Rect.Width) - left;
-            double height = Math.Round(Rect.Y + Rect.Height) - top;
-            if (double.IsNaN(element.Width) || Math.Abs(element.Width - width) > 0.1)
-            {
-                element.Width = width;
-                if (!IsCurrentRasterActionOwner(owner, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
-                    return false;
-            }
-            if (double.IsNaN(element.Height) || Math.Abs(element.Height - height) > 0.1)
-            {
-                element.Height = height;
-                if (!IsCurrentRasterActionOwner(owner, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
-                    return false;
-            }
-
-            double currentLeft = Canvas.GetLeft(element);
-            if (double.IsNaN(currentLeft) || Math.Abs(currentLeft - left) > 0.1)
-            {
-                Canvas.SetLeft(element, left);
-                if (!IsCurrentRasterActionOwner(owner, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
-                    return false;
-            }
-            double currentTop = Canvas.GetTop(element);
-            if (double.IsNaN(currentTop) || Math.Abs(currentTop - top) > 0.1)
-            {
-                Canvas.SetTop(element, top);
-                if (!IsCurrentRasterActionOwner(owner, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
-                    return false;
-            }
-            if (Canvas.GetZIndex(element) != 2)
-            {
-                Canvas.SetZIndex(element, 2);
-                if (!IsCurrentRasterActionOwner(owner, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
-                    return false;
-            }
-            return true;
-        }
-
-        public bool IsCurrentRasterActionOwner(
-            MarkdownRendererControl owner,
-            LayoutSnapshot candidate,
-            long generation,
-            long layoutRevision,
-            long hostedFocusPlanEpoch,
-            FrameworkElement element)
-            => ReferenceEquals(Realized, element) &&
-               ReferenceEquals(Box.RealizedCopyButton, element) &&
-               owner.IsCurrentRasterCodeActionPublication(
-                   candidate, generation, layoutRevision, hostedFocusPlanEpoch);
-
-        public void ShowCopiedFeedback(MarkdownRendererControl owner)
-        {
-            if (Realized is not Button button)
-                return;
-
-            int version = ++_feedbackVersion;
-            _showsCopiedFeedback = true;
-            owner.SetCodeBlockCopyButtonState(button, copied: true);
-            _ = Task.Run(async () =>
-            {
-                try { await Task.Delay(1500).ConfigureAwait(false); }
-                catch { return; }
-
-                owner.DispatcherQueue.TryEnqueue(() =>
-                {
-                    if (owner._lifetime.IsUnloaded || _feedbackVersion != version)
-                        return;
-                    if (Realized is Button realizedButton)
-                    {
-                        owner.SetCodeBlockCopyButtonState(realizedButton, copied: false);
-                        _showsCopiedFeedback = false;
-                    }
-                });
-            });
-        }
-    }
-
     private List<CodeBlockActionPlan> _codeBlockActionPlans = new();
     private bool _hasMeasuredCodeBlocks;
     private ViewportBandIndex? _codeBlockActionPlanIndex;
@@ -803,256 +401,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     {
         get => (string)GetValue(MarkdownProperty);
         set => SetValue(MarkdownProperty, value);
-    }
-
-    private sealed class DeclarativeHostedElementPlan : EmbedPlan
-    {
-        private readonly HostedElementRealizationGate<MarkdownHostedElementRequest> _realizationGate = new();
-        private MarkdownHostedElementRequest? _realizedRequest;
-        private bool _fallbackRequested;
-
-        public Layout.Boxes.DeclarativeHostedElementBox Box = null!;
-        public IMarkdownHostedElementFactory Factory = null!;
-        public override object LogicalOwner => Box;
-        public override bool HasActiveWork => Realized is not null || _realizationGate.HasActive;
-
-        public override void Realize(MarkdownRendererControl owner)
-        {
-            if (Realized is not null || _fallbackRequested)
-                return;
-
-            var request = owner.CreateHostedElementRequest(Box, Rect);
-            var pipelineToken = owner._pipelineCts?.Token ?? CancellationToken.None;
-            long pipelineGeneration = owner._pipelineGeneration;
-            if (!_realizationGate.TryBegin(request, pipelineToken, out var operation))
-                return;
-
-            ValueTask<FrameworkElement?> pending;
-            try
-            {
-                // RealizeVisibleEmbeds is UI-thread only. Calling the public
-                // factory here keeps creation of thread-affine WinUI objects on
-                // the owning dispatcher while still permitting async loading.
-                pending = Factory.CreateAsync(operation.Request, operation.CancellationToken);
-            }
-            catch (Exception ex)
-            {
-                CompleteFailure(owner, operation, ex, pipelineGeneration);
-                return;
-            }
-
-            if (pending.IsCompletedSuccessfully)
-            {
-                CompleteOnUiThread(owner, operation, pending.Result, pipelineGeneration);
-                return;
-            }
-
-            _ = CompleteAsync(owner, operation, pending, pipelineGeneration);
-        }
-
-        private async Task CompleteAsync(
-            MarkdownRendererControl owner,
-            HostedElementRealizationGate<MarkdownHostedElementRequest>.Operation operation,
-            ValueTask<FrameworkElement?> pending,
-            long pipelineGeneration)
-        {
-            FrameworkElement? element;
-            try
-            {
-                element = await pending.ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (operation.CancellationToken.IsCancellationRequested)
-            {
-                QueueCompletion(
-                    owner,
-                    operation,
-                    element: null,
-                    () => CompleteOnUiThread(owner, operation, null, pipelineGeneration));
-                return;
-            }
-            catch (Exception ex)
-            {
-                QueueCompletion(
-                    owner,
-                    operation,
-                    element: null,
-                    () => CompleteFailure(owner, operation, ex, pipelineGeneration));
-                return;
-            }
-
-            QueueCompletion(
-                owner,
-                operation,
-                element,
-                () => CompleteOnUiThread(owner, operation, element, pipelineGeneration));
-        }
-
-        private void QueueCompletion(
-            MarkdownRendererControl owner,
-            HostedElementRealizationGate<MarkdownHostedElementRequest>.Operation operation,
-            FrameworkElement? element,
-            Action completion)
-        {
-            var dispatcher = owner.DispatcherQueue;
-            bool queued = false;
-            try { queued = dispatcher is not null && dispatcher.TryEnqueue(() => completion()); }
-            catch (Exception ex)
-            {
-                MarkdownDiagnostics.WriteLine(
-                    $"[MarkdownRendererControl] hosted element completion dispatch failed: {ex.Message}");
-            }
-            if (queued)
-                return;
-
-            // Dispatcher shutdown means the control cannot attach the result.
-            // Dispose host state as a last resort rather than leaking it.
-            _realizationGate.TryClaimCompletion(operation);
-            operation.Cancel();
-            operation.Dispose();
-            RecycleResult(operation.Request, element);
-        }
-
-        private void CompleteFailure(
-            MarkdownRendererControl owner,
-            HostedElementRealizationGate<MarkdownHostedElementRequest>.Operation operation,
-            Exception exception,
-            long pipelineGeneration)
-        {
-            bool wasCurrent = _realizationGate.TryClaimCompletion(operation);
-            operation.Dispose();
-            if (wasCurrent && owner.CanActivateHostedElementFallback(this, pipelineGeneration))
-            {
-                _fallbackRequested = true;
-                MarkdownDiagnostics.WriteLine(
-                    $"[MarkdownRendererControl] hosted element factory threw: {exception.Message}");
-                owner.ActivateHostedElementFallback(this);
-            }
-        }
-
-        private void CompleteOnUiThread(
-            MarkdownRendererControl owner,
-            HostedElementRealizationGate<MarkdownHostedElementRequest>.Operation operation,
-            FrameworkElement? element,
-            long pipelineGeneration)
-        {
-            bool isCurrent = _realizationGate.TryClaimCompletion(operation);
-            bool canAttach = isCurrent &&
-                !operation.CancellationToken.IsCancellationRequested &&
-                owner.CanAttachHostedElement(this, pipelineGeneration);
-            operation.Dispose();
-
-            if (!canAttach)
-            {
-                RecycleResult(operation.Request, element);
-                return;
-            }
-
-            if (element is null)
-            {
-                _fallbackRequested = true;
-                owner.ActivateHostedElementFallback(this);
-                return;
-            }
-
-            bool ownershipEstablished = false;
-            try
-            {
-                MarkdownRendererControl.ApplyHostedElementAutomationProperties(Box, element);
-                if (owner._lifetime.IsDisposed || !owner.CanAttachHostedElement(this, pipelineGeneration))
-                {
-                    RecycleResult(operation.Request, element);
-                    return;
-                }
-                _realizedRequest = operation.Request;
-                Realized = element;
-                ownershipEstablished = true;
-                Box.RealizedElement = element;
-                UpdatePlacement();
-                if (!ReferenceEquals(Realized, element))
-                    return; // Reentrant teardown already recycled this result.
-                if (owner._lifetime.IsDisposed || !owner.CanAttachHostedElement(this, pipelineGeneration))
-                {
-                    Derealize(owner);
-                    return;
-                }
-                element.KeyDown += owner.OnHostedEmbedKeyDown;
-                owner._surface.Overlay!.Children.Add(element);
-            }
-            catch (Exception ex)
-            {
-                if (ownershipEstablished && !ReferenceEquals(Realized, element))
-                    return; // Never mutate or recycle an already-transferred result.
-                element.KeyDown -= owner.OnHostedEmbedKeyDown;
-                try { owner._surface.Overlay?.Children.Remove(element); } catch { }
-                _realizedRequest = null;
-                Realized = null;
-                Box.RealizedElement = null;
-                RecycleResult(operation.Request, element);
-                MarkdownDiagnostics.WriteLine(
-                    $"[MarkdownRendererControl] hosted element attachment failed: {ex.Message}");
-                _fallbackRequested = true;
-                owner.ActivateHostedElementFallback(this);
-                return;
-            }
-
-            if (!ReferenceEquals(Realized, element) || owner._lifetime.IsDisposed ||
-                !owner.CanAttachHostedElement(this, pipelineGeneration))
-                return;
-            owner.RealizeVisibleEmbeds();
-            owner.RestoreFocusedHostedElementIfNeeded(this);
-        }
-
-        public override void Derealize(MarkdownRendererControl owner)
-        {
-            // Clear the active slot before cancellation so a quick scroll back
-            // into view can start a fresh attempt even if the old factory does
-            // not observe cancellation promptly.
-            _realizationGate.CancelActive();
-
-            if (Realized is null)
-                return;
-
-            var element = Realized;
-            var request = _realizedRequest;
-            _realizedRequest = null;
-            Realized = null;
-            Box.RealizedElement = null;
-            element.KeyDown -= owner.OnHostedEmbedKeyDown;
-            try { owner._surface.Overlay?.Children.Remove(element); } catch { }
-            if (request is not null)
-                RecycleResult(request, element);
-        }
-
-        public override bool IsSameLogicalEmbed(EmbedPlan other)
-            => other is DeclarativeHostedElementPlan declarative &&
-               ReferenceEquals(Box, declarative.Box) &&
-               ReferenceEquals(Factory, declarative.Factory);
-
-        internal void AdoptRealizedFrom(DeclarativeHostedElementPlan oldPlan)
-        {
-            _realizedRequest = oldPlan._realizedRequest;
-            Realized = oldPlan.Realized;
-            oldPlan._realizedRequest = null;
-            oldPlan.Realized = null;
-            oldPlan.Box.RealizedElement = null;
-            Box.RealizedElement = Realized;
-        }
-
-        private void RecycleResult(
-            MarkdownHostedElementRequest request,
-            FrameworkElement? element)
-        {
-            if (element is null)
-                return;
-
-            try { Factory.Recycle(request, element); }
-            catch (Exception ex)
-            {
-                MarkdownDiagnostics.WriteLine(
-                    $"[MarkdownRendererControl] hosted element Recycle threw: {ex.Message}");
-            }
-        }
-
     }
 
     /// <summary>Dependency property backing <see cref="Document"/>.</summary>
@@ -2278,7 +1626,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     {
         if (!ReferenceEquals(button, element) ||
             !plan.IsCurrentRasterActionOwner(
-                this, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
+                _embedContext, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
             return false;
 
         // Localization can call a host StringProvider. Resolve it before the
@@ -2287,32 +1635,32 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         // fenced because dependency-property callbacks may reenter the host.
         string label = ResolvedCodeBlockCopyButtonLabel;
         if (!plan.IsCurrentRasterActionOwner(
-                this, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
+                _embedContext, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
             return false;
 
         if (button.Content is SymbolIcon icon)
         {
             icon.Symbol = Symbol.Copy;
             if (!plan.IsCurrentRasterActionOwner(
-                    this, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
+                    _embedContext, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
                 return false;
         }
         else
         {
             button.Content = new SymbolIcon(Symbol.Copy);
             if (!plan.IsCurrentRasterActionOwner(
-                    this, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
+                    _embedContext, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
                 return false;
         }
 
         AutomationProperties.SetName(button, label);
         if (!plan.IsCurrentRasterActionOwner(
-                this, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
+                _embedContext, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element))
             return false;
 
         ToolTipService.SetToolTip(button, label);
         return plan.IsCurrentRasterActionOwner(
-            this, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element);
+            _embedContext, candidate, generation, layoutRevision, hostedFocusPlanEpoch, element);
     }
 
     private void UpdateCodeBlockCopyButtonLabels()
@@ -2342,7 +1690,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             package.SetText(plan.Box.CodeText);
             Clipboard.SetContent(package);
             Clipboard.Flush();
-            plan.ShowCopiedFeedback(this);
+            plan.ShowCopiedFeedback(_embedContext);
             succeeded = true;
         }
         catch (Exception ex)
@@ -2772,6 +2120,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _touchGestures = new TouchGestureInteraction(this, this, _surface, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _horizontalOverflowDrag, _document);
         _pointerInput = new PointerInputRouter(this, this, DispatcherQueue, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _handles, _document, _horizontalOverflowDrag, _touchGestures, _contextMenu, _adorner, _dragShield);
         _canvasPointerEvents = new CanvasPointerEvents(_surface, _pointerInput);
+        _embedContext = new EmbedPlanContext(this, _surface, _lifetime, _published, DispatcherQueue, OnHostedEmbedKeyDown);
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         Loaded += (_, _) => OnLoadedInternal();
@@ -3197,6 +2546,62 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         long snapshotGeneration,
         long layoutRevision)
         => ActivateLinkIntent(intent, snapshot, snapshotGeneration, layoutRevision);
+
+    CancellationToken IEmbedPlanHost.PipelineToken => _pipelineCts?.Token ?? CancellationToken.None;
+
+    long IEmbedPlanHost.PipelineGeneration => _pipelineGeneration;
+
+    (Button Button, bool Attached) IEmbedPlanHost.RentCodeBlockCopyButton() => RentCodeBlockCopyButton();
+
+    void IEmbedPlanHost.ReturnCodeBlockCopyButton(Button button) => ReturnCodeBlockCopyButton(button);
+
+    void IEmbedPlanHost.SetCodeBlockCopyButtonState(Button button, bool copied)
+        => SetCodeBlockCopyButtonState(button, copied);
+
+    bool IEmbedPlanHost.SetCodeBlockCopyButtonStateForRasterCandidate(
+        CodeBlockActionPlan plan,
+        Button button,
+        FrameworkElement element,
+        LayoutSnapshot candidate,
+        long generation,
+        long layoutRevision,
+        long hostedFocusPlanEpoch)
+        => SetCodeBlockCopyButtonStateForRasterCandidate(
+            plan, button, element, candidate, generation, layoutRevision, hostedFocusPlanEpoch);
+
+    bool IEmbedPlanHost.IsCurrentRasterCodeActionPublication(
+        LayoutSnapshot candidate,
+        long generation,
+        long layoutRevision,
+        long hostedFocusPlanEpoch)
+        => IsCurrentRasterCodeActionPublication(candidate, generation, layoutRevision, hostedFocusPlanEpoch);
+
+    void IEmbedPlanHost.CopyCodeBlockToClipboard(CodeBlockActionPlan plan) => CopyCodeBlockToClipboard(plan);
+
+    void IEmbedPlanHost.RestoreFocusedCodeBlockActionIfNeeded(CodeBlockActionPlan plan)
+        => RestoreFocusedCodeBlockActionIfNeeded(plan);
+
+    void IEmbedPlanHost.PreserveLogicalFocusBeforeDerealizingCodeBlockAction(FrameworkElement element)
+        => PreserveLogicalFocusBeforeDerealizingCodeBlockAction(element);
+
+    MarkdownHostedElementRequest IEmbedPlanHost.CreateHostedElementRequest(
+        DeclarativeHostedElementBox box,
+        Rect layoutBounds)
+        => CreateHostedElementRequest(box, layoutBounds);
+
+    bool IEmbedPlanHost.CanAttachHostedElement(DeclarativeHostedElementPlan plan, long pipelineGeneration)
+        => CanAttachHostedElement(plan, pipelineGeneration);
+
+    bool IEmbedPlanHost.CanActivateHostedElementFallback(DeclarativeHostedElementPlan plan, long pipelineGeneration)
+        => CanActivateHostedElementFallback(plan, pipelineGeneration);
+
+    void IEmbedPlanHost.ActivateHostedElementFallback(DeclarativeHostedElementPlan plan)
+        => ActivateHostedElementFallback(plan);
+
+    void IEmbedPlanHost.RealizeVisibleEmbeds() => RealizeVisibleEmbeds();
+
+    void IEmbedPlanHost.RestoreFocusedHostedElementIfNeeded(DeclarativeHostedElementPlan plan)
+        => RestoreFocusedHostedElementIfNeeded(plan);
 
     double IDeferredGestureLayoutHost.RasterizationScale => XamlRoot?.RasterizationScale ?? 1;
 
@@ -6746,10 +6151,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             // so discard those attached-state entries before pooling plans.
             _codeBlockCopyButtonPool.Clear();
             foreach (EmbedPlan plan in embedPlans)
-                plan.Derealize(this);
+                plan.Derealize(_embedContext);
             foreach (CodeBlockActionPlan plan in actionPlans)
             {
-                if (plan.Realized is not null) plan.Derealize(this);
+                if (plan.Realized is not null) plan.Derealize(_embedContext);
             }
         }
         finally
@@ -7002,7 +6407,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                         if (!newPlan.IsSameLogicalAction(oldPlan))
                             continue;
 
-                        newPlan.AdoptRealizedFrom(oldPlan, this);
+                        newPlan.AdoptRealizedFrom(oldPlan, _embedContext);
                         if (!IsCurrentRealizationSnapshot(snapshot, planGeneration) ||
                             hostedFocusPlanEpoch != Volatile.Read(ref _hostedFocusPlanEpoch) ||
                             snapshot.LayoutRevision != hostedFocusPlanRevision)
@@ -7033,11 +6438,11 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             // must retire the old plans not transferred to the current set.
             // These detached arrays are not invalidated by native callbacks.
             foreach (EmbedPlan oldPlan in oldPlans)
-                oldPlan.Derealize(this);
+                oldPlan.Derealize(_embedContext);
             foreach (CodeBlockActionPlan oldPlan in oldActionPlans)
             {
                 if (oldPlan.Realized is not null)
-                    oldPlan.Derealize(this);
+                    oldPlan.Derealize(_embedContext);
             }
         }
 
@@ -7330,7 +6735,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             bool inRealize = actionBottom >= top && actionTop <= bottom;
             if (inRealize)
             {
-                plan.Realize(this);
+                plan.Realize(_embedContext);
                 if (!IsCurrentVisibleRealizationPass(
                         snapshot, snapshotGeneration, realizationPassEpoch,
                         imageIndex, embedIndex, actionIndex))
@@ -7346,7 +6751,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             CodeBlockActionPlan plan = _codeBlockActionPlans[ordinal];
             if (plan.Rect.Bottom >= top && plan.Rect.Top <= bottom)
                 continue;
-            plan.Derealize(this);
+            plan.Derealize(_embedContext);
             if (!IsCurrentVisibleRealizationPass(
                     snapshot, snapshotGeneration, realizationPassEpoch,
                     imageIndex, embedIndex, actionIndex))
@@ -7393,7 +6798,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             bool inRealize = EmbedVisibility.IsInRealizeBand(pTop, pBottom, top, bottom, EmbedVirtualizationOverscanPx);
             if (inRealize)
             {
-                plan.Realize(this);
+                plan.Realize(_embedContext);
                 if (!IsCurrentVisibleRealizationPass(
                         snapshot, snapshotGeneration, realizationPassEpoch,
                         imageIndex, embedIndex, actionIndex))
@@ -7411,7 +6816,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 plan.Rect.Top, plan.Rect.Bottom, top, bottom,
                 EmbedVirtualizationDerealizeOverscanPx))
                 continue;
-            plan.Derealize(this);
+            plan.Derealize(_embedContext);
             if (!IsCurrentVisibleRealizationPass(
                     snapshot, snapshotGeneration, realizationPassEpoch,
                     imageIndex, embedIndex, actionIndex))
@@ -7560,34 +6965,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         MarkdownDiagnostics.WriteLine(
             $"[MarkdownRendererControl] using native markdown fallback for hosted element '{plan.Box.FactoryKey}'.");
         RequestRebuild(RebuildReason.Restyle);
-    }
-
-    private static void ApplyHostedElementAutomationProperties(
-        Layout.Boxes.DeclarativeHostedElementBox box,
-        FrameworkElement element)
-    {
-        // The semantic wrapper owns the logical identity across virtualization.
-        // Give its realized native child a stable, distinct id when the host
-        // did not provide one (or copied the logical request id verbatim).
-        string nativeAutomationId = AutomationProperties.GetAutomationId(element);
-        if (string.IsNullOrWhiteSpace(nativeAutomationId) ||
-            string.Equals(nativeAutomationId, box.AutomationId, StringComparison.Ordinal))
-        {
-            AutomationProperties.SetAutomationId(element, $"{box.AutomationId}-Native");
-        }
-
-        // Host-owned names and descriptions remain authoritative when supplied.
-        if (!string.IsNullOrWhiteSpace(box.AccessibilityName) &&
-            string.IsNullOrWhiteSpace(AutomationProperties.GetName(element)))
-        {
-            AutomationProperties.SetName(element, box.AccessibilityName);
-        }
-
-        if (!string.IsNullOrWhiteSpace(box.AccessibilityDescription) &&
-            string.IsNullOrWhiteSpace(AutomationProperties.GetHelpText(element)))
-        {
-            AutomationProperties.SetHelpText(element, box.AccessibilityDescription);
-        }
     }
 
     private void RestoreFocusedHostedElementIfNeeded(DeclarativeHostedElementPlan plan)
