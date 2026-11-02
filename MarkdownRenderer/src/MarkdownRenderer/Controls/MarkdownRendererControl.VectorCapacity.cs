@@ -54,8 +54,8 @@ public partial class MarkdownRendererControl
     /// </summary>
     private void SynchronizeVectorCapacityObserver(LayoutSnapshot? snapshot)
     {
-        if (_isDisposed || _isUnloaded || snapshot is null ||
-            !ReferenceEquals(snapshot, _snapshot) ||
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || snapshot is null ||
+            !ReferenceEquals(snapshot, _published.Snapshot) ||
             !IsVisibleFirstVectorAdmissionEnabled ||
             !snapshot.HasCapacityDeferredScenes)
         {
@@ -105,7 +105,7 @@ public partial class MarkdownRendererControl
 
     private bool ConsumePendingVectorCapacityWake(LayoutSnapshot snapshot)
     {
-        if (!ReferenceEquals(snapshot, _snapshot) ||
+        if (!ReferenceEquals(snapshot, _published.Snapshot) ||
             !ReferenceEquals(snapshot, _vectorCapacityObserverSnapshot) ||
             _vectorCapacityWakeObserver is not { } observer)
         {
@@ -124,8 +124,8 @@ public partial class MarkdownRendererControl
             return;
 
         long generation = observer.ConsumePendingGeneration();
-        LayoutSnapshot? snapshot = _snapshot;
-        if (generation < 0 || _isDisposed || _isUnloaded ||
+        LayoutSnapshot? snapshot = _published.Snapshot;
+        if (generation < 0 || _lifetime.IsDisposed || _lifetime.IsUnloaded ||
             snapshot is null || !ReferenceEquals(snapshot, _vectorCapacityObserverSnapshot) ||
             RequestGeometryRecoveryIfRequired(snapshot))
         {
@@ -152,7 +152,7 @@ public partial class MarkdownRendererControl
 
     private LazyLayoutBand GetCurrentVisibleVectorBand()
     {
-        TryGetViewport(out double top, out double height, out _);
+        _viewport.TryGet(out double top, out double height, out _);
         return LazyLayoutBand.FromVisibleViewport(top, height);
     }
 

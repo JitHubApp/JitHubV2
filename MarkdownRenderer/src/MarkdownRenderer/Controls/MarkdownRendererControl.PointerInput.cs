@@ -1,14 +1,13 @@
 using System;
 using System.Collections.Generic;
-using System.Threading;
 using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Layout;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
-using Windows.Foundation;
 using VirtualKeyModifiers = Windows.System.VirtualKeyModifiers;
+using MarkdownRenderer.Controls.Input;
 
 namespace MarkdownRenderer.Controls;
 
@@ -32,72 +31,6 @@ public partial class MarkdownRendererControl
     private uint _contextCaptureReleaseInFlightId;
     private readonly Dictionary<uint, (UIElement Target, Pointer Pointer)> _deferredPointerCaptures = new();
 
-    private enum PointerInputKind { Press, Move, Release, Cancel, Exit, Wheel, HandlePress, HandleMove, HandleRelease, HandleCancel, Tap, DoubleTap, Hold, RightTap }
-
-    // Capture point/modifiers/time at event delivery. Never retain routed event
-    // arguments or re-query a moved pointer when deferred work is replayed.
-    private struct PointerInput
-    {
-        internal PointerInputKind Kind;
-        internal object Sender;
-        internal Pointer Pointer;
-        internal PointerPoint Point;
-        internal VirtualKeyModifiers Modifiers;
-        internal long TickCount;
-        internal long TouchTapGestureEpoch;
-        internal uint DeferredTouchGesturePointerId;
-        internal bool IgnoreUnattributableTouchGesture;
-        internal bool CapturedBeforeDeferral;
-        internal bool Handled;
-        internal Windows.Foundation.Point GesturePosition;
-        internal PointerDeviceType GestureDevice;
-        internal long GestureLayoutRevision;
-        internal bool ShowContextMenuAfterInteraction;
-        internal bool TouchSelectionContextMenu;
-        internal LayoutSnapshot? InteractionSnapshot;
-        internal UIElement? InteractionCanvas;
-        internal MarkdownInputModifiers LinkModifiers;
-        internal bool ClearSelectionAfterInteraction;
-        internal bool ReleaseCanvasCaptureAfterInteraction;
-        internal bool ResumeRebuildAfterInteraction;
-        internal bool RefreshSelectionAdornerAfterInteraction;
-        internal bool WaitForMeasuredHitTest;
-        internal bool WaitForLayoutPublication;
-        internal bool IsDeferredGeometryWait;
-        internal bool InvalidDeferredProjection;
-        internal bool ContextCaptureEnded;
-        internal Point ViewportGesturePosition;
-        internal bool HasViewportGesturePosition;
-        internal TouchContactGeometry ViewportGestureContact;
-        internal bool HasViewportGestureContact;
-        internal TouchContactGeometry GestureContact;
-        internal bool HasGestureContact;
-        internal long GestureSnapshotGeneration;
-        internal uint ReleasePointerIdAfterInteraction;
-        private LinkActivationIntent? _linkActivation;
-
-        internal bool HasPostInteractionWork =>
-            ClearSelectionAfterInteraction ||
-            ReleaseCanvasCaptureAfterInteraction ||
-            ResumeRebuildAfterInteraction ||
-            RefreshSelectionAdornerAfterInteraction ||
-            _linkActivation is not null;
-
-        internal void SetLinkActivation(LinkActivationIntent intent) => _linkActivation = intent;
-
-        internal bool TryGetLinkActivation(out LinkActivationIntent intent)
-        {
-            if (_linkActivation is { } activation)
-            {
-                intent = activation;
-                return true;
-            }
-
-            intent = default;
-            return false;
-        }
-    }
-
     private void OnPointerPressed(object sender, PointerRoutedEventArgs e) => DispatchPointerInput(PointerInputKind.Press, sender, e);
     private void OnPointerMoved(object sender, PointerRoutedEventArgs e) => DispatchPointerInput(PointerInputKind.Move, sender, e);
     private void OnPointerReleased(object sender, PointerRoutedEventArgs e) => DispatchPointerInput(PointerInputKind.Release, sender, e);
@@ -109,27 +42,9 @@ public partial class MarkdownRendererControl
     private void OnSelectionHandlePointerReleased(object sender, PointerRoutedEventArgs e) => DispatchPointerInput(PointerInputKind.HandleRelease, sender, e);
     private void OnSelectionHandlePointerCanceled(object sender, PointerRoutedEventArgs e) => DispatchPointerInput(PointerInputKind.HandleCancel, sender, e);
 
-    private static PointerInputKind NormalizeCanceledPointerInputKind(PointerInputKind kind, bool isCanceled)
-    {
-        if (!isCanceled)
-            return kind;
-
-        // Device cancellation can accompany a routed move or release packet.
-        // Classify it once before either live dispatch or deferred queuing so
-        // it cannot commit a tap, link activation, or final handle movement.
-        return kind switch
-        {
-            PointerInputKind.Press or PointerInputKind.Move or PointerInputKind.Release or
-                PointerInputKind.Exit or PointerInputKind.Wheel => PointerInputKind.Cancel,
-            PointerInputKind.HandlePress or PointerInputKind.HandleMove or
-                PointerInputKind.HandleRelease => PointerInputKind.HandleCancel,
-            _ => kind,
-        };
-    }
-
     private bool DispatchRecognizedGesture(PointerInputKind kind, Windows.Foundation.Point point, PointerDeviceType device)
     {
-        if (_isDisposed || _isUnloaded || _canvas is null || _snapshot is not { } snapshot)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _surface.Canvas is null || _published.Snapshot is not { } snapshot)
             return false;
         if (RequestGeometryRecoveryIfRequired(snapshot))
             return false;
@@ -139,8 +54,8 @@ public partial class MarkdownRendererControl
             Kind = kind,
             GesturePosition = point,
             GestureDevice = device,
-            LinkModifiers = GetCurrentInputModifiers(),
-            GestureSnapshotGeneration = Volatile.Read(ref _snapshotGeneration),
+            LinkModifiers = InputModifierState.GetCurrentInputModifiers(),
+            GestureSnapshotGeneration = _published.Generation,
         };
 
         if (device == PointerDeviceType.Touch)
@@ -186,9 +101,9 @@ public partial class MarkdownRendererControl
                 input.IgnoreUnattributableTouchGesture = true;
             }
         }
-        input.HasViewportGesturePosition = TryMapCanvasToViewport(point, out input.ViewportGesturePosition);
+        input.HasViewportGesturePosition = _viewport.TryMapCanvasToViewport(point, out input.ViewportGesturePosition);
         if (input.HasGestureContact &&
-            TryMapCanvasContactToViewport(input.GestureContact, out TouchContactGeometry viewportContact))
+            _viewport.TryMapCanvasContactToViewport(input.GestureContact, out TouchContactGeometry viewportContact))
         {
             input.ViewportGestureContact = viewportContact;
             input.HasViewportGestureContact = true;
@@ -196,7 +111,7 @@ public partial class MarkdownRendererControl
         input.WaitForMeasuredHitTest = IsMeasuredHitTestGesture(input);
         if (!_drainingPointerInput && (_deferredPointerInput?.Count ?? 0) == 0 && snapshot.TryBeginInteraction())
         {
-            long snapshotGeneration = Volatile.Read(ref _snapshotGeneration);
+            long snapshotGeneration = _published.Generation;
             long layoutRevision = snapshot.LayoutRevision;
             input.GestureLayoutRevision = layoutRevision;
             bool waitForGeometry = false;
@@ -322,85 +237,6 @@ public partial class MarkdownRendererControl
         return resolver;
     }
 
-    internal static bool TryCreateGestureHitTestBand(
-        Windows.Foundation.Point gestureCanvas,
-        double rasterizationScale,
-        bool includeContact,
-        TouchContactGeometry capturedContact,
-        out LazyLayoutBand band)
-    {
-        band = default;
-        if (!double.IsFinite(gestureCanvas.X) || !double.IsFinite(gestureCanvas.Y))
-            return false;
-
-        if (!double.IsFinite(rasterizationScale) || rasterizationScale <= 0)
-            rasterizationScale = 1;
-        // The scale term covers one physical pixel, but a malformed caller
-        // must not turn that term into a document-scale realization request.
-        double radius = Math.Min(256, Math.Max(4, 1 / rasterizationScale));
-        double top = gestureCanvas.Y - radius;
-        double bottom = gestureCanvas.Y + radius;
-        if (!double.IsFinite(top) || !double.IsFinite(bottom))
-            return false;
-
-        if (includeContact && IsBoundedGestureContact(gestureCanvas, capturedContact))
-        {
-            double contactTop = capturedContact.Y;
-            double contactBottom = capturedContact.Y + capturedContact.Height;
-            double centerY = capturedContact.CenterY;
-            if (!double.IsFinite(contactBottom) || !double.IsFinite(centerY))
-                return false;
-            top = Math.Min(top, Math.Min(contactTop - 4, centerY - 4));
-            bottom = Math.Max(bottom, Math.Max(contactBottom + 4, centerY + 4));
-        }
-
-        // HitTest samples outside the document are guaranteed misses. Clamp
-        // the only in-document edge, and represent a wholly pre-document band
-        // as empty so it cannot wait forever for the first block to measure.
-        if (bottom < 0)
-        {
-            band = new LazyLayoutBand(0, 0);
-            return true;
-        }
-
-        band = new LazyLayoutBand(Math.Max(0, top), Math.Max(0, bottom));
-        return double.IsFinite(band.Top) && double.IsFinite(band.Bottom) &&
-            band.Bottom >= band.Top;
-    }
-
-    private static bool IsBoundedGestureContact(
-        Windows.Foundation.Point gestureCanvas,
-        TouchContactGeometry contact)
-    {
-        if (!double.IsFinite(contact.X) || !double.IsFinite(contact.Y) ||
-            !double.IsFinite(contact.Width) || !double.IsFinite(contact.Height) ||
-            contact.Width <= 0 || contact.Height <= 0 ||
-            contact.Width > 256 || contact.Height > 256)
-        {
-            return false;
-        }
-
-        double right = contact.X + contact.Width;
-        double bottom = contact.Y + contact.Height;
-        double centerX = contact.CenterX;
-        double centerY = contact.CenterY;
-        if (!double.IsFinite(right) || !double.IsFinite(bottom) ||
-            !double.IsFinite(centerX) || !double.IsFinite(centerY))
-        {
-            return false;
-        }
-
-        double dx = centerX - gestureCanvas.X;
-        double dy = centerY - gestureCanvas.Y;
-        return double.IsFinite(dx) && double.IsFinite(dy) &&
-            dx * dx + dy * dy <= 256 * 256;
-    }
-
-    private static bool IncludesContactProbes(PointerInput input) =>
-        input.HasGestureContact &&
-        (input.GestureDevice is PointerDeviceType.Touch or PointerDeviceType.Pen) &&
-        (input.Kind is PointerInputKind.DoubleTap or PointerInputKind.Hold or PointerInputKind.RightTap);
-
     private bool IsMeasuredHitTestGesture(PointerInput input)
     {
         bool candidate = input.Kind switch
@@ -438,7 +274,7 @@ public partial class MarkdownRendererControl
         }
 
         double scale = XamlRoot?.RasterizationScale ?? 1;
-        return TryCreateGestureHitTestBand(
+        return GestureHitTestBands.TryCreateGestureHitTestBand(
             input.GesturePosition,
             scale,
             includeContact: false,
@@ -480,14 +316,14 @@ public partial class MarkdownRendererControl
         // The production hit-test is ordered: a selectable direct gesture hit
         // returns before the wider touch-contact fallback probes. Do not delay
         // that common case on neighboring, unmeasured contact roots.
-        if (!IncludesContactProbes(input) ||
+        if (!GestureHitTestBands.IncludesContactProbes(input) ||
             IsSelectableTouchPoint(input.GesturePosition, snapshot, out _))
         {
             return true;
         }
 
         double scale = XamlRoot?.RasterizationScale ?? 1;
-        if (!TryCreateGestureHitTestBand(
+        if (!GestureHitTestBands.TryCreateGestureHitTestBand(
                 input.GesturePosition,
                 scale,
                 includeContact: true,
@@ -503,8 +339,8 @@ public partial class MarkdownRendererControl
     }
 
     private bool IsDeferredGestureLayoutPublished(LayoutSnapshot snapshot) =>
-        !_isDisposed && !_isUnloaded &&
-        ReferenceEquals(snapshot, _snapshot) &&
+        !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
+        ReferenceEquals(snapshot, _published.Snapshot) &&
         !_publishingLayoutCommit &&
         _pendingLayoutCommit is null &&
         _appliedLazyLayoutRevision >= snapshot.LayoutRevision;
@@ -512,14 +348,14 @@ public partial class MarkdownRendererControl
     private bool TryReprojectDeferredGesture(ref PointerInput input)
     {
         if (!input.HasViewportGesturePosition ||
-            !TryMapViewportToCanvas(input.ViewportGesturePosition, out var currentPosition))
+            !_viewport.TryMapViewportToCanvas(input.ViewportGesturePosition, out var currentPosition))
         {
             input.InvalidDeferredProjection = true;
             return false;
         }
         input.GesturePosition = currentPosition;
         if (input.HasViewportGestureContact &&
-            TryMapViewportContactToCanvas(input.ViewportGestureContact, out TouchContactGeometry contact))
+            _viewport.TryMapViewportContactToCanvas(input.ViewportGestureContact, out TouchContactGeometry contact))
         {
             input.GestureContact = contact;
             input.HasGestureContact = true;
@@ -530,153 +366,6 @@ public partial class MarkdownRendererControl
             input.HasGestureContact = false;
         }
         return true;
-    }
-
-    private bool TryMapCanvasToViewport(
-        Windows.Foundation.Point canvasPoint,
-        out Windows.Foundation.Point viewportPoint)
-    {
-        viewportPoint = default;
-        if (_canvas is null)
-            return false;
-        try
-        {
-            if (_scroll is { } scroll)
-            {
-                viewportPoint = _canvas.TransformToVisual(scroll).TransformPoint(canvasPoint);
-            }
-            else if (_hasExternalViewport)
-            {
-                viewportPoint = new Windows.Foundation.Point(
-                    canvasPoint.X - _externalViewport.X,
-                    canvasPoint.Y - _externalViewport.Y);
-            }
-            else
-            {
-                viewportPoint = _canvas.TransformToVisual(this).TransformPoint(canvasPoint);
-            }
-            return double.IsFinite(viewportPoint.X) && double.IsFinite(viewportPoint.Y);
-        }
-        catch (Exception)
-        {
-            viewportPoint = default;
-            return false;
-        }
-    }
-
-    private bool TryMapViewportToCanvas(
-        Windows.Foundation.Point viewportPoint,
-        out Windows.Foundation.Point canvasPoint)
-    {
-        canvasPoint = default;
-        if (_canvas is null || !double.IsFinite(viewportPoint.X) || !double.IsFinite(viewportPoint.Y))
-            return false;
-        try
-        {
-            if (_scroll is { } scroll)
-            {
-                canvasPoint = scroll.TransformToVisual(_canvas).TransformPoint(viewportPoint);
-            }
-            else if (_hasExternalViewport)
-            {
-                canvasPoint = new Windows.Foundation.Point(
-                    viewportPoint.X + _externalViewport.X,
-                    viewportPoint.Y + _externalViewport.Y);
-            }
-            else
-            {
-                canvasPoint = this.TransformToVisual(_canvas).TransformPoint(viewportPoint);
-            }
-            return double.IsFinite(canvasPoint.X) && double.IsFinite(canvasPoint.Y);
-        }
-        catch (Exception)
-        {
-            canvasPoint = default;
-            return false;
-        }
-    }
-
-    private bool TryMapCanvasContactToViewport(
-        TouchContactGeometry contact,
-        out TouchContactGeometry viewportContact)
-        => TryMapContact(contact, canvasToViewport: true, out viewportContact);
-
-    private bool TryMapViewportContactToCanvas(
-        TouchContactGeometry contact,
-        out TouchContactGeometry canvasContact)
-        => TryMapContact(contact, canvasToViewport: false, out canvasContact);
-
-    private bool TryMapContact(
-        TouchContactGeometry contact,
-        bool canvasToViewport,
-        out TouchContactGeometry mapped)
-    {
-        mapped = default;
-        if (_canvas is null || !double.IsFinite(contact.X) || !double.IsFinite(contact.Y) ||
-            !double.IsFinite(contact.Width) || !double.IsFinite(contact.Height) ||
-            contact.Width < 0 || contact.Height < 0)
-        {
-            return false;
-        }
-
-        Windows.Foundation.Point p1 = new(contact.X, contact.Y);
-        Windows.Foundation.Point p2 = new(contact.X + contact.Width, contact.Y);
-        Windows.Foundation.Point p3 = new(contact.X, contact.Y + contact.Height);
-        Windows.Foundation.Point p4 = new(contact.X + contact.Width, contact.Y + contact.Height);
-        if (!TryMapContactPoint(p1, canvasToViewport, out p1) ||
-            !TryMapContactPoint(p2, canvasToViewport, out p2) ||
-            !TryMapContactPoint(p3, canvasToViewport, out p3) ||
-            !TryMapContactPoint(p4, canvasToViewport, out p4))
-        {
-            return false;
-        }
-
-        double left = Math.Min(Math.Min(p1.X, p2.X), Math.Min(p3.X, p4.X));
-        double top = Math.Min(Math.Min(p1.Y, p2.Y), Math.Min(p3.Y, p4.Y));
-        double right = Math.Max(Math.Max(p1.X, p2.X), Math.Max(p3.X, p4.X));
-        double bottom = Math.Max(Math.Max(p1.Y, p2.Y), Math.Max(p3.Y, p4.Y));
-        if (!double.IsFinite(left) || !double.IsFinite(top) ||
-            !double.IsFinite(right) || !double.IsFinite(bottom))
-        {
-            return false;
-        }
-        mapped = new TouchContactGeometry(left, top, right - left, bottom - top);
-        return double.IsFinite(mapped.Width) && double.IsFinite(mapped.Height);
-    }
-
-    private bool TryMapContactPoint(
-        Windows.Foundation.Point point,
-        bool canvasToViewport,
-        out Windows.Foundation.Point mapped)
-    {
-        mapped = default;
-        try
-        {
-            if (_scroll is { } scroll)
-            {
-                mapped = canvasToViewport
-                    ? _canvas!.TransformToVisual(scroll).TransformPoint(point)
-                    : scroll.TransformToVisual(_canvas!).TransformPoint(point);
-            }
-            else if (_hasExternalViewport)
-            {
-                mapped = canvasToViewport
-                    ? new Windows.Foundation.Point(point.X - _externalViewport.X, point.Y - _externalViewport.Y)
-                    : new Windows.Foundation.Point(point.X + _externalViewport.X, point.Y + _externalViewport.Y);
-            }
-            else
-            {
-                mapped = canvasToViewport
-                    ? _canvas!.TransformToVisual(this).TransformPoint(point)
-                    : this.TransformToVisual(_canvas!).TransformPoint(point);
-            }
-            return double.IsFinite(mapped.X) && double.IsFinite(mapped.Y);
-        }
-        catch (Exception)
-        {
-            mapped = default;
-            return false;
-        }
     }
 
     private void PrepareContextGestureForDeferral(ref PointerInput input)
@@ -703,7 +392,7 @@ public partial class MarkdownRendererControl
 
     private void RequestDeferredGestureBandRealization(LayoutSnapshot snapshot, LazyLayoutBand hitBand)
     {
-        if (_isDisposed || _isUnloaded || !ReferenceEquals(snapshot, _snapshot) ||
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !ReferenceEquals(snapshot, _published.Snapshot) ||
             !ReferenceEquals(snapshot, _deferredPointerSnapshot))
         {
             DropDeferredInputQueuePreservingSelection();
@@ -722,7 +411,7 @@ public partial class MarkdownRendererControl
         }
 
         LazyLayoutBand viewportBand = hitBand;
-        if (TryGetViewport(out double viewportTop, out double viewportHeight, out _) &&
+        if (_viewport.TryGet(out double viewportTop, out double viewportHeight, out _) &&
             double.IsFinite(viewportTop) && double.IsFinite(viewportHeight) &&
             viewportHeight > 0 && viewportHeight <= 6000)
         {
@@ -735,7 +424,7 @@ public partial class MarkdownRendererControl
             snapshot,
             requestedBand,
             viewportBand,
-            preserveScrollAnchor: _scroll is not null);
+            preserveScrollAnchor: _surface.Scroll is not null);
 
         if (IsDeferredGestureBandCovered(snapshot, hitBand))
         {
@@ -764,7 +453,7 @@ public partial class MarkdownRendererControl
             return;
         }
 
-        if (!ReferenceEquals(_snapshot, snapshot))
+        if (!ReferenceEquals(_published.Snapshot, snapshot))
         {
             DropDeferredInputQueuePreservingSelection();
             return;
@@ -818,10 +507,10 @@ public partial class MarkdownRendererControl
 
     private void DispatchPointerInput(PointerInputKind kind, object sender, PointerRoutedEventArgs args)
     {
-        if (_isDisposed || _isUnloaded || _resettingPointerInput || _canvas is null || _snapshot is not { } snapshot)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _resettingPointerInput || _surface.Canvas is null || _published.Snapshot is not { } snapshot)
             return;
-        PointerPoint point = args.GetCurrentPoint(_canvas);
-        kind = NormalizeCanceledPointerInputKind(kind, point.Properties.IsCanceled);
+        PointerPoint point = args.GetCurrentPoint(_surface.Canvas);
+        kind = PointerInputClassification.NormalizeCanceledPointerInputKind(kind, point.Properties.IsCanceled);
         if ((kind is PointerInputKind.Cancel or PointerInputKind.Exit) &&
             args.Pointer.PointerId == _contextCaptureReleaseInFlightId &&
             _contextCaptureReleaseInFlightId != 0)
@@ -848,8 +537,8 @@ public partial class MarkdownRendererControl
                 ? _touchTapSuppression.GetGestureEpochForPointer(args.Pointer.PointerId)
                 : 0,
             Modifiers = args.KeyModifiers,
-            LinkModifiers = MapInputModifiers(args.KeyModifiers),
-            InteractionCanvas = _canvas,
+            LinkModifiers = InputModifierState.MapInputModifiers(args.KeyModifiers),
+            InteractionCanvas = _surface.Canvas,
             TickCount = Environment.TickCount64,
             Handled = args.Handled,
         };
@@ -872,12 +561,12 @@ public partial class MarkdownRendererControl
         bool startsNewCapturedOwnership = kind == PointerInputKind.HandlePress ||
             (kind == PointerInputKind.Press && input.Point.IsInContact &&
              (input.Pointer.PointerDeviceType is PointerDeviceType.Touch or PointerDeviceType.Pen ||
-              IsPrecisePointer(input) && input.Point.Properties.IsLeftButtonPressed &&
+              PointerInputClassification.IsPrecisePointer(input) && input.Point.Properties.IsLeftButtonPressed &&
               !input.Point.Properties.IsBarrelButtonPressed));
 
         if (!_drainingPointerInput && (_deferredPointerInput?.Count ?? 0) == 0 && snapshot.TryBeginInteraction())
         {
-            long snapshotGeneration = Volatile.Read(ref _snapshotGeneration);
+            long snapshotGeneration = _published.Generation;
             long layoutRevision = snapshot.LayoutRevision;
             try
             {
@@ -911,15 +600,15 @@ public partial class MarkdownRendererControl
         if (startsNewCapturedOwnership &&
             _deferredPointerInput is { Count: > 0, HasBlockingSnapshotInteractions: false })
         {
-            long generationBeforeWaiterDrop = Volatile.Read(ref _snapshotGeneration);
+            long generationBeforeWaiterDrop = _published.Generation;
             DropDeferredInputQueuePreservingSelection();
-            if (_isDisposed || _isUnloaded || !ReferenceEquals(_snapshot, snapshot) ||
-                generationBeforeWaiterDrop != Volatile.Read(ref _snapshotGeneration))
+            if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !ReferenceEquals(_published.Snapshot, snapshot) ||
+                generationBeforeWaiterDrop != _published.Generation)
                 return;
 
             if (snapshot.TryBeginInteraction())
             {
-                long snapshotGeneration = Volatile.Read(ref _snapshotGeneration);
+                long snapshotGeneration = _published.Generation;
                 long layoutRevision = snapshot.LayoutRevision;
                 try
                 {
@@ -952,12 +641,12 @@ public partial class MarkdownRendererControl
         // pan on the canvas; explicit selection handles own their touch gesture.
         bool primaryPress = input.Point.IsInContact &&
             (kind == PointerInputKind.HandlePress ||
-             (kind == PointerInputKind.Press && IsPrecisePointer(input) &&
+             (kind == PointerInputKind.Press && PointerInputClassification.IsPrecisePointer(input) &&
               input.Point.Properties.IsLeftButtonPressed && !input.Point.Properties.IsBarrelButtonPressed));
         if (primaryPress)
         {
-            UIElement target = kind == PointerInputKind.HandlePress && sender is UIElement handle ? handle : _canvas;
-            if (CapturePointerForInput(target, input))
+            UIElement target = kind == PointerInputKind.HandlePress && sender is UIElement handle ? handle : _surface.Canvas;
+            if (PointerInputClassification.CapturePointerForInput(target, input))
             {
                 input.CapturedBeforeDeferral = true;
                 _deferredPointerCaptures[input.Pointer.PointerId] = (target, input.Pointer);
@@ -1000,14 +689,14 @@ public partial class MarkdownRendererControl
         if (!ReferenceEquals(sender, _pointerRetryTimer))
             return;
 
-        if (_isDisposed || _isUnloaded || !ReferenceEquals(_snapshot, _deferredPointerSnapshot))
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !ReferenceEquals(_published.Snapshot, _deferredPointerSnapshot))
         {
             ResetDeferredPointerInput();
             return;
         }
-        while (_snapshot is { } snapshot && ReferenceEquals(snapshot, _deferredPointerSnapshot))
+        while (_published.Snapshot is { } snapshot && ReferenceEquals(snapshot, _deferredPointerSnapshot))
         {
-            if (_isDisposed || _isUnloaded)
+            if (_lifetime.IsDisposed || _lifetime.IsUnloaded)
             {
                 ResetDeferredPointerInput();
                 return;
@@ -1025,7 +714,7 @@ public partial class MarkdownRendererControl
             if (!snapshot.TryBeginInteraction())
                 return;
 
-            long snapshotGeneration = Volatile.Read(ref _snapshotGeneration);
+            long snapshotGeneration = _published.Generation;
             long layoutRevision = snapshot.LayoutRevision;
             PointerInput? postInteractionInput = null;
             bool waitingForGeometry = false;
@@ -1039,8 +728,8 @@ public partial class MarkdownRendererControl
                     _drainingPointerInput = true;
                     while (_deferredPointerInput?.TryPeek(out var input, out _) == true)
                     {
-                        if (_isDisposed || _isUnloaded ||
-                            !ReferenceEquals(_snapshot, snapshot) ||
+                        if (_lifetime.IsDisposed || _lifetime.IsUnloaded ||
+                            !ReferenceEquals(_published.Snapshot, snapshot) ||
                             !ReferenceEquals(_deferredPointerSnapshot, snapshot))
                         {
                             staleQueue = true;
@@ -1165,10 +854,10 @@ public partial class MarkdownRendererControl
                         snapshotGeneration,
                         layoutRevision);
                 }
-                if (_isDisposed || _isUnloaded ||
-                    !ReferenceEquals(_snapshot, snapshot) ||
+                if (_lifetime.IsDisposed || _lifetime.IsUnloaded ||
+                    !ReferenceEquals(_published.Snapshot, snapshot) ||
                     !ReferenceEquals(_deferredPointerSnapshot, snapshot) ||
-                    snapshotGeneration != Volatile.Read(ref _snapshotGeneration) ||
+                    snapshotGeneration != _published.Generation ||
                     snapshot.LayoutRevision != layoutRevision)
                 {
                     ResetDeferredPointerInput();
@@ -1224,9 +913,9 @@ public partial class MarkdownRendererControl
                     DropDeferredInputQueuePreservingSelection();
                     return;
                 }
-                if (!_isDisposed && !_isUnloaded &&
-                    ReferenceEquals(_snapshot, snapshot) &&
-                    snapshotGeneration == Volatile.Read(ref _snapshotGeneration))
+                if (!_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
+                    ReferenceEquals(_published.Snapshot, snapshot) &&
+                    snapshotGeneration == _published.Generation)
                 {
                     RequestDeferredGestureBandRealization(snapshot, waitingBand);
                 }
@@ -1237,8 +926,8 @@ public partial class MarkdownRendererControl
                 return;
             }
 
-            if (_isDisposed || _isUnloaded ||
-                !ReferenceEquals(_snapshot, snapshot) ||
+            if (_lifetime.IsDisposed || _lifetime.IsUnloaded ||
+                !ReferenceEquals(_published.Snapshot, snapshot) ||
                 !ReferenceEquals(_deferredPointerSnapshot, snapshot))
             {
                 ResetDeferredPointerInput();
@@ -1283,9 +972,9 @@ public partial class MarkdownRendererControl
         if (!input.ShowContextMenuAfterInteraction)
             return input.Handled;
 
-        if (_isDisposed || _isUnloaded ||
-            !ReferenceEquals(_snapshot, snapshot) ||
-            snapshotGeneration != Volatile.Read(ref _snapshotGeneration) ||
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded ||
+            !ReferenceEquals(_published.Snapshot, snapshot) ||
+            snapshotGeneration != _published.Generation ||
             input.GestureLayoutRevision != layoutRevision ||
             snapshot.LayoutRevision != layoutRevision)
         {
@@ -1313,7 +1002,7 @@ public partial class MarkdownRendererControl
             if (!IsCurrentPointerInteraction(snapshot, snapshotGeneration, layoutRevision) ||
                 (input.ReleaseCanvasCaptureAfterInteraction &&
                  (input.InteractionCanvas is not { } capturedCanvas ||
-                  !ReferenceEquals(_canvas, capturedCanvas))))
+                  !ReferenceEquals(_surface.Canvas, capturedCanvas))))
             {
                 ResetDeferredPointerInput();
                 return false;
@@ -1349,7 +1038,7 @@ public partial class MarkdownRendererControl
                     }
                 }
                 if (!IsCurrentPointerInteraction(snapshot, snapshotGeneration, layoutRevision) ||
-                    !ReferenceEquals(_canvas, input.InteractionCanvas))
+                    !ReferenceEquals(_surface.Canvas, input.InteractionCanvas))
                 {
                     ResetDeferredPointerInput();
                     return false;
@@ -1378,8 +1067,8 @@ public partial class MarkdownRendererControl
 
             if (input.RefreshSelectionAdornerAfterInteraction)
             {
-                UpdateSelectionAdornerViewport();
-                InvalidateSelectionAdorner();
+                _adorner.InvalidateGeometry();
+                _adorner.Invalidate();
             }
 
             if (!IsCurrentPointerInteraction(snapshot, snapshotGeneration, layoutRevision))
@@ -1410,9 +1099,9 @@ public partial class MarkdownRendererControl
         LayoutSnapshot snapshot,
         long snapshotGeneration,
         long layoutRevision) =>
-        !_isDisposed && !_isUnloaded &&
-        ReferenceEquals(_snapshot, snapshot) &&
-        snapshotGeneration == Volatile.Read(ref _snapshotGeneration) &&
+        !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
+        ReferenceEquals(_published.Snapshot, snapshot) &&
+        snapshotGeneration == _published.Generation &&
         snapshot.LayoutRevision == layoutRevision;
 
     private void ProcessPointerInput(ref PointerInput input)
@@ -1480,7 +1169,7 @@ public partial class MarkdownRendererControl
         {
             input.GestureContact = _touchSelection.Contact;
             input.HasGestureContact = true;
-            if (TryMapCanvasContactToViewport(input.GestureContact, out TouchContactGeometry viewportContact))
+            if (_viewport.TryMapCanvasContactToViewport(input.GestureContact, out TouchContactGeometry viewportContact))
             {
                 input.ViewportGestureContact = viewportContact;
                 input.HasViewportGestureContact = true;
@@ -1502,45 +1191,6 @@ public partial class MarkdownRendererControl
         SetSelectionDragShieldActive(false);
         MarkdownDiagnostics.WriteLine("[MarkdownRendererControl] Cancelled an over-budget deferred pointer gesture.");
         ResumePendingRebuildAfterPointerInteraction();
-    }
-
-    private static bool CapturePointerForInput(UIElement target, PointerInput input)
-    {
-        // Pointer input can be replayed after a layout/image realization pass.
-        // Do not ask WinUI for capture state once that target has left its tree.
-        if (target.XamlRoot is null)
-            return false;
-
-        if (input.CapturedBeforeDeferral)
-            return true;
-
-        // ButtonBase can capture a touch contact in its class handler before our
-        // handled-events-too selection-handle handler runs. Re-capturing the same
-        // pointer may report false even though the intended target already owns it;
-        // treat that existing capture as success so native Button behavior and the
-        // renderer's drag state can cooperate.
-        // Although the projected API is non-nullable, WinUI can surface a null
-        // capture view while an element's input site is being initialized or
-        // torn down. Treat it as the normal empty-capture state.
-        IReadOnlyList<Pointer>? captures = target.PointerCaptures;
-        if (ContainsPointerCapture(captures, input.Pointer.PointerId))
-            return true;
-
-        return target.CapturePointer(input.Pointer);
-    }
-
-    internal static bool ContainsPointerCapture(IReadOnlyList<Pointer>? captures, uint pointerId)
-    {
-        if (captures is null)
-            return false;
-
-        foreach (Pointer captured in captures)
-        {
-            if (captured.PointerId == pointerId)
-                return true;
-        }
-
-        return false;
     }
 
     private void ResetDeferredPointerInput()

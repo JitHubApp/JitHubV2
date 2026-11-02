@@ -1,4 +1,5 @@
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Selection;
@@ -597,7 +598,7 @@ public sealed class SelectionAdornerAdmissionTests
         double rasterizationScale,
         bool includeContact,
         TouchContactGeometry capturedContact,
-        out LazyLayoutBand band) => MarkdownRendererControl.TryCreateGestureHitTestBand(
+        out LazyLayoutBand band) => GestureHitTestBands.TryCreateGestureHitTestBand(
             gestureCanvas,
             rasterizationScale,
             includeContact,

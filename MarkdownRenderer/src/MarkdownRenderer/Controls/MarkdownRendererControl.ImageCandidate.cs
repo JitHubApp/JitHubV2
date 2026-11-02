@@ -8,6 +8,9 @@ using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Performance;
 using Windows.Foundation;
+using MarkdownRenderer.Controls.Embeds;
+using MarkdownRenderer.Controls.Images;
+using MarkdownRenderer.Controls.Focus;
 
 namespace MarkdownRenderer.Controls;
 
@@ -37,8 +40,8 @@ public partial class MarkdownRendererControl
         {
             if (receiver.TryGetTarget(out MarkdownRendererControl? control) &&
                 Volatile.Read(ref _candidateSnapshot) is { } identity && identity.TryGetTarget(out LayoutSnapshot? snapshot) &&
-                !control._isDisposed && !control._isUnloaded && generation == control._snapshotGeneration &&
-                ReferenceEquals(snapshot, control._snapshot))
+                !control._lifetime.IsDisposed && !control._lifetime.IsUnloaded && generation == control._published.Generation &&
+                ReferenceEquals(snapshot, control._published.Snapshot))
                 control.RaiseImageUnavailable(url, reason, svgReason);
         }
     }
@@ -151,9 +154,9 @@ public partial class MarkdownRendererControl
             return false;
         // UI-dispatcher-only, synchronous fence and swap. No host/XAML/native
         // callbacks intervene. Image publication readers verify snapshot identity.
-        if (_isDisposed || _isUnloaded || _publishingLayoutCommit || _canvasDeviceRecoveryQueued ||
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _publishingLayoutCommit || _canvasDeviceRecoveryQueued ||
             _rebuildCoordinator.HasPendingOrBuilding || HasPendingLazyLayoutWork || HasSnapshotPointerInteraction ||
-            !ReferenceEquals(source, _snapshot) || generation != _snapshotGeneration ||
+            !ReferenceEquals(source, _published.Snapshot) || generation != _published.Generation ||
             source.IsRetiringOrDisposed || source.LayoutRevision != owner.SourceRevision ||
             (float)Math.Max(50, ActualWidth) != owner.Width ||
             !ReferenceEquals(_themeSnapshot, context.ThemeSnapshot) ||
@@ -213,10 +216,10 @@ public partial class MarkdownRendererControl
             _imagePlanIndex = plan.Publication!.Index;
             _focusableItems = plan.Focus;
             _focusedItemIndex = focusedIdentity is { } identity
-                ? FindFocusableItemIndex(_focusableItems, identity)
+                ? FocusableItemQueries.FindFocusableItemIndex(_focusableItems, identity)
                 : -1;
             _focusResumeItemIndex = resumeFocusIdentity is { } resumeIdentity
-                ? FindFocusableItemIndex(_focusableItems, resumeIdentity)
+                ? FocusableItemQueries.FindFocusableItemIndex(_focusableItems, resumeIdentity)
                 : -1;
             _codeBlockActionPlans = plan.CodeActionPlans!;
             plan.CodeActionPlans = null;
@@ -229,12 +232,10 @@ public partial class MarkdownRendererControl
             plan.CodeActionRects = null;
             _appliedLazyLayoutRevision = candidate.LayoutRevision;
             _pendingLayoutCommit = null;
-            _lastHoveredRun = null;
-            _lastHoveredBox = null;
-            _lastHoveredAbbreviation = null;
-            _pendingAbbreviationTooltipRun = null;
+            _hover.Clear();
+            _abbreviationTooltip.ForgetTarget();
             long epoch = InvalidateHostedFocusPlanPublication();
-            _snapshot = owner.TransferToControl();
+            _published.Snapshot = owner.TransferToControl();
             Volatile.Write(ref _imagePlanPublication, plan.Publication);
             Volatile.Write(ref _publishedHostedFocusPlanGeneration, generation);
             Volatile.Write(ref _publishedHostedFocusPlanRevision, candidate.LayoutRevision);
@@ -356,11 +357,11 @@ public partial class MarkdownRendererControl
             if (!IsCurrentRasterCodeActionPublication(
                     candidate, generation, candidate.LayoutRevision, epoch))
                 return true;
-            HideAbbreviationTooltip();
+            _abbreviationTooltip.Hide();
             if (!IsCurrentRasterCodeActionPublication(
                     candidate, generation, candidate.LayoutRevision, epoch))
                 return true;
-            SetCursorShape(null);
+            _cursor.SetShape(null);
             if (!IsCurrentRasterCodeActionPublication(
                     candidate, generation, candidate.LayoutRevision, epoch))
                 return true;
@@ -368,7 +369,7 @@ public partial class MarkdownRendererControl
             if (!IsCurrentRasterCodeActionPublication(
                     candidate, generation, candidate.LayoutRevision, epoch))
                 return true;
-            if (plan.AnchorOffset is { } target && _scroll is { } scroll &&
+            if (plan.AnchorOffset is { } target && _surface.Scroll is { } scroll &&
                 LazyLayoutScrollAnchorPolicy.ShouldRestore(plan.CapturedScrollOffset, scroll.VerticalOffset, _scrollViewIntermediate) &&
                 Math.Abs(target - scroll.VerticalOffset) >= .5)
                 scroll.ChangeView(null, target, null, disableAnimation: true);
@@ -469,7 +470,7 @@ public partial class MarkdownRendererControl
                 oldFocus.Kind != FocusableItemKind.CodeBlockCopy ||
                 newFocus.BlockIndex != sourceBox.BlockIndex || newFocus.InlineIndex != 0 ||
                 newFocus.Kind != FocusableItemKind.CodeBlockCopy ||
-                FindFocusableItemIndex(plan.Focus, newFocus) < 0 ||
+                FocusableItemQueries.FindFocusableItemIndex(plan.Focus, newFocus) < 0 ||
                 !ReferenceEquals(sourceBox.Metadata, identity.Placement.Metadata) ||
                 !ReferenceEquals(sourceBox.CodeText, identity.Placement.CodeText) ||
                 !sourceBox.HasCopyButtonAction || !identity.Placement.HasCopyButtonAction ||
@@ -499,8 +500,8 @@ public partial class MarkdownRendererControl
         long generation,
         long layoutRevision,
         long epoch)
-        => !_isDisposed && !_isUnloaded && ReferenceEquals(candidate, _snapshot) &&
-           generation == Volatile.Read(ref _snapshotGeneration) &&
+        => !_lifetime.IsDisposed && !_lifetime.IsUnloaded && ReferenceEquals(candidate, _published.Snapshot) &&
+           generation == _published.Generation &&
            candidate.LayoutRevision == layoutRevision &&
            layoutRevision == Volatile.Read(ref _publishedHostedFocusPlanRevision) &&
            generation == Volatile.Read(ref _publishedHostedFocusPlanGeneration) &&

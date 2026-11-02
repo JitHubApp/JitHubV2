@@ -33,7 +33,7 @@ public partial class MarkdownRendererControl
     private void ReconcileImageResidency(LazyLayoutBand band, ViewportRange range)
     {
         if (_imageResidencyPolicy is not { } policy ||
-            _snapshot is not { } snapshot ||
+            _published.Snapshot is not { } snapshot ||
             !ReferenceEquals(snapshot, _imageResidencySnapshot) ||
             !snapshot.TryBeginInteraction())
             return;
@@ -72,7 +72,7 @@ public partial class MarkdownRendererControl
         if (dispatcher is null || !dispatcher.TryEnqueue(() =>
         {
             Interlocked.Exchange(ref _imageResidencyReconcileQueued, 0);
-            if (_isDisposed || _isUnloaded)
+            if (_lifetime.IsDisposed || _lifetime.IsUnloaded)
                 return;
             RealizeVisibleEmbeds();
             InvalidateCanvas();

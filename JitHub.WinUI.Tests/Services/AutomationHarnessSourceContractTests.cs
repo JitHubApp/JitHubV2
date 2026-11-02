@@ -545,7 +545,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("control.ProcessPendingHorizontalOverflowVisualRetry();", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("control.ProcessPendingFocusGeometry();", recoveryTick, StringComparison.Ordinal);
         Assert.Matches(
-            "if\\s*\\(control\\._isDisposed \\|\\| control\\._isUnloaded\\)\\s*control\\.StopImageRelayoutRecovery\\(force: true\\);",
+            "if\\s*\\(control\\._lifetime\\.IsDisposed \\|\\| control\\._lifetime\\.IsUnloaded\\)\\s*control\\.StopImageRelayoutRecovery\\(force: true\\);",
             recoveryTick);
         Assert.Contains("control.StopImageRelayoutRecoveryIfIdle();", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("catch (Exception exception)", recoveryTick, StringComparison.Ordinal);
@@ -571,7 +571,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("TryPrepareCodeBlockActionPublication(plan", rasterPublication, StringComparison.Ordinal);
         Assert.Contains("ReferenceEquals(newPlan.Box, identity.Placement)", rasterPublication, StringComparison.Ordinal);
         Assert.Contains("_imagePlans.Count is > 0 and <= InlineContainerBox.MaximumPrivateRasterPlacementImages", process, StringComparison.Ordinal);
-        Assert.Contains("new RasterPlacementInputs(receiver, _snapshotGeneration,", process, StringComparison.Ordinal);
+        Assert.Contains("new RasterPlacementInputs(receiver, _published.Generation,", process, StringComparison.Ordinal);
         Assert.Contains("RequestRebuild(RebuildReason.Full);", process, StringComparison.Ordinal);
 
         int runStart = controlSource.IndexOf("private static async Task RunImageRelayoutAsync(", StringComparison.Ordinal);
@@ -610,16 +610,16 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.DoesNotContain("int[]", publicationFactory, StringComparison.Ordinal);
         Assert.DoesNotContain("retryImageBlockIndices", publicationFactory, StringComparison.Ordinal);
         string completion = controlSource[completionStart..failureReporter];
-        Assert.Contains("current && snapshot is not null && !_isDisposed && !_isUnloaded &&\n                (!canceled || rootMeasureCommitted)", completion, StringComparison.Ordinal);
+        Assert.Contains("current && snapshot is not null && !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&\n                (!canceled || rootMeasureCommitted)", completion, StringComparison.Ordinal);
         Assert.Contains("// A private whole-tree candidate has not committed and is excluded.", completion, StringComparison.Ordinal);
-        Assert.Contains("generation == _snapshotGeneration && ReferenceEquals(snapshot, _snapshot)", completion, StringComparison.Ordinal);
+        Assert.Contains("generation == _published.Generation && ReferenceEquals(snapshot, _published.Snapshot)", completion, StringComparison.Ordinal);
         Assert.Contains("TryPublishRasterPlacement(snapshot, candidate, generation)", completion, StringComparison.Ordinal);
         Assert.Contains("RequestRebuild(RebuildReason.Full);", completion, StringComparison.Ordinal);
         Assert.Contains("else if (retryImageBlockIndex.HasValue || retryCurrentImages)", completion, StringComparison.Ordinal);
         Assert.Contains("if (retryImageBlockIndex is { } retryIndex)", completion, StringComparison.Ordinal);
         Assert.Contains("if (retryCurrentImages)\n                        foreach (var image in _subscribedImages)", completion, StringComparison.Ordinal);
         Assert.DoesNotContain("retryImageBlockIndices", completion, StringComparison.Ordinal);
-        Assert.Contains("rootMeasureCommitted &&\n                        (canceled || capturedScrollOffset != _scroll?.VerticalOffset) ? null : anchor", completion, StringComparison.Ordinal);
+        Assert.Contains("rootMeasureCommitted &&\n                        (canceled || capturedScrollOffset != _surface.Scroll?.VerticalOffset) ? null : anchor", completion, StringComparison.Ordinal);
 
         Assert.Contains("internal SingleRasterLayoutCandidate? CreateSingleRasterCandidate(", snapshotSource, StringComparison.Ordinal);
         Assert.Contains("internal void RelayoutChangedBlocks(", snapshotSource, StringComparison.Ordinal);
@@ -651,7 +651,7 @@ public sealed class AutomationHarnessSourceContractTests
         int menuStart = source.IndexOf("private bool ShowSelectionContextMenu(", rightTappedStart, StringComparison.Ordinal);
         Assert.True(rightTappedStart >= 0 && menuStart > rightTappedStart);
         string rightTapped = source[rightTappedStart..menuStart];
-        Assert.Contains("long snapshotGeneration = Volatile.Read(ref _snapshotGeneration);", rightTapped, StringComparison.Ordinal);
+        Assert.Contains("long snapshotGeneration = _published.Generation;", rightTapped, StringComparison.Ordinal);
         Assert.Contains("if (touchOrPen && (!_selection.IsActive || !IsPointInsideSelection(snapshot, pt)))", rightTapped, StringComparison.Ordinal);
         Assert.Contains("TrySelectWordForTouchContext(\n                pt,\n                snapshot,\n                snapshotGeneration,\n                layoutRevision,", rightTapped, StringComparison.Ordinal);
         Assert.Contains("if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))", rightTapped, StringComparison.Ordinal);
@@ -679,7 +679,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("menu.ShowAt(canvas, placementPoint);", menu, StringComparison.Ordinal);
         Assert.Equal(4, Regex.Matches(menu, "DisposeContextMenuTarget\\(target\\);").Count);
         Assert.Contains("!ReferenceEquals(_selectionContextMenu, menu) ||\n                !IsCurrentContextMenuSnapshot(", menu, StringComparison.Ordinal);
-        Assert.Contains("catch (Exception ex)\n        {\n            DisposeContextMenuTarget(target);", menu, StringComparison.Ordinal);
+        Assert.Contains("catch (Exception ex)\n        {\n            ContextMenuTargets.DisposeContextMenuTarget(target);", menu, StringComparison.Ordinal);
 
         int recognizedGestureStart = pointerSource.IndexOf("private bool DispatchRecognizedGesture(", StringComparison.Ordinal);
         int pointerDispatchStart = pointerSource.IndexOf("private void DispatchPointerInput(", recognizedGestureStart, StringComparison.Ordinal);
@@ -695,8 +695,8 @@ public sealed class AutomationHarnessSourceContractTests
         int postInteractionStart = pointerSource.IndexOf("private bool CompletePointerPostInteraction(", completeGestureStart, StringComparison.Ordinal);
         Assert.True(completeGestureStart >= 0 && postInteractionStart > completeGestureStart);
         string completion = pointerSource[completeGestureStart..postInteractionStart];
-        Assert.Contains("!ReferenceEquals(_snapshot, snapshot)", completion, StringComparison.Ordinal);
-        Assert.Contains("snapshotGeneration != Volatile.Read(ref _snapshotGeneration)", completion, StringComparison.Ordinal);
+        Assert.Contains("!ReferenceEquals(_published.Snapshot, snapshot)", completion, StringComparison.Ordinal);
+        Assert.Contains("snapshotGeneration != _published.Generation", completion, StringComparison.Ordinal);
         Assert.Contains("input.GestureLayoutRevision != layoutRevision", completion, StringComparison.Ordinal);
         Assert.Contains("snapshot.LayoutRevision != layoutRevision", completion, StringComparison.Ordinal);
         Assert.Contains("ShowSelectionContextMenu(", completion, StringComparison.Ordinal);

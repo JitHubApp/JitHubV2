@@ -16,8 +16,8 @@ public partial class MarkdownRendererControl
     /// </summary>
     private bool RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot)
     {
-        if (_isDisposed || _isUnloaded || snapshot is null ||
-            !ReferenceEquals(snapshot, _snapshot) || !snapshot.GeometryRecoveryRequired)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || snapshot is null ||
+            !ReferenceEquals(snapshot, _published.Snapshot) || !snapshot.GeometryRecoveryRequired)
         {
             return false;
         }
@@ -31,7 +31,7 @@ public partial class MarkdownRendererControl
         TryGeometryRecoveryCleanup(ResetVectorCapacityObserver);
         ClearHorizontalOverflowPointerState();
         ClearPendingFocusGeometryWork();
-        _selectionAdornerRects.Clear();
+        _adorner.ClearGeometry();
         // This tuple describes re-publication of this snapshot's geometry, not
         // an offside replacement candidate. It cannot repair a failed tree.
         _pendingLayoutCommit = null;
@@ -51,18 +51,18 @@ public partial class MarkdownRendererControl
         // hiding a visual. Such cleanup must neither consume the one recovery
         // request without scheduling it nor leave another capture unreleased.
         TryGeometryRecoveryCleanup(() => ResetTransientInteractionState(clearSelection: false));
-        TryGeometryRecoveryCleanup(() => _canvas?.ReleasePointerCaptures());
+        TryGeometryRecoveryCleanup(() => _surface.Canvas?.ReleasePointerCaptures());
         TryGeometryRecoveryCleanup(() => SetSelectionDragShieldActive(false));
         TryGeometryRecoveryCleanup(CloseSelectionContextMenu);
-        TryGeometryRecoveryCleanup(HideAbbreviationTooltip);
-        TryGeometryRecoveryCleanup(() => SetCursorShape(null));
+        TryGeometryRecoveryCleanup(_abbreviationTooltip.Hide);
+        TryGeometryRecoveryCleanup(() => _cursor.SetShape(null));
         TryGeometryRecoveryCleanup(() =>
         {
             if (_focusRing is not null)
                 _focusRing.Visibility = Visibility.Collapsed;
         });
         TryGeometryRecoveryCleanup(() => SetSelectionHandleVisibility(Visibility.Collapsed));
-        TryGeometryRecoveryCleanup(ReleaseSelectionAdornerSurface);
+        TryGeometryRecoveryCleanup(_adorner.ReleaseSurface);
         TryGeometryRecoveryCleanup(InvalidateAutomationLayout);
 
         if (snapshot.GeometryRecoveryIsDeviceLost)
@@ -103,12 +103,12 @@ public partial class MarkdownRendererControl
             return;
 
         StopCanvasDeviceRecovery();
-        if (_isDisposed || _isUnloaded)
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded)
             return;
 
         RequestRebuild(RebuildReason.Full);
         InvalidateCanvas();
-        InvalidateSelectionAdorner();
+        _adorner.Invalidate();
     }
 
     private void StopCanvasDeviceRecovery()

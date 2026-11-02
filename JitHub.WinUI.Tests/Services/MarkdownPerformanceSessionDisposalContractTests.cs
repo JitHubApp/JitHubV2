@@ -26,7 +26,7 @@ public sealed class MarkdownPerformanceSessionDisposalContractTests
         Assert.True(enqueue >= 0);
         string queuedCallback = handler[enqueue..];
         Assert.Contains("ReferenceEquals(sender, Volatile.Read(ref _subscribedPerformanceSession))", queuedCallback, StringComparison.Ordinal);
-        Assert.Contains("!_isDisposed && !_isUnloaded", queuedCallback, StringComparison.Ordinal);
+        Assert.Contains("!_lifetime.IsDisposed && !_lifetime.IsUnloaded", queuedCallback, StringComparison.Ordinal);
         Assert.Contains("RequestRebuild(RebuildReason.Full);", queuedCallback, StringComparison.Ordinal);
     }
 
