@@ -3,22 +3,6 @@ using System.Threading.Tasks;
 
 namespace MarkdownRenderer.Controls;
 
-internal enum MarkdownRebuildCoordinatorReason
-{
-    // Keep the values ordered by merge precedence; SceneMaterialized is the
-    // neutral (lowest-priority) queued reason, then Restyle, then Full.
-    SceneMaterialized = 0,
-    Restyle = 1,
-    Full = 2,
-}
-
-internal enum MarkdownRebuildRequestDisposition
-{
-    Deferred,
-    Queue,
-    Supersede,
-}
-
 /// <summary>
 /// Tracks the pending rebuild reason separately from the published pipeline
 /// lifetime. Scene materialization can request one coalesced follow-up without
