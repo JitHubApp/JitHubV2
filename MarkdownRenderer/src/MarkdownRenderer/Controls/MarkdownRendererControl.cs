@@ -52,7 +52,8 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     IMarkdownPerformanceLegacyParser, ISelectionAdornerHost, ISelectionCommandsHost, ISelectionDismissalHost,
     ISelectionHandlesHost, ISelectionContextMenuHost, IPointerInputSink, IPointerInteractionHost,
     IHorizontalOverflowPointerHost, IPointerInputRouterHost, IDeferredGestureLayoutHost, IEmbedRealizationHost,
-    ICodeBlockCopyButtonHost, IFocusRingHost, IHostedElementFocusHost
+    ICodeBlockCopyButtonHost, IFocusRingHost, IHostedElementFocusHost,
+    IHorizontalOverflowScrollHost
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
@@ -156,9 +157,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     // O(log N + batch size), and naturally prioritizes earlier document roots.
     private readonly SortedSet<int> _pendingImageRelayoutBlockIndices = [];
     private bool _selectionAutomationEventQueued;
-    private bool _horizontalOverflowAutomationEventQueued;
-    private readonly Dictionary<IHorizontalOverflowBox, PendingHorizontalOverflowAutomationChange>
-        _pendingHorizontalOverflowAutomationChanges = new(ReferenceEqualityComparer.Instance);
     private float _lastWidth;
     private static readonly MarkdownTheme _defaultTheme = new();
     private static readonly MarkdownExtensionRegistry _defaultRegistry = new();
@@ -199,6 +197,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private readonly KeyboardFocusModel _focus;
     private readonly FocusGeometryReader _focusGeometry;
     private readonly HostedElementFocus _hostedFocus;
+    private readonly HorizontalOverflowScrollVisuals _overflowScroll;
     private bool _taskCommandAvailabilityRefreshQueued;
     // A deferred focus-plan refresh is value-only: it never keeps a snapshot,
     // box, or native resource alive while a geometry lease is busy.
@@ -222,10 +221,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private Point _pendingFocusResumePoint;
     private long _pendingFocusResumeGeneration;
     private bool _lastFocusNavigationHandled;
-    private bool _hasPendingHorizontalOverflowRefresh;
-    private long _pendingHorizontalOverflowRefreshGeneration;
-    private int _pendingHorizontalOverflowRefreshBlockIndex;
-    private double _pendingHorizontalOverflowRefreshOldOffset;
     private readonly FocusRingPresenter _focusRing;
 
     // The provider may raise CacheInvalidated from a worker or system-event
@@ -234,35 +229,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private IMarkdownSvgRenderer? _subscribedSvgRenderer;
     private IMarkdownPerformanceSessionInternal? _subscribedPerformanceSession;
     private bool _canvasRenderHandlersAttached;
-    private readonly struct HorizontalOverflowVisualState(
-        WeakReference<LayoutSnapshot> Snapshot,
-        long SnapshotGeneration,
-        long LayoutRevision,
-        int BlockIndex,
-        WeakReference<IHorizontalOverflowBox> Target,
-        double OldOffset,
-        double NewOffset,
-        double Extent,
-        double Viewport,
-        bool IsRightToLeft,
-        Rect ViewportBounds,
-        Rect TrackBounds,
-        InlineEmbedPlacementUpdate[] EmbedPlacements)
-    {
-        public readonly WeakReference<LayoutSnapshot> Snapshot = Snapshot;
-        public readonly long SnapshotGeneration = SnapshotGeneration;
-        public readonly long LayoutRevision = LayoutRevision;
-        public readonly int BlockIndex = BlockIndex;
-        public readonly WeakReference<IHorizontalOverflowBox> Target = Target;
-        public readonly double OldOffset = OldOffset;
-        public readonly double NewOffset = NewOffset;
-        public readonly double Extent = Extent;
-        public readonly double Viewport = Viewport;
-        public readonly bool IsRightToLeft = IsRightToLeft;
-        public readonly Rect ViewportBounds = ViewportBounds;
-        public readonly Rect TrackBounds = TrackBounds;
-        public readonly InlineEmbedPlacementUpdate[] EmbedPlacements = EmbedPlacements;
-    }
 
     private readonly BoundedCodeBlockHighlightCache<CodeBlockHighlightCacheKey> _codeBlockHighlightCache = new(
         CodeBlockHighlightCacheMaxEntries,
@@ -1929,6 +1895,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _focusRing = new FocusRingPresenter(this, _focus, _surface, _lifetime, _published, DispatcherQueue);
         _focusRefresh = new FocusableItemsRefreshRequest(_published);
         _hostedFocus = new HostedElementFocus(this, _lifetime, _published, _focus, _hostedFocusPlan, _embeds, _focusRing);
+        _overflowScroll = new HorizontalOverflowScrollVisuals(this, _surface, _lifetime, _published, _selection, _focus, _embeds, DispatcherQueue);
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         Loaded += (_, _) => OnLoadedInternal();
@@ -2331,7 +2298,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         => ResumePendingRebuildAfterPointerInteraction();
 
     void IHorizontalOverflowPointerHost.RefreshHorizontalOverflowVisualState(IHorizontalOverflowBox target, double oldOffset)
-        => RefreshHorizontalOverflowVisualState(target, oldOffset);
+        => _overflowScroll.Refresh(target, oldOffset);
 
     void IPointerInputSink.DispatchPointerInput(PointerInputKind kind, object sender, PointerRoutedEventArgs args)
         => _pointerInput.DispatchPointerInput(kind, sender, args);
@@ -2473,6 +2440,22 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     bool IHostedElementFocusHost.FocusRenderer() => Focus(FocusState.Keyboard);
 
     void IHostedElementFocusHost.UpdateFocusRing() => UpdateFocusRing();
+
+    void IHorizontalOverflowScrollHost.UpdateSelectionOverlay() => UpdateSelectionOverlay();
+
+    void IHorizontalOverflowScrollHost.UpdateFocusRing() => UpdateFocusRing();
+
+    void IHorizontalOverflowScrollHost.StartRecoveryClock() => StartImageRelayoutRecovery();
+
+    bool IHorizontalOverflowScrollHost.HasRecoveryClock => HasImageRelayoutRecoveryClock;
+
+    void IHorizontalOverflowScrollHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);
+
+    bool IHorizontalOverflowScrollHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot)
+        => RequestGeometryRecoveryIfRequired(snapshot);
+
+    MarkdownAutomationPeer? IHorizontalOverflowScrollHost.FindAutomationPeer()
+        => FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer;
 
     double IDeferredGestureLayoutHost.RasterizationScale => XamlRoot?.RasterizationScale ?? 1;
 
@@ -2736,8 +2719,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _pendingImageRelayoutBlockIndices.Clear();
         _pendingScrollToBlock = null;
         _selectionAutomationEventQueued = false;
-        _horizontalOverflowAutomationEventQueued = false;
-        _pendingHorizontalOverflowAutomationChanges.Clear();
+        _overflowScroll.ClearAutomationNotifications();
         RetireCodeBlockHighlighting(restart: false);
         // Unsubscribe scroll handler so scroll-inertia events after visual-tree
         // removal don't fire OnScrollViewChanged on a partially-torn-down control.
@@ -6532,7 +6514,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 control.PublishPendingLayoutCommit();
                 control.ProcessQueuedLazyLayoutRealization(control._lastLazyLayoutDispatchTicket);
                 control.TryPublishLazyLayoutCompletion(control._lazyLayoutGeneration);
-                control.ProcessPendingHorizontalOverflowVisualRetry();
+                control._overflowScroll.ProcessPendingRetry();
                 control.ProcessPendingFocusGeometry();
                 control.TryPublishPendingFocusableItems();
                 if (control._imageRelayoutTask is { IsFaulted: true } failed &&
@@ -6570,7 +6552,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private void StopImageRelayoutRecovery(bool force = false)
     {
         if (!force && (_bitmapOutputRecovery.IsPending || HasPendingLazyLayoutWork ||
-            _hasPendingHorizontalOverflowRefresh ||
+            _overflowScroll.HasPendingRetry ||
             _focusRefresh.Pending.IsPending ||
             _pendingSpatialFocusKeys.Count > 0 ||
             _pendingFocusGeometryRefresh ||
@@ -6595,7 +6577,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             _bitmapOutputRecovery.IsPending ||
             _imageRelayoutActive ||
             _pendingImageRelayoutBlockIndices.Count > 0 ||
-            _hasPendingHorizontalOverflowRefresh ||
+            _overflowScroll.HasPendingRetry ||
             _focusRefresh.Pending.IsPending ||
             _pendingSpatialFocusKeys.Count > 0 ||
             _pendingFocusGeometryRefresh ||
@@ -7497,461 +7479,15 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
             RequestRebuild(RebuildReason.Full);
     }
 
-    private void RefreshHorizontalOverflowVisualState(
-        IHorizontalOverflowBox target,
-        double oldOffset)
-    {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _published.Snapshot is not { } snapshot ||
-            target is not BlockBox targetBlock)
-        {
-            return;
-        }
-
-        long generation = _published.Generation;
-        long revision = snapshot.LayoutRevision;
-        if (!snapshot.TryBeginInteraction())
-        {
-            QueueHorizontalOverflowVisualRetry(
-                snapshot, generation, targetBlock.BlockIndex, oldOffset);
-            return;
-        }
-
-        HorizontalOverflowVisualState state = default;
-        bool captured = false;
-        try
-        {
-            if (IsCurrentScrollTarget(snapshot, generation, revision))
-            {
-                captured = snapshot.TryGetHorizontalOverflowForBlockIndex(
-                    targetBlock.BlockIndex,
-                    out IHorizontalOverflowBox? currentTarget) &&
-                    ReferenceEquals(currentTarget, target) &&
-                    TryCaptureHorizontalOverflowVisualStateNoLock(
-                        snapshot, generation, revision, target, oldOffset, out state);
-            }
-        }
-        finally
-        {
-            snapshot.EndInteraction();
-        }
-
-        if (captured && IsCurrentScrollTarget(snapshot, generation, revision))
-            PublishHorizontalOverflowVisualState(state);
-        else if (ReferenceEquals(snapshot, _published.Snapshot) &&
-                 generation == _published.Generation)
-            QueueHorizontalOverflowVisualRetry(
-                snapshot, generation, targetBlock.BlockIndex, oldOffset);
-    }
-
-    private bool TryCaptureHorizontalOverflowVisualStateNoLock(
-        LayoutSnapshot snapshot,
-        long snapshotGeneration,
-        long layoutRevision,
-        IHorizontalOverflowBox target,
-        double oldOffset,
-        out HorizontalOverflowVisualState state)
-    {
-        state = default;
-        if (!IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision) ||
-            target is not BlockBox targetBlock ||
-            !snapshot.TryGetHorizontalOverflowForBlockIndex(
-                targetBlock.BlockIndex,
-                out IHorizontalOverflowBox? currentTarget) ||
-            !ReferenceEquals(currentTarget, target))
-        {
-            return false;
-        }
-
-        double newOffset = target.HorizontalOffset;
-        double logicalDelta = newOffset - oldOffset;
-        if (Math.Abs(logicalDelta) <= 0.1)
-            return false;
-
-        double physicalDelta = target.IsRightToLeft ? logicalDelta : -logicalDelta;
-        List<InlineEmbedPlacementUpdate>? placements = null;
-        foreach (EmbedPlan plan in _embeds.EmbedPlans)
-        {
-            if (plan is not InlineEmbedPlan inline ||
-                !HorizontalOverflowContains(target, inline.Icb))
-            {
-                continue;
-            }
-
-            Rect rect = inline.Rect;
-            placements ??= new List<InlineEmbedPlacementUpdate>();
-            placements.Add(new(
-                new WeakReference<InlineEmbedPlan>(inline),
-                new Rect(rect.X + physicalDelta, rect.Y, rect.Width, rect.Height)));
-        }
-
-        state = new(
-            new WeakReference<LayoutSnapshot>(snapshot),
-            snapshotGeneration,
-            layoutRevision,
-            targetBlock.BlockIndex,
-            new WeakReference<IHorizontalOverflowBox>(target),
-            oldOffset,
-            newOffset,
-            target.HorizontalExtent,
-            target.HorizontalViewport,
-            target.IsRightToLeft,
-            snapshot.ToLogicalRectForBlockIndexUnderPaint(
-                targetBlock.BlockIndex, target.HorizontalViewportBounds),
-            snapshot.ToLogicalRectForBlockIndexUnderPaint(
-                targetBlock.BlockIndex, target.HorizontalScrollTrackBounds),
-            placements?.ToArray() ?? Array.Empty<InlineEmbedPlacementUpdate>());
-        return true;
-    }
-
-    private void PublishHorizontalOverflowVisualState(HorizontalOverflowVisualState state)
-    {
-        bool queued = false;
-        try
-        {
-            queued = DispatcherQueue is { } dispatcher &&
-                dispatcher.TryEnqueue(() => ApplyHorizontalOverflowVisualState(state));
-        }
-        catch (Exception)
-        {
-        }
-        if (!queued)
-        {
-            QueueHorizontalOverflowVisualRetry(
-                state.Snapshot.TryGetTarget(out LayoutSnapshot? snapshot)
-                    ? snapshot
-                    : null,
-                state.SnapshotGeneration,
-                state.BlockIndex,
-                state.OldOffset);
-        }
-    }
-
-    private void ApplyHorizontalOverflowVisualState(HorizontalOverflowVisualState state)
-    {
-        LayoutSnapshot? snapshot = null;
-        IHorizontalOverflowBox? target = null;
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded ||
-            state.Snapshot is null || state.Target is null ||
-            !state.Snapshot.TryGetTarget(out snapshot) ||
-            !state.Target.TryGetTarget(out target) ||
-            !IsCurrentScrollTarget(snapshot, state.SnapshotGeneration, state.LayoutRevision))
-        {
-            if (snapshot is not null &&
-                ReferenceEquals(snapshot, _published.Snapshot) &&
-                state.SnapshotGeneration == _published.Generation)
-            {
-                QueueHorizontalOverflowVisualRetry(
-                    snapshot, state.SnapshotGeneration, state.BlockIndex, state.OldOffset);
-            }
-            return;
-        }
-
-        bool movedEmbed = false;
-        foreach (InlineEmbedPlacementUpdate placement in state.EmbedPlacements)
-        {
-            if (!IsCurrentScrollTarget(snapshot, state.SnapshotGeneration, state.LayoutRevision))
-                return;
-            if (!placement.Plan.TryGetTarget(out InlineEmbedPlan? plan) ||
-                !_embeds.Contains(plan))
-            {
-                continue;
-            }
-
-            plan.Rect = placement.Rect;
-            plan.UpdatePlacement();
-            movedEmbed = true;
-        }
-
-        if (!IsCurrentScrollTarget(snapshot, state.SnapshotGeneration, state.LayoutRevision))
-            return;
-        if (movedEmbed)
-            _embeds.RealizeVisible();
-        if (!IsCurrentScrollTarget(snapshot, state.SnapshotGeneration, state.LayoutRevision))
-            return;
-        if (_selection.IsActive)
-            UpdateSelectionOverlay();
-        if (!IsCurrentScrollTarget(snapshot, state.SnapshotGeneration, state.LayoutRevision))
-            return;
-        if (_focus.FocusedIndex >= 0)
-            UpdateFocusRing();
-        QueueHorizontalOverflowAutomationNotification(
-            snapshot,
-            state.SnapshotGeneration,
-            target,
-            state.OldOffset,
-            state.NewOffset,
-            state.Extent,
-            state.Viewport,
-            state.IsRightToLeft);
-
-        if (_surface.Canvas is { } canvas)
-        {
-            if (MarkdownCanvasInvalidationPolicy.TryClipToCanvas(
-                    new Rect(
-                        state.ViewportBounds.X - 1,
-                        state.ViewportBounds.Y - 1,
-                        state.ViewportBounds.Width + 2,
-                        Math.Max(state.ViewportBounds.Bottom, state.TrackBounds.Bottom) - state.ViewportBounds.Y + 2),
-                    canvas.Width,
-                    canvas.Height,
-                    out Rect invalidation))
-            {
-                canvas.Invalidate(invalidation);
-            }
-        }
-    }
-
-    private void QueueHorizontalOverflowVisualRetry(
-        LayoutSnapshot? snapshot,
-        long snapshotGeneration,
-        int blockIndex,
-        double oldOffset)
-    {
-        if (snapshot is null || !ReferenceEquals(snapshot, _published.Snapshot) ||
-            snapshotGeneration != _published.Generation)
-        {
-            return;
-        }
-
-        _hasPendingHorizontalOverflowRefresh = true;
-        _pendingHorizontalOverflowRefreshGeneration = snapshotGeneration;
-        _pendingHorizontalOverflowRefreshBlockIndex = blockIndex;
-        _pendingHorizontalOverflowRefreshOldOffset = oldOffset;
-        StartImageRelayoutRecovery();
-        if (!HasImageRelayoutRecoveryClock)
-        {
-            _hasPendingHorizontalOverflowRefresh = false;
-            RequestRebuild(RebuildReason.Full);
-        }
-    }
-
-    private void ProcessPendingHorizontalOverflowVisualRetry()
-    {
-        if (!_hasPendingHorizontalOverflowRefresh)
-            return;
-        if (RequestGeometryRecoveryIfRequired(_published.Snapshot))
-        {
-            _hasPendingHorizontalOverflowRefresh = false;
-            return;
-        }
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _published.Snapshot is not { } snapshot ||
-            _pendingHorizontalOverflowRefreshGeneration != _published.Generation)
-        {
-            _hasPendingHorizontalOverflowRefresh = false;
-            return;
-        }
-
-        long generation = _pendingHorizontalOverflowRefreshGeneration;
-        long revision = snapshot.LayoutRevision;
-        if (!snapshot.TryBeginInteraction())
-            return;
-
-        HorizontalOverflowVisualState state = default;
-        bool found = false;
-        bool missing = false;
-        try
-        {
-            if (IsCurrentScrollTarget(snapshot, generation, revision) &&
-                snapshot.TryGetHorizontalOverflowForBlockIndex(
-                    _pendingHorizontalOverflowRefreshBlockIndex,
-                    out IHorizontalOverflowBox? target) &&
-                target is not null)
-            {
-                found = TryCaptureHorizontalOverflowVisualStateNoLock(
-                    snapshot,
-                    generation,
-                    revision,
-                    target,
-                    _pendingHorizontalOverflowRefreshOldOffset,
-                    out state);
-                missing = !found &&
-                    Math.Abs(target.HorizontalOffset - _pendingHorizontalOverflowRefreshOldOffset) <= 0.1;
-            }
-            else
-            {
-                missing = true;
-            }
-        }
-        finally
-        {
-            snapshot.EndInteraction();
-        }
-
-        if (!IsCurrentScrollTarget(snapshot, generation, revision))
-            return;
-        if (found)
-        {
-            _hasPendingHorizontalOverflowRefresh = false;
-            PublishHorizontalOverflowVisualState(state);
-        }
-        else if (missing)
-        {
-            _hasPendingHorizontalOverflowRefresh = false;
-        }
-    }
-
-    private void QueueHorizontalOverflowAutomationNotification(
-        LayoutSnapshot snapshot,
-        long snapshotGeneration,
-        IHorizontalOverflowBox target,
-        double oldOffset,
-        double newOffset,
-        double extent,
-        double viewport,
-        bool isRightToLeft)
-    {
-        if (!AutomationPeer.ListenerExists(AutomationEvents.PropertyChanged) ||
-            _lifetime.IsDisposed ||
-            _lifetime.IsUnloaded ||
-            !ReferenceEquals(snapshot, _published.Snapshot) ||
-            snapshotGeneration != _published.Generation ||
-            !snapshot.SemanticDocument.TryGetHorizontalOverflowNode(target, out _))
-        {
-            return;
-        }
-
-        double oldPhysicalPercent = MarkdownHorizontalScrollPolicy.GetPhysicalPercent(
-            oldOffset,
-            extent,
-            viewport,
-            isRightToLeft);
-        double newPhysicalPercent = MarkdownHorizontalScrollPolicy.GetPhysicalPercent(
-            newOffset,
-            extent,
-            viewport,
-            isRightToLeft);
-        if (Math.Abs(newPhysicalPercent - oldPhysicalPercent) <= 0.0001)
-            return;
-
-        if (_pendingHorizontalOverflowAutomationChanges.TryGetValue(
-                target,
-                out PendingHorizontalOverflowAutomationChange pending) &&
-            ReferenceEquals(pending.Snapshot, snapshot))
-        {
-            _pendingHorizontalOverflowAutomationChanges[target] = new(
-                pending.Snapshot,
-                pending.OldPhysicalPercent,
-                newPhysicalPercent);
-        }
-        else
-        {
-            _pendingHorizontalOverflowAutomationChanges[target] = new(
-                snapshot,
-                oldPhysicalPercent,
-                newPhysicalPercent);
-        }
-
-        if (_horizontalOverflowAutomationEventQueued)
-            return;
-
-        _horizontalOverflowAutomationEventQueued = true;
-        Microsoft.UI.Dispatching.DispatcherQueue? dispatcher = DispatcherQueue;
-        if (dispatcher is null || !dispatcher.TryEnqueue(
-                Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-                ProcessQueuedHorizontalOverflowAutomationNotifications))
-        {
-            _horizontalOverflowAutomationEventQueued = false;
-            _pendingHorizontalOverflowAutomationChanges.Clear();
-        }
-    }
-
-    private void ProcessQueuedHorizontalOverflowAutomationNotifications()
-    {
-        _horizontalOverflowAutomationEventQueued = false;
-        var changes = new KeyValuePair<IHorizontalOverflowBox, PendingHorizontalOverflowAutomationChange>[
-            _pendingHorizontalOverflowAutomationChanges.Count];
-        ((ICollection<KeyValuePair<IHorizontalOverflowBox, PendingHorizontalOverflowAutomationChange>>)
-            _pendingHorizontalOverflowAutomationChanges).CopyTo(changes, 0);
-        _pendingHorizontalOverflowAutomationChanges.Clear();
-
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _published.Snapshot is not { } currentSnapshot)
-            return;
-
-        MarkdownAutomationPeer? peer =
-            FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer;
-        if (peer is null)
-            return;
-
-        foreach (KeyValuePair<IHorizontalOverflowBox, PendingHorizontalOverflowAutomationChange> entry in changes)
-        {
-            PendingHorizontalOverflowAutomationChange change = entry.Value;
-            if (!ReferenceEquals(change.Snapshot, currentSnapshot) ||
-                !currentSnapshot.SemanticDocument.TryGetHorizontalOverflowNode(entry.Key, out _))
-            {
-                continue;
-            }
-
-            peer.NotifyHorizontalOverflowScrolled(
-                entry.Key,
-                change.OldPhysicalPercent,
-                change.NewPhysicalPercent);
-        }
-    }
-
     internal void ScrollHorizontalOverflowForAutomation(
         IHorizontalOverflowBox target,
         ScrollAmount amount)
-    {
-        if (_published.Snapshot is not { } snapshot)
-            return;
-
-        double physicalDelta = amount switch
-        {
-            ScrollAmount.LargeDecrement => -Math.Max(48, target.HorizontalViewport * 0.9),
-            ScrollAmount.SmallDecrement => -48,
-            ScrollAmount.SmallIncrement => 48,
-            ScrollAmount.LargeIncrement => Math.Max(48, target.HorizontalViewport * 0.9),
-            _ => 0,
-        };
-        double logicalDelta = MarkdownHorizontalScrollPolicy.GetLogicalDelta(
-            physicalDelta,
-            target.IsRightToLeft);
-        double oldOffset = target.HorizontalOffset;
-        if (snapshot.TryScrollHorizontal(target, logicalDelta))
-            RefreshHorizontalOverflowVisualState(target, oldOffset);
-    }
+        => _overflowScroll.ScrollForAutomation(target, amount);
 
     internal void SetHorizontalOverflowPercentForAutomation(
         IHorizontalOverflowBox target,
         double percent)
-    {
-        if (_published.Snapshot is not { } snapshot || !double.IsFinite(percent))
-            return;
-
-        double oldOffset = target.HorizontalOffset;
-        double logicalOffset = MarkdownHorizontalScrollPolicy.GetLogicalOffset(
-            percent,
-            target.HorizontalExtent,
-            target.HorizontalViewport,
-            target.IsRightToLeft);
-        if (snapshot.TrySetHorizontalOffset(target, logicalOffset))
-            RefreshHorizontalOverflowVisualState(target, oldOffset);
-    }
-
-    private static bool HorizontalOverflowContains(
-        IHorizontalOverflowBox target,
-        Layout.Boxes.InlineContainerBox box)
-    {
-        if (target is Layout.Boxes.CodeBlockBox code)
-        {
-            foreach (var chunk in code.Chunks)
-            {
-                if (ReferenceEquals(chunk, box))
-                    return true;
-            }
-            return false;
-        }
-
-        if (target is Layout.Boxes.TableBox table)
-        {
-            foreach (var cell in table.GetCellBoxes())
-            {
-                if (ReferenceEquals(cell, box))
-                    return true;
-            }
-        }
-        return false;
-    }
+        => _overflowScroll.SetPercentForAutomation(target, percent);
 
     private void FocusRendererForPointerInteraction()
     {
@@ -8513,7 +8049,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                 oldOffset = overflow.HorizontalOffset;
                 changed = snapshot.TryScrollHorizontal(overflow, logicalDelta);
                 if (changed)
-                    _ = TryCaptureHorizontalOverflowVisualStateNoLock(
+                    _ = _overflowScroll.TryCaptureUnderLease(
                         snapshot, generation, revision, overflow, oldOffset, out visualState);
             }
         }
@@ -8531,9 +8067,9 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
         _lastFocusNavigationHandled = true;
         if (visualState.Snapshot is not null)
-            PublishHorizontalOverflowVisualState(visualState);
+            _overflowScroll.Publish(visualState);
         else
-            QueueHorizontalOverflowVisualRetry(snapshot, generation, blockIndex, oldOffset);
+            _overflowScroll.QueueRetry(snapshot, generation, blockIndex, oldOffset);
         return FocusGeometryReadStatus.Ready;
     }
 
@@ -8593,7 +8129,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                     : 0;
                 changed = snapshot.TrySetHorizontalOffset(overflow, target);
                 if (changed)
-                    _ = TryCaptureHorizontalOverflowVisualStateNoLock(
+                    _ = _overflowScroll.TryCaptureUnderLease(
                         snapshot, generation, revision, overflow, oldOffset, out visualState);
             }
         }
@@ -8611,9 +8147,9 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
         _lastFocusNavigationHandled = true;
         if (visualState.Snapshot is not null)
-            PublishHorizontalOverflowVisualState(visualState);
+            _overflowScroll.Publish(visualState);
         else
-            QueueHorizontalOverflowVisualRetry(snapshot, generation, blockIndex, oldOffset);
+            _overflowScroll.QueueRetry(snapshot, generation, blockIndex, oldOffset);
         return FocusGeometryReadStatus.Ready;
     }
 
@@ -8922,8 +8458,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _pendingFocusGeometryRefresh = false;
         _hasPendingFocusResumePoint = false;
         _pendingFocusResumeGeneration = 0;
-        _hasPendingHorizontalOverflowRefresh = false;
-        _pendingHorizontalOverflowRefreshGeneration = 0;
+        _overflowScroll.ClearPendingRetry();
         _focusRing.InvalidatePublication();
     }
 
@@ -9398,7 +8933,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
                         if (snapshot.TrySetHorizontalOffset(overflow, oldHorizontalOffset + logicalShift))
                         {
                             horizontalScrolled = true;
-                            _ = TryCaptureHorizontalOverflowVisualStateNoLock(
+                            _ = _overflowScroll.TryCaptureUnderLease(
                                 snapshot, generation, revision, overflow, oldHorizontalOffset, out visualState);
                             capturedRect = FocusableItemQueries.GetLogicalRectUnderPaint(snapshot, item) ?? rect;
                         }
@@ -9420,9 +8955,9 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         if (horizontalScrolled)
         {
             if (visualState.Snapshot is not null)
-                PublishHorizontalOverflowVisualState(visualState);
+                _overflowScroll.Publish(visualState);
             else
-                QueueHorizontalOverflowVisualRetry(snapshot, generation, item.BlockIndex,
+                _overflowScroll.QueueRetry(snapshot, generation, item.BlockIndex,
                     oldHorizontalOffset);
         }
 

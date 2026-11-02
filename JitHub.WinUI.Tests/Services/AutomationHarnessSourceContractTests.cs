@@ -551,7 +551,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("control.PublishPendingLayoutCommit();", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("control.ProcessQueuedLazyLayoutRealization(control._lastLazyLayoutDispatchTicket);", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("control.TryPublishLazyLayoutCompletion(control._lazyLayoutGeneration);", recoveryTick, StringComparison.Ordinal);
-        Assert.Contains("control.ProcessPendingHorizontalOverflowVisualRetry();", recoveryTick, StringComparison.Ordinal);
+        Assert.Contains("control._overflowScroll.ProcessPendingRetry();", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("control.ProcessPendingFocusGeometry();", recoveryTick, StringComparison.Ordinal);
         Assert.Matches(
             "if\\s*\\(control\\._lifetime\\.IsDisposed \\|\\| control\\._lifetime\\.IsUnloaded\\)\\s*control\\.StopImageRelayoutRecovery\\(force: true\\);",
