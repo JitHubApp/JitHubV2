@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Xml;
 
@@ -102,68 +103,8 @@ internal static class SvgUtf8Normalization
                     cancellationToken,
                     beforeFirstSegmentAllocation);
                 beforeFirstSegmentAllocation = null;
-                XmlWriterSettings writerSettings = new()
-                {
-                    Async = true,
-                    CloseOutput = false,
-                    Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
-                    Indent = false,
-                    NewLineHandling = NewLineHandling.None,
-                    OmitXmlDeclaration = false,
-                };
-                writer = XmlWriter.Create(output, writerSettings);
-
-                bool readNext = true;
-                while (true)
-                {
-                    if (reader.EOF || reader.ReadState == ReadState.EndOfFile)
-                        break;
-                    if (readNext && !await reader.ReadAsync().ConfigureAwait(false))
-                        break;
-                    readNext = true;
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    if (reader.NodeType == XmlNodeType.XmlDeclaration)
-                    {
-                        // WriteNode preserves the original declaration verbatim,
-                        // including its non-UTF-8 encoding. Let the configured
-                        // writer emit the matching declaration while preserving
-                        // the authored standalone contract (XML 1.0 was validated).
-                        switch (reader.GetAttribute("standalone"))
-                        {
-                            case "yes":
-                                await writer.WriteStartDocumentAsync(standalone: true).ConfigureAwait(false);
-                                break;
-                            case "no":
-                                await writer.WriteStartDocumentAsync(standalone: false).ConfigureAwait(false);
-                                break;
-                            default:
-                                await writer.WriteStartDocumentAsync().ConfigureAwait(false);
-                                break;
-                        }
-                        continue;
-                    }
-
-                    if (reader.Depth > options.MaxXmlDepth)
-                        throw SvgPreflightFailures.Resource("The SVG exceeds the XML-depth ceiling.");
-                    if (reader.NodeType == XmlNodeType.DocumentType)
-                    {
-                        throw SvgPreflightFailures.Unsupported("SVG DTDs and entities are forbidden.");
-                    }
-                    if (reader.NodeType == XmlNodeType.ProcessingInstruction &&
-                        reader.Name.Equals("xml-stylesheet", StringComparison.OrdinalIgnoreCase))
-                    {
-                        throw SvgPreflightFailures.Unsupported("External SVG stylesheets are forbidden.");
-                    }
-
-                    await writer.WriteNodeAsync(reader, defattr: true).ConfigureAwait(false);
-                    // WriteNode consumes the current node and leaves the reader on
-                    // its next sibling; that node must be processed before another
-                    // ReadAsync advances the stream.
-                    if (reader.EOF || reader.ReadState == ReadState.EndOfFile)
-                        break;
-                    readNext = false;
-                }
+                writer = XmlWriter.Create(output, CreateWriterSettings());
+                await CopyNodesAsync(reader, writer, options, cancellationToken).ConfigureAwait(false);
 
                 cancellationToken.ThrowIfCancellationRequested();
                 await writer.FlushAsync().ConfigureAwait(false);
@@ -171,38 +112,7 @@ internal static class SvgUtf8Normalization
             }
             finally
             {
-                try
-                {
-                    writer?.Dispose();
-                }
-                finally
-                {
-                    writer = null;
-                    try
-                    {
-                        reader?.Dispose();
-                    }
-                    finally
-                    {
-                        reader = null;
-                        try
-                        {
-                            input?.Dispose();
-                        }
-                        finally
-                        {
-                            input = null;
-                            try
-                            {
-                                inputLease?.Dispose();
-                            }
-                            finally
-                            {
-                                inputLease = null;
-                            }
-                        }
-                    }
-                }
+                DisposeReadChain(ref writer, ref reader, ref input, ref inputLease);
             }
             cancellationToken.ThrowIfCancellationRequested();
             BoundedOutputStream result = output;
@@ -214,6 +124,141 @@ internal static class SvgUtf8Normalization
             output?.Dispose();
             output = null;
             beforeFirstSegmentAllocation = null;
+        }
+    }
+
+    private static XmlWriterSettings CreateWriterSettings() => new()
+    {
+        Async = true,
+        CloseOutput = false,
+        Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+        Indent = false,
+        NewLineHandling = NewLineHandling.None,
+        OmitXmlDeclaration = false,
+    };
+
+    /// <summary>
+    /// Re-encodes every node from <paramref name="reader"/> through
+    /// <paramref name="writer"/>, replacing the XML declaration and rejecting
+    /// over-deep, DTD and external-stylesheet nodes as they are reached.
+    /// </summary>
+    /// <param name="reader">The reader over the original source.</param>
+    /// <param name="writer">The UTF-8 writer over the bounded output.</param>
+    /// <param name="options">The renderer options.</param>
+    /// <param name="cancellationToken">Cancels normalization.</param>
+    /// <returns>A task that completes when the reader is exhausted.</returns>
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder))]
+    private static async ValueTask CopyNodesAsync(
+        XmlReader reader,
+        XmlWriter writer,
+        ResvgMarkdownSvgRendererOptions options,
+        CancellationToken cancellationToken)
+    {
+        bool readNext = true;
+        while (true)
+        {
+            if (reader.EOF || reader.ReadState == ReadState.EndOfFile)
+                break;
+            if (readNext && !await reader.ReadAsync().ConfigureAwait(false))
+                break;
+            readNext = true;
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (reader.NodeType == XmlNodeType.XmlDeclaration)
+            {
+                await WriteDeclarationAsync(reader, writer).ConfigureAwait(false);
+                continue;
+            }
+
+            ThrowIfForbiddenNode(reader, options);
+            await writer.WriteNodeAsync(reader, defattr: true).ConfigureAwait(false);
+            // WriteNode consumes the current node and leaves the reader on
+            // its next sibling; that node must be processed before another
+            // ReadAsync advances the stream.
+            if (reader.EOF || reader.ReadState == ReadState.EndOfFile)
+                break;
+            readNext = false;
+        }
+    }
+
+    /// <summary>
+    /// WriteNode preserves the original declaration verbatim, including its
+    /// non-UTF-8 encoding. Let the configured writer emit the matching
+    /// declaration while preserving the authored standalone contract (XML 1.0
+    /// was validated).
+    /// </summary>
+    /// <param name="reader">The reader positioned on the XML declaration.</param>
+    /// <param name="writer">The UTF-8 writer.</param>
+    /// <returns>A task that completes when the declaration is written.</returns>
+    private static Task WriteDeclarationAsync(XmlReader reader, XmlWriter writer) =>
+        reader.GetAttribute("standalone") switch
+        {
+            "yes" => writer.WriteStartDocumentAsync(standalone: true),
+            "no" => writer.WriteStartDocumentAsync(standalone: false),
+            _ => writer.WriteStartDocumentAsync(),
+        };
+
+    private static void ThrowIfForbiddenNode(XmlReader reader, ResvgMarkdownSvgRendererOptions options)
+    {
+        if (reader.Depth > options.MaxXmlDepth)
+            throw SvgPreflightFailures.Resource("The SVG exceeds the XML-depth ceiling.");
+        if (reader.NodeType == XmlNodeType.DocumentType)
+        {
+            throw SvgPreflightFailures.Unsupported("SVG DTDs and entities are forbidden.");
+        }
+        if (reader.NodeType == XmlNodeType.ProcessingInstruction &&
+            reader.Name.Equals("xml-stylesheet", StringComparison.OrdinalIgnoreCase))
+        {
+            throw SvgPreflightFailures.Unsupported("External SVG stylesheets are forbidden.");
+        }
+    }
+
+    /// <summary>
+    /// Disposes the writer, reader, input stream and input lease in that
+    /// order, continuing past a failure, and clears each reference so the
+    /// async frame no longer roots it.
+    /// </summary>
+    /// <param name="writer">The UTF-8 writer, if created.</param>
+    /// <param name="reader">The source reader, if created.</param>
+    /// <param name="input">The source stream, if created.</param>
+    /// <param name="inputLease">The read lease, if not yet adopted by the stream.</param>
+    private static void DisposeReadChain(
+        ref XmlWriter? writer,
+        ref XmlReader? reader,
+        ref SvgSourceStream? input,
+        ref SvgSourceReadLease? inputLease)
+    {
+        try
+        {
+            writer?.Dispose();
+        }
+        finally
+        {
+            writer = null;
+            try
+            {
+                reader?.Dispose();
+            }
+            finally
+            {
+                reader = null;
+                try
+                {
+                    input?.Dispose();
+                }
+                finally
+                {
+                    input = null;
+                    try
+                    {
+                        inputLease?.Dispose();
+                    }
+                    finally
+                    {
+                        inputLease = null;
+                    }
+                }
+            }
         }
     }
 }
