@@ -101,30 +101,14 @@ internal static class InlinePrivatePlacementCloner
             for (int index = 0; index < runCount; index++)
             {
                 targetContext.CancellationToken.ThrowIfCancellationRequested();
-                InlineRun sourceRun = box.RunList[index];
-                if (PrivateTextRunPlacement.IsSupported(sourceRun))
-                {
-                    copiedRuns[index] = PrivateTextRunPlacement.Clone(sourceRun) ??
-                        throw new InvalidOperationException("A supported built-in text run omitted its private placement recipe.");
-                }
-                else if (sourceRun is LinkRun linkRun)
-                {
-                    copiedRuns[index] = linkRun.CloneForPrivateRasterPlacement();
-                }
-                else if (allowMeasuredVectorPlacement && sourceRun is InlineVectorSceneRun vectorRun)
-                {
-                    copiedRuns[index] = vectorRun.CloneForMeasuredPlacement();
-                }
-                else if (sourceRun is InlineImageRun imageRun &&
-                         TryCreateImageRunPlacement(imageRun, targetContext, allowIdleImagePlacements,
-                             out InlineImageRun? copiedImageRun,
-                             out RasterPlacementSourceFence sourceFence) && copiedImageRun is not null)
-                {
-                    copiedRuns[index] = copiedImageRun;
-                    unownedImageClones.Add(copiedImageRun.Image);
-                    sourceFences.Add(sourceFence);
-                }
-                else
+                if (!TryCopyRun(
+                        box.RunList[index],
+                        targetContext,
+                        allowIdleImagePlacements,
+                        allowMeasuredVectorPlacement,
+                        unownedImageClones,
+                        sourceFences,
+                        out copiedRuns[index]))
                 {
                     Exception? cleanupFailure = DiscardPrivateRasterCloneConstruction(
                         targetContext, privateCandidate, unownedImageClones);
@@ -139,17 +123,7 @@ internal static class InlinePrivatePlacementCloner
             }
 
             privateCandidate = box.CreatePrivatePlacementShell(targetContext, allowCodeForegroundSpans);
-            int offset = 0;
-            for (int index = 0; index < copiedRuns.Length; index++)
-            {
-                targetContext.CancellationToken.ThrowIfCancellationRequested();
-                InlineRun copiedRun = copiedRuns[index];
-                privateCandidate.AddPrivatePlacementRun(copiedRun);
-                if (copiedRun is InlineImageRun copiedImage)
-                    unownedImageClones.Remove(copiedImage.Image);
-                privateCandidate.RecordPrivatePlacementRunState(box, index, copiedRun, offset, runCount);
-                offset += copiedRun.TextLength;
-            }
+            int offset = AdoptCopiedRuns(box, privateCandidate, targetContext, copiedRuns, unownedImageClones);
             targetContext.CancellationToken.ThrowIfCancellationRequested();
             privateCandidate.SetPrivatePlacementRunTextLength(offset);
 
@@ -169,6 +143,73 @@ internal static class InlinePrivatePlacementCloner
                 TryAttachCleanupFailure(constructionFailure, cleanupFailure);
             throw;
         }
+    }
+
+    // Copies one source run for the private candidate. A cloned image is
+    // recorded as unowned, with its source fence, before this returns, so a
+    // later failure can retire it. Returns false for an unsupported run.
+    private static bool TryCopyRun(
+        InlineRun sourceRun,
+        MarkdownLayoutContext targetContext,
+        bool allowIdleImagePlacements,
+        bool allowMeasuredVectorPlacement,
+        List<ImageBox> unownedImageClones,
+        List<RasterPlacementSourceFence> sourceFences,
+        out InlineRun copiedRun)
+    {
+        if (PrivateTextRunPlacement.IsSupported(sourceRun))
+        {
+            copiedRun = PrivateTextRunPlacement.Clone(sourceRun) ??
+                throw new InvalidOperationException("A supported built-in text run omitted its private placement recipe.");
+        }
+        else if (sourceRun is LinkRun linkRun)
+        {
+            copiedRun = linkRun.CloneForPrivateRasterPlacement();
+        }
+        else if (allowMeasuredVectorPlacement && sourceRun is InlineVectorSceneRun vectorRun)
+        {
+            copiedRun = vectorRun.CloneForMeasuredPlacement();
+        }
+        else if (sourceRun is InlineImageRun imageRun &&
+                 TryCreateImageRunPlacement(imageRun, targetContext, allowIdleImagePlacements,
+                     out InlineImageRun? copiedImageRun,
+                     out RasterPlacementSourceFence sourceFence) && copiedImageRun is not null)
+        {
+            copiedRun = copiedImageRun;
+            unownedImageClones.Add(copiedImageRun.Image);
+            sourceFences.Add(sourceFence);
+        }
+        else
+        {
+            copiedRun = null!;
+            return false;
+        }
+
+        return true;
+    }
+
+    // Moves each copied run into the candidate in order; an image leaves the
+    // unowned list only once the candidate holds its run.
+    private static int AdoptCopiedRuns(
+        InlineContainerBox box,
+        InlineContainerBox privateCandidate,
+        MarkdownLayoutContext targetContext,
+        InlineRun[] copiedRuns,
+        List<ImageBox> unownedImageClones)
+    {
+        int offset = 0;
+        for (int index = 0; index < copiedRuns.Length; index++)
+        {
+            targetContext.CancellationToken.ThrowIfCancellationRequested();
+            InlineRun copiedRun = copiedRuns[index];
+            privateCandidate.AddPrivatePlacementRun(copiedRun);
+            if (copiedRun is InlineImageRun copiedImage)
+                unownedImageClones.Remove(copiedImage.Image);
+            privateCandidate.RecordPrivatePlacementRunState(box, index, copiedRun, offset, copiedRuns.Length);
+            offset += copiedRun.TextLength;
+        }
+
+        return offset;
     }
 
     private static bool TryCreateImageRunPlacement(
