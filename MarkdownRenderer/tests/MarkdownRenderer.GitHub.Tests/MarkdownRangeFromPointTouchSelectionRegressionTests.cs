@@ -404,15 +404,15 @@ public sealed class MarkdownRangeFromPointTouchSelectionRegressionTests
         CanvasDevice device,
         MarkdownExtensionRegistry registry)
     {
-        ThemeResolver.PlatformThemeColors platformColors =
-            ThemeResolver.ResolvePlatformThemeColorsForTesting(ElementTheme.Light, default);
+        PlatformThemeColors platformColors =
+            PlatformThemeColors.Resolve(ElementTheme.Light, default);
         FontWeight semiBold = new() { Weight = 600 };
         var styles = new Dictionary<string, ElementStyle>(StringComparer.Ordinal);
         foreach (string role in SampleDefaultThemeRoles)
         {
             styles.Add(
                 role,
-                ThemeResolver.CreateDefaultStyle(
+                ThemeDefaultStyles.CreateDefaultStyle(
                     role,
                     isDark: false,
                     isHighContrast: false,

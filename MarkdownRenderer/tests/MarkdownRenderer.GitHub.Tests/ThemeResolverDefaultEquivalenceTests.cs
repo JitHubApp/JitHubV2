@@ -40,12 +40,12 @@ public sealed class ThemeResolverDefaultEquivalenceTests
     [Fact]
     public void BuiltInDefaultsMatchThePreConsolidationGoldenForEveryRoleAndTheme()
     {
-        var light = new ThemeResolver.PlatformThemeColors(
+        var light = new PlatformThemeColors(
             Color.FromArgb(0xFF, 0x12, 0x34, 0x56),
             Color.FromArgb(0xFF, 0x23, 0x45, 0x67),
             Color.FromArgb(0xFF, 0x34, 0x56, 0x78),
             Color.FromArgb(0xFF, 0x45, 0x67, 0x89));
-        var dark = new ThemeResolver.PlatformThemeColors(
+        var dark = new PlatformThemeColors(
             Color.FromArgb(0xFF, 0x56, 0x34, 0x12),
             Color.FromArgb(0xFF, 0x67, 0x45, 0x23),
             Color.FromArgb(0xFF, 0x78, 0x56, 0x34),
@@ -62,10 +62,10 @@ public sealed class ThemeResolverDefaultEquivalenceTests
         foreach (bool isDark in new[] { false, true })
         foreach (string role in BuiltInRoles.Append("ExtensionRole"))
         {
-            ThemeResolver.PlatformThemeColors platform = isDark ? dark : light;
+            PlatformThemeColors platform = isDark ? dark : light;
             ElementStyle expected = LegacyDefault(
                 role, isDark, isHighContrast, customAccent, platform, systemTheme);
-            ElementStyle actual = ThemeResolver.CreateDefaultStyle(
+            ElementStyle actual = ThemeDefaultStyles.CreateDefaultStyle(
                 role,
                 isDark,
                 isHighContrast,
@@ -83,7 +83,7 @@ public sealed class ThemeResolverDefaultEquivalenceTests
         bool isDark,
         bool isHighContrast,
         Color? userAccent,
-        ThemeResolver.PlatformThemeColors platformColors,
+        PlatformThemeColors platformColors,
         IMarkdownSystemThemeProvider systemTheme)
     {
         if (isHighContrast)

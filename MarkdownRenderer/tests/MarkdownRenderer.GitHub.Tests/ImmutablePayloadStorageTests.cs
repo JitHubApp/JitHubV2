@@ -59,9 +59,9 @@ public sealed class ImmutablePayloadStorageTests
         AssertReadonly(typeof(ViewportRange), "Start End");
         AssertReadonly(typeof(LazyLayoutBand), "Top Bottom");
         AssertReadonly(typeof(VectorViewportTransform), "Scale TranslationX TranslationY");
-        AssertReadonly(Nested(typeof(ThemeResolver), "PlatformThemeColorOverrides"),
+        AssertReadonly(typeof(PlatformThemeColorOverrides),
             "PrimaryText SecondaryText AccentText Surface");
-        AssertReadonly(Nested(typeof(ThemeResolver), "PlatformThemeColors"),
+        AssertReadonly(typeof(PlatformThemeColors),
             "PrimaryText SecondaryText AccentText Surface");
         AssertReadonly(typeof(EmbedBox), "SourceBlock Factory");
         AssertReadonly(typeof(MarkdownLocalizationSnapshot), "Culture StringProvider");
@@ -798,12 +798,12 @@ public sealed class ImmutablePayloadStorageTests
         Color secondary = Color.FromArgb(255, 21, 43, 65);
         Color accent = Color.FromArgb(255, 32, 54, 76);
         Color surface = Color.FromArgb(255, 43, 65, 87);
-        var overrides = new ThemeResolver.PlatformThemeColorOverrides(primary, secondary, accent, surface);
+        var overrides = new PlatformThemeColorOverrides(primary, secondary, accent, surface);
         Assert.Equal(primary, Field(overrides, "PrimaryText"));
         Assert.Equal(secondary, Field(overrides, "SecondaryText"));
         Assert.Equal(accent, Field(overrides, "AccentText"));
         Assert.Equal(surface, Field(overrides, "Surface"));
-        var colors = new ThemeResolver.PlatformThemeColors(primary, secondary, accent, surface);
+        var colors = new PlatformThemeColors(primary, secondary, accent, surface);
         Assert.Equal(primary, Field(colors, "PrimaryText"));
         Assert.Equal(secondary, Field(colors, "SecondaryText"));
         Assert.Equal(accent, Field(colors, "AccentText"));

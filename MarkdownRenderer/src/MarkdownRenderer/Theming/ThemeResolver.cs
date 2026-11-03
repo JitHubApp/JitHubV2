@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
-using Microsoft.UI;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Markup;
 using Microsoft.UI.Xaml.Media;
 using Windows.UI;
 using Windows.UI.Text;
@@ -18,45 +16,10 @@ namespace MarkdownRenderer.Theming;
 /// </summary>
 internal sealed class ThemeResolver
 {
-    private static readonly string[] LightThemeDictionaryKeys = ["Light", "Default"];
-    private static readonly string[] DarkThemeDictionaryKeys = ["Dark", "Default"];
-    private static readonly string[] HighContrastLightThemeDictionaryKeys =
-        ["HighContrast", "Light", "Default"];
-    private static readonly string[] HighContrastDarkThemeDictionaryKeys =
-        ["HighContrast", "Dark", "Default"];
-    private static readonly string[] ScopedPlatformResourceKeys = new string[]
-    {
-        "AccentFillColorDefaultBrush",
-        "AccentFillColorSelectedTextBackgroundBrush",
-        "AccentTextFillColorPrimary",
-        "AccentTextFillColorPrimaryBrush",
-        "ApplicationPageBackgroundThemeBrush",
-        "FocusVisualPrimaryBrush",
-        "LayerFillColorDefaultBrush",
-        "SolidBackgroundFillColorBaseBrush",
-        "SystemColorHighlightColor",
-        "SystemColorHighlightColorBrush",
-        "SystemColorHighlightTextColor",
-        "SystemColorHighlightTextColorBrush",
-        "SystemControlFocusVisualPrimaryBrush",
-        "SystemControlForegroundAccentBrush",
-        "SystemControlHighlightAccentBrush",
-        "TextControlForeground",
-        "TextControlForegroundFocused",
-        "TextControlPlaceholderForeground",
-        "TextControlSelectionHighlightColor",
-        "TextFillColorPrimary",
-        "TextFillColorPrimaryBrush",
-        "TextFillColorSecondary",
-        "TextFillColorSecondaryBrush",
-        "TextOnAccentFillColorSelectedText",
-        "TextOnAccentFillColorSelectedTextBrush",
-    };
-
     private static readonly RelevantResourceKeyCache<ResourceDictionary> RelevantResourceKeys = new(
         static resources => resources.Keys.Count,
-        EnumerateStringKeys,
-        IncludeScopedRendererResource);
+        ThemeResourceValues.EnumerateStringKeys,
+        ThemeResourceScope.IncludeScopedRendererResource);
 
     private static readonly string[] BuiltInElementKeys =
     [
@@ -209,7 +172,7 @@ internal sealed class ThemeResolver
     {
         bool isDark = !_isHighContrast && _host.ActualTheme == ElementTheme.Dark;
         PlatformThemeColors platformColors = _isHighContrast ? default : GetPlatformThemeColors();
-        var mandatory = CreateDefaultStyle(
+        var mandatory = ThemeDefaultStyles.CreateDefaultStyle(
             key,
             isDark,
             _isHighContrast,
@@ -219,133 +182,6 @@ internal sealed class ThemeResolver
             _isHighContrast ? _systemTheme : null);
         var style = resolveAppResourceOverrides ? ApplyAppResourceOverrides(key, mandatory) : mandatory;
         return _isHighContrast ? ThemeSnapshot.EnforceHighContrast(style, mandatory) : style;
-    }
-
-    internal static ElementStyle CreateDefaultStyle(
-        string key,
-        bool isDark,
-        bool isHighContrast,
-        Color? accentColor,
-        PlatformThemeColors platformColors,
-        Windows.UI.Text.FontWeight semiBoldFontWeight,
-        IMarkdownSystemThemeProvider? systemTheme)
-    {
-        MarkdownHighContrastStyleRoles roles = isHighContrast
-            ? MarkdownHighContrastDefaults.Resolve(key)
-            : default;
-        Color highContrastForeground = isHighContrast
-            ? ResolveHighContrastRole(roles.Foreground, systemTheme!)
-            : default;
-        Color? highContrastBackground = isHighContrast && roles.Background is { } backgroundRole
-            ? ResolveHighContrastRole(backgroundRole, systemTheme!)
-            : null;
-        Color? highContrastAccent = isHighContrast && roles.AccentBar is { } accentRole
-            ? ResolveHighContrastRole(accentRole, systemTheme!)
-            : null;
-
-        // Hardcoded Win11 design token equivalents — bypasses the XAML resource system
-        // which only works reliably for the app-level theme, not per-element themes.
-        var fg = isHighContrast ? highContrastForeground : platformColors.PrimaryText;
-        var fgSecondary = isHighContrast ? highContrastForeground : platformColors.SecondaryText;
-        // Accent: try to get the user's accent color, fall back to Win11 blue.
-        var accent      = isHighContrast ? highContrastForeground : accentColor ?? platformColors.AccentText;
-        var linkHover   = isHighContrast ? highContrastForeground : AdjustColor(accent, isDark ? 0.18f : -0.12f);
-        var codeBg      = isDark ? Color.FromArgb(0xFF, 0x1E, 0x1E, 0x1E) : Color.FromArgb(0xFF, 0xF6, 0xF8, 0xFA);
-        var codeHeaderBg = isDark ? Color.FromArgb(0xFF, 0x25, 0x25, 0x26) : Color.FromArgb(0xFF, 0xF0, 0xF2, 0xF5);
-        var codeBorder = isDark ? Color.FromArgb(0xFF, 0x3A, 0x3A, 0x3C) : Color.FromArgb(0xFF, 0xD0, 0xD7, 0xDE);
-        var codeMuted = isDark ? Color.FromArgb(0xFF, 0x85, 0x85, 0x85) : Color.FromArgb(0xFF, 0x6E, 0x77, 0x81);
-        var tableBg = isDark ? Color.FromArgb(0xFF, 0x25, 0x25, 0x25) : Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
-        var tableHeaderBg = isDark ? Color.FromArgb(0xFF, 0x2D, 0x2D, 0x30) : Color.FromArgb(0xFF, 0xF7, 0xF8, 0xFA);
-        var tableBorder = isDark ? Color.FromArgb(0xFF, 0x3D, 0x3D, 0x40) : Color.FromArgb(0xFF, 0xD8, 0xDC, 0xE0);
-        var quoteBar    = isDark ? Color.FromArgb(0x50, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0x50, 0x00, 0x00, 0x00);
-
-        // Single font family names for Win2D/DirectWrite. DirectWrite does NOT support
-        // CSS-style comma-separated font stacks; the system font fallback maps emoji
-        // code-points to Segoe UI Emoji automatically on Windows 10/11.
-        const string font = "Segoe UI Variable Text";
-        const string mono = "Consolas";
-
-        return key switch
-        {
-            MarkdownElementKeys.Heading1 or MarkdownElementKeys.Heading2 or MarkdownElementKeys.Heading3 or MarkdownElementKeys.Heading4 or MarkdownElementKeys.Heading5 or MarkdownElementKeys.Heading6 => CreateHeadingStyle(key, font, fg, fgSecondary, semiBoldFontWeight),
-            MarkdownElementKeys.Body => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = highContrastBackground, Margin = new Thickness(0, 0, 0, 8), ListIndent = 22f, NestedListIndent = 0f },
-            MarkdownElementKeys.CodeBlock => new ElementStyle { FontFamily = mono, FontSize = 13, Foreground = fg, Background = isHighContrast ? highContrastBackground : codeBg, AccentBar = highContrastAccent, BorderBrush = isHighContrast ? highContrastAccent : codeBorder, BorderThickness = isHighContrast ? highContrastAccent is null ? 0 : 1 : 1, CornerRadius = isHighContrast ? 0 : 6, Margin = new Thickness(0, 4, 0, 8), Padding = new Thickness(12, 10, 12, 10) },
-            MarkdownElementKeys.CodeBlockHeader or MarkdownElementKeys.CodeBlockGutter => new ElementStyle
-            {
-                FontFamily = key == MarkdownElementKeys.CodeBlockGutter ? mono : font,
-                FontSize = 12,
-                Foreground = isHighContrast ? fg : codeMuted,
-                Background = isHighContrast ? highContrastBackground : codeHeaderBg,
-                BorderBrush = key == MarkdownElementKeys.CodeBlockHeader && !isHighContrast ? codeBorder : highContrastAccent,
-            },
-            MarkdownElementKeys.CodeBlockLanguage => new ElementStyle { FontFamily = font, FontSize = 12, FontWeight = semiBoldFontWeight, Foreground = isHighContrast ? fg : codeMuted },
-            MarkdownElementKeys.CodeBlockLineNumber => new ElementStyle { FontFamily = mono, FontSize = 12, Foreground = isHighContrast ? fg : codeMuted },
-            MarkdownElementKeys.CodeInline => new ElementStyle { FontFamily = mono, FontSize = 12, Foreground = fg, Background = isHighContrast ? highContrastBackground : codeBg, CornerRadius = isHighContrast ? 0 : 3, Padding = new Thickness(2, 0, 2, 0) },
-            MarkdownElementKeys.Quote => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fgSecondary, AccentBar = isHighContrast ? highContrastAccent : quoteBar, Margin = new Thickness(0, 4, 0, 4), Padding = new Thickness(12, 2, 8, 2) },
-            MarkdownElementKeys.Link => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = isHighContrast ? fg : accent, HoverForeground = linkHover, FocusForeground = linkHover, Underline = isHighContrast ? roles.Underline : true },
-            MarkdownElementKeys.Strong => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = semiBoldFontWeight, Foreground = fg },
-            MarkdownElementKeys.Emphasis => new ElementStyle { FontFamily = font, FontSize = 14, FontStyle = FontStyle.Italic, Foreground = fg },
-            MarkdownElementKeys.Strikethrough => new ElementStyle { FontFamily = font, FontSize = 14, Strikethrough = isHighContrast ? roles.Strikethrough : true, Foreground = fgSecondary },
-            MarkdownElementKeys.Subscript or MarkdownElementKeys.Superscript => new ElementStyle { FontFamily = font, FontSize = 11, Foreground = fg },
-            MarkdownElementKeys.Inserted => new ElementStyle { FontFamily = font, FontSize = 14, Underline = isHighContrast ? roles.Underline : true, Foreground = fg },
-            MarkdownElementKeys.Marked => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = isHighContrast ? highContrastBackground : isDark ? Color.FromArgb(0x45, 0xFF, 0xD8, 0x66) : Color.FromArgb(0x66, 0xFF, 0xE5, 0x8A), CornerRadius = isHighContrast ? 0 : 3 },
-            MarkdownElementKeys.Abbreviation => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, AccentBar = isHighContrast ? highContrastAccent : accent, Underline = isHighContrast ? roles.Underline : true },
-            MarkdownElementKeys.DefinitionTerm => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = semiBoldFontWeight, Foreground = fg, Margin = new Thickness(0, 4, 0, 0) },
-            MarkdownElementKeys.DefinitionDescription => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fgSecondary, Background = highContrastBackground, Margin = new Thickness(18, 0, 0, 6) },
-            MarkdownElementKeys.Figure => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = highContrastBackground, Margin = new Thickness(0, 8, 0, 10) },
-            MarkdownElementKeys.FigureCaption or MarkdownElementKeys.ImageCaption => new ElementStyle { FontFamily = font, FontSize = 12, FontStyle = FontStyle.Italic, Foreground = fgSecondary, Background = key == MarkdownElementKeys.FigureCaption ? highContrastBackground : null, Margin = new Thickness(0, 2, 0, 8) },
-            MarkdownElementKeys.Diagram => new ElementStyle { FontFamily = mono, FontSize = 13, Foreground = fg, Background = isHighContrast ? highContrastBackground : codeBg, AccentBar = highContrastAccent, BorderBrush = isHighContrast ? highContrastAccent : quoteBar, BorderThickness = isHighContrast ? highContrastAccent is null ? 0 : 1 : 1, CornerRadius = isHighContrast ? 0 : 4, Padding = new Thickness(12, 8, 12, 8), Margin = new Thickness(0, 6, 0, 8) },
-            MarkdownElementKeys.Math => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = highContrastBackground, Margin = isHighContrast ? new Thickness(1, 0, 1, 0) : new Thickness(0, 0, 0, 4) },
-            MarkdownElementKeys.List => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = highContrastBackground },
-            MarkdownElementKeys.ListMarker => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fgSecondary, ListIndent = 22f, NestedListIndent = 0f },
-            MarkdownElementKeys.ThematicBreak => new ElementStyle { FontFamily = font, Foreground = isHighContrast ? fg : quoteBar, Margin = new Thickness(0, 12, 0, 12) },
-            MarkdownElementKeys.Table => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = isHighContrast ? highContrastBackground : tableBg, BorderBrush = isHighContrast ? highContrastAccent : tableBorder, BorderThickness = isHighContrast ? highContrastAccent is null ? 0 : 1 : 1, CornerRadius = isHighContrast ? 0 : 6, Margin = new Thickness(0, 8, 0, 12) },
-            MarkdownElementKeys.TableHeader => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = semiBoldFontWeight, Foreground = fg, Background = isHighContrast ? highContrastBackground : tableHeaderBg, BorderBrush = isHighContrast ? highContrastAccent : tableBorder, Padding = new Thickness(12, 9, 12, 9) },
-            MarkdownElementKeys.TableCell => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = isHighContrast ? highContrastBackground : tableBg, BorderBrush = isHighContrast ? highContrastAccent : tableBorder, Padding = new Thickness(12, 9, 12, 9) },
-            MarkdownElementKeys.AlertNote or MarkdownElementKeys.AlertTip or MarkdownElementKeys.AlertImportant or MarkdownElementKeys.AlertWarning or MarkdownElementKeys.AlertCaution => new ElementStyle
-            {
-                FontFamily = font,
-                FontSize = 14,
-                Foreground = fg,
-                AccentBar = isHighContrast ? highContrastAccent : key switch
-                {
-                    MarkdownElementKeys.AlertNote => Color.FromArgb(0xFF, 0x0E, 0xA5, 0xE9),
-                    MarkdownElementKeys.AlertTip => Color.FromArgb(0xFF, 0x22, 0xC5, 0x5E),
-                    MarkdownElementKeys.AlertImportant => Color.FromArgb(0xFF, 0xA8, 0x55, 0xF7),
-                    MarkdownElementKeys.AlertWarning => Color.FromArgb(0xFF, 0xF5, 0x9E, 0x0B),
-                    _ => Color.FromArgb(0xFF, 0xEF, 0x44, 0x44),
-                },
-                Padding = new Thickness(12, 2, 8, 2),
-                Margin = new Thickness(0, 4, 0, 8),
-            },
-            _ => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = highContrastBackground, Margin = new Thickness(0, 0, 0, 4) }
-        };
-    }
-
-    private static ElementStyle CreateHeadingStyle(
-        string key,
-        string font,
-        Color foreground,
-        Color secondaryForeground,
-        Windows.UI.Text.FontWeight semiBoldFontWeight)
-    {
-        var (fontSize, marginTop, marginBottom) = key switch
-        {
-            MarkdownElementKeys.Heading1 => (32f, 16d, 8d),
-            MarkdownElementKeys.Heading2 => (26f, 14d, 6d),
-            MarkdownElementKeys.Heading3 => (22f, 12d, 4d),
-            MarkdownElementKeys.Heading4 => (18f, 10d, 4d),
-            MarkdownElementKeys.Heading5 => (15f, 8d, 2d),
-            _ => (14f, 6d, 2d),
-        };
-        return new ElementStyle
-        {
-            FontFamily = font,
-            FontSize = fontSize,
-            FontWeight = semiBoldFontWeight,
-            Foreground = key == MarkdownElementKeys.Heading6 ? secondaryForeground : foreground,
-            Margin = new Thickness(0, marginTop, 0, marginBottom),
-        };
     }
 
     private ElementStyle ApplyAppResourceOverrides(string elementKey, ElementStyle style)
@@ -461,34 +297,9 @@ internal sealed class ThemeResolver
         => TryResolveResourceValue(
                 MarkdownResourceKeys.ForRole(role, MarkdownStyleProperty.TextDecorations),
                 out object value) &&
-            TryExtractTextDecorations(value, out TextDecorations decorations)
+            ThemeResourceValues.TryExtractTextDecorations(value, out TextDecorations decorations)
                 ? decorations
                 : null;
-
-    internal static bool TryExtractTextDecorations(object? value, out TextDecorations decorations)
-    {
-        if (value is TextDecorations typed)
-        {
-            decorations = typed;
-        }
-        else if (value is string text &&
-                 Enum.TryParse(text.Trim(), ignoreCase: true, out TextDecorations parsed))
-        {
-            decorations = parsed;
-        }
-        else
-        {
-            decorations = TextDecorations.None;
-            return false;
-        }
-
-        const TextDecorations supported = TextDecorations.Underline | TextDecorations.Strikethrough;
-        if ((decorations & ~supported) == 0)
-            return true;
-
-        decorations = TextDecorations.None;
-        return false;
-    }
 
     private Thickness? ResolveRoleThickness(MarkdownStyleRole role, MarkdownStyleProperty property)
         => ResolveThicknessResource(MarkdownResourceKeys.ForRole(role, property));
@@ -531,29 +342,17 @@ internal sealed class ThemeResolver
             ? thickness
             : null;
 
-    private static Color ResolveHighContrastRole(
-        MarkdownHighContrastColorRole role,
-        IMarkdownSystemThemeProvider systemTheme) => role switch
-    {
-        MarkdownHighContrastColorRole.WindowText => systemTheme.WindowTextColor,
-        MarkdownHighContrastColorRole.Window => systemTheme.WindowColor,
-        MarkdownHighContrastColorRole.Hotlight => systemTheme.HotlightColor,
-        MarkdownHighContrastColorRole.Highlight => systemTheme.HighlightColor,
-        MarkdownHighContrastColorRole.HighlightText => systemTheme.HighlightTextColor,
-        _ => systemTheme.WindowTextColor,
-    };
-
     private Color ResolveSelectionHighlightColor()
     {
         var nativeSelection = ResolveNativeSelectionHighlightColor();
         if (_isHighContrast)
-            return WithAlpha(nativeSelection, 0xFF);
+            return ThemeColorMath.WithAlpha(nativeSelection, 0xFF);
 
         if (ResolveColorResource(MarkdownResourceKeys.SelectionBackgroundBrush) is { } configuredSelection)
         {
             return configuredSelection.A == byte.MaxValue
                 ? configuredSelection
-                : CompositeOver(configuredSelection, ResolveDocumentSurfaceColor());
+                : ThemeColorMath.CompositeOver(configuredSelection, ResolveDocumentSurfaceColor());
         }
 
         // TextBox paints the selection highlight over a clean text-control
@@ -562,7 +361,7 @@ internal sealed class ThemeResolver
         // native resource but pre-composite translucent brushes over the
         // markdown surface. The resulting opaque color matches the native
         // visual while preventing old dark glyphs from bleeding through.
-        return CompositeOver(nativeSelection, ResolveDocumentSurfaceColor());
+        return ThemeColorMath.CompositeOver(nativeSelection, ResolveDocumentSurfaceColor());
     }
 
     private Color ResolveNativeSelectionHighlightColor()
@@ -588,7 +387,7 @@ internal sealed class ThemeResolver
             return _systemTheme.HighlightTextColor;
 
         if (ResolveColorResource(MarkdownResourceKeys.SelectionForegroundBrush) is { } configuredForeground)
-            return WithAlpha(configuredForeground, byte.MaxValue);
+            return ThemeColorMath.WithAlpha(configuredForeground, byte.MaxValue);
 
         if (TryResolvePlatformResourceColor("TextOnAccentFillColorSelectedTextBrush", out var color) ||
             TryResolvePlatformResourceColor("TextOnAccentFillColorSelectedText", out color) ||
@@ -614,47 +413,10 @@ internal sealed class ThemeResolver
                 ResolvePlatformBrush("AccentTextFillColorPrimaryBrush", GetPlatformThemeColors().AccentText)));
     }
 
-    private static Color WithAlpha(Color color, byte alpha) =>
-        Color.FromArgb(alpha, color.R, color.G, color.B);
-
-    private static Color AdjustColor(Color color, float amount)
-    {
-        byte Adjust(byte channel)
-        {
-            float value = amount >= 0
-                ? channel + (255 - channel) * amount
-                : channel * (1 + amount);
-            return (byte)Math.Clamp((int)Math.Round(value), 0, 255);
-        }
-
-        return Color.FromArgb(color.A, Adjust(color.R), Adjust(color.G), Adjust(color.B));
-    }
-
-    private static Color CompositeOver(Color top, Color bottom)
-    {
-        double topA = top.A / 255.0;
-        double bottomA = bottom.A / 255.0;
-        double outA = topA + bottomA * (1.0 - topA);
-        if (outA <= 0.0)
-            return Color.FromArgb(0, 0, 0, 0);
-
-        byte a = (byte)Math.Clamp((int)Math.Round(outA * 255.0), 0, 255);
-        byte r = CompositeChannel(top.R, topA, bottom.R, bottomA, outA);
-        byte g = CompositeChannel(top.G, topA, bottom.G, bottomA, outA);
-        byte b = CompositeChannel(top.B, topA, bottom.B, bottomA, outA);
-        return Color.FromArgb(a, r, g, b);
-    }
-
-    private static byte CompositeChannel(byte top, double topA, byte bottom, double bottomA, double outA)
-    {
-        var value = (top * topA + bottom * bottomA * (1.0 - topA)) / outA;
-        return (byte)Math.Clamp((int)Math.Round(value), 0, 255);
-    }
-
     private bool TryResolveResourceColor(string resourceKey, out Color color)
     {
         if (TryResolveResourceValue(resourceKey, out var value) &&
-            TryExtractColor(value, out color))
+            ThemeResourceValues.TryExtractColor(value, out color))
             return true;
 
         color = default;
@@ -673,7 +435,7 @@ internal sealed class ThemeResolver
     private bool TryResolvePlatformResourceColor(string resourceKey, out Color color)
     {
         if (TryResolveExplicitScopedResourceValue(resourceKey, out object value) &&
-            TryExtractColor(value, out color))
+            ThemeResourceValues.TryExtractColor(value, out color))
         {
             return true;
         }
@@ -730,7 +492,7 @@ internal sealed class ThemeResolver
             IReadOnlyList<string> themeKeys = GetThemeDictionaryKeys();
             Predicate<string> includeResource = _scopedResourceStyleRoles is not null
                 ? IncludeScopedResourceForSnapshot
-                : IncludeScopedRendererResource;
+                : ThemeResourceScope.IncludeScopedRendererResource;
             for (DependencyObject? current = _host; current is not null; current = VisualTreeHelper.GetParent(current))
             {
                 if (current is FrameworkElement element)
@@ -761,7 +523,7 @@ internal sealed class ThemeResolver
     private bool TryResolveExplicitScopedResourceValue(string resourceKey, out object value)
     {
         if (_resolvedResourceValues is { } resolvedResources &&
-            IsScopedPlatformResourceKey(resourceKey))
+            ThemeResourceScope.IsScopedPlatformResourceKey(resourceKey))
         {
             if (resolvedResources.TryGetValue(resourceKey, out value!))
                 return true;
@@ -776,7 +538,7 @@ internal sealed class ThemeResolver
         {
             if (TryResolveScopedResourceValue(resourceKey, out value))
             {
-                if (IsScopedPlatformResourceKey(resourceKey))
+                if (ThemeResourceScope.IsScopedPlatformResourceKey(resourceKey))
                     _resolvedResourceValues?[resourceKey] = value;
                 return true;
             }
@@ -788,7 +550,7 @@ internal sealed class ThemeResolver
         }
 
         value = null!;
-        if (IsScopedPlatformResourceKey(resourceKey))
+        if (ThemeResourceScope.IsScopedPlatformResourceKey(resourceKey))
             _missingResourceKeys?.Add(resourceKey);
         return false;
     }
@@ -808,21 +570,7 @@ internal sealed class ThemeResolver
     }
 
     private IReadOnlyList<string> GetThemeDictionaryKeys()
-        => GetThemeDictionaryKeysForTesting(_isHighContrast, _host.ActualTheme);
-
-    internal static IReadOnlyList<string> GetThemeDictionaryKeysForTesting(
-        bool isHighContrast,
-        ElementTheme actualTheme)
-        => (isHighContrast, actualTheme == ElementTheme.Dark) switch
-        {
-            (true, true) => HighContrastDarkThemeDictionaryKeys,
-            (true, false) => HighContrastLightThemeDictionaryKeys,
-            (false, true) => DarkThemeDictionaryKeys,
-            _ => LightThemeDictionaryKeys,
-        };
-
-    internal static bool IsScopedPlatformResourceKey(string key)
-        => Array.BinarySearch(ScopedPlatformResourceKeys, key, StringComparer.Ordinal) >= 0;
+        => ThemeResourceScope.GetThemeDictionaryKeys(_isHighContrast, _host.ActualTheme);
 
     internal static HashSet<string> GetScopedResourceStyleRoles(
         IEnumerable<string> elementKeys,
@@ -843,65 +591,15 @@ internal sealed class ThemeResolver
         return roles;
     }
 
-    internal static bool IsScopedResourceRequiredForSnapshot(
-        string key,
-        HashSet<string> styleRoles)
-    {
-        if (IsScopedPlatformResourceKey(key) || MarkdownResourceKeys.IsGlobalResourceKey(key))
-            return true;
-
-        if (!key.StartsWith(MarkdownResourceKeys.Prefix, StringComparison.Ordinal))
-            return false;
-
-        int propertySeparator = key.LastIndexOf('.');
-        if (propertySeparator <= MarkdownResourceKeys.Prefix.Length)
-            return false;
-
-        ReadOnlySpan<char> roleName = key.AsSpan(
-            MarkdownResourceKeys.Prefix.Length,
-            propertySeparator - MarkdownResourceKeys.Prefix.Length);
-        return styleRoles.GetAlternateLookup<ReadOnlySpan<char>>().Contains(roleName);
-    }
-
     private bool IncludeScopedResourceForSnapshot(string key)
         => _scopedResourceStyleRoles is { } styleRoles &&
-            IsScopedResourceRequiredForSnapshot(key, styleRoles);
-
-    private static bool IncludeScopedRendererResource(string key)
-        => key.StartsWith(MarkdownResourceKeys.Prefix, StringComparison.Ordinal) ||
-            IsScopedPlatformResourceKey(key);
+            ThemeResourceScope.IsScopedResourceRequiredForSnapshot(key, styleRoles);
 
     internal static void InvalidateResourceKeyCache()
         => RelevantResourceKeys.Invalidate();
 
     private static IEnumerable<string> EnumerateRelevantResourceKeys(ResourceDictionary resources)
         => RelevantResourceKeys.GetRelevantKeys(resources);
-
-    private static IEnumerable<string> EnumerateStringKeys(ResourceDictionary resources)
-    {
-        foreach (object key in resources.Keys)
-        {
-            if (key is string text)
-                yield return text;
-        }
-    }
-
-    private static bool TryExtractColor(object value, out Color color)
-    {
-        switch (value)
-        {
-            case Color c:
-                color = c;
-                return true;
-            case SolidColorBrush brush:
-                var alpha = (byte)Math.Clamp((int)Math.Round(brush.Color.A * brush.Opacity), 0, 255);
-                color = Color.FromArgb(alpha, brush.Color.R, brush.Color.G, brush.Color.B);
-                return true;
-            default:
-                color = default;
-                return false;
-        }
-    }
 
     private Color ResolveSurfaceColor()
     {
@@ -927,7 +625,7 @@ internal sealed class ThemeResolver
     private PlatformThemeColors ResolvePlatformThemeColors()
     {
         PlatformThemeColorOverrides scoped = ResolveScopedPlatformThemeColorOverrides();
-        return ResolvePlatformThemeColorsForTesting(_host.ActualTheme, scoped);
+        return PlatformThemeColors.Resolve(_host.ActualTheme, scoped);
     }
 
     private PlatformThemeColorOverrides ResolveScopedPlatformThemeColorOverrides()
@@ -937,7 +635,7 @@ internal sealed class ThemeResolver
             foreach (string resourceKey in resourceKeys)
             {
                 if (TryResolveExplicitScopedResourceValue(resourceKey, out object value) &&
-                    TryExtractColor(value, out Color color))
+                    ThemeResourceValues.TryExtractColor(value, out Color color))
                 {
                     return color;
                 }
@@ -967,35 +665,6 @@ internal sealed class ThemeResolver
                 "LayerFillColorDefaultBrush"));
     }
 
-    internal static PlatformThemeColors ResolvePlatformThemeColorsForTesting(
-        ElementTheme hostTheme,
-        PlatformThemeColorOverrides scoped)
-    {
-        bool isDark = hostTheme == ElementTheme.Dark;
-        PlatformThemeColors fallback = isDark
-            ? new PlatformThemeColors(
-                PrimaryText: Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF),
-                SecondaryText: Color.FromArgb(0xFF, 0x9D, 0x9D, 0x9D),
-                AccentText: Color.FromArgb(0xFF, 0x60, 0xCD, 0xFF),
-                Surface: Color.FromArgb(0xFF, 0x20, 0x20, 0x20))
-            : new PlatformThemeColors(
-                PrimaryText: Color.FromArgb(0xFF, 0x1A, 0x1A, 0x1A),
-                SecondaryText: Color.FromArgb(0xFF, 0x7A, 0x7A, 0x7A),
-                AccentText: Color.FromArgb(0xFF, 0x00, 0x5F, 0xB8),
-                Surface: Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF));
-        static Color Resolve(Color? scopedColor, Color fallbackColor)
-            => scopedColor ?? fallbackColor;
-
-        Color surface = Resolve(scoped.Surface, fallback.Surface);
-        surface = surface.A == byte.MaxValue ? surface : CompositeOver(surface, fallback.Surface);
-
-        return new PlatformThemeColors(
-            Resolve(scoped.PrimaryText, fallback.PrimaryText),
-            Resolve(scoped.SecondaryText, fallback.SecondaryText),
-            Resolve(scoped.AccentText, fallback.AccentText),
-            surface);
-    }
-
     private Color ResolvePlatformBrush(string resourceKey, Color fallback)
     {
         try
@@ -1005,52 +674,6 @@ internal sealed class ThemeResolver
         }
         catch (Exception ex) { MarkdownDiagnostics.WriteLine($"[ThemeResolver] ResolvePlatformBrush failed for '{resourceKey}': {ex.Message}"); }
         return fallback;
-    }
-
-    internal readonly struct PlatformThemeColorOverrides
-    {
-        public PlatformThemeColorOverrides(
-            Color? PrimaryText = null,
-            Color? SecondaryText = null,
-            Color? AccentText = null,
-            Color? Surface = null)
-        {
-            this.PrimaryText = PrimaryText;
-            this.SecondaryText = SecondaryText;
-            this.AccentText = AccentText;
-            this.Surface = Surface;
-        }
-
-        public readonly Color? PrimaryText;
-
-        public readonly Color? SecondaryText;
-
-        public readonly Color? AccentText;
-
-        public readonly Color? Surface;
-    }
-
-    internal readonly struct PlatformThemeColors
-    {
-        public PlatformThemeColors(
-            Color PrimaryText,
-            Color SecondaryText,
-            Color AccentText,
-            Color Surface)
-        {
-            this.PrimaryText = PrimaryText;
-            this.SecondaryText = SecondaryText;
-            this.AccentText = AccentText;
-            this.Surface = Surface;
-        }
-
-        public readonly Color PrimaryText;
-
-        public readonly Color SecondaryText;
-
-        public readonly Color AccentText;
-
-        public readonly Color Surface;
     }
 
 }

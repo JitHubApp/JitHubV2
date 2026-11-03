@@ -167,11 +167,6 @@
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
-      "path": "src/MarkdownRenderer/Theming/ThemeResolver.cs",
-      "lines": 1056,
-      "reason": "Predates the size rule; split by responsibility in a later structure step."
-    },
-    {
       "path": "tests/MarkdownRenderer.GitHub.Tests/CodeBlockVisualLinePlacementCacheTests.cs",
       "lines": 1053,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."

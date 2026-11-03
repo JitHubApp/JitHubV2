@@ -37,19 +37,19 @@ public sealed class RendererResourceContractTests
     [Fact]
     public void TextDecorations_AreValidatedAndHighContrastSemanticsRemainMandatory()
     {
-        Assert.True(ThemeResolver.TryExtractTextDecorations(
+        Assert.True(ThemeResourceValues.TryExtractTextDecorations(
             TextDecorations.Underline | TextDecorations.Strikethrough,
             out TextDecorations typed));
         Assert.Equal(TextDecorations.Underline | TextDecorations.Strikethrough, typed);
 
-        Assert.True(ThemeResolver.TryExtractTextDecorations(
+        Assert.True(ThemeResourceValues.TryExtractTextDecorations(
             " underline, strikethrough ",
             out TextDecorations parsed));
         Assert.Equal(TextDecorations.Underline | TextDecorations.Strikethrough, parsed);
-        Assert.True(ThemeResolver.TryExtractTextDecorations("None", out TextDecorations none));
+        Assert.True(ThemeResourceValues.TryExtractTextDecorations("None", out TextDecorations none));
         Assert.Equal(TextDecorations.None, none);
-        Assert.False(ThemeResolver.TryExtractTextDecorations((TextDecorations)4, out _));
-        Assert.False(ThemeResolver.TryExtractTextDecorations(new object(), out _));
+        Assert.False(ThemeResourceValues.TryExtractTextDecorations((TextDecorations)4, out _));
+        Assert.False(ThemeResourceValues.TryExtractTextDecorations(new object(), out _));
 
         var customized = new ElementStyle { Underline = false, Strikethrough = false };
         var mandatory = new ElementStyle { Underline = true, Strikethrough = true };
