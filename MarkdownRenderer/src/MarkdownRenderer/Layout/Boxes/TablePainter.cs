@@ -51,32 +51,9 @@ internal static class TablePainter
         {
             if (radius > 0)
             {
-                NativePaintSessionResources.AuxiliaryLease clipOwner =
-                    NativePaintSessionResources.ReserveAuxiliary(ds);
-                CanvasGeometry clip;
-                try
-                {
-                    clip = CanvasGeometry.CreateRoundedRectangle(table.Context.ResourceCreator, viewportRect, radius, radius);
-                    clipOwner.Attach(clip);
-                }
-                catch
-                {
-                    clipOwner.CancelFactory();
-                    throw;
-                }
-
-                NativePaintSessionResources.LayerLease roundedLayer =
-                    NativePaintSessionResources.CreateLayer(ds, 1.0f, clip, clipOwner);
-                try
-                {
-                    PaintTableContent(table, ds, viewport, contentRect, bodyBgColor, headerBgColor, borderColor, headerTotalH, tableH);
-                }
-                catch (Exception primary)
-                {
-                    roundedLayer.ClosePreservingPrimary(primary);
-                    throw;
-                }
-                roundedLayer.Close();
+                PaintRoundedTableContent(
+                    table, ds, viewport, viewportRect, radius, contentRect,
+                    bodyBgColor, headerBgColor, borderColor, headerTotalH, tableH);
             }
             else
             {
@@ -91,21 +68,73 @@ internal static class TablePainter
         viewportLayer.Close();
 
         if (borderThickness > 0)
-        {
-            float inset = borderThickness / 2f;
-            ds.DrawRoundedRectangle(
-                new Rect(
-                    viewportRect.X + inset,
-                    viewportRect.Y + inset,
-                    Math.Max(0, viewportRect.Width - borderThickness),
-                    Math.Max(0, viewportRect.Height - borderThickness)),
-                radius,
-                radius,
-                borderColor,
-                borderThickness);
-        }
+            DrawTableBorder(ds, viewportRect, radius, borderColor, borderThickness);
 
         PaintHorizontalScrollbar(table, ds, borderColor);
+    }
+
+    // Clips the content to the rounded viewport. The clip geometry is attached
+    // to its reserved owner before the layer takes it, and the layer closes
+    // before Paint closes the outer viewport layer.
+    private static void PaintRoundedTableContent(
+        TableBox table,
+        CanvasDrawingSession ds,
+        Rect viewport,
+        Rect viewportRect,
+        float radius,
+        Rect contentRect,
+        Color bodyBgColor,
+        Color headerBgColor,
+        Color borderColor,
+        float headerTotalH,
+        float tableH)
+    {
+        NativePaintSessionResources.AuxiliaryLease clipOwner =
+            NativePaintSessionResources.ReserveAuxiliary(ds);
+        CanvasGeometry clip;
+        try
+        {
+            clip = CanvasGeometry.CreateRoundedRectangle(table.Context.ResourceCreator, viewportRect, radius, radius);
+            clipOwner.Attach(clip);
+        }
+        catch
+        {
+            clipOwner.CancelFactory();
+            throw;
+        }
+
+        NativePaintSessionResources.LayerLease roundedLayer =
+            NativePaintSessionResources.CreateLayer(ds, 1.0f, clip, clipOwner);
+        try
+        {
+            PaintTableContent(table, ds, viewport, contentRect, bodyBgColor, headerBgColor, borderColor, headerTotalH, tableH);
+        }
+        catch (Exception primary)
+        {
+            roundedLayer.ClosePreservingPrimary(primary);
+            throw;
+        }
+        roundedLayer.Close();
+    }
+
+    private static void DrawTableBorder(
+        CanvasDrawingSession ds,
+        Rect viewportRect,
+        float radius,
+        Color borderColor,
+        float borderThickness)
+    {
+        float inset = borderThickness / 2f;
+        ds.DrawRoundedRectangle(
+            new Rect(
+                viewportRect.X + inset,
+                viewportRect.Y + inset,
+                Math.Max(0, viewportRect.Width - borderThickness),
+                Math.Max(0, viewportRect.Height - borderThickness)),
+            radius,
+            radius,
+            borderColor,
+            borderThickness);
     }
 
     private static void PaintTableContent(
