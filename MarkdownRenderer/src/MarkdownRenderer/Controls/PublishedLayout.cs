@@ -1,5 +1,6 @@
 using System.Threading;
 using MarkdownRenderer.Layout;
+using MarkdownRenderer.Theming;
 using Microsoft.Graphics.Canvas;
 
 namespace MarkdownRenderer.Controls;
@@ -54,4 +55,11 @@ internal sealed class PublishedLayout
     /// belong to it, so a device change needs a rebuild.
     /// </summary>
     public CanvasDevice? LayoutDevice { get; set; }
+
+    /// <summary>
+    /// The theme <see cref="Snapshot"/> was laid out with. UI work after the
+    /// commit (focus ring, selection, automation text attributes) reads its
+    /// colours here, so they always match the painted snapshot.
+    /// </summary>
+    public ThemeSnapshot? Theme { get; set; }
 }

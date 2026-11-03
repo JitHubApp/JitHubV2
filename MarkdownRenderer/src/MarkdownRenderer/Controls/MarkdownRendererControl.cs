@@ -137,9 +137,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private readonly AutomationScrolling _automationScrolling;
     private readonly TouchTapSuppressionPolicy _touchTapSuppression = new();
 
-    // Last committed theme snapshot. Used by UI operations (focus ring, etc.)
-    // that need theme colors after the rebuild is complete.
-    private Theming.ThemeSnapshot? _themeSnapshot;
     private string? _committedImageDocumentId;
     private MarkdownEnvironmentMonitor.Subscription? _environmentSubscription;
     private MarkdownEnvironmentSnapshot _environmentSnapshot;
@@ -1038,7 +1035,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// displayed, not when the setting changes.
     /// </remarks>
     public MarkdownThemeVariant? RenderedThemeVariant =>
-        _published.Snapshot is null || _themeSnapshot is not { } theme
+        _published.Snapshot is null || _published.Theme is not { } theme
             ? null
             : theme.IsHighContrast
                 ? MarkdownThemeVariant.HighContrast
@@ -1160,7 +1157,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// Last committed theme snapshot. Used by automation peers to expose UIA
     /// text attributes that match the pixels currently painted on the canvas.
     /// </summary>
-    internal Theming.ThemeSnapshot? CurrentThemeSnapshot => _themeSnapshot;
+    internal Theming.ThemeSnapshot? CurrentThemeSnapshot => _published.Theme;
 
     /// <summary>Effective document-language LCID exposed through UI Automation.</summary>
     internal int AutomationCultureLcid => _localization.Culture.LCID;
@@ -1612,7 +1609,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     void ISelectionCommandsHost.RaiseCopyCompleted(MarkdownCopyKind kind, bool succeeded)
         => RaiseCopyCompleted(kind, succeeded);
 
-    Theming.ThemeSnapshot? ISelectionHandlesHost.ThemeSnapshot => _themeSnapshot;
+    Theming.ThemeSnapshot? ISelectionHandlesHost.ThemeSnapshot => _published.Theme;
 
     string ISelectionHandlesHost.ResolveLocalizedString(string key, string fallback)
         => _localization.Resolve(key, fallback);
@@ -1822,7 +1819,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     XamlRoot? IFocusRingHost.XamlRoot => XamlRoot;
 
-    Windows.UI.Color? IFocusRingHost.FocusVisualColor => _themeSnapshot?.FocusVisualColor;
+    Windows.UI.Color? IFocusRingHost.FocusVisualColor => _published.Theme?.FocusVisualColor;
 
     void IFocusRingHost.InvalidateInteractiveTextAdorner() => InvalidateInteractiveTextAdorner();
 
@@ -1917,7 +1914,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     IMarkdownPerformanceSession? ICodeBlockHighlightingHost.PerformanceSession => PerformanceSession;
 
-    Theming.ThemeSnapshot? ICodeBlockHighlightingHost.ThemeSnapshot => _themeSnapshot;
+    Theming.ThemeSnapshot? ICodeBlockHighlightingHost.ThemeSnapshot => _published.Theme;
 
     double ICodeBlockHighlightingHost.LazyScrollVelocityPixelsPerSecond => _lazyLayout.ScrollVelocity;
 
@@ -1944,7 +1941,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     bool IRasterPlacementHost.IsScrollViewIntermediate => _scrollViewIntermediate;
 
     bool IRasterPlacementHost.MatchesLayoutInputs(MarkdownLayoutContext context) =>
-        ReferenceEquals(_themeSnapshot, context.ThemeSnapshot) &&
+        ReferenceEquals(_published.Theme, context.ThemeSnapshot) &&
         ReferenceEquals(PerformanceSession, context.PerformanceSession) &&
         context.PerformanceSession?.IsDisposed != true &&
         !context.ImageCancellationToken.IsCancellationRequested &&
@@ -3023,7 +3020,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         // Publish presentation state with the new snapshot before any
         // dependency-property notification can re-enter UIA or menu queries.
         // These immutable objects therefore always describe the same commit.
-        _themeSnapshot = plan.Theme;
+        _published.Theme = plan.Theme;
         // The tile clear color is presentation state too. Publish it only with
         // the snapshot whose boxes use the matching immutable ThemeSnapshot;
         // otherwise an invalidation during background layout can clear using
@@ -3656,11 +3653,11 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         if (!_selection.IsActive || selectionBackgrounds.Count == 0)
             return;
 
-        Color selectedBackground = _themeSnapshot?.SelectionHighlightColor
+        Color selectedBackground = _published.Theme?.SelectionHighlightColor
             ?? Color.FromArgb(0xFF, 0x66, 0xAA, 0xE8);
-        Color selectedForeground = _themeSnapshot?.SelectionForegroundColor
+        Color selectedForeground = _published.Theme?.SelectionForegroundColor
             ?? Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
-        bool highContrast = _themeSnapshot?.IsHighContrast ?? false;
+        bool highContrast = _published.Theme?.IsHighContrast ?? false;
         foreach (SelectionBackgroundGeometry background in selectionBackgrounds)
         {
             Rect rectangle = background.Bounds;
