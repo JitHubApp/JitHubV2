@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
 using MarkdownRenderer.Extensions;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Theming;
 using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
@@ -1488,7 +1486,7 @@ internal sealed partial class InlineContainerBox
     private static bool IsSupportedMeasuredPlacementRoot(
         InlineContainerBox box,
         bool allowMeasuredVectorPlacement = false) =>
-        (box.ElementKey == MarkdownElementKeys.Body || IsHeadingElement(box.ElementKey)) &&
+        (box.ElementKey == MarkdownElementKeys.Body || InlineRunStyleResolver.IsHeadingElement(box.ElementKey)) &&
         box.CodeLanguage is null && box.StyleState is null &&
         box.CodeBlockTextOffset == 0 && box.CodeBlockTextLength == 0 &&
         box.SafeHtmlInlineFlowScopeId is null &&

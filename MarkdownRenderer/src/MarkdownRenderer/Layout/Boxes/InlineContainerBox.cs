@@ -161,7 +161,9 @@ internal sealed partial class InlineContainerBox : BlockBox
     public readonly MarkdownLayoutContext Context;
     private readonly bool _usesProgressiveNativeSceneResidency;
     private readonly IReadOnlyList<string> _styleContextKeys;
+    internal IReadOnlyList<string> StyleContextKeys => _styleContextKeys;
     private readonly IReadOnlyList<string> _styleAliasKeys;
+    internal IReadOnlyList<string> StyleAliasKeys => _styleAliasKeys;
     private ElementStyle? _resolvedContainerStyle;
     private IReadOnlyList<CodeBlockHighlightSpan> _foregroundSpans = Array.Empty<CodeBlockHighlightSpan>();
     internal IReadOnlyList<CodeBlockHighlightSpan> ForegroundSpans => _foregroundSpans;
@@ -1770,7 +1772,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         if (resolved is not null)
             return resolved;
 
-        resolved = ResolveRunStyle(run);
+        resolved = InlineRunStyleResolver.ResolveRunStyle(this, run);
         CacheRunStyle(run.InlineIndex, resolved);
         return resolved;
     }
@@ -1785,172 +1787,6 @@ internal sealed partial class InlineContainerBox : BlockBox
             _resolvedRunStyles = styles;
         }
         _resolvedRunStyles[index] = resolved;
-    }
-
-    private ElementStyle ResolveRunStyle(InlineRun run)
-    {
-        ElementStyle resolved;
-        // A link or formatting run inside a heading inherits the heading's
-        // typography. Its own role supplies only the nested decoration/color;
-        // resolving Link as the base style would silently turn linked heading
-        // text back into body-sized text.
-        string headingKey = GetHeadingStyleKey(run);
-        bool inheritsHeading = headingKey.Length > 0;
-        var key = inheritsHeading
-            ? headingKey
-            : string.IsNullOrEmpty(run.ElementKey) ? ElementKey : run.ElementKey;
-        IReadOnlyList<string> baseAliases = inheritsHeading
-            ? _styleAliasKeys
-            : GetEffectiveRunAliases(run.InlineIndex);
-        resolved = Context.ThemeSnapshot.GetStyle(
-            key,
-            _styleContextKeys,
-            baseAliases,
-            CodeLanguage,
-            StyleState);
-        float? relativeInlineCodeScale = !inheritsHeading &&
-            run.ElementKey == MarkdownElementKeys.CodeInline
-                ? resolved.RelativeFontSizeScale
-                : null;
-        int modifierStart = 0;
-        if (inheritsHeading && !string.IsNullOrEmpty(run.ElementKey) &&
-            !string.Equals(run.ElementKey, headingKey, StringComparison.Ordinal))
-        {
-            ElementStyle ownStyle = Context.ThemeSnapshot.GetStyle(
-                run.ElementKey,
-                _styleContextKeys,
-                GetEffectiveRunAliases(run.InlineIndex),
-                CodeLanguage,
-                StyleState);
-            if (run.ElementKey == MarkdownElementKeys.CodeInline)
-                relativeInlineCodeScale = ownStyle.RelativeFontSizeScale;
-            resolved = InlineNestedStyleModifier.ApplyNestedStyleModifier(
-                resolved,
-                ownStyle,
-                run.ElementKey,
-                preserveCodeFontSize: inheritsHeading &&
-                    run.ElementKey == MarkdownElementKeys.CodeInline &&
-                    !Context.ThemeSnapshot.HasRelativeInlineCodeFontSizeRules,
-                deferRelativeInlineCodeFontSize: relativeInlineCodeScale.HasValue);
-        }
-        else if (!inheritsHeading && string.IsNullOrEmpty(run.ElementKey) &&
-                 run.StyleModifierKeys.Count > 0)
-        {
-            resolved = Context.ThemeSnapshot.GetStyle(
-                run.StyleModifierKeys[0],
-                _styleContextKeys,
-                GetEffectiveRunAliases(run.InlineIndex),
-                CodeLanguage,
-                StyleState);
-            modifierStart = 1;
-        }
-
-        float? absoluteInlineCodeFontSize =
-            run.ElementKey == MarkdownElementKeys.CodeInline &&
-            Context.ThemeSnapshot.HasRelativeInlineCodeFontSizeRules &&
-            relativeInlineCodeScale is null
-                ? resolved.FontSize
-                : null;
-        float? scriptModifierContainingFontSize = null;
-        for (int index = modifierStart; index < run.StyleModifierKeys.Count; index++)
-        {
-            string modifierKey = run.StyleModifierKeys[index];
-            if (scriptModifierContainingFontSize is null && IsScriptStyleKey(modifierKey))
-                scriptModifierContainingFontSize = resolved.FontSize;
-
-            ElementStyle modifier = Context.ThemeSnapshot.GetStyle(
-                modifierKey,
-                _styleContextKeys,
-                GetEffectiveRunAliases(run.InlineIndex),
-                CodeLanguage,
-                StyleState);
-            resolved = InlineNestedStyleModifier.ApplyNestedStyleModifier(resolved, modifier, modifierKey);
-        }
-        float scriptFontSize = resolved.FontSize;
-        bool appliedScriptFontSize = absoluteInlineCodeFontSize is null &&
-            TryResolveRelativeScriptFontSize(
-                run,
-                headingKey,
-                inheritsHeading,
-                resolved,
-                scriptModifierContainingFontSize,
-                relativeInlineCodeScale.HasValue ||
-                    run is LinkRun { InlineStyleMap: { } linkStyleMap } &&
-                    HasRelativeInlineCodeStylePath(run, linkStyleMap),
-                out scriptFontSize);
-        if (absoluteInlineCodeFontSize is float absoluteCodeSize)
-            resolved = ThemeSnapshot.WithFontSize(resolved, absoluteCodeSize);
-        if (appliedScriptFontSize)
-            resolved = ThemeSnapshot.WithFontSize(resolved, scriptFontSize);
-        if (relativeInlineCodeScale is float inlineCodeScale)
-        {
-            // A CodeInline run is the leaf after its containing Markdown or
-            // safe-HTML script scopes. Resolve those scopes first, then apply
-            // the inline-code percentage exactly once against that computed
-            // containing size. Keeping the scale separately also prevents
-            // intermediate style modifiers from erasing its provenance.
-            float containingFontSize = appliedScriptFontSize
-                ? scriptFontSize
-                : GetContainingRunFontSize(headingKey, inheritsHeading);
-            resolved = ThemeSnapshot.WithFontSize(
-                resolved,
-                InlineNestedStyleModifier.ResolveRelativeInlineCodeFontSize(containingFontSize, inlineCodeScale));
-        }
-
-        return resolved;
-    }
-
-    private float GetContainingRunFontSize(string headingKey, bool inheritsHeading)
-    {
-        if (!inheritsHeading)
-            return GetContainerStyle().FontSize;
-
-        // The run's class/ID aliases describe this inline descendant. A
-        // heading selector must use the containing block's aliases instead;
-        // otherwise a class on <code> can accidentally change the heading
-        // size used as its percentage basis.
-        return Context.ThemeSnapshot.GetStyle(
-            headingKey,
-            _styleContextKeys,
-            _styleAliasKeys,
-            CodeLanguage,
-            StyleState).FontSize;
-    }
-
-    private bool HasRelativeInlineCodeStylePath(InlineRun run, LinkInlineStyleMap map)
-    {
-        if (!Context.ThemeSnapshot.HasRelativeInlineCodeFontSizeRules)
-            return false;
-
-        bool hasScriptScope = run.ScriptStyleAncestryKeys.Count > 0 ||
-            IsScriptStyleKey(run.ElementKey) ||
-            run is LinkRun { IsSuperscript: true };
-        for (int index = 0; !hasScriptScope && index < run.StyleModifierKeys.Count; index++)
-            hasScriptScope = IsScriptStyleKey(run.StyleModifierKeys[index]);
-        if (!hasScriptScope)
-            return false;
-
-        for (int spanIndex = 0; spanIndex < map.Count; spanIndex++)
-        {
-            for (LinkInlineStylePath? current = map.GetSpan(spanIndex).Path;
-                 current is not null;
-                 current = current.Parent)
-            {
-                if (current.StyleKey != MarkdownElementKeys.CodeInline)
-                    continue;
-
-                ElementStyle codeStyle = Context.ThemeSnapshot.GetStyle(
-                    current.StyleKey,
-                    _styleContextKeys,
-                    current.StyleAliases,
-                    CodeLanguage,
-                    StyleState);
-                if (codeStyle.RelativeFontSizeScale.HasValue)
-                    return true;
-            }
-        }
-
-        return false;
     }
 
     internal ElementStyle[] GetLinkInlineSpanStyles(LinkRun link)
@@ -1981,174 +1817,10 @@ internal sealed partial class InlineContainerBox : BlockBox
         if (!map.IsValidForTextLength(link.TextLength))
             throw new InvalidOperationException("A link's nested inline style map is malformed.");
 
-        ElementStyle[] spanStyles = ResolveLinkInlineSpanStyles(link, map);
+        ElementStyle[] spanStyles = InlineRunStyleResolver.ResolveLinkInlineSpanStyles(this, link, map);
         cache[link.InlineIndex] = spanStyles;
         return spanStyles;
     }
-
-    private ElementStyle[] ResolveLinkInlineSpanStyles(LinkRun link, LinkInlineStyleMap map)
-    {
-        var spanStyles = new ElementStyle[map.Count];
-        ElementStyle linkStyle = GetRunStyle(link);
-        bool preserveHeadingCodeFontSize = GetHeadingStyleKey(link).Length > 0;
-        var pathScratch = new List<LinkInlineStylePath>();
-        for (int index = 0; index < spanStyles.Length; index++)
-        {
-            spanStyles[index] = ResolveLinkInlineStylePath(
-                linkStyle,
-                map.GetSpan(index).Path,
-                preserveHeadingCodeFontSize,
-                pathScratch);
-        }
-        return spanStyles;
-    }
-
-    private ElementStyle ResolveLinkInlineStylePath(
-        ElementStyle basis,
-        LinkInlineStylePath path,
-        bool preserveHeadingCodeFontSize,
-        List<LinkInlineStylePath> pathScratch)
-    {
-        // Paths are immutable parent-linked chains built from nested inline
-        // containers. Resolve them iteratively so adversarially deep Markdown
-        // nesting cannot add another recursive layout-time walk. The scratch
-        // list is reused for each span in this map and is discarded after the
-        // one-time style-cache fill.
-        pathScratch.Clear();
-        for (LinkInlineStylePath? current = path; current is not null; current = current.Parent)
-            pathScratch.Add(current);
-
-        for (int index = pathScratch.Count - 1; index >= 0; index--)
-        {
-            LinkInlineStylePath current = pathScratch[index];
-            ElementStyle modifier = Context.ThemeSnapshot.GetStyle(
-                current.StyleKey,
-                _styleContextKeys,
-                current.StyleAliases,
-                CodeLanguage,
-                StyleState);
-            ElementStyle containingStyle = basis;
-            ElementStyle resolved = InlineNestedStyleModifier.ApplyNestedStyleModifier(
-                basis,
-                modifier,
-                current.StyleKey,
-                preserveCodeFontSize: preserveHeadingCodeFontSize &&
-                    current.StyleKey == MarkdownElementKeys.CodeInline &&
-                    !Context.ThemeSnapshot.HasRelativeInlineCodeFontSizeRules);
-            if (IsScriptStyleKey(current.StyleKey))
-            {
-                float fontSize = modifier.RelativeFontSizeScale is float scale
-                    ? Math.Max(ThemeSnapshot.MinimumRelativeScriptFontSize, containingStyle.FontSize * scale)
-                    : modifier.FontSize;
-                resolved = ThemeSnapshot.WithFontSize(resolved, fontSize);
-            }
-            basis = resolved;
-        }
-        return basis;
-    }
-
-    private bool TryResolveRelativeScriptFontSize(
-        InlineRun run,
-        string headingKey,
-        bool inheritsHeading,
-        ElementStyle resolved,
-        float? scriptModifierContainingFontSize,
-        bool hasRelativeInlineCodeRule,
-        out float fontSize)
-    {
-        fontSize = scriptModifierContainingFontSize ?? resolved.FontSize;
-        ThemeSnapshot theme = Context.ThemeSnapshot;
-        if (!theme.HasRelativeScriptFontSizeRules && !hasRelativeInlineCodeRule)
-            return false;
-
-        IReadOnlyList<string> scriptAncestry = run.ScriptStyleAncestryKeys;
-        bool runElementIsScript = IsScriptStyleKey(run.ElementKey);
-        bool hasScriptScope = scriptAncestry.Count > 0 || runElementIsScript ||
-            run is LinkRun { IsSuperscript: true };
-        for (int index = 0; !hasScriptScope && index < run.StyleModifierKeys.Count; index++)
-            hasScriptScope = IsScriptStyleKey(run.StyleModifierKeys[index]);
-        if (!hasScriptScope)
-            return false;
-
-        string[] aliases = GetEffectiveRunAliases(run.InlineIndex);
-        if (hasRelativeInlineCodeRule)
-        {
-            // InlineCode is nested inside these run-level script ancestors;
-            // start at the computed linked/heading role before any script
-            // modifier has replaced its nominal size. A direct CodeInline run
-            // uses its actual container because its initial resolved style is
-            // already CodeInline.
-            fontSize = run.ElementKey == MarkdownElementKeys.CodeInline
-                ? GetContainingRunFontSize(headingKey, inheritsHeading)
-                : scriptModifierContainingFontSize ?? resolved.FontSize;
-        }
-        else if (runElementIsScript ||
-            (!inheritsHeading && string.IsNullOrEmpty(run.ElementKey) &&
-             run.StyleModifierKeys.Count > 0 && IsScriptStyleKey(run.StyleModifierKeys[0])))
-        {
-            // Script-role defaults are nominal absolute sizes. Start from the
-            // actual containing text style so relative rules compound through
-            // headings, quotes, tables, and nested safe-HTML/Markdown scopes.
-            string containingKey = inheritsHeading ? headingKey : ElementKey;
-            fontSize = theme.GetStyle(
-                containingKey,
-                _styleContextKeys,
-                _styleAliasKeys,
-                CodeLanguage,
-                StyleState).FontSize;
-        }
-
-        if (scriptAncestry.Count > 0)
-        {
-            for (int index = 0; index < scriptAncestry.Count; index++)
-                ApplyScriptFontSize(theme, scriptAncestry[index], aliases, ref fontSize);
-        }
-        else
-        {
-            // Preserve compatibility for internally-created runs that did not
-            // pass through the parser's ordered ancestry capture.
-            if (runElementIsScript)
-                ApplyScriptFontSize(theme, run.ElementKey, aliases, ref fontSize);
-
-            for (int index = 0; index < run.StyleModifierKeys.Count; index++)
-            {
-                string modifierKey = run.StyleModifierKeys[index];
-                if (!IsScriptStyleKey(modifierKey))
-                    continue;
-                ApplyScriptFontSize(theme, modifierKey, aliases, ref fontSize);
-            }
-
-            if (run is LinkRun { IsSuperscript: true })
-                ApplyScriptFontSize(theme, MarkdownElementKeys.Superscript, aliases, ref fontSize);
-        }
-
-        return true;
-    }
-
-    private void ApplyScriptFontSize(
-        ThemeSnapshot theme,
-        string scriptRole,
-        IReadOnlyList<string> aliases,
-        ref float fontSize)
-    {
-        ElementStyle scriptStyle = theme.GetStyle(
-            scriptRole,
-            _styleContextKeys,
-            aliases,
-            CodeLanguage,
-            StyleState);
-        fontSize = scriptStyle.RelativeFontSizeScale is float scale
-            ? Math.Max(ThemeSnapshot.MinimumRelativeScriptFontSize, fontSize * scale)
-            : scriptStyle.FontSize;
-    }
-
-    internal static bool IsScriptStyleKey(string key)
-        => key is MarkdownElementKeys.Subscript or MarkdownElementKeys.Superscript;
-
-    private string GetHeadingStyleKey(InlineRun run)
-        => !string.IsNullOrEmpty(run.SemanticHeadingKey)
-            ? run.SemanticHeadingKey
-            : IsHeadingElement(ElementKey) ? ElementKey : string.Empty;
 
     internal Thickness GetEffectivePadding(ElementStyle style)
         => UseContainerPadding ? style.Padding : default;
@@ -2182,7 +1854,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         }
     }
 
-    private string[] GetEffectiveRunAliases(int index)
+    internal string[] GetEffectiveRunAliases(int index)
     {
         if ((uint)index >= (uint)_runs.Count)
             throw new ArgumentOutOfRangeException(nameof(index));
@@ -2895,31 +2567,4 @@ internal sealed partial class InlineContainerBox : BlockBox
             Context.ThemeSnapshot.HasRelativeScriptFontSizeRules &&
                 (run.ScriptStyleAncestryKeys.Count > 0 || run is LinkRun { IsSuperscript: true });
     }
-
-    private static string? GetInnermostScriptStyleKey(InlineRun run)
-    {
-        if (run.ScriptStyleAncestryKeys.Count > 0)
-            return run.ScriptStyleAncestryKeys[run.ScriptStyleAncestryKeys.Count - 1];
-
-        if (IsScriptStyleKey(run.ElementKey))
-            return run.ElementKey;
-
-        for (int index = run.StyleModifierKeys.Count - 1; index >= 0; index--)
-        {
-            if (IsScriptStyleKey(run.StyleModifierKeys[index]))
-                return run.StyleModifierKeys[index];
-        }
-
-        return run is LinkRun { IsSuperscript: true }
-            ? MarkdownElementKeys.Superscript
-            : null;
-    }
-
-    private static bool IsHeadingElement(string elementKey)
-        => elementKey is MarkdownElementKeys.Heading1
-            or MarkdownElementKeys.Heading2
-            or MarkdownElementKeys.Heading3
-            or MarkdownElementKeys.Heading4
-            or MarkdownElementKeys.Heading5
-            or MarkdownElementKeys.Heading6;
 }

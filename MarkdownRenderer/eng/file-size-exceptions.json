@@ -143,12 +143,12 @@
     },
     {
       "path": "src/MarkdownRenderer/Layout/Boxes/InlineContainerBox.cs",
-      "lines": 2925,
+      "lines": 2570,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
       "path": "src/MarkdownRenderer/Layout/Boxes/InlineContainerBox.MeasuredPlacementTransfer.cs",
-      "lines": 1824,
+      "lines": 1822,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {

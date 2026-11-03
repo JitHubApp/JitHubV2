@@ -68,7 +68,7 @@ internal static class InlineScriptBaselineLayout
         }
         else
         {
-            if (InlineContainerBox.IsScriptStyleKey(run.ElementKey))
+            if (InlineRunStyleResolver.IsScriptStyleKey(run.ElementKey))
                 offset += GetScriptRoleOffset(run.ElementKey, containerFontSize);
             for (int index = 0; index < run.StyleModifierKeys.Count; index++)
                 offset += GetScriptRoleOffset(run.StyleModifierKeys[index], containerFontSize);
