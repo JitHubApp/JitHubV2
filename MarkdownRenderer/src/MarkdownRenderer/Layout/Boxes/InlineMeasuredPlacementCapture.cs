@@ -112,6 +112,62 @@ internal static class InlineMeasuredPlacementCapture
     {
         ArgumentNullException.ThrowIfNull(prepared);
         transfer = null;
+        if (!TryAdmitMeasuredPlacementPair(
+                box, prepared, expectedAvailableWidth, isTableCellTransfer,
+                isContainerLeafTransfer, allowMeasuredVectorPlacement,
+                out int runCount, out int imageCount))
+        {
+            return false;
+        }
+
+        if (!TryCaptureRunStates(
+                box, prepared, runCount, imageCount, allowMeasuredVectorPlacement,
+                out InlineMeasuredRunState[] runStates) ||
+            !RunImagesMatchEntries(box, prepared, runStates) ||
+            !TryCaptureRunStyles(
+                box, prepared, runCount,
+                out IReadOnlyList<string>[] effectiveAliases,
+                out ElementStyle?[] resolvedStyles))
+        {
+            return false;
+        }
+
+        if (ReferenceEquals(box.StyleContextKeys, prepared.StyleContextKeys) ||
+            ReferenceEquals(box.StyleAliasKeys, prepared.StyleAliasKeys) ||
+            !MatchesKeys(box.StyleContextKeys, prepared.StyleContextKeys) ||
+            !MatchesKeys(box.StyleAliasKeys, prepared.StyleAliasKeys))
+        {
+            return false;
+        }
+
+        transfer = new InlineMeasuredPlacementTransfer(
+            box,
+            prepared,
+            expectedAvailableWidth,
+            runStates,
+            prepared.StyleContextKeys,
+            prepared.StyleAliasKeys,
+            effectiveAliases,
+            resolvedStyles,
+            isTableCellTransfer,
+            isContainerLeafTransfer,
+            allowMeasuredVectorPlacement);
+        return true;
+    }
+
+    // The source and candidate must be distinct supported roots in
+    // compatible contexts, with a measured source and an unmeasured private
+    // clone whose run and image counts fit this transfer kind.
+    private static bool TryAdmitMeasuredPlacementPair(
+        InlineContainerBox box,
+        InlineContainerBox prepared,
+        float expectedAvailableWidth,
+        bool isTableCellTransfer,
+        bool isContainerLeafTransfer,
+        bool allowMeasuredVectorPlacement,
+        out int runCount,
+        out int imageCount)
+    {
         bool rootsSupported = isTableCellTransfer
             ? IsSupportedTableCellMeasuredPlacementRoot(box, allowMeasuredVectorPlacement) &&
                 IsSupportedTableCellMeasuredPlacementRoot(prepared, allowMeasuredVectorPlacement)
@@ -125,8 +181,8 @@ internal static class InlineMeasuredPlacementCapture
             : isContainerLeafTransfer
             ? IsMeasuredSourceForContainerLeafTransfer(box, expectedAvailableWidth, allowMeasuredVectorPlacement)
             : IsMeasuredSourceForTransfer(box, expectedAvailableWidth, allowMeasuredVectorPlacement);
-        int runCount = 0;
-        int imageCount = 0;
+        runCount = 0;
+        imageCount = 0;
         bool placementCountsValid = allowMeasuredVectorPlacement
             ? box.TryGetPrivateRasterPlacementCountsWithMeasuredVectorPlacement(
                 prepared.Context, expectedAvailableWidth, out runCount,
@@ -156,7 +212,20 @@ internal static class InlineMeasuredPlacementCapture
             return false;
         }
 
-        var runStates = new InlineMeasuredRunState[runCount];
+        return true;
+    }
+
+    // Captures each source/prepared run pair in order, rejecting any image
+    // box shared between runs or between the source and the candidate.
+    private static bool TryCaptureRunStates(
+        InlineContainerBox box,
+        InlineContainerBox prepared,
+        int runCount,
+        int imageCount,
+        bool allowMeasuredVectorPlacement,
+        out InlineMeasuredRunState[] runStates)
+    {
+        runStates = new InlineMeasuredRunState[runCount];
         int offset = 0;
         int imageOrdinal = 0;
         var seenSourceImages = new ImageBox[imageCount];
@@ -192,15 +261,18 @@ internal static class InlineMeasuredPlacementCapture
             offset += sourceRun.TextLength;
         }
 
-        if (imageOrdinal != imageCount || offset != box.RunTextLength ||
-            (box.InlineImageEntries?.Count ?? 0) != imageCount ||
-            (prepared.InlineImageEntries?.Count ?? 0) != imageCount ||
-            ((box.InlineImageEntries is null) != (prepared.InlineImageEntries is null)))
-        {
-            return false;
-        }
+        return imageOrdinal == imageCount && offset == box.RunTextLength &&
+            (box.InlineImageEntries?.Count ?? 0) == imageCount &&
+            (prepared.InlineImageEntries?.Count ?? 0) == imageCount &&
+            ((box.InlineImageEntries is null) == (prepared.InlineImageEntries is null));
+    }
 
-        imageOrdinal = 0;
+    private static bool RunImagesMatchEntries(
+        InlineContainerBox box,
+        InlineContainerBox prepared,
+        InlineMeasuredRunState[] runStates)
+    {
+        int imageOrdinal = 0;
         foreach (InlineMeasuredRunState run in runStates)
         {
             if (run.SourceImageRun is null || run.PreparedImageRun is null)
@@ -215,8 +287,20 @@ internal static class InlineMeasuredPlacementCapture
             imageOrdinal++;
         }
 
-        var effectiveAliases = new IReadOnlyList<string>[runCount];
-        var resolvedStyles = new ElementStyle?[runCount];
+        return true;
+    }
+
+    // The candidate's effective aliases must be equal-valued private copies,
+    // and both boxes must share the same resolved run style instance.
+    private static bool TryCaptureRunStyles(
+        InlineContainerBox box,
+        InlineContainerBox prepared,
+        int runCount,
+        out IReadOnlyList<string>[] effectiveAliases,
+        out ElementStyle?[] resolvedStyles)
+    {
+        effectiveAliases = new IReadOnlyList<string>[runCount];
+        resolvedStyles = new ElementStyle?[runCount];
         for (int index = 0; index < runCount; index++)
         {
             string[] sourceAliases = box.GetEffectiveRunAliases(index);
@@ -231,26 +315,6 @@ internal static class InlineMeasuredPlacementCapture
             resolvedStyles[index] = box.GetCachedRunStyle(index);
         }
 
-        if (ReferenceEquals(box.StyleContextKeys, prepared.StyleContextKeys) ||
-            ReferenceEquals(box.StyleAliasKeys, prepared.StyleAliasKeys) ||
-            !MatchesKeys(box.StyleContextKeys, prepared.StyleContextKeys) ||
-            !MatchesKeys(box.StyleAliasKeys, prepared.StyleAliasKeys))
-        {
-            return false;
-        }
-
-        transfer = new InlineMeasuredPlacementTransfer(
-            box,
-            prepared,
-            expectedAvailableWidth,
-            runStates,
-            prepared.StyleContextKeys,
-            prepared.StyleAliasKeys,
-            effectiveAliases,
-            resolvedStyles,
-            isTableCellTransfer,
-            isContainerLeafTransfer,
-            allowMeasuredVectorPlacement);
         return true;
     }
 
