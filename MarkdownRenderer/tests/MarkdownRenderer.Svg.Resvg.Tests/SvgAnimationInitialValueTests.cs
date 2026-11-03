@@ -20,7 +20,7 @@ public sealed class SvgAnimationInitialValueTests
             {
                 XmlElement animation = CreateAnimation(values, times);
 
-                string? actual = SvgStaticSnapshot.GetInitialValue(animation, CancellationToken.None);
+                string? actual = SvgAnimationInitialValues.GetInitialValue(animation, CancellationToken.None);
 
                 Assert.Equal(LegacyInitialValue(values, times), actual);
             }
@@ -38,7 +38,7 @@ public sealed class SvgAnimationInitialValueTests
         animation.SetAttribute("from", from);
         animation.SetAttribute("to", to);
 
-        Assert.Equal(expected, SvgStaticSnapshot.GetInitialValue(animation, CancellationToken.None));
+        Assert.Equal(expected, SvgAnimationInitialValues.GetInitialValue(animation, CancellationToken.None));
     }
 
     [Fact]
@@ -46,10 +46,10 @@ public sealed class SvgAnimationInitialValueTests
     {
         string prefix = string.Concat(Enumerable.Repeat("0;", 131_072));
         XmlElement animation = CreateAnimation(prefix + "0.25", prefix + "0");
-        Assert.Equal("0.25", SvgStaticSnapshot.GetInitialValue(animation, CancellationToken.None));
+        Assert.Equal("0.25", SvgAnimationInitialValues.GetInitialValue(animation, CancellationToken.None));
 
         long before = GC.GetAllocatedBytesForCurrentThread();
-        string? result = SvgStaticSnapshot.GetInitialValue(animation, CancellationToken.None);
+        string? result = SvgAnimationInitialValues.GetInitialValue(animation, CancellationToken.None);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
         Assert.Equal("0.25", result);
@@ -60,10 +60,10 @@ public sealed class SvgAnimationInitialValueTests
     public void UnusedValuesDoNotBecomeAnArrayOfEmptyTokens()
     {
         XmlElement animation = CreateAnimation("0.25;" + new string(';', 1024 * 1024), "");
-        Assert.Equal("0.25", SvgStaticSnapshot.GetInitialValue(animation, CancellationToken.None));
+        Assert.Equal("0.25", SvgAnimationInitialValues.GetInitialValue(animation, CancellationToken.None));
 
         long before = GC.GetAllocatedBytesForCurrentThread();
-        string? result = SvgStaticSnapshot.GetInitialValue(animation, CancellationToken.None);
+        string? result = SvgAnimationInitialValues.GetInitialValue(animation, CancellationToken.None);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
         Assert.Equal("0.25", result);
@@ -77,7 +77,7 @@ public sealed class SvgAnimationInitialValueTests
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 
-        Assert.Throws<OperationCanceledException>(() => SvgStaticSnapshot.GetInitialValue(animation, cancellation.Token));
+        Assert.Throws<OperationCanceledException>(() => SvgAnimationInitialValues.GetInitialValue(animation, cancellation.Token));
     }
 
     [Fact]

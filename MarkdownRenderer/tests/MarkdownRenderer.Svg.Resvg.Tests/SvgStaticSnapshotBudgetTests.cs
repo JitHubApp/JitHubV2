@@ -139,7 +139,7 @@ public sealed class SvgStaticSnapshotBudgetTests
     {
         using var cancellation = new CancellationTokenSource();
         var parser = new CancelAfterReadXmlReader(cancellation);
-        using var reader = new SvgStaticSnapshot.BudgetedXmlReader(parser, cancellation.Token);
+        using var reader = new BudgetedXmlReader(parser, cancellation.Token);
 
         Assert.ThrowsAny<OperationCanceledException>(() => reader.Read());
         Assert.Equal(1, parser.ReadCalls);
@@ -187,9 +187,9 @@ public sealed class SvgStaticSnapshotBudgetTests
     {
         using XmlReader parser = CreateParser(
             "<svg xmlns='urn:svg' xmlns:p='urn:prefix'><p:g value='1'/></svg>");
-        var budget = new SvgStaticSnapshot.XmlStructuralBudget(
+        var budget = new XmlStructuralBudget(
             attributesSeen: SvgResourceBudget.MaxAttributes - 2);
-        using var reader = new SvgStaticSnapshot.BudgetedXmlReader(
+        using var reader = new BudgetedXmlReader(
             parser,
             CancellationToken.None,
             budget);
@@ -259,7 +259,7 @@ public sealed class SvgStaticSnapshotBudgetTests
     {
         byte[] source = [1, 2, 3, 4];
         using var cancellation = new CancellationTokenSource();
-        var stream = new SvgStaticSnapshot.CancellationAwareReadStream(source, cancellation.Token);
+        var stream = new CancellationAwareReadStream(source, cancellation.Token);
         byte[] buffer = new byte[2];
 
         Assert.Equal(2, stream.Read(buffer));
@@ -268,7 +268,7 @@ public sealed class SvgStaticSnapshotBudgetTests
         Assert.Throws<OperationCanceledException>(() => stream.Read(buffer));
 
         stream.Dispose();
-        FieldInfo sourceField = typeof(SvgStaticSnapshot.CancellationAwareReadStream).GetField(
+        FieldInfo sourceField = typeof(CancellationAwareReadStream).GetField(
             "_source",
             BindingFlags.Instance | BindingFlags.NonPublic)!;
         Assert.Same(Array.Empty<byte>(), sourceField.GetValue(stream));
@@ -278,7 +278,7 @@ public sealed class SvgStaticSnapshotBudgetTests
     public void SegmentedOutputAcceptsExactLimitThenClearsEverySegmentOnDispose()
     {
         byte[] expected = Enumerable.Range(0, 32_771).Select(static value => (byte)value).ToArray();
-        var output = new SvgStaticSnapshot.BoundedSegmentedWriteStream(expected.Length, CancellationToken.None);
+        var output = new BoundedSegmentedWriteStream(expected.Length, CancellationToken.None);
         output.Write(expected);
         List<byte[]> segments = GetSegments(output);
         byte[][] allocated = segments.ToArray();
@@ -295,7 +295,7 @@ public sealed class SvgStaticSnapshotBudgetTests
     [Fact]
     public void SegmentedOutputRejectsFirstByteBeyondLimitWithoutGrowingAndClearsBuffers()
     {
-        var output = new SvgStaticSnapshot.BoundedSegmentedWriteStream(3, CancellationToken.None);
+        var output = new BoundedSegmentedWriteStream(3, CancellationToken.None);
         output.Write([1, 2, 3]);
         List<byte[]> segments = GetSegments(output);
         byte[][] allocated = segments.ToArray();
@@ -316,7 +316,7 @@ public sealed class SvgStaticSnapshotBudgetTests
     public void SegmentedOutputCancellationStopsWritesAndClearsBuffers()
     {
         using var cancellation = new CancellationTokenSource();
-        var output = new SvgStaticSnapshot.BoundedSegmentedWriteStream(32, cancellation.Token);
+        var output = new BoundedSegmentedWriteStream(32, cancellation.Token);
         output.Write([1, 2, 3]);
         List<byte[]> segments = GetSegments(output);
         byte[][] allocated = segments.ToArray();
@@ -333,7 +333,7 @@ public sealed class SvgStaticSnapshotBudgetTests
     public void SegmentedOutputCancellationDuringFinalizationDoesNotReturnPartialBytes()
     {
         using var cancellation = new CancellationTokenSource();
-        var output = new SvgStaticSnapshot.BoundedSegmentedWriteStream(32, cancellation.Token);
+        var output = new BoundedSegmentedWriteStream(32, cancellation.Token);
         output.Write([1, 2, 3]);
         List<byte[]> segments = GetSegments(output);
         byte[][] allocated = segments.ToArray();
@@ -350,20 +350,20 @@ public sealed class SvgStaticSnapshotBudgetTests
     public void SegmentedOutputCannotBeConfiguredAboveHardSourceCeiling()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            new SvgStaticSnapshot.BoundedSegmentedWriteStream(0, CancellationToken.None));
+            new BoundedSegmentedWriteStream(0, CancellationToken.None));
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             SvgStaticSnapshot.Create([], CancellationToken.None, 0));
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            new SvgStaticSnapshot.BoundedSegmentedWriteStream(
+            new BoundedSegmentedWriteStream(
                 SvgResourceBudget.MaxInputBytes + 1,
                 CancellationToken.None));
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             SvgStaticSnapshot.Create([], CancellationToken.None, SvgResourceBudget.MaxInputBytes + 1));
     }
 
-    private static List<byte[]> GetSegments(SvgStaticSnapshot.BoundedSegmentedWriteStream output)
+    private static List<byte[]> GetSegments(BoundedSegmentedWriteStream output)
     {
-        FieldInfo segmentsField = typeof(SvgStaticSnapshot.BoundedSegmentedWriteStream).GetField(
+        FieldInfo segmentsField = typeof(BoundedSegmentedWriteStream).GetField(
             "_segments",
             BindingFlags.Instance | BindingFlags.NonPublic)!;
         return (List<byte[]>)segmentsField.GetValue(output)!;
