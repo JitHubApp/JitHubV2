@@ -801,10 +801,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         }
     }
 
-    /// <summary>The alt text supplied for this image (empty if none).</summary>
-
-    /// <summary>The host-facing image source used by target-aware commands.</summary>
-
     /// <summary>SVG &lt;title&gt; element value, or null. Used by the automation
     /// peer as the accessible name when richer than alt.</summary>
     public string? SvgTitle => _svgTitle ?? _carriedCompletion?.SvgTitle;
