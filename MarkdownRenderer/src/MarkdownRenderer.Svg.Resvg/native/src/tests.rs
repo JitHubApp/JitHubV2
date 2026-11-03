@@ -17,4 +17,5 @@ pub(crate) mod raster_reservations;
 pub(crate) mod support;
 pub(crate) mod svg_preflight_resources;
 pub(crate) mod svg_preflight_xml;
+pub(crate) mod svg_rules_corpus;
 pub(crate) mod theme;
