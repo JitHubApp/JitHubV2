@@ -20,25 +20,24 @@ namespace MarkdownRenderer.Controls.LazyLayout;
 /// </summary>
 /// <remarks>
 /// Kept as one type because request admission, dispatch, cancellation and
-/// completion all read and write the same pending/active band state; the
-/// viewport band policy lives in <see cref="LazyLayoutViewportRequests"/> and
-/// the worker side in <see cref="LazyLayoutWork"/>.
+/// completion all read and write the same pending/active band state. The
+/// viewport band policy lives in <see cref="LazyLayoutViewportRequests"/>,
+/// applying a current result in <see cref="LazyLayoutCompletionPublisher"/>
+/// and the worker side in <see cref="LazyLayoutWork"/>.
 /// </remarks>
 internal sealed class LazyLayoutRealization
 {
     private readonly ILazyLayoutHost _host;
     private readonly MarkdownViewLifetime _lifetime;
     private readonly PublishedLayout _published;
-    private readonly LayoutCommitState _layoutCommit;
-    private readonly LayoutCommitPublisher _layoutPublisher;
     private readonly MarkdownViewSurface _surface;
     private readonly RecoveryClock _recoveryClock;
     private readonly VectorCapacityRetry _vectorCapacity;
     private readonly PointerInputRouter _pointerInput;
     private readonly KeyboardFocusModel _focus;
-    private readonly FocusedItemCommit _focusCommit;
     private readonly WeakSnapshotPublicationDrainFence<LayoutSnapshot> _publicationHandoff = new();
     private readonly LazyLayoutViewportRequests _viewportRequests;
+    private readonly LazyLayoutCompletionPublisher _completion;
 
     private CancellationTokenSource? _cts;
     private Task? _task;
@@ -74,16 +73,15 @@ internal sealed class LazyLayoutRealization
         _host = host;
         _lifetime = lifetime;
         _published = published;
-        _layoutCommit = layoutCommit;
-        _layoutPublisher = layoutPublisher;
         _surface = surface;
         _recoveryClock = recoveryClock;
         _vectorCapacity = vectorCapacity;
         _pointerInput = pointerInput;
         _focus = focus;
-        _focusCommit = focusCommit;
         _viewportRequests = new LazyLayoutViewportRequests(
             this, host, published, surface, viewport, vectorCapacity);
+        _completion = new LazyLayoutCompletionPublisher(
+            host, layoutCommit, layoutPublisher, surface, vectorCapacity, pointerInput, focusCommit);
     }
 
     /// <summary>True while a request is pending or dispatched, a completion is staged, or a worker runs.</summary>
@@ -418,72 +416,14 @@ internal sealed class LazyLayoutRealization
             return;
         }
 
-        // Record only a completed attempt.
-        _vectorCapacity.RecordAttempt(attemptedVisibleBand, attemptedCapacityGeneration);
-
-        if (failure is not null)
-        {
-            _host.NotifyVisibleDeferredSceneItemStatusMayHaveChanged();
-            if (GraphicsDeviceErrors.IsDeviceLost(failure))
-            {
-                _host.HandleDeviceLost(failure);
-            }
-            else
-            {
-                MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] lazy layout realization failed: {failure}");
-                _host.RequestFullRebuild();
-            }
-            _host.StopRecoveryClockIfIdle();
-            _pointerInput.OnLazyLayoutCompletion(snapshot, succeeded: false);
-            return;
-        }
-
-        _vectorCapacity.Synchronize(snapshot);
-
-        if (result.Commit.LayoutRevision <= _layoutCommit.AppliedRevision)
-        {
-            // Moving the active band can finish visible readiness without a
-            // geometry revision or resource change (for example, two already
-            // measured text-only viewports). Publish that status transition
-            // even when there is no new drawing lease to repaint.
-            _host.NotifyVisibleDeferredSceneItemStatusMayHaveChanged();
-            // This band is now measured and its native resources are
-            // settled, but no layout commit follows to re-run the deferred
-            // scene probe. A Mermaid or Math fallback that scrolled into this
-            // band while it was being prepared would otherwise never be
-            // scheduled and keep showing its source as "Loading".
-            _host.ScheduleVisibleDeferredScenes();
-            if (result.Commit.NativeSceneResourcesChanged)
-            {
-                // A prepared/retired drawing lease changes only the raster
-                // surface. Repaint without rebuilding layout or disturbing
-                // selection, focus, source mapping, or scroll position.
-                _host.InvalidateAutomationLayout();
-                _host.InvalidateCanvas();
-            }
-
-            // A focus request can arrive while an already-measured band is
-            // publishing its completion. Re-evaluate it even when that worker
-            // produced no newer layout revision.
-            _ = _focusCommit.ResumePendingLazy(snapshot);
-            _host.TryResumePendingScrollToBlock(snapshot, pipelineGeneration);
-            _pointerInput.OnLazyLayoutCompletion(snapshot, succeeded: true);
-            _host.StopRecoveryClockIfIdle();
-            return;
-        }
-
-        // A user can jump to an already-measured band while this worker is
-        // finishing. That jump need not queue replacement work, so the old
-        // completion still arrives. Never restore its captured scroll anchor
-        // over a newer viewport position.
-        bool restoreAnchor = LazyLayoutScrollAnchorPolicy.ShouldRestore(
-            anchorOffset, _surface.Scroll?.VerticalOffset, _host.IsScrollViewIntermediate);
-        _layoutPublisher.Apply(snapshot, restoreAnchor ? result.ScrollAnchor : null);
-        _vectorCapacity.Synchronize(snapshot);
-        if (result.Commit.NativeSceneResourcesChanged)
-            _host.NotifyVisibleDeferredSceneItemStatusMayHaveChanged();
-        _pointerInput.OnLazyLayoutCompletion(snapshot, succeeded: true);
-        _host.StopRecoveryClockIfIdle();
+        _completion.Publish(
+            snapshot,
+            result,
+            failure,
+            anchorOffset,
+            pipelineGeneration,
+            attemptedVisibleBand,
+            attemptedCapacityGeneration);
     }
 
     /// <summary>
