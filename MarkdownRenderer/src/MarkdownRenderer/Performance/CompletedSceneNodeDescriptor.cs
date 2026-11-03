@@ -159,69 +159,16 @@ internal sealed class CompletedSceneNodeDescriptor
 
                 if (!exit)
                 {
-                    if (node._originalNode.TryGetTarget(out MarkdownContent? originalNode))
-                    {
-                        restored.Add(node, originalNode);
-                        continue;
-                    }
-
-                    if (node._scene is { } sceneReference)
-                    {
-                        if (!sceneReference.TryGetTarget(out MarkdownVectorScene? scene))
-                        {
-                            restoredRoots = Array.Empty<MarkdownContent>();
-                            return false;
-                        }
-                        restoreScenes.Add(node, scene);
-                    }
-
-                    if (!visiting.Add(node))
+                    if (!node.TryEnterRestore(restored, restoreScenes, visiting, pending, cancellationToken))
                     {
                         restoredRoots = Array.Empty<MarkdownContent>();
                         return false;
-                    }
-
-                    pending.Push((node, true));
-                    for (int childIndex = node._children.Length - 1; childIndex >= 0; childIndex--)
-                    {
-                        if ((childIndex & 63) == 0)
-                            cancellationToken.ThrowIfCancellationRequested();
-                        CompletedSceneNodeDescriptor child = node._children[childIndex];
-                        if (!restored.ContainsKey(child))
-                            pending.Push((child, false));
                     }
                     continue;
                 }
 
                 visiting.Remove(node);
-                var children = new MarkdownContent[node._children.Length];
-                for (int childIndex = 0; childIndex < children.Length; childIndex++)
-                {
-                    if ((childIndex & 63) == 0)
-                        cancellationToken.ThrowIfCancellationRequested();
-                    children[childIndex] = restored[node._children[childIndex]];
-                }
-
-                IReadOnlyList<MarkdownContent> childList = children.Length == 0
-                    ? Array.Empty<MarkdownContent>()
-                    : new ReadOnlyCollection<MarkdownContent>(children);
-                restoreScenes.TryGetValue(node, out MarkdownVectorScene? restoredScene);
-                restored.Add(node, new MarkdownContent(
-                    node._kind,
-                    node._styleRole,
-                    node._sourceSpan,
-                    node._accessibilityRole,
-                    node._text,
-                    node._destination,
-                    node._language,
-                    node._factoryKey,
-                    node._customKind,
-                    restoredScene,
-                    RestoreAttributes(node._attributes, cancellationToken),
-                    childList,
-                    node._accessibilityName,
-                    node._accessibilityDescription,
-                    node._semanticText));
+                restored.Add(node, node.Restore(restored, restoreScenes, cancellationToken));
             }
         }
 
@@ -233,6 +180,83 @@ internal sealed class CompletedSceneNodeDescriptor
             restoredRoots[index] = restored[roots[index]];
         }
         return true;
+    }
+
+    /// <summary>
+    /// First visit of a node during restoration: reuses the live original when
+    /// it is still reachable, otherwise captures its weak scene and schedules
+    /// its children. Returns false when the scene was collected or a cycle is
+    /// found, so the whole graph is re-prepared instead.
+    /// </summary>
+    private bool TryEnterRestore(
+        Dictionary<CompletedSceneNodeDescriptor, MarkdownContent> restored,
+        Dictionary<CompletedSceneNodeDescriptor, MarkdownVectorScene?> restoreScenes,
+        HashSet<CompletedSceneNodeDescriptor> visiting,
+        Stack<(CompletedSceneNodeDescriptor Node, bool Exit)> pending,
+        CancellationToken cancellationToken)
+    {
+        if (_originalNode.TryGetTarget(out MarkdownContent? originalNode))
+        {
+            restored.Add(this, originalNode);
+            return true;
+        }
+
+        if (_scene is { } sceneReference)
+        {
+            if (!sceneReference.TryGetTarget(out MarkdownVectorScene? scene))
+                return false;
+            restoreScenes.Add(this, scene);
+        }
+
+        if (!visiting.Add(this))
+            return false;
+
+        pending.Push((this, true));
+        for (int childIndex = _children.Length - 1; childIndex >= 0; childIndex--)
+        {
+            if ((childIndex & 63) == 0)
+                cancellationToken.ThrowIfCancellationRequested();
+            CompletedSceneNodeDescriptor child = _children[childIndex];
+            if (!restored.ContainsKey(child))
+                pending.Push((child, false));
+        }
+        return true;
+    }
+
+    /// <summary>Rebuilds this node around its already-restored children and live scene.</summary>
+    private MarkdownContent Restore(
+        Dictionary<CompletedSceneNodeDescriptor, MarkdownContent> restored,
+        Dictionary<CompletedSceneNodeDescriptor, MarkdownVectorScene?> restoreScenes,
+        CancellationToken cancellationToken)
+    {
+        var children = new MarkdownContent[_children.Length];
+        for (int childIndex = 0; childIndex < children.Length; childIndex++)
+        {
+            if ((childIndex & 63) == 0)
+                cancellationToken.ThrowIfCancellationRequested();
+            children[childIndex] = restored[_children[childIndex]];
+        }
+
+        IReadOnlyList<MarkdownContent> childList = children.Length == 0
+            ? Array.Empty<MarkdownContent>()
+            : new ReadOnlyCollection<MarkdownContent>(children);
+        restoreScenes.TryGetValue(this, out MarkdownVectorScene? restoredScene);
+        return new MarkdownContent(
+            _kind,
+            _styleRole,
+            _sourceSpan,
+            _accessibilityRole,
+            _text,
+            _destination,
+            _language,
+            _factoryKey,
+            _customKind,
+            restoredScene,
+            RestoreAttributes(_attributes, cancellationToken),
+            childList,
+            _accessibilityName,
+            _accessibilityDescription,
+            _semanticText);
     }
 
     private static KeyValuePair<string, string>[] CopyAttributes(
