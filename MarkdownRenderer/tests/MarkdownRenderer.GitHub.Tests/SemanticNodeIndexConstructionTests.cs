@@ -490,7 +490,7 @@ public sealed class SemanticNodeIndexConstructionTests
 
     private static Dictionary<(int BlockIndex, int InlineIndex), int> GetSpanMap(
         MarkdownSemanticDocument document)
-        => Assert.IsType<Dictionary<(int BlockIndex, int InlineIndex), int>>(document.SpanIndexByPosition);
+        => Assert.IsType<Dictionary<(int BlockIndex, int InlineIndex), int>>(document.Positions.SpanIndexByPosition);
 
     private static MarkdownLayoutContext CreateContext(string source, FlowDirection flowDirection)
     {

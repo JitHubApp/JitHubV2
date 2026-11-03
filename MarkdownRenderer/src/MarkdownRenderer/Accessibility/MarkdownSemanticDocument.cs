@@ -21,7 +21,8 @@ internal sealed class MarkdownSemanticDocument
     /// <summary>The builder's (or a manual root's) node lookups by inline box, block index and overflow box.</summary>
     internal readonly MarkdownSemanticNodeIndexes NodeIndexes;
 
-    private readonly IReadOnlyDictionary<(int BlockIndex, int InlineIndex), int> _spanByPosition;
+    /// <summary>Maps between rendered document positions and accessible text offsets.</summary>
+    internal readonly MarkdownSemanticPositionMap Positions;
 
     public static MarkdownSemanticDocument Empty { get; } = new(
         new MarkdownSemanticNode(MarkdownSemanticRole.Document)
@@ -68,62 +69,13 @@ internal sealed class MarkdownSemanticDocument
             TextElementBoundaries = new TextElementBoundaryIndex(text);
         }
         TextSpans = spans;
-        int mappableSpanCount = 0;
-        bool hasPreviousMappedKey = false;
-        (int BlockIndex, int InlineIndex) previousMappedKey = default;
-        for (int i = 0; i < spans.Count; i++)
-        {
-            MarkdownTextSpan span = spans[i];
-            (int BlockIndex, int InlineIndex) key;
-            if (span.InlineBox is { } inline && span.InlineRun is { } run)
-            {
-                key = (inline.BlockIndex, run.InlineIndex);
-            }
-            else if (span.VectorSceneBox is { } vector)
-            {
-                key = (vector.BlockIndex, GetVectorDocumentInlineIndex(span.VectorSemanticIndex));
-            }
-            else
-            {
-                hasPreviousMappedKey = false;
-                continue;
-            }
-
-            if (!hasPreviousMappedKey || key != previousMappedKey)
-            {
-                mappableSpanCount++;
-            }
-            previousMappedKey = key;
-            hasPreviousMappedKey = true;
-        }
-
-        // Standalone images and other atomic-only documents can have many
-        // semantic spans but no position-index entries. Size from consecutive
-        // distinct mapped keys rather than the full span count; the ordered
-        // fill/TryAdd loop below still preserves first-wins behavior for every
-        // duplicate, including nonconsecutive duplicates.
-        var spanByPosition = new Dictionary<(int BlockIndex, int InlineIndex), int>(mappableSpanCount);
-        for (int i = 0; i < spans.Count; i++)
-        {
-            MarkdownTextSpan span = spans[i];
-            if (span.InlineBox is { } inline && span.InlineRun is { } run)
-                spanByPosition.TryAdd((inline.BlockIndex, run.InlineIndex), i);
-            else if (span.VectorSceneBox is { } vector)
-                spanByPosition.TryAdd((vector.BlockIndex, GetVectorDocumentInlineIndex(span.VectorSemanticIndex)), i);
-        }
-        _spanByPosition = spanByPosition;
+        Positions = new MarkdownSemanticPositionMap(text.Length, spans);
 
         // Manually constructed roots carry no builder indexes; walk them once.
         // Production builder snapshots pass indexes populated as nodes are created.
         NodeIndexes = nodeIndexes ?? MarkdownSemanticNodeIndexes.FromTree(root);
         SemanticRangeFingerprint = MarkdownSemanticRangeFingerprint.NormalizeNodeRangesAndComputeSemanticRangeFingerprint(root, spans, text.Length);
     }
-
-    /// <summary>
-    /// The first text span index for each mapped (block, inline) document
-    /// position; sized from the distinct consecutive mapped keys.
-    /// </summary>
-    internal IReadOnlyDictionary<(int BlockIndex, int InlineIndex), int> SpanIndexByPosition => _spanByPosition;
 
     public static MarkdownSemanticDocument Build(LayoutSnapshot snapshot)
         => Build(snapshot, textProjectionReuse: null);
@@ -154,168 +106,17 @@ internal sealed class MarkdownSemanticDocument
     }
 
     public int TextOffsetFromDocumentPosition(DocumentPosition position)
-    {
-        if (_spanByPosition.TryGetValue((position.BlockIndex, position.InlineIndex), out int indexedSpanIndex))
-        {
-            MarkdownTextSpan indexedSpan = TextSpans[indexedSpanIndex];
-            if (indexedSpan.InlineRun is { } indexedRun)
-            {
-                return Math.Clamp(
-                    indexedSpan.TextStart + ProjectRenderedOffsetToText(
-                        indexedRun,
-                        position.CharacterOffset,
-                        indexedSpan.TextEnd - indexedSpan.TextStart),
-                    indexedSpan.TextStart,
-                    indexedSpan.TextEnd);
-            }
-
-            return position.CharacterOffset <= 0 ? indexedSpan.TextStart : indexedSpan.TextEnd;
-        }
-
-        // Non-run positions (images/embeds) and deliberately unbounded
-        // selection sentinels are uncommon. Preserve the compatibility
-        // fallback without putting normal copy/UIA lookups on a linear path.
-        int trailingInlineTextEnd = -1;
-        foreach (var span in TextSpans)
-        {
-            if (span.InlineBox is { } icb && icb.BlockIndex == position.BlockIndex)
-            {
-                if (span.InlineRun is { } run)
-                {
-                    if (position.InlineIndex < run.InlineIndex)
-                        return span.TextStart;
-                    if (position.InlineIndex > run.InlineIndex)
-                    {
-                        trailingInlineTextEnd = span.TextEnd;
-                        continue;
-                    }
-
-                    return Math.Clamp(
-                        span.TextStart + ProjectRenderedOffsetToText(run, position.CharacterOffset, span.TextEnd - span.TextStart),
-                        span.TextStart,
-                        span.TextEnd);
-                }
-
-                return Math.Clamp(span.TextStart + icb.GetBufferCharOffset(position), span.TextStart, span.TextEnd);
-            }
-        }
-
-        // A decorative image/spacer has no semantic text span of its own. If
-        // it follows the final semantic run in this box, map it to the end of
-        // that preceding text rather than falling through to the first span.
-        if (trailingInlineTextEnd >= 0)
-            return trailingInlineTextEnd;
-
-        foreach (var span in TextSpans)
-        {
-            bool matchesBlockImage = span.ImageBox?.BlockIndex == position.BlockIndex;
-            bool matchesBlockEmbed = span.EmbedBox?.BlockIndex == position.BlockIndex;
-            bool matchesHostedElement = span.HostedElementBox?.BlockIndex == position.BlockIndex;
-            if (matchesBlockImage || matchesBlockEmbed || matchesHostedElement)
-            {
-                // These block objects publish explicit before/after endpoints
-                // through PositionFromSpanEnd, but do not use the normal
-                // position index. Keep the compatibility scan endpoint-aware
-                // so a complete atomic selection includes its semantic text.
-                return position.CharacterOffset <= 0 ? span.TextStart : span.TextEnd;
-            }
-
-            if (span.InlineBox?.BlockIndex == position.BlockIndex ||
-                (span.VectorSceneBox?.BlockIndex == position.BlockIndex &&
-                 GetVectorDocumentInlineIndex(span.VectorSemanticIndex) == position.InlineIndex))
-            {
-                return span.TextStart;
-            }
-        }
-
-        // A box containing only omitted decorative objects still has its
-        // zero-length semantic block node. Use that boundary so a spacer-only
-        // paragraph between other paragraphs does not map to document end.
-        if (NodeIndexes.ByInlineBlockIndex.TryGetValue(position.BlockIndex, out MarkdownSemanticNode? inlineNode))
-            return inlineNode.TextStart;
-
-        return position.BlockIndex <= 0 ? 0 : Text.Length;
-    }
+        => Positions.TextOffsetFromDocumentPosition(position, NodeIndexes.ByInlineBlockIndex);
 
     public bool TryGetDocumentRange(int textStart, int textEnd, out DocumentRange range)
-    {
-        var start = PositionFromTextOffset(textStart);
-        var end = PositionFromTextOffset(textEnd);
-        if (start is { } s && end is { } e)
-        {
-            range = new DocumentRange(s, e);
-            return true;
-        }
-
-        range = DocumentRange.Empty;
-        return false;
-    }
+        => Positions.TryGetDocumentRange(textStart, textEnd, out range);
 
     public DocumentPosition? PositionFromTextOffset(int textOffset)
-    {
-        textOffset = Math.Clamp(textOffset, 0, Text.Length);
-        if (TextSpans.Count == 0)
-            return DocumentPosition.Zero;
-
-        int spanIndex = GetTextSpanStartIndex(textOffset);
-        if (spanIndex >= TextSpans.Count)
-            return PositionFromSpanEnd(TextSpans[^1]);
-
-        MarkdownTextSpan span = TextSpans[spanIndex];
-        if (textOffset < span.TextStart)
-        {
-            return spanIndex > 0
-                ? PositionFromSpanEnd(TextSpans[spanIndex - 1])
-                : PositionFromSpanEnd(span) with { CharacterOffset = 0 };
-        }
-
-        if (span.InlineBox is { } icb)
-        {
-            if (span.InlineRun is { } run)
-            {
-                int accessibleOffset = Math.Clamp(textOffset - span.TextStart, 0, Math.Max(0, span.TextEnd - span.TextStart));
-                int renderedOffset = ProjectTextOffsetToRendered(run, accessibleOffset, span.TextEnd - span.TextStart);
-                return new DocumentPosition(icb.BlockIndex, run.InlineIndex, renderedOffset);
-            }
-
-            int bufferOffset = Math.Clamp(textOffset - span.TextStart, 0, Math.Max(0, span.TextEnd - span.TextStart));
-            return icb.GetPositionFromBufferOffset(bufferOffset);
-        }
-
-        if (span.ImageBox is { } image)
-            return new DocumentPosition(image.BlockIndex, 0, textOffset <= span.TextStart ? 0 : 1);
-
-        if (span.EmbedBox is { } embed)
-            return new DocumentPosition(embed.BlockIndex, 0, textOffset <= span.TextStart ? 0 : 1);
-
-        if (span.HostedElementBox is { } hosted)
-            return new DocumentPosition(hosted.BlockIndex, 0, textOffset <= span.TextStart ? 0 : 1);
-
-        if (span.VectorSceneBox is { } vector)
-            return new DocumentPosition(
-                vector.BlockIndex,
-                GetVectorDocumentInlineIndex(span.VectorSemanticIndex),
-                textOffset <= span.TextStart ? 0 : 1);
-
-        return DocumentPosition.Zero;
-    }
+        => Positions.PositionFromTextOffset(textOffset);
 
     /// <summary>Finds the first text span whose end is after the requested offset.</summary>
     internal int GetTextSpanStartIndex(int textOffset)
-    {
-        int low = 0;
-        int high = TextSpans.Count;
-        while (low < high)
-        {
-            int middle = low + ((high - low) >> 1);
-            if (TextSpans[middle].TextEnd <= textOffset)
-                low = middle + 1;
-            else
-                high = middle;
-        }
-
-        return low;
-    }
+        => Positions.GetTextSpanStartIndex(textOffset);
 
     public IEnumerable<Rect> GetDocumentRects(
         int textStart,
