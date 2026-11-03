@@ -9,19 +9,21 @@ namespace MarkdownRenderer.Svg.Resvg.Internal;
 /// </summary>
 internal sealed class SvgProviderSnapshotLedger
 {
+    // Scope ids correlate SnapshotChanged events from every ledger in the
+    // process, so the id counter is process-wide by contract. Zero is
+    // reserved for the process admission domain's aggregate.
     private static long s_nextScopeId;
 
     private readonly object _gate = new();
     private readonly SvgProviderSnapshotLedger? _aggregate;
     private Counters _counters;
 
-    static SvgProviderSnapshotLedger()
-    {
-        Process = new SvgProviderSnapshotLedger(scopeId: 0, aggregate: null);
-    }
-
-    /// <summary>The process-wide aggregate used by renderer ledgers that opt in.</summary>
-    internal static SvgProviderSnapshotLedger Process { get; }
+    /// <summary>
+    /// Creates the scope-zero aggregate owned by the process admission domain
+    /// (<see cref="SvgProcessSnapshotAdmission.SourceLedger"/>).
+    /// </summary>
+    internal static SvgProviderSnapshotLedger CreateProcessAggregate() =>
+        new(scopeId: 0, aggregate: null);
 
     /// <summary>Creates an independent numeric scope, optionally contributing to an aggregate.</summary>
     internal SvgProviderSnapshotLedger(SvgProviderSnapshotLedger? aggregateLedger = null)

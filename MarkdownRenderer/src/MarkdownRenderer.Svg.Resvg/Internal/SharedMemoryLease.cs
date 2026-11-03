@@ -75,6 +75,40 @@ internal sealed unsafe partial class SharedMemoryLease : MemoryManager<byte>
         int sourceArea = Align64(sourceLength);
         int progressOffset = checked(sourceArea + outputLength);
         long totalLength = checked((long)sourceArea + outputLength + ProgressAreaBytes);
+        _mapping = new SafeMappingHandle(CreateRestrictedMapping(totalLength, securityContext));
+        _pointer = (byte*)MapView(totalLength);
+        _exposedOffset = sourceArea;
+        _exposedLength = outputLength;
+        _progressOffset = progressOffset;
+        try
+        {
+            if (source is not null)
+                source.CopyTo(new Span<byte>(_pointer, sourceLength));
+            else if (!borrowedSource.IsEmpty)
+                borrowedSource.Span.CopyTo(new Span<byte>(_pointer, sourceLength));
+        }
+        catch
+        {
+            // A source owner can be retired before this constructor captures
+            // its backing. Constructor failure must release both the mapped
+            // view and handle; closing only the handle does not unmap the view.
+            Dispose(disposing: true);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Creates the anonymous, non-inheritable section under the worker's
+    /// restricted low-integrity descriptor. The descriptor reference is
+    /// released before a creation failure is reported.
+    /// </summary>
+    /// <param name="totalLength">The section size, including the progress trailer.</param>
+    /// <param name="securityContext">The selected worker's security context, or none for isolated fixtures.</param>
+    /// <returns>The raw mapping handle, which the caller wraps immediately.</returns>
+    private static nint CreateRestrictedMapping(
+        long totalLength,
+        WorkerObjectSecurity.WorkerObjectSecurityContext? securityContext)
+    {
         // The worker-generation context is the production path. The contextless
         // overloads are retained for isolated test fixtures; production pool
         // factories always pass the selected worker's captured primary-token
@@ -116,10 +150,16 @@ internal sealed unsafe partial class SharedMemoryLease : MemoryManager<byte>
             throw new System.ComponentModel.Win32Exception(
                 mappingError,
                 "The restricted SVG shared-memory object could not be created.");
+        return rawMapping;
+    }
 
-        _mapping = new SafeMappingHandle(rawMapping);
+    /// <summary>Maps the whole section, closing the mapping if the view fails.</summary>
+    /// <param name="totalLength">The section size, including the progress trailer.</param>
+    /// <returns>The view's base address.</returns>
+    private nint MapView(long totalLength)
+    {
         nint view = MapViewOfFile(
-            _mapping,
+            _mapping!,
             FileMapAllAccess,
             0,
             0,
@@ -127,32 +167,14 @@ internal sealed unsafe partial class SharedMemoryLease : MemoryManager<byte>
         if (view == 0)
         {
             int error = Marshal.GetLastPInvokeError();
-            _mapping.Dispose();
+            _mapping!.Dispose();
             _mapping = null;
             throw new System.ComponentModel.Win32Exception(
                 error,
                 "The restricted SVG shared-memory view could not be created.");
         }
 
-        _pointer = (byte*)view;
-        _exposedOffset = sourceArea;
-        _exposedLength = outputLength;
-        _progressOffset = progressOffset;
-        try
-        {
-            if (source is not null)
-                source.CopyTo(new Span<byte>(_pointer, sourceLength));
-            else if (!borrowedSource.IsEmpty)
-                borrowedSource.Span.CopyTo(new Span<byte>(_pointer, sourceLength));
-        }
-        catch
-        {
-            // A source owner can be retired before this constructor captures
-            // its backing. Constructor failure must release both the mapped
-            // view and handle; closing only the handle does not unmap the view.
-            Dispose(disposing: true);
-            throw;
-        }
+        return view;
     }
 
     public string Name { get; }

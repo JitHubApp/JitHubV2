@@ -135,10 +135,10 @@ public sealed class SvgProviderSnapshotOwnershipTests
             ownershipLedger: ledger);
         SvgPreflightResult result = await inspection.WaitAsync(TimeSpan.FromSeconds(5));
 
-        byte[] preflightBytes = result.Source.CopyToArrayForTest();
+        byte[] preflightBytes = result.Source.ReadAllBytes();
         Assert.Equal(callerBytes, preflightBytes);
         Array.Fill(callerBytes, (byte)0);
-        Assert.Equal(preflightBytes, result.Source.CopyToArrayForTest());
+        Assert.Equal(preflightBytes, result.Source.ReadAllBytes());
         Assert.Equal(preflightBytes.Length, result.Source.Length);
         Assert.Equal(callerBytes.Length, ledger.GetSnapshot().LiveBytes);
         Assert.Equal(1, ledger.GetSnapshot().LiveSnapshots);
@@ -195,7 +195,7 @@ public sealed class SvgProviderSnapshotOwnershipTests
 
         byte[] quarantined = Encoding.UTF8.GetBytes(
             "<svg xmlns='http://www.w3.org/2000/svg'><rect width='1' height='1'/></svg>");
-        renderer.QuarantineWorkerFailure(Convert.ToHexString(SHA256.HashData(quarantined)));
+        renderer.Quarantine.QuarantineWorkerFailure(Convert.ToHexString(SHA256.HashData(quarantined)));
         MarkdownSvgException quarantineFailure = await Assert.ThrowsAsync<MarkdownSvgException>(async () =>
             await renderer.OpenAsync(new MarkdownSvgOpenRequest(quarantined)).AsTask()
                 .WaitAsync(TimeSpan.FromSeconds(5)));
@@ -231,7 +231,7 @@ public sealed class SvgProviderSnapshotOwnershipTests
             0,
             sourceSnapshot.GetForRender().OpenRequest.SanitizedSvgBytes.Length);
         Assert.Equal(callerBytes,
-            sourceSnapshot.GetForRender().Preflight.Source.CopyToArrayForTest());
+            sourceSnapshot.GetForRender().Preflight.Source.ReadAllBytes());
 
         activeRender.Dispose();
 

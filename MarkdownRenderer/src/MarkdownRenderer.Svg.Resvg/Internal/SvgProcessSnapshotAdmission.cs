@@ -22,6 +22,7 @@ internal sealed class SvgProcessSnapshotAdmission
     private readonly long _capacityBytes;
     private readonly long _visibleHeadroomBytes;
     private readonly object _domain;
+    private readonly SvgProviderSnapshotLedger _sourceLedger;
     // Allocate a waiter only when a host actually subscribes. Retiring a
     // snapshot must stay allocation-free so memory pressure cannot strand its
     // lease or make a completed document lose its only release ticket.
@@ -32,11 +33,15 @@ internal sealed class SvgProcessSnapshotAdmission
     internal static SvgProcessSnapshotAdmission Process { get; } = CreateProcessOwner();
 
     internal SvgProcessSnapshotAdmission(long capacityBytes, long visibleHeadroomBytes)
-        : this(capacityBytes, visibleHeadroomBytes, new object())
+        : this(capacityBytes, visibleHeadroomBytes, new object(), new SvgProviderSnapshotLedger())
     {
     }
 
-    private SvgProcessSnapshotAdmission(long capacityBytes, long visibleHeadroomBytes, object domain)
+    private SvgProcessSnapshotAdmission(
+        long capacityBytes,
+        long visibleHeadroomBytes,
+        object domain,
+        SvgProviderSnapshotLedger sourceLedger)
     {
         if (capacityBytes <= 0)
             throw new ArgumentOutOfRangeException(nameof(capacityBytes));
@@ -46,9 +51,16 @@ internal sealed class SvgProcessSnapshotAdmission
         _capacityBytes = capacityBytes;
         _visibleHeadroomBytes = visibleHeadroomBytes;
         _domain = domain;
+        _sourceLedger = sourceLedger;
     }
 
     internal object AdmissionDomain => _domain;
+
+    /// <summary>
+    /// The diagnostic aggregate that every renderer sharing this admission
+    /// domain contributes its snapshot ledger to. Telemetry only.
+    /// </summary>
+    internal SvgProviderSnapshotLedger SourceLedger => _sourceLedger;
     internal long CapacityBytes => _capacityBytes;
     internal long VisibleHeadroomBytes => _visibleHeadroomBytes;
 
@@ -251,7 +263,11 @@ internal sealed class SvgProcessSnapshotAdmission
         bool wideProcess = RuntimeInformation.ProcessArchitecture is Architecture.X64 or Architecture.Arm64;
         long capacityBytes = wideProcess ? 64L * 1024 * 1024 : 32L * 1024 * 1024;
         long visibleHeadroomBytes = wideProcess ? 16L * 1024 * 1024 : 8L * 1024 * 1024;
-        return new SvgProcessSnapshotAdmission(capacityBytes, visibleHeadroomBytes, ProcessDomainToken);
+        return new SvgProcessSnapshotAdmission(
+            capacityBytes,
+            visibleHeadroomBytes,
+            ProcessDomainToken,
+            SvgProviderSnapshotLedger.CreateProcessAggregate());
     }
 
     internal sealed class Lease : IDisposable, IMarkdownSvgPreparationLease

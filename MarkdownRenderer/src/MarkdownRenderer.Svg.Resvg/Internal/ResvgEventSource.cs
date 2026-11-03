@@ -15,31 +15,20 @@ internal sealed class ResvgEventSource : EventSource
 
     internal static ResvgEventSource Log { get; } = new();
 
+    // Work ids correlate stage events from every pool in the process, so the
+    // id counter is process-wide by contract. It holds no other state.
     private static long _nextWorkId;
-    private static Action<long, int, long, long, long, long, long, long, long>? _workerStageRecorder;
-    private static Action<SvgWorkerPolicySnapshot>? _workerPolicyRecorder;
 
     private ResvgEventSource()
     {
     }
 
     [NonEvent]
-    internal static void SetWorkerStageRecorder(
-        Action<long, int, long, long, long, long, long, long, long>? recorder) =>
-        Volatile.Write(ref _workerStageRecorder, recorder);
-
-    [NonEvent]
     internal bool IsWorkerStageMeasurementEnabled() =>
-        Volatile.Read(ref _workerStageRecorder) is not null ||
         IsEnabled(EventLevel.Informational, EventKeywords.None);
 
     [NonEvent]
-    internal static void SetWorkerPolicyRecorder(Action<SvgWorkerPolicySnapshot>? recorder) =>
-        Volatile.Write(ref _workerPolicyRecorder, recorder);
-
-    [NonEvent]
     internal bool IsWorkerPolicyMeasurementEnabled() =>
-        Volatile.Read(ref _workerPolicyRecorder) is not null ||
         IsEnabled(EventLevel.Informational, EventKeywords.None);
 
     /// <summary>
@@ -68,24 +57,6 @@ internal sealed class ResvgEventSource : EventSource
         long sourceBytes,
         long targetPixels)
     {
-        try
-        {
-            Volatile.Read(ref _workerStageRecorder)?.Invoke(
-                workId,
-                stageId,
-                workerInstanceId,
-                requestId,
-                documentId,
-                elapsedStopwatchTicks,
-                workerCpuTicks,
-                sourceBytes,
-                targetPixels);
-        }
-        catch (Exception)
-        {
-            // Optional diagnostics must never interrupt SVG rendering.
-        }
-
         if (IsEnabled())
         {
             WriteEvent(1, [workId, stageId, workerInstanceId, requestId,
@@ -103,15 +74,6 @@ internal sealed class ResvgEventSource : EventSource
     [NonEvent]
     internal void RecordWorkerPolicy(SvgWorkerPolicySnapshot snapshot)
     {
-        try
-        {
-            Volatile.Read(ref _workerPolicyRecorder)?.Invoke(snapshot);
-        }
-        catch (Exception)
-        {
-            // Optional scheduling evidence must never affect SVG behavior.
-        }
-
         WorkerPolicy(
             snapshot.EventSequence,
             snapshot.DecisionSequence,

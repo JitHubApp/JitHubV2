@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -42,11 +42,11 @@ public sealed class SvgStaticSnapshotBudgetTests
         {
             byte[] source = Encoding.ASCII.GetBytes(new string('x', 4095) + marker);
             Assert.True(
-                SvgStaticSnapshot.MayRequireStaticSnapshot(source, CancellationToken.None),
+                SvgStaticSnapshotPrescan.MayRequireStaticSnapshot(source, CancellationToken.None),
                 $"Expected marker '{marker}' to be found across the scan checkpoint.");
         }
 
-        Assert.False(SvgStaticSnapshot.MayRequireStaticSnapshot(
+        Assert.False(SvgStaticSnapshotPrescan.MayRequireStaticSnapshot(
             Encoding.ASCII.GetBytes(new string('x', 8192)),
             CancellationToken.None));
     }
@@ -58,9 +58,9 @@ public sealed class SvgStaticSnapshotBudgetTests
         cancellation.Cancel();
 
         Assert.Throws<OperationCanceledException>(() =>
-            SvgStaticSnapshot.MayRequireStaticSnapshot(new byte[8192], cancellation.Token));
+            SvgStaticSnapshotPrescan.MayRequireStaticSnapshot(new byte[8192], cancellation.Token));
         Assert.Throws<OperationCanceledException>(() =>
-            SvgStaticSnapshot.MayRequireStaticSnapshot(ReadOnlySpan<byte>.Empty, cancellation.Token));
+            SvgStaticSnapshotPrescan.MayRequireStaticSnapshot(ReadOnlySpan<byte>.Empty, cancellation.Token));
     }
 
     [Fact]
@@ -139,7 +139,7 @@ public sealed class SvgStaticSnapshotBudgetTests
     {
         using var cancellation = new CancellationTokenSource();
         var parser = new CancelAfterReadXmlReader(cancellation);
-        using var reader = new SvgStaticSnapshot.BudgetedXmlReader(parser, cancellation.Token);
+        using var reader = new BudgetedXmlReader(parser, cancellation.Token);
 
         Assert.ThrowsAny<OperationCanceledException>(() => reader.Read());
         Assert.Equal(1, parser.ReadCalls);
@@ -187,9 +187,9 @@ public sealed class SvgStaticSnapshotBudgetTests
     {
         using XmlReader parser = CreateParser(
             "<svg xmlns='urn:svg' xmlns:p='urn:prefix'><p:g value='1'/></svg>");
-        var budget = new SvgStaticSnapshot.XmlStructuralBudget(
+        var budget = new XmlStructuralBudget(
             attributesSeen: SvgResourceBudget.MaxAttributes - 2);
-        using var reader = new SvgStaticSnapshot.BudgetedXmlReader(
+        using var reader = new BudgetedXmlReader(
             parser,
             CancellationToken.None,
             budget);
@@ -257,9 +257,8 @@ public sealed class SvgStaticSnapshotBudgetTests
     [Fact]
     public void CancellationAwareReadStreamChecksTokenOnEveryReadAndDropsItsSourceOnDispose()
     {
-        byte[] source = [1, 2, 3, 4];
         using var cancellation = new CancellationTokenSource();
-        var stream = new SvgStaticSnapshot.CancellationAwareReadStream(source, cancellation.Token);
+        (CancellationAwareReadStream stream, WeakReference source) = CreateReadStream(cancellation.Token);
         byte[] buffer = new byte[2];
 
         Assert.Equal(2, stream.Read(buffer));
@@ -267,106 +266,27 @@ public sealed class SvgStaticSnapshotBudgetTests
         cancellation.Cancel();
         Assert.Throws<OperationCanceledException>(() => stream.Read(buffer));
 
+        Assert.True(source.IsAlive);
         stream.Dispose();
-        FieldInfo sourceField = typeof(SvgStaticSnapshot.CancellationAwareReadStream).GetField(
-            "_source",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        Assert.Same(Array.Empty<byte>(), sourceField.GetValue(stream));
+        ForceCollection();
+        Assert.False(source.IsAlive);
+        GC.KeepAlive(stream);
     }
 
-    [Fact]
-    public void SegmentedOutputAcceptsExactLimitThenClearsEverySegmentOnDispose()
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static (CancellationAwareReadStream Stream, WeakReference Source) CreateReadStream(
+        CancellationToken cancellationToken)
     {
-        byte[] expected = Enumerable.Range(0, 32_771).Select(static value => (byte)value).ToArray();
-        var output = new SvgStaticSnapshot.BoundedSegmentedWriteStream(expected.Length, CancellationToken.None);
-        output.Write(expected);
-        List<byte[]> segments = GetSegments(output);
-        byte[][] allocated = segments.ToArray();
-
-        Assert.Equal(expected, output.ToArray());
-        Assert.Equal((long)expected.Length, output.Length);
-
-        output.Dispose();
-
-        Assert.Empty(segments);
-        Assert.All(allocated, static segment => Assert.All(segment, static value => Assert.Equal(0, value)));
+        byte[] source = [1, 2, 3, 4];
+        return (new CancellationAwareReadStream(source, cancellationToken), new WeakReference(source));
     }
 
-    [Fact]
-    public void SegmentedOutputRejectsFirstByteBeyondLimitWithoutGrowingAndClearsBuffers()
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ForceCollection()
     {
-        var output = new SvgStaticSnapshot.BoundedSegmentedWriteStream(3, CancellationToken.None);
-        output.Write([1, 2, 3]);
-        List<byte[]> segments = GetSegments(output);
-        byte[][] allocated = segments.ToArray();
-
-        SvgStaticSnapshotResourceException exception = Assert.Throws<SvgStaticSnapshotResourceException>(
-            () => output.WriteByte(4));
-
-        Assert.Equal(SvgStaticSnapshotResourceException.OutputBytesReason, exception.Reason);
-        Assert.True(output.LimitExceeded);
-        Assert.Equal(3L, output.Length);
-        Assert.Single(segments);
-        output.Dispose();
-        Assert.Empty(segments);
-        Assert.All(allocated, static segment => Assert.All(segment, static value => Assert.Equal(0, value)));
-    }
-
-    [Fact]
-    public void SegmentedOutputCancellationStopsWritesAndClearsBuffers()
-    {
-        using var cancellation = new CancellationTokenSource();
-        var output = new SvgStaticSnapshot.BoundedSegmentedWriteStream(32, cancellation.Token);
-        output.Write([1, 2, 3]);
-        List<byte[]> segments = GetSegments(output);
-        byte[][] allocated = segments.ToArray();
-
-        cancellation.Cancel();
-        Assert.Throws<OperationCanceledException>(() => output.WriteByte(4));
-
-        output.Dispose();
-        Assert.Empty(segments);
-        Assert.All(allocated, static segment => Assert.All(segment, static value => Assert.Equal(0, value)));
-    }
-
-    [Fact]
-    public void SegmentedOutputCancellationDuringFinalizationDoesNotReturnPartialBytes()
-    {
-        using var cancellation = new CancellationTokenSource();
-        var output = new SvgStaticSnapshot.BoundedSegmentedWriteStream(32, cancellation.Token);
-        output.Write([1, 2, 3]);
-        List<byte[]> segments = GetSegments(output);
-        byte[][] allocated = segments.ToArray();
-
-        cancellation.Cancel();
-        Assert.Throws<OperationCanceledException>(() => output.ToArray());
-
-        output.Dispose();
-        Assert.Empty(segments);
-        Assert.All(allocated, static segment => Assert.All(segment, static value => Assert.Equal(0, value)));
-    }
-
-    [Fact]
-    public void SegmentedOutputCannotBeConfiguredAboveHardSourceCeiling()
-    {
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            new SvgStaticSnapshot.BoundedSegmentedWriteStream(0, CancellationToken.None));
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            SvgStaticSnapshot.Create([], CancellationToken.None, 0));
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            new SvgStaticSnapshot.BoundedSegmentedWriteStream(
-                SvgResourceBudget.MaxInputBytes + 1,
-                CancellationToken.None));
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            SvgStaticSnapshot.Create([], CancellationToken.None, SvgResourceBudget.MaxInputBytes + 1));
-    }
-
-    private static List<byte[]> GetSegments(SvgStaticSnapshot.BoundedSegmentedWriteStream output)
-    {
-        FieldInfo segmentsField = typeof(SvgStaticSnapshot.BoundedSegmentedWriteStream).GetField(
-            "_segments",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return (List<byte[]>)segmentsField.GetValue(output)!;
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
     }
 
     private static XmlReader CreateParser(string source) => XmlReader.Create(

@@ -32,8 +32,8 @@ public sealed partial class WorkerObjectSecurityTests
     [Fact]
     public void WorkerGenerationContextReusesPrimaryTokenDescriptorAndSafeHandleProtectsNativeLifetime()
     {
-        using WindowsWorkerProcess.SafeTokenHandle primaryToken =
-            WindowsWorkerProcess.OpenCurrentPrimaryTokenForWorker();
+        using SafeTokenHandle primaryToken =
+            WorkerProcessSandbox.OpenCurrentPrimaryTokenForWorker();
         var context = WorkerObjectSecurity.CreateForPrimaryToken(primaryToken);
         WorkerObjectSecurity.SecurityDescriptorHandle descriptor = context.Descriptor;
         Assert.Same(descriptor, context.Descriptor);
@@ -65,8 +65,8 @@ public sealed partial class WorkerObjectSecurityTests
     [Fact]
     public void SeparateWorkerGenerationsOwnSeparateSecurityDescriptors()
     {
-        using WindowsWorkerProcess.SafeTokenHandle primaryToken =
-            WindowsWorkerProcess.OpenCurrentPrimaryTokenForWorker();
+        using SafeTokenHandle primaryToken =
+            WorkerProcessSandbox.OpenCurrentPrimaryTokenForWorker();
         using WorkerObjectSecurity.WorkerObjectSecurityContext first =
             WorkerObjectSecurity.CreateForPrimaryToken(primaryToken);
         using WorkerObjectSecurity.WorkerObjectSecurityContext second =
@@ -80,8 +80,8 @@ public sealed partial class WorkerObjectSecurityTests
     [Fact]
     public void SharedMappingsReuseContextDescriptorAndRemainValidAfterContextRetirement()
     {
-        using WindowsWorkerProcess.SafeTokenHandle primaryToken =
-            WindowsWorkerProcess.OpenCurrentPrimaryTokenForWorker();
+        using SafeTokenHandle primaryToken =
+            WorkerProcessSandbox.OpenCurrentPrimaryTokenForWorker();
         var context = WorkerObjectSecurity.CreateForPrimaryToken(primaryToken);
         WorkerObjectSecurity.SecurityDescriptorHandle descriptor = context.Descriptor;
 
@@ -110,7 +110,7 @@ public sealed partial class WorkerObjectSecurityTests
         return count;
     }
 
-    private static string ReadPrimaryTokenUserSid(WindowsWorkerProcess.SafeTokenHandle token)
+    private static string ReadPrimaryTokenUserSid(SafeTokenHandle token)
     {
         const uint TokenUser = 1;
         if (GetTokenInformation(token, TokenUser, 0, 0, out uint requiredBytes))
@@ -196,7 +196,7 @@ public sealed partial class WorkerObjectSecurityTests
     [LibraryImport("advapi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool GetTokenInformation(
-        WindowsWorkerProcess.SafeTokenHandle token,
+        SafeTokenHandle token,
         uint informationClass,
         nint information,
         uint informationLength,

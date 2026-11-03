@@ -129,6 +129,8 @@ public sealed class SvgWorkerStageTraceTests
             name.Equals("text", StringComparison.OrdinalIgnoreCase));
     }
 
+    private const long SyntheticWorkId = 8721;
+
     private sealed class WorkerStageListener : EventListener
     {
         private readonly ConcurrentQueue<WorkerStageEvent> _events = new();
@@ -142,8 +144,17 @@ public sealed class SvgWorkerStageTraceTests
 
         protected override void OnEventWritten(EventWrittenEventArgs eventData)
         {
-            if (eventData.EventId != 1)
+            // The provider is process-wide: renders in concurrently running
+            // test classes emit stage events too, always with a positive
+            // BeginWork id. Keep this class's synthetic id, plus id zero so a
+            // wrongly emitted zero-id event is still observed and fails.
+            if (eventData.EventId != 1 ||
+                eventData.Payload is not { Count: > 0 } payload ||
+                payload[0] is not long workId ||
+                workId is not (SyntheticWorkId or 0))
+            {
                 return;
+            }
 
             _events.Enqueue(new WorkerStageEvent(
                 eventData.EventId,

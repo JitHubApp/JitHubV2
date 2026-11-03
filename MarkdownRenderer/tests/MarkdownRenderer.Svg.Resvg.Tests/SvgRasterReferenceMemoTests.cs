@@ -1,5 +1,3 @@
-using System.Collections;
-using System.Reflection;
 using System.Text;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Svg.Resvg.Internal;
@@ -99,164 +97,107 @@ public sealed class SvgRasterReferenceMemoTests
     [Fact]
     public void MemoStoresAtMost256DigestOnlyEntriesAndDoesNotEvictEarlierPositives()
     {
-        Type contextType = typeof(SvgPreflight).GetNestedType("ResourceInspectionContext", BindingFlags.NonPublic)!;
-        Type keyType = typeof(SvgPreflight).GetNestedType("RasterReferenceKey", BindingFlags.NonPublic)!;
-        object context = Activator.CreateInstance(contextType, nonPublic: true)!;
-        MethodInfo remember = contextType.GetMethod("RememberRaster", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        MethodInfo contains = contextType.GetMethod("IsRasterValidated", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        object Key(ulong value) => Activator.CreateInstance(keyType, value, 0UL, 0UL, 0UL)!;
-        try
-        {
-            for (ulong value = 0; value < 600; value++)
-                remember.Invoke(context, [Key(value)]);
-            object workspace = GetWorkspace(contextType, context);
-            object memo = workspace.GetType()
-                .GetProperty("ValidatedRasterReferences", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .GetValue(workspace)!;
-            Assert.Equal(256, ((IEnumerable)memo).Cast<object>().Count());
-            Assert.True((bool)contains.Invoke(context, [Key(0)])!);
-            Assert.False((bool)contains.Invoke(context, [Key(256)])!);
-            Assert.True(keyType.IsValueType);
-            Assert.Equal(4, keyType.GetFields(BindingFlags.Instance | BindingFlags.NonPublic).Length);
-            Assert.All(keyType.GetFields(BindingFlags.Instance | BindingFlags.NonPublic), field => Assert.Equal(typeof(ulong), field.FieldType));
-        }
-        finally
-        {
-            ((IDisposable)context).Dispose();
-        }
+        using var context = new SvgResourceInspectionContext(pool: null);
+        for (ulong value = 0; value < 600; value++)
+            context.RememberRaster(Key(value));
+
+        for (ulong value = 0; value < 256; value++)
+            Assert.True(context.IsRasterValidated(Key(value)));
+        for (ulong value = 256; value < 600; value++)
+            Assert.False(context.IsRasterValidated(Key(value)));
+
+        // The key is a value type holding only four digest words.
+        Assert.True(typeof(SvgRasterReferenceKey).IsValueType);
+        Type[] keyMembers = typeof(SvgRasterReferenceKey).GetProperties()
+            .Select(static property => property.PropertyType)
+            .ToArray();
+        Assert.Equal(4, keyMembers.Length);
+        Assert.All(keyMembers, static type => Assert.Equal(typeof(ulong), type));
     }
 
     [Fact]
     public void DisposedInspectionReturnsClearedWorkspaceAndStaleDisposeCannotClearNewBorrower()
     {
-        Type contextType = typeof(SvgPreflight).GetNestedType("ResourceInspectionContext", BindingFlags.NonPublic)!;
-        Type keyType = typeof(SvgPreflight).GetNestedType("RasterReferenceKey", BindingFlags.NonPublic)!;
-        MethodInfo addResource = contextType.GetMethod("AddResource", BindingFlags.Instance | BindingFlags.Public)!;
-        MethodInfo rememberRaster = contextType.GetMethod("RememberRaster", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        MethodInfo isRasterValidated = contextType.GetMethod("IsRasterValidated", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        MethodInfo markNested = contextType.GetMethod("MarkNestedSvgValidated", BindingFlags.Instance | BindingFlags.Public)!;
-        MethodInfo isNestedValidated = contextType.GetMethod("IsNestedSvgValidatedAtDepth", BindingFlags.Instance | BindingFlags.Public)!;
-        MethodInfo getScratch = contextType.GetMethod("GetAttributeScratch", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        object key = Activator.CreateInstance(keyType, 42UL, 0UL, 0UL, 0UL)!;
-        object? drain0 = null;
-        object? drain1 = null;
-        object? returned = null;
-        object? borrower = null;
+        var pool = new SvgResourceInspectionWorkspacePool();
+        SvgRasterReferenceKey key = Key(42);
+        var returned = new SvgResourceInspectionContext(pool);
+        SvgResourceInspectionContext? borrower = null;
         try
         {
-            // Drain both static slots so the context returned below is the next
-            // one borrowed, independent of prior test order.
-            drain0 = Activator.CreateInstance(contextType, nonPublic: true)!;
-            drain1 = Activator.CreateInstance(contextType, nonPublic: true)!;
-            returned = Activator.CreateInstance(contextType, nonPublic: true)!;
-            Assert.True((bool)addResource.Invoke(returned, [key])!);
-            rememberRaster.Invoke(returned, [key]);
-            markNested.Invoke(returned, [key, 2]);
-            object returnedWorkspace = GetWorkspace(contextType, returned);
-            char[] returnedScratch = (char[])getScratch.Invoke(returned, [8 * 1024 * 1024 + 2])!;
+            Assert.True(returned.AddResource(key));
+            returned.RememberRaster(key);
+            returned.MarkNestedSvgValidated(key, 2);
+            char[] returnedScratch = returned.GetAttributeScratch(8 * 1024 * 1024 + 2);
             Assert.Equal(1026, returnedScratch.Length);
             returnedScratch.AsSpan().Fill('x');
 
-            ((IDisposable)returned).Dispose();
-            borrower = Activator.CreateInstance(contextType, nonPublic: true)!;
-            Assert.Same(returnedWorkspace, GetWorkspace(contextType, borrower));
-            char[] borrowedScratch = (char[])getScratch.Invoke(borrower, [8 * 1024 * 1024 + 2])!;
+            returned.Dispose();
+            borrower = new SvgResourceInspectionContext(pool);
+            char[] borrowedScratch = borrower.GetAttributeScratch(8 * 1024 * 1024 + 2);
             Assert.Same(returnedScratch, borrowedScratch);
             Assert.Equal(-1, borrowedScratch.AsSpan().IndexOfAnyExcept('\0'));
-            Assert.True((bool)addResource.Invoke(borrower, [key])!, "Returning a workspace must clear all prior resource identities.");
-            Assert.False((bool)isRasterValidated.Invoke(borrower, [key])!, "Returning a workspace must clear raster memo entries.");
-            Assert.False((bool)isNestedValidated.Invoke(borrower, [key, 1])!, "Returning a workspace must clear nested-SVG depth entries.");
+            Assert.True(borrower.AddResource(key), "Returning a workspace must clear all prior resource identities.");
+            Assert.False(borrower.IsRasterValidated(key), "Returning a workspace must clear raster memo entries.");
+            Assert.False(borrower.IsNestedSvgValidatedAtDepth(key, 1), "Returning a workspace must clear nested-SVG depth entries.");
 
             // A duplicate dispose from the former owner must not clear a
             // workspace that has since been reissued to another inspection.
-            rememberRaster.Invoke(borrower, [key]);
-            markNested.Invoke(borrower, [key, 2]);
+            borrower.RememberRaster(key);
+            borrower.MarkNestedSvgValidated(key, 2);
             borrowedScratch[0] = 'y';
-            ((IDisposable)returned).Dispose();
+            returned.Dispose();
             Assert.Equal('y', borrowedScratch[0]);
-            Assert.False((bool)addResource.Invoke(borrower, [key])!);
-            Assert.True((bool)isRasterValidated.Invoke(borrower, [key])!);
-            Assert.True((bool)isNestedValidated.Invoke(borrower, [key, 1])!);
-            TargetInvocationException disposedFailure = Assert.Throws<TargetInvocationException>(() => addResource.Invoke(returned, [key]));
-            Assert.IsType<ObjectDisposedException>(disposedFailure.InnerException);
+            Assert.False(borrower.AddResource(key));
+            Assert.True(borrower.IsRasterValidated(key));
+            Assert.True(borrower.IsNestedSvgValidatedAtDepth(key, 1));
+            Assert.Throws<ObjectDisposedException>(() => returned.AddResource(key));
         }
         finally
         {
-            if (borrower is IDisposable borrowerDisposable)
-                borrowerDisposable.Dispose();
-            if (returned is IDisposable returnedDisposable)
-                returnedDisposable.Dispose();
-            if (drain0 is IDisposable drain0Disposable)
-                drain0Disposable.Dispose();
-            if (drain1 is IDisposable drain1Disposable)
-                drain1Disposable.Dispose();
+            borrower?.Dispose();
+            returned.Dispose();
         }
     }
 
     [Fact]
     public void OversizedInspectionWorkspaceIsClearedAndDroppedInsteadOfRetained()
     {
-        Type contextType = typeof(SvgPreflight).GetNestedType("ResourceInspectionContext", BindingFlags.NonPublic)!;
-        Type keyType = typeof(SvgPreflight).GetNestedType("RasterReferenceKey", BindingFlags.NonPublic)!;
-        MethodInfo addResource = contextType.GetMethod("AddResource", BindingFlags.Instance | BindingFlags.Public)!;
-        MethodInfo rememberRaster = contextType.GetMethod("RememberRaster", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        MethodInfo markNested = contextType.GetMethod("MarkNestedSvgValidated", BindingFlags.Instance | BindingFlags.Public)!;
-        object Key(ulong value) => Activator.CreateInstance(keyType, value, 0UL, 0UL, 0UL)!;
-        object? drain0 = null;
-        object? drain1 = null;
-        object? oversized = null;
-        object? borrower = null;
-        try
+        var pool = new SvgResourceInspectionWorkspacePool();
+        SvgResourceInspectionWorkspace oversized = pool.Rent();
+        for (ulong value = 0; value < 512; value++)
         {
-            // Drain both static slots without resetting shared production state.
-            drain0 = Activator.CreateInstance(contextType, nonPublic: true)!;
-            drain1 = Activator.CreateInstance(contextType, nonPublic: true)!;
-            oversized = Activator.CreateInstance(contextType, nonPublic: true)!;
-            for (ulong value = 0; value < 512; value++)
-            {
-                object key = Key(value);
-                Assert.True((bool)addResource.Invoke(oversized, [key])!);
-                markNested.Invoke(oversized, [key, 2]);
-                rememberRaster.Invoke(oversized, [key]);
-            }
-
-            object oversizedWorkspace = GetWorkspace(contextType, oversized);
-            long capacity = (long)oversizedWorkspace.GetType()
-                .GetProperty("CombinedCollectionCapacity", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .GetValue(oversizedWorkspace)!;
-            Assert.True(capacity > 1024, $"The fixture must exceed the bounded pool capacity; observed {capacity}.");
-
-            ((IDisposable)oversized).Dispose();
-            object resources = oversizedWorkspace.GetType()
-                .GetProperty("Resources", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .GetValue(oversizedWorkspace)!;
-            Assert.Empty(((IEnumerable)resources).Cast<object>());
-            object nested = oversizedWorkspace.GetType()
-                .GetProperty("DeepestValidatedNestedSvgDepth", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .GetValue(oversizedWorkspace)!;
-            Assert.Empty(((IEnumerable)nested).Cast<object>());
-            object memo = oversizedWorkspace.GetType()
-                .GetProperty("ValidatedRasterReferences", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .GetValue(oversizedWorkspace)!;
-            Assert.Empty(((IEnumerable)memo).Cast<object>());
-
-            borrower = Activator.CreateInstance(contextType, nonPublic: true)!;
-            Assert.NotSame(oversizedWorkspace, GetWorkspace(contextType, borrower));
-            object firstKey = Key(0);
-            Assert.True((bool)addResource.Invoke(borrower, [firstKey])!);
+            SvgRasterReferenceKey key = Key(value);
+            Assert.True(oversized.Resources.Add(key));
+            oversized.DeepestValidatedNestedSvgDepth[key] = 2;
+            oversized.ValidatedRasterReferences.Add(key);
         }
-        finally
-        {
-            if (borrower is IDisposable borrowerDisposable)
-                borrowerDisposable.Dispose();
-            if (oversized is IDisposable oversizedDisposable)
-                oversizedDisposable.Dispose();
-            if (drain0 is IDisposable drain0Disposable)
-                drain0Disposable.Dispose();
-            if (drain1 is IDisposable drain1Disposable)
-                drain1Disposable.Dispose();
-        }
+
+        long capacity = oversized.CombinedCollectionCapacity;
+        Assert.True(capacity > 1024, $"The fixture must exceed the bounded pool capacity; observed {capacity}.");
+
+        pool.Return(oversized);
+        Assert.Empty(oversized.Resources);
+        Assert.Empty(oversized.DeepestValidatedNestedSvgDepth);
+        Assert.Empty(oversized.ValidatedRasterReferences);
+
+        SvgResourceInspectionWorkspace borrowed = pool.Rent();
+        Assert.NotSame(oversized, borrowed);
+        Assert.True(borrowed.Resources.Add(Key(0)));
     }
+
+    [Fact]
+    public void RenderersDoNotShareInspectionWorkspaces()
+    {
+        var firstPool = new SvgResourceInspectionWorkspacePool();
+        var secondPool = new SvgResourceInspectionWorkspacePool();
+        SvgResourceInspectionWorkspace returned = firstPool.Rent();
+        firstPool.Return(returned);
+
+        Assert.NotSame(returned, secondPool.Rent());
+        Assert.Same(returned, firstPool.Rent());
+    }
+
+    private static SvgRasterReferenceKey Key(ulong value) => new(value, 0, 0, 0);
 
     [Fact]
     public async Task ExactRepeatAvoidsPayloadSizedPerReferenceAllocations()
@@ -292,8 +233,6 @@ public sealed class SvgRasterReferenceMemoTests
     }
 
     private static string Svg(string contents) => $"<svg xmlns='{SvgNamespace}'>{contents}</svg>";
-    private static object GetWorkspace(Type contextType, object context) =>
-        contextType.GetField("_workspace", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(context)!;
     private static string DataUri(byte[] bytes, string mediaType = "image/png") => $"data:{mediaType};base64,{Convert.ToBase64String(bytes)}";
     private static byte[] PngWithPadding()
     {

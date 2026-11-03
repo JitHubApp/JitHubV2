@@ -1,41 +1,48 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.IO.Pipes;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Svg.Resvg.Internal;
 using Microsoft.Win32.SafeHandles;
 using Xunit;
+using static MarkdownRenderer.Svg.Resvg.Tests.WorkerTransportExchanges;
+using static MarkdownRenderer.Svg.Resvg.Tests.WorkerTransportNative;
 
 namespace MarkdownRenderer.Svg.Resvg.Tests;
 
-public sealed partial class WorkerTransportFaultTests
+public sealed class WorkerTransportFaultTests
 {
     [Fact]
     public async Task PoolShutdownWaitsForFontOwnersOfAnAlreadyDetachedWorker()
     {
-        await using var fixture = await WorkerTransportFixture.CreateAsync();
-        using var pool = new WorkerPool(new ResvgMarkdownSvgRendererOptions());
         var preparation = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var exchangeEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var fixture = await WorkerTransportFixture.CreateAsync(
+            fontCatalogSupplierFactory: host => new WorkerFontCatalogSupplier(
+                new BlockingFontCatalogExchangeHost(host, exchangeEntered, preparation.Task)));
+        var launcher = new AdoptingWorkerLauncher(fixture.Worker);
+        using var pool = new WorkerPool(new ResvgMarkdownSvgRendererOptions(), launcher);
         WorkerObjectSecurity.WorkerObjectSecurityContext objectSecurity = fixture.Worker.ObjectSecurity;
-        typeof(WindowsWorkerProcess).GetField("_fontPreparationTask", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .SetValue(fixture.Worker, preparation.Task);
-        var owners = (WorkerLifetimeRegistry<WindowsWorkerProcess>)typeof(WorkerPool)
-            .GetField("_workerLifetimes", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(pool)!;
-        using var startup = owners.Reserve();
-        startup.Attach(fixture.Worker);
-        object primary = typeof(WorkerPool).GetField("_primary", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(pool)!;
-        primary.GetType().GetProperty("Worker")!.SetValue(primary, fixture.Worker);
 
         Task? shutdown = null;
         try
         {
+            // Warmup adopts the fixture worker as the primary and starts its
+            // eager font-catalog preparation, which parks in the exchange.
+            await pool.WarmUpAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+            await exchangeEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(1, launcher.StartCount);
+
             pool.InvalidateWorker(fixture.Worker.InstanceId);
-            Assert.Null(primary.GetType().GetProperty("Worker")!.GetValue(primary));
             Assert.True(fixture.Child.HasExited);
             Assert.Same(objectSecurity, fixture.Worker.ObjectSecurity);
+
+            // The detached worker no longer serves the pool: the next request
+            // asks the launcher for a replacement instead of reusing it.
+            await Assert.ThrowsAsync<MarkdownSvgException>(() => pool.WarmUpAsync(CancellationToken.None));
+            Assert.Equal(2, launcher.StartCount);
+
             shutdown = pool.DisposeAsync().AsTask();
             Assert.False(shutdown.IsCompleted);
         }
@@ -232,423 +239,5 @@ public sealed partial class WorkerTransportFaultTests
             $"Expected the bounded restart wait after ordinary disposal; observed {stopwatch.Elapsed}.");
         Assert.False(fixture.Child.HasExited);
         AssertRemoteHandleClosed(fixture.InspectionProcess, remoteHandle, mappingIdentity);
-    }
-
-    private static Task<WorkerResponse> StartExchange(
-        WorkerTransportFixture fixture,
-        SharedMemoryLease sharedMemory,
-        CancellationToken cancellationToken) => fixture.Worker.ExchangeAsync(
-            CreateRenderRequest(),
-            TimeSpan.FromSeconds(5),
-            cancellationToken,
-            sharedMemory).AsTask();
-
-    private static WorkerRequest CreateRenderRequest() => new(
-        WorkerOperation.Render,
-        RequestId: 73,
-        NonceLow: 0x1122_3344_5566_7788,
-        NonceHigh: 0x8877_6655_4433_2211,
-        MappingHandle: 0,
-        ContentHash: new byte[32],
-        SourceLength: 0,
-        OutputLength: 16,
-        TargetWidth: 2,
-        TargetHeight: 2,
-        Tile: null,
-        Locale: "en-US",
-        ColorScheme: MarkdownSvgColorScheme.Light,
-        SemanticColor: null,
-        PixelFormat: MarkdownSvgPixelFormat.Rgba8Premultiplied,
-        FontGeneration: 0,
-        ParsedResourceCacheBytes: 1024,
-        DocumentId: 9,
-        Options: new ResvgMarkdownSvgRendererOptions());
-
-    private static async Task<byte[]> ReadRequestAsync(Stream peer)
-    {
-        byte[] request = new byte[WorkerProtocol.RequestSize];
-        await peer.ReadExactlyAsync(request).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Equal(WorkerProtocol.Magic, BinaryPrimitives.ReadUInt32LittleEndian(request));
-        Assert.Equal(WorkerProtocol.Version, BinaryPrimitives.ReadUInt16LittleEndian(request.AsSpan(4)));
-        return request;
-    }
-
-    private static byte[] CreateResponse(ReadOnlySpan<byte> request)
-    {
-        byte[] response = new byte[WorkerProtocol.ResponseSize];
-        BinaryPrimitives.WriteUInt32LittleEndian(response, WorkerProtocol.Magic);
-        BinaryPrimitives.WriteUInt16LittleEndian(response.AsSpan(4), WorkerProtocol.Version);
-        BinaryPrimitives.WriteUInt16LittleEndian(response.AsSpan(6), (ushort)WorkerStatus.Ok);
-        request.Slice(8, 24).CopyTo(response.AsSpan(8));
-        BinaryPrimitives.WriteUInt32LittleEndian(response.AsSpan(56), 16);
-        BinaryPrimitives.WriteUInt32LittleEndian(response.AsSpan(60), 8);
-        BinaryPrimitives.WriteUInt32LittleEndian(response.AsSpan(64), 2);
-        BinaryPrimitives.WriteUInt32LittleEndian(response.AsSpan(68), 2);
-        response[72] = 1;
-        return response;
-    }
-
-    private static void AssertRemoteMappingMatches(
-        SafeProcessHandle workerProcess,
-        ulong remoteHandle,
-        ReadOnlySpan<byte> hostBytes)
-    {
-        nint localHandle = DuplicateRemoteHandle(workerProcess, remoteHandle);
-        Assert.NotEqual(nint.Zero, localHandle);
-        try
-        {
-            nint view = MapViewOfFile(localHandle, FileMapRead | FileMapWrite, 0, 0, checked((nuint)hostBytes.Length));
-            Assert.NotEqual(nint.Zero, view);
-            try
-            {
-                for (int index = 0; index < hostBytes.Length; index++)
-                    Assert.Equal(hostBytes[index], Marshal.ReadByte(view, index));
-
-                Marshal.WriteByte(view, 7, 0xA5);
-                Assert.Equal((byte)0xA5, hostBytes[7]);
-            }
-            finally
-            {
-                Assert.True(UnmapViewOfFile(view));
-            }
-        }
-        finally
-        {
-            Assert.True(CloseHandle(localHandle));
-        }
-    }
-
-    private static void AssertRemoteHandleClosed(SafeProcessHandle workerProcess, ulong remoteHandle, SafeFileHandle identity)
-    {
-        if (TryDuplicateRemoteHandle(workerProcess, remoteHandle, out nint duplicate))
-        {
-            // The child may reuse the numeric slot for an unrelated handle.
-            // Test the original kernel object's identity, not its old number.
-            using var current = new SafeFileHandle(duplicate, ownsHandle: true);
-            Assert.False(CompareObjectHandles(current, identity));
-        }
-        else
-            Assert.Equal(ErrorInvalidHandle, Marshal.GetLastPInvokeError());
-    }
-
-    private static void AssertRemoteHandleUnavailable(SafeProcessHandle workerProcess, ulong remoteHandle)
-    {
-        Assert.False(TryDuplicateRemoteHandle(workerProcess, remoteHandle, out nint duplicate));
-        int error = Marshal.GetLastPInvokeError();
-        Assert.True(error is ErrorInvalidHandle or ErrorAccessDenied,
-            $"Expected the worker mapping handle to be unavailable; DuplicateHandle returned {error}.");
-        if (duplicate != nint.Zero)
-            Assert.True(CloseHandle(duplicate));
-    }
-
-    private static nint DuplicateRemoteHandle(SafeProcessHandle workerProcess, ulong remoteHandle)
-    {
-        if (!TryDuplicateRemoteHandle(workerProcess, remoteHandle, out nint duplicate))
-        {
-            throw new InvalidOperationException(
-                $"The duplicated worker mapping handle was not readable (Win32 error {Marshal.GetLastPInvokeError()}).");
-        }
-
-        return duplicate;
-    }
-
-    private static bool TryDuplicateRemoteHandle(
-        SafeProcessHandle workerProcess,
-        ulong remoteHandle,
-        out nint duplicate)
-    {
-        bool succeeded = DuplicateHandle(
-            workerProcess,
-            unchecked((nint)(nuint)remoteHandle),
-            GetCurrentProcess(),
-            out duplicate,
-            desiredAccess: 0,
-            inheritHandle: false,
-            options: DuplicateSameAccess);
-        if (!succeeded)
-            duplicate = nint.Zero;
-        return succeeded;
-    }
-
-    private static WindowsWorkerProcess CreateWorkerForTest(
-        SafeProcessHandle process,
-        NamedPipeServerStream pipe)
-    {
-        ConstructorInfo constructor = typeof(WindowsWorkerProcess).GetConstructor(
-            BindingFlags.Instance | BindingFlags.NonPublic,
-            binder: null,
-            [
-                typeof(SafeProcessHandle),
-                typeof(NamedPipeServerStream),
-                typeof(ulong),
-                typeof(ulong),
-                typeof(string),
-                typeof(int),
-                typeof(WorkerObjectSecurity.WorkerObjectSecurityContext),
-            ],
-            modifiers: null) ?? throw new InvalidOperationException("The internal worker constructor was not found.");
-        using WindowsWorkerProcess.SafeTokenHandle primaryToken =
-            WindowsWorkerProcess.OpenCurrentPrimaryTokenForWorker();
-        var objectSecurity = WorkerObjectSecurity.CreateForPrimaryToken(primaryToken);
-        try
-        {
-            return (WindowsWorkerProcess)constructor.Invoke(
-            [
-                process,
-                pipe,
-                0x1122_3344_5566_7788ul,
-                0x8877_6655_4433_2211ul,
-                null,
-                4,
-                objectSecurity,
-            ]);
-        }
-        catch
-        {
-            objectSecurity.Dispose();
-            throw;
-        }
-    }
-
-    public enum TransportFault
-    {
-        WrongRequestId,
-        MalformedResponse,
-        PartialResponse,
-        PipeLoss,
-    }
-
-    [Flags]
-    private enum ProcessAccess : uint
-    {
-        DuplicateHandle = 0x0040,
-        QueryLimitedInformation = 0x1000,
-        Synchronize = 0x00100000,
-        Terminate = 0x0001,
-    }
-
-    private const uint FileMapRead = 0x0004;
-    private const uint FileMapWrite = 0x0002;
-    private const uint DuplicateSameAccess = 0x00000002;
-    private const int ErrorInvalidHandle = 6;
-    private const int ErrorAccessDenied = 5;
-
-    [LibraryImport("kernel32.dll")]
-    private static partial nint GetCurrentProcess();
-
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    private static partial SafeProcessHandle OpenProcess(ProcessAccess desiredAccess, [MarshalAs(UnmanagedType.Bool)] bool inheritHandle, uint processId);
-
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool DuplicateHandle(
-        SafeProcessHandle sourceProcess,
-        nint sourceHandle,
-        nint targetProcess,
-        out nint targetHandle,
-        uint desiredAccess,
-        [MarshalAs(UnmanagedType.Bool)] bool inheritHandle,
-        uint options);
-
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    private static partial nint MapViewOfFile(nint mapping, uint desiredAccess, uint offsetHigh, uint offsetLow, nuint bytes);
-
-    [LibraryImport("kernel32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool UnmapViewOfFile(nint address);
-
-    [LibraryImport("kernel32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool CloseHandle(nint handle);
-
-    [LibraryImport("kernelbase.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool CompareObjectHandles(SafeFileHandle first, SafeFileHandle second);
-
-    private sealed class WorkerTransportFixture : IAsyncDisposable
-    {
-        private readonly Process _child;
-        private readonly NamedPipeServerStream _server;
-        private bool _disposed;
-
-        private WorkerTransportFixture(
-            Process child,
-            SafeProcessHandle inspectionProcess,
-            NamedPipeServerStream server,
-            NamedPipeClientStream peer,
-            WindowsWorkerProcess worker)
-        {
-            _child = child;
-            InspectionProcess = inspectionProcess;
-            _server = server;
-            Peer = peer;
-            Worker = worker;
-        }
-
-        internal Process Child => _child;
-        internal SafeProcessHandle InspectionProcess { get; }
-        internal NamedPipeClientStream Peer { get; }
-        internal WindowsWorkerProcess Worker { get; }
-
-        internal static async Task<WorkerTransportFixture> CreateAsync(bool allowTermination = true)
-        {
-            Process child = StartBlockingChild();
-            SafeProcessHandle? inspectionProcess = null;
-            SafeProcessHandle? workerProcess = null;
-            NamedPipeServerStream? server = null;
-            NamedPipeClientStream? peer = null;
-            WindowsWorkerProcess? worker = null;
-            try
-            {
-                ProcessAccess access = ProcessAccess.DuplicateHandle | ProcessAccess.Synchronize |
-                    ProcessAccess.QueryLimitedInformation | ProcessAccess.Terminate;
-                inspectionProcess = OpenProcess(access, inheritHandle: false, checked((uint)child.Id));
-                if (inspectionProcess.IsInvalid)
-                    throw new System.ComponentModel.Win32Exception(Marshal.GetLastPInvokeError(), "Could not open the worker test process.");
-                workerProcess = DuplicateCurrentProcessHandle(inspectionProcess, allowTermination);
-
-                string pipeName = $"MarkdownRenderer.TransportFault.{Guid.NewGuid():N}";
-                server = new NamedPipeServerStream(
-                    pipeName,
-                    PipeDirection.InOut,
-                    maxNumberOfServerInstances: 1,
-                    PipeTransmissionMode.Byte,
-                    PipeOptions.Asynchronous);
-                peer = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-                worker = CreateWorkerForTest(workerProcess, server);
-                workerProcess = null;
-
-                Task serverConnection = server.WaitForConnectionAsync();
-                await peer.ConnectAsync(5_000).WaitAsync(TimeSpan.FromSeconds(5));
-                await serverConnection.WaitAsync(TimeSpan.FromSeconds(5));
-
-                var fixture = new WorkerTransportFixture(
-                    child,
-                    inspectionProcess,
-                    server,
-                    peer,
-                    worker);
-                inspectionProcess = null;
-                server = null;
-                peer = null;
-                worker = null;
-                return fixture;
-            }
-            catch
-            {
-                try
-                {
-                    worker?.DisposeForRestart();
-                }
-                catch
-                {
-                    try
-                    {
-                        worker?.Dispose();
-                    }
-                    catch
-                    {
-                        // The child is explicitly killed below even if worker
-                        // transport cleanup itself failed.
-                    }
-                }
-                workerProcess?.Dispose();
-                peer?.Dispose();
-                server?.Dispose();
-                inspectionProcess?.Dispose();
-                KillChild(child);
-                child.Dispose();
-                throw;
-            }
-        }
-
-        public ValueTask DisposeAsync()
-        {
-            if (_disposed)
-                return ValueTask.CompletedTask;
-            _disposed = true;
-
-            Peer.Dispose();
-            try
-            {
-                Worker.DisposeForRestart();
-            }
-            catch
-            {
-                try
-                {
-                    Worker.Dispose();
-                }
-                catch
-                {
-                    // The child is explicitly killed below even if worker
-                    // transport cleanup itself failed.
-                }
-            }
-            _server.Dispose();
-            KillChild(_child);
-            InspectionProcess.Dispose();
-            _child.Dispose();
-            return ValueTask.CompletedTask;
-        }
-
-        private static Process StartBlockingChild()
-        {
-            var startInfo = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "ping.exe"))
-            {
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-            };
-            startInfo.ArgumentList.Add("-t");
-            startInfo.ArgumentList.Add("127.0.0.1");
-            Process child = Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start the worker test child.");
-            if (child.HasExited)
-            {
-                child.Dispose();
-                throw new InvalidOperationException("The worker test child exited before it could be exercised.");
-            }
-
-            return child;
-        }
-
-        private static SafeProcessHandle DuplicateCurrentProcessHandle(
-            SafeProcessHandle process,
-            bool allowTermination)
-        {
-            ProcessAccess workerAccess = ProcessAccess.DuplicateHandle | ProcessAccess.Synchronize |
-                ProcessAccess.QueryLimitedInformation;
-            if (allowTermination)
-                workerAccess |= ProcessAccess.Terminate;
-            using Process currentProcess = Process.GetCurrentProcess();
-            if (!DuplicateHandle(
-                    currentProcess.SafeHandle,
-                    process.DangerousGetHandle(),
-                    GetCurrentProcess(),
-                    out nint duplicate,
-                    desiredAccess: (uint)workerAccess,
-                    inheritHandle: false,
-                    options: 0))
-            {
-                throw new System.ComponentModel.Win32Exception(Marshal.GetLastPInvokeError(), "Could not duplicate the worker test process handle.");
-            }
-
-            return new SafeProcessHandle(duplicate, ownsHandle: true);
-        }
-
-        private static void KillChild(Process child)
-        {
-            try
-            {
-                if (!child.HasExited)
-                    child.Kill(entireProcessTree: true);
-                child.WaitForExit(5_000);
-            }
-            catch (InvalidOperationException)
-            {
-                // The child has already exited or its process handle was closed.
-            }
-        }
     }
 }

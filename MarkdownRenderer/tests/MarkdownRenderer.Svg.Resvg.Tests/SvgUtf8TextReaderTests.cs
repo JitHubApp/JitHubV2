@@ -108,7 +108,7 @@ public sealed class SvgUtf8TextReaderTests
             Assert.Equal(description, result.Info.Description);
             Assert.Equal(7, result.Info.IntrinsicWidthDips);
             Assert.Equal(5, result.Info.IntrinsicHeightDips);
-            Assert.Contains(description, Encoding.UTF8.GetString(result.Source.CopyToArrayForTest()));
+            Assert.Contains(description, Encoding.UTF8.GetString(result.Source.ReadAllBytes()));
         }
         finally
         {
@@ -145,7 +145,7 @@ public sealed class SvgUtf8TextReaderTests
     {
         string expected = new string('x', SvgSourceBuffer.SegmentSize - 1) + "🙂tail";
         byte[] bytes = Encoding.UTF8.GetBytes(expected);
-        using var output = new SvgPreflight.BoundedOutputStream(bytes.Length, CancellationToken.None);
+        using var output = new BoundedOutputStream(bytes.Length, CancellationToken.None);
         output.Write(bytes);
         SvgSourceBuffer owner = output.DetachSourceBuffer();
         var reader = new SvgUtf8TextReader(owner.AcquireReadLease(), 0);

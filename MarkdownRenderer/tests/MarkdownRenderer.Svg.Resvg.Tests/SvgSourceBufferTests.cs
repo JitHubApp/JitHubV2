@@ -16,7 +16,7 @@ public sealed class SvgSourceBufferTests
         for (int index = 0; index < expected.Length; index++)
             expected[index] = unchecked((byte)(index * 31));
 
-        using var output = new SvgPreflight.BoundedOutputStream(
+        using var output = new BoundedOutputStream(
             maximumBytes: expected.Length + SvgSourceBuffer.SegmentSize,
             CancellationToken.None);
         output.Write(expected);
@@ -25,18 +25,18 @@ public sealed class SvgSourceBufferTests
 
         Assert.Equal(expected.Length, source.Length);
         Assert.Equal(expected.Length, source.AllocatedCapacity);
-        Assert.Equal(expected, source.CopyToArrayForTest());
+        Assert.Equal(expected, source.ReadAllBytes());
         Assert.Equal(SHA256.HashData(expected), source.ComputeSha256());
     }
 
     [Fact]
     public void SealedSourceBufferRejectsFurtherPreflightMutation()
     {
-        using SvgSourceBuffer source = Encoding.ASCII.GetBytes("<svg/>").CopyIntoBufferForTest();
+        using SvgSourceBuffer source = Encoding.ASCII.GetBytes("<svg/>").ToSourceBuffer();
         source.Seal();
 
         Assert.Throws<InvalidOperationException>(() => source.FillRange(0, 1, (byte)' '));
-        Assert.Equal("<svg/>", Encoding.ASCII.GetString(source.CopyToArrayForTest()));
+        Assert.Equal("<svg/>", Encoding.ASCII.GetString(source.ReadAllBytes()));
     }
 
     [Fact]
@@ -51,7 +51,7 @@ public sealed class SvgSourceBufferTests
         Assert.Equal(caller.Length, source.AllocatedCapacity);
         caller.AsSpan().Fill((byte)'x');
 
-        Assert.Equal(expected, source.CopyToArrayForTest());
+        Assert.Equal(expected, source.ReadAllBytes());
     }
 
     [Fact]
@@ -75,10 +75,10 @@ public sealed class SvgSourceBufferTests
     [Fact]
     public void SmallSnapshotRemainsArrayBacked()
     {
-        using SvgSourceBuffer source = "<svg/>"u8.ToArray().CopyIntoBufferForTest();
+        using SvgSourceBuffer source = "<svg/>"u8.ToArray().ToSourceBuffer();
 
         Assert.False(source.IsNativeBacked);
-        Assert.Equal("<svg/>", Encoding.ASCII.GetString(source.CopyToArrayForTest()));
+        Assert.Equal("<svg/>", Encoding.ASCII.GetString(source.ReadAllBytes()));
     }
 
     [Fact]
@@ -87,7 +87,7 @@ public sealed class SvgSourceBufferTests
         byte[] expected = new byte[SvgSourceBuffer.NativeMemoryThresholdBytes + 31];
         expected.AsSpan().Fill((byte)0x5a);
         SvgSourceBuffer source = SvgSourceBuffer.CopyFrom(expected);
-        SvgSourceBuffer.ReadLease lease = source.AcquireReadLease();
+        SvgSourceReadLease lease = source.AcquireReadLease();
         Assert.True(lease.IsNativeBacked);
 
         source.Dispose();
@@ -112,7 +112,7 @@ public sealed class SvgSourceBufferTests
         for (int index = 0; index < expected.Length; index++)
             expected[index] = unchecked((byte)(index * 17));
         SvgSourceBuffer source = SvgSourceBuffer.CopyFrom(expected);
-        SvgSourceBuffer.ReadLease lease = source.AcquireReadLease();
+        SvgSourceReadLease lease = source.AcquireReadLease();
         using var start = new ManualResetEventSlim();
 
         Task<uint> reader = Task.Run(() =>
@@ -145,8 +145,8 @@ public sealed class SvgSourceBufferTests
     [Fact]
     public void ActiveReadLeasePreventsPreflightMutation()
     {
-        using SvgSourceBuffer source = Encoding.ASCII.GetBytes("<svg/>").CopyIntoBufferForTest();
-        using (SvgSourceBuffer.ReadLease lease = source.AcquireReadLease())
+        using SvgSourceBuffer source = Encoding.ASCII.GetBytes("<svg/>").ToSourceBuffer();
+        using (SvgSourceReadLease lease = source.AcquireReadLease())
         {
             Assert.Throws<InvalidOperationException>(() => source.FillRange(0, 1, (byte)' '));
             Assert.Equal((byte)'<', lease.GetByte(0));
@@ -162,7 +162,7 @@ public sealed class SvgSourceBufferTests
         var admission = new SvgProcessSnapshotAdmission(capacityBytes: 128, visibleHeadroomBytes: 16);
         Assert.True(admission.TryReserve(64, MarkdownSvgRenderPriority.Visible, out var reservation, out _));
         SvgSourceBuffer source = SvgSourceBuffer.CopyFrom(new byte[SvgSourceBuffer.NativeMemoryThresholdBytes + 1]);
-        SvgSourceBuffer.ReadLease lease = source.AcquireReadLease();
+        SvgSourceReadLease lease = source.AcquireReadLease();
         source.Seal();
         source.AttachRetirementResource(reservation!);
 
@@ -182,7 +182,7 @@ public sealed class SvgSourceBufferTests
         var admission = new SvgProcessSnapshotAdmission(capacityBytes: 128, visibleHeadroomBytes: 16);
         Assert.True(admission.TryReserve(64, MarkdownSvgRenderPriority.Visible, out var reservation, out _));
         SvgSourceBuffer source = SvgSourceBuffer.CopyFrom(new byte[SvgSourceBuffer.NativeMemoryThresholdBytes + 1]);
-        SvgSourceBuffer.ReadLease lease = source.AcquireReadLease();
+        SvgSourceReadLease lease = source.AcquireReadLease();
         source.Seal();
         source.AttachRetirementResource(reservation!);
 
@@ -202,7 +202,7 @@ public sealed class SvgSourceBufferTests
         var admission = new SvgProcessSnapshotAdmission(capacityBytes: 128, visibleHeadroomBytes: 16);
         Assert.True(admission.TryReserve(64, MarkdownSvgRenderPriority.Visible, out var reservation, out _));
         SvgSourceBuffer source = SvgSourceBuffer.CopyFrom(new byte[SvgSourceBuffer.NativeMemoryThresholdBytes + 1]);
-        SvgSourceBuffer.ReadLease lease = source.AcquireReadLease();
+        SvgSourceReadLease lease = source.AcquireReadLease();
         source.Seal();
         source.AttachRetirementResource(reservation!);
 
@@ -222,8 +222,8 @@ public sealed class SvgSourceBufferTests
         SvgSourceBuffer source = SvgSourceBuffer.CopyFrom(bytes);
         source.Seal();
         source.AttachRetirementResource(reservation!);
-        SvgSourceBuffer.ReadLease first = source.AcquireReadLease();
-        SvgSourceBuffer.ReadLease second = source.AcquireReadLease();
+        SvgSourceReadLease first = source.AcquireReadLease();
+        SvgSourceReadLease second = source.AcquireReadLease();
 
         Task ownerRetirement = Task.Run(source.Dispose);
         Task firstReaderRetirement = Task.Run(first.Dispose);
@@ -248,7 +248,7 @@ public sealed class SvgSourceBufferTests
         source.Seal();
         var result = new SvgPreflightResult(source, new byte[32], new(), 0, 0, 0, 0);
         result.AttachSnapshotAdmission(reservation!);
-        SvgSourceBuffer.ReadLease lease = result.Source.AcquireReadLease();
+        SvgSourceReadLease lease = result.Source.AcquireReadLease();
 
         result.ReleaseSource();
 
@@ -279,9 +279,9 @@ public sealed class SvgSourceBufferTests
 
         Assert.Equal(logicalLength, source.Length);
         Assert.Equal(first.Length + tail.Length, source.AllocatedCapacity);
-        Assert.Equal(logicalLength, source.CopyToArrayForTest().Length);
-        Assert.Equal(SHA256.HashData(source.CopyToArrayForTest()), source.ComputeSha256());
-        using SvgSourceBuffer.ReadLease lease = source.AcquireReadLease();
+        Assert.Equal(logicalLength, source.ReadAllBytes().Length);
+        Assert.Equal(SHA256.HashData(source.ReadAllBytes()), source.ComputeSha256());
+        using SvgSourceReadLease lease = source.AcquireReadLease();
         Assert.Equal(17, lease.GetSpanAt(first.Length).Length);
         Assert.True(lease.GetSpanAt(logicalLength).IsEmpty);
         Assert.Equal((byte)0x39, lease.GetByte(logicalLength - 1));
@@ -394,7 +394,7 @@ public sealed class SvgSourceBufferTests
     [Fact]
     public void SourceMappingRejectsRetiredStorageBeforeNativeAllocation()
     {
-        using SvgSourceBuffer source = Encoding.ASCII.GetBytes("<svg/>").CopyIntoBufferForTest();
+        using SvgSourceBuffer source = Encoding.ASCII.GetBytes("<svg/>").ToSourceBuffer();
         source.Dispose();
 
         // The retired source must fail before even attempting a native object
@@ -423,12 +423,12 @@ public sealed class SvgSourceBufferTests
         // Also exercise a first-byte match with the wrong trailing bytes.
         expected[first - 2] = marker[0];
 
-        using var writer = new SvgPreflight.BoundedOutputStream(expected.Length, CancellationToken.None);
+        using var writer = new BoundedOutputStream(expected.Length, CancellationToken.None);
         if (segmented)
             writer.Write(expected);
         using SvgSourceBuffer source = segmented
             ? writer.DetachSourceBuffer()
-            : expected.CopyIntoBufferForTest();
+            : expected.ToSourceBuffer();
 
         foreach (int start in new[] { 0, first - 2, first, first + 1, expected.Length - marker.Length, expected.Length })
         {
@@ -455,12 +455,12 @@ public sealed class SvgSourceBufferTests
         bytes.AsSpan().Fill((byte)'x');
         int markerStart = SvgSourceBuffer.SegmentSize - 2;
         "<!--"u8.CopyTo(bytes.AsSpan(markerStart));
-        using var writer = new SvgPreflight.BoundedOutputStream(bytes.Length, CancellationToken.None);
+        using var writer = new BoundedOutputStream(bytes.Length, CancellationToken.None);
         if (segmented)
             writer.Write(bytes);
         using SvgSourceBuffer source = segmented
             ? writer.DetachSourceBuffer()
-            : bytes.CopyIntoBufferForTest();
+            : bytes.ToSourceBuffer();
 
         _ = MeasureMarkerReadAllocations(source, markerStart, out _);
         long allocated = MeasureMarkerReadAllocations(source, markerStart, out int matches);

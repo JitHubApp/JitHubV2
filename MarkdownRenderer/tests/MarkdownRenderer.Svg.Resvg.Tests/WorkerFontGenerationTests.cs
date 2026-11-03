@@ -85,10 +85,10 @@ public sealed class WorkerFontGenerationTests
             OutputLength = outputLength,
         };
         WorkerProtocolException malformed = Assert.Throws<WorkerProtocolException>(
-            () => WorkerPool.ValidateFontCatalogProbeResponse(1, response));
+            () => WorkerResponseValidation.ValidateFontCatalogProbeResponse(1, response));
         bool invalidated = false;
 
-        WorkerInitializationException exception = WorkerPool.InvalidateMalformedFontCatalogProbe(
+        WorkerInitializationException exception = WorkerResponseValidation.InvalidateMalformedFontCatalogProbe(
             malformed,
             ensureRequestCurrent: static () => { },
             invalidateWorker: () => invalidated = true);
@@ -106,7 +106,7 @@ public sealed class WorkerFontGenerationTests
         int statusValue,
         long readyGeneration)
     {
-        WorkerPool.ValidateFontCatalogProbeResponse(
+        WorkerResponseValidation.ValidateFontCatalogProbeResponse(
             requestGeneration: 1,
             response: Response((WorkerStatus)statusValue, readyGeneration));
     }
@@ -118,7 +118,7 @@ public sealed class WorkerFontGenerationTests
         var cancellation = new OperationCanceledException("font generation rotated");
 
         OperationCanceledException observed = Assert.Throws<OperationCanceledException>(
-            () => WorkerPool.InvalidateMalformedFontCatalogProbe(
+            () => WorkerResponseValidation.InvalidateMalformedFontCatalogProbe(
                 new WorkerProtocolException("malformed response"),
                 ensureRequestCurrent: () => throw cancellation,
                 invalidateWorker: () => invalidated = true));
@@ -227,7 +227,7 @@ public sealed class WorkerFontGenerationTests
     {
         var grant = new TaskCompletionSource<ProbeLease>(TaskCreationOptions.RunContinuationsAsynchronously);
         int cancelCalls = 0;
-        Task drain = WorkerPool.CancelAndDrainAcquireAsync(grant.Task, () => cancelCalls++);
+        Task drain = WorkerAdmissionTasks.CancelAndDrainAcquireAsync(grant.Task, () => cancelCalls++);
 
         Assert.Equal(1, cancelCalls);
         Assert.False(drain.IsCompleted);
@@ -243,10 +243,10 @@ public sealed class WorkerFontGenerationTests
     {
         var canceledToken = new CancellationToken(canceled: true);
         Task<ProbeLease> canceled = Task.FromCanceled<ProbeLease>(canceledToken);
-        await WorkerPool.CancelAndDrainAcquireAsync(canceled, static () => { });
+        await WorkerAdmissionTasks.CancelAndDrainAcquireAsync(canceled, static () => { });
 
         Task<ProbeLease> disposed = Task.FromException<ProbeLease>(new ObjectDisposedException("pool"));
-        await WorkerPool.CancelAndDrainAcquireAsync(disposed, static () => { });
+        await WorkerAdmissionTasks.CancelAndDrainAcquireAsync(disposed, static () => { });
 
         Assert.True(canceled.IsCanceled);
         Assert.True(disposed.IsFaulted);
@@ -342,7 +342,7 @@ public sealed class WorkerFontGenerationTests
         WorkerStatus status = (WorkerStatus)statusValue;
         WorkerResponse response = Response(status, 0);
 
-        Assert.Throws<OperationCanceledException>(() => WorkerPool.ValidateTextResponse(
+        Assert.Throws<OperationCanceledException>(() => WorkerResponseValidation.ValidateTextResponse(
             response,
             requestGeneration: 0,
             currentGeneration: 1,
@@ -352,7 +352,7 @@ public sealed class WorkerFontGenerationTests
     [Fact]
     public void CurrentGenerationPendingOpenResponseRequestsRetryWithoutContentFailure()
     {
-        Assert.Throws<OperationCanceledException>(() => WorkerPool.ValidateTextResponse(
+        Assert.Throws<OperationCanceledException>(() => WorkerResponseValidation.ValidateTextResponse(
             Response(WorkerStatus.FontCatalogPending, 0),
             requestGeneration: 0,
             currentGeneration: 0,
@@ -362,7 +362,7 @@ public sealed class WorkerFontGenerationTests
     [Fact]
     public void CurrentGenerationFontFailureIsTransientAndNotAContentResponse()
     {
-        Assert.Throws<WorkerInitializationException>(() => WorkerPool.ValidateTextResponse(
+        Assert.Throws<WorkerInitializationException>(() => WorkerResponseValidation.ValidateTextResponse(
             Response(WorkerStatus.FontCatalogFailure, 0),
             requestGeneration: 0,
             currentGeneration: 0,
@@ -372,13 +372,13 @@ public sealed class WorkerFontGenerationTests
     [Fact]
     public void SuccessfulTextResponseMustUseTheRequestedCatalogGeneration()
     {
-        WorkerPool.ValidateTextResponse(
+        WorkerResponseValidation.ValidateTextResponse(
             Response(WorkerStatus.Ok, 1),
             requestGeneration: 1,
             currentGeneration: 1,
             operation: "render");
 
-        Assert.Throws<WorkerProtocolException>(() => WorkerPool.ValidateTextResponse(
+        Assert.Throws<WorkerProtocolException>(() => WorkerResponseValidation.ValidateTextResponse(
             Response(WorkerStatus.Ok, 0),
             requestGeneration: 1,
             currentGeneration: 1,

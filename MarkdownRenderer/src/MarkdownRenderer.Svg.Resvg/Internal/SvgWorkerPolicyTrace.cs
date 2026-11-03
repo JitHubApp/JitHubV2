@@ -4,17 +4,23 @@ namespace MarkdownRenderer.Svg.Resvg.Internal;
 
 /// <summary>
 /// Emits opt-in scheduling snapshots with a strict per-pool event bound.
+/// An optional observer receives the same snapshots as the event, before it
+/// is written; it is scoped to the owning pool, never process-wide.
 /// </summary>
-internal sealed class SvgWorkerPolicyTrace(int maximumEvents = 256)
+internal sealed class SvgWorkerPolicyTrace(
+    int maximumEvents = 256,
+    Action<SvgWorkerPolicySnapshot>? observer = null)
 {
     private readonly int _maximumEvents = maximumEvents > 0
         ? maximumEvents
         : throw new ArgumentOutOfRangeException(nameof(maximumEvents));
+    private readonly Action<SvgWorkerPolicySnapshot>? _observer = observer;
     private long _nextEventSequence;
     private int _eventCount;
     private int _limitEventWritten;
 
-    internal bool IsEnabled => ResvgEventSource.Log.IsWorkerPolicyMeasurementEnabled();
+    internal bool IsEnabled =>
+        _observer is not null || ResvgEventSource.Log.IsWorkerPolicyMeasurementEnabled();
 
     /// <summary>
     /// Records one numeric scheduling snapshot. For an evaluation event whose
@@ -23,8 +29,7 @@ internal sealed class SvgWorkerPolicyTrace(int maximumEvents = 256)
     /// </summary>
     internal long Record(SvgWorkerPolicySnapshot snapshot)
     {
-        ResvgEventSource log = ResvgEventSource.Log;
-        if (!log.IsWorkerPolicyMeasurementEnabled())
+        if (!IsEnabled)
             return 0;
 
         int eventCount = Interlocked.Increment(ref _eventCount);
@@ -33,7 +38,7 @@ internal sealed class SvgWorkerPolicyTrace(int maximumEvents = 256)
             if (Interlocked.CompareExchange(ref _limitEventWritten, 1, 0) == 0)
             {
                 long limitSequence = Interlocked.Increment(ref _nextEventSequence);
-                log.RecordWorkerPolicy(CreateSignal(
+                Publish(CreateSignal(
                     snapshot with
                     {
                         Phase = (int)SvgWorkerPolicyPhase.TraceLimitReached,
@@ -49,12 +54,26 @@ internal sealed class SvgWorkerPolicyTrace(int maximumEvents = 256)
         if (snapshot.Phase == (int)SvgWorkerPolicyPhase.Evaluated && decisionSequence == 0)
             decisionSequence = sequence;
 
-        log.RecordWorkerPolicy(CreateSignal(snapshot with
+        Publish(CreateSignal(snapshot with
         {
             EventSequence = sequence,
             DecisionSequence = decisionSequence,
         }));
         return sequence;
+    }
+
+    private void Publish(SvgWorkerPolicySnapshot signal)
+    {
+        try
+        {
+            _observer?.Invoke(signal);
+        }
+        catch (Exception)
+        {
+            // Optional scheduling evidence must never affect SVG behavior.
+        }
+
+        ResvgEventSource.Log.RecordWorkerPolicy(signal);
     }
 
     private static SvgWorkerPolicySnapshot CreateSignal(

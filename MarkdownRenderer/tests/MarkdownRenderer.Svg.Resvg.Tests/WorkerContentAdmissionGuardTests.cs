@@ -130,11 +130,11 @@ public sealed class WorkerContentAdmissionGuardTests
             false,
             "worker failure");
 
-        using WorkerRenderResult result = await WorkerPool.WithAdmittedOutputMappingAsync(
+        using WorkerRenderResult result = await WorkerSharedMemoryMapping.WithAdmittedOutputMappingAsync(
             _ => Task.FromResult(admission),
             (_, _, _) =>
             {
-                WorkerPool.QuarantineContentBeforeWorkerRelease(
+                WorkerResponseValidation.QuarantineContentBeforeWorkerRelease(
                     document,
                     contentFailureCallback: null,
                     callerCanceled: false,
@@ -157,22 +157,22 @@ public sealed class WorkerContentAdmissionGuardTests
     [Fact]
     public void FontGenerationOnlySuppressesQuarantineForCanceledOrStaleTextWork()
     {
-        Assert.True(WorkerPool.ShouldQuarantineContentFailure(
+        Assert.True(WorkerResponseValidation.ShouldQuarantineContentFailure(
             callerCanceled: false,
             requiresFontCatalog: false,
             requestGeneration: 0,
             currentGeneration: 1));
-        Assert.False(WorkerPool.ShouldQuarantineContentFailure(
+        Assert.False(WorkerResponseValidation.ShouldQuarantineContentFailure(
             callerCanceled: false,
             requiresFontCatalog: true,
             requestGeneration: 0,
             currentGeneration: 1));
-        Assert.False(WorkerPool.ShouldQuarantineContentFailure(
+        Assert.False(WorkerResponseValidation.ShouldQuarantineContentFailure(
             callerCanceled: true,
             requiresFontCatalog: false,
             requestGeneration: 0,
             currentGeneration: 1));
-        Assert.True(WorkerPool.ShouldQuarantineContentFailure(
+        Assert.True(WorkerResponseValidation.ShouldQuarantineContentFailure(
             callerCanceled: false,
             requiresFontCatalog: true,
             requestGeneration: 1,
@@ -194,7 +194,7 @@ public sealed class WorkerContentAdmissionGuardTests
         });
 
         MarkdownSvgException observed = await Assert.ThrowsAsync<MarkdownSvgException>(async () =>
-            await WorkerPool.WithSourceMappingAsync(
+            await WorkerSharedMemoryMapping.WithSourceMappingAsync(
                 (name, source) =>
                 {
                     mapping = new SharedMemoryLease(name, source, outputLength: 0);
@@ -227,7 +227,7 @@ public sealed class WorkerContentAdmissionGuardTests
         var document = new WorkerDocumentHandle(8, contentAdmissionGuard: () => throw rejection);
 
         MarkdownSvgException observed = await Assert.ThrowsAsync<MarkdownSvgException>(async () =>
-            await WorkerPool.WithSourceMappingAsync(
+            await WorkerSharedMemoryMapping.WithSourceMappingAsync(
                 (name, source) =>
                 {
                     allocated = true;
@@ -261,9 +261,9 @@ public sealed class WorkerContentAdmissionGuardTests
             false,
             false,
             string.Empty);
-        WorkerPool.ValidateOpenResponse(open);
+        WorkerResponseValidation.ValidateOpenResponse(open);
         Assert.Throws<WorkerProtocolException>(() =>
-            WorkerPool.ValidateOpenResponse(open with { IntrinsicWidth = double.NaN }));
+            WorkerResponseValidation.ValidateOpenResponse(open with { IntrinsicWidth = double.NaN }));
 
         var request = new MarkdownSvgRenderRequest(
             10,
@@ -284,36 +284,36 @@ public sealed class WorkerContentAdmissionGuardTests
             false,
             false,
             string.Empty);
-        WorkerPool.ValidateRasterResponse(raster, request, expectedOutputLength: 48);
+        WorkerResponseValidation.ValidateRasterResponse(raster, request, expectedOutputLength: 48);
         Assert.Throws<WorkerProtocolException>(() =>
-            WorkerPool.ValidateRasterResponse(raster with { Stride = 15 }, request, expectedOutputLength: 48));
+            WorkerResponseValidation.ValidateRasterResponse(raster with { Stride = 15 }, request, expectedOutputLength: 48));
     }
 
     [Fact]
     public void WorkerStatusesAreValidatedAgainstTheirOperationBeforeAdmissionReturns()
     {
-        WorkerPool.ValidateOpenStatus(Response(WorkerStatus.Ok), false, 0, "geometry open");
-        WorkerPool.ValidateOpenStatus(Response(WorkerStatus.Unsupported), false, 0, "geometry open");
-        WorkerPool.ValidateOpenStatus(Response(WorkerStatus.ResourceLimit), false, 0, "geometry open");
-        WorkerPool.ValidateOpenStatus(Response(WorkerStatus.WorkerFailure), false, 0, "geometry open");
+        WorkerResponseValidation.ValidateOpenStatus(Response(WorkerStatus.Ok), false, 0, "geometry open");
+        WorkerResponseValidation.ValidateOpenStatus(Response(WorkerStatus.Unsupported), false, 0, "geometry open");
+        WorkerResponseValidation.ValidateOpenStatus(Response(WorkerStatus.ResourceLimit), false, 0, "geometry open");
+        WorkerResponseValidation.ValidateOpenStatus(Response(WorkerStatus.WorkerFailure), false, 0, "geometry open");
         Assert.Throws<WorkerProtocolException>(() =>
-            WorkerPool.ValidateOpenStatus(Response(WorkerStatus.DocumentMissing), false, 0, "geometry open"));
+            WorkerResponseValidation.ValidateOpenStatus(Response(WorkerStatus.DocumentMissing), false, 0, "geometry open"));
         Assert.Throws<WorkerProtocolException>(() =>
-            WorkerPool.ValidateOpenStatus(Response(WorkerStatus.FontCatalogPending), false, 0, "geometry open"));
+            WorkerResponseValidation.ValidateOpenStatus(Response(WorkerStatus.FontCatalogPending), false, 0, "geometry open"));
 
-        WorkerPool.ValidateRenderStatus(Response(WorkerStatus.DocumentMissing), false, 0, true, "render probe");
+        WorkerResponseValidation.ValidateRenderStatus(Response(WorkerStatus.DocumentMissing), false, 0, true, "render probe");
         Assert.Throws<WorkerProtocolException>(() =>
-            WorkerPool.ValidateRenderStatus(Response(WorkerStatus.DocumentMissing), false, 0, false, "render retry"));
+            WorkerResponseValidation.ValidateRenderStatus(Response(WorkerStatus.DocumentMissing), false, 0, false, "render retry"));
         Assert.Throws<WorkerProtocolException>(() =>
-            WorkerPool.ValidateRenderStatus(Response(WorkerStatus.FontCatalogFailure), false, 0, true, "geometry render"));
-        WorkerPool.ValidateRenderStatus(Response(WorkerStatus.FontCatalogPending), true, 1, true, "text render");
+            WorkerResponseValidation.ValidateRenderStatus(Response(WorkerStatus.FontCatalogFailure), false, 0, true, "geometry render"));
+        WorkerResponseValidation.ValidateRenderStatus(Response(WorkerStatus.FontCatalogPending), true, 1, true, "text render");
         Assert.ThrowsAny<OperationCanceledException>(() =>
-            WorkerPool.ValidateTextResponse(Response(WorkerStatus.FontCatalogPending), 1, 1, "text render"));
-        WorkerPool.ValidateOpenStatus(Response(WorkerStatus.FontCatalogFailure), true, 1, "text open");
+            WorkerResponseValidation.ValidateTextResponse(Response(WorkerStatus.FontCatalogPending), 1, 1, "text render"));
+        WorkerResponseValidation.ValidateOpenStatus(Response(WorkerStatus.FontCatalogFailure), true, 1, "text open");
         Assert.Throws<WorkerInitializationException>(() =>
-            WorkerPool.ValidateTextResponse(Response(WorkerStatus.FontCatalogFailure), 1, 1, "text open"));
+            WorkerResponseValidation.ValidateTextResponse(Response(WorkerStatus.FontCatalogFailure), 1, 1, "text open"));
         Assert.Throws<WorkerProtocolException>(() =>
-            WorkerPool.ValidateOpenStatus(Response(WorkerStatus.FontCatalogFailure) with { ReadyFontGeneration = 2 }, true, 1, "text open"));
+            WorkerResponseValidation.ValidateOpenStatus(Response(WorkerStatus.FontCatalogFailure) with { ReadyFontGeneration = 2 }, true, 1, "text open"));
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

@@ -7,11 +7,11 @@ namespace MarkdownRenderer.Svg.Resvg.Internal;
 /// </summary>
 internal sealed class SvgSourceStream : Stream
 {
-    private SvgSourceBuffer.ReadLease? _lease;
+    private SvgSourceReadLease? _lease;
     private readonly CancellationToken _cancellationToken;
     private long _position;
 
-    public SvgSourceStream(SvgSourceBuffer.ReadLease lease, CancellationToken cancellationToken = default)
+    public SvgSourceStream(SvgSourceReadLease lease, CancellationToken cancellationToken = default)
     {
         _lease = lease ?? throw new ArgumentNullException(nameof(lease));
         _cancellationToken = cancellationToken;
@@ -34,7 +34,7 @@ internal sealed class SvgSourceStream : Stream
         }
         set
         {
-            SvgSourceBuffer.ReadLease lease = GetLease();
+            SvgSourceReadLease lease = GetLease();
             if (value < 0 || value > lease.Length)
             {
                 throw new ArgumentOutOfRangeException(nameof(value));
@@ -59,7 +59,7 @@ internal sealed class SvgSourceStream : Stream
 
     public override int Read(Span<byte> buffer)
     {
-        SvgSourceBuffer.ReadLease lease = GetLease();
+        SvgSourceReadLease lease = GetLease();
         _cancellationToken.ThrowIfCancellationRequested();
         if (buffer.IsEmpty || _position >= lease.Length)
         {
@@ -89,7 +89,7 @@ internal sealed class SvgSourceStream : Stream
 
     public override int ReadByte()
     {
-        SvgSourceBuffer.ReadLease lease = GetLease();
+        SvgSourceReadLease lease = GetLease();
         _cancellationToken.ThrowIfCancellationRequested();
         if (_position >= lease.Length)
         {
@@ -117,7 +117,7 @@ internal sealed class SvgSourceStream : Stream
 
     public override long Seek(long offset, SeekOrigin origin)
     {
-        SvgSourceBuffer.ReadLease lease = GetLease();
+        SvgSourceReadLease lease = GetLease();
         long target = origin switch
         {
             SeekOrigin.Begin => offset,
@@ -150,6 +150,6 @@ internal sealed class SvgSourceStream : Stream
         base.Dispose(disposing);
     }
 
-    private SvgSourceBuffer.ReadLease GetLease() =>
+    private SvgSourceReadLease GetLease() =>
         Volatile.Read(ref _lease) ?? throw new ObjectDisposedException(nameof(SvgSourceStream));
 }

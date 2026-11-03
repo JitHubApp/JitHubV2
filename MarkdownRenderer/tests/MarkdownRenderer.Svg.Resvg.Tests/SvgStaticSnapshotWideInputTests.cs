@@ -32,7 +32,7 @@ public sealed class SvgStaticSnapshotWideInputTests
         double expectedExtent)
     {
         bool oldSuccess = ParseViewBoxUsingOriginalSplit(source, horizontal, out double oldExtent);
-        bool success = SvgStaticSnapshot.TryParseViewBoxExtent(
+        bool success = SvgViewportExtent.TryParseViewBoxExtent(
             source,
             horizontal,
             CancellationToken.None,
@@ -55,7 +55,7 @@ public sealed class SvgStaticSnapshotWideInputTests
         bool succeeded = false;
         for (int index = 0; index < 32; index++)
         {
-            succeeded |= SvgStaticSnapshot.TryParseViewBoxExtent(
+            succeeded |= SvgViewportExtent.TryParseViewBoxExtent(
                 source,
                 horizontal: true,
                 CancellationToken.None,
@@ -65,7 +65,7 @@ public sealed class SvgStaticSnapshotWideInputTests
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int index = 0; index < 256; index++)
         {
-            succeeded &= SvgStaticSnapshot.TryParseViewBoxExtent(
+            succeeded &= SvgViewportExtent.TryParseViewBoxExtent(
                 source,
                 horizontal: true,
                 CancellationToken.None,
@@ -83,7 +83,7 @@ public sealed class SvgStaticSnapshotWideInputTests
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 
-        Assert.Throws<OperationCanceledException>(() => SvgStaticSnapshot.TryParseViewBoxExtent(
+        Assert.Throws<OperationCanceledException>(() => SvgViewportExtent.TryParseViewBoxExtent(
             new string(' ', 32_768),
             horizontal: true,
             cancellation.Token,
@@ -114,7 +114,7 @@ public sealed class SvgStaticSnapshotWideInputTests
             " font-size : 999999999999999999999999999999999px ; FONT-SIZE: 14px ;" +
             "color: red : authored; malformed; letter-spacing: -2.5px; color: ; ;";
         Dictionary<string, string> expected = ParseStyleUsingOriginalSplit(source);
-        Dictionary<string, string> actual = SvgStaticSnapshot.ParseStyle(source, CancellationToken.None);
+        Dictionary<string, string> actual = SvgHtmlTextStyleRules.ParseStyle(source, CancellationToken.None);
 
         Assert.Equal(expected.Count, actual.Count);
         foreach (KeyValuePair<string, string> pair in expected)
@@ -134,9 +134,9 @@ public sealed class SvgStaticSnapshotWideInputTests
         string overwritten = "font-size:" + largeValue + ";FONT-SIZE:16px";
         string rejectedWithLargeValue = "font-size:" + largeValue + ";custom:value";
 
-        _ = SvgStaticSnapshot.ParseStyle(repeatedUnknown, CancellationToken.None);
-        _ = SvgStaticSnapshot.ParseStyle(overwritten, CancellationToken.None);
-        _ = SvgStaticSnapshot.ParseStyle(rejectedWithLargeValue, CancellationToken.None);
+        _ = SvgHtmlTextStyleRules.ParseStyle(repeatedUnknown, CancellationToken.None);
+        _ = SvgHtmlTextStyleRules.ParseStyle(overwritten, CancellationToken.None);
+        _ = SvgHtmlTextStyleRules.ParseStyle(rejectedWithLargeValue, CancellationToken.None);
         // The thread counter can pick up a one-off runtime allocation, such as
         // an event listener from a parallel test class. A per-declaration
         // string costs hundreds of KB on every attempt, so it still fails.
@@ -148,13 +148,13 @@ public sealed class SvgStaticSnapshotWideInputTests
         for (int attempt = 0; attempt < 5; attempt++)
         {
             long beforeUnknown = GC.GetAllocatedBytesForCurrentThread();
-            unknown = SvgStaticSnapshot.ParseStyle(repeatedUnknown, CancellationToken.None);
+            unknown = SvgHtmlTextStyleRules.ParseStyle(repeatedUnknown, CancellationToken.None);
             unknownAllocated = GC.GetAllocatedBytesForCurrentThread() - beforeUnknown;
             long beforeOverwrite = GC.GetAllocatedBytesForCurrentThread();
-            finalValue = SvgStaticSnapshot.ParseStyle(overwritten, CancellationToken.None);
+            finalValue = SvgHtmlTextStyleRules.ParseStyle(overwritten, CancellationToken.None);
             overwriteAllocated = GC.GetAllocatedBytesForCurrentThread() - beforeOverwrite;
             long beforeRejected = GC.GetAllocatedBytesForCurrentThread();
-            rejected = SvgStaticSnapshot.ParseStyle(rejectedWithLargeValue, CancellationToken.None);
+            rejected = SvgHtmlTextStyleRules.ParseStyle(rejectedWithLargeValue, CancellationToken.None);
             rejectedAllocated = GC.GetAllocatedBytesForCurrentThread() - beforeRejected;
             attempts.Add($"{unknownAllocated}/{overwriteAllocated}/{rejectedAllocated}");
             if (unknownAllocated < 4_096 && overwriteAllocated < 4_096 && rejectedAllocated < 4_096)
@@ -176,7 +176,7 @@ public sealed class SvgStaticSnapshotWideInputTests
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 
-        Assert.Throws<OperationCanceledException>(() => SvgStaticSnapshot.ParseStyle(
+        Assert.Throws<OperationCanceledException>(() => SvgHtmlTextStyleRules.ParseStyle(
             "font-size:16px",
             cancellation.Token));
     }
@@ -226,7 +226,7 @@ public sealed class SvgStaticSnapshotWideInputTests
         string source,
         bool expected)
     {
-        Assert.Equal(expected, SvgStaticSnapshot.IsSafeDiscardedHtmlTextStyle(
+        Assert.Equal(expected, SvgHtmlTextStyleRules.IsSafeDiscardedHtmlTextStyle(
             source.AsSpan(),
             CancellationToken.None));
     }
@@ -237,7 +237,7 @@ public sealed class SvgStaticSnapshotWideInputTests
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 
-        Assert.Throws<OperationCanceledException>(() => SvgStaticSnapshot.IsSafeDiscardedHtmlTextStyle(
+        Assert.Throws<OperationCanceledException>(() => SvgHtmlTextStyleRules.IsSafeDiscardedHtmlTextStyle(
             "width:100%".AsSpan(),
             cancellation.Token));
     }
@@ -251,10 +251,10 @@ public sealed class SvgStaticSnapshotWideInputTests
         XmlDocument rejected = Load(
             "<div xmlns='" + HtmlNamespace + "' style=' width:100%;  ; color:red '/>");
 
-        Assert.True(SvgStaticSnapshot.HasOnlySafeHtmlTextAttributes(
+        Assert.True(SvgHtmlTextStyleRules.HasOnlySafeHtmlTextAttributes(
             accepted.DocumentElement!,
             CancellationToken.None));
-        Assert.False(SvgStaticSnapshot.HasOnlySafeHtmlTextAttributes(
+        Assert.False(SvgHtmlTextStyleRules.HasOnlySafeHtmlTextAttributes(
             rejected.DocumentElement!,
             CancellationToken.None));
     }
@@ -267,7 +267,7 @@ public sealed class SvgStaticSnapshotWideInputTests
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 
-        Assert.Throws<OperationCanceledException>(() => SvgStaticSnapshot.HasOnlySafeHtmlTextAttributes(
+        Assert.Throws<OperationCanceledException>(() => SvgHtmlTextStyleRules.HasOnlySafeHtmlTextAttributes(
             document.DocumentElement!,
             cancellation.Token));
     }

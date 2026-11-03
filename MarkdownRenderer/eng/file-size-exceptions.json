@@ -61,27 +61,7 @@
       "lines": 1076,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
-    {
-      "path": "src/MarkdownRenderer.Svg.Resvg/Internal/SvgPreflight.cs",
-      "lines": 2501,
-      "reason": "Predates the size rule; split by responsibility in a later structure step."
-    },
-    {
-      "path": "src/MarkdownRenderer.Svg.Resvg/Internal/SvgStaticSnapshot.cs",
-      "lines": 2513,
-      "reason": "Predates the size rule; split by responsibility in a later structure step."
-    },
-    {
-      "path": "src/MarkdownRenderer.Svg.Resvg/Internal/WindowsWorkerProcess.cs",
-      "lines": 1336,
-      "reason": "Predates the size rule; split by responsibility in a later structure step."
-    },
-    {
-      "path": "src/MarkdownRenderer.Svg.Resvg/Internal/WorkerPool.cs",
-      "lines": 3334,
-      "reason": "Predates the size rule; split by responsibility in a later structure step."
-    },
-    {
+{
       "path": "src/MarkdownRenderer/Accessibility/MarkdownAutomationPeer.cs",
       "lines": 1093,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
@@ -361,17 +341,7 @@
       "lines": 1414,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
-    {
-      "path": "tests/MarkdownRenderer.Svg.Resvg.Tests/ResvgProviderTests.cs",
-      "lines": 1150,
-      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
-    },
-    {
-      "path": "tests/MarkdownRenderer.Svg.Resvg.Tests/SvgProcessSnapshotAdmissionTests.cs",
-      "lines": 1046,
-      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
-    },
-    {
+{
       "path": "tests/MarkdownRenderer.Tests/MarkdownEngineTests.cs",
       "lines": 1378,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."

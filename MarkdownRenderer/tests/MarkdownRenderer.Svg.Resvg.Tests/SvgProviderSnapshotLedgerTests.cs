@@ -1,5 +1,4 @@
 using System.Diagnostics.Tracing;
-using System.Reflection;
 using MarkdownRenderer.Svg.Resvg.Internal;
 using Xunit;
 
@@ -10,13 +9,29 @@ public sealed class SvgProviderSnapshotLedgerTests
     [Fact]
     public void ProcessAggregateUsesZeroAndRendererScopesAreNumeric()
     {
-        Assert.Equal(0, SvgProviderSnapshotLedger.Process.ScopeId);
+        Assert.Equal(0, SvgProcessSnapshotAdmission.Process.SourceLedger.ScopeId);
+        Assert.Equal(0, SvgProviderSnapshotLedger.CreateProcessAggregate().ScopeId);
 
         var first = new SvgProviderSnapshotLedger();
         var second = new SvgProviderSnapshotLedger();
 
         Assert.True(first.ScopeId > 0);
         Assert.True(second.ScopeId > first.ScopeId);
+    }
+
+    [Fact]
+    public void IndependentAdmissionDomainsOwnIndependentAggregates()
+    {
+        var firstDomain = new SvgProcessSnapshotAdmission(1024, 256);
+        var secondDomain = new SvgProcessSnapshotAdmission(1024, 256);
+        Assert.NotSame(firstDomain.SourceLedger, secondDomain.SourceLedger);
+        Assert.True(firstDomain.SourceLedger.ScopeId > 0);
+
+        var renderer = new SvgProviderSnapshotLedger(firstDomain.SourceLedger);
+        using SvgProviderSnapshotLedger.Lease lease = renderer.Track(12);
+
+        Assert.Equal(12, firstDomain.SourceLedger.GetSnapshot().LiveBytes);
+        Assert.Equal(0, secondDomain.SourceLedger.GetSnapshot().LiveBytes);
     }
 
     [Fact]
@@ -141,16 +156,23 @@ public sealed class SvgProviderSnapshotLedgerTests
     }
 
     [Fact]
-    public void LedgerAndLeaseStoreNoSourceBearingValues()
+    public void LedgerAcceptsAndReportsOnlyNumericValues()
     {
-        AssertNoSourceFieldTypes(typeof(SvgProviderSnapshotLedger));
-        AssertNoSourceFieldTypes(typeof(SvgProviderSnapshotLedger.Lease));
-        AssertNoSourceFieldTypes(typeof(SvgProviderSnapshotLedgerSnapshot));
+        // The ledger's whole input surface is a byte count: these delegate
+        // conversions stop compiling if Track or SetLength ever accept a
+        // source-bearing value.
+        var ledger = new SvgProviderSnapshotLedger();
+        Func<int, SvgProviderSnapshotLedger.Lease> track = ledger.Track;
+        using SvgProviderSnapshotLedger.Lease lease = track(3);
+        Action<int> setLength = lease.SetLength;
+        setLength(4);
 
-        MethodInfo track = typeof(SvgProviderSnapshotLedger).GetMethod(
-            "Track",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        Assert.Equal(typeof(int), Assert.Single(track.GetParameters()).ParameterType);
+        Type[] reported = typeof(SvgProviderSnapshotLedgerSnapshot)
+            .GetProperties()
+            .Select(static property => property.PropertyType)
+            .ToArray();
+        Assert.NotEmpty(reported);
+        Assert.All(reported, static type => Assert.Equal(typeof(long), type));
     }
 
     [Fact]
@@ -192,21 +214,6 @@ public sealed class SvgProviderSnapshotLedgerTests
         Assert.Equal(liveSnapshots, snapshot.LiveSnapshots);
         Assert.Equal(peakSnapshots, snapshot.PeakSnapshots);
         Assert.Equal(sequence, snapshot.Sequence);
-    }
-
-    private static void AssertNoSourceFieldTypes(Type type)
-    {
-        Type[] forbiddenTypes =
-        [
-            typeof(string),
-            typeof(byte[]),
-            typeof(ReadOnlyMemory<byte>),
-            typeof(Memory<byte>),
-            typeof(Uri),
-        ];
-
-        FieldInfo[] fields = type.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-        Assert.DoesNotContain(fields, field => forbiddenTypes.Contains(field.FieldType));
     }
 
     private sealed class LedgerEventListener(

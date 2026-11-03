@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Reflection;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Svg.Resvg.Internal;
@@ -10,40 +11,39 @@ public sealed class WorkerFontWaitPoolTests
     [Fact]
     public async Task AllAdmittedRequestsCanParkAndReenterWithoutAdmittingNewWork()
     {
-        using WorkerPool pool = CreatePool();
+        var fontWaits = new DetachedFontWaitLedger();
+        var policySnapshots = new ConcurrentQueue<SvgWorkerPolicySnapshot>();
+        using WorkerScheduler pool = CreatePool(fontWaits, policySnapshots);
         var reservations = new List<WorkerFontWaitReservation>();
         var leases = new List<IDisposable>();
         try
         {
             // Exercise the actual admission queue and ticket transfer, not just
             // the policy arithmetic. No worker, pipe or mapping is created.
-            Task[] admissions = Enumerable.Range(0, 33)
+            Task<WorkerLease>[] admissions = Enumerable.Range(0, 33)
                 .Select(_ => Acquire(pool, CancellationToken.None))
                 .ToArray();
             Assert.True(admissions[0].IsCompletedSuccessfully);
             Assert.All(admissions.Skip(1), task => Assert.False(task.IsCompleted));
 
-            foreach (Task admission in admissions)
+            foreach (Task<WorkerLease> admission in admissions)
             {
                 IDisposable active = await GetLeaseAsync(admission);
                 leases.Add(active);
                 reservations.Add(Reserve(pool, active));
                 active.Dispose();
             }
-            Assert.Equal(33, GetField(pool, "_detachedFontWaitCount"));
+            Assert.Equal(33, fontWaits.Count);
             // New work is not admitted while parked continuations hold
             // every credit, but it waits for capacity instead of failing.
-            Task waitingNew = Acquire(pool, CancellationToken.None);
+            Task<WorkerLease> waitingNew = Acquire(pool, CancellationToken.None);
             await Task.Delay(100);
             Assert.False(waitingNew.IsCompleted);
             Task waitingNewReleased = waitingNew.ContinueWith(
                 static task =>
                 {
-                    if (task.IsCompletedSuccessfully &&
-                        task.GetType().GetProperty("Result")?.GetValue(task) is IDisposable lease)
-                    {
-                        lease.Dispose();
-                    }
+                    if (task.IsCompletedSuccessfully)
+                        task.Result.Dispose();
                 },
                 TaskScheduler.Default);
 
@@ -56,11 +56,12 @@ public sealed class WorkerFontWaitPoolTests
                 Assert.False(reservation.IsActive);
                 resumed.Dispose();
             }
-            Assert.Equal(0, GetField(pool, "_detachedFontWaitCount"));
+            Assert.Equal(0, fontWaits.Count);
             await waitingNewReleased.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.True(waitingNew.IsCompletedSuccessfully);
             using IDisposable fresh = await GetLeaseAsync(Acquire(pool, CancellationToken.None));
-            Assert.Null(GetField(pool, "_secondary"));
+            Assert.DoesNotContain(policySnapshots, snapshot =>
+                snapshot.ShouldStartSecondary != 0 || snapshot.SecondaryReadinessState != 0);
         }
         finally
         {
@@ -75,28 +76,28 @@ public sealed class WorkerFontWaitPoolTests
     [Fact]
     public async Task RealActiveLeaseCannotReserveTwiceOrAfterRelease()
     {
-        using WorkerPool pool = CreatePool();
+        var fontWaits = new DetachedFontWaitLedger();
+        using WorkerScheduler pool = CreatePool(fontWaits);
         using IDisposable active = await GetLeaseAsync(Acquire(pool, CancellationToken.None));
         using WorkerFontWaitReservation reservation = Reserve(pool, active);
 
-        Assert.IsType<InvalidOperationException>(Assert.Throws<TargetInvocationException>(
-            () => Reserve(pool, active)).InnerException);
-        Assert.Equal(1, GetField(pool, "_detachedFontWaitCount"));
+        Assert.Throws<InvalidOperationException>(() => Reserve(pool, active));
+        Assert.Equal(1, fontWaits.Count);
         active.Dispose();
         // A distinct, never-reserved lease proves this is the active-lease
         // check, rather than the duplicate-reservation check above.
         using IDisposable released = await GetLeaseAsync(Acquire(pool, CancellationToken.None));
         released.Dispose();
-        Assert.IsType<InvalidOperationException>(Assert.Throws<TargetInvocationException>(
-            () => Reserve(pool, released)).InnerException);
+        Assert.Throws<InvalidOperationException>(() => Reserve(pool, released));
         reservation.Dispose();
-        Assert.Equal(0, GetField(pool, "_detachedFontWaitCount"));
+        Assert.Equal(0, fontWaits.Count);
     }
 
     [Fact]
     public async Task PromotionRegistrationLimitFailureDoesNotPublishDetachedOwnership()
     {
-        using WorkerPool pool = CreatePool();
+        var fontWaits = new DetachedFontWaitLedger();
+        using WorkerScheduler pool = CreatePool(fontWaits);
         var ticket = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using IDisposable active = await GetLeaseAsync(Acquire(
             pool,
@@ -108,12 +109,10 @@ public sealed class WorkerFontWaitPoolTests
 
         try
         {
-            TargetInvocationException failure = Assert.Throws<TargetInvocationException>(
-                () => Reserve(pool, active));
-            Assert.IsType<InvalidOperationException>(failure.InnerException);
-            Assert.Equal(0, GetField(pool, "_detachedFontWaitCount"));
-            Assert.Empty((HashSet<WorkerFontWaitReservation>)GetField(pool, "_detachedFontWaitReservations")!);
-            Assert.False((bool)GetPendingProperty(active, "HasDetachedFontWaitReservation")!);
+            Assert.Throws<InvalidOperationException>(() => Reserve(pool, active));
+            Assert.Equal(0, fontWaits.Count);
+            Assert.Equal(0, fontWaits.ReservationCount);
+            Assert.False(((WorkerLease)active).Pending.HasDetachedFontWaitReservation);
 
             // The failed reservation attempt must not dispose or consume any
             // of the ticket's earlier registrations while rolling back its
@@ -144,27 +143,31 @@ public sealed class WorkerFontWaitPoolTests
             demandTicket: visibleTicket,
             operation: WorkerOperation.Render,
             requiresFontCatalog: true));
-        SetField(pool, "_detachedVisibleRenderCount", int.MaxValue);
+        // Seed the counter at its limit through the ledger's own publication
+        // API. The seed is the only registered reservation.
+        var seed = new WorkerFontWaitReservation(static () => { });
+        fontWaits.Publish(seed, new DetachedFontWaitCounts(0, int.MaxValue, 0));
         try
         {
-            TargetInvocationException overflow = Assert.Throws<TargetInvocationException>(
-                () => Reserve(pool, visibleRender));
-            Assert.IsType<OverflowException>(overflow.InnerException);
-            Assert.Equal(0, GetField(pool, "_detachedFontWaitCount"));
-            Assert.Empty((HashSet<WorkerFontWaitReservation>)GetField(pool, "_detachedFontWaitReservations")!);
-            Assert.False((bool)GetPendingProperty(visibleRender, "HasDetachedFontWaitReservation")!);
+            Assert.Throws<OverflowException>(() => Reserve(pool, visibleRender));
+            Assert.Equal(0, fontWaits.Count);
+            Assert.Equal(1, fontWaits.ReservationCount);
+            Assert.False(((WorkerLease)visibleRender).Pending.HasDetachedFontWaitReservation);
             Assert.Equal(0, GetDemandRegistrationCount(visibleTicket));
         }
         finally
         {
-            SetField(pool, "_detachedVisibleRenderCount", 0);
+            fontWaits.Withdraw(seed);
+            fontWaits.Publish(seed, default);
+            fontWaits.Withdraw(seed);
         }
     }
 
     [Fact]
     public async Task DetachedFontWaitPromotionUpdatesCountersOnceAndRetiresItsRegistrationOnResume()
     {
-        using WorkerPool pool = CreatePool();
+        var fontWaits = new DetachedFontWaitLedger();
+        using WorkerScheduler pool = CreatePool(fontWaits);
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using IDisposable active = await GetLeaseAsync(Acquire(
             pool,
@@ -175,14 +178,14 @@ public sealed class WorkerFontWaitPoolTests
         using WorkerFontWaitReservation reservation = Reserve(pool, active);
         active.Dispose();
 
-        Assert.Equal(1, GetField(pool, "_detachedFontWaitCount"));
-        Assert.Equal(0, GetField(pool, "_detachedVisibleRenderCount"));
-        Assert.Equal(0, GetField(pool, "_detachedVisibleTextRenderCount"));
-        Assert.Single((HashSet<WorkerFontWaitReservation>)GetField(pool, "_detachedFontWaitReservations")!);
+        Assert.Equal(1, fontWaits.Count);
+        Assert.Equal(0, fontWaits.VisibleRenderCount);
+        Assert.Equal(0, fontWaits.VisibleTextRenderCount);
+        Assert.Equal(1, fontWaits.ReservationCount);
 
         Assert.True(demand.PromoteVisible());
-        await WaitForPoolFieldAsync(pool, "_detachedVisibleRenderCount", 1);
-        await WaitForPoolFieldAsync(pool, "_detachedVisibleTextRenderCount", 1);
+        await WaitForCountAsync(() => fontWaits.VisibleRenderCount, 1);
+        await WaitForCountAsync(() => fontWaits.VisibleTextRenderCount, 1);
         await WaitForTicketRegistrationsAsync(demand, 0);
         Assert.True(reservation.CountsAsVisibleRender);
         Assert.True(reservation.CountsAsVisibleTextRender);
@@ -196,10 +199,10 @@ public sealed class WorkerFontWaitPoolTests
             WorkerOperation.Render,
             requiresFontCatalog: true));
         Assert.False(reservation.IsActive);
-        Assert.Equal(0, GetField(pool, "_detachedFontWaitCount"));
-        Assert.Equal(0, GetField(pool, "_detachedVisibleRenderCount"));
-        Assert.Equal(0, GetField(pool, "_detachedVisibleTextRenderCount"));
-        Assert.Empty((HashSet<WorkerFontWaitReservation>)GetField(pool, "_detachedFontWaitReservations")!);
+        Assert.Equal(0, fontWaits.Count);
+        Assert.Equal(0, fontWaits.VisibleRenderCount);
+        Assert.Equal(0, fontWaits.VisibleTextRenderCount);
+        Assert.Equal(0, fontWaits.ReservationCount);
         Assert.Equal(0, demand.PendingPromotionCount);
         resumed.Dispose();
 
@@ -215,79 +218,87 @@ public sealed class WorkerFontWaitPoolTests
         WorkerFontWaitReservation canceledReservation = Reserve(pool, secondActive);
         secondActive.Dispose();
         canceledReservation.Dispose();
-        Assert.Equal(0, GetField(pool, "_detachedFontWaitCount"));
-        Assert.Equal(0, GetField(pool, "_detachedVisibleRenderCount"));
-        Assert.Equal(0, GetField(pool, "_detachedVisibleTextRenderCount"));
+        Assert.Equal(0, fontWaits.Count);
+        Assert.Equal(0, fontWaits.VisibleRenderCount);
+        Assert.Equal(0, fontWaits.VisibleTextRenderCount);
         Assert.Equal(0, canceledDemand.PendingPromotionCount);
 
         Assert.True(canceledDemand.PromoteVisible());
         await Task.Delay(25);
-        Assert.Equal(0, GetField(pool, "_detachedFontWaitCount"));
-        Assert.Equal(0, GetField(pool, "_detachedVisibleRenderCount"));
-        Assert.Equal(0, GetField(pool, "_detachedVisibleTextRenderCount"));
+        Assert.Equal(0, fontWaits.Count);
+        Assert.Equal(0, fontWaits.VisibleRenderCount);
+        Assert.Equal(0, fontWaits.VisibleTextRenderCount);
         Assert.Equal(0, canceledDemand.PendingPromotionCount);
     }
 
     [Fact]
     public async Task ExpiredReadinessAdmissionCannotTransferToAnUncanceledCaller()
     {
-        using WorkerPool pool = CreatePool();
+        var fontWaits = new DetachedFontWaitLedger();
+        using WorkerScheduler pool = CreatePool(fontWaits);
         using var readiness = new CancellationTokenSource();
         using var caller = new CancellationTokenSource();
         using IDisposable active = await GetLeaseAsync(Acquire(pool, readiness.Token));
         readiness.Cancel();
 
-        TargetInvocationException exception = Assert.Throws<TargetInvocationException>(
+        Assert.ThrowsAny<OperationCanceledException>(
             () => Rebind(pool, active, caller.Token, readiness.Token));
-        Assert.IsAssignableFrom<OperationCanceledException>(exception.InnerException);
-        Assert.True((bool)GetPendingProperty(active, "IsCanceled")!);
-        Assert.Equal(readiness.Token, GetPendingProperty(active, "CancellationToken"));
+        Assert.True(((WorkerLease)active).Pending.IsCanceled);
+        Assert.Equal(readiness.Token, ((WorkerLease)active).Pending.CancellationToken);
         Assert.False(caller.IsCancellationRequested);
     }
 
     [Fact]
     public async Task SuccessfulRebindDetachesReadinessAndPreservesCallerPreemption()
     {
-        using WorkerPool pool = CreatePool();
+        var fontWaits = new DetachedFontWaitLedger();
+        using WorkerScheduler pool = CreatePool(fontWaits);
         using var readiness = new CancellationTokenSource();
         using var caller = new CancellationTokenSource();
         using IDisposable active = await GetLeaseAsync(Acquire(pool, readiness.Token));
 
         Rebind(pool, active, caller.Token, readiness.Token);
         readiness.Cancel();
-        Assert.False((bool)GetPendingProperty(active, "IsCanceled")!);
-        Assert.Equal(caller.Token, GetPendingProperty(active, "CancellationToken"));
+        Assert.False(((WorkerLease)active).Pending.IsCanceled);
+        Assert.Equal(caller.Token, ((WorkerLease)active).Pending.CancellationToken);
         caller.Cancel();
-        Assert.True((bool)GetPendingProperty(active, "IsCanceled")!);
+        Assert.True(((WorkerLease)active).Pending.IsCanceled);
     }
 
-    private static WorkerPool CreatePool() => new(
-        new ResvgMarkdownSvgRendererOptions(),
-        TimeProvider.System,
-        static () => true,
-        static (_, _) => throw new InvalidOperationException("Admission-only tests must not create a source mapping."),
-        static (_, _) => throw new InvalidOperationException("Admission-only tests must not create an output mapping."));
+    private static WorkerScheduler CreatePool(
+        DetachedFontWaitLedger fontWaits,
+        ConcurrentQueue<SvgWorkerPolicySnapshot>? policySnapshots = null) =>
+        TestWorkerSchedulers.Create(
+            static () => true,
+            policySnapshots is null ? null : new SvgWorkerPolicyTrace(observer: policySnapshots.Enqueue),
+            detachedFontWaits: fontWaits);
 
-    private static Task Acquire(
-        WorkerPool pool,
+    private static Task<WorkerLease> Acquire(
+        WorkerScheduler pool,
         CancellationToken cancellationToken,
         WorkerFontWaitReservation? reservation = null,
         MarkdownSvgRenderDemand? demandTicket = null,
         WorkerOperation operation = WorkerOperation.Open,
         bool requiresFontCatalog = true) =>
-        (Task)FindMethod("AcquireAsync").Invoke(pool,
-        [operation, demandTicket?.Priority ?? MarkdownSvgRenderPriority.Visible, cancellationToken, requiresFontCatalog, 0L, false, reservation, demandTicket])!;
+        TestWorkerSchedulers.AcquireAsync(
+            pool,
+            cancellationToken,
+            operation,
+            demandTicket?.Priority ?? MarkdownSvgRenderPriority.Visible,
+            requiresFontCatalog,
+            reservation,
+            demandTicket);
 
-    private static async Task WaitForPoolFieldAsync(WorkerPool pool, string name, int expected)
+    private static async Task WaitForCountAsync(Func<int> count, int expected)
     {
         for (int attempt = 0; attempt < 200; attempt++)
         {
-            if ((int)GetField(pool, name)! == expected)
+            if (count() == expected)
                 return;
             await Task.Delay(5);
         }
 
-        Assert.Equal(expected, GetField(pool, name));
+        Assert.Equal(expected, count());
     }
 
     private static async Task WaitForTicketRegistrationsAsync(MarkdownSvgRenderDemand ticket, int expected)
@@ -302,35 +313,17 @@ public sealed class WorkerFontWaitPoolTests
         Assert.Equal(expected, ticket.PendingPromotionCount);
     }
 
-    private static async Task<IDisposable> GetLeaseAsync(Task admission)
-    {
+    private static async Task<IDisposable> GetLeaseAsync(Task<WorkerLease> admission) =>
         await admission.WaitAsync(TimeSpan.FromSeconds(5));
-        return Assert.IsAssignableFrom<IDisposable>(admission.GetType().GetProperty("Result")!.GetValue(admission));
-    }
 
-    private static WorkerFontWaitReservation Reserve(WorkerPool pool, IDisposable active) =>
-        (WorkerFontWaitReservation)FindMethod("ReserveDetachedFontWait").Invoke(pool, [active])!;
+    private static WorkerFontWaitReservation Reserve(WorkerScheduler pool, IDisposable active) =>
+        pool.ReserveDetachedFontWait((WorkerLease)active);
 
-    private static void Rebind(WorkerPool pool, IDisposable active, CancellationToken caller, CancellationToken readiness) =>
-        FindMethod("RebindLeaseCancellation").Invoke(pool, [active, caller, readiness]);
-
-    private static MethodInfo FindMethod(string name) =>
-        typeof(WorkerPool).GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!;
-
-    private static object? GetField(WorkerPool pool, string name) =>
-        typeof(WorkerPool).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(pool);
-
-    private static void SetField(WorkerPool pool, string name, object value) =>
-        typeof(WorkerPool).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(pool, value);
+    private static void Rebind(WorkerScheduler pool, IDisposable active, CancellationToken caller, CancellationToken readiness) =>
+        pool.RebindLeaseCancellation((WorkerLease)active, caller, readiness);
 
     private static int GetDemandRegistrationCount(MarkdownSvgRenderDemand ticket) =>
         (int)typeof(MarkdownSvgRenderDemand).GetField(
             "_activeRegistrations",
             BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(ticket)!;
-
-    private static object? GetPendingProperty(IDisposable active, string name)
-    {
-        object pending = active.GetType().GetProperty("Pending")!.GetValue(active)!;
-        return pending.GetType().GetProperty(name)!.GetValue(pending);
-    }
 }

@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using System.Reflection;
 using System.Buffers;
 using System.Security.Cryptography;
 using MarkdownRenderer.Images;
@@ -49,55 +48,77 @@ public sealed class SvgRendererShutdownTests
     public async Task SyncThenAsyncShutdownWaitsForActualRenderDrain()
     {
         using var renderer = new ResvgMarkdownSvgRenderer();
-        using var workers = new WorkerPool(new ResvgMarkdownSvgRendererOptions());
+        var admission = new GatedAdmissionObserver(WorkerOperation.Render);
+        using var workers = new WorkerPool(new ResvgMarkdownSvgRendererOptions(), admissionObserver: admission);
         DocumentFixture fixture = CreateDocument(renderer, workers);
-        SvgDocumentLifetime lifetime = GetLifetime(fixture.Document);
-        SvgDocumentLifetime.RenderLease lease = lifetime.TryEnterRender()!;
+        Task render = StartRender(fixture.Document);
+        Task firstShutdown;
+        Task repeatedShutdown;
 
-        renderer.Dispose();
-        Task firstShutdown = renderer.DisposeAsync().AsTask();
-        Task repeatedShutdown = renderer.DisposeAsync().AsTask();
+        // The render holds its document lease while it waits at worker
+        // admission, so shutdown must cancel it and then wait for it to drain.
+        try
+        {
+            Assert.True(admission.WaitUntilEntered(TimeSpan.FromSeconds(10)), "The render did not reach worker admission.");
+            renderer.Dispose();
+            firstShutdown = renderer.DisposeAsync().AsTask();
+            repeatedShutdown = renderer.DisposeAsync().AsTask();
 
-        Assert.True(lease.Token.IsCancellationRequested);
-        Assert.False(firstShutdown.IsCompleted);
-        Assert.False(repeatedShutdown.IsCompleted);
-        Assert.False(lifetime.RetirementTask.IsCompleted);
-        ForceCollection();
-        Assert.True(fixture.Source.IsAlive);
+            Assert.True(admission.AdmissionToken.IsCancellationRequested);
+            Assert.False(firstShutdown.IsCompleted);
+            Assert.False(repeatedShutdown.IsCompleted);
+            Assert.False(render.IsCompleted);
+            ForceCollection();
+            Assert.True(fixture.Source.IsAlive);
+        }
+        finally
+        {
+            admission.Release();
+        }
 
-        lease.Dispose();
+        MarkdownSvgException failure = await Assert.ThrowsAsync<MarkdownSvgException>(
+            async () => await render.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal(MarkdownSvgFailureReason.Canceled, failure.Reason);
         await Task.WhenAll(firstShutdown, repeatedShutdown).WaitAsync(TimeSpan.FromSeconds(10));
 
-        Assert.True(lifetime.RetirementTask.IsCompletedSuccessfully);
+        Assert.True(firstShutdown.IsCompletedSuccessfully);
         ForceCollection();
         Assert.False(fixture.Source.IsAlive);
         fixture.Document.Dispose();
         GC.KeepAlive(fixture.Document);
-        GC.KeepAlive(lease);
-        GC.KeepAlive(lifetime);
     }
 
     [Fact]
     public async Task AsyncShutdownBeforeSyncShutdownUsesTheSameDrain()
     {
         using var renderer = new ResvgMarkdownSvgRenderer();
-        using var workers = new WorkerPool(new ResvgMarkdownSvgRendererOptions());
+        var admission = new GatedAdmissionObserver(WorkerOperation.Render);
+        using var workers = new WorkerPool(new ResvgMarkdownSvgRendererOptions(), admissionObserver: admission);
         DocumentFixture fixture = CreateDocument(renderer, workers);
-        SvgDocumentLifetime lifetime = GetLifetime(fixture.Document);
-        SvgDocumentLifetime.RenderLease lease = lifetime.TryEnterRender()!;
+        Task render = StartRender(fixture.Document);
+        Task shutdown;
 
-        Task shutdown = renderer.DisposeAsync().AsTask();
-        renderer.Dispose();
-        Assert.False(shutdown.IsCompleted);
-        Assert.True(lease.Token.IsCancellationRequested);
+        try
+        {
+            Assert.True(admission.WaitUntilEntered(TimeSpan.FromSeconds(10)), "The render did not reach worker admission.");
+            shutdown = renderer.DisposeAsync().AsTask();
+            renderer.Dispose();
+            Assert.False(shutdown.IsCompleted);
+            Assert.True(admission.AdmissionToken.IsCancellationRequested);
+        }
+        finally
+        {
+            admission.Release();
+        }
 
-        lease.Dispose();
+        MarkdownSvgException failure = await Assert.ThrowsAsync<MarkdownSvgException>(
+            async () => await render.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal(MarkdownSvgFailureReason.Canceled, failure.Reason);
         await shutdown.WaitAsync(TimeSpan.FromSeconds(10));
         ForceCollection();
         Assert.False(fixture.Source.IsAlive);
         fixture.Document.Dispose();
         GC.KeepAlive(fixture.Document);
-        GC.KeepAlive(lease);
     }
 
     [Fact]
@@ -256,39 +277,35 @@ public sealed class SvgRendererShutdownTests
     [Fact]
     public async Task ShutdownAfterPreflightIsCanceledWithoutQuarantiningValidContent()
     {
-        using var renderer = new ResvgMarkdownSvgRenderer();
-        WorkerPool workers = (WorkerPool)typeof(ResvgMarkdownSvgRenderer)
-            .GetField("_workers", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(renderer)!;
-        object admissionGate = typeof(WorkerPool)
-            .GetField("_stateLock", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(workers)!;
-        FieldInfo admittedIdentity = typeof(WorkerPool)
-            .GetField("_nextDocumentId", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var admission = new GatedAdmissionObserver(WorkerOperation.Open);
+        using var renderer = new ResvgMarkdownSvgRenderer(
+            new ResvgMarkdownSvgRendererOptions(),
+            SvgProcessSnapshotAdmission.Process,
+            admissionObserver: admission);
         byte[] source = "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='8'/>"u8.ToArray();
         Task<IMarkdownSvgDocument>? open = null;
 
-        // Hold the real pool gate before starting preflight. The identity is
-        // advanced only after preflight, immediately before worker admission.
-        // Closing on this thread is reentrant; the opener cannot obtain the
-        // gate until close has both canceled its token and disposed the pool.
-        Monitor.Enter(admissionGate);
+        // Hold the real open at worker admission, which it reaches only after
+        // preflight, and before the pool checks that it is still available.
+        // Close cancels the open's token and disposes the pool while it waits.
         try
         {
-            open = renderer.OpenAsync(new MarkdownSvgOpenRequest(source)).AsTask();
-            Assert.True(SpinWait.SpinUntil(
-                () => (long)admittedIdentity.GetValue(workers)! > 0,
-                TimeSpan.FromSeconds(10)), "Open did not finish preflight and reach worker admission.");
+            open = Task.Run(() => renderer.OpenAsync(new MarkdownSvgOpenRequest(source)).AsTask());
+            Assert.True(
+                admission.WaitUntilEntered(TimeSpan.FromSeconds(10)),
+                "Open did not finish preflight and reach worker admission.");
             renderer.Dispose();
             Assert.False(renderer.DisposeAsync().IsCompleted);
         }
         finally
         {
-            Monitor.Exit(admissionGate);
+            admission.Release();
         }
 
         MarkdownSvgException failure = await Assert.ThrowsAsync<MarkdownSvgException>(
             async () => await open!.WaitAsync(TimeSpan.FromSeconds(10)));
         Assert.Equal(MarkdownSvgFailureReason.Canceled, failure.Reason);
-        renderer.ThrowIfQuarantined(Convert.ToHexString(SHA256.HashData(source)));
+        renderer.Quarantine.ThrowIfQuarantined(Convert.ToHexString(SHA256.HashData(source)));
         Assert.Equal(0, renderer.SourceAttachmentCount);
         await renderer.DisposeAsync();
     }
@@ -311,9 +328,9 @@ public sealed class SvgRendererShutdownTests
         protected override void Dispose(bool disposing) { }
     }
 
-    private static SvgDocumentLifetime GetLifetime(ResvgMarkdownSvgDocument document) =>
-        (SvgDocumentLifetime)typeof(ResvgMarkdownSvgDocument)
-            .GetField("_lifetime", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(document)!;
+    // The render waits at worker admission on its own thread.
+    private static Task StartRender(ResvgMarkdownSvgDocument document) =>
+        Task.Run(() => document.RenderAsync(new MarkdownSvgRenderRequest(16, 8)).AsTask());
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static (WeakReference Document, WeakReference Source) CreateAbandonedDocument(

@@ -18,7 +18,7 @@ public sealed class SvgStaticCssPreparationTests
             "@keyframes pulse { from { opacity: 0; } to { opacity: 1; } } " +
             ".card { animation-name: pulse; transition-property: opacity; color: blue; }";
 
-        bool changed = SvgStaticSnapshot.TryCreateStaticStyleSheet(
+        bool changed = SvgStaticStyleSheet.TryCreateStaticStyleSheet(
             css,
             CancellationToken.None,
             out string sanitized);
@@ -62,7 +62,7 @@ public sealed class SvgStaticCssPreparationTests
     [InlineData(".card { content: \"@import url('quoted.css');\"; color: red; }")]
     public void IrrelevantTokensReturnOriginalCssWithoutSanitizing(string css)
     {
-        bool changed = SvgStaticSnapshot.TryCreateStaticStyleSheet(
+        bool changed = SvgStaticStyleSheet.TryCreateStaticStyleSheet(
             css,
             CancellationToken.None,
             out string sanitized);
@@ -77,7 +77,7 @@ public sealed class SvgStaticCssPreparationTests
     [InlineData("animation: 'unterminated")]
     public void MalformedCssKeepsOriginalTextAndIsNotMistakenForSanitization(string css)
     {
-        bool changed = SvgStaticSnapshot.TryCreateStaticStyleSheet(
+        bool changed = SvgStaticStyleSheet.TryCreateStaticStyleSheet(
             css,
             CancellationToken.None,
             out string sanitized);
@@ -93,7 +93,7 @@ public sealed class SvgStaticCssPreparationTests
         cancellation.Cancel();
 
         Assert.ThrowsAny<OperationCanceledException>(() =>
-            SvgStaticSnapshot.TryCreateStaticStyleSheet(
+            SvgStaticStyleSheet.TryCreateStaticStyleSheet(
                 "@import url('missing-semicolon.css')",
                 cancellation.Token,
                 out _));
@@ -108,7 +108,7 @@ public sealed class SvgStaticCssPreparationTests
 
         for (int index = 0; index < 2; index++)
         {
-            Assert.False(SvgStaticSnapshot.TryCreateStaticStyleSheet(
+            Assert.False(SvgStaticStyleSheet.TryCreateStaticStyleSheet(
                 css,
                 CancellationToken.None,
                 out string warmup));
@@ -116,7 +116,7 @@ public sealed class SvgStaticCssPreparationTests
         }
 
         long before = GC.GetAllocatedBytesForCurrentThread();
-        bool changed = SvgStaticSnapshot.TryCreateStaticStyleSheet(
+        bool changed = SvgStaticStyleSheet.TryCreateStaticStyleSheet(
             css,
             CancellationToken.None,
             out string sanitized);
@@ -136,7 +136,7 @@ public sealed class SvgStaticCssPreparationTests
         const string activeRule = ".card { animation: pulse; color: red; }";
         string css = prefix + activeRule;
 
-        bool changed = SvgStaticSnapshot.TryCreateStaticStyleSheet(
+        bool changed = SvgStaticStyleSheet.TryCreateStaticStyleSheet(
             css,
             CancellationToken.None,
             out string sanitized);

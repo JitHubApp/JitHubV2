@@ -34,7 +34,7 @@ public sealed class WorkerDocumentCloseRetirementTests
         };
         Action invalidate = () => GC.KeepAlive(capture);
         return (
-            WorkerPool.CloseDocumentOrInvalidateAsync(
+            WorkerResponseValidation.CloseDocumentOrInvalidateAsync(
                 missingClose ? null! : close,
                 missingClose ? invalidate : null!),
             new WeakReference(capture));
@@ -45,7 +45,7 @@ public sealed class WorkerDocumentCloseRetirementTests
     {
         int invalidations = 0;
 
-        await WorkerPool.CloseDocumentOrInvalidateAsync(
+        await WorkerResponseValidation.CloseDocumentOrInvalidateAsync(
             () => Task.FromResult(Response(WorkerStatus.Ok)),
             () => invalidations++);
 
@@ -57,7 +57,7 @@ public sealed class WorkerDocumentCloseRetirementTests
     {
         int invalidations = 0;
 
-        await WorkerPool.CloseDocumentOrInvalidateAsync(
+        await WorkerResponseValidation.CloseDocumentOrInvalidateAsync(
             () => Task.FromException<WorkerResponse>(new MarkdownSvgException(
                 MarkdownSvgFailureReason.ResourceLimitExceeded,
                 "The SVG worker queue is full.")),
@@ -82,7 +82,7 @@ public sealed class WorkerDocumentCloseRetirementTests
         {
             int invalidations = 0;
 
-            await WorkerPool.CloseDocumentOrInvalidateAsync(
+            await WorkerResponseValidation.CloseDocumentOrInvalidateAsync(
                 () => Task.FromException<WorkerResponse>(failure),
                 () => invalidations++);
 
@@ -104,7 +104,7 @@ public sealed class WorkerDocumentCloseRetirementTests
         {
             int invalidations = 0;
 
-            await WorkerPool.CloseDocumentOrInvalidateAsync(
+            await WorkerResponseValidation.CloseDocumentOrInvalidateAsync(
                 () => Task.FromResult(response),
                 () => invalidations++);
 
@@ -119,7 +119,7 @@ public sealed class WorkerDocumentCloseRetirementTests
         var closeCompletion = new TaskCompletionSource<WorkerResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
         int invalidations = 0;
 
-        Task close = WorkerPool.CloseDocumentOrInvalidateAsync(
+        Task close = WorkerResponseValidation.CloseDocumentOrInvalidateAsync(
             () =>
             {
                 closeStarted.TrySetResult();
