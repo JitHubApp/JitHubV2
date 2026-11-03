@@ -222,9 +222,6 @@ public sealed class RelativeScriptFontSizeTests
         Assert.Equal(
             new[] { MarkdownElementKeys.Superscript, MarkdownElementKeys.Subscript },
             link.ScriptStyleAncestryKeys);
-        Assert.Equal(
-            MarkdownElementKeys.Subscript,
-            InlineRunStyleResolver.GetInnermostScriptStyleKey(link));
         ElementStyle resolved = ResolveRunStyle(MarkdownElementKeys.Heading2, link, sheet);
         Assert.Equal(8.25f, resolved.FontSize);
         Assert.True(resolved.Underline);
@@ -246,9 +243,6 @@ public sealed class RelativeScriptFontSizeTests
         Assert.Equal(
             new[] { MarkdownElementKeys.Subscript, MarkdownElementKeys.Superscript },
             link.ScriptStyleAncestryKeys);
-        Assert.Equal(
-            MarkdownElementKeys.Superscript,
-            InlineRunStyleResolver.GetInnermostScriptStyleKey(link));
         ElementStyle resolved = ResolveRunStyle(MarkdownElementKeys.Heading2, link, sheet);
         Assert.Equal(11f, resolved.FontSize);
         Assert.True(resolved.Underline);
@@ -1229,21 +1223,6 @@ public sealed class RelativeScriptFontSizeTests
         Assert.Equal(18f, format.FontSize);
         Assert.Equal(plainLine.Height, nativeLine.Height);
         Assert.Equal(plainRegion.LayoutBounds.Height, nativeRegion.LayoutBounds.Height);
-    }
-
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void InnermostScriptBaselineFollowsRunElementAfterInheritedModifier(bool runIsSuperscript)
-    {
-        InlineRun run = runIsSuperscript
-            ? new SuperscriptRun("x") { StyleModifierKeys = [MarkdownElementKeys.Subscript] }
-            : new SubscriptRun("x") { StyleModifierKeys = [MarkdownElementKeys.Superscript] };
-        string expected = runIsSuperscript
-            ? MarkdownElementKeys.Superscript
-            : MarkdownElementKeys.Subscript;
-
-        Assert.Equal(expected, InlineRunStyleResolver.GetInnermostScriptStyleKey(run));
     }
 
     [Theory]

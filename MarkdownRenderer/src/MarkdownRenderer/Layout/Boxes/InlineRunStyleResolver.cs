@@ -345,31 +345,6 @@ internal static class InlineRunStyleResolver
             ? run.SemanticHeadingKey
             : IsHeadingElement(box.ElementKey) ? box.ElementKey : string.Empty;
 
-    /// <summary>
-    /// Returns the innermost script role (subscript or superscript) that
-    /// applies to a run: its ordered script ancestry first, then its own
-    /// element and modifiers, then a superscript link.
-    /// </summary>
-    /// <param name="run">The inline run to inspect.</param>
-    internal static string? GetInnermostScriptStyleKey(InlineRun run)
-    {
-        if (run.ScriptStyleAncestryKeys.Count > 0)
-            return run.ScriptStyleAncestryKeys[run.ScriptStyleAncestryKeys.Count - 1];
-
-        if (IsScriptStyleKey(run.ElementKey))
-            return run.ElementKey;
-
-        for (int index = run.StyleModifierKeys.Count - 1; index >= 0; index--)
-        {
-            if (IsScriptStyleKey(run.StyleModifierKeys[index]))
-                return run.StyleModifierKeys[index];
-        }
-
-        return run is LinkRun { IsSuperscript: true }
-            ? MarkdownElementKeys.Superscript
-            : null;
-    }
-
     internal static bool IsHeadingElement(string elementKey)
         => elementKey is MarkdownElementKeys.Heading1
             or MarkdownElementKeys.Heading2

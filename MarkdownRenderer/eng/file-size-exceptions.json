@@ -258,7 +258,7 @@
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/RelativeScriptFontSizeTests.cs",
-      "lines": 1420,
+      "lines": 1399,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
