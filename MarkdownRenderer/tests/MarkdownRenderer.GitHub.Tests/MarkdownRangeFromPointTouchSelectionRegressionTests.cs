@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using Markdig;
 using MarkdownRenderer.Accessibility;
@@ -311,7 +310,8 @@ public sealed class MarkdownRangeFromPointTouchSelectionRegressionTests
         Assert.True(snapshot.TryBeginInteraction(), "Could not acquire layout interaction lease for Mermaid bounds.");
         try
         {
-            var emptyPeer = (MarkdownAutomationPeer)RuntimeHelpers.GetUninitializedObject(typeof(MarkdownAutomationPeer));
+            // No owner and no clip source: an empty rect must return before either is read.
+            var emptyGeometry = new MarkdownAutomationScreenGeometry(owner: null!, clip: null!);
             Rect visibleScreenBounds = new(
                 RendererScreenX,
                 RendererScreenY,
@@ -346,10 +346,10 @@ public sealed class MarkdownRangeFromPointTouchSelectionRegressionTests
                 Assert.True(semantic.TryGetDocumentRange(span.TextStart, span.TextEnd, out DocumentRange range));
                 Assert.Equal(span.LayoutBlockIndex, range.Normalized().Start.BlockIndex);
 
-                // The empty case is deliberately invoked on an uninitialized peer:
+                // The empty case is deliberately invoked on geometry without an owner:
                 // its production early return must happen before owner/XamlRoot access.
                 Rect[] screenRects = documentRects
-                    .Select(emptyPeer.GetScreenRectForDocumentRect)
+                    .Select(emptyGeometry.GetScreenRectForDocumentRect)
                     .ToArray();
                 Assert.All(screenRects, static rect => Assert.True(rect.IsEmpty));
                 Assert.Empty(MarkdownTextRangeProvider.BuildVisibleBoundingRectangles(

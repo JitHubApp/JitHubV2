@@ -225,6 +225,9 @@ public sealed class AccessibilityResidualContractTests
             System.Reflection.BindingFlags.NonPublic;
         Assert.Contains(
             typeof(MarkdownAutomationPeer).GetFields(Fields),
+            field => field.FieldType == typeof(MarkdownAutomationProjection));
+        Assert.Contains(
+            typeof(MarkdownAutomationProjection).GetFields(Fields),
             field => field.FieldType == typeof(MarkdownTextFormatCacheStore));
         Assert.DoesNotContain(
             typeof(MarkdownTextRangeProvider).GetFields(Fields),
