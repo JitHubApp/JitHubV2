@@ -1,4 +1,3 @@
-using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Text;
 using MarkdownRenderer.Images;
@@ -571,22 +570,6 @@ public sealed class SvgProcessSnapshotAdmissionTests
         await host.WaitForCapacityAsync(
             combinedPeak, MarkdownSvgRenderPriority.Visible, CancellationToken.None)
             .WaitAsync(TimeSpan.FromSeconds(1));
-    }
-
-    private sealed class AdmissionObservingMemoryManager(byte[] bytes, Action onFirstAccess) : MemoryManager<byte>
-    {
-        private int _observed;
-        public bool WasRead => Volatile.Read(ref _observed) != 0;
-        public ReadOnlyMemory<byte> BorrowedMemory => CreateMemory(bytes.Length);
-        public override Span<byte> GetSpan()
-        {
-            if (Interlocked.Exchange(ref _observed, 1) == 0)
-                onFirstAccess();
-            return bytes;
-        }
-        public override MemoryHandle Pin(int elementIndex = 0) => throw new NotSupportedException();
-        public override void Unpin() { }
-        protected override void Dispose(bool disposing) { }
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
