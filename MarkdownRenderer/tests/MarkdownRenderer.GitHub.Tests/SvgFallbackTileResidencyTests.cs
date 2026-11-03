@@ -26,11 +26,11 @@ public sealed class SvgFallbackTileResidencyTests
         var previous = new MarkdownSvgPhysicalViewport(1024.25, 100);
         var replacement = new MarkdownSvgPhysicalViewport(1024.75, 100);
         var tiles = NewTileMap((0, 0, TileSize, 100));
-        Assert.True(ImageBox.ShouldRetainSvgFallbackTile(
+        Assert.True(SvgFallbackTileRetention.ShouldRetain(
             (0, 0, TileSize, 100), 1025, 100, 1025, 100,
             destination, destination, tiles, previous, replacement));
         tiles.Add((1024, 0, 1, 100), null!);
-        Assert.False(ImageBox.ShouldRetainSvgFallbackTile(
+        Assert.False(SvgFallbackTileRetention.ShouldRetain(
             (0, 0, TileSize, 100), 1025, 100, 1025, 100,
             destination, destination, tiles, previous, replacement));
     }
@@ -360,7 +360,7 @@ public sealed class SvgFallbackTileResidencyTests
         Rect destination,
         Rect visible,
         Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease> currentTiles) =>
-        ImageBox.ShouldRetainSvgFallbackTile(
+        SvgFallbackTileRetention.ShouldRetain(
             key,
             fallbackWidth,
             fallbackHeight,
