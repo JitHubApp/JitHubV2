@@ -130,6 +130,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private readonly AutomationScrolling _automationScrolling;
     private readonly TouchTapSuppressionPolicy _touchTapSuppression = new();
     private readonly InteractionReset _interactionReset;
+    private readonly ViewAttachment _attachment;
 
     private readonly SnapshotExtent _extent;
     private readonly ReplacementPublisher _replacementPublisher;
@@ -1039,10 +1040,11 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _pipelineHosts.Connect(new PipelineHosts.Parts(
             _events, _documentInputs, _automation, _imageLifetime, _imageRelayout, _lazyLayout, _pipeline,
             _touchRestore, _interactionReset, _performanceSession, _environment));
+        _attachment = new ViewAttachment(this, _surface, _lifetime, _published, _cursor, _abbreviationTooltip, _adorner, _deviceRecovery, _selectionDismissal, _dragShield, _handles, _contextMenu, _horizontalOverflowDrag, _pointerInput, _embeds, _windowDestroying, _snapshotRetirements, _rebuild, _painter, _canvasEvents, _geometryRecovery, _recoveryWork, _scrolling, _deferredScenes, _blockScroll, _automation, _imageLifetime, _automationDocumentGenerations, _layoutCommit, _imageRelayout, _vectorCapacity, _lazyLayout, _width, _touchSelection, _touchRestore, _touchTapSuppression, _overflowScroll, _focusRing, _performanceSession, _svgRenderer, _theme, _environment, _imagePlans, _imageSubscriptions, _imageResidency, _imagePrefetch, _highlighting);
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-        Loaded += (_, _) => OnLoadedInternal();
-        Unloaded += (_, _) => OnUnloaded();
+        Loaded += (_, _) => _attachment.Load();
+        Unloaded += (_, _) => _attachment.Unload();
         ActualThemeChanged += (_, _) => _theme.OnThemeChanged();
         // Selection changes update the XAML overlay (not the DirectWrite canvas),
         // so tiles are never invalidated during a drag.
@@ -1181,133 +1183,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _cursor.SetShape(null);
     }
 
-    private void OnLoadedInternal()
-    {
-        if (_lifetime.IsDisposed)
-            return;
-
-        _lifetime.MarkLoaded();
-        // RemoveFromVisualTree physically removes the Win2D child from the root.
-        // Recreate it for a retained view; the old native child and its input
-        // delegates must not retain the unloaded view through a WinRT cycle.
-        _canvasEvents.EnsureCanvas();
-        _windowDestroying.Attach(XamlRoot);
-        _canvasEvents.AttachRenderHandlers();
-        _imageLifetime.Renew();
-        MarkdownSelectionCoordinator.Register(this);
-        _selectionDismissal.Register();
-        _environment.Acquire();
-        _width.Attach();
-        _theme.Attach();
-        _svgRenderer.Attach();
-        _performanceSession.Attach();
-        RequestRebuild(RebuildReason.Full);
-    }
-
-    private void OnUnloaded()
-    {
-        if (_lifetime.IsUnloaded)
-            return;
-
-        // Set before any unsubscription so dispatcher-queued lambdas
-        // (e.g. from image load completions) that are already in-flight know
-        // not to call RequestRebuild after we've torn down.
-        _lifetime.MarkUnloaded();
-        _touchRestore.Cancel();
-        // Keep the recognizer barrier while the owner epoch is still intact.
-        // A queued Cancel must apply its per-contact selection disposition
-        // before that identity is discarded; a queued Release keeps selection.
-        _touchTapSuppression.PrepareForReset();
-        _deviceRecovery.Stop();
-        _recoveryWork.Stop(force: true);
-        _performanceSession.Detach();
-        _pointerInput.Reset();
-        _touchTapSuppression.Reset();
-        // An unloaded view is reusable and no longer belongs to this window.
-        // Do not let a former host destroy it, or retain weak-event wrappers
-        // for every virtualized view until the window eventually closes.
-        _windowDestroying.Detach();
-        // Win2D can retain queued native draw/resource callbacks after XAML starts
-        // removing this control. Stop those callbacks before releasing any snapshot
-        // or DirectWrite resources they may reference.
-        _canvasEvents.DetachRenderHandlers();
-        _canvasEvents.DetachInputHandlers();
-        // Win2D requires RemoveFromVisualTree from the containing control's
-        // Unloaded boundary. At this point XAML has begun detaching the renderer,
-        // so each Win2D child can unregister its XamlRoot callback without racing a
-        // subsequent window resize.
-        _surface.RemoveCanvas();
-        ReleaseLoadedResources();
-    }
-
-    private void ReleaseLoadedResources()
-    {
-        _vectorCapacity.Reset();
-        _geometryRecovery.ClearPendingFocusGeometryWork();
-        _deferredScenes.CancelRefreshAfterPaint();
-        _painter.CancelDeferredSceneProbe();
-        _contextMenu.Close();
-        _horizontalOverflowDrag.Clear();
-        _abbreviationTooltip.Hide();
-        _abbreviationTooltip.ReleaseTimers();
-        _width.Detach();
-        _theme.Detach();
-        _svgRenderer.Detach();
-        _environment.Release();
-        _selectionDismissal.Unregister();
-        MarkdownSelectionCoordinator.Unregister(this);
-        _rebuild.Retire();
-        _lazyLayout.Cancel();
-        _layoutCommit.ClearPending();
-        _imageLifetime.Retire();
-        _imageRelayout.Retire();
-        _lazyLayout.ResetScrollVelocity();
-        _blockScroll.ClearPending();
-        _automation.ForgetQueuedSelectionChanged();
-        _overflowScroll.ClearAutomationNotifications();
-        _highlighting.Retire(restart: false);
-        _scrolling.Detach();
-        // Unsubscribe all in-flight image load handlers before clearing the plan
-        // list; otherwise an async load completing after unload fires
-        // a completion → RequestRebuild on a torn-down control, causing a
-        // zombie rebuild cycle that re-subscribes handlers indefinitely.
-        _imageSubscriptions.UnsubscribeAll();
-        // Tear down embed plans before clearing the overlay so block embed
-        // factories get RecycleBlock callbacks and inline embeds release
-        // their Run.RealizedElement references — otherwise hosted controls
-        // and their event handlers would leak past detach.
-        _embeds.DerealizeAll();
-        _embeds.ClearPlans();
-        _embeds.ClearCopyButtonPool();
-        _imagePlans.Clear();
-        _imagePlans.Publication = null;
-        _imageResidency.Reset();
-        _imagePrefetch.Reset();
-        _performanceSession.ReleaseDocumentScope();
-        _embeds.ClearHostedElementHitTargets();
-        _handles.ResetDrag();
-        _touchTapSuppression.Reset();
-        _touchSelection.Reset();
-        _dragShield.SetActive(false);
-        // Release native resources & hosted embeds so re-attaching the
-        // control to a new visual parent doesn't leak DirectWrite layouts
-        // or keep stale FrameworkElements alive. A failed XAML detach must not
-        // abort the remaining one-shot cleanup or snapshot retirement below.
-        _adorner.TryReleaseSurface();
-        _surface.Overlay?.Children.Clear();
-        // No refresh frame follows an unload, so dispose the detached adorner
-        // surfaces, the child visual and the graphics device here.
-        _adorner.DisposeForUnload();
-        _cursor.Release();
-        _handles.ReleaseForUnload();
-        _focusRing.ForgetEvictedRing();
-        var snap = _published.Snapshot;
-        _published.Snapshot = null;
-        _automationDocumentGenerations.Invalidate();
-        _automation.NotifySnapshotChanged();
-        _snapshotRetirements.Retire(snap);
-    }
-
     /// <summary>
     /// Releases renderer resources and detaches Win2D/XAML event handlers.
     /// </summary>
@@ -1324,7 +1199,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _touchSelection.Dispose();
         _handles.StopFrameClock();
         _windowDestroying.Detach();
-        OnUnloaded();
+        _attachment.Unload();
         _adorner.ReleaseForDispose();
         _published.LayoutDevice = null;
         EffectiveViewportChanged -= _scrolling.OnEffectiveViewportChanged;
