@@ -35,6 +35,9 @@ internal sealed class SourceSliceTextRun : TextRun
     internal int SourceStart => _sourceStart;
     internal int SliceLength => RenderedLength;
 
+    /// <summary>Whether a caller has read <see cref="Text"/> and published its string cache.</summary>
+    internal bool HasMaterializedText => ReadMaterializedText() is not null;
+
     internal new SourceSliceTextRun CloneForPrivateRasterPlacement() => new(this);
 
     public override string Text

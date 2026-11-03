@@ -1,4 +1,3 @@
-using System.Reflection;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Images;
@@ -235,9 +234,7 @@ public sealed class SourceSliceMeasuredPlacementTransferTests
 
     private static void AssertUnmaterialized(params SourceSliceTextRun[] runs)
     {
-        FieldInfo cache = typeof(TextRun).GetField("_text", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        Assert.NotNull(cache);
         foreach (SourceSliceTextRun run in runs)
-            Assert.Equal(string.Empty, cache.GetValue(run));
+            Assert.False(run.HasMaterializedText);
     }
 }
