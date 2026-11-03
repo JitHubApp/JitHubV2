@@ -229,7 +229,7 @@ internal sealed class WorkerScheduler :
                             }
 
                             if (cancellationToken.CanBeCanceled)
-                                pending.CancellationRegistration = RegisterCancellation(pending, cancellationToken);
+                                pending.RegisterCancellation(this, cancellationToken);
                         }
                         catch
                         {
@@ -355,32 +355,8 @@ internal sealed class WorkerScheduler :
     internal void RebindLeaseCancellation(
         WorkerLease lease,
         CancellationToken cancellationToken,
-        CancellationToken admissionCancellationToken)
-    {
-        PendingWork pending = lease.Pending;
-        CancellationTokenRegistration previous = pending.CancellationRegistration;
-        pending.CancellationRegistration = default;
-        previous.Dispose();
-        // Disposing the old registration drains a racing deadline callback.
-        // Never transfer an already-expired admission as uncanceled content
-        // work, leaving its stale IsCanceled bit eligible for worker preemption.
-        admissionCancellationToken.ThrowIfCancellationRequested();
-        pending.CancellationToken = cancellationToken;
-        if (cancellationToken.CanBeCanceled)
-            pending.CancellationRegistration = RegisterCancellation(pending, cancellationToken);
-        cancellationToken.ThrowIfCancellationRequested();
-    }
-
-    private CancellationTokenRegistration RegisterCancellation(
-        PendingWork pending,
-        CancellationToken cancellationToken) =>
-        cancellationToken.UnsafeRegister(
-            static state =>
-            {
-                var cancellation = (PendingWorkCancellation)state!;
-                cancellation.Pool.Cancel(cancellation.Pending);
-            },
-            new PendingWorkCancellation(this, pending));
+        CancellationToken admissionCancellationToken) =>
+        lease.Pending.RebindCancellation(this, cancellationToken, admissionCancellationToken);
 
     private void PumpLocked()
     {

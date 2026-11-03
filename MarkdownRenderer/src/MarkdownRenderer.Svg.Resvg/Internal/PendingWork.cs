@@ -44,6 +44,46 @@ internal sealed class PendingWork(
     public void DisposePromotionRegistration() =>
         Interlocked.Exchange(ref _promotionRegistration, null)?.Dispose();
 
+    /// <summary>
+    /// Registers <paramref name="cancellationToken"/> to cancel this work
+    /// through <paramref name="scheduler"/>, replacing no earlier registration.
+    /// </summary>
+    /// <param name="scheduler">The scheduler that owns this work.</param>
+    /// <param name="cancellationToken">The token that cancels this work.</param>
+    public void RegisterCancellation(WorkerScheduler scheduler, CancellationToken cancellationToken) =>
+        CancellationRegistration = cancellationToken.UnsafeRegister(
+            static state =>
+            {
+                var cancellation = (PendingWorkCancellation)state!;
+                cancellation.Pool.Cancel(cancellation.Pending);
+            },
+            new PendingWorkCancellation(scheduler, this));
+
+    /// <summary>
+    /// Moves an admitted lease's cancellation from its admission token to the
+    /// operation's own token.
+    /// </summary>
+    /// <param name="scheduler">The scheduler that owns this work.</param>
+    /// <param name="cancellationToken">The operation's token.</param>
+    /// <param name="admissionCancellationToken">The admission token being replaced.</param>
+    public void RebindCancellation(
+        WorkerScheduler scheduler,
+        CancellationToken cancellationToken,
+        CancellationToken admissionCancellationToken)
+    {
+        CancellationTokenRegistration previous = CancellationRegistration;
+        CancellationRegistration = default;
+        previous.Dispose();
+        // Disposing the old registration drains a racing deadline callback.
+        // Never transfer an already-expired admission as uncanceled content
+        // work, leaving its stale IsCanceled bit eligible for worker preemption.
+        admissionCancellationToken.ThrowIfCancellationRequested();
+        CancellationToken = cancellationToken;
+        if (cancellationToken.CanBeCanceled)
+            RegisterCancellation(scheduler, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+    }
+
     public void SynchronizePriorityFromTicket() => PromoteVisibleFromTicket();
 
     public bool PromoteVisibleFromTicket()
