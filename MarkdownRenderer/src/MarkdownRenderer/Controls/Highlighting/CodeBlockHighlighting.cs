@@ -10,9 +10,7 @@ using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Performance;
-using MarkdownRenderer.Theming;
 using Microsoft.UI.Dispatching;
-using Windows.Foundation;
 
 namespace MarkdownRenderer.Controls.Highlighting;
 
@@ -106,7 +104,7 @@ internal sealed class CodeBlockHighlighting
 
         IMarkdownPerformanceSession? performanceSession = _host.PerformanceSession;
         bool runOnWorker = performanceSession is not null;
-        var variant = ResolveThemeVariant(theme);
+        var variant = CodeBlockHighlightTargets.ResolveThemeVariant(theme);
         int generation = _generation;
         int providerIdentity = RuntimeHelpers.GetHashCode(highlighter);
         IMarkdownPerformanceSessionInternal? sceneSession =
@@ -183,15 +181,15 @@ internal sealed class CodeBlockHighlighting
                 return;
             }
 
-            foreach (var block in EnumerateCodeBlocks(inspectedBlocks))
+            foreach (var block in CodeBlockHighlightTargets.EnumerateCodeBlocks(inspectedBlocks))
             {
-                if (!IsInBand(snapshot, block, highlightBand.Top, highlightBand.Bottom))
+                if (!CodeBlockHighlightTargets.IsInBand(snapshot, block, highlightBand.Top, highlightBand.Bottom))
                     continue;
 
                 if (block.CodeText.Length > 200_000 || block.LineCount > 5_000)
                     continue;
 
-                var key = CreateCacheKey(block, variant, providerIdentity, providerRevision);
+                var key = CodeBlockHighlightTargets.CreateCacheKey(block, variant, providerIdentity, providerRevision);
                 if (block.HasAppliedSyntaxHighlighting(key))
                     continue;
                 if (_cache.TryGetValue(key, out var cached))
@@ -439,7 +437,7 @@ internal sealed class CodeBlockHighlighting
             if (_host.PerformanceSession is null)
             {
                 inspectedBlocks = snapshot.GetMeasuredTopLevelBlocks();
-                candidates = EnumerateCodeBlocks(inspectedBlocks);
+                candidates = CodeBlockHighlightTargets.EnumerateCodeBlocks(inspectedBlocks);
             }
             else
             {
@@ -459,16 +457,16 @@ internal sealed class CodeBlockHighlighting
                     return false;
                 }
 
-                candidates = EnumerateCodeBlocks(inspectedBlocks);
+                candidates = CodeBlockHighlightTargets.EnumerateCodeBlocks(inspectedBlocks);
             }
 
             bool changed = false;
             foreach (var candidate in candidates)
             {
                 if (_host.PerformanceSession is not null &&
-                    !IsInBand(snapshot, candidate, band.Top, band.Bottom))
+                    !CodeBlockHighlightTargets.IsInBand(snapshot, candidate, band.Top, band.Bottom))
                     continue;
-                if (CreateCacheKey(candidate, key.ThemeVariant, key.ProviderIdentity, key.ProviderRevision).Equals(key))
+                if (CodeBlockHighlightTargets.CreateCacheKey(candidate, key.ThemeVariant, key.ProviderIdentity, key.ProviderRevision).Equals(key))
                     changed |= candidate.ApplySyntaxHighlighting(key, result.Spans);
             }
 
@@ -480,67 +478,7 @@ internal sealed class CodeBlockHighlighting
         }
     }
 
-    private static bool IsInBand(
-        LayoutSnapshot snapshot,
-        CodeBlockBox block,
-        double top,
-        double bottom)
-    {
-        Rect bounds = snapshot.ToLogicalRectForBlockIndexUnderPaint(block.BlockIndex, block.Bounds);
-        return bounds.Bottom >= top && bounds.Top <= bottom;
-    }
-
-    private static IEnumerable<CodeBlockBox> EnumerateCodeBlocks(
-        IReadOnlyList<BlockBox> blocks)
-    {
-        foreach (var block in blocks)
-        {
-            foreach (var codeBlock in EnumerateCodeBlocks(block))
-                yield return codeBlock;
-        }
-    }
-
-    private static IEnumerable<CodeBlockBox> EnumerateCodeBlocks(BlockBox block)
-    {
-        switch (block)
-        {
-            case CodeBlockBox codeBlock:
-                yield return codeBlock;
-                break;
-            case ListItemBox listItem:
-                foreach (var item in EnumerateCodeBlocks(listItem.Marker))
-                    yield return item;
-                foreach (var item in EnumerateCodeBlocks(listItem.Content))
-                    yield return item;
-                break;
-            case StackBox stack:
-                foreach (var child in stack.Children)
-                {
-                    foreach (var item in EnumerateCodeBlocks(child))
-                        yield return item;
-                }
-                break;
-        }
-    }
-
-    private CodeBlockHighlightCacheKey CreateCacheKey(
-        CodeBlockBox block,
-        MarkdownThemeVariant variant,
-        int providerIdentity,
-        int providerRevision)
-        => new(block.CodeLanguage, block.Metadata.CodeTextHash, block.CodeText.Length, variant, providerIdentity, providerRevision);
-
     /// <summary>Drops every cached highlight result.</summary>
     internal void ClearCache()
         => _cache.Clear();
-
-    private static MarkdownThemeVariant ResolveThemeVariant(ThemeSnapshot theme)
-    {
-        if (theme.IsHighContrast)
-            return MarkdownThemeVariant.HighContrast;
-
-        var bg = theme.SurfaceColor;
-        double luminance = (0.2126 * bg.R + 0.7152 * bg.G + 0.0722 * bg.B) / 255.0;
-        return luminance < 0.5 ? MarkdownThemeVariant.Dark : MarkdownThemeVariant.Light;
-    }
 }
