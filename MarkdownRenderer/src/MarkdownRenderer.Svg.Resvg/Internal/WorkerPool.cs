@@ -18,7 +18,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
     private readonly Func<string, SvgSourceBuffer, SharedMemoryLease>? _sourceMemoryFactory;
     private readonly Func<string, int, SharedMemoryLease>? _outputMemoryFactory;
     private readonly bool _supportsSecondaryHardware;
-    private readonly SvgWorkerPolicyTrace _workerPolicyTrace = new();
+    private readonly SvgWorkerPolicyTrace _workerPolicyTrace;
     private readonly Lazy<WindowsWorkerProcess.WorkerJob> _job;
     private readonly CancellationTokenSource _disposeCancellation = new();
     private readonly TaskCompletionSource _shutdown = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -37,7 +37,8 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
     private int _disposed;
 
     public WorkerPool(ResvgMarkdownSvgRendererOptions options)
-        : this(options, TimeProvider.System, QueryEnergySaverOn, null, null, useWorkerSecurityContext: true)
+        : this(options, TimeProvider.System, QueryEnergySaverOn, null, null, useWorkerSecurityContext: true,
+            new SvgWorkerPolicyTrace())
     {
     }
 
@@ -46,9 +47,10 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
         TimeProvider timeProvider,
         Func<bool> isEnergySaverOn,
         Func<string, SvgSourceBuffer, SharedMemoryLease> sourceMemoryFactory,
-        Func<string, int, SharedMemoryLease>? outputMemoryFactory = null)
+        Func<string, int, SharedMemoryLease>? outputMemoryFactory = null,
+        SvgWorkerPolicyTrace? workerPolicyTrace = null)
         : this(options, timeProvider, isEnergySaverOn, sourceMemoryFactory, outputMemoryFactory,
-            useWorkerSecurityContext: false)
+            useWorkerSecurityContext: false, workerPolicyTrace ?? new SvgWorkerPolicyTrace())
     {
     }
 
@@ -58,9 +60,11 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
         Func<bool> isEnergySaverOn,
         Func<string, SvgSourceBuffer, SharedMemoryLease>? sourceMemoryFactory,
         Func<string, int, SharedMemoryLease>? outputMemoryFactory,
-        bool useWorkerSecurityContext)
+        bool useWorkerSecurityContext,
+        SvgWorkerPolicyTrace workerPolicyTrace)
     {
         _options = options;
+        _workerPolicyTrace = workerPolicyTrace;
         _timeProvider = timeProvider;
         _isEnergySaverOn = isEnergySaverOn;
         if (useWorkerSecurityContext && (sourceMemoryFactory is not null || outputMemoryFactory is not null))

@@ -45,7 +45,6 @@ public sealed class WorkerSchedulingTests
     {
         int queryCount = 0;
         var policySnapshots = new ConcurrentQueue<SvgWorkerPolicySnapshot>();
-        ResvgEventSource.SetWorkerPolicyRecorder(policySnapshots.Enqueue);
         using var pool = new WorkerPool(
             new ResvgMarkdownSvgRendererOptions(),
             TimeProvider.System,
@@ -55,7 +54,8 @@ public sealed class WorkerSchedulingTests
                 throw new InvalidOperationException("Power state is unavailable for this test.");
             },
             static (_, _) => throw new InvalidOperationException(
-                "Acquire-only scheduling must not allocate a source mapping."));
+                "Acquire-only scheduling must not allocate a source mapping."),
+            workerPolicyTrace: new SvgWorkerPolicyTrace(observer: policySnapshots.Enqueue));
         using var queuedCancellation = new CancellationTokenSource();
         IDisposable? firstLease = null;
         IDisposable? secondLease = null;
@@ -118,7 +118,6 @@ public sealed class WorkerSchedulingTests
             }
             secondLease?.Dispose();
             firstLease?.Dispose();
-            ResvgEventSource.SetWorkerPolicyRecorder(null);
         }
     }
 
