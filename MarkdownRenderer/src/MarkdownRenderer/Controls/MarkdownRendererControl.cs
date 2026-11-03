@@ -103,6 +103,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private readonly GeometryRecovery _geometryRecovery;
     private readonly InteractiveTextAdorner _textAdorner;
     private readonly RecoveryClockWork _recoveryWork;
+    private readonly VisibleWorkScheduler _visibleWork;
     private readonly VisibleImageReadiness _imageReadiness;
     private readonly DeferredSceneReadiness _deferredScenes;
     private readonly BlockScrollNavigation _blockScroll;
@@ -1220,6 +1221,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _imageLoadCompletion = new ImageLoadCompletion(this, _lifetime, _published, _layoutCommit, _imageSubscriptions, _imageRelayout);
         _imageSubscriptions.LoadCompleted += _imageLoadCompletion.OnLoadCompleted;
         _geometryRecovery = new GeometryRecovery(_lifetime, _published, _surface, _pointerInput, _vectorCapacity, _horizontalOverflowDrag, _focusGeometryWork, _overflowScroll, _focusRing, _adorner, _layoutCommit, _imageSubscriptions, _lazyLayout, _imageRelayout, _interactionReset, _dragShield, _contextMenu, _abbreviationTooltip, _cursor, _handles, _automation, _deviceRecovery, _rebuild);
+        _visibleWork = new VisibleWorkScheduler(this, _published, _highlighting, _geometryRecovery);
         _recoveryWork = new RecoveryClockWork(_lifetime, _published, _recoveryClock, _layoutCommit, _layoutPublisher, _lazyLayout, _imageSubscriptions, _imageRelayout, _overflowScroll, _focusGeometryWork, _focusRefresh, _focusableItems, _pointerInput, _geometryRecovery, _rebuild);
         _textAdorner = new InteractiveTextAdorner(_surface, _published, _selection, _touchSelection, _hover, _focus, _adorner, _geometryRecovery);
         IsTabStop = true;
@@ -1274,7 +1276,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _adorner.InvalidateGeometry();
         _adorner.Invalidate();
         _embeds.RealizeVisible();
-        ScheduleVisibleCodeBlockHighlighting();
+        _visibleWork.ScheduleCodeBlockHighlighting();
     }
 
     internal bool TryGetViewport(out double top, out double height, out double width)
@@ -1748,7 +1750,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     double ICodeBlockHighlightingHost.LazyScrollVelocityPixelsPerSecond => _lazyLayout.ScrollVelocity;
 
-    void ICodeBlockHighlightingHost.ScheduleVisibleCodeBlockHighlighting() => ScheduleVisibleCodeBlockHighlighting();
+    void ICodeBlockHighlightingHost.ScheduleVisibleCodeBlockHighlighting() => _visibleWork.ScheduleCodeBlockHighlighting();
 
     void ICodeBlockHighlightingHost.InvalidateCanvas() => _canvasInvalidation.Invalidate();
 
@@ -1801,7 +1803,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _abbreviationTooltip.ForgetTarget();
     }
 
-    void IRasterPlacementHost.ScheduleVisibleCodeBlockHighlighting() => ScheduleVisibleCodeBlockHighlighting();
+    void IRasterPlacementHost.ScheduleVisibleCodeBlockHighlighting() => _visibleWork.ScheduleCodeBlockHighlighting();
 
     void IRasterPlacementHost.NotifyAutomationSnapshotChanged() => _automation.NotifySnapshotChanged();
 
@@ -1899,7 +1901,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     void ILazyLayoutHost.NotifyVisibleDeferredSceneItemStatusMayHaveChanged() =>
         _deferredScenes.NotifyItemStatusMayHaveChanged();
 
-    void ILazyLayoutHost.ScheduleVisibleDeferredScenes() => ScheduleVisibleDeferredScenes();
+    void ILazyLayoutHost.ScheduleVisibleDeferredScenes() => _visibleWork.ScheduleDeferredScenes();
 
     void ILazyLayoutHost.InvalidateAutomationLayout() => _automation.InvalidateLayout();
 
@@ -1919,7 +1921,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     void ILayoutCommitHost.ApplySnapshotSize(Size size) => ApplySnapshotSize(size);
 
-    void ILayoutCommitHost.ScheduleVisibleCodeBlockHighlighting() => ScheduleVisibleCodeBlockHighlighting();
+    void ILayoutCommitHost.ScheduleVisibleCodeBlockHighlighting() => _visibleWork.ScheduleCodeBlockHighlighting();
 
     void ILayoutCommitHost.RefreshInteractiveTextAdornerAfterLayoutChange() =>
         _textAdorner.RefreshAfterLayoutChange();
@@ -2000,7 +2002,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     bool ICanvasTilePainterHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot) =>
         _geometryRecovery.RequestIfRequired(snapshot);
 
-    void ICanvasTilePainterHost.ScheduleVisibleDeferredScenes() => ScheduleVisibleDeferredScenes();
+    void ICanvasTilePainterHost.ScheduleVisibleDeferredScenes() => _visibleWork.ScheduleDeferredScenes();
 
     MarkdownRendererControl IDeferredSceneReadinessHost.DocumentOwner => this;
 
@@ -2950,7 +2952,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         bool resumedPendingHostedFocus = _focusCommit.ResumePendingLazy(snapshot);
         _ = _highlighting.Restart();
         timeline.HighlightRetirementEnded = Stopwatch.GetTimestamp();
-        ScheduleVisibleCodeBlockHighlighting();
+        _visibleWork.ScheduleCodeBlockHighlighting();
         timeline.HighlightSchedulingEnded = Stopwatch.GetTimestamp();
         _adorner.InvalidateGeometry();
         if (!resumedPendingHostedFocus)
@@ -2993,7 +2995,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
             _embeds.RealizeVisible();
             if (measure)
                 afterRealization = GC.GetAllocatedBytesForCurrentThread();
-            ScheduleVisibleCodeBlockHighlighting();
+            _visibleWork.ScheduleCodeBlockHighlighting();
         }
         finally
         {
@@ -3021,23 +3023,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         }
     }
 
-    private void ScheduleVisibleCodeBlockHighlighting()
-    {
-        if (_geometryRecovery.RequestIfRequired(_published.Snapshot))
-            return;
-        ScheduleVisibleDeferredScenes();
-        _highlighting.ScheduleVisible();
-    }
-
-    internal void ScheduleVisibleDeferredScenes()
-    {
-        if (_geometryRecovery.RequestIfRequired(_published.Snapshot))
-            return;
-        IMarkdownPerformanceSessionInternal? session =
-            PerformanceSession as IMarkdownPerformanceSessionInternal;
-        if (session is not null && !session.IsDisposed && session.Options.DeferOffscreenScenes)
-            session.ScheduleDeferredScenes(this);
-    }
+    internal void ScheduleVisibleDeferredScenes() => _visibleWork.ScheduleDeferredScenes();
 
     internal void RequestRebuildAfterDeferredScene()
         => RequestRebuild(RebuildReason.SceneMaterialized);
