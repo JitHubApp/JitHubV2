@@ -324,46 +324,13 @@ internal static class InlineAtomicObjectLayout
             }
             else if (run is InlineImageRun image && len > 0)
             {
-                float baselineXHeightDip = -1f;
-                if (!image.Image.IsFailedDecorativeImageCollapsed &&
-                    box.Context.ThemeSnapshot.MiddleAlignInlineImages)
-                {
-                    float xHeightDip = 0f;
-                    bool hasXHeight;
-                    if (computeInlineImageMetrics)
-                    {
-                        xHeightDip = ResolveInlineImageXHeightDipForMeasurement(
-                            box,
-                            image,
-                            ref inlineImageMetricAnalyzer,
-                            ref inlineImageStyleMetrics);
-                        hasXHeight = xHeightDip > 0f;
-                    }
-                    else
-                    {
-                        hasXHeight = InlineObjectGeometry.TryGetCachedInlineImageXHeightDip(box, image, out xHeightDip);
-                    }
-
-                    if (hasXHeight && xHeightDip > 0f)
-                        baselineXHeightDip = xHeightDip;
-                }
-
-                try
-                {
-                    layout.SetInlineObject(
-                        cumulative,
-                        len,
-                        new InlineLayoutObject(
-                            image.DesiredWidth,
-                            image.DesiredHeight,
-                            inverseMetricScale,
-                            allowZeroDimensions: image.Image.IsFailedDecorativeImageCollapsed,
-                            baselineXHeightDip: baselineXHeightDip));
-                }
-                catch (Exception ex)
-                {
-                    MarkdownDiagnostics.WriteLine($"[InlineContainerBox] inline image layout failed: {ex.Message}");
-                }
+                float baselineXHeightDip = ResolveImageBaselineXHeightDip(
+                    box,
+                    image,
+                    computeInlineImageMetrics,
+                    ref inlineImageMetricAnalyzer,
+                    ref inlineImageStyleMetrics);
+                SetImageInlineObject(layout, image, cumulative, len, inverseMetricScale, baselineXHeightDip);
             }
             else if (run is InlineVectorSceneRun vector && len > 0)
             {
@@ -384,26 +351,99 @@ internal static class InlineAtomicObjectLayout
             }
             else if (run is InlineSpacerRun spacer && len > 0)
             {
-                GetFittedSpacerDimensions(
-                    spacer,
-                    maxInlineWidth,
-                    out float effectiveWidth,
-                    out float effectiveHeight);
-                // Keep this native call inside the enclosing measurement
-                // transaction. Swallowing failure would leave the private
-                // U+FFFC fallback glyph visible instead of an invisible spacer.
-                layout.SetInlineObject(
-                    cumulative,
-                    len,
-                    new InlineLayoutObject(
-                        effectiveWidth,
-                        effectiveHeight,
-                        inverseMetricScale,
-                        preserveSubUnitDimensions: true));
+                SetSpacerInlineObject(layout, spacer, cumulative, len, inverseMetricScale, maxInlineWidth);
             }
 
             cumulative += len;
         }
+    }
+
+    // The x-height an inline image aligns its middle to, or -1 when it keeps
+    // the plain bottom-on-baseline placement.
+    private static float ResolveImageBaselineXHeightDip(
+        InlineContainerBox box,
+        InlineImageRun image,
+        bool computeInlineImageMetrics,
+        ref CanvasTextAnalyzer? inlineImageMetricAnalyzer,
+        ref Dictionary<InlineImageFontMetricKey, float>? inlineImageStyleMetrics)
+    {
+        float baselineXHeightDip = -1f;
+        if (!image.Image.IsFailedDecorativeImageCollapsed &&
+            box.Context.ThemeSnapshot.MiddleAlignInlineImages)
+        {
+            float xHeightDip = 0f;
+            bool hasXHeight;
+            if (computeInlineImageMetrics)
+            {
+                xHeightDip = ResolveInlineImageXHeightDipForMeasurement(
+                    box,
+                    image,
+                    ref inlineImageMetricAnalyzer,
+                    ref inlineImageStyleMetrics);
+                hasXHeight = xHeightDip > 0f;
+            }
+            else
+            {
+                hasXHeight = InlineObjectGeometry.TryGetCachedInlineImageXHeightDip(box, image, out xHeightDip);
+            }
+
+            if (hasXHeight && xHeightDip > 0f)
+                baselineXHeightDip = xHeightDip;
+        }
+
+        return baselineXHeightDip;
+    }
+
+    private static void SetImageInlineObject(
+        CanvasTextLayout layout,
+        InlineImageRun image,
+        int cumulative,
+        int len,
+        float inverseMetricScale,
+        float baselineXHeightDip)
+    {
+        try
+        {
+            layout.SetInlineObject(
+                cumulative,
+                len,
+                new InlineLayoutObject(
+                    image.DesiredWidth,
+                    image.DesiredHeight,
+                    inverseMetricScale,
+                    allowZeroDimensions: image.Image.IsFailedDecorativeImageCollapsed,
+                    baselineXHeightDip: baselineXHeightDip));
+        }
+        catch (Exception ex)
+        {
+            MarkdownDiagnostics.WriteLine($"[InlineContainerBox] inline image layout failed: {ex.Message}");
+        }
+    }
+
+    private static void SetSpacerInlineObject(
+        CanvasTextLayout layout,
+        InlineSpacerRun spacer,
+        int cumulative,
+        int len,
+        float inverseMetricScale,
+        float maxInlineWidth)
+    {
+        GetFittedSpacerDimensions(
+            spacer,
+            maxInlineWidth,
+            out float effectiveWidth,
+            out float effectiveHeight);
+        // Keep this native call inside the enclosing measurement
+        // transaction. Swallowing failure would leave the private
+        // U+FFFC fallback glyph visible instead of an invisible spacer.
+        layout.SetInlineObject(
+            cumulative,
+            len,
+            new InlineLayoutObject(
+                effectiveWidth,
+                effectiveHeight,
+                inverseMetricScale,
+                preserveSubUnitDimensions: true));
     }
 
     internal static bool MeasureAtomicInlineRuns(
