@@ -40,14 +40,10 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
     private readonly BoundedMarkdownLayoutScheduler _layoutWorkScheduler;
     private readonly BoundedMarkdownImageActivationScheduler _imageActivationScheduler = new();
     private readonly FairDocumentAdmission _backgroundAdmission;
-    private readonly FairDocumentAdmission _cpuPreparationAdmission;
-    private readonly FairDocumentAdmission _scenePreparationAdmission;
     internal MarkdownCompletedSceneCache CompletedSceneCache { get; }
-    private readonly SourceByteAdmission _sourceByteAdmission;
-    private readonly CancellationTokenSource _lifetime = new();
-    private readonly CancellationToken _lifetimeToken;
+    private readonly MarkdownPerformanceSessionLifetime _lifetime = new();
+    private readonly MarkdownSessionAdmissions _admissions;
     private readonly bool _memoryPressureSubscribed;
-    private readonly object _workGate = new();
     private readonly object _scenePlansGate = new();
     private readonly SnapshotRetirementTracker _scenePlanRetirements = new();
     private readonly Dictionary<object, MarkdownProgressiveScenePlan> _scenePlans =
@@ -58,13 +54,9 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
     private readonly object _documentScopesGate = new();
     private readonly Dictionary<object, PerformanceDocumentState> _documentScopes =
         new(ReferenceEqualityComparer.Instance);
-    private TaskCompletionSource<bool>? _workDrained;
-    private TaskCompletionSource<bool>? _shutdownCompleted;
-    private int _activeWork;
     private long _sourceCacheBytes;
     private long _sourceCacheMetadataBytes;
     private long _sourceCacheEntryIdentity;
-    private long _cancellationRetirementFailures;
     private long _sourceCacheHits;
     private long _imageFetches;
     private long _imageFetchMilliseconds;
@@ -73,12 +65,6 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
     private long _sourceCacheEvictions;
     private int _pendingImageFetches;
     private int _activeImageFetches;
-    private long _cpuPreparations;
-    private long _cpuPreparationMilliseconds;
-    private long _scenePreparations;
-    private long _scenePreparationMilliseconds;
-    private int _disposed;
-    private EventHandler? _disposedHandlers;
 
     /// <summary>Creates an opt-in session. Use a distinct session for each account/security partition.</summary>
     public MarkdownPerformanceSession(MarkdownPerformanceOptions options)
@@ -87,14 +73,10 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         ValidateOptions(options);
         CompletedSceneCache = new MarkdownCompletedSceneCache(options.SceneCacheBudgetBytes);
         _layoutWorkScheduler = new BoundedMarkdownLayoutScheduler();
-        _lifetimeToken = _lifetime.Token;
         _fetchSlots = new SemaphoreSlim(options.MaxConcurrentImageFetches);
         _backgroundAdmission = new FairDocumentAdmission(
             options.MaxConcurrentImageFetches - options.ReservedVisibleImageFetches);
-        _cpuPreparationAdmission = new FairDocumentAdmission(options.MaxConcurrentCpuPreparations);
-        _scenePreparationAdmission = new FairDocumentAdmission(options.MaxConcurrentScenePreparations);
-        _sourceByteAdmission = new SourceByteAdmission(
-            options.MaxInFlightSourceBytes, options.ReservedVisibleSourceBytes);
+        _admissions = new MarkdownSessionAdmissions(_lifetime, options);
         try
         {
             Windows.System.MemoryManager.AppMemoryUsageIncreased += OnAppMemoryUsageIncreased;
@@ -116,7 +98,11 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
 
     // Admission queue depth is sampled only by internal diagnostics/tests. It
     // adds no work to the CPU-preparation hot path.
-    internal int PendingCpuPreparations => _cpuPreparationAdmission.PendingRequests;
+    internal int PendingCpuPreparations => _admissions.PendingCpuPreparations;
+
+    // Admitted work that shutdown still waits for. Sampled only by internal
+    // diagnostics/tests.
+    internal int ActiveWork => _lifetime.ActiveWork;
 
     // The renderer checks this once per layout request so stopwatch reads and
     // native-layout counting are absent unless a host explicitly enables layout diagnostics.
@@ -158,43 +144,30 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
     /// <summary>Gets the immutable settings captured at construction.</summary>
     public MarkdownPerformanceOptions Options { get; }
 
-    internal bool IsDisposed => Volatile.Read(ref _disposed) != 0;
+    internal bool IsDisposed => _lifetime.IsDisposed;
 
     event EventHandler? IMarkdownPerformanceSessionInternal.Disposed
     {
         add
         {
-            bool invokeImmediately;
-            lock (_workGate)
-            {
-                invokeImmediately = _disposed != 0;
-                if (!invokeImmediately)
-                    _disposedHandlers += value;
-            }
-
+            bool invokeImmediately = !_lifetime.TryAddDisposedHandler(value);
             if (invokeImmediately && value is not null)
                 NotifyDisposedHandlers(value);
         }
-        remove
-        {
-            lock (_workGate)
-                _disposedHandlers -= value;
-        }
+        remove => _lifetime.RemoveDisposedHandler(value);
     }
 
-    internal long ActiveSourceBytes => _sourceByteAdmission.ActiveBytes;
+    internal long ActiveSourceBytes => _admissions.SourceBytes.ActiveBytes;
 
-    // Internal evidence for cancellation callback failures. The callbacks are
-    // always observed during CTS retirement; this counter lets focused tests
-    // verify that failures were not abandoned with a discarded CancelAsync task.
-    internal long CancellationRetirementFailures =>
-        Interlocked.Read(ref _cancellationRetirementFailures);
+    // Internal evidence for cancellation callback failures; see
+    // MarkdownPerformanceSessionLifetime.CancellationRetirementFailures.
+    internal long CancellationRetirementFailures => _lifetime.CancellationRetirementFailures;
 
     bool IMarkdownPerformanceSessionInternal.IsDisposed => IsDisposed;
-    CancellationToken IMarkdownPerformanceSessionInternal.LifetimeToken => _lifetimeToken;
+    CancellationToken IMarkdownPerformanceSessionInternal.LifetimeToken => _lifetime.Token;
     IDisposable? IMarkdownPerformanceSessionInternal.TryBeginRasterWork()
     {
-        return TryBeginWorkLease();
+        return _lifetime.TryBeginWorkLease();
     }
     bool IMarkdownPerformanceSessionInternal.IsLayoutDiagnosticCaptureEnabled =>
         IsLayoutDiagnosticCaptureEnabled;
@@ -287,7 +260,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         // cannot perform its final retirement drain before that transaction
         // registers cleanup. Calls made after shutdown retain the historical
         // eager fallback, but do not touch session-owned plan/cache state.
-        if (!TryRegisterWork())
+        if (!_lifetime.TryRegisterWork())
         {
             return ParseForDisposedSessionAsync(
                 engine,
@@ -328,7 +301,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         }
         finally
         {
-            RetireWork();
+            _lifetime.RetireWork();
         }
     }
 
@@ -600,7 +573,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
     {
         if (work is null)
             return Task.FromException<T>(new ArgumentNullException(nameof(work)));
-        if (!TryRegisterWork())
+        if (!_lifetime.TryRegisterWork())
             return CreateLayoutWorkFailure<T>(new OperationCanceledException(cancellationToken));
 
         CancellationTokenSource? linked = null;
@@ -609,13 +582,13 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         {
             linked = CancellationTokenSource.CreateLinkedTokenSource(
                 cancellationToken,
-                _lifetimeToken);
+                _lifetime.Token);
             scheduled = _layoutWorkScheduler.ScheduleAsync(priority, work, linked.Token);
         }
         catch (Exception exception)
         {
             linked?.Dispose();
-            RetireWork();
+            _lifetime.RetireWork();
             return CreateLayoutWorkFailure<T>(exception);
         }
 
@@ -648,7 +621,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         ArgumentNullException.ThrowIfNull(demand);
         ArgumentNullException.ThrowIfNull(startAsyncWork);
         ArgumentNullException.ThrowIfNull(onNotStarted);
-        if (cancellationToken.IsCancellationRequested || !TryRegisterWork())
+        if (cancellationToken.IsCancellationRequested || !_lifetime.TryRegisterWork())
             return false;
 
         CancellationTokenSource? linked = null;
@@ -657,7 +630,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         {
             linked = CancellationTokenSource.CreateLinkedTokenSource(
                 cancellationToken,
-                _lifetimeToken);
+                _lifetime.Token);
             ImageActivationCompletion workCompletion = new(this, linked, onNotStarted);
             completion = workCompletion;
             bool scheduled = _imageActivationScheduler.TrySchedule(
@@ -688,7 +661,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
             else
             {
                 linked?.Dispose();
-                RetireWork();
+                _lifetime.RetireWork();
             }
 
             MarkdownDiagnostics.WriteLine(
@@ -727,7 +700,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
                 }
                 finally
                 {
-                    session.RetireWork();
+                    session._lifetime.RetireWork();
                 }
             }
         }
@@ -774,7 +747,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
             }
             finally
             {
-                session.RetireWork();
+                session._lifetime.RetireWork();
             }
         }
     }
@@ -1324,13 +1297,13 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
             Interlocked.Read(ref _sourceCacheEvictions),
             Volatile.Read(ref _pendingImageFetches),
             Volatile.Read(ref _activeImageFetches),
-            Interlocked.Read(ref _cpuPreparations),
-            Interlocked.Read(ref _cpuPreparationMilliseconds),
-            Interlocked.Read(ref _scenePreparations),
-            Interlocked.Read(ref _scenePreparationMilliseconds),
-            _sourceByteAdmission.ActiveBytes,
-            _sourceByteAdmission.PeakActiveBytes,
-            _sourceByteAdmission.PendingRequests,
+            _admissions.CpuPreparations,
+            _admissions.CpuPreparationMilliseconds,
+            _admissions.ScenePreparations,
+            _admissions.ScenePreparationMilliseconds,
+            _admissions.SourceBytes.ActiveBytes,
+            _admissions.SourceBytes.PeakActiveBytes,
+            _admissions.SourceBytes.PendingRequests,
             CompletedSceneCache.RetainedWeightBytes,
             CompletedSceneCache.Hits,
             CompletedSceneCache.Evictions);
@@ -1363,11 +1336,10 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         IMarkdownImageResolver resolver,
         MarkdownImageResolveContext context)
     {
-        lock (_workGate)
-        {
-            ObjectDisposedException.ThrowIf(_disposed != 0, this);
-            return new DocumentScope(this, resolver, context);
-        }
+        return _lifetime.CreateWhileActive(
+            this,
+            (Session: this, Resolver: resolver, Context: context),
+            static state => new DocumentScope(state.Session, state.Resolver, state.Context));
     }
 
     private IMarkdownPerformanceDocumentScope? PrepareDocumentScope(
@@ -1471,39 +1443,11 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         CancellationToken cancellationToken) =>
         EnterCpuPreparationAsync(documentOwner, exclusive: false, cancellationToken);
 
-    internal async ValueTask<IDisposable> EnterCpuPreparationAsync(
+    internal ValueTask<IDisposable> EnterCpuPreparationAsync(
         object documentOwner,
         bool exclusive,
-        CancellationToken cancellationToken)
-    {
-        RegisterWork();
-        IDisposable? admissionLease = null;
-        try
-        {
-            using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken, _lifetimeToken);
-            admissionLease = await _cpuPreparationAdmission.EnterAsync(
-                documentOwner, exclusive, linked.Token).ConfigureAwait(false);
-            linked.Token.ThrowIfCancellationRequested();
-            CpuPreparationLease lease = new(
-                admissionLease, this, Stopwatch.GetTimestamp());
-            admissionLease = null;
-            Interlocked.Increment(ref _cpuPreparations);
-            return lease;
-        }
-        catch
-        {
-            try
-            {
-                admissionLease?.Dispose();
-            }
-            finally
-            {
-                RetireWork();
-            }
-            throw;
-        }
-    }
+        CancellationToken cancellationToken) =>
+        _admissions.EnterCpuPreparationAsync(documentOwner, exclusive, cancellationToken);
 
     async ValueTask<IDisposable> IMarkdownPerformanceSessionInternal.ReserveImageSourceBytesAsync(
         object documentOwner,
@@ -1517,98 +1461,19 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
                 requestCancellationToken: CancellationToken.None)
             .ConfigureAwait(false);
 
-    private async ValueTask<IDisposable> ReserveSourceByteLeaseAsync(
+    private ValueTask<IDisposable> ReserveSourceByteLeaseAsync(
         object documentOwner,
         long bytes,
         bool background,
         CancellationToken cancellationToken,
-        CancellationToken requestCancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(documentOwner);
-        if (background && bytes > _sourceByteAdmission.BackgroundCapacity)
-            throw new MarkdownImageSourceDeferredException();
+        CancellationToken requestCancellationToken) =>
+        _admissions.ReserveSourceBytesAsync(
+            documentOwner, bytes, background, cancellationToken, requestCancellationToken);
 
-        RegisterWork();
-        IDisposable? admissionLease = null;
-        CancellationTokenSource? linked = null;
-        try
-        {
-            linked = CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken, requestCancellationToken, _lifetimeToken);
-            admissionLease = await _sourceByteAdmission.EnterAsync(
-                    documentOwner, bytes, background, linked.Token)
-                .ConfigureAwait(false);
-            linked.Token.ThrowIfCancellationRequested();
-
-            var result = new SessionSourceByteLease(this, admissionLease, linked);
-            admissionLease = null;
-            linked = null;
-            return result;
-        }
-        catch
-        {
-            if (admissionLease is not null)
-            {
-                try { admissionLease.Dispose(); }
-                catch (Exception cleanupException)
-                {
-                    LogLeaseCleanupFailure("unpublished source-byte admission", cleanupException);
-                }
-            }
-            if (linked is not null)
-            {
-                try { linked.Dispose(); }
-                catch (Exception cleanupException)
-                {
-                    LogLeaseCleanupFailure("unpublished source-byte cancellation", cleanupException);
-                }
-            }
-            RetireWork();
-            throw;
-        }
-    }
-
-    internal async ValueTask<IMarkdownScenePreparationLease> EnterScenePreparationAsync(
+    internal ValueTask<IMarkdownScenePreparationLease> EnterScenePreparationAsync(
         object documentOwner,
-        CancellationToken cancellationToken)
-    {
-        RegisterWork();
-        CancellationTokenSource? linked = null;
-        IDisposable? admissionLease = null;
-        try
-        {
-            linked = CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken, _lifetimeToken);
-            admissionLease = await _scenePreparationAdmission.EnterAsync(
-                documentOwner, linked.Token).ConfigureAwait(false);
-            linked.Token.ThrowIfCancellationRequested();
-            ScenePreparationLease lease = new(
-                admissionLease, linked, this, Stopwatch.GetTimestamp());
-            admissionLease = null;
-            linked = null;
-            Interlocked.Increment(ref _scenePreparations);
-            return lease;
-        }
-        catch
-        {
-            try
-            {
-                admissionLease?.Dispose();
-            }
-            finally
-            {
-                try
-                {
-                    linked?.Dispose();
-                }
-                finally
-                {
-                    RetireWork();
-                }
-            }
-            throw;
-        }
-    }
+        CancellationToken cancellationToken) =>
+        _admissions.EnterScenePreparationAsync(documentOwner, cancellationToken);
 
     // The progressive scene coordinator holds the admission lease until its
     // dispatcher publication is acknowledged. Keep that queue latency out of
@@ -1619,130 +1484,6 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
     {
         if (lease is ScenePreparationLease sceneLease)
             sceneLease.CompletePreparationTiming();
-    }
-
-    private void RegisterWork()
-    {
-        if (!TryRegisterWork())
-            throw new OperationCanceledException(_lifetimeToken);
-    }
-
-    private RasterWorkLease? TryBeginWorkLease()
-    {
-        // Allocate first so even an allocation failure cannot strand the
-        // active-work count. The returned lease is idempotent.
-        RasterWorkLease lease = new(this);
-        return TryRegisterWork() ? lease : null;
-    }
-
-    private bool TryRegisterWork()
-    {
-        lock (_workGate)
-        {
-            if (_disposed != 0)
-                return false;
-            _activeWork++;
-            return true;
-        }
-    }
-
-    private void RetireWork()
-    {
-        lock (_workGate)
-        {
-            if (--_activeWork == 0)
-                _workDrained?.TrySetResult(true);
-        }
-    }
-
-    private void RetireCancellationSource(
-        CancellationTokenSource cancellation,
-        Task? cancellationCallbacks,
-        Task operationCompletion,
-        IDisposable lifetimeWork,
-        string owner)
-    {
-        Task callbacks = cancellationCallbacks ??
-            (cancellation.IsCancellationRequested
-                ? CancellationTokenSourceRetirement.RequestCancellation(cancellation)
-                : Task.CompletedTask);
-        Task retirement;
-        try
-        {
-            // The caller invokes this only after the operation task has
-            // completed. Pass that task explicitly as an additional retirement
-            // guard so disposal remains tied to both resolver and token work.
-            retirement = CancellationTokenSourceRetirement.DisposeAfter(
-                cancellation, callbacks, operationCompletion);
-        }
-        catch (Exception exception)
-        {
-            RecordCancellationRetirementFailure(owner, exception);
-            try { cancellation.Dispose(); }
-            catch (Exception disposeException)
-            {
-                RecordCancellationRetirementFailure(owner, disposeException);
-            }
-            finally
-            {
-                try { lifetimeWork.Dispose(); }
-                catch (Exception releaseException)
-                {
-                    RecordCancellationRetirementFailure(owner, releaseException);
-                }
-            }
-            return;
-        }
-
-        _ = FinishCancellationRetirementAsync(callbacks, retirement, lifetimeWork, owner);
-    }
-
-    private async Task FinishCancellationRetirementAsync(
-        Task callbacks,
-        Task retirement,
-        IDisposable lifetimeWork,
-        string owner)
-    {
-        try
-        {
-            // DisposeAfter observes these inputs too, but awaiting the callback
-            // task here preserves its exception for the session's diagnostics.
-            await callbacks.ConfigureAwait(false);
-        }
-        catch (Exception exception)
-        {
-            RecordCancellationRetirementFailure(owner, exception);
-        }
-
-        try
-        {
-            await retirement.ConfigureAwait(false);
-        }
-        catch (Exception exception)
-        {
-            RecordCancellationRetirementFailure(owner, exception);
-        }
-        finally
-        {
-            try { lifetimeWork.Dispose(); }
-            catch (Exception exception)
-            {
-                RecordCancellationRetirementFailure(owner, exception);
-            }
-        }
-    }
-
-    private void RecordCancellationRetirementFailure(string owner, Exception exception)
-    {
-        Interlocked.Increment(ref _cancellationRetirementFailures);
-        try
-        {
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownPerformanceSession] {owner} cancellation retirement failed: {exception.GetType().Name}");
-        }
-        catch
-        {
-        }
     }
 
     private bool TryGetSourceCacheMetadata(SourceKey key, out CachedSourceIdentity identity)
@@ -1882,9 +1623,9 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         {
             if (!TryGetSourceCacheMetadata(key, out CachedSourceIdentity identity))
                 return null;
-            if (background && identity.ByteLength > _sourceByteAdmission.BackgroundCapacity)
+            if (background && identity.ByteLength > _admissions.SourceBytes.BackgroundCapacity)
                 throw new MarkdownImageSourceDeferredException();
-            if (identity.ByteLength > _sourceByteAdmission.Capacity)
+            if (identity.ByteLength > _admissions.SourceBytes.Capacity)
                 return null;
 
             IDisposable? reservation = identity.ByteLength == 0
@@ -1929,7 +1670,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
 
         lock (_cacheGate)
         {
-            if (Volatile.Read(ref _disposed) != 0 || key.DocumentScope?.IsDisposed == true)
+            if (IsDisposed || key.DocumentScope?.IsDisposed == true)
                 return;
             if (_sourceCache.TryGetValue(key, out CachedSource? old))
             {
@@ -2014,7 +1755,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         CancellationToken cancellationToken
         )
     {
-        RegisterWork();
+        _lifetime.RegisterWork();
         Interlocked.Increment(ref _pendingImageFetches);
         IDisposable? backgroundLease = null;
         bool fetchAcquired = false;
@@ -2060,7 +1801,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
             {
                 IMarkdownImageResolutionLease resolutionLease;
                 using var sourceAdmission = new ResolverSourceByteAdmission(
-                    this, _sourceByteAdmission, owner, background, cancellationToken);
+                    this, owner, background, cancellationToken);
                 if (resolver is IMarkdownLeasedImageResolver leased)
                 {
                     resolutionLease = await leased.ResolveWithSourceLeaseAsync(
@@ -2135,7 +1876,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
             finally
             {
                 try { backgroundLease?.Dispose(); }
-                finally { RetireWork(); }
+                finally { _lifetime.RetireWork(); }
             }
         }
     }
@@ -2155,13 +1896,13 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         lock (_flightGate)
         {
             if (IsDisposed)
-                throw new OperationCanceledException(_lifetimeToken);
+                throw new OperationCanceledException(_lifetime.Token);
             if (!_sharedFlights.TryGetValue(key, out flight!) ||
                 (!background && flight.Background))
             {
-                RasterWorkLease? flightLifetime = TryBeginWorkLease();
+                SessionWorkLease? flightLifetime = _lifetime.TryBeginWorkLease();
                 if (flightLifetime is null)
-                    throw new OperationCanceledException(_lifetimeToken);
+                    throw new OperationCanceledException(_lifetime.Token);
                 CancellationTokenSource? source = null;
                 try
                 {
@@ -2171,7 +1912,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
                         _sharedFlights.Remove(key);
                     }
 
-                    source = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeToken);
+                    source = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
                     flight = new SharedFetch(source, background, this, flightLifetime);
                     _ = flight.Task.ContinueWith(
                         static completed => _ = completed.Exception,
@@ -2351,7 +2092,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
             if (lifetime is null)
                 return;
 
-            Session.RetireCancellationSource(
+            Session._lifetime.RetireCancellationSource(
                 Cancellation,
                 callbacks,
                 operationCompletion,
@@ -2380,38 +2121,6 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
                 _completion.TrySetException(exception);
         }
 
-    }
-
-    /// <summary>
-    /// Serializes a request's cancellation decision with cancellation-source
-    /// retirement. Once retirement starts, no late caller can schedule token
-    /// callbacks after the source's callback task has been captured.
-    /// </summary>
-    internal sealed class CancellationRetirementHandshake(CancellationTokenSource source)
-    {
-        private readonly object _gate = new();
-        private Task? _callbacks;
-        private bool _retirementStarted;
-
-        internal Task? RequestCancellation()
-        {
-            lock (_gate)
-            {
-                if (_retirementStarted)
-                    return _callbacks;
-
-                return _callbacks ??= CancellationTokenSourceRetirement.RequestCancellation(source);
-            }
-        }
-
-        internal Task? BeginRetirement()
-        {
-            lock (_gate)
-            {
-                _retirementStarted = true;
-                return _callbacks;
-            }
-        }
     }
 
     /// <summary>
@@ -2528,20 +2237,8 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         Task drain;
         TaskCompletionSource<bool> completed;
         EventHandler? disposedHandlers;
-        lock (_workGate)
-        {
-            if (_disposed != 0)
-                return;
-            _disposed = 1;
-            disposedHandlers = _disposedHandlers;
-            _disposedHandlers = null;
-            _workDrained = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            if (_activeWork == 0)
-                _workDrained.SetResult(true);
-            drain = _workDrained.Task;
-            completed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            _shutdownCompleted = completed;
-        }
+        if (!_lifetime.TryBeginShutdown(out drain, out completed, out disposedHandlers))
+            return;
 
         _layoutWorkScheduler.Dispose();
         _imageActivationScheduler.Dispose();
@@ -2591,9 +2288,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
     public async ValueTask DisposeAsync()
     {
         Dispose();
-        Task? completion;
-        lock (_workGate)
-            completion = _shutdownCompleted?.Task;
+        Task? completion = _lifetime.ShutdownCompletion;
         if (completion is not null)
             await completion.ConfigureAwait(false);
     }
@@ -2663,7 +2358,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         finally
         {
             _fetchSlots.Dispose();
-            _lifetime.Dispose();
+            _lifetime.DisposeCancellation();
         }
 
         if (failures is null)
@@ -2699,7 +2394,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
             _resolverCacheIdentity = session._sourceResolverIdentities.GetValue(
                 resolver, static _ => new object());
             _context = context;
-            _lifetime = CancellationTokenSource.CreateLinkedTokenSource(session._lifetimeToken);
+            _lifetime = CancellationTokenSource.CreateLinkedTokenSource(session._lifetime.Token);
             _token = _lifetime.Token;
         }
 
@@ -2944,9 +2639,9 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
 
                 if (!_inFlight.TryGetValue(source, out request!))
                 {
-                    RasterWorkLease? requestLifetime = _session.TryBeginWorkLease();
+                    SessionWorkLease? requestLifetime = _session._lifetime.TryBeginWorkLease();
                     if (requestLifetime is null)
-                        throw new OperationCanceledException(_session._lifetimeToken);
+                        throw new OperationCanceledException(_session._lifetime.Token);
                     CancellationTokenSource? linked = null;
                     try
                     {
@@ -3135,7 +2830,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
                 if (lifetime is null)
                     return;
 
-                session.RetireCancellationSource(
+                session._lifetime.RetireCancellationSource(
                     Cancellation,
                     callbacks,
                     operationCompletion,
@@ -3218,13 +2913,12 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
 
         internal ResolverSourceByteAdmission(
             MarkdownPerformanceSession session,
-            SourceByteAdmission admission,
             DocumentScope owner,
             bool background,
             CancellationToken requestCancellationToken)
         {
             _session = session;
-            _admission = admission;
+            _admission = session._admissions.SourceBytes;
             _owner = owner;
             _background = background;
             _requestCancellationToken = requestCancellationToken;
@@ -3232,7 +2926,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
             // Reserve one shutdown-drain unit before exposing this scope to the
             // host. Child registration then only adjusts this already-owned
             // lifetime and never calls RegisterWork after session disposal.
-            session.RegisterWork();
+            session._lifetime.RegisterWork();
         }
 
         public bool IsSpeculative => _background;
@@ -3284,7 +2978,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
             }
 
             if (releaseSessionLifetime)
-                _session.RetireWork();
+                _session._lifetime.RetireWork();
         }
 
         private async Task ObserveTrackedWorkAsync(Task completion)
@@ -3333,7 +3027,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
             }
 
             if (releaseSessionLifetime)
-                _session.RetireWork();
+                _session._lifetime.RetireWork();
         }
 
         private bool TryReleaseSessionLifetimeNoLock()
@@ -3380,142 +3074,4 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         internal LinkedListNode<CachedSource> Node = null!;
     }
 
-    /// <summary>
-    /// Keeps source-byte admission and session shutdown accounting alive for the
-    /// full lifetime of a transferable image result, not just until the resolver
-    /// returns. Cleanup attempts every owned release exactly once.
-    /// </summary>
-    private sealed class SessionSourceByteLease(
-        MarkdownPerformanceSession session,
-        IDisposable admissionLease,
-        CancellationTokenSource linkedCancellation) : IDisposable
-    {
-        private MarkdownPerformanceSession? _session = session;
-        private IDisposable? _admissionLease = admissionLease;
-        private CancellationTokenSource? _linkedCancellation = linkedCancellation;
-
-        public void Dispose()
-        {
-            MarkdownPerformanceSession? owner = Interlocked.Exchange(ref _session, null);
-            if (owner is null)
-                return;
-
-            IDisposable? admission = Interlocked.Exchange(ref _admissionLease, null);
-            CancellationTokenSource? linked = Interlocked.Exchange(ref _linkedCancellation, null);
-            try
-            {
-                try
-                {
-                    admission?.Dispose();
-                }
-                catch (Exception exception)
-                {
-                    LogLeaseCleanupFailure("source-byte admission", exception);
-                }
-
-                try
-                {
-                    linked?.Dispose();
-                }
-                catch (Exception exception)
-                {
-                    LogLeaseCleanupFailure("source-byte cancellation", exception);
-                }
-            }
-            finally
-            {
-                owner.RetireWork();
-            }
-        }
-    }
-
-    [Conditional("DEBUG")]
-    private static void LogLeaseCleanupFailure(string resource, Exception exception)
-    {
-        try
-        {
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownPerformanceSession] {resource} cleanup failed: {exception.GetType().Name}");
-        }
-        catch
-        {
-        }
-    }
-
-    private sealed class CpuPreparationLease(
-        IDisposable admissionLease,
-        MarkdownPerformanceSession session,
-        long started) : IDisposable
-    {
-        private IDisposable? _admissionLease = admissionLease;
-        public void Dispose()
-        {
-            if (Interlocked.Exchange(ref _admissionLease, null) is not { } held)
-                return;
-            try
-            {
-                held.Dispose();
-            }
-            finally
-            {
-                Interlocked.Add(ref session._cpuPreparationMilliseconds,
-                    (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds);
-                session.RetireWork();
-            }
-        }
-    }
-
-    private sealed class RasterWorkLease(MarkdownPerformanceSession session) : IDisposable
-    {
-        private MarkdownPerformanceSession? _session = session;
-        public void Dispose() => Interlocked.Exchange(ref _session, null)?.RetireWork();
-    }
-
-    private sealed class ScenePreparationLease(
-        IDisposable admissionLease,
-        CancellationTokenSource cancellation,
-        MarkdownPerformanceSession session,
-        long started) : IMarkdownScenePreparationLease
-    {
-        private IDisposable? _admissionLease = admissionLease;
-        private int _timingCompleted;
-        public CancellationToken CancellationToken => cancellation.Token;
-
-        internal void CompletePreparationTiming()
-        {
-            if (Interlocked.Exchange(ref _timingCompleted, 1) == 0)
-            {
-                Interlocked.Add(ref session._scenePreparationMilliseconds,
-                    (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds);
-            }
-        }
-
-        public void Dispose()
-        {
-            if (Interlocked.Exchange(ref _admissionLease, null) is not { } held)
-                return;
-            try
-            {
-                held.Dispose();
-            }
-            finally
-            {
-                try
-                {
-                    CompletePreparationTiming();
-                }
-                finally
-                {
-                    try
-                    {
-                        cancellation.Dispose();
-                    }
-                    finally
-                    {
-                        session.RetireWork();
-                    }
-                }
-            }
-        }
-    }
 }

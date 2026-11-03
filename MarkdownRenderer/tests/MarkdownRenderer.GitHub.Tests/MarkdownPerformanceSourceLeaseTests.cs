@@ -350,7 +350,7 @@ public sealed class MarkdownPerformanceSourceLeaseTests
             callbackStarted.TrySetResult(true);
             releaseCallback.Task.GetAwaiter().GetResult();
         });
-        var handshake = new MarkdownPerformanceSession.CancellationRetirementHandshake(source);
+        var handshake = new CancellationRetirementHandshake(source);
         var start = new TaskCompletionSource<bool>(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
