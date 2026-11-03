@@ -423,7 +423,7 @@ public sealed class AutomationHarnessSourceContractTests
             placeholder);
         string formatSource = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(), "MarkdownRenderer", "src", "MarkdownRenderer", "Layout",
-            "SharedCanvasTextFormatCache.cs"));
+            "SharedCanvasTextFormatStore.cs"));
         Assert.Contains("NormalizeFontFamilyForCanvas(style.FontFamily)", formatSource, StringComparison.Ordinal);
         Assert.Contains("style.FontSize,", formatSource, StringComparison.Ordinal);
         Assert.Contains("format.FontFamily = key.FontFamily", formatSource, StringComparison.Ordinal);
