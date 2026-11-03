@@ -295,6 +295,10 @@ internal sealed class ImageRelayout
     /// operation publishes; any completion retires its own cancellation
     /// source and schedules whatever stayed pending.
     /// </summary>
+    /// <remarks>
+    /// Kept whole apart from the requeue: the publication branches share the current
+    /// and canceled flags with the one try/finally whose requeue must follow every exit.
+    /// </remarks>
     internal void Complete(
         LayoutSnapshot? snapshot,
         (int BlockIndex, double OffsetFromTop)? anchor,

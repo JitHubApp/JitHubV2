@@ -20,6 +20,10 @@ internal static class ImageRelayoutWork
     /// Relayouts the changed image roots of <paramref name="payload"/> off
     /// the UI thread, then hands one ready publication to the dispatcher.
     /// </summary>
+    /// <remarks>
+    /// Kept whole: the layout closure writes the locals the drains, binding and publication
+    /// read, and the outer finally must clear them in this frame once the scheduled work returns.
+    /// </remarks>
     internal static async Task RunAsync(
         ImageRelayoutWorkPayload<LayoutSnapshot> payload,
         (int BlockIndex, double OffsetFromTop)? anchor,

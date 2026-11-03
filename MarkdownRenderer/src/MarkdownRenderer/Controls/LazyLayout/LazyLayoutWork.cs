@@ -19,6 +19,10 @@ internal static class LazyLayoutWork
     /// scenes when the scene graph needs rebinding, then stages one weak
     /// completion with <paramref name="handoff"/> and dispatches it.
     /// </summary>
+    /// <remarks>
+    /// Kept whole apart from the staging: the layout closure captures the snapshot in this
+    /// frame, and the finally must clear it here so a retained delegate cannot hold it.
+    /// </remarks>
     internal static async Task RunAsync(
         LayoutSnapshot snapshot,
         LazyLayoutBand band,

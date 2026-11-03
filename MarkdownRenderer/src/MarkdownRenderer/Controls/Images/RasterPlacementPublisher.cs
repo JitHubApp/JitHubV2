@@ -104,6 +104,10 @@ internal sealed class RasterPlacementPublisher
     /// when every input it was prepared from is still current. Returns false,
     /// changing nothing, when any fence fails.
     /// </summary>
+    /// <remarks>
+    /// The steps live in their own methods; this skeleton stays whole because its nested
+    /// try/finally must enclose all of them so the source retires once and publishing ends.
+    /// </remarks>
     internal bool TryPublish(LayoutSnapshot source, RasterPlacementPlan plan, long generation)
     {
         SingleRasterLayoutCandidate owner = plan.Owner;

@@ -69,6 +69,10 @@ internal sealed class FocusableItemsPublication
     /// the items were published; false leaves the request for the recovery
     /// clock, a rebuild, or a newer request.
     /// </summary>
+    /// <remarks>
+    /// Kept as one ordered fence sequence: the pre-lease targeting reassigns the
+    /// request and captures the generations and revision every later check compares.
+    /// </remarks>
     internal bool TryPublishPending()
     {
         var request = _refresh.Pending;
