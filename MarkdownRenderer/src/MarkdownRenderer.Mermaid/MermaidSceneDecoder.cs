@@ -1,6 +1,6 @@
-using System.Buffers.Binary;
 using System.Text;
 using static MarkdownRenderer.Mermaid.MmirFormat;
+using static MarkdownRenderer.Mermaid.MmirPrimitives;
 
 namespace MarkdownRenderer.Mermaid;
 
@@ -47,7 +47,7 @@ internal static class MermaidSceneDecoder
             return Failure(MermaidSceneDecodeStatus.BudgetExceeded, 0, "The Mermaid source exceeds MaxSourceBytes.");
         }
 
-        if (!TryMeasureUtf8(source, cancellationToken, out int sourceByteLength))
+        if (!MermaidSceneSourceText.TryMeasureUtf8(source, cancellationToken, out int sourceByteLength))
         {
             return Failure(MermaidSceneDecodeStatus.InvalidUtf8, 0, "The source contains an unpaired UTF-16 surrogate.");
         }
@@ -240,7 +240,7 @@ internal static class MermaidSceneDecoder
             return failure;
         }
 
-        MermaidSceneSourceMapping[] mappings = TranslateSourceMappings(
+        MermaidSceneSourceMapping[] mappings = MermaidSceneSourceText.TranslateSourceMappings(
             rawMappings,
             source,
             sourceByteLength,
@@ -266,8 +266,8 @@ internal static class MermaidSceneDecoder
             return failure;
         }
 
-        if (!ValidateMappingSemanticReferences(mappings, semantics.Length, cancellationToken, out failure) ||
-            !ValidateSemanticTree(semantics, budgets.MaxDepth, cancellationToken, out failure, out _))
+        if (!MermaidSceneSemanticValidator.ValidateMappingSemanticReferences(mappings, semantics.Length, cancellationToken, out failure) ||
+            !MermaidSceneSemanticValidator.ValidateSemanticTree(semantics, budgets.MaxDepth, cancellationToken, out failure, out _))
         {
             return failure!;
         }
@@ -714,169 +714,6 @@ internal static class MermaidSceneDecoder
         return mappings;
     }
 
-    private static MermaidSceneSourceMapping[] TranslateSourceMappings(
-        RawSourceMapping[] rawMappings,
-        string source,
-        int sourceByteLength,
-        CancellationToken cancellationToken,
-        out MermaidSceneDecodeResult? failure)
-    {
-        if (rawMappings.Length == 0)
-        {
-            failure = null;
-            return [];
-        }
-
-        var endpoints = new int[checked(rawMappings.Length * 2)];
-        for (int i = 0; i < rawMappings.Length; i++)
-        {
-            ThrowIfCancellationRequestedPeriodically(cancellationToken, i);
-            endpoints[i * 2] = rawMappings[i].Utf8Start;
-            endpoints[(i * 2) + 1] = checked(rawMappings[i].Utf8Start + rawMappings[i].Utf8Length);
-        }
-
-        Array.Sort(endpoints);
-        var utf16Offsets = new int[endpoints.Length];
-        int endpointIndex = 0;
-        int utf8Offset = 0;
-        int utf16Offset = 0;
-        while (true)
-        {
-            ThrowIfCancellationRequestedPeriodically(cancellationToken, utf16Offset);
-            while (endpointIndex < endpoints.Length && endpoints[endpointIndex] == utf8Offset)
-            {
-                utf16Offsets[endpointIndex++] = utf16Offset;
-            }
-
-            if (utf16Offset == source.Length)
-            {
-                break;
-            }
-
-            if (!TryGetUtf8Width(source, utf16Offset, out int utf16Width, out int utf8Width))
-            {
-                failure = Failure(MermaidSceneDecodeStatus.InvalidUtf8, utf16Offset, "The source contains an unpaired UTF-16 surrogate.");
-                return [];
-            }
-
-            utf16Offset += utf16Width;
-            utf8Offset += utf8Width;
-        }
-
-        if (utf8Offset != sourceByteLength || endpointIndex != endpoints.Length)
-        {
-            failure = Failure(MermaidSceneDecodeStatus.InvalidSourceMapping, 0, "A native source offset is not on a UTF-8 scalar boundary.");
-            return [];
-        }
-
-        var result = new MermaidSceneSourceMapping[rawMappings.Length];
-        for (int i = 0; i < rawMappings.Length; i++)
-        {
-            ThrowIfCancellationRequestedPeriodically(cancellationToken, i);
-            int startPosition = Array.BinarySearch(endpoints, rawMappings[i].Utf8Start);
-            int endPosition = Array.BinarySearch(endpoints, checked(rawMappings[i].Utf8Start + rawMappings[i].Utf8Length));
-            if (startPosition < 0 || endPosition < 0)
-            {
-                failure = Failure(MermaidSceneDecodeStatus.InvalidSourceMapping, 0, "A source mapping could not be translated.");
-                return [];
-            }
-
-            int utf16Start = utf16Offsets[startPosition];
-            int utf16End = utf16Offsets[endPosition];
-            result[i] = new MermaidSceneSourceMapping(
-                rawMappings[i].SourceId,
-                new MermaidSourceRange(utf16Start, utf16End - utf16Start),
-                OptionalIndex(rawMappings[i].SemanticIndex));
-        }
-
-        failure = null;
-        return result;
-    }
-
-    private static bool ValidateMappingSemanticReferences(
-        MermaidSceneSourceMapping[] mappings,
-        int semanticCount,
-        CancellationToken cancellationToken,
-        out MermaidSceneDecodeResult? failure)
-    {
-        for (int i = 0; i < mappings.Length; i++)
-        {
-            ThrowIfCancellationRequestedPeriodically(cancellationToken, i);
-            if (mappings[i].SemanticIndex < -1 || mappings[i].SemanticIndex >= semanticCount)
-            {
-                failure = Failure(MermaidSceneDecodeStatus.InvalidReference, i, "A source mapping references an invalid semantic item.");
-                return false;
-            }
-        }
-
-        failure = null;
-        return true;
-    }
-
-    internal static bool ValidateSemanticTree(
-        MermaidSemanticItem[] semantics,
-        int maxDepth,
-        CancellationToken cancellationToken,
-        out MermaidSceneDecodeResult? failure,
-        out int parentTraversalCount)
-    {
-        // Zero means unresolved, -1 means active in the current traversal, and a
-        // positive value is the memoized one-based depth. The traversal buffer is
-        // bounded by MaxDepth; a longer unresolved path is already over budget.
-        var resolvedDepths = new int[semantics.Length];
-        var traversal = new int[Math.Min(semantics.Length, maxDepth)];
-        parentTraversalCount = 0;
-
-        for (int i = 0; i < semantics.Length; i++)
-        {
-            ThrowIfCancellationRequestedPeriodically(cancellationToken, i);
-            if (resolvedDepths[i] > 0)
-            {
-                continue;
-            }
-
-            int current = i;
-            int traversalLength = 0;
-            while (current >= 0 && resolvedDepths[current] == 0)
-            {
-                ThrowIfCancellationRequestedPeriodically(cancellationToken, parentTraversalCount);
-                if (traversalLength == traversal.Length)
-                {
-                    failure = Failure(MermaidSceneDecodeStatus.BudgetExceeded, i, "The semantic tree exceeds MaxDepth.");
-                    return false;
-                }
-
-                resolvedDepths[current] = -1;
-                traversal[traversalLength++] = current;
-                current = semantics[current].ParentIndex;
-                parentTraversalCount++;
-            }
-
-            if (current >= 0 && resolvedDepths[current] < 0)
-            {
-                failure = Failure(MermaidSceneDecodeStatus.InvalidReference, i, "The semantic parent graph contains a cycle.");
-                return false;
-            }
-
-            int depth = current >= 0 ? resolvedDepths[current] : 0;
-            while (traversalLength > 0)
-            {
-                ThrowIfCancellationRequestedPeriodically(cancellationToken, traversalLength);
-                if (depth >= maxDepth)
-                {
-                    failure = Failure(MermaidSceneDecodeStatus.BudgetExceeded, i, "The semantic tree exceeds MaxDepth.");
-                    return false;
-                }
-
-                int semanticIndex = traversal[--traversalLength];
-                resolvedDepths[semanticIndex] = ++depth;
-            }
-        }
-
-        failure = null;
-        return true;
-    }
-
     private static bool HasValidGeometryArity(MermaidDrawOpcode opcode, uint count, ushort minor) => opcode switch
     {
         MermaidDrawOpcode.GroupBegin or MermaidDrawOpcode.GroupEnd or MermaidDrawOpcode.ClipEnd => count == 0,
@@ -900,129 +737,4 @@ internal static class MermaidSceneDecoder
         section = default;
         return false;
     }
-
-    private static bool TryMeasureUtf8(
-        string source,
-        CancellationToken cancellationToken,
-        out int byteLength)
-    {
-        long total = 0;
-        for (int i = 0; i < source.Length;)
-        {
-            ThrowIfCancellationRequestedPeriodically(cancellationToken, i);
-            if (!TryGetUtf8Width(source, i, out int utf16Width, out int utf8Width))
-            {
-                byteLength = 0;
-                return false;
-            }
-
-            total += utf8Width;
-            if (total > int.MaxValue)
-            {
-                byteLength = 0;
-                return false;
-            }
-
-            i += utf16Width;
-        }
-
-        byteLength = (int)total;
-        return true;
-    }
-
-    private static void ThrowIfCancellationRequestedPeriodically(
-        CancellationToken cancellationToken,
-        int index)
-    {
-        if ((index & 0xff) == 0)
-            cancellationToken.ThrowIfCancellationRequested();
-    }
-
-    private static bool TryGetUtf8Width(string source, int index, out int utf16Width, out int utf8Width)
-    {
-        char value = source[index];
-        if (char.IsHighSurrogate(value))
-        {
-            if (index + 1 >= source.Length || !char.IsLowSurrogate(source[index + 1]))
-            {
-                utf16Width = 0;
-                utf8Width = 0;
-                return false;
-            }
-
-            utf16Width = 2;
-            utf8Width = 4;
-            return true;
-        }
-
-        if (char.IsLowSurrogate(value))
-        {
-            utf16Width = 0;
-            utf8Width = 0;
-            return false;
-        }
-
-        utf16Width = 1;
-        utf8Width = value switch
-        {
-            <= '\u007f' => 1,
-            <= '\u07ff' => 2,
-            _ => 3,
-        };
-        return true;
-    }
-
-    private static bool IsRangeInBounds(int offset, int length, int limit) =>
-        offset >= 0 && length >= 0 && offset <= limit && length <= limit - offset;
-
-    private static bool IsUnsignedRangeInBounds(uint offset, uint length, int limit) =>
-        offset <= (uint)limit && length <= (uint)limit - offset;
-
-    private static bool IsRequiredIndex(uint index, int count) => index < (uint)count;
-
-    private static bool IsOptionalIndex(uint index, int count) => index == NoIndex || IsRequiredIndex(index, count);
-
-    private static int OptionalIndex(uint index) => index == NoIndex ? -1 : checked((int)index);
-
-    private static bool TryUIntToInt(uint value, out int result)
-    {
-        if (value > int.MaxValue)
-        {
-            result = 0;
-            return false;
-        }
-
-        result = (int)value;
-        return true;
-    }
-
-    private static ushort ReadUInt16(ReadOnlySpan<byte> buffer, int offset) =>
-        BinaryPrimitives.ReadUInt16LittleEndian(buffer.Slice(offset, 2));
-
-    private static uint ReadUInt32(ReadOnlySpan<byte> buffer, int offset) =>
-        BinaryPrimitives.ReadUInt32LittleEndian(buffer.Slice(offset, 4));
-
-    private static float ReadSingle(ReadOnlySpan<byte> buffer, int offset) =>
-        BitConverter.Int32BitsToSingle(BinaryPrimitives.ReadInt32LittleEndian(buffer.Slice(offset, 4)));
-
-    private static bool AreFinite(float first, float second, float third, float fourth) =>
-        float.IsFinite(first) && float.IsFinite(second) && float.IsFinite(third) && float.IsFinite(fourth);
-
-    private static bool IsZero(ReadOnlySpan<byte> bytes)
-    {
-        foreach (byte value in bytes)
-        {
-            if (value != 0)
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static MermaidSceneDecodeResult Failure(MermaidSceneDecodeStatus status, int offset, string message) =>
-        new(status, null, offset, message);
-
-    private readonly record struct RawSourceMapping(uint SourceId, int Utf8Start, int Utf8Length, uint SemanticIndex);
 }

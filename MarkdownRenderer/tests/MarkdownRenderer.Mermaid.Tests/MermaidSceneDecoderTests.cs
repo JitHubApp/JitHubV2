@@ -140,7 +140,7 @@ public sealed class MermaidSceneDecoderTests
             semantics[i] = SemanticItem(parentIndex);
         }
 
-        bool isValid = MermaidSceneDecoder.ValidateSemanticTree(
+        bool isValid = MermaidSceneSemanticValidator.ValidateSemanticTree(
             semantics,
             maxDepth,
             CancellationToken.None,
@@ -164,7 +164,7 @@ public sealed class MermaidSceneDecoderTests
             SemanticItem(2),
         ];
 
-        bool isValid = MermaidSceneDecoder.ValidateSemanticTree(
+        bool isValid = MermaidSceneSemanticValidator.ValidateSemanticTree(
             semantics,
             maxDepth: 64,
             CancellationToken.None,
@@ -189,7 +189,7 @@ public sealed class MermaidSceneDecoderTests
             semantics[i] = SemanticItem(parentIndex);
         }
 
-        bool isValid = MermaidSceneDecoder.ValidateSemanticTree(
+        bool isValid = MermaidSceneSemanticValidator.ValidateSemanticTree(
             semantics,
             maxDepth,
             CancellationToken.None,
