@@ -32,6 +32,7 @@ public sealed partial class MarkdownViewer :
     UserControl,
     IMarkdownRendererShutdownParticipant,
     IMarkdownRendererSlotHost<MarkdownRendererControl>,
+    IMarkdownRendererAttachmentHost<MarkdownRendererControl>,
     IMarkdownViewerNoticePresenter,
     IMarkdownRendererLayoutGateHost
 {
@@ -47,7 +48,7 @@ public sealed partial class MarkdownViewer :
     private bool _isLoaded;
     private bool _shutdownRequested;
     private readonly MarkdownRendererInitialLayoutGate _layoutGate;
-    private bool _rendererCreationQueued;
+    private readonly MarkdownRendererAttachment<MarkdownRendererControl> _attachment;
     private bool _paletteSubscribed;
     private IDisposable? _runtimeSettingsWatch;
 
@@ -255,6 +256,7 @@ public sealed partial class MarkdownViewer :
             this,
             static retirement => UiTaskGuard.Observe(retirement, "ui-markdown-retirement"));
         _layoutGate = new MarkdownRendererInitialLayoutGate(this);
+        _attachment = new MarkdownRendererAttachment<MarkdownRendererControl>(_rendererSlot, this);
 
         _hostObserver = ResolveService<IMarkdownHostObserver>() ?? NoMarkdownHostObserver.Instance;
         _automation = ResolveService<IMarkdownViewerAutomationHooks>() ?? NoMarkdownViewerAutomationHooks.Instance;
@@ -286,14 +288,14 @@ public sealed partial class MarkdownViewer :
             _isLoaded = true;
             SubscribeRuntimeSettings();
             UpdateHostLayout();
-            EnsureRenderer();
+            _attachment.EnsureRenderer();
             ApplyRendererSettings();
         };
         Unloaded += (_, _) =>
         {
             _isLoaded = false;
             UnsubscribeRuntimeSettings();
-            _rendererCreationQueued = false;
+            _attachment.CancelQueuedCreation();
             _rendererSlot.TryRetireFromLifecycle();
         };
         DataContextChanged += (_, _) =>
@@ -308,7 +310,7 @@ public sealed partial class MarkdownViewer :
     void IMarkdownRendererShutdownParticipant.PrepareForApplicationShutdown()
     {
         _shutdownRequested = true;
-        _rendererCreationQueued = false;
+        _attachment.CancelQueuedCreation();
         UnsubscribeRuntimeSettings();
         // Shutdown can begin before WinUI delivers this element's Unloaded
         // event. Explicit renderer retirement completes the viewer lifetime
@@ -341,7 +343,7 @@ public sealed partial class MarkdownViewer :
         if (!viewer._rendererSlot.TryRetireFromLifecycle())
             return;
 
-        viewer.QueueRendererCreation();
+        viewer._attachment.QueueCreation();
     }
 
     private static void OnRendererPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -541,77 +543,29 @@ public sealed partial class MarkdownViewer :
             viewport.ChangeView(null, 0, null, disableAnimation: true);
     }
 
-    private void QueueRendererCreation()
+    bool IMarkdownRendererAttachmentHost<MarkdownRendererControl>.IsShutdownRequested => _shutdownRequested;
+
+    bool IMarkdownRendererAttachmentHost<MarkdownRendererControl>.IsLoaded => _isLoaded;
+
+    bool IMarkdownRendererAttachmentHost<MarkdownRendererControl>.TryEnqueueLowPriority(Action callback) =>
+        DispatcherQueue is { } dispatcher &&
+        dispatcher.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => callback());
+
+    bool IMarkdownRendererAttachmentHost<MarkdownRendererControl>.IsRendererInTree(MarkdownRendererControl renderer) =>
+        RendererHost.Children.Contains(renderer);
+
+    MarkdownRendererControl IMarkdownRendererAttachmentHost<MarkdownRendererControl>.CreateRenderer()
     {
-        if (_shutdownRequested ||
-            _rendererSlot.Current is not null ||
-            _rendererSlot.IsRetirementPending ||
-            _rendererCreationQueued ||
-            !_isLoaded)
-        {
-            return;
-        }
-
-        _rendererCreationQueued = true;
-        var dispatcher = DispatcherQueue;
-        if (dispatcher is null ||
-            !dispatcher.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
-            {
-                _rendererCreationQueued = false;
-                if (_shutdownRequested || !_isLoaded)
-                {
-                    return;
-                }
-
-                EnsureRenderer();
-            }))
-        {
-            _rendererCreationQueued = false;
-            EnsureRenderer();
-        }
-    }
-
-    private void EnsureRenderer()
-    {
-        if (_shutdownRequested)
-            return;
-
-        // A failed teardown can latch the underlying control's disposed state
-        // before it has released every resource. Never reattach that instance.
-        if (_rendererSlot.IsDisposalFaulted)
-        {
-            ShowRendererDisposalFailure();
-            return;
-        }
-
-        // The old control is already disposed, but its published snapshot may
-        // still be releasing device resources on the pool. Do not reattach it
-        // if this viewer is loaded again before that retirement completes.
-        if (_rendererSlot.IsRetirementPending)
-            return;
-
-        if (_rendererSlot.Current is { } current)
-        {
-            if (!RendererHost.Children.Contains(current))
-            {
-                _layoutGate.Prepare(current);
-                RendererHost.Children.Add(current);
-                ApplyRendererSettings();
-            }
-
-            return;
-        }
-
-        MarkdownRendererControl renderer;
         if (OwnsScrollViewport)
         {
-            renderer = new MarkdownScrollView().UseGitHubReadme(SharedGitHubEngine);
+            return new MarkdownScrollView().UseGitHubReadme(SharedGitHubEngine);
         }
-        else
-        {
-            renderer = new MarkdownDocumentView().UseGitHubReadme(SharedGitHubEngine);
-        }
-        _rendererSlot.Attach(renderer);
+
+        return new MarkdownDocumentView().UseGitHubReadme(SharedGitHubEngine);
+    }
+
+    void IMarkdownRendererAttachmentHost<MarkdownRendererControl>.ConfigureNewRenderer(MarkdownRendererControl renderer)
+    {
         MarkdownRendererConfigurator.ApplyDocumentStyle(renderer, _theme);
         ApplyRendererResources();
         MarkdownRendererConfigurator.ApplyInitialSettings(renderer, CreateRendererSettings());
@@ -627,11 +581,18 @@ public sealed partial class MarkdownViewer :
         _hostObserver.OnHostReady(automationId);
         renderer.HorizontalAlignment = HorizontalAlignment.Stretch;
         renderer.VerticalAlignment = VerticalAlignment.Stretch;
-        _layoutGate.Prepare(renderer);
-        RendererHost.Children.Add(renderer);
-        ApplyRendererSettings();
     }
 
+    void IMarkdownRendererAttachmentHost<MarkdownRendererControl>.AddRendererToTree(MarkdownRendererControl renderer)
+    {
+        _layoutGate.Prepare(renderer);
+        RendererHost.Children.Add(renderer);
+    }
+
+    void IMarkdownRendererAttachmentHost<MarkdownRendererControl>.ApplyRendererSettings() => ApplyRendererSettings();
+
+    void IMarkdownRendererAttachmentHost<MarkdownRendererControl>.ShowRendererDisposalFailure() =>
+        ShowRendererDisposalFailure();
     IMarkdownUiDispatcher? IMarkdownRendererSlotHost<MarkdownRendererControl>.Dispatcher =>
         DispatcherQueueMarkdownUiDispatcher.From(DispatcherQueue);
 
@@ -647,11 +608,8 @@ public sealed partial class MarkdownViewer :
         RendererHost.Children.Remove(renderer);
     }
 
-    void IMarkdownRendererSlotHost<MarkdownRendererControl>.OnRendererReleased()
-    {
-        if (_isLoaded && !_shutdownRequested && !_rendererSlot.IsDisposalFaulted)
-            QueueRendererCreation();
-    }
+    void IMarkdownRendererSlotHost<MarkdownRendererControl>.OnRendererReleased() =>
+        _attachment.OnRendererReleased();
 
     void IMarkdownRendererSlotHost<MarkdownRendererControl>.OnRendererTeardownFaulted(Exception exception)
     {
@@ -754,7 +712,7 @@ public sealed partial class MarkdownViewer :
 
         if (_rendererSlot.Current is not { } renderer)
         {
-            QueueRendererCreation();
+            _attachment.QueueCreation();
             return;
         }
 

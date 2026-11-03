@@ -314,18 +314,21 @@ public sealed class MainWindowLaunchContractTests
             FindRepositoryRoot(), "JitHub.WinUI", "Views", "Controls", "Common", "MarkdownViewer.xaml.cs"))
             .Replace("\r\n", "\n", StringComparison.Ordinal);
         // The slot latches the fault before it reports teardown failure; that
-        // ordering is covered by MarkdownRendererSlotTests. This pins the
-        // viewer's wiring of the latch to the reattach path and the notice.
+        // ordering is covered by MarkdownRendererSlotTests. Refusing to reattach
+        // or recreate after the latch, and showing the notice instead, is
+        // covered by MarkdownRendererAttachmentTests. This pins the viewer's
+        // wiring of the slot's failure report and the attachment to the notice.
         int failureReport = source.IndexOf(
             "void IMarkdownRendererSlotHost<MarkdownRendererControl>.OnRendererTeardownFaulted(",
             StringComparison.Ordinal);
         int showFailure = source.IndexOf("ShowRendererDisposalFailure();", failureReport, StringComparison.Ordinal);
-        int ensureRenderer = source.IndexOf("private void EnsureRenderer()", StringComparison.Ordinal);
-        int rejectFailedRenderer = source.IndexOf("if (_rendererSlot.IsDisposalFaulted)", ensureRenderer, StringComparison.Ordinal);
-        int reattachRenderer = source.IndexOf("RendererHost.Children.Add(current);", ensureRenderer, StringComparison.Ordinal);
 
         Assert.True(failureReport >= 0 && showFailure > failureReport);
-        Assert.True(ensureRenderer >= 0 && rejectFailedRenderer > ensureRenderer && reattachRenderer > rejectFailedRenderer);
+        Assert.Contains(
+            "void IMarkdownRendererAttachmentHost<MarkdownRendererControl>.ShowRendererDisposalFailure() =>\n        ShowRendererDisposalFailure();",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains("_attachment.EnsureRenderer();", source, StringComparison.Ordinal);
         Assert.Contains("RetryRenderButton.Visibility = Visibility.Collapsed;", source, StringComparison.Ordinal);
         // Keeping the disposal failure notice open across document resets is
         // covered by MarkdownViewerFeedbackTests.
