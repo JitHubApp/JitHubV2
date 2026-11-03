@@ -339,7 +339,7 @@ public sealed class MarkdownRangeFromPointTouchSelectionRegressionTests
                     .ToArray();
                 Assert.NotEmpty(scrollIntoViewRects);
                 Assert.All(scrollIntoViewRects, static rect => Assert.True(rect.IsEmpty));
-                Assert.False(MarkdownTextRangeProvider.TryGetFirstNonEmptyScrollRect(
+                Assert.False(MarkdownTextRangeGeometry.TryGetFirstNonEmptyScrollRect(
                     scrollIntoViewRects,
                     out Rect scrollTarget));
                 Assert.Equal(default, scrollTarget);
@@ -352,7 +352,7 @@ public sealed class MarkdownRangeFromPointTouchSelectionRegressionTests
                     .Select(emptyGeometry.GetScreenRectForDocumentRect)
                     .ToArray();
                 Assert.All(screenRects, static rect => Assert.True(rect.IsEmpty));
-                Assert.Empty(MarkdownTextRangeProvider.BuildVisibleBoundingRectangles(
+                Assert.Empty(MarkdownTextRangeGeometry.BuildVisibleBoundingRectangles(
                     span.TextStart,
                     span.TextEnd,
                     screenRects,
@@ -379,16 +379,16 @@ public sealed class MarkdownRangeFromPointTouchSelectionRegressionTests
 
             Rect finiteZeroWidthCaret = new(RendererScreenX + 20, RendererScreenY + 20, 0, 18);
             Assert.False(finiteZeroWidthCaret.IsEmpty);
-            Assert.True(MarkdownTextRangeProvider.TryGetFirstNonEmptyScrollRect(
+            Assert.True(MarkdownTextRangeGeometry.TryGetFirstNonEmptyScrollRect(
                 [Rect.Empty, finiteZeroWidthCaret],
                 out Rect selectedCaret));
             Assert.Equal(finiteZeroWidthCaret, selectedCaret);
-            Assert.False(MarkdownTextRangeProvider.TryGetFirstNonEmptyScrollRect(
+            Assert.False(MarkdownTextRangeGeometry.TryGetFirstNonEmptyScrollRect(
                 [Rect.Empty, Rect.Empty],
                 out Rect noScrollTarget));
             Assert.Equal(default, noScrollTarget);
 
-            Assert.Empty(MarkdownTextRangeProvider.BuildVisibleBoundingRectangles(
+            Assert.Empty(MarkdownTextRangeGeometry.BuildVisibleBoundingRectangles(
                 caretOffset,
                 caretOffset,
                 [new Rect(RendererScreenX + 20, RendererScreenY + 20, 0, 18)],

@@ -42,7 +42,7 @@ internal sealed class MarkdownTextFormatCache
         ReferenceEquals(Document, document) && ReferenceEquals(Theme, theme);
 
     internal int MoveAcrossBoundaries(int current, int count, out int moved) =>
-        MarkdownTextRangeProvider.MoveAcrossSortedBoundaries(
+        MarkdownTextFormatRunSearch.MoveAcrossSortedBoundaries(
             _boundaries,
             current,
             count,
