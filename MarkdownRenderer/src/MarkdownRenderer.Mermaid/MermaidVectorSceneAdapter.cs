@@ -18,7 +18,7 @@ internal static class MermaidVectorSceneAdapter
         cancellationToken.ThrowIfCancellationRequested();
 
         int contentOffset = GetIntAttribute(syntaxNode, "contentOffset", 0);
-        var semanticBounds = new BoundsAccumulator[source.Semantics.Count];
+        var semanticBounds = new MermaidBoundsAccumulator[source.Semantics.Count];
         List<MarkdownVectorCommand> commands = ConvertCommands(source, semanticBounds, cancellationToken);
 
         AccumulateChildBounds(source.Semantics, semanticBounds, cancellationToken);
@@ -53,12 +53,12 @@ internal static class MermaidVectorSceneAdapter
     /// </summary>
     private static List<MarkdownVectorCommand> ConvertCommands(
         MermaidScene source,
-        BoundsAccumulator[] semanticBounds,
+        MermaidBoundsAccumulator[] semanticBounds,
         CancellationToken cancellationToken)
     {
         var commands = new List<MarkdownVectorCommand>(source.Commands.Count);
         var authoredStyleCache = new Dictionary<int, MarkdownVectorPaintStyle>();
-        var commandStyleCache = new Dictionary<StyleCacheKey, MarkdownVectorPaintStyle>();
+        var commandStyleCache = new Dictionary<MermaidVectorStyleCacheKey, MarkdownVectorPaintStyle>();
         for (int i = 0; i < source.Commands.Count; i++)
         {
             ThrowIfCancellationRequestedPeriodically(cancellationToken, i);
@@ -138,7 +138,7 @@ internal static class MermaidVectorSceneAdapter
         MarkdownSyntaxNode syntaxNode,
         string sourceCode,
         int contentOffset,
-        BoundsAccumulator[] semanticBounds,
+        MermaidBoundsAccumulator[] semanticBounds,
         CancellationToken cancellationToken)
     {
         string?[] semanticNames = ResolveSemanticNames(source, cancellationToken);
@@ -153,7 +153,7 @@ internal static class MermaidVectorSceneAdapter
             SourceSpan mapped = mapping is { } value
                 ? MapSourceSpan(syntaxNode.SourceSpan, contentOffset, value.SourceRange, sourceCode.Length)
                 : syntaxNode.SourceSpan;
-            BoundsAccumulator bounds = semanticBounds[i];
+            MermaidBoundsAccumulator bounds = semanticBounds[i];
             semantics[i] = new MarkdownVectorSemanticItem(
                 item.SourceId,
                 ToSemanticRole(item.Role),
@@ -296,7 +296,7 @@ internal static class MermaidVectorSceneAdapter
         int commandIndex,
         MermaidDrawCommand command,
         Dictionary<int, MarkdownVectorPaintStyle> authoredStyleCache,
-        Dictionary<StyleCacheKey, MarkdownVectorPaintStyle> commandStyleCache)
+        Dictionary<MermaidVectorStyleCacheKey, MarkdownVectorPaintStyle> commandStyleCache)
     {
         if (!authoredStyleCache.TryGetValue(command.StyleIndex, out MarkdownVectorPaintStyle? authored) ||
             authored is null)
@@ -307,7 +307,7 @@ internal static class MermaidVectorSceneAdapter
 
         (MarkdownVectorPaintRole fillRole, MarkdownVectorPaintRole strokeRole) =
             GetHighContrastRoles(scene, commandIndex, command, authored);
-        var key = new StyleCacheKey(
+        var key = new MermaidVectorStyleCacheKey(
             command.StyleIndex,
             command.Opcode,
             fillRole,
@@ -551,11 +551,11 @@ internal static class MermaidVectorSceneAdapter
     private static void AccumulateBounds(
         MermaidScene scene,
         MermaidDrawCommand command,
-        BoundsAccumulator[] bounds)
+        MermaidBoundsAccumulator[] bounds)
     {
         if (command.SemanticIndex < 0 || command.GeometryCount < 2)
             return;
-        ref BoundsAccumulator target = ref bounds[command.SemanticIndex];
+        ref MermaidBoundsAccumulator target = ref bounds[command.SemanticIndex];
         if ((command.Opcode is MermaidDrawOpcode.Rectangle or MermaidDrawOpcode.Ellipse) && command.GeometryCount == 4)
         {
             int i = command.GeometryStart;
@@ -588,7 +588,7 @@ internal static class MermaidVectorSceneAdapter
 
     private static void AccumulateChildBounds(
         IReadOnlyList<MermaidSemanticItem> semantics,
-        BoundsAccumulator[] bounds,
+        MermaidBoundsAccumulator[] bounds,
         CancellationToken cancellationToken)
     {
         // Native semantics are validated as an acyclic parent graph, but their
@@ -628,12 +628,6 @@ internal static class MermaidVectorSceneAdapter
         if (processed != semantics.Count)
             throw new ArgumentException("The Mermaid semantic parent graph contains a cycle.", nameof(semantics));
     }
-
-    private readonly record struct StyleCacheKey(
-        int StyleIndex,
-        MermaidDrawOpcode Opcode,
-        MarkdownVectorPaintRole HighContrastFillRole,
-        MarkdownVectorPaintRole HighContrastStrokeRole);
 
     private static void ThrowIfCancellationRequestedPeriodically(
         CancellationToken cancellationToken,
@@ -679,38 +673,4 @@ internal static class MermaidVectorSceneAdapter
         node.Attributes.TryGetValue(key, out string? value) && int.TryParse(value, out int parsed) && parsed >= 0
             ? parsed
             : fallback;
-
-    private struct BoundsAccumulator
-    {
-        internal bool HasValue;
-        internal float Left;
-        internal float Top;
-        internal float Right;
-        internal float Bottom;
-
-        internal void Add(float x, float y)
-        {
-            if (!float.IsFinite(x) || !float.IsFinite(y))
-                return;
-            if (!HasValue)
-            {
-                HasValue = true;
-                Left = Right = x;
-                Top = Bottom = y;
-                return;
-            }
-            Left = Math.Min(Left, x);
-            Top = Math.Min(Top, y);
-            Right = Math.Max(Right, x);
-            Bottom = Math.Max(Bottom, y);
-        }
-
-        internal void Add(BoundsAccumulator other)
-        {
-            if (!other.HasValue)
-                return;
-            Add(other.Left, other.Top);
-            Add(other.Right, other.Bottom);
-        }
-    }
 }
