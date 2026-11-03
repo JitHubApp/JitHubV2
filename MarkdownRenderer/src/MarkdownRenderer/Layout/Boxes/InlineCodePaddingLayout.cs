@@ -134,6 +134,21 @@ internal static class InlineCodePaddingLayout
             ? box.Context.CancellationToken
             : CancellationToken.None;
 
+        ResolvePaddingRangeEndpoints(box, layout, ranges, cancellationToken, observeCancellation);
+
+        // Only after all reading directions have been captured do we mutate
+        // DirectWrite's advance metadata.
+        foreach (InlineCodePaddingRange range in ranges)
+            ApplyPaddingRangeSpacing(layout, range, cancellationToken, observeCancellation);
+    }
+
+    private static void ResolvePaddingRangeEndpoints(
+        InlineContainerBox box,
+        CanvasTextLayout layout,
+        List<InlineCodePaddingRange> ranges,
+        CancellationToken cancellationToken,
+        bool observeCancellation)
+    {
         // Resolve every endpoint while the layout still has its final text
         // styles but no code-padding mutations. SetCharacterSpacing can
         // invalidate DirectWrite's layout; do not interleave caret queries
@@ -176,39 +191,41 @@ internal static class InlineCodePaddingLayout
             }
             ranges[index] = range;
         }
+    }
 
-        // Only after all reading directions have been captured do we mutate
-        // DirectWrite's advance metadata.
-        foreach (InlineCodePaddingRange range in ranges)
+    private static void ApplyPaddingRangeSpacing(
+        CanvasTextLayout layout,
+        InlineCodePaddingRange range,
+        CancellationToken cancellationToken,
+        bool observeCancellation)
+    {
+        if (observeCancellation)
+            cancellationToken.ThrowIfCancellationRequested();
+
+        if (range.HasVisualPaddingAnchors)
+        {
+            ApplyVisualPaddingAnchors(layout, range, cancellationToken, observeCancellation);
+            return;
+        }
+
+        float leading = range.FirstLeadingIsLeft ? range.LeftPadding : range.RightPadding;
+        float trailing = range.LastLeadingIsLeft ? range.RightPadding : range.LeftPadding;
+        if (range.LastTextElementStart == range.Start)
         {
             if (observeCancellation)
                 cancellationToken.ThrowIfCancellationRequested();
-
-            if (range.HasVisualPaddingAnchors)
-            {
-                ApplyVisualPaddingAnchors(layout, range, cancellationToken, observeCancellation);
-                continue;
-            }
-
-            float leading = range.FirstLeadingIsLeft ? range.LeftPadding : range.RightPadding;
-            float trailing = range.LastLeadingIsLeft ? range.RightPadding : range.LeftPadding;
-            if (range.LastTextElementStart == range.Start)
-            {
-                if (observeCancellation)
-                    cancellationToken.ThrowIfCancellationRequested();
-                layout.SetCharacterSpacing(
-                    range.Start, range.FirstTextElementLength, leading, trailing, 0f);
-                continue;
-            }
-
-            if (observeCancellation)
-                cancellationToken.ThrowIfCancellationRequested();
-            layout.SetCharacterSpacing(range.Start, range.FirstTextElementLength, leading, 0f, 0f);
-            if (observeCancellation)
-                cancellationToken.ThrowIfCancellationRequested();
             layout.SetCharacterSpacing(
-                range.LastTextElementStart, range.LastTextElementLength, 0f, trailing, 0f);
+                range.Start, range.FirstTextElementLength, leading, trailing, 0f);
+            return;
         }
+
+        if (observeCancellation)
+            cancellationToken.ThrowIfCancellationRequested();
+        layout.SetCharacterSpacing(range.Start, range.FirstTextElementLength, leading, 0f, 0f);
+        if (observeCancellation)
+            cancellationToken.ThrowIfCancellationRequested();
+        layout.SetCharacterSpacing(
+            range.LastTextElementStart, range.LastTextElementLength, 0f, trailing, 0f);
     }
 
     private static bool TryCaptureSingleLineVisualPaddingAnchors(
