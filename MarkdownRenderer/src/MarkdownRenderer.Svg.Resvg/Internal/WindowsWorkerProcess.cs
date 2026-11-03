@@ -437,69 +437,7 @@ internal sealed class WindowsWorkerProcess : IAsyncDisposable, IDisposable, IWor
             if (Interlocked.Exchange(ref _disposed, 1) == 0)
             {
                 retireFontPreparation = true;
-                try
-                {
-                    _pipe.Dispose();
-                }
-                catch (Exception exception)
-                {
-                    cleanupFailure ??= exception;
-                }
-
-                // Keep an independent, registered process wait before closing
-                // the primary handle. A concurrent ordinary Dispose may start
-                // shutdown first, but a later restart Dispose must still be
-                // able to await process exit before admitting its replacement.
-                try
-                {
-                    _terminationWait = WorkerTerminationWait.Register(
-                        _process,
-                        checked((int)WorkerProcessSandbox.WorkerTerminationWaitMilliseconds));
-                }
-                catch (Exception exception)
-                {
-                    // Termination remains best-effort if Windows refuses the
-                    // duplicate wait handle. Keep the SafeHandle open on an
-                    // ordinary Dispose so a later restart-dispose can wait on
-                    // it; SafeHandle finalization remains the last-resort
-                    // cleanup if no restart caller follows.
-                    cleanupFailure ??= exception;
-                }
-
-                try
-                {
-                    _ = WorkerNativeMethods.TerminateProcess(_process, WorkerProcessSandbox.WorkerTerminationExitCode);
-                }
-                catch (Exception exception)
-                {
-                    cleanupFailure ??= exception;
-                }
-                finally
-                {
-                    if (_terminationWait is not null)
-                    {
-                        _process.Dispose();
-                    }
-                    else if (waitForExit)
-                    {
-                        try
-                        {
-                            // TerminateProcess is asynchronous. The job counts
-                            // a dying process until signaled, so preserve the
-                            // bounded restart wait if registration failed.
-                            _ = WorkerNativeMethods.WaitForSingleObject(_process, WorkerProcessSandbox.WorkerTerminationWaitMilliseconds);
-                            waitedOnPrimaryHandle = true;
-                        }
-                        catch (Exception exception)
-                        {
-                            cleanupFailure ??= exception;
-                        }
-                        finally
-                        {
-                            _process.Dispose();
-                        }
-                    }
-                }
+                waitedOnPrimaryHandle = TerminateLocked(waitForExit, ref cleanupFailure);
             }
 
             terminationWait = _terminationWait;
@@ -517,6 +455,110 @@ internal sealed class WindowsWorkerProcess : IAsyncDisposable, IDisposable, IWor
             ReleaseObjectSecurityWhenFontCatalogDrained();
         }
 
+        WaitForTermination(waitForExit, terminationWait, waitForPrimaryHandle, ref cleanupFailure);
+        if (cleanupFailure is not null)
+            ExceptionDispatchInfo.Capture(cleanupFailure).Throw();
+
+        // An active ExchangeAsync releases this gate in its finally block.
+        // SemaphoreSlim owns no native handle, so retaining it avoids masking
+        // the typed cancellation/transport failure during concurrent disposal.
+    }
+
+    /// <summary>
+    /// The first dispose's native shutdown, run while holding the dispose
+    /// gate: close the pipe, register an independent termination wait,
+    /// terminate the process and, when no wait could be registered, wait on
+    /// the primary handle for a restart. Every step runs even if an earlier
+    /// one failed; the first failure is kept.
+    /// </summary>
+    /// <param name="waitForExit">Whether the caller is a restart that must observe exit.</param>
+    /// <param name="cleanupFailure">Receives the first cleanup failure.</param>
+    /// <returns>Whether this call already waited on the primary handle.</returns>
+    private bool TerminateLocked(bool waitForExit, ref Exception? cleanupFailure)
+    {
+        bool waitedOnPrimaryHandle = false;
+        try
+        {
+            _pipe.Dispose();
+        }
+        catch (Exception exception)
+        {
+            cleanupFailure ??= exception;
+        }
+
+        // Keep an independent, registered process wait before closing
+        // the primary handle. A concurrent ordinary Dispose may start
+        // shutdown first, but a later restart Dispose must still be
+        // able to await process exit before admitting its replacement.
+        try
+        {
+            _terminationWait = WorkerTerminationWait.Register(
+                _process,
+                checked((int)WorkerProcessSandbox.WorkerTerminationWaitMilliseconds));
+        }
+        catch (Exception exception)
+        {
+            // Termination remains best-effort if Windows refuses the
+            // duplicate wait handle. Keep the SafeHandle open on an
+            // ordinary Dispose so a later restart-dispose can wait on
+            // it; SafeHandle finalization remains the last-resort
+            // cleanup if no restart caller follows.
+            cleanupFailure ??= exception;
+        }
+
+        try
+        {
+            _ = WorkerNativeMethods.TerminateProcess(_process, WorkerProcessSandbox.WorkerTerminationExitCode);
+        }
+        catch (Exception exception)
+        {
+            cleanupFailure ??= exception;
+        }
+        finally
+        {
+            if (_terminationWait is not null)
+            {
+                _process.Dispose();
+            }
+            else if (waitForExit)
+            {
+                try
+                {
+                    // TerminateProcess is asynchronous. The job counts
+                    // a dying process until signaled, so preserve the
+                    // bounded restart wait if registration failed.
+                    _ = WorkerNativeMethods.WaitForSingleObject(_process, WorkerProcessSandbox.WorkerTerminationWaitMilliseconds);
+                    waitedOnPrimaryHandle = true;
+                }
+                catch (Exception exception)
+                {
+                    cleanupFailure ??= exception;
+                }
+                finally
+                {
+                    _process.Dispose();
+                }
+            }
+        }
+
+        return waitedOnPrimaryHandle;
+    }
+
+    /// <summary>
+    /// Waits, outside the dispose gate, for a restart's terminated worker to
+    /// exit: through the registered wait when one exists, otherwise on the
+    /// primary handle, which is then closed.
+    /// </summary>
+    /// <param name="waitForExit">Whether the caller is a restart that must observe exit.</param>
+    /// <param name="terminationWait">The registered termination wait, if any.</param>
+    /// <param name="waitForPrimaryHandle">Whether to wait on the still-open primary handle.</param>
+    /// <param name="cleanupFailure">Receives the first cleanup failure.</param>
+    private void WaitForTermination(
+        bool waitForExit,
+        WorkerTerminationWait? terminationWait,
+        bool waitForPrimaryHandle,
+        ref Exception? cleanupFailure)
+    {
         if (waitForExit && terminationWait is not null)
         {
             // This is a task wait backed by a registered native wait, not a
@@ -538,13 +580,6 @@ internal sealed class WindowsWorkerProcess : IAsyncDisposable, IDisposable, IWor
                 _process.Dispose();
             }
         }
-
-        if (cleanupFailure is not null)
-            ExceptionDispatchInfo.Capture(cleanupFailure).Throw();
-
-        // An active ExchangeAsync releases this gate in its finally block.
-        // SemaphoreSlim owns no native handle, so retaining it avoids masking
-        // the typed cancellation/transport failure during concurrent disposal.
     }
 
     private void ReleaseObjectSecurityWhenFontCatalogDrained()
