@@ -18,8 +18,45 @@ internal static class MermaidVectorSceneAdapter
         cancellationToken.ThrowIfCancellationRequested();
 
         int contentOffset = GetIntAttribute(syntaxNode, "contentOffset", 0);
-        var commands = new List<MarkdownVectorCommand>(source.Commands.Count);
         var semanticBounds = new BoundsAccumulator[source.Semantics.Count];
+        List<MarkdownVectorCommand> commands = ConvertCommands(source, semanticBounds, cancellationToken);
+
+        AccumulateChildBounds(source.Semantics, semanticBounds, cancellationToken);
+        MarkdownVectorSemanticItem[] semantics = ConvertSemantics(
+            source,
+            syntaxNode,
+            sourceCode,
+            contentOffset,
+            semanticBounds,
+            cancellationToken);
+        MarkdownVectorLinkAction[] links = ConvertLinks(source, cancellationToken);
+
+        var viewport = new MarkdownVectorRectangle(
+            source.Viewport.X,
+            source.Viewport.Y,
+            source.Viewport.Width,
+            source.Viewport.Height);
+        return new MarkdownVectorScene(
+            source.Viewport.Width,
+            source.Viewport.Height,
+            source.Viewport.Height,
+            commands,
+            referenceFontSize: 0,
+            viewport,
+            semantics,
+            links);
+    }
+
+    /// <summary>
+    /// Converts every draw command in paint order and accumulates each command's
+    /// bounds into its semantic owner.
+    /// </summary>
+    private static List<MarkdownVectorCommand> ConvertCommands(
+        MermaidScene source,
+        BoundsAccumulator[] semanticBounds,
+        CancellationToken cancellationToken)
+    {
+        var commands = new List<MarkdownVectorCommand>(source.Commands.Count);
         var authoredStyleCache = new Dictionary<int, MarkdownVectorPaintStyle>();
         var commandStyleCache = new Dictionary<StyleCacheKey, MarkdownVectorPaintStyle>();
         for (int i = 0; i < source.Commands.Count; i++)
@@ -33,55 +70,77 @@ internal static class MermaidVectorSceneAdapter
                 authoredStyleCache,
                 commandStyleCache);
             IReadOnlyList<MarkdownVectorPathOperation> path = ToPath(source, command);
-            MarkdownVectorCommand? converted = command.Opcode switch
-            {
-                MermaidDrawOpcode.GroupBegin => MarkdownVectorCommand.BeginGroup(MarkdownVectorTransform.Identity, command.SemanticIndex),
-                MermaidDrawOpcode.GroupEnd => MarkdownVectorCommand.EndGroup(),
-                MermaidDrawOpcode.ClipBegin when path.Count > 0 => MarkdownVectorCommand.BeginClip(path),
-                MermaidDrawOpcode.ClipEnd => MarkdownVectorCommand.EndClip(),
-                MermaidDrawOpcode.FillPath or MermaidDrawOpcode.StrokePath when path.Count > 0 =>
-                    MarkdownVectorCommand.DrawPath(
-                        path,
-                        style,
-                        (command.Flags & MermaidDrawFlags.ClosedGeometry) != 0,
-                        command.SemanticIndex),
-                MermaidDrawOpcode.Line when TryLine(source, command, out MarkdownVectorPoint lineStart, out MarkdownVectorPoint lineEnd) =>
-                    MarkdownVectorCommand.DrawLine(
-                        lineStart,
-                        lineEnd,
-                        style,
-                        command.SemanticIndex),
-                MermaidDrawOpcode.Rectangle when TryRectangle(source, command, out MarkdownVectorRectangle rectangle) =>
-                    MarkdownVectorCommand.DrawRectangle(rectangle, style, command.SemanticIndex),
-                MermaidDrawOpcode.Ellipse when TryRectangle(source, command, out MarkdownVectorRectangle ellipse) =>
-                    MarkdownVectorCommand.DrawEllipse(ellipse, style, command.SemanticIndex),
-                MermaidDrawOpcode.Text when TryPoint(source, command, out MarkdownVectorPoint baseline) && command.TextIndex >= 0 =>
-                    MarkdownVectorCommand.DrawText(
-                        source.Strings[command.TextIndex],
-                        baseline,
-                        new MarkdownVectorTextStyle(
-                            command.FontFamilyIndex >= 0 ? source.Strings[command.FontFamilyIndex] : "Segoe UI",
-                            GetTextSize(source, command),
-                            GetTextWeight(source, command),
-                            (command.TextFlags & MermaidTextFlags.Italic) != 0,
-                            (command.TextFlags & MermaidTextFlags.RightToLeft) != 0,
-                            (command.TextFlags & MermaidTextFlags.AnchorMiddle) != 0
-                                ? MarkdownVectorTextAlignment.Center
-                                : (command.TextFlags & MermaidTextFlags.AnchorEnd) != 0
-                                    ? MarkdownVectorTextAlignment.End
-                                    : MarkdownVectorTextAlignment.Start,
-                            MarkdownVectorFontRole.Authored),
-                        style,
-                        command.SemanticIndex),
-                _ => null,
-            };
+            MarkdownVectorCommand? converted = ConvertCommand(source, command, style, path);
             if (converted is null)
                 throw new ArgumentException("The validated Mermaid scene contains an unsupported draw command.", nameof(source));
             commands.Add(converted);
             AccumulateBounds(source, command, semanticBounds);
         }
 
-        AccumulateChildBounds(source.Semantics, semanticBounds, cancellationToken);
+        return commands;
+    }
+
+    private static MarkdownVectorCommand? ConvertCommand(
+        MermaidScene source,
+        MermaidDrawCommand command,
+        MarkdownVectorPaintStyle style,
+        IReadOnlyList<MarkdownVectorPathOperation> path) => command.Opcode switch
+    {
+        MermaidDrawOpcode.GroupBegin => MarkdownVectorCommand.BeginGroup(MarkdownVectorTransform.Identity, command.SemanticIndex),
+        MermaidDrawOpcode.GroupEnd => MarkdownVectorCommand.EndGroup(),
+        MermaidDrawOpcode.ClipBegin when path.Count > 0 => MarkdownVectorCommand.BeginClip(path),
+        MermaidDrawOpcode.ClipEnd => MarkdownVectorCommand.EndClip(),
+        MermaidDrawOpcode.FillPath or MermaidDrawOpcode.StrokePath when path.Count > 0 =>
+            MarkdownVectorCommand.DrawPath(
+                path,
+                style,
+                (command.Flags & MermaidDrawFlags.ClosedGeometry) != 0,
+                command.SemanticIndex),
+        MermaidDrawOpcode.Line when TryLine(source, command, out MarkdownVectorPoint lineStart, out MarkdownVectorPoint lineEnd) =>
+            MarkdownVectorCommand.DrawLine(
+                lineStart,
+                lineEnd,
+                style,
+                command.SemanticIndex),
+        MermaidDrawOpcode.Rectangle when TryRectangle(source, command, out MarkdownVectorRectangle rectangle) =>
+            MarkdownVectorCommand.DrawRectangle(rectangle, style, command.SemanticIndex),
+        MermaidDrawOpcode.Ellipse when TryRectangle(source, command, out MarkdownVectorRectangle ellipse) =>
+            MarkdownVectorCommand.DrawEllipse(ellipse, style, command.SemanticIndex),
+        MermaidDrawOpcode.Text when TryPoint(source, command, out MarkdownVectorPoint baseline) && command.TextIndex >= 0 =>
+            MarkdownVectorCommand.DrawText(
+                source.Strings[command.TextIndex],
+                baseline,
+                CreateTextStyle(source, command),
+                style,
+                command.SemanticIndex),
+        _ => null,
+    };
+
+    private static MarkdownVectorTextStyle CreateTextStyle(MermaidScene source, MermaidDrawCommand command) => new(
+        command.FontFamilyIndex >= 0 ? source.Strings[command.FontFamilyIndex] : "Segoe UI",
+        GetTextSize(source, command),
+        GetTextWeight(source, command),
+        (command.TextFlags & MermaidTextFlags.Italic) != 0,
+        (command.TextFlags & MermaidTextFlags.RightToLeft) != 0,
+        (command.TextFlags & MermaidTextFlags.AnchorMiddle) != 0
+            ? MarkdownVectorTextAlignment.Center
+            : (command.TextFlags & MermaidTextFlags.AnchorEnd) != 0
+                ? MarkdownVectorTextAlignment.End
+                : MarkdownVectorTextAlignment.Start,
+        MarkdownVectorFontRole.Authored);
+
+    /// <summary>
+    /// Converts the semantic table, mapping each item's source range into the
+    /// Markdown document and falling back to the viewport for unpainted items.
+    /// </summary>
+    private static MarkdownVectorSemanticItem[] ConvertSemantics(
+        MermaidScene source,
+        MarkdownSyntaxNode syntaxNode,
+        string sourceCode,
+        int contentOffset,
+        BoundsAccumulator[] semanticBounds,
+        CancellationToken cancellationToken)
+    {
         string?[] semanticNames = ResolveSemanticNames(source, cancellationToken);
         var semantics = new MarkdownVectorSemanticItem[source.Semantics.Count];
         for (int i = 0; i < semantics.Length; i++)
@@ -112,6 +171,13 @@ internal static class MermaidVectorSceneAdapter
                 ToSemanticFlags(item.Flags));
         }
 
+        return semantics;
+    }
+
+    private static MarkdownVectorLinkAction[] ConvertLinks(
+        MermaidScene source,
+        CancellationToken cancellationToken)
+    {
         var links = new MarkdownVectorLinkAction[source.Links.Count];
         for (int i = 0; i < links.Length; i++)
         {
@@ -124,20 +190,7 @@ internal static class MermaidVectorSceneAdapter
                 (link.Flags & MermaidLinkFlags.External) != 0);
         }
 
-        var viewport = new MarkdownVectorRectangle(
-            source.Viewport.X,
-            source.Viewport.Y,
-            source.Viewport.Width,
-            source.Viewport.Height);
-        return new MarkdownVectorScene(
-            source.Viewport.Width,
-            source.Viewport.Height,
-            source.Viewport.Height,
-            commands,
-            referenceFontSize: 0,
-            viewport,
-            semantics,
-            links);
+        return links;
     }
 
     internal static string? GetAccessibleName(
