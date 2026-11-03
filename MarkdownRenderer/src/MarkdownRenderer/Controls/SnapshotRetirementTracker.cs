@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
+using MarkdownRenderer.Layout;
 
 namespace MarkdownRenderer.Controls;
 
@@ -56,6 +57,17 @@ internal sealed class SnapshotRetirementTracker
                 return count;
             }
         }
+    }
+
+    /// <summary>Retires <paramref name="snapshot"/>, tracking the retirement; completed for null.</summary>
+    internal Task Retire(LayoutSnapshot? snapshot)
+    {
+        if (snapshot is null)
+            return Task.CompletedTask;
+
+        Task retirement = snapshot.Retire();
+        Track(retirement);
+        return retirement;
     }
 
     internal void Track(Task retirement)

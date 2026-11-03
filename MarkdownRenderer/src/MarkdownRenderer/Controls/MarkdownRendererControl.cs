@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Graphics.Canvas;
@@ -142,7 +141,9 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private readonly TouchTapSuppressionPolicy _touchTapSuppression = new();
     private readonly InteractionReset _interactionReset;
 
-    private string? _committedImageDocumentId;
+    private readonly SnapshotExtent _extent;
+    private readonly ReplacementPublisher _replacementPublisher;
+    private readonly ReplacementPresentation _replacementPresentation;
 
     // ---- Keyboard navigation ----
     private readonly KeyboardFocusModel _focus;
@@ -837,7 +838,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _automationDocumentGenerations.Invalidate();
         _automation.NotifySnapshotChanged();
         _painter.CancelFirstViewportMeasurement();
-        RetireSnapshot(snapshot);
+        _snapshotRetirements.Retire(snapshot);
     }
 
     /// <summary>Raises a host-approved vector-scene link/action from UI Automation.</summary>
@@ -996,6 +997,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _contextMenu = new SelectionContextMenuPresenter(this, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _handles, _adorner, _selectionCommands);
         _horizontalOverflowDrag = new HorizontalOverflowPointerDrag(this, _surface, _published, _touchTapSuppression);
         _document = new DocumentPointerInteraction(this, _surface, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _horizontalOverflowDrag, _handles, _autoScroll, _dragShield, _adorner, _contextMenu, new PointerHoverTracker(this, _published, _hover, _cursor, _abbreviationTooltip), _cursor, _abbreviationTooltip);
+        _extent = new SnapshotExtent(this, _surface, _dragShield, _document);
         _touchGestures = new TouchGestureInteraction(this, this, _surface, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _horizontalOverflowDrag, _document);
         _pointerInput = new PointerInputRouter(this, this, DispatcherQueue, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _handles, _document, _horizontalOverflowDrag, _touchGestures, _contextMenu, _adorner, _dragShield);
         _rebuild = new RebuildScheduler(this, _lifetime, _surface, _pointerInput, _cancellationRetirement);
@@ -1045,6 +1047,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _svgRenderer = new SvgRendererSubscription(this, _lifetime, _rebuild, _canvasInvalidation);
         _theme = new ThemeSubscription(this, _lifetime, _rebuild);
         _environment = new EnvironmentSubscription(this, _lifetime, _rebuild);
+        _replacementPublisher = new ReplacementPublisher(this, _published, _surface, _rebuild, _touchRestore, _automationDocumentGenerations, _selection, _lazyLayout, _layoutCommit, _scrolling, _painter, _localization, _focusRefresh, _vectorCapacity, _geometryRecovery, _imageSubscriptions, _imageRelayout, _blockScroll, _imagePlans, _focus);
+        _replacementPresentation = new ReplacementPresentation(_surface, _snapshotRetirements, _rebuild, _layoutCommit, _layoutPublisher, _documentInputs, _extent, _scrolling, _hover, _selection, _touchRestore, _contextMenu, _dragShield, _adorner, _textAdorner, _handles, _embeds, _imageSubscriptions, _imagePlans, _imageResidency, _focus, _focusRing, _focusCommit, _highlighting, _visibleWork, _canvasInvalidation, _automation, _deferredScenes);
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         Loaded += (_, _) => OnLoadedInternal();
@@ -1527,7 +1531,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         AllowThirdPartyRemoteImages == context.AllowThirdPartyRemoteImages &&
         FlowDirection == context.FlowDirection && (XamlRoot?.RasterizationScale ?? 1) == context.RasterizationScale;
 
-    void IRasterPlacementHost.RetireSnapshot(LayoutSnapshot snapshot) => RetireSnapshot(snapshot);
+    void IRasterPlacementHost.RetireSnapshot(LayoutSnapshot snapshot) => _snapshotRetirements.Retire(snapshot);
 
     void IRasterPlacementHost.ForgetHoverTarget()
     {
@@ -1543,7 +1547,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     void IRasterPlacementHost.ResetCursor() => _cursor.SetShape(null);
 
-    void IRasterPlacementHost.ApplySnapshotSize(Size size) => ApplySnapshotSize(size);
+    void IRasterPlacementHost.ApplySnapshotSize(Size size) => _extent.Apply(size);
 
     void IRasterPlacementHost.RefreshInteractiveTextAdornerAfterLayoutChange() =>
         _textAdorner.RefreshAfterLayoutChange();
@@ -1651,7 +1655,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     void ILayoutCommitHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);
 
-    void ILayoutCommitHost.ApplySnapshotSize(Size size) => ApplySnapshotSize(size);
+    void ILayoutCommitHost.ApplySnapshotSize(Size size) => _extent.Apply(size);
 
     void ILayoutCommitHost.ScheduleVisibleCodeBlockHighlighting() => _visibleWork.ScheduleCodeBlockHighlighting();
 
@@ -1939,17 +1943,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _published.Snapshot = null;
         _automationDocumentGenerations.Invalidate();
         _automation.NotifySnapshotChanged();
-        RetireSnapshot(snap);
-    }
-
-    private Task RetireSnapshot(LayoutSnapshot? snapshot)
-    {
-        if (snapshot is null)
-            return Task.CompletedTask;
-
-        Task retirement = snapshot.Retire();
-        _snapshotRetirements.Track(retirement);
-        return retirement;
+        _snapshotRetirements.Retire(snap);
     }
 
     /// <summary>
@@ -2290,7 +2284,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         var timeline = new ReplacementTimeline(Stopwatch.GetTimestamp());
         try
         {
-            if (!TryPublishReplacement(
+            if (!_replacementPublisher.TryPublish(
                     plan, snapshot, generation, pipelineStartTimestamp, sourceUtf16Bytes, ct,
                     out ReplacementPublication? publication))
             {
@@ -2300,7 +2294,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
             committed = true;
             _automation.NotifySnapshotChanged();
             _timings.CompleteInitialDispatcherProbe(initialLayoutDispatcherProbe, plan.LayoutDiagnostics);
-            FinishReplacement(plan, snapshot, generation, publication, timeline);
+            _replacementPresentation.Finish(plan, snapshot, generation, publication, timeline);
             _timings.PublishCommitted(
                 generation, sourceUtf16Bytes, plan, run,
                 layoutDiagnosticSnapshot,
@@ -2315,254 +2309,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         }
     }
 
-    /// <summary>
-    /// Publishes <paramref name="snapshot"/> and the presentation state that
-    /// describes it in place of the current snapshot. Returns false, having
-    /// published nothing, when <paramref name="generation"/> was superseded.
-    /// </summary>
-    private bool TryPublishReplacement(
-        RebuildLayoutPlan plan,
-        LayoutSnapshot snapshot,
-        long generation,
-        long pipelineStartTimestamp,
-        long sourceUtf16Bytes,
-        CancellationToken ct,
-        [NotNullWhen(true)] out ReplacementPublication? publication)
-    {
-        publication = null;
-        if (ct.IsCancellationRequested || generation != _rebuild.Generation)
-            return false;
-
-        // Scroll anchoring: capture the current read position before the canvas
-        // height changes, so content above the fold shifting (e.g. an image
-        // loading) doesn't jump the reader's position.
-        string? imageDocumentId = plan.Inputs.ImageDocumentSource?.DocumentId;
-        bool sameDocumentIdentity = _committedImageDocumentId == imageDocumentId;
-        ReplacementScrollAnchor? scrollAnchor = sameDocumentIdentity
-            ? ReplacementScrollAnchor.Capture(_published.Snapshot, _surface)
-            : null;
-
-        if (ct.IsCancellationRequested || generation != _rebuild.Generation)
-            return false;
-
-        // Atomically swap snapshots, then retire the old one so its
-        // CanvasTextLayout / placeholder handles are released without making
-        // this UI-thread commit wait for an in-flight lazy measure.
-        var old = _published.Snapshot;
-        long touchSelectionRestoreSourceGeneration = _published.Generation;
-        TouchSelectionPresentationRestoreIntent? touchSelectionRestoreIntent = _touchRestore.Pending;
-        var automationDocumentIdentity = plan.CreateAutomationDocumentIdentity(snapshot);
-        bool sameAutomationDocument = _automationDocumentGenerations.IsCurrent(automationDocumentIdentity);
-        bool sameDocument = old is not null && sameDocumentIdentity &&
-            old.SourceFingerprint.Equals(snapshot.SourceFingerprint) &&
-            sameAutomationDocument;
-        bool semanticInputChanged = HasSemanticInputChanged(plan, sameDocument);
-        bool preserveSelection = !_selection.Range.Normalized().IsEmpty && sameDocument;
-        // Scrolling or paint can queue another band realization while this
-        // replacement pipeline is building. Fence that old-snapshot work at
-        // the commit boundary before publishing and retiring its owner.
-        _lazyLayout.Cancel();
-        _layoutCommit.ClearPending();
-        if (!sameDocument)
-            _scrolling.ResetIntermediate();
-        snapshot.AssignAutomationDocumentGeneration(
-            _automationDocumentGenerations.Publish(automationDocumentIdentity));
-        ForgetSnapshotScopedWork(sameDocument);
-        _published.Snapshot = snapshot;
-        _published.LayoutDevice = plan.Device;
-        // Publish presentation state with the new snapshot before any
-        // dependency-property notification can re-enter UIA or menu queries.
-        // These immutable objects therefore always describe the same commit.
-        _published.Theme = plan.Theme;
-        // The tile clear color is presentation state too. Publish it only with
-        // the snapshot whose boxes use the matching immutable ThemeSnapshot;
-        // otherwise an invalidation during background layout can clear using
-        // the next theme and repaint using the previous one.
-        _painter.PublishBackground(plan.Theme.SurfaceColor);
-        _localization.Publish(plan.Inputs.Localization);
-        _committedImageDocumentId = imageDocumentId;
-        _published.Generation = generation;
-        _focusRefresh.Mark(snapshot, generation);
-        _vectorCapacity.Synchronize(snapshot);
-        _painter.ArmFirstViewportMeasurement(pipelineStartTimestamp, sourceUtf16Bytes);
-        publication = new ReplacementPublication(
-            old, scrollAnchor, touchSelectionRestoreSourceGeneration, touchSelectionRestoreIntent,
-            semanticInputChanged, preserveSelection);
-        return true;
-    }
-
-    /// <summary>
-    /// Forgets work bound to the outgoing snapshot: subscriptions and dirty
-    /// indices cannot cross the snapshot boundary, including reentrant
-    /// property notifications during the commit.
-    /// </summary>
-    private void ForgetSnapshotScopedWork(bool sameDocument)
-    {
-        _geometryRecovery.ClearPendingFocusGeometryWork();
-        _imageSubscriptions.UnsubscribeAll();
-        _imageRelayout.ClearForSnapshotReplacement();
-        _blockScroll.ClearPending();
-        _imagePlans.Publication = null;
-        if (!sameDocument)
-        {
-            // A new logical document must not expose the former document's
-            // value-only focus identities to automation or reentrant property
-            // callbacks below.
-            _focus.Reset();
-        }
-    }
-
-    /// <summary>
-    /// True when automation must treat the replacement as a new document:
-    /// another logical document, document object or localization.
-    /// </summary>
-    private bool HasSemanticInputChanged(RebuildLayoutPlan plan, bool sameDocument) =>
-        !sameDocument ||
-        !ReferenceEquals(Document, plan.Parse.SemanticDocument) ||
-        !ReferenceEquals(_localization.Committed?.StringProvider, plan.Inputs.StringProvider) ||
-        !string.Equals(
-            _localization.Committed?.Culture.Name,
-            plan.Inputs.Language,
-            StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>
-    /// Completes a published replacement: presentation, overlays, selection,
-    /// realization plans and automation, recording each phase on
-    /// <paramref name="timeline"/>.
-    /// </summary>
-    private void FinishReplacement(
-        RebuildLayoutPlan plan,
-        LayoutSnapshot snapshot,
-        long generation,
-        ReplacementPublication publication,
-        ReplacementTimeline timeline)
-    {
-        ApplyReplacementPresentation(plan, snapshot, publication);
-        timeline.CommitEnded = Stopwatch.GetTimestamp();
-
-        ResetOverlaysForReplacement();
-        RestoreSelectionAfterReplacement(publication, generation);
-        timeline.OverlayResetEnded = Stopwatch.GetTimestamp();
-
-        RealizeReplacement(snapshot, timeline);
-
-        _canvasInvalidation.Invalidate();
-        if (publication.SemanticInputChanged)
-        {
-            _automation.FindPeer()?
-                .NotifyDocumentChanged();
-        }
-        else
-        {
-            // A progressive scene may have been replaced while the semantic
-            // source stayed identical. Refresh root UIA ItemStatus after the
-            // committed snapshot without publishing text/structure events.
-            _deferredScenes.NotifyItemStatusMayHaveChanged();
-        }
-        timeline.PublicationEnded = Stopwatch.GetTimestamp();
-    }
-
-    private void ApplyReplacementPresentation(
-        RebuildLayoutPlan plan,
-        LayoutSnapshot snapshot,
-        ReplacementPublication publication)
-    {
-        _layoutCommit.MarkApplied(snapshot.LayoutRevision);
-        _documentInputs.PublishParsedDocument(plan.Parse.SemanticDocument);
-        if (publication.Old is not null)
-            _contextMenu.Close();
-        // Dependency-property publication above can reenter Dispose before
-        // this old snapshot is retired. Tie its retirement to this context's
-        // pipeline lifetime as well as the control's global drain.
-        plan.Context.RegisterRetirement(RetireSnapshot(publication.Old));
-        // Clear stale hover references so OnPointerExited/OnPointerMoved after the
-        // rebuild don't use Bounds from the now-disposed old snapshot for invalidation.
-        _hover.Clear();
-        ApplySnapshotSize(snapshot.Size);
-
-        // Restore scroll anchor: find the anchor block's new Y in the new layout
-        // and adjust the scroll offset so the user's read position is unchanged.
-        if (publication.ScrollAnchor is { } anchor && _surface.Scroll is { } scroll)
-            anchor.Restore(snapshot, scroll, _scrolling.IsIntermediate);
-    }
-
-    private void ResetOverlaysForReplacement()
-    {
-        // UI thread: collect embed plans (don't realise yet), hook image
-        // LoadCompleted, then realise only embeds that fall in the current
-        // viewport. Hooking ScrollViewer.ViewChanged drives subsequent realisation
-        // as the user scrolls.
-        _embeds.DerealizeAll();
-        _dragShield.SetActive(false);
-        // Keep the attached adorner surface and its placeholder across
-        // commits. Repaint against the new snapshot instead of replacing the
-        // surface on every relayout.
-        _adorner.InvalidatePresentation();
-        _adorner.Collapse();
-        _adorner.RemoveOtherOverlayChildren();
-        _embeds.ClearHitTargets();
-        _embeds.ClearPlans();
-        _imageSubscriptions.UnsubscribeAll();
-        _imagePlans.Clear();
-        _imageResidency.Reset();
-        // Identities change across rebuild even when the count happens to
-        // match — reset so the first post-rebuild realisation always fires.
-        _embeds.ResetRealizedCountNotification();
-        _adorner.ClearGeometry();
-        _handles.MarkEndpointsUnavailable();
-    }
-
-    private void RestoreSelectionAfterReplacement(ReplacementPublication publication, long generation)
-    {
-        // Rebuild detaches selection chrome with the other overlay children.
-        // Surviving selection reattaches what it needs below; inactive chrome
-        // stays detached until the next interaction.
-        if (publication.PreserveSelection)
-        {
-            bool restoreTouchSelectionPresentation = _touchRestore.TryRestoreAfterReplacement(
-                publication.TouchSelectionRestoreIntent,
-                publication.TouchSelectionRestoreSourceGeneration,
-                generation,
-                _rebuild.HasPending);
-
-            _textAdorner.UpdateSelectionOverlay();
-            if (restoreTouchSelectionPresentation)
-                _handles.Update();
-        }
-        else
-        {
-            _touchRestore.Cancel();
-            _selection.Clear();
-        }
-    }
-
-    private void RealizeReplacement(LayoutSnapshot snapshot, ReplacementTimeline timeline)
-    {
-        _focus.ClearResumeIndex();
-        _focus.ClearLazyFocus();
-        _focusRing.ForgetEvictedRing();
-        bool realizationPlansReady = _layoutPublisher.TryRebuildPlans(
-            snapshot,
-            preserveRealized: false,
-            out _,
-            out _);
-        if (!realizationPlansReady)
-            _layoutPublisher.Defer(scrollAnchor: null);
-        timeline.PlanConstructionEnded = Stopwatch.GetTimestamp();
-        _scrolling.Attach();
-        _embeds.RealizeVisible();
-        timeline.EmbedRealizationEnded = Stopwatch.GetTimestamp();
-        bool resumedPendingHostedFocus = _focusCommit.ResumePendingLazy(snapshot);
-        _ = _highlighting.Restart();
-        timeline.HighlightRetirementEnded = Stopwatch.GetTimestamp();
-        _visibleWork.ScheduleCodeBlockHighlighting();
-        timeline.HighlightSchedulingEnded = Stopwatch.GetTimestamp();
-        _adorner.InvalidateGeometry();
-        if (!resumedPendingHostedFocus)
-            _focusRing.Update();
-        timeline.VisibleRealizationEnded = Stopwatch.GetTimestamp();
-    }
-
     /// <summary>The stage timings of the committed snapshot's pipeline.</summary>
     internal MarkdownPipelineTimingSnapshot GetLastPipelineTimingSnapshot() =>
         _timings.Last;
@@ -2575,23 +2321,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <summary>Re-runs the visible deferred-scene probe after the next successful paint.</summary>
     internal void RequestDeferredSceneProbeAfterPaint()
         => _painter.RequestDeferredSceneProbe();
-
-    private void ApplySnapshotSize(Size committedSize)
-    {
-        if (_surface.Canvas is null || _surface.Root is null || _surface.Overlay is null) return;
-        _surface.Canvas.Width = Math.Max(1, committedSize.Width);
-        // Round the height up to whole device pixels so layout rounding never
-        // clips the document's last partial pixel row. Width stays
-        // as committed: rounding it up could add a horizontal scroll range.
-        _surface.Canvas.Height = Math.Max(1, SelectionController.SnapExtentUpToPixelGrid(
-            committedSize.Height,
-            XamlRoot?.RasterizationScale ?? 1.0));
-        _surface.Root.Width = _surface.Canvas.Width;
-        _surface.Root.Height = _surface.Canvas.Height;
-        _surface.Overlay.Width = _surface.Canvas.Width;
-        _surface.Overlay.Height = _surface.Canvas.Height;
-        _dragShield.SetActive(_document.IsDragSelecting);
-    }
 
     private void AddImagePlan(Layout.Boxes.ImageBox image)
     {
