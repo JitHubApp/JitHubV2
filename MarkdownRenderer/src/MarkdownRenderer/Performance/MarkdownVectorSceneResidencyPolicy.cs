@@ -292,6 +292,51 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
         var requestedInlineIndexes = new Dictionary<InlineContainerBox, InlineSceneGeometryIndex>(
             ReferenceEqualityComparer.Instance);
         var seen = new HashSet<object>(ReferenceEqualityComparer.Instance);
+        CollectRequestedScenes(
+            topLevelOrdinals,
+            band,
+            placements,
+            topLevelOrdinalByBlockIndex,
+            requested,
+            seen,
+            requestedInlineIndexes,
+            cancellationToken);
+        RetireObsoleteTransientScenes(seen);
+
+        bool fallbackChanged = PrepareDetachedFallbacks(requested, cancellationToken);
+        if (_pendingGraphRebinds.Count != 0)
+        {
+            _pendingGraphBand = band;
+            // Legacy policies keep their old pin transaction. Participating
+            // policies can publish the complete readable fallback set first,
+            // freeing outgoing native credits before asynchronous graph refill.
+            if (_nativeAdmission is null)
+                return fallbackChanged;
+        }
+
+        WeighRequestedScenes(requested, requestedByOwner, cancellationToken);
+
+        long attemptedCapacityGeneration = _nativeAdmission?.CapacityGeneration ?? 0;
+        bool resourcesChanged = PrepareIncomingScenes(requested, cancellationToken) | fallbackChanged;
+        return CommitActiveBand(
+            band,
+            requested,
+            requestedByOwner,
+            requestedInlineIndexes,
+            resourcesChanged,
+            attemptedCapacityGeneration);
+    }
+
+    private void CollectRequestedScenes(
+        IReadOnlyList<int> topLevelOrdinals,
+        LazyLayoutBand band,
+        LayoutPlacementGeneration placements,
+        IReadOnlyDictionary<int, int> topLevelOrdinalByBlockIndex,
+        List<VectorSceneResidencyEntry> requested,
+        HashSet<object> seen,
+        Dictionary<InlineContainerBox, InlineSceneGeometryIndex> requestedInlineIndexes,
+        CancellationToken cancellationToken)
+    {
         foreach (int ordinal in topLevelOrdinals)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -317,7 +362,10 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
                 throw new InvalidOperationException(
                     "Visible vector-scene layout geometry is unavailable; native resources were not published.");
         }
+    }
 
+    private void RetireObsoleteTransientScenes(HashSet<object> seen)
+    {
         List<VectorSceneResidencyEntry>? obsoleteTransient = null;
         foreach ((object owner, VectorSceneResidencyEntry entry) in _transientScenes)
         {
@@ -330,7 +378,12 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
                 _transientScenes.Remove(entry.Owner);
             ReleaseEntriesBestEffort(obsoleteTransient, _activeScenes, detachGraphs: true);
         }
+    }
 
+    private bool PrepareDetachedFallbacks(
+        List<VectorSceneResidencyEntry> requested,
+        CancellationToken cancellationToken)
+    {
         // A graph miss is not a layout/provider exception. Leave the prior pin
         // band intact, prepare readable bounded fallback off the UI thread,
         // then let the active lazy request await refill outside this lock/queue
@@ -347,16 +400,14 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
                     _pendingGraphRebinds.Add(box);
             }
         }
-        if (_pendingGraphRebinds.Count != 0)
-        {
-            _pendingGraphBand = band;
-            // Legacy policies keep their old pin transaction. Participating
-            // policies can publish the complete readable fallback set first,
-            // freeing outgoing native credits before asynchronous graph refill.
-            if (_nativeAdmission is null)
-                return fallbackChanged;
-        }
+        return fallbackChanged;
+    }
 
+    private void WeighRequestedScenes(
+        List<VectorSceneResidencyEntry> requested,
+        Dictionary<object, VectorSceneResidencyEntry> requestedByOwner,
+        CancellationToken cancellationToken)
+    {
         // Readiness collection records owners only. Walk immutable commands for
         // diagnostic weights here, on the background band preparation path,
         // never in a warm UI probe.
@@ -394,9 +445,18 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
             requested[index] = entry;
             requestedByOwner.Add(owner, entry);
         }
+    }
 
-        long attemptedCapacityGeneration = _nativeAdmission?.CapacityGeneration ?? 0;
-        bool resourcesChanged = fallbackChanged;
+    /// <summary>
+    /// Prepares the incoming set while the old band stays pinned. Returns
+    /// whether any incoming scene needed native preparation; on failure the
+    /// incoming, not-yet-active scenes are released and the error propagates.
+    /// </summary>
+    private bool PrepareIncomingScenes(
+        List<VectorSceneResidencyEntry> requested,
+        CancellationToken cancellationToken)
+    {
+        bool resourcesChanged = false;
         try
         {
             // Prepare the incoming set first. The old band remains pinned until
@@ -418,7 +478,17 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
             ReleaseEntriesBestEffort(requested, _activeScenes);
             throw;
         }
+        return resourcesChanged;
+    }
 
+    private bool CommitActiveBand(
+        LazyLayoutBand band,
+        List<VectorSceneResidencyEntry> requested,
+        Dictionary<object, VectorSceneResidencyEntry> requestedByOwner,
+        Dictionary<InlineContainerBox, InlineSceneGeometryIndex> requestedInlineIndexes,
+        bool resourcesChanged,
+        long attemptedCapacityGeneration)
+    {
         bool changed = resourcesChanged || requestedByOwner.Count != _activeScenes.Count;
         List<VectorSceneResidencyEntry>? retired = null;
         foreach ((object owner, VectorSceneResidencyEntry active) in _activeScenes)
