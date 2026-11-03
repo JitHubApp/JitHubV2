@@ -481,7 +481,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             PrepareAtDifferentOrigin(source1, prepared1);
             PrepareAtDifferentOrigin(source2, prepared2);
 
-            staleLease = SharedCanvasBitmapCache.CreateUncachedLease(
+            staleLease = ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(
                 CreateBitmap(fixture.Device, 7, 5), 7, 5, new Size(7, 5));
             Rect sourceBounds1 = source1.Bounds;
             Rect sourceBounds2 = source2.Bounds;
@@ -658,7 +658,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             Rect preparedBounds = prepared.Bounds;
             CanvasBitmap preparedBitmap = Assert.IsType<CanvasBitmap>(prepared.Bitmap);
             CanvasBitmap replacementBitmap = CreateBitmap(fixture.Device, 24, 12);
-            SharedCanvasBitmapCache.Lease replacementLease = SharedCanvasBitmapCache.CreateUncachedLease(
+            SharedCanvasBitmapCache.Lease replacementLease = ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(
                 replacementBitmap,
                 24,
                 12,

@@ -829,7 +829,7 @@ public sealed class RootLocalImageRelayoutTests
                 {
                     replacementBitmap = CreateBitmap(seed.Device, 24, 12);
                     SharedCanvasBitmapCache.Lease replacementLease =
-                        SharedCanvasBitmapCache.CreateUncachedLease(replacementBitmap);
+                        ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(replacementBitmap);
                     InvokeReplaceBitmap(source, replacementLease);
                 }),
                 expectedPointerInputEpoch: snapshot.PointerInputEpoch);
@@ -891,7 +891,7 @@ public sealed class RootLocalImageRelayoutTests
                 {
                     replacementBitmap = CreateBitmap(seed.Device, 24, 12);
                     InvokeReplaceBitmap(second,
-                        SharedCanvasBitmapCache.CreateUncachedLease(replacementBitmap));
+                        ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(replacementBitmap));
                 }),
                 expectedPointerInputEpoch: snapshot.PointerInputEpoch);
 

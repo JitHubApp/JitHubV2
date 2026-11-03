@@ -463,7 +463,7 @@ public sealed class NeutralSelectionLayoutCacheTests(ITestOutputHelper output)
 
             try
             {
-                SharedCanvasBitmapCache.ReleaseDevice(Device);
+                ImageResourceScope.Shared.BitmapCache.ReleaseDevice(Device);
             }
             finally
             {

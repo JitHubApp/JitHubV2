@@ -53,19 +53,20 @@ public sealed class SvgTilePublicationOwnershipTests
     [Fact]
     public void SvgCacheEntryCopyKeepsSourceIdentityAndOnlyReplacesBitmapMetadata()
     {
-        Type entryType = typeof(ImageBox).GetNestedType("SvgCacheEntry", BindingFlags.NonPublic)!;
-        Assert.NotNull(entryType);
-        ConstructorInfo constructor = Assert.Single(entryType.GetConstructors(
-            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic));
+        Type entryType = typeof(SvgCacheEntry);
         object[] values =
         [
             new byte[] { 1, 2, 3 }, new Size(43, 29), "title", "description",
             "content-hash", "partition-hash", new MarkdownSvgDocumentInfo(43, 29),
             17L, 23L, "original-bitmap", 101, 67, new MarkdownSvgPhysicalViewport(100.25, 66.75),
         ];
-        object original = constructor.Invoke(values);
-        object copy = entryType.GetMethod("WithLastBitmap", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(original, ["replacement-bitmap", 151, 97, new MarkdownSvgPhysicalViewport(150.25, 96.75)])!;
+        var original = new SvgCacheEntry(
+            (byte[])values[0], (Size)values[1], (string)values[2], (string)values[3],
+            (string)values[4], (string)values[5], (MarkdownSvgDocumentInfo)values[6],
+            (long)values[7], (long)values[8], (string)values[9], (int)values[10], (int)values[11],
+            (MarkdownSvgPhysicalViewport)values[12]);
+        SvgCacheEntry copy = original.WithLastBitmap(
+            "replacement-bitmap", 151, 97, new MarkdownSvgPhysicalViewport(150.25, 96.75));
         Assert.NotSame(original, copy);
         string[] names =
         [

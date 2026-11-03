@@ -77,7 +77,7 @@ public sealed class RasterDecodeAdmissionEstimateTests
             sourceBytes, providerWorkingBytes, uploadBytes);
 
         Assert.Equal(sourceBytes + providerWorkingBytes + uploadBytes, weight);
-        Assert.True(weight > MarkdownImagePreparationAdmission.Shared.CapacityBytes / 2,
+        Assert.True(weight > ImageResourceScope.Shared.Preparation.CapacityBytes / 2,
             "The full provider bound plus the host upload copy is conservative and may serialize portable decodes.");
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             RasterDecodeAdmissionEstimate.ForPortableProvider(-1, providerWorkingBytes, uploadBytes));

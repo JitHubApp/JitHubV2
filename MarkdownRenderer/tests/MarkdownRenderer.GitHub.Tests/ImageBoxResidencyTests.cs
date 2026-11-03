@@ -309,8 +309,8 @@ public sealed class ImageBoxResidencyTests
             Assert.Equal(0, renderer.Document.DisposeCount);
 
             BitmapOutputAdmission.Snapshot admissionBeforeTilePaint =
-                BitmapOutputAdmission.Shared.GetSnapshot();
-            long cacheBytesBeforeTilePaint = SharedCanvasBitmapCache.RetainedBytesForTests;
+                ImageResourceScope.Shared.BitmapOutput.GetSnapshot();
+            long cacheBytesBeforeTilePaint = ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes;
             TaskCompletionSource repaintPulse = new(TaskCreationOptions.RunContinuationsAsynchronously);
             void OnLoadCompleted(object? sender, LoadCompletedEventArgs args)
             {
@@ -354,7 +354,7 @@ public sealed class ImageBoxResidencyTests
             }
             catch (OperationCanceledException exception) when (renderDeadline.IsCancellationRequested)
             {
-                BitmapOutputAdmission.Snapshot admission = BitmapOutputAdmission.Shared.GetSnapshot();
+                BitmapOutputAdmission.Snapshot admission = ImageResourceScope.Shared.BitmapOutput.GetSnapshot();
                 throw new TimeoutException(
                     $"Visible SVG tile render did not start. " +
                     $"beforePaint(admissionCharged={admissionBeforeTilePaint.ChargedBytes}, " +
@@ -366,9 +366,9 @@ public sealed class ImageBoxResidencyTests
                     $"uncertain={admission.UncertainBytes}, capacity={admission.CapacityBytes}, " +
                     $"visibleLimit={admission.VisibleInitialLimitBytes}, waiters={admission.WaiterCount}, " +
                     $"offered={admission.OfferedBytes}, capacityVersion={admission.CapacityVersion}); " +
-                    $"cache(retained={SharedCanvasBitmapCache.RetainedBytesForTests}, " +
-                    $"pixelLedger={SharedCanvasBitmapCache.LiveBitmapPixelWeightBytesForTests}, " +
-                    $"uncertainPixelLedger={SharedCanvasBitmapCache.UncertainBitmapDisposePixelWeightBytesForTests}); " +
+                    $"cache(retained={ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes}, " +
+                    $"pixelLedger={ImageResourceScope.Shared.BitmapCache.GetSnapshot().LivePixelWeightBytes}, " +
+                    $"uncertainPixelLedger={ImageResourceScope.Shared.BitmapCache.GetSnapshot().UncertainDisposePixelWeightBytes}); " +
                     $"image(work={image.ActiveImageWorkCountForTests}, " +
                     $"needsRecovery={image.NeedsBitmapOutputRecovery}, " +
                     $"svgTiles={image.UsesSvgTilesForAutomation}, raster={image.SvgRasterPixelSize}, " +
@@ -631,10 +631,10 @@ public sealed class ImageBoxResidencyTests
             Assert.NotNull(warm.Bitmap);
             Assert.True(MarkdownBuiltInImageSourcePolicy.TryResolve(source, null, out var builtIn));
             CanvasDevice observedDevice = warm.Context.ResourceCreator.Device;
-            bool cached = SharedCanvasBitmapCache.TryAcquire(observedDevice, builtIn.CacheKey, out var cacheProbe);
+            bool cached = ImageResourceScope.Shared.BitmapCache.TryAcquire(observedDevice, builtIn.CacheKey, out var cacheProbe);
             cacheProbe?.Dispose();
             Assert.True(cached,
-                $"Warm bitmap was not cached under its built-in source key; creator/device same={ReferenceEquals(device, observedDevice)}, device getter stable={ReferenceEquals(observedDevice, warm.Context.ResourceCreator.Device)}, cache bytes={SharedCanvasBitmapCache.RetainedBytesForTests}.");
+                $"Warm bitmap was not cached under its built-in source key; creator/device same={ReferenceEquals(device, observedDevice)}, device getter stable={ReferenceEquals(observedDevice, warm.Context.ResourceCreator.Device)}, cache bytes={ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes}.");
         }
         finally
         {

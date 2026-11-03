@@ -71,46 +71,41 @@ internal static partial class RasterNativeWicDecoder
         RasterImageDecodePlan plan,
         IDisposable processDecodeCredit,
         CancellationToken cancellationToken) =>
-        DecodeCore(source, plan, default, isGif: false, processDecodeCredit, cancellationToken,
-            diagnosticCopyBandRows: 0, useDiagnosticCopyBands: false);
+        Decode(source, plan, processDecodeCredit, default, cancellationToken);
+
+    /// <inheritdoc cref="Decode(byte[], RasterImageDecodePlan, IDisposable, CancellationToken)"/>
+    /// <param name="source">The admitted encoded source.</param>
+    /// <param name="plan">The validated decode plan for <paramref name="source"/>.</param>
+    /// <param name="processDecodeCredit">The process decode credit this call consumes.</param>
+    /// <param name="options">The pixel-copy strategy and decode observer.</param>
+    /// <param name="cancellationToken">Cancels between native calls.</param>
+    internal static RasterDecodedPixelLease Decode(
+        byte[] source,
+        RasterImageDecodePlan plan,
+        IDisposable processDecodeCredit,
+        RasterNativeWicDecodeOptions options,
+        CancellationToken cancellationToken) =>
+        DecodeCore(source, plan, default, isGif: false, processDecodeCredit, options, cancellationToken);
 
     internal static RasterDecodedPixelLease DecodeGifFirstFrame(
         byte[] source,
         RasterGifFirstFrameDecodePlan plan,
         IDisposable processDecodeCredit,
         CancellationToken cancellationToken) =>
-        DecodeCore(source, default, plan, isGif: true, processDecodeCredit, cancellationToken,
-            diagnosticCopyBandRows: 0, useDiagnosticCopyBands: false);
+        DecodeGifFirstFrame(source, plan, processDecodeCredit, default, cancellationToken);
 
-    private const int MaximumDiagnosticCopyBandRows = 1_024;
-
-    /// <summary>
-    /// Runs the ordinary owned-WIC path, replacing only the final converter's
-    /// full CopyPixels call with bounded output-row requests for diagnostics.
-    /// This does not participate in shipping decode selection.
-    /// </summary>
-    internal static RasterDecodedPixelLease DecodeWithCopyBandsForDiagnostics(
-        byte[] source,
-        RasterImageDecodePlan plan,
-        IDisposable processDecodeCredit,
-        int copyBandRows,
-        CancellationToken cancellationToken) =>
-        DecodeCore(source, plan, default, isGif: false, processDecodeCredit, cancellationToken,
-            copyBandRows, useDiagnosticCopyBands: true);
-
-    internal static RasterDecodedPixelLease DecodeGifFirstFrameWithCopyBandsForDiagnostics(
+    internal static RasterDecodedPixelLease DecodeGifFirstFrame(
         byte[] source,
         RasterGifFirstFrameDecodePlan plan,
         IDisposable processDecodeCredit,
-        int copyBandRows,
+        RasterNativeWicDecodeOptions options,
         CancellationToken cancellationToken) =>
-        DecodeCore(source, default, plan, isGif: true, processDecodeCredit, cancellationToken,
-            copyBandRows, useDiagnosticCopyBands: true);
+        DecodeCore(source, default, plan, isGif: true, processDecodeCredit, options, cancellationToken);
 
     private static RasterDecodedPixelLease DecodeCore(
         byte[] source, RasterImageDecodePlan staticPlan, RasterGifFirstFrameDecodePlan gifPlan,
-        bool isGif, IDisposable processDecodeCredit, CancellationToken cancellationToken,
-        int diagnosticCopyBandRows, bool useDiagnosticCopyBands)
+        bool isGif, IDisposable processDecodeCredit, RasterNativeWicDecodeOptions options,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(processDecodeCredit);
         IDisposable? untransferredProcessCredit = processDecodeCredit;
@@ -121,11 +116,8 @@ internal static partial class RasterNativeWicDecoder
         bool graphOwnsLease = false;
         try
         {
-            if (useDiagnosticCopyBands &&
-                (diagnosticCopyBandRows < 1 || diagnosticCopyBandRows > MaximumDiagnosticCopyBandRows))
-            {
-                throw new ArgumentOutOfRangeException(nameof(diagnosticCopyBandRows));
-            }
+            if (options.CopyBandRows is < 0 or > RasterNativeWicDecodeOptions.MaximumCopyBandRows)
+                throw new ArgumentOutOfRangeException(nameof(options), "The copy band row count is outside the supported range.");
             ArgumentNullException.ThrowIfNull(source);
             cancellationToken.ThrowIfCancellationRequested();
             if (source.Length == 0 || source.Length > RasterImageResourceBudget.MaxInputBytes ||
@@ -158,7 +150,7 @@ internal static partial class RasterNativeWicDecoder
             graphOwnsLease = true;
 
             graph.InitializeApartment();
-            RasterNativeWicDiagnostics.RecordNativeStarted();
+            options.Diagnostics?.RecordNativeStarted();
             cancellationToken.ThrowIfCancellationRequested();
             graph.CreateFactory();
             cancellationToken.ThrowIfCancellationRequested();
@@ -176,8 +168,8 @@ internal static partial class RasterNativeWicDecoder
             cancellationToken.ThrowIfCancellationRequested();
             graph.CreatePremultipliedConverter();
             cancellationToken.ThrowIfCancellationRequested();
-            if (useDiagnosticCopyBands)
-                graph.CopyPixelsInBands(diagnosticCopyBandRows, cancellationToken);
+            if (options.CopyBandRows > 0)
+                graph.CopyPixelsInBands(options.CopyBandRows, cancellationToken);
             else
                 graph.CopyPixels();
             cancellationToken.ThrowIfCancellationRequested();
@@ -202,7 +194,7 @@ internal static partial class RasterNativeWicDecoder
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-            RasterNativeWicDiagnostics.RecordPixelLeaseCompleted();
+            options.Diagnostics?.RecordPixelLeaseCompleted();
             RasterDecodedPixelLease completed = pixelLease
                 ?? throw new InvalidOperationException("The native WIC pixel lease was already transferred.");
             pixelLease = null;
@@ -771,7 +763,7 @@ internal static partial class RasterNativeWicDecoder
 
         internal void CopyPixelsInBands(int copyBandRows, CancellationToken cancellationToken)
         {
-            if (copyBandRows is < 1 or > MaximumDiagnosticCopyBandRows)
+            if (copyBandRows is < 1 or > RasterNativeWicDecodeOptions.MaximumCopyBandRows)
                 throw new ArgumentOutOfRangeException(nameof(copyBandRows));
 
             RasterNativeWicInterop.IWICFormatConverter converter = Require(_converter, "converter");
@@ -782,7 +774,7 @@ internal static partial class RasterNativeWicDecoder
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     int rows = Math.Min(copyBandRows, _plan.DecodeHeight - y);
-                    var rectangle = new DiagnosticWicRect(0, y, _plan.DecodeWidth, rows);
+                    var rectangle = new WicRect(0, y, _plan.DecodeWidth, rows);
                     uint bandBufferSize = checked(stride * (uint)rows);
                     int destinationOffset = checked(y * (int)stride);
                     byte* bandDestination = destination + destinationOffset;
@@ -795,14 +787,14 @@ internal static partial class RasterNativeWicDecoder
         }
 
         [StructLayout(LayoutKind.Sequential)]
-        private struct DiagnosticWicRect
+        private struct WicRect
         {
             internal int X;
             internal int Y;
             internal int Width;
             internal int Height;
 
-            internal DiagnosticWicRect(int x, int y, int width, int height)
+            internal WicRect(int x, int y, int width, int height)
             {
                 X = x;
                 Y = y;

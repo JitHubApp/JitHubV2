@@ -211,7 +211,7 @@ public sealed class SingleRasterLayoutCandidateTests
                 20,
                 DirectXPixelFormat.B8G8R8A8UIntNormalized);
             SharedCanvasBitmapCache.Lease replacementLease =
-                SharedCanvasBitmapCache.CreateUncachedLease(replacementBitmap);
+                ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(replacementBitmap);
             MethodInfo replaceBitmap = typeof(ImageBox).GetMethod(
                 "ReplaceBitmap",
                 BindingFlags.Instance | BindingFlags.NonPublic)!;

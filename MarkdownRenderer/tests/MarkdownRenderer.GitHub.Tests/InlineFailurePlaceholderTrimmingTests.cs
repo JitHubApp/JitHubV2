@@ -52,7 +52,7 @@ public sealed class InlineFailurePlaceholderTrimmingTests
         }
         finally
         {
-            SharedCanvasBitmapCache.ReleaseDevice(device);
+            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(device);
         }
     }
 

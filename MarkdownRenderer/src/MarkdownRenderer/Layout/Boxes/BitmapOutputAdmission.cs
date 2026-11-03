@@ -15,7 +15,6 @@ internal sealed class BitmapOutputAdmission
     private const long MiB = 1024L * 1024L;
     private const int DefaultMaximumWaiters = 256;
     private const int DefaultVisibleWaiterReserve = 8;
-    private static readonly Lazy<BitmapOutputAdmission> s_shared = new(CreateShared);
 
     private readonly object _sync = new();
     private readonly long _capacityBytes;
@@ -24,8 +23,8 @@ internal sealed class BitmapOutputAdmission
     private readonly long _speculativeLimitBytes;
     private readonly int _maximumWaiters;
     private readonly int _maximumSpeculativeWaiters;
-    private readonly Action<Action>? _testNotificationScheduler;
-    private readonly Action<Action>? _testNotificationDeliveryScheduler;
+    private readonly Action<Action>? _notificationScheduler;
+    private readonly Action<Action>? _notificationDeliveryScheduler;
     private readonly List<WaiterEntry> _waiters = new();
 
     // Charged includes both live reservations and permanently retained
@@ -44,8 +43,6 @@ internal sealed class BitmapOutputAdmission
     private long _callbackFailureCount;
     private bool _notificationSweepQueued;
 
-    internal static BitmapOutputAdmission Shared => s_shared.Value;
-
     internal long CapacityBytes => _capacityBytes;
     internal long TransitionHeadroomBytes => _transitionHeadroomBytes;
     internal long MaximumSingleOutputBytes => _transitionHeadroomBytes;
@@ -56,8 +53,8 @@ internal sealed class BitmapOutputAdmission
         long capacityBytes,
         long transitionHeadroomBytes,
         int maximumWaiters = DefaultMaximumWaiters,
-        Action<Action>? testNotificationScheduler = null,
-        Action<Action>? testNotificationDeliveryScheduler = null)
+        Action<Action>? notificationScheduler = null,
+        Action<Action>? notificationDeliveryScheduler = null)
     {
         if (capacityBytes <= 0)
             throw new ArgumentOutOfRangeException(nameof(capacityBytes));
@@ -81,8 +78,8 @@ internal sealed class BitmapOutputAdmission
         _maximumSpeculativeWaiters = maximumWaiters > DefaultVisibleWaiterReserve
             ? maximumWaiters - DefaultVisibleWaiterReserve
             : maximumWaiters;
-        _testNotificationScheduler = testNotificationScheduler;
-        _testNotificationDeliveryScheduler = testNotificationDeliveryScheduler;
+        _notificationScheduler = notificationScheduler;
+        _notificationDeliveryScheduler = notificationDeliveryScheduler;
     }
 
     internal bool TryReserve(
@@ -238,7 +235,8 @@ internal sealed class BitmapOutputAdmission
         }
     }
 
-    private static BitmapOutputAdmission CreateShared()
+    /// <summary>Creates the process-sized admission an image resource scope uses by default.</summary>
+    internal static BitmapOutputAdmission CreateDefault()
     {
         long capacity = Environment.Is64BitProcess ? 64 * MiB : 32 * MiB;
         long headroom = Environment.Is64BitProcess ? 16 * MiB : 8 * MiB;
@@ -306,12 +304,12 @@ internal sealed class BitmapOutputAdmission
         _notificationSweepQueued = true;
         try
         {
-            if (_testNotificationScheduler is not null)
+            if (_notificationScheduler is not null)
             {
                 // This internal dependency is used only by tests; its
                 // contract is to enqueue the action rather than execute it
                 // inline while the admission lock is held.
-                _testNotificationScheduler(RunNotificationSweepSafely);
+                _notificationScheduler(RunNotificationSweepSafely);
                 return;
             }
 
@@ -419,7 +417,7 @@ internal sealed class BitmapOutputAdmission
         {
             try
             {
-                if (_testNotificationDeliveryScheduler is { } scheduler)
+                if (_notificationDeliveryScheduler is { } scheduler)
                     scheduler(() => DeliverNotificationSafely(notification));
                 else
                     DeliverNotificationSafely(notification);

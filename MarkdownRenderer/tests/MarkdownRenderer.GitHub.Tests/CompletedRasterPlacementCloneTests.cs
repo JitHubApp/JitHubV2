@@ -120,7 +120,7 @@ public sealed class CompletedRasterPlacementCloneTests
     public async Task UncachedPlacementCloneCopiesAlreadyResolvedIntrinsicGeometry()
     {
         await using var fixture = new PlacementFixture();
-        SharedCanvasBitmapCache.Lease uncached = SharedCanvasBitmapCache.CreateUncachedLease(
+        SharedCanvasBitmapCache.Lease uncached = ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(
             CreateBitmap(fixture.Device, 40, 20));
         InvokeReplaceBitmap(fixture.ImageRun.Image, uncached);
         Assert.Null(uncached.IntrinsicSize);
@@ -199,7 +199,7 @@ public sealed class CompletedRasterPlacementCloneTests
         }
         Assert.True(fixture.ImageRun.Image.IsCurrentCompletedRasterPlacement(expected));
 
-        SharedCanvasBitmapCache.Lease replacementLease = SharedCanvasBitmapCache.CreateUncachedLease(
+        SharedCanvasBitmapCache.Lease replacementLease = ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(
             CreateBitmap(fixture.Device, 40, 20));
         CanvasBitmap replacementBitmap = replacementLease.Bitmap;
         InvokeReplaceBitmap(fixture.ImageRun.Image, replacementLease);
@@ -462,7 +462,7 @@ public sealed class CompletedRasterPlacementCloneTests
             _sourceRetired = true;
         }
 
-        internal void ReleaseCacheEntry() => SharedCanvasBitmapCache.ReleaseDevice(Device);
+        internal void ReleaseCacheEntry() => ImageResourceScope.Shared.BitmapCache.ReleaseDevice(Device);
 
         internal async Task RetireSourceAsync()
         {
@@ -620,7 +620,7 @@ public sealed class CompletedRasterPlacementCloneTests
 
         internal void StoreRaster(string identity, int width, int height, Size intrinsicSize)
         {
-            using SharedCanvasBitmapCache.Lease lease = SharedCanvasBitmapCache.StoreAndAcquire(
+            using SharedCanvasBitmapCache.Lease lease = ImageResourceScope.Shared.BitmapCache.StoreAndAcquire(
                 Device,
                 identity,
                 CreateBitmap(Device, width, height),
@@ -629,7 +629,7 @@ public sealed class CompletedRasterPlacementCloneTests
 
         public void Dispose()
         {
-            SharedCanvasBitmapCache.ReleaseDevice(Device);
+            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(Device);
             Device.Dispose();
         }
     }

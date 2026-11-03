@@ -24,9 +24,9 @@ public sealed class RasterDecoderImageBoxTests : IAsyncLifetime
 
     private static Task WaitForAdmissionIdleAsync() =>
         DisplaySizedRasterDecodeTests.WaitUntilAsync(() =>
-            MarkdownImagePreparationAdmission.Shared.ActiveCount == 0 &&
-            MarkdownImagePreparationAdmission.Shared.ActiveBytes == 0 &&
-            MarkdownImagePreparationAdmission.Shared.PendingRequests == 0);
+            ImageResourceScope.Shared.Preparation.ActiveCount == 0 &&
+            ImageResourceScope.Shared.Preparation.ActiveBytes == 0 &&
+            ImageResourceScope.Shared.Preparation.PendingRequests == 0);
 
     [Fact]
     public async Task RegisteredProviderGetsExactDisplayPlanAndPixelOwnerIsDisposedAfterUpload()
@@ -320,8 +320,8 @@ public sealed class RasterDecoderImageBoxTests : IAsyncLifetime
         {
             image.EnsureLoading();
             await decoder.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            Assert.Equal(1, MarkdownImagePreparationAdmission.Shared.ActiveCount);
-            Assert.True(MarkdownImagePreparationAdmission.Shared.ActiveBytes > 0);
+            Assert.Equal(1, ImageResourceScope.Shared.Preparation.ActiveCount);
+            Assert.True(ImageResourceScope.Shared.Preparation.ActiveBytes > 0);
 
             image.Dispose();
             MarkdownRaster lateRaster = decoder.CreateRaster(decoder.LastRequest!);
@@ -387,8 +387,8 @@ public sealed class RasterDecoderImageBoxTests : IAsyncLifetime
             oldImage.Measure(71);
             oldImage.EnsureLoading();
             await oldDecoder.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            Assert.True(MarkdownImagePreparationAdmission.Shared.ActiveCount > 0);
-            Assert.True(MarkdownImagePreparationAdmission.Shared.ActiveBytes > 0);
+            Assert.True(ImageResourceScope.Shared.Preparation.ActiveCount > 0);
+            Assert.True(ImageResourceScope.Shared.Preparation.ActiveBytes > 0);
 
             // Replacing the document retires the old image box before the
             // uncooperative decoder completes. The replacement is an admitted
@@ -418,7 +418,7 @@ public sealed class RasterDecoderImageBoxTests : IAsyncLifetime
             Assert.Equal(MarkdownImageAccessibilityState.Loaded, currentImage.AccessibilityState);
             Assert.Equal(0, Volatile.Read(ref unavailableNotifications));
             Assert.Equal(0, Volatile.Read(ref oldPublications));
-            Assert.Equal(0, MarkdownImagePreparationAdmission.Shared.PendingRequests);
+            Assert.Equal(0, ImageResourceScope.Shared.Preparation.PendingRequests);
         }
         finally
         {

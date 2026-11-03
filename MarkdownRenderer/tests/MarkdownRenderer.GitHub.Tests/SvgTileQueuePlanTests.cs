@@ -1146,14 +1146,8 @@ public sealed class SvgTileQueuePlanTests
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "QueueVisibleSvgTiles")]
     private static extern void QueueVisible(ImageBox box, Rect destination, Rect viewport);
 
-    private static long GetRendererIdentity(IMarkdownSvgRenderer renderer)
-    {
-        MethodInfo method = typeof(ImageBox).GetMethod(
-                "GetSvgRendererIdentity",
-                BindingFlags.Static | BindingFlags.NonPublic)
-            ?? throw new MissingMethodException(typeof(ImageBox).FullName, "GetSvgRendererIdentity");
-        return (long)method.Invoke(null, [renderer])!;
-    }
+    private static long GetRendererIdentity(IMarkdownSvgRenderer renderer) =>
+        ImageResourceScope.Shared.ProviderIdentities.GetSvgRendererIdentity(renderer);
 
     private static void AssertPlanMember<T>(ImageBox.SvgTileRenderPlan plan, string memberName, T expected)
     {

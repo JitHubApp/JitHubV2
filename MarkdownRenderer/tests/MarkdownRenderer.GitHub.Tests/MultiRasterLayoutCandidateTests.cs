@@ -383,7 +383,7 @@ public sealed class MultiRasterLayoutCandidateTests
             width,
             height,
             DirectXPixelFormat.B8G8R8A8UIntNormalized);
-        SharedCanvasBitmapCache.Lease lease = SharedCanvasBitmapCache.CreateUncachedLease(bitmap);
+        SharedCanvasBitmapCache.Lease lease = ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(bitmap);
         try
         {
             MethodInfo replaceBitmap = typeof(ImageBox).GetMethod(

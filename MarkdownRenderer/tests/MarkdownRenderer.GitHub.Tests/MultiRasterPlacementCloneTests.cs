@@ -641,7 +641,7 @@ public sealed class MultiRasterPlacementCloneTests
         private MarkdownLayoutContext? CandidateContext { get; set; }
         private InlineContainerBox? Candidate { get; set; }
 
-        internal void ReleaseCacheEntries() => SharedCanvasBitmapCache.ReleaseDevice(_device);
+        internal void ReleaseCacheEntries() => ImageResourceScope.Shared.BitmapCache.ReleaseDevice(_device);
 
         internal async Task RetireSourceAsync()
         {
@@ -679,7 +679,7 @@ public sealed class MultiRasterPlacementCloneTests
             if (Candidate is not null && CandidateContext is not null)
                 await RetireCandidateAsync(CandidateContext, Candidate);
             await RetireSourceAsync();
-            SharedCanvasBitmapCache.ReleaseDevice(_device);
+            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(_device);
             _device.Dispose();
         }
 
@@ -707,7 +707,7 @@ public sealed class MultiRasterPlacementCloneTests
             Assert.True(MarkdownBuiltInImageSourcePolicy.TryResolve(source, null, out MarkdownBuiltInImageSource resolved));
             int width = 64 + imageOrdinal * 8;
             int height = 32 + imageOrdinal * 4;
-            using SharedCanvasBitmapCache.Lease lease = SharedCanvasBitmapCache.StoreAndAcquire(
+            using SharedCanvasBitmapCache.Lease lease = ImageResourceScope.Shared.BitmapCache.StoreAndAcquire(
                 _device,
                 resolved.CacheKey,
                 CreateBitmap(_device, width, height),

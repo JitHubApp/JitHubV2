@@ -38,15 +38,15 @@ public sealed class RasterImageBoxWarpIntegrationTests(ITestOutputHelper output)
     [Fact]
     public async Task ImageBoxWarpDecodeMatchesWinRtPixelsAndDrainsAcrossBitmapCacheEviction()
     {
-        SharedCanvasBitmapCache.Clear();
+        ImageResourceScope.Shared.BitmapCache.Clear();
         await DisplaySizedRasterDecodeTests.WaitUntilAsync(() =>
-            SharedCanvasBitmapCache.RetainedBytesForTests == 0);
+            ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes == 0);
 
-        MarkdownImagePreparationAdmission processAdmission = MarkdownImagePreparationAdmission.Shared;
+        MarkdownImagePreparationAdmission processAdmission = ImageResourceScope.Shared.Preparation;
         await WaitForProcessAdmissionIdleAsync(processAdmission);
-        BitmapOutputAdmission outputAdmission = BitmapOutputAdmission.Shared;
+        BitmapOutputAdmission outputAdmission = ImageResourceScope.Shared.BitmapOutput;
         BitmapOutputAdmission.Snapshot outputBaseline = outputAdmission.GetSnapshot();
-        long livePixelWeightBaseline = SharedCanvasBitmapCache.LiveBitmapPixelWeightBytesForTests;
+        long livePixelWeightBaseline = ImageResourceScope.Shared.BitmapCache.GetSnapshot().LivePixelWeightBytes;
 
         using var device = new CanvasDevice(forceSoftwareRenderer: true);
         Assert.True(device.ForceSoftwareRenderer,
@@ -86,7 +86,7 @@ public sealed class RasterImageBoxWarpIntegrationTests(ITestOutputHelper output)
         var resolveContext = new MarkdownImageResolveContext(BaseUri: null);
         IMarkdownPerformanceDocumentScope resolverScope = session.OpenDocument(resolver, resolveContext);
 
-        RasterNativeWicDiagnosticSnapshot nativeBefore = RasterNativeWicDiagnostics.GetSnapshot();
+        RasterNativeWicDiagnosticSnapshot nativeBefore = ImageResourceScope.Shared.NativeWic.GetSnapshot();
         ImageBox? first = null;
         ImageBox? warmCache = null;
         ImageBox? coldBitmapWarmSource = null;
@@ -110,7 +110,7 @@ public sealed class RasterImageBoxWarpIntegrationTests(ITestOutputHelper output)
             Assert.Equal(outputBaseline.ChargedBytes + expectedWidth * (long)expectedHeight * 4,
                 outputAdmission.GetSnapshot().ChargedBytes);
 
-            RasterNativeWicDiagnosticSnapshot afterFirst = RasterNativeWicDiagnostics.GetSnapshot();
+            RasterNativeWicDiagnosticSnapshot afterFirst = ImageResourceScope.Shared.NativeWic.GetSnapshot();
             Assert.True(afterFirst.NativeStarted > nativeBefore.NativeStarted,
                 "The diagnostic build must prove that ImageBox entered the owned native WIC branch.");
             Assert.True(afterFirst.PixelLeaseCompleted > nativeBefore.PixelLeaseCompleted,
@@ -133,14 +133,14 @@ public sealed class RasterImageBoxWarpIntegrationTests(ITestOutputHelper output)
                 Assert.Equal(1, processAdmission.ActiveCount);
                 Assert.Equal(processAdmission.CapacityBytes, processAdmission.ActiveBytes);
 
-                RasterNativeWicDiagnosticSnapshot afterWarmCache = RasterNativeWicDiagnostics.GetSnapshot();
+                RasterNativeWicDiagnosticSnapshot afterWarmCache = ImageResourceScope.Shared.NativeWic.GetSnapshot();
                 Assert.Equal(afterFirst.NativeStarted, afterWarmCache.NativeStarted);
                 Assert.Equal(afterFirst.PixelLeaseCompleted, afterWarmCache.PixelLeaseCompleted);
             }
 
             warmCache.Dispose();
             first.Dispose();
-            SharedCanvasBitmapCache.Clear();
+            ImageResourceScope.Shared.BitmapCache.Clear();
             await WaitForRetirementBaselineAsync(
                 processAdmission, outputAdmission, outputBaseline, livePixelWeightBaseline);
             Assert.Equal(sourceCacheBytes, session.GetSnapshot().SourceCacheBytes);
@@ -149,7 +149,7 @@ public sealed class RasterImageBoxWarpIntegrationTests(ITestOutputHelper output)
             // authorized source cache while the device bitmap cache is empty.
             // Recreating the image must perform a new decode/upload, without
             // another host resolve, and produce the same orientation-aware pixels.
-            RasterNativeWicDiagnosticSnapshot beforeSourceWarmDecode = RasterNativeWicDiagnostics.GetSnapshot();
+            RasterNativeWicDiagnosticSnapshot beforeSourceWarmDecode = ImageResourceScope.Shared.NativeWic.GetSnapshot();
             coldBitmapWarmSource = CreateImage(device, resolverScope, session, documentOwner);
             await LoadAndAssertGeometryAsync(coldBitmapWarmSource);
             CanvasBitmap redecodedBitmap = Assert.IsType<CanvasBitmap>(coldBitmapWarmSource.Bitmap);
@@ -159,7 +159,7 @@ public sealed class RasterImageBoxWarpIntegrationTests(ITestOutputHelper output)
             Assert.Equal(sourceCacheBytes, session.GetSnapshot().SourceCacheBytes);
             Assert.Equal(MarkdownImageAccessibilityState.Loaded, coldBitmapWarmSource.AccessibilityState);
 
-            RasterNativeWicDiagnosticSnapshot afterSourceWarmDecode = RasterNativeWicDiagnostics.GetSnapshot();
+            RasterNativeWicDiagnosticSnapshot afterSourceWarmDecode = ImageResourceScope.Shared.NativeWic.GetSnapshot();
             Assert.True(afterSourceWarmDecode.NativeStarted > beforeSourceWarmDecode.NativeStarted,
                 "Evicting the Win2D bitmap must make the ImageBox source-cache hit decode again.");
             Assert.True(afterSourceWarmDecode.PixelLeaseCompleted > beforeSourceWarmDecode.PixelLeaseCompleted,
@@ -178,7 +178,7 @@ public sealed class RasterImageBoxWarpIntegrationTests(ITestOutputHelper output)
             {
                 try
                 {
-                    SharedCanvasBitmapCache.Clear();
+                    ImageResourceScope.Shared.BitmapCache.Clear();
                     await WaitForRetirementBaselineAsync(
                         processAdmission, outputAdmission, outputBaseline, livePixelWeightBaseline);
                 }
@@ -406,8 +406,8 @@ public sealed class RasterImageBoxWarpIntegrationTests(ITestOutputHelper output)
             processAdmission.ActiveBytes == 0 &&
             processAdmission.PendingRequests == 0 &&
             outputAdmission.GetSnapshot().ChargedBytes == outputBaseline.ChargedBytes &&
-            SharedCanvasBitmapCache.LiveBitmapPixelWeightBytesForTests == livePixelWeightBaseline &&
-            SharedCanvasBitmapCache.RetainedBytesForTests == 0);
+            ImageResourceScope.Shared.BitmapCache.GetSnapshot().LivePixelWeightBytes == livePixelWeightBaseline &&
+            ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes == 0);
     }
 
     private static async Task WaitForImageWorkToDrainAsync(params ImageBox?[] images)

@@ -28,7 +28,7 @@ public sealed class MarkdownLayoutConstructionScopeTests
     {
         using var device = new CanvasDevice();
         CanvasBitmap cachedBitmap = CreateBitmap(device);
-        SharedCanvasBitmapCache.Lease cacheLease = SharedCanvasBitmapCache.StoreAndAcquire(
+        SharedCanvasBitmapCache.Lease cacheLease = ImageResourceScope.Shared.BitmapCache.StoreAndAcquire(
             device,
             OnePixelPng,
             cachedBitmap);
@@ -52,7 +52,7 @@ public sealed class MarkdownLayoutConstructionScopeTests
         }
         finally
         {
-            SharedCanvasBitmapCache.ReleaseDevice(device);
+            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(device);
         }
 
         // If the partially-built HTML tree did not release its ImageBox

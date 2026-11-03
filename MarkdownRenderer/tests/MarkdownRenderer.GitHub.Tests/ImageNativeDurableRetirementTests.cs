@@ -537,7 +537,7 @@ public sealed class ImageNativeDurableRetirementTests
 
         public void Dispose()
         {
-            SharedCanvasBitmapCache.ReleaseDevice(Device);
+            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(Device);
             Device.Dispose();
         }
     }

@@ -41,7 +41,7 @@ public sealed class IdleImagePlacementCloneTests
 
             Assert.True(MarkdownBuiltInImageSourcePolicy.TryResolve(
                 builtinUrl, null, out MarkdownBuiltInImageSource builtIn));
-            using (SharedCanvasBitmapCache.Lease ignoredSeedReference = SharedCanvasBitmapCache.StoreAndAcquire(
+            using (SharedCanvasBitmapCache.Lease ignoredSeedReference = ImageResourceScope.Shared.BitmapCache.StoreAndAcquire(
                        seed.Device,
                        builtIn.CacheKey,
                        CreateBitmap(seed.Device, 3, 2),
@@ -51,7 +51,7 @@ public sealed class IdleImagePlacementCloneTests
                 // existed. A private idle clone must not adopt it as a hit.
             }
 
-            Assert.True(SharedCanvasBitmapCache.TryAcquire(seed.Device, builtIn.CacheKey, out cacheProbe));
+            Assert.True(ImageResourceScope.Shared.BitmapCache.TryAcquire(seed.Device, builtIn.CacheKey, out cacheProbe));
             int cacheReferencesBefore = GetEntryReferenceCount(cacheProbe!);
 
             Assert.False(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
@@ -334,7 +334,7 @@ public sealed class IdleImagePlacementCloneTests
 
         try
         {
-            completedLease = SharedCanvasBitmapCache.StoreAndAcquire(
+            completedLease = ImageResourceScope.Shared.BitmapCache.StoreAndAcquire(
                 seed.Device,
                 $"idle-preflight-completed-{Guid.NewGuid():N}",
                 CreateBitmap(seed.Device, 8, 4),
@@ -637,7 +637,7 @@ public sealed class IdleImagePlacementCloneTests
             foreach ((MarkdownLayoutContext context, InlineContainerBox root) in _candidates.ToArray())
                 await RetireCandidateAsync(context, root);
             await RetireSourceAsync();
-            SharedCanvasBitmapCache.ReleaseDevice(_seed.Device);
+            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(_seed.Device);
         }
     }
 

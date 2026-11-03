@@ -331,10 +331,10 @@ public sealed class ImageBoxSvgRendererTests
                 int x = index % columns;
                 int y = index / columns;
                 var key = (x * tilePixels, y * tilePixels, tilePixels, tilePixels);
-                fallback.Add(key, SharedCanvasBitmapCache.CreateUncachedLease(
+                fallback.Add(key, ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(
                     CanvasBitmap.CreateFromColors(device, [previous], 1, 1)));
                 if ((x + y) % 2 == 0)
-                    current.Add(key, SharedCanvasBitmapCache.CreateUncachedLease(
+                    current.Add(key, ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(
                         CanvasBitmap.CreateFromColors(device, [Color.FromArgb(0, 0, 0, 0)], 1, 1)));
             }
             void Set(string name, object value) => typeof(ImageBox)
@@ -1092,7 +1092,7 @@ public sealed class ImageBoxSvgRendererTests
     [Fact]
     public async Task SvgPreparationWaitsForSharedProcessAdmissionAcrossSessionsAndLegacyControls()
     {
-        MarkdownImagePreparationAdmission gate = MarkdownImagePreparationAdmission.Shared;
+        MarkdownImagePreparationAdmission gate = ImageResourceScope.Shared.Preparation;
         using IDisposable blocker = await gate.EnterAsync(
             new object(), 1, exclusive: true, CancellationToken.None);
         using var renderer = new ProcessPreparationSvgRenderer(holdOpens: false);
@@ -1150,7 +1150,7 @@ public sealed class ImageBoxSvgRendererTests
     [Fact]
     public async Task SvgPreparationUsesThreeTimesSourceLengthAsItsSchedulingWeight()
     {
-        MarkdownImagePreparationAdmission gate = MarkdownImagePreparationAdmission.Shared;
+        MarkdownImagePreparationAdmission gate = ImageResourceScope.Shared.Preparation;
         string dataUri = CreateSvgDataUri("process-preparation-weight");
         string sourceText = Uri.UnescapeDataString(dataUri[(dataUri.IndexOf(',') + 1)..]);
         long sourceLength = Encoding.UTF8.GetByteCount(sourceText);
@@ -1194,7 +1194,7 @@ public sealed class ImageBoxSvgRendererTests
     [Fact]
     public async Task RetiringQueuedSvgSessionRemovesItsProcessPreparationRequest()
     {
-        MarkdownImagePreparationAdmission gate = MarkdownImagePreparationAdmission.Shared;
+        MarkdownImagePreparationAdmission gate = ImageResourceScope.Shared.Preparation;
         using IDisposable blocker = await gate.EnterAsync(
             new object(), 1, exclusive: true, CancellationToken.None);
         using var renderer = new ProcessPreparationSvgRenderer(holdOpens: false);
@@ -1250,7 +1250,7 @@ public sealed class ImageBoxSvgRendererTests
     [Fact]
     public async Task SvgPreparationReleasesProcessAdmissionBeforeBlockedProviderOpens()
     {
-        MarkdownImagePreparationAdmission gate = MarkdownImagePreparationAdmission.Shared;
+        MarkdownImagePreparationAdmission gate = ImageResourceScope.Shared.Preparation;
         using var renderer = new ProcessPreparationSvgRenderer(holdOpens: true);
         var images = new[]
         {
@@ -2245,24 +2245,12 @@ public sealed class ImageBoxSvgRendererTests
 
     private static object? GetProcessSvgCacheEntry(string key)
     {
-        object cache = typeof(ImageBox)
-            .GetField("_svgCache", BindingFlags.Static | BindingFlags.NonPublic)!
-            .GetValue(null)!;
-        object?[] arguments = [key, null];
-        bool found = Assert.IsType<bool>(cache.GetType()
-            .GetMethod("TryGetValue", BindingFlags.Instance | BindingFlags.Public)!
-            .Invoke(cache, arguments));
-        return found ? arguments[1] : null;
+        return ImageResourceScope.Shared.SvgSources.TryGetValue(key, out SvgCacheEntry? entry) ? entry : null;
     }
 
     private static void RemoveProcessSvgCacheEntry(string key)
     {
-        object cache = typeof(ImageBox)
-            .GetField("_svgCache", BindingFlags.Static | BindingFlags.NonPublic)!
-            .GetValue(null)!;
-        _ = cache.GetType()
-            .GetMethod("Remove", BindingFlags.Instance | BindingFlags.Public)!
-            .Invoke(cache, [key]);
+        _ = ImageResourceScope.Shared.SvgSources.Remove(key);
     }
 
     private sealed class RecordingSvgRenderer(

@@ -1,7 +1,6 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -54,124 +53,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     // Selected artwork keeps the same translucent tint as Math and
     // Mermaid scenes instead of an opaque block-wide band.
     private const float SelectionArtworkBackgroundOpacity = 0.25f;
-
-    // Renderer-owned resource caches are bounded by retained bytes rather than
-    // entry count so a handful of very large images cannot bypass the budget.
-    private static readonly long MaxSvgCacheBytes = Environment.Is64BitProcess
-        ? 64L * 1024 * 1024
-        : 32L * 1024 * 1024;
-    private const int MaxFailedUrlEntries = 512;
-    // Negative caching is optional memoization, not an image admission policy.
-    // Count bounds alone must not retain hundreds of multi-megabyte data URIs
-    // or host-supplied keys after the owning document has retired.
-    private const int MaxFailedCacheKeyLength = 4096;
-
-    private readonly record struct RasterDecodeFailureCacheKey(
-        string CacheKey, string Format, long DecoderIdentity);
-
-    private static void RememberFailedUrl(string cacheKey)
-    {
-        if (cacheKey.Length is 0 or > MaxFailedCacheKeyLength)
-            return;
-        _failedUrls.TryAdd(cacheKey, 0);
-        TrimCache(_failedUrls, MaxFailedUrlEntries);
-    }
-
-    private static void RememberFailedRasterDecode(
-        string cacheKey, string format, long decoderIdentity)
-    {
-        if (cacheKey.Length is 0 or > MaxFailedCacheKeyLength ||
-            string.IsNullOrEmpty(format) || decoderIdentity < 0)
-        {
-            return;
-        }
-
-        _failedRasterDecodes.TryAdd(new RasterDecodeFailureCacheKey(cacheKey, format, decoderIdentity), 0);
-        TrimCache(_failedRasterDecodes, MaxFailedUrlEntries);
-    }
-
-    private static bool HasFailedRasterDecode(
-        string cacheKey, string format, long decoderIdentity) =>
-        cacheKey.Length is > 0 and <= MaxFailedCacheKeyLength &&
-        !string.IsNullOrEmpty(format) &&
-        _failedRasterDecodes.ContainsKey(new RasterDecodeFailureCacheKey(cacheKey, format, decoderIdentity));
-
-    private static void TrimCache<TKey, TValue>(ConcurrentDictionary<TKey, TValue> cache, int maxEntries)
-        where TKey : notnull
-    {
-        // These bounded negative caches hold no disposable/native values;
-        // eviction only forgets a prior failure and never changes ownership.
-        while (cache.Count > maxEntries)
-        {
-            bool removed = false;
-            foreach (TKey victim in cache.Keys)
-            {
-                if (!cache.TryRemove(victim, out _))
-                    continue;
-                removed = true;
-                break;
-            }
-
-            if (!removed)
-                break;
-        }
-    }
-
-    /// <summary>Device-independent SVG source state retained across relayout.</summary>
-    /// <remarks>
-    /// CPU rasters are never retained here. The provider owns parsed trees and
-    /// resources; <see cref="SharedCanvasBitmapCache"/> owns uploaded,
-    /// device-scoped bitmaps.
-    /// </remarks>
-    private sealed class SvgCacheEntry(
-        byte[] RawBytes,
-        Size Intrinsic,
-        string? Title,
-        string? Desc,
-        string ContentHash,
-        string SecurityPartitionHash,
-        MarkdownSvgDocumentInfo Info,
-        long RendererIdentity,
-        long ProviderCacheGeneration,
-        string? LastBitmapIdentity = null,
-        int LastBitmapWidthPixels = 0,
-        int LastBitmapHeightPixels = 0,
-        MarkdownSvgPhysicalViewport? LastPhysicalViewport = null)
-    {
-        internal readonly byte[] RawBytes = RawBytes;
-        internal readonly Size Intrinsic = Intrinsic;
-        internal readonly string? Title = Title;
-        internal readonly string? Desc = Desc;
-        internal readonly string ContentHash = ContentHash;
-        internal readonly string SecurityPartitionHash = SecurityPartitionHash;
-        internal readonly MarkdownSvgDocumentInfo Info = Info;
-        internal readonly long RendererIdentity = RendererIdentity;
-        internal readonly long ProviderCacheGeneration = ProviderCacheGeneration;
-        internal readonly string? LastBitmapIdentity = LastBitmapIdentity;
-        internal readonly int LastBitmapWidthPixels = LastBitmapWidthPixels;
-        internal readonly int LastBitmapHeightPixels = LastBitmapHeightPixels;
-        internal readonly MarkdownSvgPhysicalViewport? LastPhysicalViewport = LastPhysicalViewport;
-
-        internal SvgCacheEntry WithLastBitmap(
-            string bitmapIdentity,
-            int bitmapWidthPixels,
-            int bitmapHeightPixels,
-            MarkdownSvgPhysicalViewport? physicalViewport) =>
-            new(
-                RawBytes,
-                Intrinsic,
-                Title,
-                Desc,
-                ContentHash,
-                SecurityPartitionHash,
-                Info,
-                RendererIdentity,
-                ProviderCacheGeneration,
-                bitmapIdentity,
-                bitmapWidthPixels,
-                bitmapHeightPixels,
-                physicalViewport);
-    }
 
     // An accepted UI callback may remain queued after the source-read lease has
     // drained. Carry only weak source identity and scalar/display metadata into
@@ -321,14 +202,14 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             {
                 try
                 {
-                    _svgOpenAdmissions.Release(ref _openAdmissionEntry);
+                    Resources.SvgOpenAdmissions.Release(ref _openAdmissionEntry);
                 }
                 catch (Exception exception)
                 {
                     owner.RecordImageRetirementFailure(exception);
                 }
                 if (_providerAdmissionHeld)
-                    owner.TryImageCleanup(() => _svgProviderAdmissionGate.Release());
+                    owner.TryImageCleanup(() => Resources.SvgProviderAdmission.Release());
                 if (document is not null)
                     owner.RetireUncommittedSvgDocument(document);
                 if (documentUse is not null)
@@ -383,16 +264,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             Interlocked.CompareExchange(ref _state, 2, 0) == 0;
     }
 
-    private sealed class SvgRendererCacheIdentity(long value)
-    {
-        internal readonly long Value = value;
-    }
-
-    private sealed class RasterDecoderCacheIdentity(long value)
-    {
-        internal readonly long Value = value;
-    }
-
     private sealed class ImageWorkLease : IDisposable
     {
         private ImageBox? _owner;
@@ -438,41 +309,9 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             Interlocked.Exchange(ref _owner, null)?.CompleteSvgDocumentUse(State, IsCandidate);
     }
 
-    private static readonly WeightedLruCache<string, SvgCacheEntry> _svgCache = new(
-        MaxSvgCacheBytes,
-        GetSvgCacheEntryWeight,
-        comparer: StringComparer.Ordinal,
-        keyWeightSelector: static key => 48L + (long)key.Length * sizeof(char));
-    private static readonly ConditionalWeakTable<IMarkdownSvgRenderer, SvgRendererCacheIdentity>
-        _svgRendererIdentities = new();
-    private static readonly ConditionalWeakTable<IMarkdownRasterDecoder, RasterDecoderCacheIdentity>
-        _rasterDecoderIdentities = new();
-    private static readonly BoundedAsyncKeyedGate _svgOpenAdmissions = new(
-        maximumTrackedKeys: 256,
-        overflowStripeCount: 128);
-    // Keep aggregate host admission below the optional provider's default
-    // bounded queue. Queue wait is not rendering work and must never consume a
-    // document's hard worker deadline or turn a large badge wall into hundreds
-    // of false resource-limit failures.
-    private static readonly SemaphoreSlim _svgProviderAdmissionGate = new(16, 16);
-    private static long _nextSvgRendererIdentity;
-    private static long _nextRasterDecoderIdentity;
     private static readonly long RasterDecoderMaximumWorkingBytes = IntPtr.Size == 4
         ? 32L * 1024 * 1024
         : 64L * 1024 * 1024;
-
-    // URLs that have permanently failed to load/parse. New ImageBox instances
-    // for the same URL start in _loadFailed=true so the fatal state survives
-    // the layout rebuild triggered by the original failure.
-    private static readonly ConcurrentDictionary<string, byte> _failedUrls = new();
-    // Only typed portable UnsupportedContent failures are deterministic for an
-    // exact source/provider pair. Untyped legacy decode errors and portable
-    // resource/deadline/worker failures are retried because they may depend on
-    // request geometry or transient state. Keeping this cache path-specific
-    // lets a later provider retry a source that previously failed through WIC
-    // or a different provider.
-    private static readonly ConcurrentDictionary<RasterDecodeFailureCacheKey, byte> _failedRasterDecodes = new();
-    private static readonly ConcurrentDictionary<string, SvgFailure> _svgFailures = new();
 
     private const int MaxSvgBytes = 8 * 1024 * 1024;
     private const long MaxSvgOutputRasterBytes = 64L * 1024 * 1024;
@@ -492,6 +331,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     private static readonly TimeSpan ImageResolverTimeout = TimeSpan.FromSeconds(45);
 
     internal readonly MarkdownLayoutContext Context;
+    private static ImageResourceScope Resources => ImageResourceScope.Shared;
     internal readonly string Url;
     public readonly string Alt;
     private readonly SafeHtmlLength? _requestedWidth;
@@ -864,7 +704,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         }
         _activeCacheKey = _preResolutionCacheKey;
 
-        if (_preResolutionCacheKey is { } cacheKey && _failedUrls.ContainsKey(cacheKey))
+        if (_preResolutionCacheKey is { } cacheKey && Resources.Failures.HasFailedUrl(cacheKey))
         {
             // Preserve transport/bitmap failure state across rebuilds. SVG
             // provider failures use a separate renderer-and-generation-scoped
@@ -911,7 +751,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             return;
         }
 
-        if (_preResolutionCacheKey is { } svgCacheKey && _svgCache.TryGetValue(svgCacheKey, out _))
+        if (_preResolutionCacheKey is { } svgCacheKey && Resources.SvgSources.TryGetValue(svgCacheKey, out _))
             _isSvg = true;
 
         if (!_isSvg)
@@ -921,7 +761,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         // with the current theme color + device pixel scale, materialize it
         // synchronously so the very first paint shows the image — no async
         // pass through ProcessCachedSvgAsync, no placeholder flash.
-        if (_preResolutionCacheKey is { } cachedSvgKey && _svgCache.TryGetValue(cachedSvgKey, out var entry))
+        if (_preResolutionCacheKey is { } cachedSvgKey && Resources.SvgSources.TryGetValue(cachedSvgKey, out var entry))
         {
             bool compatible = IsSvgCacheEntryCurrent(entry);
             if (compatible)
@@ -942,7 +782,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             // fallback and swaps it only after the new lease is ready.
             if (compatible &&
                 entry.LastBitmapIdentity is { } previousIdentity &&
-                SharedCanvasBitmapCache.TryAcquire(
+                Resources.BitmapCache.TryAcquire(
                     Context.ResourceCreator.Device,
                     previousIdentity,
                     out SharedCanvasBitmapCache.Lease? previousLease) &&
@@ -4136,7 +3976,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             // account boundary; an unkeyed asset remains local to this box.
             string cacheKey = MarkdownImageCacheIdentityPolicy.GetResolvedAssetKey(asset);
             _activeCacheKey = cacheKey;
-            if (cacheKey.Length > 0 && _failedUrls.ContainsKey(cacheKey))
+            if (cacheKey.Length > 0 && Resources.Failures.HasFailedUrl(cacheKey))
             {
                 PublishFailure(cacheKey: string.Empty);
                 return;
@@ -4252,14 +4092,14 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         // Exact display/static-preview variants remain reusable in the decode
         // path, without starting a decoder or taking a preparation slot.
         if (options?.UseDisplaySizedRasterDecode == true ||
-            !SharedCanvasBitmapCache.TryAcquire(Context.ResourceCreator.Device, cacheKey, out lease))
+            !Resources.BitmapCache.TryAcquire(Context.ResourceCreator.Device, cacheKey, out lease))
         {
             return false;
         }
 
         bool withinPixelBudget = options is null || lease!.IsWithinPixelBudget(
             options.ReleaseOffscreenImageResources
-                ? Math.Min(options.MaxRasterOutputPixels, BitmapOutputAdmission.Shared.MaximumSingleOutputBytes / 4)
+                ? Math.Min(options.MaxRasterOutputPixels, Resources.BitmapOutput.MaximumSingleOutputBytes / 4)
                 : options.MaxRasterOutputPixels);
         if (withinPixelBudget &&
             (options is null || TryAdmitCachedBitmapOutput(lease!, expectedWork: expectedWork)))
@@ -4276,7 +4116,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     private bool TryLoadFallbackFromProcessCache(
         string cacheKey, BitmapOutputWorkContext? expectedWork = null)
     {
-        if (_failedUrls.ContainsKey(cacheKey))
+        if (Resources.Failures.HasFailedUrl(cacheKey))
         {
             PublishFailure(cacheKey: string.Empty);
             return true;
@@ -4287,7 +4127,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             return true;
         }
 
-        if (!_svgCache.TryGetValue(cacheKey, out SvgCacheEntry? entry))
+        if (!Resources.SvgSources.TryGetValue(cacheKey, out SvgCacheEntry? entry))
         {
             return false;
         }
@@ -4429,7 +4269,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             (gifFrame.Left != 0 || gifFrame.Top != 0 ||
              gifFrame.Width != budget.Width || gifFrame.Height != budget.Height);
         IMarkdownRasterDecoder? rasterDecoder = Context.RasterDecoder;
-        long rasterDecoderIdentity = rasterDecoder is null ? 0 : GetRasterDecoderIdentity(rasterDecoder);
+        long rasterDecoderIdentity = rasterDecoder is null ? 0 : Resources.ProviderIdentities.GetRasterDecoderIdentity(rasterDecoder);
         bool rasterProviderSupportsFormat = false;
         MarkdownRasterFormat rasterFormat = default;
         bool hasStaticProviderFormat = budget.FrameCount == 1 && budget.FirstFrame is null &&
@@ -4464,7 +4304,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             rasterOptions?.MaxRasterOutputPixels ?? RasterImageResourceBudget.MaxPixelsPerFrame);
         if (boundedBitmapOutput)
             maximumOutputPixels = Math.Min(maximumOutputPixels,
-                BitmapOutputAdmission.Shared.MaximumSingleOutputBytes / (composeGifCanvas ? 8 : 4));
+                Resources.BitmapOutput.MaximumSingleOutputBytes / (composeGifCanvas ? 8 : 4));
         var sizingRequest = new RasterImageSizingRequest(
             sizingPolicyApplies ? _availableWidth - Margin.Left - Margin.Right : budget.Width,
             sizingPolicyApplies ? Context.RasterizationScale : 1d,
@@ -4512,7 +4352,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         if (nativeGifDecode)
             rasterSize = (nativeGifPlan.OutputWidth, nativeGifPlan.OutputHeight);
         long rasterDecodeFailureIdentity = portableRasterDecode ? rasterDecoderIdentity : 0;
-        if (HasFailedRasterDecode(cacheKey, failureFormatKey, rasterDecodeFailureIdentity))
+        if (Resources.Failures.HasFailedRasterDecode(cacheKey, failureFormatKey, rasterDecodeFailureIdentity))
         {
             PublishFailure(cacheKey: string.Empty, cachePermanently: false);
             return;
@@ -4531,7 +4371,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         if (portableRasterDecode && rasterSourceIdentity.Length > 0 && rasterDecoder is not null)
         {
             rasterSourceIdentity += "\u001Fraster-decoder-v1:" +
-                GetRasterDecoderIdentity(rasterDecoder).ToString(CultureInfo.InvariantCulture);
+                Resources.ProviderIdentities.GetRasterDecoderIdentity(rasterDecoder).ToString(CultureInfo.InvariantCulture);
         }
         string cacheFamily = transformedDecode && cacheKey.Length > 0
             ? sizingRequest.GetCacheFamily(rasterSourceIdentity, displaySized) : cacheKey;
@@ -4582,7 +4422,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                     rasterOptions?.UseCachedRasterPreview == true &&
                     cacheKey.Length > 0 &&
                     (long)rasterSize.Width * rasterSize.Height >= 65_536 &&
-                    SharedCanvasBitmapCache.TryAcquireBestRasterPreview(
+                    Resources.BitmapCache.TryAcquireBestRasterPreview(
                         device,
                         cacheFamily,
                         sizingRequest,
@@ -4616,7 +4456,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
                 if (!string.IsNullOrEmpty(bitmapCacheKey))
                 {
-                    decodeGate = SharedCanvasBitmapCache.GetDecodeGate(device, bitmapCacheKey);
+                    decodeGate = Resources.BitmapCache.GetDecodeGate(device, bitmapCacheKey);
                     await decodeGate.WaitAsync(decodeToken).ConfigureAwait(false);
                     decodeGateHeld = true;
 
@@ -4673,7 +4513,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                                 bytes.Length +
                                 checked(sourcePixels * 4) +
                                 checked(outputPixels * (composeGifCanvas ? 12 : 8)));
-                    processDecodeSlot = await MarkdownImagePreparationAdmission.Shared.EnterAsync(
+                    processDecodeSlot = await Resources.Preparation.EnterAsync(
                         Context.EffectiveImagePreparationOwner ?? Context,
                         processAdmissionWeight,
                         exclusive: sessionPixelCapApplies || budget.CanRenderStaticPreview,
@@ -4769,8 +4609,10 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                                 out bitmapReservation, expectedWork: bitmapOutputWork))
                             return;
                         IDisposable nativeCredit = processDecodeSlot!;
+                        var nativeOptions = new RasterNativeWicDecodeOptions(Resources.NativeWic);
                         Task<RasterDecodedPixelLease> nativeTask = Task.Run(
-                            () => RasterNativeWicDecoder.Decode(bytes, nativePlan, nativeCredit, decodeToken),
+                            () => RasterNativeWicDecoder.Decode(
+                                        bytes, nativePlan, nativeCredit, nativeOptions, decodeToken),
                             CancellationToken.None);
                         // Decode consumes credit on every invocation path. If
                         // scheduling itself throws, the caller still owns it.
@@ -4807,9 +4649,10 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                         try
                         {
                             IDisposable nativeCredit = processDecodeSlot!;
+                            var nativeOptions = new RasterNativeWicDecodeOptions(Resources.NativeWic);
                             Task<RasterDecodedPixelLease> nativeTask = Task.Run(
                                 () => RasterNativeWicDecoder.DecodeGifFirstFrame(
-                                    bytes, nativeGifPlan, nativeCredit, decodeToken),
+                                    bytes, nativeGifPlan, nativeCredit, nativeOptions, decodeToken),
                                 CancellationToken.None);
                             processDecodeSlot = null;
                             using RasterDecodedPixelLease pixels = await nativeTask.ConfigureAwait(false);
@@ -4995,7 +4838,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                     if (!string.IsNullOrEmpty(bitmapCacheKey))
                     {
                         stageStarted = rasterPreparationId != 0 ? Stopwatch.GetTimestamp() : 0;
-                        bitmapLease = SharedCanvasBitmapCache.StoreAndAcquire(
+                        bitmapLease = Resources.BitmapCache.StoreAndAcquire(
                             device, bitmapCacheKey, ownedBitmap,
                             transformedDecode ? intrinsicSize : ownedBitmap.Size,
                             bitmapReservation: bitmapReservation);
@@ -5009,7 +4852,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                         // Unkeyed payloads acquire lifetime accounting on the
                         // preparation worker too. Publication only swaps the
                         // completed lease, without querying native dimensions.
-                        bitmapLease = SharedCanvasBitmapCache.CreateUncachedLease(
+                        bitmapLease = Resources.BitmapCache.CreateUncachedLease(
                             ownedBitmap, checked((int)outputSize.Width), checked((int)outputSize.Height),
                             transformedDecode ? intrinsicSize : ownedBitmap.Size,
                             bitmapReservation: bitmapReservation);
@@ -5098,7 +4941,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 _loadFailed = true;
                 _failureCarryable = cacheRasterDecodeFailure;
                 if (cacheRasterDecodeFailure)
-                    RememberFailedRasterDecode(cacheKey, failureFormatKey, rasterDecodeFailureIdentity);
+                    Resources.Failures.RememberFailedRasterDecode(cacheKey, failureFormatKey, rasterDecodeFailureIdentity);
             }
             else if (deviceLost)
             {
@@ -5152,7 +4995,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         out SharedCanvasBitmapCache.Lease? lease,
         BitmapOutputWorkContext? expectedWork = null)
     {
-        if (!SharedCanvasBitmapCache.TryAcquire(device, key, out lease))
+        if (!Resources.BitmapCache.TryAcquire(device, key, out lease))
             return false;
         bool withinPixelBudget = lease!.IsWithinPixelBudget(sizingRequest.MaximumPixels);
         bool matchesSizingRequest = withinPixelBudget &&
@@ -5343,7 +5186,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 _loadFailed = true;
                 _failureCarryable = true;
                 string cacheKey = _activeCacheKey ?? Url;
-                RememberFailedUrl(cacheKey);
+                Resources.Failures.RememberFailedUrl(cacheKey);
                 RaiseLoadCompleted(layoutInvalidated: true);
             });
             return;
@@ -5521,7 +5364,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         string currentSecurityPartitionHash = HashSvgSecurityPartition(effectiveSecurityPartitionKey);
         bool metadataWasKnown = IsKnownSvgSource(rawBytes, currentSecurityPartitionHash);
         long providerCacheGeneration = 0;
-        long rendererIdentity = GetSvgRendererIdentity(renderer);
+        long rendererIdentity = Resources.ProviderIdentities.GetSvgRendererIdentity(renderer);
         string svgFailureCacheKey = string.Empty;
 
         try
@@ -5548,7 +5391,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                                 preparationToken)
                             .ConfigureAwait(false);
                     using IDisposable processPreparationSlot =
-                        await MarkdownImagePreparationAdmission.Shared.EnterAsync(
+                        await Resources.Preparation.EnterAsync(
                                 Context.EffectiveImagePreparationOwner ?? Context,
                                 rawBytes.LongLength * 3,
                                 exclusive: false,
@@ -5676,7 +5519,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 preflight.SecurityPartitionHash,
                 rendererIdentity,
                 providerCacheGeneration);
-            if (_svgFailures.TryGetValue(
+            if (Resources.Failures.TryGetSvgFailure(
                     svgFailureCacheKey,
                     out SvgFailure cachedFailure))
             {
@@ -5743,7 +5586,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                     svgWorkId,
                     MarkdownSvgWorkStage.HostAdmissionWait,
                     svgSourceBytes);
-                openAdmissionEntry = await _svgOpenAdmissions
+                openAdmissionEntry = await Resources.SvgOpenAdmissions
                     .AcquireAsync(contentCacheKey, cancellationToken)
                     .ConfigureAwait(false);
 
@@ -5760,7 +5603,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 if (IsBitmapOutputDeferred)
                     return default;
 
-                await _svgProviderAdmissionGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+                await Resources.SvgProviderAdmission.WaitAsync(cancellationToken).ConfigureAwait(false);
                 providerAdmissionHeld = true;
             }
 
@@ -5914,8 +5757,8 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             // built-in URI alias. Only authorized built-in reads may publish
             // entries consumed by pre-resolution and NotHandled fallback.
             if (!string.IsNullOrEmpty(builtInSourceAliasKey))
-                _svgCache.Set(builtInSourceAliasKey, sourceEntry);
-            _svgCache.Set(contentCacheKey, sourceEntry);
+                Resources.SvgSources.Set(builtInSourceAliasKey, sourceEntry);
+            Resources.SvgSources.Set(contentCacheKey, sourceEntry);
 
             SvgRasterPlan rasterPlan = PickRasterDimensions(intrinsic);
             int targetWidth = rasterPlan.Width;
@@ -6035,14 +5878,14 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 TryImageCleanup(hostPreparationLease.Dispose);
             try
             {
-                _svgOpenAdmissions.Release(ref openAdmissionEntry);
+                Resources.SvgOpenAdmissions.Release(ref openAdmissionEntry);
             }
             catch (Exception exception)
             {
                 RecordImageRetirementFailure(exception);
             }
             if (providerAdmissionHeld)
-                TryImageCleanup(() => _svgProviderAdmissionGate.Release());
+                TryImageCleanup(() => Resources.SvgProviderAdmission.Release());
             if (openedDocument is not null)
                 RetireUncommittedSvgDocument(openedDocument);
             if (openedDocumentUse is not null)
@@ -6159,7 +6002,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                         MarkdownSvgWorkStage.BitmapCacheWait,
                         svgSourceBytes,
                         targetPixels);
-                    renderGate = SharedCanvasBitmapCache.GetDecodeGate(device, bitmapIdentity);
+                    renderGate = Resources.BitmapCache.GetDecodeGate(device, bitmapIdentity);
                     await renderGate.WaitAsync(cancellationToken).ConfigureAwait(false);
                     renderGateHeld = true;
                 }
@@ -6223,7 +6066,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                                     MarkdownSvgWorkStage.BitmapCacheStore,
                                     svgSourceBytes,
                                     targetPixels);
-                                bitmapLease = SharedCanvasBitmapCache.StoreSvgAndAcquire(
+                                bitmapLease = Resources.BitmapCache.StoreSvgAndAcquire(
                                     device,
                                     bitmapIdentity,
                                     ownedBitmap,
@@ -6257,7 +6100,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                     MarkdownSvgFailureReason.WorkerFailure,
                     "The SVG bitmap cache did not return a lease.");
 
-            UpdateSvgSourceCacheBitmap(
+            Resources.SvgSources.RecordLastBitmap(
                 work.BuiltInSourceAliasKey,
                 contentCacheKey,
                 bitmapIdentity,
@@ -7025,7 +6868,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 plan.Document is IMarkdownSvgPrioritizedDocument;
             if (!providerOwnsAdmission)
             {
-                await _svgProviderAdmissionGate.WaitAsync(admissionCancellation.Token).ConfigureAwait(false);
+                await Resources.SvgProviderAdmission.WaitAsync(admissionCancellation.Token).ConfigureAwait(false);
                 providerAdmissionHeld = true;
             }
             CancellationToken cancellationToken = admissionCancellation.Token;
@@ -7040,7 +6883,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             {
                 if (IsBitmapOutputDeferred)
                     return;
-                renderGate = SharedCanvasBitmapCache.GetDecodeGate(device, identity);
+                renderGate = Resources.BitmapCache.GetDecodeGate(device, identity);
                 await renderGate.WaitAsync(cancellationToken).ConfigureAwait(false);
                 renderGateHeld = true;
 
@@ -7096,7 +6939,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                                 MarkdownSvgWorkStage.BitmapCacheStore,
                                 svgSourceBytes,
                                 targetPixels);
-                            bitmapLease = SharedCanvasBitmapCache.StoreSvgAndAcquire(
+                            bitmapLease = Resources.BitmapCache.StoreSvgAndAcquire(
                                 device,
                                 identity,
                                 ownedBitmap,
@@ -7251,7 +7094,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 if (renderGateHeld)
                     TryImageCleanup(() => renderGate!.Release());
                 if (providerAdmissionHeld)
-                    TryImageCleanup(() => _svgProviderAdmissionGate.Release());
+                    TryImageCleanup(() => Resources.SvgProviderAdmission.Release());
                 TryImageCleanup(() => CompleteSvgTileWork(key, workCancellation));
             }
             finally
@@ -7881,7 +7724,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             IMarkdownSvgRenderer? renderer = Context.SvgRenderer;
             if (renderer is null)
                 return false;
-            long rendererIdentity = GetSvgRendererIdentity(renderer);
+            long rendererIdentity = Resources.ProviderIdentities.GetSvgRendererIdentity(renderer);
             long providerCacheGeneration = renderer.CacheGeneration;
             if ((sourceEntry?.RendererIdentity ?? _svgRendererIdentity) != rendererIdentity ||
                 (info.HasText &&
@@ -7993,7 +7836,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         int renderGeneration,
         BitmapOutputWorkContext bitmapOutputWork)
     {
-        if (!_svgCache.TryGetValue(contentCacheKey, out SvgCacheEntry? entry) ||
+        if (!Resources.SvgSources.TryGetValue(contentCacheKey, out SvgCacheEntry? entry) ||
             !IsSvgCacheEntryCurrent(entry))
         {
             return false;
@@ -8006,7 +7849,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             return false;
 
         if (!string.IsNullOrEmpty(builtInSourceAliasKey))
-            _svgCache.Set(builtInSourceAliasKey, entry);
+            Resources.SvgSources.Set(builtInSourceAliasKey, entry);
         return true;
     }
 
@@ -8061,38 +7904,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                    _svgSecurityPartitionHash,
                    currentSecurityPartitionHash,
                    StringComparison.Ordinal);
-    }
-
-    private static void UpdateSvgSourceCacheBitmap(
-        string? builtInSourceAliasKey,
-        string contentCacheKey,
-        string bitmapIdentity,
-        int width,
-        int height,
-        MarkdownSvgPhysicalViewport? physicalViewport)
-    {
-        // Look up only the exact preflight/content/theme/security identity.
-        // An evicted source is not resurrected through a weak pointer, and no
-        // async continuation needs an extra entry wrapper or retained array.
-        if (!_svgCache.TryGetValue(contentCacheKey, out SvgCacheEntry? sourceEntry))
-            return;
-        SvgCacheEntry completedEntry = sourceEntry.WithLastBitmap(bitmapIdentity, width, height, physicalViewport);
-        if (string.IsNullOrEmpty(builtInSourceAliasKey))
-        {
-            _svgCache.TryReplaceIfReferenceMatches(contentCacheKey, sourceEntry, completedEntry);
-            return;
-        }
-        // A newer resolution, theme/locale variant or eviction may have
-        // replaced the URL alias while this image rendered. Memoization is
-        // optional: update only the same complete entry, atomically, and never
-        // restore an evicted alias or overwrite newer content with a late render.
-        // The content and matching URL alias share one cache transaction so
-        // concurrent completions cannot publish different bitmap metadata.
-        _svgCache.TryReplaceWithAliasIfReferenceMatches(
-            contentCacheKey,
-            builtInSourceAliasKey,
-            sourceEntry,
-            completedEntry);
     }
 
     private static SvgPublicationMetadata CreateSvgPublicationMetadata(
@@ -8263,8 +8074,8 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
                 if (!string.IsNullOrEmpty(metadata.ResolvedCacheKey))
                 {
-                    _svgFailures.TryRemove(metadata.SvgFailureCacheKey, out _);
-                    _failedUrls.TryRemove(metadata.ResolvedCacheKey, out _);
+                    Resources.Failures.ForgetSvgFailure(metadata.SvgFailureCacheKey);
+                    Resources.Failures.ForgetFailedUrl(metadata.ResolvedCacheKey);
                 }
                 transferred = ownership.TryTransfer();
                 if (!transferred)
@@ -8798,10 +8609,10 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             _loadFailed = !hasPreviousGoodBitmap;
             _failureCarryable = _loadFailed && cachePermanently;
             if (_loadFailed && cachePermanently &&
-                failureCacheKey.Length is > 0 and <= MaxFailedCacheKeyLength)
+                failureCacheKey.Length is > 0 and <= ImageFailureCache.MaxKeyLength)
             {
-                _svgFailures[failureCacheKey] = (reason, TrimSvgMetadata(description));
-                TrimCache(_svgFailures, MaxFailedUrlEntries);
+                Resources.Failures.RememberSvgFailure(
+                    failureCacheKey, reason, TrimSvgMetadata(description));
             }
 
             if (_loadFailed)
@@ -8909,7 +8720,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             width,
             height,
             outputBytes > (Context.PerformanceSession?.Options.ReleaseOffscreenImageResources != true ? MaxSvgOutputRasterBytes :
-                Math.Min(MaxSvgOutputRasterBytes, BitmapOutputAdmission.Shared.MaximumSingleOutputBytes)) ||
+                Math.Min(MaxSvgOutputRasterBytes, Resources.BitmapOutput.MaximumSingleOutputBytes)) ||
                 width > MaxUntiledSvgDimensionPixels ||
                 height > MaxUntiledSvgDimensionPixels ||
                 width > Context.ResourceCreator.Device.MaximumBitmapSizeInPixels ||
@@ -8966,18 +8777,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         return identity.ToString();
     }
 
-    private static long GetSvgRendererIdentity(IMarkdownSvgRenderer renderer) =>
-        _svgRendererIdentities.GetValue(
-            renderer,
-            static _ => new SvgRendererCacheIdentity(
-                Interlocked.Increment(ref _nextSvgRendererIdentity))).Value;
-
-    private static long GetRasterDecoderIdentity(IMarkdownRasterDecoder decoder) =>
-        _rasterDecoderIdentities.GetValue(
-            decoder,
-            static _ => new RasterDecoderCacheIdentity(
-                Interlocked.Increment(ref _nextRasterDecoderIdentity))).Value;
-
     private static bool TryGetMarkdownRasterFormat(string? format, out MarkdownRasterFormat rasterFormat)
     {
         rasterFormat = format switch
@@ -9020,7 +8819,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         try
         {
             return Context.SvgRenderer is { } renderer &&
-                   entry.RendererIdentity == GetSvgRendererIdentity(renderer) &&
+                   entry.RendererIdentity == Resources.ProviderIdentities.GetSvgRendererIdentity(renderer) &&
                    (!entry.Info.HasText ||
                     entry.ProviderCacheGeneration == renderer.CacheGeneration);
         }
@@ -9035,7 +8834,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         try
         {
             return Context.SvgRenderer is { } renderer &&
-                   GetSvgRendererIdentity(renderer) == _svgRendererIdentity &&
+                   Resources.ProviderIdentities.GetSvgRendererIdentity(renderer) == _svgRendererIdentity &&
                    (_svgInfo?.HasText != true ||
                     renderer.CacheGeneration == _svgProviderCacheGeneration);
         }
@@ -9179,7 +8978,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             _failureCarryable = cachePermanently;
             if (cachePermanently && !string.IsNullOrEmpty(cacheKey))
             {
-                RememberFailedUrl(cacheKey);
+                Resources.Failures.RememberFailedUrl(cacheKey);
             }
 
             // Block images and explicitly-sized inline images preserve their geometry. A
@@ -9522,18 +9321,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             TryImageCleanup(retiredLease.Dispose);
     }
 
-    private static long GetSvgCacheEntryWeight(SvgCacheEntry entry)
-    {
-        long weight = 512L + entry.RawBytes.LongLength;
-        weight += (entry.Title?.Length ?? 0) * sizeof(char);
-        weight += (entry.Desc?.Length ?? 0) * sizeof(char);
-        weight += entry.ContentHash.Length * sizeof(char);
-        weight += entry.SecurityPartitionHash.Length * sizeof(char);
-        weight += (entry.LastBitmapIdentity?.Length ?? 0) * sizeof(char);
-
-        return Math.Max(1L, weight);
-    }
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void RecordRasterPreparationStage(
         IMarkdownPerformanceSessionInternal? session,
@@ -9545,17 +9332,4 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             session!.RecordRasterPreparationStage(
                 preparationId, stage, Stopwatch.GetTimestamp() - startedAt);
     }
-
-    /// <summary>
-    /// Drops cache ownership for every decoded bitmap created on a lost Win2D
-    /// device. Live boxes keep their leases only until the recovery rebuild
-    /// disposes them, at which point the invalid resources are released.
-    /// </summary>
-    internal static void ReleaseDeviceResources(CanvasDevice device) =>
-        SharedCanvasBitmapCache.ReleaseDevice(device);
-
-    /// <summary>Drops device-independent SVG source metadata under system
-    /// memory pressure. Live boxes retain the source required by their active
-    /// document handles; future boxes can repopulate this bounded cache.</summary>
-    internal static void TrimSharedCachesForMemoryPressure() => _svgCache.Clear();
 }

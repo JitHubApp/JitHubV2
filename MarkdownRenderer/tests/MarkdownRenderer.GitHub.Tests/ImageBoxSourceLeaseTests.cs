@@ -752,17 +752,9 @@ public sealed class ImageBoxSourceLeaseTests
     {
         string activeCacheKey = GetPrivateField<string>(image, "_activeCacheKey");
         string contentHash = GetPrivateField<string>(image, "_svgContentHash");
-        FieldInfo cacheField = typeof(ImageBox).GetField(
-            "_svgCache",
-            BindingFlags.Static | BindingFlags.NonPublic)!;
-        object cache = cacheField.GetValue(null)!;
-        Predicate<string> matches = key =>
+        return ImageResourceScope.Shared.SvgSources.RemoveWhere(key =>
             string.Equals(key, activeCacheKey, StringComparison.Ordinal) ||
-            key.Contains($":content={contentHash}:", StringComparison.Ordinal);
-        MethodInfo removeWhere = cache.GetType().GetMethod(
-            "RemoveWhere",
-            BindingFlags.Instance | BindingFlags.Public)!;
-        return Assert.IsType<int>(removeWhere.Invoke(cache, [matches]));
+            key.Contains($":content={contentHash}:", StringComparison.Ordinal));
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

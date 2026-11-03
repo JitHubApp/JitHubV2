@@ -2,14 +2,18 @@ using System.Threading;
 
 namespace MarkdownRenderer.Layout.Boxes;
 
-internal static class RasterNativeWicDiagnostics
+/// <summary>
+/// Counts native WIC decodes for one image resource scope: how many reached
+/// the native graph and how many returned a completed pixel lease.
+/// </summary>
+internal sealed class RasterNativeWicDiagnostics
 {
-    private static long s_nativeStarted;
-    private static long s_pixelLeaseCompleted;
+    private long _nativeStarted;
+    private long _pixelLeaseCompleted;
 
-    internal static RasterNativeWicDiagnosticSnapshot GetSnapshot() =>
-        new(Interlocked.Read(ref s_nativeStarted), Interlocked.Read(ref s_pixelLeaseCompleted));
+    internal RasterNativeWicDiagnosticSnapshot GetSnapshot() =>
+        new(Interlocked.Read(ref _nativeStarted), Interlocked.Read(ref _pixelLeaseCompleted));
 
-    internal static void RecordNativeStarted() => Interlocked.Increment(ref s_nativeStarted);
-    internal static void RecordPixelLeaseCompleted() => Interlocked.Increment(ref s_pixelLeaseCompleted);
+    internal void RecordNativeStarted() => Interlocked.Increment(ref _nativeStarted);
+    internal void RecordPixelLeaseCompleted() => Interlocked.Increment(ref _pixelLeaseCompleted);
 }

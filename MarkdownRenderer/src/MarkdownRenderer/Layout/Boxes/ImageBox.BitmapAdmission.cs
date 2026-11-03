@@ -1,9 +1,6 @@
 using System;
 using System.Threading;
-using System.Threading.Tasks;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Performance;
-using Microsoft.UI.Dispatching;
 using Microsoft.Graphics.Canvas;
 
 namespace MarkdownRenderer.Layout.Boxes;
@@ -89,9 +86,9 @@ internal sealed partial class ImageBox
     private void RequestOversizedCachedBitmapTrimIfNeeded(SharedCanvasBitmapCache.Lease lease)
     {
         if (IsBitmapOutputParticipationEnabled &&
-            lease.PixelWeightBytes > BitmapOutputAdmission.Shared.MaximumSingleOutputBytes)
+            lease.PixelWeightBytes > Resources.BitmapOutput.MaximumSingleOutputBytes)
         {
-            SharedCanvasBitmapCache.RequestBitmapOutputPressureTrim();
+            Resources.BitmapCache.RequestBitmapOutputPressureTrim();
         }
     }
 
@@ -105,7 +102,7 @@ internal sealed partial class ImageBox
         if (!IsBitmapOutputParticipationEnabled)
             return true;
 
-        BitmapOutputAdmission admission = BitmapOutputAdmission.Shared;
+        BitmapOutputAdmission admission = Resources.BitmapOutput;
         if (bytes <= 0 || bytes > admission.MaximumSingleOutputBytes)
             return false;
 
@@ -168,7 +165,7 @@ internal sealed partial class ImageBox
         bool isExistingSvgTileOutput = false,
         BitmapOutputWorkContext? expectedWork = null)
     {
-        if (!SharedCanvasBitmapCache.TryAcquire(device, identity, out lease) || lease is null)
+        if (!Resources.BitmapCache.TryAcquire(device, identity, out lease) || lease is null)
             return false;
 
         if (TryAdmitCachedBitmapOutput(lease, isExistingSvgTileOutput, expectedWork))
@@ -195,7 +192,7 @@ internal sealed partial class ImageBox
             return false;
         }
 
-        BitmapOutputAdmission admission = BitmapOutputAdmission.Shared;
+        BitmapOutputAdmission admission = Resources.BitmapOutput;
         GetBitmapOutputDemand(
             isExistingSvgTileOutput,
             expectedWork,
@@ -226,7 +223,7 @@ internal sealed partial class ImageBox
         }
 
         if (requiredBytes > admission.MaximumSingleOutputBytes)
-            SharedCanvasBitmapCache.RequestBitmapOutputPressureTrim();
+            Resources.BitmapCache.RequestBitmapOutputPressureTrim();
 
         if (expectedWork is { } deniedWork && IsBitmapOutputWorkCurrent(deniedWork) &&
             deniedWork.Demand is not null && requiredBytes > 0 &&
@@ -290,7 +287,7 @@ internal sealed partial class ImageBox
         int svgGeneration = work.SvgGeneration;
         bool isExistingSvgTileOutput = work.IsExistingSvgTileOutput;
         if (demand is null || requiredBytes <= 0 ||
-            requiredBytes > BitmapOutputAdmission.Shared.MaximumSingleOutputBytes)
+            requiredBytes > Resources.BitmapOutput.MaximumSingleOutputBytes)
         {
             return false;
         }
@@ -591,7 +588,7 @@ internal sealed partial class ImageBox
         if (isVisible)
             observedDemand?.PromoteVisible();
 
-        BitmapOutputAdmission.Snapshot admissionSnapshot = BitmapOutputAdmission.Shared.GetSnapshot();
+        BitmapOutputAdmission.Snapshot admissionSnapshot = Resources.BitmapOutput.GetSnapshot();
         long currentCapacityVersion = admissionSnapshot.CapacityVersion;
         long currentWaiterSlotVersion = admissionSnapshot.WaiterSlotVersion;
         bool replacementSnapshot = HasRetainedBitmapOutput(_bitmapOutputExistingTile != 0);
@@ -886,7 +883,7 @@ internal sealed partial class ImageBox
 
         if (needsTrim)
         {
-            try { SharedCanvasBitmapCache.TrimForBitmapOutputPressure(); }
+            try { Resources.BitmapCache.TrimForBitmapOutputPressure(); }
             catch (Exception exception) { RecordImageRetirementFailure(exception); }
         }
 
@@ -913,7 +910,7 @@ internal sealed partial class ImageBox
                     // the fresh attempt returns an atomic slot generation on
                     // failure so a later removal cannot be lost.
                     staleWaiter = waiter;
-                    registrationReady = BitmapOutputAdmission.Shared.TryRegisterWaiter(
+                    registrationReady = Resources.BitmapOutput.TryRegisterWaiter(
                         owner,
                         bytes,
                         visible,
@@ -927,7 +924,7 @@ internal sealed partial class ImageBox
             }
             else
             {
-                registrationReady = BitmapOutputAdmission.Shared.TryRegisterWaiter(
+                registrationReady = Resources.BitmapOutput.TryRegisterWaiter(
                     owner,
                     bytes,
                     visible,

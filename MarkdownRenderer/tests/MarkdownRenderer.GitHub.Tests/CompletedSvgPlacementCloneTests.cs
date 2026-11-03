@@ -406,8 +406,8 @@ public sealed class CompletedSvgPlacementCloneTests
 
     private static async Task<List<BitmapOutputAdmission.Reservation>> SaturateAdmissionAsync()
     {
-        BitmapOutputAdmission admission = BitmapOutputAdmission.Shared;
-        SharedCanvasBitmapCache.Clear();
+        BitmapOutputAdmission admission = ImageResourceScope.Shared.BitmapOutput;
+        ImageResourceScope.Shared.BitmapCache.Clear();
         await WaitUntilAsync(() => admission.GetSnapshot().ChargedBytes == 0);
         var reservations = new List<BitmapOutputAdmission.Reservation>();
         while (true)

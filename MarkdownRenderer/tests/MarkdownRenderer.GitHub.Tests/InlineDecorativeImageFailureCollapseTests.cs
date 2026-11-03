@@ -246,7 +246,7 @@ public sealed class InlineDecorativeImageFailureCollapseTests
         public void Dispose()
         {
             Box.Dispose();
-            SharedCanvasBitmapCache.ReleaseDevice(_device);
+            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(_device);
             _device.Dispose();
         }
     }

@@ -451,7 +451,7 @@ public sealed class MultiRootInlinePlacementCloneTests
         {
             string url = $"ms-appx:///inline-placement-{Guid.NewGuid():N}.png";
             Assert.True(MarkdownBuiltInImageSourcePolicy.TryResolve(url, null, out MarkdownBuiltInImageSource resolved));
-            using SharedCanvasBitmapCache.Lease cachedLease = SharedCanvasBitmapCache.StoreAndAcquire(
+            using SharedCanvasBitmapCache.Lease cachedLease = ImageResourceScope.Shared.BitmapCache.StoreAndAcquire(
                 _device,
                 resolved.CacheKey,
                 CreateBitmap(_device, 48, 24),
@@ -491,7 +491,7 @@ public sealed class MultiRootInlinePlacementCloneTests
                 await SourceContext.DrainOwnedRetirementsAsync();
             }
 
-            SharedCanvasBitmapCache.ReleaseDevice(_device);
+            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(_device);
             _device.Dispose();
         }
 

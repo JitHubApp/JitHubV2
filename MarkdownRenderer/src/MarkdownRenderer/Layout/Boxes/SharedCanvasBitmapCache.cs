@@ -1,7 +1,5 @@
 using System;
 using System.Globalization;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 using MarkdownRenderer.Diagnostics;
 using Microsoft.Graphics.Canvas;
@@ -13,52 +11,58 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// <summary>
 /// Device-partitioned, byte-budgeted cache for decoded Win2D images.
 /// Live layout boxes hold leases, so eviction and device-loss cleanup never
-/// dispose a bitmap that is still being painted.
+/// dispose a bitmap that is still being painted. Each cache belongs to one
+/// <see cref="ImageResourceScope"/> and charges lazy output admission to
+/// that scope's <see cref="BitmapOutputAdmission"/>.
 /// </summary>
-internal static class SharedCanvasBitmapCache
+internal sealed class SharedCanvasBitmapCache
 {
     internal static readonly long DefaultBudgetBytes = Environment.Is64BitProcess
         ? 64L * 1024 * 1024
         : 32L * 1024 * 1024;
     private const int DecodeStripeCount = 64;
     private const long InvalidBitmapFallbackWeightBytes = 1L * 1024 * 1024;
-    private static int _cacheDisposalFailureCount;
-    private static int _lastCacheDisposalFailureHResult;
-    private static int _bitmapOutputPressureTrimRequested;
-    private static int _bitmapOutputPressureTrimQueued;
+    private readonly BitmapOutputAdmission _outputAdmission;
+    private int _cacheDisposalFailureCount;
+    private int _lastCacheDisposalFailureHResult;
+    private int _bitmapOutputPressureTrimRequested;
+    private int _bitmapOutputPressureTrimQueued;
     // Numeric pixel-weight by unique owner lifetime, not driver heap size or
     // an admission cap. Cloning a lease never adds another bitmap charge.
-    private static readonly LiveBitmapPixelWeightLedger BitmapWeightLedger = new();
+    private readonly LiveBitmapPixelWeightLedger _bitmapWeightLedger = new();
 
-    private static readonly WeightedLruCache<CacheKey, Entry> Cache = new(
-        DefaultBudgetBytes,
-        static entry => entry.WeightBytes,
-        static entry => entry.ReleaseCacheReference(),
-        keyWeightSelector: static key => EstimateCacheKeyWeightBytes(key.Identity));
+    private readonly WeightedLruCache<SharedCanvasBitmapCacheKey, Entry> _cache;
 
-    private static readonly SemaphoreSlim[] DecodeStripes = CreateDecodeStripes();
+    private readonly SemaphoreSlim[] _decodeStripes = CreateDecodeStripes();
 
-    static SharedCanvasBitmapCache()
+    /// <summary>Creates a cache that charges lazy admission to <paramref name="outputAdmission"/>.</summary>
+    /// <param name="outputAdmission">The scope's bitmap output admission.</param>
+    /// <param name="budgetBytes">The retained-byte budget of the LRU.</param>
+    /// <param name="weightSelector">
+    /// Weighs an entry for the LRU; defaults to <see cref="Entry.WeightBytes"/>.
+    /// A fault-injecting selector exercises a failed precommit insertion.
+    /// </param>
+    internal SharedCanvasBitmapCache(
+        BitmapOutputAdmission outputAdmission,
+        long budgetBytes,
+        Func<Entry, long>? weightSelector = null)
     {
-        try
-        {
-            Windows.System.MemoryManager.AppMemoryUsageIncreased += OnAppMemoryUsageIncreased;
-        }
-        catch (Exception exception) when (
-            exception is COMException or PlatformNotSupportedException or TypeInitializationException)
-        {
-            // MemoryManager is unavailable in some unpackaged and test hosts.
-            // The hard LRU budget and explicit device-loss cleanup still apply.
-        }
+        ArgumentNullException.ThrowIfNull(outputAdmission);
+        _outputAdmission = outputAdmission;
+        _cache = new(
+            budgetBytes,
+            weightSelector ?? (static entry => entry.WeightBytes),
+            static entry => entry.ReleaseCacheReference(),
+            keyWeightSelector: static key => EstimateCacheKeyWeightBytes(key.Identity));
     }
 
-    internal static bool TryAcquire(CanvasDevice device, string identity, out Lease? lease)
+    internal bool TryAcquire(CanvasDevice device, string identity, out Lease? lease)
     {
         ArgumentNullException.ThrowIfNull(device);
         ArgumentNullException.ThrowIfNull(identity);
 
-        var key = new CacheKey(device, identity);
-        if (Cache.TryGetValue(key, out Entry? entry))
+        var key = new SharedCanvasBitmapCacheKey(device, identity);
+        if (_cache.TryGetValue(key, out Entry? entry))
         {
             var owner = new Lease();
             if (entry.TryAcquire())
@@ -113,7 +117,7 @@ internal static class SharedCanvasBitmapCache
                 CultureInfo.InvariantCulture, out int height) && height > 0;
     }
 
-    internal static bool TryAcquireBestRasterPreview(
+    internal bool TryAcquireBestRasterPreview(
         CanvasDevice device,
         string cacheFamily,
         RasterImageSizingRequest sizingRequest,
@@ -128,7 +132,7 @@ internal static class SharedCanvasBitmapCache
         string variantPrefix = string.Concat(cacheFamily, "\u001Fdisplay:");
         // The cache predicate reads only immutable entry metadata and a detached
         // sizing request. Never query Win2D or live layout under the LRU lock.
-        if (!Cache.TryGetBestMatch(
+        if (!_cache.TryGetBestMatch(
                 (key, entry) => ReferenceEquals(key.Device, device) &&
                     IsExactDisplayVariantKey(key.Identity, variantPrefix) &&
                     IsCompatibleRasterPreview(entry, sizingRequest),
@@ -169,7 +173,7 @@ internal static class SharedCanvasBitmapCache
             (entry.PixelWidth < target.Width || entry.PixelHeight < target.Height);
     }
 
-    internal static Lease StoreAndAcquire(
+    internal Lease StoreAndAcquire(
         CanvasDevice device,
         string identity,
         CanvasBitmap bitmap,
@@ -196,7 +200,7 @@ internal static class SharedCanvasBitmapCache
     /// Stores an SVG bitmap using the raster dimensions that were validated
     /// before upload. This avoids querying Win2D metadata on the hot path.
     /// </summary>
-    internal static Lease StoreSvgAndAcquire(
+    internal Lease StoreSvgAndAcquire(
         CanvasDevice device,
         string identity,
         CanvasBitmap bitmap,
@@ -221,7 +225,7 @@ internal static class SharedCanvasBitmapCache
             , bitmapReservation
         );
 
-    private static Lease StoreAndAcquireCore(
+    private Lease StoreAndAcquireCore(
         CanvasDevice device,
         string identity,
         CanvasBitmap bitmap,
@@ -254,6 +258,7 @@ internal static class SharedCanvasBitmapCache
         if (bitmapReservation is null)
         {
             entry = new Entry(
+                this,
                 bitmap,
                 intrinsicSize,
                 knownPixelWidth,
@@ -277,6 +282,7 @@ internal static class SharedCanvasBitmapCache
                     throw new InvalidOperationException("The bitmap output reservation already belongs to an Entry.");
 
                 entry = new Entry(
+                    this,
                     bitmap,
                     intrinsicSize,
                     knownPixelWidth,
@@ -307,7 +313,7 @@ internal static class SharedCanvasBitmapCache
                 // Set preallocates its mutation batch. This key's hashing and
                 // the cache's contained eviction callback cannot throw during
                 // commit; allocation failure therefore leaves it unpublished.
-                Cache.Set(new CacheKey(device, identity), entry);
+                _cache.Set(new SharedCanvasBitmapCacheKey(device, identity), entry);
                 insertionCompleted = true;
             }
             return lease;
@@ -330,7 +336,7 @@ internal static class SharedCanvasBitmapCache
         }
     }
 
-    internal static Lease CreateUncachedLease(
+    internal Lease CreateUncachedLease(
         CanvasBitmap bitmap,
         BitmapOutputAdmission.Reservation? bitmapReservation = null)
     {
@@ -338,7 +344,7 @@ internal static class SharedCanvasBitmapCache
         var lease = new Lease();
         if (bitmapReservation is null)
         {
-            lease.Attach(new Entry(bitmap));
+            lease.Attach(new Entry(this, bitmap));
             return lease;
         }
 
@@ -346,7 +352,7 @@ internal static class SharedCanvasBitmapCache
         {
             if (bitmapReservation.IsTransferred)
                 throw new InvalidOperationException("The bitmap output reservation already belongs to an Entry.");
-            var entry = new Entry(bitmap, bitmapReservation);
+            var entry = new Entry(this, bitmap, bitmapReservation);
             lease.Attach(entry);
             if (!entry.TransferBitmapOutputReservationToEntry())
             {
@@ -357,7 +363,7 @@ internal static class SharedCanvasBitmapCache
         return lease;
     }
 
-    internal static Lease CreateUncachedLease(
+    internal Lease CreateUncachedLease(
         CanvasBitmap bitmap,
         int pixelWidth,
         int pixelHeight,
@@ -372,7 +378,7 @@ internal static class SharedCanvasBitmapCache
         var lease = new Lease();
         if (bitmapReservation is null)
         {
-            lease.Attach(new Entry(bitmap, pixelWidth, pixelHeight, intrinsicSize));
+            lease.Attach(new Entry(this, bitmap, pixelWidth, pixelHeight, intrinsicSize));
             return lease;
         }
 
@@ -380,7 +386,7 @@ internal static class SharedCanvasBitmapCache
         {
             if (bitmapReservation.IsTransferred)
                 throw new InvalidOperationException("The bitmap output reservation already belongs to an Entry.");
-            var entry = new Entry(bitmap, pixelWidth, pixelHeight, intrinsicSize, bitmapReservation);
+            var entry = new Entry(this, bitmap, pixelWidth, pixelHeight, intrinsicSize, bitmapReservation);
             lease.Attach(entry);
             if (!entry.TransferBitmapOutputReservationToEntry())
             {
@@ -391,20 +397,20 @@ internal static class SharedCanvasBitmapCache
         return lease;
     }
 
-    internal static void TrimForBitmapOutputPressure() => Cache.Clear();
+    internal void TrimForBitmapOutputPressure() => _cache.Clear();
 
     /// <summary>
     /// Requests a best-effort cache-only trim without making the rejection
     /// path synchronously dispose Win2D resources (which may run on the UI
     /// thread). The worker owns no ImageBox, lease, or bitmap references.
     /// </summary>
-    internal static void RequestBitmapOutputPressureTrim()
+    internal void RequestBitmapOutputPressureTrim()
     {
         Interlocked.Exchange(ref _bitmapOutputPressureTrimRequested, 1);
         QueueBitmapOutputPressureTrim();
     }
 
-    private static void QueueBitmapOutputPressureTrim()
+    private void QueueBitmapOutputPressureTrim()
     {
         if (Interlocked.CompareExchange(ref _bitmapOutputPressureTrimQueued, 1, 0) != 0)
             return;
@@ -414,7 +420,8 @@ internal static class SharedCanvasBitmapCache
             // Reclamation has no document work or caller identity to inherit.
             // Do not retain ambient host AsyncLocal state for this source-free
             // maintenance job, and never run its native cleanup inline.
-            if (ThreadPool.UnsafeQueueUserWorkItem(static _ => DrainBitmapOutputPressureTrim(), null))
+            if (ThreadPool.UnsafeQueueUserWorkItem(
+                    static state => ((SharedCanvasBitmapCache)state!).DrainBitmapOutputPressureTrim(), this))
                 return;
         }
         catch (Exception)
@@ -426,7 +433,7 @@ internal static class SharedCanvasBitmapCache
         Interlocked.Exchange(ref _bitmapOutputPressureTrimQueued, 0);
     }
 
-    private static void DrainBitmapOutputPressureTrim()
+    private void DrainBitmapOutputPressureTrim()
     {
         try
         {
@@ -435,7 +442,7 @@ internal static class SharedCanvasBitmapCache
                 Interlocked.Exchange(ref _bitmapOutputPressureTrimRequested, 0);
                 try
                 {
-                    Cache.Clear();
+                    _cache.Clear();
                 }
                 catch (Exception)
                 {
@@ -453,36 +460,29 @@ internal static class SharedCanvasBitmapCache
         }
     }
 
-    internal static SemaphoreSlim GetDecodeGate(CanvasDevice device, string identity)
+    internal SemaphoreSlim GetDecodeGate(CanvasDevice device, string identity)
     {
-        var key = new CacheKey(device, identity);
-        int index = (key.GetHashCode() & int.MaxValue) % DecodeStripes.Length;
-        return DecodeStripes[index];
+        var key = new SharedCanvasBitmapCacheKey(device, identity);
+        int index = (key.GetHashCode() & int.MaxValue) % _decodeStripes.Length;
+        return _decodeStripes[index];
     }
 
-    internal static void ReleaseDevice(CanvasDevice device)
+    internal void ReleaseDevice(CanvasDevice device)
     {
         ArgumentNullException.ThrowIfNull(device);
-        Cache.RemoveWhere(key => ReferenceEquals(key.Device, device));
+        _cache.RemoveWhere(key => ReferenceEquals(key.Device, device));
     }
 
-    internal static void Clear() => Cache.Clear();
+    internal void Clear() => _cache.Clear();
 
-    internal static long RetainedBytesForTests => Cache.RetainedBytes;
-
-    internal static long BudgetBytesForTests => Cache.BudgetBytes;
-
-    internal static long LiveBitmapPixelWeightBytesForTests => BitmapWeightLedger.LivePixelWeightBytes;
-
-    internal static long UncertainBitmapDisposePixelWeightBytesForTests => BitmapWeightLedger.UncertainDisposePixelWeightBytes;
-
-    internal static int CacheDisposalFailureCountForTests =>
-        Volatile.Read(ref _cacheDisposalFailureCount);
-
-    internal static int LastCacheDisposalFailureHResultForTests =>
-        Volatile.Read(ref _lastCacheDisposalFailureHResult);
-
-    internal static void SetBudgetForTests(long budgetBytes) => Cache.SetBudget(budgetBytes);
+    /// <summary>Reads this cache's retained, live and failure accounting.</summary>
+    internal SharedCanvasBitmapCacheSnapshot GetSnapshot() => new(
+        _cache.RetainedBytes,
+        _cache.BudgetBytes,
+        _bitmapWeightLedger.LivePixelWeightBytes,
+        _bitmapWeightLedger.UncertainDisposePixelWeightBytes,
+        Volatile.Read(ref _cacheDisposalFailureCount),
+        Volatile.Read(ref _lastCacheDisposalFailureHResult));
 
     // Lease release failures flow to ImageBox's retirement barrier. LRU
     // callbacks cannot throw: Set has already committed its replacement and
@@ -493,10 +493,10 @@ internal static class SharedCanvasBitmapCache
             resource.Dispose();
     }
 
-    internal static void ReleaseFinalReference(ref int referenceCount, IDisposable resource, long pixelWeightBytes) =>
-        BitmapWeightLedger.ReleaseFinalReference(ref referenceCount, resource, pixelWeightBytes);
+    internal void ReleaseFinalReference(ref int referenceCount, IDisposable resource, long pixelWeightBytes) =>
+        _bitmapWeightLedger.ReleaseFinalReference(ref referenceCount, resource, pixelWeightBytes);
 
-    internal static void ReleaseCacheReference(ref int referenceCount, IDisposable resource)
+    internal void ReleaseCacheReference(ref int referenceCount, IDisposable resource)
     {
         try
         {
@@ -504,26 +504,11 @@ internal static class SharedCanvasBitmapCache
         }
         catch (Exception exception)
         {
-            Volatile.Write(ref _lastCacheDisposalFailureHResult, exception.HResult);
-            Interlocked.Increment(ref _cacheDisposalFailureCount);
-            try
-            {
-                MarkdownPerformanceEventSource.Log.BitmapCacheCleanupFailed(exception.HResult);
-            }
-            catch (Exception)
-            {
-                // Diagnostic listeners must not interrupt LRU eviction.
-            }
+            RecordCacheDisposalFailure(exception);
         }
     }
 
-    private static void OnAppMemoryUsageIncreased(object? sender, object args)
-    {
-        Cache.Clear();
-        ImageBox.TrimSharedCachesForMemoryPressure();
-    }
-
-    internal static void ReleaseCacheReference(ref int referenceCount, IDisposable resource, long pixelWeightBytes)
+    internal void ReleaseCacheReference(ref int referenceCount, IDisposable resource, long pixelWeightBytes)
     {
         try
         {
@@ -531,10 +516,21 @@ internal static class SharedCanvasBitmapCache
         }
         catch (Exception exception)
         {
-            Volatile.Write(ref _lastCacheDisposalFailureHResult, exception.HResult);
-            Interlocked.Increment(ref _cacheDisposalFailureCount);
-            try { MarkdownPerformanceEventSource.Log.BitmapCacheCleanupFailed(exception.HResult); }
-            catch (Exception) { /* Diagnostic listeners must not interrupt LRU eviction. */ }
+            RecordCacheDisposalFailure(exception);
+        }
+    }
+
+    private void RecordCacheDisposalFailure(Exception exception)
+    {
+        Volatile.Write(ref _lastCacheDisposalFailureHResult, exception.HResult);
+        Interlocked.Increment(ref _cacheDisposalFailureCount);
+        try
+        {
+            MarkdownPerformanceEventSource.Log.BitmapCacheCleanupFailed(exception.HResult);
+        }
+        catch (Exception)
+        {
+            // Diagnostic listeners must not interrupt LRU eviction.
         }
     }
 
@@ -555,79 +551,9 @@ internal static class SharedCanvasBitmapCache
         return stripes;
     }
 
-    /// <summary>Numeric-only accounting; never retains a resource reference.</summary>
-    internal sealed class LiveBitmapPixelWeightLedger
-    {
-        private long _livePixelWeightBytes;
-        private long _uncertainDisposePixelWeightBytes;
-        internal long LivePixelWeightBytes => Volatile.Read(ref _livePixelWeightBytes);
-        internal long UncertainDisposePixelWeightBytes => Volatile.Read(ref _uncertainDisposePixelWeightBytes);
-
-        internal void Register(long pixelWeightBytes)
-        {
-            if (pixelWeightBytes > 0)
-                Interlocked.Add(ref _livePixelWeightBytes, pixelWeightBytes);
-        }
-
-        internal void AbandonRegistration(long pixelWeightBytes)
-        {
-            if (pixelWeightBytes > 0)
-                Interlocked.Add(ref _livePixelWeightBytes, -pixelWeightBytes);
-        }
-
-        internal void ReleaseSuccessfulDispose(long pixelWeightBytes)
-        {
-            if (pixelWeightBytes > 0)
-                Interlocked.Add(ref _livePixelWeightBytes, -pixelWeightBytes);
-        }
-
-        internal void RecordUncertainDispose(long pixelWeightBytes)
-        {
-            if (pixelWeightBytes > 0)
-                Interlocked.Add(ref _uncertainDisposePixelWeightBytes, pixelWeightBytes);
-        }
-
-        internal void ReleaseFinalReference(ref int referenceCount, IDisposable resource, long pixelWeightBytes)
-        {
-            if (Interlocked.Decrement(ref referenceCount) != 0)
-                return;
-            try { resource.Dispose(); }
-            catch
-            {
-                // Native disposal state is unknown: retain its conservative
-                // charge without retaining the failed native object.
-                RecordUncertainDispose(pixelWeightBytes);
-                throw;
-            }
-            ReleaseSuccessfulDispose(pixelWeightBytes);
-        }
-    }
-
-    internal readonly struct CacheKey : IEquatable<CacheKey>
-    {
-        internal CacheKey(CanvasDevice device, string identity)
-        {
-            Device = device;
-            Identity = identity;
-        }
-
-        internal readonly CanvasDevice Device;
-
-        internal readonly string Identity;
-
-        public bool Equals(CacheKey other) =>
-            ReferenceEquals(Device, other.Device) &&
-            StringComparer.Ordinal.Equals(Identity, other.Identity);
-
-        public override bool Equals(object? obj) => obj is CacheKey other && Equals(other);
-
-        public override int GetHashCode() => HashCode.Combine(
-            RuntimeHelpers.GetHashCode(Device),
-            Identity is null ? 0 : StringComparer.Ordinal.GetHashCode(Identity));
-    }
-
     internal sealed class Entry
     {
+        private readonly SharedCanvasBitmapCache _owner;
         private int _referenceCount = 1;
         private readonly object _bitmapOutputAdmissionGate = new();
         private BitmapOutputAdmission.Reservation? _bitmapOutputReservation;
@@ -635,9 +561,11 @@ internal static class SharedCanvasBitmapCache
 
         // Outside the LRU does not mean outside the unique-owner ledger.
         internal Entry(
+            SharedCanvasBitmapCache owner,
             CanvasBitmap bitmap,
             BitmapOutputAdmission.Reservation? bitmapReservation = null)
         {
+            _owner = owner;
             long pixelWeightBytes = InvalidBitmapFallbackWeightBytes;
             int pixelWidth = 0;
             int pixelHeight = 0;
@@ -665,28 +593,31 @@ internal static class SharedCanvasBitmapCache
             WeightBytes = pixelWeightBytes;
             PixelWeightBytes = pixelWeightBytes;
             ConfigureBitmapOutputReservation(bitmapReservation);
-            BitmapWeightLedger.Register(PixelWeightBytes);
+            _owner._bitmapWeightLedger.Register(PixelWeightBytes);
             Bitmap = bitmap;
         }
 
         internal Entry(
+            SharedCanvasBitmapCache owner,
             CanvasBitmap bitmap,
             int pixelWidth,
             int pixelHeight,
             Size? intrinsicSize = null,
             BitmapOutputAdmission.Reservation? bitmapReservation = null)
         {
+            _owner = owner;
             IntrinsicSize = intrinsicSize;
             PixelWidth = pixelWidth;
             PixelHeight = pixelHeight;
             PixelWeightBytes = EstimateWeightBytes(pixelWidth, pixelHeight);
             WeightBytes = PixelWeightBytes;
             ConfigureBitmapOutputReservation(bitmapReservation);
-            BitmapWeightLedger.Register(PixelWeightBytes);
+            _owner._bitmapWeightLedger.Register(PixelWeightBytes);
             Bitmap = bitmap;
         }
 
         internal Entry(
+            SharedCanvasBitmapCache owner,
             CanvasBitmap bitmap,
             Size? intrinsicSize,
             int? knownPixelWidth,
@@ -697,6 +628,7 @@ internal static class SharedCanvasBitmapCache
             , BitmapOutputAdmission.Reservation? bitmapReservation
         )
         {
+            _owner = owner;
             IntrinsicSize = intrinsicSize;
             if (knownPixelWidth.HasValue && knownPixelHeight.HasValue)
             {
@@ -705,7 +637,7 @@ internal static class SharedCanvasBitmapCache
                 WeightBytes = EstimateWeightBytes(knownPixelWidth.Value, knownPixelHeight.Value);
                 PixelWeightBytes = WeightBytes;
                 ConfigureBitmapOutputReservation(bitmapReservation);
-                BitmapWeightLedger.Register(PixelWeightBytes);
+                _owner._bitmapWeightLedger.Register(PixelWeightBytes);
                 Bitmap = bitmap;
                 return;
             }
@@ -737,7 +669,7 @@ internal static class SharedCanvasBitmapCache
             // tracing failure cannot leave a phantom retained bitmap charge.
             PixelWeightBytes = WeightBytes;
             ConfigureBitmapOutputReservation(bitmapReservation);
-            BitmapWeightLedger.Register(PixelWeightBytes);
+            _owner._bitmapWeightLedger.Register(PixelWeightBytes);
             Bitmap = bitmap;
         }
 
@@ -848,14 +780,15 @@ internal static class SharedCanvasBitmapCache
                     return false;
                 }
 
-                if (PixelWeightBytes > BitmapOutputAdmission.Shared.MaximumSingleOutputBytes)
+                BitmapOutputAdmission admission = _owner._outputAdmission;
+                if (PixelWeightBytes > admission.MaximumSingleOutputBytes)
                 {
                     requiredBytes = PixelWeightBytes;
-                    capacityVersion = BitmapOutputAdmission.Shared.GetSnapshot().CapacityVersion;
+                    capacityVersion = admission.GetSnapshot().CapacityVersion;
                     return false;
                 }
 
-                if (!BitmapOutputAdmission.Shared.TryReserve(
+                if (!admission.TryReserve(
                         PixelWeightBytes,
                         isVisible,
                         isReplacement,
@@ -919,7 +852,7 @@ internal static class SharedCanvasBitmapCache
                 _bitmapOutputReservation = null;
                 Volatile.Write(ref _referenceCount, 0);
             }
-            BitmapWeightLedger.AbandonRegistration(PixelWeightBytes);
+            _owner._bitmapWeightLedger.AbandonRegistration(PixelWeightBytes);
         }
 
         internal bool TryAcquire()
@@ -944,10 +877,7 @@ internal static class SharedCanvasBitmapCache
             }
             catch (Exception exception)
             {
-                Volatile.Write(ref _lastCacheDisposalFailureHResult, exception.HResult);
-                Interlocked.Increment(ref _cacheDisposalFailureCount);
-                try { MarkdownPerformanceEventSource.Log.BitmapCacheCleanupFailed(exception.HResult); }
-                catch (Exception) { /* Diagnostic listeners must not interrupt LRU eviction. */ }
+                _owner.RecordCacheDisposalFailure(exception);
             }
         }
 
@@ -971,12 +901,12 @@ internal static class SharedCanvasBitmapCache
             }
             catch
             {
-                BitmapWeightLedger.RecordUncertainDispose(PixelWeightBytes);
+                _owner._bitmapWeightLedger.RecordUncertainDispose(PixelWeightBytes);
                 reservation?.MarkUncertain();
                 throw;
             }
 
-            BitmapWeightLedger.ReleaseSuccessfulDispose(PixelWeightBytes);
+            _owner._bitmapWeightLedger.ReleaseSuccessfulDispose(PixelWeightBytes);
             reservation?.ReleaseAfterSuccessfulCleanup();
         }
     }

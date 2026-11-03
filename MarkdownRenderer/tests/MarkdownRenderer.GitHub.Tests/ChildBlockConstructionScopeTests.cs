@@ -122,7 +122,7 @@ public sealed class ChildBlockConstructionScopeTests
         await using var seed = new CompletedRasterPlacementCloneTests.PlacementFixture();
         CanvasBitmap bitmap = CanvasBitmap.CreateFromBytes(
             seed.Device, new byte[4], 1, 1, DirectXPixelFormat.B8G8R8A8UIntNormalized);
-        SharedCanvasBitmapCache.StoreAndAcquire(seed.Device, imageUrl, bitmap).Dispose();
+        ImageResourceScope.Shared.BitmapCache.StoreAndAcquire(seed.Device, imageUrl, bitmap).Dispose();
         using var cancellation = new CancellationTokenSource();
         string source = $"- [ ] label ![sample]({imageUrl})\n  - child";
         var registry = new MarkdownExtensionRegistry().ConfigureGfmRegistry();
@@ -163,7 +163,7 @@ public sealed class ChildBlockConstructionScopeTests
             }
             finally
             {
-                SharedCanvasBitmapCache.ReleaseDevice(seed.Device);
+                ImageResourceScope.Shared.BitmapCache.ReleaseDevice(seed.Device);
             }
         }
 

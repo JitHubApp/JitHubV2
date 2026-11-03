@@ -15,8 +15,8 @@ public sealed class BitmapOutputRecoverySignalTests
     [Fact]
     public async Task SharedWaiterOverflowEmitsOneSourceFreeSignalAndRecoveryDoesNotStartLoading()
     {
-        BitmapOutputAdmission admission = BitmapOutputAdmission.Shared;
-        SharedCanvasBitmapCache.Clear();
+        BitmapOutputAdmission admission = ImageResourceScope.Shared.BitmapOutput;
+        ImageResourceScope.Shared.BitmapCache.Clear();
         await DisplaySizedRasterDecodeTests.WaitUntilAsync(() =>
         {
             BitmapOutputAdmission.Snapshot snapshot = admission.GetSnapshot();
@@ -143,7 +143,7 @@ public sealed class BitmapOutputRecoverySignalTests
                 registration.Dispose();
             foreach (BitmapOutputAdmission.Reservation reservation in reservations)
                 reservation.Dispose();
-            SharedCanvasBitmapCache.Clear();
+            ImageResourceScope.Shared.BitmapCache.Clear();
             GC.KeepAlive(waiterOwners);
         }
 

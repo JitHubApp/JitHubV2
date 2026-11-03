@@ -32,9 +32,9 @@ public sealed class AnimatedWebpFirstCanvasImageBoxTests(ITestOutputHelper outpu
     [Fact]
     public async Task ImageBoxPublishesFirstCanvasAndSkipsStaticProviderForAnimation()
     {
-        SharedCanvasBitmapCache.Clear();
+        ImageResourceScope.Shared.BitmapCache.Clear();
         await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-            () => SharedCanvasBitmapCache.RetainedBytesForTests == 0);
+            () => ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes == 0);
 
         byte[] source = CreateAnimatedWebp();
         RasterImageBudgetResult budget = RasterImageResourceBudget.Validate(source);
@@ -117,9 +117,9 @@ public sealed class AnimatedWebpFirstCanvasImageBoxTests(ITestOutputHelper outpu
         {
             if (noProviderPixels is not null)
                 Array.Clear(noProviderPixels);
-            SharedCanvasBitmapCache.Clear();
+            ImageResourceScope.Shared.BitmapCache.Clear();
             await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-                () => SharedCanvasBitmapCache.RetainedBytesForTests == 0);
+                () => ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes == 0);
         }
     }
 

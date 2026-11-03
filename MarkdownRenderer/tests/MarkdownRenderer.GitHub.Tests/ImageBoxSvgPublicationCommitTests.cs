@@ -848,22 +848,14 @@ public sealed class ImageBoxSvgPublicationCommitTests
             // A very large intrinsic variant is deterministically classified as
             // tiled before any CanvasDevice access. It cannot use an exact whole-
             // bitmap cache entry and therefore exercises the miss/fallback path.
-            Type entryType = typeof(ImageBox).GetNestedType(
-                "SvgCacheEntry",
-                BindingFlags.Public | BindingFlags.NonPublic)
-                ?? throw new MissingMemberException(typeof(ImageBox).FullName, "SvgCacheEntry");
-            ConstructorInfo constructor = Assert.Single(entryType.GetConstructors(
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic));
-            long rendererIdentity = Assert.IsType<long>(InvokePrivateStatic(
-                "GetSvgRendererIdentity",
-                renderer));
+            long rendererIdentity =
+                ImageResourceScope.Shared.ProviderIdentities.GetSvgRendererIdentity(renderer);
             var candidateInfo = new MarkdownSvgDocumentInfo(
                 IntrinsicWidthDips: 20_000,
                 IntrinsicHeightDips: 20_000,
                 IntrinsicAspectRatio: 1,
                 Description: "unaccepted cached metadata");
-            cacheEntry = constructor.Invoke(
-            [
+            var entry = new SvgCacheEntry(
                 new byte[] { 1, 2, 3 },
                 new Size(20_000, 20_000),
                 "unaccepted cached title",
@@ -876,11 +868,10 @@ public sealed class ImageBoxSvgPublicationCommitTests
                 null,
                 0,
                 0,
-                null,
-            ]);
+                null);
+            cacheEntry = entry;
 
-            object cache = FieldStatic<object>(typeof(ImageBox), "_svgCache");
-            _ = InvokePrivate(cache, "Set", cacheKey, cacheEntry);
+            ImageResourceScope.Shared.SvgSources.Set(cacheKey, entry);
 
             Assert.False(Assert.IsType<bool>(InvokePrivate(
                 image,
@@ -911,7 +902,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
         finally
         {
             if (cacheEntry is not null)
-                _ = InvokePrivate(FieldStatic<object>(typeof(ImageBox), "_svgCache"), "Remove", cacheKey);
+                _ = ImageResourceScope.Shared.SvgSources.Remove(cacheKey);
             image.Dispose();
             await image.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
         }
@@ -1065,9 +1056,8 @@ public sealed class ImageBoxSvgPublicationCommitTests
     {
         byte[] source = [1, 2, 3, 4];
         Size intrinsicSize = intrinsic ?? new Size(32, 16);
-        long rendererIdentity = Assert.IsType<long>(InvokePrivateStatic(
-            "GetSvgRendererIdentity",
-            renderer));
+        long rendererIdentity =
+            ImageResourceScope.Shared.ProviderIdentities.GetSvgRendererIdentity(renderer);
         var info = new MarkdownSvgDocumentInfo(
             IntrinsicWidthDips: intrinsicSize.Width,
             IntrinsicHeightDips: intrinsicSize.Height,

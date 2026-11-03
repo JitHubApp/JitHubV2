@@ -139,13 +139,14 @@ public sealed class RasterNativeWicWinRtParityTests(ITestOutputHelper output)
         var sizing = new RasterImageSizingRequest(17, 1, null, null, 1_000);
         Assert.True(RasterImageDecodePlan.TryCreate(source, budget, sizing, out var plan));
         var credit = new RasterNativeWicProductParity.CountingCredit();
-        var before = RasterNativeWicDiagnostics.GetSnapshot();
+        var diagnostics = new RasterNativeWicDiagnostics();
         await Assert.ThrowsAnyAsync<Exception>(() => Task.Run(() =>
-            RasterNativeWicDecoder.Decode(source, plan, credit, CancellationToken.None)));
+            RasterNativeWicDecoder.Decode(
+                source, plan, credit, new RasterNativeWicDecodeOptions(diagnostics), CancellationToken.None)));
         Assert.Equal(1, credit.DisposeCount);
-        var after = RasterNativeWicDiagnostics.GetSnapshot();
-        Assert.Equal(before.NativeStarted + 1, after.NativeStarted);
-        Assert.Equal(before.PixelLeaseCompleted, after.PixelLeaseCompleted);
+        var after = diagnostics.GetSnapshot();
+        Assert.Equal(1, after.NativeStarted);
+        Assert.Equal(0, after.PixelLeaseCompleted);
     }
 
     [Theory]

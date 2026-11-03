@@ -120,15 +120,15 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
     [Trait("Category", "NativeRasterFidelity")]
     public async Task ImageBoxGifCanvasMatchesLegacyWinRtAndLinearWin2DCompositionOnWarp()
     {
-        SharedCanvasBitmapCache.Clear();
+        ImageResourceScope.Shared.BitmapCache.Clear();
         await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-            () => SharedCanvasBitmapCache.RetainedBytesForTests == 0);
+            () => ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes == 0);
 
         using var device = new CanvasDevice(forceSoftwareRenderer: true);
         Assert.True(device.ForceSoftwareRenderer,
             "GIF parity must run through Win2D's software renderer rather than silently using hardware.");
 
-        RasterNativeWicDiagnosticSnapshot before = RasterNativeWicDiagnostics.GetSnapshot();
+        RasterNativeWicDiagnosticSnapshot before = ImageResourceScope.Shared.NativeWic.GetSnapshot();
         int exercised = 0;
         try
         {
@@ -193,17 +193,17 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
         }
         finally
         {
-            SharedCanvasBitmapCache.Clear();
+            ImageResourceScope.Shared.BitmapCache.Clear();
             await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-                () => SharedCanvasBitmapCache.RetainedBytesForTests == 0);
+                () => ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes == 0);
         }
 
         Assert.Equal(OwnedNativeWicGifFixtureFactory.CreateCoreMatrix().Count + 1, exercised);
-        RasterNativeWicDiagnosticSnapshot after = RasterNativeWicDiagnostics.GetSnapshot();
+        RasterNativeWicDiagnosticSnapshot after = ImageResourceScope.Shared.NativeWic.GetSnapshot();
         Assert.True(after.NativeStarted > before.NativeStarted,
-            "Diagnostics build should prove that ImageBox entered the owned WIC route for admitted GIFs.");
+            "The scope's decode counters should prove that ImageBox entered the owned WIC route for admitted GIFs.");
         Assert.True(after.PixelLeaseCompleted > before.PixelLeaseCompleted,
-            "Diagnostics build should prove the native frame lease reached ImageBox upload.");
+            "The scope's decode counters should prove the native frame lease reached ImageBox upload.");
         output.WriteLine($"GIF native decoder diagnostic deltas: started={after.NativeStarted - before.NativeStarted}; " +
             $"pixelLeases={after.PixelLeaseCompleted - before.PixelLeaseCompleted}.");
     }
@@ -352,9 +352,9 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
         }
         Assert.Equal(1, credit.DisposeCount);
 
-        SharedCanvasBitmapCache.Clear();
+        ImageResourceScope.Shared.BitmapCache.Clear();
         await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-            () => SharedCanvasBitmapCache.RetainedBytesForTests == 0);
+            () => ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes == 0);
         using var device = new CanvasDevice(forceSoftwareRenderer: true);
         Assert.True(device.ForceSoftwareRenderer);
         using var session = new MarkdownPerformanceSession(
@@ -394,9 +394,9 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
             image.Dispose();
             await DisplaySizedRasterDecodeTests.WaitUntilAsync(
                 () => image.ActiveImageWorkCountForTests == 0);
-            SharedCanvasBitmapCache.Clear();
+            ImageResourceScope.Shared.BitmapCache.Clear();
             await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-                () => SharedCanvasBitmapCache.RetainedBytesForTests == 0);
+                () => ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes == 0);
             Array.Clear(profiledWinRt);
             Array.Clear(unprofiledWinRt);
             Array.Clear(profile);

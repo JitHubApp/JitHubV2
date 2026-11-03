@@ -63,25 +63,20 @@
     },
     {
       "path": "src/MarkdownRenderer/Layout/Boxes/ImageBox.BitmapAdmission.cs",
-      "lines": 1365,
+      "lines": 1362,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
       "path": "src/MarkdownRenderer/Layout/Boxes/ImageBox.cs",
-      "lines": 9561,
+      "lines": 9335,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
       "path": "src/MarkdownRenderer/Layout/Boxes/RasterNativeWicDecoder.cs",
-      "lines": 1102,
+      "lines": 1094,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
-    {
-      "path": "src/MarkdownRenderer/Layout/Boxes/SharedCanvasBitmapCache.cs",
-      "lines": 1070,
-      "reason": "Predates the size rule; split by responsibility in a later structure step."
-    },
-    {
+{
       "path": "src/MarkdownRenderer/Layout/Boxes/SvgHostAdmissionCoordinator.cs",
       "lines": 1415,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
@@ -98,17 +93,17 @@
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/ImageBoxSourceLeaseTests.cs",
-      "lines": 1408,
+      "lines": 1400,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/ImageBoxSvgPublicationCommitTests.cs",
-      "lines": 1240,
+      "lines": 1230,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/ImageBoxSvgRendererTests.cs",
-      "lines": 2852,
+      "lines": 2840,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
@@ -193,7 +188,7 @@
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/SvgTileQueuePlanTests.cs",
-      "lines": 1237,
+      "lines": 1231,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
