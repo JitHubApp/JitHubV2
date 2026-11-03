@@ -23,6 +23,13 @@ namespace MarkdownRenderer.Controls.Highlighting;
 /// A generation fences every request: retiring the generation cancels its
 /// work and keeps a late result from being published. At most two provider
 /// requests run at once.
+/// <para>
+/// Kept as one type, just over 500 lines, because scheduling, provider work
+/// and UI-thread publication share the generation, the in-flight key set and
+/// the cache, and each step re-checks the others' fences. Band and cache key
+/// helpers live in <see cref="CodeBlockHighlightTargets"/> and started-task
+/// tracking in <see cref="CodeBlockHighlightTasks"/>.
+/// </para>
 /// </remarks>
 internal sealed class CodeBlockHighlighting
 {
