@@ -22,7 +22,7 @@ internal static class InlineObjectPainter
             int len = run.TextLength;
             if (run is InlineImageRun image && len > 0)
             {
-            var regions = box.GetAdjustedCharacterRegions(box.TextLayout, cumulative, len);
+            var regions = InlineRangeGeometry.GetAdjustedCharacterRegions(box, box.TextLayout, cumulative, len);
                 if (regions is null) { cumulative += len; continue; }
                 foreach (var r in regions)
                 {
@@ -54,7 +54,7 @@ internal static class InlineObjectPainter
             int len = run.TextLength;
             if (run is InlineImageRun image && len > 0 && SelectionIntersectsRun(box, range, run, len))
             {
-                var regions = box.GetAdjustedCharacterRegions(box.TextLayout, cumulative, len);
+                var regions = InlineRangeGeometry.GetAdjustedCharacterRegions(box, box.TextLayout, cumulative, len);
                 if (regions is null) { cumulative += len; continue; }
                 foreach (var r in regions)
                 {

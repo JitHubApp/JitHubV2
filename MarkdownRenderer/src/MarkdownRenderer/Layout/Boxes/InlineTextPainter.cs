@@ -240,8 +240,8 @@ internal static class InlineTextPainter
 
         var normalized = range.Normalized();
         box.EnsureBuffer();
-        int from = box.ToBufferIndex(normalized.Start);
-        int to = box.ToBufferIndex(normalized.End);
+        int from = InlineRangeGeometry.ToBufferIndex(box, normalized.Start);
+        int to = InlineRangeGeometry.ToBufferIndex(box, normalized.End);
         if (to <= from)
             return;
 
@@ -307,7 +307,7 @@ internal static class InlineTextPainter
             var color = focused
                 ? runStyle.FocusForeground ?? runStyle.HoverForeground ?? runStyle.Foreground
                 : runStyle.HoverForeground ?? runStyle.Foreground;
-            var regions = box.GetAdjustedCharacterRegions(box.TextLayout, cumulative, len);
+            var regions = InlineRangeGeometry.GetAdjustedCharacterRegions(box, box.TextLayout, cumulative, len);
             if (regions is null)
                 return;
 

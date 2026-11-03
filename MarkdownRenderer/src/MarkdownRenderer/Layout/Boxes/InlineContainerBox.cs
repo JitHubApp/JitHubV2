@@ -11,7 +11,6 @@ using Windows.Foundation;
 using Windows.UI;
 using Windows.UI.Text;
 using MarkdownRenderer.CodeBlocks;
-using MarkdownRenderer.Controls;
 using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Theming;
@@ -2318,7 +2317,7 @@ internal sealed partial class InlineContainerBox : BlockBox
     private static float ResolveRelativeInlineCodeFontSize(float containingFontSize, float scale)
         => Math.Max(MinimumRelativeInlineFontSize, containingFontSize * scale);
 
-    private Thickness GetEffectivePadding(ElementStyle style)
+    internal Thickness GetEffectivePadding(ElementStyle style)
         => UseContainerPadding ? style.Padding : default;
 
     internal override void ThrowIfCancellationRequested()
@@ -2628,7 +2627,7 @@ internal sealed partial class InlineContainerBox : BlockBox
     }
 
     public IEnumerable<Rect> GetRangeRects(DocumentRange range)
-        => EnumerateRangeRects(range, 0, 0, fullLineRects: false, logicalCoordinates: false);
+        => InlineRangeGeometry.GetRangeRects(this, range);
 
     /// <summary>
     /// Resolves inline selection geometry after applying the active root
@@ -2637,7 +2636,7 @@ internal sealed partial class InlineContainerBox : BlockBox
     /// The ordinary range API remains root-local for painting and clipping.
     /// </summary>
     internal IEnumerable<Rect> GetLogicalRangeRects(DocumentRange range)
-        => EnumerateRangeRects(range, 0, 0, fullLineRects: false, logicalCoordinates: true);
+        => InlineRangeGeometry.GetLogicalRangeRects(this, range);
 
     /// <summary>
     /// Resolves the visual caret edge for a logical document position. Asking
@@ -2648,292 +2647,19 @@ internal sealed partial class InlineContainerBox : BlockBox
         DocumentPosition position,
         bool rangeStart,
         out Point point)
-        => TryGetCaretPoint(position, rangeStart, logicalCoordinates: false, out point);
+        => InlineRangeGeometry.TryGetCaretPoint(this, position, rangeStart, out point);
 
     internal bool TryGetLogicalCaretPoint(
         DocumentPosition position,
         bool rangeStart,
         out Point point)
-        => TryGetCaretPoint(position, rangeStart, logicalCoordinates: true, out point);
-
-    private bool TryGetCaretPoint(
-        DocumentPosition position,
-        bool rangeStart,
-        bool logicalCoordinates,
-        out Point point)
-    {
-        point = default;
-        if (_layout is null || position.BlockIndex != BlockIndex)
-            return false;
-
-        EnsureBuffer();
-        if (_buffer.Length == 0)
-            return false;
-
-        int offset = Math.Clamp(ToBufferIndex(position), 0, _buffer.Length);
-        TouchSelectionCaretQuery query = TouchSelectionCaretPolicy.Resolve(
-            _buffer.Length,
-            offset,
-            rangeStart);
-        var caret = _layout.GetCaretPosition(
-            query.CharacterIndex,
-            query.TrailingSideOfCharacter,
-            out CanvasTextLayoutRegion region);
-        var style = GetContainerStyle();
-        var (rootLocalX, rootLocalY) = GetSnappedOrigin(
-            style,
-            out float logicalOriginX,
-            out float logicalOriginY);
-        float baseX = logicalCoordinates ? logicalOriginX : rootLocalX;
-        float baseY = logicalCoordinates ? logicalOriginY : rootLocalY;
-        // Win2D reports caret X in the paragraph's logical coordinate space.
-        // Character regions and drawing are already mirrored for an RTL
-        // paragraph, so mirror this one coordinate before translating it into
-        // document space. DirectWrite still resolves the caret within each bidi
-        // run; this transform only accounts for the paragraph base direction.
-        double visualX = TouchSelectionCaretPolicy.ResolveVisualX(
-            caret.X,
-            _layout.RequestedSize.Width,
-            Context.FlowDirection == FlowDirection.RightToLeft);
-        double x = baseX + visualX;
-        double y = baseY + region.LayoutBounds.Bottom +
-            _scriptBaselineGeometry.GetOffsetAtCharacter(region.CharacterIndex);
-        if (!double.IsFinite(x) || !double.IsFinite(y))
-            return false;
-
-        point = new Point(x, y);
-        return true;
-    }
+        => InlineRangeGeometry.TryGetLogicalCaretPoint(this, position, rangeStart, out point);
 
     internal IEnumerable<Rect> GetBufferRangeRects(int from, int length)
-        => EnumerateRangeRects(documentRange: null, from, length, fullLineRects: false, logicalCoordinates: false);
+        => InlineRangeGeometry.GetBufferRangeRects(this, from, length);
 
     internal IEnumerable<Rect> GetBufferRangeLineRects(int from, int length)
-        => EnumerateRangeRects(documentRange: null, from, length, fullLineRects: true, logicalCoordinates: false);
-
-    private IEnumerable<Rect> EnumerateRangeRects(
-        DocumentRange? documentRange,
-        int from,
-        int length,
-        bool fullLineRects,
-        bool logicalCoordinates)
-    {
-        if (_layout is null)
-            yield break;
-
-        EnsureBuffer();
-        if (documentRange is { } range)
-        {
-            from = ToBufferIndex(range.Start);
-            length = ToBufferIndex(range.End) - from;
-            if (length <= 0)
-                yield break;
-        }
-        else
-        {
-            if (_buffer.Length == 0)
-                yield break;
-
-            from = Math.Clamp(from, 0, _buffer.Length);
-            length = Math.Clamp(length, 0, _buffer.Length - from);
-            if (length <= 0)
-                length = from < _buffer.Length ? 1 : 0;
-            if (length <= 0)
-                yield break;
-        }
-
-        var style = GetContainerStyle();
-        var (rootLocalX, rootLocalY) = GetSnappedOrigin(
-            style,
-            out float logicalOriginX,
-            out float logicalOriginY);
-        float baseX = logicalCoordinates ? logicalOriginX : rootLocalX;
-        float baseY = logicalCoordinates ? logicalOriginY : rootLocalY;
-        var lineMetrics = fullLineRects ? TryGetLineMetrics() : null;
-        if (!fullLineRects || lineMetrics is null)
-        {
-            var regions = GetAdjustedCharacterRegions(_layout, from, length);
-            if (regions is null)
-                yield break;
-
-            // DirectWrite lets the whitespace at a wrap hang past the layout
-            // width and reports it inside the line's character regions. Clip
-            // each region to the content width, or to its line's
-            // non-whitespace glyphs where a long word genuinely overflows, so
-            // range and selection rectangles stay inside the text's box.
-            CanvasLineMetrics[]? clipLines = TryGetLineMetrics();
-            double contentWidth = _layout.RequestedSize.Width;
-            // The text origin is snapped to device pixels, so the content box
-            // starts up to a pixel away from layout x = 0. Clip against the
-            // box itself, not the snapped origin.
-            Thickness clipMargin = Margin;
-            Thickness clipPadding = GetEffectivePadding(style);
-            double contentLeft = Bounds.X + clipMargin.Left + clipPadding.Left - rootLocalX;
-            Dictionary<int, (double Left, double Right)>? lineInk = null;
-            foreach (var region in regions)
-            {
-                var bounds = region.LayoutBounds;
-                double left = bounds.X;
-                double right = bounds.X + bounds.Width;
-                if (clipLines is not null && double.IsFinite(contentWidth) && contentWidth > 0 &&
-                    TryGetLineIndex(clipLines, region.CharacterIndex, out int lineIndex, out int clipLineStart))
-                {
-                    lineInk ??= new Dictionary<int, (double Left, double Right)>();
-                    if (!lineInk.TryGetValue(lineIndex, out (double Left, double Right) ink))
-                    {
-                        ink = MeasureLineInk(_layout, clipLines[lineIndex], clipLineStart);
-                        lineInk[lineIndex] = ink;
-                    }
-
-                    double allowedLeft = Math.Min(contentLeft, ink.Left);
-                    double allowedRight = Math.Max(contentLeft + contentWidth, ink.Right);
-                    if (double.IsFinite(contentLeft) && bounds.Width > 0)
-                    {
-                        // Only whitespace hanging outside the box is removed;
-                        // a region made of nothing else has no rectangle,
-                        // like any other zero-area selection fragment.
-                        // Zero-width regions such as line breaks are kept.
-                        if (left >= allowedRight || right <= allowedLeft)
-                            continue;
-                        left = Math.Max(left, allowedLeft);
-                        right = Math.Min(right, allowedRight);
-                    }
-                }
-
-                yield return new Rect(
-                    baseX + left,
-                    baseY + bounds.Y,
-                    right - left,
-                    bounds.Height);
-            }
-            yield break;
-        }
-
-        int rangeEnd = from + length;
-        int lineStart = 0;
-        double y = 0;
-        foreach (var metric in lineMetrics)
-        {
-            int charCount = Math.Max(0, metric.CharacterCount);
-            int lineEnd = lineStart + charCount;
-            bool intersects = lineEnd > from && lineStart < rangeEnd;
-            if (intersects)
-            {
-                yield return new Rect(
-                    baseX,
-                    baseY + y,
-                    Math.Max(1, _layout.LayoutBounds.Width),
-                    Math.Max(1, metric.Height));
-            }
-
-            y += metric.Height;
-            lineStart = lineEnd;
-        }
-    }
-
-    private static bool TryGetLineIndex(
-        CanvasLineMetrics[] lines,
-        int characterIndex,
-        out int lineIndex,
-        out int lineStart)
-    {
-        int start = 0;
-        for (int i = 0; i < lines.Length; i++)
-        {
-            int count = Math.Max(0, lines[i].CharacterCount);
-            if (characterIndex < start + count)
-            {
-                lineIndex = i;
-                lineStart = start;
-                return true;
-            }
-            start += count;
-        }
-
-        lineIndex = -1;
-        lineStart = 0;
-        return false;
-    }
-
-    // Horizontal extent of a line's characters excluding its trailing
-    // whitespace, in layout coordinates. An all-whitespace line has no ink;
-    // the empty extent then leaves only the content width as the limit.
-    private static (double Left, double Right) MeasureLineInk(
-        CanvasTextLayout layout,
-        CanvasLineMetrics line,
-        int lineStart)
-    {
-        int inkLength = Math.Max(0, line.CharacterCount - Math.Max(0, line.TrailingWhitespaceCount));
-        if (inkLength == 0)
-            return (double.PositiveInfinity, double.NegativeInfinity);
-
-        double left = double.PositiveInfinity;
-        double right = double.NegativeInfinity;
-        CanvasTextLayoutRegion[]? regions = layout.GetCharacterRegions(lineStart, inkLength);
-        if (regions is null)
-            return (left, right);
-        foreach (CanvasTextLayoutRegion region in regions)
-        {
-            left = Math.Min(left, region.LayoutBounds.X);
-            right = Math.Max(right, region.LayoutBounds.X + region.LayoutBounds.Width);
-        }
-        return (left, right);
-    }
-
-    internal CanvasTextLayoutRegion[]? GetAdjustedCharacterRegions(
-        CanvasTextLayout layout,
-        int start,
-        int length)
-    {
-        if (start < 0 || length <= 0 || start > int.MaxValue - length)
-            return Array.Empty<CanvasTextLayoutRegion>();
-
-        int end = start + length;
-        if (_scriptBaselineGeometry.Count == 0)
-            return layout.GetCharacterRegions(start, length);
-
-        int firstSegmentEnd = _scriptBaselineGeometry.GetSegmentEnd(start, end, out float firstOffset);
-        if (firstSegmentEnd == end)
-        {
-            CanvasTextLayoutRegion[]? single = layout.GetCharacterRegions(start, length);
-            if (single is not null && firstOffset != 0f)
-                OffsetRegions(single, firstOffset);
-            return single;
-        }
-
-        List<CanvasTextLayoutRegion>? combined = null;
-        int cursor = start;
-        while (cursor < end)
-        {
-            int segmentEnd = _scriptBaselineGeometry.GetSegmentEnd(cursor, end, out float offsetY);
-            if (segmentEnd <= cursor)
-                return null;
-
-            CanvasTextLayoutRegion[]? segment = layout.GetCharacterRegions(cursor, segmentEnd - cursor);
-            if (segment is null)
-                return null;
-
-            combined ??= new List<CanvasTextLayoutRegion>(segment.Length + 2);
-            if (offsetY != 0f)
-                OffsetRegions(segment, offsetY);
-            combined.AddRange(segment);
-            cursor = segmentEnd;
-        }
-
-        return combined?.ToArray() ?? Array.Empty<CanvasTextLayoutRegion>();
-    }
-
-    private static void OffsetRegions(CanvasTextLayoutRegion[] regions, float offsetY)
-    {
-        for (int index = 0; index < regions.Length; index++)
-        {
-            CanvasTextLayoutRegion region = regions[index];
-            Rect bounds = region.LayoutBounds;
-            bounds.Y += offsetY;
-            region.LayoutBounds = bounds;
-            regions[index] = region;
-        }
-    }
+        => InlineRangeGeometry.GetBufferRangeLineRects(this, from, length);
 
     public override IEnumerable<Rect> GetSelectionRects(DocumentRange range)
         => GetRangeRects(range);
@@ -2950,38 +2676,7 @@ internal sealed partial class InlineContainerBox : BlockBox
     /// Returns an empty rect if the run is not found or the layout is not built.
     /// </summary>
     public Rect GetRunRect(int inlineIndex)
-    {
-        if (_layout is null) return default;
-        var style = GetContainerStyle();
-        var (baseX, baseY) = GetSnappedOrigin(style);
-        int cumulative = 0;
-        foreach (var run in _runs)
-        {
-            int len = run.TextLength;
-            if (run.InlineIndex == inlineIndex && len > 0)
-            {
-                var regions = GetAdjustedCharacterRegions(_layout, cumulative, len);
-                if (regions is not null && regions.Length > 0)
-                {
-                    // Union all regions for multi-line runs.
-                    double x1 = double.MaxValue, y1 = double.MaxValue;
-                    double x2 = double.MinValue, y2 = double.MinValue;
-                    foreach (var r in regions)
-                    {
-                        var lb = r.LayoutBounds;
-                        if (lb.X < x1) x1 = lb.X;
-                        if (lb.Y < y1) y1 = lb.Y;
-                        if (lb.X + lb.Width  > x2) x2 = lb.X + lb.Width;
-                        if (lb.Y + lb.Height > y2) y2 = lb.Y + lb.Height;
-                    }
-                    return new Rect(baseX + x1, baseY + y1, x2 - x1, y2 - y1);
-                }
-                return default;
-            }
-            cumulative += len;
-        }
-        return default;
-    }
+        => InlineRangeGeometry.GetRunRect(this, inlineIndex);
 
     /// <summary>
     /// For each <see cref="InlineEmbedRun"/>, returns the rectangle in document
@@ -3379,7 +3074,7 @@ internal sealed partial class InlineContainerBox : BlockBox
             if (len <= 0)
                 return false;
 
-            var regions = GetAdjustedCharacterRegions(_layout, cumulative, len);
+            var regions = InlineRangeGeometry.GetAdjustedCharacterRegions(this, _layout, cumulative, len);
             if (regions is null || regions.Length == 0)
                 return false;
 
@@ -3557,7 +3252,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         if (_layout is null || length <= 0)
             return false;
 
-        var regions = GetAdjustedCharacterRegions(_layout, start, length);
+        var regions = InlineRangeGeometry.GetAdjustedCharacterRegions(this, _layout, start, length);
         if (regions is null || regions.Length == 0)
             return false;
 
@@ -3575,20 +3270,6 @@ internal sealed partial class InlineContainerBox : BlockBox
         }
 
         return false;
-    }
-
-    internal int ToBufferIndex(DocumentPosition pos)
-    {
-        if (pos.BlockIndex < BlockIndex) return 0;
-        if (pos.BlockIndex > BlockIndex) return _buffer.Length;
-        int cumulative = 0;
-        foreach (var run in _runs)
-        {
-            if (run.InlineIndex == pos.InlineIndex)
-                return cumulative + Math.Clamp(pos.CharacterOffset, 0, run.TextLength);
-            cumulative += run.TextLength;
-        }
-        return _buffer.Length;
     }
 
     public override void Dispose()

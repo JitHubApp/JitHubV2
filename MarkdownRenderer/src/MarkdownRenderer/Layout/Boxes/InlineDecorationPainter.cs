@@ -53,7 +53,7 @@ internal static class InlineDecorationPainter
                     lineMetrics = box.TryGetLineMetrics();
                     lineMetricsAttempted = true;
                 }
-                var regions = box.GetAdjustedCharacterRegions(box.TextLayout, cumulative, len);
+                var regions = InlineRangeGeometry.GetAdjustedCharacterRegions(box, box.TextLayout, cumulative, len);
                 if (regions is null) { cumulative += len; continue; } // Win2D can return null on DirectWrite errors
                 foreach (var r in regions)
                 {
@@ -122,7 +122,7 @@ internal static class InlineDecorationPainter
             {
                 int segmentStart = Math.Max(runStart, selectedStart);
                 int segmentLength = Math.Min(runEnd, selectedEnd) - segmentStart;
-                var regions = box.GetAdjustedCharacterRegions(box.TextLayout, segmentStart, segmentLength);
+                var regions = InlineRangeGeometry.GetAdjustedCharacterRegions(box, box.TextLayout, segmentStart, segmentLength);
                 if (regions is not null)
                 {
                     foreach (var r in regions)
@@ -292,7 +292,7 @@ internal static class InlineDecorationPainter
         if (box.TextLayout is null || style.Background is not { } background)
             return;
 
-        var regions = box.GetAdjustedCharacterRegions(box.TextLayout, start, length);
+        var regions = InlineRangeGeometry.GetAdjustedCharacterRegions(box, box.TextLayout, start, length);
         if (regions is null)
             return;
 
@@ -368,7 +368,7 @@ internal static class InlineDecorationPainter
                     continue;
             }
 
-            var regions = box.GetAdjustedCharacterRegions(box.TextLayout, spanStart, spanLength);
+            var regions = InlineRangeGeometry.GetAdjustedCharacterRegions(box, box.TextLayout, spanStart, spanLength);
             if (regions is null)
                 continue;
             lineMetrics ??= box.TryGetLineMetrics();
