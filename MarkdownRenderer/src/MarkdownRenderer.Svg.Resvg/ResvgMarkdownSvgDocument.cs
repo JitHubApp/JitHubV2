@@ -35,8 +35,8 @@ internal sealed class ResvgMarkdownSvgDocument : IMarkdownSvgDocument, IMarkdown
         _workerDocument = new WorkerDocumentHandle(
             workerDocument.DocumentId,
             workerDocument.PreferredWorkerInstanceId,
-            renderer.CreateContentAdmissionGuard(identity),
-            renderer.CreateContentFailureCallback(identity));
+            renderer.Quarantine.CreateContentAdmissionGuard(identity),
+            renderer.Quarantine.CreateContentFailureCallback(identity));
         WorkerPool workerPool = workers;
         WorkerDocumentHandle documentHandle = _workerDocument;
         SvgDocumentSourceSnapshot sourceSnapshot = _sourceSnapshot;
@@ -129,7 +129,7 @@ internal sealed class ResvgMarkdownSvgDocument : IMarkdownSvgDocument, IMarkdown
             // This is deliberately before source snapshot access and worker
             // dispatch. Repeated renders from any retained handle observe the
             // same hash quarantine without reattaching the source.
-            _renderer.ThrowIfQuarantined(_identity);
+            _renderer.Quarantine.ThrowIfQuarantined(_identity);
             source = _sourceSnapshot.GetForRender();
 
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifetime.Token);
@@ -165,7 +165,7 @@ internal sealed class ResvgMarkdownSvgDocument : IMarkdownSvgDocument, IMarkdown
             }
             catch (WorkerDeadlineException exception)
             {
-                _renderer.QuarantineWorkerFailure(_identity);
+                _renderer.Quarantine.QuarantineWorkerFailure(_identity);
                 throw new MarkdownSvgException(MarkdownSvgFailureReason.Timeout, innerException: exception);
             }
             catch (MarkdownSvgException)
@@ -174,18 +174,18 @@ internal sealed class ResvgMarkdownSvgDocument : IMarkdownSvgDocument, IMarkdown
             }
             catch (Exception exception) when (exception is WorkerProtocolException or IOException or InvalidOperationException)
             {
-                _renderer.QuarantineWorkerFailure(_identity);
+                _renderer.Quarantine.QuarantineWorkerFailure(_identity);
                 throw new MarkdownSvgException(MarkdownSvgFailureReason.WorkerFailure, innerException: exception);
             }
 
             using (workerResult)
             {
                 WorkerResponse response = workerResult.Response;
-                _renderer.ThrowForRejectedResponse(response, _identity);
+                _renderer.Quarantine.ThrowForRejectedResponse(response, _identity);
                 if (response.OutputLength != outputLength || response.Width != width || response.Height != height ||
                     response.Stride != checked(width * 4) || response.PixelFormat != request.PixelFormat)
                 {
-                    _renderer.QuarantineWorkerFailure(_identity, response.WorkerInstanceId);
+                    _renderer.Quarantine.QuarantineWorkerFailure(_identity, response.WorkerInstanceId);
                     throw new MarkdownSvgException(MarkdownSvgFailureReason.WorkerFailure, "The SVG worker returned malformed raster metadata.");
                 }
 

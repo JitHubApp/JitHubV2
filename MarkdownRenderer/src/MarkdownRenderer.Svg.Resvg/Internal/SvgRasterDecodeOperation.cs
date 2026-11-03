@@ -1,40 +1,38 @@
 using System.Security.Cryptography;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Svg.Resvg.Internal;
 
-namespace MarkdownRenderer.Svg.Resvg;
+namespace MarkdownRenderer.Svg.Resvg.Internal;
 
-public sealed partial class ResvgMarkdownSvgRenderer
+/// <summary>
+/// Decodes one explicitly registered static raster for
+/// <see cref="ResvgMarkdownSvgRenderer"/> in the same isolated worker pool,
+/// under the renderer's open-operation borrow and content quarantine.
+/// </summary>
+internal sealed class SvgRasterDecodeOperation(
+    ResvgMarkdownSvgRenderer owner,
+    ResvgMarkdownSvgRendererOptions options,
+    WorkerPool workers,
+    SvgContentQuarantine quarantine,
+    SvgDocumentLifetime openOperations)
 {
-    /// <inheritdoc />
-    public bool SupportsFormat(MarkdownRasterFormat format) => format == MarkdownRasterFormat.WebP;
+    private readonly ResvgMarkdownSvgRenderer _owner = owner;
+    private readonly ResvgMarkdownSvgRendererOptions _options = options;
+    private readonly WorkerPool _workers = workers;
+    private readonly SvgContentQuarantine _quarantine = quarantine;
+    private readonly SvgDocumentLifetime _openOperations = openOperations;
 
-    /// <inheritdoc />
-    public async ValueTask<MarkdownRaster> DecodeAsync(MarkdownRasterDecodeRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        try
-        {
-            // Includes hashing, metadata inspection, worker startup and mapping initialization.
-            // None of those synchronous phases may run on a calling UI thread.
-            return await Task.Run(() => DecodeRasterCoreAsync(request, cancellationToken),
-                CancellationToken.None).ConfigureAwait(false);
-        }
-        finally
-        {
-            request = null!;
-        }
-    }
-
-    private async Task<MarkdownRaster> DecodeRasterCoreAsync(MarkdownRasterDecodeRequest request,
+    /// <summary>Inspects, admits and decodes one raster in a worker.</summary>
+    /// <param name="request">The decode request.</param>
+    /// <param name="cancellationToken">Cancels the decode.</param>
+    /// <returns>The decoded raster, which owns its output mapping.</returns>
+    internal async Task<MarkdownRaster> DecodeAsync(MarkdownRasterDecodeRequest request,
         CancellationToken cancellationToken)
     {
         SvgDocumentLifetime.RenderLease? operation = null;
         CancellationTokenSource? linkedCancellation = null;
         try
         {
-            if (IsDisposed)
+            if (_owner.IsDisposed)
                 throw new MarkdownRasterException(MarkdownRasterFailureReason.Canceled);
             operation = _openOperations.TryEnterRender()
                 ?? throw new MarkdownRasterException(MarkdownRasterFailureReason.Canceled);
@@ -47,13 +45,13 @@ public sealed partial class ResvgMarkdownSvgRenderer
             string identity = "raster:" + Convert.ToHexString(hash);
             void CheckQuarantine()
             {
-                if (_quarantine.ContainsKey(identity))
+                if (_quarantine.Contains(identity))
                     throw new MarkdownRasterException(MarkdownRasterFailureReason.WorkerFailure,
                         "This raster image is quarantined after an isolated decoder failure.");
             }
             CheckQuarantine();
             using WorkerRenderResult decoded = await _workers.DecodeRasterAsync(request, geometry, hash,
-                CheckQuarantine, () => _quarantine.TryAdd(identity, 0), cancellationToken).ConfigureAwait(false);
+                CheckQuarantine, () => _quarantine.Add(identity), cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             if (decoded.Response.Status != WorkerStatus.Ok)
                 throw new MarkdownRasterException(decoded.Response.Status switch
@@ -79,7 +77,7 @@ public sealed partial class ResvgMarkdownSvgRenderer
         {
             throw new MarkdownRasterException(MarkdownRasterFailureReason.Canceled, innerException: exception);
         }
-        catch (ObjectDisposedException exception) when (IsDisposed || cancellationToken.IsCancellationRequested)
+        catch (ObjectDisposedException exception) when (_owner.IsDisposed || cancellationToken.IsCancellationRequested)
         {
             throw new MarkdownRasterException(MarkdownRasterFailureReason.Canceled, innerException: exception);
         }

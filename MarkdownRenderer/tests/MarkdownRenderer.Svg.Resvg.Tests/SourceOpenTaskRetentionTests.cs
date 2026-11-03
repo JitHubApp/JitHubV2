@@ -78,7 +78,7 @@ public sealed class SourceOpenTaskRetentionTests
         byte[] source = Encoding.UTF8.GetBytes(
             "<svg xmlns='http://www.w3.org/2000/svg'><rect width='1' height='1'/></svg>");
         var weakSource = new WeakReference<byte[]>(source);
-        renderer.QuarantineWorkerFailure(Convert.ToHexString(SHA256.HashData(source)));
+        renderer.Quarantine.QuarantineWorkerFailure(Convert.ToHexString(SHA256.HashData(source)));
         Task<IMarkdownSvgDocument> task = renderer.OpenAsync(new MarkdownSvgOpenRequest(source)).AsTask();
         return (task, weakSource);
     }

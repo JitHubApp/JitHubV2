@@ -1,6 +1,4 @@
-using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Svg.Resvg.Internal;
 
@@ -14,108 +12,8 @@ namespace MarkdownRenderer.Svg.Resvg;
 /// <see cref="IMarkdownRasterDecoder"/> using the same isolated worker pool.
 /// Registering this object as an SVG renderer does not implicitly enable raster decoding.
 /// </remarks>
-public sealed partial class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMarkdownRasterDecoder, IMarkdownSvgPreparationAdmission, IDisposable, IAsyncDisposable
+public sealed class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMarkdownRasterDecoder, IMarkdownSvgPreparationAdmission, IDisposable, IAsyncDisposable
 {
-    /// <inheritdoc />
-    public MarkdownSvgSourcePreparation PrepareSource(byte[] source, CancellationToken cancellationToken)
-    {
-        ThrowIfDisposed();
-        ArgumentNullException.ThrowIfNull(source);
-        cancellationToken.ThrowIfCancellationRequested();
-        byte[] prepared;
-        SvgResourceBudgetResult budget;
-        MarkdownSvgSourceInfo? preparedInfo = null;
-        try
-        {
-            // An inert W3C SVG DOCTYPE (published public/system pair,
-            // no internal subset, UTF-8) is replaced by equal-length
-            // whitespace in a copy. Every later stage, including the direct
-            // preflight and the worker, still rejects every DTD it sees.
-            byte[] authored = SvgInertDoctype.Neutralize(source, cancellationToken);
-
-            // Static snapshotting is a normalization step, not an admission
-            // policy. Validate the authored source first so unsupported active
-            // content cannot disappear while its remaining artwork is admitted.
-            // This also applies the existing bounded recursive policy to nested
-            // SVG data before any rewrite can change that closure.
-            SvgResourceBudgetResult originalBudget = SvgResourceBudget.ValidateWithMetadata(
-                authored,
-                cancellationToken,
-                out MarkdownSvgSourceInfo? originalInfo);
-            cancellationToken.ThrowIfCancellationRequested();
-            if (!originalBudget.Accepted)
-                return RejectPreparedSource(source, originalBudget.Reason ?? "invalid-content");
-
-            // The lowered source policy applies to sanitized output, not raw
-            // bytes. The hard source ceiling and active-content policy have
-            // already been enforced against the original source above.
-            prepared = SvgStaticSnapshot.Create(authored, cancellationToken, _options.MaxSourceBytes);
-            if (prepared.Length > _options.MaxSourceBytes)
-            {
-                budget = SvgResourceBudgetResult.Reject("input-bytes");
-            }
-            else if (ReferenceEquals(prepared, authored))
-            {
-                // The original validation is authoritative when normalization
-                // leaves the source unchanged; reuse its matching metadata and
-                // avoid a second complete resource walk on the common path.
-                budget = SvgResourceBudgetResult.Success;
-                preparedInfo = originalInfo;
-            }
-            else
-            {
-                budget = SvgResourceBudget.ValidateWithMetadata(
-                    prepared,
-                    cancellationToken,
-                    out preparedInfo);
-            }
-        }
-        catch (SvgStaticSnapshotResourceException exception)
-        {
-            // Stop serialization before an over-budget buffer is allocated.
-            // Never return a partial snapshot or retry with executable input.
-            return RejectPreparedSource(source, exception.Reason);
-        }
-        if (budget.Accepted)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            // An accepted validation always reads the source information.
-            return MarkdownSvgSourcePreparation.Admit(prepared, preparedInfo!);
-        }
-
-        return RejectPreparedSource(source, budget.Reason ?? "invalid-content");
-    }
-
-    private static MarkdownSvgSourcePreparation RejectPreparedSource(byte[] source, string reason)
-    {
-        if (SvgPreflightAuditEvents.Log.IsEnabled())
-        {
-            SvgPreflightAuditEvents.Log.Rejected(
-                reason,
-                source.Length,
-                Convert.ToHexString(SHA256.HashData(source)));
-        }
-        MarkdownSvgFailureReason failureReason = IsResourceLimitReason(reason)
-            ? MarkdownSvgFailureReason.ResourceLimitExceeded
-            : MarkdownSvgFailureReason.UnsupportedContent;
-        return MarkdownSvgSourcePreparation.Reject(
-            failureReason,
-            $"The SVG was rejected by host preflight ({reason}).");
-    }
-
-    private static bool IsResourceLimitReason(string reason) =>
-        reason.Contains("limit", StringComparison.OrdinalIgnoreCase) ||
-        reason.Contains("budget", StringComparison.OrdinalIgnoreCase) ||
-        reason.Contains("large", StringComparison.OrdinalIgnoreCase) ||
-        reason.Contains("depth", StringComparison.OrdinalIgnoreCase) ||
-        reason.Contains("count", StringComparison.OrdinalIgnoreCase) ||
-        reason.Contains("bytes", StringComparison.OrdinalIgnoreCase) ||
-        reason.Contains("complexity", StringComparison.OrdinalIgnoreCase) ||
-        reason.Contains("size", StringComparison.OrdinalIgnoreCase) ||
-        reason.Contains("length", StringComparison.OrdinalIgnoreCase) ||
-        reason.Contains("deadline", StringComparison.OrdinalIgnoreCase) ||
-        reason.Equals("embedded-image-data", StringComparison.OrdinalIgnoreCase);
-
     /// <summary>The exact upstream resvg release used by the worker.</summary>
     public const string ResvgVersion = "0.48.1";
 
@@ -125,15 +23,15 @@ public sealed partial class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMa
     private readonly ResvgMarkdownSvgRendererOptions _options;
     private readonly WorkerPool _workers;
     private readonly SvgRendererDocumentRegistry _documents = new();
-    private readonly SvgResourceInspectionWorkspacePool _preflightWorkspaces = new();
     private readonly SvgProcessSnapshotAdmission _snapshotAdmission;
+    private readonly SvgDocumentOpenOperation _opener;
+    private readonly SvgRasterDecodeOperation _rasterDecoder;
     // This separate lifetime borrows in-flight opens, including background
     // preflight. It never retains returned document handles or source arrays.
     private readonly SvgDocumentLifetime _openOperations = new(static () => { });
     private readonly TaskCompletionSource _shutdown = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly SvgProviderSnapshotLedger _sourceOwnership;
-    internal SvgProviderSnapshotLedger SourceOwnership => _sourceOwnership;
-    private readonly ConcurrentDictionary<string, byte> _quarantine = new(StringComparer.Ordinal);
+    private readonly SvgContentQuarantine _quarantine;
     private readonly bool _memoryPressureSubscribed;
     private int _disposed;
 
@@ -143,6 +41,8 @@ public sealed partial class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMa
     /// <inheritdoc />
     public event EventHandler? CacheInvalidated;
 
+    internal SvgProviderSnapshotLedger SourceOwnership => _sourceOwnership;
+    internal SvgContentQuarantine Quarantine => _quarantine;
     internal long SourceAttachmentCount => _workers.SourceAttachmentCount;
     internal bool IsDisposed => Volatile.Read(ref _disposed) != 0;
 
@@ -216,7 +116,7 @@ public sealed partial class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMa
         MarkdownSvgOpenRequest forwardedRequest = request with { Priority = demand.Priority };
         try
         {
-            return await OpenCoreAsync(
+            return await _opener.OpenAsync(
                 forwardedRequest,
                 demand,
                 returnCapacityUnavailable: true,
@@ -229,6 +129,34 @@ public sealed partial class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMa
             // cannot retain caller-owned source bytes.
             request = null!;
             forwardedRequest = null!;
+        }
+    }
+
+    /// <inheritdoc />
+    public MarkdownSvgSourcePreparation PrepareSource(byte[] source, CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+        return SvgSourcePreparer.Prepare(source, _options.MaxSourceBytes, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public bool SupportsFormat(MarkdownRasterFormat format) => format == MarkdownRasterFormat.WebP;
+
+    /// <inheritdoc />
+    public async ValueTask<MarkdownRaster> DecodeAsync(MarkdownRasterDecodeRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        try
+        {
+            // Includes hashing, metadata inspection, worker startup and mapping initialization.
+            // None of those synchronous phases may run on a calling UI thread.
+            return await Task.Run(() => _rasterDecoder.DecodeAsync(request, cancellationToken),
+                CancellationToken.None).ConfigureAwait(false);
+        }
+        finally
+        {
+            request = null!;
         }
     }
 
@@ -246,12 +174,17 @@ public sealed partial class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMa
 
     internal ResvgMarkdownSvgRenderer(
         ResvgMarkdownSvgRendererOptions options,
-        SvgProcessSnapshotAdmission snapshotAdmission)
+        SvgProcessSnapshotAdmission snapshotAdmission,
+        IWorkerProcessLauncher? workerLauncher = null)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _snapshotAdmission = snapshotAdmission ?? throw new ArgumentNullException(nameof(snapshotAdmission));
         _sourceOwnership = new SvgProviderSnapshotLedger(snapshotAdmission.SourceLedger);
-        _workers = new WorkerPool(options);
+        _workers = new WorkerPool(options, workerLauncher);
+        _quarantine = new SvgContentQuarantine(_workers);
+        _opener = new SvgDocumentOpenOperation(
+            this, options, _workers, _quarantine, snapshotAdmission, _sourceOwnership, _openOperations);
+        _rasterDecoder = new SvgRasterDecodeOperation(this, options, _workers, _quarantine, _openOperations);
         _ = _shutdown.Task.ContinueWith(
             static completed => _ = completed.Exception,
             CancellationToken.None,
@@ -306,7 +239,7 @@ public sealed partial class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMa
     {
         try
         {
-            MarkdownSvgAdmissionResult result = await OpenCoreAsync(
+            MarkdownSvgAdmissionResult result = await _opener.OpenAsync(
                 request,
                 demand: null,
                 returnCapacityUnavailable: false,
@@ -316,260 +249,10 @@ public sealed partial class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMa
         }
         finally
         {
-            // OpenCoreAsync clears its independent parameter copy in its own
+            // The open operation clears its independent parameter copy in its own
             // finally. Clear this async wrapper's copy too: retained completed
             // tasks must not keep the caller's source array reachable.
             request = null!;
-        }
-    }
-
-    private async ValueTask<MarkdownSvgAdmissionResult> OpenCoreAsync(
-        MarkdownSvgOpenRequest request,
-        MarkdownSvgRenderDemand? demand,
-        bool returnCapacityUnavailable,
-        CancellationToken cancellationToken)
-    {
-        SvgPreflightResult? preflight = null;
-        SvgProcessSnapshotAdmission.Lease? snapshotAdmission = null;
-        WorkerDocumentHandle? unownedWorkerDocument = null;
-        SvgDocumentLifetime.RenderLease? openOperation = null;
-        CancellationTokenSource? openCancellation = null;
-        bool sourceTransferredToDocument = false;
-        try
-        {
-            ThrowIfDisposed();
-            ArgumentNullException.ThrowIfNull(request);
-            openOperation = _openOperations.TryEnterRender() ?? throw new MarkdownSvgException(
-                MarkdownSvgFailureReason.Canceled, "The SVG renderer is shutting down.");
-            openCancellation = CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken, openOperation.Token);
-            cancellationToken = openCancellation.Token;
-            if (!Enum.IsDefined(request.Priority))
-                throw new ArgumentOutOfRangeException(nameof(request), "The SVG open priority is invalid.");
-            if (!Enum.IsDefined(request.ColorScheme))
-                throw new ArgumentOutOfRangeException(nameof(request), "The SVG color scheme is invalid.");
-
-            // Validate deterministic source limits before treating shared
-            // process capacity as transient pressure. Reservation precedes
-            // InspectAsync's first provider-owned clone.
-            if (request.SanitizedSvgBytes.IsEmpty)
-                throw new MarkdownSvgException(MarkdownSvgFailureReason.UnsupportedContent, "The SVG source is empty.");
-            if (request.SanitizedSvgBytes.Length > _options.MaxSourceBytes)
-                throw new MarkdownSvgException(MarkdownSvgFailureReason.ResourceLimitExceeded, "The SVG source exceeds the configured byte ceiling.");
-
-            // The first provider allocation is an exact-length input clone.
-            // Reserving the per-document ceiling here makes a dozen tiny
-            // visible SVGs exhaust the process budget before parsing starts.
-            // Preflight separately grows this lease before normalization's
-            // output/scratch overlap; no allocation is left unaccounted for.
-            int initialSourceReservationBytes = request.SanitizedSvgBytes.Length;
-            if (!_snapshotAdmission.TryReserve(
-                    initialSourceReservationBytes,
-                    demand?.Priority ?? request.Priority,
-                    out snapshotAdmission,
-                    out long observedCapacityVersion))
-            {
-                if (returnCapacityUnavailable)
-                {
-                    return MarkdownSvgAdmissionResult.CapacityUnavailable(
-                        observedCapacityVersion,
-                        initialSourceReservationBytes);
-                }
-
-                throw new MarkdownSvgException(
-                    MarkdownSvgFailureReason.ResourceLimitExceeded,
-                    "The process-wide SVG source snapshot capacity is currently full.");
-            }
-
-            try
-            {
-                preflight = await SvgPreflight.InspectAsync(
-                    request, _options, cancellationToken
-                    , _sourceOwnership
-                    , snapshotAdmission
-                    , demand
-                    , inspectionWorkspaces: _preflightWorkspaces
-                    ).ConfigureAwait(false);
-            }
-            catch (SvgPreflightCapacityUnavailableException exception)
-            {
-                // Transient normalization scratch pressure is not a content
-                // failure: do not hash or quarantine the source. The preflight
-                // finally and this method's finally release every source alias
-                // and reservation before this host result becomes observable.
-                if (returnCapacityUnavailable)
-                {
-                    return MarkdownSvgAdmissionResult.CapacityUnavailable(
-                        exception.CapacityVersion,
-                        exception.RequiredSourceReservationBytes);
-                }
-
-                throw new MarkdownSvgException(
-                    MarkdownSvgFailureReason.ResourceLimitExceeded,
-                    "The process-wide SVG source normalization capacity is currently full.",
-                    exception);
-            }
-            // The accepted preflight result now owns the reservation. It will
-            // release it only when the document snapshot lifetime drains.
-            snapshotAdmission = null;
-            // The preflight result owns its private source snapshot. Keep only
-            // the immutable render metadata in this async state machine while
-            // worker attachment is pending; otherwise a completed task can
-            // retain the caller's potentially much larger input array.
-            request = request with { SanitizedSvgBytes = ReadOnlyMemory<byte>.Empty };
-
-            string identity = Convert.ToHexString(preflight.Hash);
-            ThrowIfQuarantined(identity);
-
-            try
-            {
-                WorkerOpenResult opened = await _workers.OpenDocumentAsync(
-                    preflight,
-                    request,
-                    cancellationToken,
-                    contentAdmissionGuard: CreateContentAdmissionGuard(identity),
-                    contentFailureCallback: CreateContentFailureCallback(identity),
-                    demand: demand).ConfigureAwait(false);
-                WorkerResponse response = opened.Response;
-                if (response.Status == WorkerStatus.Ok)
-                    unownedWorkerDocument = opened.Document;
-                ThrowForRejectedResponse(response, identity);
-                if (!double.IsFinite(response.IntrinsicWidth) || response.IntrinsicWidth <= 0 ||
-                    !double.IsFinite(response.IntrinsicHeight) || response.IntrinsicHeight <= 0 ||
-                    response.OutputLength != 0 || response.Width != 0 || response.Height != 0)
-                {
-                    _quarantine.TryAdd(identity, 0);
-                    _workers.InvalidateWorker(response.WorkerInstanceId);
-                    throw new MarkdownSvgException(MarkdownSvgFailureReason.WorkerFailure, "The SVG worker returned malformed metadata.");
-                }
-
-                var info = new MarkdownSvgDocumentInfo(
-                    response.IntrinsicWidth,
-                    response.IntrinsicHeight,
-                    response.AspectRatio > 0 && double.IsFinite(response.AspectRatio) ? response.AspectRatio : null,
-                    preflight.Info.Description,
-                    response.HasText,
-                    response.UsesCurrentColor,
-                    response.UsesColorScheme);
-                var document = new ResvgMarkdownSvgDocument(
-                    this,
-                    _workers,
-                    _options,
-                    preflight,
-                    request,
-                    identity,
-                    info,
-                    opened.Document);
-                long sourceReservationBytes = preflight.SourceReservationBytes;
-                // The returned document now owns the sanitized source. Do not
-                // keep a second reference in the completed OpenAsync task. It
-                // also owns the worker handle, so failure cleanup must not close it.
-                unownedWorkerDocument = null;
-                sourceTransferredToDocument = true;
-                preflight = null;
-                return MarkdownSvgAdmissionResult.Opened(
-                    document,
-                    sourceReservationBytes,
-                    _snapshotAdmission.AdmissionDomain);
-            }
-            catch (OperationCanceledException exception)
-            {
-                throw new MarkdownSvgException(MarkdownSvgFailureReason.Canceled, innerException: exception);
-            }
-            catch (ObjectDisposedException exception) when (cancellationToken.IsCancellationRequested)
-            {
-                // Shutdown can close admission after preflight, before its
-                // canceled token is checked by the pool. This says nothing
-                // about the SVG: do not poison its content hash quarantine.
-                throw new MarkdownSvgException(MarkdownSvgFailureReason.Canceled, innerException: exception);
-            }
-            catch (WorkerInitializationDeadlineException exception)
-            {
-                // Initialization is process-specific, not evidence that this SVG is
-                // hostile. Never quarantine a content hash for a cold-start timeout.
-                throw new MarkdownSvgException(MarkdownSvgFailureReason.Timeout, innerException: exception);
-            }
-            catch (WorkerInitializationException exception)
-            {
-                throw new MarkdownSvgException(MarkdownSvgFailureReason.WorkerFailure, innerException: exception);
-            }
-            catch (WorkerDeadlineException exception)
-            {
-                _quarantine.TryAdd(identity, 0);
-                throw new MarkdownSvgException(MarkdownSvgFailureReason.Timeout, innerException: exception);
-            }
-            catch (MarkdownSvgException)
-            {
-                throw;
-            }
-            catch (Exception exception) when (exception is WorkerProtocolException or IOException or InvalidOperationException)
-            {
-                _quarantine.TryAdd(identity, 0);
-                throw new MarkdownSvgException(MarkdownSvgFailureReason.WorkerFailure, innerException: exception);
-            }
-        }
-        catch (MarkdownSvgException)
-        {
-            throw;
-        }
-        catch (OperationCanceledException exception)
-        {
-            throw new MarkdownSvgException(MarkdownSvgFailureReason.Canceled, innerException: exception);
-        }
-        finally
-        {
-            try
-            {
-                try
-                {
-                    if (unownedWorkerDocument is { } workerDocument)
-                    {
-                        try
-                        {
-                            _workers.ForgetDocument(workerDocument);
-                        }
-                        catch
-                        {
-                            // Cleanup is best effort here and must not replace
-                            // the original open/metadata/construction failure.
-                        }
-                    }
-                }
-                finally
-                {
-                    unownedWorkerDocument = null;
-                }
-            }
-            finally
-            {
-                try
-                {
-                    if (!sourceTransferredToDocument)
-                        preflight?.ReleaseSource();
-                }
-                finally
-                {
-                    // Clear even validation/preflight failures. A retained canceled
-                    // or faulted task must not pin the original caller-owned array.
-                    try
-                    {
-                        request = null!;
-                        preflight = null;
-                        snapshotAdmission?.Dispose();
-                        snapshotAdmission = null;
-                        openCancellation?.Dispose();
-                    }
-                    finally
-                    {
-                        // Release the actual-work borrow last. Async shutdown
-                        // cannot finish while this operation still owns its
-                        // private snapshot or the caller's source alias.
-                        openCancellation = null;
-                        openOperation?.Dispose();
-                        openOperation = null;
-                    }
-                }
-            }
         }
     }
 
@@ -759,56 +442,6 @@ public sealed partial class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMa
     }
 
     internal void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-
-    internal void ThrowIfQuarantined(string identity)
-    {
-        ArgumentNullException.ThrowIfNull(identity);
-        if (_quarantine.ContainsKey(identity))
-        {
-            throw new MarkdownSvgException(
-                MarkdownSvgFailureReason.WorkerFailure,
-                "This SVG was quarantined after a worker failure.");
-        }
-    }
-
-    internal Action CreateContentAdmissionGuard(string identity)
-    {
-        ArgumentNullException.ThrowIfNull(identity);
-        return () => ThrowIfQuarantined(identity);
-    }
-
-    internal Action CreateContentFailureCallback(string identity)
-    {
-        ArgumentNullException.ThrowIfNull(identity);
-        return () => QuarantineWorkerFailure(identity);
-    }
-
-    internal void ThrowForRejectedResponse(WorkerResponse response, string identity)
-    {
-        switch (response.Status)
-        {
-            case WorkerStatus.Ok:
-                return;
-            case WorkerStatus.Unsupported:
-                throw new MarkdownSvgException(MarkdownSvgFailureReason.UnsupportedContent, response.Detail);
-            case WorkerStatus.ResourceLimit:
-                throw new MarkdownSvgException(MarkdownSvgFailureReason.ResourceLimitExceeded, response.Detail);
-            case WorkerStatus.WorkerFailure:
-                _quarantine.TryAdd(identity, 0);
-                _workers.InvalidateWorker(response.WorkerInstanceId);
-                throw new MarkdownSvgException(MarkdownSvgFailureReason.WorkerFailure, response.Detail);
-            default:
-                _quarantine.TryAdd(identity, 0);
-                _workers.InvalidateWorker(response.WorkerInstanceId);
-                throw new MarkdownSvgException(MarkdownSvgFailureReason.WorkerFailure, "The SVG worker returned an unknown failure.");
-        }
-    }
-
-    internal void QuarantineWorkerFailure(string identity, long workerInstanceId = 0)
-    {
-        _quarantine.TryAdd(identity, 0);
-        _workers.InvalidateWorker(workerInstanceId);
-    }
 
     private async void OnAppMemoryUsageIncreased(object? sender, object args)
     {

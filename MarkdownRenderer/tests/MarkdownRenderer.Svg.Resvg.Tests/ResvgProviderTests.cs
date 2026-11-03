@@ -780,36 +780,32 @@ public sealed class ResvgProviderTests
     [Fact]
     public async Task FontGenerationRotationReattachesTextTreeButKeepsGeometryTreeAttached()
     {
-        await using var renderer = new ResvgMarkdownSvgRenderer();
+        var options = new ResvgMarkdownSvgRendererOptions();
+        var launcher = new RecordingWorkerLauncher(options);
+        await using var renderer = new ResvgMarkdownSvgRenderer(options, SvgProcessSnapshotAdmission.Process, launcher);
         using IMarkdownSvgDocument textDocument = await renderer.OpenAsync(new MarkdownSvgOpenRequest(Svg(
             "<svg xmlns='http://www.w3.org/2000/svg' width='96' height='24'><text x='2' y='18' font-size='16'>Font generation</text></svg>")));
         using IMarkdownSvgDocument geometryDocument = await renderer.OpenAsync(new MarkdownSvgOpenRequest(Svg(
             "<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24'><circle cx='12' cy='12' r='10' fill='#5288e8'/></svg>")));
         long attachmentsBeforeRotation = renderer.SourceAttachmentCount;
         Assert.Equal(2, attachmentsBeforeRotation);
-        Assert.Equal(renderer.CacheGeneration, PrimaryPublishedFontGeneration(renderer));
+        Assert.Equal(renderer.CacheGeneration, PrimaryPublishedFontGeneration());
 
         renderer.NotifyFontsChanged();
-        Assert.True(PrimaryPublishedFontGeneration(renderer) < renderer.CacheGeneration);
+        Assert.True(PrimaryPublishedFontGeneration() < renderer.CacheGeneration);
 
         using MarkdownSvgRaster textRaster = await textDocument.RenderAsync(new MarkdownSvgRenderRequest(96, 24));
         Assert.True(HasVisiblePixel(textRaster.Pixels.Span));
         Assert.Equal(attachmentsBeforeRotation + 1, renderer.SourceAttachmentCount);
-        Assert.Equal(renderer.CacheGeneration, PrimaryPublishedFontGeneration(renderer));
+        Assert.Equal(renderer.CacheGeneration, PrimaryPublishedFontGeneration());
 
         using MarkdownSvgRaster geometryRaster = await geometryDocument.RenderAsync(new MarkdownSvgRenderRequest(24, 24));
         Assert.True(HasVisiblePixel(geometryRaster.Pixels.Span));
         Assert.Equal(attachmentsBeforeRotation + 1, renderer.SourceAttachmentCount);
 
-        static long PrimaryPublishedFontGeneration(ResvgMarkdownSvgRenderer renderer)
-        {
-            const System.Reflection.BindingFlags fields = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
-            var pool = (WorkerPool)typeof(ResvgMarkdownSvgRenderer).GetField("_workers", fields)!.GetValue(renderer)!;
-            object scheduler = typeof(WorkerPool).GetField("_scheduler", fields)!.GetValue(pool)!;
-            object primary = typeof(WorkerScheduler).GetField("_primary", fields)!.GetValue(scheduler)!;
-            var worker = (WindowsWorkerProcess)primary.GetType().GetProperty("Worker")!.GetValue(primary)!;
-            return worker.ReadyFontGeneration;
-        }
+        // The primary slot always starts the first worker; nothing here
+        // invalidates it, so it is still the primary.
+        long PrimaryPublishedFontGeneration() => launcher.Started.First().ReadyFontGeneration;
     }
 
     [Fact]

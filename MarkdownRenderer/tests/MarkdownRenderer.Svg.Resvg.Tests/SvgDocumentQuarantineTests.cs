@@ -25,7 +25,7 @@ public sealed class SvgDocumentQuarantineTests
             );
         string identity = Convert.ToHexString(preflight.Hash);
         preflight.ReleaseSource();
-        renderer.QuarantineWorkerFailure(identity);
+        renderer.Quarantine.QuarantineWorkerFailure(identity);
 
         MarkdownSvgException exception = await Assert.ThrowsAsync<MarkdownSvgException>(
             async () => await renderer.OpenAsync(request));
@@ -47,7 +47,7 @@ public sealed class SvgDocumentQuarantineTests
         using ResvgMarkdownSvgDocument first = CreateDocument(renderer, workers, options, source, 1);
         using ResvgMarkdownSvgDocument second = CreateDocument(renderer, workers, options, source, 2);
 
-        renderer.QuarantineWorkerFailure(identity);
+        renderer.Quarantine.QuarantineWorkerFailure(identity);
 
         await AssertQuarantinedAsync(first);
         await AssertQuarantinedAsync(second);
@@ -69,15 +69,15 @@ public sealed class SvgDocumentQuarantineTests
         string quarantinedIdentity = GetIdentity("<svg id='quarantined'/>"u8);
         string unrelatedIdentity = GetIdentity("<svg id='unrelated'/>"u8);
 
-        renderer.QuarantineWorkerFailure(quarantinedIdentity);
+        renderer.Quarantine.QuarantineWorkerFailure(quarantinedIdentity);
         var unrelatedDocument = new WorkerDocumentHandle(
             documentId: 17,
             preferredWorkerInstanceId: 23,
-            contentAdmissionGuard: renderer.CreateContentAdmissionGuard(unrelatedIdentity),
-            contentFailureCallback: renderer.CreateContentFailureCallback(unrelatedIdentity));
+            contentAdmissionGuard: renderer.Quarantine.CreateContentAdmissionGuard(unrelatedIdentity),
+            contentFailureCallback: renderer.Quarantine.CreateContentFailureCallback(unrelatedIdentity));
 
         unrelatedDocument.ValidateContentAdmission();
-        renderer.ThrowIfQuarantined(unrelatedIdentity);
+        renderer.Quarantine.ThrowIfQuarantined(unrelatedIdentity);
         unrelatedDocument.ReleaseContentAdmissionGuard();
         unrelatedDocument.ValidateContentAdmission();
 
@@ -94,14 +94,14 @@ public sealed class SvgDocumentQuarantineTests
         string otherIdentity = GetIdentity("<svg id='other'/>"u8);
         var failedDocument = new WorkerDocumentHandle(
             31,
-            contentAdmissionGuard: renderer.CreateContentAdmissionGuard(failedIdentity),
-            contentFailureCallback: renderer.CreateContentFailureCallback(failedIdentity));
+            contentAdmissionGuard: renderer.Quarantine.CreateContentAdmissionGuard(failedIdentity),
+            contentFailureCallback: renderer.Quarantine.CreateContentFailureCallback(failedIdentity));
         var sameContentDocument = new WorkerDocumentHandle(
             32,
-            contentAdmissionGuard: renderer.CreateContentAdmissionGuard(failedIdentity));
+            contentAdmissionGuard: renderer.Quarantine.CreateContentAdmissionGuard(failedIdentity));
         var otherContentDocument = new WorkerDocumentHandle(
             33,
-            contentAdmissionGuard: renderer.CreateContentAdmissionGuard(otherIdentity));
+            contentAdmissionGuard: renderer.Quarantine.CreateContentAdmissionGuard(otherIdentity));
 
         failedDocument.QuarantineContent();
 
@@ -127,7 +127,7 @@ public sealed class SvgDocumentQuarantineTests
         string identity = GetIdentity(source);
         using ResvgMarkdownSvgDocument canceled = CreateDocument(renderer, workers, options, source, 41);
         using ResvgMarkdownSvgDocument disposed = CreateDocument(renderer, workers, options, source, 42);
-        renderer.QuarantineWorkerFailure(identity);
+        renderer.Quarantine.QuarantineWorkerFailure(identity);
 
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();

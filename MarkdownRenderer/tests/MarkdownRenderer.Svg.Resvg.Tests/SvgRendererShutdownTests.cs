@@ -288,7 +288,7 @@ public sealed class SvgRendererShutdownTests
         MarkdownSvgException failure = await Assert.ThrowsAsync<MarkdownSvgException>(
             async () => await open!.WaitAsync(TimeSpan.FromSeconds(10)));
         Assert.Equal(MarkdownSvgFailureReason.Canceled, failure.Reason);
-        renderer.ThrowIfQuarantined(Convert.ToHexString(SHA256.HashData(source)));
+        renderer.Quarantine.ThrowIfQuarantined(Convert.ToHexString(SHA256.HashData(source)));
         Assert.Equal(0, renderer.SourceAttachmentCount);
         await renderer.DisposeAsync();
     }

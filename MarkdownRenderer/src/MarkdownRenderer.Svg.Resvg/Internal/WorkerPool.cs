@@ -150,7 +150,7 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
 
     public ValueTask DisposeAsync() => _scheduler.DisposeAsync();
 
-    private static string ResolveWorkerPath(ResvgMarkdownSvgRendererOptions options)
+    internal static string ResolveWorkerPath(ResvgMarkdownSvgRendererOptions options)
     {
         if (!OperatingSystem.IsWindows() ||
             RuntimeInformation.ProcessArchitecture is not (Architecture.X86 or Architecture.X64 or Architecture.Arm64))
