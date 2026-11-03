@@ -77,25 +77,48 @@ internal sealed class MarkdownSemanticPositionMap
         IReadOnlyDictionary<int, MarkdownSemanticNode> nodeByInlineBlockIndex)
     {
         if (_spanByPosition.TryGetValue((position.BlockIndex, position.InlineIndex), out int indexedSpanIndex))
-        {
-            MarkdownTextSpan indexedSpan = _spans[indexedSpanIndex];
-            if (indexedSpan.InlineRun is { } indexedRun)
-            {
-                return Math.Clamp(
-                    indexedSpan.TextStart + ProjectRenderedOffsetToText(
-                        indexedRun,
-                        position.CharacterOffset,
-                        indexedSpan.TextEnd - indexedSpan.TextStart),
-                    indexedSpan.TextStart,
-                    indexedSpan.TextEnd);
-            }
-
-            return position.CharacterOffset <= 0 ? indexedSpan.TextStart : indexedSpan.TextEnd;
-        }
+            return TextOffsetInIndexedSpan(_spans[indexedSpanIndex], position);
 
         // Non-run positions (images/embeds) and deliberately unbounded
         // selection sentinels are uncommon. Preserve the compatibility
         // fallback without putting normal copy/UIA lookups on a linear path.
+        if (TryScanInlineBoxTextOffset(position, out int inlineOffset))
+            return inlineOffset;
+
+        if (TryScanBlockObjectTextOffset(position, out int objectOffset))
+            return objectOffset;
+
+        // A box containing only omitted decorative objects still has its
+        // zero-length semantic block node. Use that boundary so a spacer-only
+        // paragraph between other paragraphs does not map to document end.
+        if (nodeByInlineBlockIndex.TryGetValue(position.BlockIndex, out MarkdownSemanticNode? inlineNode))
+            return inlineNode.TextStart;
+
+        return position.BlockIndex <= 0 ? 0 : _textLength;
+    }
+
+    private static int TextOffsetInIndexedSpan(MarkdownTextSpan indexedSpan, DocumentPosition position)
+    {
+        if (indexedSpan.InlineRun is { } indexedRun)
+        {
+            return Math.Clamp(
+                indexedSpan.TextStart + ProjectRenderedOffsetToText(
+                    indexedRun,
+                    position.CharacterOffset,
+                    indexedSpan.TextEnd - indexedSpan.TextStart),
+                indexedSpan.TextStart,
+                indexedSpan.TextEnd);
+        }
+
+        return position.CharacterOffset <= 0 ? indexedSpan.TextStart : indexedSpan.TextEnd;
+    }
+
+    /// <summary>
+    /// Scans the inline box at the position's block for the run it names, or
+    /// the end of the last run before it.
+    /// </summary>
+    private bool TryScanInlineBoxTextOffset(DocumentPosition position, out int textOffset)
+    {
         int trailingInlineTextEnd = -1;
         foreach (var span in _spans)
         {
@@ -104,20 +127,25 @@ internal sealed class MarkdownSemanticPositionMap
                 if (span.InlineRun is { } run)
                 {
                     if (position.InlineIndex < run.InlineIndex)
-                        return span.TextStart;
+                    {
+                        textOffset = span.TextStart;
+                        return true;
+                    }
                     if (position.InlineIndex > run.InlineIndex)
                     {
                         trailingInlineTextEnd = span.TextEnd;
                         continue;
                     }
 
-                    return Math.Clamp(
+                    textOffset = Math.Clamp(
                         span.TextStart + ProjectRenderedOffsetToText(run, position.CharacterOffset, span.TextEnd - span.TextStart),
                         span.TextStart,
                         span.TextEnd);
+                    return true;
                 }
 
-                return Math.Clamp(span.TextStart + icb.GetBufferCharOffset(position), span.TextStart, span.TextEnd);
+                textOffset = Math.Clamp(span.TextStart + icb.GetBufferCharOffset(position), span.TextStart, span.TextEnd);
+                return true;
             }
         }
 
@@ -125,8 +153,21 @@ internal sealed class MarkdownSemanticPositionMap
         // it follows the final semantic run in this box, map it to the end of
         // that preceding text rather than falling through to the first span.
         if (trailingInlineTextEnd >= 0)
-            return trailingInlineTextEnd;
+        {
+            textOffset = trailingInlineTextEnd;
+            return true;
+        }
 
+        textOffset = 0;
+        return false;
+    }
+
+    /// <summary>
+    /// Scans for the first block image, embed or hosted element span at the
+    /// position's block, or the first inline or vector item span at the position.
+    /// </summary>
+    private bool TryScanBlockObjectTextOffset(DocumentPosition position, out int textOffset)
+    {
         foreach (var span in _spans)
         {
             bool matchesBlockImage = span.ImageBox?.BlockIndex == position.BlockIndex;
@@ -138,24 +179,21 @@ internal sealed class MarkdownSemanticPositionMap
                 // through PositionFromSpanEnd, but do not use the normal
                 // position index. Keep the compatibility scan endpoint-aware
                 // so a complete atomic selection includes its semantic text.
-                return position.CharacterOffset <= 0 ? span.TextStart : span.TextEnd;
+                textOffset = position.CharacterOffset <= 0 ? span.TextStart : span.TextEnd;
+                return true;
             }
 
             if (span.InlineBox?.BlockIndex == position.BlockIndex ||
                 (span.VectorSceneBox?.BlockIndex == position.BlockIndex &&
                  GetVectorDocumentInlineIndex(span.VectorSemanticIndex) == position.InlineIndex))
             {
-                return span.TextStart;
+                textOffset = span.TextStart;
+                return true;
             }
         }
 
-        // A box containing only omitted decorative objects still has its
-        // zero-length semantic block node. Use that boundary so a spacer-only
-        // paragraph between other paragraphs does not map to document end.
-        if (nodeByInlineBlockIndex.TryGetValue(position.BlockIndex, out MarkdownSemanticNode? inlineNode))
-            return inlineNode.TextStart;
-
-        return position.BlockIndex <= 0 ? 0 : _textLength;
+        textOffset = 0;
+        return false;
     }
 
     public bool TryGetDocumentRange(int textStart, int textEnd, out DocumentRange range)
