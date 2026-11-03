@@ -57,47 +57,70 @@ internal static class InlineRunStyleApplier
             }
             if (run is LinkRun { InlineStyleMap: { } inlineStyleMap } styledLink)
             {
-                // The full link run has already been styled above. Compare
-                // each nested range with that actual base, not the paragraph
-                // style, so a nested value equal to the paragraph but
-                // different from the link still replaces the link formatting.
-                ElementStyle linkStyle = appliedRunStyle ?? box.GetRunStyle(styledLink);
-                string linkFontFamily = SharedCanvasTextFormatCache.NormalizeFontFamilyForCanvas(
-                    linkStyle.FontFamily);
-                ElementStyle[] spanStyles = box.GetLinkInlineSpanStyles(styledLink);
-                for (int spanIndex = 0; spanIndex < inlineStyleMap.Count; spanIndex++)
-                {
-                    if (observeCancellation &&
-                        (spanIndex % InlineCodePaddingLayout.InlineCodeGraphemeCancellationCheckInterval) == 0)
-                    {
-                        box.Context.CancellationToken.ThrowIfCancellationRequested();
-                    }
-
-                    LinkInlineStyleSpan span = inlineStyleMap.GetSpan(spanIndex);
-                    int spanStart = cumulative + span.Start;
-                    ApplyTextStyle(
-                        layout,
-                        spanStart,
-                        span.Length,
-                        spanStyles[spanIndex],
-                        linkStyle,
-                        linkFontFamily,
-                        applyColors);
-                }
-
-                InlineCodePaddingLayout.QueueLinkInlineCodePadding(
+                ApplyLinkSpanStyles(
                     box,
-                    ref inlineCodePaddingRanges,
-                    cumulative,
+                    layout,
+                    styledLink,
                     inlineStyleMap,
-                    spanStyles,
-                    observeCancellation);
+                    appliedRunStyle,
+                    cumulative,
+                    applyColors,
+                    observeCancellation,
+                    ref inlineCodePaddingRanges);
             }
 
             cumulative += len;
         }
 
         InlineCodePaddingLayout.ApplyInlineCodePaddingRanges(box, layout, inlineCodePaddingRanges, observeCancellation);
+    }
+
+    private static void ApplyLinkSpanStyles(
+        InlineContainerBox box,
+        CanvasTextLayout layout,
+        LinkRun styledLink,
+        LinkInlineStyleMap inlineStyleMap,
+        ElementStyle? appliedRunStyle,
+        int cumulative,
+        bool applyColors,
+        bool observeCancellation,
+        ref List<InlineCodePaddingRange>? inlineCodePaddingRanges)
+    {
+        // The full link run has already been styled above. Compare
+        // each nested range with that actual base, not the paragraph
+        // style, so a nested value equal to the paragraph but
+        // different from the link still replaces the link formatting.
+        ElementStyle linkStyle = appliedRunStyle ?? box.GetRunStyle(styledLink);
+        string linkFontFamily = SharedCanvasTextFormatCache.NormalizeFontFamilyForCanvas(
+            linkStyle.FontFamily);
+        ElementStyle[] spanStyles = box.GetLinkInlineSpanStyles(styledLink);
+        for (int spanIndex = 0; spanIndex < inlineStyleMap.Count; spanIndex++)
+        {
+            if (observeCancellation &&
+                (spanIndex % InlineCodePaddingLayout.InlineCodeGraphemeCancellationCheckInterval) == 0)
+            {
+                box.Context.CancellationToken.ThrowIfCancellationRequested();
+            }
+
+            LinkInlineStyleSpan span = inlineStyleMap.GetSpan(spanIndex);
+            int spanStart = cumulative + span.Start;
+            ApplyTextStyle(
+                layout,
+                spanStart,
+                span.Length,
+                spanStyles[spanIndex],
+                linkStyle,
+                linkFontFamily,
+                applyColors);
+        }
+
+        InlineCodePaddingLayout.QueueLinkInlineCodePadding(
+            box,
+            ref inlineCodePaddingRanges,
+            cumulative,
+            inlineStyleMap,
+            spanStyles,
+            observeCancellation);
     }
 
     private static void ApplyTextStyle(
