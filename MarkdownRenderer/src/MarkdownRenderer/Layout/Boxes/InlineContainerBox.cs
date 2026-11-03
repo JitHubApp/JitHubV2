@@ -1412,7 +1412,7 @@ internal sealed partial class InlineContainerBox : BlockBox
                     candidateLayout,
                     inverseMetricScale: inlineMetricScale,
                     maxInlineWidth: layoutWidth);
-                replacementScriptBaselineGeometry = BuildScriptBaselineGeometry(style.FontSize);
+                replacementScriptBaselineGeometry = InlineScriptBaselineLayout.BuildScriptBaselineGeometry(this, style.FontSize);
                 if (Context.ThemeSnapshot.MiddleAlignInlineImages &&
                     _inlineImageRuns is { Count: > 0 })
                 {
@@ -2183,7 +2183,7 @@ internal sealed partial class InlineContainerBox : BlockBox
             : scriptStyle.FontSize;
     }
 
-    private static bool IsScriptStyleKey(string key)
+    internal static bool IsScriptStyleKey(string key)
         => key is MarkdownElementKeys.Subscript or MarkdownElementKeys.Superscript;
 
     private string GetHeadingStyleKey(InlineRun run)
@@ -4003,93 +4003,6 @@ internal sealed partial class InlineContainerBox : BlockBox
         _buffer = StringBuilderPool.ToStringAndReturn(sb);
         _bufferDirty = false;
     }
-
-    private ScriptBaselineGeometry BuildScriptBaselineGeometry(float containerFontSize)
-    {
-        float safeFontSize = float.IsFinite(containerFontSize) && containerFontSize > 0f
-            ? containerFontSize
-            : 16f;
-        var builder = new ScriptBaselineGeometry.Builder();
-        int cumulative = 0;
-        foreach (InlineRun run in _runs)
-        {
-            int length = run.TextLength;
-            if (length <= 0)
-                continue;
-
-            if (run is not (InlineEmbedRun or InlineImageRun or InlineVectorSceneRun or InlineSpacerRun))
-            {
-                float runOffset = GetScriptRoleOffset(run, safeFontSize);
-                if (run is LinkRun { InlineStyleMap: { } styleMap } && styleMap.Count > 0)
-                {
-                    int cursor = 0;
-                    for (int index = 0; index < styleMap.Count; index++)
-                    {
-                        LinkInlineStyleSpan span = styleMap.GetSpan(index);
-                        int gapLength = span.Start - cursor;
-                        builder.Add(cumulative + cursor, gapLength, runOffset);
-                        float nestedOffset = GetScriptPathOffset(span.Path, safeFontSize);
-                        builder.Add(
-                            cumulative + span.Start,
-                            span.Length,
-                            ClampScriptOffset(runOffset + nestedOffset, safeFontSize));
-                        cursor = span.Start + span.Length;
-                    }
-
-                    builder.Add(cumulative + cursor, length - cursor, runOffset);
-                }
-                else
-                {
-                    builder.Add(cumulative, length, runOffset);
-                }
-            }
-
-            cumulative = checked(cumulative + length);
-        }
-
-        return builder.Build();
-    }
-
-    private static float GetScriptRoleOffset(InlineRun run, float containerFontSize)
-    {
-        float offset = 0f;
-        IReadOnlyList<string> ancestry = run.ScriptStyleAncestryKeys;
-        if (ancestry.Count > 0)
-        {
-            for (int index = 0; index < ancestry.Count; index++)
-                offset += GetScriptRoleOffset(ancestry[index], containerFontSize);
-        }
-        else
-        {
-            if (IsScriptStyleKey(run.ElementKey))
-                offset += GetScriptRoleOffset(run.ElementKey, containerFontSize);
-            for (int index = 0; index < run.StyleModifierKeys.Count; index++)
-                offset += GetScriptRoleOffset(run.StyleModifierKeys[index], containerFontSize);
-            if (offset == 0f && run is LinkRun { IsSuperscript: true })
-                offset = GetScriptRoleOffset(MarkdownElementKeys.Superscript, containerFontSize);
-        }
-
-        return ClampScriptOffset(offset, containerFontSize);
-    }
-
-    private static float GetScriptPathOffset(LinkInlineStylePath path, float containerFontSize)
-    {
-        float offset = 0f;
-        for (LinkInlineStylePath? current = path; current is not null; current = current.Parent)
-            offset += GetScriptRoleOffset(current.StyleKey, containerFontSize);
-        return ClampScriptOffset(offset, containerFontSize);
-    }
-
-    private static float GetScriptRoleOffset(string role, float containerFontSize)
-        => role switch
-        {
-            MarkdownElementKeys.Superscript => -containerFontSize * 0.30f,
-            MarkdownElementKeys.Subscript => containerFontSize * 0.20f,
-            _ => 0f,
-        };
-
-    private static float ClampScriptOffset(float offset, float containerFontSize)
-        => Math.Clamp(offset, -containerFontSize * 0.85f, containerFontSize * 0.60f);
 
     private CanvasTextLayout EnsureSelectionLayout(Color color, ElementStyle style)
     {
