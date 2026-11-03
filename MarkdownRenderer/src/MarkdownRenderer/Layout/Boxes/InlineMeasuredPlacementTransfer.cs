@@ -364,8 +364,17 @@ internal sealed class InlineMeasuredPlacementTransfer
         bool sourceWidthMatches = !_isTableCellTransfer && !_isContainerLeafTransfer ||
             (source.LastMeasuredWidth == _expectedAvailableWidth &&
              source.Bounds.Width == _expectedAvailableWidth);
-        if (!compatibleRootInputs || !sourceWidthMatches ||
-            !ReferenceEquals(source.TextLayout, _sourceLayout) ||
+        return compatibleRootInputs && sourceWidthMatches &&
+            SourceStateMatchesCapture(source, prepared) &&
+            PreparedLayoutIsComplete(source, prepared, preparedWidthMatches) &&
+            RunsMatchCapturedState();
+    }
+
+    // Every source and prepared field captured before private measurement
+    // still holds the same identity or value.
+    private bool SourceStateMatchesCapture(InlineContainerBox source, InlineContainerBox prepared)
+    {
+        if (!ReferenceEquals(source.TextLayout, _sourceLayout) ||
             !ReferenceEquals(source.TextLayoutRetirementRecord, _sourceLayoutRetirementRecord) ||
             !ReferenceEquals(source.SelectionLayout, _sourceSelectionLayout) ||
             !ReferenceEquals(source.SelectionLayoutRetirementRecord,
@@ -398,6 +407,14 @@ internal sealed class InlineMeasuredPlacementTransfer
             return false;
         }
 
+        return true;
+    }
+
+    private bool PreparedLayoutIsComplete(
+        InlineContainerBox source,
+        InlineContainerBox prepared,
+        bool preparedWidthMatches)
+    {
         // The clone must have a complete measured native layout at the
         // requested width, or at its rebalanced table-cell width. Its
         // selection layout is intentionally absent:
@@ -432,6 +449,11 @@ internal sealed class InlineMeasuredPlacementTransfer
             return false;
         }
 
+        return true;
+    }
+
+    private bool RunsMatchCapturedState()
+    {
         // The source image placement must retain its captured dimensions.
         // A table clone may have a different completed width/height after
         // column rebalancing; its ImageBox pair validates that measured
