@@ -94,6 +94,82 @@ public sealed class MermaidRenderer : IDisposable
         using MermaidRenderLifetime.Lease operation = _lifetime.Enter();
         cancellationToken.ThrowIfCancellationRequested();
         CultureInfo diagnosticCulture = _diagnosticCulture;
+        if (TryRejectRequest(source, diagnosticCulture, out long deadlineTimestamp, out int sourceByteLength) is { } rejection)
+        {
+            return rejection;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        using CancellationTokenSource deadlineCancellation =
+            MermaidDeadline.CreateCancellation(deadlineTimestamp);
+        using CancellationTokenSource requestCancellation =
+            CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                deadlineCancellation.Token);
+        MermaidSceneCacheKey cacheKey = MermaidSceneCacheKey.Create(
+            source,
+            sourceByteLength,
+            _options,
+            _fontCatalog,
+            diagnosticCulture);
+        MermaidRenderLifetime.Lease producerLease = operation.Fork();
+        bool producerLeaseTransferred = false;
+        try
+        {
+            MermaidRenderResult result = await _sceneCache.GetOrRenderAsync(
+                cacheKey,
+                source,
+                producerCancellation =>
+                {
+                    producerLeaseTransferred = true;
+                    return RenderQueuedAsync(
+                        source,
+                        sourceByteLength,
+                        producerLease,
+                        producerCancellation,
+                        deadlineTimestamp,
+                        diagnosticCulture,
+                        scheduleNativeRender);
+                },
+                () => OverloadedResult(source, diagnosticCulture),
+                () => TimedOutResult(source, diagnosticCulture),
+                deadlineTimestamp,
+                requestCancellation.Token).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            return deadlineCancellation.IsCancellationRequested &&
+                result.Status == MermaidRenderStatus.Success
+                    ? TimedOutResult(source, diagnosticCulture)
+                    : result;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            throw;
+        }
+        catch (OperationCanceledException) when (deadlineCancellation.IsCancellationRequested)
+        {
+            return TimedOutResult(source, diagnosticCulture);
+        }
+        finally
+        {
+            if (!producerLeaseTransferred)
+                producerLease.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Rejects null, misconfigured and oversized requests before any cache or
+    /// native work. The request deadline starts here, before UTF-8 measurement,
+    /// and is returned with the measured byte length when the request is accepted.
+    /// </summary>
+    private MermaidRenderResult? TryRejectRequest(
+        string source,
+        CultureInfo diagnosticCulture,
+        out long deadlineTimestamp,
+        out int sourceByteLength)
+    {
+        deadlineTimestamp = 0;
+        sourceByteLength = 0;
         if (source is null)
         {
             return Result(
@@ -129,21 +205,13 @@ public sealed class MermaidRenderer : IDisposable
 
         if (source.Length > _options.Budgets.MaxSourceBytes)
         {
-            return Result(
-                MermaidRenderStatus.BudgetExceeded,
-                source,
-                "MMR0004",
-                MermaidStringKeys.SourceTooLarge,
-                diagnosticCulture,
-                "The Mermaid source exceeds MaxSourceBytes ({0} UTF-8 bytes).",
-                _options.Budgets.MaxSourceBytes);
+            return SourceTooLargeResult(source, diagnosticCulture);
         }
 
         // Start the request deadline before UTF-8 conversion and cache-key
         // hashing so large, valid inputs cannot consume unbounded synchronous
         // preprocessing time outside the advertised end-to-end budget.
-        long deadlineTimestamp = MermaidDeadline.Start(_options.Budgets.Deadline);
-        int sourceByteLength;
+        deadlineTimestamp = MermaidDeadline.Start(_options.Budgets.Deadline);
         try
         {
             sourceByteLength = StrictUtf8.GetByteCount(source);
@@ -161,78 +229,10 @@ public sealed class MermaidRenderer : IDisposable
 
         if (sourceByteLength > _options.Budgets.MaxSourceBytes)
         {
-            return Result(
-                MermaidRenderStatus.BudgetExceeded,
-                source,
-                "MMR0004",
-                MermaidStringKeys.SourceTooLarge,
-                diagnosticCulture,
-                "The Mermaid source exceeds MaxSourceBytes ({0} UTF-8 bytes).",
-                _options.Budgets.MaxSourceBytes);
+            return SourceTooLargeResult(source, diagnosticCulture);
         }
 
-        cancellationToken.ThrowIfCancellationRequested();
-        using CancellationTokenSource deadlineCancellation =
-            MermaidDeadline.CreateCancellation(deadlineTimestamp);
-        using CancellationTokenSource requestCancellation =
-            CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken,
-                deadlineCancellation.Token);
-        MermaidSceneCacheKey cacheKey = MermaidSceneCacheKey.Create(
-            source,
-            sourceByteLength,
-            _options,
-            _fontCatalog,
-            diagnosticCulture);
-        MermaidRenderLifetime.Lease producerLease = operation.Fork();
-        bool producerLeaseTransferred = false;
-        try
-        {
-            MermaidRenderResult result = await _sceneCache.GetOrRenderAsync(
-                cacheKey,
-                source,
-                producerCancellation =>
-                {
-                    producerLeaseTransferred = true;
-                    return RenderQueuedAsync(
-                        source,
-                        sourceByteLength,
-                        producerLease,
-                        producerCancellation,
-                        deadlineTimestamp,
-                        diagnosticCulture,
-                        scheduleNativeRender);
-                },
-                () => Result(
-                    MermaidRenderStatus.Overloaded,
-                    source,
-                    "MMR0013",
-                    MermaidStringKeys.RenderOverloaded,
-                    diagnosticCulture,
-                    "The Mermaid renderer admission limit is full; retry after an outstanding render completes."),
-                () => TimedOutResult(source, diagnosticCulture),
-                deadlineTimestamp,
-                requestCancellation.Token).ConfigureAwait(false);
-            cancellationToken.ThrowIfCancellationRequested();
-            return deadlineCancellation.IsCancellationRequested &&
-                result.Status == MermaidRenderStatus.Success
-                    ? TimedOutResult(source, diagnosticCulture)
-                    : result;
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            throw;
-        }
-        catch (OperationCanceledException) when (deadlineCancellation.IsCancellationRequested)
-        {
-            return TimedOutResult(source, diagnosticCulture);
-        }
-        finally
-        {
-            if (!producerLeaseTransferred)
-                producerLease.Dispose();
-        }
+        return null;
     }
 
     private async Task<MermaidRenderResult> RenderQueuedAsync(
@@ -654,6 +654,25 @@ public sealed class MermaidRenderer : IDisposable
             diagnosticCulture,
             "The native Mermaid engine failed without producing a scene."),
     };
+
+    private MermaidRenderResult SourceTooLargeResult(string source, CultureInfo diagnosticCulture) =>
+        Result(
+            MermaidRenderStatus.BudgetExceeded,
+            source,
+            "MMR0004",
+            MermaidStringKeys.SourceTooLarge,
+            diagnosticCulture,
+            "The Mermaid source exceeds MaxSourceBytes ({0} UTF-8 bytes).",
+            _options.Budgets.MaxSourceBytes);
+
+    private MermaidRenderResult OverloadedResult(string source, CultureInfo diagnosticCulture) =>
+        Result(
+            MermaidRenderStatus.Overloaded,
+            source,
+            "MMR0013",
+            MermaidStringKeys.RenderOverloaded,
+            diagnosticCulture,
+            "The Mermaid renderer admission limit is full; retry after an outstanding render completes.");
 
     private MermaidRenderResult TimedOutResult(string source, CultureInfo diagnosticCulture) =>
         Result(
