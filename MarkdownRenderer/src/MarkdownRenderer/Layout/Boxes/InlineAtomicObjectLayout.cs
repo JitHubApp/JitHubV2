@@ -71,6 +71,24 @@ internal static class InlineAtomicObjectLayout
             return cached > 0f ? cached : 0f;
         }
 
+        float resolvedXHeightDip = ReadFontXHeightDip(box, style, ref analyzer);
+
+        float storedMetric = resolvedXHeightDip > 0f ? resolvedXHeightDip : -1f;
+        metrics[runIndex] = storedMetric;
+        styleMetrics ??= new Dictionary<InlineImageFontMetricKey, float>(4);
+        if (styleMetrics.Count < MaximumInlineImageFontMetricsPerMeasure)
+            styleMetrics[key] = storedMetric;
+        return resolvedXHeightDip;
+    }
+
+    // Reads the first usable lowercase-letter height of the style's resolved
+    // fonts. Every font face is disposed; an inspection failure other than
+    // cancellation or memory exhaustion leaves the established placement.
+    private static float ReadFontXHeightDip(
+        InlineContainerBox box,
+        ElementStyle style,
+        ref CanvasTextAnalyzer? analyzer)
+    {
         float resolvedXHeightDip = 0f;
         try
         {
@@ -122,11 +140,6 @@ internal static class InlineAtomicObjectLayout
                 $"[InlineContainerBox] inline image x-height unavailable: {exception.GetType().Name}");
         }
 
-        float storedMetric = resolvedXHeightDip > 0f ? resolvedXHeightDip : -1f;
-        metrics[runIndex] = storedMetric;
-        styleMetrics ??= new Dictionary<InlineImageFontMetricKey, float>(4);
-        if (styleMetrics.Count < MaximumInlineImageFontMetricsPerMeasure)
-            styleMetrics[key] = storedMetric;
         return resolvedXHeightDip;
     }
 
