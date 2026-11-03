@@ -709,52 +709,17 @@ internal sealed class InlineContainerBox : BlockBox
         => _runStyleCache.AppendAliasOverride(index, RunList.Count, aliases);
 
     /// <summary>
-    /// Returns the integer-pixel-snapped origin of the text layout in
-    /// document coordinates.  Snapping eliminates fractional sub-pixel
-    /// positioning that otherwise causes DirectWrite glyphs straddling
-    /// CanvasVirtualControl tile / dirty-rect boundaries to be re-rasterised
-    /// at slightly different sub-pixel offsets when the dirty rect changes
-    /// shape (e.g. as a selection-drag extends a highlight rect across the
-    /// text), which reads as visible "shake" of the rendered glyphs.
-    /// All paint / hit-test / selection-rect / embed-rect computations use
-    /// this single snapped origin so they stay in agreement.
+    /// Returns the device-pixel-snapped text origin that paint, hit testing and
+    /// every geometry query share; see <see cref="InlineTextOrigin"/>.
     /// </summary>
     internal (float X, float Y) GetSnappedOrigin(Theming.ElementStyle style)
-        => GetSnappedOrigin(style, out _, out _);
+        => InlineTextOrigin.GetSnappedOrigin(this, style, out _, out _);
 
     internal (float X, float Y) GetSnappedOrigin(
         Theming.ElementStyle style,
         out float finalOriginX,
         out float finalOriginY)
-    {
-        // Snap to *device pixels*, not DIPs. At a non-1x rasterization scale
-        // (e.g., 1.25x / 1.5x / 2x), snapping only to integer DIPs still leaves
-        // glyph origins at fractional device-pixel positions. When the canvas
-        // dirty-rect shape changes between frames (as it does whenever the
-        // selection drag grows / shrinks adjacent tiles), DirectWrite's pixel
-        // snapping can resolve to a slightly different device-pixel column,
-        // which manifests as the "selection shake" the user reports —
-        // visually amplified on large heading glyphs.
-        float scale = (float)Context.RasterizationScale;
-        if (scale <= 0f) scale = 1f;
-        var margin = Margin;
-        var padding = GetEffectivePadding(style);
-        float xDip = (float)(Bounds.X + margin.Left + padding.Left);
-        float yDip = (float)(Bounds.Y + margin.Top + padding.Top + _textLayout.ScriptBaselineGeometry.TopInset);
-        LayoutPlacementTransformContext.SnapOriginToDevicePixels(
-            xDip,
-            yDip,
-            scale,
-            out float x,
-            out float y);
-        LayoutPlacementTransformContext.SnapFinalOriginToDevicePixels(
-            xDip,
-            yDip,
-            scale,
-            out finalOriginX,
-            out finalOriginY);
-        return (x, y);
-    }
+        => InlineTextOrigin.GetSnappedOrigin(this, style, out finalOriginX, out finalOriginY);
 
     public override void Paint(CanvasDrawingSession ds, Rect viewport)
         => InlineTextPainter.Paint(this, ds, viewport);
