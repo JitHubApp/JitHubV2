@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Diagnostics;
@@ -10,9 +9,7 @@ using MarkdownRenderer.Selection;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;
 using Microsoft.Graphics.Canvas.UI.Composition;
-using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
 using Windows.UI;
@@ -32,12 +29,9 @@ namespace MarkdownRenderer.Controls.Selection;
 /// </para>
 /// <para>
 /// The adorner is an inert placeholder element hosting a composition child
-/// visual. A XAML Image showing Win2D's CanvasImageSource is unsafe: XAML's
-/// reference to the aggregated inner SurfaceImageSource does not keep
-/// Win2D's outer object alive, so the .NET finalizer could destroy it while
-/// XAML still released the Image. Composition surfaces have no XAML peer and
-/// are disposed deterministically. One long-lived, grow-only surface is kept
-/// per placeholder; relayout, source replacement and resize reuse it.
+/// visual; <see cref="SelectionAdornerCompositionTarget"/> owns the
+/// placeholder, its long-lived surface and the graphics device, and explains
+/// why a XAML Image is not used.
 /// </para>
 /// </remarks>
 internal sealed class SelectionAdornerPresenter
@@ -74,16 +68,7 @@ internal sealed class SelectionAdornerPresenter
     private double _paintedViewportHeight = double.NaN;
     private double _paintedRasterizationScale = double.NaN;
 
-    private Border? _placeholder;
-    private SelectionAdornerVisualHost? _visualHost;
-    private readonly SelectionAdornerSurfaceLifetime<SelectionAdornerCompositionSurface, CompositionGraphicsDevice> _surfaces =
-        new(CreateSurface, ReportSurfaceReleaseFailure, DisposeSurface);
-
-    // The composition graphics device that draws adorner surfaces, and the
-    // Win2D device it currently renders with.
-    private CompositionGraphicsDevice? _graphicsDevice;
-    private CanvasDevice? _canvasDevice;
-    private double _offsetY;
+    private readonly SelectionAdornerCompositionTarget _target;
 
     public SelectionAdornerPresenter(
         ISelectionAdornerHost host,
@@ -103,13 +88,14 @@ internal sealed class SelectionAdornerPresenter
         _viewport = viewport;
         _selection = selection;
         _hover = hover;
+        _target = new SelectionAdornerCompositionTarget(renderer, surface, lifetime, RepaintAfterDeviceReplaced);
     }
 
     /// <summary>True once the placeholder element exists.</summary>
-    public bool IsCreated => _placeholder is not null;
+    public bool IsCreated => _target.IsCreated;
 
     /// <summary>True while the adorner is shown.</summary>
-    public bool IsVisible => _placeholder?.Visibility == Visibility.Visible;
+    public bool IsVisible => _target.IsVisible;
 
     /// <summary>True while a refresh is requested or running.</summary>
     public bool HasPendingRefresh => _retryState.IsPending || _refreshInProgress;
@@ -118,7 +104,7 @@ internal sealed class SelectionAdornerPresenter
     public IReadOnlyList<Rect> Rectangles => _rects;
 
     /// <summary>The Win2D device the adorner surface currently renders with.</summary>
-    public CanvasDevice? SurfaceDevice => _canvasDevice;
+    public CanvasDevice? SurfaceDevice => _target.SurfaceDevice;
 
     /// <summary>Repaints on the next frame with the current geometry.</summary>
     public void Invalidate()
@@ -182,25 +168,10 @@ internal sealed class SelectionAdornerPresenter
     }
 
     /// <summary>Hides the adorner until its next paint.</summary>
-    public void Collapse()
-    {
-        if (_placeholder is not null)
-            _placeholder.Visibility = Visibility.Collapsed;
-    }
+    public void Collapse() => _target.Collapse();
 
     /// <summary>Removes every overlay child except the adorner placeholder.</summary>
-    public void RemoveOtherOverlayChildren()
-    {
-        if (_surface.Overlay is null)
-            return;
-
-        var children = _surface.Overlay.Children;
-        for (int index = children.Count - 1; index >= 0; index--)
-        {
-            if (!ReferenceEquals(children[index], _placeholder))
-                children.RemoveAt(index);
-        }
-    }
+    public void RemoveOtherOverlayChildren() => _target.RemoveOtherOverlayChildren();
 
     /// <summary>Forgets the painted selection geometry.</summary>
     public void ClearGeometry()
@@ -220,7 +191,7 @@ internal sealed class SelectionAdornerPresenter
     public void ReleaseSurface()
     {
         InvalidatePresentation();
-        _surfaces.Release(_visualHost);
+        _target.ReleaseSurface();
     }
 
     /// <summary>
@@ -250,15 +221,8 @@ internal sealed class SelectionAdornerPresenter
     /// <remarks>Call after <see cref="TryReleaseSurface"/> and after the overlay is cleared.</remarks>
     public void DisposeForUnload()
     {
-        _surfaces.DropRetired();
-        _visualHost?.Dispose();
-        ReleaseGraphicsDevice();
+        _target.DisposeForUnload();
         ClearGeometry();
-        if (_placeholder is not null)
-        {
-            _placeholder = null;
-            _visualHost = null;
-        }
     }
 
     /// <summary>
@@ -269,8 +233,7 @@ internal sealed class SelectionAdornerPresenter
     public void ReleaseForDispose()
     {
         TryReleaseSurface();
-        _surfaces.DropRetired();
-        ReleaseGraphicsDevice();
+        _target.ReleaseForDispose();
     }
 
     internal SelectionAdornerRefreshOperationResult RefreshUnderPaintLease(
@@ -291,7 +254,7 @@ internal sealed class SelectionAdornerPresenter
         if (!double.IsFinite(height) || height <= 0) height = Math.Max(_renderer.ActualHeight, 1);
         if (!double.IsFinite(width) || width <= 0) width = Math.Max(_renderer.ActualWidth, 1);
 
-        double scale = GetRasterizationScale();
+        double scale = _target.GetRasterizationScale();
 
         long layoutRevision = snapshot.LayoutRevision;
         long requestVersion = _requestVersion;
@@ -339,13 +302,13 @@ internal sealed class SelectionAdornerPresenter
             return SelectionAdornerRefreshOperationResult.Completed;
         }
 
-        if (!EnsurePlaceholder())
+        if (!_target.EnsurePlaceholder())
         {
             _host.UpdateSelectionHandlesUnderPaint(snapshot, viewport);
             return SelectionAdornerRefreshOperationResult.AwaitLifecycle;
         }
 
-        _surfaces.AdvanceFrame();
+        _target.AdvanceFrame();
         SelectionAdornerCompositionSurface? source = null;
         try
         {
@@ -361,20 +324,20 @@ internal sealed class SelectionAdornerPresenter
 
             // Surface creation and attachment can report device loss too, so
             // they share the guarded region with drawing.
-            if (!ApplyViewportUnderPaint(width, height, top, out source))
+            if (!_target.ApplyViewportUnderPaint(width, height, top, out source))
             {
                 _host.UpdateSelectionHandlesUnderPaint(snapshot, viewport);
                 return SelectionAdornerRefreshOperationResult.AwaitLifecycle;
             }
 
-            long surfaceVersion = _surfaces.Generation;
+            long surfaceVersion = _target.SurfaceGeneration;
             // EndDraw can fail. Do not publish clean geometry or mutate XAML
             // handles until the explicitly owned drawing session has closed.
             using (var drawingSession = CanvasComposition.CreateDrawingSession(source.Surface, source.PixelBounds, source.Dpi))
             {
                 drawingSession.Clear(Color.FromArgb(0, 0, 0, 0));
                 drawingSession.TextAntialiasing = CanvasTextAntialiasing.Grayscale;
-                drawingSession.Transform = Matrix3x2.CreateTranslation(0, -(float)_offsetY);
+                drawingSession.Transform = Matrix3x2.CreateTranslation(0, -(float)_target.OffsetY);
                 _host.PaintInteractiveDocumentState(
                     snapshot,
                     drawingSession,
@@ -384,8 +347,8 @@ internal sealed class SelectionAdornerPresenter
 
             if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !_renderer.IsLoaded)
                 return SelectionAdornerRefreshOperationResult.AwaitLifecycle;
-            if (surfaceVersion != _surfaces.Generation ||
-                !ReferenceEquals(source, _surfaces.Surface) ||
+            if (surfaceVersion != _target.SurfaceGeneration ||
+                !ReferenceEquals(source, _target.Surface) ||
                 requestVersion != _requestVersion ||
                 !ReferenceEquals(snapshot, _published.Snapshot) || generation != _published.Generation ||
                 snapshot.LayoutRevision != layoutRevision)
@@ -689,189 +652,6 @@ internal sealed class SelectionAdornerPresenter
         _visualDirty = false;
     }
 
-    private bool ApplyViewportUnderPaint(
-        double width,
-        double height,
-        double top,
-        [NotNullWhen(true)] out SelectionAdornerCompositionSurface? source)
-    {
-        source = null;
-        if (_placeholder is null)
-            return false;
-
-        source = EnsureSurface(width, height);
-        if (source is null || _placeholder is null)
-        {
-            source = null;
-            Collapse();
-            return false;
-        }
-
-        // The placeholder and its visual span the whole bucketed surface at 1:1
-        // so a reused, larger surface is never stretched; the clips bound it to
-        // the viewport.
-        SelectionAdornerSurfaceAllocation allocation = _surfaces.Allocation;
-        _visualHost?.SetViewport(allocation, width, height);
-        if (double.IsNaN(_placeholder.Width) || Math.Abs(_placeholder.Width - allocation.Width) > 0.01)
-            _placeholder.Width = allocation.Width;
-        if (double.IsNaN(_placeholder.Height) || Math.Abs(_placeholder.Height - allocation.Height) > 0.01)
-            _placeholder.Height = allocation.Height;
-
-        Rect visible = new(0, 0, width, height);
-        if (_placeholder.Clip is not RectangleGeometry clip)
-        {
-            clip = new RectangleGeometry();
-            _placeholder.Clip = clip;
-        }
-        if (clip.Rect != visible)
-            clip.Rect = visible;
-
-        double currentLeft = Canvas.GetLeft(_placeholder);
-        if (double.IsNaN(currentLeft) || Math.Abs(currentLeft) > 0.1)
-            Canvas.SetLeft(_placeholder, 0);
-
-        double currentTop = Canvas.GetTop(_placeholder);
-        if (double.IsNaN(currentTop) || Math.Abs(currentTop - top) > 0.1)
-            Canvas.SetTop(_placeholder, top);
-
-        _offsetY = top;
-        _placeholder.Visibility = Visibility.Visible;
-        return true;
-    }
-
-    private bool EnsurePlaceholder()
-    {
-        if (_surface.Overlay is null)
-            return false;
-
-        if (_placeholder is null)
-            CreatePlaceholder();
-
-        try
-        {
-            if (VisualTreeHelper.GetParent(_placeholder) is null)
-                _surface.Overlay.Children.Add(_placeholder);
-        }
-        catch (System.Runtime.InteropServices.COMException ex)
-        {
-            MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] selection adorner attach failed: {ex.Message}");
-            return false;
-        }
-
-        return true;
-    }
-
-    [MemberNotNull(nameof(_placeholder))]
-    private void CreatePlaceholder()
-    {
-        var placeholder = new Border
-        {
-            IsHitTestVisible = false,
-            UseLayoutRounding = true,
-            // Keep the overlay inert until selection gives it viewport bounds.
-            Width = 1,
-            Height = 1,
-            Visibility = Visibility.Collapsed,
-        };
-        Canvas.SetZIndex(placeholder, 0);
-        _placeholder = placeholder;
-        _visualHost = new SelectionAdornerVisualHost(placeholder);
-    }
-
-    /// <summary>
-    /// Returns the long-lived adorner surface, attached to the current adorner
-    /// visual. Device-loss and shutdown failures propagate to the guarded
-    /// refresh, which owns recovery.
-    /// </summary>
-    private SelectionAdornerCompositionSurface? EnsureSurface(double width, double height)
-    {
-        SelectionAdornerVisualHost? visualHost = _visualHost;
-        if (visualHost is null || _placeholder is null || _lifetime.IsDisposed || _lifetime.IsUnloaded ||
-            !ReferenceEquals(visualHost.Placeholder, _placeholder))
-        {
-            return null;
-        }
-
-        float dpi = (float)(96.0 * GetRasterizationScale());
-
-        SelectionAdornerCompositionSurface? surface = _surfaces.Ensure(
-            visualHost,
-            width,
-            height,
-            dpi,
-            EnsureGraphicsDevice(visualHost.Compositor));
-        // Attachment can reenter unload or replace the adorner placeholder.
-        if (surface is null || _lifetime.IsDisposed || _lifetime.IsUnloaded || !ReferenceEquals(visualHost, _visualHost))
-            return null;
-
-        return surface;
-    }
-
-    /// <summary>
-    /// Returns the composition graphics device for the adorner, rendering with
-    /// the current shared Win2D device. A replaced Win2D device is switched in
-    /// place: surfaces survive with lost content, and every refresh repaints.
-    /// </summary>
-    private CompositionGraphicsDevice EnsureGraphicsDevice(Compositor compositor)
-    {
-        CanvasDevice canvasDevice = CanvasDevice.GetSharedDevice();
-        if (_graphicsDevice is { } graphicsDevice &&
-            ReferenceEquals(graphicsDevice.Compositor, compositor))
-        {
-            if (!ReferenceEquals(_canvasDevice, canvasDevice))
-            {
-                CanvasComposition.SetCanvasDevice(graphicsDevice, canvasDevice);
-                _canvasDevice = canvasDevice;
-            }
-
-            return graphicsDevice;
-        }
-
-        ReleaseGraphicsDevice();
-        graphicsDevice = CanvasComposition.CreateCompositionGraphicsDevice(compositor, canvasDevice);
-        graphicsDevice.RenderingDeviceReplaced += OnRenderingDeviceReplaced;
-        _graphicsDevice = graphicsDevice;
-        _canvasDevice = canvasDevice;
-        return graphicsDevice;
-    }
-
-    /// <summary>
-    /// A replaced rendering device discards surface content without any
-    /// paint failure, so repaint the adorner on the UI thread.
-    /// </summary>
-    private void OnRenderingDeviceReplaced(
-        CompositionGraphicsDevice sender,
-        RenderingDeviceReplacedEventArgs args)
-        => _renderer.DispatcherQueue?.TryEnqueue(() =>
-        {
-            if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !ReferenceEquals(sender, _graphicsDevice))
-                return;
-            InvalidatePresentation();
-            Invalidate();
-        });
-
-    /// <summary>
-    /// Disposes the adorner's composition graphics device. The surface owner
-    /// recreates its surface for a new device, so this is safe at any time.
-    /// </summary>
-    private void ReleaseGraphicsDevice()
-    {
-        CompositionGraphicsDevice? graphicsDevice = _graphicsDevice;
-        _graphicsDevice = null;
-        _canvasDevice = null;
-        if (graphicsDevice is null)
-            return;
-        try
-        {
-            graphicsDevice.RenderingDeviceReplaced -= OnRenderingDeviceReplaced;
-            graphicsDevice.Dispose();
-        }
-        catch (Exception failure)
-        {
-            ReportSurfaceReleaseFailure(failure);
-        }
-    }
-
     private void RequestDeviceRebuild()
     {
         // Device recovery already rebuilds against the replacement device.
@@ -883,21 +663,13 @@ internal sealed class SelectionAdornerPresenter
         _host.RequestRebuildForDeviceChange();
     }
 
-    private double GetRasterizationScale()
+    /// <summary>
+    /// Repaints everything after the rendering device was replaced, which
+    /// discards surface content without any paint failure.
+    /// </summary>
+    private void RepaintAfterDeviceReplaced()
     {
-        double scale = _renderer.XamlRoot?.RasterizationScale ?? 1.0;
-        return double.IsFinite(scale) && scale > 0 ? scale : 1.0;
+        InvalidatePresentation();
+        Invalidate();
     }
-
-    private static SelectionAdornerCompositionSurface CreateSurface(
-        CompositionGraphicsDevice device,
-        SelectionAdornerSurfaceAllocation allocation)
-        => new(device, allocation);
-
-    private static void DisposeSurface(SelectionAdornerCompositionSurface surface)
-        => surface.Dispose();
-
-    private static void ReportSurfaceReleaseFailure(Exception failure)
-        => MarkdownDiagnostics.WriteLine(
-            $"[MarkdownRendererControl] selection surface detach failed: {failure.GetType().Name} {GraphicsDeviceErrors.FormatHResult(failure.HResult)}");
 }
