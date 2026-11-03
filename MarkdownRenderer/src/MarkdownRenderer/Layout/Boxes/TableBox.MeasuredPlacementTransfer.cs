@@ -178,28 +178,13 @@ internal sealed partial class TableBox
         /// </summary>
         internal void SwapPlacementNoThrow()
         {
-            TableBox source = _source;
-            TableBox prepared = _prepared;
-
             // Keep the cell objects and their runs installed in the source
             // table. The detached cells receive the retired source layouts and
             // become the cleanup owner after this call.
             for (int index = 0; index < _cellTransfers.Length; index++)
                 _cellTransfers[index].SwapPlacementNoThrow();
 
-            (source._colWidths, prepared._colWidths) = (prepared._colWidths, source._colWidths);
-            (source._rowHeights, prepared._rowHeights) = (prepared._rowHeights, source._rowHeights);
-            (source._rowBottomEdges, prepared._rowBottomEdges) =
-                (prepared._rowBottomEdges, source._rowBottomEdges);
-            (source._contentWidth, prepared._contentWidth) = (prepared._contentWidth, source._contentWidth);
-            (source._viewportWidth, prepared._viewportWidth) = (prepared._viewportWidth, source._viewportWidth);
-            (source._horizontalOffset, prepared._horizontalOffset) =
-                (prepared._horizontalOffset, source._horizontalOffset);
-            (source._arrangedX, prepared._arrangedX) = (prepared._arrangedX, source._arrangedX);
-            (source._arrangedY, prepared._arrangedY) = (prepared._arrangedY, source._arrangedY);
-            (source._arrangedWidth, prepared._arrangedWidth) = (prepared._arrangedWidth, source._arrangedWidth);
-            (source._hasArrangement, prepared._hasArrangement) = (prepared._hasArrangement, source._hasArrangement);
-            (source.Bounds, prepared.Bounds) = (prepared.Bounds, source.Bounds);
+            _source.SwapMeasuredPlacementStateNoThrow(_prepared);
         }
 
         private bool IsCurrentStructure(TableBox table, bool isSource)

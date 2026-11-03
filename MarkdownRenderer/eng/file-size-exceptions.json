@@ -163,7 +163,7 @@
     },
 {
       "path": "src/MarkdownRenderer/Layout/Boxes/TableBox.MeasuredPlacementTransfer.cs",
-      "lines": 1032,
+      "lines": 1017,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {

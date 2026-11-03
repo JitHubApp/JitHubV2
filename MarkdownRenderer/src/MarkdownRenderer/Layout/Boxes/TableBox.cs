@@ -357,6 +357,31 @@ internal sealed partial class TableBox : BlockBox, IHorizontalOverflowBox
     public override bool HitTest(Point point, out DocumentPosition position)
         => TableHitTesting.HitTest(this, point, out position);
 
+    /// <summary>
+    /// No-throw exchange of this source table's measured column, row, scroll
+    /// and arrangement state with its private measured candidate. Called by
+    /// <see cref="MeasuredPlacementTransfer.SwapPlacementNoThrow"/> after the
+    /// cell transfers have swapped, once every fence has succeeded.
+    /// </summary>
+    /// <param name="prepared">The private measured candidate table.</param>
+    internal void SwapMeasuredPlacementStateNoThrow(TableBox prepared)
+    {
+        TableBox source = this;
+        (source._colWidths, prepared._colWidths) = (prepared._colWidths, source._colWidths);
+        (source._rowHeights, prepared._rowHeights) = (prepared._rowHeights, source._rowHeights);
+        (source._rowBottomEdges, prepared._rowBottomEdges) =
+            (prepared._rowBottomEdges, source._rowBottomEdges);
+        (source._contentWidth, prepared._contentWidth) = (prepared._contentWidth, source._contentWidth);
+        (source._viewportWidth, prepared._viewportWidth) = (prepared._viewportWidth, source._viewportWidth);
+        (source._horizontalOffset, prepared._horizontalOffset) =
+            (prepared._horizontalOffset, source._horizontalOffset);
+        (source._arrangedX, prepared._arrangedX) = (prepared._arrangedX, source._arrangedX);
+        (source._arrangedY, prepared._arrangedY) = (prepared._arrangedY, source._arrangedY);
+        (source._arrangedWidth, prepared._arrangedWidth) = (prepared._arrangedWidth, source._arrangedWidth);
+        (source._hasArrangement, prepared._hasArrangement) = (prepared._hasArrangement, source._hasArrangement);
+        (source.Bounds, prepared.Bounds) = (prepared.Bounds, source.Bounds);
+    }
+
     internal override void ThrowIfCancellationRequested()
         => _context.CancellationToken.ThrowIfCancellationRequested();
 
