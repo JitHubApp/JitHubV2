@@ -267,9 +267,42 @@ internal sealed class MarkdownPerformanceDocumentScope : IMarkdownPerformanceDoc
         if (cachedLease is not null)
             return cachedLease;
 
+        DocumentImageRequest request = JoinOrCreateRequest(
+            source, background, out DocumentImageRequest? abandoned, out bool startRequest);
+        if (abandoned is not null)
+        {
+            try { abandoned.RequestCancellation(); }
+            catch (ObjectDisposedException) { }
+        }
+
+        // Starting ResolveSharedAsync inside this gate would run through
+        // its first incomplete await. That path can acquire a fetch slot
+        // and call a host resolver synchronously, blocking every other
+        // source in this document while the host is doing unrelated work.
+        if (startRequest)
+            StartRequest(request, source, key, localKey, background);
+        try
+        {
+            await request.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            return request.RetainResult();
+        }
+        finally
+        {
+            LeaveRequest(source, request);
+        }
+    }
+
+    // Joins this document's request for the source, or creates one. A
+    // visible request replaces a background one, which the caller cancels.
+    private DocumentImageRequest JoinOrCreateRequest(
+        string source,
+        bool background,
+        out DocumentImageRequest? abandoned,
+        out bool startRequest)
+    {
+        abandoned = null;
+        startRequest = false;
         DocumentImageRequest request;
-        DocumentImageRequest? abandoned = null;
-        bool startRequest = false;
         lock (_inFlightGate)
         {
             if (_disposed != 0)
@@ -317,109 +350,105 @@ internal sealed class MarkdownPerformanceDocumentScope : IMarkdownPerformanceDoc
                 request.WaiterCount++;
             }
         }
-        if (abandoned is not null)
-        {
-            try { abandoned.RequestCancellation(); }
-            catch (ObjectDisposedException) { }
-        }
 
-        // Starting ResolveSharedAsync inside this gate would run through
-        // its first incomplete await. That path can acquire a fetch slot
-        // and call a host resolver synchronously, blocking every other
-        // source in this document while the host is doing unrelated work.
-        if (startRequest)
-        {
-            DocumentImageRequest startedRequest = request;
-            startedRequest.Start(
-                () => _services.Fetcher.ResolveSharedAsync(
-                    this, key, _resolver, _context, background,
-                    startedRequest.Cancellation.Token
-                    ),
-                (result, operationCompletion) =>
-                {
-                    bool ownsRoot = false;
-                    try
-                    {
-                        MarkdownImageResolution resolution = result.Resolution;
-                        if (string.IsNullOrEmpty(resolution.Asset?.CacheKey))
-                            _services.Cache.Store(key, localKey, resolution);
+        return request;
+    }
 
-                        bool releaseRoot;
-                        lock (_inFlightGate)
-                        {
-                            if (_inFlight.TryGetValue(source, out DocumentImageRequest? current) &&
-                                ReferenceEquals(current, startedRequest))
-                                _inFlight.Remove(source);
-                            bool published = startedRequest.SetResult(result);
-                            ownsRoot = true;
-                            releaseRoot = !published || startedRequest.WaiterCount == 0;
-                        }
-                        if (releaseRoot)
-                            startedRequest.ReleaseRootSafely();
-                    }
-                    catch
-                    {
-                        if (!ownsRoot)
-                            ImageResolutionLeaseCleanup.DisposeSafely(result);
-                        throw;
-                    }
-                    finally
-                    {
-                        startedRequest.RetireCancellation(operationCompletion);
-                    }
-                },
-                (exception, operationCompletion) =>
-                {
-                    try
-                    {
-                        lock (_inFlightGate)
-                        {
-                            if (_inFlight.TryGetValue(source, out DocumentImageRequest? current) &&
-                                ReferenceEquals(current, startedRequest))
-                                _inFlight.Remove(source);
-                            startedRequest.SetException(exception);
-                        }
-                    }
-                    finally
-                    {
-                        startedRequest.RetireCancellation(operationCompletion);
-                    }
-                });
-        }
-        try
-        {
-            await request.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
-            return request.RetainResult();
-        }
-        finally
-        {
-            bool cancel = false;
-            bool releaseRoot = false;
-            lock (_inFlightGate)
+    private void StartRequest(
+        DocumentImageRequest startedRequest,
+        string source,
+        ImageSourceKey key,
+        ImageSourceKey localKey,
+        bool background)
+    {
+        startedRequest.Start(
+            () => _services.Fetcher.ResolveSharedAsync(
+                this, key, _resolver, _context, background,
+                startedRequest.Cancellation.Token
+                ),
+            (result, operationCompletion) =>
             {
-                if (--request.WaiterCount == 0)
+                bool ownsRoot = false;
+                try
                 {
-                    if (!request.Task.IsCompleted)
+                    MarkdownImageResolution resolution = result.Resolution;
+                    if (string.IsNullOrEmpty(resolution.Asset?.CacheKey))
+                        _services.Cache.Store(key, localKey, resolution);
+
+                    bool releaseRoot;
+                    lock (_inFlightGate)
                     {
-                        if (_inFlight.TryGetValue(source, out DocumentImageRequest? current) &&
-                            ReferenceEquals(current, request))
-                            _inFlight.Remove(source);
-                        cancel = true;
+                        RemoveCurrentRequestNoLock(source, startedRequest);
+                        bool published = startedRequest.SetResult(result);
+                        ownsRoot = true;
+                        releaseRoot = !published || startedRequest.WaiterCount == 0;
                     }
-                    else
+                    if (releaseRoot)
+                        startedRequest.ReleaseRootSafely();
+                }
+                catch
+                {
+                    if (!ownsRoot)
+                        ImageResolutionLeaseCleanup.DisposeSafely(result);
+                    throw;
+                }
+                finally
+                {
+                    startedRequest.RetireCancellation(operationCompletion);
+                }
+            },
+            (exception, operationCompletion) =>
+            {
+                try
+                {
+                    lock (_inFlightGate)
                     {
-                        releaseRoot = true;
+                        RemoveCurrentRequestNoLock(source, startedRequest);
+                        startedRequest.SetException(exception);
                     }
                 }
-            }
-            if (cancel)
+                finally
+                {
+                    startedRequest.RetireCancellation(operationCompletion);
+                }
+            });
+    }
+
+    // The last waiter to leave an unfinished request cancels it; the last
+    // waiter to leave a finished request releases its result.
+    private void LeaveRequest(string source, DocumentImageRequest request)
+    {
+        bool cancel = false;
+        bool releaseRoot = false;
+        lock (_inFlightGate)
+        {
+            if (--request.WaiterCount == 0)
             {
-                try { request.RequestCancellation(); }
-                catch (ObjectDisposedException) { }
+                if (!request.Task.IsCompleted)
+                {
+                    RemoveCurrentRequestNoLock(source, request);
+                    cancel = true;
+                }
+                else
+                {
+                    releaseRoot = true;
+                }
             }
-            if (releaseRoot)
-                request.ReleaseRootSafely();
         }
+        if (cancel)
+        {
+            try { request.RequestCancellation(); }
+            catch (ObjectDisposedException) { }
+        }
+        if (releaseRoot)
+            request.ReleaseRootSafely();
+    }
+
+    private void RemoveCurrentRequestNoLock(string source, DocumentImageRequest request)
+    {
+        if (_inFlight.TryGetValue(source, out DocumentImageRequest? current) &&
+            ReferenceEquals(current, request))
+            _inFlight.Remove(source);
     }
 
     public void Dispose()
