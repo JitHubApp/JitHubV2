@@ -122,7 +122,9 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private readonly HostedFocusPlanPublication _hostedFocusPlan = new();
     private bool _selectionAutomationEventQueued;
     private float _lastWidth;
-    private static readonly MarkdownTheme _defaultTheme = new();
+    // The theme used while Theme is null. A MarkdownTheme is a thread-affine
+    // DependencyObject, so each control owns one rather than sharing a static.
+    private readonly MarkdownTheme _defaultTheme = new();
     private readonly Dictionary<string, bool> _disclosureStates = new(StringComparer.Ordinal);
     private readonly ParsedMarkdownCache _parseCache = new();
     private bool _isUpdatingDocumentProperty;
