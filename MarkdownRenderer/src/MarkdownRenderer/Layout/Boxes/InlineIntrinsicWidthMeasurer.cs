@@ -175,53 +175,62 @@ internal static class InlineIntrinsicWidthMeasurer
             {
                 box.Context.CancellationToken.ThrowIfCancellationRequested();
                 int length = index - tokenStart;
-                var regions = layout.GetCharacterRegions(tokenStart, length);
-                if (regions is not null)
-                {
-                    foreach (var region in regions)
-                        widest = Math.Max(widest, (float)region.LayoutBounds.Width);
-                }
+                widest = WidestRegion(layout, tokenStart, length, widest);
                 tokenStart = -1;
             }
 
-            // Hosted controls and vector scenes are genuinely atomic, so they
-            // contribute their full desired width. Images are also atomic for
-            // selection and line layout, but their rendering contract is
-            // max-width:100%: they may shrink while preserving aspect ratio.
-            // Giving an image its full width as a min-content contribution
-            // makes an image table column impossible to shrink and pushes its
-            // sibling columns out of the viewport.
             if (index < box.LayoutBuffer.Length && box.LayoutBuffer[index] == InlineEmbedRun.PlaceholderChar[0])
-            {
-                if (currentRun is InlineImageRun image)
-                {
-                    widest = Math.Max(
-                        widest,
-                        Math.Min(image.DesiredWidth, Math.Max(1f, fallbackFontSize * 2f)));
-                }
-                else if (currentRun is InlineSpacerRun spacer)
-                {
-                    // Match inline images: a replaced object follows the
-                    // max-width:100% rule and may shrink to fit a cell. Its
-                    // full authored width must not pin a table column at an
-                    // enormous min-content size.
-                    widest = Math.Max(
-                        widest,
-                        Math.Min(spacer.Width, Math.Max(1f, fallbackFontSize * 2f)));
-                }
-                else
-                {
-                    var regions = layout.GetCharacterRegions(index, 1);
-                    if (regions is not null)
-                    {
-                        foreach (var region in regions)
-                            widest = Math.Max(widest, (float)region.LayoutBounds.Width);
-                    }
-                }
-            }
+                widest = WidestAtomicObject(currentRun, layout, index, fallbackFontSize, widest);
         }
 
         return Math.Max(widest, Math.Max(1f, fallbackFontSize * 2f));
+    }
+
+    // Hosted controls and vector scenes are genuinely atomic, so they
+    // contribute their full desired width. Images are also atomic for
+    // selection and line layout, but their rendering contract is
+    // max-width:100%: they may shrink while preserving aspect ratio.
+    // Giving an image its full width as a min-content contribution
+    // makes an image table column impossible to shrink and pushes its
+    // sibling columns out of the viewport.
+    private static float WidestAtomicObject(
+        InlineRun? currentRun,
+        CanvasTextLayout layout,
+        int index,
+        float fallbackFontSize,
+        float widest)
+    {
+        if (currentRun is InlineImageRun image)
+        {
+            return Math.Max(
+                widest,
+                Math.Min(image.DesiredWidth, Math.Max(1f, fallbackFontSize * 2f)));
+        }
+
+        if (currentRun is InlineSpacerRun spacer)
+        {
+            // Match inline images: a replaced object follows the
+            // max-width:100% rule and may shrink to fit a cell. Its
+            // full authored width must not pin a table column at an
+            // enormous min-content size.
+            return Math.Max(
+                widest,
+                Math.Min(spacer.Width, Math.Max(1f, fallbackFontSize * 2f)));
+        }
+
+        return WidestRegion(layout, index, 1, widest);
+    }
+
+    private static float WidestRegion(CanvasTextLayout layout, int start, int length, float widest)
+    {
+        var regions = layout.GetCharacterRegions(start, length);
+        if (regions is not null)
+        {
+            foreach (var region in regions)
+                widest = Math.Max(widest, (float)region.LayoutBounds.Width);
+        }
+
+        return widest;
     }
 
     private static bool IsIntrinsicBreakOpportunity(char value)
