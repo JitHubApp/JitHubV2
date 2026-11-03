@@ -287,13 +287,13 @@ public sealed class PrivateRasterPlacementStyleKeyCopyTests
         if (runAliasCounts.Length != runModifierCounts.Length)
             throw new ArgumentException("Run style-key fixture lengths must match.");
 
-        var contextScopes = new MarkdownLayoutContext.StyleScope[containerContextKeyCount];
+        var contextScopes = new LayoutStyleScope[containerContextKeyCount];
         try
         {
             for (int index = 0; index < contextScopes.Length; index++)
                 contextScopes[index] = context.PushStyleContext(MarkdownElementKeys.Strong);
 
-            using MarkdownLayoutContext.StyleScope aliasScope = context.PushStyleAliases(CreateKeys(containerAliasCount));
+            using LayoutStyleScope aliasScope = context.PushStyleAliases(CreateKeys(containerAliasCount));
             var inline = new InlineContainerBox(context, MarkdownElementKeys.Body)
             {
                 BlockIndex = context.NextBlockIndex(),

@@ -226,12 +226,12 @@ public sealed class MarkdownLayoutConstructionScopeTests
             {
                 creator.Fail = true;
             }
-            var failure = Assert.Throws<System.Reflection.TargetInvocationException>(() =>
+            Exception? failure = Record.Exception(() =>
                 AppendDeclarativeInlineScene(builder, content, runs));
             if (canceled)
-                Assert.IsType<OperationCanceledException>(failure.InnerException);
+                Assert.IsType<OperationCanceledException>(failure);
             else
-                Assert.IsType<InvalidOperationException>(failure.InnerException);
+                Assert.IsType<InvalidOperationException>(failure);
             Assert.Same(run, Assert.Single(runs));
 
             scope.Dispose();
@@ -279,10 +279,7 @@ public sealed class MarkdownLayoutConstructionScopeTests
             InlineVectorSceneRun run = AppendDeclarativeInlineScene(builder, content, runs);
             if (useExplicitAdoption)
             {
-                typeof(LayoutBuilder).GetMethod(
-                        "AddInlineRun",
-                        System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-                    .Invoke(builder, new object[] { parent, run });
+                builder.Tracker.AddInlineRun(parent, run);
                 scope.Dispose();
             }
             else
@@ -385,10 +382,7 @@ public sealed class MarkdownLayoutConstructionScopeTests
         MarkdownContent content,
         List<InlineRun> destination)
     {
-        typeof(LayoutBuilder).GetMethod(
-                "AppendDeclarativeInline",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-            .Invoke(builder, new object[] { content, destination });
+        builder.DeclarativeInlines.AppendDeclarativeInline(content, destination);
         return Assert.IsType<InlineVectorSceneRun>(Assert.Single(destination));
     }
 

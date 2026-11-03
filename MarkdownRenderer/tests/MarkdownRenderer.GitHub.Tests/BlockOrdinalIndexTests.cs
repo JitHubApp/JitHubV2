@@ -207,7 +207,7 @@ public sealed class BlockOrdinalIndexTests
         using LayoutSnapshot eager = builder.Build(Markdown.Parse(source), availableWidth: 360);
         int eagerUpperBound = context.GeneratedBlockIndexUpperBound;
         Assert.True(eagerUpperBound > 0);
-        Assert.Equal(eagerUpperBound, GetField<int>(eager, "_generatedBlockIndexUpperBound"));
+        Assert.Equal(eagerUpperBound, eager.GeneratedBlockIndexUpperBound);
         AssertDenseIndexBound(eager, eagerUpperBound);
 
         using LayoutSnapshot lazy = builder.BuildLazy(
@@ -219,7 +219,7 @@ public sealed class BlockOrdinalIndexTests
             cancellationToken: CancellationToken.None);
         int lazyUpperBound = context.GeneratedBlockIndexUpperBound;
         Assert.True(lazyUpperBound > eagerUpperBound);
-        Assert.Equal(lazyUpperBound, GetField<int>(lazy, "_generatedBlockIndexUpperBound"));
+        Assert.Equal(lazyUpperBound, lazy.GeneratedBlockIndexUpperBound);
         AssertDenseIndexBound(lazy, lazyUpperBound);
     }
 
@@ -266,9 +266,7 @@ public sealed class BlockOrdinalIndexTests
     }
 
     private static IReadOnlyDictionary<int, int> ReadMap(LayoutSnapshot snapshot)
-        => Assert.IsAssignableFrom<IReadOnlyDictionary<int, int>>(
-            typeof(LayoutSnapshot).GetField("_topLevelOrdinalByBlockIndex", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .GetValue(snapshot));
+        => snapshot.Geometry.TopLevelOrdinalByBlockIndex;
 
     private static void AssertMapEquals(
         IReadOnlyDictionary<int, int> expected,

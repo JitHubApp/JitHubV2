@@ -410,8 +410,8 @@ public sealed class RootLocalTableVectorImageRelayoutTests
         {
             PreparedImageRelayoutResult result = document.Snapshot.TryRelayoutCompletedImageRoots(
                 [table.BlockIndex], InitialWidth, CancellationToken.None, out constructionContext,
-                beforeMeasureOutsideGateForTests: () => vector.RestoreLayoutState(
-                    mutatedWidth, vector.DesiredHeight, vector.DesiredBaseline, mutatedBounds),
+                phaseHooks: CompletedImageRelayoutPhaseHooks.BeforeMeasure(() => vector.RestoreLayoutState(
+                    mutatedWidth, vector.DesiredHeight, vector.DesiredBaseline, mutatedBounds)),
                 expectedPointerInputEpoch: document.Snapshot.PointerInputEpoch);
             Assert.Equal(PreparedImageRelayoutResult.Retry, result);
             Assert.NotNull(constructionContext);
@@ -474,7 +474,7 @@ public sealed class RootLocalTableVectorImageRelayoutTests
             Assert.ThrowsAny<OperationCanceledException>(() =>
                 document.Snapshot.TryRelayoutCompletedImageRoots(
                 [table.BlockIndex], InitialWidth, cancellation.Token, out constructionContext,
-                    beforeMeasureOutsideGateForTests: cancellation.Cancel,
+                    phaseHooks: CompletedImageRelayoutPhaseHooks.BeforeMeasure(cancellation.Cancel),
                     expectedPointerInputEpoch: document.Snapshot.PointerInputEpoch));
             Assert.NotNull(constructionContext);
             await constructionContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));

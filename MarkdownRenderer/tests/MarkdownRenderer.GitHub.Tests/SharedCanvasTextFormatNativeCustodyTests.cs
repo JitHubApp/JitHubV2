@@ -16,17 +16,17 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
     {
         var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new FormatDisposalProbe();
-        var cache = new SharedCanvasTextFormatCache.Store(8_192, retirement, disposer.Dispose);
+        var cache = new SharedCanvasTextFormatStore(8_192, retirement, new SharedCanvasTextFormatStoreHooks { NativeDisposer = disposer.Dispose });
         var style = CreateStyle("Cache hit family");
 
         using SharedCanvasTextFormatCache.Lease first = Acquire(cache, style);
-        long reservationsAfterMiss = cache.RecordReservationCountForTests;
+        long reservationsAfterMiss = cache.RecordReservationCount;
         using SharedCanvasTextFormatCache.Lease second = Acquire(cache, style);
 
         Assert.Same(first.Format, second.Format);
-        Assert.Equal(reservationsAfterMiss, cache.RecordReservationCountForTests);
+        Assert.Equal(reservationsAfterMiss, cache.RecordReservationCount);
         Assert.Equal(1, reservationsAfterMiss);
-        Assert.Equal(3, first.EntryForTests!.ReferenceCountForTests);
+        Assert.Equal(3, first.SharedEntry!.ReferenceCount);
         cache.Clear();
         Assert.True(first.Format.FontSize > 0);
         GC.KeepAlive(retirement);
@@ -37,23 +37,26 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
     {
         var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new FormatDisposalProbe();
-        var cache = new SharedCanvasTextFormatCache.Store(
+        var cache = new SharedCanvasTextFormatStore(
             8_192,
             retirement,
-            disposer.Dispose,
-            failCacheHitLeaseConstructionForTests: true);
+            new SharedCanvasTextFormatStoreHooks
+            {
+                NativeDisposer = disposer.Dispose,
+                FailCacheHitLeaseConstruction = true,
+            });
         var style = CreateStyle("Cache hit lease failure family");
 
         using SharedCanvasTextFormatCache.Lease existing = Acquire(cache, style);
-        SharedCanvasTextFormatCache.Entry entry = Assert.IsType<SharedCanvasTextFormatCache.Entry>(existing.EntryForTests);
-        long reservationsBeforeHit = cache.RecordReservationCountForTests;
-        int referencesBeforeHit = entry.ReferenceCountForTests;
+        SharedCanvasTextFormatEntry entry = Assert.IsType<SharedCanvasTextFormatEntry>(existing.SharedEntry);
+        long reservationsBeforeHit = cache.RecordReservationCount;
+        int referencesBeforeHit = entry.ReferenceCount;
 
         InvalidOperationException failure = Assert.Throws<InvalidOperationException>(() => Acquire(cache, style));
 
         Assert.Equal("Injected cache-hit lease allocation failure.", failure.Message);
-        Assert.Equal(referencesBeforeHit, entry.ReferenceCountForTests);
-        Assert.Equal(reservationsBeforeHit, cache.RecordReservationCountForTests);
+        Assert.Equal(referencesBeforeHit, entry.ReferenceCount);
+        Assert.Equal(reservationsBeforeHit, cache.RecordReservationCount);
         Assert.Equal(0, retirement.PendingRecordCount);
         Assert.Equal(0, disposer.AttemptCount);
         GC.KeepAlive(retirement);
@@ -64,7 +67,7 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
     {
         var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new FormatDisposalProbe();
-        var cache = new SharedCanvasTextFormatCache.Store(8_192, retirement, disposer.Dispose);
+        var cache = new SharedCanvasTextFormatStore(8_192, retirement, new SharedCanvasTextFormatStoreHooks { NativeDisposer = disposer.Dispose });
         var style = CreateStyle("Vertical alignment family");
 
         using SharedCanvasTextFormatCache.Lease top = Acquire(cache, style);
@@ -90,7 +93,7 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
         Assert.Equal(CanvasVerticalAlignment.Top, top.Format.VerticalAlignment);
         Assert.Equal(CanvasVerticalAlignment.Center, centered.Format.VerticalAlignment);
         Assert.Equal(2, cache.Statistics.Count);
-        Assert.Equal(2, cache.RecordReservationCountForTests);
+        Assert.Equal(2, cache.RecordReservationCount);
 
         cache.Clear();
         GC.KeepAlive(retirement);
@@ -101,7 +104,7 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
     {
         var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new FormatDisposalProbe();
-        var cache = new SharedCanvasTextFormatCache.Store(500, retirement, disposer.Dispose);
+        var cache = new SharedCanvasTextFormatStore(500, retirement, new SharedCanvasTextFormatStoreHooks { NativeDisposer = disposer.Dispose });
 
         EvictionEvidence evidence = AcquireAcrossEviction(cache);
 
@@ -127,7 +130,7 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
         var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new FormatDisposalProbe();
         disposer.FailPersistently();
-        var cache = new SharedCanvasTextFormatCache.Store(8_192, retirement, disposer.Dispose);
+        var cache = new SharedCanvasTextFormatStore(8_192, retirement, new SharedCanvasTextFormatStoreHooks { NativeDisposer = disposer.Dispose });
 
         NativeFormatEvidence evidence = CreateFailedLastRelease(cache, disposer);
 
@@ -160,11 +163,14 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
         var disposer = new FormatDisposalProbe();
         disposer.FailPersistently();
         var primary = new InvalidOperationException("Injected initializer failure.");
-        var cache = new SharedCanvasTextFormatCache.Store(
+        var cache = new SharedCanvasTextFormatStore(
             8_192,
             retirement,
-            disposer.Dispose,
-            afterInitializeForTests: _ => throw primary);
+            new SharedCanvasTextFormatStoreHooks
+            {
+                NativeDisposer = disposer.Dispose,
+                AfterInitialize = _ => throw primary,
+            });
 
         WeakReference<ElementStyle> style = AcquireWithInitializerFailure(cache, primary);
         WeakReference<CanvasTextFormat> format = Assert.Single(disposer.ObservedFormats);
@@ -190,15 +196,18 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
         var disposer = new FormatDisposalProbe();
         disposer.FailPersistently();
         var primary = new InvalidOperationException("Injected post-entry setup failure.");
-        WeakReference<SharedCanvasTextFormatCache.Entry>? entryWitness = null;
-        var cache = new SharedCanvasTextFormatCache.Store(
+        WeakReference<SharedCanvasTextFormatEntry>? entryWitness = null;
+        var cache = new SharedCanvasTextFormatStore(
             8_192,
             retirement,
-            disposer.Dispose,
-            afterEntryCreatedForTests: entry =>
+            new SharedCanvasTextFormatStoreHooks
             {
-                entryWitness = new WeakReference<SharedCanvasTextFormatCache.Entry>(entry);
-                throw primary;
+                NativeDisposer = disposer.Dispose,
+                AfterEntryCreated = entry =>
+                {
+                    entryWitness = new WeakReference<SharedCanvasTextFormatEntry>(entry);
+                    throw primary;
+                },
             });
 
         WeakReference<ElementStyle> style = AcquireAndExpectFailure(cache, primary, "Entry failure family");
@@ -207,8 +216,8 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
         Assert.Equal(0, cache.Statistics.Count);
         Assert.Equal(1, retirement.PendingRecordCount);
         Assert.Equal(1, retirement.PendingResourceCount);
-        WeakReference<SharedCanvasTextFormatCache.Entry> entryReference =
-            Assert.IsType<WeakReference<SharedCanvasTextFormatCache.Entry>>(entryWitness);
+        WeakReference<SharedCanvasTextFormatEntry> entryReference =
+            Assert.IsType<WeakReference<SharedCanvasTextFormatEntry>>(entryWitness);
         Assert.Equal(0, ReadReferenceCount(entryReference));
         CollectGarbage();
         AssertCollected(entryReference);
@@ -228,11 +237,14 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
         var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new FormatDisposalProbe();
         disposer.FailPersistently();
-        var cache = new SharedCanvasTextFormatCache.Store(
+        var cache = new SharedCanvasTextFormatStore(
             8_192,
             retirement,
-            disposer.Dispose,
-            failLeaseConstructionForTests: true);
+            new SharedCanvasTextFormatStoreHooks
+            {
+                NativeDisposer = disposer.Dispose,
+                FailLeaseConstruction = true,
+            });
         var style = CreateStyle("Lease failure family");
 
         InvalidOperationException failure = Assert.Throws<InvalidOperationException>(() => Acquire(cache, style));
@@ -260,14 +272,17 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
         var disposer = new FormatDisposalProbe();
         disposer.FailPersistently();
         var primary = new InvalidOperationException("Injected cache publication failure.");
-        WeakReference<SharedCanvasTextFormatCache.Entry>? entryWitness = null;
-        var cache = new SharedCanvasTextFormatCache.Store(
+        WeakReference<SharedCanvasTextFormatEntry>? entryWitness = null;
+        var cache = new SharedCanvasTextFormatStore(
             8_192,
             retirement,
-            disposer.Dispose,
-            afterEntryCreatedForTests: entry =>
-                entryWitness = new WeakReference<SharedCanvasTextFormatCache.Entry>(entry),
-            beforeCachePublicationForTests: () => throw primary);
+            new SharedCanvasTextFormatStoreHooks
+            {
+                NativeDisposer = disposer.Dispose,
+                AfterEntryCreated = entry =>
+                    entryWitness = new WeakReference<SharedCanvasTextFormatEntry>(entry),
+                BeforeCachePublication = () => throw primary,
+            });
 
         WeakReference<ElementStyle> style = AcquireAndExpectFailure(cache, primary, "Publication failure family");
         Assert.Equal((0, 0L), cache.Statistics);
@@ -275,8 +290,8 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
         Assert.Equal(1, retirement.PendingResourceCount);
         Assert.Single(disposer.ObservedFormats);
         AssertRetained(disposer.ObservedFormats[0]);
-        WeakReference<SharedCanvasTextFormatCache.Entry> entryReference =
-            Assert.IsType<WeakReference<SharedCanvasTextFormatCache.Entry>>(entryWitness);
+        WeakReference<SharedCanvasTextFormatEntry> entryReference =
+            Assert.IsType<WeakReference<SharedCanvasTextFormatEntry>>(entryWitness);
         Assert.Equal(0, ReadReferenceCount(entryReference));
         CollectGarbage();
         AssertCollected(entryReference);
@@ -295,7 +310,7 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
     {
         var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new FormatDisposalProbe();
-        var cache = new SharedCanvasTextFormatCache.Store(8_192, retirement, disposer.Dispose);
+        var cache = new SharedCanvasTextFormatStore(8_192, retirement, new SharedCanvasTextFormatStoreHooks { NativeDisposer = disposer.Dispose });
 
         ConcurrentReleaseEvidence evidence = await ReleaseLeasesTogether(cache);
 
@@ -313,29 +328,32 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
     public void FaultInjectionCannotBeAttachedToProcessRetirementOwner()
     {
         var disposer = new FormatDisposalProbe();
-        Assert.Throws<ArgumentException>(() => new SharedCanvasTextFormatCache.Store(
+        Assert.Throws<ArgumentException>(() => new SharedCanvasTextFormatStore(
             1_024,
             NativeResourceRetirement.Shared,
-            disposer.Dispose));
+            new SharedCanvasTextFormatStoreHooks
+            {
+                NativeDisposer = disposer.Dispose,
+            }));
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static NativeFormatEvidence CreateFailedLastRelease(
-        SharedCanvasTextFormatCache.Store cache,
+        SharedCanvasTextFormatStore cache,
         FormatDisposalProbe disposer)
     {
         ElementStyle style = CreateStyle("Durable format family");
         SharedCanvasTextFormatCache.Lease lease = Acquire(cache, style);
-        SharedCanvasTextFormatCache.Entry entry = Assert.IsType<SharedCanvasTextFormatCache.Entry>(lease.EntryForTests);
+        SharedCanvasTextFormatEntry entry = Assert.IsType<SharedCanvasTextFormatEntry>(lease.SharedEntry);
         CanvasTextFormat format = lease.Format;
         var evidence = new NativeFormatEvidence(
-            new WeakReference<SharedCanvasTextFormatCache.Entry>(entry),
+            new WeakReference<SharedCanvasTextFormatEntry>(entry),
             new WeakReference<SharedCanvasTextFormatCache.Lease>(lease),
             new WeakReference<ElementStyle>(style),
             new WeakReference<CanvasTextFormat>(format));
 
         cache.Clear();
-        Assert.Equal(1, entry.ReferenceCountForTests);
+        Assert.Equal(1, entry.ReferenceCount);
         lease.Dispose();
         Assert.Equal(1, disposer.AttemptCount);
         return evidence;
@@ -343,7 +361,7 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static WeakReference<ElementStyle> AcquireWithInitializerFailure(
-        SharedCanvasTextFormatCache.Store cache,
+        SharedCanvasTextFormatStore cache,
         Exception primary)
     {
         ElementStyle style = CreateStyle("Initializer failure family");
@@ -356,7 +374,7 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static WeakReference<ElementStyle> AcquireAndExpectFailure(
-        SharedCanvasTextFormatCache.Store cache,
+        SharedCanvasTextFormatStore cache,
         Exception primary,
         string family)
     {
@@ -369,24 +387,24 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static EvictionEvidence AcquireAcrossEviction(SharedCanvasTextFormatCache.Store cache)
+    private static EvictionEvidence AcquireAcrossEviction(SharedCanvasTextFormatStore cache)
     {
         SharedCanvasTextFormatCache.Lease first = Acquire(cache, CreateStyle("Test Font One"));
         var firstFormat = new WeakReference<CanvasTextFormat>(first.Format);
         CanvasTextFormat originalFormat = first.Format;
-        SharedCanvasTextFormatCache.Entry firstEntry = Assert.IsType<SharedCanvasTextFormatCache.Entry>(first.EntryForTests);
+        SharedCanvasTextFormatEntry firstEntry = Assert.IsType<SharedCanvasTextFormatEntry>(first.SharedEntry);
         SharedCanvasTextFormatCache.Lease second = Acquire(cache, CreateStyle("Test Font Two"));
         Assert.Same(originalFormat, first.Format);
-        return new EvictionEvidence(first, second, firstFormat, firstEntry.ReferenceCountForTests);
+        return new EvictionEvidence(first, second, firstFormat, firstEntry.ReferenceCount);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static Task<ConcurrentReleaseEvidence> ReleaseLeasesTogether(SharedCanvasTextFormatCache.Store cache)
+    private static Task<ConcurrentReleaseEvidence> ReleaseLeasesTogether(SharedCanvasTextFormatStore cache)
     {
         SharedCanvasTextFormatCache.Lease first = Acquire(cache, CreateStyle("Concurrent format family"));
         SharedCanvasTextFormatCache.Lease second = Acquire(cache, CreateStyle("Concurrent format family"));
-        SharedCanvasTextFormatCache.Entry entry = Assert.IsType<SharedCanvasTextFormatCache.Entry>(first.EntryForTests);
-        Assert.Same(entry, second.EntryForTests);
+        SharedCanvasTextFormatEntry entry = Assert.IsType<SharedCanvasTextFormatEntry>(first.SharedEntry);
+        Assert.Same(entry, second.SharedEntry);
         CanvasTextFormat format = first.Format;
         cache.Clear();
         using var start = new ManualResetEventSlim(false);
@@ -399,12 +417,12 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
         secondThread.Join();
 
         return Task.FromResult(new ConcurrentReleaseEvidence(
-            new WeakReference<SharedCanvasTextFormatCache.Entry>(entry),
+            new WeakReference<SharedCanvasTextFormatEntry>(entry),
             new WeakReference<CanvasTextFormat>(format)));
     }
 
     private static SharedCanvasTextFormatCache.Lease Acquire(
-        SharedCanvasTextFormatCache.Store cache,
+        SharedCanvasTextFormatStore cache,
         ElementStyle style) => cache.Acquire(
             style,
             CanvasWordWrapping.Wrap,
@@ -436,9 +454,9 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
         where T : class => Assert.True(IsAlive(reference), message);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static int ReadReferenceCount(WeakReference<SharedCanvasTextFormatCache.Entry> reference) =>
-        reference.TryGetTarget(out SharedCanvasTextFormatCache.Entry? entry)
-            ? entry.ReferenceCountForTests
+    private static int ReadReferenceCount(WeakReference<SharedCanvasTextFormatEntry> reference) =>
+        reference.TryGetTarget(out SharedCanvasTextFormatEntry? entry)
+            ? entry.ReferenceCount
             : -1;
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -446,7 +464,7 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
         where T : class => reference.TryGetTarget(out _);
 
     private sealed record NativeFormatEvidence(
-        WeakReference<SharedCanvasTextFormatCache.Entry> Entry,
+        WeakReference<SharedCanvasTextFormatEntry> Entry,
         WeakReference<SharedCanvasTextFormatCache.Lease> Lease,
         WeakReference<ElementStyle> Style,
         WeakReference<CanvasTextFormat> Format);
@@ -458,7 +476,7 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
         int EvictedEntryReferenceCount);
 
     private sealed record ConcurrentReleaseEvidence(
-        WeakReference<SharedCanvasTextFormatCache.Entry> Entry,
+        WeakReference<SharedCanvasTextFormatEntry> Entry,
         WeakReference<CanvasTextFormat> Format);
 
     private sealed class FormatDisposalProbe

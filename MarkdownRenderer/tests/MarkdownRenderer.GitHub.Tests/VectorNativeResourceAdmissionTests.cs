@@ -363,7 +363,7 @@ public sealed class VectorNativeResourceAdmissionTests
                 resource.Dispose();
             },
             nativeAdmission: admission);
-        drawing.SetClipFactoryForTest(static (drawingSession, geometry) =>
+        drawing.UseClipLayerFactory(static (drawingSession, geometry) =>
             drawingSession.CreateLayer(1f, geometry));
 
         Assert.True(drawing.TryPrepareNativeResources(CancellationToken.None, out _));

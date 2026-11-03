@@ -482,8 +482,8 @@ public sealed class MixedInlineVectorImageRelayoutTests
         {
             PreparedImageRelayoutResult result = document.Snapshot.TryRelayoutCompletedImageRoot(
                 [inline.BlockIndex], LayoutWidth, CancellationToken.None, out constructionContext,
-                beforeMeasureOutsideGateForTests: () => vectors[^1].RestoreLayoutState(
-                    mutatedWidth, mutatedHeight, mutatedBaseline, mutatedBounds),
+                phaseHooks: CompletedImageRelayoutPhaseHooks.BeforeMeasure(() => vectors[^1].RestoreLayoutState(
+                    mutatedWidth, mutatedHeight, mutatedBaseline, mutatedBounds)),
                 expectedPointerInputEpoch: document.Snapshot.PointerInputEpoch);
 
             Assert.Equal(PreparedImageRelayoutResult.Retry, result);
@@ -539,7 +539,7 @@ public sealed class MixedInlineVectorImageRelayoutTests
         {
             Assert.ThrowsAny<OperationCanceledException>(() => document.Snapshot.TryRelayoutCompletedImageRoot(
                 [inline.BlockIndex], LayoutWidth, cancellation.Token, out constructionContext,
-                beforeMeasureOutsideGateForTests: cancellation.Cancel,
+                phaseHooks: CompletedImageRelayoutPhaseHooks.BeforeMeasure(cancellation.Cancel),
                 expectedPointerInputEpoch: document.Snapshot.PointerInputEpoch));
             Assert.NotNull(constructionContext);
             Assert.Same(drawing, GetVectorDrawing(vector));

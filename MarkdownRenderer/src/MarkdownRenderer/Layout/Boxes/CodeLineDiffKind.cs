@@ -1,0 +1,9 @@
+namespace MarkdownRenderer.Layout.Boxes;
+
+/// <summary>Diff marker of a code-block line.</summary>
+internal enum CodeLineDiffKind
+{
+    None,
+    Added,
+    Removed,
+}

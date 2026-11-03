@@ -762,7 +762,7 @@ public sealed class RootLocalTableImageRelayoutTests
             PreparedImageRelayoutResult result = snapshot.TryRelayoutCompletedImageRoots(
                 images.Select(static image => image.BlockIndex).Distinct().ToArray(), 640f,
                 CancellationToken.None, out constructionContext,
-                beforeMeasureOutsideGateForTests: renderer.AdvanceCacheGeneration,
+                phaseHooks: CompletedImageRelayoutPhaseHooks.BeforeMeasure(renderer.AdvanceCacheGeneration),
                 expectedPointerInputEpoch: snapshot.PointerInputEpoch);
             Assert.Equal(PreparedImageRelayoutResult.Retry, result);
             Assert.Equal(revisionBefore, snapshot.LayoutRevision);
@@ -1140,14 +1140,14 @@ public sealed class RootLocalTableImageRelayoutTests
             {
                 Assert.Throws<OperationCanceledException>(() => document.Snapshot.TryRelayoutCompletedImageRoots(
                     [table.BlockIndex], LayoutWidth, cancellation.Token, out constructionContext,
-                    beforeMeasureOutsideGateForTests: ApplyRace,
+                    phaseHooks: CompletedImageRelayoutPhaseHooks.BeforeMeasure(ApplyRace),
                     expectedPointerInputEpoch: expectedPointerEpoch));
             }
             else
             {
                 PreparedImageRelayoutResult result = document.Snapshot.TryRelayoutCompletedImageRoots(
                     [table.BlockIndex], LayoutWidth, CancellationToken.None, out constructionContext,
-                    beforeMeasureOutsideGateForTests: ApplyRace,
+                    phaseHooks: CompletedImageRelayoutPhaseHooks.BeforeMeasure(ApplyRace),
                     expectedPointerInputEpoch: expectedPointerEpoch);
                 Assert.Equal(PreparedImageRelayoutResult.Retry, result);
             }
@@ -1204,11 +1204,11 @@ public sealed class RootLocalTableImageRelayoutTests
             result = document.Snapshot.TryRelayoutCompletedImageRoots(
                 [standalone.BlockIndex, table.BlockIndex], LayoutWidth, CancellationToken.None,
                 out constructionContext,
-                beforeMeasureOutsideGateForTests: () =>
+                phaseHooks: CompletedImageRelayoutPhaseHooks.BeforeMeasure(() =>
                 {
                     hookRan = true;
                     lateRun.InlineIndex = originalInlineIndex + 1;
-                },
+                }),
                 expectedPointerInputEpoch: document.Snapshot.PointerInputEpoch);
         }
         finally
@@ -1271,12 +1271,12 @@ public sealed class RootLocalTableImageRelayoutTests
         {
             result = document.Snapshot.TryRelayoutCompletedImageRoots(
                 [table.BlockIndex], 640f, CancellationToken.None, out constructionContext,
-                beforeMeasureOutsideGateForTests: () =>
+                phaseHooks: CompletedImageRelayoutPhaseHooks.BeforeMeasure(() =>
                 {
                     hookCalls++;
                     aliasInstalled = true;
                     placeholderField.SetValue(imageSource, cellLayout);
-                },
+                }),
                 expectedPointerInputEpoch: document.Snapshot.PointerInputEpoch);
         }
         finally
@@ -1365,7 +1365,7 @@ public sealed class RootLocalTableImageRelayoutTests
         {
             PreparedImageRelayoutResult result = document.Snapshot.TryRelayoutCompletedImageRoots(
                 [table.BlockIndex], LayoutWidth, CancellationToken.None, out constructionContext,
-                beforeMeasureOutsideGateForTests: () => hookCalls++,
+                phaseHooks: CompletedImageRelayoutPhaseHooks.BeforeMeasure(() => hookCalls++),
                 expectedPointerInputEpoch: document.Snapshot.PointerInputEpoch);
             Assert.Equal(PreparedImageRelayoutResult.Unavailable, result);
             Assert.Equal(0, hookCalls);
@@ -1407,7 +1407,7 @@ public sealed class RootLocalTableImageRelayoutTests
             PreparedImageRelayoutResult result = imageDocument.Snapshot.TryRelayoutCompletedImageRoots(
                 [imageTable.BlockIndex], LayoutWidth, CancellationToken.None,
                 out imageConstructionContext,
-                beforeMeasureOutsideGateForTests: () => imageHookCalls++,
+                phaseHooks: CompletedImageRelayoutPhaseHooks.BeforeMeasure(() => imageHookCalls++),
                 expectedPointerInputEpoch: imageDocument.Snapshot.PointerInputEpoch);
             Assert.Equal(PreparedImageRelayoutResult.Unavailable, result);
             Assert.Equal(0, imageHookCalls);
@@ -1444,7 +1444,7 @@ public sealed class RootLocalTableImageRelayoutTests
             PreparedImageRelayoutResult result = cellDocument.Snapshot.TryRelayoutCompletedImageRoots(
                 [cellTable.BlockIndex], LayoutWidth, CancellationToken.None,
                 out cellConstructionContext,
-                beforeMeasureOutsideGateForTests: () => cellHookCalls++,
+                phaseHooks: CompletedImageRelayoutPhaseHooks.BeforeMeasure(() => cellHookCalls++),
                 expectedPointerInputEpoch: cellDocument.Snapshot.PointerInputEpoch);
             Assert.Equal(PreparedImageRelayoutResult.Unavailable, result);
             Assert.Equal(0, cellHookCalls);

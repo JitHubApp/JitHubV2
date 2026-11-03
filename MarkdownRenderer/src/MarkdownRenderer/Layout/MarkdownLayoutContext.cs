@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -29,16 +28,13 @@ namespace MarkdownRenderer.Layout;
 /// </summary>
 internal sealed class MarkdownLayoutContext
 {
-    private const int MaximumRetirementFailureDetails = 32;
-
     private CancellationToken _cancellationToken;
     private SafeHtmlAlignment _safeHtmlBlockAlignment;
     private SafeHtmlBlockScopeTracker? _safeHtmlNestedScopes;
     private int? _safeHtmlInlineFlowScopeId;
     private bool _safeHtmlInlineFlowContinuesPrevious;
-    private readonly object _retirementGate = new();
-    private List<Task>? _pendingRetirementTasks;
-    private HashSet<Task>? _retirementTaskIdentities;
+    private readonly LayoutContextRetirementLedger _retirements = new();
+    private readonly LayoutNavigationTargets _navigation = new();
     private MarkdownLayoutConstructionScope? _constructionScope;
     private Action<InlineContainerBox, ContainerInline, Func<Inline, bool>?, int>? _childInlineBuilder;
     private Func<Block, BlockBox?>? _childBlockBuilder;
@@ -48,13 +44,15 @@ internal sealed class MarkdownLayoutContext
     // Reuse the owning builder for structural children of extension-owned
     // containers. Like the inline callback, this must not survive construction
     // and retain the builder or semantic document in a published layout context.
-    internal ChildBlockBuildScope PushChildBlockBuilder(Func<Block, BlockBox?> builder)
+    internal LayoutChildBlockBuildScope PushChildBlockBuilder(Func<Block, BlockBox?> builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
         var previous = _childBlockBuilder;
         _childBlockBuilder = builder;
-        return new ChildBlockBuildScope(this, previous);
+        return new LayoutChildBlockBuildScope(this, previous);
     }
+
+    internal void RestoreChildBlockBuilder(Func<Block, BlockBox?>? previous) => _childBlockBuilder = previous;
 
     internal bool TryBuildChildBlock(Block block, out BlockBox? result)
     {
@@ -66,35 +64,21 @@ internal sealed class MarkdownLayoutContext
         return true;
     }
 
-    internal readonly struct ChildBlockBuildScope : IDisposable
-    {
-        private readonly MarkdownLayoutContext? _owner;
-        private readonly Func<Block, BlockBox?>? _previous;
-
-        internal ChildBlockBuildScope(MarkdownLayoutContext owner, Func<Block, BlockBox?>? previous)
-        {
-            _owner = owner;
-            _previous = previous;
-        }
-
-        public void Dispose()
-        {
-            if (_owner is not null)
-                _owner._childBlockBuilder = _previous;
-        }
-    }
-
     // Optional built-in container renderers must use the owning layout build's
     // semantic extension fragments, not a second reduced inline implementation.
     // Scope this callback to construction so contexts do not retain a builder
     // or its semantic document after publication, failure or cancellation.
-    internal ChildInlineBuildScope PushChildInlineBuilder(
+    internal LayoutChildInlineBuildScope PushChildInlineBuilder(
         Action<InlineContainerBox, ContainerInline, Func<Inline, bool>?, int> builder)
     {
         var previous = _childInlineBuilder;
         _childInlineBuilder = builder;
-        return new ChildInlineBuildScope(this, previous);
+        return new LayoutChildInlineBuildScope(this, previous);
     }
+
+    internal void RestoreChildInlineBuilder(
+        Action<InlineContainerBox, ContainerInline, Func<Inline, bool>?, int>? previous) =>
+        _childInlineBuilder = previous;
 
     internal bool TryAppendChildInlines(
         InlineContainerBox box, ContainerInline inlines,
@@ -106,25 +90,6 @@ internal sealed class MarkdownLayoutContext
             throw new InvalidOperationException("Child inline construction must use its owning layout context.");
         builder(box, inlines, skipFirstIf, inheritedAliasStart);
         return true;
-    }
-
-    internal readonly struct ChildInlineBuildScope : IDisposable
-    {
-        private readonly MarkdownLayoutContext? _owner;
-        private readonly Action<InlineContainerBox, ContainerInline, Func<Inline, bool>?, int>? _previous;
-
-        internal ChildInlineBuildScope(MarkdownLayoutContext owner,
-            Action<InlineContainerBox, ContainerInline, Func<Inline, bool>?, int>? previous)
-        {
-            _owner = owner;
-            _previous = previous;
-        }
-
-        public void Dispose()
-        {
-            if (_owner is not null)
-                _owner._childInlineBuilder = _previous;
-        }
     }
 
     /// <summary>
@@ -208,27 +173,7 @@ internal sealed class MarkdownLayoutContext
     internal void RegisterRetirement(Task retirementTask)
     {
         ArgumentNullException.ThrowIfNull(retirementTask);
-        if (retirementTask.IsCompletedSuccessfully)
-            return;
-
-        lock (_retirementGate)
-        {
-            _retirementTaskIdentities ??= new HashSet<Task>(ReferenceEqualityComparer.Instance);
-            if (!_retirementTaskIdentities.Add(retirementTask))
-                return;
-
-            (_pendingRetirementTasks ??= new List<Task>()).Add(retirementTask);
-        }
-
-        try
-        {
-            RetirementSink?.Invoke(retirementTask);
-        }
-        catch
-        {
-            // The pipeline-owned drain below remains authoritative if an
-            // optional host observer is unavailable during teardown.
-        }
+        _retirements.Register(retirementTask, RetirementSink);
     }
 
     /// <summary>
@@ -236,64 +181,8 @@ internal sealed class MarkdownLayoutContext
     /// The owner calls this outside snapshot/layout locks before completing the
     /// corresponding pipeline task, closing teardown epoch races.
     /// </summary>
-    internal async Task DrainOwnedRetirementsAsync(Exception? primaryFailure = null)
-    {
-        List<Exception>? failures = null;
-        int failureCount = 0;
-
-        void AddFailure(Exception exception)
-        {
-            failureCount++;
-            if (failureCount <= MaximumRetirementFailureDetails)
-                (failures ??= new List<Exception>()).Add(new MarkdownLayoutRetirementFailureSummary(exception));
-        }
-
-        while (true)
-        {
-            List<Task>? batch;
-            lock (_retirementGate)
-            {
-                batch = _pendingRetirementTasks;
-                _pendingRetirementTasks = null;
-                if (batch is null || batch.Count == 0)
-                    _retirementTaskIdentities = null;
-            }
-
-            if (batch is null || batch.Count == 0)
-                break;
-
-            try
-            {
-                await Task.WhenAll(batch).ConfigureAwait(false);
-            }
-            catch
-            {
-                foreach (Task task in batch)
-                {
-                    if (task.IsFaulted && task.Exception is { } taskFailure)
-                    {
-                        foreach (Exception exception in taskFailure.Flatten().InnerExceptions)
-                            AddFailure(exception);
-                    }
-                    else if (task.IsCanceled)
-                        AddFailure(new TaskCanceledException(task));
-                }
-            }
-        }
-
-        if (failures is not null)
-        {
-            if (failureCount > MaximumRetirementFailureDetails)
-            {
-                failures.Add(new MarkdownLayoutRetirementFailureSummary(
-                    failureCount - MaximumRetirementFailureDetails));
-            }
-
-            throw new MarkdownLayoutRetirementException(
-                new AggregateException("Failed layout resources did not retire cleanly.", failures),
-                primaryFailure);
-        }
-    }
+    internal Task DrainOwnedRetirementsAsync(Exception? primaryFailure = null)
+        => _retirements.DrainAsync(primaryFailure);
 
     /// <summary>Optional diagnostic-only timing sink for the current immutable layout build.</summary>
     internal MarkdownLayoutDiagnostics? LayoutDiagnostics { get; init; }
@@ -626,33 +515,33 @@ internal sealed class MarkdownLayoutContext
         return result;
     }
 
-    internal StyleScope PushStyleContext(string key)
+    internal LayoutStyleScope PushStyleContext(string key)
     {
-        StyleScope scope = CaptureStyleScope();
+        LayoutStyleScope scope = CaptureStyleScope();
         if (!string.IsNullOrWhiteSpace(key))
             _styleContextKeys.Add(key);
         return scope;
     }
 
-    internal StyleScope PushListDepth()
+    internal LayoutStyleScope PushListDepth()
     {
-        StyleScope scope = CaptureStyleScope();
+        LayoutStyleScope scope = CaptureStyleScope();
         _listDepth++;
         _styleContextKeys.Add(MarkdownElementKeys.ListDepth(_listDepth));
         return scope;
     }
 
-    internal StyleScope PushMarkdownAttributes(IMarkdownObject markdownObject)
+    internal LayoutStyleScope PushMarkdownAttributes(IMarkdownObject markdownObject)
     {
-        StyleScope scope = CaptureStyleScope();
+        LayoutStyleScope scope = CaptureStyleScope();
         AddMarkdownAttributeAliases(markdownObject, _styleAliasKeys);
         return scope;
     }
 
-    internal StyleScope PushStyleAliases(IReadOnlyList<string> aliases)
+    internal LayoutStyleScope PushStyleAliases(IReadOnlyList<string> aliases)
     {
         ArgumentNullException.ThrowIfNull(aliases);
-        StyleScope scope = CaptureStyleScope();
+        LayoutStyleScope scope = CaptureStyleScope();
         for (int index = 0; index < aliases.Count; index++)
         {
             string alias = aliases[index];
@@ -712,7 +601,7 @@ internal sealed class MarkdownLayoutContext
         => _safeHtmlSourceProjection?.MapRangeOrEmpty(localStart, localLength)
             ?? new SourceSpan(localStart, localLength);
 
-    private void RestoreSourceProjection(MarkdownSourceProjection? projection, bool safeHtml)
+    internal void RestoreSourceProjection(MarkdownSourceProjection? projection, bool safeHtml)
     {
         if (safeHtml)
             _safeHtmlSourceProjection = projection;
@@ -720,26 +609,7 @@ internal sealed class MarkdownLayoutContext
             _sourceProjection = projection;
     }
 
-    internal readonly struct MarkdownSourceProjectionScope : IDisposable
-    {
-        private readonly MarkdownLayoutContext? _owner;
-        private readonly MarkdownSourceProjection? _previous;
-        private readonly bool _safeHtml;
-
-        internal MarkdownSourceProjectionScope(
-            MarkdownLayoutContext owner,
-            MarkdownSourceProjection? previous,
-            bool safeHtml)
-        {
-            _owner = owner;
-            _previous = previous;
-            _safeHtml = safeHtml;
-        }
-
-        public void Dispose() => _owner?.RestoreSourceProjection(_previous, _safeHtml);
-    }
-
-    private void RestoreSafeHtmlBlockContext(
+    internal void RestoreSafeHtmlBlockContext(
         SafeHtmlAlignment alignment,
         SafeHtmlBlockScopeTracker? nestedScopes,
         int? inlineFlowScopeId,
@@ -751,37 +621,7 @@ internal sealed class MarkdownLayoutContext
         _safeHtmlInlineFlowContinuesPrevious = inlineFlowContinuesPrevious;
     }
 
-    internal readonly struct SafeHtmlBlockRenderScope : IDisposable
-    {
-        private readonly MarkdownLayoutContext? _owner;
-        private readonly SafeHtmlAlignment _alignment;
-        private readonly SafeHtmlBlockScopeTracker? _nestedScopes;
-        private readonly int? _inlineFlowScopeId;
-        private readonly bool _inlineFlowContinuesPrevious;
-
-        internal SafeHtmlBlockRenderScope(
-            MarkdownLayoutContext owner,
-            SafeHtmlAlignment alignment,
-            SafeHtmlBlockScopeTracker? nestedScopes,
-            int? inlineFlowScopeId,
-            bool inlineFlowContinuesPrevious)
-        {
-            _owner = owner;
-            _alignment = alignment;
-            _nestedScopes = nestedScopes;
-            _inlineFlowScopeId = inlineFlowScopeId;
-            _inlineFlowContinuesPrevious = inlineFlowContinuesPrevious;
-        }
-
-        public void Dispose()
-            => _owner?.RestoreSafeHtmlBlockContext(
-                _alignment,
-                _nestedScopes,
-                _inlineFlowScopeId,
-                _inlineFlowContinuesPrevious);
-    }
-
-    private StyleScope CaptureStyleScope() =>
+    private LayoutStyleScope CaptureStyleScope() =>
         new(this, _styleContextKeys.Count, _styleAliasKeys.Count, _listDepth);
 
     internal void RegisterMarkdownAttributes(IMarkdownObject markdownObject, int blockIndex)
@@ -811,32 +651,13 @@ internal sealed class MarkdownLayoutContext
             aliases.Add(MarkdownElementKeys.Id(attrs.Id));
     }
 
-    private void RestoreStyleState(int contextCount, int aliasCount, int listDepth)
+    internal void RestoreStyleState(int contextCount, int aliasCount, int listDepth)
     {
         if (_styleContextKeys.Count > contextCount)
             _styleContextKeys.RemoveRange(contextCount, _styleContextKeys.Count - contextCount);
         if (_styleAliasKeys.Count > aliasCount)
             _styleAliasKeys.RemoveRange(aliasCount, _styleAliasKeys.Count - aliasCount);
         _listDepth = listDepth;
-    }
-
-    internal readonly struct StyleScope : IDisposable
-    {
-        private readonly MarkdownLayoutContext? _owner;
-        private readonly int _contextCount;
-        private readonly int _aliasCount;
-        private readonly int _listDepth;
-
-        internal StyleScope(MarkdownLayoutContext owner, int contextCount, int aliasCount, int listDepth)
-        {
-            _owner = owner;
-            _contextCount = contextCount;
-            _aliasCount = aliasCount;
-            _listDepth = listDepth;
-        }
-
-        public void Dispose()
-            => _owner?.RestoreStyleState(_contextCount, _aliasCount, _listDepth);
     }
 
     /// <summary>
@@ -854,285 +675,31 @@ internal sealed class MarkdownLayoutContext
             "Move WinUI work to CreateBlock or RecycleBlock.");
     }
 
-    // ---- Footnote registry ----
-    // Records the block indices of each footnote's definition and inline
-    // reference so the control can scroll to either end of a back/forward link.
-    // Key = footnote order (1-based); value = (defBlockIndex, refBlockIndex).
+    // ---- Footnote and fragment registry ----
     // Written by FootnoteRenderer (def) and LayoutBuilder (ref) during build;
     // read by MarkdownRendererControl via LayoutSnapshot after build completes.
-    // Concurrent because LayoutBuilder runs on a background thread.
-    private readonly ConcurrentDictionary<int, int> _footnoteDefBlocks = new();
-    private readonly ConcurrentDictionary<int, int> _footnoteRefBlocks = new();
-    private readonly ConcurrentDictionary<string, int> _fragmentTargetBlocks = new(StringComparer.Ordinal);
-    private readonly Dictionary<Footnote, int> _footnoteOrders = new(ReferenceEqualityComparer.Instance);
-    private readonly HashSet<int> _reservedFootnoteOrders = new();
-    private readonly object _footnoteOrderGate = new();
-    private int _nextGeneratedFootnoteOrder;
 
     /// <summary>Records the block index of the definition for footnote <paramref name="order"/>.</summary>
-    public void RegisterFootnoteDef(int order, int blockIndex) => _footnoteDefBlocks[order] = blockIndex;
+    public void RegisterFootnoteDef(int order, int blockIndex) => _navigation.RegisterFootnoteDef(order, blockIndex);
 
     /// <summary>Records the block index of the paragraph containing the inline citation for footnote <paramref name="order"/>.</summary>
-    public void RegisterFootnoteRef(int order, int blockIndex) => _footnoteRefBlocks[order] = blockIndex;
+    public void RegisterFootnoteRef(int order, int blockIndex) => _navigation.RegisterFootnoteRef(order, blockIndex);
 
     /// <summary>Returns block index of the footnote definition, or null.</summary>
-    public int? GetFootnoteDefBlock(int order) => _footnoteDefBlocks.TryGetValue(order, out var v) ? v : null;
+    public int? GetFootnoteDefBlock(int order) => _navigation.GetFootnoteDefBlock(order);
 
     /// <summary>Returns block index of the inline citation paragraph, or null.</summary>
-    public int? GetFootnoteRefBlock(int order) => _footnoteRefBlocks.TryGetValue(order, out var v) ? v : null;
+    public int? GetFootnoteRefBlock(int order) => _navigation.GetFootnoteRefBlock(order);
 
     /// <summary>Snapshots the registry into plain dictionaries (safe to read off the build thread).</summary>
     public (IReadOnlyDictionary<int,int> Defs, IReadOnlyDictionary<int,int> Refs) SnapshotFootnoteRegistry()
-        => (new Dictionary<int, int>(_footnoteDefBlocks), new Dictionary<int, int>(_footnoteRefBlocks));
+        => _navigation.SnapshotFootnoteRegistry();
 
-    /// <summary>
-    /// Returns one stable display/navigation order for a Markdig footnote during
-    /// the current layout pass. Markdig normally assigns <see cref="Footnote.Order"/>,
-    /// but malformed or synthetic footnotes can arrive without one; generated
-    /// fallback values are shared by references and definitions.
-    /// </summary>
+    /// <inheritdoc cref="LayoutNavigationTargets.GetOrCreateFootnoteOrder"/>
     public int GetOrCreateFootnoteOrder(Footnote footnote, int fallbackHint = 0)
-    {
-        if (footnote is null)
-            return Math.Max(1, fallbackHint);
+        => _navigation.GetOrCreateFootnoteOrder(footnote, fallbackHint);
 
-        lock (_footnoteOrderGate)
-        {
-            if (_footnoteOrders.TryGetValue(footnote, out var existing))
-                return existing;
+    internal void RegisterFragmentTarget(string id, int blockIndex) => _navigation.RegisterFragmentTarget(id, blockIndex);
 
-            int order = footnote.Order > 0 ? footnote.Order : fallbackHint;
-            if (order <= 0 || _reservedFootnoteOrders.Contains(order))
-            {
-                do { _nextGeneratedFootnoteOrder++; }
-                while (_reservedFootnoteOrders.Contains(_nextGeneratedFootnoteOrder));
-                order = _nextGeneratedFootnoteOrder;
-            }
-
-            _reservedFootnoteOrders.Add(order);
-            _footnoteOrders[footnote] = order;
-            return order;
-        }
-    }
-
-    internal void RegisterFragmentTarget(string id, int blockIndex)
-    {
-        id = NormalizeFragmentId(id);
-        if (id.Length > 0)
-            _fragmentTargetBlocks[id] = blockIndex;
-    }
-
-    internal IReadOnlyDictionary<string, int> SnapshotFragmentTargets()
-        => new Dictionary<string, int>(_fragmentTargetBlocks, StringComparer.Ordinal);
-
-    private static string NormalizeFragmentId(string id)
-    {
-        id = id.Trim();
-        if (id.StartsWith("#", StringComparison.Ordinal))
-            id = id.Substring(1);
-        return id;
-    }
-}
-
-/// <summary>
-/// Tracks renderer-created boxes and staged inline resources until their parent or published snapshot has
-/// accepted ownership. Only the current synchronous build uses this ledger.
-/// </summary>
-internal sealed class MarkdownLayoutConstructionScope : IDisposable
-{
-    private readonly MarkdownLayoutContext _context;
-    private HashSet<object>? _roots = new(ReferenceEqualityComparer.Instance);
-    private int _disposed;
-
-    internal MarkdownLayoutConstructionScope(MarkdownLayoutContext context)
-    {
-        _context = context;
-    }
-
-    internal void Register(object resource)
-    {
-        if (Volatile.Read(ref _disposed) != 0 || _roots is not { } roots || !roots.Add(resource))
-            return;
-    }
-
-    internal void Adopt(object child) => _roots?.Remove(child);
-
-    internal void Forget(BlockBox block) => _roots?.Remove(block);
-
-    internal void TransferToSnapshot(IReadOnlyList<BlockBox> publishedRoots)
-    {
-        ArgumentNullException.ThrowIfNull(publishedRoots);
-        if (_roots is null || _roots.Count == 0 || publishedRoots.Count == 0)
-            return;
-
-        // Some built-in renderers attach children directly instead of going
-        // through a builder helper that can explicitly adopt each child. Walk
-        // only the actual snapshot-owned graph, removing those boxes from the
-        // construction ledger while leaving genuinely unpublished objects for
-        // Dispose() to retire.
-        var visited = new HashSet<BlockBox>(ReferenceEqualityComparer.Instance);
-        var pending = new Stack<BlockBox>(publishedRoots.Count);
-        for (int index = 0; index < publishedRoots.Count; index++)
-            pending.Push(publishedRoots[index]);
-
-        while (pending.Count > 0)
-        {
-            BlockBox current = pending.Pop();
-            if (!visited.Add(current))
-                continue;
-
-            _roots.Remove(current);
-            switch (current)
-            {
-                case StackBox stack:
-                    for (int index = 0; index < stack.Children.Count; index++)
-                        pending.Push(stack.Children[index]);
-                    break;
-                case ListItemBox listItem:
-                    pending.Push(listItem.Marker);
-                    pending.Push(listItem.Content);
-                    break;
-                case CodeBlockBox codeBlock:
-                    for (int index = 0; index < codeBlock.Chunks.Count; index++)
-                        pending.Push(codeBlock.Chunks[index]);
-                    break;
-                case TableBox table:
-                    foreach (InlineContainerBox cell in table.GetCellBoxes())
-                        pending.Push(cell);
-                    break;
-                case InlineContainerBox inline:
-                    IReadOnlyList<InlineRun> runs = inline.Runs;
-                    for (int index = 0; index < runs.Count; index++)
-                        if (runs[index] is InlineVectorSceneRun vector)
-                            _roots.Remove(vector);
-                    IReadOnlyList<(InlineImageRun Run, int Offset)> images = inline.InlineImageRuns;
-                    for (int index = 0; index < images.Count; index++)
-                        pending.Push(images[index].Run.Image);
-                    break;
-            }
-        }
-    }
-
-    internal List<Task> DisposeRootsBestEffort()
-    {
-        var retirementTasks = new List<Task>();
-        HashSet<object>? roots = _roots;
-        if (roots is null || roots.Count == 0)
-            return retirementTasks;
-
-        object[] pendingRoots = new object[roots.Count];
-        roots.CopyTo(pendingRoots);
-        roots.Clear();
-        foreach (object root in pendingRoots)
-        {
-            try
-            {
-                if (root is BlockBox block)
-                    block.CollectRetirementTasks(retirementTasks);
-            }
-            catch (Exception exception)
-            {
-                retirementTasks.Add(Task.FromException(exception));
-            }
-        }
-
-        foreach (object root in pendingRoots)
-        {
-            try
-            {
-                if (root is BlockBox block)
-                    block.Dispose();
-                else
-                    ((IDisposable)root).Dispose();
-            }
-            catch (Exception exception)
-            {
-                retirementTasks.Add(Task.FromException(exception));
-            }
-        }
-
-        return retirementTasks;
-    }
-
-    public void Dispose()
-    {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
-            return;
-
-        try
-        {
-            // This is a last-resort guard for future build paths that forget to
-            // explicitly abort or transfer. Normal callers drain returned
-            // barriers in their failure path before leaving the scope.
-            foreach (Task task in DisposeRootsBestEffort())
-            {
-                try
-                {
-                    _context.RegisterRetirement(task);
-                }
-                catch
-                {
-                    // Teardown remains best-effort and never masks construction failure.
-                }
-            }
-        }
-        finally
-        {
-            _roots = null;
-            _context.EndConstructionScope(this);
-        }
-    }
-}
-
-/// <summary>
-/// Identifies failed-build resource teardown faults so the owning pipeline can
-/// fail shutdown closed without confusing them with an ordinary render failure.
-/// </summary>
-internal sealed class MarkdownLayoutRetirementException : Exception
-{
-    private Exception? _primaryFailure;
-
-    internal MarkdownLayoutRetirementException(
-        AggregateException innerException,
-        Exception? primaryFailure = null)
-        : base("One or more unpublished markdown layout resources failed to retire.", innerException)
-    {
-        _primaryFailure = primaryFailure;
-    }
-
-    internal Exception? PrimaryFailure => Volatile.Read(ref _primaryFailure);
-
-    /// <summary>
-    /// Transfers the original build failure to its public diagnostic observer
-    /// without retaining its potentially large exception graph on the failed
-    /// retirement task.
-    /// </summary>
-    internal Exception? TakePrimaryFailure() => Interlocked.Exchange(ref _primaryFailure, null);
-}
-
-/// <summary>Privacy-safe bounded summary of a failed retirement operation.</summary>
-internal sealed class MarkdownLayoutRetirementFailureSummary : Exception
-{
-    internal MarkdownLayoutRetirementFailureSummary(Exception exception)
-        : base(CreateMessage(exception))
-    {
-        ExceptionType = exception.GetType().FullName ?? exception.GetType().Name;
-        HResultCode = exception.HResult;
-    }
-
-    internal MarkdownLayoutRetirementFailureSummary(int omittedFailureCount)
-        : base($"{omittedFailureCount} additional layout retirement failures omitted.")
-    {
-        OmittedFailureCount = omittedFailureCount;
-    }
-
-    internal readonly string? ExceptionType;
-    internal readonly int? HResultCode;
-    internal readonly int? OmittedFailureCount;
-
-    private static string CreateMessage(Exception exception)
-    {
-        string typeName = exception.GetType().FullName ?? exception.GetType().Name;
-        return $"Layout retirement failed: {typeName} (HResult=0x{exception.HResult:X8}).";
-    }
+    internal IReadOnlyDictionary<string, int> SnapshotFragmentTargets() => _navigation.SnapshotFragmentTargets();
 }

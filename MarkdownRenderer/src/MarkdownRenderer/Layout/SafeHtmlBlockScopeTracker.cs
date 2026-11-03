@@ -168,38 +168,49 @@ internal sealed class SafeHtmlBlockScopeTracker
                 return ExceedBudget();
 
             if (tag.Name == "details")
-            {
                 containsDetailsOpening = true;
-                string id = (sourceOffset + tag.SourceStart).ToString(System.Globalization.CultureInfo.InvariantCulture);
-                bool defaultExpanded = tag.TryGetAttribute("open", out _);
-                bool expanded = disclosureStates.TryGetValue(id, out bool state) ? state : defaultExpanded;
-                _scopes.Add(new Scope(tag.Name, SafeHtmlAlignment.Inherit, suppressContent: !expanded));
-                continue;
-            }
-
-            if (tag.Name == "summary")
-            {
-                _scopes.Add(new Scope(tag.Name, SafeHtmlAlignment.Inherit, suppressContent: false));
-                continue;
-            }
-
-            if (tag.Name is "div" or "p" or "center")
-            {
-                SafeHtmlAlignment alignment = tag.Name == "center"
-                    ? SafeHtmlAlignment.Center
-                    : SafeHtmlParser.GetAlignment(tag);
-                int? inlineFlowScopeId = tag.Name is "div" or "center"
-                    ? sourceOffset + tag.SourceStart
-                    : null;
-                _scopes.Add(new Scope(
-                    tag.Name,
-                    alignment,
-                    suppressContent: false,
-                    inlineFlowScopeId: inlineFlowScopeId));
-            }
+            PushOpeningScope(tag, sourceOffset, disclosureStates);
         }
 
         return isTagSequence && !containsDetailsOpening && allTagsAreScopeTags;
+    }
+
+    // Opens the scope for one opening tag. A details scope suppresses its
+    // content while collapsed; div and center also open an inline-flow scope.
+    private void PushOpeningScope(
+        SafeHtmlTag tag,
+        int sourceOffset,
+        IReadOnlyDictionary<string, bool> disclosureStates)
+    {
+        if (tag.Name == "details")
+        {
+            string id = (sourceOffset + tag.SourceStart).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            bool defaultExpanded = tag.TryGetAttribute("open", out _);
+            bool expanded = disclosureStates.TryGetValue(id, out bool state) ? state : defaultExpanded;
+            _scopes.Add(new Scope(tag.Name, SafeHtmlAlignment.Inherit, suppressContent: !expanded));
+            return;
+        }
+
+        if (tag.Name == "summary")
+        {
+            _scopes.Add(new Scope(tag.Name, SafeHtmlAlignment.Inherit, suppressContent: false));
+            return;
+        }
+
+        if (tag.Name is "div" or "p" or "center")
+        {
+            SafeHtmlAlignment alignment = tag.Name == "center"
+                ? SafeHtmlAlignment.Center
+                : SafeHtmlParser.GetAlignment(tag);
+            int? inlineFlowScopeId = tag.Name is "div" or "center"
+                ? sourceOffset + tag.SourceStart
+                : null;
+            _scopes.Add(new Scope(
+                tag.Name,
+                alignment,
+                suppressContent: false,
+                inlineFlowScopeId: inlineFlowScopeId));
+        }
     }
 
     /// <summary>

@@ -541,23 +541,8 @@ public sealed class LayoutSnapshotLazyNativeParityTests
         Assert.True(snapshot.TryBeginInteraction());
         try
         {
-            MethodInfo reflow = typeof(LayoutSnapshot).GetMethod(
-                "ReflowNoLock",
-                BindingFlags.Instance | BindingFlags.NonPublic,
-                binder: null,
-                types: [typeof(bool), typeof(int)],
-                modifiers: null)
-                ?? throw new InvalidOperationException("The full-reflow method is missing.");
-            reflow.Invoke(snapshot, new object?[] { false, 0 });
-
-            MethodInfo publish = typeof(LayoutSnapshot).GetMethod(
-                "PublishCommittedMetadataNoLock",
-                BindingFlags.Instance | BindingFlags.NonPublic,
-                binder: null,
-                types: Type.EmptyTypes,
-                modifiers: null)
-                ?? throw new InvalidOperationException("The committed-metadata publisher is missing.");
-            publish.Invoke(snapshot, Array.Empty<object?>());
+            snapshot.Geometry.ReflowNoLock(incrementRevision: false, firstOrdinal: 0);
+            snapshot.Geometry.PublishCommittedMetadataNoLock();
         }
         finally
         {

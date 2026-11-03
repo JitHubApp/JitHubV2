@@ -70,7 +70,7 @@ public sealed class RootLocalInlineImageRelayoutTests
 
         fallback.Snapshot.RelayoutChangedBlocks(
             [fallbackInline.BlockIndex], LayoutWidth, CancellationToken.None);
-        object layoutLock = ReadField<object>(optimized.Snapshot, "_layoutLock");
+        object layoutLock = optimized.Snapshot.Geometry.Gate;
         object imageLock = ReadField<object>(image, "_svgWorkSync");
         int providerReadsUnderSourceGate = 0;
         renderer.GenerationReadHook = () =>
@@ -364,11 +364,11 @@ public sealed class RootLocalInlineImageRelayoutTests
             result = document.Snapshot.TryRelayoutCompletedImageRoots(
                 [standalone.BlockIndex, inline.BlockIndex], LayoutWidth, CancellationToken.None,
                 out constructionContext,
-                beforeMeasureOutsideGateForTests: () =>
+                phaseHooks: CompletedImageRelayoutPhaseHooks.BeforeMeasure(() =>
                 {
                     mutationRan = true;
                     lastInlineRun.InlineIndex = originalInlineIndex + 1;
-                },
+                }),
                 expectedPointerInputEpoch: document.Snapshot.PointerInputEpoch);
         }
         finally
@@ -667,7 +667,7 @@ public sealed class RootLocalInlineImageRelayoutTests
                 LayoutWidth,
                 cancellation.Token,
                 out constructionContext,
-                beforeMeasureOutsideGateForTests: cancellation.Cancel,
+                phaseHooks: CompletedImageRelayoutPhaseHooks.BeforeMeasure(cancellation.Cancel),
                 expectedPointerInputEpoch: document.Snapshot.PointerInputEpoch));
 
             Assert.True(cancellation.IsCancellationRequested);
@@ -721,7 +721,7 @@ public sealed class RootLocalInlineImageRelayoutTests
                 LayoutWidth,
                 CancellationToken.None,
                 out constructionContext,
-                beforeMeasureOutsideGateForTests: document.Snapshot.NotifyPointerInput,
+                phaseHooks: CompletedImageRelayoutPhaseHooks.BeforeMeasure(document.Snapshot.NotifyPointerInput),
                 expectedPointerInputEpoch: pointerEpochBefore);
 
             Assert.Equal(PreparedImageRelayoutResult.Retry, result);
@@ -761,13 +761,13 @@ public sealed class RootLocalInlineImageRelayoutTests
                 LayoutWidth,
                 CancellationToken.None,
                 out constructionContext,
-                beforeMeasureOutsideGateForTests: () =>
+                phaseHooks: CompletedImageRelayoutPhaseHooks.BeforeMeasure(() =>
                 {
                     document.Snapshot.RelayoutChangedBlocks(
                         [inline.BlockIndex], LayoutWidth, CancellationToken.None);
                     callbackRevision = document.Snapshot.LayoutRevision;
                     callbackBounds = document.Snapshot.Blocks.Select(static root => root.Bounds).ToArray();
-                },
+                }),
                 expectedPointerInputEpoch: document.Snapshot.PointerInputEpoch);
 
             Assert.Equal(PreparedImageRelayoutResult.Retry, result);

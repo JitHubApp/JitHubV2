@@ -256,13 +256,7 @@ public sealed class FocusablePlanAdmissionTests
         };
 
     private static FocusableItem[]? ReadFixedPlan(LayoutSnapshot snapshot)
-    {
-        var field = typeof(LayoutSnapshot).GetField(
-            "_fixedFocusableItems",
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Snapshot fixed focus-plan storage was not found.");
-        return (FocusableItem[]?)field.GetValue(snapshot);
-    }
+        => snapshot.Focusables.FixedItems;
 
     private sealed class StubEmbedFactory : IMarkdownEmbedFactory
     {

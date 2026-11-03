@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Generic;
-using MarkdownRenderer.Accessibility;
-using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Layout.Boxes;
 
@@ -18,7 +16,7 @@ internal sealed class LayoutSnapshotIndexBuilder
     private readonly Dictionary<ImageBox, int> _imageTopLevelOrdinalByIdentity;
     private readonly HashSet<IHorizontalOverflowBox> _horizontalOverflowBoxes;
     private readonly Dictionary<int, IHorizontalOverflowBox> _horizontalOverflowByBlockIndex;
-    private readonly List<LayoutSnapshot.FocusablePlanEntry> _focusablePlan = new();
+    private readonly List<FocusablePlanEntry> _focusablePlan = new();
     private readonly List<LayoutPlanCandidate> _layoutPlanCandidates = new();
     private int _topLevelOrdinal = -1;
     private IHorizontalOverflowBox? _ancestor;
@@ -156,7 +154,7 @@ internal sealed class LayoutSnapshotIndexBuilder
     internal void ExitCodeChunk(InlineContainerBox chunk, Scope scope)
         => Exit(chunk, scope, addOverflowFallback: false);
 
-    internal LayoutSnapshot.FocusablePlanEntry[] CompleteFocusablePlan()
+    internal FocusablePlanEntry[] CompleteFocusablePlan()
         => _focusablePlan.ToArray();
 
     internal LayoutPlanCandidate[] CompleteLayoutPlanCandidates()
@@ -181,7 +179,7 @@ internal sealed class LayoutSnapshotIndexBuilder
                 _focusablePlan.Count == scope.FocusableStart &&
                 box is IHorizontalOverflowBox overflow)
             {
-                _focusablePlan.Add(new LayoutSnapshot.FocusablePlanEntry(
+                _focusablePlan.Add(new FocusablePlanEntry(
                     new FocusableItem(box.BlockIndex, 0, FocusableItemKind.HorizontalOverflow),
                     overflow));
             }
@@ -211,7 +209,7 @@ internal sealed class LayoutSnapshotIndexBuilder
     }
 
     private void AddFocusable(FocusableItem item)
-        => _focusablePlan.Add(new LayoutSnapshot.FocusablePlanEntry(item, null));
+        => _focusablePlan.Add(new FocusablePlanEntry(item, null));
 
     internal readonly struct Scope
     {

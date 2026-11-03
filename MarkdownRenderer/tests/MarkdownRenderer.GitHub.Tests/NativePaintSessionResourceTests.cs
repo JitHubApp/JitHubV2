@@ -329,7 +329,7 @@ public sealed class NativePaintSessionResourceTests
         MeasureManagedLayers(drawing, clip, 128);
 
         NativePaintSessionResources.LayerLease initial = NativePaintSessionResources.CreateLayer(drawing, 1f, clip);
-        NativePaintSessionResources.LayerNode pooledNode = Assert.IsType<NativePaintSessionResources.LayerNode>(initial.Node);
+        NativePaintLayerNode pooledNode = Assert.IsType<NativePaintLayerNode>(initial.Node);
         NativeResourceRetirementRecord pooledRecord = pooledNode.Retirement;
         initial.Close();
         for (int index = 0; index < 16; index++)
@@ -445,7 +445,7 @@ public sealed class NativePaintSessionResourceTests
         CanvasDrawingSession drawing,
         Rect clip,
         int count,
-        NativePaintSessionResources.LayerNode? expectedNode = null,
+        NativePaintLayerNode? expectedNode = null,
         NativeResourceRetirementRecord? expectedRecord = null)
     {
         long before = GC.GetAllocatedBytesForCurrentThread();

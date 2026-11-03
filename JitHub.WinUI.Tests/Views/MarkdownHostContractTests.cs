@@ -310,7 +310,8 @@ public sealed class MarkdownHostContractTests
             root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Input", "LinkTargets.cs"));
 
         Assert.Contains("MarkdownSemanticDocument.Build(this, matchingTextProjection, indexBuilder)", snapshot, StringComparison.Ordinal);
-        Assert.Contains("_focusablePlan = indexBuilder.CompleteFocusablePlan();", snapshot, StringComparison.Ordinal);
+        Assert.Contains("_focusables = new SnapshotFocusablePlan(", snapshot, StringComparison.Ordinal);
+        Assert.Contains("indexBuilder.CompleteFocusablePlan()", snapshot, StringComparison.Ordinal);
         Assert.Contains("if (run is LinkRun or InlineImageRun { IsLinked: true } or", snapshotIndexes, StringComparison.Ordinal);
         int observeInlineRun = semanticDocument.IndexOf("_layoutIndexes?.ObserveInlineRun(inline, run);", StringComparison.Ordinal);
         int decorativeImageFilter = semanticDocument.IndexOf(

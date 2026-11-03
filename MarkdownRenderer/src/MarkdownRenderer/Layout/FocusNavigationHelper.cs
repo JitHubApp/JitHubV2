@@ -4,14 +4,6 @@ using Windows.Foundation;
 
 namespace MarkdownRenderer.Layout;
 
-internal enum FocusNavigationDirection
-{
-    Left,
-    Right,
-    Up,
-    Down,
-}
-
 internal static class FocusNavigationHelper
 {
     public static int MoveTab(int itemCount, int currentIndex, int resumeIndex, bool reverse)
