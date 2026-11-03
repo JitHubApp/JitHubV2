@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text;
 using System.Xml;
 
@@ -82,7 +81,7 @@ internal static class SvgUtf8Normalization
         CancellationToken cancellationToken,
         Action? beforeFirstSegmentAllocation = null)
     {
-        SvgSourceBuffer.ReadLease? inputLease = null;
+        SvgSourceReadLease? inputLease = null;
         SvgSourceStream? input = null;
         XmlReader? reader = null;
         BoundedOutputStream? output = null;

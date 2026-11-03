@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text;
 using System.Xml;
 using MarkdownRenderer.Images;
@@ -189,7 +188,7 @@ internal static class SvgPreflight
             {
                 XmlReaderSettings settings = CreateReaderSettings(
                     options.MaxSourceBytes, ignoreComments: true, asynchronous: false);
-                SvgSourceBuffer.ReadLease? readerLease = source.AcquireReadLease();
+                SvgSourceReadLease? readerLease = source.AcquireReadLease();
                 try
                 {
                     int utf8Offset = readerLease.GetSpanAt(0).StartsWith<byte>([0xef, 0xbb, 0xbf]) ? 3 : 0;
@@ -478,7 +477,7 @@ internal static class SvgPreflight
                 throw SvgPreflightFailures.Unsupported("The SVG has no document root.");
 
             bool requiresUtf8Normalization;
-            using (SvgSourceBuffer.ReadLease sourceLease = source.AcquireReadLease())
+            using (SvgSourceReadLease sourceLease = source.AcquireReadLease())
             {
                 requiresUtf8Normalization = SvgUtf8Normalization.RequiresUtf8Normalization(
                     sourceLease.GetSpanAt(0), declaredEncoding);

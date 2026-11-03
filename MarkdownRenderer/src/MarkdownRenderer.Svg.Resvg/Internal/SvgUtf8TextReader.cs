@@ -10,14 +10,14 @@ namespace MarkdownRenderer.Svg.Resvg.Internal;
 internal sealed class SvgUtf8TextReader : TextReader
 {
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
-    private SvgSourceBuffer.ReadLease? _source;
+    private SvgSourceReadLease? _source;
     private readonly Decoder _decoder = StrictUtf8.GetDecoder();
     private readonly CancellationToken _cancellationToken;
     private int _offset;
     private char? _pendingCharacter;
 
     public SvgUtf8TextReader(
-        SvgSourceBuffer.ReadLease source,
+        SvgSourceReadLease source,
         int offset,
         CancellationToken cancellationToken = default)
     {
@@ -44,7 +44,7 @@ internal sealed class SvgUtf8TextReader : TextReader
 
     public override int Read(Span<char> buffer)
     {
-        SvgSourceBuffer.ReadLease source = _source ?? throw new ObjectDisposedException(nameof(SvgUtf8TextReader));
+        SvgSourceReadLease source = _source ?? throw new ObjectDisposedException(nameof(SvgUtf8TextReader));
         _cancellationToken.ThrowIfCancellationRequested();
         if (buffer.IsEmpty)
             return 0;
