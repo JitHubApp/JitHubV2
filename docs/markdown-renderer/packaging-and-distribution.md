@@ -61,8 +61,8 @@ limits.
 
 | Gate | Budget | Measured |
 | --- | --- | --- |
-| `MarkdownRenderer`, compressed | 1,028 KiB | 932,824 bytes (2026-10-27) |
-| `MarkdownRenderer`, managed DLL | 2,475 KiB | 2,302,464 bytes (2026-10-27) |
+| `MarkdownRenderer`, compressed | 1,150 KiB | 1,068,686 bytes (2026-11-03, projected; see below) |
+| `MarkdownRenderer`, managed DLL | 2,960 KiB | 2,752,512 bytes (2026-11-03, projected; see below) |
 | resvg selected deployment (worker + provider DLL), per RID | 4,500 KiB | 4,136,448 bytes (x64, 2026-10-26) |
 | resvg package, all RIDs, compressed | 5,950 KiB | 5,524,179 bytes (2026-10-26) |
 | Math, compressed | 2.3 MiB | 701,640 bytes (2026-10-26) |
@@ -74,11 +74,28 @@ about 10%. The earlier budgets (525 KiB, 1.2 MiB, 3.5 MiB, 5 MiB) were set in
 September. Later work grew past them: the progressive renderer, the correctness
 fixes, and the resvg WebP row decoder. Earlier failing CI steps hid the overrun.
 
-The `MarkdownRenderer` compressed budget is the sum of the earlier engine and
-viewer (900 KiB) and performance-session (128 KiB) budgets. Its managed budget
-is the measured `MarkdownRenderer.dll` plus about 10%: the GFM, GitHub README,
-safe-HTML and performance code it now holds never had a managed budget of its
-own, so the earlier engine and viewer budget (2,150 KiB) did not cover it.
+The `MarkdownRenderer` budgets were raised on 2026-11-03 to the measured size
+plus about 10%. The structure cleanup (umbrella PR #103) splits large types into
+owner classes with small host interfaces, and long async methods into named
+stages, each with its own state machine. Behavior is unchanged; the extra types
+and state machines add about 13% managed and 11% compressed size over the
+integration branch (2,442,240 managed and 964,908 compressed bytes). The
+measurements, all Release x64 builds of the shipping package with normalized
+archives:
+
+| Build | Managed DLL | Compressed |
+| --- | --- | --- |
+| Integration branch after #120 | 2,442,240 | 964,908 |
+| Engine, layout, inline, accessibility, Rust and SVG slices merged | 2,580,480 | 1,010,953 |
+| ImageBox slice alone (adds) | +95,744 | +31,274 |
+| Control slice over its base (adds) | +76,288 | +26,459 |
+| Projected, every slice in | 2,752,512 | 1,068,686 |
+
+ImageBox and control can only be merged after the slices they build on, so their
+growth is measured against their own bases and added. Before that, the
+compressed budget was the sum of the earlier engine and viewer (900 KiB) and
+performance-session (128 KiB) budgets, and the managed budget was the
+2026-10-27 measurement (2,302,464 bytes) plus about 10%.
 
 The budgets catch regressions; they are not size targets. Raise one only with a
 new measurement and a note here.

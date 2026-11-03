@@ -57,15 +57,15 @@ $rendererNativeEntries = @($rendererEntries |
         ($_.Name -notmatch '^lib/' -and $_.Name -match '\.(dll|exe|so|dylib)$')
     })
 
-# Budgets are measured sizes plus about 10% headroom. The compressed budget is
-# the sum of the earlier engine/viewer (900 KiB) and performance-session
-# (128 KiB) budgets. The managed budget is the measured MarkdownRenderer.dll
-# (2,302,464 bytes on 2026-10-27) plus about 10%: the GFM, GitHub, HTML and
-# performance code it now holds had no managed budget of its own. See
-# docs/markdown-renderer/packaging-and-distribution.md. Native code must not
-# leak into the MarkdownRenderer package (checked separately immediately below).
-Assert-Max $rendererCompressedBytes (1028KB) 'MarkdownRenderer compressed package'
-Assert-Max $rendererManagedBytes (2475KB) 'MarkdownRenderer renderer-owned managed code'
+# Budgets are measured sizes plus about 10% headroom. Both MarkdownRenderer
+# budgets were re-measured on 2026-11-03 for the structure cleanup, which
+# splits large types into owner classes and long async methods into stages:
+# about 2,752,512 managed and 1,068,686 compressed bytes once every cleanup
+# slice is in. See docs/markdown-renderer/packaging-and-distribution.md.
+# Native code must not leak into the MarkdownRenderer package (checked
+# separately immediately below).
+Assert-Max $rendererCompressedBytes (1150KB) 'MarkdownRenderer compressed package'
+Assert-Max $rendererManagedBytes (2960KB) 'MarkdownRenderer renderer-owned managed code'
 if ($rendererNativeEntries.Count -ne 0) {
     throw "MarkdownRenderer contains native payload: $($rendererNativeEntries.Name -join ', ')."
 }
