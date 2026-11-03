@@ -116,7 +116,6 @@ pub(crate) fn decode_and_render(
             &mut decoder,
             icc,
             icc_plan.as_ref(),
-            mapping_bytes,
         );
     }
 
@@ -202,7 +201,6 @@ pub(crate) fn decode_and_render(
                 &mut retry_decoder,
                 icc,
                 icc_plan.as_ref(),
-                mapping_bytes,
             );
         }
         return Err(map_decode_error(error));

@@ -9,7 +9,7 @@ use crate::raster_decode::pixels::{premultiply_rgba_in_place, rasterize_oriented
 use crate::raster_decode::scratch::{
     admit_scratch_budget, requested_allocation_charge, rgba_length,
 };
-use crate::raster_decode::streamed_rows::render_ready_streamed_rows;
+use crate::raster_decode::streamed_rows::{StreamGeometry, render_ready_streamed_rows};
 use crate::request::Request;
 use crate::shared_mapping::align64;
 use image_webp::WebPDecoder;
@@ -74,19 +74,22 @@ fn streamed_resampling_matches_full_raster_for_all_exif_orientations() {
             let mut output_row = vec![0; rgba_length(intermediate_width, 1).unwrap()];
             let mut streamed = vec![0; plan.output_length];
             let mut next_output_row = 0;
+            let geometry = StreamGeometry {
+                intermediate_width,
+                intermediate_height,
+                ring_height,
+                transform: scale,
+            };
 
             for source_y in 0..source_height {
                 if source_y > 0 {
                     render_ready_streamed_rows(
                         &plan,
-                        intermediate_width,
-                        intermediate_height,
+                        geometry,
                         source_y - 1,
                         &mut next_output_row,
-                        ring_height,
                         &ring,
                         &mut output_row,
-                        scale,
                         &mut streamed,
                     )
                     .unwrap();
@@ -97,14 +100,11 @@ fn streamed_resampling_matches_full_raster_for_all_exif_orientations() {
                     .copy_from_slice(&source[source_offset..source_offset + row_bytes]);
                 render_ready_streamed_rows(
                     &plan,
-                    intermediate_width,
-                    intermediate_height,
+                    geometry,
                     source_y,
                     &mut next_output_row,
-                    ring_height,
                     &ring,
                     &mut output_row,
-                    scale,
                     &mut streamed,
                 )
                 .unwrap();

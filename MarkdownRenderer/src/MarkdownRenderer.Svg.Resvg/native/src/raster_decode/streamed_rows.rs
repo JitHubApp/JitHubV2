@@ -25,7 +25,16 @@ use resvg::tiny_skia::{
 use std::io::Cursor;
 use std::sync::atomic::{AtomicU8, Ordering};
 
-#[allow(clippy::too_many_arguments)]
+/// Fixed geometry of one streamed resample: the pre-orientation output size,
+/// the resident source-row ring height, and the source-to-output scale.
+#[derive(Clone, Copy)]
+pub(crate) struct StreamGeometry {
+    pub(crate) intermediate_width: u32,
+    pub(crate) intermediate_height: u32,
+    pub(crate) ring_height: u32,
+    pub(crate) transform: Transform,
+}
+
 pub(crate) fn decode_streamed_rows(
     request: &Request,
     plan: &DecodePlan,
@@ -34,8 +43,8 @@ pub(crate) fn decode_streamed_rows(
     decoder: &mut WebPDecoder<Cursor<&[u8]>>,
     icc: Option<&[u8]>,
     icc_plan: Option<&IccProfilePlan>,
-    mapping_bytes: usize,
 ) -> Result<Response, Reject> {
+    let mapping_bytes = plan.mapping_length;
     let transposed = plan.orientation >= 5;
     let (intermediate_width, intermediate_height) = if transposed {
         (plan.target_height, plan.target_width)
@@ -114,6 +123,12 @@ pub(crate) fn decode_streamed_rows(
     if !transform.is_finite() {
         return Err(Reject::Resource("WebP resize transform overflow"));
     }
+    let geometry = StreamGeometry {
+        intermediate_width,
+        intermediate_height,
+        ring_height,
+        transform,
+    };
 
     let mut next_source_row = 0_u32;
     let mut next_output_row = 0_u32;
@@ -135,14 +150,11 @@ pub(crate) fn decode_streamed_rows(
                 if row_y > 0 {
                     render_ready_streamed_rows(
                         plan,
-                        intermediate_width,
-                        intermediate_height,
+                        geometry,
                         row_y - 1,
                         &mut next_output_row,
-                        ring_height,
                         &row_ring,
                         &mut output_row,
-                        transform,
                         output,
                     )?;
                 }
@@ -157,14 +169,11 @@ pub(crate) fn decode_streamed_rows(
                 premultiply_rgba_in_place(ring_row);
                 render_ready_streamed_rows(
                     plan,
-                    intermediate_width,
-                    intermediate_height,
+                    geometry,
                     row_y,
                     &mut next_output_row,
-                    ring_height,
                     &row_ring,
                     &mut output_row,
-                    transform,
                     output,
                 )?;
             } else {
@@ -197,13 +206,10 @@ pub(crate) fn decode_streamed_rows(
     while needs_resize && next_output_row < intermediate_height {
         render_streamed_output_row(
             plan,
-            intermediate_width,
-            intermediate_height,
+            geometry,
             next_output_row,
-            ring_height,
             &row_ring,
             &mut output_row,
-            transform,
             output,
         )?;
         next_output_row += 1;
@@ -240,19 +246,21 @@ pub(crate) fn decode_streamed_rows(
     Ok(response)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn render_ready_streamed_rows(
     plan: &DecodePlan,
-    intermediate_width: u32,
-    intermediate_height: u32,
+    geometry: StreamGeometry,
     available_source_row: u32,
     next_output_row: &mut u32,
-    ring_height: u32,
     row_ring: &[u8],
     output_row: &mut [u8],
-    transform: Transform,
     output: &mut [u8],
 ) -> Result<(), Reject> {
+    let StreamGeometry {
+        intermediate_height,
+        ring_height,
+        transform,
+        ..
+    } = geometry;
     while *next_output_row < intermediate_height {
         let (minimum, maximum) = PixmapMut::required_bicubic_source_y_range(
             plan.source_height,
@@ -273,13 +281,10 @@ pub(crate) fn render_ready_streamed_rows(
         }
         render_streamed_output_row(
             plan,
-            intermediate_width,
-            intermediate_height,
+            geometry,
             *next_output_row,
-            ring_height,
             row_ring,
             output_row,
-            transform,
             output,
         )?;
         *next_output_row += 1;
@@ -328,18 +333,20 @@ pub(crate) fn scatter_unscaled_oriented_row(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn render_streamed_output_row(
     plan: &DecodePlan,
-    intermediate_width: u32,
-    intermediate_height: u32,
+    geometry: StreamGeometry,
     output_y: u32,
-    ring_height: u32,
     row_ring: &[u8],
     output_row: &mut [u8],
-    transform: Transform,
     output: &mut [u8],
 ) -> Result<(), Reject> {
+    let StreamGeometry {
+        intermediate_width,
+        intermediate_height,
+        ring_height,
+        transform,
+    } = geometry;
     let source =
         PixmapRowRing::from_bytes(row_ring, plan.source_width, plan.source_height, ring_height)
             .ok_or(Reject::Resource("invalid WebP source row ring"))?;

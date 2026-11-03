@@ -2,11 +2,10 @@
 
 //! Inline and attribute CSS checks: active directives, motion, and url() resources.
 
-use crate::metadata::Metadata;
 use crate::reject::Reject;
 use crate::request::Request;
+use crate::svg_preflight::InspectionTally;
 use crate::svg_preflight::references::inspect_reference;
-use std::collections::HashSet;
 
 pub(crate) fn may_contain_css_resource_or_active_content(
     attribute_name: &str,
@@ -30,16 +29,11 @@ pub(crate) fn may_contain_css_resource_or_active_content(
         || lower.contains("transition"))
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn inspect_css(
     value: &str,
     request: &Request,
     remaining_nested_depth: u32,
-    resources: &mut HashSet<[u8; 32]>,
-    embedded_bytes: &mut u64,
-    embedded_pixels: &mut u64,
-    structural_cost: &mut u64,
-    metadata: &mut Metadata,
+    tally: &mut InspectionTally,
 ) -> Result<(), Reject> {
     let normalized = decode_css_escapes(value)?;
     let lower = normalized.to_ascii_lowercase();
@@ -58,16 +52,7 @@ pub(crate) fn inspect_css(
         if target.starts_with('#') {
             continue;
         }
-        inspect_reference(
-            &target,
-            request,
-            remaining_nested_depth,
-            resources,
-            embedded_bytes,
-            embedded_pixels,
-            structural_cost,
-            metadata,
-        )?;
+        inspect_reference(&target, request, remaining_nested_depth, tally)?;
     }
     Ok(())
 }

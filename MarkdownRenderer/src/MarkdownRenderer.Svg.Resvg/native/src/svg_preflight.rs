@@ -13,6 +13,7 @@ use crate::limits::HARD_MAX_XML_NODES;
 use crate::metadata::Metadata;
 use crate::reject::Reject;
 use resvg::usvg;
+use std::collections::HashSet;
 
 pub(crate) struct Inspection {
     pub(crate) metadata: Metadata,
@@ -20,6 +21,17 @@ pub(crate) struct Inspection {
     pub(crate) embedded_bytes: u64,
     pub(crate) embedded_pixels: u64,
     pub(crate) unique_resources: u64,
+}
+
+/// Running totals shared by the root document walk and every nested SVG,
+/// CSS url(), and data-URI resource it reaches.
+#[derive(Default)]
+pub(crate) struct InspectionTally {
+    pub(crate) resources: HashSet<[u8; 32]>,
+    pub(crate) embedded_bytes: u64,
+    pub(crate) embedded_pixels: u64,
+    pub(crate) structural_cost: u64,
+    pub(crate) metadata: Metadata,
 }
 
 pub(crate) fn parse_svg(source: &[u8]) -> Result<usvg::roxmltree::Document<'_>, Reject> {
