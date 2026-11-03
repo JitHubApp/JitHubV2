@@ -87,38 +87,6 @@ if (Test-Path -LiteralPath $identityPath -PathType Leaf) {
         if ($entryRid -cne $rid) { $workers.Add($entry) }
     }
 }
-$workers.Add([ordered]@{
-    rid = $rid
-    target = $Target
-    machine = $runtimeImage.machine
-    bytes = [long]$runtimeImage.bytes
-    sha256 = $runtimeImage.sha256
-    normalizedSha256 = $runtimeImage.normalizedSha256
-    sourceFingerprint = $sourceFingerprint
-    buildFingerprint = $expectedBuildFingerprint
-    rustcCommit = ([string]$receipt.rustcCommit).ToLowerInvariant()
-    hostProtocolVersion = $protocol.Host
-    nativeProtocolVersion = $protocol.Native
-    buildOutputBytes = [long]$buildImage.bytes
-    buildOutputSha256 = $buildImage.sha256
-    buildOutputNormalizedSha256 = $buildImage.normalizedSha256
-})
-$orderedRids = @('win-x86', 'win-x64', 'win-arm64')
-$sortedWorkers = @($workers | Sort-Object { [Array]::IndexOf($orderedRids, [string]$_.rid) })
-$manifest = [ordered]@{
-    schemaVersion = 1
-    workerFileName = 'MarkdownRenderer.Svg.Resvg.Worker.exe'
-    workers = $sortedWorkers
-}
-$json = $manifest | ConvertTo-Json -Depth 12
-$temporaryPath = "$identityPath.$([Guid]::NewGuid().ToString('N')).tmp"
-try {
-    [IO.File]::WriteAllText($temporaryPath, $json + "`n", [Text.UTF8Encoding]::new($false))
-    Move-Item -LiteralPath $temporaryPath -Destination $identityPath -Force
-}
-finally {
-    if (Test-Path -LiteralPath $temporaryPath -PathType Leaf) {
-        Remove-Item -LiteralPath $temporaryPath -Force
-    }
-}
+$workers.Add((New-ResvgWorkerIdentityRecord $rid $sourceFingerprint ([string]$receipt.rustcCommit) $protocol $runtimeImage $buildImage))
+Save-ResvgWorkerIdentity $identityPath @($workers)
 Write-Output "Recorded fresh reproducible identity for $rid. All other RID records retain their own build fingerprint and must be rebuilt if stale."
