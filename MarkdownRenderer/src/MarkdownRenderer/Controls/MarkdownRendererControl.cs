@@ -48,130 +48,66 @@ namespace MarkdownRenderer.Controls;
 public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsyncDisposable,
     IMarkdownPerformanceLegacyParser, IRendererEventSink
 {
-    private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
-    private readonly RendererEvents _events;
-    private readonly PipelineHosts _pipelineHosts;
-    private readonly LayoutHosts _layoutHosts;
-    private readonly ImageHosts _imageHosts;
-    private readonly FocusHosts _focusHosts;
-    private readonly EmbedHosts _embedHosts;
-    private readonly PointerHosts _pointerHosts;
-    private readonly SelectionHosts _selectionHosts;
     private readonly PublishedLayout _published = new();
-    private readonly MarkdownViewport _viewport;
-    private readonly PointerHoverState _hover = new();
-    private readonly PointerCursorPresenter _cursor;
-    private readonly AbbreviationTooltipPresenter _abbreviationTooltip;
-    private readonly SelectionAdornerPresenter _adorner;
-    private readonly CanvasDeviceRecovery _deviceRecovery;
-    private readonly SelectionCommands _selectionCommands;
-    private readonly SelectionDismissalHook _selectionDismissal;
-    private readonly SelectionDragAutoScroll _autoScroll;
-    private readonly SelectionDragShield _dragShield;
-    private readonly SelectionHandlesPresenter _handles;
-    private readonly SelectionContextMenuPresenter _contextMenu;
-    private readonly HorizontalOverflowPointerDrag _horizontalOverflowDrag;
-    private readonly DocumentPointerInteraction _document;
-    private readonly TouchGestureInteraction _touchGestures;
-    private readonly PointerInputRouter _pointerInput;
-    private readonly CanvasPointerEvents _canvasPointerEvents;
-    private readonly EmbedRealization _embeds;
-    private readonly WindowDestroyingWatch _windowDestroying;
-    private readonly RecoveryClock _recoveryClock;
-
     private readonly SnapshotRetirementTracker _snapshotRetirements = new(
         static exception => MarkdownDiagnostics.WriteLine(
             $"[MarkdownRendererControl] retirement failed: {exception.GetType().Name} " +
             $"(0x{exception.HResult:X8})."));
-    private readonly PipelineCancellationRetirement _cancellationRetirement;
-    private readonly RebuildScheduler _rebuild;
-    private readonly RebuildLayoutSetup _layoutSetup;
-    private readonly CanvasTilePainter _painter;
-    private readonly CanvasEvents _canvasEvents;
-    private readonly CanvasInvalidation _canvasInvalidation;
-    private readonly GeometryRecovery _geometryRecovery;
-    private readonly InteractiveTextAdorner _textAdorner;
-    private readonly RecoveryClockWork _recoveryWork;
-    private readonly VisibleWorkScheduler _visibleWork;
-    private readonly ScrollViewTracking _scrolling;
-    private readonly KeyboardInput _keyboard;
-    private readonly DocumentInputs _documentInputs;
-    private readonly VisibleImageReadiness _imageReadiness;
-    private readonly DeferredSceneReadiness _deferredScenes;
-    private readonly BlockScrollNavigation _blockScroll;
-    private readonly LinkActivation _links;
-    private readonly RendererAutomation _automation;
-    private readonly ImageLifetimeScope _imageLifetime;
     private readonly MarkdownAutomationDocumentGeneration _automationDocumentGenerations = new();
+    private readonly LayoutCommitState _layoutCommit = new();
+    private readonly PointerHoverState _hover = new();
+    private readonly SelectionController _selection = new();
+    private readonly MarkdownTouchSelectionSession _touchSelection = new();
+    private readonly TouchTapSuppressionPolicy _touchTapSuppression = new();
     // Opt-in used only by the standalone quick-profile harness. This does not
     // attach a PerformanceSession or alter normal layout scheduling; it merely
     // enables the existing build-stage counters for this control instance.
     internal bool EnableStandaloneLayoutDiagnostics { get; set; }
-    private readonly LayoutCommitState _layoutCommit = new();
-    private readonly LayoutCommitPublisher _layoutPublisher;
-    private readonly object _imagePreparationOwnerToken = new();
-    private readonly RasterPlacementPublisher _rasterPlacement;
-    private readonly ImageRelayout _imageRelayout;
-    private readonly ImageLoadCompletion _imageLoadCompletion;
-    private readonly VectorCapacityRetry _vectorCapacity;
-    private readonly LazyLayoutRealization _lazyLayout;
-    // Hosted-focus readers consume only realization plans published for the
-    // exact snapshot generation and layout revision. The attempt epoch also
-    // invalidates a plan while a same-snapshot rebuild is being transferred.
-    private readonly HostedFocusPlanPublication _hostedFocusPlan = new();
-    private readonly LayoutWidthWatch _width;
-    private readonly RebuildInputCapture _inputCapture;
-    private readonly RebuildPipeline _pipeline;
-    private readonly SelectionController _selection = new();
-    private readonly MarkdownTouchSelectionSession _touchSelection = new();
-    private readonly TouchSelectionRestore _touchRestore;
+
+    // Owners the control reads after construction: property callbacks,
+    // public and automation members, and disposal.
+    private readonly MarkdownViewSurface _surface;
+    private readonly MarkdownViewport _viewport;
+    private readonly WindowDestroyingWatch _windowDestroying;
     private readonly RendererLocalization _localization;
+    private readonly RendererAutomation _automation;
     private readonly AutomationScrolling _automationScrolling;
-    private readonly TouchTapSuppressionPolicy _touchTapSuppression = new();
-    private readonly InteractionReset _interactionReset;
-    private readonly SelectionChangeHandling _selectionChanges;
-    private readonly ViewAttachment _attachment;
-
-    private readonly SnapshotExtent _extent;
-    private readonly ReplacementPublisher _replacementPublisher;
-    private readonly ReplacementPresentation _replacementPresentation;
+    private readonly RebuildScheduler _rebuild;
+    private readonly RebuildPipeline _pipeline;
+    private readonly DocumentInputs _documentInputs;
+    private readonly CanvasTilePainter _painter;
+    private readonly CanvasEvents _canvasEvents;
+    private readonly CanvasInvalidation _canvasInvalidation;
+    private readonly CanvasDeviceRecovery _deviceRecovery;
+    private readonly RecoveryClockWork _recoveryWork;
+    private readonly VisibleWorkScheduler _visibleWork;
+    private readonly ScrollViewTracking _scrolling;
+    private readonly LazyLayoutRealization _lazyLayout;
+    private readonly VectorCapacityRetry _vectorCapacity;
+    private readonly BlockScrollNavigation _blockScroll;
+    private readonly VisibleImageReadiness _imageReadiness;
+    private readonly DeferredSceneReadiness _deferredScenes;
+    private readonly EmbedRealization _embeds;
+    private readonly CodeBlockHighlighting _highlighting;
     private readonly CodeBlockClipboard _codeBlockClipboard;
-    private readonly VisibleImageLoading _visibleImages;
-    private readonly PointerInteractionResume _pointerResume;
-
-    // ---- Keyboard navigation ----
-    private readonly KeyboardFocusModel _focus;
-    private readonly FocusGeometryReader _focusGeometry;
-    private readonly HostedElementFocus _hostedFocus;
-    private readonly HorizontalOverflowScrollVisuals _overflowScroll;
-    private readonly FocusedItemReveal _reveal;
-    private readonly FocusedItemCommit _focusCommit;
-    private readonly KeyboardFocusNavigator _navigator;
-    private readonly PendingFocusGeometryWork _focusGeometryWork;
-    private readonly RendererFocusEntry _focusEntry;
+    private readonly SelectionAdornerPresenter _adorner;
+    private readonly SelectionCommands _selectionCommands;
+    private readonly SelectionDragShield _dragShield;
+    private readonly SelectionHandlesPresenter _handles;
+    private readonly SelectionContextMenuPresenter _contextMenu;
+    private readonly SelectionChangeHandling _selectionChanges;
+    private readonly TouchSelectionRestore _touchRestore;
+    private readonly InteractionReset _interactionReset;
+    private readonly KeyboardInput _keyboard;
     private readonly RendererFocusEvents _focusEvents;
-    // A deferred focus-plan refresh is value-only: it never keeps a snapshot,
-    // box, or native resource alive while a geometry lease is busy.
-    private readonly FocusableItemsRefreshRequest _focusRefresh;
-    private readonly FocusableItemsPublication _focusableItems;
-    private readonly FocusRingPresenter _focusRing;
-
+    private readonly PendingFocusGeometryWork _focusGeometryWork;
+    private readonly HorizontalOverflowScrollVisuals _overflowScroll;
     private readonly PerformanceSessionSubscription _performanceSession;
     private readonly SvgRendererSubscription _svgRenderer;
     private readonly ThemeSubscription _theme;
     private readonly EnvironmentSubscription _environment;
-
-    // Lazy-load queue: all ImageBox instances in the current snapshot.
-    // EnsureLoading() is called for each when its bounds enter the
-    // viewport + LazyImageOverscanPx band.  Images already in the
-    // in-memory cache start loading (no-op) immediately after build.
-    private readonly ImagePlanSet _imagePlans;
-    private readonly ImageSubscriptions _imageSubscriptions;
-    private readonly ImageResidency _imageResidency;
-    private readonly ImageSourcePrefetch _imagePrefetch = new();
-    private readonly CodeBlockHighlighting _highlighting;
-    private readonly CompletedImageCarryLedger _completedImageCarry = new();
+    private readonly ViewAttachment _attachment;
 
     /// <summary>
     /// Overscan band (pixels, each direction) within which off-screen images
@@ -928,123 +864,136 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// </param>
     private protected MarkdownRendererControl(bool ownsScrollViewport)
     {
-        _events = new RendererEvents(this, _lifetime, DispatcherQueue);
-        _pipelineHosts = new PipelineHosts(this);
-        _layoutHosts = new LayoutHosts(this);
-        _imageHosts = new ImageHosts(this);
-        _focusHosts = new FocusHosts(this);
-        _embedHosts = new EmbedHosts(this);
-        _pointerHosts = new PointerHosts(this);
-        _selectionHosts = new SelectionHosts(this);
-        _cancellationRetirement = new PipelineCancellationRetirement(_snapshotRetirements);
-        _imageLifetime = new ImageLifetimeScope(_cancellationRetirement);
+        var events = new RendererEvents(this, _lifetime, DispatcherQueue);
+        var pipelineHosts = new PipelineHosts(this);
+        var layoutHosts = new LayoutHosts(this);
+        var imageHosts = new ImageHosts(this);
+        var focusHosts = new FocusHosts(this);
+        var embedHosts = new EmbedHosts(this);
+        var pointerHosts = new PointerHosts(this);
+        var selectionHosts = new SelectionHosts(this);
+        var imagePrefetch = new ImageSourcePrefetch();
+        var completedImageCarry = new CompletedImageCarryLedger();
+        var imagePreparationOwnerToken = new object();
+        // Hosted-focus readers consume only realization plans published for the
+        // exact snapshot generation and layout revision. The attempt epoch also
+        // invalidates a plan while a same-snapshot rebuild is being transferred.
+        var hostedFocusPlan = new HostedFocusPlanPublication();
+        var cancellationRetirement = new PipelineCancellationRetirement(_snapshotRetirements);
+        var imageLifetime = new ImageLifetimeScope(cancellationRetirement);
         _touchRestore = new TouchSelectionRestore(_published, _selection, _touchSelection);
-        _localization = new RendererLocalization(_pipelineHosts, _published);
+        _localization = new RendererLocalization(pipelineHosts, _published);
         _surface = new MarkdownViewSurface(ownsScrollViewport);
         _windowDestroying = new WindowDestroyingWatch(this, _lifetime);
-        _recoveryClock = new RecoveryClock(_layoutHosts, _lifetime);
+        var recoveryClock = new RecoveryClock(layoutHosts, _lifetime);
         _viewport = new MarkdownViewport(this, _surface);
-        _vectorCapacity = new VectorCapacityRetry(_layoutHosts, _lifetime, _published, _viewport);
-        _cursor = new PointerCursorPresenter(cursor => ProtectedCursor = cursor);
-        _abbreviationTooltip = new AbbreviationTooltipPresenter(this, _surface, _lifetime, _hover);
-        _adorner = new SelectionAdornerPresenter(_selectionHosts, this, _surface, _lifetime, _published, _viewport, _selection, _hover);
-        _deviceRecovery = new CanvasDeviceRecovery(_layoutHosts, _lifetime, _published, _surface, _adorner, DispatcherQueue);
+        _vectorCapacity = new VectorCapacityRetry(layoutHosts, _lifetime, _published, _viewport);
+        var cursor = new PointerCursorPresenter(cursor => ProtectedCursor = cursor);
+        var abbreviationTooltip = new AbbreviationTooltipPresenter(this, _surface, _lifetime, _hover);
+        _adorner = new SelectionAdornerPresenter(selectionHosts, this, _surface, _lifetime, _published, _viewport, _selection, _hover);
+        _deviceRecovery = new CanvasDeviceRecovery(layoutHosts, _lifetime, _published, _surface, _adorner, DispatcherQueue);
         _canvasInvalidation = new CanvasInvalidation(this, _lifetime, _surface, _deviceRecovery);
-        _selectionCommands = new SelectionCommands(_selectionHosts, _published, _selection);
-        _selectionDismissal = new SelectionDismissalHook(_selectionHosts, this, _surface, _lifetime, _published, _selection, _selectionCommands);
-        _autoScroll = new SelectionDragAutoScroll(_surface, _viewport);
-        _dragShield = new SelectionDragShield(_surface, _viewport, _pointerHosts);
-        _handles = new SelectionHandlesPresenter(_selectionHosts, _pointerHosts, this, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _adorner, _autoScroll);
-        _contextMenu = new SelectionContextMenuPresenter(_selectionHosts, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _handles, _adorner, _selectionCommands);
-        _horizontalOverflowDrag = new HorizontalOverflowPointerDrag(_pointerHosts, _surface, _published, _touchTapSuppression);
-        _document = new DocumentPointerInteraction(_pointerHosts, _surface, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _horizontalOverflowDrag, _handles, _autoScroll, _dragShield, _adorner, _contextMenu, new PointerHoverTracker(_pointerHosts, _published, _hover, _cursor, _abbreviationTooltip), _cursor, _abbreviationTooltip);
-        _extent = new SnapshotExtent(this, _surface, _dragShield, _document);
-        _touchGestures = new TouchGestureInteraction(_pointerHosts, this, _surface, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _horizontalOverflowDrag, _document);
-        _pointerInput = new PointerInputRouter(_pointerHosts, _pointerHosts, DispatcherQueue, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _handles, _document, _horizontalOverflowDrag, _touchGestures, _contextMenu, _adorner, _dragShield);
-        _rebuild = new RebuildScheduler(_pipelineHosts, _lifetime, _surface, _pointerInput, _cancellationRetirement);
-        _canvasPointerEvents = new CanvasPointerEvents(_surface, _pointerInput);
-        _embeds = new EmbedRealization(_embedHosts, _embedHosts, _surface, _lifetime, _published, _viewport, DispatcherQueue, OnHostedEmbedKeyDown);
-        _imagePlans = new ImagePlanSet(_lifetime, _published);
-        _imageSubscriptions = new ImageSubscriptions(_imageHosts, _lifetime, _published, _imagePlans);
-        _imageResidency = new ImageResidency(_imageHosts, _lifetime, _published, _imagePlans, _embeds);
-        _highlighting = new CodeBlockHighlighting(_embedHosts, _lifetime, _published, _viewport, _embeds);
-        _focus = new KeyboardFocusModel(_lifetime, _published);
-        _focusGeometry = new FocusGeometryReader(_lifetime, _published);
-        _focusRing = new FocusRingPresenter(_focusHosts, _focus, _focusGeometry, _surface, _lifetime, _published, DispatcherQueue);
-        _interactionReset = new InteractionReset(_surface, _selection, _touchSelection, _touchRestore, _touchTapSuppression, _pointerInput, _document, _handles, _autoScroll, _dragShield, _contextMenu, _adorner, _hover, _abbreviationTooltip, _cursor, _focus, _focusRing);
-        _rasterPlacement = new RasterPlacementPublisher(_imageHosts, _lifetime, _published, _layoutCommit, _surface, _pointerInput, _imageSubscriptions, _imagePlans, _imageResidency, _embeds, _focus, _focusRing, _hostedFocusPlan, _snapshotRetirements);
-        _focusRefresh = new FocusableItemsRefreshRequest(_published);
-        _focusableItems = new FocusableItemsPublication(_layoutHosts, _lifetime, _published, _focusRefresh, _focus, _recoveryClock);
-        _layoutSetup = new RebuildLayoutSetup(_pipelineHosts, _snapshotRetirements, _imagePrefetch, _completedImageCarry, _imagePlans, _embeds, _focusableItems, _imagePreparationOwnerToken);
-        _hostedFocus = new HostedElementFocus(_focusHosts, _lifetime, _published, _focus, _hostedFocusPlan, _embeds, _focusRing);
-        _overflowScroll = new HorizontalOverflowScrollVisuals(_focusHosts, _surface, _lifetime, _published, _selection, _focus, _embeds, DispatcherQueue);
-        _reveal = new FocusedItemReveal(_focusHosts, _surface, _lifetime, _published, _viewport, _focus, _overflowScroll, DispatcherQueue);
-        _automationScrolling = new AutomationScrolling(_surface, _reveal);
-        _focusCommit = new FocusedItemCommit(_focusHosts, _lifetime, _published, _focus, _focusRing, _reveal, _hostedFocus, _embeds, DispatcherQueue);
+        _selectionCommands = new SelectionCommands(selectionHosts, _published, _selection);
+        var selectionDismissal = new SelectionDismissalHook(selectionHosts, this, _surface, _lifetime, _published, _selection, _selectionCommands);
+        var autoScroll = new SelectionDragAutoScroll(_surface, _viewport);
+        _dragShield = new SelectionDragShield(_surface, _viewport, pointerHosts);
+        _handles = new SelectionHandlesPresenter(selectionHosts, pointerHosts, this, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _adorner, autoScroll);
+        _contextMenu = new SelectionContextMenuPresenter(selectionHosts, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _handles, _adorner, _selectionCommands);
+        var horizontalOverflowDrag = new HorizontalOverflowPointerDrag(pointerHosts, _surface, _published, _touchTapSuppression);
+        var document = new DocumentPointerInteraction(pointerHosts, _surface, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, horizontalOverflowDrag, _handles, autoScroll, _dragShield, _adorner, _contextMenu, new PointerHoverTracker(pointerHosts, _published, _hover, cursor, abbreviationTooltip), cursor, abbreviationTooltip);
+        var extent = new SnapshotExtent(this, _surface, _dragShield, document);
+        var touchGestures = new TouchGestureInteraction(pointerHosts, this, _surface, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, horizontalOverflowDrag, document);
+        var pointerInput = new PointerInputRouter(pointerHosts, pointerHosts, DispatcherQueue, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _handles, document, horizontalOverflowDrag, touchGestures, _contextMenu, _adorner, _dragShield);
+        _rebuild = new RebuildScheduler(pipelineHosts, _lifetime, _surface, pointerInput, cancellationRetirement);
+        var canvasPointerEvents = new CanvasPointerEvents(_surface, pointerInput);
+        _embeds = new EmbedRealization(embedHosts, embedHosts, _surface, _lifetime, _published, _viewport, DispatcherQueue, OnHostedEmbedKeyDown);
+        // Lazy-load queue: all ImageBox instances in the current snapshot.
+        // EnsureLoading() is called for each when its bounds enter the
+        // viewport + LazyImageOverscanPx band.  Images already in the
+        // in-memory cache start loading (no-op) immediately after build.
+        var imagePlans = new ImagePlanSet(_lifetime, _published);
+        var imageSubscriptions = new ImageSubscriptions(imageHosts, _lifetime, _published, imagePlans);
+        var imageResidency = new ImageResidency(imageHosts, _lifetime, _published, imagePlans, _embeds);
+        _highlighting = new CodeBlockHighlighting(embedHosts, _lifetime, _published, _viewport, _embeds);
+        var focus = new KeyboardFocusModel(_lifetime, _published);
+        var focusGeometry = new FocusGeometryReader(_lifetime, _published);
+        var focusRing = new FocusRingPresenter(focusHosts, focus, focusGeometry, _surface, _lifetime, _published, DispatcherQueue);
+        _interactionReset = new InteractionReset(_surface, _selection, _touchSelection, _touchRestore, _touchTapSuppression, pointerInput, document, _handles, autoScroll, _dragShield, _contextMenu, _adorner, _hover, abbreviationTooltip, cursor, focus, focusRing);
+        var rasterPlacement = new RasterPlacementPublisher(imageHosts, _lifetime, _published, _layoutCommit, _surface, pointerInput, imageSubscriptions, imagePlans, imageResidency, _embeds, focus, focusRing, hostedFocusPlan, _snapshotRetirements);
+        // A deferred focus-plan refresh is value-only: it never keeps a snapshot,
+        // box, or native resource alive while a geometry lease is busy.
+        var focusRefresh = new FocusableItemsRefreshRequest(_published);
+        var focusableItems = new FocusableItemsPublication(layoutHosts, _lifetime, _published, focusRefresh, focus, recoveryClock);
+        var layoutSetup = new RebuildLayoutSetup(pipelineHosts, _snapshotRetirements, imagePrefetch, completedImageCarry, imagePlans, _embeds, focusableItems, imagePreparationOwnerToken);
+        var hostedFocus = new HostedElementFocus(focusHosts, _lifetime, _published, focus, hostedFocusPlan, _embeds, focusRing);
+        _overflowScroll = new HorizontalOverflowScrollVisuals(focusHosts, _surface, _lifetime, _published, _selection, focus, _embeds, DispatcherQueue);
+        var reveal = new FocusedItemReveal(focusHosts, _surface, _lifetime, _published, _viewport, focus, _overflowScroll, DispatcherQueue);
+        _automationScrolling = new AutomationScrolling(_surface, reveal);
+        var focusCommit = new FocusedItemCommit(focusHosts, _lifetime, _published, focus, focusRing, reveal, hostedFocus, _embeds, DispatcherQueue);
         var queuedFocusKeys = new SpatialFocusKeyQueue();
-        _navigator = new KeyboardFocusNavigator(_focusHosts, _lifetime, _published, _focus, _focusGeometry, _focusRing, _overflowScroll, _embeds, _focusCommit, queuedFocusKeys, DispatcherQueue);
-        _focusGeometryWork = new PendingFocusGeometryWork(_focusHosts, _lifetime, _published, _focus, _focusGeometry, _focusRing, _reveal, queuedFocusKeys, _navigator);
-        _focusEntry = new RendererFocusEntry(_focusHosts, _lifetime, _focus, _focusRing, _focusCommit, _navigator, DispatcherQueue);
-        _layoutPublisher = new LayoutCommitPublisher(_layoutHosts, _lifetime, _published, _layoutCommit, _surface, _recoveryClock, _pointerInput, _embeds, _imageSubscriptions, _imagePlans, _imageResidency, _focus, _focusRing, _focusCommit, _focusRefresh, _hostedFocusPlan);
-        _lazyLayout = new LazyLayoutRealization(_layoutHosts, _lifetime, _published, _layoutCommit, _layoutPublisher, _surface, _viewport, _recoveryClock, _vectorCapacity, _pointerInput, _focus, _focusCommit);
-        _blockScroll = new BlockScrollNavigation(_lifetime, _published, _surface, _viewport, _lazyLayout, _reveal);
-        _links = new LinkActivation(_pipelineHosts, _blockScroll);
-        _automation = new RendererAutomation(this, _lifetime, _selection, _focus, _focusRing, _focusCommit, _focusEntry, _links);
-        _deferredScenes = new DeferredSceneReadiness(_pipelineHosts, _lifetime, _published, _viewport, _rebuild);
-        _imageReadiness = new VisibleImageReadiness(_published, _imagePlans, _viewport);
-        _painter = new CanvasTilePainter(_layoutHosts, _lifetime, _published, _surface, _lazyLayout, _deviceRecovery, _rebuild, _deferredScenes);
-        _canvasEvents = new CanvasEvents(_lifetime, _surface, _canvasPointerEvents, _painter, _rebuild);
-        _imageRelayout = new ImageRelayout(_imageHosts, _lifetime, _published, _layoutCommit, _layoutPublisher, _surface, _pointerInput, _imageSubscriptions, _rasterPlacement, _recoveryClock);
-        _imageLoadCompletion = new ImageLoadCompletion(_imageHosts, _lifetime, _published, _layoutCommit, _imageSubscriptions, _imageRelayout);
-        _imageSubscriptions.LoadCompleted += _imageLoadCompletion.OnLoadCompleted;
-        _geometryRecovery = new GeometryRecovery(_lifetime, _published, _surface, _pointerInput, _vectorCapacity, _horizontalOverflowDrag, _focusGeometryWork, _overflowScroll, _focusRing, _adorner, _layoutCommit, _imageSubscriptions, _lazyLayout, _imageRelayout, _interactionReset, _dragShield, _contextMenu, _abbreviationTooltip, _cursor, _handles, _automation, _deviceRecovery, _rebuild);
-        _visibleWork = new VisibleWorkScheduler(this, _published, _highlighting, _geometryRecovery);
-        _documentInputs = new DocumentInputs(this, _events, _interactionReset, _embeds, _highlighting, _rebuild, _snapshotRetirements);
-        _keyboard = new KeyboardInput(this, _published, _selection, _selectionCommands, _contextMenu, _focus, _focusRing, _focusCommit, _hostedFocus, _navigator, _geometryRecovery);
-        _recoveryWork = new RecoveryClockWork(_lifetime, _published, _recoveryClock, _layoutCommit, _layoutPublisher, _lazyLayout, _imageSubscriptions, _imageRelayout, _overflowScroll, _focusGeometryWork, _focusRefresh, _focusableItems, _pointerInput, _geometryRecovery, _rebuild);
-        _textAdorner = new InteractiveTextAdorner(_surface, _published, _selection, _touchSelection, _hover, _focus, _adorner, _geometryRecovery);
-        _scrolling = new ScrollViewTracking(_surface, _lifetime, _viewport, _lazyLayout, _adorner, _textAdorner, _embeds, _visibleWork);
-        _performanceSession = new PerformanceSessionSubscription(this, _lifetime, _snapshotRetirements, _rebuild, _selection, _adorner, _textAdorner);
+        var navigator = new KeyboardFocusNavigator(focusHosts, _lifetime, _published, focus, focusGeometry, focusRing, _overflowScroll, _embeds, focusCommit, queuedFocusKeys, DispatcherQueue);
+        _focusGeometryWork = new PendingFocusGeometryWork(focusHosts, _lifetime, _published, focus, focusGeometry, focusRing, reveal, queuedFocusKeys, navigator);
+        var focusEntry = new RendererFocusEntry(focusHosts, _lifetime, focus, focusRing, focusCommit, navigator, DispatcherQueue);
+        var layoutPublisher = new LayoutCommitPublisher(layoutHosts, _lifetime, _published, _layoutCommit, _surface, recoveryClock, pointerInput, _embeds, imageSubscriptions, imagePlans, imageResidency, focus, focusRing, focusCommit, focusRefresh, hostedFocusPlan);
+        _lazyLayout = new LazyLayoutRealization(layoutHosts, _lifetime, _published, _layoutCommit, layoutPublisher, _surface, _viewport, recoveryClock, _vectorCapacity, pointerInput, focus, focusCommit);
+        _blockScroll = new BlockScrollNavigation(_lifetime, _published, _surface, _viewport, _lazyLayout, reveal);
+        var links = new LinkActivation(pipelineHosts, _blockScroll);
+        _automation = new RendererAutomation(this, _lifetime, _selection, focus, focusRing, focusCommit, focusEntry, links);
+        _deferredScenes = new DeferredSceneReadiness(pipelineHosts, _lifetime, _published, _viewport, _rebuild);
+        _imageReadiness = new VisibleImageReadiness(_published, imagePlans, _viewport);
+        _painter = new CanvasTilePainter(layoutHosts, _lifetime, _published, _surface, _lazyLayout, _deviceRecovery, _rebuild, _deferredScenes);
+        _canvasEvents = new CanvasEvents(_lifetime, _surface, canvasPointerEvents, _painter, _rebuild);
+        var imageRelayout = new ImageRelayout(imageHosts, _lifetime, _published, _layoutCommit, layoutPublisher, _surface, pointerInput, imageSubscriptions, rasterPlacement, recoveryClock);
+        var imageLoadCompletion = new ImageLoadCompletion(imageHosts, _lifetime, _published, _layoutCommit, imageSubscriptions, imageRelayout);
+        imageSubscriptions.LoadCompleted += imageLoadCompletion.OnLoadCompleted;
+        var geometryRecovery = new GeometryRecovery(_lifetime, _published, _surface, pointerInput, _vectorCapacity, horizontalOverflowDrag, _focusGeometryWork, _overflowScroll, focusRing, _adorner, _layoutCommit, imageSubscriptions, _lazyLayout, imageRelayout, _interactionReset, _dragShield, _contextMenu, abbreviationTooltip, cursor, _handles, _automation, _deviceRecovery, _rebuild);
+        _visibleWork = new VisibleWorkScheduler(this, _published, _highlighting, geometryRecovery);
+        _documentInputs = new DocumentInputs(this, events, _interactionReset, _embeds, _highlighting, _rebuild, _snapshotRetirements);
+        _keyboard = new KeyboardInput(this, _published, _selection, _selectionCommands, _contextMenu, focus, focusRing, focusCommit, hostedFocus, navigator, geometryRecovery);
+        _recoveryWork = new RecoveryClockWork(_lifetime, _published, recoveryClock, _layoutCommit, layoutPublisher, _lazyLayout, imageSubscriptions, imageRelayout, _overflowScroll, _focusGeometryWork, focusRefresh, focusableItems, pointerInput, geometryRecovery, _rebuild);
+        var textAdorner = new InteractiveTextAdorner(_surface, _published, _selection, _touchSelection, _hover, focus, _adorner, geometryRecovery);
+        _scrolling = new ScrollViewTracking(_surface, _lifetime, _viewport, _lazyLayout, _adorner, textAdorner, _embeds, _visibleWork);
+        _performanceSession = new PerformanceSessionSubscription(this, _lifetime, _snapshotRetirements, _rebuild, _selection, _adorner, textAdorner);
         _svgRenderer = new SvgRendererSubscription(this, _lifetime, _rebuild, _canvasInvalidation);
         _theme = new ThemeSubscription(this, _lifetime, _rebuild);
         _environment = new EnvironmentSubscription(this, _lifetime, _rebuild);
-        _replacementPublisher = new ReplacementPublisher(this, _published, _surface, _rebuild, _touchRestore, _automationDocumentGenerations, _selection, _lazyLayout, _layoutCommit, _scrolling, _painter, _localization, _focusRefresh, _vectorCapacity, _geometryRecovery, _imageSubscriptions, _imageRelayout, _blockScroll, _imagePlans, _focus);
-        _width = new LayoutWidthWatch(this, _rebuild);
-        _inputCapture = new RebuildInputCapture(this, _published, _imagePreparationOwnerToken, _documentInputs, _localization, _environment);
-        _replacementPresentation = new ReplacementPresentation(_surface, _snapshotRetirements, _rebuild, _layoutCommit, _layoutPublisher, _documentInputs, _extent, _scrolling, _hover, _selection, _touchRestore, _contextMenu, _dragShield, _adorner, _textAdorner, _handles, _embeds, _imageSubscriptions, _imagePlans, _imageResidency, _focus, _focusRing, _focusCommit, _highlighting, _visibleWork, _canvasInvalidation, _automation, _deferredScenes);
-        _pipeline = new RebuildPipeline(this, this, _lifetime, _surface, _viewport, _rebuild, _inputCapture, _layoutSetup, _width, _imagePrefetch, _automation, _replacementPublisher, _replacementPresentation);
-        _codeBlockClipboard = new CodeBlockClipboard(this, _embeds, _events);
-        _visibleImages = new VisibleImageLoading(this, _lazyLayout, _imageResidency, _imagePlans, _embeds);
-        _pointerResume = new PointerInteractionResume(_lifetime, _rebuild, _imageRelayout);
-        _selectionHosts.Connect(new SelectionHosts.Parts(
-            _events, _published, _deviceRecovery, _handles, _pointerInput, _embeds, _rebuild, _geometryRecovery,
-            _textAdorner, _touchRestore, _localization, _interactionReset, _pointerResume, _focus, _focusGeometry,
-            _focusEntry));
-        _pointerHosts.Connect(new PointerHosts.Parts(
-            _published, _pointerInput, _embeds, _geometryRecovery, _textAdorner, _blockScroll, _links, _layoutCommit,
-            _lazyLayout, _touchRestore, _interactionReset, _pointerResume, _focus, _overflowScroll,
-            _focusGeometryWork, _focusEntry, _focusRing));
-        _embedHosts.Connect(new EmbedHosts.Parts(
-            _events, _published, _cancellationRetirement, _rebuild, _canvasInvalidation, _visibleWork, _automation,
-            _layoutPublisher, _rasterPlacement, _lazyLayout, _hostedFocusPlan, _localization, _codeBlockClipboard,
-            _visibleImages, _hostedFocus, _imagePlans, _imageSubscriptions));
-        _focusHosts.Connect(new FocusHosts.Parts(
-            _surface, _published, _viewport, _recoveryClock, _rebuild, _geometryRecovery, _textAdorner, _links,
-            _automation, _layoutCommit, _lazyLayout, _focusGeometryWork, _focusRing));
-        _imageHosts.Connect(new ImageHosts.Parts(
-            _events, _hover, _cursor, _abbreviationTooltip, _adorner, _deviceRecovery, _recoveryClock,
-            _snapshotRetirements, _cancellationRetirement, _rebuild, _canvasInvalidation, _geometryRecovery,
-            _textAdorner, _recoveryWork, _visibleWork, _scrolling, _automation, _imageLifetime, _layoutCommit,
-            _imagePreparationOwnerToken, _inputCapture, _extent));
-        _layoutHosts.Connect(new LayoutHosts.Parts(
-            _deviceRecovery, _cancellationRetirement, _rebuild, _canvasInvalidation, _geometryRecovery, _textAdorner,
-            _recoveryWork, _visibleWork, _scrolling, _deferredScenes, _blockScroll, _automation, _lazyLayout, _extent));
-        _pipelineHosts.Connect(new PipelineHosts.Parts(
-            _events, _documentInputs, _automation, _imageLifetime, _imageRelayout, _lazyLayout, _pipeline,
+        var replacementPublisher = new ReplacementPublisher(this, _published, _surface, _rebuild, _touchRestore, _automationDocumentGenerations, _selection, _lazyLayout, _layoutCommit, _scrolling, _painter, _localization, focusRefresh, _vectorCapacity, geometryRecovery, imageSubscriptions, imageRelayout, _blockScroll, imagePlans, focus);
+        var width = new LayoutWidthWatch(this, _rebuild);
+        var inputCapture = new RebuildInputCapture(this, _published, imagePreparationOwnerToken, _documentInputs, _localization, _environment);
+        var replacementPresentation = new ReplacementPresentation(_surface, _snapshotRetirements, _rebuild, _layoutCommit, layoutPublisher, _documentInputs, extent, _scrolling, _hover, _selection, _touchRestore, _contextMenu, _dragShield, _adorner, textAdorner, _handles, _embeds, imageSubscriptions, imagePlans, imageResidency, focus, focusRing, focusCommit, _highlighting, _visibleWork, _canvasInvalidation, _automation, _deferredScenes);
+        _pipeline = new RebuildPipeline(this, this, _lifetime, _surface, _viewport, _rebuild, inputCapture, layoutSetup, width, imagePrefetch, _automation, replacementPublisher, replacementPresentation);
+        _codeBlockClipboard = new CodeBlockClipboard(this, _embeds, events);
+        var visibleImages = new VisibleImageLoading(this, _lazyLayout, imageResidency, imagePlans, _embeds);
+        var pointerResume = new PointerInteractionResume(_lifetime, _rebuild, imageRelayout);
+        selectionHosts.Connect(new SelectionHosts.Parts(
+            events, _published, _deviceRecovery, _handles, pointerInput, _embeds, _rebuild, geometryRecovery,
+            textAdorner, _touchRestore, _localization, _interactionReset, pointerResume, focus, focusGeometry,
+            focusEntry));
+        pointerHosts.Connect(new PointerHosts.Parts(
+            _published, pointerInput, _embeds, geometryRecovery, textAdorner, _blockScroll, links, _layoutCommit,
+            _lazyLayout, _touchRestore, _interactionReset, pointerResume, focus, _overflowScroll,
+            _focusGeometryWork, focusEntry, focusRing));
+        embedHosts.Connect(new EmbedHosts.Parts(
+            events, _published, cancellationRetirement, _rebuild, _canvasInvalidation, _visibleWork, _automation,
+            layoutPublisher, rasterPlacement, _lazyLayout, hostedFocusPlan, _localization, _codeBlockClipboard,
+            visibleImages, hostedFocus, imagePlans, imageSubscriptions));
+        focusHosts.Connect(new FocusHosts.Parts(
+            _surface, _published, _viewport, recoveryClock, _rebuild, geometryRecovery, textAdorner, links,
+            _automation, _layoutCommit, _lazyLayout, _focusGeometryWork, focusRing));
+        imageHosts.Connect(new ImageHosts.Parts(
+            events, _hover, cursor, abbreviationTooltip, _adorner, _deviceRecovery, recoveryClock,
+            _snapshotRetirements, cancellationRetirement, _rebuild, _canvasInvalidation, geometryRecovery,
+            textAdorner, _recoveryWork, _visibleWork, _scrolling, _automation, imageLifetime, _layoutCommit,
+            imagePreparationOwnerToken, inputCapture, extent));
+        layoutHosts.Connect(new LayoutHosts.Parts(
+            _deviceRecovery, cancellationRetirement, _rebuild, _canvasInvalidation, geometryRecovery, textAdorner,
+            _recoveryWork, _visibleWork, _scrolling, _deferredScenes, _blockScroll, _automation, _lazyLayout, extent));
+        pipelineHosts.Connect(new PipelineHosts.Parts(
+            events, _documentInputs, _automation, imageLifetime, imageRelayout, _lazyLayout, _pipeline,
             _touchRestore, _interactionReset, _performanceSession, _environment));
-        _focusEvents = new RendererFocusEvents(this, _contextMenu, _document, _focus, _focusEntry, _focusRing);
-        _selectionChanges = new SelectionChangeHandling(this, _cursor, _rebuild, _textAdorner, _automation, _selection, _touchRestore, _touchTapSuppression, _interactionReset);
-        _attachment = new ViewAttachment(this, _surface, _lifetime, _published, _cursor, _abbreviationTooltip, _adorner, _deviceRecovery, _selectionDismissal, _dragShield, _handles, _contextMenu, _horizontalOverflowDrag, _pointerInput, _embeds, _windowDestroying, _snapshotRetirements, _rebuild, _painter, _canvasEvents, _geometryRecovery, _recoveryWork, _scrolling, _deferredScenes, _blockScroll, _automation, _imageLifetime, _automationDocumentGenerations, _layoutCommit, _imageRelayout, _vectorCapacity, _lazyLayout, _width, _touchSelection, _touchRestore, _touchTapSuppression, _overflowScroll, _focusRing, _performanceSession, _svgRenderer, _theme, _environment, _imagePlans, _imageSubscriptions, _imageResidency, _imagePrefetch, _highlighting);
+        _focusEvents = new RendererFocusEvents(this, _contextMenu, document, focus, focusEntry, focusRing);
+        _selectionChanges = new SelectionChangeHandling(this, cursor, _rebuild, textAdorner, _automation, _selection, _touchRestore, _touchTapSuppression, _interactionReset);
+        _attachment = new ViewAttachment(this, _surface, _lifetime, _published, cursor, abbreviationTooltip, _adorner, _deviceRecovery, selectionDismissal, _dragShield, _handles, _contextMenu, horizontalOverflowDrag, pointerInput, _embeds, _windowDestroying, _snapshotRetirements, _rebuild, _painter, _canvasEvents, geometryRecovery, _recoveryWork, _scrolling, _deferredScenes, _blockScroll, _automation, imageLifetime, _automationDocumentGenerations, _layoutCommit, imageRelayout, _vectorCapacity, _lazyLayout, width, _touchSelection, _touchRestore, _touchTapSuppression, _overflowScroll, focusRing, _performanceSession, _svgRenderer, _theme, _environment, imagePlans, imageSubscriptions, imageResidency, imagePrefetch, _highlighting);
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         Loaded += (_, _) => _attachment.Load();
