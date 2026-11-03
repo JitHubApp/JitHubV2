@@ -98,6 +98,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private readonly RebuildScheduler _rebuild;
     private readonly RebuildLayoutSetup _layoutSetup;
     private readonly CanvasTilePainter _painter;
+    private readonly CanvasEvents _canvasEvents;
+    private readonly CanvasInvalidation _canvasInvalidation;
     private readonly VisibleImageReadiness _imageReadiness;
     private readonly DeferredSceneReadiness _deferredScenes;
     private readonly BlockScrollNavigation _blockScroll;
@@ -163,7 +165,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     // so the callback never reads a thread-affine dependency property.
     private IMarkdownSvgRenderer? _subscribedSvgRenderer;
     private IMarkdownPerformanceSessionInternal? _subscribedPerformanceSession;
-    private bool _canvasRenderHandlersAttached;
 
     // Lazy-load queue: all ImageBox instances in the current snapshot.
     // EnsureLoading() is called for each when its bounds enter the
@@ -525,7 +526,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
                 _lifetime.IsUnloaded)
                 return;
             RequestRebuild(RebuildReason.Full);
-            InvalidateCanvas();
+            _canvasInvalidation.Invalidate();
         }
 
         if (DispatcherQueue.HasThreadAccess)
@@ -1168,6 +1169,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _abbreviationTooltip = new AbbreviationTooltipPresenter(this, _surface, _lifetime, _hover);
         _adorner = new SelectionAdornerPresenter(this, this, _surface, _lifetime, _published, _viewport, _selection, _hover);
         _deviceRecovery = new CanvasDeviceRecovery(this, _lifetime, _published, _surface, _adorner, DispatcherQueue);
+        _canvasInvalidation = new CanvasInvalidation(this, _lifetime, _surface, _deviceRecovery);
         _selectionCommands = new SelectionCommands(this, _published, _selection);
         _selectionDismissal = new SelectionDismissalHook(this, this, _surface, _lifetime, _published, _selection, _selectionCommands);
         _autoScroll = new SelectionDragAutoScroll(_surface, _viewport);
@@ -1209,6 +1211,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _deferredScenes = new DeferredSceneReadiness(this, _lifetime, _published, _viewport, _rebuild);
         _imageReadiness = new VisibleImageReadiness(_published, _imagePlans, _viewport);
         _painter = new CanvasTilePainter(this, _lifetime, _published, _surface, _lazyLayout, _deviceRecovery, _rebuild, _deferredScenes);
+        _canvasEvents = new CanvasEvents(_lifetime, _surface, _canvasPointerEvents, _painter, _rebuild);
         _imageRelayout = new ImageRelayout(this, _lifetime, _published, _layoutCommit, _layoutPublisher, _surface, _pointerInput, _imageSubscriptions, _rasterPlacement, _recoveryClock);
         _imageLoadCompletion = new ImageLoadCompletion(this, _lifetime, _published, _layoutCommit, _imageSubscriptions, _imageRelayout);
         _imageSubscriptions.LoadCompleted += _imageLoadCompletion.OnLoadCompleted;
@@ -1240,7 +1243,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     private void BuildVisualTree()
     {
-        EnsureCanvas();
+        _canvasEvents.EnsureCanvas();
         GettingFocus += OnGettingFocus;
         GotFocus += OnGotFocus;
         LosingFocus += OnLosingFocus;
@@ -1249,14 +1252,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         if (!_surface.OwnsScrollViewport)
             EffectiveViewportChanged += OnEffectiveViewportChanged;
         Content = _surface.ContentElement;
-    }
-
-    private void EnsureCanvas()
-    {
-        if (_lifetime.IsDisposed || _surface.TryCreateCanvas() is not { } canvas)
-            return;
-        _canvasPointerEvents.Attach(canvas);
-        AttachCanvasRenderHandlers();
     }
 
     private void OnEffectiveViewportChanged(FrameworkElement sender, EffectiveViewportChangedEventArgs args)
@@ -1742,11 +1737,11 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     long IImageResidencyHost.AppliedLazyLayoutRevision => _layoutCommit.AppliedRevision;
 
-    void IImageResidencyHost.InvalidateCanvas() => InvalidateCanvas();
+    void IImageResidencyHost.InvalidateCanvas() => _canvasInvalidation.Invalidate();
 
     void ICanvasDeviceRecoveryHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);
 
-    void ICanvasDeviceRecoveryHost.InvalidateCanvas() => InvalidateCanvas();
+    void ICanvasDeviceRecoveryHost.InvalidateCanvas() => _canvasInvalidation.Invalidate();
 
     Microsoft.UI.Dispatching.DispatcherQueue? ICodeBlockHighlightingHost.DispatcherQueue => DispatcherQueue;
 
@@ -1762,7 +1757,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     void ICodeBlockHighlightingHost.ScheduleVisibleCodeBlockHighlighting() => ScheduleVisibleCodeBlockHighlighting();
 
-    void ICodeBlockHighlightingHost.InvalidateCanvas() => InvalidateCanvas();
+    void ICodeBlockHighlightingHost.InvalidateCanvas() => _canvasInvalidation.Invalidate();
 
     Task ICodeBlockHighlightingHost.RetireCancellationTokenSource(CancellationTokenSource? cts, Task? lifetime) =>
         _cancellationRetirement.Retire(cts, lifetime);
@@ -1828,7 +1823,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     void IRasterPlacementHost.InvalidateAutomationLayout() => _automation.InvalidateLayout();
 
-    void IRasterPlacementHost.InvalidateCanvas() => InvalidateCanvas();
+    void IRasterPlacementHost.InvalidateCanvas() => _canvasInvalidation.Invalidate();
 
     void IRasterPlacementHost.RaiseImageUnavailable(
         string url, MarkdownImageUnavailableReason reason, MarkdownSvgFailureReason? svgReason) =>
@@ -1872,7 +1867,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     void IImageLoadCompletionHost.InvalidatePaint()
     {
-        InvalidateCanvas();
+        _canvasInvalidation.Invalidate();
         _adorner.Invalidate();
     }
 
@@ -1915,7 +1910,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     void ILazyLayoutHost.InvalidateAutomationLayout() => _automation.InvalidateLayout();
 
-    void ILazyLayoutHost.InvalidateCanvas() => InvalidateCanvas();
+    void ILazyLayoutHost.InvalidateCanvas() => _canvasInvalidation.Invalidate();
 
     void ILazyLayoutHost.StopRecoveryClockIfIdle() => StopRecoveryClockIfIdle();
 
@@ -1938,7 +1933,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     void ILayoutCommitHost.InvalidateAutomationLayout() => _automation.InvalidateLayout();
 
-    void ILayoutCommitHost.InvalidateCanvas() => InvalidateCanvas();
+    void ILayoutCommitHost.InvalidateCanvas() => _canvasInvalidation.Invalidate();
 
     void ILayoutCommitHost.TryResumePendingScrollToBlock(LayoutSnapshot snapshot, long snapshotGeneration) =>
         _blockScroll.TryResumePending(snapshot, snapshotGeneration);
@@ -2126,9 +2121,9 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         // RemoveFromVisualTree physically removes the Win2D child from the root.
         // Recreate it for a retained view; the old native child and its input
         // delegates must not retain the unloaded view through a WinRT cycle.
-        EnsureCanvas();
+        _canvasEvents.EnsureCanvas();
         _windowDestroying.Attach(XamlRoot);
-        AttachCanvasRenderHandlers();
+        _canvasEvents.AttachRenderHandlers();
         if (_imageLifetimeCts is null || _imageLifetimeCts.IsCancellationRequested)
         {
             _imageLifetimeCts?.Dispose();
@@ -2191,8 +2186,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         // Win2D can retain queued native draw/resource callbacks after XAML starts
         // removing this control. Stop those callbacks before releasing any snapshot
         // or DirectWrite resources they may reference.
-        DetachCanvasRenderHandlers();
-        DetachCanvasInputHandlers();
+        _canvasEvents.DetachRenderHandlers();
+        _canvasEvents.DetachInputHandlers();
         // Win2D requires RemoveFromVisualTree from the containing control's
         // Unloaded boundary. At this point XAML has begun detaching the renderer,
         // so each Win2D child can unregister its XamlRoot callback without racing a
@@ -2392,39 +2387,13 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     private void DetachCanvasHandlers()
     {
-        DetachCanvasRenderHandlers();
-        DetachCanvasInputHandlers();
+        _canvasEvents.DetachRenderHandlers();
+        _canvasEvents.DetachInputHandlers();
         GettingFocus -= OnGettingFocus;
         GotFocus -= OnGotFocus;
         LosingFocus -= OnLosingFocus;
         KeyDown -= OnKeyDown;
         _handles.DetachHandlers();
-    }
-
-    private void DetachCanvasInputHandlers()
-    {
-        if (_surface.Canvas is not null)
-            _canvasPointerEvents.Detach(_surface.Canvas);
-    }
-
-    private void AttachCanvasRenderHandlers()
-    {
-        if (_surface.Canvas is null || _canvasRenderHandlersAttached)
-            return;
-
-        _surface.Canvas.RegionsInvalidated += _painter.OnRegionsInvalidated;
-        _surface.Canvas.CreateResources += OnCanvasCreateResources;
-        _canvasRenderHandlersAttached = true;
-    }
-
-    private void DetachCanvasRenderHandlers()
-    {
-        if (_surface.Canvas is null || !_canvasRenderHandlersAttached)
-            return;
-
-        _surface.Canvas.RegionsInvalidated -= _painter.OnRegionsInvalidated;
-        _surface.Canvas.CreateResources -= OnCanvasCreateResources;
-        _canvasRenderHandlersAttached = false;
     }
 
     private void OnThemeChanged()
@@ -2931,7 +2900,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
         RealizeReplacement(snapshot, timeline);
 
-        InvalidateCanvas();
+        _canvasInvalidation.Invalidate();
         if (publication.SemanticInputChanged)
         {
             _automation.FindPeer()?
@@ -3331,22 +3300,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         }
     }
 
-    private void OnCanvasCreateResources(
-        CanvasVirtualControl sender,
-        Microsoft.Graphics.Canvas.UI.CanvasCreateResourcesEventArgs args)
-    {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !ReferenceEquals(sender, _surface.Canvas))
-            return;
-
-        // Initial resource creation can be deferred until the first input frame in
-        // packaged WinUI. Rebuilding there resets pointer capture and selection
-        // state, which makes the first click/drag flash and get swallowed. Layout
-        // uses CanvasDevice.GetSharedDevice(), so initial creation needs no rebuild.
-        // Later resource creation means device/DPI changed, so rebuild layouts.
-        if (args.Reason != Microsoft.Graphics.Canvas.UI.CanvasCreateResourcesReason.FirstTime)
-            RequestRebuild(RebuildReason.Full);
-    }
-
     internal void ScrollHorizontalOverflowForAutomation(
         IHorizontalOverflowBox target,
         ScrollAmount amount)
@@ -3408,29 +3361,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         Rect viewport,
         IReadOnlyList<SelectionBackgroundGeometry> selectionBackgrounds)
         => PaintInteractiveDocumentState(snapshot, drawingSession, viewport, selectionBackgrounds);
-
-    private void InvalidateCanvas()
-    {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !IsLoaded)
-            return;
-
-        try
-        {
-            _surface.Canvas?.Invalidate();
-        }
-        catch (Exception ex) when (GraphicsDeviceErrors.IsDeviceLost(ex))
-        {
-            _deviceRecovery.HandleDeviceLost(ex);
-        }
-        catch (Exception ex) when (ShouldIgnoreShutdownException(ex))
-        {
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] ignored canvas invalidate during shutdown: {ex.GetType().Name} {GraphicsDeviceErrors.FormatHResult(ex.HResult)}");
-        }
-    }
-
-    private static bool ShouldIgnoreShutdownException(Exception ex)
-        => GraphicsDeviceErrors.IsShutdownOrDisposed(ex);
 
     /// <summary>
     /// Syncs the selection adorner geometry. The adorner is a single stable
