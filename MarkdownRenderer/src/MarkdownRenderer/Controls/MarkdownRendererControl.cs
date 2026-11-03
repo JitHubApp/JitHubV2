@@ -102,6 +102,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private readonly DeferredSceneReadiness _deferredScenes;
     private readonly BlockScrollNavigation _blockScroll;
     private readonly LinkActivation _links;
+    private readonly RendererAutomation _automation;
     private CancellationTokenSource? _imageLifetimeCts;
     private readonly MarkdownAutomationDocumentGeneration _automationDocumentGenerations = new();
     // Opt-in used only by the standalone quick-profile harness. This does not
@@ -121,7 +122,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     // exact snapshot generation and layout revision. The attempt epoch also
     // invalidates a plan while a same-snapshot rebuild is being transferred.
     private readonly HostedFocusPlanPublication _hostedFocusPlan = new();
-    private bool _selectionAutomationEventQueued;
     private float _lastWidth;
     // The theme used while Theme is null. A MarkdownTheme is a thread-affine
     // DependencyObject, so each control owns one rather than sharing a static.
@@ -182,13 +182,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// so images appear before they scroll into view.
     /// </summary>
     public const double LazyImageOverscanPx = 800;
-
-    // Stable per-LinkRun automation peer cache. UIA traversals re-request the
-    // children of a block frequently; returning fresh peers each time loses
-    // identity tracking (Narrator focus, "where am I"). Tied to the LinkRun
-    // weakly so peers are released alongside the layout snapshot.
-    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<LinkRun, MarkdownLinkPeer> _linkPeerCache = new();
-    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<InlineImageRun, MarkdownLinkedImagePeer> _linkedImagePeerCache = new();
 
     /// <summary>
     /// Viewport over-scan band, in pixels, in either direction. Embeds whose
@@ -812,155 +805,59 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
             .WithCodeBlockWrappingMode(codeBlockWrappingMode)
             .BuildScrollView();
 
-    internal MarkdownLinkPeer GetOrCreateLinkPeer(MarkdownBlockPeer parent, LinkRun run)
-    {
-        // GetValue is atomic for concurrent UIA callers and avoids the
-        // TryGetValue+Add race. These caches are cleared when the root peer
-        // observes a new semantic snapshot; externally retained old peers are
-        // fenced by their captured projection lifetime.
-        return _linkPeerCache.GetValue(run, r => new MarkdownLinkPeer(this, parent, r));
-    }
+    internal MarkdownLinkPeer GetOrCreateLinkPeer(MarkdownBlockPeer parent, LinkRun run) =>
+        _automation.GetOrCreateLinkPeer(parent, run);
 
-    internal void InvalidateAutomationChildPeerCaches()
-    {
-        _linkPeerCache.Clear();
-        _linkedImagePeerCache.Clear();
-    }
+    internal void InvalidateAutomationChildPeerCaches() => _automation.InvalidateChildPeerCaches();
 
-    private void NotifyAutomationSnapshotChanged()
-    {
-        // Do not create an automation peer just to release its previous
-        // semantic projection; if a peer exists, reconcile it with the
-        // already-published snapshot immediately.
-        (FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer)?.NotifySnapshotChanged();
-    }
+    internal MarkdownLinkedImagePeer GetOrCreateLinkedImagePeer(MarkdownBlockPeer parent, InlineImageRun run) =>
+        _automation.GetOrCreateLinkedImagePeer(parent, run);
 
-    internal MarkdownLinkedImagePeer GetOrCreateLinkedImagePeer(
-        MarkdownBlockPeer parent,
-        InlineImageRun run) =>
-        _linkedImagePeerCache.GetValue(run, r => new MarkdownLinkedImagePeer(this, parent, r));
+    internal bool TryGetLinkedImagePeer(InlineImageRun run, out MarkdownLinkedImagePeer peer) =>
+        _automation.TryGetLinkedImagePeer(run, out peer);
 
-    internal bool TryGetLinkedImagePeer(
-        InlineImageRun run,
-        out MarkdownLinkedImagePeer peer)
-    {
-        if (_linkedImagePeerCache.TryGetValue(run, out MarkdownLinkedImagePeer? cached) &&
-            cached is not null)
-        {
-            peer = cached;
-            return true;
-        }
+    internal bool IsKeyboardFocusOnLink(LinkRun run) => _automation.IsKeyboardFocusOnLink(run);
 
-        peer = null!;
-        return false;
-    }
-
-    internal bool IsKeyboardFocusOnLink(LinkRun run)
-    {
-        return _focus.TryGetFocusedLinkedAtomic(out _, out InlineRun linkedRun) &&
-               linkedRun is LinkRun focusedRun &&
-               LinkTargets.AreEquivalentLinks(focusedRun, run);
-    }
-
-    internal bool IsKeyboardFocusOnLinkedImage(InlineImageRun run) =>
-        _focus.TryGetFocusedLinkedAtomic(out _, out InlineRun linkedRun) &&
-        linkedRun is InlineImageRun focusedRun &&
-        ReferenceEquals(focusedRun, run);
+    internal bool IsKeyboardFocusOnLinkedImage(InlineImageRun run) => _automation.IsKeyboardFocusOnLinkedImage(run);
 
     internal bool IsKeyboardFocusOnLinkedInlineVectorScene(InlineVectorSceneRun run) =>
-        _focus.TryGetFocusedLinkedAtomic(out _, out InlineRun linkedRun) &&
-        linkedRun is InlineVectorSceneRun focusedRun &&
-        ReferenceEquals(focusedRun, run);
+        _automation.IsKeyboardFocusOnLinkedInlineVectorScene(run);
 
-    internal bool IsKeyboardFocusOnVectorSemantic(
-        Layout.Boxes.VectorSceneBox box,
-        int semanticIndex) =>
-        FocusState != FocusState.Unfocused &&
-        _focus.TryGetFocusedVectorSemantic(out var focusedBox, out var focusedSemanticIndex) &&
-        ReferenceEquals(focusedBox, box) &&
-        focusedSemanticIndex == semanticIndex;
+    internal bool IsKeyboardFocusOnVectorSemantic(Layout.Boxes.VectorSceneBox box, int semanticIndex) =>
+        _automation.IsKeyboardFocusOnVectorSemantic(box, semanticIndex);
 
     internal bool IsKeyboardFocusOnHorizontalOverflow(IHorizontalOverflowBox overflow) =>
-        FocusState != FocusState.Unfocused &&
-        _focus.TryGetFocusedHorizontalOverflow(out var focusedOverflow) &&
-        ReferenceEquals(focusedOverflow, overflow);
+        _automation.IsKeyboardFocusOnHorizontalOverflow(overflow);
 
     internal bool IsHorizontalOverflowKeyboardFocusable(IHorizontalOverflowBox overflow) =>
-        _focus.TryGetIndexForHorizontalOverflow(overflow, out _);
+        _automation.IsHorizontalOverflowKeyboardFocusable(overflow);
 
-    internal bool HasKeyboardFocusOnVirtualChild =>
-        FocusState != FocusState.Unfocused &&
-        (_focus.TryGetFocusedLinkedAtomic(out _, out _) ||
-         _focus.TryGetFocusedVectorSemantic(out _, out _) ||
-         _focus.TryGetFocusedHorizontalOverflow(out _));
+    internal bool HasKeyboardFocusOnVirtualChild => _automation.HasKeyboardFocusOnVirtualChild;
 
-    internal bool FocusLinkFromAutomation(LinkRun run) =>
-        FocusLinkedAtomicFromAutomation(run);
+    internal bool FocusLinkFromAutomation(LinkRun run) => _automation.FocusLinkedAtomic(run);
 
-    internal bool FocusLinkedImageFromAutomation(InlineImageRun run) =>
-        FocusLinkedAtomicFromAutomation(run);
+    internal bool FocusLinkedImageFromAutomation(InlineImageRun run) => _automation.FocusLinkedAtomic(run);
 
-    internal bool FocusInlineVectorSceneFromAutomation(InlineVectorSceneRun run) =>
-        FocusLinkedAtomicFromAutomation(run);
+    internal bool FocusInlineVectorSceneFromAutomation(InlineVectorSceneRun run) => _automation.FocusLinkedAtomic(run);
 
-    private bool FocusLinkedAtomicFromAutomation(InlineRun run)
-    {
-        if (!_focus.TryGetIndexForLinkedAtomic(run, out var index))
-            return Focus(FocusState.Programmatic);
+    internal bool FocusVectorSemanticFromAutomation(Layout.Boxes.VectorSceneBox box, int semanticIndex) =>
+        _automation.FocusVectorSemantic(box, semanticIndex);
 
-        return _focusCommit.FocusFromAutomation(index);
-    }
+    internal bool FocusHorizontalOverflowFromAutomation(IHorizontalOverflowBox overflow) =>
+        _automation.FocusHorizontalOverflow(overflow);
 
-    internal bool FocusVectorSemanticFromAutomation(
-        Layout.Boxes.VectorSceneBox box,
-        int semanticIndex)
-    {
-        if (!_focus.TryGetIndexForVectorSemantic(box, semanticIndex, out int index))
-            return false;
-
-        return _focusCommit.FocusFromAutomation(index);
-    }
-
-    internal bool FocusHorizontalOverflowFromAutomation(IHorizontalOverflowBox overflow)
-    {
-        if (!_focus.TryGetIndexForHorizontalOverflow(overflow, out int index))
-            return false;
-
-        return _focusCommit.FocusFromAutomation(index);
-    }
-
-    internal bool FocusDocumentFromAutomation()
-    {
-        _focusEntry.SuppressNextPromotion();
-        _focus.ClearFocus();
-        _focusRing.Update();
-        return _focusEntry.FocusWithoutPromotion();
-    }
+    internal bool FocusDocumentFromAutomation() => _automation.FocusDocument();
 
     /// <summary>Invoked by <see cref="MarkdownLinkPeer.Invoke"/> so UIA clients
     /// can activate a link the same way as pointer interaction. UIA callers
     /// can arrive on the RPC thread, so marshal back to the UI dispatcher
     /// before raising the public event.</summary>
-    internal void RaiseLinkClickFromAutomation(LinkRun run)
-    {
-        RaiseLinkedAtomicClickFromAutomation(run);
-    }
+    internal void RaiseLinkClickFromAutomation(LinkRun run) => _automation.ActivateLinkedAtomic(run);
 
-    internal void RaiseLinkedImageClickFromAutomation(InlineImageRun run)
-    {
-        RaiseLinkedAtomicClickFromAutomation(run);
-    }
+    internal void RaiseLinkedImageClickFromAutomation(InlineImageRun run) => _automation.ActivateLinkedAtomic(run);
 
-    internal void RaiseInlineVectorSceneClickFromAutomation(InlineVectorSceneRun run)
-    {
-        RaiseLinkedAtomicClickFromAutomation(run);
-    }
-
-    internal void RaiseLinkedAtomicClickFromAutomation(InlineRun run)
-    {
-        if (LinkTargets.TryCreateLinkedAtomicTarget(run, out LinkTarget target))
-            _links.ActivateFromAutomation(target);
-    }
+    internal void RaiseInlineVectorSceneClickFromAutomation(InlineVectorSceneRun run) =>
+        _automation.ActivateLinkedAtomic(run);
 
     internal void SetDisclosureExpanded(LinkRun run, bool expanded)
     {
@@ -1091,28 +988,14 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         LayoutSnapshot? snapshot = _published.Snapshot;
         _published.Snapshot = null;
         _automationDocumentGenerations.Invalidate();
-        NotifyAutomationSnapshotChanged();
+        _automation.NotifySnapshotChanged();
         _painter.CancelFirstViewportMeasurement();
         RetireSnapshot(snapshot);
     }
 
     /// <summary>Raises a host-approved vector-scene link/action from UI Automation.</summary>
-    internal void RaiseVectorSceneLinkClickFromAutomation(
-        Layout.Boxes.VectorSceneBox box,
-        int semanticIndex)
-    {
-        if (box is null || !box.TryGetLink(semanticIndex, out var link) || link is null)
-            return;
-
-        var semantic = box.GetSemanticItem(semanticIndex);
-        _links.ActivateFromAutomation(new LinkTarget(
-            link.Target ?? string.Empty,
-            semantic?.Description,
-            semantic?.SourceSpan ?? box.SourceRange,
-            null,
-            link.Action,
-            link.External));
-    }
+    internal void RaiseVectorSceneLinkClickFromAutomation(Layout.Boxes.VectorSceneBox box, int semanticIndex) =>
+        _automation.ActivateVectorSceneLink(box, semanticIndex);
 
     /// <summary>
     /// Offset applied between the scroll viewport and document content. The
@@ -1247,13 +1130,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     internal DocumentRange CurrentSelectionRange => _selection.Range;
 
-    internal void SelectAutomationRange(DocumentRange range)
-    {
-        if (!IsSelectionEnabled) return;
-        var normalized = range.Normalized();
-        _selection.SetAnchor(normalized.Start);
-        _selection.ExtendTo(normalized.End);
-    }
+    internal void SelectAutomationRange(DocumentRange range) => _automation.Select(range);
 
     internal void ClearAutomationSelection() => _selection.Clear();
 
@@ -1328,6 +1205,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _lazyLayout = new LazyLayoutRealization(this, _lifetime, _published, _layoutCommit, _layoutPublisher, _surface, _viewport, _recoveryClock, _vectorCapacity, _pointerInput, _focus, _focusCommit);
         _blockScroll = new BlockScrollNavigation(_lifetime, _published, _surface, _viewport, _lazyLayout, _reveal);
         _links = new LinkActivation(this, _blockScroll);
+        _automation = new RendererAutomation(this, _lifetime, _selection, _focus, _focusRing, _focusCommit, _focusEntry, _links);
         _deferredScenes = new DeferredSceneReadiness(this, _lifetime, _published, _viewport, _rebuild);
         _imageReadiness = new VisibleImageReadiness(_published, _imagePlans, _viewport);
         _painter = new CanvasTilePainter(this, _lifetime, _published, _surface, _lazyLayout, _deviceRecovery, _rebuild, _deferredScenes);
@@ -1773,7 +1651,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     void IEmbedRealizationHost.RequestFallbackRebuild() => RequestRebuild(RebuildReason.Restyle);
 
-    void IEmbedRealizationHost.InvalidateAutomationLayout() => InvalidateAutomationLayout();
+    void IEmbedRealizationHost.InvalidateAutomationLayout() => _automation.InvalidateLayout();
 
     void IEmbedRealizationHost.RaiseEmbedsRealizationChanged() => _events.RaiseEmbedsRealizationChanged();
 
@@ -1812,7 +1690,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         => RequestGeometryRecoveryIfRequired(snapshot);
 
     MarkdownAutomationPeer? IHorizontalOverflowScrollHost.FindAutomationPeer()
-        => FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer;
+        => _automation.FindPeer();
 
     void IFocusedItemRevealHost.RequestFocusGeometryRetry() => _focusGeometryWork.RequestRetry();
 
@@ -1845,8 +1723,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         => _links.Activate(link, inputKind, modifiers);
 
     MarkdownAutomationPeer? IFocusedItemCommitHost.GetOrCreateAutomationPeer()
-        => FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer
-           ?? FrameworkElementAutomationPeer.CreatePeerForElement(this) as MarkdownAutomationPeer;
+        => _automation.GetOrCreatePeer();
 
     bool IFocusGeometryRecoveryHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot)
         => RequestGeometryRecoveryIfRequired(snapshot);
@@ -1938,7 +1815,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     void IRasterPlacementHost.ScheduleVisibleCodeBlockHighlighting() => ScheduleVisibleCodeBlockHighlighting();
 
-    void IRasterPlacementHost.NotifyAutomationSnapshotChanged() => NotifyAutomationSnapshotChanged();
+    void IRasterPlacementHost.NotifyAutomationSnapshotChanged() => _automation.NotifySnapshotChanged();
 
     void IRasterPlacementHost.HideAbbreviationTooltip() => _abbreviationTooltip.Hide();
 
@@ -1949,7 +1826,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     void IRasterPlacementHost.RefreshInteractiveTextAdornerAfterLayoutChange() =>
         RefreshInteractiveTextAdornerAfterLayoutChange();
 
-    void IRasterPlacementHost.InvalidateAutomationLayout() => InvalidateAutomationLayout();
+    void IRasterPlacementHost.InvalidateAutomationLayout() => _automation.InvalidateLayout();
 
     void IRasterPlacementHost.InvalidateCanvas() => InvalidateCanvas();
 
@@ -1985,7 +1862,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         RequestGeometryRecoveryIfRequired(snapshot);
 
     void IImageLoadCompletionHost.NotifyImageStatusChanged(Layout.Boxes.ImageBox image) =>
-        (FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer)?
+        _automation.FindPeer()?
             .NotifyImageStatusChanged(image);
 
     void IImageLoadCompletionHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);
@@ -2036,7 +1913,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     void ILazyLayoutHost.ScheduleVisibleDeferredScenes() => ScheduleVisibleDeferredScenes();
 
-    void ILazyLayoutHost.InvalidateAutomationLayout() => InvalidateAutomationLayout();
+    void ILazyLayoutHost.InvalidateAutomationLayout() => _automation.InvalidateLayout();
 
     void ILazyLayoutHost.InvalidateCanvas() => InvalidateCanvas();
 
@@ -2059,7 +1936,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     void ILayoutCommitHost.RefreshInteractiveTextAdornerAfterLayoutChange() =>
         RefreshInteractiveTextAdornerAfterLayoutChange();
 
-    void ILayoutCommitHost.InvalidateAutomationLayout() => InvalidateAutomationLayout();
+    void ILayoutCommitHost.InvalidateAutomationLayout() => _automation.InvalidateLayout();
 
     void ILayoutCommitHost.InvalidateCanvas() => InvalidateCanvas();
 
@@ -2071,7 +1948,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     void IFocusableItemsPublicationHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);
 
-    void IFocusableItemsPublicationHost.InvalidateAutomationLayout() => InvalidateAutomationLayout();
+    void IFocusableItemsPublicationHost.InvalidateAutomationLayout() => _automation.InvalidateLayout();
 
     Microsoft.UI.Dispatching.DispatcherQueue? IRebuildSchedulerHost.DispatcherQueue => DispatcherQueue;
 
@@ -2142,8 +2019,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     IMarkdownPerformanceSessionInternal? IDeferredSceneReadinessHost.PerformanceSession =>
         PerformanceSession as IMarkdownPerformanceSessionInternal;
 
-    MarkdownAutomationPeer? IDeferredSceneReadinessHost.FindAutomationPeer() =>
-        FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer;
+    MarkdownAutomationPeer? IDeferredSceneReadinessHost.FindAutomationPeer() => _automation.FindPeer();
 
     IMarkdownCommandProvider? ILinkActivationHost.CommandProvider => CommandProvider;
 
@@ -2222,28 +2098,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
             MarkdownSelectionCoordinator.ClearSelectionsExcept(this);
 
         UpdateSelectionOverlay();
-        QueueSelectionAutomationEvent();
-    }
-
-    private void QueueSelectionAutomationEvent()
-    {
-        if (_selectionAutomationEventQueued || _lifetime.IsDisposed || _lifetime.IsUnloaded)
-            return;
-
-        _selectionAutomationEventQueued = true;
-        var dispatcher = DispatcherQueue;
-        if (dispatcher is null || !dispatcher.TryEnqueue(() =>
-            {
-                _selectionAutomationEventQueued = false;
-                if (_lifetime.IsDisposed || _lifetime.IsUnloaded)
-                    return;
-
-                (FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer)?
-                    .NotifySelectionChanged();
-            }))
-        {
-            _selectionAutomationEventQueued = false;
-        }
+        _automation.QueueSelectionChanged();
     }
 
     private void OnSelectionEnabledChanged(bool isEnabled)
@@ -2258,7 +2113,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         // SupportedTextSelection value changes between Single and None.
         // Recreate the peer-facing semantic snapshot and refresh cursor state.
         RequestRebuild(RebuildReason.Full);
-        InvalidateAutomationLayout();
+        _automation.InvalidateLayout();
         _cursor.SetShape(null);
     }
 
@@ -2387,7 +2242,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _imageRelayout.Retire();
         _lazyLayout.ResetScrollVelocity();
         _blockScroll.ClearPending();
-        _selectionAutomationEventQueued = false;
+        _automation.ForgetQueuedSelectionChanged();
         _overflowScroll.ClearAutomationNotifications();
         _highlighting.Retire(restart: false);
         // Unsubscribe scroll handler so scroll-inertia events after visual-tree
@@ -2435,7 +2290,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         var snap = _published.Snapshot;
         _published.Snapshot = null;
         _automationDocumentGenerations.Invalidate();
-        NotifyAutomationSnapshotChanged();
+        _automation.NotifySnapshotChanged();
         RetireSnapshot(snap);
     }
 
@@ -2928,7 +2783,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
             }
 
             committed = true;
-            NotifyAutomationSnapshotChanged();
+            _automation.NotifySnapshotChanged();
             _timings.CompleteInitialDispatcherProbe(initialLayoutDispatcherProbe, plan.LayoutDiagnostics);
             FinishReplacement(plan, snapshot, generation, publication, timeline);
             _timings.PublishCommitted(
@@ -3079,7 +2934,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         InvalidateCanvas();
         if (publication.SemanticInputChanged)
         {
-            (FrameworkElementAutomationPeer.FromElement(this) as MarkdownAutomationPeer)?
+            _automation.FindPeer()?
                 .NotifyDocumentChanged();
         }
         else
@@ -3401,14 +3256,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         StopRecoveryClock();
     }
 
-    private void InvalidateAutomationLayout()
-    {
-        // Custom-drawn descendants do not receive XAML layout notifications of
-        // their own. Refresh an existing document peer after image reflow so UIA
-        // clients see the same bounds as the newly painted snapshot immediately.
-        FrameworkElementAutomationPeer.FromElement(this)?.InvalidatePeer();
-    }
-
     /// <summary>
     /// A failed live layout is not transient lock contention. Preserve the last
     /// painted tiles and committed logical selection, but discard geometry-bound
@@ -3452,7 +3299,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         TryGeometryRecoveryCleanup(_focusRing.Collapse);
         TryGeometryRecoveryCleanup(() => _handles.SetVisibility(Visibility.Collapsed));
         TryGeometryRecoveryCleanup(_adorner.ReleaseSurface);
-        TryGeometryRecoveryCleanup(InvalidateAutomationLayout);
+        TryGeometryRecoveryCleanup(_automation.InvalidateLayout);
 
         if (snapshot.GeometryRecoveryIsDeviceLost)
         {
