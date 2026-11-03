@@ -281,31 +281,15 @@ public sealed class MermaidRenderer : IDisposable
                 if (nativeDeadlineMilliseconds == 0)
                     return _diagnostics.TimedOutResult(source, diagnosticCulture);
 
-                MermaidRenderResult result;
-                if (scheduleNativeRender)
-                {
-                    result = await Task.Run(
-                        () => _nativeEngine.RenderNative(
-                            source,
-                            sourceBytes,
-                            operationCancellation.Token,
-                            cancellationToken,
-                            deadlineCancellation.Token,
-                            diagnosticCulture,
-                            nativeDeadlineMilliseconds),
-                        CancellationToken.None).ConfigureAwait(false);
-                }
-                else
-                {
-                    result = _nativeEngine.RenderNative(
-                        source,
-                        sourceBytes,
-                        operationCancellation.Token,
-                        cancellationToken,
-                        deadlineCancellation.Token,
-                        diagnosticCulture,
-                        nativeDeadlineMilliseconds);
-                }
+                MermaidRenderResult result = await RenderNativeAsync(
+                    scheduleNativeRender,
+                    source,
+                    sourceBytes,
+                    operationCancellation.Token,
+                    cancellationToken,
+                    deadlineCancellation.Token,
+                    diagnosticCulture,
+                    nativeDeadlineMilliseconds).ConfigureAwait(false);
 
                 operationCancellation.Token.ThrowIfCancellationRequested();
                 return result;
@@ -324,6 +308,44 @@ public sealed class MermaidRenderer : IDisposable
                     _renderGate.Release();
             }
         }
+    }
+
+    /// <summary>
+    /// Runs the native render on the thread pool for the asynchronous entry
+    /// point, or inline on the caller's thread for the synchronous one.
+    /// </summary>
+    private Task<MermaidRenderResult> RenderNativeAsync(
+        bool scheduleNativeRender,
+        string source,
+        byte[] sourceBytes,
+        CancellationToken operationCancellation,
+        CancellationToken producerCancellation,
+        CancellationToken deadlineCancellation,
+        CultureInfo diagnosticCulture,
+        uint nativeDeadlineMilliseconds)
+    {
+        if (scheduleNativeRender)
+        {
+            return Task.Run(
+                () => _nativeEngine.RenderNative(
+                    source,
+                    sourceBytes,
+                    operationCancellation,
+                    producerCancellation,
+                    deadlineCancellation,
+                    diagnosticCulture,
+                    nativeDeadlineMilliseconds),
+                CancellationToken.None);
+        }
+
+        return Task.FromResult(_nativeEngine.RenderNative(
+            source,
+            sourceBytes,
+            operationCancellation,
+            producerCancellation,
+            deadlineCancellation,
+            diagnosticCulture,
+            nativeDeadlineMilliseconds));
     }
 
     public void Dispose()
