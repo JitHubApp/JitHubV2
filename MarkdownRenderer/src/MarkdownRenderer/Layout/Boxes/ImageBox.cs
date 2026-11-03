@@ -8,7 +8,6 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.WindowsRuntime;
-using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,7 +27,6 @@ using MarkdownRenderer.Images;
 using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
-using MarkdownRenderer.Utilities;
 using SvgTileKey = (int X, int Y, int Width, int Height);
 using SvgRasterPlan = (int Width, int Height, bool UsesTiles, MarkdownRenderer.Images.MarkdownSvgPhysicalViewport PhysicalViewport);
 using SvgFailure = (MarkdownRenderer.Images.MarkdownSvgFailureReason Reason, string Description);
@@ -5138,7 +5136,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         BoundedAsyncKeyedGate.Entry? openAdmissionEntry = null;
         bool providerAdmissionHeld = false;
         bool renderOwnershipTransferred = false;
-        string currentSecurityPartitionHash = HashSvgSecurityPartition(effectiveSecurityPartitionKey);
+        string currentSecurityPartitionHash = SvgSourcePreflight.HashSecurityPartition(effectiveSecurityPartitionKey);
         bool metadataWasKnown = IsKnownSvgSource(rawBytes, currentSecurityPartitionHash);
         long providerCacheGeneration = 0;
         long rendererIdentity = Resources.ProviderIdentities.GetSvgRendererIdentity(renderer);
@@ -5271,7 +5269,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                         }
                         else
                         {
-                            preflight = PreflightSvg(
+                            preflight = SvgSourcePreflight.Preflight(
                                 rawBytes,
                                 preparation,
                                 intrinsicHint,
@@ -5291,7 +5289,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 }
             }
 
-            svgFailureCacheKey = BuildSvgFailureCacheKey(
+            svgFailureCacheKey = SvgCacheKeys.Failure(
                 preflight.ContentHash,
                 preflight.SecurityPartitionHash,
                 rendererIdentity,
@@ -5324,7 +5322,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             cancellationToken.ThrowIfCancellationRequested();
             MarkdownSvgColor semanticColor = GetSemanticSvgColor();
             MarkdownSvgColorScheme colorScheme = GetSvgColorScheme();
-            string contentCacheKey = BuildSvgContentCacheKey(
+            string contentCacheKey = SvgCacheKeys.Content(
                 preflight.ContentHash,
                 preflight.SecurityPartitionHash,
                 rendererIdentity,
@@ -5518,7 +5516,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             Size intrinsic = ResolveIntrinsicSize(info, preflight.Intrinsic);
             string? description = string.IsNullOrWhiteSpace(info.Description)
                 ? preflight.Desc
-                : TrimSvgMetadata(info.Description);
+                : SvgSourcePreflight.TrimMetadata(info.Description);
 
             sourceEntry = new SvgCacheEntry(
                 rawBytes,
@@ -7545,7 +7543,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             // request. They must not advance its epoch and overtake a newer
             // resize/theme request that was admitted while they awaited work.
             int generation = expectedRenderGeneration ?? AdvanceSvgRenderGeneration();
-            var metadata = new SvgPublicationMetadata(
+            SvgPublicationMetadata metadata = new(
                 sourceEntry is null
                     ? _svgSourceIdentity ?? new WeakReference<byte[]>(Array.Empty<byte>())
                     : new WeakReference<byte[]>(sourceEntry.RawBytes),
@@ -7628,46 +7626,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         if (!string.IsNullOrEmpty(builtInSourceAliasKey))
             Resources.SvgSources.Set(builtInSourceAliasKey, entry);
         return true;
-    }
-
-    private static SvgPreflight PreflightSvg(
-        byte[] rawBytes,
-        MarkdownSvgSourcePreparation preparation,
-        Size intrinsicHint,
-        string securityPartition,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        string contentHash = Convert.ToHexString(SHA256.HashData(rawBytes));
-        string partitionHash = HashSvgSecurityPartition(securityPartition);
-
-        cancellationToken.ThrowIfCancellationRequested();
-        if (preparation.FailureReason is not null)
-            return (
-                intrinsicHint,
-                null,
-                null,
-                contentHash,
-                partitionHash);
-
-        SvgSourceMetadata metadata = preparation.TryGetPreparedMetadata(rawBytes, out SvgSourceMetadata preparedMetadata)
-            ? preparedMetadata
-            : SvgSourceMetadata.Extract(rawBytes, cancellationToken);
-        Size intrinsic = intrinsicHint;
-        if (intrinsic.Width <= 0 || intrinsic.Height <= 0)
-        {
-            double width = metadata.Geometry.IntrinsicWidth;
-            double height = metadata.Geometry.IntrinsicHeight;
-            if (width > 0 && height > 0)
-                intrinsic = new Size(width, height);
-        }
-
-        return (
-            intrinsic,
-            string.IsNullOrWhiteSpace(metadata.Title) ? null : TrimSvgMetadata(metadata.Title),
-            string.IsNullOrWhiteSpace(metadata.Desc) ? null : TrimSvgMetadata(metadata.Desc),
-            contentHash,
-            partitionHash);
     }
 
     private bool IsKnownSvgSource(byte[] candidate, string currentSecurityPartitionHash)
@@ -8009,9 +7967,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         _loadFailed = false;
     }
 
-    private static string HashSvgSecurityPartition(string? securityPartition) =>
-        Utf8Sha256.GetHexString(securityPartition);
-
     private void RememberSvgSource(byte[] source)
     {
         _svgSourceIdentity = new WeakReference<byte[]>(source);
@@ -8334,7 +8289,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 failureCacheKey.Length is > 0 and <= ImageFailureCache.MaxKeyLength)
             {
                 Resources.Failures.RememberSvgFailure(
-                    failureCacheKey, reason, TrimSvgMetadata(description));
+                    failureCacheKey, reason, SvgSourcePreflight.TrimMetadata(description));
             }
 
             if (_loadFailed)
@@ -8348,15 +8303,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
             RaiseLoadCompleted(layoutInvalidated: _loadFailed);
         });
-    }
-
-    private static string TrimSvgMetadata(string value)
-    {
-        const int maximumLength = 4096;
-        string trimmed = value.Trim();
-        return trimmed.Length <= maximumLength
-            ? trimmed
-            : trimmed[..maximumLength];
     }
 
     private Size ResolveIntrinsicSize(MarkdownSvgDocumentInfo info, Size fallback)
@@ -8511,30 +8457,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         };
         return format is "PNG" or "JPEG" or "BMP" or "WEBP";
     }
-
-    private static string BuildSvgContentCacheKey(
-        string contentHash,
-        string securityPartitionHash,
-        long rendererIdentity,
-        long providerCacheGeneration,
-        string language,
-        MarkdownSvgColorScheme colorScheme,
-        MarkdownSvgColor semanticColor) =>
-        $"svg-content:v1:renderer={rendererIdentity}:generation={providerCacheGeneration}:" +
-        $"partition={securityPartitionHash}:content={contentHash}:locale={language}:" +
-        $"scheme={(int)colorScheme}:color=" +
-        semanticColor.Alpha.ToString("X2", System.Globalization.CultureInfo.InvariantCulture) +
-        semanticColor.Red.ToString("X2", System.Globalization.CultureInfo.InvariantCulture) +
-        semanticColor.Green.ToString("X2", System.Globalization.CultureInfo.InvariantCulture) +
-        semanticColor.Blue.ToString("X2", System.Globalization.CultureInfo.InvariantCulture);
-
-    private static string BuildSvgFailureCacheKey(
-        string contentHash,
-        string securityPartitionHash,
-        long rendererIdentity,
-        long providerCacheGeneration) =>
-        $"svg-failure:v1:renderer={rendererIdentity}:generation={providerCacheGeneration}:" +
-        $"{securityPartitionHash}:{contentHash}";
 
     private bool IsSvgCacheEntryCurrent(SvgCacheEntry entry)
     {

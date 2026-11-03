@@ -68,7 +68,7 @@
     },
     {
       "path": "src/MarkdownRenderer/Layout/Boxes/ImageBox.cs",
-      "lines": 9057,
+      "lines": 8979,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {

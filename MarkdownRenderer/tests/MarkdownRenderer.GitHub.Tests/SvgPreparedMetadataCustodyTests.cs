@@ -110,10 +110,8 @@ public sealed class SvgPreparedMetadataCustodyTests
     private static (Size Intrinsic, string? Title, string? Desc, string ContentHash, string PartitionHash) Preflight(
         byte[] source, MarkdownSvgSourcePreparation preparation)
     {
-        MethodInfo method = typeof(ImageBox).GetMethod("PreflightSvg", BindingFlags.NonPublic | BindingFlags.Static)
-            ?? throw new InvalidOperationException("Image preflight entry point is missing.");
-        return ((Size, string?, string?, string, string))method.Invoke(
-            null, [source, preparation, default(Size), "metadata-custody-fixture", CancellationToken.None])!;
+        return SvgSourcePreflight.Preflight(
+            source, preparation, default(Size), "metadata-custody-fixture", CancellationToken.None);
     }
 
     private static byte[] Source(string title, int width, int height) => Encoding.UTF8.GetBytes(
