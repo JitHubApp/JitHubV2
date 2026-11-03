@@ -131,10 +131,19 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     // ---- Dependency properties ----
 
+    private static DependencyProperty Register<T>(string name, object? defaultValue, PropertyChangedCallback changed) =>
+        DependencyProperty.Register(name, typeof(T), typeof(MarkdownRendererControl), new PropertyMetadata(defaultValue, changed));
+
+    private static void OnFullRebuildInputChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
+        ((MarkdownRendererControl)d).RequestRebuild(RebuildReason.Full);
+
+    private static void OnRestyleInputChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
+        ((MarkdownRendererControl)d).RequestRebuild(RebuildReason.Restyle);
+
     /// <summary>Dependency property backing <see cref="Markdown"/>.</summary>
     public static readonly DependencyProperty MarkdownProperty =
-        DependencyProperty.Register(nameof(Markdown), typeof(string), typeof(MarkdownRendererControl),
-            new PropertyMetadata(string.Empty, (d, _) => ((MarkdownRendererControl)d)._documentInputs.OnMarkdownChanged()));
+        Register<string>(nameof(Markdown), string.Empty,
+            (d, _) => ((MarkdownRendererControl)d)._documentInputs.OnMarkdownChanged());
 
     /// <summary>Gets or sets the markdown source text to render.</summary>
     public string Markdown
@@ -145,11 +154,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     /// <summary>Dependency property backing <see cref="Document"/>.</summary>
     public static readonly DependencyProperty DocumentProperty =
-        DependencyProperty.Register(
-            nameof(Document),
-            typeof(MarkdownRenderer.Document.MarkdownDocument),
-            typeof(MarkdownRendererControl),
-            new PropertyMetadata(null, (d, e) => ((MarkdownRendererControl)d)._documentInputs.OnDocumentChanged(e)));
+        Register<MarkdownRenderer.Document.MarkdownDocument>(nameof(Document), null,
+            (d, e) => ((MarkdownRendererControl)d)._documentInputs.OnDocumentChanged(e));
 
     /// <summary>
     /// Gets or sets an immutable, reusable parsed document. When set, the
@@ -164,11 +170,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     /// <summary>Dependency property backing <see cref="Engine"/>.</summary>
     public static readonly DependencyProperty EngineProperty =
-        DependencyProperty.Register(
-            nameof(Engine),
-            typeof(MarkdownEngine),
-            typeof(MarkdownRendererControl),
-            new PropertyMetadata(null, (d, e) => ((MarkdownRendererControl)d)._documentInputs.OnEngineChanged(e)));
+        Register<MarkdownEngine>(nameof(Engine), null,
+            (d, e) => ((MarkdownRendererControl)d)._documentInputs.OnEngineChanged(e));
 
     /// <summary>
     /// Gets or sets the immutable parser engine used for markdown replacements.
@@ -189,11 +192,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     /// <summary>Dependency property backing <see cref="StyleSheet"/>.</summary>
     public static readonly DependencyProperty StyleSheetProperty =
-        DependencyProperty.Register(
-            nameof(StyleSheet),
-            typeof(MarkdownStyleSheet),
-            typeof(MarkdownRendererControl),
-            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).RequestRebuild(RebuildReason.Restyle)));
+        Register<MarkdownStyleSheet>(nameof(StyleSheet), null, OnRestyleInputChanged);
 
     /// <summary>Gets or sets immutable semantic style rules layered over the active theme.</summary>
     public MarkdownStyleSheet? StyleSheet
@@ -204,11 +203,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     /// <summary>Dependency property backing <see cref="StringProvider"/>.</summary>
     public static readonly DependencyProperty StringProviderProperty =
-        DependencyProperty.Register(
-            nameof(StringProvider),
-            typeof(IMarkdownStringProvider),
-            typeof(MarkdownRendererControl),
-            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).OnStringProviderChanged()));
+        Register<IMarkdownStringProvider>(nameof(StringProvider), null,
+            (d, _) => ((MarkdownRendererControl)d).OnStringProviderChanged());
 
     /// <summary>Gets or sets a host provider for localized visible and automation strings.</summary>
     public IMarkdownStringProvider? StringProvider
@@ -219,11 +215,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     /// <summary>Dependency property backing <see cref="CommandProvider"/>.</summary>
     public static readonly DependencyProperty CommandProviderProperty =
-        DependencyProperty.Register(
-            nameof(CommandProvider),
-            typeof(IMarkdownCommandProvider),
-            typeof(MarkdownRendererControl),
-            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).RequestRebuild(RebuildReason.Full)));
+        Register<IMarkdownCommandProvider>(nameof(CommandProvider), null, OnFullRebuildInputChanged);
 
     /// <summary>Gets or sets a host provider for target-aware markdown commands.</summary>
     public IMarkdownCommandProvider? CommandProvider
@@ -234,11 +226,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     /// <summary>Dependency property backing <see cref="HostedElementFactory"/>.</summary>
     public static readonly DependencyProperty HostedElementFactoryProperty =
-        DependencyProperty.Register(
-            nameof(HostedElementFactory),
-            typeof(IMarkdownHostedElementFactory),
-            typeof(MarkdownRendererControl),
-            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).OnHostedElementFactoryChanged()));
+        Register<IMarkdownHostedElementFactory>(nameof(HostedElementFactory), null,
+            (d, _) => ((MarkdownRendererControl)d).OnHostedElementFactoryChanged());
 
     /// <summary>Gets or sets the viewport-aware factory for declarative hosted content.</summary>
     public IMarkdownHostedElementFactory? HostedElementFactory
@@ -249,8 +238,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     /// <summary>Dependency property backing <see cref="Theme"/>.</summary>
     public static readonly DependencyProperty ThemeProperty =
-        DependencyProperty.Register(nameof(Theme), typeof(MarkdownTheme), typeof(MarkdownRendererControl),
-            new PropertyMetadata(null, (d, e) => ((MarkdownRendererControl)d)._theme.OnThemePropertyChanged(e)));
+        Register<MarkdownTheme>(nameof(Theme), null,
+            (d, e) => ((MarkdownRendererControl)d)._theme.OnThemePropertyChanged(e));
 
     /// <summary>Gets or sets the renderer theme.</summary>
     public MarkdownTheme? Theme
@@ -260,9 +249,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     }
 
     internal static readonly DependencyProperty ExtensionRegistryProperty =
-        DependencyProperty.Register(nameof(ExtensionRegistry), typeof(MarkdownExtensionRegistry),
-            typeof(MarkdownRendererControl),
-            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d)._documentInputs.OnParserConfigurationChanged()));
+        Register<MarkdownExtensionRegistry>(nameof(ExtensionRegistry), null,
+            (d, _) => ((MarkdownRendererControl)d)._documentInputs.OnParserConfigurationChanged());
 
     internal MarkdownExtensionRegistry? ExtensionRegistry
     {
@@ -271,9 +259,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     }
 
     internal static readonly DependencyProperty EmbedFactoryProperty =
-        DependencyProperty.Register(nameof(EmbedFactory), typeof(IMarkdownEmbedFactory),
-            typeof(MarkdownRendererControl),
-            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).RequestRebuild(RebuildReason.Full)));
+        Register<IMarkdownEmbedFactory>(nameof(EmbedFactory), null, OnFullRebuildInputChanged);
 
     internal IMarkdownEmbedFactory? EmbedFactory
     {
@@ -283,9 +269,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     /// <summary>Dependency property backing <see cref="ImageResolver"/>.</summary>
     public static readonly DependencyProperty ImageResolverProperty =
-        DependencyProperty.Register(nameof(ImageResolver), typeof(IMarkdownImageResolver),
-            typeof(MarkdownRendererControl),
-            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).RequestRebuild(RebuildReason.Full)));
+        Register<IMarkdownImageResolver>(nameof(ImageResolver), null, OnFullRebuildInputChanged);
 
     /// <summary>Gets or sets the host-specific resolver consulted before public image loading.</summary>
     public IMarkdownImageResolver? ImageResolver
@@ -296,10 +280,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     /// <summary>Dependency property backing <see cref="SvgRenderer"/>.</summary>
     public static readonly DependencyProperty SvgRendererProperty =
-        DependencyProperty.Register(nameof(SvgRenderer), typeof(IMarkdownSvgRenderer),
-            typeof(MarkdownRendererControl),
-            new PropertyMetadata(null, static (d, e) =>
-                ((MarkdownRendererControl)d)._svgRenderer.OnChanged(e)));
+        Register<IMarkdownSvgRenderer>(nameof(SvgRenderer), null,
+            static (d, e) => ((MarkdownRendererControl)d)._svgRenderer.OnChanged(e));
 
     /// <summary>
     /// Gets or sets the shared provider used to render admitted static SVG
@@ -313,10 +295,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     /// <summary>Dependency property backing <see cref="RasterDecoder"/>.</summary>
     public static readonly DependencyProperty RasterDecoderProperty =
-        DependencyProperty.Register(nameof(RasterDecoder), typeof(IMarkdownRasterDecoder),
-            typeof(MarkdownRendererControl),
-            new PropertyMetadata(null, static (d, _) =>
-                ((MarkdownRendererControl)d).RequestRebuild(RebuildReason.Full)));
+        Register<IMarkdownRasterDecoder>(nameof(RasterDecoder), null, OnFullRebuildInputChanged);
 
     /// <summary>
     /// Gets or sets the optional shared provider used to decode admitted static
@@ -330,10 +309,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     /// <summary>Dependency property backing <see cref="PerformanceSession"/>.</summary>
     public static readonly DependencyProperty PerformanceSessionProperty =
-        DependencyProperty.Register(nameof(PerformanceSession), typeof(IMarkdownPerformanceSession),
-            typeof(MarkdownRendererControl),
-            new PropertyMetadata(null, (d, e) =>
-                ((MarkdownRendererControl)d)._performanceSession.OnChanged(e)));
+        Register<IMarkdownPerformanceSession>(nameof(PerformanceSession), null,
+            (d, e) => ((MarkdownRendererControl)d)._performanceSession.OnChanged(e));
 
     /// <summary>
     /// Gets or sets the optional, host-owned resource preparation session. The
@@ -347,9 +324,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     /// <summary>Dependency property backing <see cref="ImageBaseUri"/>.</summary>
     public static readonly DependencyProperty ImageBaseUriProperty =
-        DependencyProperty.Register(nameof(ImageBaseUri), typeof(Uri),
-            typeof(MarkdownRendererControl),
-            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).RequestRebuild(RebuildReason.Full)));
+        Register<Uri>(nameof(ImageBaseUri), null, OnFullRebuildInputChanged);
 
     /// <summary>Gets or sets the base URI used to resolve relative image sources.</summary>
     public Uri? ImageBaseUri
@@ -360,9 +335,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     /// <summary>Dependency property backing <see cref="ImageDocumentPath"/>.</summary>
     public static readonly DependencyProperty ImageDocumentPathProperty =
-        DependencyProperty.Register(nameof(ImageDocumentPath), typeof(string),
-            typeof(MarkdownRendererControl),
-            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).RequestRebuild(RebuildReason.Full)));
+        Register<string>(nameof(ImageDocumentPath), null, OnFullRebuildInputChanged);
 
     /// <summary>Gets or sets the source document path used by host image resolvers.</summary>
     public string? ImageDocumentPath
@@ -373,9 +346,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     /// <summary>Dependency property backing <see cref="ImageDocumentSource"/>.</summary>
     public static readonly DependencyProperty ImageDocumentSourceProperty =
-        DependencyProperty.Register(nameof(ImageDocumentSource), typeof(MarkdownDocumentSource),
-            typeof(MarkdownRendererControl),
-            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).RequestRebuild(RebuildReason.Full)));
+        Register<MarkdownDocumentSource>(nameof(ImageDocumentSource), null, OnFullRebuildInputChanged);
 
     /// <summary>Gets or sets the stable identity and repository context of this document.</summary>
     public MarkdownDocumentSource? ImageDocumentSource
@@ -386,11 +357,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     /// <summary>Dependency property backing <see cref="AllowThirdPartyRemoteImages"/>.</summary>
     public static readonly DependencyProperty AllowThirdPartyRemoteImagesProperty =
-        DependencyProperty.Register(
-            nameof(AllowThirdPartyRemoteImages),
-            typeof(bool),
-            typeof(MarkdownRendererControl),
-            new PropertyMetadata(false, (d, _) => ((MarkdownRendererControl)d).RequestRebuild(RebuildReason.Full)));
+        Register<bool>(nameof(AllowThirdPartyRemoteImages), false, OnFullRebuildInputChanged);
 
     /// <summary>
     /// Gets or sets whether the host's image policy permits third-party HTTPS images.
@@ -406,9 +373,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     /// <summary>Dependency property backing <see cref="IsSelectionEnabled"/>.</summary>
     public static readonly DependencyProperty IsSelectionEnabledProperty =
-        DependencyProperty.Register(nameof(IsSelectionEnabled), typeof(bool),
-            typeof(MarkdownRendererControl), new PropertyMetadata(true, static (d, e) =>
-                ((MarkdownRendererControl)d)._selectionChanges.OnSelectionEnabledChanged((bool)e.NewValue)));
+        Register<bool>(nameof(IsSelectionEnabled), true,
+            static (d, e) => ((MarkdownRendererControl)d)._selectionChanges.OnSelectionEnabledChanged((bool)e.NewValue));
 
     /// <summary>
     /// Gets or sets whether read-only text selection is available to mouse,
@@ -422,8 +388,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     /// <summary>Dependency property backing <see cref="IsCodeBlockCopyEnabled"/>.</summary>
     public static readonly DependencyProperty IsCodeBlockCopyEnabledProperty =
-        DependencyProperty.Register(nameof(IsCodeBlockCopyEnabled), typeof(bool),
-            typeof(MarkdownRendererControl), new PropertyMetadata(true, (d, _) => ((MarkdownRendererControl)d).RequestRebuild(RebuildReason.Full)));
+        Register<bool>(nameof(IsCodeBlockCopyEnabled), true, OnFullRebuildInputChanged);
 
     /// <summary>Gets or sets whether code blocks include an always-visible copy button.</summary>
     public bool IsCodeBlockCopyEnabled
@@ -434,8 +399,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     /// <summary>Dependency property backing <see cref="CodeBlockCopyButtonLabel"/>.</summary>
     public static readonly DependencyProperty CodeBlockCopyButtonLabelProperty =
-        DependencyProperty.Register(nameof(CodeBlockCopyButtonLabel), typeof(string),
-            typeof(MarkdownRendererControl), new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).UpdateCodeBlockCopyButtonLabels()));
+        Register<string>(nameof(CodeBlockCopyButtonLabel), null,
+            (d, _) => ((MarkdownRendererControl)d).UpdateCodeBlockCopyButtonLabels());
 
     /// <summary>
     /// Gets or sets the accessible label and tooltip text used for code-block copy buttons.
@@ -449,8 +414,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     /// <summary>Dependency property backing <see cref="CodeBlockCopiedButtonLabel"/>.</summary>
     public static readonly DependencyProperty CodeBlockCopiedButtonLabelProperty =
-        DependencyProperty.Register(nameof(CodeBlockCopiedButtonLabel), typeof(string),
-            typeof(MarkdownRendererControl), new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).UpdateCodeBlockCopyButtonLabels()));
+        Register<string>(nameof(CodeBlockCopiedButtonLabel), null,
+            (d, _) => ((MarkdownRendererControl)d).UpdateCodeBlockCopyButtonLabels());
 
     /// <summary>
     /// Gets or sets the accessible label and tooltip text announced briefly after a code block is copied.
@@ -464,11 +429,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     /// <summary>Dependency property backing <see cref="CodeBlockCopyButtonStyle"/>.</summary>
     public static readonly DependencyProperty CodeBlockCopyButtonStyleProperty =
-        DependencyProperty.Register(
-            nameof(CodeBlockCopyButtonStyle),
-            typeof(Style),
-            typeof(MarkdownRendererControl),
-            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).UpdateCodeBlockCopyButtonStyles()));
+        Register<Style>(nameof(CodeBlockCopyButtonStyle), null,
+            (d, _) => ((MarkdownRendererControl)d).UpdateCodeBlockCopyButtonStyles());
 
     /// <summary>Gets or sets the host-provided style for code-block copy buttons.</summary>
     public Style? CodeBlockCopyButtonStyle
@@ -479,8 +441,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     /// <summary>Dependency property backing <see cref="IsCodeBlockSyntaxHighlightingEnabled"/>.</summary>
     public static readonly DependencyProperty IsCodeBlockSyntaxHighlightingEnabledProperty =
-        DependencyProperty.Register(nameof(IsCodeBlockSyntaxHighlightingEnabled), typeof(bool),
-            typeof(MarkdownRendererControl), new PropertyMetadata(true, (d, _) => ((MarkdownRendererControl)d).RequestRebuild(RebuildReason.Full)));
+        Register<bool>(nameof(IsCodeBlockSyntaxHighlightingEnabled), true, OnFullRebuildInputChanged);
 
     /// <summary>Gets or sets whether code blocks may request syntax highlighting from a configured provider.</summary>
     public bool IsCodeBlockSyntaxHighlightingEnabled
@@ -491,11 +452,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     /// <summary>Dependency property backing <see cref="IsTaskListEditingEnabled"/>.</summary>
     public static readonly DependencyProperty IsTaskListEditingEnabledProperty =
-        DependencyProperty.Register(
-            nameof(IsTaskListEditingEnabled),
-            typeof(bool),
-            typeof(MarkdownRendererControl),
-            new PropertyMetadata(false, (d, _) => ((MarkdownRendererControl)d).RequestRebuild(RebuildReason.Full)));
+        Register<bool>(nameof(IsTaskListEditingEnabled), false, OnFullRebuildInputChanged);
 
     /// <summary>
     /// Gets or sets whether task-list markers may invoke host-provided
@@ -510,12 +467,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     /// <summary>Dependency property backing <see cref="CodeHighlighter"/>.</summary>
     public static readonly DependencyProperty CodeHighlighterProperty =
-        DependencyProperty.Register(
-            nameof(CodeHighlighter),
-            typeof(ICodeHighlighter),
-            typeof(MarkdownRendererControl),
-            new PropertyMetadata(null, static (d, e) =>
-                ((MarkdownRendererControl)d).OnCodeHighlighterChanged(e)));
+        Register<ICodeHighlighter>(nameof(CodeHighlighter), null,
+            static (d, e) => ((MarkdownRendererControl)d).OnCodeHighlighterChanged(e));
 
     /// <summary>
     /// Gets or sets the stable asynchronous, cancellation-aware code highlighter.
@@ -528,8 +481,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     /// <summary>Dependency property backing <see cref="CodeBlockLineNumberMode"/>.</summary>
     public static readonly DependencyProperty CodeBlockLineNumberModeProperty =
-        DependencyProperty.Register(nameof(CodeBlockLineNumberMode), typeof(CodeBlockLineNumberMode),
-            typeof(MarkdownRendererControl), new PropertyMetadata(CodeBlockLineNumberMode.AutoMultiline, (d, _) => ((MarkdownRendererControl)d).RequestRebuild(RebuildReason.Full)));
+        Register<CodeBlockLineNumberMode>(nameof(CodeBlockLineNumberMode), CodeBlockLineNumberMode.AutoMultiline,
+            OnFullRebuildInputChanged);
 
     /// <summary>Gets or sets when code blocks show line numbers.</summary>
     public CodeBlockLineNumberMode CodeBlockLineNumberMode
@@ -540,13 +493,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     /// <summary>Dependency property backing <see cref="CodeBlockChromeMode"/>.</summary>
     public static readonly DependencyProperty CodeBlockChromeModeProperty =
-        DependencyProperty.Register(
-            nameof(CodeBlockChromeMode),
-            typeof(CodeBlockChromeMode),
-            typeof(MarkdownRendererControl),
-            new PropertyMetadata(
-                CodeBlockChromeMode.Enhanced,
-                (d, _) => ((MarkdownRendererControl)d).RequestRebuild(RebuildReason.Full)));
+        Register<CodeBlockChromeMode>(nameof(CodeBlockChromeMode), CodeBlockChromeMode.Enhanced,
+            OnFullRebuildInputChanged);
 
     /// <summary>Gets or sets whether code blocks use enhanced headers or plain Markdown chrome.</summary>
     public CodeBlockChromeMode CodeBlockChromeMode
@@ -557,13 +505,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     /// <summary>Dependency property backing <see cref="CodeBlockWrappingMode"/>.</summary>
     public static readonly DependencyProperty CodeBlockWrappingModeProperty =
-        DependencyProperty.Register(
-            nameof(CodeBlockWrappingMode),
-            typeof(CodeBlockWrappingMode),
-            typeof(MarkdownRendererControl),
-            new PropertyMetadata(
-                CodeBlockWrappingMode.NoWrap,
-                (d, _) => ((MarkdownRendererControl)d).RequestRebuild(RebuildReason.Full)));
+        Register<CodeBlockWrappingMode>(nameof(CodeBlockWrappingMode), CodeBlockWrappingMode.NoWrap,
+            OnFullRebuildInputChanged);
 
     /// <summary>
     /// Gets or sets whether long code lines remain unwrapped with a local
