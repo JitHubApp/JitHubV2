@@ -106,7 +106,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private readonly BlockScrollNavigation _blockScroll;
     private readonly LinkActivation _links;
     private readonly RendererAutomation _automation;
-    private CancellationTokenSource? _imageLifetimeCts;
+    private readonly ImageLifetimeScope _imageLifetime;
     private readonly MarkdownAutomationDocumentGeneration _automationDocumentGenerations = new();
     // Opt-in used only by the standalone quick-profile harness. This does not
     // attach a PerformanceSession or alter normal layout scheduling; it merely
@@ -936,6 +936,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     {
         _events = new RendererEvents(this, _lifetime, DispatcherQueue);
         _cancellationRetirement = new PipelineCancellationRetirement(_snapshotRetirements);
+        _imageLifetime = new ImageLifetimeScope(_cancellationRetirement);
         _touchRestore = new TouchSelectionRestore(_published, _selection, _touchSelection);
         _localization = new RendererLocalization(this, _published);
         _surface = new MarkdownViewSurface(ownsScrollViewport);
@@ -1427,7 +1428,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     object IRasterPlacementHost.ImagePreparationOwner => _imagePreparationOwnerToken;
 
-    CancellationToken IRasterPlacementHost.ImageLifetime => _imageLifetimeCts?.Token ?? CancellationToken.None;
+    CancellationToken IRasterPlacementHost.ImageLifetime => _imageLifetime.Token;
 
     bool IRasterPlacementHost.IsScrollViewIntermediate => _scrolling.IsIntermediate;
 
@@ -1615,7 +1616,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     object IRebuildLayoutSetupHost.DocumentOwner => this;
 
-    CancellationTokenSource? IRebuildLayoutSetupHost.ImageLifetimeCts => _imageLifetimeCts;
+    CancellationTokenSource? IRebuildLayoutSetupHost.ImageLifetimeCts => _imageLifetime.Source;
 
     bool IRebuildLayoutSetupHost.EnableStandaloneLayoutDiagnostics => EnableStandaloneLayoutDiagnostics;
 
@@ -1720,11 +1721,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _canvasEvents.EnsureCanvas();
         _windowDestroying.Attach(XamlRoot);
         _canvasEvents.AttachRenderHandlers();
-        if (_imageLifetimeCts is null || _imageLifetimeCts.IsCancellationRequested)
-        {
-            _imageLifetimeCts?.Dispose();
-            _imageLifetimeCts = new CancellationTokenSource();
-        }
+        _imageLifetime.Renew();
         MarkdownSelectionCoordinator.Register(this);
         _selectionDismissal.Register();
         _environment.Acquire();
@@ -1790,9 +1787,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _rebuild.Retire();
         _lazyLayout.Cancel();
         _layoutCommit.ClearPending();
-        var oldImageLifetimeCts = _imageLifetimeCts;
-        _imageLifetimeCts = null;
-        _cancellationRetirement.Retire(oldImageLifetimeCts, lifetime: null);
+        _imageLifetime.Retire();
         _imageRelayout.Retire();
         _lazyLayout.ResetScrollVelocity();
         _blockScroll.ClearPending();
