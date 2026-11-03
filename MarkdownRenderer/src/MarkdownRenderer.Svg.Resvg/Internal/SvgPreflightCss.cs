@@ -248,34 +248,7 @@ internal static class SvgPreflightCss
 
             cursor = afterName + 1;
             SkipCssWhitespaceAndComments(normalized, ref cursor);
-            ReadOnlySpan<char> target;
-            if (cursor < normalized.Length && normalized[cursor] is '\'' or '"')
-            {
-                char quote = normalized[cursor++];
-                int start = cursor;
-                while (cursor < normalized.Length && normalized[cursor] != quote)
-                    cursor++;
-                if (cursor >= normalized.Length)
-                    throw SvgPreflightFailures.Unsupported("A quoted CSS URL is not terminated.");
-                target = normalized.AsSpan(start, cursor - start);
-                cursor++;
-                SkipCssWhitespaceAndComments(normalized, ref cursor);
-                if (cursor >= normalized.Length || normalized[cursor] != ')')
-                    throw SvgPreflightFailures.Unsupported("A quoted CSS URL has invalid trailing content.");
-            }
-            else
-            {
-                int start = cursor;
-                while (cursor < normalized.Length && normalized[cursor] != ')' &&
-                       !char.IsWhiteSpace(normalized[cursor]))
-                {
-                    cursor++;
-                }
-                target = normalized.AsSpan(start, cursor - start);
-                SkipCssWhitespaceAndComments(normalized, ref cursor);
-                if (cursor >= normalized.Length || normalized[cursor] != ')')
-                    throw SvgPreflightFailures.Unsupported("An unquoted CSS URL is malformed.");
-            }
+            ReadOnlySpan<char> target = ReadCssUrlTarget(normalized, ref cursor);
             cursor++;
             target = target.Trim();
             if (!target.IsEmpty && target[0] == '#')
@@ -288,6 +261,46 @@ internal static class SvgPreflightCss
                 cancellationToken,
                 embeddedSvgDepth);
         }
+    }
+
+    /// <summary>
+    /// Reads a <c>url(</c> argument, quoted or unquoted, and checks that only
+    /// whitespace and comments separate it from the closing parenthesis.
+    /// </summary>
+    /// <param name="css">The escape-decoded style sheet.</param>
+    /// <param name="cursor">The first character inside the parentheses; on return, the closing parenthesis.</param>
+    /// <returns>The untrimmed URL target.</returns>
+    private static ReadOnlySpan<char> ReadCssUrlTarget(string css, ref int cursor)
+    {
+        ReadOnlySpan<char> target;
+        if (cursor < css.Length && css[cursor] is '\'' or '"')
+        {
+            char quote = css[cursor++];
+            int start = cursor;
+            while (cursor < css.Length && css[cursor] != quote)
+                cursor++;
+            if (cursor >= css.Length)
+                throw SvgPreflightFailures.Unsupported("A quoted CSS URL is not terminated.");
+            target = css.AsSpan(start, cursor - start);
+            cursor++;
+            SkipCssWhitespaceAndComments(css, ref cursor);
+            if (cursor >= css.Length || css[cursor] != ')')
+                throw SvgPreflightFailures.Unsupported("A quoted CSS URL has invalid trailing content.");
+        }
+        else
+        {
+            int start = cursor;
+            while (cursor < css.Length && css[cursor] != ')' &&
+                   !char.IsWhiteSpace(css[cursor]))
+            {
+                cursor++;
+            }
+            target = css.AsSpan(start, cursor - start);
+            SkipCssWhitespaceAndComments(css, ref cursor);
+            if (cursor >= css.Length || css[cursor] != ')')
+                throw SvgPreflightFailures.Unsupported("An unquoted CSS URL is malformed.");
+        }
+        return target;
     }
 
     internal static bool ContainsMotionDeclaration(string css)
