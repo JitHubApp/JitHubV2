@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.IO.Pipes;
 using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
-using System.Runtime.InteropServices;
 using MarkdownRenderer.Images;
 using Microsoft.Win32.SafeHandles;
 
@@ -290,7 +289,7 @@ internal sealed class WindowsWorkerProcess : IAsyncDisposable, IDisposable, IWor
                 workerWorkingSetKiB: memory.WorkingSetKiB,
                 workerPrivateCommitKiB: memory.PrivateCommitKiB,
                 workerPageFaults: memory.PageFaults,
-                elapsedWallMilliseconds: GetElapsedMilliseconds(evidenceWindow.WallStartedAt),
+                elapsedWallMilliseconds: WorkerProcessCounters.GetElapsedMilliseconds(evidenceWindow.WallStartedAt),
                 workerInputSha256: trace.CaptureTimeoutEvidence
                     ? Convert.ToHexString(request.ContentHash)
                     : string.Empty,
@@ -355,55 +354,9 @@ internal sealed class WindowsWorkerProcess : IAsyncDisposable, IDisposable, IWor
 
     public void Dispose() => DisposeCore(waitForExit: false);
 
-    internal long GetProcessCpuTicks()
-    {
-        try
-        {
-            if (!WorkerNativeMethods.GetProcessTimes(_process, out _, out _, out WorkerNativeMethods.FileTime kernel, out WorkerNativeMethods.FileTime user))
-                return -1;
+    internal long GetProcessCpuTicks() => WorkerProcessCounters.GetCpuTicks(_process);
 
-            ulong kernelTicks = ((ulong)kernel.High << 32) | kernel.Low;
-            ulong userTicks = ((ulong)user.High << 32) | user.Low;
-            return userTicks <= long.MaxValue &&
-                   kernelTicks <= (ulong)long.MaxValue - userTicks
-                ? (long)(kernelTicks + userTicks)
-                : -1;
-        }
-        catch (ObjectDisposedException)
-        {
-            return -1;
-        }
-    }
-
-    internal WorkerMemorySnapshot GetProcessMemorySnapshot()
-    {
-        try
-        {
-            var counters = new WorkerNativeMethods.ProcessMemoryCountersEx
-            {
-                Size = (uint)Marshal.SizeOf<WorkerNativeMethods.ProcessMemoryCountersEx>()
-            };
-            if (!WorkerNativeMethods.GetProcessMemoryInfo(_process, ref counters, counters.Size))
-                return WorkerMemorySnapshot.Unavailable;
-
-            return new WorkerMemorySnapshot(
-                ToKiB(counters.WorkingSetSize),
-                ToKiB(counters.PrivateUsage),
-                (int)Math.Min(counters.PageFaultCount, int.MaxValue));
-        }
-        catch (ObjectDisposedException)
-        {
-            return WorkerMemorySnapshot.Unavailable;
-        }
-    }
-
-    private static int ToKiB(nuint bytes) =>
-        (int)Math.Min((ulong)bytes / 1024UL, int.MaxValue);
-
-    internal static int GetElapsedMilliseconds(long startedAt) =>
-        startedAt == 0
-            ? -1
-            : (int)Math.Min(Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds, int.MaxValue);
+    internal WorkerMemorySnapshot GetProcessMemorySnapshot() => WorkerProcessCounters.GetMemorySnapshot(_process);
 
     internal void DisposeForRestart() => DisposeCore(waitForExit: true);
 

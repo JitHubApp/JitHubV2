@@ -228,7 +228,7 @@ internal sealed class WindowsWorkerProcessLauncher(
             workerWorkingSetKiB: -1,
             workerPrivateCommitKiB: -1,
             workerPageFaults: -1,
-            elapsedWallMilliseconds: WindowsWorkerProcess.GetElapsedMilliseconds(processStartedTimestamp),
+            elapsedWallMilliseconds: WorkerProcessCounters.GetElapsedMilliseconds(processStartedTimestamp),
             workerInputSha256: string.Empty,
             workerExecutableSha256: workerExecutableSha256 ?? string.Empty);
         return new WorkerInitializationDeadlineException(
