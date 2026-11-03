@@ -130,21 +130,8 @@ internal sealed class MarkdownSharedImageFetcher
 
             if (background)
             {
-                bool remote = IsRemoteSource(key.Source, context);
-                while (true)
-                {
-                    // Paused remote work must not hold a speculative slot that
-                    // another document could use for local resources.
-                    while (remote && ShouldPauseRemotePrefetch())
-                        await Task.Delay(TimeSpan.FromSeconds(15), cancellationToken)
-                            .ConfigureAwait(false);
-                    backgroundLease = await _backgroundAdmission.EnterAsync(
-                        owner, cancellationToken).ConfigureAwait(false);
-                    if (!remote || !ShouldPauseRemotePrefetch())
-                        break;
-                    backgroundLease.Dispose();
-                    backgroundLease = null;
-                }
+                backgroundLease = await EnterBackgroundAdmissionAsync(
+                    owner, key, context, cancellationToken).ConfigureAwait(false);
             }
             await _fetchSlots.WaitAsync(cancellationToken).ConfigureAwait(false);
             fetchAcquired = true;
@@ -154,68 +141,8 @@ internal sealed class MarkdownSharedImageFetcher
             Interlocked.Increment(ref _activeImageFetches);
             resolverStarted = true;
             Interlocked.Increment(ref _imageFetches);
-            try
-            {
-                IMarkdownImageResolutionLease resolutionLease;
-                using var sourceAdmission = new ResolverSourceByteAdmission(
-                    _lifetime, _admissions, owner, background, cancellationToken);
-                if (resolver is IMarkdownLeasedImageResolver leased)
-                {
-                    resolutionLease = await leased.ResolveWithSourceLeaseAsync(
-                            key.Source, context, sourceAdmission, cancellationToken)
-                        .ConfigureAwait(false);
-                }
-                else
-                {
-                    // Compatibility resolvers have no transferable source
-                    // lifetime. Their results retain the historical behavior
-                    // and are outside the strict in-flight byte guarantee.
-                    MarkdownImageResolution resolution = resolver is IMarkdownImageSourceByteAdmittedResolver admitted
-                        ? await admitted.ResolveWithSourceByteAdmissionAsync(
-                            key.Source, context, sourceAdmission, cancellationToken).ConfigureAwait(false)
-                        : await resolver.ResolveAsync(
-                            key.Source, context, cancellationToken).ConfigureAwait(false);
-                    resolutionLease = MarkdownImageResolutionLease.CreateUnreserved(resolution);
-                }
-
-                ArgumentNullException.ThrowIfNull(resolutionLease);
-                try
-                {
-                    MarkdownImageResolution result = resolutionLease.Resolution;
-                    if (!string.IsNullOrEmpty(result.Asset?.CacheKey))
-                        _cache.Store(key, key, result);
-                    return resolutionLease;
-                }
-                catch
-                {
-                    ImageResolutionLeaseCleanup.DisposeSafely(resolutionLease);
-                    throw;
-                }
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                Interlocked.Increment(ref _imageFetchCancellations);
-                throw;
-            }
-            catch (MarkdownImageSourceDeferredException) when (background)
-            {
-                // A speculative source that needs a larger reservation is not
-                // a failed image. A later visible request retries it.
-                throw;
-            }
-            catch
-            {
-                Interlocked.Increment(ref _imageFetchFailures);
-                throw;
-            }
-            finally
-            {
-                Interlocked.Decrement(ref _activeImageFetches);
-                long elapsedTicks = Stopwatch.GetTimestamp() - started;
-                Interlocked.Add(ref _imageFetchMilliseconds,
-                    (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds);
-                MarkdownPerformanceEventSource.Log.ResourceWork(1, elapsedTicks, 1);
-            }
+            return await ResolveCountedAsync(
+                owner, key, resolver, context, background, started, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && !resolverStarted)
         {
@@ -235,6 +162,118 @@ internal sealed class MarkdownSharedImageFetcher
                 try { backgroundLease?.Dispose(); }
                 finally { _lifetime.RetireWork(); }
             }
+        }
+    }
+
+    // Takes a fair background admission. A remote source waits while the
+    // device is saving energy or on a metered network, and never holds the
+    // admission while it waits.
+    private async Task<IDisposable> EnterBackgroundAdmissionAsync(
+        MarkdownPerformanceDocumentScope owner,
+        ImageSourceKey key,
+        MarkdownImageResolveContext context,
+        CancellationToken cancellationToken)
+    {
+        bool remote = IsRemoteSource(key.Source, context);
+        while (true)
+        {
+            // Paused remote work must not hold a speculative slot that
+            // another document could use for local resources.
+            while (remote && ShouldPauseRemotePrefetch())
+                await Task.Delay(TimeSpan.FromSeconds(15), cancellationToken)
+                    .ConfigureAwait(false);
+            IDisposable backgroundLease = await _backgroundAdmission.EnterAsync(
+                owner, cancellationToken).ConfigureAwait(false);
+            if (!remote || !ShouldPauseRemotePrefetch())
+                return backgroundLease;
+            backgroundLease.Dispose();
+        }
+    }
+
+    // Runs the resolver while it holds a fetch slot and records the fetch's
+    // outcome and duration in the session counters.
+    private async Task<IMarkdownImageResolutionLease> ResolveCountedAsync(
+        MarkdownPerformanceDocumentScope owner,
+        ImageSourceKey key,
+        IMarkdownImageResolver resolver,
+        MarkdownImageResolveContext context,
+        bool background,
+        long started,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await ResolveAndStoreAsync(
+                owner, key, resolver, context, background, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            Interlocked.Increment(ref _imageFetchCancellations);
+            throw;
+        }
+        catch (MarkdownImageSourceDeferredException) when (background)
+        {
+            // A speculative source that needs a larger reservation is not
+            // a failed image. A later visible request retries it.
+            throw;
+        }
+        catch
+        {
+            Interlocked.Increment(ref _imageFetchFailures);
+            throw;
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _activeImageFetches);
+            long elapsedTicks = Stopwatch.GetTimestamp() - started;
+            Interlocked.Add(ref _imageFetchMilliseconds,
+                (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+            MarkdownPerformanceEventSource.Log.ResourceWork(1, elapsedTicks, 1);
+        }
+    }
+
+    private async Task<IMarkdownImageResolutionLease> ResolveAndStoreAsync(
+        MarkdownPerformanceDocumentScope owner,
+        ImageSourceKey key,
+        IMarkdownImageResolver resolver,
+        MarkdownImageResolveContext context,
+        bool background,
+        CancellationToken cancellationToken)
+    {
+        IMarkdownImageResolutionLease resolutionLease;
+        using var sourceAdmission = new ResolverSourceByteAdmission(
+            _lifetime, _admissions, owner, background, cancellationToken);
+        if (resolver is IMarkdownLeasedImageResolver leased)
+        {
+            resolutionLease = await leased.ResolveWithSourceLeaseAsync(
+                    key.Source, context, sourceAdmission, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        else
+        {
+            // Compatibility resolvers have no transferable source
+            // lifetime. Their results retain the historical behavior
+            // and are outside the strict in-flight byte guarantee.
+            MarkdownImageResolution resolution = resolver is IMarkdownImageSourceByteAdmittedResolver admitted
+                ? await admitted.ResolveWithSourceByteAdmissionAsync(
+                    key.Source, context, sourceAdmission, cancellationToken).ConfigureAwait(false)
+                : await resolver.ResolveAsync(
+                    key.Source, context, cancellationToken).ConfigureAwait(false);
+            resolutionLease = MarkdownImageResolutionLease.CreateUnreserved(resolution);
+        }
+
+        ArgumentNullException.ThrowIfNull(resolutionLease);
+        try
+        {
+            MarkdownImageResolution result = resolutionLease.Resolution;
+            if (!string.IsNullOrEmpty(result.Asset?.CacheKey))
+                _cache.Store(key, key, result);
+            return resolutionLease;
+        }
+        catch
+        {
+            ImageResolutionLeaseCleanup.DisposeSafely(resolutionLease);
+            throw;
         }
     }
 
