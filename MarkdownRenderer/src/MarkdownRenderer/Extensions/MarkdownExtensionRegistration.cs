@@ -1,5 +1,3 @@
-using System;
-
 namespace MarkdownRenderer.Extensions;
 
 /// <summary>
@@ -74,15 +72,4 @@ internal sealed class MarkdownExtensionRegistration
     internal static MarkdownExtensionRegistration Owned(
         MarkdownOwnedExtensionFactory factory) =>
         new(MarkdownExtensionRegistrationKind.OwnedFactory, ownedFactory: factory);
-}
-
-internal enum MarkdownExtensionRegistrationKind
-{
-    Extension,
-    Feature,
-    SynchronousBlock,
-    AsynchronousBlock,
-    SynchronousInline,
-    AsynchronousInline,
-    OwnedFactory,
 }

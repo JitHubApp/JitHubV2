@@ -756,10 +756,8 @@ public sealed class MixedInlineVectorImageRelayoutTests
 
     private static MarkdownProgressiveScenePlan GetRegisteredPlan(MarkdownPerformanceSession session, object owner)
     {
-        FieldInfo field = typeof(MarkdownPerformanceSession).GetField(
-            "_scenePlans", BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Missing progressive scene plan registry.");
-        return Assert.IsType<Dictionary<object, MarkdownProgressiveScenePlan>>(field.GetValue(session))[owner];
+        Assert.True(session.ScenePlans.TryGetPlan(owner, out MarkdownProgressiveScenePlan? plan));
+        return plan;
     }
 
     private static async Task PublishAsync(MarkdownProgressiveScenePlan plan, string marker)

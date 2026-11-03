@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
-using System.Reflection;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Performance;
 using Xunit;
@@ -314,14 +313,11 @@ public sealed class BoundedMarkdownImageActivationSchedulerDemandPromotionTests
         }, static () => { }, CancellationToken.None));
         Assert.True(activeEntered.Wait(TimeSpan.FromSeconds(5)));
 
-        object gate = typeof(BoundedMarkdownImageActivationScheduler)
-            .GetField("_gate", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(scheduler)!;
         int notStarted = 0;
         var demand = new FakeDemand(isVisible: false) { ThrowOnRegistration = true };
         Assert.False(scheduler.TrySchedule(demand, static () => { }, () =>
         {
-            Assert.False(Monitor.IsEntered(gate));
+            AssertSchedulerGateIsFree(scheduler);
             Interlocked.Increment(ref notStarted);
         }, CancellationToken.None));
         Assert.Equal(1, Volatile.Read(ref notStarted));
@@ -345,9 +341,6 @@ public sealed class BoundedMarkdownImageActivationSchedulerDemandPromotionTests
             capacity: 3, visibleWaiterCapacity: 1, workerCount: 1);
         using var activeEntered = new ManualResetEventSlim();
         using var releaseActive = new ManualResetEventSlim();
-        object gate = typeof(BoundedMarkdownImageActivationScheduler)
-            .GetField("_gate", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(scheduler)!;
         int started = 0;
         int notStarted = 0;
 
@@ -360,16 +353,16 @@ public sealed class BoundedMarkdownImageActivationSchedulerDemandPromotionTests
 
         var promoted = new FakeDemand(isVisible: false);
         Assert.True(scheduler.TrySchedule(promoted, () => Interlocked.Increment(ref started),
-            () => AssertRetiredOutsideGate(gate, ref notStarted), CancellationToken.None));
+            () => AssertRetiredOutsideGate(scheduler, ref notStarted), CancellationToken.None));
         Assert.True(scheduler.TrySchedule(VisibleDemand(), () => Interlocked.Increment(ref started),
-            () => AssertRetiredOutsideGate(gate, ref notStarted), CancellationToken.None));
+            () => AssertRetiredOutsideGate(scheduler, ref notStarted), CancellationToken.None));
         Assert.True(scheduler.TrySchedule(VisibleDemand(), () => Interlocked.Increment(ref started),
-            () => AssertRetiredOutsideGate(gate, ref notStarted), CancellationToken.None));
+            () => AssertRetiredOutsideGate(scheduler, ref notStarted), CancellationToken.None));
 
         promoted.Promote(deliver: false);
         Action lateClaimedPromotion = promoted.ClaimPromotionCallback();
         Assert.True(scheduler.TrySchedule(VisibleDemand(), () => Interlocked.Increment(ref started),
-            () => AssertRetiredOutsideGate(gate, ref notStarted), CancellationToken.None));
+            () => AssertRetiredOutsideGate(scheduler, ref notStarted), CancellationToken.None));
         Assert.Equal(3, scheduler.QueuedCount);
         Assert.Equal(1, scheduler.VisibleWaitingCount);
 
@@ -389,11 +382,21 @@ public sealed class BoundedMarkdownImageActivationSchedulerDemandPromotionTests
         await scheduler.Completion.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
-    private static void AssertRetiredOutsideGate(object gate, ref int count)
+    private static void AssertRetiredOutsideGate(BoundedMarkdownImageActivationScheduler scheduler, ref int count)
     {
-        Assert.False(Monitor.IsEntered(gate));
+        AssertSchedulerGateIsFree(scheduler);
         Interlocked.Increment(ref count);
     }
+
+    /// <summary>
+    /// Callbacks must run outside the scheduler's queue gate. Another thread
+    /// reads a gate-protected count: if the calling thread held the gate, that
+    /// read could not complete.
+    /// </summary>
+    private static void AssertSchedulerGateIsFree(BoundedMarkdownImageActivationScheduler scheduler) =>
+        Assert.True(
+            Task.Run(() => scheduler.QueuedCount).Wait(TimeSpan.FromSeconds(5)),
+            "The callback ran while the scheduler gate was held.");
 
     [Fact]
     public async Task IncumbentPromotionDuringRegistrationIsReconciledBeforeAdmission()

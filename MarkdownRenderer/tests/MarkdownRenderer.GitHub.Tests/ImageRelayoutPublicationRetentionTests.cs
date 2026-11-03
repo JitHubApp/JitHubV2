@@ -12,10 +12,10 @@ public sealed class ImageRelayoutPublicationRetentionTests
     [Theory]
     [InlineData("MarkdownRenderer.Controls.RelayoutDiagnostics", "ReportFailure")]
     [InlineData("MarkdownRenderer.Theming.MarkdownEnvironmentMonitor", "LogDetachFailure")]
-    [InlineData("MarkdownRenderer.Performance.MarkdownPerformanceSession", "LogLeaseCleanupFailure")]
+    [InlineData("MarkdownRenderer.Performance.MarkdownSessionAdmissions", "LogLeaseCleanupFailure")]
     public void CleanupDiagnosticsPreserveTheExistingDebugOnlyCallContract(string typeName, string methodName)
     {
-        Assembly ownerAssembly = typeName == typeof(MarkdownRenderer.Performance.MarkdownPerformanceSession).FullName
+        Assembly ownerAssembly = typeName.StartsWith("MarkdownRenderer.Performance.", StringComparison.Ordinal)
             ? typeof(MarkdownRenderer.Performance.MarkdownPerformanceSession).Assembly
             : typeof(MarkdownDocumentView).Assembly;
         Type owner = ownerAssembly.GetType(typeName, throwOnError: true)!;

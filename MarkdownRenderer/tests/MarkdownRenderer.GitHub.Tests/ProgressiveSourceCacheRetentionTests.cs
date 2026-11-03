@@ -1,6 +1,4 @@
 using System;
-using System.Collections;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Images;
@@ -28,8 +26,8 @@ public sealed class ProgressiveSourceCacheRetentionTests
         }
 
         long budget = (IntPtr.Size == 4 ? 2L : 4L) * 1024 * 1024;
-        Assert.InRange(GetField<long>(session, "_sourceCacheMetadataBytes"), 1, budget);
-        Assert.True(GetField<IDictionary>(session, "_sourceCache").Count < 10_000);
+        Assert.InRange(session.SourceCache.MetadataBytes, 1, budget);
+        Assert.True(session.SourceCache.EntryCount < 10_000);
         Assert.True(session.GetSnapshot().SourceCacheEvictions > 0);
         Assert.Equal(10_000, resolver.Calls);
 
@@ -58,8 +56,8 @@ public sealed class ProgressiveSourceCacheRetentionTests
         }
         Assert.Equal(4, resolver.Calls);
         Assert.Equal(0, session.GetSnapshot().SourceCacheBytes);
-        Assert.Equal(0, GetField<long>(session, "_sourceCacheMetadataBytes"));
-        Assert.Empty(GetField<IDictionary>(session, "_sourceCache"));
+        Assert.Equal(0, session.SourceCache.MetadataBytes);
+        Assert.Equal(0, session.SourceCache.EntryCount);
     }
 
     [Fact]
@@ -73,8 +71,8 @@ public sealed class ProgressiveSourceCacheRetentionTests
             Assert.NotNull((await document.ResolveAsync("tiny.png", context, CancellationToken.None)).Asset);
         Assert.Equal(2, resolver.Calls);
         Assert.Equal(0, session.GetSnapshot().SourceCacheBytes);
-        Assert.Equal(0, GetField<long>(session, "_sourceCacheMetadataBytes"));
-        Assert.Empty(GetField<IDictionary>(session, "_sourceCache"));
+        Assert.Equal(0, session.SourceCache.MetadataBytes);
+        Assert.Equal(0, session.SourceCache.EntryCount);
     }
 
     [Fact]
@@ -90,7 +88,7 @@ public sealed class ProgressiveSourceCacheRetentionTests
             await Task.Delay(10);
         }
         Assert.False(IsResolverAlive(retiredResolver));
-        Assert.Single(GetField<IDictionary>(session, "_sourceCache"));
+        Assert.Equal(1, session.SourceCache.EntryCount);
         Assert.True(session.GetSnapshot().SourceCacheBytes > 0);
     }
 
@@ -127,41 +125,34 @@ public sealed class ProgressiveSourceCacheRetentionTests
             int entryCount = IntPtr.Size == 4 ? 2_048 : 4_096;
             for (int index = 0; index < entryCount; index++)
                 await document.ResolveAsync($"source-{index}.png", context, CancellationToken.None);
-            IDictionary priorCache = GetField<IDictionary>(session, "_sourceCache");
-            object priorRecency = GetField<object>(session, "_sourceRecency");
-            IDictionary priorOwnerKeys = GetField<IDictionary>(session, "_documentSourceKeys");
-            Assert.Equal(entryCount, priorCache.Count);
+            MarkdownImageSourceCache cache = session.SourceCache;
+            Assert.Equal(entryCount, cache.EntryCount);
+            Assert.True(cache.EntryCapacity >= entryCount);
+            if (releaseOwner)
+                Assert.True(cache.DocumentIndexCapacity > 0);
             if (releaseOwner)
                 document.Dispose();
             else
                 session.Trim();
 
-            IDictionary newCache = GetField<IDictionary>(session, "_sourceCache");
-            Assert.NotSame(priorCache, newCache);
-            Assert.NotSame(priorRecency, GetField<object>(session, "_sourceRecency"));
-            Assert.NotSame(priorOwnerKeys, GetField<IDictionary>(session, "_documentSourceKeys"));
-            Assert.Empty(newCache);
+            // Fresh roots, not cleared high-water arrays: both the entry table
+            // and the per-document key index are back to zero capacity.
+            Assert.Equal(0, cache.EntryCount);
+            Assert.Equal(0, cache.EntryCapacity);
+            Assert.Equal(0, cache.DocumentIndexCapacity);
             Assert.Equal(0, session.GetSnapshot().SourceCacheBytes);
-            Assert.Equal(0, GetField<long>(session, "_sourceCacheMetadataBytes"));
-            Assert.Equal(0, GetCapacity(newCache));
+            Assert.Equal(0, cache.MetadataBytes);
 
             using var replacement = session.OpenDocument(resolver, context);
             Assert.NotNull((await replacement.ResolveAsync("replacement.png", context, CancellationToken.None)).Asset);
-            Assert.Single(newCache);
-            Assert.True(GetField<long>(session, "_sourceCacheMetadataBytes") > 0);
+            Assert.Equal(1, cache.EntryCount);
+            Assert.True(cache.MetadataBytes > 0);
         }
         finally
         {
             document.Dispose();
         }
     }
-
-    private static T GetField<T>(object target, string name)
-        => (T)(target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(target) ?? throw new InvalidOperationException(name));
-
-    private static int GetCapacity(IDictionary dictionary)
-        => (int)dictionary.GetType().GetMethod("EnsureCapacity")!.Invoke(dictionary, [0])!;
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
     private static async Task<WeakReference<IMarkdownImageResolver>> CacheWithTemporaryResolver(

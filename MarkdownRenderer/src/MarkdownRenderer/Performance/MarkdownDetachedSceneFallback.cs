@@ -1,7 +1,6 @@
 using System;
 using System.Threading;
 using MarkdownRenderer.Accessibility;
-using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
@@ -45,6 +44,17 @@ internal static class MarkdownDetachedSceneFallback
             return box.PrepareCapacityFallback(cancellationToken);
         }
 
+        return PrepareFactoryFallback(box, cancellationToken, factory, nativeRetirement, nativeDisposer);
+    }
+
+    /// <summary>The legacy factory path: one box-owned native text layout per detached box.</summary>
+    private static bool PrepareFactoryFallback(
+        VectorSceneBox box,
+        CancellationToken cancellationToken,
+        Func<VectorSceneBox, CancellationToken, CanvasTextLayout?> factory,
+        NativeResourceRetirement? nativeRetirement,
+        Action<IDisposable>? nativeDisposer)
+    {
         // Reserve custody before invoking either the built-in or a supplied
         // factory. If native cleanup fails, this record can be published
         // without allocating a retirement queue node on the failure path.
@@ -76,43 +86,59 @@ internal static class MarkdownDetachedSceneFallback
         }
         finally
         {
-            try
-            {
-                if (candidate is not null)
-                {
-                    try
-                    {
-                        retirement.Disposer(candidate);
-                        retirement.SetTemporary(0, null);
-                        candidate = null;
-                    }
-                    catch (Exception cleanupFailure)
-                    {
-                        // The candidate never became box-owned. Transfer its
-                        // pre-reserved slot before letting this temporary owner go.
-                        retirement.SetTemporary(0, candidate);
-                        candidate = null;
-                        retirement.Publish();
-                        if (primaryFailure is not null)
-                        {
-                            throw new AggregateException(
-                                "Detached fallback preparation and candidate cleanup both failed.",
-                                primaryFailure,
-                                cleanupFailure);
-                        }
-                        throw;
-                    }
-                }
+            RetireUnadoptedCandidate(box, retirement, candidate, adopted, primaryFailure);
+        }
+    }
 
-                if (!adopted)
-                    retirement.Publish();
-            }
-            finally
+    /// <summary>
+    /// Disposes a candidate the box did not adopt and publishes the reserved
+    /// retirement record when nothing was adopted. A cleanup failure transfers
+    /// the candidate to the record first. The box's preparation gate stays held
+    /// until every cleanup attempt and publication has finished.
+    /// </summary>
+    private static void RetireUnadoptedCandidate(
+        VectorSceneBox box,
+        NativeResourceRetirementRecord retirement,
+        CanvasTextLayout? candidate,
+        bool adopted,
+        Exception? primaryFailure)
+    {
+        try
+        {
+            if (candidate is not null)
             {
-                // Keep the per-box preparation gate held through every cleanup
-                // attempt and record publication, including injected faults.
-                box.EndDetachedFallbackCandidate(retirement);
+                try
+                {
+                    retirement.Disposer(candidate);
+                    retirement.SetTemporary(0, null);
+                    candidate = null;
+                }
+                catch (Exception cleanupFailure)
+                {
+                    // The candidate never became box-owned. Transfer its
+                    // pre-reserved slot before letting this temporary owner go.
+                    retirement.SetTemporary(0, candidate);
+                    candidate = null;
+                    retirement.Publish();
+                    if (primaryFailure is not null)
+                    {
+                        throw new AggregateException(
+                            "Detached fallback preparation and candidate cleanup both failed.",
+                            primaryFailure,
+                            cleanupFailure);
+                    }
+                    throw;
+                }
             }
+
+            if (!adopted)
+                retirement.Publish();
+        }
+        finally
+        {
+            // Keep the per-box preparation gate held through every cleanup
+            // attempt and record publication, including injected faults.
+            box.EndDetachedFallbackCandidate(retirement);
         }
     }
 
@@ -152,6 +178,23 @@ internal static class MarkdownDetachedSceneFallback
             Math.Max(1f, fontSize * lineHeight * 3f)), 1f, MaximumDimension);
 
         cancellationToken.ThrowIfCancellationRequested();
+        return CreateNativeLayout(context, style, text, width, height, retirement, cancellationToken);
+    }
+
+    /// <summary>
+    /// Creates the native text layout and records it in the reserved
+    /// retirement slot as soon as the factory returns, so a later options or
+    /// cancellation failure can still dispose or transfer it.
+    /// </summary>
+    private static CanvasTextLayout CreateNativeLayout(
+        MarkdownLayoutContext context,
+        ElementStyle style,
+        string text,
+        float width,
+        float height,
+        NativeResourceRetirementRecord retirement,
+        CancellationToken cancellationToken)
+    {
         CanvasTextLayout? candidate = null;
         try
         {

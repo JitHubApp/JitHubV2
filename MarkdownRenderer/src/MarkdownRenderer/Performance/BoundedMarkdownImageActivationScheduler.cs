@@ -12,16 +12,16 @@ namespace MarkdownRenderer.Performance;
 /// membership is mutable only under <see cref="_gate"/>; the borrowed demand
 /// only communicates monotonic priority and an asynchronous promotion signal.
 /// </summary>
-internal sealed class BoundedMarkdownImageActivationScheduler : IDisposable
+internal sealed class BoundedMarkdownImageActivationScheduler : IMarkdownImageActivationHost, IDisposable
 {
     internal const int DefaultCapacity = 32;
     internal const int DefaultVisibleWaiterCapacity = 512;
     private const int MaxConsecutiveVisibleItemsBeforeOverscan = 8;
 
     private readonly object _gate = new();
-    private readonly LinkedList<Activation> _visible = new();
-    private readonly LinkedList<Activation> _overscan = new();
-    private readonly LinkedList<Activation> _visibleWaiters = new();
+    private readonly LinkedList<MarkdownImageActivation> _visible = new();
+    private readonly LinkedList<MarkdownImageActivation> _overscan = new();
+    private readonly LinkedList<MarkdownImageActivation> _visibleWaiters = new();
     private readonly int _capacity;
     private readonly int _visibleWaiterCapacity;
     private readonly int _workerCount;
@@ -90,7 +90,7 @@ internal sealed class BoundedMarkdownImageActivationScheduler : IDisposable
 
         // These can allocate. Prepare them before touching queue counts or an
         // overscan victim so failure leaves existing accepted work untouched.
-        var activation = new Activation(this, demand, startAsyncWork, onNotStarted, cancellationToken);
+        var activation = new MarkdownImageActivation(this, demand, startAsyncWork, onNotStarted, cancellationToken);
         activation.PrepareNode();
         activation.PreparePromotionCallback();
         try
@@ -104,96 +104,19 @@ internal sealed class BoundedMarkdownImageActivationScheduler : IDisposable
             return false;
         }
 
-        Activation? evicted = null;
+        MarkdownImageActivation? evicted = null;
         bool admitted = false;
         IDisposable? uncommittedRegistration = null;
         try
         {
             lock (_gate)
             {
-                if (!_disposed && !cancellationToken.IsCancellationRequested)
-                {
-                    // Notifications are asynchronous, so the demand bit may
-                    // have changed before its callback gets this gate.
-                    PromoteAlreadyVisibleOverscanNoLock();
-
-                    bool initiallyVisible = demand.IsVisible;
-                    bool mightQueue = _queued < _capacity ||
-                        (initiallyVisible && _overscan.First is not null);
-                    bool mightWait = !mightQueue && initiallyVisible &&
-                        _visibleWaiting < _visibleWaiterCapacity;
-
-                    if ((mightQueue || mightWait) &&
-                        TryGetNextArrivalSequenceNoLock(out _) && EnsureWorkersStarted())
-                    {
-                        // An initially overscan queued activation needs a
-                        // subscription. The callback may be claimed before
-                        // registration returns, but it runs asynchronously and
-                        // blocks on _gate until this transaction publishes.
-                        // The contract forbids an inline callback.
-                        if (mightQueue && !initiallyVisible)
-                        {
-                            uncommittedRegistration = demand.RegisterVisiblePromotion(
-                                activation.PromotionCallback!) ??
-                                throw new InvalidOperationException(
-                                    "Image demand returned a null promotion registration.");
-                        }
-
-                        // Reconcile incumbent promotions only after every
-                        // fallible registration has returned. Selecting an
-                        // overscan victim before this point could evict an item
-                        // whose monotonic demand became visible during Register.
-                        if (!_disposed && !cancellationToken.IsCancellationRequested)
-                        {
-                            PromoteAlreadyVisibleOverscanNoLock();
-                            bool visible = demand.IsVisible;
-                            bool hasQueueSlot = _queued < _capacity;
-                            Activation? victim = !hasQueueSlot && visible
-                                ? _overscan.First?.Value
-                                : null;
-                            bool queueAdmission = hasQueueSlot || victim is not null;
-                            bool waiterAdmission = !queueAdmission && visible &&
-                                _visibleWaiting < _visibleWaiterCapacity;
-
-                            // This is the final cancellation check after all
-                            // fallible registration and immediately before the
-                            // nonallocating queue publication transaction.
-                            if ((queueAdmission || waiterAdmission) &&
-                                !cancellationToken.IsCancellationRequested &&
-                                TryGetNextArrivalSequenceNoLock(out long arrivalSequence))
-                            {
-                                activation.ArrivalSequence = arrivalSequence;
-                                activation.SetPromotionRegistration(uncommittedRegistration);
-                                uncommittedRegistration = null;
-
-                                if (queueAdmission)
-                                {
-                                    LinkedList<Activation> destination = visible ? _visible : _overscan;
-                                    activation.State = ActivationState.Queued;
-                                    InsertByArrivalNoLock(destination, activation.Node!);
-                                    _nextArrivalSequence = arrivalSequence;
-                                    _queued++;
-
-                                    if (victim is not null)
-                                    {
-                                        RemoveQueuedNoLock(victim);
-                                        evicted = victim;
-                                    }
-                                    Monitor.PulseAll(_gate);
-                                }
-                                else
-                                {
-                                    activation.State = ActivationState.Waiting;
-                                    InsertByArrivalNoLock(_visibleWaiters, activation.Node!);
-                                    _nextArrivalSequence = arrivalSequence;
-                                    _visibleWaiting++;
-                                }
-
-                                admitted = true;
-                            }
-                        }
-                    }
-                }
+                admitted = TryAdmitNoLock(
+                    activation,
+                    demand,
+                    cancellationToken,
+                    ref uncommittedRegistration,
+                    ref evicted);
             }
         }
         catch (Exception exception)
@@ -206,13 +129,129 @@ internal sealed class BoundedMarkdownImageActivationScheduler : IDisposable
 
         // A subscription not transferred to an accepted activation is retired
         // outside _gate; claimed callbacks validate exact membership.
-        DisposeRegistrationSafely(uncommittedRegistration);
+        MarkdownImageActivation.DisposeRegistrationSafely(uncommittedRegistration);
         evicted?.Complete(started: false);
         if (!admitted)
         {
             activation.Complete(started: false);
             return false;
         }
+        return true;
+    }
+
+    /// <summary>
+    /// Admission under <see cref="_gate"/>: decides whether the activation can
+    /// queue or wait, starts workers, and registers an overscan promotion
+    /// before any incumbent is chosen as a victim. A registration that is not
+    /// transferred to the activation is left in
+    /// <paramref name="uncommittedRegistration"/> for disposal outside the gate.
+    /// </summary>
+    private bool TryAdmitNoLock(
+        MarkdownImageActivation activation,
+        IMarkdownImageActivationDemand demand,
+        CancellationToken cancellationToken,
+        ref IDisposable? uncommittedRegistration,
+        ref MarkdownImageActivation? evicted)
+    {
+        if (_disposed || cancellationToken.IsCancellationRequested)
+            return false;
+
+        // Notifications are asynchronous, so the demand bit may
+        // have changed before its callback gets this gate.
+        PromoteAlreadyVisibleOverscanNoLock();
+
+        bool initiallyVisible = demand.IsVisible;
+        bool mightQueue = _queued < _capacity ||
+            (initiallyVisible && _overscan.First is not null);
+        bool mightWait = !mightQueue && initiallyVisible &&
+            _visibleWaiting < _visibleWaiterCapacity;
+
+        if (!(mightQueue || mightWait) ||
+            !TryGetNextArrivalSequenceNoLock(out _) || !EnsureWorkersStarted())
+        {
+            return false;
+        }
+
+        // An initially overscan queued activation needs a
+        // subscription. The callback may be claimed before
+        // registration returns, but it runs asynchronously and
+        // blocks on _gate until this transaction publishes.
+        // The contract forbids an inline callback.
+        if (mightQueue && !initiallyVisible)
+        {
+            uncommittedRegistration = demand.RegisterVisiblePromotion(
+                activation.PromotionCallback!) ??
+                throw new InvalidOperationException(
+                    "Image demand returned a null promotion registration.");
+        }
+
+        // Reconcile incumbent promotions only after every
+        // fallible registration has returned. Selecting an
+        // overscan victim before this point could evict an item
+        // whose monotonic demand became visible during Register.
+        if (_disposed || cancellationToken.IsCancellationRequested)
+            return false;
+        return TryPublishNoLock(activation, demand, cancellationToken, ref uncommittedRegistration, ref evicted);
+    }
+
+    /// <summary>
+    /// The nonallocating publication transaction: queue (possibly evicting the
+    /// oldest overscan item for a visible arrival) or join the visible waiters.
+    /// </summary>
+    private bool TryPublishNoLock(
+        MarkdownImageActivation activation,
+        IMarkdownImageActivationDemand demand,
+        CancellationToken cancellationToken,
+        ref IDisposable? uncommittedRegistration,
+        ref MarkdownImageActivation? evicted)
+    {
+        PromoteAlreadyVisibleOverscanNoLock();
+        bool visible = demand.IsVisible;
+        bool hasQueueSlot = _queued < _capacity;
+        MarkdownImageActivation? victim = !hasQueueSlot && visible
+            ? _overscan.First?.Value
+            : null;
+        bool queueAdmission = hasQueueSlot || victim is not null;
+        bool waiterAdmission = !queueAdmission && visible &&
+            _visibleWaiting < _visibleWaiterCapacity;
+
+        // This is the final cancellation check after all
+        // fallible registration and immediately before the
+        // nonallocating queue publication transaction.
+        if (!(queueAdmission || waiterAdmission) ||
+            cancellationToken.IsCancellationRequested ||
+            !TryGetNextArrivalSequenceNoLock(out long arrivalSequence))
+        {
+            return false;
+        }
+
+        activation.ArrivalSequence = arrivalSequence;
+        activation.SetPromotionRegistration(uncommittedRegistration);
+        uncommittedRegistration = null;
+
+        if (queueAdmission)
+        {
+            LinkedList<MarkdownImageActivation> destination = visible ? _visible : _overscan;
+            activation.State = MarkdownImageActivationState.Queued;
+            InsertByArrivalNoLock(destination, activation.Node!);
+            _nextArrivalSequence = arrivalSequence;
+            _queued++;
+
+            if (victim is not null)
+            {
+                RemoveQueuedNoLock(victim);
+                evicted = victim;
+            }
+            Monitor.PulseAll(_gate);
+        }
+        else
+        {
+            activation.State = MarkdownImageActivationState.Waiting;
+            InsertByArrivalNoLock(_visibleWaiters, activation.Node!);
+            _nextArrivalSequence = arrivalSequence;
+            _visibleWaiting++;
+        }
+
         return true;
     }
 
@@ -230,10 +269,10 @@ internal sealed class BoundedMarkdownImageActivationScheduler : IDisposable
     private void PromoteAlreadyVisibleOverscanNoLock()
     {
         bool moved = false;
-        LinkedListNode<Activation>? node = _overscan.First;
+        LinkedListNode<MarkdownImageActivation>? node = _overscan.First;
         while (node is not null)
         {
-            LinkedListNode<Activation>? next = node.Next;
+            LinkedListNode<MarkdownImageActivation>? next = node.Next;
             if (node.Value.Demand.IsVisible)
             {
                 MoveNodeByArrivalNoLock(_overscan, _visible, node);
@@ -245,12 +284,12 @@ internal sealed class BoundedMarkdownImageActivationScheduler : IDisposable
             Monitor.PulseAll(_gate);
     }
 
-    private void PromoteQueuedActivation(Activation activation)
+    void IMarkdownImageActivationHost.PromoteQueuedActivation(MarkdownImageActivation activation)
     {
         lock (_gate)
         {
             if (_disposed ||
-                activation.State != ActivationState.Queued ||
+                activation.State != MarkdownImageActivationState.Queued ||
                 activation.Node is not { } node ||
                 !ReferenceEquals(node.List, _overscan) ||
                 !activation.Demand.IsVisible)
@@ -263,19 +302,19 @@ internal sealed class BoundedMarkdownImageActivationScheduler : IDisposable
     }
 
     private static void MoveNodeByArrivalNoLock(
-        LinkedList<Activation> source,
-        LinkedList<Activation> destination,
-        LinkedListNode<Activation> node)
+        LinkedList<MarkdownImageActivation> source,
+        LinkedList<MarkdownImageActivation> destination,
+        LinkedListNode<MarkdownImageActivation> node)
     {
         source.Remove(node);
         InsertByArrivalNoLock(destination, node);
     }
 
     private static void InsertByArrivalNoLock(
-        LinkedList<Activation> destination,
-        LinkedListNode<Activation> node)
+        LinkedList<MarkdownImageActivation> destination,
+        LinkedListNode<MarkdownImageActivation> node)
     {
-        LinkedListNode<Activation>? cursor = destination.Last;
+        LinkedListNode<MarkdownImageActivation>? cursor = destination.Last;
         while (cursor is not null && cursor.Value.ArrivalSequence > node.Value.ArrivalSequence)
             cursor = cursor.Previous;
         if (cursor is null)
@@ -342,7 +381,7 @@ internal sealed class BoundedMarkdownImageActivationScheduler : IDisposable
         {
             while (true)
             {
-                Activation? activation = null;
+                MarkdownImageActivation? activation = null;
                 lock (_gate)
                 {
                     while (!_disposed)
@@ -358,7 +397,7 @@ internal sealed class BoundedMarkdownImageActivationScheduler : IDisposable
                         return;
 
                     activation!.Node = null;
-                    activation.State = ActivationState.Running;
+                    activation.State = MarkdownImageActivationState.Running;
                     _queued--;
                     PromoteVisibleWaitersNoLock();
                 }
@@ -377,7 +416,7 @@ internal sealed class BoundedMarkdownImageActivationScheduler : IDisposable
         }
     }
 
-    private Activation? TakeNextNoLock(bool visibleOnly)
+    private MarkdownImageActivation? TakeNextNoLock(bool visibleOnly)
     {
         if (!visibleOnly && _overscan.First is { } overscan &&
             (_visible.First is null ||
@@ -409,39 +448,39 @@ internal sealed class BoundedMarkdownImageActivationScheduler : IDisposable
     {
         while (_queued < _capacity && _visibleWaiters.First is { } first)
         {
-            LinkedListNode<Activation> node = first;
-            Activation activation = node.Value;
+            LinkedListNode<MarkdownImageActivation> node = first;
+            MarkdownImageActivation activation = node.Value;
             _visibleWaiters.Remove(node);
             InsertByArrivalNoLock(_visible, node);
-            activation.State = ActivationState.Queued;
+            activation.State = MarkdownImageActivationState.Queued;
             _visibleWaiting--;
             _queued++;
         }
     }
 
-    private void RemoveQueuedNoLock(Activation activation)
+    private void RemoveQueuedNoLock(MarkdownImageActivation activation)
     {
-        LinkedListNode<Activation>? node = activation.Node;
+        LinkedListNode<MarkdownImageActivation>? node = activation.Node;
         if (node is null)
             return;
-        LinkedList<Activation>? list = node.List;
+        LinkedList<MarkdownImageActivation>? list = node.List;
         if (list is null)
             return;
         list.Remove(node);
         activation.Node = null;
-        activation.State = ActivationState.Completed;
+        activation.State = MarkdownImageActivationState.Completed;
         if (ReferenceEquals(list, _visibleWaiters))
             _visibleWaiting--;
         else
             _queued--;
     }
 
-    private void CancelQueued(Activation activation)
+    void IMarkdownImageActivationHost.CancelQueued(MarkdownImageActivation activation)
     {
         bool canceled = false;
         lock (_gate)
         {
-            if (activation.State is ActivationState.Queued or ActivationState.Waiting &&
+            if (activation.State is MarkdownImageActivationState.Queued or MarkdownImageActivationState.Waiting &&
                 activation.Node is { } node)
             {
                 RemoveQueuedNoLock(activation);
@@ -480,133 +519,27 @@ internal sealed class BoundedMarkdownImageActivationScheduler : IDisposable
         CompleteAndClearQueue(_visibleWaiters);
     }
 
-    private static void MarkQueueCompletedNoLock(LinkedList<Activation> queue)
+    private static void MarkQueueCompletedNoLock(LinkedList<MarkdownImageActivation> queue)
     {
-        for (LinkedListNode<Activation>? node = queue.First; node is not null; node = node.Next)
+        for (LinkedListNode<MarkdownImageActivation>? node = queue.First; node is not null; node = node.Next)
         {
-            Activation activation = node.Value;
+            MarkdownImageActivation activation = node.Value;
             activation.Node = null;
-            activation.State = ActivationState.Completed;
+            activation.State = MarkdownImageActivationState.Completed;
         }
     }
 
-    private static void CompleteAndClearQueue(LinkedList<Activation> queue)
+    private static void CompleteAndClearQueue(LinkedList<MarkdownImageActivation> queue)
     {
         while (queue.First is { } first)
         {
-            Activation activation = first.Value;
+            MarkdownImageActivation activation = first.Value;
             queue.RemoveFirst();
             activation.Complete(started: false);
-        }
-    }
-
-    private static void DisposeRegistrationSafely(IDisposable? registration)
-    {
-        if (registration is null)
-            return;
-        try { registration.Dispose(); }
-        catch (Exception exception)
-        {
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownPerformanceSession] Image activation promotion cleanup failed: {exception.Message}");
         }
     }
 
     private static void LogSchedulingFailure(Exception exception) =>
         MarkdownDiagnostics.WriteLine(
             $"[MarkdownPerformanceSession] Image activation scheduling failed: {exception.Message}");
-
-    private enum ActivationState : byte { Created, Queued, Waiting, Running, Completed }
-
-    private sealed class Activation
-    {
-        private readonly BoundedMarkdownImageActivationScheduler _owner;
-        private Action? _startAsyncWork;
-        private Action? _onNotStarted;
-        private CancellationTokenRegistration _cancellationRegistration;
-        private IDisposable? _promotionRegistration;
-        private int _completed;
-
-        internal Activation(
-            BoundedMarkdownImageActivationScheduler owner,
-            IMarkdownImageActivationDemand demand,
-            Action startAsyncWork,
-            Action onNotStarted,
-            CancellationToken cancellationToken)
-        {
-            _owner = owner;
-            Demand = demand;
-            _startAsyncWork = startAsyncWork;
-            _onNotStarted = onNotStarted;
-            CancellationToken = cancellationToken;
-        }
-
-        internal IMarkdownImageActivationDemand Demand { get; }
-        internal Action? PromotionCallback { get; private set; }
-        internal LinkedListNode<Activation>? Node { get; set; }
-        internal long ArrivalSequence { get; set; }
-        internal ActivationState State { get; set; }
-        internal CancellationToken CancellationToken { get; }
-
-        internal void PrepareNode() => Node = new LinkedListNode<Activation>(this);
-        internal void PreparePromotionCallback() => PromotionCallback = OnDemandPromoted;
-        private void OnDemandPromoted() => _owner.PromoteQueuedActivation(this);
-        internal void SetPromotionRegistration(IDisposable? registration) => _promotionRegistration = registration;
-        internal void RegisterCancellation()
-        {
-            if (CancellationToken.CanBeCanceled)
-            {
-                _cancellationRegistration = CancellationToken.Register(
-                    static state =>
-                    {
-                        var activation = (Activation)state!;
-                        activation._owner.CancelQueued(activation);
-                    },
-                    this);
-            }
-        }
-
-        internal void DisposePromotionRegistration() =>
-            DisposeRegistrationSafely(Interlocked.Exchange(ref _promotionRegistration, null));
-
-        internal void Run()
-        {
-            bool started = !CancellationToken.IsCancellationRequested;
-            try
-            {
-                if (started)
-                    Volatile.Read(ref _startAsyncWork)?.Invoke();
-            }
-            catch (Exception exception)
-            {
-                MarkdownDiagnostics.WriteLine(
-                    $"[MarkdownPerformanceSession] Image activation start failed: {exception.Message}");
-            }
-            finally { Complete(started); }
-        }
-
-        internal void Complete(bool started)
-        {
-            if (Interlocked.Exchange(ref _completed, 1) != 0)
-                return;
-            DisposePromotionRegistration();
-            Interlocked.Exchange(ref _startAsyncWork, null);
-            Action? retiredNotStarted = Interlocked.Exchange(ref _onNotStarted, null);
-            try { _cancellationRegistration.Unregister(); }
-            catch (Exception exception)
-            {
-                MarkdownDiagnostics.WriteLine(
-                    $"[MarkdownPerformanceSession] Image activation cancellation cleanup failed: {exception.Message}");
-            }
-            if (!started)
-            {
-                try { retiredNotStarted?.Invoke(); }
-                catch (Exception exception)
-                {
-                    MarkdownDiagnostics.WriteLine(
-                        $"[MarkdownPerformanceSession] Image activation retirement failed: {exception.Message}");
-                }
-            }
-        }
-    }
 }

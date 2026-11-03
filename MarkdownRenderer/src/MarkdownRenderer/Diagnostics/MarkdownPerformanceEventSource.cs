@@ -17,11 +17,16 @@ internal sealed class MarkdownPerformanceEventSource : EventSource
 
     internal static MarkdownPerformanceEventSource Log { get; } = new();
 
+    // Harness-owned frame correlation for the calling thread only; each UI
+    // thread sees its own value and production callers never set it.
     [ThreadStatic]
     private static long _logicalFrameId;
-    private static IMarkdownPerformanceSink? _sink;
-    private static long _nextSvgWorkId;
-    private static Action<long, long, long>? _svgStageDiagnosticRecorder;
+
+    // The provider is a process singleton by EventSource contract, so its
+    // in-process observer and correlation counter are instance state of that
+    // one provider rather than free statics.
+    private IMarkdownPerformanceSink? _sink;
+    private long _nextSvgWorkId;
 
     private MarkdownPerformanceEventSource()
     {
@@ -38,7 +43,7 @@ internal sealed class MarkdownPerformanceEventSource : EventSource
     internal static void SetLogicalFrameId(long value) => _logicalFrameId = value;
 
     [NonEvent]
-    internal static void SetInProcessSink(IMarkdownPerformanceSink? sink) =>
+    internal void SetInProcessSink(IMarkdownPerformanceSink? sink) =>
         Volatile.Write(ref _sink, sink);
 
     [NonEvent]
@@ -189,17 +194,12 @@ internal sealed class MarkdownPerformanceEventSource : EventSource
     }
 
     [NonEvent]
-    internal static void SetSvgStageDiagnosticRecorder(Action<long, long, long>? recorder) =>
-        Volatile.Write(ref _svgStageDiagnosticRecorder, recorder);
-
-    [NonEvent]
     internal bool IsSvgWorkMeasurementEnabled() =>
-        Volatile.Read(ref _svgStageDiagnosticRecorder) is not null ||
         IsEnabled(EventLevel.Informational, EventKeywords.None);
 
     /// <summary>
     /// Starts a process-local SVG correlation id. A zero id means that no
-    /// diagnostic observer is active, so call sites can skip timers entirely.
+    /// event listener is active, so call sites can skip timers entirely.
     /// </summary>
     [NonEvent]
     internal long BeginSvgWork() => IsSvgWorkMeasurementEnabled()
@@ -216,15 +216,6 @@ internal sealed class MarkdownPerformanceEventSource : EventSource
     [Event(12, Level = EventLevel.Informational)]
     internal void SvgWorkStage(long workId, long elapsedStopwatchTicks, long packedMetrics)
     {
-        try
-        {
-            Volatile.Read(ref _svgStageDiagnosticRecorder)?.Invoke(
-                workId, elapsedStopwatchTicks, packedMetrics);
-        }
-        catch (Exception)
-        {
-            // Diagnostic recording must never interrupt image rendering.
-        }
         if (IsEnabled())
             WriteEvent(12, workId, elapsedStopwatchTicks, packedMetrics);
     }

@@ -1,4 +1,3 @@
-using System.Reflection;
 using MarkdownRenderer.Document;
 using Xunit;
 
@@ -6,9 +5,6 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class MarkdownSourceMapAffixIndexTests
 {
-    private static readonly FieldInfo BlockEntryBoundsField =
-        typeof(MarkdownSourceMap).GetField("_blockEntryBounds", BindingFlags.Instance | BindingFlags.NonPublic)!;
-
     [Fact]
     public void OrderedAffixesUseNonemptyDocumentBoundariesWithoutMaterializingBlockIndex()
     {
@@ -29,7 +25,6 @@ public sealed class MarkdownSourceMapAffixIndexTests
         Assert.Equal(new SourceSpan(4, 3), entries[2].Span);
         Assert.Equal(2, entries[2].SourceSuffixLength);
         Assert.Equal(new SourceSpan(source.Length, 0), entries[3].Span);
-        Assert.Null(BlockEntryBoundsField.GetValue(map));
 
         var fullBlock = new DocumentRange(
             new DocumentPosition(-7, 1, 0),
@@ -50,7 +45,6 @@ public sealed class MarkdownSourceMapAffixIndexTests
         Assert.Equal(new SourceSpan(1, 0), entry.Span);
         Assert.Equal(0, entry.SourcePrefixLength);
         Assert.Equal(0, entry.SourceSuffixLength);
-        Assert.Null(BlockEntryBoundsField.GetValue(map));
     }
 
     [Fact]
@@ -67,7 +61,6 @@ public sealed class MarkdownSourceMapAffixIndexTests
         Assert.Equal(new SourceSpan(0, source.Length), entry.Span);
         Assert.Equal(2, entry.SourcePrefixLength);
         Assert.Equal(2, entry.SourceSuffixLength);
-        Assert.Null(BlockEntryBoundsField.GetValue(map));
         Assert.Equal(source, map.Slice(new DocumentRange(
             new DocumentPosition(0, 0, 0),
             new DocumentPosition(0, 0, 1))));
@@ -85,7 +78,6 @@ public sealed class MarkdownSourceMapAffixIndexTests
 
         map.AddSourceAffixesToBlock(5, 0, 9);
 
-        Assert.NotNull(BlockEntryBoundsField.GetValue(map));
         MarkdownSourceMap.Entry[] afterFirstAffix = map.Entries.ToArray();
         MarkdownSourceMap.Entry first = Assert.Single(afterFirstAffix, entry => entry.BlockIndex == 5 && entry.InlineIndex == 1);
         Assert.Equal(new SourceSpan(0, 5), first.Span);

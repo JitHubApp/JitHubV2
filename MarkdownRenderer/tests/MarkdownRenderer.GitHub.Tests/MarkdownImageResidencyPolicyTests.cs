@@ -189,23 +189,8 @@ public sealed class MarkdownImageResidencyPolicyTests
         Assert.All(images[bandSize..], image => Assert.Equal(1, image.ResumeCalls));
     }
 
-    private static void AssertTrackingStorageIsBandSized(MarkdownImageResidencyPolicy policy)
-    {
-        const System.Reflection.BindingFlags flags =
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
-        foreach (string name in new[] { "_active", "_pending", "_subscribed", "_requested" })
-        {
-            var targets = (HashSet<IMarkdownImageResidencyTarget>)
-                typeof(MarkdownImageResidencyPolicy).GetField(name, flags)!.GetValue(policy)!;
-            Assert.InRange(targets.EnsureCapacity(0), 0, 512);
-        }
-        foreach (string name in new[] { "_retireScratch", "_pendingScratch" })
-        {
-            var targets = (List<IMarkdownImageResidencyTarget>)
-                typeof(MarkdownImageResidencyPolicy).GetField(name, flags)!.GetValue(policy)!;
-            Assert.InRange(targets.Capacity, 0, 512);
-        }
-    }
+    private static void AssertTrackingStorageIsBandSized(MarkdownImageResidencyPolicy policy) =>
+        Assert.InRange(policy.RetainedTrackingCapacity, 0, 512);
 
     [Fact]
     public void ResetUnsubscribesPendingBoxesAndDropsThePriorSnapshotReferences()

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -391,9 +390,8 @@ public sealed class ProgressiveSceneGraphRefillTests
 
     private static MarkdownProgressiveScenePlan GetRegisteredPlan(MarkdownPerformanceSession session, object owner)
     {
-        FieldInfo field = typeof(MarkdownPerformanceSession).GetField(
-            "_scenePlans", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return Assert.IsType<Dictionary<object, MarkdownProgressiveScenePlan>>(field.GetValue(session))[owner];
+        Assert.True(session.ScenePlans.TryGetPlan(owner, out MarkdownProgressiveScenePlan? plan));
+        return plan;
     }
 
     private static async Task PublishAsync(MarkdownProgressiveScenePlan plan, string marker)

@@ -24,7 +24,7 @@ public sealed class PerformanceEventListener : IMarkdownPerformanceSink, IDispos
 
     public PerformanceEventListener()
     {
-        MarkdownPerformanceEventSource.SetInProcessSink(this);
+        MarkdownPerformanceEventSource.Log.SetInProcessSink(this);
     }
 
     public long CurrentSequence
@@ -306,7 +306,7 @@ public sealed class PerformanceEventListener : IMarkdownPerformanceSink, IDispos
 
     public void Dispose()
     {
-        MarkdownPerformanceEventSource.SetInProcessSink(null);
+        MarkdownPerformanceEventSource.Log.SetInProcessSink(null);
         lock (_gate)
         {
             _disposed = true;

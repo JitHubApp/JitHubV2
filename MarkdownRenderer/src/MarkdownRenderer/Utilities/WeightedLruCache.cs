@@ -226,23 +226,7 @@ internal sealed class WeightedLruCache<TKey, TValue> where TKey : notnull
             _entries.TryGetValue(key, out LinkedListNode<Entry>? existing);
             bool canInsert = _budgetBytes > 0 && weight <= _budgetBytes;
             long trimTargetBytes = canInsert ? _budgetBytes - weight : _budgetBytes;
-            long retainedAfterReplacement =
-                _retainedBytes - (existing?.Value.Weight ?? 0);
-            int plannedVictimCount = 0;
-
-            // Count the exact eviction batch before changing either data
-            // structure. This scan is proportional only to the entries that
-            // the commit will remove; it allocates no per-entry snapshot.
-            for (LinkedListNode<Entry>? node = _recency.Last;
-                 retainedAfterReplacement > trimTargetBytes && node is not null;
-                 node = node.Previous)
-            {
-                if (ReferenceEquals(node, existing))
-                    continue;
-
-                retainedAfterReplacement -= node.Value.Weight;
-                plannedVictimCount = checked(plannedVictimCount + 1);
-            }
+            int plannedVictimCount = CountPlannedVictimsNoLock(existing, trimTargetBytes);
 
             int existingCount = existing is null ? 0 : 1;
             int rejectedValueCount = canInsert ? 0 : 1;
@@ -303,6 +287,30 @@ internal sealed class WeightedLruCache<TKey, TValue> where TKey : notnull
         }
 
         NotifyEvicted(evicted);
+    }
+
+    /// <summary>
+    /// Counts the exact eviction batch before <see cref="Set"/> changes either
+    /// data structure. The scan is proportional only to the entries that the
+    /// commit will remove and allocates no per-entry snapshot.
+    /// </summary>
+    private int CountPlannedVictimsNoLock(LinkedListNode<Entry>? existing, long trimTargetBytes)
+    {
+        long retainedAfterReplacement =
+            _retainedBytes - (existing?.Value.Weight ?? 0);
+        int plannedVictimCount = 0;
+        for (LinkedListNode<Entry>? node = _recency.Last;
+             retainedAfterReplacement > trimTargetBytes && node is not null;
+             node = node.Previous)
+        {
+            if (ReferenceEquals(node, existing))
+                continue;
+
+            retainedAfterReplacement -= node.Value.Weight;
+            plannedVictimCount = checked(plannedVictimCount + 1);
+        }
+
+        return plannedVictimCount;
     }
 
     public bool Remove(TKey key)

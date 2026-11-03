@@ -1,18 +1,8 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Collections.Immutable;
 
 namespace MarkdownRenderer.Html;
-
-/// <summary>Determines how elements outside the native safe subset are presented.</summary>
-public enum SafeHtmlUnknownElementBehavior
-{
-    /// <summary>Shows the exact tag markup as inert text.</summary>
-    RenderLiteral,
-    /// <summary>Omits unknown tags while preserving their non-suppressed text content.</summary>
-    KeepTextContent,
-}
 
 /// <summary>
 /// Immutable host options for the native safe subset. No option can enable scripts,

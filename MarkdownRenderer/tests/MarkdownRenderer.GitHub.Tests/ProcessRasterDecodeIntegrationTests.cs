@@ -216,17 +216,15 @@ public sealed class ProcessRasterDecodeIntegrationTests
         {
             image.Measure(64);
             image.EnsureLoading();
-            var activeWork = typeof(MarkdownPerformanceSession).GetField("_activeWork",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
             await WaitUntilAsync(() => image.ActiveImageWorkCountForTests >= 2 &&
-                (int)activeWork.GetValue(session)! == 1);
+                session.ActiveWork == 1);
             Assert.Equal(0, session.GetSnapshot().CpuPreparations);
             Assert.Equal(0, MarkdownImagePreparationAdmission.Shared.PendingRequests);
 
             // The external keyed blocker stays held. Only the linked session
             // token can end this wait; CPU admission has not been entered yet.
             await session.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
-            Assert.Equal(0, (int)activeWork.GetValue(session)!);
+            Assert.Equal(0, session.ActiveWork);
             await WaitUntilAsync(() => image.ActiveImageWorkCountForTests == 0);
             Assert.Null(image.Bitmap);
             Assert.Equal(0, Volatile.Read(ref publications));

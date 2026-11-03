@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Diagnostics.Tracing;
 using System.Linq;
 using System.Threading;
@@ -11,41 +10,26 @@ namespace MarkdownRenderer.GitHub.Tests;
 public sealed class MarkdownSvgStageTraceTests
 {
     [Fact]
-    public void StaticallyRootedRecorderReceivesStagesWithoutAnEventListener()
+    public void StageTracePacksStageSourceBytesAndTargetPixels()
     {
-        ConcurrentQueue<(long WorkId, long ElapsedTicks, long PackedMetrics)> observed = new();
-        long expectedWorkId = 0;
-        MarkdownPerformanceEventSource.SetSvgStageDiagnosticRecorder(
-            (workId, elapsedTicks, packedMetrics) =>
-            {
-                if (workId == Volatile.Read(ref expectedWorkId))
-                    observed.Enqueue((workId, elapsedTicks, packedMetrics));
-            });
-        try
+        using var listener = new SvgStageListener();
+        long workId = MarkdownSvgStageTrace.BeginWork();
+        Assert.True(workId > 0);
+        using (MarkdownSvgStageTrace.Measure(
+            workId,
+            MarkdownSvgWorkStage.ProviderOpen,
+            sourceBytes: 1_024,
+            targetPixels: 8_192))
         {
-            long workId = MarkdownSvgStageTrace.BeginWork();
-            Assert.True(workId > 0);
-            Volatile.Write(ref expectedWorkId, workId);
-            using (MarkdownSvgStageTrace.Measure(
-                workId,
-                MarkdownSvgWorkStage.ProviderOpen,
-                sourceBytes: 1_024,
-                targetPixels: 8_192))
-            {
-                Thread.SpinWait(1_000);
-            }
+            Thread.SpinWait(1_000);
+        }
 
-            var stage = Assert.Single(observed.ToArray());
-            Assert.Equal(workId, stage.WorkId);
-            Assert.True(stage.ElapsedTicks >= 0);
-            Assert.Equal((int)MarkdownSvgWorkStage.ProviderOpen, (int)((stage.PackedMetrics >> 49) & 0x1F));
-            Assert.Equal(1_024, (stage.PackedMetrics >> 25) & 0x00FF_FFFFL);
-            Assert.Equal(8_192, stage.PackedMetrics & 0x01FF_FFFFL);
-        }
-        finally
-        {
-            MarkdownPerformanceEventSource.SetSvgStageDiagnosticRecorder(null);
-        }
+        var stage = Assert.Single(listener.StagesFor(workId));
+        Assert.Equal(workId, stage.WorkId);
+        Assert.True(stage.ElapsedTicks >= 0);
+        Assert.Equal((int)MarkdownSvgWorkStage.ProviderOpen, (int)((stage.PackedMetrics >> 49) & 0x1F));
+        Assert.Equal(1_024, (stage.PackedMetrics >> 25) & 0x00FF_FFFFL);
+        Assert.Equal(8_192, stage.PackedMetrics & 0x01FF_FFFFL);
     }
 
     [Fact]
@@ -83,49 +67,35 @@ public sealed class MarkdownSvgStageTraceTests
     [Fact]
     public void FiveBitStageEncodingPreservesExistingIdsAndCarriesDispatchStage()
     {
-        ConcurrentQueue<(long WorkId, long ElapsedTicks, long PackedMetrics)> observed = new();
-        long expectedWorkId = 0;
-        MarkdownPerformanceEventSource.SetSvgStageDiagnosticRecorder(
-            (workId, elapsedTicks, packedMetrics) =>
-            {
-                if (workId == Volatile.Read(ref expectedWorkId))
-                    observed.Enqueue((workId, elapsedTicks, packedMetrics));
-            });
-        try
+        using var listener = new SvgStageListener();
+        long workId = MarkdownSvgStageTrace.BeginWork();
+        Assert.True(workId > 0);
+        using (MarkdownSvgStageTrace.Measure(
+            workId,
+            MarkdownSvgWorkStage.ProviderOpen,
+            sourceBytes: 777,
+            targetPixels: 12_345))
         {
-            long workId = MarkdownSvgStageTrace.BeginWork();
-            Volatile.Write(ref expectedWorkId, workId);
-            using (MarkdownSvgStageTrace.Measure(
-                workId,
-                MarkdownSvgWorkStage.ProviderOpen,
-                sourceBytes: 777,
-                targetPixels: 12_345))
-            {
-            }
-            using (MarkdownSvgStageTrace.Measure(
-                workId,
-                MarkdownSvgWorkStage.OuterDispatchQueueWait,
-                sourceBytes: 777,
-                targetPixels: 12_345))
-            {
-            }
+        }
+        using (MarkdownSvgStageTrace.Measure(
+            workId,
+            MarkdownSvgWorkStage.OuterDispatchQueueWait,
+            sourceBytes: 777,
+            targetPixels: 12_345))
+        {
+        }
 
-            var stages = observed.ToArray();
-            Assert.Equal(2, stages.Length);
-            Assert.Equal(workId, stages[0].WorkId);
-            Assert.Equal(workId, stages[1].WorkId);
-            Assert.Equal(4, (int)((stages[0].PackedMetrics >> 49) & 0x1F));
-            Assert.Equal(16, (int)((stages[1].PackedMetrics >> 49) & 0x1F));
-            Assert.All(stages, stage =>
-            {
-                Assert.Equal(777, (stage.PackedMetrics >> 25) & 0x00FF_FFFFL);
-                Assert.Equal(12_345, stage.PackedMetrics & 0x01FF_FFFFL);
-            });
-        }
-        finally
+        var stages = listener.StagesFor(workId);
+        Assert.Equal(2, stages.Length);
+        Assert.Equal(workId, stages[0].WorkId);
+        Assert.Equal(workId, stages[1].WorkId);
+        Assert.Equal(4, (int)((stages[0].PackedMetrics >> 49) & 0x1F));
+        Assert.Equal(16, (int)((stages[1].PackedMetrics >> 49) & 0x1F));
+        Assert.All(stages, stage =>
         {
-            MarkdownPerformanceEventSource.SetSvgStageDiagnosticRecorder(null);
-        }
+            Assert.Equal(777, (stage.PackedMetrics >> 25) & 0x00FF_FFFFL);
+            Assert.Equal(12_345, stage.PackedMetrics & 0x01FF_FFFFL);
+        });
     }
 
     private sealed class SvgStageListener : EventListener
@@ -140,6 +110,14 @@ public sealed class MarkdownSvgStageTraceTests
                     return [.. _events];
             }
         }
+
+        internal (long WorkId, long ElapsedTicks, long PackedMetrics)[] StagesFor(long workId) =>
+            [.. Events
+                .Where(item => item.Payload[0] is long observed && observed == workId)
+                .Select(item => (
+                    (long)item.Payload[0]!,
+                    (long)item.Payload[1]!,
+                    (long)item.Payload[2]!))];
 
         protected override void OnEventSourceCreated(EventSource source)
         {

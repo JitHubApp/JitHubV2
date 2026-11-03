@@ -32,6 +32,17 @@ internal sealed class MarkdownImageResidencyPolicy : IMarkdownImageResidencyPoli
         _residencyWorkDrainedHandler = OnResidencyWorkDrained;
     }
 
+    /// <summary>
+    /// The largest backing capacity of the policy's tracking sets and scratch
+    /// lists. A plan rebuild may briefly track every image; afterwards this
+    /// shows whether compaction returned storage to the band's size.
+    /// </summary>
+    internal int RetainedTrackingCapacity => System.Math.Max(
+        System.Math.Max(
+            System.Math.Max(_active.EnsureCapacity(0), _pending.EnsureCapacity(0)),
+            System.Math.Max(_subscribed.EnsureCapacity(0), _requested.EnsureCapacity(0))),
+        System.Math.Max(_retireScratch.Capacity, _pendingScratch.Capacity));
+
     /// <remarks>
     /// Callers serialize Reconcile, Reset, and Dispose with the owning snapshot
     /// read lease. The asynchronous drain callback only requests a dispatcher
@@ -44,6 +55,17 @@ internal sealed class MarkdownImageResidencyPolicy : IMarkdownImageResidencyPoli
         ArgumentNullException.ThrowIfNull(activeImages);
         ThrowIfDisposed();
 
+        CaptureRequested(activeImages);
+        RetireOutgoing();
+        ActivateRequested();
+        if (publishedImages is not null)
+            SuspendColdPublished(publishedImages);
+        RetryInactivePending();
+        CompactStorage();
+    }
+
+    private void CaptureRequested(IReadOnlyList<IMarkdownImageResidencyTarget> activeImages)
+    {
         _requested.Clear();
         for (int index = 0; index < activeImages.Count; index++)
         {
@@ -51,7 +73,10 @@ internal sealed class MarkdownImageResidencyPolicy : IMarkdownImageResidencyPoli
                 ?? throw new ArgumentException("The active image list contains a null target.", nameof(activeImages));
             _requested.Add(target);
         }
+    }
 
+    private void RetireOutgoing()
+    {
         // Remove outgoing active references first. A pending drain is retained
         // only until its notification lets the control reconcile it again.
         _retireScratch.Clear();
@@ -67,7 +92,10 @@ internal sealed class MarkdownImageResidencyPolicy : IMarkdownImageResidencyPoli
             BeginSuspension(target);
         }
         _retireScratch.Clear();
+    }
 
+    private void ActivateRequested()
+    {
         // Keep reference identity across layout-plan rebuilds. Stable active
         // boxes need no repeated lifecycle calls; newly active or still-pending
         // boxes retry resume only under the snapshot lease.
@@ -105,23 +133,26 @@ internal sealed class MarkdownImageResidencyPolicy : IMarkdownImageResidencyPoli
 
             _pending.Add(target);
         }
+    }
 
-        if (publishedImages is not null)
+    private void SuspendColdPublished(IReadOnlyList<IMarkdownImageResidencyTarget> publishedImages)
+    {
+        // This full-plan pass is allowed only when rebuilding plans, where
+        // the control already walks every image. It is never retained and
+        // is omitted by ordinary scroll reconciliation.
+        for (int index = 0; index < publishedImages.Count; index++)
         {
-            // This full-plan pass is allowed only when rebuilding plans, where
-            // the control already walks every image. It is never retained and
-            // is omitted by ordinary scroll reconciliation.
-            for (int index = 0; index < publishedImages.Count; index++)
-            {
-                IMarkdownImageResidencyTarget target = publishedImages[index]
-                    ?? throw new ArgumentException("The published image list contains a null target.", nameof(publishedImages));
-                if (_requested.Contains(target) || _active.Contains(target) || _pending.Contains(target))
-                    continue;
+            IMarkdownImageResidencyTarget target = publishedImages[index]
+                ?? throw new ArgumentException("The published image list contains a null target.", nameof(publishedImages));
+            if (_requested.Contains(target) || _active.Contains(target) || _pending.Contains(target))
+                continue;
 
-                BeginSuspension(target);
-            }
+            BeginSuspension(target);
         }
+    }
 
+    private void RetryInactivePending()
+    {
         // Retry inactive pending targets as a bounded safety net for an event
         // that raced subscription teardown. Pending targets currently wanted
         // by the viewport wait for their drain event and are not released here.
@@ -138,7 +169,10 @@ internal sealed class MarkdownImageResidencyPolicy : IMarkdownImageResidencyPoli
                 RemovePending(target);
         }
         _pendingScratch.Clear();
+    }
 
+    private void CompactStorage()
+    {
         // A plan rebuild may briefly track every cold image. Removing entries
         // does not reset HashSet's high-water enumeration slots, and Clear on a
         // List does not release its backing array. Compact sparse storage only

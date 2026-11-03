@@ -1,47 +1,42 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Markdig.Syntax;
-using Markdig.Syntax.Inlines;
 using MarkdownRenderer.Controls;
-using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Performance.ProgressiveScenes;
 using RendererDocument = MarkdownRenderer.Document.MarkdownDocument;
 using Windows.Foundation;
 
 namespace MarkdownRenderer.Performance;
-
-internal sealed class MarkdownDeferredSceneResult(
-    MarkdownContentFragment fragment,
-    IReadOnlyList<MarkdownDiagnostic> diagnostics)
-{
-    internal MarkdownContentFragment Fragment { get; } = fragment;
-    internal IReadOnlyList<MarkdownDiagnostic> Diagnostics { get; } = diagnostics;
-}
 
 /// <summary>
 /// Control-owned viewport work plan for deferred built-in scenes. The plan is
 /// built once from immutable parser output, then visible boxes resolve their
 /// private marker without rescanning the syntax tree.
 /// </summary>
-internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
+/// <remarks>
+/// The plan is the composition root for one document's deferred scenes. It
+/// owns the gate, the relayout generation, the active producer table and the
+/// visible set, and sequences generation advance and retirement. Its
+/// collaborators each own one stage: <see cref="DeferredSceneViewportProbe"/>
+/// finds visible markers, <see cref="DeferredScenePublisher"/> prepares and
+/// queues results, <see cref="DeferredSceneGraphRebinder"/> refills detached
+/// graphs, and <see cref="DeferredSceneResultStore"/> and
+/// <see cref="DeferredSceneDiagnostics"/> hold what was published. They reach
+/// back only through the host interfaces the plan implements explicitly.
+/// </remarks>
+internal sealed class MarkdownProgressiveScenePlan :
+    IScenePublicationTarget,
+    IDeferredSceneGraphRebindHost,
+    IDeferredScenePublicationHost,
+    IDeferredSceneViewportHost,
+    IDisposable
 {
-    // Built-in scene feature packs use this private, serializable content
-    // attribute to mark a readable fallback. The marker value is
-    // "<exact syntax kind>|<document-unique token>". It is metadata only; the
-    // source text and source span remain the fallback and diagnostic authority.
-
-    private const char MarkerSeparator = '|';
-    private static readonly IComparer<MarkdownDiagnostic> DiagnosticComparer =
-        Comparer<MarkdownDiagnostic>.Create(CompareDiagnostics);
-
     private readonly object _gate = new();
     private readonly object _retirementLifecycleGate = new();
     private readonly RendererDocument _document;
@@ -49,28 +44,16 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
     private readonly object _documentOwner;
     private readonly IReadOnlyDictionary<string, DeferredSceneWork> _works;
     private readonly SnapshotRetirementTracker _retirements = new();
-    // Completed metadata is bounded by the immutable source work table and
-    // holds weak graph references only. Strong reuse belongs to the session's
-    // aggregate cache; unconsumed publications are transient layout handoffs.
-    private readonly Dictionary<string, MarkdownCompletedSceneDescriptor> _completed = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, MarkdownDeferredSceneResult> _pendingResults = new(StringComparer.Ordinal);
-    private readonly MarkdownCompletedSceneCache _completedCache;
+    private readonly DeferredSceneResultStore _results;
     private readonly Dictionary<string, ActiveSceneWork> _active = new(StringComparer.Ordinal);
-    private readonly SemaphoreSlim _diagnosticPublicationGate = new(1, 1);
+    private readonly DeferredSceneDiagnostics _diagnosticSet = new();
+    private readonly DeferredSceneGraphRebinder _graphRebinder;
+    private readonly DeferredScenePublisher _publisher;
+    private readonly DeferredSceneViewportProbe _viewportProbe;
     private HashSet<string> _visibleMarkers = new(StringComparer.Ordinal);
-    private MarkdownRendererControl? _callbackOwner;
-    private Func<Action, bool>? _enqueuePublication;
-    private Action? _onPublished;
-    private Action? _onRetryVisibleBand;
     private bool _hasVisibleBand;
-    private bool _hasObservedVisiblePlaceholderStatus;
-    private bool _visiblePlaceholderStatusPending;
     private CancellationTokenSource _generationCancellation = new();
-    private ImmutableDictionary<string, ImmutableArray<MarkdownDiagnostic>> _diagnosticContributions =
-        ImmutableDictionary<string, ImmutableArray<MarkdownDiagnostic>>.Empty.WithComparers(StringComparer.Ordinal);
-    private ImmutableList<MarkdownDiagnostic> _diagnostics = ImmutableList<MarkdownDiagnostic>.Empty;
     private long _generation;
-    private long _diagnosticsPublicationVersion;
     private bool _disposed;
     private Task? _retirementTask;
 
@@ -84,7 +67,24 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
         _session = session;
         _documentOwner = documentOwner;
         _works = works;
-        _completedCache = ((MarkdownPerformanceSession)session).CompletedSceneCache;
+        _results = new DeferredSceneResultStore(((MarkdownPerformanceSession)session).CompletedSceneCache, this);
+        _graphRebinder = new DeferredSceneGraphRebinder(
+            _gate,
+            this,
+            session,
+            documentOwner,
+            works,
+            _results,
+            _diagnosticSet,
+            _retirements);
+        _publisher = new DeferredScenePublisher(
+            _gate,
+            this,
+            this,
+            session,
+            documentOwner,
+            _diagnosticSet);
+        _viewportProbe = new DeferredSceneViewportProbe(_gate, this, session);
     }
 
     /// <summary>
@@ -115,112 +115,15 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
         if (session.IsDisposed || cancellationToken.IsCancellationRequested)
             return null;
 
-        var works = new Dictionary<string, DeferredSceneWork>(StringComparer.Ordinal);
-        foreach (KeyValuePair<Block, MarkdownContentFragment> entry in document.ExtensionBlockNodeContent)
-        {
-            if (cancellationToken.IsCancellationRequested)
-                return null;
-
-            Block block = entry.Key;
-            if (!MarkdownSyntaxAdapter.TryGetBlockKind(block, out string syntaxKind))
-            {
-                continue;
-            }
-
-            MarkdownSyntaxNode? node = null;
-            Collect(entry.Value.Items, content =>
-            {
-                if (!content.Attributes.TryGetValue(MarkdownContentAttributes.DeferredScene, out string? marker) ||
-                    marker is null ||
-                    !TryReadMarker(marker, syntaxKind, out _) ||
-                    entry.Value.DeferredSceneRenderer is not { } renderer)
-                {
-                    return;
-                }
-
-                MarkdownSyntaxNode blockNode = node ??= MarkdownSyntaxAdapter.CreateBlockNode(block, document.Source);
-                if (!content.SourceSpan.Equals(blockNode.SourceSpan))
-                    return;
-
-                var work = new DeferredSceneWork(
-                    blockNode,
-                    renderer,
-                    entry.Value.DeferredSceneRendererLifetime,
-                    content.Text ?? blockNode.Literal ?? string.Empty,
-                    content.Language,
-                    IsInline: false);
-                // A malformed producer must not cause two visible boxes to
-                // invoke the same callback/result slot. Independent markers
-                // remain distinct even when their SourceSpan values coincide.
-                works.TryAdd(marker, work);
-            });
-        }
-
-        foreach (KeyValuePair<Inline, MarkdownContentFragment> entry in document.ExtensionInlineNodeContent)
-        {
-            if (cancellationToken.IsCancellationRequested)
-                return null;
-
-            Inline inline = entry.Key;
-            if (!MarkdownSyntaxAdapter.TryGetInlineKind(inline, out string syntaxKind))
-                continue;
-
-            MarkdownSyntaxNode? node = null;
-            Collect(entry.Value.Items, content =>
-            {
-                if (!content.Attributes.TryGetValue(MarkdownContentAttributes.DeferredScene, out string? marker) ||
-                    marker is null ||
-                    !TryReadMarker(marker, syntaxKind, out _) ||
-                    entry.Value.DeferredSceneRenderer is not { } renderer)
-                {
-                    return;
-                }
-
-                MarkdownSyntaxNode inlineNode = node ??= MarkdownSyntaxAdapter.CreateInlineNode(inline, document.Source);
-                if (!content.SourceSpan.Equals(inlineNode.SourceSpan))
-                    return;
-
-                var work = new DeferredSceneWork(
-                    inlineNode,
-                    renderer,
-                    entry.Value.DeferredSceneRendererLifetime,
-                    content.SemanticText ?? inlineNode.Literal ?? string.Empty,
-                    content.Language,
-                    IsInline: true);
-                works.TryAdd(marker, work);
-            });
-        }
-
-        if (cancellationToken.IsCancellationRequested || works.Count == 0)
-            return null;
-
-        return new MarkdownProgressiveScenePlan(
-            document,
-            session,
-            documentOwner,
-            new ReadOnlyDictionary<string, DeferredSceneWork>(works));
+        IReadOnlyDictionary<string, DeferredSceneWork>? works =
+            DeferredSceneWorkCatalog.TryBuild(document, cancellationToken);
+        return works is null
+            ? null
+            : new MarkdownProgressiveScenePlan(document, session, documentOwner, works);
     }
 
-    internal static bool ContainsDeferredSceneFallback(RendererDocument document)
-    {
-        foreach (MarkdownContentFragment fragment in document.ExtensionBlockNodeContent.Values)
-        {
-            bool found = false;
-            Collect(fragment.Items, content => found = true);
-            if (found)
-                return true;
-        }
-
-        foreach (MarkdownContentFragment fragment in document.ExtensionInlineNodeContent.Values)
-        {
-            bool found = false;
-            Collect(fragment.Items, content => found = true);
-            if (found)
-                return true;
-        }
-
-        return false;
-    }
+    internal static bool ContainsDeferredSceneFallback(RendererDocument document) =>
+        DeferredSceneWorkCatalog.ContainsDeferredSceneFallback(document);
 
     internal static bool TryCollectVisibleDeferredSceneMarkers(
         IReadOnlyList<BlockBox> measuredTopLevelBlocks,
@@ -232,195 +135,21 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
         Rect? viewport,
         IMarkdownVectorSceneResidencyPolicy? residencyPolicy,
         out IReadOnlyList<string> markerKeys,
-        out bool visibleSceneResourcesReady)
-    {
-        ArgumentNullException.ThrowIfNull(measuredTopLevelBlocks);
-        ArgumentNullException.ThrowIfNull(topLevelOrdinals);
-        ArgumentNullException.ThrowIfNull(placements);
-        ArgumentNullException.ThrowIfNull(topLevelOrdinalByBlockIndex);
-        List<string> markers = residencyPolicy?.VisibleDeferredSceneMarkerScratch ?? [];
-        markers.Clear();
-        markerKeys = markers;
-        visibleSceneResourcesReady = true;
-        if (!double.IsFinite(viewportTop) || !double.IsFinite(viewportBottom) || viewportBottom < viewportTop ||
-            viewport is { } bounds && !IsFiniteNonNegativeRect(bounds))
-        {
-            return false;
-        }
-
-        if (topLevelOrdinals.Count != measuredTopLevelBlocks.Count ||
-            placements.Count == 0 && measuredTopLevelBlocks.Count != 0)
-        {
-            return false;
-        }
-
-        var logicalBand = new LazyLayoutBand(viewportTop, viewportBottom);
-        for (int index = 0; index < measuredTopLevelBlocks.Count; index++)
-        {
-            BlockBox block = measuredTopLevelBlocks[index];
-            int ordinal = topLevelOrdinals[index];
-            if ((uint)ordinal >= (uint)placements.Count ||
-                !topLevelOrdinalByBlockIndex.TryGetValue(block.BlockIndex, out int resolvedOrdinal) ||
-                resolvedOrdinal != ordinal)
-            {
-                return false;
-            }
-
-            LayoutRootPlacement placement = placements.GetPlacement(ordinal);
-            using LayoutPlacementTransformContext.Scope placementScope =
-                LayoutPlacementTransformContext.Enter(placement.TranslationX, placement.TranslationY);
-            LazyLayoutBand rootLocalBand = placements.ToPhysicalBand(ordinal, logicalBand);
-            Rect? rootLocalViewport = viewport is { } logicalViewport
-                ? placements.ToPhysicalViewport(ordinal, logicalViewport)
-                : null;
-            if (!double.IsFinite(rootLocalBand.Top) || !double.IsFinite(rootLocalBand.Bottom) ||
-                rootLocalBand.Bottom < rootLocalBand.Top ||
-                rootLocalViewport is { } localBounds && !IsFiniteNonNegativeRect(localBounds))
-            {
-                return false;
-            }
-
-            if (!TryCollectVisibleDeferredSceneMarkers(
-                    block,
-                    rootLocalBand.Top,
-                    rootLocalBand.Bottom,
-                    rootLocalViewport,
-                    residencyPolicy,
-                    markers,
-                    ref visibleSceneResourcesReady))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static bool TryCollectVisibleDeferredSceneMarkers(
-        BlockBox block,
-        double viewportTop,
-        double viewportBottom,
-        Rect? viewport,
-        IMarkdownVectorSceneResidencyPolicy? residencyPolicy,
-        List<string> markerKeys,
-        ref bool visibleSceneResourcesReady)
-    {
-        Rect bounds = block.Bounds;
-        if (!IsFiniteNonNegativeRect(bounds))
-            return false;
-        if (bounds.Width == 0 || bounds.Height == 0 ||
-            bounds.Bottom < viewportTop || bounds.Top > viewportBottom ||
-            viewport is { } viewportBounds && !Intersects(bounds, viewportBounds))
-        {
-            return true;
-        }
-
-        switch (block)
-        {
-            case CodeBlockBox codeBlock:
-                markerKeys.Add(codeBlock.StableKey);
-                return true;
-            case ListItemBox listItem:
-                return TryCollectVisibleDeferredSceneMarkers(
-                    listItem.Content,
-                    viewportTop,
-                    viewportBottom,
-                    viewport,
-                    residencyPolicy,
-                    markerKeys,
-                    ref visibleSceneResourcesReady);
-            case VectorSceneBox vectorScene:
-                visibleSceneResourcesReady &= vectorScene.IsNativeResourcesPrepared;
-                return true;
-            case InlineContainerBox inlineContainer:
-                if (residencyPolicy is null)
-                {
-                    // Eager/non-progressive sessions never publish deferred
-                    // placeholders. Their inline native resources are created
-                    // synchronously during layout measurement.
-                    return !inlineContainer.HasDeferredSceneMarker;
-                }
-                return residencyPolicy.TryAppendVisibleInlineSceneMarkers(
-                    inlineContainer,
-                    viewportTop,
-                    viewportBottom,
-                    viewport,
-                    markerKeys,
-                    ref visibleSceneResourcesReady);
-            case TableBox table:
-                foreach (InlineContainerBox cell in table.GetCellBoxesInVerticalBand(viewportTop, viewportBottom))
-                {
-                    if (!TryCollectVisibleDeferredSceneMarkers(
-                            cell,
-                            viewportTop,
-                            viewportBottom,
-                            viewport,
-                            residencyPolicy,
-                            markerKeys,
-                            ref visibleSceneResourcesReady))
-                    {
-                        return false;
-                    }
-                }
-                return true;
-            case StackBox stack:
-            {
-                IReadOnlyList<BlockBox> children = stack.Children;
-                int first = FindFirstStackChildIntersecting(children, viewportTop);
-                for (int index = first; index < children.Count; index++)
-                {
-                    BlockBox child = children[index];
-                    if (child.Bounds.Top > viewportBottom)
-                        break;
-                    if (!TryCollectVisibleDeferredSceneMarkers(
-                            child,
-                            viewportTop,
-                            viewportBottom,
-                            viewport,
-                            residencyPolicy,
-                            markerKeys,
-                            ref visibleSceneResourcesReady))
-                    {
-                        return false;
-                    }
-                }
-                return true;
-            }
-            default:
-                return true;
-        }
-    }
-
-    private static int FindFirstStackChildIntersecting(
-        IReadOnlyList<BlockBox> children,
-        double viewportTop)
-    {
-        int low = 0;
-        int high = children.Count;
-        while (low < high)
-        {
-            int middle = low + ((high - low) / 2);
-            if (children[middle].Bounds.Bottom < viewportTop)
-                low = middle + 1;
-            else
-                high = middle;
-        }
-
-        return low;
-    }
-
-    private static bool IsFiniteNonNegativeRect(Rect rect) =>
-        double.IsFinite(rect.X) && double.IsFinite(rect.Y) &&
-        double.IsFinite(rect.Width) && double.IsFinite(rect.Height) &&
-        double.IsFinite(rect.Right) && double.IsFinite(rect.Bottom) &&
-        rect.Width >= 0 && rect.Height >= 0;
+        out bool visibleSceneResourcesReady) =>
+        DeferredSceneMarkerCollector.TryCollect(
+            measuredTopLevelBlocks,
+            topLevelOrdinals,
+            placements,
+            topLevelOrdinalByBlockIndex,
+            viewportTop,
+            viewportBottom,
+            viewport,
+            residencyPolicy,
+            out markerKeys,
+            out visibleSceneResourcesReady);
 
     internal static bool IsFiniteNonEmptyRect(Rect rect) =>
-        IsFiniteNonNegativeRect(rect) && rect.Width > 0 && rect.Height > 0;
-
-    private static bool Intersects(Rect left, Rect right) =>
-        left.Right > right.Left && left.Left < right.Right &&
-        left.Bottom > right.Top && left.Top < right.Bottom;
+        DeferredSceneMarkerCollector.IsFiniteNonEmptyRect(rect);
 
     internal bool IsFor(RendererDocument document) => ReferenceEquals(_document, document);
 
@@ -463,43 +192,16 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
         projectionIdentity = null;
         lock (_gate)
         {
-            if (!_disposed && TryGetCompletedNoLock(marker, consumeHandoff: true, out MarkdownDeferredSceneResult? completed))
+            if (!_disposed && _results.TryGetCompleted(marker, consumeHandoff: true, out MarkdownDeferredSceneResult? completed))
             {
                 result = completed!.Fragment;
-                projectionIdentity = _completed[marker].ProjectionIdentity;
+                projectionIdentity = _results.GetProjectionIdentity(marker);
                 return true;
             }
         }
 
         result = null;
         return false;
-    }
-
-    private bool TryGetCompletedNoLock(
-        string marker,
-        bool consumeHandoff,
-        out MarkdownDeferredSceneResult? result)
-    {
-        result = null;
-        if (!_completed.TryGetValue(marker, out MarkdownCompletedSceneDescriptor? descriptor))
-            return false;
-        if (_pendingResults.TryGetValue(marker, out result))
-        {
-            if (consumeHandoff)
-            {
-                _completedCache.Retain(this, marker, result, descriptor.EstimatedGraphWeightBytes);
-                _pendingResults.Remove(marker);
-            }
-            return true;
-        }
-        if (_completedCache.TryGetResult(this, marker, out result))
-            return true;
-        if (!descriptor.TryGetOriginal(out result))
-            return false;
-        // UI layout and scheduling may reuse a live immutable result, but must
-        // not reconstruct its content graph. Restoration runs on the worker.
-        _completedCache.Retain(this, marker, result!, descriptor.EstimatedGraphWeightBytes);
-        return true;
     }
 
     private bool TryRestoreOnWorker(
@@ -511,25 +213,57 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
         object? metadataLease;
         lock (_gate)
         {
-            if (_disposed || !_completed.TryGetValue(marker, out descriptor))
+            if (_disposed || !_results.TryGetDescriptor(marker, out descriptor))
             {
                 result = null;
                 descriptor = null;
                 return false;
             }
-            _completedCache.TryGetMetadata(this, marker, out metadataLease);
+            _results.TryGetMetadata(marker, out metadataLease);
         }
         bool restored = descriptor.TryRestore(out result, cancellationToken);
         GC.KeepAlive(metadataLease);
         return restored;
     }
 
+    internal bool CanDetachGraph(VectorSceneBox box) => _graphRebinder.CanDetachGraph(box);
+
+    /// <summary>
+    /// Refills the detached graphs a lazy band needs. Called by the active
+    /// lazy-layout request, outside its layout queue slot.
+    /// </summary>
+    internal Task<bool> RebindBandAsync(
+        LayoutSnapshot snapshot, LazyLayoutBand band, CancellationToken cancellationToken) =>
+        _graphRebinder.RebindBandAsync(snapshot, band, cancellationToken);
+
+    bool IDeferredSceneGraphRebindHost.IsDisposedNoLock => _disposed;
+
+    long IDeferredSceneGraphRebindHost.GenerationNoLock => _generation;
+
+    CancellationToken IDeferredSceneGraphRebindHost.GenerationTokenNoLock => _generationCancellation.Token;
+
+    long IDeferredSceneGraphRebindHost.CurrentGeneration => Volatile.Read(ref _generation);
+
+    bool IDeferredScenePublicationHost.TryRestoreOnWorker(
+        string marker,
+        CancellationToken cancellationToken,
+        out MarkdownDeferredSceneResult? result,
+        out MarkdownCompletedSceneDescriptor? descriptor) =>
+        TryRestoreOnWorker(marker, cancellationToken, out result, out descriptor);
+
+    bool IDeferredSceneGraphRebindHost.TryRestoreOnWorker(
+        string marker,
+        CancellationToken cancellationToken,
+        out MarkdownDeferredSceneResult? result,
+        out MarkdownCompletedSceneDescriptor? descriptor) =>
+        TryRestoreOnWorker(marker, cancellationToken, out result, out descriptor);
+
     internal IReadOnlyList<MarkdownDiagnostic> Diagnostics
     {
         get
         {
             lock (_gate)
-                return _diagnostics;
+                return _diagnosticSet.Current;
         }
     }
 
@@ -552,9 +286,9 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
                 oldCancellation = _generationCancellation;
                 _generationCancellation = new CancellationTokenSource();
                 _generation++;
-                activeWorks = _active.Count == 0 && _graphRebinds.Count == 0
+                activeWorks = _active.Count == 0 && !_graphRebinder.HasRebindsNoLock
                     ? Array.Empty<ActiveSceneWork>()
-                    : _active.Values.Concat(_graphRebinds.Values.Select(static request => request.Work)).ToArray();
+                    : _active.Values.Concat(_graphRebinder.RebindWorksNoLock).ToArray();
             }
 
             Task[] activeTasks = new Task[activeWorks.Length];
@@ -580,125 +314,7 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
         }
     }
 
-    internal bool ScheduleVisible(object documentOwner)
-    {
-        if (_session.IsDisposed || documentOwner is not MarkdownRendererControl control)
-            return false;
-
-        EnsureControlCallbacks(control);
-
-        LayoutSnapshot? snapshot = control.CurrentSnapshot;
-        if (snapshot is null || !control.TryGetViewport(out double top, out double height, out _) ||
-            !double.IsFinite(top) || !double.IsFinite(height) || height <= 0)
-        {
-            control.RequestDeferredSceneProbeAfterPaint();
-            NotifyVisiblePlaceholderStatusIfChanged(control, pending: true);
-            return true;
-        }
-        double bottom = top + height;
-        int visibleMarkerCount = -1;
-        if (!snapshot.TryBeginPaint())
-        {
-            control.RequestDeferredSceneProbeAfterPaint();
-            NotifyVisiblePlaceholderStatusIfChanged(control, pending: true);
-            return true;
-        }
-        try
-        {
-            bool bandMeasured = snapshot.TryGetMeasuredTopLevelBlocksInBandForSceneProbe(
-                    top,
-                    bottom,
-                    out IReadOnlyList<BlockBox> visibleBlocks,
-                    out IReadOnlyList<int> visibleOrdinals,
-                    out LayoutPlacementGeneration placements,
-                    out IReadOnlyDictionary<int, int> topLevelOrdinalByBlockIndex);
-            if (bandMeasured &&
-                TryCollectVisibleDeferredSceneMarkers(
-                    visibleBlocks,
-                    visibleOrdinals,
-                    placements,
-                    topLevelOrdinalByBlockIndex,
-                    top,
-                    bottom,
-                    viewport: null,
-                    residencyPolicy: snapshot.VectorSceneResidencyPolicy,
-                    out IReadOnlyList<string> measuredVisibleMarkers,
-                    out _))
-            {
-                // Consume the policy-owned marker scratch before releasing the
-                // snapshot lease, which serializes subsequent viewport probes.
-                visibleMarkerCount = UpdateVisibleMarkers(measuredVisibleMarkers);
-            }
-        }
-        finally
-        {
-            snapshot.EndPaint();
-        }
-
-        if (visibleMarkerCount < 0)
-        {
-            // The snapshot is being measured or has a stale inline geometry
-            // index. A lazy band can finish measuring, or its scenes finish
-            // preparing, without another layout commit, so ask the control to
-            // re-probe after the next successful paint.
-            control.RequestDeferredSceneProbeAfterPaint();
-            NotifyVisiblePlaceholderStatusIfChanged(control, pending: true);
-            return true;
-        }
-
-        NotifyVisiblePlaceholderStatusIfChanged(control, pending: visibleMarkerCount != 0);
-
-        // The visible set is plan-owned and updated in place. Scheduling under
-        // the same reentrant monitor avoids a per-scroll copy; TrySchedule only
-        // queues background work and takes no external/UI callback inline.
-        lock (_gate)
-        {
-            foreach (string marker in _visibleMarkers)
-            {
-                TrySchedule(
-                    marker,
-                    _enqueuePublication!,
-                    _onPublished!,
-                    _onRetryVisibleBand);
-            }
-        }
-
-        return true;
-    }
-
-    private void NotifyVisiblePlaceholderStatusIfChanged(
-        MarkdownRendererControl control,
-        bool pending)
-    {
-        bool changed;
-        lock (_gate)
-        {
-            if (_disposed)
-                return;
-
-            changed = !_hasObservedVisiblePlaceholderStatus ||
-                _visiblePlaceholderStatusPending != pending;
-            _hasObservedVisiblePlaceholderStatus = true;
-            _visiblePlaceholderStatusPending = pending;
-        }
-
-        if (changed)
-            control.DeferredSceneReadiness.NotifyItemStatusMayHaveChanged();
-    }
-
-    private void EnsureControlCallbacks(MarkdownRendererControl control)
-    {
-        if (ReferenceEquals(_callbackOwner, control))
-            return;
-
-        _callbackOwner = control;
-        _enqueuePublication = action => control.DispatcherQueue?.TryEnqueue(() => action()) == true;
-        _onPublished = control.RequestRebuildAfterDeferredScene;
-        _onRetryVisibleBand = () =>
-        {
-            control.DispatcherQueue?.TryEnqueue(control.ScheduleVisibleDeferredScenes);
-        };
-    }
+    internal bool ScheduleVisible(object documentOwner) => _viewportProbe.ScheduleVisible(documentOwner);
 
     /// <summary>
     /// Reconciles queued and active scene requests with the latest measured
@@ -728,26 +344,29 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
                     work.Cancel();
             }
 
-            // A publication can leave the band before a candidate consumes it.
-            // Move that handoff into bounded retention; don't leave forgotten
-            // results pinned for every previously visited viewport.
-            if (_pendingResults.Count > 0)
-            {
-                List<string>? retiredHandoffs = null;
-                foreach ((string marker, MarkdownDeferredSceneResult result) in _pendingResults)
-                {
-                    if (!_visibleMarkers.Contains(marker))
-                    {
-                        _completedCache.Retain(this, marker, result, _completed[marker].EstimatedGraphWeightBytes);
-                        (retiredHandoffs ??= []).Add(marker);
-                    }
-                }
-                if (retiredHandoffs is not null)
-                    foreach (string marker in retiredHandoffs)
-                        _pendingResults.Remove(marker);
-            }
+            _results.RetireHandoffsOutside(_visibleMarkers);
 
             return _visibleMarkers.Count;
+        }
+    }
+
+    bool IDeferredSceneViewportHost.IsDisposedNoLock => _disposed;
+
+    int IDeferredSceneViewportHost.UpdateVisibleMarkers(IEnumerable<string> markers) =>
+        UpdateVisibleMarkers(markers);
+
+    void IDeferredSceneViewportHost.ScheduleVisibleMarkersNoLock(
+        Func<Action, bool> enqueuePublication,
+        Action onPublished,
+        Action? onRetryVisibleBand)
+    {
+        foreach (string marker in _visibleMarkers)
+        {
+            TrySchedule(
+                marker,
+                enqueuePublication,
+                onPublished,
+                onRetryVisibleBand);
         }
     }
 
@@ -768,7 +387,7 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
                 _active.ContainsKey(marker) ||
                 (_hasVisibleBand && !_visibleMarkers.Contains(marker)))
                 return false;
-            if (TryGetCompletedNoLock(marker, consumeHandoff: false, out _))
+            if (_results.TryGetCompleted(marker, consumeHandoff: false, out _))
                 return false;
 
             token = _generationCancellation.Token;
@@ -776,7 +395,7 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
                 _generation,
                 CancellationTokenSource.CreateLinkedTokenSource(token));
             Task task = Task.Run(
-                () => PrepareAndPublishAsync(
+                () => _publisher.PrepareAndPublishAsync(
                     marker,
                     work,
                     activeWork,
@@ -793,236 +412,7 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
         return true;
     }
 
-    private async Task PrepareAndPublishAsync(
-        string marker,
-        DeferredSceneWork work,
-        ActiveSceneWork activeWork,
-        CancellationToken generationToken,
-        Func<Action, bool> enqueuePublication,
-        Action onPublished,
-        Action? onRetryVisibleBand)
-    {
-        MarkdownDeferredSceneResult? result = null;
-        MarkdownCompletedSceneDescriptor? descriptor = null;
-        IMarkdownScenePreparationLease? sceneLease = null;
-        ScenePublicationEnvelope? publicationEnvelope = null;
-        CancellationTokenRegistration publicationCancellation = default;
-        bool publicationCancellationRegistered = false;
-        bool diagnosticGateHeld = false;
-        try
-        {
-            try
-            {
-                activeWork.Token.ThrowIfCancellationRequested();
-                if (!IsVisible(marker, activeWork))
-                    throw new OperationCanceledException(activeWork.Token);
-                sceneLease = await _session
-                    .EnterScenePreparationAsync(_documentOwner, activeWork.Token)
-                    .ConfigureAwait(false);
-                CancellationToken workToken = sceneLease.CancellationToken;
-                activeWork.Token.ThrowIfCancellationRequested();
-                workToken.ThrowIfCancellationRequested();
-                if (!IsVisible(marker, activeWork))
-                    throw new OperationCanceledException(activeWork.Token);
-                if (!TryRestoreOnWorker(marker, workToken, out result, out descriptor))
-                {
-                    result = await RenderAsync(work, workToken).ConfigureAwait(false);
-                    workToken.ThrowIfCancellationRequested();
-                    descriptor = MarkdownCompletedSceneDescriptor.Create(result, workToken);
-                }
-                workToken.ThrowIfCancellationRequested();
-            }
-            catch (OperationCanceledException)
-            {
-                CompleteWithoutPublication(marker, activeWork, onRetryVisibleBand);
-                return;
-            }
-            catch (Exception)
-            {
-                // A worker/provider failure never escapes into layout or the UI
-                // thread. Preserve the original source as accessible code fallback
-                // and retain the exact syntax range for the diagnostic.
-                result = CreateFailureResult(work, "MDP0001", "Deferred native content could not be prepared.");
-                descriptor = MarkdownCompletedSceneDescriptor.Create(result);
-            }
-
-            // Scene-preparation time ends when the immutable result is ready.
-            // Its shared admission slot remains held below until the queued
-            // layout publication commits or cancellation wins while queued.
-            MarkdownPerformanceSession.CompleteScenePreparationTiming(sceneLease);
-
-            if (result is null || descriptor is null || generationToken.IsCancellationRequested || activeWork.Token.IsCancellationRequested)
-            {
-                CompleteWithoutPublication(marker, activeWork, onRetryVisibleBand);
-                return;
-            }
-
-            ImmutableArray<MarkdownDiagnostic> newContribution = descriptor.DiagnosticContribution;
-            bool publicationIsCurrent;
-            bool diagnosticsChanged;
-            lock (_gate)
-            {
-                publicationIsCurrent = IsPublicationCurrentNoLock(marker, activeWork, generationToken);
-                diagnosticsChanged = publicationIsCurrent && !DiagnosticContributionEqualsNoLock(marker, newContribution);
-            }
-
-            if (!publicationIsCurrent)
-            {
-                CompleteWithoutPublication(marker, activeWork, onRetryVisibleBand);
-                return;
-            }
-
-            PreparedDiagnosticPublication? diagnosticPublication = null;
-            if (diagnosticsChanged)
-            {
-                await _diagnosticPublicationGate.WaitAsync(activeWork.Token).ConfigureAwait(false);
-                diagnosticGateHeld = true;
-
-                ImmutableDictionary<string, ImmutableArray<MarkdownDiagnostic>>? contributions = null;
-                ImmutableList<MarkdownDiagnostic>? currentDiagnostics = null;
-                ImmutableArray<MarkdownDiagnostic> previousContribution = ImmutableArray<MarkdownDiagnostic>.Empty;
-                long publicationVersion = 0;
-                lock (_gate)
-                {
-                    publicationIsCurrent = IsPublicationCurrentNoLock(marker, activeWork, generationToken);
-                    if (publicationIsCurrent)
-                    {
-                        if (DiagnosticContributionEqualsNoLock(marker, newContribution))
-                        {
-                            diagnosticsChanged = false;
-                        }
-                        else
-                        {
-                            if (!_diagnosticContributions.TryGetValue(marker, out previousContribution))
-                                previousContribution = ImmutableArray<MarkdownDiagnostic>.Empty;
-                            contributions = _diagnosticContributions;
-                            currentDiagnostics = _diagnostics;
-                            publicationVersion = ++_diagnosticsPublicationVersion;
-                        }
-                    }
-                }
-
-                if (!publicationIsCurrent)
-                {
-                    CompleteWithoutPublication(marker, activeWork, onRetryVisibleBand);
-                    return;
-                }
-
-                if (diagnosticsChanged)
-                {
-                    ImmutableDictionary<string, ImmutableArray<MarkdownDiagnostic>> updatedContributions = newContribution.IsEmpty
-                        ? contributions!.Remove(marker)
-                        : contributions!.SetItem(marker, newContribution);
-                    ImmutableList<MarkdownDiagnostic> updatedDiagnostics = ReplaceDiagnosticContribution(
-                        currentDiagnostics!,
-                        previousContribution,
-                        newContribution);
-                    activeWork.Token.ThrowIfCancellationRequested();
-                    diagnosticPublication = new PreparedDiagnosticPublication(
-                        publicationVersion,
-                        updatedContributions,
-                        updatedDiagnostics);
-                }
-                else
-                {
-                    _diagnosticPublicationGate.Release();
-                    diagnosticGateHeld = false;
-                }
-            }
-
-            activeWork.Token.ThrowIfCancellationRequested();
-            CancellationToken publicationToken = sceneLease?.CancellationToken ?? activeWork.Token;
-            publicationEnvelope = new ScenePublicationEnvelope(
-                new QueuedScenePublication(
-                    this,
-                    marker,
-                    activeWork,
-                    generationToken,
-                    result,
-                    descriptor,
-                    diagnosticPublication,
-                    onPublished,
-                    onRetryVisibleBand));
-            publicationCancellation = publicationToken.Register(
-                static state => ((ScenePublicationEnvelope)state!).CancelQueued(),
-                publicationEnvelope);
-            publicationCancellationRegistered = true;
-
-            if (!publicationEnvelope.TryMarkQueued())
-            {
-                CompleteWithoutPublication(marker, activeWork, onRetryVisibleBand);
-                return;
-            }
-
-            if (publicationEnvelope.IsQueued)
-            {
-                bool queued;
-                try
-                {
-                    // This bound delegate captures only the clearable envelope.
-                    // A canceled dispatcher item cannot pin its result,
-                    // descriptor, plan, control, or callback roots.
-                    queued = enqueuePublication(publicationEnvelope.Dispatch);
-                }
-                catch
-                {
-                    await publicationEnvelope.CancelQueuedOrWaitAsync().ConfigureAwait(false);
-                    throw;
-                }
-
-                if (!queued)
-                {
-                    await publicationEnvelope.CancelQueuedOrWaitAsync().ConfigureAwait(false);
-                    CompleteWithoutPublication(marker, activeWork, onRetryVisibleBand);
-                    return;
-                }
-            }
-
-            await publicationEnvelope.Completion.ConfigureAwait(false);
-            publicationToken.ThrowIfCancellationRequested();
-            generationToken.ThrowIfCancellationRequested();
-            activeWork.Token.ThrowIfCancellationRequested();
-        }
-        catch (OperationCanceledException)
-        {
-            CompleteWithoutPublication(marker, activeWork, onRetryVisibleBand);
-        }
-        catch
-        {
-            CompleteWithoutPublication(marker, activeWork, onRetryVisibleBand);
-            throw;
-        }
-        finally
-        {
-            try
-            {
-                if (publicationEnvelope is not null)
-                    await publicationEnvelope.CancelQueuedOrWaitAsync().ConfigureAwait(false);
-            }
-            finally
-            {
-                try
-                {
-                    if (publicationCancellationRegistered)
-                        publicationCancellation.Dispose();
-                }
-                finally
-                {
-                    try
-                    {
-                        sceneLease?.Dispose();
-                    }
-                    finally
-                    {
-                        if (diagnosticGateHeld)
-                            _diagnosticPublicationGate.Release();
-                    }
-                }
-            }
-        }
-    }
-
-    private void PublishOnUiThread(QueuedScenePublication publication)
+    void IScenePublicationTarget.PublishOnUiThread(QueuedScenePublication publication)
     {
         string marker = publication.Marker;
         ActiveSceneWork activeWork = publication.ActiveWork;
@@ -1051,21 +441,12 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
                 !generationToken.IsCancellationRequested &&
                 !activeWork.Token.IsCancellationRequested &&
                 !_session.IsDisposed &&
-                (diagnosticPublication is null || diagnosticPublication.Version == _diagnosticsPublicationVersion);
+                (diagnosticPublication is null || _diagnosticSet.IsCurrent(diagnosticPublication));
             if (publish)
             {
                 if (diagnosticPublication is not null)
-                {
-                    _diagnosticContributions = diagnosticPublication.Contributions;
-                    _diagnostics = diagnosticPublication.Diagnostics;
-                }
-                // Transfer the construction-only strong metadata owner to
-                // its separate session-wide byte budget before publishing
-                // the weak descriptor. This does not walk the scene graph.
-                if (descriptor.DetachMetadataOwner() is { } metadata)
-                    _completedCache.RetainMetadata(this, marker, metadata, descriptor.MetadataWeightBytes);
-                _completed[marker] = descriptor;
-                _pendingResults[marker] = result;
+                    _diagnosticSet.Commit(diagnosticPublication);
+                _results.Publish(marker, descriptor, result);
             }
             retry = wasActive && !publish &&
                 (activeWork.Token.IsCancellationRequested || activeWork.Generation != _generation) &&
@@ -1078,7 +459,7 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
             InvokeRetry(publication.OnRetryVisibleBand);
     }
 
-    private bool IsPublicationCurrentNoLock(
+    bool IDeferredScenePublicationHost.IsPublicationCurrentNoLock(
         string marker,
         ActiveSceneWork activeWork,
         CancellationToken generationToken)
@@ -1091,202 +472,7 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
             !generationToken.IsCancellationRequested &&
             !activeWork.Token.IsCancellationRequested;
 
-    private bool DiagnosticContributionEqualsNoLock(
-        string marker,
-        ImmutableArray<MarkdownDiagnostic> contribution)
-    {
-        if (!_diagnosticContributions.TryGetValue(marker, out ImmutableArray<MarkdownDiagnostic> current))
-            return contribution.IsEmpty;
-        if (current.Length != contribution.Length)
-            return false;
-        for (int index = 0; index < current.Length; index++)
-        {
-            if (!EqualityComparer<MarkdownDiagnostic>.Default.Equals(current[index], contribution[index]))
-                return false;
-        }
-        return true;
-    }
-
-    private static ImmutableList<MarkdownDiagnostic> ReplaceDiagnosticContribution(
-        ImmutableList<MarkdownDiagnostic> snapshot,
-        ImmutableArray<MarkdownDiagnostic> previous,
-        ImmutableArray<MarkdownDiagnostic> replacement)
-    {
-        foreach (MarkdownDiagnostic diagnostic in previous)
-        {
-            int index = snapshot.BinarySearch(diagnostic, DiagnosticComparer);
-            if (index >= 0)
-                snapshot = snapshot.RemoveAt(index);
-        }
-
-        foreach (MarkdownDiagnostic diagnostic in replacement)
-        {
-            int index = snapshot.BinarySearch(diagnostic, DiagnosticComparer);
-            if (index < 0)
-                index = ~index;
-            snapshot = snapshot.Insert(index, diagnostic);
-        }
-
-        return snapshot;
-    }
-
-    private static int CompareDiagnostics(MarkdownDiagnostic left, MarkdownDiagnostic right)
-    {
-        int comparison = left.SourceSpan.Start.CompareTo(right.SourceSpan.Start);
-        if (comparison != 0)
-            return comparison;
-        comparison = StringComparer.Ordinal.Compare(left.Code, right.Code);
-        if (comparison != 0)
-            return comparison;
-        comparison = left.SourceSpan.Length.CompareTo(right.SourceSpan.Length);
-        if (comparison != 0)
-            return comparison;
-        comparison = left.Severity.CompareTo(right.Severity);
-        return comparison != 0
-            ? comparison
-            : StringComparer.Ordinal.Compare(left.Message, right.Message);
-    }
-
-    /// <summary>
-    /// The dispatcher retains only this small state machine. A queued request
-    /// owns the prepared graph until either the callback starts or cancellation
-    /// atomically wins while still queued; an executing callback owns it until
-    /// its finally/acknowledgement completes.
-    /// </summary>
-    private sealed class ScenePublicationEnvelope(QueuedScenePublication publication)
-    {
-        private readonly object _gate = new();
-        private readonly TaskCompletionSource _completion =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private QueuedScenePublication? _publication = publication;
-        private PublicationState _state;
-
-        internal Task Completion => _completion.Task;
-
-        internal Action Dispatch => DispatchCore;
-
-        internal bool IsQueued
-        {
-            get
-            {
-                lock (_gate)
-                    return _state == PublicationState.Queued;
-            }
-        }
-
-        internal bool TryMarkQueued()
-        {
-            lock (_gate)
-            {
-                if (_state != PublicationState.Created)
-                    return false;
-                _state = PublicationState.Queued;
-                return true;
-            }
-        }
-
-        internal void CancelQueued()
-        {
-            bool canceled = false;
-            lock (_gate)
-            {
-                if (_state is PublicationState.Created or PublicationState.Queued)
-                {
-                    _state = PublicationState.Canceled;
-                    _publication = null;
-                    canceled = true;
-                }
-            }
-
-            if (canceled)
-                _completion.TrySetResult();
-        }
-
-        internal Task CancelQueuedOrWaitAsync()
-        {
-            CancelQueued();
-            return _completion.Task;
-        }
-
-        private void DispatchCore()
-        {
-            QueuedScenePublication? request;
-            lock (_gate)
-            {
-                if (_state != PublicationState.Queued)
-                    return;
-                _state = PublicationState.Executing;
-                request = _publication;
-                _publication = null;
-            }
-
-            Exception? failure = null;
-            try
-            {
-                request?.Owner.PublishOnUiThread(request);
-            }
-            catch (Exception exception)
-            {
-                // The producer is awaiting this acknowledgement even when the
-                // dispatcher invokes us asynchronously. Preserve callback
-                // failures for that producer instead of letting an async UI
-                // callback escape as an unhandled dispatcher exception.
-                failure = exception;
-            }
-            finally
-            {
-                lock (_gate)
-                    _state = PublicationState.Finished;
-                if (failure is null)
-                    _completion.TrySetResult();
-                else
-                    _completion.TrySetException(failure);
-            }
-        }
-    }
-
-    private enum PublicationState : byte
-    {
-        Created,
-        Queued,
-        Executing,
-        Canceled,
-        Finished,
-    }
-
-    private sealed class QueuedScenePublication(
-        MarkdownProgressiveScenePlan owner,
-        string marker,
-        ActiveSceneWork activeWork,
-        CancellationToken generationToken,
-        MarkdownDeferredSceneResult result,
-        MarkdownCompletedSceneDescriptor descriptor,
-        PreparedDiagnosticPublication? diagnosticPublication,
-        Action onPublished,
-        Action? onRetryVisibleBand)
-    {
-        internal MarkdownProgressiveScenePlan Owner { get; } = owner;
-        internal string Marker { get; } = marker;
-        internal ActiveSceneWork ActiveWork { get; } = activeWork;
-        internal CancellationToken GenerationToken { get; } = generationToken;
-        internal MarkdownDeferredSceneResult Result { get; } = result;
-        internal MarkdownCompletedSceneDescriptor Descriptor { get; } = descriptor;
-        internal PreparedDiagnosticPublication? DiagnosticPublication { get; } = diagnosticPublication;
-        internal Action OnPublished { get; } = onPublished;
-        internal Action? OnRetryVisibleBand { get; } = onRetryVisibleBand;
-    }
-
-    private sealed class PreparedDiagnosticPublication(
-        long version,
-        ImmutableDictionary<string, ImmutableArray<MarkdownDiagnostic>> contributions,
-        ImmutableList<MarkdownDiagnostic> diagnostics)
-    {
-        internal long Version { get; } = version;
-        internal ImmutableDictionary<string, ImmutableArray<MarkdownDiagnostic>> Contributions { get; } = contributions;
-        internal ImmutableList<MarkdownDiagnostic> Diagnostics { get; } = diagnostics;
-    }
-
-    private void CompleteWithoutPublication(
+    void IDeferredScenePublicationHost.CompleteWithoutPublication(
         string marker,
         ActiveSceneWork activeWork,
         Action? onRetryVisibleBand)
@@ -1311,7 +497,7 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
             InvokeRetry(onRetryVisibleBand);
     }
 
-    private bool IsVisible(string marker, ActiveSceneWork activeWork)
+    bool IDeferredScenePublicationHost.IsVisible(string marker, ActiveSceneWork activeWork)
     {
         lock (_gate)
         {
@@ -1334,84 +520,6 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
         }
     }
 
-    private static async ValueTask<MarkdownDeferredSceneResult> RenderAsync(
-        DeferredSceneWork work,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        var diagnostics = new List<MarkdownDiagnostic>();
-        var context = new MarkdownExtensionContext(work.Node, cancellationToken, diagnostics.Add);
-        var content = new MarkdownContentBuilder();
-        MarkdownExtensionCallbackLifetime.Lease? producerLease = work.Lifetime?.Enter();
-        try
-        {
-            await work.Renderer(context, content).ConfigureAwait(false);
-        }
-        finally
-        {
-            producerLease?.Dispose();
-        }
-        cancellationToken.ThrowIfCancellationRequested();
-        return new MarkdownDeferredSceneResult(content.Build(), diagnostics.ToArray());
-    }
-
-    private static MarkdownDeferredSceneResult CreateFailureResult(
-        DeferredSceneWork work,
-        string code,
-        string message)
-    {
-        var fallback = new MarkdownContentBuilder();
-        if (work.IsInline)
-        {
-            fallback.AddText(
-                work.FallbackSource,
-                work.Node.SourceSpan,
-                Theming.MarkdownStyleRole.InlineCode,
-                MarkdownAccessibilityRole.Code);
-        }
-        else
-        {
-            fallback.AddCodeBlock(
-                work.FallbackSource,
-                work.FallbackLanguage,
-                work.Node.SourceSpan,
-                Theming.MarkdownStyleRole.CodeBlock);
-        }
-        return new MarkdownDeferredSceneResult(
-            fallback.Build(),
-            [new MarkdownDiagnostic(code, MarkdownDiagnosticSeverity.Error, message, work.Node.SourceSpan)]);
-    }
-
-    private static void Collect(
-        IReadOnlyList<MarkdownContent> content,
-        Action<MarkdownContent> onCandidate)
-    {
-        foreach (MarkdownContent item in content)
-        {
-            if (item.Attributes.ContainsKey(MarkdownContentAttributes.DeferredScene))
-            {
-                onCandidate(item);
-            }
-
-            if (item.Children.Count > 0)
-                Collect(item.Children, onCandidate);
-        }
-    }
-
-    private static bool TryReadMarker(string marker, string syntaxKind, out string token)
-    {
-        token = string.Empty;
-        int separator = marker.IndexOf(MarkerSeparator);
-        if (separator <= 0 || separator == marker.Length - 1 ||
-            !string.Equals(marker[..separator], syntaxKind, StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        token = marker[(separator + 1)..];
-        return true;
-    }
-
     public void Dispose() => _ = Retire();
 
     internal Task Retire()
@@ -1430,22 +538,14 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
                 completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                 _retirementTask = completion.Task;
                 cancellation = _generationCancellation;
-                activeWorks = _active.Count == 0 && _graphRebinds.Count == 0
+                activeWorks = _active.Count == 0 && !_graphRebinder.HasRebindsNoLock
                     ? Array.Empty<ActiveSceneWork>()
-                    : _active.Values.Concat(_graphRebinds.Values.Select(static request => request.Work)).ToArray();
+                    : _active.Values.Concat(_graphRebinder.RebindWorksNoLock).ToArray();
                 _active.Clear();
-                _graphRebinds.Clear();
-                _completed.Clear();
-                _pendingResults.Clear();
-                _completedCache.RemoveOwner(this);
-                _callbackOwner = null;
-                _enqueuePublication = null;
-                _onPublished = null;
-                _onRetryVisibleBand = null;
-                _diagnosticsPublicationVersion++;
-                _diagnosticContributions = ImmutableDictionary<string, ImmutableArray<MarkdownDiagnostic>>.Empty
-                    .WithComparers(StringComparer.Ordinal);
-                _diagnostics = ImmutableList<MarkdownDiagnostic>.Empty;
+                _graphRebinder.ClearNoLock();
+                _results.Clear();
+                _viewportProbe.ReleaseControlNoLock();
+                _diagnosticSet.Reset();
             }
 
             foreach (ActiveSceneWork work in activeWorks)
@@ -1479,7 +579,7 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
             // No producer can still be waiting for or releasing the gate after
             // the tracked plan drain completes. Late dispatcher callbacks only
             // acknowledge their TCS and never touch this semaphore.
-            _diagnosticPublicationGate.Dispose();
+            _diagnosticSet.Dispose();
         }
         catch (Exception exception)
         {
@@ -1490,84 +590,5 @@ internal sealed partial class MarkdownProgressiveScenePlan : IDisposable
             completion.TrySetResult();
         else
             completion.TrySetException(failure);
-    }
-
-    private static async Task CompleteRetirementAsync(
-        Task retirement,
-        TaskCompletionSource completion)
-    {
-        try
-        {
-            await retirement.ConfigureAwait(false);
-            completion.TrySetResult();
-        }
-        catch (Exception exception)
-        {
-            completion.TrySetException(exception);
-        }
-    }
-
-    private sealed class ActiveSceneWork(
-        long generation,
-        CancellationTokenSource cancellation)
-    {
-        private readonly object _gate = new();
-        private CancellationTokenSource? _cancellation = cancellation;
-        private int _cancelRequested;
-        private Task? _retirementTask;
-        internal long Generation { get; } = generation;
-        internal CancellationToken Token { get; } = cancellation.Token;
-        internal Task Task { get; set; } = Task.CompletedTask;
-
-        internal void Cancel()
-        {
-            CancellationTokenSource? source;
-            lock (_gate)
-                source = _cancellation;
-            if (source is not null && Interlocked.Exchange(ref _cancelRequested, 1) == 0)
-                _ = CancellationTokenSourceRetirement.RequestCancellation(source);
-        }
-
-        internal Task Dispose(Task? lifetime = null)
-        {
-            CancellationTokenSource? source;
-            TaskCompletionSource? completion = null;
-            lock (_gate)
-            {
-                if (_retirementTask is not null)
-                    return _retirementTask;
-
-                source = _cancellation;
-                _cancellation = null;
-                if (source is null)
-                    return _retirementTask = Task.CompletedTask;
-
-                completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-                _retirementTask = completion.Task;
-            }
-
-            Task? callbacks = Volatile.Read(ref _cancelRequested) != 0 || Token.IsCancellationRequested
-                ? CancellationTokenSourceRetirement.RequestCancellation(source)
-                : Task.CompletedTask;
-            Task retirement = CancellationTokenSourceRetirement.DisposeAfter(source, callbacks, lifetime);
-            _ = CompleteRetirementAsync(retirement, completion!);
-            return completion!.Task;
-        }
-    }
-
-    private sealed class DeferredSceneWork(
-        MarkdownSyntaxNode Node,
-        MarkdownAsyncNodeRenderer Renderer,
-        MarkdownExtensionCallbackLifetime? Lifetime,
-        string FallbackSource,
-        string? FallbackLanguage,
-        bool IsInline)
-    {
-        internal MarkdownSyntaxNode Node { get; } = Node;
-        internal MarkdownAsyncNodeRenderer Renderer { get; } = Renderer;
-        internal MarkdownExtensionCallbackLifetime? Lifetime { get; } = Lifetime;
-        internal string FallbackSource { get; } = FallbackSource;
-        internal string? FallbackLanguage { get; } = FallbackLanguage;
-        internal bool IsInline { get; } = IsInline;
     }
 }
