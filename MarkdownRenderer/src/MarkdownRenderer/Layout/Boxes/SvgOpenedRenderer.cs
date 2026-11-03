@@ -3,7 +3,6 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Graphics.Canvas;
-using Windows.Foundation;
 using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Images;
 
@@ -64,226 +63,251 @@ internal sealed class SvgOpenedRenderer
     {
         SvgPublicationMetadata metadata = work.Metadata;
         CancellationToken cancellationToken = work.CancellationToken;
-        IMarkdownSvgDocument? openedDocument = work.Document;
-        SvgDocumentUseLease? openedDocumentUse = work.DocumentUse;
-        SharedCanvasBitmapCache.Lease? bitmapLease = null;
-        BitmapOutputAdmission.Reservation? bitmapReservation = null;
-        CanvasBitmap? ownedBitmap = null;
-        SemaphoreSlim? renderGate = null;
-        bool renderGateHeld = false;
-        IMarkdownSvgRenderer renderer = metadata.Renderer;
-        long providerCacheGeneration = metadata.ProviderCacheGeneration;
-        MarkdownSvgDocumentInfo info = metadata.Info;
-        int renderGeneration = metadata.RenderGeneration;
-        string resolvedCacheKey = metadata.ResolvedCacheKey;
-        string svgFailureCacheKey = metadata.SvgFailureCacheKey;
-        string contentCacheKey = work.ContentCacheKey;
-        Size intrinsic = metadata.Intrinsic;
-        int targetWidth = metadata.TargetWidthPixels;
-        int targetHeight = metadata.TargetHeightPixels;
-        long targetPixels = metadata.TargetPixels;
-        string bitmapIdentity = metadata.BitmapIdentity;
-        MarkdownSvgRenderDemand demand = metadata.Demand!;
-        BitmapOutputWorkContext bitmapOutputWork = _outputAdmission.CaptureBitmapOutputWorkContext(
-            cancellationToken, expectedDemand: demand, expectedSvgGeneration: renderGeneration);
-        long svgWorkId = metadata.WorkId;
-        long svgSourceBytes = metadata.SourceByteLength;
+        var state = new SvgRenderState(
+            work,
+            _outputAdmission.CaptureBitmapOutputWorkContext(
+                cancellationToken, expectedDemand: metadata.Demand!, expectedSvgGeneration: metadata.RenderGeneration));
         try
         {
             using var svgWorkScope = MarkdownSvgStageTrace.BeginWorkScope(metadata.WorkId);
             if (dispatchStartedAt != 0)
             {
                 using var dispatchTrace = MarkdownSvgStageTrace.MeasureFrom(
-                    svgWorkId, MarkdownSvgWorkStage.OuterDispatchQueueWait,
-                    dispatchStartedAt, svgSourceBytes);
+                    metadata.WorkId, MarkdownSvgWorkStage.OuterDispatchQueueWait,
+                    dispatchStartedAt, metadata.SourceByteLength);
             }
             cancellationToken.ThrowIfCancellationRequested();
             if (work.UsesTiles)
             {
-                long tilePublishRequestedAt = svgWorkId != 0 ? Stopwatch.GetTimestamp() : 0;
-                var tiledPublication = _host.CreateTiledSvgPublication(
-                    metadata,
-                    openedDocument!,
-                    openedDocumentUse!,
-                    tilePublishRequestedAt);
-                // PublishOnUiThread consumes the callbacks on delivery or
-                // rejection, including synchronous enqueue failure. Transfer
-                // before invoking it so the outer finally cannot double-own.
-                work.TransferTiledOwnership();
-                openedDocument = null;
-                openedDocumentUse = null;
-                try
-                {
-                    _host.PublishOnUiThread(tiledPublication.Publish, tiledPublication.OnDropped);
-                }
-                catch
-                {
-                    // Admission allocation or an unexpected dispatcher failure
-                    // may throw before it consumes either callback. The owner
-                    // is idempotent even if delivery/drop already ran.
-                    tiledPublication.OnDropped?.Invoke();
-                    throw;
-                }
+                PublishTiled(work);
                 return;
             }
 
-            CanvasDevice device = _context.ResourceCreator.Device;
-            if (!_outputAdmission.TryAcquireAdmittedSvgBitmap(device, bitmapIdentity, out bitmapLease,
-                    expectedWork: bitmapOutputWork))
-            {
-                if (_outputDeferral.IsBitmapOutputDeferred)
-                    return;
-                {
-                    using var stageTrace = MarkdownSvgStageTrace.Measure(
-                        svgWorkId,
-                        MarkdownSvgWorkStage.BitmapCacheWait,
-                        svgSourceBytes,
-                        targetPixels);
-                    renderGate = _resources.BitmapCache.GetDecodeGate(device, bitmapIdentity);
-                    await renderGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-                    renderGateHeld = true;
-                }
-
-                _ = _outputAdmission.TryAcquireAdmittedSvgBitmap(device, bitmapIdentity, out bitmapLease,
-                    expectedWork: bitmapOutputWork);
-                if (bitmapLease is null)
-                {
-                    if (_outputDeferral.IsBitmapOutputDeferred ||
-                        !_outputAdmission.TryReserveBitmapOutput(checked(targetPixels * 4), out bitmapReservation,
-                            expectedWork: bitmapOutputWork))
-                        return;
-                    MarkdownSvgRaster raster;
-                    {
-                        using var stageTrace = MarkdownSvgStageTrace.Measure(
-                            svgWorkId,
-                            MarkdownSvgWorkStage.ProviderRender,
-                            svgSourceBytes,
-                            targetPixels);
-                        raster = await _host.RenderSvgDocumentAsync(
-                                openedDocument!,
-                                new MarkdownSvgRenderRequest(
-                                    targetWidth,
-                                    targetHeight,
-                                    TileRegion: null,
-                                    PixelFormat: MarkdownSvgPixelFormat.Rgba8Premultiplied,
-                                    Priority: demand.Priority)
-                                { PhysicalViewport = metadata.PhysicalViewport },
-                                cancellationToken,
-                                openedDocumentUse!,
-                                demand)
-                            .ConfigureAwait(false);
-                    }
-
-                    try
-                    {
-                        if (!_host.IsSvgProviderCurrent(renderer, providerCacheGeneration, info.HasText))
-                        {
-                            _host.PublishSvgGenerationInvalidated(renderGeneration);
-                            return;
-                        }
-                        _host.ValidateSvgRaster(raster, targetWidth, targetHeight);
-                        {
-                            using var stageTrace = MarkdownSvgStageTrace.Measure(
-                                svgWorkId,
-                                MarkdownSvgWorkStage.BitmapUpload,
-                                svgSourceBytes,
-                                targetPixels);
-                            ownedBitmap = _host.CreateBitmapFromSvgRaster(
-                                raster,
-                                svgWorkId,
-                                svgSourceBytes,
-                                targetPixels,
-                                bitmapReservation: bitmapReservation);
-                        }
-                        {
-                            try
-                            {
-                                using var stageTrace = MarkdownSvgStageTrace.Measure(
-                                    svgWorkId,
-                                    MarkdownSvgWorkStage.BitmapCacheStore,
-                                    svgSourceBytes,
-                                    targetPixels);
-                                bitmapLease = _resources.BitmapCache.StoreSvgAndAcquire(
-                                    device,
-                                    bitmapIdentity,
-                                    ownedBitmap,
-                                    intrinsicSize: null,
-                                    pixelWidth: raster.WidthPixels,
-                                    pixelHeight: raster.HeightPixels
-                                    , svgWorkId: svgWorkId,
-                                    svgSourceBytes: svgSourceBytes,
-                                    svgTargetPixels: targetPixels
-                                    , bitmapReservation: bitmapReservation
-                                );
-                                ownedBitmap = null;
-                                bitmapReservation = null;
-                            }
-                            catch
-                            {
-                                _outputAdmission.ReleaseAdmittedBitmap(ref ownedBitmap, ref bitmapReservation);
-                                throw;
-                            }
-                        }
-                    }
-                    finally
-                    {
-                        _host.TryImageCleanup(raster.Dispose);
-                    }
-                }
-            }
-
-            SharedCanvasBitmapCache.Lease publishedLease = bitmapLease ??
-                throw new MarkdownSvgException(
-                    MarkdownSvgFailureReason.WorkerFailure,
-                    "The SVG bitmap cache did not return a lease.");
-
-            _resources.SvgSources.RecordLastBitmap(
-                work.BuiltInSourceAliasKey,
-                contentCacheKey,
-                bitmapIdentity,
-                targetWidth,
-                targetHeight,
-                metadata.PhysicalViewport);
-
-            long bitmapPublishRequestedAt = svgWorkId != 0 ? Stopwatch.GetTimestamp() : 0;
-            var bitmapPublication = _host.CreateBitmapSvgPublication(
-                metadata,
-                publishedLease,
-                bitmapPublishRequestedAt);
-            bitmapLease = null;
-            try
-            {
-                _host.PublishOnUiThread(bitmapPublication.Publish, bitmapPublication.OnDropped);
-            }
-            catch
-            {
-                bitmapPublication.OnDropped?.Invoke();
-                throw;
-            }
-            // A complete bitmap has no further use for the provider document.
-            // Retire it in finally after admitted render uses drain, regardless
-            // of whether the UI publication runs, is stale, or is dropped.
-            // Resize/theme/device replacements reopen through the source cache
-            // or the same authorized resolver; only tiled images retain trees.
+            if (await TryAcquireBitmapAsync(state).ConfigureAwait(false))
+                PublishBitmap(state);
         }
 
         catch (Exception exception)
         {
             _host.HandleSvgWorkFailure(exception, cancellationToken, work.SessionLifetimeToken,
-                resolvedCacheKey, svgFailureCacheKey, renderGeneration);
+                metadata.ResolvedCacheKey, metadata.SvgFailureCacheKey, metadata.RenderGeneration);
         }
         finally
         {
-            _outputAdmission.ReleaseAdmittedBitmap(ref ownedBitmap, ref bitmapReservation);
-            if (bitmapLease is { } remainingLease)
+            _outputAdmission.ReleaseAdmittedBitmap(ref state.OwnedBitmap, ref state.BitmapReservation);
+            if (state.BitmapLease is { } remainingLease)
                 _host.TryImageCleanup(remainingLease.Dispose);
-            if (renderGateHeld)
-                _host.TryImageCleanup(() => renderGate!.Release());
+            if (state.RenderGateHeld)
+                _host.TryImageCleanup(() => state.RenderGate!.Release());
             // Consumed ownership retires only here, after actual Render and
             // upload/raster cleanup. Caller Dispose cannot revoke it early.
-            openedDocument = null;
-            openedDocumentUse = null;
             work.Complete();
         }
+    }
+
+    private void PublishTiled(SvgOpenedRenderWork work)
+    {
+        long tilePublishRequestedAt = work.Metadata.WorkId != 0 ? Stopwatch.GetTimestamp() : 0;
+        var tiledPublication = _host.CreateTiledSvgPublication(
+            work.Metadata,
+            work.Document!,
+            work.DocumentUse!,
+            tilePublishRequestedAt);
+        // PublishOnUiThread consumes the callbacks on delivery or
+        // rejection, including synchronous enqueue failure. Transfer
+        // before invoking it so the outer finally cannot double-own.
+        work.TransferTiledOwnership();
+        try
+        {
+            _host.PublishOnUiThread(tiledPublication.Publish, tiledPublication.OnDropped);
+        }
+        catch
+        {
+            // Admission allocation or an unexpected dispatcher failure
+            // may throw before it consumes either callback. The owner
+            // is idempotent even if delivery/drop already ran.
+            tiledPublication.OnDropped?.Invoke();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Acquires the admitted shared bitmap for this render's identity or, behind
+    /// the keyed device-bitmap gate, renders and stores it.
+    /// </summary>
+    /// <returns>
+    /// <see langword="false"/> when bitmap output is deferred, its reservation
+    /// was denied, or the provider generation changed during the render.
+    /// </returns>
+    private async Task<bool> TryAcquireBitmapAsync(SvgRenderState state)
+    {
+        SvgPublicationMetadata metadata = state.Work.Metadata;
+        string bitmapIdentity = metadata.BitmapIdentity;
+        CanvasDevice device = _context.ResourceCreator.Device;
+        if (_outputAdmission.TryAcquireAdmittedSvgBitmap(device, bitmapIdentity, out state.BitmapLease,
+                expectedWork: state.BitmapOutputWork))
+        {
+            return true;
+        }
+        if (_outputDeferral.IsBitmapOutputDeferred)
+            return false;
+        {
+            using var stageTrace = MarkdownSvgStageTrace.Measure(
+                metadata.WorkId,
+                MarkdownSvgWorkStage.BitmapCacheWait,
+                metadata.SourceByteLength,
+                metadata.TargetPixels);
+            state.RenderGate = _resources.BitmapCache.GetDecodeGate(device, bitmapIdentity);
+            await state.RenderGate.WaitAsync(state.Work.CancellationToken).ConfigureAwait(false);
+            state.RenderGateHeld = true;
+        }
+
+        _ = _outputAdmission.TryAcquireAdmittedSvgBitmap(device, bitmapIdentity, out state.BitmapLease,
+            expectedWork: state.BitmapOutputWork);
+        if (state.BitmapLease is not null)
+            return true;
+        if (_outputDeferral.IsBitmapOutputDeferred ||
+            !_outputAdmission.TryReserveBitmapOutput(checked(metadata.TargetPixels * 4), out state.BitmapReservation,
+                expectedWork: state.BitmapOutputWork))
+        {
+            return false;
+        }
+        return await TryRenderAndStoreAsync(state, device).ConfigureAwait(false);
+    }
+
+    /// <returns><see langword="false"/> when the provider generation changed during the render.</returns>
+    private async Task<bool> TryRenderAndStoreAsync(SvgRenderState state, CanvasDevice device)
+    {
+        SvgOpenedRenderWork work = state.Work;
+        SvgPublicationMetadata metadata = work.Metadata;
+        MarkdownSvgRenderDemand demand = metadata.Demand!;
+        long svgWorkId = metadata.WorkId;
+        long svgSourceBytes = metadata.SourceByteLength;
+        long targetPixels = metadata.TargetPixels;
+        MarkdownSvgRaster raster;
+        {
+            using var stageTrace = MarkdownSvgStageTrace.Measure(
+                svgWorkId,
+                MarkdownSvgWorkStage.ProviderRender,
+                svgSourceBytes,
+                targetPixels);
+            raster = await _host.RenderSvgDocumentAsync(
+                    work.Document!,
+                    new MarkdownSvgRenderRequest(
+                        metadata.TargetWidthPixels,
+                        metadata.TargetHeightPixels,
+                        TileRegion: null,
+                        PixelFormat: MarkdownSvgPixelFormat.Rgba8Premultiplied,
+                        Priority: demand.Priority)
+                    { PhysicalViewport = metadata.PhysicalViewport },
+                    work.CancellationToken,
+                    work.DocumentUse!,
+                    demand)
+                .ConfigureAwait(false);
+        }
+
+        try
+        {
+            if (!_host.IsSvgProviderCurrent(metadata.Renderer, metadata.ProviderCacheGeneration, metadata.Info.HasText))
+            {
+                _host.PublishSvgGenerationInvalidated(metadata.RenderGeneration);
+                return false;
+            }
+            _host.ValidateSvgRaster(raster, metadata.TargetWidthPixels, metadata.TargetHeightPixels);
+            UploadAndStore(state, device, raster);
+            return true;
+        }
+        finally
+        {
+            _host.TryImageCleanup(raster.Dispose);
+        }
+    }
+
+    // Uploads the validated raster under the output reservation, then lets
+    // the shared bitmap cache adopt the bitmap and the reservation together.
+    private void UploadAndStore(SvgRenderState state, CanvasDevice device, MarkdownSvgRaster raster)
+    {
+        SvgPublicationMetadata metadata = state.Work.Metadata;
+        long svgWorkId = metadata.WorkId;
+        long svgSourceBytes = metadata.SourceByteLength;
+        long targetPixels = metadata.TargetPixels;
+        {
+            using var stageTrace = MarkdownSvgStageTrace.Measure(
+                svgWorkId,
+                MarkdownSvgWorkStage.BitmapUpload,
+                svgSourceBytes,
+                targetPixels);
+            state.OwnedBitmap = _host.CreateBitmapFromSvgRaster(
+                raster,
+                svgWorkId,
+                svgSourceBytes,
+                targetPixels,
+                bitmapReservation: state.BitmapReservation);
+        }
+        try
+        {
+            using var stageTrace = MarkdownSvgStageTrace.Measure(
+                svgWorkId,
+                MarkdownSvgWorkStage.BitmapCacheStore,
+                svgSourceBytes,
+                targetPixels);
+            state.BitmapLease = _resources.BitmapCache.StoreSvgAndAcquire(
+                device,
+                metadata.BitmapIdentity,
+                state.OwnedBitmap,
+                intrinsicSize: null,
+                pixelWidth: raster.WidthPixels,
+                pixelHeight: raster.HeightPixels,
+                svgWorkId: svgWorkId,
+                svgSourceBytes: svgSourceBytes,
+                svgTargetPixels: targetPixels,
+                bitmapReservation: state.BitmapReservation);
+            state.OwnedBitmap = null;
+            state.BitmapReservation = null;
+        }
+        catch
+        {
+            _outputAdmission.ReleaseAdmittedBitmap(ref state.OwnedBitmap, ref state.BitmapReservation);
+            throw;
+        }
+    }
+
+    private void PublishBitmap(SvgRenderState state)
+    {
+        SvgOpenedRenderWork work = state.Work;
+        SvgPublicationMetadata metadata = work.Metadata;
+        SharedCanvasBitmapCache.Lease publishedLease = state.BitmapLease ??
+            throw new MarkdownSvgException(
+                MarkdownSvgFailureReason.WorkerFailure,
+                "The SVG bitmap cache did not return a lease.");
+
+        _resources.SvgSources.RecordLastBitmap(
+            work.BuiltInSourceAliasKey,
+            work.ContentCacheKey,
+            metadata.BitmapIdentity,
+            metadata.TargetWidthPixels,
+            metadata.TargetHeightPixels,
+            metadata.PhysicalViewport);
+
+        long bitmapPublishRequestedAt = metadata.WorkId != 0 ? Stopwatch.GetTimestamp() : 0;
+        var bitmapPublication = _host.CreateBitmapSvgPublication(
+            metadata,
+            publishedLease,
+            bitmapPublishRequestedAt);
+        state.BitmapLease = null;
+        try
+        {
+            _host.PublishOnUiThread(bitmapPublication.Publish, bitmapPublication.OnDropped);
+        }
+        catch
+        {
+            bitmapPublication.OnDropped?.Invoke();
+            throw;
+        }
+        // A complete bitmap has no further use for the provider document.
+        // Retire it in finally after admitted render uses drain, regardless
+        // of whether the UI publication runs, is stale, or is dropped.
+        // Resize/theme/device replacements reopen through the source cache
+        // or the same authorized resolver; only tiled images retain trees.
     }
 }
