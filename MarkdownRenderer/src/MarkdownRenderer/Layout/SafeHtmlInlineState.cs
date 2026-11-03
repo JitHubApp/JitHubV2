@@ -149,6 +149,20 @@ internal sealed class SafeHtmlInlineState
                 : null;
         }
 
+        return ProcessSupportedElement(_policy, tag, context, span, containingLinkUrl, containingLinkTitle);
+    }
+
+    // A closing tag pops its scope; an opening tag pushes one carrying its
+    // style key and any safe link before its run is created, unless an
+    // enclosing element suppresses it.
+    private InlineRun? ProcessSupportedElement(
+        SafeHtmlRenderPolicy policy,
+        in SafeHtmlTag tag,
+        MarkdownLayoutContext context,
+        SourceSpan span,
+        string? containingLinkUrl,
+        string? containingLinkTitle)
+    {
         if (tag.Kind == SafeHtmlTagKind.Closing)
         {
             PopThrough(tag.Name);
@@ -159,7 +173,7 @@ internal sealed class SafeHtmlInlineState
         string? styleKey = GetStyleKey(tag.Name);
         string? linkUrl = null;
         string? linkTitle = null;
-        if (_policy.EnableLinks &&
+        if (policy.EnableLinks &&
             tag.Name == "a" &&
             SafeHtmlParser.TryGetSafeLink(tag, out string safeLink))
         {
@@ -177,7 +191,7 @@ internal sealed class SafeHtmlInlineState
             return null;
         }
 
-        return CreateElementRun(_policy, tag, context, span, containingLinkUrl, containingLinkTitle);
+        return CreateElementRun(policy, tag, context, span, containingLinkUrl, containingLinkTitle);
     }
 
     private InlineRun? ProcessSuppressedElement(
