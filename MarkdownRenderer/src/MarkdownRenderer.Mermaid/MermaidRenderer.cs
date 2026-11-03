@@ -377,64 +377,15 @@ public sealed class MermaidRenderer : IDisposable
 
                     if (status != NativeStatus.Success || rawBuffer == 0)
                     {
-                        if (status is NativeStatus.Cancelled or NativeStatus.TimedOut)
-                        {
-                            return status == NativeStatus.TimedOut
-                                ? TimedOutResult(source, diagnosticCulture)
-                                : CooperativeCancellationResult(
-                                    source,
-                                    producerCancellation,
-                                    deadlineCancellation,
-                                    diagnosticCulture);
-                        }
-
-                        return NativeFailure(status, source, diagnosticCulture);
-                    }
-
-                    using var nativeBuffer = new MermaidBufferHandle(rawBuffer);
-                    operationCancellation.ThrowIfCancellationRequested();
-
-                    status = NativeMethods.BufferData(nativeBuffer, out nint data, out uint nativeLength);
-                    if (status != NativeStatus.Success || data == 0 || nativeLength > (uint)_options.Budgets.MaxSceneBytes || nativeLength > (uint)int.MaxValue)
-                    {
-                        return status == NativeStatus.BudgetExceeded || nativeLength > (uint)_options.Budgets.MaxSceneBytes
-                            ? Result(
-                                MermaidRenderStatus.BudgetExceeded,
-                                source,
-                                "MMR0008",
-                                MermaidStringKeys.SceneTooLarge,
-                                diagnosticCulture,
-                                "The native scene exceeds MaxSceneBytes ({0} bytes).",
-                                _options.Budgets.MaxSceneBytes)
-                            : NativeFailure(status, source, diagnosticCulture);
-                    }
-
-                    int length = checked((int)nativeLength);
-                    var managedBuffer = GC.AllocateUninitializedArray<byte>(length);
-                    CopyNativeBuffer(data, managedBuffer, operationCancellation);
-                    MermaidSceneDecodeResult decoded = MermaidSceneDecoder.Decode(
-                        managedBuffer,
-                        source,
-                        _options.Budgets,
-                        operationCancellation);
-                    if (!decoded.IsSuccess)
-                    {
-                        return Result(
-                            decoded.Status == MermaidSceneDecodeStatus.BudgetExceeded ? MermaidRenderStatus.BudgetExceeded : MermaidRenderStatus.InvalidScene,
+                        return NativeRenderFailure(
+                            status,
                             source,
-                            "MMR0009",
-                            MermaidStringKeys.SceneInvalid,
-                            diagnosticCulture,
-                            "The native Mermaid scene is invalid.");
+                            producerCancellation,
+                            deadlineCancellation,
+                            diagnosticCulture);
                     }
 
-                    operationCancellation.ThrowIfCancellationRequested();
-                    MermaidScene scene = LocalizeSceneDiagnostics(decoded.Scene!, diagnosticCulture);
-                    return new MermaidRenderResult(
-                        MermaidRenderStatus.Success,
-                        scene,
-                        scene.Diagnostics,
-                        source);
+                    return MaterializeNativeScene(rawBuffer, source, operationCancellation, diagnosticCulture);
                 }
             }
             catch (OperationCanceledException) when (operationCancellation.IsCancellationRequested)
@@ -466,6 +417,87 @@ public sealed class MermaidRenderer : IDisposable
                 diagnosticCulture,
                 "The optional native Mermaid engine became unavailable.");
         }
+    }
+
+    /// <summary>
+    /// Maps a native render call that produced no buffer to its result: native
+    /// timeout and cancellation are reported like their managed counterparts.
+    /// </summary>
+    private MermaidRenderResult NativeRenderFailure(
+        NativeStatus status,
+        string source,
+        CancellationToken producerCancellation,
+        CancellationToken deadlineCancellation,
+        CultureInfo diagnosticCulture)
+    {
+        if (status is NativeStatus.Cancelled or NativeStatus.TimedOut)
+        {
+            return status == NativeStatus.TimedOut
+                ? TimedOutResult(source, diagnosticCulture)
+                : CooperativeCancellationResult(
+                    source,
+                    producerCancellation,
+                    deadlineCancellation,
+                    diagnosticCulture);
+        }
+
+        return NativeFailure(status, source, diagnosticCulture);
+    }
+
+    /// <summary>
+    /// Takes ownership of the native scene buffer, copies it within the scene
+    /// budget, decodes it and localizes its diagnostics.
+    /// </summary>
+    private MermaidRenderResult MaterializeNativeScene(
+        nint rawBuffer,
+        string source,
+        CancellationToken operationCancellation,
+        CultureInfo diagnosticCulture)
+    {
+        using var nativeBuffer = new MermaidBufferHandle(rawBuffer);
+        operationCancellation.ThrowIfCancellationRequested();
+
+        NativeStatus status = NativeMethods.BufferData(nativeBuffer, out nint data, out uint nativeLength);
+        if (status != NativeStatus.Success || data == 0 || nativeLength > (uint)_options.Budgets.MaxSceneBytes || nativeLength > (uint)int.MaxValue)
+        {
+            return status == NativeStatus.BudgetExceeded || nativeLength > (uint)_options.Budgets.MaxSceneBytes
+                ? Result(
+                    MermaidRenderStatus.BudgetExceeded,
+                    source,
+                    "MMR0008",
+                    MermaidStringKeys.SceneTooLarge,
+                    diagnosticCulture,
+                    "The native scene exceeds MaxSceneBytes ({0} bytes).",
+                    _options.Budgets.MaxSceneBytes)
+                : NativeFailure(status, source, diagnosticCulture);
+        }
+
+        int length = checked((int)nativeLength);
+        var managedBuffer = GC.AllocateUninitializedArray<byte>(length);
+        CopyNativeBuffer(data, managedBuffer, operationCancellation);
+        MermaidSceneDecodeResult decoded = MermaidSceneDecoder.Decode(
+            managedBuffer,
+            source,
+            _options.Budgets,
+            operationCancellation);
+        if (!decoded.IsSuccess)
+        {
+            return Result(
+                decoded.Status == MermaidSceneDecodeStatus.BudgetExceeded ? MermaidRenderStatus.BudgetExceeded : MermaidRenderStatus.InvalidScene,
+                source,
+                "MMR0009",
+                MermaidStringKeys.SceneInvalid,
+                diagnosticCulture,
+                "The native Mermaid scene is invalid.");
+        }
+
+        operationCancellation.ThrowIfCancellationRequested();
+        MermaidScene scene = LocalizeSceneDiagnostics(decoded.Scene!, diagnosticCulture);
+        return new MermaidRenderResult(
+            MermaidRenderStatus.Success,
+            scene,
+            scene.Diagnostics,
+            source);
     }
 
     private unsafe NativeStatus GetOrCreateEngine(out MermaidEngineHandle? engine)
