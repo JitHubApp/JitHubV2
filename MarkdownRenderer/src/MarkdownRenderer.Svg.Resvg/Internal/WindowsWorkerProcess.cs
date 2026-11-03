@@ -7,6 +7,22 @@ using Microsoft.Win32.SafeHandles;
 
 namespace MarkdownRenderer.Svg.Resvg.Internal;
 
+/// <summary>
+/// Owns one adopted sandboxed worker: its process handle, its connected pipe,
+/// the serialized exchange over that pipe, and its termination.
+/// </summary>
+/// <remarks>
+/// This file stays near 600 lines on purpose. The exchange and termination
+/// paths share the process handle, the pipe, the disposed flag, the
+/// registered termination wait and the object security, and disposal must
+/// close the pipe and handle under the dispose gate while an exchange may
+/// still hold the transaction gate. Splitting either path into another type
+/// would hand that type the raw handles and the gate, spreading one native
+/// ownership boundary across two files. Lock-free work that needs only the
+/// handle is already outside: counters in <see cref="WorkerProcessCounters"/>,
+/// font-catalog supply in <see cref="WorkerFontCatalogSupplier"/>, and
+/// exit waiting in <see cref="WorkerTerminationWait"/>.
+/// </remarks>
 internal sealed class WindowsWorkerProcess : IAsyncDisposable, IDisposable, IWorkerFontCatalogHost
 {
     private static long s_nextInstanceId;
