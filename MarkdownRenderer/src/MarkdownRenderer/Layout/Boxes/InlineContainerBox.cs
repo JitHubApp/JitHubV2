@@ -1475,7 +1475,7 @@ internal sealed partial class InlineContainerBox : BlockBox
                         }
                         catch (Exception exception)
                         {
-                            cleanupFailure = CombineFailures(
+                            cleanupFailure = InlineNativeLayoutRetirement.CombineFailures(
                                 "rolling back speculative inline measurements",
                                 cleanupFailure,
                                 exception);
@@ -1493,7 +1493,7 @@ internal sealed partial class InlineContainerBox : BlockBox
                         }
                         catch (Exception exception)
                         {
-                            cleanupFailure = CombineFailures(
+                            cleanupFailure = InlineNativeLayoutRetirement.CombineFailures(
                                 "rolling back inline scene placements",
                                 cleanupFailure,
                                 exception);
@@ -1510,11 +1510,11 @@ internal sealed partial class InlineContainerBox : BlockBox
                 // memory after a native Dispose failure.
                 if (replacementLayout is not null && !ReferenceEquals(replacementLayout, previousLayout))
                 {
-                    Exception? layoutCleanupFailure = RetireNativeLayout(
+                    Exception? layoutCleanupFailure = InlineNativeLayoutRetirement.RetireNativeLayout(
                         ref replacementLayout,
                         replacementLayoutRetirementRecord,
                         "disposing a failed inline-container measure candidate");
-                    cleanupFailure = CombineFailures(
+                    cleanupFailure = InlineNativeLayoutRetirement.CombineFailures(
                         "rolling back a failed inline-container measure",
                         cleanupFailure,
                         layoutCleanupFailure);
@@ -1572,19 +1572,19 @@ internal sealed partial class InlineContainerBox : BlockBox
             _selectionLayoutWidth = 0;
 
             bool previousLayoutsAlias = ReferenceEquals(previousLayout, previousSelectionLayout);
-            Exception? layoutCleanupFailure = RetireNativeLayout(
+            Exception? layoutCleanupFailure = InlineNativeLayoutRetirement.RetireNativeLayout(
                 ref previousLayout,
                 previousLayoutRetirementRecord,
                 "retiring a superseded inline layout");
             Exception? selectionCleanupFailure = previousLayoutsAlias
                 ? ReferenceEquals(previousLayoutRetirementRecord, previousSelectionLayoutRetirementRecord)
                     ? null
-                    : ReleaseEmptyNativeRecord(previousSelectionLayoutRetirementRecord)
-                : RetireNativeLayout(
+                    : InlineNativeLayoutRetirement.ReleaseEmptyNativeRecord(previousSelectionLayoutRetirementRecord)
+                : InlineNativeLayoutRetirement.RetireNativeLayout(
                     ref previousSelectionLayout,
                     previousSelectionLayoutRetirementRecord,
                     "retiring a superseded inline selection layout");
-            Exception? supersededCleanupFailure = CombineFailures(
+            Exception? supersededCleanupFailure = InlineNativeLayoutRetirement.CombineFailures(
                 "retiring superseded inline layouts",
                 layoutCleanupFailure,
                 selectionCleanupFailure);
@@ -1678,7 +1678,7 @@ internal sealed partial class InlineContainerBox : BlockBox
                         }
                         catch (Exception exception)
                         {
-                            failure = CombineFailures(
+                            failure = InlineNativeLayoutRetirement.CombineFailures(
                                 "restoring speculative inline measurements",
                                 failure,
                                 exception);
@@ -1691,11 +1691,11 @@ internal sealed partial class InlineContainerBox : BlockBox
                 // This nested finally ensures a speculative CanvasTextLayout
                 // reaches its pre-reserved owner even if restoring inline
                 // dimensions or aggregating that failure itself throws.
-                Exception? layoutCleanupFailure = RetireNativeLayout(
+                Exception? layoutCleanupFailure = InlineNativeLayoutRetirement.RetireNativeLayout(
                     ref layout,
                     layoutRetirementRecord,
                     "disposing intrinsic inline measurement layout");
-                failure = CombineFailures(
+                failure = InlineNativeLayoutRetirement.CombineFailures(
                     "measuring intrinsic inline widths",
                     failure,
                     layoutCleanupFailure);
@@ -3946,15 +3946,15 @@ internal sealed partial class InlineContainerBox : BlockBox
         InvalidateLineMetrics();
 
         bool layoutsAlias = ReferenceEquals(layout, selectionLayout);
-        Exception? layoutFailure = RetireNativeLayout(
+        Exception? layoutFailure = InlineNativeLayoutRetirement.RetireNativeLayout(
             ref layout,
             layoutRetirementRecord,
             "disposing an inline text layout");
         Exception? selectionFailure = layoutsAlias
             ? ReferenceEquals(layoutRetirementRecord, selectionLayoutRetirementRecord)
                 ? null
-                : ReleaseEmptyNativeRecord(selectionLayoutRetirementRecord)
-            : RetireNativeLayout(
+                : InlineNativeLayoutRetirement.ReleaseEmptyNativeRecord(selectionLayoutRetirementRecord)
+            : InlineNativeLayoutRetirement.RetireNativeLayout(
                 ref selectionLayout,
                 selectionLayoutRetirementRecord,
                 "disposing an inline selection layout");
@@ -3977,71 +3977,6 @@ internal sealed partial class InlineContainerBox : BlockBox
         }
 
         cleanup.ThrowIfAny("disposing an inline container");
-    }
-
-    private static Exception? RetireNativeLayout(
-        ref CanvasTextLayout? layout,
-        NativeResourceRetirementRecord? retirementRecord,
-        string operation)
-    {
-        if (layout is null)
-            return ReleaseEmptyNativeRecord(retirementRecord);
-
-        // Missing custody is a structural error, not permission to attempt a
-        // potentially throwing Dispose and lose the last handle. Participating
-        // creation paths reserve the record before the native factory.
-        if (retirementRecord is null)
-            return new InvalidOperationException(
-                $"Cannot retire a native inline layout during {operation} without its pre-reserved owner.");
-
-        CanvasTextLayout current = layout;
-        Exception? cleanupFailure = null;
-        try
-        {
-            retirementRecord.Disposer(current);
-        }
-        catch (Exception exception)
-        {
-            cleanupFailure = exception;
-        }
-
-        // Custody handoff is deliberately allocation-free between the native
-        // failure and Publish. On failure the existing slot keeps the layout;
-        // on success it is cleared. The caller-visible ref is cleared only
-        // after a failed resource is rooted in its record.
-        retirementRecord.SetTemporary(0, cleanupFailure is null ? null : current);
-        layout = null;
-        retirementRecord.Publish();
-        return cleanupFailure;
-    }
-
-    private static Exception? ReleaseEmptyNativeRecord(
-        NativeResourceRetirementRecord? retirementRecord)
-    {
-        if (retirementRecord is null)
-            return null;
-        try
-        {
-            retirementRecord.SetTemporary(0, null);
-            retirementRecord.Publish();
-            return null;
-        }
-        catch (Exception exception)
-        {
-            return exception;
-        }
-    }
-
-    private static Exception? CombineFailures(
-        string operation,
-        Exception? first,
-        Exception? second)
-    {
-        if (first is null)
-            return second;
-        if (second is null)
-            return first;
-        return new AggregateException($"One or more errors occurred while {operation}.", first, second);
     }
 
     internal override void CollectRetirementTasks(List<Task> pendingTasks)
@@ -4803,11 +4738,11 @@ internal sealed partial class InlineContainerBox : BlockBox
 
         if (candidateFailure is not null)
         {
-            Exception? cleanupFailure = RetireNativeLayout(
+            Exception? cleanupFailure = InlineNativeLayoutRetirement.RetireNativeLayout(
                 ref candidateLayout,
                 candidateRetirementRecord,
                 "disposing a failed inline selection-layout candidate");
-            Exception combined = CombineFailures(
+            Exception combined = InlineNativeLayoutRetirement.CombineFailures(
                 "building an inline selection layout",
                 candidateFailure,
                 cleanupFailure)!;
@@ -4828,11 +4763,11 @@ internal sealed partial class InlineContainerBox : BlockBox
             }
             catch (Exception previousCleanupFailure)
             {
-                Exception? candidateCleanupFailure = RetireNativeLayout(
+                Exception? candidateCleanupFailure = InlineNativeLayoutRetirement.RetireNativeLayout(
                     ref candidateLayout,
                     candidateRetirementRecord,
                     "disposing a superseded inline selection-layout candidate");
-                Exception combined = CombineFailures(
+                Exception combined = InlineNativeLayoutRetirement.CombineFailures(
                     "replacing an inline selection layout",
                     previousCleanupFailure,
                     candidateCleanupFailure)!;
@@ -4845,14 +4780,14 @@ internal sealed partial class InlineContainerBox : BlockBox
         // commit the fully styled candidate in one non-throwing field group.
         _selectionLayout = null;
         _selectionLayoutRetirementRecord = null;
-        Exception? previousRecordFailure = ReleaseEmptyNativeRecord(previousSelectionRetirementRecord);
+        Exception? previousRecordFailure = InlineNativeLayoutRetirement.ReleaseEmptyNativeRecord(previousSelectionRetirementRecord);
         if (previousRecordFailure is not null)
         {
-            Exception? candidateCleanupFailure = RetireNativeLayout(
+            Exception? candidateCleanupFailure = InlineNativeLayoutRetirement.RetireNativeLayout(
                 ref candidateLayout,
                 candidateRetirementRecord,
                 "disposing an uncommitted inline selection-layout candidate");
-            Exception combined = CombineFailures(
+            Exception combined = InlineNativeLayoutRetirement.CombineFailures(
                 "retiring the previous inline selection layout",
                 previousRecordFailure,
                 candidateCleanupFailure)!;
