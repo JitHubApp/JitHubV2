@@ -2,9 +2,6 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using MarkdownRenderer.Images;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
-using MarkdownRenderer.Diagnostics;
-#endif
 
 namespace MarkdownRenderer.Svg.Resvg.Internal;
 
@@ -21,9 +18,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
     private readonly Func<string, SvgSourceBuffer, SharedMemoryLease>? _sourceMemoryFactory;
     private readonly Func<string, int, SharedMemoryLease>? _outputMemoryFactory;
     private readonly bool _supportsSecondaryHardware;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
     private readonly SvgWorkerPolicyTrace _workerPolicyTrace = new();
-#endif
     private readonly Lazy<WindowsWorkerProcess.WorkerJob> _job;
     private readonly CancellationTokenSource _disposeCancellation = new();
     private readonly TaskCompletionSource _shutdown = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -98,9 +93,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
             cancellationToken).ConfigureAwait(false);
         _ = await EnsureWorkerAsync(
             lease
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             , 0, 0, 0, 0, 0
-#endif
             ).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
     }
@@ -126,10 +119,8 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
         {
             ulong documentId = NextDocumentId();
             ulong requestId = NextRequestId();
-    #if MARKDOWN_LAYOUT_DIAGNOSTICS
-            long diagnosticWorkId = SvgWorkerStageTrace.CaptureCurrentWorkId();
+            long diagnosticWorkId = SvgWorkerStageTrace.BeginWork();
             long queueStartedAt = SvgWorkerStageTrace.Start(diagnosticWorkId);
-    #endif
             lease = await AcquireAsync(
                 WorkerOperation.Open,
                 demand?.Priority ?? openRequest.Priority,
@@ -138,7 +129,6 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                 demandTicket: demand).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             contentAdmissionGuard?.Invoke();
-    #if MARKDOWN_LAYOUT_DIAGNOSTICS
             SvgWorkerStageTrace.Record(
                 diagnosticWorkId,
                 SvgWorkerStageId.PoolSchedulingQueueWait,
@@ -147,17 +137,14 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                 documentId,
                 queueStartedAt,
                 sourceBytes: preflight.Source.Length);
-    #endif
             WindowsWorkerProcess worker = await EnsureWorkerAsync(
                 lease
-    #if MARKDOWN_LAYOUT_DIAGNOSTICS
                 ,
                 diagnosticWorkId,
                 requestId,
                 documentId,
                 preflight.Source.Length,
                 0
-    #endif
                 ).ConfigureAwait(false);
             if (preflight.Info.HasText)
             {
@@ -169,14 +156,12 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                     requestGeneration,
                     cancellationToken,
                     demand
-    #if MARKDOWN_LAYOUT_DIAGNOSTICS
                     ,
                     diagnosticWorkId,
                     requestId,
                     documentId,
                     preflight.Source.Length,
                     0
-    #endif
                     ).ConfigureAwait(false);
                 lease = textAdmission.Lease;
                 worker = textAdmission.Worker;
@@ -205,11 +190,9 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                         requestGeneration,
                         openContentFailureCallback,
                         null
-    #if MARKDOWN_LAYOUT_DIAGNOSTICS
                         ,
                         diagnosticWorkId,
                         (int)SvgWorkerStageId.OpenTransaction
-    #endif
                         ).AsTask();
                 },
                 cancellationToken,
@@ -261,11 +244,9 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
     {
         ulong requestId = NextRequestId();
         long requestGeneration = FontGeneration;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         long targetPixels = (long)renderRequest.TargetWidthPixels * renderRequest.TargetHeightPixels;
-        long diagnosticWorkId = SvgWorkerStageTrace.CaptureCurrentWorkId();
+        long diagnosticWorkId = SvgWorkerStageTrace.BeginWork();
         long queueStartedAt = SvgWorkerStageTrace.Start(diagnosticWorkId);
-#endif
         return WithAdmittedOutputMappingAsync(
             token => AdmitRenderAsync(
                 renderRequest,
@@ -274,11 +255,9 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                 requestId,
                 requestGeneration,
                 demand,
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                 targetPixels,
                 diagnosticWorkId,
                 queueStartedAt,
-#endif
                 token),
             (admission, outputMemory, token) => RenderDocumentAdmittedAsync(
                 admission.Lease,
@@ -291,9 +270,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                 requestId,
                 admission.RequestGeneration,
                 token
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                 , diagnosticWorkId, targetPixels
-#endif
                 ).AsTask(),
             _outputMemoryFactory,
             NewOutputMappingName(),
@@ -311,11 +288,9 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
         ulong requestId,
         long requestGeneration,
         MarkdownSvgRenderDemand? demand,
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         long targetPixels,
         long diagnosticWorkId,
         long queueStartedAt,
-#endif
         CancellationToken cancellationToken)
     {
         WorkerLease lease = null!;
@@ -334,7 +309,6 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                 demandTicket: demand).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             document.ValidateContentAdmission();
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             SvgWorkerStageTrace.Record(
                 diagnosticWorkId,
                 SvgWorkerStageId.PoolSchedulingQueueWait,
@@ -344,20 +318,15 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                 queueStartedAt,
                 sourceBytes: preflight.Source.Length,
                 targetPixels: targetPixels);
-#endif
             cancellationToken.ThrowIfCancellationRequested();
             WindowsWorkerProcess worker = await EnsureWorkerAsync(
                 lease
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                 ,
                 diagnosticWorkId,
                 requestId,
                 document.DocumentId,
                 preflight.Source.Length,
                 targetPixels).ConfigureAwait(false);
-#else
-                ).ConfigureAwait(false);
-#endif
             cancellationToken.ThrowIfCancellationRequested();
             if (preflight.Info.HasText)
             {
@@ -369,14 +338,12 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                     requestGeneration,
                     cancellationToken,
                     demand
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                     ,
                     diagnosticWorkId,
                     requestId,
                     document.DocumentId,
                     preflight.Source.Length,
                     targetPixels
-#endif
                     ).ConfigureAwait(false);
                 lease = textAdmission.Lease;
                 worker = textAdmission.Worker;
@@ -417,13 +384,11 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
         long requestGeneration,
         CancellationToken cancellationToken,
         MarkdownSvgRenderDemand? demand
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         , long diagnosticWorkId,
         ulong diagnosticRequestId,
         ulong diagnosticDocumentId,
         long diagnosticSourceBytes,
         long diagnosticTargetPixels
-#endif
         )
     {
         WorkerFontCatalogGeneration.ValidateRequest(requestGeneration);
@@ -455,15 +420,11 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
         long workerCpuAtStart = -1;
         WindowsWorkerProcess? lastProbeWorker = null;
         bool lastProbeWasInitialCatalog = false;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         long fontWaitStartedAt = 0;
-#endif
         string initializationPhase = "font-catalog-startup";
         try
         {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             fontWaitStartedAt = SvgWorkerStageTrace.Start(diagnosticWorkId);
-#endif
             await readinessGate.WaitAsync(waitToken).ConfigureAwait(false);
             gateEntered = true;
 
@@ -494,13 +455,11 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
 
                     WindowsWorkerProcess readyWorker = await EnsureWorkerAsync(
                         candidateLease
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                         , diagnosticWorkId,
                         diagnosticRequestId,
                         diagnosticDocumentId,
                         diagnosticSourceBytes,
                         diagnosticTargetPixels
-#endif
                         ).ConfigureAwait(false);
                     if (requestGeneration != FontGeneration)
                         throw new OperationCanceledException("The SVG font environment changed before text work was dispatched.");
@@ -536,13 +495,11 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
 
                 WindowsWorkerProcess worker = await EnsureWorkerAsync(
                     candidateLease
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                     , diagnosticWorkId,
                     diagnosticRequestId,
                     diagnosticDocumentId,
                     diagnosticSourceBytes,
                     diagnosticTargetPixels
-#endif
                     ).ConfigureAwait(false);
 
                 if (requestGeneration != FontGeneration)
@@ -616,13 +573,11 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                             WorkerSchedulingPolicy.InitializationDeadline,
                             workerCpuAtStart,
                             initializationWallStarted)
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                         , diagnosticWorkId: diagnosticWorkId,
                         diagnosticStageId: (int)SvgWorkerStageId.FontCatalogHelloRoundTrip,
                         diagnosticDocumentId: diagnosticDocumentId,
                         diagnosticSourceBytes: diagnosticSourceBytes,
                         diagnosticTargetPixels: diagnosticTargetPixels
-#endif
                         ).ConfigureAwait(false);
                 }
                 catch (Exception exception) when (IsWorkerTransportFailure(exception))
@@ -681,14 +636,12 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                 if (response.Status == WorkerStatus.Ok)
                 {
                     worker.MarkFontCatalogReady(response.ReadyFontGeneration);
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                     RecordFontCatalogInitializationPhases(
                         response.Detail,
                         diagnosticWorkId,
                         diagnosticRequestId,
                         diagnosticDocumentId,
                         worker.InstanceId);
-#endif
                     readinessGate.Release();
                     gateEntered = false;
                     RebindLeaseCancellation(candidateLease, cancellationToken, waitToken);
@@ -745,7 +698,6 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
             reservation?.Dispose();
             if (gateEntered)
                 readinessGate.Release();
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             if (fontWaitStartedAt != 0)
             {
                 SvgWorkerStageTrace.Record(
@@ -758,7 +710,6 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                     sourceBytes: diagnosticSourceBytes,
                     targetPixels: diagnosticTargetPixels);
             }
-#endif
         }
     }
 
@@ -814,10 +765,8 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
         ulong requestId,
         long requestGeneration,
         CancellationToken cancellationToken
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         , long diagnosticWorkId,
         long targetPixels
-#endif
         )
     {
         try
@@ -862,13 +811,11 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                     _options.RequestDeadline,
                     CancellationToken.None,
                     outputMemory
-    #if MARKDOWN_LAYOUT_DIAGNOSTICS
                     ,
                     diagnosticWorkId: diagnosticWorkId,
                     diagnosticStageId: (int)SvgWorkerStageId.RenderTransaction,
                     diagnosticSourceBytes: preflight.Source.Length,
                     diagnosticTargetPixels: targetPixels
-    #endif
                     ).ConfigureAwait(false);
                 ValidateRenderResponseBeforeCancellation(
                     response,
@@ -911,11 +858,9 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                                 requestGeneration,
                                 null,
                                 document
-    #if MARKDOWN_LAYOUT_DIAGNOSTICS
                                 ,
                                 diagnosticWorkId,
                                 (int)SvgWorkerStageId.DocumentMissingAttach
-    #endif
                                 ).AsTask(),
                             cancellationToken,
                             document.ValidateContentAdmission,
@@ -937,13 +882,11 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                     _options.RequestDeadline,
                     CancellationToken.None,
                     outputMemory
-    #if MARKDOWN_LAYOUT_DIAGNOSTICS
                     ,
                     diagnosticWorkId: diagnosticWorkId,
                     diagnosticStageId: (int)SvgWorkerStageId.RenderTransaction,
                     diagnosticSourceBytes: preflight.Source.Length,
                     diagnosticTargetPixels: targetPixels
-    #endif
                     ).ConfigureAwait(false);
                 ValidateRenderResponseBeforeCancellation(
                     response,
@@ -1178,10 +1121,8 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
         long requestGeneration,
         Action? contentFailureCallback,
         WorkerDocumentHandle? contentDocument
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         , long diagnosticWorkId,
         int diagnosticStageId
-#endif
         )
     {
         try
@@ -1216,12 +1157,10 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                     deadline,
                     CancellationToken.None,
                     sourceMemory
-    #if MARKDOWN_LAYOUT_DIAGNOSTICS
                     ,
                     diagnosticWorkId: diagnosticWorkId,
                     diagnosticStageId: diagnosticStageId,
                     diagnosticSourceBytes: preflight.Source.Length
-    #endif
                     ).ConfigureAwait(false);
                 if (response.Status == WorkerStatus.WorkerFailure)
                 {
@@ -2056,9 +1995,8 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                     WorkerFontWaitAdmissionPolicy.CountVisibleDemand(
                         _queue.VisibleRenderCount,
                         _detachedVisibleRenderCount));
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             long decisionSequence = 0;
-            MarkdownSvgWorkerPolicySnapshot policySnapshot = default;
+            SvgWorkerPolicySnapshot policySnapshot = default;
             if (_workerPolicyTrace.IsEnabled &&
                 (_queue.VisibleOpenCount > 0 || _queue.VisibleRenderCount > 0 || _secondary is not null))
             {
@@ -2071,21 +2009,16 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                     shouldStartSecondary);
                 decisionSequence = _workerPolicyTrace.Record(policySnapshot);
             }
-#endif
             if (shouldStartSecondary)
             {
                 var newSecondary = new WorkerSlot(isSecondary: true);
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                 newSecondary.PolicyDecisionSequence = decisionSequence;
                 newSecondary.PolicySnapshot = policySnapshot with
                 {
                     DecisionSequence = decisionSequence,
                 };
-#endif
                 _secondary = newSecondary;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                 RecordWorkerPolicyPhaseLocked(newSecondary, SvgWorkerPolicyPhase.StartRequested);
-#endif
                 BeginSecondaryWarmupLocked(_secondary);
                 progressed = _secondary.Busy;
             }
@@ -2163,9 +2096,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                 {
                     worker = await EnsureWorkerAsync(
                         lease
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                         , 0, 0, 0, 0, 0
-#endif
                         ).ConfigureAwait(false);
                     // Process startup is the only long portion that owns the
                     // slot continuously. A ready worker can serve geometry
@@ -2201,11 +2132,9 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
             {
                 if (ReferenceEquals(_secondary, slot))
                 {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                     RecordWorkerPolicyPhaseLocked(
                         slot,
                         warmupSucceeded ? SvgWorkerPolicyPhase.Ready : SvgWorkerPolicyPhase.Failed);
-#endif
                 }
                 if (ReferenceEquals(_secondary, slot) && !warmupSucceeded)
                 {
@@ -2281,13 +2210,11 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
 
     private async Task<WindowsWorkerProcess> EnsureWorkerAsync(
         WorkerLease lease
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         , long diagnosticWorkId,
         ulong diagnosticRequestId,
         ulong diagnosticDocumentId,
         long diagnosticSourceBytes,
         long diagnosticTargetPixels
-#endif
         )
     {
         WindowsWorkerProcess? stale = null;
@@ -2305,7 +2232,6 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
         RetireForRestart(stale);
 
         WindowsWorkerProcess created;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         if (lease.Slot.IsSecondary)
         {
             lock (_stateLock)
@@ -2319,7 +2245,6 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
             }
         }
         long startupStartedAt = SvgWorkerStageTrace.Start(diagnosticWorkId);
-#endif
         try
         {
             created = await WindowsWorkerProcess.StartAsync(
@@ -2360,10 +2285,8 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
             if (!rejectCreated)
             {
                 lease.Slot.Worker = created;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                 if (lease.Slot.IsSecondary)
                     RecordWorkerPolicyPhaseLocked(lease.Slot, SvgWorkerPolicyPhase.WorkerProcessStarted);
-#endif
             }
         }
         if (rejectCreated)
@@ -2373,7 +2296,6 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                 throw new OperationCanceledException(lease.Pending.CancellationToken);
             throw new ObjectDisposedException(nameof(WorkerPool));
         }
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         SvgWorkerStageTrace.Record(
             diagnosticWorkId,
             SvgWorkerStageId.WorkerStartupAndPipeHandshake,
@@ -2383,7 +2305,6 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
             startupStartedAt,
             sourceBytes: diagnosticSourceBytes,
             targetPixels: diagnosticTargetPixels);
-#endif
         // Start preparation off-thread, but do not delay non-text requests.
         // The worker observes this cached task even if no text is ever opened.
         _ = created.EnsureFontCatalogSuppliedAsync(
@@ -2447,9 +2368,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
             {
                 worker = await EnsureWorkerAsync(
                     lease
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                     , 0, 0, 0, 0, 0
-#endif
                     ).ConfigureAwait(false);
                 if (!CanContinueSecondaryWarmup(slot, worker))
                     return worker.ReadyFontGeneration;
@@ -2494,9 +2413,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                     throw new WorkerProtocolException("The secondary worker published a font generation different from the host target.");
                 worker.MarkFontCatalogReady(response.ReadyFontGeneration);
                 slot.Readiness!.MarkFontCatalogReady(response.ReadyFontGeneration);
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                 RecordFontCatalogInitializationPhases(response.Detail, 0, 0, 0, worker.InstanceId);
-#endif
                 return response.ReadyFontGeneration;
             }
             if (response.Status != WorkerStatus.FontCatalogPending)
@@ -2615,7 +2532,6 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
         }
     }
 
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
     private static void RecordFontCatalogInitializationPhases(
         string detail,
         long diagnosticWorkId,
@@ -2641,7 +2557,6 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                 phase.WorkerCpuTicks);
         }
     }
-#endif
 
     private void Release(WorkerSlot slot, PendingWork pending)
     {
@@ -2979,8 +2894,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
             IsRecoverablePowerQueryFailure(exception.InnerException);
     }
 
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
-    private MarkdownSvgWorkerPolicySnapshot CreateWorkerPolicySnapshot(
+    private SvgWorkerPolicySnapshot CreateWorkerPolicySnapshot(
         int phase,
         long decisionSequence,
         bool energySaverOn,
@@ -3001,7 +2915,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
             _ => 1,
         };
 
-        return new MarkdownSvgWorkerPolicySnapshot(
+        return new SvgWorkerPolicySnapshot(
             Phase: phase,
             DecisionSequence: decisionSequence,
             ProcessArchitecture: (int)RuntimeInformation.ProcessArchitecture,
@@ -3036,7 +2950,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
         if (slot.PolicyDecisionSequence == 0)
             return;
 
-        MarkdownSvgWorkerPolicySnapshot current = CreateWorkerPolicySnapshot(
+        SvgWorkerPolicySnapshot current = CreateWorkerPolicySnapshot(
             (int)phase,
             slot.PolicyDecisionSequence,
             slot.PolicySnapshot.EnergySaverOn != 0,
@@ -3052,7 +2966,6 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
         { HasExited: true } => 2,
         _ => 1,
     };
-#endif
 
     private static bool QueryEnergySaverOn() =>
         Windows.System.Power.PowerManager.EnergySaverStatus ==
@@ -3248,10 +3161,8 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
     {
         public bool IsSecondary { get; } = isSecondary;
         public SemaphoreSlim FontCatalogGate { get; } = new(1, 1);
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         public long PolicyDecisionSequence { get; set; }
-        public MarkdownSvgWorkerPolicySnapshot PolicySnapshot { get; set; }
-#endif
+        public SvgWorkerPolicySnapshot PolicySnapshot { get; set; }
         public SecondaryWorkerReadiness? Readiness { get; } =
             isSecondary ? new SecondaryWorkerReadiness() : null;
         public WindowsWorkerProcess? Worker { get; set; }
@@ -3323,7 +3234,6 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
 
         public WorkerSlot Slot { get; } = slot;
         public PendingWork Pending { get; } = pending;
-
 
         public void Dispose()
         {

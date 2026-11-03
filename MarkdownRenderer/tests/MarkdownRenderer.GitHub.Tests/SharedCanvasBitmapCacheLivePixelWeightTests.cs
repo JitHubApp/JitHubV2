@@ -44,11 +44,9 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
                         new Size(4, 2),
                         pixelWidth: 2,
                         pixelHeight: 1,
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                         svgWorkId: 0,
                         svgSourceBytes: 0,
                         svgTargetPixels: 0,
-#endif
                         bitmapReservation: reservation),
                     2 => SharedCanvasBitmapCache.CreateUncachedLease(
                         bitmap,
@@ -180,11 +178,9 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
                     new Size(2, 1),
                     pixelWidth: 2,
                     pixelHeight: 1,
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                     svgWorkId: 0,
                     svgSourceBytes: 0,
                     svgTargetPixels: 0,
-#endif
                     bitmapReservation: reservation);
                 bitmap = null;
             });
@@ -379,11 +375,9 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
                     intrinsicSize: new Size(2, 1),
                     pixelWidth: 2,
                     pixelHeight: 1,
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                     svgWorkId: 0,
                     svgSourceBytes: 0,
                     svgTargetPixels: 0,
-#endif
                     bitmapReservation: svgReservation);
                 svgBitmap = null;
             }

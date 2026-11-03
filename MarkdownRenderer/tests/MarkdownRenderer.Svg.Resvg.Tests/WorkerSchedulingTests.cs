@@ -5,9 +5,6 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using MarkdownRenderer.Images;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
-using MarkdownRenderer.Diagnostics;
-#endif
 using MarkdownRenderer.Svg.Resvg.Internal;
 using Xunit;
 
@@ -47,10 +44,8 @@ public sealed class WorkerSchedulingTests
     public async Task RecoverablePowerQueryFailureKeepsAdmissionOnPrimaryAndDoesNotStrandWork()
     {
         int queryCount = 0;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
-        var policySnapshots = new ConcurrentQueue<MarkdownSvgWorkerPolicySnapshot>();
-        MarkdownPerformanceEventSource.SetSvgWorkerPolicyDiagnosticRecorder(policySnapshots.Enqueue);
-#endif
+        var policySnapshots = new ConcurrentQueue<SvgWorkerPolicySnapshot>();
+        ResvgEventSource.SetWorkerPolicyRecorder(policySnapshots.Enqueue);
         using var pool = new WorkerPool(
             new ResvgMarkdownSvgRendererOptions(),
             TimeProvider.System,
@@ -74,14 +69,12 @@ public sealed class WorkerSchedulingTests
             Task pendingAdmission = InvokeAcquireAsync(pool, queuedCancellation.Token);
             queuedAdmission = pendingAdmission;
             Assert.False(pendingAdmission.IsCompleted);
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             Assert.Contains(policySnapshots, snapshot =>
                 snapshot.EnergySaverQueryFailed == 1 &&
                 snapshot.EnergySaverOn == 1 &&
                 snapshot.CanUseSecondary == 0 &&
                 snapshot.ShouldStartSecondary == 0 &&
                 snapshot.VisibleRenderCount == 1);
-#endif
             Assert.Null(GetPrivateField(pool, "_secondary"));
 
             queuedCancellation.Cancel();
@@ -125,9 +118,7 @@ public sealed class WorkerSchedulingTests
             }
             secondLease?.Dispose();
             firstLease?.Dispose();
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
-            MarkdownPerformanceEventSource.SetSvgWorkerPolicyDiagnosticRecorder(null);
-#endif
+            ResvgEventSource.SetWorkerPolicyRecorder(null);
         }
     }
 

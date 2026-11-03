@@ -1,4 +1,3 @@
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
 using System.Collections.Concurrent;
 using System.Diagnostics.Tracing;
 using System.Linq;
@@ -162,4 +161,3 @@ public sealed class MarkdownSvgStageTraceTests
         }
     }
 }
-#endif

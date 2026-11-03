@@ -128,9 +128,7 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
         Assert.True(device.ForceSoftwareRenderer,
             "GIF parity must run through Win2D's software renderer rather than silently using hardware.");
 
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         RasterNativeWicDiagnosticSnapshot before = RasterNativeWicDiagnostics.GetSnapshot();
-#endif
         int exercised = 0;
         try
         {
@@ -201,7 +199,6 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
         }
 
         Assert.Equal(OwnedNativeWicGifFixtureFactory.CreateCoreMatrix().Count + 1, exercised);
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         RasterNativeWicDiagnosticSnapshot after = RasterNativeWicDiagnostics.GetSnapshot();
         Assert.True(after.NativeStarted > before.NativeStarted,
             "Diagnostics build should prove that ImageBox entered the owned WIC route for admitted GIFs.");
@@ -209,10 +206,6 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
             "Diagnostics build should prove the native frame lease reached ImageBox upload.");
         output.WriteLine($"GIF native decoder diagnostic deltas: started={after.NativeStarted - before.NativeStarted}; " +
             $"pixelLeases={after.PixelLeaseCompleted - before.PixelLeaseCompleted}.");
-#else
-        output.WriteLine("Default-build pixel parity verifies final ImageBox composition; native-route counters " +
-            "are diagnostics-build-only.");
-#endif
     }
 
     [Theory]

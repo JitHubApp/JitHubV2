@@ -1,4 +1,3 @@
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
 using System;
 using System.Diagnostics;
 using System.Threading;
@@ -111,4 +110,3 @@ internal sealed class InitialLayoutDispatcherProbe : IDisposable
         }
     }
 }
-#endif

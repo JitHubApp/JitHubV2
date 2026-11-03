@@ -1,4 +1,3 @@
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
 using System.Diagnostics;
 using System.Security.Cryptography;
 using MarkdownRenderer.Layout;
@@ -346,4 +345,3 @@ public sealed class RasterNativeWicCopyBandEquivalenceTests(ITestOutputHelper ou
         public void Dispose() => Interlocked.Increment(ref _disposeCount);
     }
 }
-#endif

@@ -13,7 +13,7 @@
     },
     {
       "path": "perf/MarkdownRenderer.PerformanceHarness/PerformanceWindow.cs",
-      "lines": 2712,
+      "lines": 2704,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
@@ -63,7 +63,7 @@
     },
     {
       "path": "src/MarkdownRenderer.Svg.Resvg/Internal/SvgPreflight.cs",
-      "lines": 2526,
+      "lines": 2501,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
@@ -73,12 +73,12 @@
     },
     {
       "path": "src/MarkdownRenderer.Svg.Resvg/Internal/WindowsWorkerProcess.cs",
-      "lines": 1358,
+      "lines": 1336,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
       "path": "src/MarkdownRenderer.Svg.Resvg/Internal/WorkerPool.cs",
-      "lines": 3424,
+      "lines": 3334,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
@@ -93,7 +93,7 @@
     },
     {
       "path": "src/MarkdownRenderer/Controls/MarkdownRendererControl.cs",
-      "lines": 3825,
+      "lines": 3807,
       "reason": "Composition root: dependency properties, the explicit host adapters its owners call, and the commit, recovery and lifecycle sequencing across those owners. Structure step 3d moved its logic into owners (7,795 to 3,825 lines); this cap holds that."
     },
     {
@@ -138,12 +138,12 @@
     },
     {
       "path": "src/MarkdownRenderer/Layout/Boxes/ImageBox.cs",
-      "lines": 9641,
+      "lines": 9561,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
       "path": "src/MarkdownRenderer/Layout/Boxes/InlineContainerBox.cs",
-      "lines": 6030,
+      "lines": 6002,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
@@ -153,12 +153,12 @@
     },
     {
       "path": "src/MarkdownRenderer/Layout/Boxes/RasterNativeWicDecoder.cs",
-      "lines": 1166,
+      "lines": 1148,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
       "path": "src/MarkdownRenderer/Layout/Boxes/SharedCanvasBitmapCache.cs",
-      "lines": 1092,
+      "lines": 1070,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
@@ -178,12 +178,12 @@
     },
     {
       "path": "src/MarkdownRenderer/Layout/Boxes/VectorSceneBox.cs",
-      "lines": 1340,
+      "lines": 1336,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
       "path": "src/MarkdownRenderer/Layout/LayoutBuilder.cs",
-      "lines": 3182,
+      "lines": 3160,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
@@ -193,12 +193,12 @@
     },
     {
       "path": "src/MarkdownRenderer/Layout/MarkdownLayoutContext.cs",
-      "lines": 1141,
+      "lines": 1138,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
       "path": "src/MarkdownRenderer/Layout/VectorSceneDrawing.cs",
-      "lines": 1514,
+      "lines": 1499,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
@@ -208,7 +208,7 @@
     },
     {
       "path": "src/MarkdownRenderer/Performance/MarkdownPerformanceSession.cs",
-      "lines": 3539,
+      "lines": 3531,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {

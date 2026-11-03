@@ -1,4 +1,3 @@
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
 using System.Buffers;
 using System.Diagnostics.Tracing;
 using System.Security.Cryptography;
@@ -147,7 +146,7 @@ public sealed class SvgProviderSnapshotOwnershipTests
         result.ReleaseSource();
         result.ReleaseSource();
 
-        Assert.Same(result, inspection.Result);
+        Assert.Same(result, await inspection);
         Assert.Equal(0, result.Source.Length);
         Assert.Equal(0, ledger.GetSnapshot().LiveBytes);
         Assert.Equal(0, ledger.GetSnapshot().LiveSnapshots);
@@ -391,4 +390,3 @@ public sealed class SvgProviderSnapshotOwnershipTests
         }
     }
 }
-#endif

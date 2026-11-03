@@ -16,7 +16,6 @@ using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Document;
-using MarkdownRenderer.Layout;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Utilities;
 
@@ -1483,7 +1482,6 @@ internal sealed partial class InlineContainerBox : BlockBox
                         temporarySlotCount: 1,
                         disposer: _nativeDisposer);
                 replacementLayoutRetirementRecord = candidateRetirementRecord;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                 CanvasTextLayout candidateLayout = CanvasTextLayoutFactory.Create(
                     Context.ResourceCreator,
                     _buffer,
@@ -1491,14 +1489,6 @@ internal sealed partial class InlineContainerBox : BlockBox
                     layoutWidth,
                     float.MaxValue,
                     Context.LayoutDiagnostics);
-#else
-                CanvasTextLayout candidateLayout = new CanvasTextLayout(
-                    Context.ResourceCreator,
-                    _buffer,
-                    formatLease.Format,
-                    layoutWidth,
-                    float.MaxValue);
-#endif
                 candidateRetirementRecord.SetTemporary(0, candidateLayout);
                 replacementLayout = candidateLayout;
                 _layout = candidateLayout;
@@ -1735,7 +1725,6 @@ internal sealed partial class InlineContainerBox : BlockBox
                 resourceGroupCount: 0,
                 temporarySlotCount: 1,
                 disposer: _nativeDisposer);
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             layout = CanvasTextLayoutFactory.Create(
                 Context.ResourceCreator,
                 _buffer,
@@ -1743,14 +1732,6 @@ internal sealed partial class InlineContainerBox : BlockBox
                 measurementWidth,
                 float.MaxValue,
                 Context.LayoutDiagnostics);
-#else
-            layout = new CanvasTextLayout(
-                Context.ResourceCreator,
-                _buffer,
-                formatLease.Format,
-                measurementWidth,
-                float.MaxValue);
-#endif
             layoutRetirementRecord.SetTemporary(0, layout);
             layout.Options = CanvasDrawTextOptions.EnableColorFont;
             ApplyRunStyles(layout, applyColors: false);
@@ -4885,7 +4866,6 @@ internal sealed partial class InlineContainerBox : BlockBox
         Exception? candidateFailure = null;
         try
         {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             candidateLayout = CanvasTextLayoutFactory.Create(
                 Context.ResourceCreator,
                 _buffer,
@@ -4893,14 +4873,6 @@ internal sealed partial class InlineContainerBox : BlockBox
                 Math.Max(1f, _lastWidth - horizontalPadding),
                 float.MaxValue,
                 Context.LayoutDiagnostics);
-#else
-            candidateLayout = new CanvasTextLayout(
-                Context.ResourceCreator,
-                _buffer,
-                formatLease.Format,
-                Math.Max(1f, _lastWidth - horizontalPadding),
-                float.MaxValue);
-#endif
             candidateRetirementRecord.SetTemporary(0, candidateLayout);
             candidateLayout.Options = CanvasDrawTextOptions.EnableColorFont;
             // Selection is painted synchronously by a Win2D Draw callback against

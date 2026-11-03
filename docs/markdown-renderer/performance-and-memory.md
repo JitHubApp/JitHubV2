@@ -321,7 +321,7 @@ A queue-full CLOSE does not invalidate a healthy worker: any remaining binding
 is bounded by native binding/cache eviction or restart, not guaranteed closed
 immediately. Detached cleanup faults are observed.
 
-With `EnableMarkdownLayoutDiagnostics=true`, the resvg provider publishes
+The resvg provider publishes
 `MarkdownRenderer.Svg.Resvg.SourceSnapshots` event 1 (`SnapshotChanged`). Its six
 numeric fields are scope ID, live bytes, peak bytes, live snapshots, peak
 snapshots and sequence. Scope 0 aggregates participating renderer scopes;
@@ -331,8 +331,7 @@ tickets), not allocated memory, RSS or a quota. Normalization overlap, caller/
 cache arrays, sanitizer DOM/output, decoded resources, mappings, native trees
 and GPU memory are excluded. Tickets follow failure/cancellation and actual
 document/render retirement; callbacks run outside state locks. The ledger is
-compiled out when diagnostics are disabled and does not change admission or
-queue policy. Weighted aggregate ownership and backing/reacquisition remain open.
+telemetry only and does not change admission or queue policy. Weighted aggregate ownership and backing/reacquisition remain open.
 
 The host's repository/network download methods also clear their local byte-array
 references before releasing untransferred admission, including malformed remote

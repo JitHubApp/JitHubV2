@@ -1,4 +1,3 @@
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
 using System;
 using System.Diagnostics;
 using System.Threading;
@@ -6,7 +5,8 @@ using System.Threading;
 namespace MarkdownRenderer.Layout;
 
 /// <summary>
-/// Diagnostic-only counters for the initial layout build. Capture freezes the
+/// Counters for the initial layout build, created only when a performance
+/// session or the standalone stage profile asks for them. Capture freezes the
 /// accumulator after the worker completes so later relayouts cannot contaminate it.
 /// </summary>
 internal sealed class MarkdownLayoutDiagnostics
@@ -135,19 +135,3 @@ internal sealed class MarkdownLayoutDiagnostics
     private static double ToMilliseconds(long elapsedTicks) =>
         elapsedTicks > 0 ? Stopwatch.GetElapsedTime(0, elapsedTicks).TotalMilliseconds : 0;
 }
-
-internal readonly record struct MarkdownLayoutDiagnosticsSnapshot(
-    int TopLevelBlockCount,
-    int CanvasTextLayoutConstructorCalls,
-    double CanvasTextLayoutConstructorMilliseconds,
-    double BlockConstructionMilliseconds,
-    double MeasureArrangeMilliseconds,
-    double SnapshotConstructionMilliseconds);
-
-internal readonly record struct MarkdownInitialLayoutDispatcherDiagnosticsSnapshot(
-    bool SentinelEnqueued,
-    bool SentinelDispatched,
-    double SentinelDelayMilliseconds,
-    int HeartbeatSampleCount,
-    double HeartbeatMaxGapMilliseconds);
-#endif

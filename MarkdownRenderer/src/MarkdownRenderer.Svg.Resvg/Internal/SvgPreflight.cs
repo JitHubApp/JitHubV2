@@ -25,7 +25,6 @@ internal sealed class SvgPreflightResult(
 {
     private SvgSourceBuffer? _source = Source;
     private SvgProcessSnapshotAdmission.Lease? _snapshotAdmission;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
     private SvgProviderSnapshotLedger.Lease? _ownership;
 
     internal void AttachOwnership(SvgProviderSnapshotLedger.Lease ownership)
@@ -43,7 +42,6 @@ internal sealed class SvgPreflightResult(
             throw;
         }
     }
-#endif
 
     internal long SourceReservationBytes => Volatile.Read(ref _snapshotAdmission)?.Bytes ?? 0;
 
@@ -229,9 +227,7 @@ internal static class SvgPreflight
         MarkdownSvgOpenRequest request,
         ResvgMarkdownSvgRendererOptions options,
         CancellationToken cancellationToken
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         , SvgProviderSnapshotLedger? ownershipLedger = null
-#endif
         , SvgProcessSnapshotAdmission.Lease? snapshotAdmission = null
         , MarkdownSvgRenderDemand? demand = null
         , Action? beforeFirstNormalizedSegmentAllocation = null
@@ -249,9 +245,7 @@ internal static class SvgPreflight
         return RunInspectCoreAsync(
             () =>
             {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                 SvgProviderSnapshotLedger.Lease? ownership = null;
-#endif
                 Action? allocationObserver = beforeFirstNormalizedSegmentAllocation;
                 try
                 {
@@ -259,9 +253,7 @@ internal static class SvgPreflight
                     // Observe the designated private snapshot before its clone.
                     // This is not admission: caller buffers, normalization overlap,
                     // decoded resources and mappings have separate ownership.
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                     ownership = ownershipLedger?.Track(input.Length);
-#endif
                     // Diagnostic listeners can reenter and cancel during Track.
                     // Check again before the source-sized allocation/copy.
                     cancellationToken.ThrowIfCancellationRequested();
@@ -272,18 +264,14 @@ internal static class SvgPreflight
                     SvgSourceBuffer source = SvgSourceBuffer.CopyFrom(input.Span, cancellationToken);
                     Task<SvgPreflightResult> inspection = InspectCoreAsync(
                         source, options, cancellationToken
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                         , ownership
-#endif
                         , snapshotAdmission
                         , demand
                         , sourcePriority
                         , allocationObserver
                         );
                     allocationObserver = null;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                     ownership = null; // The inspection owns its terminal cleanup.
-#endif
                     return inspection;
                 }
                 finally
@@ -292,10 +280,8 @@ internal static class SvgPreflight
                     input = default;
                     demand = null;
                     beforeFirstNormalizedSegmentAllocation = null;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                     ownership?.Dispose();
                     ownershipLedger = null;
-#endif
                 }
             },
             cancellationToken);
@@ -309,8 +295,14 @@ internal static class SvgPreflight
         if (cancellationToken.IsCancellationRequested)
             return Task.FromCanceled<TResult>(cancellationToken);
 
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
-        long workId = SvgWorkerStageTrace.CaptureCurrentWorkId();
+        long workId = SvgWorkerStageTrace.BeginWork();
+        if (workId == 0)
+        {
+            return Thread.CurrentThread.IsThreadPoolThread
+                ? operation()
+                : Task.Run(operation, cancellationToken);
+        }
+
         long dispatchStartedAt = SvgWorkerStageTrace.Start(workId);
         if (Thread.CurrentThread.IsThreadPoolThread)
         {
@@ -337,20 +329,13 @@ internal static class SvgPreflight
                 workerCpuTicks: -1);
             return operation();
         }, cancellationToken);
-#else
-        return Thread.CurrentThread.IsThreadPoolThread
-            ? operation()
-            : Task.Run(operation, cancellationToken);
-#endif
     }
 
     internal static async Task<SvgPreflightResult> InspectCoreAsync(
         byte[] source,
         ResvgMarkdownSvgRendererOptions options,
         CancellationToken cancellationToken
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         , SvgProviderSnapshotLedger.Lease? ownership = null
-#endif
         , SvgProcessSnapshotAdmission.Lease? snapshotAdmission = null
         , MarkdownSvgRenderDemand? demand = null
         , MarkdownSvgRenderPriority sourcePriority = MarkdownSvgRenderPriority.Visible
@@ -363,9 +348,7 @@ internal static class SvgPreflight
             snapshot,
             options,
             cancellationToken
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             , ownership
-#endif
             , snapshotAdmission
             , demand
             , sourcePriority
@@ -376,9 +359,7 @@ internal static class SvgPreflight
         SvgSourceBuffer source,
         ResvgMarkdownSvgRendererOptions options,
         CancellationToken cancellationToken
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         , SvgProviderSnapshotLedger.Lease? ownership = null
-#endif
         , SvgProcessSnapshotAdmission.Lease? snapshotAdmission = null
         , MarkdownSvgRenderDemand? demand = null
         , MarkdownSvgRenderPriority sourcePriority = MarkdownSvgRenderPriority.Visible
@@ -780,12 +761,10 @@ internal static class SvgPreflight
             // document merely to repair MIME headers: that duplicates payload work,
             // expands the source, and does not reach nested SVG or CSS references.
             byte[] hash = finalSource.ComputeSha256();
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             // The retained ticket measures actual owned byte arrays. The
             // normalized tail was compacted before transfer, so this should be
             // the final source-byte capacity, not a logical-length estimate.
             ownership?.SetLength(finalSource.AllocatedCapacity);
-#endif
             if (snapshotAdmission is not null)
                 snapshotAdmission.SetLength(finalSource.AllocatedCapacity);
 
@@ -800,13 +779,11 @@ internal static class SvgPreflight
                 filterPrimitives);
             try
             {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                 if (ownership is not null)
                 {
                     result.AttachOwnership(ownership);
                     ownership = null;
                 }
-#endif
                 if (snapshotAdmission is not null)
                 {
                     result.AttachSnapshotAdmission(snapshotAdmission);
@@ -828,10 +805,8 @@ internal static class SvgPreflight
             // successful result independently owns the sanitized bytes.
             sourceBuffer?.Dispose();
             sourceBuffer = null;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             ownership?.Dispose();
             ownership = null;
-#endif
             snapshotAdmission?.Dispose();
             snapshotAdmission = null;
             demand = null;

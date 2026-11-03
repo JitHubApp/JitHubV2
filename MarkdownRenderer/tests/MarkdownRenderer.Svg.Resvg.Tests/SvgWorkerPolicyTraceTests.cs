@@ -1,8 +1,6 @@
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
 using System.Collections.Concurrent;
 using System.Diagnostics.Tracing;
 using System.Threading;
-using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Svg.Resvg.Internal;
 using Xunit;
 
@@ -84,7 +82,7 @@ public sealed class SvgWorkerPolicyTraceTests
         WorkerPolicyEvent[] events = [first, second, third, fourth, fifth];
         Assert.All(events, entry =>
         {
-            Assert.Equal(14, entry.EventId);
+            Assert.Equal(2, entry.EventId);
             Assert.Equal(23, entry.Values.Length);
             Assert.Equal(primaryWorkerInstanceId, Assert.IsType<long>(entry.Values[13]));
             Assert.DoesNotContain(entry.Names, static name =>
@@ -119,7 +117,7 @@ public sealed class SvgWorkerPolicyTraceTests
         long primaryWorkerInstanceId = NextTestPrimaryWorkerInstanceId();
         using var listener = new WorkerPolicyListener(primaryWorkerInstanceId);
         var trace = new SvgWorkerPolicyTrace(maximumEvents: 2);
-        MarkdownSvgWorkerPolicySnapshot snapshot = CreateSnapshot(
+        SvgWorkerPolicySnapshot snapshot = CreateSnapshot(
             phase: (int)SvgWorkerPolicyPhase.Evaluated,
             primaryWorkerInstanceId: primaryWorkerInstanceId,
             canUseSecondary: 0,
@@ -139,7 +137,7 @@ public sealed class SvgWorkerPolicyTraceTests
         WorkerPolicyEvent[] events = [first, second, limit];
         Assert.All(events, entry =>
         {
-            Assert.Equal(14, entry.EventId);
+            Assert.Equal(2, entry.EventId);
             Assert.Equal(23, entry.Values.Length);
             Assert.Equal(primaryWorkerInstanceId, Assert.IsType<long>(entry.Values[13]));
             Assert.DoesNotContain(entry.Names, static name =>
@@ -154,7 +152,7 @@ public sealed class SvgWorkerPolicyTraceTests
         Assert.False(listener.TryRead(out _));
     }
 
-    private static MarkdownSvgWorkerPolicySnapshot CreateSnapshot(
+    private static SvgWorkerPolicySnapshot CreateSnapshot(
         int phase,
         long primaryWorkerInstanceId,
         long decisionSequence = 0,
@@ -207,7 +205,7 @@ public sealed class SvgWorkerPolicyTraceTests
 
         protected override void OnEventSourceCreated(EventSource eventSource)
         {
-            if (eventSource.Name == MarkdownPerformanceEventSource.ProviderName)
+            if (eventSource.Name == ResvgEventSource.ProviderName)
                 EnableEvents(eventSource, EventLevel.Informational);
         }
 
@@ -215,7 +213,7 @@ public sealed class SvgWorkerPolicyTraceTests
         {
             long expectedWorkerInstanceId = Volatile.Read(ref _expectedPrimaryWorkerInstanceId);
             if (expectedWorkerInstanceId == 0 ||
-                eventData.EventId != 14 ||
+                eventData.EventId != 2 ||
                 eventData.Payload is not { Count: > 13 } payload ||
                 payload[13] is not long primaryWorkerInstanceId ||
                 primaryWorkerInstanceId != expectedWorkerInstanceId)
@@ -242,4 +240,3 @@ public sealed class SvgWorkerPolicyTraceTests
 
     private sealed record WorkerPolicyEvent(int EventId, object?[] Values, string[] Names);
 }
-#endif

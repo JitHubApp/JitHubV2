@@ -64,7 +64,6 @@ public sealed class SvgAdmissionMetadataTests
 
     private static byte[] Svg(string source) => Encoding.UTF8.GetBytes(source);
 
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
     [Fact]
     public void CombinedValidationPreservesAcceptanceAndRejectionParity()
     {
@@ -265,5 +264,4 @@ public sealed class SvgAdmissionMetadataTests
         Assert.Equal(default, fallback);
         Assert.Equal("Prepared", SvgSourceMetadata.Extract(admittedBytes, CancellationToken.None).Title);
     }
-#endif
 }

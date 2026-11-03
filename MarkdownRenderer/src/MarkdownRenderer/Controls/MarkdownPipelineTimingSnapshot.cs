@@ -23,7 +23,6 @@ internal readonly struct MarkdownPipelineTimingSnapshot
     internal readonly double LayoutQueueMilliseconds;
     internal readonly double LayoutWorkerWallMilliseconds;
     internal readonly double LayoutContinuationMilliseconds;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
     internal readonly int LayoutTopLevelBlockCount;
     internal readonly int CanvasTextLayoutConstructorCalls;
     internal readonly double CanvasTextLayoutConstructorMilliseconds;
@@ -35,7 +34,6 @@ internal readonly struct MarkdownPipelineTimingSnapshot
     internal readonly double InitialLayoutDispatcherSentinelDelayMilliseconds;
     internal readonly int InitialLayoutDispatcherHeartbeatSampleCount;
     internal readonly double InitialLayoutDispatcherHeartbeatMaxGapMilliseconds;
-#endif
     internal readonly long PublicationStartedTimestamp;
     internal readonly long CommitEndedTimestamp;
     internal readonly long OverlayResetEndedTimestamp;
@@ -57,7 +55,6 @@ internal readonly struct MarkdownPipelineTimingSnapshot
         double layoutQueueMilliseconds,
         double layoutWorkerWallMilliseconds,
         double layoutContinuationMilliseconds,
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         int layoutTopLevelBlockCount,
         int canvasTextLayoutConstructorCalls,
         double canvasTextLayoutConstructorMilliseconds,
@@ -69,7 +66,6 @@ internal readonly struct MarkdownPipelineTimingSnapshot
         double initialLayoutDispatcherSentinelDelayMilliseconds,
         int initialLayoutDispatcherHeartbeatSampleCount,
         double initialLayoutDispatcherHeartbeatMaxGapMilliseconds,
-#endif
         long publicationStartedTimestamp,
         long commitEndedTimestamp,
         long overlayResetEndedTimestamp,
@@ -90,7 +86,6 @@ internal readonly struct MarkdownPipelineTimingSnapshot
         LayoutQueueMilliseconds = layoutQueueMilliseconds;
         LayoutWorkerWallMilliseconds = layoutWorkerWallMilliseconds;
         LayoutContinuationMilliseconds = layoutContinuationMilliseconds;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         LayoutTopLevelBlockCount = layoutTopLevelBlockCount;
         CanvasTextLayoutConstructorCalls = canvasTextLayoutConstructorCalls;
         CanvasTextLayoutConstructorMilliseconds = canvasTextLayoutConstructorMilliseconds;
@@ -102,7 +97,6 @@ internal readonly struct MarkdownPipelineTimingSnapshot
         InitialLayoutDispatcherSentinelDelayMilliseconds = initialLayoutDispatcherSentinelDelayMilliseconds;
         InitialLayoutDispatcherHeartbeatSampleCount = initialLayoutDispatcherHeartbeatSampleCount;
         InitialLayoutDispatcherHeartbeatMaxGapMilliseconds = initialLayoutDispatcherHeartbeatMaxGapMilliseconds;
-#endif
         PublicationStartedTimestamp = publicationStartedTimestamp;
         CommitEndedTimestamp = commitEndedTimestamp;
         OverlayResetEndedTimestamp = overlayResetEndedTimestamp;
@@ -114,7 +108,6 @@ internal readonly struct MarkdownPipelineTimingSnapshot
         PublicationEndedTimestamp = publicationEndedTimestamp;
     }
 
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
     internal MarkdownPipelineTimingSnapshot WithInitialLayoutDispatcherDiagnostics(
         MarkdownInitialLayoutDispatcherDiagnosticsSnapshot dispatcherDiagnostics) =>
         new(
@@ -148,5 +141,4 @@ internal readonly struct MarkdownPipelineTimingSnapshot
             HighlightSchedulingEndedTimestamp,
             VisibleRealizationEndedTimestamp,
             PublicationEndedTimestamp);
-#endif
 }

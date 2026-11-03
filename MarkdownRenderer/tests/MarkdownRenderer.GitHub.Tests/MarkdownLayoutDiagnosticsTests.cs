@@ -1,6 +1,5 @@
 // MarkdownLayoutDiagnostics exists only in the EnableMarkdownLayoutDiagnostics
 // lane, like the other diagnostics-only renderer contracts in this project.
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
 using System.Diagnostics;
 using MarkdownRenderer.Layout;
 using Xunit;
@@ -107,4 +106,3 @@ public sealed class MarkdownLayoutDiagnosticsTests
     private static long MillisecondsToTicks(long milliseconds) =>
         Stopwatch.Frequency * milliseconds / 1_000;
 }
-#endif

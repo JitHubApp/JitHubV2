@@ -965,7 +965,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
     /// <summary>The host-facing image source used by target-aware commands.</summary>
 
-
     /// <summary>SVG &lt;title&gt; element value, or null. Used by the automation
     /// peer as the accessible name when richer than alt.</summary>
     public string? SvgTitle => _svgTitle ?? _carriedCompletion?.SvgTitle;
@@ -2007,7 +2006,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         CanvasTextLayout? layout = null;
         try
         {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             layout = CanvasTextLayoutFactory.Create(
                 Context.ResourceCreator,
                 text,
@@ -2015,9 +2013,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 width,
                 height,
                 Context.LayoutDiagnostics);
-#else
-            layout = new CanvasTextLayout(Context.ResourceCreator, text, format, width, height);
-#endif
             reserved.SetTemporary(0, layout);
             if (_nativeLayoutOptionsSetter is { } testSetter)
                 testSetter(layout);
@@ -2933,7 +2928,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         _svgHostDeferredCapacityReady = false;
         return waiter;
     }
-
 
     public override float Measure(float availableWidth)
     {
@@ -5402,16 +5396,13 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
         try
         {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             long svgWorkId = MarkdownSvgStageTrace.BeginWork();
             long dispatchStartedAt = svgWorkId != 0 &&
                 MarkdownPerformanceEventSource.Log.IsSvgWorkMeasurementEnabled()
                     ? Stopwatch.GetTimestamp()
                     : 0;
-#endif
             async Task<SvgOpenStageResult> RunCoreAsync(byte[] bytes)
             {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                 using var svgWorkScope = MarkdownSvgStageTrace.BeginWorkScope(svgWorkId);
                 using (MarkdownSvgStageTrace.MeasureFrom(
                     svgWorkId,
@@ -5420,7 +5411,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                     bytes.LongLength))
                 {
                 }
-#endif
                 try
                 {
                     return await OpenSvgSourceCoreAsync(
@@ -5484,12 +5474,8 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         string effectiveSecurityPartitionKey = GetSvgSourceSecurityPartitionKey(resolvedCacheKey);
         IMarkdownSvgRenderer? renderer = Context.SvgRenderer;
         IMarkdownSvgAdmission? hostAdmission = renderer as IMarkdownSvgAdmission;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         long svgWorkId = MarkdownSvgStageTrace.CurrentWorkId;
         long svgSourceBytes = rawBytes.LongLength;
-#else
-        long svgWorkId = 0;
-#endif
         if (renderer is null)
         {
             PublishSvgFailure(
@@ -5608,12 +5594,10 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                         }
                     }
                     {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                         using var stageTrace = MarkdownSvgStageTrace.Measure(
                             svgWorkId,
                             MarkdownSvgWorkStage.SourcePreparation,
                             svgSourceBytes);
-#endif
                         preparationToken.ThrowIfCancellationRequested();
                         preparation = renderer.PrepareSource(rawBytes, preparationToken);
                         preparationToken.ThrowIfCancellationRequested();
@@ -5649,12 +5633,10 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                     rawBytes = preparation.SanitizedBytes ?? rawBytes;
                     providerCacheGeneration = renderer.CacheGeneration;
                     {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                         using var stageTrace = MarkdownSvgStageTrace.Measure(
                             svgWorkId,
                             MarkdownSvgWorkStage.HostPreflight,
                             svgSourceBytes);
-#endif
                         if (preparation.SanitizedBytes is not null &&
                             IsKnownSvgSource(rawBytes, currentSecurityPartitionHash) &&
                             _svgContentHash is { } cachedContentHash &&
@@ -5757,12 +5739,10 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
             if (hostAdmission is null)
             {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                 using var stageTrace = MarkdownSvgStageTrace.Measure(
                     svgWorkId,
                     MarkdownSvgWorkStage.HostAdmissionWait,
                     svgSourceBytes);
-#endif
                 openAdmissionEntry = await _svgOpenAdmissions
                     .AcquireAsync(contentCacheKey, cancellationToken)
                     .ConfigureAwait(false);
@@ -5798,12 +5778,10 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 demand.Priority);
 
             {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                 using var stageTrace = MarkdownSvgStageTrace.Measure(
                     svgWorkId,
                     MarkdownSvgWorkStage.ProviderOpen,
                     svgSourceBytes);
-#endif
                 // Open may still read the caller's bytes until it really
                 // completes. Keep the source reservation and image-work lease
                 // across that completion, even if the provider ignores cancel.
@@ -6080,18 +6058,13 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         return new SvgOpenStageResult(null, hostCapacityDeferral);
     }
 
-
     private Task RenderOpenedSvgAsync(SvgOpenedRenderWork work)
     {
         if (!work.TryConsume())
             throw new InvalidOperationException("The opened SVG work has already been consumed or disposed.");
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         long dispatchStartedAt = Context.Dispatcher?.HasThreadAccess == true &&
             work.Metadata.WorkId != 0 && MarkdownPerformanceEventSource.Log.IsSvgWorkMeasurementEnabled()
                 ? Stopwatch.GetTimestamp() : 0;
-#else
-        long dispatchStartedAt = 0;
-#endif
         try
         {
             // Even an asynchronously opened source can complete on the UI
@@ -6133,13 +6106,10 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         MarkdownSvgRenderDemand demand = metadata.Demand!;
         BitmapOutputWorkContext bitmapOutputWork = CaptureBitmapOutputWorkContext(
             cancellationToken, expectedDemand: demand, expectedSvgGeneration: renderGeneration);
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         long svgWorkId = metadata.WorkId;
         long svgSourceBytes = metadata.SourceByteLength;
-#endif
         try
         {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             using var svgWorkScope = MarkdownSvgStageTrace.BeginWorkScope(metadata.WorkId);
             if (dispatchStartedAt != 0)
             {
@@ -6147,14 +6117,10 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                     svgWorkId, MarkdownSvgWorkStage.OuterDispatchQueueWait,
                     dispatchStartedAt, svgSourceBytes);
             }
-#endif
             cancellationToken.ThrowIfCancellationRequested();
             if (work.UsesTiles)
             {
-                long tilePublishRequestedAt = 0;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
-                tilePublishRequestedAt = Stopwatch.GetTimestamp();
-#endif
+                long tilePublishRequestedAt = svgWorkId != 0 ? Stopwatch.GetTimestamp() : 0;
                 var tiledPublication = CreateTiledSvgPublication(
                     metadata,
                     openedDocument!,
@@ -6188,13 +6154,11 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 if (IsBitmapOutputDeferred)
                     return;
                 {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                     using var stageTrace = MarkdownSvgStageTrace.Measure(
                         svgWorkId,
                         MarkdownSvgWorkStage.BitmapCacheWait,
                         svgSourceBytes,
                         targetPixels);
-#endif
                     renderGate = SharedCanvasBitmapCache.GetDecodeGate(device, bitmapIdentity);
                     await renderGate.WaitAsync(cancellationToken).ConfigureAwait(false);
                     renderGateHeld = true;
@@ -6210,13 +6174,11 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                         return;
                     MarkdownSvgRaster raster;
                     {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                         using var stageTrace = MarkdownSvgStageTrace.Measure(
                             svgWorkId,
                             MarkdownSvgWorkStage.ProviderRender,
                             svgSourceBytes,
                             targetPixels);
-#endif
                         raster = await RenderSvgDocumentAsync(
                                 openedDocument!,
                                 new MarkdownSvgRenderRequest(
@@ -6241,7 +6203,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                         }
                         ValidateSvgRaster(raster, targetWidth, targetHeight);
                         {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                             using var stageTrace = MarkdownSvgStageTrace.Measure(
                                 svgWorkId,
                                 MarkdownSvgWorkStage.BitmapUpload,
@@ -6253,20 +6214,15 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                                 svgSourceBytes,
                                 targetPixels,
                                 bitmapReservation: bitmapReservation);
-#else
-                            ownedBitmap = CreateBitmapFromSvgRaster(raster, bitmapReservation: bitmapReservation);
-#endif
                         }
                         {
                             try
                             {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                                 using var stageTrace = MarkdownSvgStageTrace.Measure(
                                     svgWorkId,
                                     MarkdownSvgWorkStage.BitmapCacheStore,
                                     svgSourceBytes,
                                     targetPixels);
-#endif
                                 bitmapLease = SharedCanvasBitmapCache.StoreSvgAndAcquire(
                                     device,
                                     bitmapIdentity,
@@ -6274,11 +6230,9 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                                     intrinsicSize: null,
                                     pixelWidth: raster.WidthPixels,
                                     pixelHeight: raster.HeightPixels
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                                     , svgWorkId: svgWorkId,
                                     svgSourceBytes: svgSourceBytes,
                                     svgTargetPixels: targetPixels
-#endif
                                     , bitmapReservation: bitmapReservation
                                 );
                                 ownedBitmap = null;
@@ -6311,11 +6265,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 targetHeight,
                 metadata.PhysicalViewport);
 
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
-            long bitmapPublishRequestedAt = Stopwatch.GetTimestamp();
-#else
-            long bitmapPublishRequestedAt = 0;
-#endif
+            long bitmapPublishRequestedAt = svgWorkId != 0 ? Stopwatch.GetTimestamp() : 0;
             var bitmapPublication = CreateBitmapSvgPublication(
                 metadata,
                 publishedLease,
@@ -6356,7 +6306,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             work.Complete();
         }
     }
-
 
     private void HandleSvgWorkFailure(
         Exception exception, CancellationToken cancellationToken,
@@ -7051,12 +7000,10 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         ImageWorkLease lifetimeWork,
         SvgDocumentUseLease documentUse)
     {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         using var svgWorkScope = MarkdownSvgStageTrace.BeginWorkScope();
         long svgWorkId = svgWorkScope.WorkId;
         long svgSourceBytes = _svgSourceByteLength;
         long targetPixels = (long)key.Width * key.Height;
-#endif
         string identity = $"{plan.IdentityPrefix}:tile={key.X},{key.Y},{key.Width},{key.Height}";
         CancellationTokenSource workCancellation = workOwner.Cancellation;
         SharedCanvasBitmapCache.Lease? bitmapLease = null;
@@ -7130,7 +7077,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                         }
                         ValidateSvgRaster(raster, key.Width, key.Height);
                         {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                             using var stageTrace = MarkdownSvgStageTrace.Measure(
                                 svgWorkId,
                                 MarkdownSvgWorkStage.BitmapUpload,
@@ -7142,19 +7088,14 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                                 svgSourceBytes,
                                 targetPixels,
                                 bitmapReservation: bitmapReservation);
-#else
-                            ownedBitmap = CreateBitmapFromSvgRaster(raster, bitmapReservation: bitmapReservation);
-#endif
                         }
                         try
                         {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                             using var stageTrace = MarkdownSvgStageTrace.Measure(
                                 svgWorkId,
                                 MarkdownSvgWorkStage.BitmapCacheStore,
                                 svgSourceBytes,
                                 targetPixels);
-#endif
                             bitmapLease = SharedCanvasBitmapCache.StoreSvgAndAcquire(
                                 device,
                                 identity,
@@ -7162,11 +7103,9 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                                 intrinsicSize: null,
                                 pixelWidth: raster.WidthPixels,
                                 pixelHeight: raster.HeightPixels
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                                 , svgWorkId: svgWorkId,
                                 svgSourceBytes: svgSourceBytes,
                                 svgTargetPixels: targetPixels
-#endif
                                 , bitmapReservation: bitmapReservation
                             );
                             ownedBitmap = null;
@@ -8259,7 +8198,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
         void Publish()
         {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             using (MarkdownSvgStageTrace.MeasureFrom(
                 metadata.WorkId,
                 MarkdownSvgWorkStage.UiDispatchDelay,
@@ -8273,7 +8211,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 MarkdownSvgWorkStage.UiPublish,
                 metadata.SourceByteLength,
                 metadata.TargetPixels);
-#endif
             try
             {
                 bool layoutInvalidated = ShouldInvalidateSvgGeometry(
@@ -8303,7 +8240,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
         void Publish()
         {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             using (MarkdownSvgStageTrace.MeasureFrom(
                 metadata.WorkId,
                 MarkdownSvgWorkStage.UiDispatchDelay,
@@ -8317,7 +8253,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 MarkdownSvgWorkStage.UiPublish,
                 metadata.SourceByteLength,
                 metadata.TargetPixels);
-#endif
             bool transferred = false;
             try
             {
@@ -9137,11 +9072,9 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
     private CanvasBitmap CreateBitmapFromSvgRaster(
         MarkdownSvgRaster raster
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         , long diagnosticWorkId,
         long diagnosticSourceBytes = 0,
         long diagnosticTargetPixels = 0
-#endif
         , BitmapOutputAdmission.Reservation? bitmapReservation = null
     )
     {
@@ -9172,13 +9105,11 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         }
         else
         {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             using var bufferCopyTrace = MarkdownSvgStageTrace.Measure(
                 diagnosticWorkId,
                 MarkdownSvgWorkStage.SvgBitmapBufferCopy,
                 diagnosticSourceBytes,
                 diagnosticTargetPixels);
-#endif
             if (tightLength <= MaxPooledSvgUploadBytes)
             {
                 rented = ArrayPool<byte>.Shared.Rent(tightLength);
@@ -9199,13 +9130,11 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             }
         }
 
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             using var createBitmapTrace = MarkdownSvgStageTrace.Measure(
                 diagnosticWorkId,
                 MarkdownSvgWorkStage.SvgCanvasBitmapCreateFromBytes,
                 diagnosticSourceBytes,
                 diagnosticTargetPixels);
-#endif
             if (bitmapReservation is not null && !bitmapReservation.Commit())
                 throw new InvalidOperationException("The SVG output reservation is no longer active.");
             return CanvasBitmap.CreateFromBytes(
@@ -9403,7 +9332,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         float measuredWidth;
         try
         {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             layout = CanvasTextLayoutFactory.Create(
                 Context.ResourceCreator,
                 GetInlineFailureText(),
@@ -9411,14 +9339,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 Math.Max(maxWidth, 4096f),
                 height,
                 Context.LayoutDiagnostics);
-#else
-            layout = new CanvasTextLayout(
-                Context.ResourceCreator,
-                GetInlineFailureText(),
-                formatLease.Format,
-                Math.Max(maxWidth, 4096f),
-                height);
-#endif
             retirementRecord.SetTemporary(0, layout);
             const float horizontalPadding = 16f;
             float textWidth = (float)Math.Max(layout.LayoutBounds.Width, layout.DrawBounds.Width);

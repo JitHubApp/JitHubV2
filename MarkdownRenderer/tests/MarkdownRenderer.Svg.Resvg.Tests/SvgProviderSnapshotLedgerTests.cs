@@ -1,4 +1,3 @@
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
 using System.Diagnostics.Tracing;
 using System.Reflection;
 using MarkdownRenderer.Svg.Resvg.Internal;
@@ -155,7 +154,7 @@ public sealed class SvgProviderSnapshotLedgerTests
     }
 
     [Fact]
-    public void EventPublishesNumericManifestAndRunsOutsideLedgerLocks()
+    public async Task EventPublishesNumericManifestAndRunsOutsideLedgerLocks()
     {
         var ledger = new SvgProviderSnapshotLedger();
         using SvgProviderSnapshotLedger.Lease lease = ledger.Track(37);
@@ -163,7 +162,7 @@ public sealed class SvgProviderSnapshotLedgerTests
         listener.EnableEvents(SvgProviderSnapshotLedgerEvents.Log, EventLevel.Verbose);
 
         lease.SetLength(38);
-        EventObservation observation = listener.Observation.Task.WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
+        EventObservation observation = await listener.Observation.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Equal("MarkdownRenderer.Svg.Resvg.SourceSnapshots", observation.EventSourceName);
         Assert.Equal(1, observation.EventId);
@@ -254,4 +253,3 @@ public sealed class SvgProviderSnapshotLedgerTests
         object?[] Payload,
         bool CrossThreadReentryCompleted);
 }
-#endif

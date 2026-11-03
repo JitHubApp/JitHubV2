@@ -86,10 +86,8 @@ internal sealed class InlineVectorSceneRun : InlineRun, IDisposable
             scene,
             context.CancellationToken,
             vectorStyle.FontFamily
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             ,
             context.LayoutDiagnostics
-#endif
             ,
             deferNativeResources: true,
             nativeAdmission: resolvedNativeAdmission);

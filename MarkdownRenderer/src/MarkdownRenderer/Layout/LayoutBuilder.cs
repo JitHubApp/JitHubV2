@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
 using System.Diagnostics;
-#endif
 using System.Threading;
 using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
@@ -109,26 +107,20 @@ internal sealed class LayoutBuilder
         IMarkdownVectorSceneResidencyPolicy? vectorSceneResidencyPolicy = null;
         try
         {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             MarkdownLayoutDiagnostics? diagnostics = _context.LayoutDiagnostics;
             if (diagnostics?.IsCaptured == true)
                 diagnostics = null;
             long phaseStarted = diagnostics is null ? 0 : Stopwatch.GetTimestamp();
-#endif
             var blocks = BuildBlocks(document, effectiveCancellationToken);
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             if (diagnostics is not null)
             {
                 diagnostics.RecordBlockConstruction(Stopwatch.GetTimestamp() - phaseStarted);
                 diagnostics.SetTopLevelBlockCount(blocks.Count);
             }
-#endif
 
             SharedLayoutMetrics? sharedMetrics = AcquireSharedMetrics(blocks.Count);
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             if (diagnostics is not null)
                 phaseStarted = Stopwatch.GetTimestamp();
-#endif
 
             Thickness documentPadding = _context.ThemeSnapshot.DocumentPadding;
             float contentX = (float)documentPadding.Left;
@@ -153,13 +145,11 @@ internal sealed class LayoutBuilder
             effectiveCancellationToken.ThrowIfCancellationRequested();
             y += (float)documentPadding.Bottom;
 
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             if (diagnostics is not null)
             {
                 diagnostics.RecordMeasureArrange(Stopwatch.GetTimestamp() - phaseStarted);
                 phaseStarted = Stopwatch.GetTimestamp();
             }
-#endif
 
             var (defs, refs) = _context.SnapshotFootnoteRegistry();
             var fragments = _context.SnapshotFragmentTargets();
@@ -193,10 +183,8 @@ internal sealed class LayoutBuilder
                 snapshot.EnsureMeasuredBand(
                     eagerDocumentBand, eagerDocumentBand, effectiveCancellationToken);
             }
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             if (diagnostics is not null)
                 diagnostics.RecordSnapshotConstruction(Stopwatch.GetTimestamp() - phaseStarted);
-#endif
             return snapshot;
         }
         catch
@@ -305,28 +293,22 @@ internal sealed class LayoutBuilder
         IMarkdownVectorSceneResidencyPolicy? vectorSceneResidencyPolicy = null;
         try
         {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             MarkdownLayoutDiagnostics? diagnostics = _context.LayoutDiagnostics;
             if (diagnostics?.IsCaptured == true)
                 diagnostics = null;
             long phaseStarted = diagnostics is null ? 0 : Stopwatch.GetTimestamp();
-#endif
             var blocks = BuildBlocks(document, effectiveCancellationToken);
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             if (diagnostics is not null)
             {
                 diagnostics.RecordBlockConstruction(Stopwatch.GetTimestamp() - phaseStarted);
                 diagnostics.SetTopLevelBlockCount(blocks.Count);
             }
-#endif
 
             effectiveCancellationToken.ThrowIfCancellationRequested();
             SharedLayoutMetrics? sharedMetrics = AcquireSharedMetrics(blocks.Count);
 
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             if (diagnostics is not null)
                 phaseStarted = Stopwatch.GetTimestamp();
-#endif
             var (defs, refs) = _context.SnapshotFootnoteRegistry();
             var fragments = _context.SnapshotFragmentTargets();
             vectorSceneResidencyPolicy =
@@ -347,13 +329,11 @@ internal sealed class LayoutBuilder
                 vectorSceneResidencyPolicy: vectorSceneResidencyPolicy);
             vectorSceneResidencyPolicy = null;
             ownership.TransferToSnapshot(blocks);
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             if (diagnostics is not null)
             {
                 diagnostics.RecordSnapshotConstruction(Stopwatch.GetTimestamp() - phaseStarted);
                 phaseStarted = Stopwatch.GetTimestamp();
             }
-#endif
             snapshot.EnableLazyLayout(
                 availableWidth,
                 viewportTop,
@@ -361,10 +341,8 @@ internal sealed class LayoutBuilder
                 overscan,
                 effectiveCancellationToken,
                 initialVisibleVectorBand);
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             if (diagnostics is not null)
                 diagnostics.RecordMeasureArrange(Stopwatch.GetTimestamp() - phaseStarted);
-#endif
             return snapshot;
         }
         catch

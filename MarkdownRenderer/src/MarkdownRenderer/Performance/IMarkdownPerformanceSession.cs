@@ -4,7 +4,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Layout;
@@ -121,9 +120,7 @@ internal interface IMarkdownPerformanceSessionInternal : IMarkdownPerformanceSes
     CancellationToken LifetimeToken { get; }
     IDisposable? TryBeginRasterWork();
     bool IsDisposed { get; }
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
     bool IsLayoutDiagnosticCaptureEnabled { get; }
-#endif
     event EventHandler? Disposed;
     bool TryGetStyleRoleDemandMask(
         MarkdownDocument document,

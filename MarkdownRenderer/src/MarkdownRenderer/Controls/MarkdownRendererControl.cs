@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Graphics.Canvas;
@@ -13,7 +12,6 @@ using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Shapes;
 using Windows.Foundation;
 using Windows.System;
 using Windows.ApplicationModel.DataTransfer;
@@ -23,7 +21,6 @@ using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Document;
-using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
@@ -106,12 +103,10 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private readonly LinkActivation _links;
     private CancellationTokenSource? _imageLifetimeCts;
     private readonly MarkdownAutomationDocumentGeneration _automationDocumentGenerations = new();
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
     // Opt-in used only by the standalone quick-profile harness. This does not
     // attach a PerformanceSession or alter normal layout scheduling; it merely
     // enables the existing build-stage counters for this control instance.
     internal bool EnableStandaloneLayoutDiagnostics { get; set; }
-#endif
     private readonly PipelineTimings _timings = new();
     private readonly LayoutCommitState _layoutCommit = new();
     private readonly LayoutCommitPublisher _layoutPublisher;
@@ -139,7 +134,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     private readonly RendererLocalization _localization;
     private readonly AutomationScrolling _automationScrolling;
     private readonly TouchTapSuppressionPolicy _touchTapSuppression = new();
-
 
     // Last committed theme snapshot. Used by UI operations (focus ring, etc.)
     // that need theme colors after the rebuild is complete.
@@ -208,7 +202,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     /// the user scrolls along the edge of an embed.
     /// </summary>
     public const double EmbedVirtualizationDerealizeOverscanPx = 1200;
-
 
     // ---- Dependency properties ----
 
@@ -2175,9 +2168,7 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
     CancellationTokenSource? IRebuildLayoutSetupHost.ImageLifetimeCts => _imageLifetimeCts;
 
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
     bool IRebuildLayoutSetupHost.EnableStandaloneLayoutDiagnostics => EnableStandaloneLayoutDiagnostics;
-#endif
 
     void IRebuildLayoutSetupHost.RaiseImageUnavailable(
         string source,
@@ -2930,23 +2921,19 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _viewport.TryGet(out double viewportTop, out double viewportHeight, out _);
         bool captureLayoutCpu = plan.PerformanceSession is not null;
         Action<long>? workerCompleted = null;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         using var initialLayoutDispatcherProbe =
             _timings.StartInitialDispatcherProbe(DispatcherQueue, plan.LayoutDiagnostics);
         captureLayoutCpu |= plan.LayoutDiagnostics is not null;
         if (initialLayoutDispatcherProbe is not null)
             workerCompleted = initialLayoutDispatcherProbe.EnqueueWorkerCompletionSentinel;
-#endif
         RebuildLayoutRunResult? run = await RebuildLayoutRun.RunAsync(
             builder, ctx, plan.Parse.Parsed, plan.Width, viewportTop, viewportHeight,
             hasCustomBlockEmbedMeasurement: plan.Inputs.EmbedFactory is not null,
             plan.PerformanceSession, captureLayoutCpu, workerCompleted, ct).ConfigureAwait(true);
         if (run is null)
             return;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         MarkdownLayoutDiagnosticsSnapshot layoutDiagnosticSnapshot =
             plan.LayoutDiagnostics?.Capture() ?? default;
-#endif
         LayoutSnapshot? snapshot = run.Snapshot;
         if (snapshot is null || ct.IsCancellationRequested || generation != _rebuild.Generation)
         {
@@ -2972,15 +2959,11 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
 
             committed = true;
             NotifyAutomationSnapshotChanged();
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             _timings.CompleteInitialDispatcherProbe(initialLayoutDispatcherProbe, plan.LayoutDiagnostics);
-#endif
             FinishReplacement(plan, snapshot, generation, publication, timeline);
             _timings.PublishCommitted(
                 generation, sourceUtf16Bytes, plan, run,
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                 layoutDiagnosticSnapshot,
-#endif
                 timeline);
         }
         finally
@@ -3253,7 +3236,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
     /// <summary>The stage timings of the committed snapshot's pipeline.</summary>
     internal MarkdownPipelineTimingSnapshot GetLastPipelineTimingSnapshot() =>
         _timings.Last;
-
 
     private void OnScrollViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
     {

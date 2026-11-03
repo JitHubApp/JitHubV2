@@ -23,9 +23,7 @@ internal sealed partial class WorkerPool
             cancellationToken.ThrowIfCancellationRequested();
             contentAdmissionGuard();
             WindowsWorkerProcess worker = await EnsureWorkerAsync(lease
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                 , 0, 0, 0, 0, 0
-#endif
                 ).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             contentAdmissionGuard();

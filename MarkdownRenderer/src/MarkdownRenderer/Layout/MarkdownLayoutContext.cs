@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Graphics.Canvas;
-using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Markdig.Extensions.Footnotes;
@@ -296,10 +295,8 @@ internal sealed class MarkdownLayoutContext
         }
     }
 
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
     /// <summary>Optional diagnostic-only timing sink for the current immutable layout build.</summary>
     internal MarkdownLayoutDiagnostics? LayoutDiagnostics { get; init; }
-#endif
 
     /// <summary>
     /// Effective rasterization scale of the host control (matches

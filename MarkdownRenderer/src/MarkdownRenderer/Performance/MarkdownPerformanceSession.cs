@@ -130,9 +130,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
 
     // The renderer checks this once per layout request so stopwatch reads and
     // native-layout counting are absent unless a host explicitly enables layout diagnostics.
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
     internal bool IsLayoutDiagnosticCaptureEnabled { get; set; }
-#endif
 
     private static void ValidateOptions(MarkdownPerformanceOptions options)
     {
@@ -208,10 +206,8 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
     {
         return TryBeginWorkLease();
     }
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
     bool IMarkdownPerformanceSessionInternal.IsLayoutDiagnosticCaptureEnabled =>
         IsLayoutDiagnosticCaptureEnabled;
-#endif
 
     bool IMarkdownPerformanceSessionInternal.TryGetStyleRoleDemandMask(
         MarkdownDocument document,
@@ -2208,7 +2204,6 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
             flight.WaiterCount++;
         }
 
-
         // Publish the shared task while holding the gate, but do not run the
         // async method's synchronous prefix there. SemaphoreSlim.WaitAsync can
         // complete inline, and a resolver is allowed to do synchronous work
@@ -2562,9 +2557,7 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         _imageActivationScheduler.Dispose();
 
         ParseStageDiagnosticRecorder = null;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         IsLayoutDiagnosticCaptureEnabled = false;
-#endif
         ReleaseAllProgressiveScenePlans();
         CompletedSceneCache.Dispose();
         ReleaseAllDocumentScopes();
@@ -2759,7 +2752,6 @@ public sealed class MarkdownPerformanceSession : IMarkdownPerformanceSessionInte
         Task IMarkdownPerformanceDocumentScope.PrefetchAsync(
             IReadOnlyList<string> sources,
             CancellationToken cancellationToken) => PrefetchAsync(sources, cancellationToken);
-
 
         async ValueTask<IMarkdownImageResolutionLease>
             IMarkdownPerformanceDocumentScope.ResolveWithSourceLeaseAsync(

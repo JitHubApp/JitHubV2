@@ -40,9 +40,7 @@ internal sealed class VectorSceneDrawing : IDisposable
     private Func<CanvasDrawingSession, CanvasGeometry, CanvasActiveLayer>? _testClipFactory;
     private MarkdownVectorScene? _scene;
     private readonly string? _hostFontFamily;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
     private readonly MarkdownLayoutDiagnostics? _layoutDiagnostics;
-#endif
     private CanvasGeometry?[]? _geometries;
     private CanvasTextLayout?[]? _textLayouts;
     private CanvasStrokeStyle?[]? _strokeStyles;
@@ -62,10 +60,8 @@ internal sealed class VectorSceneDrawing : IDisposable
         MarkdownVectorScene scene,
         CancellationToken cancellationToken,
         string? hostFontFamily = null
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         ,
         MarkdownLayoutDiagnostics? layoutDiagnostics = null
-#endif
         ,
         bool deferNativeResources = false,
         NativeResourceRetirement? nativeRetirement = null,
@@ -80,9 +76,7 @@ internal sealed class VectorSceneDrawing : IDisposable
         _nativeRetirementOwner = nativeRetirement;
         _nativeAdmission = nativeAdmission;
         _nativeDisposer = nativeDisposer;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         _layoutDiagnostics = layoutDiagnostics;
-#endif
 
         if (nativeAdmission is not null && !deferNativeResources)
         {
@@ -324,7 +318,6 @@ internal sealed class VectorSceneDrawing : IDisposable
                             textStyle);
                         try
                         {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                             textLayouts[textSlot] = CanvasTextLayoutFactory.Create(
                                 _resourceCreator!,
                                 text,
@@ -332,14 +325,6 @@ internal sealed class VectorSceneDrawing : IDisposable
                                 layoutWidth,
                                 layoutHeight,
                                 _layoutDiagnostics);
-#else
-                            textLayouts[textSlot] = new CanvasTextLayout(
-                                _resourceCreator!,
-                                text,
-                                format,
-                                layoutWidth,
-                                layoutHeight);
-#endif
                         }
                         catch (Exception exception) when (
                             exception is ArgumentException or COMException)
