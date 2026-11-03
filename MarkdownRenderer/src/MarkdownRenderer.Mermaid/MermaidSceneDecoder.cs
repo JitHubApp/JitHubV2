@@ -278,104 +278,31 @@ internal static class MermaidSceneDecoder
             return Failure(MermaidSceneDecodeStatus.MissingSection, directoryOffset, "Viewport, strings, and draw-command sections are required.");
         }
 
-        MermaidSceneDecodeResult? shapeFailure = ValidateSectionShapes(sections, budgets, cancellationToken);
-        if (shapeFailure is not null)
-        {
-            return shapeFailure;
-        }
-
-        if (!TryParseViewport(buffer, viewportSection, out MermaidViewport viewport, out MermaidSceneDecodeResult? failure))
-        {
-            return failure!;
-        }
-
-        if (!TryParseStrings(buffer, stringsSection, budgets, cancellationToken, out string[] strings, out failure))
-        {
-            return failure!;
-        }
-
-        float[] geometry = TryGetSection(sections, SectionKind.Geometry, out Section geometrySection)
-            ? ParseGeometry(buffer, geometrySection, cancellationToken, out failure)
-            : [];
+        MermaidSceneDecodeResult? failure = ValidateSectionShapes(sections, budgets, cancellationToken);
         if (failure is not null)
         {
             return failure;
         }
 
-        MermaidSceneStyle[] styles = TryGetSection(sections, SectionKind.Styles, out Section stylesSection)
-            ? ParseStyles(buffer, stylesSection, geometry.Length, cancellationToken, out failure)
-            : [];
+        failure = TryDecodeSceneResources(
+            buffer, sections, viewportSection, stringsSection, budgets, cancellationToken,
+            out MermaidViewport viewport, out string[] strings, out float[] geometry, out MermaidSceneStyle[] styles);
         if (failure is not null)
         {
             return failure;
         }
 
-        RawSourceMapping[] rawMappings = TryGetSection(sections, SectionKind.SourceMappings, out Section mappingsSection)
-            ? ParseRawSourceMappings(buffer, mappingsSection, sourceByteLength, cancellationToken, out failure)
-            : [];
+        failure = TryDecodeSourceSemantics(
+            buffer, sections, source, sourceByteLength, strings.Length, budgets, cancellationToken,
+            out MermaidSceneSourceMapping[] mappings, out MermaidSemanticItem[] semantics);
         if (failure is not null)
         {
             return failure;
         }
 
-        MermaidSceneSourceMapping[] mappings = MermaidSceneSourceText.TranslateSourceMappings(
-            rawMappings,
-            source,
-            sourceByteLength,
-            cancellationToken,
-            out failure);
-        if (failure is not null)
-        {
-            return failure;
-        }
-
-        MermaidSemanticItem[] semantics = TryGetSection(sections, SectionKind.Semantics, out Section semanticsSection)
-            ? ParseSemantics(
-                buffer,
-                semanticsSection,
-                strings.Length,
-                mappings.Length,
-                budgets,
-                cancellationToken,
-                out failure)
-            : [];
-        if (failure is not null)
-        {
-            return failure;
-        }
-
-        if (!MermaidSceneSemanticValidator.ValidateMappingSemanticReferences(mappings, semantics.Length, cancellationToken, out failure) ||
-            !MermaidSceneSemanticValidator.ValidateSemanticTree(semantics, budgets.MaxDepth, cancellationToken, out failure, out _))
-        {
-            return failure!;
-        }
-
-        MermaidDrawCommand[] commands = ParseCommands(
-            buffer,
-            commandsSection,
-            minor,
-            styles.Length,
-            semantics.Length,
-            strings.Length,
-            geometry,
-            cancellationToken,
-            out failure);
-        if (failure is not null)
-        {
-            return failure;
-        }
-
-        MermaidSceneLink[] links = TryGetSection(sections, SectionKind.Links, out Section linksSection)
-            ? ParseLinks(buffer, linksSection, semantics.Length, strings.Length, cancellationToken, out failure)
-            : [];
-        if (failure is not null)
-        {
-            return failure;
-        }
-
-        MermaidDiagnostic[] diagnostics = TryGetSection(sections, SectionKind.Diagnostics, out Section diagnosticsSection)
-            ? ParseDiagnostics(buffer, diagnosticsSection, strings, mappings, cancellationToken, out failure)
-            : [];
+        failure = TryDecodeSceneContent(
+            buffer, sections, commandsSection, minor, strings, geometry, styles.Length, semantics.Length, mappings, cancellationToken,
+            out MermaidDrawCommand[] commands, out MermaidSceneLink[] links, out MermaidDiagnostic[] diagnostics);
         if (failure is not null)
         {
             return failure;
@@ -393,6 +320,154 @@ internal static class MermaidSceneDecoder
             mappings,
             diagnostics);
         return new MermaidSceneDecodeResult(MermaidSceneDecodeStatus.Success, scene, -1, null);
+    }
+
+    /// <summary>Decodes the viewport, string table, geometry pool and styles that commands reference.</summary>
+    private static MermaidSceneDecodeResult? TryDecodeSceneResources(
+        ReadOnlySpan<byte> buffer,
+        Section[] sections,
+        Section viewportSection,
+        Section stringsSection,
+        MermaidRenderBudgets budgets,
+        CancellationToken cancellationToken,
+        out MermaidViewport viewport,
+        out string[] strings,
+        out float[] geometry,
+        out MermaidSceneStyle[] styles)
+    {
+        geometry = [];
+        styles = [];
+        if (!TryParseViewport(buffer, viewportSection, out viewport, out MermaidSceneDecodeResult? failure))
+        {
+            strings = [];
+            return failure!;
+        }
+
+        if (!TryParseStrings(buffer, stringsSection, budgets, cancellationToken, out strings, out failure))
+        {
+            return failure!;
+        }
+
+        geometry = TryGetSection(sections, SectionKind.Geometry, out Section geometrySection)
+            ? ParseGeometry(buffer, geometrySection, cancellationToken, out failure)
+            : [];
+        if (failure is not null)
+        {
+            return failure;
+        }
+
+        styles = TryGetSection(sections, SectionKind.Styles, out Section stylesSection)
+            ? ParseStyles(buffer, stylesSection, geometry.Length, cancellationToken, out failure)
+            : [];
+        return failure;
+    }
+
+    /// <summary>
+    /// Decodes source mappings into UTF-16 ranges, then the semantic items, and
+    /// validates the references between them and the semantic tree shape.
+    /// </summary>
+    private static MermaidSceneDecodeResult? TryDecodeSourceSemantics(
+        ReadOnlySpan<byte> buffer,
+        Section[] sections,
+        string source,
+        int sourceByteLength,
+        int stringCount,
+        MermaidRenderBudgets budgets,
+        CancellationToken cancellationToken,
+        out MermaidSceneSourceMapping[] mappings,
+        out MermaidSemanticItem[] semantics)
+    {
+        mappings = [];
+        semantics = [];
+        MermaidSceneDecodeResult? failure = null;
+        RawSourceMapping[] rawMappings = TryGetSection(sections, SectionKind.SourceMappings, out Section mappingsSection)
+            ? ParseRawSourceMappings(buffer, mappingsSection, sourceByteLength, cancellationToken, out failure)
+            : [];
+        if (failure is not null)
+        {
+            return failure;
+        }
+
+        mappings = MermaidSceneSourceText.TranslateSourceMappings(
+            rawMappings,
+            source,
+            sourceByteLength,
+            cancellationToken,
+            out failure);
+        if (failure is not null)
+        {
+            return failure;
+        }
+
+        semantics = TryGetSection(sections, SectionKind.Semantics, out Section semanticsSection)
+            ? ParseSemantics(
+                buffer,
+                semanticsSection,
+                stringCount,
+                mappings.Length,
+                budgets,
+                cancellationToken,
+                out failure)
+            : [];
+        if (failure is not null)
+        {
+            return failure;
+        }
+
+        if (!MermaidSceneSemanticValidator.ValidateMappingSemanticReferences(mappings, semantics.Length, cancellationToken, out failure) ||
+            !MermaidSceneSemanticValidator.ValidateSemanticTree(semantics, budgets.MaxDepth, cancellationToken, out failure, out _))
+        {
+            return failure!;
+        }
+
+        return null;
+    }
+
+    /// <summary>Decodes the draw commands, links and diagnostics against the already-decoded tables.</summary>
+    private static MermaidSceneDecodeResult? TryDecodeSceneContent(
+        ReadOnlySpan<byte> buffer,
+        Section[] sections,
+        Section commandsSection,
+        ushort minor,
+        string[] strings,
+        float[] geometry,
+        int styleCount,
+        int semanticCount,
+        MermaidSceneSourceMapping[] mappings,
+        CancellationToken cancellationToken,
+        out MermaidDrawCommand[] commands,
+        out MermaidSceneLink[] links,
+        out MermaidDiagnostic[] diagnostics)
+    {
+        links = [];
+        diagnostics = [];
+        commands = ParseCommands(
+            buffer,
+            commandsSection,
+            minor,
+            styleCount,
+            semanticCount,
+            strings.Length,
+            geometry,
+            cancellationToken,
+            out MermaidSceneDecodeResult? failure);
+        if (failure is not null)
+        {
+            return failure;
+        }
+
+        links = TryGetSection(sections, SectionKind.Links, out Section linksSection)
+            ? ParseLinks(buffer, linksSection, semanticCount, strings.Length, cancellationToken, out failure)
+            : [];
+        if (failure is not null)
+        {
+            return failure;
+        }
+
+        diagnostics = TryGetSection(sections, SectionKind.Diagnostics, out Section diagnosticsSection)
+            ? ParseDiagnostics(buffer, diagnosticsSection, strings, mappings, cancellationToken, out failure)
+            : [];
+        return failure;
     }
 
     private static MermaidSceneDecodeResult? ValidateSectionShapes(
