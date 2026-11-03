@@ -75,18 +75,10 @@ internal static class WorkerProcessSandbox
 
             try
             {
+                // The attribute list stores this address, not the value, so the
+                // policy stays in this frame until the list is deleted below.
                 ulong mitigationPolicy = CreateMitigationPolicy();
-                if (!WorkerNativeMethods.UpdateProcThreadAttribute(
-                        attributeList,
-                        0,
-                        WorkerNativeMethods.ProcThreadAttributeMitigationPolicy,
-                        (nint)(&mitigationPolicy),
-                        checked((nuint)sizeof(ulong)),
-                        0,
-                        0))
-                {
-                    throw new Win32Exception(Marshal.GetLastPInvokeError(), "The SVG worker process mitigations could not be applied.");
-                }
+                ApplyMitigationPolicy(attributeList, &mitigationPolicy);
 
                 var startup = new WorkerNativeMethods.StartupInfoEx
                 {
@@ -115,22 +107,7 @@ internal static class WorkerProcessSandbox
                         throw new Win32Exception(Marshal.GetLastPInvokeError(), "The restricted SVG worker could not start.");
                     }
 
-                    var process = new SafeProcessHandle(information.Process, ownsHandle: true);
-                    using var thread = new SafeWaitHandle(information.Thread, ownsHandle: true);
-                    try
-                    {
-                        ActivateSuspended(
-                            new SuspendedWorkerActivation(job, process, thread, sourceToken, objectSecurity),
-                            RuntimeInformation.ProcessArchitecture);
-                        return process;
-                    }
-                    catch
-                    {
-                        _ = WorkerNativeMethods.TerminateProcess(process, WorkerTerminationExitCode);
-                        _ = WorkerNativeMethods.WaitForSingleObject(process, WorkerTerminationWaitMilliseconds);
-                        process.Dispose();
-                        throw;
-                    }
+                    return AdoptAndActivate(information, job, sourceToken, objectSecurity);
                 }
             }
             finally
@@ -141,6 +118,63 @@ internal static class WorkerProcessSandbox
         finally
         {
             Marshal.FreeHGlobal(attributeList);
+        }
+    }
+
+    /// <summary>
+    /// Adds the process mitigation policy to the startup attribute list.
+    /// </summary>
+    /// <param name="attributeList">The initialized attribute list.</param>
+    /// <param name="mitigationPolicy">
+    /// The policy value. The list keeps this address until it is deleted, so
+    /// it must point into the caller's frame.
+    /// </param>
+    private static unsafe void ApplyMitigationPolicy(nint attributeList, ulong* mitigationPolicy)
+    {
+        if (!WorkerNativeMethods.UpdateProcThreadAttribute(
+                attributeList,
+                0,
+                WorkerNativeMethods.ProcThreadAttributeMitigationPolicy,
+                (nint)mitigationPolicy,
+                checked((nuint)sizeof(ulong)),
+                0,
+                0))
+        {
+            throw new Win32Exception(Marshal.GetLastPInvokeError(), "The SVG worker process mitigations could not be applied.");
+        }
+    }
+
+    /// <summary>
+    /// Takes ownership of the new suspended process and thread handles and
+    /// activates the worker in its job; a failed activation terminates and
+    /// releases the process. The thread handle is always closed.
+    /// </summary>
+    /// <param name="information">The handles CreateProcessAsUserW returned.</param>
+    /// <param name="job">The pool's kill-on-close job.</param>
+    /// <param name="sourceToken">The host's primary token.</param>
+    /// <param name="objectSecurity">The worker's object security context.</param>
+    /// <returns>The activated worker process.</returns>
+    private static SafeProcessHandle AdoptAndActivate(
+        WorkerNativeMethods.ProcessInformation information,
+        WorkerJob job,
+        SafeTokenHandle sourceToken,
+        WorkerObjectSecurity.WorkerObjectSecurityContext objectSecurity)
+    {
+        var process = new SafeProcessHandle(information.Process, ownsHandle: true);
+        using var thread = new SafeWaitHandle(information.Thread, ownsHandle: true);
+        try
+        {
+            ActivateSuspended(
+                new SuspendedWorkerActivation(job, process, thread, sourceToken, objectSecurity),
+                RuntimeInformation.ProcessArchitecture);
+            return process;
+        }
+        catch
+        {
+            _ = WorkerNativeMethods.TerminateProcess(process, WorkerTerminationExitCode);
+            _ = WorkerNativeMethods.WaitForSingleObject(process, WorkerTerminationWaitMilliseconds);
+            process.Dispose();
+            throw;
         }
     }
 
