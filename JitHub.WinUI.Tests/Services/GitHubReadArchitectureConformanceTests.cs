@@ -175,8 +175,9 @@ public sealed partial class GitHubReadArchitectureConformanceTests
         }
 
         // Markdown image resolution moved out of GitHubService with exactly these
-        // repository-image reads; it gains no other direct client reads.
-        if (fileName.Equals("GitHubMarkdownImageResolver.cs", StringComparison.OrdinalIgnoreCase))
+        // repository-image reads, now made by the per-image authenticated read;
+        // it gains no other direct client reads.
+        if (fileName.Equals("GitHubRepositoryImageContentFetch.cs", StringComparison.OrdinalIgnoreCase))
         {
             return method is "GetRepositoryContentAsync" or "GetBlobAsync";
         }

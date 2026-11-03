@@ -48,6 +48,31 @@ public sealed class GitHubMarkdownImageResolverTests
     }
 
     [Fact]
+    public async Task RepositoryImageIsRoutedToTheRepositoryStageAndOtherSourcesToThePublicStage()
+    {
+        const string rawUrl = "https://raw.githubusercontent.com/octo/repo/main/docs/logo.png";
+        IGitHubImageService images = Substitute.For<IGitHubImageService>();
+        images.GetAsync(rawUrl, GitHubImageFetchScope.TrustedGitHub, Arg.Any<CancellationToken>())
+            .Returns(new GitHubCachedImage("cache://raw", [1, 2, 3], "image/png", IsFromCache: false));
+        IMarkdownRemoteImagePolicy policy = Substitute.For<IMarkdownRemoteImagePolicy>();
+        policy.Evaluate(Arg.Any<Uri>(), Arg.Any<bool>()).Returns(new MarkdownRemoteImageDecision(
+            MarkdownRemoteImageAccess.AllowNetwork, MarkdownImageUnavailableReason.None, IsThirdParty: false));
+        var resolver = new GitHubMarkdownImageResolver(Substitute.For<IGitHubClientService>(), images, policy);
+
+        MarkdownImageResolution repositoryImage = await resolver.ResolveAsync(
+            "docs/logo.png",
+            new MarkdownImageResolveContext(null, DocumentSource: Readme),
+            CancellationToken.None);
+        MarkdownImageResolution unownedRelativeImage = await resolver.ResolveAsync(
+            "docs/logo.png",
+            new MarkdownImageResolveContext(null),
+            CancellationToken.None);
+
+        Assert.Equal(new Uri(rawUrl), repositoryImage.Asset?.ResolvedUri);
+        Assert.Equal(MarkdownImageResolution.NotHandled, unownedRelativeImage);
+    }
+
+    [Fact]
     public void ProviderReusesOneResolverFacadeForEveryView()
     {
         var resolver = new GitHubMarkdownImageResolver(
