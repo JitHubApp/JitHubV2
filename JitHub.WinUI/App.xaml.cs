@@ -299,10 +299,21 @@ public partial class App : Application
         {
             // Lifecycle automation reads host evidence out of process.
             services.AddSingleton<IMarkdownHostObserver, MarkdownLifecycleHostObserver>();
+            // Fixture inputs are fixed for the process once launch options are parsed.
+            services.AddSingleton<IMarkdownViewerAutomationHooks>(static _ => new MarkdownLifecycleViewerHooks(
+                new MarkdownLifecycleFixtureDocument(
+                    MarkdownLifecycleAutomationBridge.TargetHost,
+                    Program.CurrentLaunchOptions.MarkdownCorpusPath ??
+                        Environment.GetEnvironmentVariable("JITHUB_MARKDOWN_CORPUS_PATH"),
+                    string.Equals(
+                        Environment.GetEnvironmentVariable("JITHUB_MARKDOWN_SECURITY_LIVE_FIXTURE"),
+                        "1",
+                        StringComparison.Ordinal))));
             return;
         }
 
         services.AddSingleton<IMarkdownHostObserver>(NoMarkdownHostObserver.Instance);
+        services.AddSingleton<IMarkdownViewerAutomationHooks>(NoMarkdownViewerAutomationHooks.Instance);
     }
 
     private void RegisterAuthBoundaries(ServiceCollection services)

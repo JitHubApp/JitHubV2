@@ -158,6 +158,8 @@
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownReadingRegionSize.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownReadingRegionLayout.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\Automation\MarkdownLifecycleHostObserver.cs" Link="Services\Markdown\Automation\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Markdown\Automation\MarkdownLifecycleFixtureText.cs" Link="Services\Markdown\Automation\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Markdown\Automation\MarkdownLifecycleFixtureDocument.cs" Link="Services\Markdown\Automation\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Views\Controls\Common\MarkdownHostContract.cs" Link="Views\Controls\Common\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Helpers\RepositoryLanguageColorPalette.cs" Link="Helpers\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\ViewModels\Pages\SettingsPageViewModel.cs" Link="ViewModels\Pages\%(Filename)%(Extension)" />

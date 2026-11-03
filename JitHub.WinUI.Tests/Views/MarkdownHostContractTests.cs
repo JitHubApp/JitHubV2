@@ -168,13 +168,22 @@ public sealed class MarkdownHostContractTests
         Assert.DoesNotContain("AppThemeSettingsMonitor", source, StringComparison.Ordinal);
         Assert.DoesNotContain("ThemeSettingsHelper", source, StringComparison.Ordinal);
         Assert.DoesNotContain("ActualThemeChanged", source, StringComparison.Ordinal);
-        Assert.Contains("MarkdownEnvironmentMonitor applies it", source, StringComparison.Ordinal);
-        Assert.Contains("GetLifecycleTokenScaleFactor", source, StringComparison.Ordinal);
-        Assert.Contains("Math.Clamp(requestedScale, 1, 3) / systemScale", source, StringComparison.Ordinal);
-        Assert.Contains("QueueRendererResourceRefresh", source, StringComparison.Ordinal);
-        Assert.Contains("MarkdownLifecycleAutomationBridge.GetRuntimeSettingsRevision()", source, StringComparison.Ordinal);
-        Assert.Contains("LifecycleRuntimeSettingsTimer_Tick", source, StringComparison.Ordinal);
-        Assert.Contains("_lifecycleRuntimeSettingsTimer.Stop()", source, StringComparison.Ordinal);
+        // Harness text scale and its runtime-settings poll live in the
+        // automation-only hooks; the viewer only reapplies resources on change.
+        string automationRoot = Path.Combine(FindRepositoryRoot(), "JitHub.WinUI", "Services", "Markdown", "Automation");
+        string textScale = File.ReadAllText(Path.Combine(automationRoot, "MarkdownLifecycleTextScaleResources.cs"));
+        string watch = File.ReadAllText(Path.Combine(automationRoot, "MarkdownLifecycleRuntimeSettingsWatch.cs"));
+        Assert.Contains("MarkdownEnvironmentMonitor applies it", textScale, StringComparison.Ordinal);
+        Assert.Contains("GetLifecycleTokenScaleFactor", textScale, StringComparison.Ordinal);
+        Assert.Contains("Math.Clamp(requestedScale, 1, 3) / systemScale", textScale, StringComparison.Ordinal);
+        Assert.Contains("_automation.WatchRuntimeSettings(DispatcherQueue, QueueRendererResourceRefresh)", source, StringComparison.Ordinal);
+        Assert.Contains("_runtimeSettingsWatch?.Dispose()", source, StringComparison.Ordinal);
+        Assert.Contains("_automation.ApplyRendererResources(resources)", source, StringComparison.Ordinal);
+        Assert.Contains("MarkdownLifecycleAutomationBridge.GetRuntimeSettingsRevision()", watch, StringComparison.Ordinal);
+        Assert.Contains("Timer_Tick", watch, StringComparison.Ordinal);
+        Assert.Contains("_timer.Stop()", watch, StringComparison.Ordinal);
+        Assert.DoesNotContain("MarkdownLifecycleAutomationBridge", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("Colors.", source, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -1,10 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
-using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Text;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using JitHub.Models.GitHub;
@@ -24,15 +19,11 @@ using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
-using Microsoft.Graphics.Canvas;
-using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Windows.System;
-using Windows.Storage.Streams;
-using Windows.UI.ViewManagement;
 
 namespace JitHub.WinUI.Views.Controls.Common;
 
@@ -45,52 +36,10 @@ public sealed partial class MarkdownViewer :
     IMarkdownRendererLayoutGateHost
 {
     private static MarkdownEngine SharedGitHubEngine => JitHubMarkdownRuntime.Engine;
-    private static readonly (string Role, string Token, double Fallback)[] ScalableRoleFonts =
-    [
-        (MarkdownElementKeys.Body, "AppMarkdownBodyFontSize", 16),
-        (MarkdownElementKeys.Heading1, "AppMarkdownHeading1FontSize", 30),
-        (MarkdownElementKeys.Heading2, "AppMarkdownHeading2FontSize", 24),
-        (MarkdownElementKeys.Heading3, "AppMarkdownHeading3FontSize", 20),
-        (MarkdownElementKeys.Heading4, "AppMarkdownHeading4FontSize", 17),
-        (MarkdownElementKeys.Heading5, "AppMarkdownHeading5FontSize", 15),
-        (MarkdownElementKeys.Heading6, "AppMarkdownHeading6FontSize", 14),
-        (MarkdownElementKeys.Link, "AppMarkdownBodyFontSize", 16),
-        (MarkdownElementKeys.Strong, "AppMarkdownBodyFontSize", 16),
-        (MarkdownElementKeys.Emphasis, "AppMarkdownBodyFontSize", 16),
-        (MarkdownElementKeys.Strikethrough, "AppMarkdownBodyFontSize", 16),
-        (MarkdownElementKeys.Subscript, "AppMarkdownScriptFontSize", 12),
-        (MarkdownElementKeys.Superscript, "AppMarkdownScriptFontSize", 12),
-        (MarkdownElementKeys.Inserted, "AppMarkdownBodyFontSize", 16),
-        (MarkdownElementKeys.Marked, "AppMarkdownBodyFontSize", 16),
-        (MarkdownElementKeys.Abbreviation, "AppMarkdownBodyFontSize", 16),
-        (MarkdownElementKeys.CodeInline, "AppMarkdownCodeFontSize", 13),
-        (MarkdownElementKeys.CodeBlock, "AppMarkdownCodeFontSize", 13),
-        (MarkdownElementKeys.CodeBlockHeader, "AppMarkdownMetaFontSize", 13),
-        (MarkdownElementKeys.CodeBlockLanguage, "AppMarkdownMetaFontSize", 13),
-        (MarkdownElementKeys.CodeBlockGutter, "AppMarkdownMetaFontSize", 13),
-        (MarkdownElementKeys.CodeBlockLineNumber, "AppMarkdownMetaFontSize", 13),
-        (MarkdownElementKeys.Quote, "AppMarkdownBodyFontSize", 16),
-        (MarkdownElementKeys.ListMarker, "AppMarkdownBodyFontSize", 16),
-        (MarkdownElementKeys.ImageCaption, "AppMarkdownMetaFontSize", 13),
-        (MarkdownElementKeys.DefinitionTerm, "AppMarkdownBodyFontSize", 16),
-        (MarkdownElementKeys.DefinitionDescription, "AppMarkdownBodyFontSize", 16),
-        (MarkdownElementKeys.Figure, "AppMarkdownBodyFontSize", 16),
-        (MarkdownElementKeys.FigureCaption, "AppMarkdownMetaFontSize", 13),
-        (MarkdownElementKeys.Diagram, "AppMarkdownCodeFontSize", 13),
-        (MarkdownElementKeys.Math, "AppMarkdownBodyFontSize", 16),
-        (MarkdownElementKeys.Table, "AppMarkdownBodyFontSize", 16),
-        (MarkdownElementKeys.TableHeader, "AppMarkdownBodyFontSize", 16),
-        (MarkdownElementKeys.TableCell, "AppMarkdownBodyFontSize", 16),
-        (MarkdownElementKeys.AlertNote, "AppMarkdownBodyFontSize", 16),
-        (MarkdownElementKeys.AlertTip, "AppMarkdownBodyFontSize", 16),
-        (MarkdownElementKeys.AlertImportant, "AppMarkdownBodyFontSize", 16),
-        (MarkdownElementKeys.AlertWarning, "AppMarkdownBodyFontSize", 16),
-        (MarkdownElementKeys.AlertCaution, "AppMarkdownBodyFontSize", 16),
-    ];
-
     private readonly MarkdownTheme _theme = new();
     private readonly IMarkdownImageResolver _imageResolver;
     private readonly IMarkdownHostObserver _hostObserver;
+    private readonly IMarkdownViewerAutomationHooks _automation;
     private readonly MarkdownViewerFeedback _feedback;
     private readonly MarkdownLinkActivator _links;
     private MarkdownViewerDocumentPayload? _documentPayload;
@@ -100,8 +49,7 @@ public sealed partial class MarkdownViewer :
     private readonly MarkdownRendererInitialLayoutGate _layoutGate;
     private bool _rendererCreationQueued;
     private bool _paletteSubscribed;
-    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _lifecycleRuntimeSettingsTimer;
-    private int _lifecycleRuntimeSettingsRevision;
+    private IDisposable? _runtimeSettingsWatch;
 
     public static readonly DependencyProperty TextProperty = DependencyProperty.Register(
         nameof(Text),
@@ -309,6 +257,7 @@ public sealed partial class MarkdownViewer :
         _layoutGate = new MarkdownRendererInitialLayoutGate(this);
 
         _hostObserver = ResolveService<IMarkdownHostObserver>() ?? NoMarkdownHostObserver.Instance;
+        _automation = ResolveService<IMarkdownViewerAutomationHooks>() ?? NoMarkdownViewerAutomationHooks.Instance;
         var telemetry = new MarkdownViewerTelemetry(ResolveTelemetryService(), () => HostKind);
         _feedback = new MarkdownViewerFeedback(this, _hostObserver, telemetry);
         // Links launch through Windows directly. The DI launcher can be a
@@ -319,18 +268,15 @@ public sealed partial class MarkdownViewer :
             _hostObserver,
             telemetry);
 
-        // The production app defaults to trusted HTTPS image loading. Lifecycle
-        // automation opts into the configurable privacy mode so that the prompt,
-        // consent, and retry path remain covered as well.
-        if (MarkdownLifecycleAutomationBridge.IsEnabled)
+        // The production app defaults to trusted HTTPS image loading. An
+        // automation host can opt into the configurable privacy mode so that
+        // the prompt, consent, and retry path remain covered as well.
+        if (_automation.RequiresRemoteImageConsent)
         {
             AllowThirdPartyRemoteImagesByDefault = false;
         }
 
-        IMarkdownImageResolver imageResolver = ResolveImageResolver();
-        _imageResolver = MarkdownLifecycleAutomationBridge.IsEnabled
-            ? MarkdownLifecycleImageResolver.Create(imageResolver)
-            : imageResolver;
+        _imageResolver = _automation.WrapImageResolver(ResolveImageResolver());
 
         Loaded += (_, _) =>
         {
@@ -475,15 +421,7 @@ public sealed partial class MarkdownViewer :
                 () => ThemePaletteRuntime.PaletteChanged += ThemePaletteRuntime_PaletteChanged,
                 nameof(ThemePaletteRuntime.PaletteChanged));
         }
-        if (MarkdownLifecycleAutomationBridge.IsEnabled && _lifecycleRuntimeSettingsTimer is null)
-        {
-            _lifecycleRuntimeSettingsRevision = MarkdownLifecycleAutomationBridge.GetRuntimeSettingsRevision();
-            _lifecycleRuntimeSettingsTimer = DispatcherQueue.CreateTimer();
-            _lifecycleRuntimeSettingsTimer.Interval = TimeSpan.FromMilliseconds(100);
-            _lifecycleRuntimeSettingsTimer.IsRepeating = true;
-            _lifecycleRuntimeSettingsTimer.Tick += LifecycleRuntimeSettingsTimer_Tick;
-            _lifecycleRuntimeSettingsTimer.Start();
-        }
+        _runtimeSettingsWatch ??= _automation.WatchRuntimeSettings(DispatcherQueue, QueueRendererResourceRefresh);
     }
 
     private void UnsubscribeRuntimeSettings()
@@ -494,24 +432,8 @@ public sealed partial class MarkdownViewer :
             nameof(ThemePaletteRuntime.PaletteChanged));
 
         _paletteSubscribed = false;
-        if (_lifecycleRuntimeSettingsTimer is not null)
-        {
-            _lifecycleRuntimeSettingsTimer.Stop();
-            _lifecycleRuntimeSettingsTimer.Tick -= LifecycleRuntimeSettingsTimer_Tick;
-            _lifecycleRuntimeSettingsTimer = null;
-        }
-    }
-
-    private void LifecycleRuntimeSettingsTimer_Tick(
-        Microsoft.UI.Dispatching.DispatcherQueueTimer sender,
-        object args)
-    {
-        int revision = MarkdownLifecycleAutomationBridge.GetRuntimeSettingsRevision();
-        if (revision > 0 && revision != _lifecycleRuntimeSettingsRevision)
-        {
-            _lifecycleRuntimeSettingsRevision = revision;
-            QueueRendererResourceRefresh();
-        }
+        _runtimeSettingsWatch?.Dispose();
+        _runtimeSettingsWatch = null;
     }
 
     private static ScrollViewer? FindDescendantVerticalScrollViewer(DependencyObject root)
@@ -859,175 +781,10 @@ public sealed partial class MarkdownViewer :
             renderer,
             MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId));
     }
-    private string GetEffectiveMarkdown(string? sourceMarkdown)
-    {
-        string markdown = sourceMarkdown ?? string.Empty;
-        if (!MarkdownLifecycleAutomationBridge.IsEnabled)
-        {
-            return markdown;
-        }
-
-        string? targetHost = MarkdownLifecycleAutomationBridge.TargetHost;
-        if (!string.IsNullOrWhiteSpace(targetHost) &&
-            !MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId)
-                .StartsWith(targetHost, StringComparison.Ordinal))
-        {
-            return markdown;
-        }
-
-        if (TryReadAutomationCorpus(out string corpus))
-        {
-            return corpus;
-        }
-
-        const string marker = "Markdown host lifecycle fixture";
-        if (markdown.Contains(marker, StringComparison.Ordinal))
-        {
-            return markdown;
-        }
-
-        string fixture = BuildLifecycleFixtureMarkdown();
-        if (string.Equals(
-                Environment.GetEnvironmentVariable("JITHUB_MARKDOWN_SECURITY_LIVE_FIXTURE"),
-                "1",
-                StringComparison.Ordinal))
-        {
-            fixture += SecurityLifecycleFixture.Value;
-        }
-
-        return fixture + markdown;
-    }
-
-    private static bool TryReadAutomationCorpus(out string corpus)
-    {
-        corpus = string.Empty;
-        string? path = Program.CurrentLaunchOptions.MarkdownCorpusPath ??
-            Environment.GetEnvironmentVariable("JITHUB_MARKDOWN_CORPUS_PATH");
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            return false;
-        }
-
-        try
-        {
-            string fullPath = Path.GetFullPath(path);
-            string extension = Path.GetExtension(fullPath);
-            if (!extension.Equals(".md", StringComparison.OrdinalIgnoreCase) &&
-                !extension.Equals(".markdown", StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-
-            FileInfo file = new(fullPath);
-            const int maxCorpusBytes = 4 * 1024 * 1024;
-            if (!file.Exists || file.Length is <= 0 or > maxCorpusBytes)
-            {
-                return false;
-            }
-
-            corpus = File.ReadAllText(fullPath, Encoding.UTF8);
-            return corpus.Length > 0;
-        }
-        catch (Exception)
-        {
-            corpus = string.Empty;
-            return false;
-        }
-    }
-
-    private static readonly Lazy<string> SecurityLifecycleFixture = new(BuildSecurityLifecycleFixtureMarkdown);
-
-    private static string BuildLifecycleFixtureMarkdown()
-    {
-        StringBuilder fixture = new("""
-
-
-            ---
-
-            # Markdown audit selection marker
-
-            Markdown host lifecycle fixture covers the canonical host and includes a [keyboard link](https://github.com/JitHubApp/JitHubV2).
-
-            Route checks: [internal repository route](https://github.com/JitHubApp/JitHubV2),
-            [internal user route](https://github.com/JitHubApp), and
-            [external browser route](https://example.com/jithub-markdown-audit).
-
-            Markdown audit pointer selection starts here on the first line.
-            Markdown audit pointer selection ends here on the second line.
-
-            - [x] Lifecycle task list complete
-            - [ ] Lifecycle task list pending
-
-            | Feature | State |
-            | --- | --- |
-            | Selection | Ready |
-            | Images | Protected |
-
-            > Lifecycle quote level one
-            >> Lifecycle quote level two
-            >>> Lifecycle quote level three
-
-            ```csharp
-            public static string LifecycleCode() => "ready";
-            ```
-
-            Relative image fixture: ![Lifecycle relative image](docs/images/lifecycle-relative.png)
-
-            Malformed inline HTML remains contained: `<svg><text>unfinished`
-
-            ![Lifecycle malformed SVG](data:image/svg+xml;utf8,%3Csvg%3E%3Ctext%3Eunfinished)
-
-            ![Lifecycle inline SVG](data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%2732%27%20height%3D%2732%27%20viewBox%3D%270%200%2032%2032%27%3E%3Crect%20width%3D%2732%27%20height%3D%2732%27%20fill%3D%27%2377B59A%27%2F%3E%3C%2Fsvg%3E)
-
-            ![Lifecycle animated image](data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH/C05FVFNDQVBFMi4wAwEAAAAh+QQFCgAAACwAAAAAAQABAAACAkQBADs=)
-
-            ![Lifecycle blocked remote image](https://example.invalid/jithub-markdown-lifecycle.png)
-
-            """);
-        for (int index = 1; index <= 60; index++)
-        {
-            fixture.AppendLine($"Lifecycle long document paragraph {index}: stable scrolling, selection, and reading order.");
-            fixture.AppendLine();
-        }
-
-        fixture.AppendLine("Lifecycle long document final marker.");
-        return fixture.ToString();
-    }
-
-    private static string BuildSecurityLifecycleFixtureMarkdown()
-    {
-        const int oversizedSvgBytes = (2 * 1024 * 1024) + 1;
-        string hostileSvg = "<svg xmlns='http://www.w3.org/2000/svg'><text font-size='999999'>blocked</text></svg>";
-        string deepSvg = "<svg xmlns='http://www.w3.org/2000/svg'>" +
-            string.Concat(Enumerable.Repeat("<g>", 70)) +
-            "<rect width='1' height='1'/>" +
-            string.Concat(Enumerable.Repeat("</g>", 70)) +
-            "</svg>";
-        string oversizedSvg = "<svg xmlns='http://www.w3.org/2000/svg'>" +
-            new string(' ', oversizedSvgBytes) +
-            "</svg>";
-
-        static string SvgDataUri(string svg) =>
-            "data:image/svg+xml;base64," + Convert.ToBase64String(Encoding.UTF8.GetBytes(svg));
-
-        return $"""
-
-            ## Security resource-budget fixture
-
-            ![Lifecycle hostile font SVG]({SvgDataUri(hostileSvg)})
-
-            ![Lifecycle hostile depth SVG]({SvgDataUri(deepSvg)})
-
-            ![Lifecycle oversized SVG]({SvgDataUri(oversizedSvg)})
-
-            ![Lifecycle insecure remote image](http://example.invalid/insecure.png)
-
-            ![Lifecycle redirect-policy remote image](https://example.invalid/redirect.png)
-
-            Lifecycle security fixture final marker.
-            """;
-    }
-
+    private string GetEffectiveMarkdown(string? sourceMarkdown) =>
+        _automation.ComposeMarkdown(
+            sourceMarkdown ?? string.Empty,
+            MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId));
     private void OnRendererImageUnavailable(object? sender, MarkdownImageUnavailableEventArgs e) =>
         _feedback.OnImageUnavailable(e.Source, e.Reason);
 
@@ -1081,151 +838,11 @@ public sealed partial class MarkdownViewer :
         ResourceDictionary resources = _rendererSlot.Current.Resources;
         MarkdownRendererResources.RemoveLocalOverrides(resources);
         MarkdownRendererResources.ApplyHostSurface(resources, SurfaceColorToken, HostKind);
-
-        if (MarkdownLifecycleAutomationBridge.GetTextScaleFactor() is double requestedScale)
-        {
-            double tokenScale = GetLifecycleTokenScaleFactor(requestedScale);
-            foreach ((string role, string token, double fallback) in ScalableRoleFonts)
-            {
-                resources[MarkdownResourceKeys.ForRole(
-                    MarkdownStyleRole.FromElementKey(role),
-                    MarkdownStyleProperty.FontSize)] =
-                    MarkdownRendererResources.ResolveDouble(token, fallback) * tokenScale;
-            }
-        }
-
-        if (MarkdownLifecycleAutomationBridge.IsHighContrastEnabled)
-        {
-            ApplyLifecycleHighContrastResources(resources);
-        }
+        _automation.ApplyRendererResources(resources);
 
         // The renderer recompiles one immutable style snapshot. Its shared
         // environment monitor remains the sole owner of real theme, accent,
         // High Contrast, text scale, language, flow direction, and DPI events.
         _theme.Invalidate();
-    }
-
-    private static double GetLifecycleTokenScaleFactor(double requestedScale)
-    {
-        // The lifecycle fixture asks for a final effective scale. Divide out
-        // the real Windows scale because MarkdownEnvironmentMonitor applies it
-        // after resolving these test-only font resources.
-        double systemScale = 1;
-        UISettings? settings = RuntimeEventSubscription.TryCreate(
-            static () => new UISettings(),
-            nameof(UISettings));
-        try
-        {
-            double observedScale = settings?.TextScaleFactor ?? 1;
-            systemScale = double.IsFinite(observedScale) && observedScale > 0
-                ? Math.Clamp(observedScale, 1, 3)
-                : 1;
-        }
-        catch (System.Runtime.InteropServices.COMException)
-        {
-            systemScale = 1;
-        }
-
-        return Math.Clamp(requestedScale, 1, 3) / systemScale;
-    }
-
-    private static void ApplyLifecycleHighContrastResources(ResourceDictionary resources)
-    {
-        SolidColorBrush window = new(Colors.Black);
-        SolidColorBrush text = new(Colors.White);
-        SolidColorBrush link = new(Colors.Yellow);
-        SolidColorBrush focus = new(Colors.Cyan);
-
-        resources[MarkdownResourceKeys.DocumentSurfaceBrush] = window;
-        resources[MarkdownResourceKeys.SelectionBackgroundBrush] = link;
-        resources[MarkdownResourceKeys.SelectionForegroundBrush] = window;
-        resources[MarkdownResourceKeys.FocusVisualBrush] = focus;
-        resources[MarkdownResourceKeys.OverflowIndicatorBrush] = text;
-
-        foreach (string roleName in MarkdownRendererResources.StyledRoles)
-        {
-            resources[MarkdownResourceKeys.ForRole(
-                MarkdownStyleRole.FromElementKey(roleName),
-                MarkdownStyleProperty.ForegroundBrush)] = text;
-        }
-
-        foreach (string roleName in new[]
-        {
-            MarkdownElementKeys.Body,
-            MarkdownElementKeys.CodeInline,
-            MarkdownElementKeys.CodeBlock,
-            MarkdownElementKeys.CodeBlockHeader,
-            MarkdownElementKeys.CodeBlockGutter,
-            MarkdownElementKeys.Marked,
-            MarkdownElementKeys.DefinitionDescription,
-            MarkdownElementKeys.Figure,
-            MarkdownElementKeys.FigureCaption,
-            MarkdownElementKeys.Diagram,
-            MarkdownElementKeys.Table,
-            MarkdownElementKeys.TableHeader,
-            MarkdownElementKeys.TableCell,
-            MarkdownElementKeys.AlertNote,
-            MarkdownElementKeys.AlertTip,
-            MarkdownElementKeys.AlertImportant,
-            MarkdownElementKeys.AlertWarning,
-            MarkdownElementKeys.AlertCaution,
-        })
-        {
-            resources[MarkdownResourceKeys.ForRole(
-                MarkdownStyleRole.FromElementKey(roleName),
-                MarkdownStyleProperty.BackgroundBrush)] = window;
-        }
-
-        foreach (string roleName in new[]
-        {
-            MarkdownElementKeys.CodeBlock,
-            MarkdownElementKeys.CodeBlockHeader,
-            MarkdownElementKeys.Diagram,
-            MarkdownElementKeys.Table,
-            MarkdownElementKeys.TableHeader,
-            MarkdownElementKeys.TableCell,
-        })
-        {
-            resources[MarkdownResourceKeys.ForRole(
-                MarkdownStyleRole.FromElementKey(roleName),
-                MarkdownStyleProperty.BorderBrush)] = text;
-        }
-
-        if (MarkdownRendererResources.TryResolveAppResource("AppHighContrastMonoFontFamily", out object? monoFont))
-        {
-            foreach (string roleName in new[]
-            {
-                MarkdownElementKeys.CodeInline,
-                MarkdownElementKeys.CodeBlock,
-                MarkdownElementKeys.CodeBlockGutter,
-                MarkdownElementKeys.CodeBlockLineNumber,
-                MarkdownElementKeys.Diagram,
-            })
-            {
-                resources[MarkdownResourceKeys.ForRole(
-                    MarkdownStyleRole.FromElementKey(roleName),
-                    MarkdownStyleProperty.FontFamily)] = monoFont;
-            }
-        }
-
-        MarkdownStyleRole linkRole = MarkdownStyleRole.FromElementKey(MarkdownElementKeys.Link);
-        resources[MarkdownResourceKeys.ForRole(linkRole, MarkdownStyleProperty.ForegroundBrush)] = link;
-        resources[MarkdownResourceKeys.ForRole(linkRole, MarkdownStyleProperty.HoverForegroundBrush)] = link;
-        resources[MarkdownResourceKeys.ForRole(linkRole, MarkdownStyleProperty.FocusForegroundBrush)] = focus;
-
-        foreach (string roleName in new[]
-        {
-            MarkdownElementKeys.Quote,
-            MarkdownElementKeys.AlertNote,
-            MarkdownElementKeys.AlertTip,
-            MarkdownElementKeys.AlertImportant,
-            MarkdownElementKeys.AlertWarning,
-            MarkdownElementKeys.AlertCaution,
-        })
-        {
-            resources[MarkdownResourceKeys.ForRole(
-                MarkdownStyleRole.FromElementKey(roleName),
-                MarkdownStyleProperty.AccentBrush)] = link;
-        }
     }
 }
