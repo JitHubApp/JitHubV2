@@ -164,7 +164,6 @@ public sealed class MarkdownPerformanceSession :
         CancellationToken cancellationToken) =>
         _workDispatch.TryScheduleImageActivation(demand, startAsyncWork, onNotStarted, cancellationToken);
 
-
     bool IMarkdownPerformanceSessionInternal.TryGetDeferredSceneResult(
         object documentOwner,
         string marker,
@@ -430,7 +429,8 @@ public sealed class MarkdownPerformanceSession :
         }
         Trim();
         SourceCache.ClearResolverIdentities();
-        _ = FinishShutdownAsync(cancellation, drain, completed);
+        _ = MarkdownSessionShutdown.FinishAsync(
+            cancellation, drain, completed, _scenePlans, _workDispatch, _fetcher, _lifetime);
     }
 
     private void NotifyDisposedHandlers(EventHandler? handlers)
@@ -460,81 +460,4 @@ public sealed class MarkdownPerformanceSession :
         if (completion is not null)
             await completion.ConfigureAwait(false);
     }
-
-    private async Task FinishShutdownAsync(
-        Task cancellation,
-        Task drain,
-        TaskCompletionSource<bool> completed)
-    {
-        List<Exception>? failures = null;
-        try
-        {
-            await cancellation.ConfigureAwait(false);
-        }
-        catch (Exception exception)
-        {
-            (failures ??= new List<Exception>()).Add(exception);
-        }
-
-        try
-        {
-            await drain.ConfigureAwait(false);
-        }
-        catch (Exception exception)
-        {
-            (failures ??= new List<Exception>()).Add(exception);
-        }
-
-        try
-        {
-            // Parse/plan creation is included in the work drain above. Drain
-            // after it so plans retired by the last in-flight parse are also
-            // part of session shutdown, not only plans present at Dispose().
-            await _scenePlans.DrainRetirementsAsync().ConfigureAwait(false);
-        }
-        catch (Exception exception)
-        {
-            (failures ??= new List<Exception>()).Add(exception);
-        }
-
-        try
-        {
-            await _workDispatch.LayoutCompletion.ConfigureAwait(false);
-        }
-        catch (Exception exception)
-        {
-            (failures ??= new List<Exception>()).Add(exception);
-        }
-
-        try
-        {
-            await _workDispatch.ActivationCompletion.ConfigureAwait(false);
-        }
-        catch (Exception exception)
-        {
-            (failures ??= new List<Exception>()).Add(exception);
-        }
-
-        try
-        {
-            _workDispatch.ReleaseLayoutResources();
-        }
-        catch (Exception exception)
-        {
-            (failures ??= new List<Exception>()).Add(exception);
-        }
-        finally
-        {
-            _fetcher.DisposeFetchSlots();
-            _lifetime.DisposeCancellation();
-        }
-
-        if (failures is null)
-            completed.TrySetResult(true);
-        else if (failures.Count == 1)
-            completed.TrySetException(failures[0]);
-        else
-            completed.TrySetException(new AggregateException(failures));
-    }
-
 }
