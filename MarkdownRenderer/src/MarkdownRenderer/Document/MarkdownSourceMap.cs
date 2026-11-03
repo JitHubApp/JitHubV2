@@ -9,16 +9,10 @@ namespace MarkdownRenderer.Document;
 /// </summary>
 public sealed class MarkdownSourceMap
 {
-    // Layout entries are normally appended in document order. Avoid building
-    // this all-block index for that common case: source affixes can be located
-    // directly in the ordered entry list. Preserve a dictionary fallback for
-    // callers that append out-of-order keys.
-    private Dictionary<int, BlockEntryBounds>? _blockEntryBounds;
-    private readonly PagedEntryBuffer<Entry> _entries = new();
+    private readonly SourceMapEntryStore _entries = new();
     private readonly object _gate = new();
     private readonly string _sourceText;
     private EntryIndex? _entryIndex;
-    private bool _entriesWereAddedInOrder = true;
 
     /// <summary>Initializes a source map for the supplied markdown source.</summary>
     public MarkdownSourceMap(string sourceText)
@@ -71,26 +65,7 @@ public sealed class MarkdownSourceMap
     {
         lock (_gate)
         {
-            int insertionOrder = _entries.Count;
-            var entry = new Entry(
-                blockIndex,
-                inlineIndex,
-                renderedLength,
-                span,
-                SourcePrefixLength: 0,
-                SourceSuffixLength: 0,
-                Projection: projection,
-                InsertionOrder: insertionOrder);
-
-            if (_entriesWereAddedInOrder && insertionOrder > 0 &&
-                SourceMapEntryOrderComparer.CompareDocumentOrder(_entries[insertionOrder - 1], entry) > 0)
-            {
-                _entriesWereAddedInOrder = false;
-            }
-
-            _entries.Add(entry);
-            if (_blockEntryBounds is { } blockEntryBounds)
-                TrackBlockEntry(blockEntryBounds, entry, insertionOrder);
+            _entries.Add(blockIndex, inlineIndex, renderedLength, span, projection);
             _entryIndex = null;
         }
     }
@@ -103,57 +78,7 @@ public sealed class MarkdownSourceMap
     {
         lock (_gate)
         {
-            BlockEntryBounds bounds;
-            if (_blockEntryBounds is { } blockEntryBounds)
-            {
-                if (!blockEntryBounds.TryGetValue(blockIndex, out bounds))
-                    return;
-            }
-            else if (_entriesWereAddedInOrder)
-            {
-                if (!TryFindOrderedBlockEntryBounds(blockIndex, out bounds))
-                    return;
-            }
-            else
-            {
-                // Out-of-order public additions retain the legacy semantics.
-                // Materialize once on the first affix request, then track all
-                // later additions incrementally.
-                blockEntryBounds = BuildBlockEntryBounds();
-                _blockEntryBounds = blockEntryBounds;
-                if (!blockEntryBounds.TryGetValue(blockIndex, out bounds))
-                    return;
-            }
-
-            sourceStart = Math.Clamp(sourceStart, 0, _sourceText.Length);
-            sourceEnd = Math.Clamp(sourceEnd, sourceStart, _sourceText.Length);
-
-            var firstEntry = _entries[bounds.FirstEntryIndex];
-            int prefixLength = Math.Max(0, firstEntry.Span.Start - sourceStart);
-            if (prefixLength > 0)
-            {
-                firstEntry = firstEntry with
-                {
-                    Span = new SourceSpan(sourceStart, firstEntry.Span.Length + prefixLength),
-                    SourcePrefixLength = firstEntry.SourcePrefixLength + prefixLength,
-                };
-                _entries[bounds.FirstEntryIndex] = firstEntry;
-            }
-
-            // Read the entry again because the first and last entry can be the same.
-            var lastEntry = _entries[bounds.LastEntryIndex];
-            int suffixLength = Math.Max(0, sourceEnd - lastEntry.Span.End);
-            if (suffixLength > 0)
-            {
-                lastEntry = lastEntry with
-                {
-                    Span = new SourceSpan(lastEntry.Span.Start, lastEntry.Span.Length + suffixLength),
-                    SourceSuffixLength = lastEntry.SourceSuffixLength + suffixLength,
-                };
-                _entries[bounds.LastEntryIndex] = lastEntry;
-            }
-
-            if (prefixLength > 0 || suffixLength > 0)
+            if (_entries.AddSourceAffixesToBlock(blockIndex, sourceStart, sourceEnd, _sourceText.Length))
                 _entryIndex = null;
         }
     }
@@ -207,84 +132,6 @@ public sealed class MarkdownSourceMap
         return (int)Math.Clamp(absoluteOffset, minimum, (long)_sourceText.Length);
     }
 
-    private bool TryFindOrderedBlockEntryBounds(int blockIndex, out BlockEntryBounds bounds)
-    {
-        // _entriesWereAddedInOrder means the complete (block, inline,
-        // insertion-order) key is monotone, so a block occupies one contiguous
-        // range. Use allocation-free lower/upper bounds rather than retaining a
-        // dictionary entry for every ordinary rendered run.
-        int low = 0;
-        int high = _entries.Count;
-        while (low < high)
-        {
-            int middle = low + ((high - low) / 2);
-            if (_entries[middle].BlockIndex < blockIndex)
-                low = middle + 1;
-            else
-                high = middle;
-        }
-
-        int first = low;
-        low = first;
-        high = _entries.Count;
-        while (low < high)
-        {
-            int middle = low + ((high - low) / 2);
-            if (_entries[middle].BlockIndex <= blockIndex)
-                low = middle + 1;
-            else
-                high = middle;
-        }
-
-        int end = low;
-        while (first < end && _entries[first].Span.IsEmpty)
-            first++;
-        while (end > first && _entries[end - 1].Span.IsEmpty)
-            end--;
-
-        if (first >= end)
-        {
-            bounds = default;
-            return false;
-        }
-
-        bounds = new BlockEntryBounds(first, end - 1);
-        return true;
-    }
-
-    private Dictionary<int, BlockEntryBounds> BuildBlockEntryBounds()
-    {
-        var blockEntryBounds = new Dictionary<int, BlockEntryBounds>();
-        for (int index = 0; index < _entries.Count; index++)
-            TrackBlockEntry(blockEntryBounds, _entries[index], index);
-        return blockEntryBounds;
-    }
-
-    private void TrackBlockEntry(
-        Dictionary<int, BlockEntryBounds> blockEntryBounds,
-        Entry entry,
-        int entryIndex)
-    {
-        if (entry.Span.IsEmpty)
-            return;
-
-        if (!blockEntryBounds.TryGetValue(entry.BlockIndex, out var bounds))
-        {
-            blockEntryBounds.Add(entry.BlockIndex, new BlockEntryBounds(entryIndex, entryIndex));
-            return;
-        }
-
-        int firstEntryIndex = bounds.FirstEntryIndex;
-        if (SourceMapEntryOrderComparer.CompareDocumentOrder(entry, _entries[firstEntryIndex]) < 0)
-            firstEntryIndex = entryIndex;
-
-        int lastEntryIndex = bounds.LastEntryIndex;
-        if (SourceMapEntryOrderComparer.CompareDocumentOrder(entry, _entries[lastEntryIndex]) > 0)
-            lastEntryIndex = entryIndex;
-
-        blockEntryBounds[entry.BlockIndex] = new BlockEntryBounds(firstEntryIndex, lastEntryIndex);
-    }
-
     private EntryIndex GetEntryIndex()
     {
         lock (_gate)
@@ -293,7 +140,7 @@ public sealed class MarkdownSourceMap
                 return _entryIndex;
 
             Entry[] sortedEntries = _entries.ToArray();
-            if (!_entriesWereAddedInOrder)
+            if (!_entries.EntriesWereAddedInOrder)
                 Array.Sort(sortedEntries, SourceMapEntryOrderComparer.Instance);
 
             _entryIndex = new EntryIndex(sortedEntries);
@@ -487,13 +334,6 @@ public sealed class MarkdownSourceMap
             return ProjectionSegmentSearch.MapSegmentEndBoundary(segment, renderedOffset - segment.RenderedStart);
         }
 
-    }
-
-    private readonly struct BlockEntryBounds(int firstEntryIndex, int lastEntryIndex)
-    {
-        internal readonly int FirstEntryIndex = firstEntryIndex;
-
-        internal readonly int LastEntryIndex = lastEntryIndex;
     }
 
     private sealed class EntryIndex

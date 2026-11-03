@@ -140,7 +140,7 @@ public sealed class ImmutablePayloadStorageTests
         AssertReadonly(typeof(TableBox.CellInfo), "Box Row Column IsHeader");
         AssertReadonly(Nested(typeof(SourceProjectionUnitRanges), "Emission"),
             "SourceStart SourceEnd RenderedLength");
-        AssertReadonly(Nested(typeof(MarkdownSourceMap), "BlockEntryBounds"), "FirstEntryIndex LastEntryIndex");
+        AssertReadonly(Nested(typeof(SourceMapEntryStore), "BlockEntryBounds"), "FirstEntryIndex LastEntryIndex");
         AssertReadonly(Nested(typeof(MarkdownSourceMap), "EntryIndex"), "Entries ReadOnlyEntries");
         AssertReadonly(Nested(typeof(MarkdownExtensionBuilder), "BuilderSnapshot"),
             "ExtensionIds Features BlockRenderers InlineRenderers SynchronousBlockRenderers " +
