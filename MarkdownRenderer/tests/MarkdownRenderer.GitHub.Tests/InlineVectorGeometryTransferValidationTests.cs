@@ -70,7 +70,7 @@ public sealed class InlineVectorGeometryTransferValidationTests
             Assert.NotNull(prepared);
             Assert.Single(sourceFences!);
             Assert.True(source.TryCaptureMeasuredPlacementTransferWithMeasuredVectorPlacement(
-                prepared!, LayoutWidth, out InlineContainerBox.MeasuredPlacementTransfer? transfer));
+                prepared!, LayoutWidth, out InlineMeasuredPlacementTransfer? transfer));
             Assert.NotNull(transfer);
             object preparedVectorState = GetObjectField(prepared!, "_vectorSceneState");
             Assert.NotSame(sourceVectorState, preparedVectorState);

@@ -110,11 +110,7 @@ public sealed class InlineImageCssMiddleAlignmentTests
             _ = box.Measure(300f);
             box.Arrange(11.25f, 17.5f, 300f);
 
-            FieldInfo layoutField = Assert.IsAssignableFrom<FieldInfo>(
-                typeof(InlineContainerBox).GetField(
-                    "_layout",
-                    BindingFlags.Instance | BindingFlags.NonPublic));
-            var layout = Assert.IsType<CanvasTextLayout>(layoutField.GetValue(box));
+            var layout = Assert.IsType<CanvasTextLayout>(box.TextLayout);
             CanvasTextLayoutRegion region = Assert.Single(layout.GetCharacterRegions(1, 1)!);
             Rect lineBounds = region.LayoutBounds;
             double legacyCellY = lineBounds.Y + (lineBounds.Height - image.DesiredHeight) / 2d;

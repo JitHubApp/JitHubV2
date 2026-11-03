@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Threading;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
@@ -128,14 +127,8 @@ public sealed class InlineContainerPositionProjectionTests
 
     private static void AssertBufferUnmaterialized(InlineContainerBox paragraph)
     {
-        const BindingFlags Flags = BindingFlags.Instance | BindingFlags.NonPublic;
-        FieldInfo dirtyField = Assert.IsAssignableFrom<FieldInfo>(
-            typeof(InlineContainerBox).GetField("_bufferDirty", Flags));
-        FieldInfo bufferField = Assert.IsAssignableFrom<FieldInfo>(
-            typeof(InlineContainerBox).GetField("_buffer", Flags));
-
-        Assert.True(Assert.IsType<bool>(dirtyField.GetValue(paragraph)));
-        Assert.Equal(string.Empty, Assert.IsType<string>(bufferField.GetValue(paragraph)));
+        Assert.True(paragraph.IsBufferDirty);
+        Assert.Equal(string.Empty, paragraph.LayoutBuffer);
     }
 
     private static MarkdownLayoutContext CreateContext(CancellationToken cancellationToken)

@@ -75,7 +75,7 @@ public sealed class ImmutablePayloadStorageTests
         AssertReadonly(Nested(typeof(ThemeSnapshot), "StyleCacheKey"),
             "ElementKey ContextKeys AliasKeys Language State");
         AssertReadonly(Nested(typeof(SharedCanvasBitmapCache), "CacheKey"), "Device Identity");
-        AssertReadonly(Nested(typeof(InlineContainerBox), "InlineScenePlacementRollbackState"), "Run LocalBounds");
+        AssertReadonly(typeof(InlineScenePlacementRollbackState), "Run LocalBounds");
         AssertReadonly(Nested(typeof(ImageBox), "InlineMeasureCheckpoint"),
             "Owner Generation WasInlineLayout PreviousAvailableWidth PreviousImageWidth PreviousImageHeight " +
             "PreviousCaptionHeight PreviousBounds");

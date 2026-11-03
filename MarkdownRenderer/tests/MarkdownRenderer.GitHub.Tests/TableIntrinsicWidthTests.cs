@@ -17,9 +17,6 @@ namespace MarkdownRenderer.GitHub.Tests;
 public sealed class TableIntrinsicWidthTests
 {
     private const float ContentWidth = 660f;
-    private static readonly FieldInfo LayoutField = typeof(InlineContainerBox).GetField(
-        "_layout",
-        BindingFlags.Instance | BindingFlags.NonPublic)!;
 
     [Fact]
     public void PrimerLightV5ApiKeyColumnHonorsPaddedInlineCodeIntrinsicMinimum()
@@ -50,7 +47,7 @@ public sealed class TableIntrinsicWidthTests
             Assert.Equal("apiKey", code.Text);
 
             IntrinsicWidthMetrics minimum = cell.MeasureIntrinsicWidths(720);
-            CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(LayoutField.GetValue(cell));
+            CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(cell.TextLayout);
             Assert.Single(layout.LineMetrics);
             Assert.True(
                 cell.Bounds.Width + 0.01f >= minimum.Minimum,

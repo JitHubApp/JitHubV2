@@ -160,7 +160,7 @@ public sealed class PrivateRasterPlacementStyleKeyCopyTests
             Assert.True(source.TryCaptureContainerLeafMeasuredPlacementTransfer(
                 clone,
                 Width,
-                out InlineContainerBox.MeasuredPlacementTransfer? transfer));
+                out InlineMeasuredPlacementTransfer? transfer));
             Assert.NotNull(transfer);
 
             // Capture fences the unmeasured private clone; the candidate is
@@ -329,13 +329,10 @@ public sealed class PrivateRasterPlacementStyleKeyCopyTests
 
     private static IReadOnlyList<IReadOnlyList<string>> GetEffectiveAliases(InlineContainerBox box)
     {
-        MethodInfo getter = typeof(InlineContainerBox).GetMethod(
-            "GetEffectiveRunAliases",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
         var result = new IReadOnlyList<string>[box.Runs.Count];
         for (int index = 0; index < result.Length; index++)
         {
-            result[index] = Assert.IsType<string[]>(getter.Invoke(box, new object[] { index }));
+            result[index] = Assert.IsType<string[]>(box.GetEffectiveRunAliases(index));
         }
         return result;
     }

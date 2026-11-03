@@ -233,7 +233,7 @@
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/InlineCodePaddingLayoutTests.cs",
-      "lines": 1112,
+      "lines": 1075,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
@@ -263,12 +263,12 @@
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/RelativeScriptFontSizeTests.cs",
-      "lines": 1459,
+      "lines": 1420,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/RootLocalContainerImageRelayoutTests.cs",
-      "lines": 1773,
+      "lines": 1755,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
@@ -283,12 +283,12 @@
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/RootLocalInlineImageRelayoutTests.cs",
-      "lines": 1302,
+      "lines": 1297,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/RootLocalTableImageRelayoutTests.cs",
-      "lines": 2149,
+      "lines": 2144,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
@@ -298,7 +298,7 @@
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/ScriptBaselineGeometryTests.cs",
-      "lines": 2020,
+      "lines": 2012,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {

@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Collections.Generic;
 using Markdig;
 using Markdig.Extensions.EmphasisExtras;
@@ -27,30 +26,6 @@ public sealed class RelativeScriptFontSizeTests
 {
     private const string ScriptClass = "script-scale";
     private readonly ITestOutputHelper _output;
-    private static readonly MethodInfo GetRunStyleMethod = typeof(InlineContainerBox).GetMethod(
-        "GetRunStyle",
-        BindingFlags.Instance | BindingFlags.NonPublic)!;
-    private static readonly MethodInfo GetInnermostScriptStyleKeyMethod = typeof(InlineContainerBox).GetMethod(
-        "GetInnermostScriptStyleKey",
-        BindingFlags.Static | BindingFlags.NonPublic,
-        binder: null,
-        types: [typeof(InlineRun)],
-        modifiers: null)!;
-    private static readonly MethodInfo GetLinkInlineSpanStylesMethod = typeof(InlineContainerBox).GetMethod(
-        "GetLinkInlineSpanStyles",
-        BindingFlags.Instance | BindingFlags.NonPublic)!;
-    private static readonly MethodInfo ShouldApplyRunTextStyleMethod = typeof(InlineContainerBox).GetMethod(
-        "ShouldApplyRunTextStyle",
-        BindingFlags.Instance | BindingFlags.NonPublic)!;
-    private static readonly FieldInfo ResolvedLinkInlineSpanStylesField = typeof(InlineContainerBox).GetField(
-        "_resolvedLinkInlineSpanStyles",
-        BindingFlags.Instance | BindingFlags.NonPublic)!;
-    private static readonly FieldInfo TextLayoutField = typeof(InlineContainerBox).GetField(
-        "_layout",
-        BindingFlags.Instance | BindingFlags.NonPublic)!;
-    private static readonly FieldInfo ScriptStyleAncestryField = typeof(SafeHtmlInlineState).GetField(
-        "_scriptStyleAncestry",
-        BindingFlags.Instance | BindingFlags.NonPublic)!;
 
     public RelativeScriptFontSizeTests(ITestOutputHelper output)
         => _output = output;
@@ -187,28 +162,28 @@ public sealed class RelativeScriptFontSizeTests
             renderUnknownElementsLiterally: false,
             allowedStyleClasses: null));
 
-        Assert.Null(ScriptStyleAncestryField.GetValue(state));
+        Assert.Null(state.ScriptStyleAncestry);
         Assert.Null(state.Process(new HtmlInline("<strong>"), context));
         Assert.IsType<StrongRun>(state.Apply(new TextRun("ordinary text")));
         Assert.Null(state.Process(new HtmlInline("</strong>"), context));
-        Assert.Null(ScriptStyleAncestryField.GetValue(state));
+        Assert.Null(state.ScriptStyleAncestry);
 
         SafeHtmlInlineState.ScriptStyleScope first =
             state.PushMarkdownScript(MarkdownElementKeys.Superscript);
-        List<SafeHtmlInlineState.ScriptStyleAncestryToken> ancestry = GetScriptAncestry(state);
+        IReadOnlyList<SafeHtmlInlineState.ScriptStyleAncestryToken> ancestry = GetScriptAncestry(state);
         Assert.Single(ancestry);
         first.Dispose();
-        Assert.Same(ancestry, ScriptStyleAncestryField.GetValue(state));
+        Assert.Same(ancestry, state.ScriptStyleAncestry);
         Assert.Empty(ancestry);
 
         SafeHtmlInlineState.ScriptStyleScope sibling =
             state.PushMarkdownScript(MarkdownElementKeys.Subscript);
-        Assert.Same(ancestry, ScriptStyleAncestryField.GetValue(state));
+        Assert.Same(ancestry, state.ScriptStyleAncestry);
         Assert.Equal([MarkdownElementKeys.Subscript],
             Assert.IsType<TextRun>(state.Apply(new TextRun("script sibling")))
                 .ScriptStyleAncestryKeys);
         sibling.Dispose();
-        Assert.Same(ancestry, ScriptStyleAncestryField.GetValue(state));
+        Assert.Same(ancestry, state.ScriptStyleAncestry);
         Assert.Empty(ancestry);
     }
 
@@ -224,13 +199,13 @@ public sealed class RelativeScriptFontSizeTests
 
         Assert.Equal([MarkdownElementKeys.Superscript], superscript.ScriptStyleAncestryKeys);
         Assert.Equal([MarkdownElementKeys.Superscript], linkedSuperscript.ScriptStyleAncestryKeys);
-        Assert.Null(ScriptStyleAncestryField.GetValue(state));
+        Assert.Null(state.ScriptStyleAncestry);
     }
 
-    private static List<SafeHtmlInlineState.ScriptStyleAncestryToken> GetScriptAncestry(
+    private static IReadOnlyList<SafeHtmlInlineState.ScriptStyleAncestryToken> GetScriptAncestry(
         SafeHtmlInlineState state)
-        => Assert.IsType<List<SafeHtmlInlineState.ScriptStyleAncestryToken>>(
-            ScriptStyleAncestryField.GetValue(state));
+        => Assert.IsAssignableFrom<IReadOnlyList<SafeHtmlInlineState.ScriptStyleAncestryToken>>(
+            state.ScriptStyleAncestry);
 
     [Fact]
     public void MarkdownScriptOutsideSafeHtmlScriptUsesSourceOrderForLinkedRun()
@@ -249,7 +224,7 @@ public sealed class RelativeScriptFontSizeTests
             link.ScriptStyleAncestryKeys);
         Assert.Equal(
             MarkdownElementKeys.Subscript,
-            GetInnermostScriptStyleKeyMethod.Invoke(null, [link]));
+            InlineRunStyleResolver.GetInnermostScriptStyleKey(link));
         ElementStyle resolved = ResolveRunStyle(MarkdownElementKeys.Heading2, link, sheet);
         Assert.Equal(8.25f, resolved.FontSize);
         Assert.True(resolved.Underline);
@@ -273,7 +248,7 @@ public sealed class RelativeScriptFontSizeTests
             link.ScriptStyleAncestryKeys);
         Assert.Equal(
             MarkdownElementKeys.Superscript,
-            GetInnermostScriptStyleKeyMethod.Invoke(null, [link]));
+            InlineRunStyleResolver.GetInnermostScriptStyleKey(link));
         ElementStyle resolved = ResolveRunStyle(MarkdownElementKeys.Heading2, link, sheet);
         Assert.Equal(11f, resolved.FontSize);
         Assert.True(resolved.Underline);
@@ -337,12 +312,9 @@ public sealed class RelativeScriptFontSizeTests
             firstBox.Add(firstRun);
             secondBox.Add(secondRun);
 
-            ElementStyle[] firstResolution = Assert.IsType<ElementStyle[]>(
-                GetLinkInlineSpanStylesMethod.Invoke(firstBox, [firstRun]));
-            ElementStyle[] repeatedResolution = Assert.IsType<ElementStyle[]>(
-                GetLinkInlineSpanStylesMethod.Invoke(firstBox, [firstRun]));
-            ElementStyle[] otherBoxResolution = Assert.IsType<ElementStyle[]>(
-                GetLinkInlineSpanStylesMethod.Invoke(secondBox, [secondRun]));
+            ElementStyle[] firstResolution = firstBox.GetLinkInlineSpanStyles(firstRun);
+            ElementStyle[] repeatedResolution = firstBox.GetLinkInlineSpanStyles(firstRun);
+            ElementStyle[] otherBoxResolution = secondBox.GetLinkInlineSpanStyles(secondRun);
 
             Assert.Same(map, firstRun.InlineStyleMap);
             Assert.Same(map, secondRun.InlineStyleMap);
@@ -368,7 +340,7 @@ public sealed class RelativeScriptFontSizeTests
             Assert.True(code.Underline);
 
             LinkInlineStyleSpan codeSpan = GetSpan(map, MarkdownElementKeys.CodeInline);
-            CanvasTextLayout actualLayout = Assert.IsType<CanvasTextLayout>(TextLayoutField.GetValue(sourceBox));
+            CanvasTextLayout actualLayout = Assert.IsType<CanvasTextLayout>(sourceBox.TextLayout);
             Assert.Equal(16f, ReadUniformFontSize(actualLayout, codeSpan.Start, codeSpan.Length));
             Assert.Equal("Segoe UI", ReadUniformFontFamily(actualLayout, codeSpan.Start, codeSpan.Length));
             LinkInlineStyleSpan strongSpan = GetSpan(map, MarkdownElementKeys.Strong);
@@ -416,10 +388,10 @@ public sealed class RelativeScriptFontSizeTests
         try
         {
             plainBox.Add(plainLink);
-            _ = GetRunStyleMethod.Invoke(plainBox, [plainLink]);
+            _ = plainBox.GetRunStyle(plainLink);
 
             Assert.Null(plainLink.InlineStyleMap);
-            Assert.Null(ResolvedLinkInlineSpanStylesField.GetValue(plainBox));
+            Assert.Null(plainBox.ResolvedLinkInlineSpanStyles);
         }
         finally
         {
@@ -429,15 +401,15 @@ public sealed class RelativeScriptFontSizeTests
         using LayoutSnapshot headingSnapshot = BuildParsedSnapshot("# Heading `code`", sheet);
         InlineContainerBox heading = Assert.Single(headingSnapshot.Blocks.OfType<InlineContainerBox>());
         CodeInlineRun codeRun = Assert.Single(heading.Runs.OfType<CodeInlineRun>());
-        ElementStyle resolved = Assert.IsType<ElementStyle>(GetRunStyleMethod.Invoke(heading, [codeRun]));
+        ElementStyle resolved = heading.GetRunStyle(codeRun);
 
         Assert.Equal(32f, resolved.FontSize);
         Assert.Equal("Cascadia Mono", resolved.FontFamily);
         Assert.Equal((ushort)700, resolved.FontWeight.Weight);
         Assert.Equal(headingForeground, resolved.Foreground);
         Assert.Equal(codeBackground, resolved.Background);
-        Assert.True(Assert.IsType<bool>(ShouldApplyRunTextStyleMethod.Invoke(heading, [codeRun])));
-        CanvasTextLayout headingLayout = Assert.IsType<CanvasTextLayout>(TextLayoutField.GetValue(heading));
+        Assert.True(heading.ShouldApplyRunTextStyle(codeRun));
+        CanvasTextLayout headingLayout = Assert.IsType<CanvasTextLayout>(heading.TextLayout);
         int codeStart = 0;
         foreach (InlineRun run in heading.Runs)
         {
@@ -458,8 +430,8 @@ public sealed class RelativeScriptFontSizeTests
         using LayoutSnapshot snapshot = BuildParsedSnapshot(source, RelativeInlineCodeSheet());
         InlineContainerBox box = Assert.Single(snapshot.Blocks.OfType<InlineContainerBox>());
         CodeInlineRun codeRun = Assert.Single(box.Runs.OfType<CodeInlineRun>());
-        ElementStyle resolved = Assert.IsType<ElementStyle>(GetRunStyleMethod.Invoke(box, [codeRun]));
-        CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(TextLayoutField.GetValue(box));
+        ElementStyle resolved = box.GetRunStyle(codeRun);
+        CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(box.TextLayout);
         int codeStart = GetRunStart(box, codeRun);
 
         Assert.Equal(expectedSize, resolved.FontSize, precision: 2);
@@ -484,10 +456,9 @@ public sealed class RelativeScriptFontSizeTests
         LinkRun link = Assert.Single(box.Runs.OfType<LinkRun>());
         LinkInlineStyleMap map = Assert.IsType<LinkInlineStyleMap>(link.InlineStyleMap);
         LinkInlineStyleSpan codeSpan = GetSpan(map, MarkdownElementKeys.CodeInline);
-        ElementStyle[] spanStyles = Assert.IsType<ElementStyle[]>(
-            GetLinkInlineSpanStylesMethod.Invoke(box, [link]));
+        ElementStyle[] spanStyles = box.GetLinkInlineSpanStyles(link);
         ElementStyle resolved = spanStyles[FindSpanIndex(map, codeSpan)];
-        CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(TextLayoutField.GetValue(box));
+        CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(box.TextLayout);
 
         Assert.Equal(40.8f, resolved.FontSize, precision: 2);
         Assert.Equal(40.8f, ReadUniformFontSize(layout, codeSpan.Start, codeSpan.Length), precision: 2);
@@ -508,8 +479,8 @@ public sealed class RelativeScriptFontSizeTests
         using LayoutSnapshot snapshot = BuildParsedSnapshot("# Heading `code`", sheet);
         InlineContainerBox box = Assert.Single(snapshot.Blocks.OfType<InlineContainerBox>());
         CodeInlineRun codeRun = Assert.Single(box.Runs.OfType<CodeInlineRun>());
-        ElementStyle resolved = Assert.IsType<ElementStyle>(GetRunStyleMethod.Invoke(box, [codeRun]));
-        CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(TextLayoutField.GetValue(box));
+        ElementStyle resolved = box.GetRunStyle(codeRun);
+        CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(box.TextLayout);
         int codeStart = GetRunStart(box, codeRun);
 
         Assert.Equal(11f, resolved.FontSize);
@@ -528,8 +499,8 @@ public sealed class RelativeScriptFontSizeTests
         CodeInlineRun codeRun = Assert.Single(box.Runs.OfType<CodeInlineRun>());
 
         Assert.Equal([MarkdownElementKeys.Superscript], codeRun.ScriptStyleAncestryKeys);
-        ElementStyle first = Assert.IsType<ElementStyle>(GetRunStyleMethod.Invoke(box, [codeRun]));
-        ElementStyle cached = Assert.IsType<ElementStyle>(GetRunStyleMethod.Invoke(box, [codeRun]));
+        ElementStyle first = box.GetRunStyle(codeRun);
+        ElementStyle cached = box.GetRunStyle(codeRun);
 
         Assert.Same(first, cached);
         Assert.Equal(9.35f, first.FontSize, precision: 2);
@@ -546,8 +517,8 @@ public sealed class RelativeScriptFontSizeTests
         using LayoutSnapshot snapshot = BuildParsedSnapshot("<sup><code>x</code></sup>", sheet);
         InlineContainerBox box = Assert.Single(snapshot.Blocks.OfType<InlineContainerBox>());
         CodeInlineRun codeRun = Assert.Single(box.Runs.OfType<CodeInlineRun>());
-        ElementStyle resolved = Assert.IsType<ElementStyle>(GetRunStyleMethod.Invoke(box, [codeRun]));
-        CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(TextLayoutField.GetValue(box));
+        ElementStyle resolved = box.GetRunStyle(codeRun);
+        CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(box.TextLayout);
 
         Assert.Equal([MarkdownElementKeys.Superscript], codeRun.ScriptStyleAncestryKeys);
         Assert.Equal(11f, resolved.FontSize);
@@ -562,8 +533,8 @@ public sealed class RelativeScriptFontSizeTests
             RelativeInlineCodeSheet().WithRelativeScriptFontSize(0.75f));
         InlineContainerBox box = Assert.Single(snapshot.Blocks.OfType<InlineContainerBox>());
         CodeInlineRun codeRun = Assert.Single(box.Runs.OfType<CodeInlineRun>());
-        ElementStyle resolved = Assert.IsType<ElementStyle>(GetRunStyleMethod.Invoke(box, [codeRun]));
-        CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(TextLayoutField.GetValue(box));
+        ElementStyle resolved = box.GetRunStyle(codeRun);
+        CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(box.TextLayout);
 
         Assert.Equal(10.2f, resolved.FontSize, precision: 2);
         Assert.Equal(10.2f, ReadUniformFontSize(layout, GetRunStart(box, codeRun), codeRun.TextLength), precision: 2);
@@ -650,10 +621,10 @@ public sealed class RelativeScriptFontSizeTests
         LinkRun link = Assert.Single(box.Runs.OfType<LinkRun>());
         LinkInlineStyleMap map = Assert.IsType<LinkInlineStyleMap>(link.InlineStyleMap);
         LinkInlineStyleSpan codeSpan = GetSpan(map, MarkdownElementKeys.CodeInline);
-        ElementStyle[] first = Assert.IsType<ElementStyle[]>(GetLinkInlineSpanStylesMethod.Invoke(box, [link]));
-        ElementStyle[] cached = Assert.IsType<ElementStyle[]>(GetLinkInlineSpanStylesMethod.Invoke(box, [link]));
+        ElementStyle[] first = box.GetLinkInlineSpanStyles(link);
+        ElementStyle[] cached = box.GetLinkInlineSpanStyles(link);
         ElementStyle codeStyle = first[FindSpanIndex(map, codeSpan)];
-        ElementStyle linkStyle = Assert.IsType<ElementStyle>(GetRunStyleMethod.Invoke(box, [link]));
+        ElementStyle linkStyle = box.GetRunStyle(link);
 
         Assert.Equal([MarkdownElementKeys.Superscript], link.ScriptStyleAncestryKeys);
         Assert.Same(first, cached);
@@ -725,8 +696,7 @@ public sealed class RelativeScriptFontSizeTests
             },
             GetPathKeys(subSpan.Path));
 
-        ElementStyle[] resolved = Assert.IsType<ElementStyle[]>(
-            GetLinkInlineSpanStylesMethod.Invoke(box, [link]));
+        ElementStyle[] resolved = box.GetLinkInlineSpanStyles(link);
         int subSpanIndex = FindSpanIndex(map, subSpan);
         Assert.Equal(9f, resolved[subSpanIndex].FontSize);
     }
@@ -768,8 +738,7 @@ public sealed class RelativeScriptFontSizeTests
         Assert.Equal(
             new[] { MarkdownElementKeys.Superscript, MarkdownElementKeys.Subscript },
             GetPathKeys(subSpan.Path));
-        ElementStyle[] resolved = Assert.IsType<ElementStyle[]>(
-            GetLinkInlineSpanStylesMethod.Invoke(content, [link]));
+        ElementStyle[] resolved = content.GetLinkInlineSpanStyles(link);
         Assert.Equal(9f, resolved[FindSpanIndex(map, subSpan)].FontSize);
     }
 
@@ -802,8 +771,7 @@ public sealed class RelativeScriptFontSizeTests
         try
         {
             box.Add(link);
-            ElementStyle[] resolved = Assert.IsType<ElementStyle[]>(
-                GetLinkInlineSpanStylesMethod.Invoke(box, [link]));
+            ElementStyle[] resolved = box.GetLinkInlineSpanStyles(link);
             Assert.Single(resolved);
             Assert.True(float.IsFinite(resolved[0].FontSize));
             Assert.True(resolved[0].FontSize > 0f);
@@ -1275,7 +1243,7 @@ public sealed class RelativeScriptFontSizeTests
             ? MarkdownElementKeys.Superscript
             : MarkdownElementKeys.Subscript;
 
-        Assert.Equal(expected, GetInnermostScriptStyleKeyMethod.Invoke(null, [run]));
+        Assert.Equal(expected, InlineRunStyleResolver.GetInnermostScriptStyleKey(run));
     }
 
     [Theory]
@@ -1335,8 +1303,7 @@ public sealed class RelativeScriptFontSizeTests
         try
         {
             box.Add(run);
-            object? result = GetRunStyleMethod.Invoke(box, [run]);
-            return Assert.IsType<ElementStyle>(result);
+            return box.GetRunStyle(run);
         }
         finally
         {
@@ -1430,13 +1397,7 @@ public sealed class RelativeScriptFontSizeTests
     }
 
     private static InlineContainerBox GetBodyCell(TableBox table, int row, int column)
-    {
-        InlineContainerBox[][] bodyCells = Assert.IsType<InlineContainerBox[][]>(
-            typeof(TableBox)
-                .GetField("_bodyCells", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .GetValue(table));
-        return bodyCells[row][column];
-    }
+        => table.BodyCells[row][column];
 
     private static IEnumerable<ListItemBox> EnumerateListItems(IEnumerable<BlockBox> boxes)
     {

@@ -98,7 +98,7 @@ public sealed class SourceSliceMeasuredPlacementTransferTests
             Assert.True(source.TryCaptureMeasuredPlacementTransfer(
                 candidate,
                 320f,
-                out InlineContainerBox.MeasuredPlacementTransfer? transfer));
+                out InlineMeasuredPlacementTransfer? transfer));
             Assert.NotNull(transfer);
             AssertUnmaterialized(left, right);
             AssertUnmaterialized(candidateSlices);

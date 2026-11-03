@@ -25,15 +25,6 @@ public sealed class MarkdownStyleSelectorAncestorTests
     private static readonly Color HeadingForeground = Color.FromArgb(0xFF, 0x82, 0x2A, 0x6B);
     private static readonly Color HighContrastForeground = Color.FromArgb(0xFF, 0xFF, 0xFF, 0x00);
     private static readonly Color HighContrastBackground = Color.FromArgb(0xFF, 0x00, 0x00, 0x00);
-    private static readonly MethodInfo GetRunStyleMethod = typeof(InlineContainerBox).GetMethod(
-        "GetRunStyle",
-        BindingFlags.Instance | BindingFlags.NonPublic)!;
-    private static readonly MethodInfo GetContainerStyleMethod = typeof(InlineContainerBox).GetMethod(
-        "GetContainerStyle",
-        BindingFlags.Instance | BindingFlags.NonPublic)!;
-    private static readonly MethodInfo GetLinkInlineSpanStylesMethod = typeof(InlineContainerBox).GetMethod(
-        "GetLinkInlineSpanStyles",
-        BindingFlags.Instance | BindingFlags.NonPublic)!;
 
     [Fact]
     public void PreAncestorArgumentListsStillBindAndStayUnqualified()
@@ -205,7 +196,7 @@ public sealed class MarkdownStyleSelectorAncestorTests
             Assert.Equal(LinkForeground, ResolveRunStyle(inline, link).Foreground);
             LinkInlineStyleMap map = Assert.IsType<LinkInlineStyleMap>(link.InlineStyleMap);
             ElementStyle[] spanStyles = Assert.IsType<ElementStyle[]>(
-                GetLinkInlineSpanStylesMethod.Invoke(inline, [link]));
+                inline.GetLinkInlineSpanStyles(link));
 
             Assert.Equal(LinkForeground, GetNestedSpanStyle(map, spanStyles, MarkdownElementKeys.Strong).Foreground);
             Assert.Equal(LinkForeground, GetNestedSpanStyle(map, spanStyles, MarkdownElementKeys.Emphasis).Foreground);
@@ -274,10 +265,10 @@ public sealed class MarkdownStyleSelectorAncestorTests
     }
 
     private static ElementStyle ResolveRunStyle(InlineContainerBox inline, InlineRun run)
-        => Assert.IsType<ElementStyle>(GetRunStyleMethod.Invoke(inline, [run]));
+        => Assert.IsType<ElementStyle>(inline.GetRunStyle(run));
 
     private static ElementStyle ResolveContainerStyle(InlineContainerBox inline)
-        => Assert.IsType<ElementStyle>(GetContainerStyleMethod.Invoke(inline, null));
+        => Assert.IsType<ElementStyle>(inline.GetContainerStyle());
 
     private static ElementStyle GetNestedSpanStyle(
         LinkInlineStyleMap map,

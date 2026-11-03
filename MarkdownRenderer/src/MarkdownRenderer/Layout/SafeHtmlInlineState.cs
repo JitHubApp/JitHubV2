@@ -11,6 +11,12 @@ internal sealed class SafeHtmlInlineState
 {
     private readonly List<Scope> _scopes = [];
     private List<ScriptStyleAncestryToken>? _scriptStyleAncestry;
+
+    /// <summary>
+    /// The open script scopes in source order, or null before the first one.
+    /// </summary>
+    internal IReadOnlyList<ScriptStyleAncestryToken>? ScriptStyleAncestry => _scriptStyleAncestry;
+
     private readonly SafeHtmlRenderPolicy? _policy;
     private int? _sourceStart;
     private int _nodeCount;

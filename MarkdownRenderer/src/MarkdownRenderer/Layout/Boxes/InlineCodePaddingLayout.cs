@@ -376,7 +376,7 @@ internal static class InlineCodePaddingLayout
             trailing += value;
     }
 
-    private static int FindLastTextElementStart(
+    internal static int FindLastTextElementStart(
         string text,
         int start,
         int length,

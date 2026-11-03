@@ -47,13 +47,16 @@ internal sealed class InlineContainerBox : BlockBox
     // Most runs inherit the container aliases. Keep that common case implicit;
     // once an override exists, null slots preserve the exact run ordinals.
     private List<string[]?>? _effectiveRunAliasOverrides;
+    internal List<string[]?>? EffectiveRunAliasOverrides => _effectiveRunAliasOverrides;
     // Offscreen lazy boxes have not resolved any run style yet. Preserve the
     // ordinal cache contract without allocating a List and null slots for them.
     private List<ElementStyle?>? _resolvedRunStyles;
+    internal List<ElementStyle?>? ResolvedRunStyles => _resolvedRunStyles;
     // Nested link styles are resolved once per measured box. Plain links never
     // allocate this cache, and immutable maps remain safely shareable by private
     // placement clones while each clone resolves against its own context.
     private List<ElementStyle[]?>? _resolvedLinkInlineSpanStyles;
+    internal List<ElementStyle[]?>? ResolvedLinkInlineSpanStyles => _resolvedLinkInlineSpanStyles;
     internal int ResolvedRunStyleCount => _resolvedRunStyles?.Count ?? _runs.Count;
     internal ElementStyle? GetCachedRunStyle(int index)
     {
@@ -1402,7 +1405,7 @@ internal sealed class InlineContainerBox : BlockBox
         return overrides[index];
     }
 
-    private void AppendEffectiveRunAliasOverride(int index, string[]? aliases)
+    internal void AppendEffectiveRunAliasOverride(int index, string[]? aliases)
     {
         // Add the run before recording its override so the logical ordinal and
         // run count remain the same fence used by style lookup and transfers.

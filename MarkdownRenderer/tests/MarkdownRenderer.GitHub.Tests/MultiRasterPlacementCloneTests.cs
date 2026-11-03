@@ -26,7 +26,7 @@ public sealed class MultiRasterPlacementCloneTests
         MarkdownLayoutContext candidateContext = fixture.CreateCandidateContext();
         SourceSpan[] sourceSpans = fixture.Source.Runs.Select(static run => run.SourceSpan).ToArray();
         string sourceSlice = GetWholeBlockSourceSlice(fixture.Source);
-        CanvasTextLayout sourceLayout = GetField<CanvasTextLayout>(fixture.Source, "_layout");
+        CanvasTextLayout sourceLayout = Assert.IsType<CanvasTextLayout>(fixture.Source.TextLayout);
         Rect sourceBounds = fixture.Source.Bounds;
 
         Assert.True(fixture.Source.TryCreatePrivateRasterImageCandidates(
@@ -96,9 +96,9 @@ public sealed class MultiRasterPlacementCloneTests
         Assert.True(float.IsFinite(candidateHeight));
         Assert.True(candidateHeight > 0);
         Assert.True(cloned.HasMeasuredLayout);
-        Assert.NotSame(sourceLayout, GetField<CanvasTextLayout>(cloned, "_layout"));
+        Assert.NotSame(sourceLayout, Assert.IsType<CanvasTextLayout>(cloned.TextLayout));
         Assert.Equal(sourceBounds, fixture.Source.Bounds);
-        Assert.Same(sourceLayout, GetField<CanvasTextLayout>(fixture.Source, "_layout"));
+        Assert.Same(sourceLayout, Assert.IsType<CanvasTextLayout>(fixture.Source.TextLayout));
     }
 
     [Fact]
@@ -213,11 +213,8 @@ public sealed class MultiRasterPlacementCloneTests
     public async Task MalformedInlineImageOffsetOrRunIndexRejectsBeforeCloneLeaseAcquisition()
     {
         await using var fixture = new MultiRasterFixture(imageCount: 2);
-        FieldInfo entriesField = typeof(InlineContainerBox).GetField(
-            "_inlineImageRuns",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
         var entries = Assert.IsType<List<(InlineImageRun Run, int Offset)>>(
-            entriesField.GetValue(fixture.Source));
+            fixture.Source.InlineImageEntries);
         var secondEntry = entries[1];
         int[] referencesBefore = fixture.ImageBoxes
             .Select(static image => GetEntryReferenceCount(GetImageLease(image)))

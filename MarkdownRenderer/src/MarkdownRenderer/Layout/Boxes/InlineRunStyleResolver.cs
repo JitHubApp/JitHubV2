@@ -345,7 +345,13 @@ internal static class InlineRunStyleResolver
             ? run.SemanticHeadingKey
             : IsHeadingElement(box.ElementKey) ? box.ElementKey : string.Empty;
 
-    private static string? GetInnermostScriptStyleKey(InlineRun run)
+    /// <summary>
+    /// Returns the innermost script role (subscript or superscript) that
+    /// applies to a run: its ordered script ancestry first, then its own
+    /// element and modifiers, then a superscript link.
+    /// </summary>
+    /// <param name="run">The inline run to inspect.</param>
+    internal static string? GetInnermostScriptStyleKey(InlineRun run)
     {
         if (run.ScriptStyleAncestryKeys.Count > 0)
             return run.ScriptStyleAncestryKeys[run.ScriptStyleAncestryKeys.Count - 1];
