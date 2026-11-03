@@ -18,9 +18,12 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
     private readonly WorkerDocumentRenderer _renderer;
     private readonly WorkerRasterDecoder _rasterDecoder;
 
-    public WorkerPool(ResvgMarkdownSvgRendererOptions options, IWorkerProcessLauncher? launcher = null)
+    public WorkerPool(
+        ResvgMarkdownSvgRendererOptions options,
+        IWorkerProcessLauncher? launcher = null,
+        IWorkerAdmissionObserver? admissionObserver = null)
         : this(options, TimeProvider.System, WorkerEnergySaver.QueryEnergySaverOn, null, null, useWorkerSecurityContext: true,
-            new SvgWorkerPolicyTrace(), launcher)
+            new SvgWorkerPolicyTrace(), launcher, admissionObserver)
     {
     }
 
@@ -33,7 +36,7 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
         SvgWorkerPolicyTrace? workerPolicyTrace = null,
         IWorkerProcessLauncher? launcher = null)
         : this(options, timeProvider, isEnergySaverOn, sourceMemoryFactory, outputMemoryFactory,
-            useWorkerSecurityContext: false, workerPolicyTrace ?? new SvgWorkerPolicyTrace(), launcher)
+            useWorkerSecurityContext: false, workerPolicyTrace ?? new SvgWorkerPolicyTrace(), launcher, admissionObserver: null)
     {
     }
 
@@ -45,7 +48,8 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
         Func<string, int, SharedMemoryLease>? outputMemoryFactory,
         bool useWorkerSecurityContext,
         SvgWorkerPolicyTrace workerPolicyTrace,
-        IWorkerProcessLauncher? launcher)
+        IWorkerProcessLauncher? launcher,
+        IWorkerAdmissionObserver? admissionObserver)
     {
         if (useWorkerSecurityContext && (sourceMemoryFactory is not null || outputMemoryFactory is not null))
             throw new ArgumentException("Production mapping factories must use the selected worker's security context.");
@@ -71,7 +75,8 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
             timeProvider,
             isEnergySaverOn,
             supportsSecondaryHardware,
-            workerPolicyTrace);
+            workerPolicyTrace,
+            admissionObserver: admissionObserver);
         var textAdmission = new WorkerTextAdmission(_scheduler, _requests, options);
         _bindings = new WorkerDocumentBindings(_scheduler, _requests, options);
         _opener = new WorkerDocumentOpener(_scheduler, textAdmission, _bindings, _requests, options, sourceMemoryFactory);
@@ -83,9 +88,6 @@ internal sealed class WorkerPool : IAsyncDisposable, IDisposable
     public string WorkerPath { get; }
     public long FontGeneration => _requests.FontGeneration;
     internal long SourceAttachmentCount => _bindings.SourceAttachmentCount;
-
-    /// <summary>The number of document IDs issued to opens that reached worker admission.</summary>
-    internal long IssuedDocumentCount => _opener.IssuedDocumentCount;
 
     public Task WarmUpAsync(CancellationToken cancellationToken) => _scheduler.WarmUpAsync(cancellationToken);
 

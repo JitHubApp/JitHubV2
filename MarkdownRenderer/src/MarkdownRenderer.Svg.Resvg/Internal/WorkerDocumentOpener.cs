@@ -24,8 +24,6 @@ internal sealed class WorkerDocumentOpener(
     private readonly Func<string, SvgSourceBuffer, SharedMemoryLease>? _sourceMemoryFactory = sourceMemoryFactory;
     private long _nextDocumentId;
 
-    internal long IssuedDocumentCount => Volatile.Read(ref _nextDocumentId);
-
     // This internal operation is consumed once by the renderer. Reuse only
     // the runtime-owned async frame, never the document/source lifetime.
     [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]

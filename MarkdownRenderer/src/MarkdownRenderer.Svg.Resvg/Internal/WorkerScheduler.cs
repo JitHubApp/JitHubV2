@@ -38,6 +38,7 @@ internal sealed class WorkerScheduler :
     private readonly WorkerEnergySaver _energySaver;
     private readonly bool _supportsSecondaryHardware;
     private readonly WorkerPolicyRecorder _policyRecorder;
+    private readonly IWorkerAdmissionObserver? _admissionObserver;
     private readonly CancellationTokenSource _disposeCancellation = new();
     private TaskCompletionSource _queueCapacityChanged =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -52,8 +53,10 @@ internal sealed class WorkerScheduler :
         Func<bool> isEnergySaverOn,
         bool supportsSecondaryHardware,
         SvgWorkerPolicyTrace workerPolicyTrace,
-        DetachedFontWaitLedger? detachedFontWaits = null)
+        DetachedFontWaitLedger? detachedFontWaits = null,
+        IWorkerAdmissionObserver? admissionObserver = null)
     {
+        _admissionObserver = admissionObserver;
         _options = options;
         _requests = requests;
         _fleet = new WorkerProcessFleet(launcher, options, supportsSecondaryHardware);
@@ -158,6 +161,7 @@ internal sealed class WorkerScheduler :
         WorkerFontWaitReservation? fontWaitReservation = null,
         MarkdownSvgRenderDemand? demandTicket = null)
     {
+        _admissionObserver?.AdmissionRequested(operation, cancellationToken);
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, typeof(WorkerPool));
         cancellationToken.ThrowIfCancellationRequested();
         var pending = new PendingWork(

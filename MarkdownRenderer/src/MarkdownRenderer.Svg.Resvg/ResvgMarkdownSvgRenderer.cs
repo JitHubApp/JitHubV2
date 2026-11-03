@@ -175,12 +175,13 @@ public sealed class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMarkdownRa
     internal ResvgMarkdownSvgRenderer(
         ResvgMarkdownSvgRendererOptions options,
         SvgProcessSnapshotAdmission snapshotAdmission,
-        IWorkerProcessLauncher? workerLauncher = null)
+        IWorkerProcessLauncher? workerLauncher = null,
+        IWorkerAdmissionObserver? admissionObserver = null)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _snapshotAdmission = snapshotAdmission ?? throw new ArgumentNullException(nameof(snapshotAdmission));
         _sourceOwnership = new SvgProviderSnapshotLedger(snapshotAdmission.SourceLedger);
-        _workers = new WorkerPool(options, workerLauncher);
+        _workers = new WorkerPool(options, workerLauncher, admissionObserver);
         _quarantine = new SvgContentQuarantine(_workers);
         _opener = new SvgDocumentOpenOperation(
             this, options, _workers, _quarantine, snapshotAdmission, _sourceOwnership, _openOperations);
