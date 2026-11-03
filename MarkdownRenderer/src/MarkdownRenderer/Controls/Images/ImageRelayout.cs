@@ -388,28 +388,33 @@ internal sealed class ImageRelayout
         }
         finally
         {
-            // A replacement can cancel an active reflow and then fail itself.
-            // Recover current image geometry without retaining the worker's
-            // dirty array in the delayed UI envelope or touching a retired graph.
-            if (current && canceled && !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
-                ReferenceEquals(snapshot, _published.Snapshot) && snapshot?.GeometryRecoveryRequired != true)
-            {
-                _imageSubscriptions.AddBlockIndicesTo(_pending);
-            }
-            // The pending set is cleared before every snapshot replacement.
-            // New-snapshot completions may accumulate while an old task drains.
-            if (current && _pending.Count > 0 && !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
-                _published.Snapshot?.GeometryRecoveryRequired != true)
-            {
-                foreach (int pending in _pending)
-                {
-                    Queue(pending);
-                    break;
-                }
-            }
+            RequeueAfterCompletion(snapshot, current, canceled);
             if (started != 0)
                 MarkdownPerformanceEventSource.Log.ResourceWork(
                     4, Stopwatch.GetTimestamp() - started, 1);
+        }
+    }
+
+    private void RequeueAfterCompletion(LayoutSnapshot? snapshot, bool current, bool canceled)
+    {
+        // A replacement can cancel an active reflow and then fail itself.
+        // Recover current image geometry without retaining the worker's
+        // dirty array in the delayed UI envelope or touching a retired graph.
+        if (current && canceled && !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
+            ReferenceEquals(snapshot, _published.Snapshot) && snapshot?.GeometryRecoveryRequired != true)
+        {
+            _imageSubscriptions.AddBlockIndicesTo(_pending);
+        }
+        // The pending set is cleared before every snapshot replacement.
+        // New-snapshot completions may accumulate while an old task drains.
+        if (current && _pending.Count > 0 && !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
+            _published.Snapshot?.GeometryRecoveryRequired != true)
+        {
+            foreach (int pending in _pending)
+            {
+                Queue(pending);
+                break;
+            }
         }
     }
 }
