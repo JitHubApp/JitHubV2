@@ -286,9 +286,46 @@ internal sealed class MarkdownSharedImageFetcher
         CancellationToken cancellationToken
         )
     {
+        SharedImageFetch flight = JoinOrCreateFlight(
+            key, background, out SharedImageFetch? superseded, out bool startFlight);
+
+        // Publish the shared task while holding the gate, but do not run the
+        // async method's synchronous prefix there. SemaphoreSlim.WaitAsync can
+        // complete inline, and a resolver is allowed to do synchronous work
+        // before returning its ValueTask. Running that prefix outside the gate
+        // keeps unrelated source flights admissible.
+        if (startFlight)
+            StartFlight(flight, owner, key, resolver, context, background);
+
+        if (superseded is not null)
+        {
+            try { superseded.RequestCancellation(); }
+            catch (ObjectDisposedException) { }
+        }
+
+        try
+        {
+            await flight.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            return flight.RetainResult();
+        }
+        finally
+        {
+            LeaveFlight(key, flight);
+        }
+    }
+
+    // Joins the current flight for the key, or publishes a new one when none
+    // exists or a visible request replaces a background flight. Every caller
+    // is counted as a waiter before the gate is released.
+    private SharedImageFetch JoinOrCreateFlight(
+        ImageSourceKey key,
+        bool background,
+        out SharedImageFetch? superseded,
+        out bool startFlight)
+    {
+        superseded = null;
+        startFlight = false;
         SharedImageFetch flight;
-        SharedImageFetch? superseded = null;
-        bool startFlight = false;
         lock (_flightGate)
         {
             if (_lifetime.IsDisposed)
@@ -331,103 +368,97 @@ internal sealed class MarkdownSharedImageFetcher
             flight.WaiterCount++;
         }
 
-        // Publish the shared task while holding the gate, but do not run the
-        // async method's synchronous prefix there. SemaphoreSlim.WaitAsync can
-        // complete inline, and a resolver is allowed to do synchronous work
-        // before returning its ValueTask. Running that prefix outside the gate
-        // keeps unrelated source flights admissible.
-        if (startFlight)
-        {
-            SharedImageFetch startedFlight = flight;
-            startedFlight.Start(
-                () => FetchAsync(
-                    owner, key, resolver, context, background, startedFlight.MarkResolutionStarted,
-                    startedFlight.Cancellation.Token
-                    ),
-                (result, operationCompletion) =>
-                {
-                    try
-                    {
-                        bool releaseRoot;
-                        lock (_flightGate)
-                        {
-                            if (_sharedFlights.TryGetValue(key, out SharedImageFetch? current) &&
-                                ReferenceEquals(current, startedFlight))
-                                _sharedFlights.Remove(key);
-                            bool published = startedFlight.SetResult(result);
-                            releaseRoot = !published || startedFlight.WaiterCount == 0;
-                        }
-                        if (releaseRoot)
-                            startedFlight.ReleaseRootSafely();
-                    }
-                    finally
-                    {
-                        startedFlight.RetireCancellation(operationCompletion);
-                    }
-                },
-                (exception, operationCompletion) =>
-                {
-                    try
-                    {
-                        bool releaseRoot;
-                        lock (_flightGate)
-                        {
-                            if (_sharedFlights.TryGetValue(key, out SharedImageFetch? current) &&
-                                ReferenceEquals(current, startedFlight))
-                                _sharedFlights.Remove(key);
-                            startedFlight.SetException(exception);
-                            releaseRoot = startedFlight.WaiterCount == 0;
-                        }
-                        if (releaseRoot)
-                            startedFlight.ReleaseRootSafely();
-                    }
-                    finally
-                    {
-                        startedFlight.RetireCancellation(operationCompletion);
-                    }
-                });
-        }
+        return flight;
+    }
 
-        if (superseded is not null)
-        {
-            try { superseded.RequestCancellation(); }
-            catch (ObjectDisposedException) { }
-        }
-
-        try
-        {
-            await flight.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
-            return flight.RetainResult();
-        }
-        finally
-        {
-            bool cancel = false;
-            bool releaseRoot = false;
-            lock (_flightGate)
+    private void StartFlight(
+        SharedImageFetch startedFlight,
+        MarkdownPerformanceDocumentScope owner,
+        ImageSourceKey key,
+        IMarkdownImageResolver resolver,
+        MarkdownImageResolveContext context,
+        bool background)
+    {
+        startedFlight.Start(
+            () => FetchAsync(
+                owner, key, resolver, context, background, startedFlight.MarkResolutionStarted,
+                startedFlight.Cancellation.Token
+                ),
+            (result, operationCompletion) =>
             {
-                if (--flight.WaiterCount == 0)
+                try
                 {
-                    if (!flight.Task.IsCompleted)
+                    bool releaseRoot;
+                    lock (_flightGate)
                     {
-                        if (_sharedFlights.TryGetValue(key, out SharedImageFetch? current) &&
-                            ReferenceEquals(current, flight))
-                            _sharedFlights.Remove(key);
-                        cancel = true;
+                        RemoveCurrentFlightNoLock(key, startedFlight);
+                        bool published = startedFlight.SetResult(result);
+                        releaseRoot = !published || startedFlight.WaiterCount == 0;
                     }
-                    else
+                    if (releaseRoot)
+                        startedFlight.ReleaseRootSafely();
+                }
+                finally
+                {
+                    startedFlight.RetireCancellation(operationCompletion);
+                }
+            },
+            (exception, operationCompletion) =>
+            {
+                try
+                {
+                    bool releaseRoot;
+                    lock (_flightGate)
                     {
-                        releaseRoot = true;
+                        RemoveCurrentFlightNoLock(key, startedFlight);
+                        startedFlight.SetException(exception);
+                        releaseRoot = startedFlight.WaiterCount == 0;
                     }
+                    if (releaseRoot)
+                        startedFlight.ReleaseRootSafely();
+                }
+                finally
+                {
+                    startedFlight.RetireCancellation(operationCompletion);
+                }
+            });
+    }
+
+    // The last waiter to leave an unfinished flight cancels it; the last
+    // waiter to leave a finished flight releases its shared result.
+    private void LeaveFlight(ImageSourceKey key, SharedImageFetch flight)
+    {
+        bool cancel = false;
+        bool releaseRoot = false;
+        lock (_flightGate)
+        {
+            if (--flight.WaiterCount == 0)
+            {
+                if (!flight.Task.IsCompleted)
+                {
+                    RemoveCurrentFlightNoLock(key, flight);
+                    cancel = true;
+                }
+                else
+                {
+                    releaseRoot = true;
                 }
             }
-            if (cancel)
-            {
-                try { flight.RequestCancellation(); }
-                catch (ObjectDisposedException) { }
-            }
-            if (releaseRoot)
-                flight.ReleaseRootSafely();
         }
+        if (cancel)
+        {
+            try { flight.RequestCancellation(); }
+            catch (ObjectDisposedException) { }
+        }
+        if (releaseRoot)
+            flight.ReleaseRootSafely();
+    }
+
+    private void RemoveCurrentFlightNoLock(ImageSourceKey key, SharedImageFetch flight)
+    {
+        if (_sharedFlights.TryGetValue(key, out SharedImageFetch? current) &&
+            ReferenceEquals(current, flight))
+            _sharedFlights.Remove(key);
     }
 
     private static bool ShouldPauseRemotePrefetch()
