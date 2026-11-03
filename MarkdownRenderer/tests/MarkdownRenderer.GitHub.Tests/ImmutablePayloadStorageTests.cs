@@ -76,7 +76,7 @@ public sealed class ImmutablePayloadStorageTests
             "ElementKey ContextKeys AliasKeys Language State");
         AssertReadonly(typeof(SharedCanvasBitmapCacheKey), "Device Identity");
         AssertReadonly(typeof(InlineScenePlacementRollbackState), "Run LocalBounds");
-        AssertReadonly(Nested(typeof(ImageBox), "InlineMeasureCheckpoint"),
+        AssertReadonly(typeof(InlineMeasureCheckpoint),
             "Owner Generation WasInlineLayout PreviousAvailableWidth PreviousImageWidth PreviousImageHeight " +
             "PreviousCaptionHeight PreviousBounds");
         AssertReadonly(Nested(typeof(RasterIconHeaderReader), "IconPayloadRange"), "Offset Length");

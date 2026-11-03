@@ -227,7 +227,7 @@ public sealed class InlineContainerMeasureTransactionTests
             CanvasTextLayout originalPlaceholder = Assert.IsType<CanvasTextLayout>(
                 imageRun.Image.MeasureCustody.GetLayoutState().Placeholder);
 
-            ImageBox.InlineMeasureCheckpoint checkpoint =
+            InlineMeasureCheckpoint checkpoint =
                 imageRun.Image.BeginInlineCheckpoint();
             imageRun.Measure(150f, 20f, checkpoint);
             CanvasTextLayout replacementPlaceholder = Assert.IsType<CanvasTextLayout>(

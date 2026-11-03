@@ -1250,7 +1250,7 @@ public sealed class RootLocalImageRelayoutTests
                 context,
                 out prepared,
                 out SharedCanvasBitmapCache.Lease? expectedLease,
-                out ImageBox.CompletedSvgPlacementMetadataFence? svgFence));
+                out CompletedSvgPlacementMetadataFence? svgFence));
             Assert.NotNull(prepared);
             Assert.NotNull(expectedLease);
             _ = prepared.Measure(availableWidth);

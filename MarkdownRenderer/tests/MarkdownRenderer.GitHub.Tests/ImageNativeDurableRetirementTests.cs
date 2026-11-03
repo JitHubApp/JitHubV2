@@ -119,7 +119,7 @@ public sealed class ImageNativeDurableRetirementTests
         NativeResourceRetirementRecord originalRecord = Assert.IsType<NativeResourceRetirementRecord>(
             image.MeasureCustody.GetLayoutState().PlaceholderRecord);
 
-        ImageBox.InlineMeasureCheckpoint rollback = image.BeginInlineCheckpoint();
+        InlineMeasureCheckpoint rollback = image.BeginInlineCheckpoint();
         _ = image.MeasureInline(100f, 22f, rollback);
         CanvasTextLayout rolledBackCandidate = Assert.IsType<CanvasTextLayout>(image.MeasureCustody.GetLayoutState().Placeholder);
         NativeResourceRetirementRecord rolledBackRecord = Assert.IsType<NativeResourceRetirementRecord>(
@@ -134,7 +134,7 @@ public sealed class ImageNativeDurableRetirementTests
         Assert.Equal(1, retirement.PendingResourceCount);
         Assert.True(retirement.DrainOnce());
 
-        ImageBox.InlineMeasureCheckpoint commit = image.BeginInlineCheckpoint();
+        InlineMeasureCheckpoint commit = image.BeginInlineCheckpoint();
         _ = image.MeasureInline(80f, 22f, commit);
         CanvasTextLayout committed = Assert.IsType<CanvasTextLayout>(image.MeasureCustody.GetLayoutState().Placeholder);
         NativeResourceRetirementRecord committedRecord = Assert.IsType<NativeResourceRetirementRecord>(
@@ -190,7 +190,7 @@ public sealed class ImageNativeDurableRetirementTests
             CanvasTextLayout sourceCaption = Assert.IsType<CanvasTextLayout>(source.MeasureCustody.GetLayoutState().Caption);
             NativeResourceRetirementRecord sourceCaptionRecord = Assert.IsType<NativeResourceRetirementRecord>(
                 source.MeasureCustody.GetLayoutState().CaptionRecord);
-            var transfer = new ImageBox.MeasuredPlacementTransfer(
+            var transfer = new ImageMeasuredPlacementTransfer(
                 source,
                 prepared,
                 expectedLease,
@@ -327,7 +327,7 @@ public sealed class ImageNativeDurableRetirementTests
             originalPreparedRecord = Assert.IsType<NativeResourceRetirementRecord>(
                 candidate.MeasureCustody.GetLayoutState().CaptionRecord);
             candidate.MeasureCustody.ReplaceCaptionRecord(sharedRecord);
-            var transfer = new ImageBox.MeasuredPlacementTransfer(
+            var transfer = new ImageMeasuredPlacementTransfer(
                 source,
                 candidate,
                 expectedLease,
@@ -440,7 +440,7 @@ public sealed class ImageNativeDurableRetirementTests
         var image = new ImageBox(context, ImageResourceScope.Shared, string.Empty, "disposed checkpoint", retirement, disposer.Dispose);
         _ = image.MeasureInline(180f, 22f);
         CanvasTextLayout original = Assert.IsType<CanvasTextLayout>(image.MeasureCustody.GetLayoutState().Placeholder);
-        ImageBox.InlineMeasureCheckpoint checkpoint = image.BeginInlineCheckpoint();
+        InlineMeasureCheckpoint checkpoint = image.BeginInlineCheckpoint();
         _ = image.MeasureInline(100f, 22f, checkpoint);
         CanvasTextLayout candidate = Assert.IsType<CanvasTextLayout>(image.MeasureCustody.GetLayoutState().Placeholder);
         Assert.NotSame(original, candidate);

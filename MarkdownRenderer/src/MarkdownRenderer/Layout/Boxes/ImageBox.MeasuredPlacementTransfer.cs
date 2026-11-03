@@ -11,63 +11,6 @@ namespace MarkdownRenderer.Layout.Boxes;
 
 internal sealed partial class ImageBox
 {
-    internal const int MaximumMeasuredPlacementTransferBatchCount = 32;
-
-    internal readonly struct NativeLayoutPlacementFence(
-        CanvasTextLayout? Placeholder,
-        NativeResourceRetirementRecord? PlaceholderRetirementRecord,
-        CanvasTextLayout? Caption,
-        NativeResourceRetirementRecord? CaptionRetirementRecord,
-        int Generation,
-        bool IsValid)
-    {
-        public CanvasTextLayout? Placeholder { get; init; } = Placeholder;
-        public NativeResourceRetirementRecord? PlaceholderRetirementRecord { get; init; } = PlaceholderRetirementRecord;
-        public CanvasTextLayout? Caption { get; init; } = Caption;
-        public NativeResourceRetirementRecord? CaptionRetirementRecord { get; init; } = CaptionRetirementRecord;
-        public int Generation { get; init; } = Generation;
-        public bool IsValid { get; init; } = IsValid;
-    }
-
-    internal readonly struct MeasuredPlacementTransfer
-    {
-        internal ImageBox Source { get; init; }
-        internal ImageBox Prepared { get; init; }
-        internal SharedCanvasBitmapCache.Lease ExpectedSourceLease { get; init; }
-        internal CompletedSvgPlacementMetadataFence? ExpectedSvgMetadataFence { get; init; }
-        internal bool ExpectedInlineLayout { get; init; }
-        internal float ExpectedAvailableWidth { get; init; }
-        internal float ExpectedPreparedAvailableWidth { get; init; }
-        internal NativeLayoutPlacementFence ExpectedSourceNativeLayouts { get; init; }
-        internal NativeLayoutPlacementFence? ExpectedPreparedNativeLayouts { get; init; }
-
-        internal MeasuredPlacementTransfer(
-            ImageBox Source,
-            ImageBox Prepared,
-            SharedCanvasBitmapCache.Lease ExpectedSourceLease,
-            CompletedSvgPlacementMetadataFence? ExpectedSvgMetadataFence,
-            bool ExpectedInlineLayout = false,
-            float ExpectedAvailableWidth = 0f,
-            float ExpectedPreparedAvailableWidth = 0f)
-        {
-            this.Source = Source;
-            this.Prepared = Prepared;
-            this.ExpectedSourceLease = ExpectedSourceLease;
-            this.ExpectedSvgMetadataFence = ExpectedSvgMetadataFence;
-            this.ExpectedInlineLayout = ExpectedInlineLayout;
-            this.ExpectedAvailableWidth = ExpectedAvailableWidth;
-            this.ExpectedPreparedAvailableWidth = ExpectedPreparedAvailableWidth;
-            ExpectedSourceNativeLayouts = Source is not null &&
-                Source.TryCaptureNativeLayoutPlacementFence(out var fence)
-                ? fence
-                : default;
-            ExpectedPreparedNativeLayouts = Prepared is not null &&
-                Prepared.TryCaptureNativeLayoutPlacementFence(out var preparedFence)
-                ? preparedFence
-                : null;
-        }
-    }
-
     /// <summary>
     /// Captures the exact width used by a completed inline image's atomic
     /// measurement. Callers must still retain the image identity and validate
@@ -219,7 +162,7 @@ internal sealed partial class ImageBox
     {
         ArgumentNullException.ThrowIfNull(prepared);
         ArgumentNullException.ThrowIfNull(expectedSourceLease);
-        var transfer = new MeasuredPlacementTransfer(
+        var transfer = new ImageMeasuredPlacementTransfer(
             this, prepared, expectedSourceLease, expectedSvgMetadataFence);
         return TryTransferMeasuredPlacementsFromCompletedClones(
             MemoryMarshal.CreateReadOnlySpan(ref transfer, 1),
@@ -234,12 +177,12 @@ internal sealed partial class ImageBox
     /// is swapped, so a stale final pair leaves every earlier pair untouched.
     /// </summary>
     internal static bool TryTransferMeasuredPlacementsFromCompletedClones(
-        ReadOnlySpan<MeasuredPlacementTransfer> transfers,
+        ReadOnlySpan<ImageMeasuredPlacementTransfer> transfers,
         long currentProviderCacheGeneration,
         float expectedAvailableWidth)
     {
         if (transfers.IsEmpty ||
-            transfers.Length > MaximumMeasuredPlacementTransferBatchCount ||
+            transfers.Length > ImageMeasuredPlacementTransfer.MaximumBatchCount ||
             !float.IsFinite(expectedAvailableWidth) || expectedAvailableWidth <= 0)
         {
             return false;
@@ -252,7 +195,7 @@ internal sealed partial class ImageBox
         ImageResourceScope? batchResources = transfers[0].Source?._resources;
         for (int index = 0; index < transfers.Length; index++)
         {
-            MeasuredPlacementTransfer transfer = transfers[index];
+            ImageMeasuredPlacementTransfer transfer = transfers[index];
             ImageBox? source = transfer.Source;
             ImageBox? prepared = transfer.Prepared;
             SharedCanvasBitmapCache.Lease? expectedLease = transfer.ExpectedSourceLease;
@@ -287,7 +230,7 @@ internal sealed partial class ImageBox
 
             for (int previous = 0; previous < index; previous++)
             {
-                MeasuredPlacementTransfer earlier = transfers[previous];
+                ImageMeasuredPlacementTransfer earlier = transfers[previous];
                 if (ReferenceEquals(source, earlier.Source) ||
                     ReferenceEquals(source, earlier.Prepared) ||
                     ReferenceEquals(prepared, earlier.Source) ||
@@ -308,7 +251,7 @@ internal sealed partial class ImageBox
     }
 
     private static bool TryAcquireSvgTransferLocks(
-        ReadOnlySpan<MeasuredPlacementTransfer> transfers,
+        ReadOnlySpan<ImageMeasuredPlacementTransfer> transfers,
         int index,
         long currentProviderCacheGeneration,
         float expectedAvailableWidth)
@@ -319,7 +262,7 @@ internal sealed partial class ImageBox
                 transfers, 0, currentProviderCacheGeneration, expectedAvailableWidth);
         }
 
-        MeasuredPlacementTransfer transfer = transfers[index];
+        ImageMeasuredPlacementTransfer transfer = transfers[index];
         ImageBox source = transfer.Source;
         ImageBox prepared = transfer.Prepared;
         lock (source._svgWorkSync)
@@ -331,7 +274,7 @@ internal sealed partial class ImageBox
     }
 
     private static bool TryAcquireInlineTransferLocks(
-        ReadOnlySpan<MeasuredPlacementTransfer> transfers,
+        ReadOnlySpan<ImageMeasuredPlacementTransfer> transfers,
         int index,
         long currentProviderCacheGeneration,
         float expectedAvailableWidth)
@@ -343,10 +286,10 @@ internal sealed partial class ImageBox
             // does not call back into image lifecycle locks.
             for (int check = 0; check < transfers.Length; check++)
             {
-                MeasuredPlacementTransfer validatedTransfer = transfers[check];
+                ImageMeasuredPlacementTransfer validatedTransfer = transfers[check];
                 for (int previous = 0; previous < check; previous++)
                 {
-                    MeasuredPlacementTransfer earlierTransfer = transfers[previous];
+                    ImageMeasuredPlacementTransfer earlierTransfer = transfers[previous];
                     if (NativePlacementLayoutsAlias(validatedTransfer.Source, earlierTransfer.Source) ||
                         NativePlacementLayoutsAlias(validatedTransfer.Source, earlierTransfer.Prepared) ||
                         NativePlacementLayoutsAlias(validatedTransfer.Prepared, earlierTransfer.Source) ||
@@ -391,7 +334,7 @@ internal sealed partial class ImageBox
             // reference/scalar swaps and cannot invoke native or host code.
             for (int commit = 0; commit < transfers.Length; commit++)
             {
-                MeasuredPlacementTransfer committedTransfer = transfers[commit];
+                ImageMeasuredPlacementTransfer committedTransfer = transfers[commit];
                 ImageBox committedSource = committedTransfer.Source;
                 ImageBox committedPrepared = committedTransfer.Prepared;
                 (committedSource._measure.AvailableWidth, committedPrepared._measure.AvailableWidth) =
@@ -418,7 +361,7 @@ internal sealed partial class ImageBox
             return true;
         }
 
-        MeasuredPlacementTransfer transfer = transfers[index];
+        ImageMeasuredPlacementTransfer transfer = transfers[index];
         ImageBox source = transfer.Source;
         ImageBox prepared = transfer.Prepared;
         lock (source._measure.Sync)
@@ -600,14 +543,14 @@ internal sealed partial class ImageBox
     }
 
     private static float ResolveExpectedAvailableWidth(
-        MeasuredPlacementTransfer transfer,
+        ImageMeasuredPlacementTransfer transfer,
         float fallbackWidth) =>
         transfer.ExpectedAvailableWidth == 0f
             ? fallbackWidth
             : transfer.ExpectedAvailableWidth;
 
     private static float ResolveExpectedPreparedAvailableWidth(
-        MeasuredPlacementTransfer transfer,
+        ImageMeasuredPlacementTransfer transfer,
         float sourceWidth) =>
         transfer.ExpectedPreparedAvailableWidth == 0f
             ? sourceWidth

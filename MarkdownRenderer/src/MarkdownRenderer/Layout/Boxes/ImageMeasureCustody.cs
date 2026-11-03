@@ -104,7 +104,7 @@ internal sealed class ImageMeasureCustody
     /// <see cref="Sync"/> and has checked that the checkpoint is current.
     /// </summary>
     internal void FinishCheckpointNoLock(
-        ImageBox.InlineMeasureCheckpoint checkpoint,
+        InlineMeasureCheckpoint checkpoint,
         bool commit)
     {
         CanvasTextLayout? originalPlaceholder = OriginalPlaceholder;

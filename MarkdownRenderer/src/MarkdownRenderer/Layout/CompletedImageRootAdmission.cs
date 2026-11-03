@@ -67,7 +67,7 @@ internal sealed class CompletedImageRootAdmission
     private bool TryAdmitImage(ImageBox image)
     {
         if (image.Alt.Length > LayoutSnapshot.MaximumPrivateRasterPlacementTextLength - _textLength ||
-            ++_imageCount > ImageBox.MaximumMeasuredPlacementTransferBatchCount ||
+            ++_imageCount > ImageMeasuredPlacementTransfer.MaximumBatchCount ||
             !_imageIdentities.Add(image) ||
             !image.TryClassifyPrivateImagePlacement(_context, false, out _, out _))
             return false;
@@ -82,7 +82,7 @@ internal sealed class CompletedImageRootAdmission
                 out int rootRuns, out int rootImages, out long rootStyleKeys) ||
             rootImages <= 0 ||
             rootRuns > InlineContainerBox.MaximumPrivateRasterPlacementRuns - _runCount ||
-            rootImages > ImageBox.MaximumMeasuredPlacementTransferBatchCount - _imageCount ||
+            rootImages > ImageMeasuredPlacementTransfer.MaximumBatchCount - _imageCount ||
             inline.PrivateRasterPlacementTextLength >
                 LayoutSnapshot.MaximumPrivateRasterPlacementTextLength - _textLength ||
             !PrivateRasterPlacementTree.TryAccumulateStyleKeyCopyEntries(
@@ -129,7 +129,7 @@ internal sealed class CompletedImageRootAdmission
         if (counts.ImageCount <= 0 ||
             counts.NodeCount - 1 > PrivateRasterPlacementTree.MaximumNodes - _nodeCount ||
             counts.RunCount > InlineContainerBox.MaximumPrivateRasterPlacementRuns - _runCount ||
-            counts.ImageCount > ImageBox.MaximumMeasuredPlacementTransferBatchCount - _imageCount ||
+            counts.ImageCount > ImageMeasuredPlacementTransfer.MaximumBatchCount - _imageCount ||
             counts.TextLength > LayoutSnapshot.MaximumPrivateRasterPlacementTextLength - _textLength ||
             !PrivateRasterPlacementTree.TryAccumulateStyleKeyCopyEntries(
                 ref _styleKeyCopyEntries, counts.StyleKeyCopyEntries))
@@ -165,7 +165,7 @@ internal sealed class CompletedImageRootAdmission
                             MarkdownElementKeys.Heading2 or MarkdownElementKeys.Heading3 or MarkdownElementKeys.Heading4 or
                             MarkdownElementKeys.Heading5 or MarkdownElementKeys.Heading6 or MarkdownElementKeys.ListMarker) ||
                         inline.Runs.Count > InlineContainerBox.MaximumPrivateRasterPlacementRuns ||
-                        inline.InlineImageRuns.Count > ImageBox.MaximumMeasuredPlacementTransferBatchCount ||
+                        inline.InlineImageRuns.Count > ImageMeasuredPlacementTransfer.MaximumBatchCount ||
                         !inlineIdentities.Add(inline))
                         return false;
                     foreach (var entry in inline.InlineImageRuns)

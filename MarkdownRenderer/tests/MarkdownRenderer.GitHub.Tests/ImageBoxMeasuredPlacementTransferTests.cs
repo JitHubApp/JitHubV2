@@ -326,7 +326,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
                     candidate.Context,
                     out ImageBox? privateClone,
                     out SharedCanvasBitmapCache.Lease? privateLease,
-                    out ImageBox.CompletedSvgPlacementMetadataFence? svgFence));
+                    out CompletedSvgPlacementMetadataFence? svgFence));
                 Assert.Null(privateClone);
                 Assert.Null(privateLease);
                 Assert.Null(svgFence);
@@ -405,7 +405,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             try
             {
                 Assert.True(ImageBox.TryTransferMeasuredPlacementsFromCompletedClones(
-                    new ImageBox.MeasuredPlacementTransfer[]
+                    new ImageMeasuredPlacementTransfer[]
                     {
                         new(source1, prepared1, expectedLease1, ExpectedSvgMetadataFence: null),
                         new(source2, prepared2, expectedLease2, ExpectedSvgMetadataFence: null),
@@ -498,7 +498,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             try
             {
                 Assert.False(ImageBox.TryTransferMeasuredPlacementsFromCompletedClones(
-                    new ImageBox.MeasuredPlacementTransfer[]
+                    new ImageMeasuredPlacementTransfer[]
                     {
                         new(source1, prepared1, expectedLease1, ExpectedSvgMetadataFence: null),
                         // The final pair has an unrelated live lease identity.
@@ -590,7 +590,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             try
             {
                 Assert.False(ImageBox.TryTransferMeasuredPlacementsFromCompletedClones(
-                    new ImageBox.MeasuredPlacementTransfer[]
+                    new ImageMeasuredPlacementTransfer[]
                     {
                         new(source1, prepared1, expectedLease1, ExpectedSvgMetadataFence: null),
                         new(source2, prepared2, expectedLease2, ExpectedSvgMetadataFence: null),
@@ -807,7 +807,7 @@ public sealed class ImageBoxMeasuredSvgPlacementTransferTests
                 targetContext,
                 out prepared,
                 out SharedCanvasBitmapCache.Lease? expectedLease,
-                out ImageBox.CompletedSvgPlacementMetadataFence? svgFence));
+                out CompletedSvgPlacementMetadataFence? svgFence));
             Assert.NotNull(prepared);
             Assert.NotNull(expectedLease);
             Assert.NotNull(svgFence);
@@ -888,7 +888,7 @@ public sealed class ImageBoxMeasuredSvgPlacementTransferTests
                 targetContext,
                 out prepared,
                 out SharedCanvasBitmapCache.Lease? expectedLease,
-                out ImageBox.CompletedSvgPlacementMetadataFence? svgFence));
+                out CompletedSvgPlacementMetadataFence? svgFence));
             Assert.NotNull(prepared);
             Assert.NotNull(expectedLease);
             Assert.NotNull(svgFence);

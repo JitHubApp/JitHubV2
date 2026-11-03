@@ -630,7 +630,7 @@ public sealed class RootLocalContainerImageRelayoutTests
         Assert.True(EnumerateBoxes([root]).Count() < PrivateRasterPlacementTree.MaximumNodes,
             "The fixture must stay below the node cap so image count is the rejecting budget.");
         ImageBox[] images = EnumerateImages([root]).ToArray();
-        Assert.Equal(ImageBox.MaximumMeasuredPlacementTransferBatchCount + 1, images.Length);
+        Assert.Equal(ImageMeasuredPlacementTransfer.MaximumBatchCount + 1, images.Length);
         await LoadAllImagesAsync(images);
         AssertContainerShapeIsSupportedAndMeasured([root]);
 
@@ -781,7 +781,7 @@ public sealed class RootLocalContainerImageRelayoutTests
         ImageBox[][] rootImages = roots.Select(static root => EnumerateImages([root]).ToArray()).ToArray();
         Assert.All(rootImages, images => Assert.Equal(imagesPerRoot, images.Length));
         Assert.True(rootImages.Sum(static images => images.Length) >
-                    ImageBox.MaximumMeasuredPlacementTransferBatchCount);
+                    ImageMeasuredPlacementTransfer.MaximumBatchCount);
         Assert.True(roots.Sum(root => EnumerateBoxes([root]).Count()) <= PrivateRasterPlacementTree.MaximumNodes,
             "The roots must stay within the aggregate node cap so aggregate image count is the rejecting budget.");
         ImageBox[] images = rootImages.SelectMany(static group => group).ToArray();

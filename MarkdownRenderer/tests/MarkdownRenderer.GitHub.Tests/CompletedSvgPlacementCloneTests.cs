@@ -242,7 +242,7 @@ public sealed class CompletedSvgPlacementCloneTests
             target,
             out ImageBox? clone,
             out SharedCanvasBitmapCache.Lease? expectedLease,
-            out ImageBox.CompletedSvgPlacementMetadataFence? metadataFence));
+            out CompletedSvgPlacementMetadataFence? metadataFence));
         Assert.NotNull(clone);
         Assert.NotNull(expectedLease);
         Assert.NotNull(metadataFence);
@@ -391,7 +391,7 @@ public sealed class CompletedSvgPlacementCloneTests
             target,
             out ImageBox? clone,
             out SharedCanvasBitmapCache.Lease? lease,
-            out ImageBox.CompletedSvgPlacementMetadataFence? fence));
+            out CompletedSvgPlacementMetadataFence? fence));
         Assert.Null(clone);
         Assert.Null(lease);
         Assert.Null(fence);

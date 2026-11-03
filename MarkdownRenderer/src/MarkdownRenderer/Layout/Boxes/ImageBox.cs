@@ -1340,42 +1340,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         ReplaceBitmap(lease.Bitmap, lease);
     }
 
-    /// <summary>
-    /// Value checkpoint for one speculative inline measurement. The image box
-    /// keeps replaced native layouts alive until this checkpoint is committed
-    /// or rolled back.
-    /// </summary>
-    internal readonly struct InlineMeasureCheckpoint
-    {
-        internal readonly ImageBox? Owner;
-        internal readonly int Generation;
-        internal readonly bool WasInlineLayout;
-        internal readonly float PreviousAvailableWidth;
-        internal readonly float PreviousImageWidth;
-        internal readonly float PreviousImageHeight;
-        internal readonly float PreviousCaptionHeight;
-        internal readonly Rect PreviousBounds;
-
-        internal InlineMeasureCheckpoint(ImageBox owner, int generation)
-        {
-            Owner = owner;
-            Generation = generation;
-            WasInlineLayout = owner._measure.IsInlineLayout;
-            PreviousAvailableWidth = owner._measure.AvailableWidth;
-            PreviousImageWidth = owner._measure.ImageWidth;
-            PreviousImageHeight = owner._measure.ImageHeight;
-            PreviousCaptionHeight = owner._measure.CaptionHeight;
-            PreviousBounds = owner.Bounds;
-        }
-
-        internal bool BelongsTo(ImageBox owner, int generation) =>
-            ReferenceEquals(Owner, owner) && Generation == generation;
-
-        internal void Commit() => Owner?.FinishInlineCheckpoint(this, commit: true);
-
-        internal void Rollback() => Owner?.FinishInlineCheckpoint(this, commit: false);
-    }
-
     internal InlineMeasureCheckpoint BeginInlineCheckpoint()
     {
         lock (_measure.Sync)
@@ -1390,7 +1354,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
     void IImageMeasureHost.RestoreBounds(Rect bounds) => Bounds = bounds;
 
-    private void FinishInlineCheckpoint(
+    internal void FinishInlineCheckpoint(
         InlineMeasureCheckpoint checkpoint,
         bool commit)
     {

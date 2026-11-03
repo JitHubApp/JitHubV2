@@ -589,7 +589,7 @@ internal sealed class InlineMeasuredPlacementTransfer
     /// This is an identity-only managed check; the ImageBox helper takes
     /// its short placement lock and makes no native calls.
     /// </summary>
-    internal bool HasNativeLayoutAlias(ImageBox.MeasuredPlacementTransfer imageTransfer)
+    internal bool HasNativeLayoutAlias(ImageMeasuredPlacementTransfer imageTransfer)
     {
         ArgumentNullException.ThrowIfNull(imageTransfer.Source);
         ArgumentNullException.ThrowIfNull(imageTransfer.Prepared);

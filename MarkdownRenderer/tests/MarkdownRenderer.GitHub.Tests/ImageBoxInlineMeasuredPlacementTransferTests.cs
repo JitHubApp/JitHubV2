@@ -59,7 +59,7 @@ public sealed class ImageBoxInlineMeasuredPlacementTransferTests
             fixture.TransferSourceOwnershipToSnapshot(sourceSnapshot);
             sourceSnapshotOwnsFixture = true;
 
-            var transfer = new ImageBox.MeasuredPlacementTransfer(
+            var transfer = new ImageMeasuredPlacementTransfer(
                 source,
                 prepared,
                 expectedSourceLease,
@@ -145,19 +145,19 @@ public sealed class ImageBoxInlineMeasuredPlacementTransferTests
             {
                 // Existing/default callers remain block-only unless they
                 // explicitly opt into inline placement transfer.
-                var wrongMode = new ImageBox.MeasuredPlacementTransfer(
+                var wrongMode = new ImageMeasuredPlacementTransfer(
                     source, prepared, expectedSourceLease, null);
                 Assert.False(ImageBox.TryTransferMeasuredPlacementsFromCompletedClones(
                     new[] { wrongMode }, 0, Width));
 
-                var wrongWidth = new ImageBox.MeasuredPlacementTransfer(
+                var wrongWidth = new ImageMeasuredPlacementTransfer(
                     source, prepared, expectedSourceLease, null,
                     ExpectedInlineLayout: true,
                     ExpectedAvailableWidth: availableWidth + 1f);
                 Assert.False(ImageBox.TryTransferMeasuredPlacementsFromCompletedClones(
                     new[] { wrongWidth }, 0, Width));
 
-                var wrongPreparedWidth = new ImageBox.MeasuredPlacementTransfer(
+                var wrongPreparedWidth = new ImageMeasuredPlacementTransfer(
                     source, prepared, expectedSourceLease, null,
                     ExpectedInlineLayout: true,
                     ExpectedAvailableWidth: availableWidth,
@@ -167,10 +167,10 @@ public sealed class ImageBoxInlineMeasuredPlacementTransferTests
                 Assert.False(ImageBox.TryTransferMeasuredPlacementsFromCompletedClones(
                     new[] { wrongPreparedWidth with { ExpectedPreparedAvailableWidth = float.NaN } }, 0, Width));
 
-                ImageBox.InlineMeasureCheckpoint checkpoint = source.BeginInlineCheckpoint();
+                InlineMeasureCheckpoint checkpoint = source.BeginInlineCheckpoint();
                 try
                 {
-                    var activeCheckpoint = new ImageBox.MeasuredPlacementTransfer(
+                    var activeCheckpoint = new ImageMeasuredPlacementTransfer(
                         source, prepared, expectedSourceLease, null,
                         ExpectedInlineLayout: true,
                         ExpectedAvailableWidth: availableWidth);

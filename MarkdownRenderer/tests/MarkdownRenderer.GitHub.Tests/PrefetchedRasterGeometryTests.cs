@@ -153,7 +153,7 @@ public sealed class PrefetchedRasterGeometryTests
         image.MeasureInline(200, 20);
         Rect original = image.Bounds;
         await scope.PrefetchAsync([Source], CancellationToken.None);
-        ImageBox.InlineMeasureCheckpoint checkpoint = image.BeginInlineCheckpoint();
+        InlineMeasureCheckpoint checkpoint = image.BeginInlineCheckpoint();
         image.MeasureInline(200, 20, checkpoint);
         Assert.False(image.HasExactReservedRasterGeometry(new Size(1024, 512)));
         checkpoint.Rollback();

@@ -154,7 +154,7 @@ internal sealed class BlockMeasuredPlacementTransfer
         BlockMeasuredPlacementCaptureBuilder capture = new BlockMeasuredPlacementCaptureBuilder(allowMeasuredVectorPlacement);
         if (!capture.Visit(source, prepared, depth: 0, isRoot: true) ||
             capture.ImagePairs.Count == 0 ||
-            capture.ImagePairs.Count > ImageBox.MaximumMeasuredPlacementTransferBatchCount ||
+            capture.ImagePairs.Count > ImageMeasuredPlacementTransfer.MaximumBatchCount ||
             capture.SourceContext is null || capture.PreparedContext is null ||
             !ReferenceEquals(capture.SourceContext.SourceMap, capture.PreparedContext.SourceMap))
         {

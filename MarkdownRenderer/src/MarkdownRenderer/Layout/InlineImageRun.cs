@@ -68,7 +68,7 @@ internal sealed class InlineImageRun : InlineRun
         out InlineImageRun? placement,
         out Boxes.ImageBox? expectedSourceImage,
         out Boxes.SharedCanvasBitmapCache.Lease? expectedSourceLease,
-        out Boxes.ImageBox.CompletedSvgPlacementMetadataFence? svgMetadataFence,
+        out Boxes.CompletedSvgPlacementMetadataFence? svgMetadataFence,
         out bool isIdleDescriptor,
         out int expectedIdleLoadDemandGeneration)
     {
@@ -132,7 +132,7 @@ internal sealed class InlineImageRun : InlineRun
         out InlineImageRun? placement,
         out Boxes.ImageBox? expectedSourceImage,
         out Boxes.SharedCanvasBitmapCache.Lease? expectedSourceLease,
-        out Boxes.ImageBox.CompletedSvgPlacementMetadataFence? svgMetadata)
+        out Boxes.CompletedSvgPlacementMetadataFence? svgMetadata)
     {
         placement = null;
         expectedSourceImage = null;
@@ -182,7 +182,7 @@ internal sealed class InlineImageRun : InlineRun
     internal void Measure(
         float maxWidth,
         float lineHeight,
-        Boxes.ImageBox.InlineMeasureCheckpoint? checkpoint = null)
+        Boxes.InlineMeasureCheckpoint? checkpoint = null)
     {
         var size = checkpoint is { } transaction
             ? Image.MeasureInline(maxWidth, lineHeight, transaction)

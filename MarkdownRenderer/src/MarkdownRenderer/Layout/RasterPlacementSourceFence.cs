@@ -6,14 +6,14 @@ namespace MarkdownRenderer.Layout;
 // identities before it can be retained for UI publication.
 internal readonly struct RasterPlacementSourceFence(
     ImageBox Image, SharedCanvasBitmapCache.Lease? Lease,
-    ImageBox.CompletedSvgPlacementMetadataFence? SvgMetadata = null,
+    CompletedSvgPlacementMetadataFence? SvgMetadata = null,
     bool IsIdleDescriptor = false,
     int IdleLoadDemandGeneration = 0,
     bool WasSubscribed = true)
 {
     public ImageBox Image { get; init; } = Image;
     public SharedCanvasBitmapCache.Lease? Lease { get; init; } = Lease;
-    public ImageBox.CompletedSvgPlacementMetadataFence? SvgMetadata { get; init; } = SvgMetadata;
+    public CompletedSvgPlacementMetadataFence? SvgMetadata { get; init; } = SvgMetadata;
     public bool IsIdleDescriptor { get; init; } = IsIdleDescriptor;
     public int IdleLoadDemandGeneration { get; init; } = IdleLoadDemandGeneration;
     public bool WasSubscribed { get; init; } = WasSubscribed;
