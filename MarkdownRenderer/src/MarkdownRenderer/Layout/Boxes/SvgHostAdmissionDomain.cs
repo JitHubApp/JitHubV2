@@ -24,7 +24,7 @@ internal sealed class SvgHostAdmissionDomain
     internal SvgHostOwnerRegistry Owners { get; } = new();
 
     internal SvgHostPendingWaiter? Defer(
-        ImageBox owner,
+        SvgHostLoadDeferral owner,
         IMarkdownSvgAdmission admission,
         MarkdownSvgRenderDemand demand,
         int loadGeneration,
@@ -425,7 +425,7 @@ internal sealed class SvgHostAdmissionDomain
         Volatile.Write(ref entry.WaiterCompletionStarted, 1);
         try
         {
-            if (entry.Owner.TryGetTarget(out ImageBox? owner))
+            if (entry.Owner.TryGetTarget(out SvgHostLoadDeferral? owner))
             {
                 owner.OnSvgHostAdmissionWaiterFinished(
                     entry.Demand,
@@ -571,7 +571,7 @@ internal sealed class SvgHostAdmissionDomain
             Volatile.Write(ref entry.WaiterCompletionStarted, 1);
             try
             {
-                if (entry.Owner.TryGetTarget(out ImageBox? owner))
+                if (entry.Owner.TryGetTarget(out SvgHostLoadDeferral? owner))
                 {
                     owner.OnSvgHostAdmissionWaiterFinished(
                         entry.Demand,
@@ -673,7 +673,7 @@ internal sealed class SvgHostAdmissionDomain
         bool capacityThresholdSatisfied,
         bool ownerObserved)
     {
-        if (!entry.Owner.TryGetTarget(out ImageBox? owner))
+        if (!entry.Owner.TryGetTarget(out SvgHostLoadDeferral? owner))
             return;
 
         long observedCapacityVersion = 0;
@@ -813,7 +813,7 @@ internal sealed class SvgHostAdmissionDomain
     }
 
     private SvgHostPendingEntry? FindPendingNoLock(
-        ImageBox owner,
+        SvgHostLoadDeferral owner,
         int loadGeneration,
         MarkdownSvgRenderDemand demand)
     {
@@ -823,7 +823,7 @@ internal sealed class SvgHostAdmissionDomain
                 Volatile.Read(ref pending.Claimed) == 0 &&
                 pending.LoadGeneration == loadGeneration &&
                 ReferenceEquals(pending.Demand, demand) &&
-                pending.Owner.TryGetTarget(out ImageBox? current) &&
+                pending.Owner.TryGetTarget(out SvgHostLoadDeferral? current) &&
                 ReferenceEquals(current, owner))
             {
                 return pending;

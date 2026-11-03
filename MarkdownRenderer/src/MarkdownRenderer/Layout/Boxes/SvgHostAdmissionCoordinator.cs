@@ -32,7 +32,7 @@ internal sealed class SvgHostAdmissionCoordinator
     }
 
     internal SvgHostPendingWaiter? Defer(
-        ImageBox owner,
+        SvgHostLoadDeferral owner,
         IMarkdownSvgAdmission admission,
         MarkdownSvgRenderDemand demand,
         int loadGeneration,

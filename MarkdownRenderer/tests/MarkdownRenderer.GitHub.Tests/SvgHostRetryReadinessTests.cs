@@ -20,14 +20,12 @@ public sealed class SvgHostRetryReadinessTests
         using var lifetime = new CancellationTokenSource();
         var admission = new ThresholdProbe();
         var queued = new ConcurrentQueue<Action>();
-        Set(owner, "_svgWorkSync", new object());
-        Set(owner, "_imageLifetimeCancellation", lifetime);
+        TestSvgHostDeferralHost.Of(owner).Cancellation = lifetime.Token;
         Set(owner, "_svgHostDeferredAdmission", new WeakReference<IMarkdownSvgAdmission>(admission));
         Set(owner, "_svgDeferredRetryEnqueueOverride", (Func<Action, bool>)(work => { queued.Enqueue(work); return true; }));
         try
         {
-            typeof(ImageBox).GetMethod("TryResumeDeferredSvgLoadForObservedDemandOrCapacity",
-                BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(owner, [demand]);
+            owner.TryResumeDeferredSvgLoadForObservedDemandOrCapacity(demand);
             await admission.WaitStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.Empty(queued);
             Assert.Equal(1, admission.WaitCount);
@@ -46,8 +44,7 @@ public sealed class SvgHostRetryReadinessTests
         }
         finally
         {
-            typeof(ImageBox).GetMethod("ClearSvgHostDeferral",
-                BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(owner, null);
+            owner.ClearSvgHostDeferral();
             await lifetime.CancelAsync();
         }
         GC.KeepAlive(admission);
@@ -163,10 +160,10 @@ public sealed class SvgHostRetryReadinessTests
 
         // Keep demand and denial identity equal deliberately: the generation
         // fence itself must reject an old queued callback before StartLoad.
-        Set(owner, "_svgLoadDemandGeneration", Generation + 1);
+        TestSvgHostDeferralHost.Of(owner).LoadDemandGeneration = Generation + 1;
         queued!();
 
-        Assert.Equal(Generation + 1, Field<int>(owner, "_svgLoadDemandGeneration"));
+        Assert.Equal(Generation + 1, TestSvgHostDeferralHost.Of(owner).LoadDemandGeneration);
         Assert.Equal(2, Field<int>(owner, "_svgHostDeferred"));
         Assert.True(Field<bool>(owner, "_svgHostDeferredCapacityReady"));
         Assert.Same(identity, Field<object>(owner, "_svgHostDeferredWaiterIdentity"));
@@ -178,7 +175,7 @@ public sealed class SvgHostRetryReadinessTests
         var (owner, demand, identity) = CreateWaiting();
         int queues = 0;
         Set(owner, "_svgDeferredRetryEnqueueOverride", (Func<Action, bool>)(_ => { queues++; return true; }));
-        Set(owner, "_svgLoadDemandGeneration", Generation + 1);
+        TestSvgHostDeferralHost.Of(owner).LoadDemandGeneration = Generation + 1;
 
         owner.TryQueueDeferredSvgHostRetry(demand, Generation, 0, 11, 0,
             capacityThresholdSatisfied: true, waiterIdentity: identity);
@@ -240,7 +237,7 @@ public sealed class SvgHostRetryReadinessTests
         Assert.Equal(2, calls);
         Assert.Equal(1, Field<int>(owner, "_svgHostDeferred"));
         Assert.True(Field<bool>(owner, "_svgHostDeferredCapacityReady"));
-        typeof(ImageBox).GetMethod("ClearSvgHostDeferral", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(owner, null);
+        owner.ClearSvgHostDeferral();
         owner.TryQueueDeferredSvgHostRetry(demand, Generation, 0, 11, 0,
             capacityThresholdSatisfied: true, waiterIdentity: identity);
         Assert.Equal(2, calls);
@@ -281,7 +278,7 @@ public sealed class SvgHostRetryReadinessTests
         Set(owner, "_svgDeferredRetryEnqueueOverride", (Func<Action, bool>)(_ => true));
         owner.TryQueueDeferredSvgHostRetry(demand, Generation, 0, 11, 0,
             capacityThresholdSatisfied: true, waiterIdentity: identity);
-        typeof(ImageBox).GetMethod("ClearSvgHostDeferral", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(owner, null);
+        owner.ClearSvgHostDeferral();
         Assert.Equal(0, Field<int>(owner, "_svgHostDeferred"));
         Assert.False(Field<bool>(owner, "_svgHostDeferredCapacityReady"));
         Assert.Null(Value(owner, "_svgHostDeferredDenialIdentity"));
@@ -289,16 +286,14 @@ public sealed class SvgHostRetryReadinessTests
         Assert.Null(Value(owner, "_svgHostDeferredRegistrationAttempt"));
     }
 
-    private static (ImageBox, MarkdownSvgRenderDemand, object) CreateWaiting()
+    private static (SvgHostLoadDeferral, MarkdownSvgRenderDemand, object) CreateWaiting()
     {
-        var owner = (ImageBox)RuntimeHelpers.GetUninitializedObject(typeof(ImageBox));
-        Set(owner, "_resources", ImageResourceScope.Shared);
+        SvgHostLoadDeferral owner = TestSvgHostDeferralHost.CreateDeferral();
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         object waiterIdentity = new();
         object denialIdentity = new();
-        Set(owner, "_svgHostDeferredSync", new object());
-        Set(owner, "_svgLoadDemandTicket", demand);
-        Set(owner, "_svgLoadDemandGeneration", Generation);
+        TestSvgHostDeferralHost.Of(owner).LoadDemand = demand;
+        TestSvgHostDeferralHost.Of(owner).LoadDemandGeneration = Generation;
         Set(owner, "_svgHostDeferred", 1);
         Set(owner, "_svgHostDeferredCapacityVersion", 11L);
         Set(owner, "_svgHostDeferredRequiredSourceBytes", 73728L);
@@ -308,11 +303,11 @@ public sealed class SvgHostRetryReadinessTests
         return (owner, demand, waiterIdentity);
     }
 
-    private static T Field<T>(ImageBox owner, string name) => (T)Value(owner, name)!;
-    private static object? Value(ImageBox owner, string name) =>
-        typeof(ImageBox).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(owner);
-    private static void Set(ImageBox owner, string name, object value) =>
-        typeof(ImageBox).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(owner, value);
+    private static T Field<T>(SvgHostLoadDeferral owner, string name) => (T)Value(owner, name)!;
+    private static object? Value(SvgHostLoadDeferral owner, string name) =>
+        typeof(SvgHostLoadDeferral).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(owner);
+    private static void Set(SvgHostLoadDeferral owner, string name, object value) =>
+        typeof(SvgHostLoadDeferral).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(owner, value);
 
     private sealed class ThresholdProbe : IMarkdownSvgAdmission
     {

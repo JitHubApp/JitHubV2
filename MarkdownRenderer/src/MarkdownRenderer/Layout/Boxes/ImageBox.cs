@@ -46,7 +46,7 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// device-scoped bitmap leases. SVG text remains inside the provider render so
 /// transforms, clipping, bidi, and text paths are preserved.
 /// </summary>
-internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometrySource, IImageBitmapOutputHost, ISvgTileGapFill, IImageMeasureHost
+internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometrySource, IImageBitmapOutputHost, ISvgTileGapFill, IImageMeasureHost, ISvgHostDeferralHost
 {
     // Selected artwork keeps the same translucent tint as Math and
     // Mermaid scenes instead of an opaque block-wide band.
@@ -182,6 +182,8 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     // The bitmap-output owners this box composes, bound to its scope.
     internal ImageBitmapOutputDeferral OutputDeferral { get; }
     internal ImageBitmapOutputAdmission OutputAdmission { get; }
+    private readonly SvgHostLoadDeferral _svgHostDeferral;
+    internal SvgHostLoadDeferral SvgHostDeferral => _svgHostDeferral;
     internal readonly string Url;
     public readonly string Alt;
     private readonly SafeHtmlLength? _requestedWidth;
@@ -250,23 +252,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     private SvgTileRenderPlan? _svgParkingPlan;
     private MarkdownSvgRenderDemand? _svgLoadDemandTicket;
     private int _svgLoadDemandGeneration;
-    private readonly object _svgHostDeferredSync = new();
-    private SvgHostPendingWaiter? _svgHostDeferredWaiter;
-    private object? _svgHostDeferredWaiterIdentity;
-    private object? _svgHostDeferredRegistrationAttempt;
-    private object? _svgHostDeferredDenialIdentity;
-    private WeakReference<IMarkdownSvgAdmission>? _svgHostDeferredAdmission;
-    private int _svgHostDeferred;
-    private long _svgHostDeferredDemandVersion;
-    private long _svgHostDeferredCapacityVersion;
-    private long _svgHostDeferredOwnerVersion;
-    private long _svgHostDeferredVisualDemandEpoch;
-    private long _svgHostDeferredRequiredSourceBytes;
-    private bool _svgHostDeferredRequiresOwnerSlot;
-    private bool _svgHostDeferredCapacityReady;
-    // Instance-scoped managed test seam; normal retries use the two existing
-    // non-inline queues without allocating a test callback.
-    private Func<Action, bool>? _svgDeferredRetryEnqueueOverride = null;
     private bool _svgPressureParked;
     private long _svgPressureParkPublicationEpoch;
     private string? _svgTileCacheIdentityPrefix;
@@ -296,9 +281,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     private int _svgPressureDemandWidth;
     private int _svgPressureDemandHeight;
     private MarkdownSvgPhysicalViewport? _svgPressureDemandPhysicalViewport;
-    private const int SvgHostDeferredNone = 0;
-    private const int SvgHostDeferredWaiting = 1;
-    private const int SvgHostDeferredRetryQueued = 2;
     private volatile bool _loadStarted;
     private bool _loadFailed;
     private int _unavailableReported;
@@ -382,6 +364,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         _resources = resources ?? throw new ArgumentNullException(nameof(resources));
         _measure = new ImageMeasureCustody(
             this, context, nativeRetirement, nativeDisposer, nativeLayoutOptionsSetter);
+        _svgHostDeferral = new SvgHostLoadDeferral(this, _resources);
         Url = url ?? string.Empty;
         Alt = alt ?? string.Empty;
         _requestedWidth = requestedWidth;
@@ -714,7 +697,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         {
             lock (_svgWorkSync)
             {
-                lock (_svgHostDeferredSync)
+                lock (SvgHostDeferral.Sync)
                 {
                     if (!IsUnstartedImagePlacementEligibleNoLock(expectedGeneration: 0))
                         return false;
@@ -806,7 +789,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
         lock (_svgWorkSync)
         {
-            lock (_svgHostDeferredSync)
+            lock (SvgHostDeferral.Sync)
             {
                 if (!IsUnstartedImagePlacementEligibleNoLock(expectedGeneration: 0))
                     return false;
@@ -843,7 +826,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
         lock (_svgWorkSync)
         {
-            lock (_svgHostDeferredSync)
+            lock (SvgHostDeferral.Sync)
             {
                 return IsUnstartedImagePlacementEligibleNoLock(expectedLoadDemandGeneration);
             }
@@ -852,7 +835,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
     private bool IsUnstartedImagePlacementEligibleNoLock(int expectedGeneration)
     {
-        // Caller holds _svgWorkSync then _svgHostDeferredSync, the same order
+        // Caller holds _svgWorkSync then the SVG host deferral lock, the same order
         // used by StartLoad after acquiring its work lease.
         return expectedGeneration == 0 &&
             !_disposed && !_resourcesSuspended &&
@@ -935,7 +918,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
     bool IImageBitmapOutputHost.TryResetLoad(MarkdownSvgRenderDemand demand, int generation, int svgGeneration)
     {
-        lock (_svgHostDeferredSync)
+        lock (SvgHostDeferral.Sync)
         {
             if (_disposed || _resourcesSuspended ||
                 !ReferenceEquals(Volatile.Read(ref _svgLoadDemandTicket), demand) ||
@@ -1071,6 +1054,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         Context = context;
         _resources = source._resources;
         _measure = source._measure.CreateForClone(this, context);
+        _svgHostDeferral = new SvgHostLoadDeferral(this, _resources);
         Url = source.Url;
         Alt = source.Alt;
         _requestedWidth = source._requestedWidth;
@@ -1127,6 +1111,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         Context = context;
         _resources = source._resources;
         _measure = source._measure.CreateForClone(this, context);
+        _svgHostDeferral = new SvgHostLoadDeferral(this, _resources);
         Url = source.Url;
         Alt = source.Alt;
         _requestedWidth = source._requestedWidth;
@@ -1646,433 +1631,47 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             MarkdownSvgRenderDemand? currentDemand = Volatile.Read(ref _svgLoadDemandTicket);
             if (isVisible)
                 currentDemand?.PromoteVisible();
-            TryResumeDeferredSvgLoadForObservedDemandOrCapacity(currentDemand);
+            SvgHostDeferral.TryResumeDeferredSvgLoadForObservedDemandOrCapacity(currentDemand);
             return;
         }
 
-        if (Volatile.Read(ref _svgHostDeferred) != 0 &&
+        if (SvgHostDeferral.IsDeferred &&
             Volatile.Read(ref _svgLoadDemandTicket) is { } deferredDemand)
         {
             if (isVisible)
                 deferredDemand.PromoteVisible();
-            TryResumeDeferredSvgLoadForObservedDemandOrCapacity(deferredDemand);
+            SvgHostDeferral.TryResumeDeferredSvgLoadForObservedDemandOrCapacity(deferredDemand);
             return;
         }
 
         StartLoad(isVisible: isVisible);
     }
 
-    private void DeferSvgHostLoad(
-        SvgHostCapacityDeferral deferral, object? expectedDenialIdentity = null)
+    MarkdownSvgRenderDemand? ISvgHostDeferralHost.LoadDemand => Volatile.Read(ref _svgLoadDemandTicket);
+    int ISvgHostDeferralHost.LoadDemandGeneration => Volatile.Read(ref _svgLoadDemandGeneration);
+    long ISvgHostDeferralHost.SvgHostVisualDemandEpoch => Volatile.Read(ref _svgHostVisualDemandEpoch);
+    void ISvgHostDeferralHost.MarkLoadNotStarted() => _loadStarted = false;
+
+    void ISvgHostDeferralHost.StartLoad(
+        bool isVisible, MarkdownSvgRenderDemand? demandOverride, int loadDemandGeneration) =>
+        StartLoad(isVisible, demandOverride, loadDemandGeneration);
+
+    bool ISvgHostDeferralHost.TryCaptureSvgHostDeferralCancellation(
+        SvgHostCapacityDeferral deferral, out CancellationToken cancellationToken)
     {
-        SvgHostPendingWaiter? previousWaiter;
-        object registrationAttempt = new();
-        CancellationToken cancellationToken;
         lock (_svgWorkSync)
         {
             if (_disposed || _resourcesSuspended ||
                 !ReferenceEquals(Volatile.Read(ref _svgLoadDemandTicket), deferral.Demand) ||
                 deferral.LoadGeneration != Volatile.Read(ref _svgLoadDemandGeneration))
             {
-                return;
+                cancellationToken = default;
+                return false;
             }
 
             cancellationToken = (_imageResidencyCancellation ?? _imageLifetimeCancellation).Token;
+            return true;
         }
-
-        lock (_svgHostDeferredSync)
-        {
-            if (!ReferenceEquals(Volatile.Read(ref _svgLoadDemandTicket), deferral.Demand) ||
-                deferral.LoadGeneration != Volatile.Read(ref _svgLoadDemandGeneration) ||
-                (expectedDenialIdentity is not null &&
-                    (!ReferenceEquals(_svgHostDeferredDenialIdentity, expectedDenialIdentity) ||
-                        _svgHostDeferred != SvgHostDeferredWaiting ||
-                        _svgHostDeferredCapacityReady ||
-                        _svgHostDeferredWaiter is { IsFinished: false })))
-            {
-                return;
-            }
-
-            // A fresh denial replaces only this box's earlier source-free
-            // waiter. The old registration is disposed after the lock.
-            previousWaiter = _svgHostDeferredWaiter;
-            _svgHostDeferredWaiter = null;
-            _svgHostDeferredWaiterIdentity = null;
-            _svgHostDeferredRegistrationAttempt = registrationAttempt;
-            _svgHostDeferredDenialIdentity = registrationAttempt;
-            _svgHostDeferredAdmission = new WeakReference<IMarkdownSvgAdmission>(deferral.Admission);
-            _svgHostDeferred = SvgHostDeferredWaiting;
-            _svgHostDeferredDemandVersion = deferral.DemandVersionAtDenial;
-            _svgHostDeferredVisualDemandEpoch = deferral.VisualDemandEpochAtDenial;
-            _svgHostDeferredCapacityVersion = deferral.CapacityVersion;
-            _svgHostDeferredOwnerVersion = deferral.OwnerVersionAtDenial;
-            _svgHostDeferredRequiredSourceBytes = deferral.RequiredSourceReservationBytes;
-            _svgHostDeferredRequiresOwnerSlot = deferral.RequiresOwnerSlot;
-            _svgHostDeferredCapacityReady = false;
-            _loadStarted = false;
-        }
-        previousWaiter?.Dispose();
-
-        SvgHostPendingWaiter? waiter = null;
-        try
-        {
-            waiter = _resources.SvgHostAdmission.Defer(
-                this,
-                deferral.Admission,
-                deferral.Demand,
-                deferral.LoadGeneration,
-                deferral.CapacityVersion,
-                deferral.RequiredSourceReservationBytes,
-                deferral.RequiresOwnerSlot,
-                deferral.OwnerVersionAtDenial,
-                deferral.DemandVersionAtDenial,
-                deferral.VisualDemandEpochAtDenial,
-                registrationAttempt,
-                cancellationToken);
-        }
-        catch (Exception exception)
-        {
-            // The bounded waiter is an optimization for prompt recovery. A
-            // saturated waiter table leaves only weak scalar state on this box;
-            // a later demand/capacity observation can still restart it.
-            MarkdownDiagnostics.WriteLine(
-                $"[ImageBox] SVG capacity wait could not be registered: {exception.GetType().Name}");
-        }
-
-        bool retained = false;
-        lock (_svgHostDeferredSync)
-        {
-            if (_svgHostDeferred == SvgHostDeferredWaiting &&
-                ReferenceEquals(_svgHostDeferredRegistrationAttempt, registrationAttempt) &&
-                ReferenceEquals(Volatile.Read(ref _svgLoadDemandTicket), deferral.Demand) &&
-                deferral.LoadGeneration == Volatile.Read(ref _svgLoadDemandGeneration) &&
-                waiter is not null &&
-                ReferenceEquals(_svgHostDeferredWaiterIdentity, waiter.Identity) &&
-                !waiter.IsFinished)
-            {
-                _svgHostDeferredWaiter = waiter;
-                retained = true;
-            }
-            else if (ReferenceEquals(_svgHostDeferredRegistrationAttempt, registrationAttempt))
-            {
-                // A failed/finished registration has no live wait handle. Keep
-                // the scalar denial state for a future demand observation, but
-                // do not leave an identity that a later waiter could confuse.
-                _svgHostDeferredRegistrationAttempt = null;
-                if (_svgHostDeferred != SvgHostDeferredRetryQueued && !_svgHostDeferredCapacityReady)
-                    _svgHostDeferredWaiterIdentity = null;
-            }
-        }
-        if (!retained)
-            waiter?.Dispose();
-
-        // Close the denial-to-registration lost-wakeup window. This also
-        // handles a waiter that completed synchronously before its handle was
-        // stored on the box.
-        TryResumeDeferredSvgLoadForObservedDemandOrCapacity(deferral.Demand);
-    }
-
-    private void TryResumeDeferredSvgLoadForObservedDemandOrCapacity(
-        MarkdownSvgRenderDemand? demand)
-    {
-        if (demand is null)
-            return;
-
-        IMarkdownSvgAdmission? admission = null;
-        int loadGeneration;
-        long demandVersionAtDenial;
-        long capacityVersionAtDenial;
-        long ownerVersionAtDenial;
-        long visualDemandEpochAtDenial;
-        long requiredSourceBytes;
-        bool requiresOwnerSlot;
-        bool capacityReady;
-        bool hasLiveWaiter;
-        object? denialIdentity;
-        lock (_svgHostDeferredSync)
-        {
-            if (_svgHostDeferred != SvgHostDeferredWaiting ||
-                !ReferenceEquals(Volatile.Read(ref _svgLoadDemandTicket), demand) ||
-                _svgHostDeferredAdmission is null ||
-                !_svgHostDeferredAdmission.TryGetTarget(out admission))
-            {
-                return;
-            }
-
-            loadGeneration = Volatile.Read(ref _svgLoadDemandGeneration);
-            demandVersionAtDenial = _svgHostDeferredDemandVersion;
-            capacityVersionAtDenial = _svgHostDeferredCapacityVersion;
-            ownerVersionAtDenial = _svgHostDeferredOwnerVersion;
-            visualDemandEpochAtDenial = _svgHostDeferredVisualDemandEpoch;
-            requiresOwnerSlot = _svgHostDeferredRequiresOwnerSlot;
-            requiredSourceBytes = _svgHostDeferredRequiredSourceBytes;
-            capacityReady = _svgHostDeferredCapacityReady;
-            hasLiveWaiter = _svgHostDeferredWaiter is { IsFinished: false };
-            denialIdentity = _svgHostDeferredDenialIdentity;
-        }
-
-        long demandVersion = demand.Version;
-        long capacityVersion;
-        long ownerVersion;
-        try
-        {
-            capacityVersion = requiresOwnerSlot ? 0 : admission.CapacityVersion;
-            ownerVersion = requiresOwnerSlot
-                ? _resources.SvgHostAdmission.GetOwnerVersion(admission.AdmissionDomain)
-                : 0;
-        }
-        catch (Exception exception)
-        {
-            MarkdownDiagnostics.WriteLine(
-                $"[ImageBox] SVG capacity state could not be observed: {exception.GetType().Name}");
-            return;
-        }
-
-        if (!requiresOwnerSlot && !capacityReady && !hasLiveWaiter &&
-            denialIdentity is not null && capacityVersion > capacityVersionAtDenial)
-        {
-            // A release/version pulse may be smaller than the required peak,
-            // including the failed attempt's own clone release. If a bounded
-            // waiter could not be retained, re-enter only scalar registration
-            // once for the real observed version, never source loading.
-            DeferSvgHostLoad(new SvgHostCapacityDeferral(
-                admission, demand, loadGeneration, capacityVersion,
-                requiredSourceBytes, RequiresOwnerSlot: false,
-                OwnerVersionAtDenial: 0,
-                DemandVersionAtDenial: demandVersionAtDenial,
-                VisualDemandEpochAtDenial: visualDemandEpochAtDenial), denialIdentity);
-            return;
-        }
-
-        TryQueueDeferredSvgHostRetry(
-            demand,
-            loadGeneration,
-            demandVersion > demandVersionAtDenial ? demandVersion : 0,
-            capacityVersion > capacityVersionAtDenial ? capacityVersion : 0,
-            ownerVersion > ownerVersionAtDenial ? ownerVersion : 0,
-            Volatile.Read(ref _svgHostVisualDemandEpoch) > visualDemandEpochAtDenial
-                ? Volatile.Read(ref _svgHostVisualDemandEpoch) : 0);
-    }
-
-    internal void TryQueueDeferredSvgHostRetry(
-        MarkdownSvgRenderDemand demand,
-        int loadGeneration,
-        long observedDemandVersion,
-        long observedCapacityVersion,
-        long observedOwnerVersion,
-        long observedVisualDemandEpoch = 0,
-        bool capacityThresholdSatisfied = false,
-        object? waiterIdentity = null)
-    {
-        SvgHostPendingWaiter? waiter;
-        SvgDeferredLoadWork retry;
-        lock (_svgHostDeferredSync)
-        {
-            if (_svgHostDeferred != SvgHostDeferredWaiting ||
-                !ReferenceEquals(Volatile.Read(ref _svgLoadDemandTicket), demand) ||
-                loadGeneration != Volatile.Read(ref _svgLoadDemandGeneration))
-            {
-                return;
-            }
-
-            if (waiterIdentity is not null &&
-                !ReferenceEquals(_svgHostDeferredWaiterIdentity, waiterIdentity))
-            {
-                return;
-            }
-            if (capacityThresholdSatisfied)
-            {
-                // Threshold readiness is independent of a numeric release
-                // version. It belongs only to this accepted source waiter.
-                if (_svgHostDeferredRequiresOwnerSlot || waiterIdentity is null)
-                    return;
-                _svgHostDeferredCapacityReady = true;
-            }
-
-            bool eligible = observedDemandVersion > _svgHostDeferredDemandVersion ||
-                observedVisualDemandEpoch > _svgHostDeferredVisualDemandEpoch ||
-                (_svgHostDeferredRequiresOwnerSlot
-                    ? observedOwnerVersion > _svgHostDeferredOwnerVersion
-                    : _svgHostDeferredCapacityReady);
-            if (!eligible)
-                return;
-
-            retry = new SvgDeferredLoadWork(this, demand, loadGeneration,
-                _svgHostDeferredDenialIdentity);
-            _svgHostDeferred = SvgHostDeferredRetryQueued;
-            waiter = _svgHostDeferredWaiter;
-            _svgHostDeferredWaiter = null;
-        }
-        waiter?.Dispose();
-
-        try
-        {
-            if (!QueueDeferredSvgRetry(retry, fallback: false))
-                throw new InvalidOperationException("The primary SVG retry queue rejected the work.");
-        }
-        catch (Exception taskQueueFailure)
-        {
-            // Task.Run can fail under transient scheduler pressure. Make one
-            // second non-inline queue attempt; if both fail, leave the exact
-            // denial eligible for the next demand/capacity observation.
-            bool queued = false;
-            Exception? fallbackQueueFailure = null;
-            try
-            {
-                queued = QueueDeferredSvgRetry(retry, fallback: true);
-            }
-            catch (Exception exception)
-            {
-                fallbackQueueFailure = exception;
-            }
-
-            if (queued)
-            {
-                MarkdownDiagnostics.WriteLine(
-                    $"[ImageBox] SVG deferred retry used the fallback queue after {taskQueueFailure.GetType().Name}.");
-                return;
-            }
-
-            lock (_svgHostDeferredSync)
-            {
-                if (_svgHostDeferred == SvgHostDeferredRetryQueued &&
-                    ReferenceEquals(Volatile.Read(ref _svgLoadDemandTicket), demand) &&
-                    loadGeneration == Volatile.Read(ref _svgLoadDemandGeneration) &&
-                    ReferenceEquals(_svgHostDeferredDenialIdentity, retry.DenialIdentity))
-                {
-                    // Retain the real threshold reason and accepted identity
-                    // for one retry on a later demand/paint observation. Do
-                    // not recurse into an immediately-ready allocation loop.
-                    _svgHostDeferred = SvgHostDeferredWaiting;
-                }
-            }
-            MarkdownDiagnostics.WriteLine(
-                $"[ImageBox] SVG deferred retry could not be queued: {taskQueueFailure.GetType().Name}" +
-                (fallbackQueueFailure is null ? string.Empty : $"/{fallbackQueueFailure.GetType().Name}"));
-        }
-    }
-
-    private bool QueueDeferredSvgRetry(SvgDeferredLoadWork retry, bool fallback)
-    {
-        if (_svgDeferredRetryEnqueueOverride is { } testQueue)
-            return testQueue(() => RunDeferredSvgLoad(retry));
-        if (fallback)
-        {
-            return ThreadPool.UnsafeQueueUserWorkItem(
-                static work => RunDeferredSvgLoad(work), retry, preferLocal: false);
-        }
-        _ = Task.Run(() => RunDeferredSvgLoad(retry));
-        return true;
-    }
-
-    private static void RunDeferredSvgLoad(SvgDeferredLoadWork work)
-    {
-        try
-        {
-            work.Owner.StartDeferredSvgLoad(work.Demand, work.LoadGeneration, work.DenialIdentity);
-        }
-        catch (Exception exception)
-        {
-            // StartLoad owns retryable errors; this boundary prevents an
-            // unexpected synchronous setup failure from escaping the pool.
-            MarkdownDiagnostics.WriteLine(
-                $"[ImageBox] SVG deferred retry setup failed: {exception.GetType().Name}");
-        }
-    }
-
-    private void StartDeferredSvgLoad(
-        MarkdownSvgRenderDemand demand, int loadGeneration, object? denialIdentity)
-    {
-        lock (_svgHostDeferredSync)
-        {
-            if (_svgHostDeferred != SvgHostDeferredRetryQueued ||
-                !ReferenceEquals(Volatile.Read(ref _svgLoadDemandTicket), demand) ||
-                loadGeneration != Volatile.Read(ref _svgLoadDemandGeneration) ||
-                !ReferenceEquals(_svgHostDeferredDenialIdentity, denialIdentity))
-            {
-                return;
-            }
-            ClearSvgHostDeferralNoLock();
-            _loadStarted = false;
-        }
-
-        StartLoad(
-            isVisible: demand.Priority == MarkdownSvgRenderPriority.Visible,
-            demandOverride: demand,
-            loadDemandGeneration: loadGeneration);
-    }
-
-    internal bool OnSvgHostAdmissionWaiterRegistered(
-        MarkdownSvgRenderDemand demand,
-        int loadGeneration,
-        object registrationAttempt,
-        SvgHostPendingWaiter waiter)
-    {
-        lock (_svgHostDeferredSync)
-        {
-            if (_svgHostDeferred == SvgHostDeferredWaiting &&
-                ReferenceEquals(_svgHostDeferredRegistrationAttempt, registrationAttempt) &&
-                ReferenceEquals(Volatile.Read(ref _svgLoadDemandTicket), demand) &&
-                loadGeneration == Volatile.Read(ref _svgLoadDemandGeneration) &&
-                !waiter.IsFinished)
-            {
-                _svgHostDeferredWaiterIdentity = waiter.Identity;
-                _svgHostDeferredDenialIdentity ??= registrationAttempt;
-                return true;
-            }
-        }
-        return false;
-    }
-
-    internal void OnSvgHostAdmissionWaiterFinished(
-        MarkdownSvgRenderDemand demand,
-        int loadGeneration,
-        object waiterIdentity)
-    {
-        SvgHostPendingWaiter? waiter = null;
-        lock (_svgHostDeferredSync)
-        {
-            if (ReferenceEquals(Volatile.Read(ref _svgLoadDemandTicket), demand) &&
-                loadGeneration == Volatile.Read(ref _svgLoadDemandGeneration) &&
-                ReferenceEquals(_svgHostDeferredWaiterIdentity, waiterIdentity))
-            {
-                waiter = _svgHostDeferredWaiter;
-                _svgHostDeferredWaiter = null;
-                if (_svgHostDeferred != SvgHostDeferredRetryQueued && !_svgHostDeferredCapacityReady)
-                {
-                    _svgHostDeferredWaiterIdentity = null;
-                    _svgHostDeferredRegistrationAttempt = null;
-                }
-            }
-        }
-        waiter?.Dispose();
-    }
-
-    private void ClearSvgHostDeferral()
-    {
-        IDisposable? waiter;
-        lock (_svgHostDeferredSync)
-            waiter = ClearSvgHostDeferralNoLock();
-        waiter?.Dispose();
-    }
-
-    private IDisposable? ClearSvgHostDeferralNoLock()
-    {
-        IDisposable? waiter = _svgHostDeferredWaiter;
-        _svgHostDeferredWaiter = null;
-        _svgHostDeferredWaiterIdentity = null;
-        _svgHostDeferredRegistrationAttempt = null;
-        _svgHostDeferredDenialIdentity = null;
-        _svgHostDeferredAdmission = null;
-        _svgHostDeferred = SvgHostDeferredNone;
-        _svgHostDeferredDemandVersion = 0;
-        _svgHostDeferredCapacityVersion = 0;
-        _svgHostDeferredOwnerVersion = 0;
-        _svgHostDeferredVisualDemandEpoch = 0;
-        _svgHostDeferredRequiredSourceBytes = 0;
-        _svgHostDeferredRequiresOwnerSlot = false;
-        _svgHostDeferredCapacityReady = false;
-        return waiter;
     }
 
     public override float Measure(float availableWidth)
@@ -2460,7 +2059,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             _imageRetirementCompletion = retirementCompletion;
         }
 
-        ClearSvgHostDeferral();
+        SvgHostDeferral.ClearSvgHostDeferral();
         OutputDeferral.ClearBitmapOutputDeferral();
         _measure.InvalidateInlineCheckpointForDisposal();
 
@@ -2839,7 +2438,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 terminalOwnerSlot = Volatile.Read(ref _svgTileRenderPlan)?.OwnerSlot;
                 Volatile.Write(ref _svgTileRenderPlan, null);
             }
-            ClearSvgHostDeferral();
+            SvgHostDeferral.ClearSvgHostDeferral();
             OutputDeferral.ClearBitmapOutputDeferral();
             terminalOwnerSlot?.Dispose();
             if (terminalDocument is not null)
@@ -2926,11 +2525,11 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         OutputDeferral.ClearBitmapOutputDeferral(preserveRetryOffer: demandOverride is not null);
         IDisposable? previousDeferredWaiter = null;
         MarkdownSvgRenderDemand demand;
-        lock (_svgHostDeferredSync)
+        lock (SvgHostDeferral.Sync)
         {
             if (demandOverride is null)
             {
-                previousDeferredWaiter = ClearSvgHostDeferralNoLock();
+                previousDeferredWaiter = SvgHostDeferral.ClearSvgHostDeferralNoLock();
                 demand = new MarkdownSvgRenderDemand(isVisible
                     ? MarkdownSvgRenderPriority.Visible
                     : MarkdownSvgRenderPriority.Overscan);
@@ -3046,7 +2645,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         // gate before it can set _loadStarted again, so a late callback cannot
         // clear a newer activation even if a resumed box reuses its ticket;
         // the old residency token is canceled before that callback can reset.
-        lock (_svgHostDeferredSync)
+        lock (SvgHostDeferral.Sync)
         {
             if (_disposed || _resourcesSuspended ||
                 !ReferenceEquals(Volatile.Read(ref _svgLoadDemandTicket), demand) ||
@@ -3295,7 +2894,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 sourceLease = null;
                 DisposeCallerSource(ref consumerSourceLease);
                 if (result.Deferral is { } hostDeferral)
-                    DeferSvgHostLoad(hostDeferral);
+                    SvgHostDeferral.DeferSvgHostLoad(hostDeferral);
                 else if (openedWork is not null)
                     await RenderOpenedSvgAsync(openedWork).ConfigureAwait(false);
                 return;
@@ -3461,7 +3060,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                     source = default;
                     DisposeCallerSource(ref reservation);
                     if (result.Deferral is { } hostDeferral)
-                        DeferSvgHostLoad(hostDeferral);
+                        SvgHostDeferral.DeferSvgHostLoad(hostDeferral);
                     else if (openedWork is not null)
                         await RenderOpenedSvgAsync(openedWork).ConfigureAwait(false);
                 }
@@ -4439,7 +4038,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             rawBytes = Array.Empty<byte>();
             DisposeCallerSource(ref reservation);
             if (result.Deferral is { } hostDeferral)
-                DeferSvgHostLoad(hostDeferral);
+                SvgHostDeferral.DeferSvgHostLoad(hostDeferral);
             else if (openedWork is not null)
                 await RenderOpenedSvgAsync(openedWork).ConfigureAwait(false);
         }

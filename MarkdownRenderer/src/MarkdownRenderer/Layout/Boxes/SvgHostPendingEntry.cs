@@ -10,7 +10,7 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// It holds weak references only, so a pending row never keeps a box alive.
 /// </summary>
 internal sealed class SvgHostPendingEntry(
-    ImageBox owner,
+    SvgHostLoadDeferral owner,
     IMarkdownSvgAdmission admission,
     MarkdownSvgRenderDemand demand,
     int loadGeneration,
@@ -22,7 +22,7 @@ internal sealed class SvgHostPendingEntry(
     long visualDemandEpoch,
     CancellationToken cancellationToken)
 {
-    internal readonly WeakReference<ImageBox> Owner = new(owner);
+    internal readonly WeakReference<SvgHostLoadDeferral> Owner = new(owner);
     internal readonly WeakReference<IMarkdownSvgAdmission> Admission = new(admission);
     internal readonly MarkdownSvgRenderDemand Demand = demand;
     internal readonly int LoadGeneration = loadGeneration;

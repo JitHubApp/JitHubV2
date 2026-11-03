@@ -89,7 +89,7 @@ public sealed class ImageBoxActivationResetTests
     private static ImageBox BareBox(MarkdownSvgRenderDemand demand, int loadGeneration)
     {
         var box = (ImageBox)RuntimeHelpers.GetUninitializedObject(typeof(ImageBox));
-        SetField(box, "_svgHostDeferredSync", new object());
+        SetField(box, "_svgHostDeferral", new SvgHostLoadDeferral(box, ImageResourceScope.Shared));
         SetField(box, "_svgLoadDemandTicket", demand);
         SetField(box, "_svgLoadDemandGeneration", loadGeneration);
         SetField(box, "_disposed", false);

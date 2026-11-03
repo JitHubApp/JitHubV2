@@ -209,10 +209,10 @@ internal sealed partial class ImageBox : IMarkdownImageResidencyTarget
             return;
         demand.PromoteVisible();
 
-        if (Volatile.Read(ref _svgHostDeferred) != 0)
+        if (SvgHostDeferral.IsDeferred)
         {
-            TryResumeDeferredSvgLoadForObservedDemandOrCapacity(demand);
-            TryQueueDeferredSvgHostRetry(
+            SvgHostDeferral.TryResumeDeferredSvgLoadForObservedDemandOrCapacity(demand);
+            SvgHostDeferral.TryQueueDeferredSvgHostRetry(
                 demand,
                 Volatile.Read(ref _svgLoadDemandGeneration),
                 observedDemandVersion: 0,
@@ -637,7 +637,7 @@ internal sealed partial class ImageBox : IMarkdownImageResidencyTarget
         }
 
         AdvanceSvgRenderGeneration();
-        ClearSvgHostDeferral();
+        SvgHostDeferral.ClearSvgHostDeferral();
         OutputDeferral.ClearBitmapOutputDeferral();
         if (cancellation is not null)
             _ = CancelResidencyAsync(cancellation, cancellationWork!);
@@ -697,7 +697,7 @@ internal sealed partial class ImageBox : IMarkdownImageResidencyTarget
             // box retains only a weak source-identity hint, not the byte array.
         }
 
-        ClearSvgHostDeferral();
+        SvgHostDeferral.ClearSvgHostDeferral();
         OutputDeferral.ClearBitmapOutputDeferral();
         ownerSlot?.Dispose();
         ReleaseSvgTiles();

@@ -354,16 +354,7 @@ internal sealed partial class ImageBox
             }
         }
 
-        lock (_svgHostDeferredSync)
-        {
-            return _svgHostDeferred == SvgHostDeferredNone &&
-                   _svgHostDeferredWaiter is null &&
-                   _svgHostDeferredWaiterIdentity is null &&
-                   _svgHostDeferredRegistrationAttempt is null &&
-                   _svgHostDeferredDenialIdentity is null &&
-                   _svgHostDeferredAdmission is null &&
-                   !_svgHostDeferredCapacityReady;
-        }
+        return SvgHostDeferral.IsClear();
     }
 
     private static bool IsFinitePositive(double value) =>

@@ -259,14 +259,13 @@ public sealed class SvgHostAdmissionCoordinatorTests
     [Fact]
     public void LateFinishedWaiterCannotClearAReplacementForTheSameDemandAndGeneration()
     {
-        ImageBox owner = BareBox();
-        SetField(owner, "_svgHostDeferredSync", new object());
+        SvgHostLoadDeferral owner = TestSvgHostDeferralHost.CreateDeferral();
         var domain = new SvgHostAdmissionDomain();
         var admission = new RegistryAdmission();
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         const int generation = 41;
-        SetField(owner, "_svgLoadDemandTicket", demand);
-        SetField(owner, "_svgLoadDemandGeneration", generation);
+        TestSvgHostDeferralHost.Of(owner).LoadDemand = demand;
+        TestSvgHostDeferralHost.Of(owner).LoadDemandGeneration = generation;
         SetField(owner, "_svgHostDeferred", 1);
         using var lifetime = new CancellationTokenSource();
         var oldEntry = new SvgHostPendingEntry(
@@ -316,7 +315,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
     {
         var domain = new SvgHostAdmissionDomain();
         var admission = new ThresholdAdmission();
-        var owner = BareBox();
+        var owner = TestSvgHostDeferralHost.CreateDeferral();
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using var lifetime = new CancellationTokenSource();
         var firstAttempt = new object();
@@ -372,7 +371,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
     {
         var domain = new SvgHostAdmissionDomain();
         var admission = new ThresholdAdmission();
-        var owner = BareBox();
+        var owner = TestSvgHostDeferralHost.CreateDeferral();
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using var lifetime = new CancellationTokenSource();
         var firstAttempt = new object();
@@ -432,7 +431,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
     {
         var domain = new SvgHostAdmissionDomain();
         var admission = new ThresholdAdmission();
-        ImageBox owner = BareBox();
+        SvgHostLoadDeferral owner = TestSvgHostDeferralHost.CreateDeferral();
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using var lifetime = new CancellationTokenSource();
         var rejectedAttempt = new object();
@@ -505,7 +504,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
     {
         var domain = new SvgHostAdmissionDomain();
         var admission = new ThresholdAdmission(initialAvailableBytes: 1024);
-        var owner = BareBox();
+        var owner = TestSvgHostDeferralHost.CreateDeferral();
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using var lifetime = new CancellationTokenSource();
         var attempt = new object();
@@ -536,7 +535,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
     {
         var domain = new SvgHostAdmissionDomain();
         var admission = new NeverReadyAdmission();
-        var owner = BareBox();
+        var owner = TestSvgHostDeferralHost.CreateDeferral();
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using var lifetime = new CancellationTokenSource();
         var attempt = new object();
@@ -580,8 +579,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
         finally
         {
             waiter.Dispose();
-            typeof(ImageBox).GetMethod("ClearSvgHostDeferral",
-                BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(owner, null);
+            owner.ClearSvgHostDeferral();
             lifetime.Cancel();
         }
         GC.KeepAlive(owner);
@@ -593,7 +591,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
     {
         var domain = new SvgHostAdmissionDomain();
         var admission = new ThresholdAdmission();
-        var owner = BareBox();
+        var owner = TestSvgHostDeferralHost.CreateDeferral();
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using var lifetime = new CancellationTokenSource();
         var firstAttempt = new object();
@@ -661,7 +659,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
     {
         var domain = new SvgHostAdmissionDomain();
         var admission = new ThresholdAdmission();
-        var owner = BareBox();
+        var owner = TestSvgHostDeferralHost.CreateDeferral();
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using var lifetime = new CancellationTokenSource();
         var firstAttempt = new object();
@@ -715,7 +713,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
     {
         var domain = new SvgHostAdmissionDomain();
         var admission = new RegistryAdmission();
-        ImageBox owner = BareBox();
+        SvgHostLoadDeferral owner = TestSvgHostDeferralHost.CreateDeferral();
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using var lifetime = new CancellationTokenSource();
         var attempt = new object();
@@ -786,7 +784,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
                 ownerSlots[i].Commit(owners[i], plans[i], ownerDemand[i], ownerWeight);
             }
 
-            var requester = BareBox();
+            var requester = TestSvgHostDeferralHost.CreateDeferral();
             var requestDemand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
             var attempts = new object[] { new(), new(), new(), new() };
             InitializeSourceDeferredOwner(requester, requestDemand, attempts[0], admission, requiredBytes: 100);
@@ -967,7 +965,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
     {
         var domain = new SvgHostAdmissionDomain();
         var admission = new WaitingAdmission();
-        var boxes = new ImageBox[129];
+        var boxes = new SvgHostLoadDeferral[129];
         var demands = new MarkdownSvgRenderDemand[129];
         var attempts = new object[129];
         var handles = new SvgHostPendingWaiter?[129];
@@ -976,12 +974,11 @@ public sealed class SvgHostAdmissionCoordinatorTests
         {
             for (int i = 0; i < boxes.Length; i++)
             {
-                boxes[i] = BareBox();
+                boxes[i] = TestSvgHostDeferralHost.CreateDeferral();
                 demands[i] = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
                 attempts[i] = new object();
-                SetField(boxes[i], "_svgHostDeferredSync", new object());
-                SetField(boxes[i], "_svgLoadDemandTicket", demands[i]);
-                SetField(boxes[i], "_svgLoadDemandGeneration", 1);
+                TestSvgHostDeferralHost.Of(boxes[i]).LoadDemand = demands[i];
+                TestSvgHostDeferralHost.Of(boxes[i]).LoadDemandGeneration = 1;
                 SetField(boxes[i], "_svgHostDeferred", 1);
                 SetField(boxes[i], "_svgHostDeferredRegistrationAttempt", attempts[i]);
                 handles[i] = domain.Defer(boxes[i], admission, demands[i], 1,
@@ -1026,7 +1023,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
                 GC.Collect();
             }
             Assert.All(weakOwners, weak => Assert.False(weak.IsAlive));
-            ImageBox replacementOwner = BareBox();
+            SvgHostLoadDeferral replacementOwner = TestSvgHostDeferralHost.CreateDeferral();
             var replacementDemand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
             object attempt = new();
             InitializeDeferredOwner(replacementOwner, replacementDemand, attempt);
@@ -1076,7 +1073,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
         SvgHostAdmissionDomain domain, IMarkdownSvgAdmission admission,
         MarkdownSvgRenderDemand demand, CancellationToken lifetime)
     {
-        ImageBox owner = BareBox();
+        SvgHostLoadDeferral owner = TestSvgHostDeferralHost.CreateDeferral();
         object attempt = new();
         InitializeDeferredOwner(owner, demand, attempt);
         Assert.Null(domain.Defer(owner, admission, demand, 1, 0, 128,
@@ -1092,10 +1089,10 @@ public sealed class SvgHostAdmissionCoordinatorTests
     {
         var weakOwners = new WeakReference[128];
         var handles = new SvgHostPendingWaiter[128];
-        var owners = new ImageBox[128];
+        var owners = new SvgHostLoadDeferral[128];
         for (int i = 0; i < weakOwners.Length; i++)
         {
-            ImageBox owner = BareBox();
+            SvgHostLoadDeferral owner = TestSvgHostDeferralHost.CreateDeferral();
             owners[i] = owner;
             var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
             object attempt = new();
@@ -1112,17 +1109,16 @@ public sealed class SvgHostAdmissionCoordinatorTests
         return (weakOwners, handles);
     }
 
-    private static void InitializeDeferredOwner(ImageBox owner, MarkdownSvgRenderDemand demand, object attempt)
+    private static void InitializeDeferredOwner(SvgHostLoadDeferral owner, MarkdownSvgRenderDemand demand, object attempt)
     {
-        SetField(owner, "_svgHostDeferredSync", new object());
-        SetField(owner, "_svgLoadDemandTicket", demand);
-        SetField(owner, "_svgLoadDemandGeneration", 1);
+        TestSvgHostDeferralHost.Of(owner).LoadDemand = demand;
+        TestSvgHostDeferralHost.Of(owner).LoadDemandGeneration = 1;
         SetField(owner, "_svgHostDeferred", 1);
         SetField(owner, "_svgHostDeferredRegistrationAttempt", attempt);
     }
 
     private static void InitializeSourceDeferredOwner(
-        ImageBox owner,
+        SvgHostLoadDeferral owner,
         MarkdownSvgRenderDemand demand,
         object attempt,
         IMarkdownSvgAdmission admission,
@@ -1142,7 +1138,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
 
     private static SvgHostPendingWaiter? DeferDuplicate(
         SvgHostAdmissionDomain domain,
-        ImageBox owner,
+        SvgHostLoadDeferral owner,
         IMarkdownSvgAdmission admission,
         MarkdownSvgRenderDemand demand,
         object attempt,

@@ -63,7 +63,7 @@
     },
     {
       "path": "src/MarkdownRenderer/Layout/Boxes/ImageBox.cs",
-      "lines": 8416,
+      "lines": 8015,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
@@ -168,7 +168,7 @@
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/SvgHostAdmissionCoordinatorTests.cs",
-      "lines": 1421,
+      "lines": 1417,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
