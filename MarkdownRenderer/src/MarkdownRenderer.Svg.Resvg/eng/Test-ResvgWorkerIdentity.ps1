@@ -156,6 +156,35 @@ try {
     if (-not $tamperRejected) { throw 'Worker identity verifier accepted a nonselected RID payload-byte mutation.' }
     $checks++
 
+    # The CI-artifact import must reject an incomplete or mislabeled artifact
+    # before it replaces any runtime worker or rewrites the identity.
+    $importer = Join-Path $PSScriptRoot 'Import-ResvgWorkerRebuilds.ps1'
+    function Get-PinnedWorkerState {
+        $paths = @('RESVG_WORKER_IDENTITY.json') +
+            @((Get-ResvgWorkerIdentityRids).Keys | ForEach-Object { "runtimes\$_\native\MarkdownRenderer.Svg.Resvg.Worker.exe" })
+        return ($paths | ForEach-Object { (Get-FileHash -LiteralPath (Join-Path $providerRoot $_) -Algorithm SHA256).Hash }) -join ','
+    }
+    $pinnedState = Get-PinnedWorkerState
+    function Assert-ImportRejected([string] $Name, [hashtable] $Layout) {
+        $artifact = Join-Path $tempRoot ('import-' + [guid]::NewGuid().ToString('N'))
+        foreach ($rid in $Layout.Keys) {
+            $destination = Join-Path $artifact "$rid\MarkdownRenderer.Svg.Resvg.Worker.exe"
+            [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($destination)) | Out-Null
+            $source = Join-Path $workerRoot "runtimes\$($Layout[$rid])\native\MarkdownRenderer.Svg.Resvg.Worker.exe"
+            [IO.File]::Copy($source, $destination, $true)
+        }
+        $rejected = $false
+        try { & $importer -RebuildRoot $artifact | Out-Null }
+        catch { $rejected = $true }
+        if (-not $rejected) { throw "Worker rebuild import accepted invalid artifact '$Name'." }
+        if ((Get-PinnedWorkerState) -cne $script:pinnedState) {
+            throw "Rejected worker rebuild import '$Name' changed the pinned workers or identity."
+        }
+        $script:checks++
+    }
+    Assert-ImportRejected 'incomplete rebuild artifact' @{ 'win-x86' = 'win-x86'; 'win-x64' = 'win-x64' }
+    Assert-ImportRejected 'mislabeled rebuild architecture' @{ 'win-x86' = 'win-x64'; 'win-x64' = 'win-x64'; 'win-arm64' = 'win-arm64' }
+
     $sourceFixture = Join-Path $tempRoot 'source-fixture'
     [IO.Directory]::CreateDirectory($sourceFixture) | Out-Null
     foreach ($relative in @(
@@ -165,6 +194,7 @@ try {
         'eng/Build-ResvgWorker.ps1',
         'eng/Compare-ResvgWorkerBinary.ps1',
         'eng/Generate-ResvgSupplyChain.ps1',
+        'eng/Import-ResvgWorkerRebuilds.ps1',
         'eng/ResvgWorkerIdentity.psm1',
         'eng/Update-ResvgWorkerIdentity.ps1',
         'eng/Verify-ResvgWorkerIdentity.ps1',
@@ -340,7 +370,7 @@ try {
         throw 'The provider test project ignored the selected worker-directory or RID override.'
     }
     $checks++
-    Write-Output "Passed $checks worker identity fixtures (three RID positives and stale, incomplete, protocol, PE, comparison, and payload tamper negatives)."
+    Write-Output "Passed $checks worker identity fixtures (three RID positives and stale, incomplete, protocol, PE, comparison, payload tamper, and rebuild-import negatives)."
 }
 finally {
     if (Test-Path -LiteralPath $tempRoot -PathType Container) {

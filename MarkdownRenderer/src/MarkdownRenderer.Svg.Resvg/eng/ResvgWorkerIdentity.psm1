@@ -158,6 +158,7 @@ function Get-ResvgWorkerSourceFingerprint([string] $ProviderRoot) {
         'eng/Compare-ResvgWorkerBinary.ps1',
         'eng/Generate-ResvgSupplyChain.ps1',
         'eng/ResvgWorkerIdentity.psm1',
+        'eng/Import-ResvgWorkerRebuilds.ps1',
         'eng/ResvgVendoredSources.ps1',
         'eng/Update-ResvgWorkerIdentity.ps1',
         'eng/Verify-ResvgWorkerIdentity.ps1',
@@ -307,4 +308,72 @@ function Get-ResvgWorkerImageInfo([string] $Path) {
     }
 }
 
-Export-ModuleMember -Function Get-ResvgWorkerIdentityRids, Get-ResvgWorkerProtocolVersions, Get-ResvgWorkerSourceFingerprint, Get-ResvgWorkerBuildFingerprint, Get-ResvgWorkerFingerprintBytes, Get-ResvgWorkerImageInfo
+function Get-ResvgWorkerPinnedRustcCommit([string] $ProviderRoot) {
+    $toolchainPath = Join-Path $ProviderRoot 'native\rust-toolchain.toml'
+    $channels = [regex]::Matches(
+        [IO.File]::ReadAllText($toolchainPath),
+        '(?m)^\s*channel\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"\s*$')
+    if ($channels.Count -ne 1) {
+        throw "Could not read one exact pinned Rust channel from '$toolchainPath'."
+    }
+    $channel = $channels[0].Groups[1].Value
+    $commits = @(& rustc "+$channel" -vV | Where-Object { $_ -like 'commit-hash: *' } |
+        ForEach-Object { $_.Substring('commit-hash: '.Length).Trim().ToLowerInvariant() })
+    if ($LASTEXITCODE -ne 0 -or $commits.Count -ne 1 -or $commits[0] -notmatch '^[0-9a-f]{40}$') {
+        throw "The pinned Rust $channel commit hash could not be resolved."
+    }
+    return $commits[0]
+}
+
+function New-ResvgWorkerIdentityRecord(
+    [string] $Rid,
+    [string] $SourceFingerprint,
+    [string] $RustcCommit,
+    [object] $Protocol,
+    [object] $RuntimeImage,
+    [object] $BuildImage) {
+    $expected = $script:ResvgWorkerIdentityRids[$Rid]
+    if ($null -eq $expected) {
+        throw "Unknown worker RID '$Rid'."
+    }
+    $commit = $RustcCommit.ToLowerInvariant()
+    return [ordered]@{
+        rid = $Rid
+        target = [string]$expected.target
+        machine = $RuntimeImage.machine
+        bytes = [long]$RuntimeImage.bytes
+        sha256 = $RuntimeImage.sha256
+        normalizedSha256 = $RuntimeImage.normalizedSha256
+        sourceFingerprint = $SourceFingerprint
+        buildFingerprint = Get-ResvgWorkerBuildFingerprint $SourceFingerprint ([string]$expected.target) $commit
+        rustcCommit = $commit
+        hostProtocolVersion = $Protocol.Host
+        nativeProtocolVersion = $Protocol.Native
+        buildOutputBytes = [long]$BuildImage.bytes
+        buildOutputSha256 = $BuildImage.sha256
+        buildOutputNormalizedSha256 = $BuildImage.normalizedSha256
+    }
+}
+
+function Save-ResvgWorkerIdentity([string] $IdentityPath, [object[]] $Workers) {
+    $orderedRids = @($script:ResvgWorkerIdentityRids.Keys)
+    $sortedWorkers = @($Workers | Sort-Object { [Array]::IndexOf($orderedRids, [string]$_.rid) })
+    $manifest = [ordered]@{
+        schemaVersion = 1
+        workerFileName = $script:ResvgWorkerIdentityFileName
+        workers = $sortedWorkers
+    }
+    $json = $manifest | ConvertTo-Json -Depth 12
+    $temporaryPath = "$IdentityPath.$([Guid]::NewGuid().ToString('N')).tmp"
+    try {
+        [IO.File]::WriteAllText($temporaryPath, $json + "`n", [Text.UTF8Encoding]::new($false))
+        Move-Item -LiteralPath $temporaryPath -Destination $IdentityPath -Force
+    }
+    finally {
+        if (Test-Path -LiteralPath $temporaryPath -PathType Leaf) {
+            Remove-Item -LiteralPath $temporaryPath -Force
+        }
+    }
+}
+
+Export-ModuleMember -Function Get-ResvgWorkerIdentityRids, Get-ResvgWorkerProtocolVersions, Get-ResvgWorkerSourceFingerprint, Get-ResvgWorkerBuildFingerprint, Get-ResvgWorkerFingerprintBytes, Get-ResvgWorkerImageInfo, Get-ResvgWorkerPinnedRustcCommit, New-ResvgWorkerIdentityRecord, Save-ResvgWorkerIdentity
