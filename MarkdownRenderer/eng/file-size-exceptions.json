@@ -341,12 +341,7 @@
       "lines": 1414,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
-    {
-      "path": "tests/MarkdownRenderer.Svg.Resvg.Tests/ResvgProviderTests.cs",
-      "lines": 1052,
-      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
-    },
-    {
+{
       "path": "tests/MarkdownRenderer.Svg.Resvg.Tests/SvgProcessSnapshotAdmissionTests.cs",
       "lines": 1046,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
