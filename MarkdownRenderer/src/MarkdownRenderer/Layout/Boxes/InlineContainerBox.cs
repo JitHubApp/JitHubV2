@@ -5,7 +5,6 @@ using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Graphics.Canvas;
-using Microsoft.Graphics.Canvas.Brushes;
 using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
@@ -73,6 +72,7 @@ internal sealed partial class InlineContainerBox : BlockBox
     internal CanvasTextLayout? TextLayout => _layout;
     private NativeResourceRetirementRecord? _layoutRetirementRecord;
     private ScriptBaselineGeometry _scriptBaselineGeometry = ScriptBaselineGeometry.Empty;
+    internal ScriptBaselineGeometry ScriptBaselineGeometry => _scriptBaselineGeometry;
     private CanvasLineMetrics[]? _cachedLineMetrics;
     private bool _lineMetricsRead;
     private CanvasTextLayout? _selectionLayout;
@@ -2464,10 +2464,10 @@ internal sealed partial class InlineContainerBox : BlockBox
     /// All paint / hit-test / selection-rect / embed-rect computations use
     /// this single snapped origin so they stay in agreement.
     /// </summary>
-    private (float X, float Y) GetSnappedOrigin(Theming.ElementStyle style)
+    internal (float X, float Y) GetSnappedOrigin(Theming.ElementStyle style)
         => GetSnappedOrigin(style, out _, out _);
 
-    private (float X, float Y) GetSnappedOrigin(
+    internal (float X, float Y) GetSnappedOrigin(
         Theming.ElementStyle style,
         out float finalOriginX,
         out float finalOriginY)
@@ -2501,215 +2501,8 @@ internal sealed partial class InlineContainerBox : BlockBox
         return (x, y);
     }
 
-    private void DrawTextLayoutAtFinalOrigin(
-        CanvasDrawingSession drawingSession,
-        CanvasTextLayout layout,
-        float finalOriginX,
-        float finalOriginY,
-        Color color,
-        int foregroundOverrideStart = -1,
-        int foregroundOverrideLength = 0)
-    {
-        if (_scriptBaselineGeometry.Count != 0)
-        {
-            DrawTextLayoutWithScriptBaselines(
-                drawingSession,
-                layout,
-                finalOriginX,
-                finalOriginY,
-                color,
-                foregroundOverrideStart,
-                foregroundOverrideLength);
-            return;
-        }
-
-        Matrix3x2 originalTransform = drawingSession.Transform;
-        if (!LayoutPlacementTransformContext.TryGetPlacementFreeCanvasTransform(
-                originalTransform,
-                out Matrix3x2 placementFreeTransform))
-        {
-            drawingSession.DrawTextLayout(layout, finalOriginX, finalOriginY, color);
-            return;
-        }
-
-        // Placement-only world translations perturb DirectWrite's glyph
-        // rasterization even when the final logical origin is identical.
-        // Draw text with the caller's exact matrix at the final snapped
-        // coordinate; other box geometry retains its local-coordinate path.
-        PlacementAwareTextDrawing.DrawAtPlacementFreeTransform(
-            drawingSession,
-            layout,
-            finalOriginX,
-            finalOriginY,
-            color,
-            originalTransform,
-            placementFreeTransform);
-    }
-
-    private void DrawTextLayoutWithScriptBaselines(
-        CanvasDrawingSession drawingSession,
-        CanvasTextLayout layout,
-        float finalOriginX,
-        float finalOriginY,
-        Color color,
-        int foregroundOverrideStart,
-        int foregroundOverrideLength)
-    {
-        ElementStyle containerStyle = GetContainerStyle();
-        // CanvasTextLayout.DrawTextLayout's brush overload supplies a fallback
-        // for glyph runs whose callback brush is null. Recreate that behavior
-        // here: primary text inherits the paragraph foreground, while the
-        // selection clone inherits the selection foreground. A link-state
-        // overlay may additionally override only its own source range.
-        Color defaultForegroundColor = ReferenceEquals(layout, _layout)
-            ? containerStyle.Foreground
-            : color;
-        using var defaultForeground = new CanvasSolidColorBrush(
-            Context.ResourceCreator,
-            defaultForegroundColor);
-        bool useForegroundOverride = ReferenceEquals(layout, _layout) && foregroundOverrideLength > 0;
-        using CanvasSolidColorBrush? foregroundOverride = useForegroundOverride
-            ? new CanvasSolidColorBrush(Context.ResourceCreator, color)
-            : null;
-        using var renderer = new ScriptBaselineTextRenderer(
-            drawingSession,
-            _scriptBaselineGeometry,
-            defaultForeground,
-            foregroundOverride,
-            foregroundOverrideStart,
-            foregroundOverrideLength);
-
-        Matrix3x2 originalTransform = drawingSession.Transform;
-        if (!LayoutPlacementTransformContext.TryGetPlacementFreeCanvasTransform(
-                originalTransform,
-                out Matrix3x2 placementFreeTransform) ||
-            originalTransform == placementFreeTransform)
-        {
-            layout.DrawToTextRenderer(renderer, finalOriginX, finalOriginY);
-            return;
-        }
-
-        Exception? drawFailure = null;
-        try
-        {
-            drawingSession.Transform = placementFreeTransform;
-            layout.DrawToTextRenderer(renderer, finalOriginX, finalOriginY);
-        }
-        catch (Exception exception)
-        {
-            drawFailure = exception;
-        }
-
-        Exception? restoreFailure = null;
-        try
-        {
-            drawingSession.Transform = originalTransform;
-        }
-        catch (Exception exception)
-        {
-            restoreFailure = exception;
-        }
-
-        if (drawFailure is not null)
-        {
-            if (restoreFailure is not null)
-                throw new AggregateException("Script text drawing and canvas-transform restoration both failed.", drawFailure, restoreFailure);
-            ExceptionDispatchInfo.Capture(drawFailure).Throw();
-        }
-
-        if (restoreFailure is not null)
-            ExceptionDispatchInfo.Capture(restoreFailure).Throw();
-    }
-
-    private void DrawHeadingBottomBorder(
-        CanvasDrawingSession ds,
-        Color color,
-        float thickness)
-    {
-        if (!float.IsFinite(thickness) || thickness <= 0)
-            return;
-
-        Thickness margin = Margin;
-        float left = (float)(Bounds.X + margin.Left);
-        float right = (float)(Bounds.Right - margin.Right);
-        float bottom = (float)(Bounds.Bottom - margin.Bottom);
-        if (!float.IsFinite(left) || !float.IsFinite(right) ||
-            !float.IsFinite(bottom) || right <= left)
-        {
-            return;
-        }
-
-        float scale = (float)Context.RasterizationScale;
-        if (!float.IsFinite(scale) || scale <= 0)
-            scale = 1;
-        // Align the outside edge to a device-pixel boundary, then center the
-        // stroke inside its reserved final padding band. This keeps 1-DIP
-        // heading rules crisp at integral DPI scales.
-        float snappedBottom = MathF.Round(bottom * scale) / scale;
-        float centerY = snappedBottom - thickness / 2f;
-        ds.DrawLine(left, centerY, right, centerY, color, thickness);
-    }
-
     public override void Paint(CanvasDrawingSession ds, Rect viewport)
-    {
-        if (_layout is null) return;
-        var style = GetContainerStyle();
-
-        if (DrawContainerChrome && style.Background is { } bg)
-        {
-            var margin = Margin;
-            var rect = new Rect(
-                Bounds.X + margin.Left,
-                Bounds.Y + margin.Top,
-                Bounds.Width - margin.Left - margin.Right,
-                Bounds.Height - margin.Top - margin.Bottom);
-            ds.FillRoundedRectangle(rect, style.CornerRadius, style.CornerRadius, bg);
-        }
-
-        bool drawHeadingBottomBorder =
-            style.HeadingBorderBottomOnly &&
-            (ElementKey is MarkdownElementKeys.Heading1 or MarkdownElementKeys.Heading2) &&
-            style.BorderBrush is not null &&
-            float.IsFinite(style.BorderThickness) &&
-            style.BorderThickness > 0;
-        if (DrawContainerChrome && !drawHeadingBottomBorder &&
-            style.BorderBrush is { } border && style.BorderThickness > 0)
-        {
-            var margin = Margin;
-            var rect = new Rect(
-                Bounds.X + margin.Left,
-                Bounds.Y + margin.Top,
-                Bounds.Width - margin.Left - margin.Right,
-                Bounds.Height - margin.Top - margin.Bottom);
-            float nnset = style.BorderThickness / 2f;
-            ds.DrawRoundedRectangle(
-                new Rect(
-                    rect.X + nnset,
-                    rect.Y + nnset,
-                    Math.Max(0, rect.Width - style.BorderThickness),
-                    Math.Max(0, rect.Height - style.BorderThickness)),
-                style.CornerRadius,
-                style.CornerRadius,
-                border,
-                style.BorderThickness);
-        }
-        if (drawHeadingBottomBorder && style.BorderBrush is { } headingBorder)
-            DrawHeadingBottomBorder(ds, headingBorder, style.BorderThickness);
-
-        // Hover state is intentionally NOT applied to the text layout —
-        // see HoveredRun docs for why.  Link hover affordance is conveyed by
-        // the cursor shape change in MarkdownRendererControl.OnPointerMoved.
-        // Snap to integer pixels at the draw site.  See GetSnappedOrigin
-        // for the rationale; the same snapped origin is used for hit-test,
-        // selection rects and embed placement so they stay in sync.
-        var (sx, sy) = GetSnappedOrigin(style, out float textOriginX, out float textOriginY);
-        InlineDecorationPainter.DrawRunBackgrounds(this, ds, sx, sy);
-        DrawTextLayoutAtFinalOrigin(ds, _layout, textOriginX, textOriginY, style.Foreground);
-        InlineObjectPainter.DrawInlineImages(this, ds, sx, sy, viewport);
-        InlineObjectPainter.DrawInlineVectorScenes(this, ds, sx, sy, viewport);
-
-        InlineDecorationPainter.DrawDecorations(this, ds, sx, sy);
-    }
+        => InlineTextPainter.Paint(this, ds, viewport);
 
     public override bool HitTest(Point point, out DocumentPosition position)
     {
@@ -3146,135 +2939,10 @@ internal sealed partial class InlineContainerBox : BlockBox
         => GetRangeRects(range);
 
     public override void PaintSelectionForeground(CanvasDrawingSession ds, DocumentRange range, Color color, Rect viewport)
-    {
-        if (_layout is null) return;
-
-        var normalized = range.Normalized();
-        EnsureBuffer();
-        int from = ToBufferIndex(normalized.Start);
-        int to = ToBufferIndex(normalized.End);
-        if (to <= from)
-            return;
-
-        var visibleSelectionRects = new List<Rect>();
-        foreach (var rect in GetRangeRects(normalized))
-        {
-            if (rect.Right < viewport.Left || rect.Left > viewport.Right ||
-                rect.Bottom < viewport.Top || rect.Top > viewport.Bottom)
-            {
-                continue;
-            }
-
-            visibleSelectionRects.Add(rect);
-        }
-
-        if (visibleSelectionRects.Count == 0) return;
-
-        var style = GetContainerStyle();
-        var (sx, sy) = GetSnappedOrigin(style, out float textOriginX, out float textOriginY);
-        var layout = EnsureSelectionLayout(color, style);
-        // Draw a color-neutral copy of the full layout through the exact
-        // selected character regions. Masking non-selected glyphs with a
-        // transparent text color is unreliable on some Win2D/DirectWrite
-        // paths: the later selected-color range can remain transparent and
-        // leave an opaque highlight with no readable glyphs. Geometry clips
-        // preserve the same native ordering and work for wrapped selections.
-        foreach (var rect in visibleSelectionRects)
-        {
-            NativePaintSessionResources.LayerLease layer = NativePaintSessionResources.CreateLayer(ds, 1.0f, rect);
-            try
-            {
-                DrawTextLayoutAtFinalOrigin(ds, layout, textOriginX, textOriginY, color);
-            }
-            catch (Exception primary)
-            {
-                layer.ClosePreservingPrimary(primary);
-                throw;
-            }
-            layer.Close();
-        }
-        InlineDecorationPainter.DrawSelectedDecorations(this, ds, sx, sy, color, from, to - from);
-        InlineObjectPainter.DrawSelectedInlineImages(this, ds, sx, sy, viewport, normalized, color);
-        InlineObjectPainter.DrawSelectedInlineVectorScenes(this, ds, sx, sy, viewport, normalized, color);
-    }
+        => InlineTextPainter.PaintSelectionForeground(this, ds, range, color, viewport);
 
     public void PaintLinkStateForeground(CanvasDrawingSession ds, LinkRun link, bool focused, Rect viewport)
-    {
-        if (_layout is null || link.TextLength == 0)
-            return;
-
-        var style = GetContainerStyle();
-        var (sx, sy) = GetSnappedOrigin(style, out float textOriginX, out float textOriginY);
-        int cumulative = 0;
-        foreach (var run in _runs)
-        {
-            int len = run.TextLength;
-            if (!ReferenceEquals(run, link))
-            {
-                cumulative += len;
-                continue;
-            }
-
-            var runStyle = GetRunStyle(run);
-            var color = focused
-                ? runStyle.FocusForeground ?? runStyle.HoverForeground ?? runStyle.Foreground
-                : runStyle.HoverForeground ?? runStyle.Foreground;
-            var regions = GetAdjustedCharacterRegions(_layout, cumulative, len);
-            if (regions is null)
-                return;
-
-            var lineMetrics = TryGetLineMetrics();
-            foreach (var r in regions)
-            {
-                var rect = new Rect(
-                    sx + r.LayoutBounds.X,
-                    sy + r.LayoutBounds.Y,
-                    r.LayoutBounds.Width,
-                    r.LayoutBounds.Height);
-                if (rect.Right < viewport.Left || rect.Left > viewport.Right ||
-                    rect.Bottom < viewport.Top || rect.Top > viewport.Bottom)
-                {
-                    continue;
-                }
-
-                NativePaintSessionResources.LayerLease layer = NativePaintSessionResources.CreateLayer(ds, 1.0f, rect);
-                try
-                {
-                    DrawTextLayoutAtFinalOrigin(
-                        ds,
-                        _layout,
-                        textOriginX,
-                        textOriginY,
-                        color,
-                        foregroundOverrideStart: cumulative,
-                        foregroundOverrideLength: len);
-                    InlineDecorationPainter.DrawRunDecorations(ds, sx, sy, lineMetrics, r, run, runStyle, color);
-                }
-                catch (Exception primary)
-                {
-                    layer.ClosePreservingPrimary(primary);
-                    throw;
-                }
-                layer.Close();
-            }
-
-            InlineDecorationPainter.DrawLinkInlineSpanDecorations(
-                this,
-                ds,
-                sx,
-                sy,
-                link,
-                cumulative,
-                runStyle,
-                color,
-                selectedStart: null,
-                selectedEnd: null,
-                viewport: viewport,
-                lineMetrics: lineMetrics);
-
-            return;
-        }
-    }
+        => InlineTextPainter.PaintLinkStateForeground(this, ds, link, focused, viewport);
 
     /// <summary>
     /// Returns the bounding rectangle in document coordinates for the run at
@@ -3909,7 +3577,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         return false;
     }
 
-    private int ToBufferIndex(DocumentPosition pos)
+    internal int ToBufferIndex(DocumentPosition pos)
     {
         if (pos.BlockIndex < BlockIndex) return 0;
         if (pos.BlockIndex > BlockIndex) return _buffer.Length;
@@ -4006,7 +3674,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         _bufferDirty = false;
     }
 
-    private CanvasTextLayout EnsureSelectionLayout(Color color, ElementStyle style)
+    internal CanvasTextLayout EnsureSelectionLayout(Color color, ElementStyle style)
     {
         if (!HasValidNativeLayoutCustody(this))
             throw new InvalidOperationException("Cannot replace an inline selection layout without its reserved native-retirement owner.");
