@@ -1,6 +1,3 @@
-using System.Threading;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Accessibility;

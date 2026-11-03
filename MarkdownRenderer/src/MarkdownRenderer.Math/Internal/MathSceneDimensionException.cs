@@ -1,6 +1,3 @@
-using CSharpMath.Atom;
-using CSharpMath.Rendering.FrontEnd;
-
 namespace MarkdownRenderer.Math.Internal;
 
 internal sealed class MathSceneDimensionException : Exception

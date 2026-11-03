@@ -1,5 +1,3 @@
-using MarkdownRenderer.Math.Internal;
-
 namespace MarkdownRenderer.Math;
 
 /// <summary>Resolves localized strings used by the built-in structural formatter.</summary>

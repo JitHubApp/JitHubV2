@@ -1,7 +1,3 @@
-using System.Reflection;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-
 namespace MarkdownRenderer.Mermaid;
 
 /// <summary>Read-only availability information for the optional native Mermaid engine.</summary>

@@ -1,6 +1,4 @@
 using Microsoft.Win32.SafeHandles;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 
 namespace MarkdownRenderer.Mermaid;
 

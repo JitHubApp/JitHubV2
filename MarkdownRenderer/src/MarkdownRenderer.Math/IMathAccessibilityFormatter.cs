@@ -1,5 +1,3 @@
-using MarkdownRenderer.Math.Internal;
-
 namespace MarkdownRenderer.Math;
 
 /// <summary>

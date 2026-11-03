@@ -1,6 +1,3 @@
-using System.Text;
-using static MarkdownRenderer.Mermaid.MmirFormat;
-
 namespace MarkdownRenderer.Mermaid;
 
 /// <summary>A non-throwing result from decoding an untrusted MMIR buffer.</summary>

@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Threading;
 using Windows.Foundation;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Layout;

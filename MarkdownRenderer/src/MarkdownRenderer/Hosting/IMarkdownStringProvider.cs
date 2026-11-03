@@ -1,11 +1,4 @@
-using System.Collections.ObjectModel;
 using System.Globalization;
-using System.Windows.Input;
-using MarkdownRenderer.CodeBlocks;
-using MarkdownRenderer.Extensions;
-using MarkdownRenderer.Images;
-using Microsoft.UI.Xaml;
-using Windows.Foundation;
 
 namespace MarkdownRenderer.Hosting;
 

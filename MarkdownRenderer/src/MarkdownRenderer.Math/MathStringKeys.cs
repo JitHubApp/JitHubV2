@@ -1,5 +1,3 @@
-using MarkdownRenderer.Math.Internal;
-
 namespace MarkdownRenderer.Math;
 
 /// <summary>Stable keys requested from <see cref="IMathStringProvider"/>.</summary>

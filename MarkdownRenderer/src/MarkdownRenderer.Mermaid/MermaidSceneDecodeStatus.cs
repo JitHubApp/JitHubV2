@@ -1,6 +1,3 @@
-using System.Text;
-using static MarkdownRenderer.Mermaid.MmirFormat;
-
 namespace MarkdownRenderer.Mermaid;
 
 /// <summary>Stable failure categories returned when an untrusted MMIR buffer cannot be consumed.</summary>

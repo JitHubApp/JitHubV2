@@ -1,5 +1,4 @@
 using System;
-using System.Security.Cryptography;
 using Microsoft.UI.Xaml.Automation;
 
 namespace MarkdownRenderer.Accessibility;

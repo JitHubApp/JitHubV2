@@ -1,5 +1,3 @@
-using System.Globalization;
-
 namespace MarkdownRenderer.Mermaid;
 
 /// <summary>Resource limits enforced before and during native rendering and MMIR decoding.</summary>

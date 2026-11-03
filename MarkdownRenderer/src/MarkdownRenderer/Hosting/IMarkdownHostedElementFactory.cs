@@ -1,9 +1,5 @@
-using System.Collections.ObjectModel;
-using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
-using MarkdownRenderer.Extensions;
-using MarkdownRenderer.Images;
 using Microsoft.UI.Xaml;
 
 namespace MarkdownRenderer.Hosting;

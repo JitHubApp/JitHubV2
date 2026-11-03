@@ -1,10 +1,6 @@
-using System.Collections.ObjectModel;
-using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.CodeBlocks;
-using Microsoft.UI.Xaml;
-using Windows.Foundation;
 
 namespace MarkdownRenderer.Hosting;
 
