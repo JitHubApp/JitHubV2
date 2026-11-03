@@ -150,23 +150,7 @@ internal sealed class LazyLayoutRealization
         if (_host.RequestGeometryRecoveryIfRequired(snapshot))
             return;
 
-        if (_cts is { IsCancellationRequested: false } &&
-            ReferenceEquals(snapshot, _activeSnapshot) &&
-            // Same-band work from an older image-reflow revision must not
-            // absorb the retry needed to refresh scene indexes/graph bindings.
-            _activeRevision == snapshot.LayoutRevision &&
-            (!_vectorCapacity.IsAdmissionEnabled ||
-             VectorNativeResourceAdmission.Shared.CapacityGeneration <=
-                _activeCapacityGeneration) &&
-            band.Top >= _activeBand.Top &&
-            band.Bottom <= _activeBand.Bottom &&
-            (!_vectorCapacity.IsAdmissionEnabled ||
-             visibleVectorBand.Top == _activeVisibleVectorBand.Top &&
-             visibleVectorBand.Bottom == _activeVisibleVectorBand.Bottom) &&
-            (!preserveScrollAnchor ||
-             (_surface.Scroll is not null &&
-              _activeAnchorOffset is { } activeOffset &&
-              Math.Abs(_surface.Scroll.VerticalOffset - activeOffset) < 0.5)))
+        if (IsCoveredByActiveWork(snapshot, band, visibleVectorBand, preserveScrollAnchor))
         {
             return;
         }
@@ -196,6 +180,43 @@ internal sealed class LazyLayoutRealization
         if (_dispatchQueued)
             return;
 
+        DispatchPendingBand();
+    }
+
+    /// <summary>
+    /// True when the active, uncanceled work for <paramref name="snapshot"/>
+    /// already measures <paramref name="band"/> at the current layout
+    /// revision, capacity generation, visible vector band and scroll anchor.
+    /// </summary>
+    private bool IsCoveredByActiveWork(
+        LayoutSnapshot snapshot,
+        LazyLayoutBand band,
+        LazyLayoutBand visibleVectorBand,
+        bool preserveScrollAnchor) =>
+        _cts is { IsCancellationRequested: false } &&
+            ReferenceEquals(snapshot, _activeSnapshot) &&
+            // Same-band work from an older image-reflow revision must not
+            // absorb the retry needed to refresh scene indexes/graph bindings.
+            _activeRevision == snapshot.LayoutRevision &&
+            (!_vectorCapacity.IsAdmissionEnabled ||
+             VectorNativeResourceAdmission.Shared.CapacityGeneration <=
+                _activeCapacityGeneration) &&
+            band.Top >= _activeBand.Top &&
+            band.Bottom <= _activeBand.Bottom &&
+            (!_vectorCapacity.IsAdmissionEnabled ||
+             visibleVectorBand.Top == _activeVisibleVectorBand.Top &&
+             visibleVectorBand.Bottom == _activeVisibleVectorBand.Bottom) &&
+            (!preserveScrollAnchor ||
+             (_surface.Scroll is not null &&
+              _activeAnchorOffset is { } activeOffset &&
+              Math.Abs(_surface.Scroll.VerticalOffset - activeOffset) < 0.5));
+
+    /// <summary>
+    /// Queues the low-priority dispatch that starts the pending band, after
+    /// making sure the recovery clock can retry a rejected or withheld one.
+    /// </summary>
+    private void DispatchPendingBand()
+    {
         // Lazy work has two UI handoffs: request admission and result
         // publication. Start the timer before either so rejected or accepted-
         // but-withheld dispatcher callbacks still have a bounded recovery path.
