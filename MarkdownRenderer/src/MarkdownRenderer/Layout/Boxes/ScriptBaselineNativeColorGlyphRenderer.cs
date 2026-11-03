@@ -111,6 +111,8 @@ internal sealed unsafe partial class ScriptBaselineNativeColorGlyphRenderer : ID
     /// color representation. The caller then uses Win2D's normal monochrome
     /// path for that run; any other translation failure is surfaced.
     /// </summary>
+    // Kept whole: one try/finally owns every native COM reference and pinned
+    // glyph buffer; splitting it would spread the release order.
     internal bool TryDrawGlyphRun(
         Vector2 baselineOrigin,
         CanvasFontFace fontFace,

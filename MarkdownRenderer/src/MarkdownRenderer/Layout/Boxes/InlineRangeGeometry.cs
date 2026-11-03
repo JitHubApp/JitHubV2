@@ -87,6 +87,7 @@ internal static class InlineRangeGeometry
     internal static IEnumerable<Rect> GetBufferRangeLineRects(InlineContainerBox box, int from, int length)
         => EnumerateRangeRects(box, documentRange: null, from, length, fullLineRects: true, logicalCoordinates: false);
 
+    // Kept whole: a split iterator would allocate a second enumerator per query.
     private static IEnumerable<Rect> EnumerateRangeRects(
         InlineContainerBox box,
         DocumentRange? documentRange,

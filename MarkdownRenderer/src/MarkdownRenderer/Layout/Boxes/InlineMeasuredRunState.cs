@@ -71,6 +71,8 @@ internal readonly struct InlineMeasuredRunState
     private readonly string? _vectorLinkTitle;
     private readonly int _offset;
 
+    // Kept whole: it only assigns the readonly capture fields, which must be
+    // set in the constructor.
     private InlineMeasuredRunState(
         InlineRun sourceRun,
         InlineRun preparedRun,

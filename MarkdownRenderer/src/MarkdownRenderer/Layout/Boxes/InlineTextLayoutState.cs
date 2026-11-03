@@ -69,6 +69,8 @@ internal struct InlineTextLayoutState
     /// <param name="box">The box that owns this state in its field.</param>
     /// <param name="availableWidth">The width offered by the parent.</param>
     /// <returns>The measured height, including margin and padding.</returns>
+    // Kept whole: Reserve, SetTemporary, the speculative measure, rollback on
+    // failure and retiring the superseded layouts must read as one sequence.
     internal float Measure(InlineContainerBox box, float availableWidth)
     {
         box.ThrowIfCancellationRequested();

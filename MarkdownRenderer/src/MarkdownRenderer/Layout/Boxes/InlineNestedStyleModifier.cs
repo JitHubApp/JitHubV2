@@ -12,6 +12,7 @@ internal static class InlineNestedStyleModifier
 {
     private const float MinimumRelativeInlineFontSize = ThemeSnapshot.MinimumRelativeScriptFontSize;
 
+    // Kept whole: a flat dispatch over the modifier key, one case per role.
     internal static ElementStyle ApplyNestedStyleModifier(
         ElementStyle basis,
         ElementStyle modifier,

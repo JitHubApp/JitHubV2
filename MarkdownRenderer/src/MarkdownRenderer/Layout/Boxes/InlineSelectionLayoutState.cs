@@ -62,6 +62,8 @@ internal struct InlineSelectionLayoutState
     /// <param name="box">The inline container that owns this state.</param>
     /// <param name="color">The selection foreground color.</param>
     /// <param name="style">The container's resolved style.</param>
+    // Kept whole: Reserve, SetTemporary, retire-previous and publish must read
+    // as one native-custody sequence.
     internal CanvasTextLayout Ensure(InlineContainerBox box, Color color, ElementStyle style)
     {
         if (!InlineMeasuredPlacementCapture.HasValidNativeLayoutCustody(box))
