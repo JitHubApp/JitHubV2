@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using Markdig;
@@ -44,10 +45,10 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
     };
     private const string GitHubMarkdownContainersFeature =
         "MarkdownRenderer.GitHub.MarkdownInHtmlContainers";
-    [ThreadStatic]
-    private static int s_nestedMarkdownDepth;
-    [ThreadStatic]
-    private static MarkdownDocument? s_rootDocument;
+    // Nested-Markdown recursion depth and the root document whose reference
+    // definitions nested fragments replay. Both belong to one layout pass; a
+    // layout context builds one pass at a time, so it keys this state.
+    private readonly ConditionalWeakTable<MarkdownLayoutContext, HtmlNestedMarkdownPass> _passes = new();
     private readonly SafeHtmlOptions _options;
 
     internal HtmlBlockRenderer(SafeHtmlOptions? options = null)
@@ -58,11 +59,12 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
     /// <inheritdoc />
     public override BlockBox? BuildBlock(HtmlBlock htmlBlock, MarkdownLayoutContext context)
     {
-        MarkdownDocument? previousRoot = s_rootDocument;
+        HtmlNestedMarkdownPass pass = _passes.GetOrCreateValue(context);
+        MarkdownDocument? previousRoot = pass.RootDocument;
         Block rootNode = htmlBlock;
         while (rootNode.Parent is { } parent)
             rootNode = parent;
-        s_rootDocument = rootNode as MarkdownDocument;
+        pass.RootDocument = rootNode as MarkdownDocument;
         try
         {
             SafeHtmlBudgets budgets = _options.Budgets;
@@ -114,6 +116,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             int markdownTailStart = FindMarkdownTailAfterVoidTags(
                 htmlSource,
                 limits,
+                pass,
                 context.CancellationToken);
             SafeHtmlDocument document = SafeHtmlParser.Parse(
                 markdownTailStart < 0 ? htmlSource : htmlSource[..markdownTailStart],
@@ -126,7 +129,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
 
             if (markdownTailStart >= 0)
             {
-                s_nestedMarkdownDepth++;
+                pass.Depth++;
                 try
                 {
                     int absoluteTextStart = sourceOffset + markdownTailStart;
@@ -134,6 +137,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
                         htmlSource[markdownTailStart..],
                         absoluteTextStart,
                         context,
+                        pass.RootDocument,
                         out int bodyOffset,
                         out MarkdownSourceProjection? nestedProjection);
                     MarkdownDocument tail = Markdown.Parse(nestedSource, context.Registry.BuildPipeline());
@@ -151,7 +155,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
                 }
                 finally
                 {
-                    s_nestedMarkdownDepth--;
+                    pass.Depth--;
                 }
             }
 
@@ -188,7 +192,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         }
         finally
         {
-            s_rootDocument = previousRoot;
+            pass.RootDocument = previousRoot;
         }
     }
 
@@ -527,9 +531,10 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
     private static int FindMarkdownTailAfterVoidTags(
         string source,
         SafeHtmlParseLimits limits,
+        HtmlNestedMarkdownPass pass,
         System.Threading.CancellationToken cancellationToken)
     {
-        if (s_nestedMarkdownDepth >= MaxNestedMarkdownDepth)
+        if (pass.Depth >= MaxNestedMarkdownDepth)
             return -1;
 
         int lineStart = 0;
@@ -572,18 +577,19 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         return -1;
     }
 
-    private static BlockBox? TryBuildMarkdownContainer(
+    private BlockBox? TryBuildMarkdownContainer(
         SafeHtmlElement element,
         MarkdownLayoutContext context,
         int sourceOffset,
         SafeHtmlAlignment alignment)
     {
+        HtmlNestedMarkdownPass pass = _passes.GetOrCreateValue(context);
         if (!context.Registry.HasPresentationFeature(GitHubMarkdownContainersFeature) ||
             element.Name is not ("article" or "aside" or "center" or "div" or "main" or "section") ||
             element.Children.Count != 1 ||
             element.Children[0] is not SafeHtmlText text ||
             string.IsNullOrWhiteSpace(text.RawText) ||
-            s_nestedMarkdownDepth >= MaxNestedMarkdownDepth)
+            pass.Depth >= MaxNestedMarkdownDepth)
         {
             return null;
         }
@@ -594,7 +600,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         // sponsor groups. Reparse only the text child, under the same immutable
         // pipeline and a strict recursion ceiling; active HTML remains governed
         // by the safe-HTML policy on every nested pass.
-        s_nestedMarkdownDepth++;
+        pass.Depth++;
         try
         {
             int absoluteTextStart = sourceOffset + text.SourceStart;
@@ -602,6 +608,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
                 text.RawText,
                 absoluteTextStart,
                 context,
+                pass.RootDocument,
                 out int nestedMarkdownBodyOffset,
                 out MarkdownSourceProjection? nestedProjection);
             MarkdownDocument fragment = Markdown.Parse(
@@ -630,7 +637,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         }
         finally
         {
-            s_nestedMarkdownDepth--;
+            pass.Depth--;
         }
     }
 
@@ -638,6 +645,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         string rawText,
         int absoluteTextStart,
         MarkdownLayoutContext context,
+        MarkdownDocument? rootDocument,
         out int bodyOffset,
         out MarkdownSourceProjection? nestedProjection)
     {
@@ -670,7 +678,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         }
 
         string sourceText = context.SourceMap.SourceText;
-        LinkReferenceDefinitionGroup? definitions = s_rootDocument is { } root
+        LinkReferenceDefinitionGroup? definitions = rootDocument is { } root
             ? LinkReferenceDefinitionExtensions.GetLinkReferenceDefinitions(root, false)
             : null;
         SourceSpan sourceRange = safeHtmlProjection is null
