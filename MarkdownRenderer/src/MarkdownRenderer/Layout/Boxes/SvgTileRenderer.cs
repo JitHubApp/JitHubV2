@@ -120,20 +120,103 @@ internal sealed class SvgTileRenderer
         Rect visible = SvgTilePainter.IntersectRects(destination, viewport);
         if (visible.Width <= 0 || visible.Height <= 0)
         {
-            if (!plan.TryBeginViewportMutation())
-                return;
-
-            try
-            {
-                _cache.ObserveOffscreen(plan);
-            }
-            finally
-            {
-                plan.EndViewportMutation();
-            }
+            ObserveOffscreen(plan);
             return;
         }
 
+        (int firstTileX, int firstTileY, int lastTileX, int lastTileY,
+            int firstVisibleTileX, int firstVisibleTileY, int lastVisibleTileX, int lastVisibleTileY) =
+            ComputeTileRanges(plan, destination, visible);
+
+        List<SharedCanvasBitmapCache.Lease>? retired = null;
+        List<CancellationTokenSource>? staleWork = null;
+        int remainingQueueCapacity;
+        if (!plan.TryBeginViewportMutation())
+            return;
+
+        try
+        {
+            if (!_cache.TryObserveVisibleTiles(
+                    plan,
+                    destination,
+                    visible,
+                    firstTileX,
+                    firstTileY,
+                    lastTileX,
+                    lastTileY,
+                    firstVisibleTileX,
+                    firstVisibleTileY,
+                    lastVisibleTileX,
+                    lastVisibleTileY,
+                    ref retired,
+                    ref staleWork,
+                    out remainingQueueCapacity))
+            {
+                return;
+            }
+        }
+        finally
+        {
+            try
+            {
+                plan.EndViewportMutation();
+            }
+            finally
+            {
+                // Retire outside the tile lock even when a later mutation or
+                // demand update fails. Failed native disposal remains charged.
+                RetirePrunedTileState(retired, staleWork);
+            }
+        }
+
+        QueueVisibleThenOverscanTiles(
+            plan,
+            (firstTileX, firstTileY, lastTileX, lastTileY),
+            (firstVisibleTileX, firstVisibleTileY, lastVisibleTileX, lastVisibleTileY),
+            remainingQueueCapacity);
+    }
+
+    // Promotes the plan to visible demand, then queues missing visible tiles
+    // before overscan tiles within the remaining in-flight capacity.
+    private void QueueVisibleThenOverscanTiles(
+        SvgTileRenderPlan plan,
+        (int FirstX, int FirstY, int LastX, int LastY) overscan,
+        (int FirstX, int FirstY, int LastX, int LastY) visible,
+        int remainingQueueCapacity)
+    {
+        plan.Demand.PromoteVisible();
+        SvgHostAdmissionCoordinator.Touch(plan);
+
+        // The isolated provider has its own bounded priority queue. Keep the
+        // host-side visible burst bounded as well; each completion invalidates
+        // the canvas so remaining visible tiles are discovered next frame.
+        int queued = QueueSvgTileRange(
+            plan,
+            visible.FirstX,
+            visible.FirstY,
+            visible.LastX,
+            visible.LastY,
+            remainingQueueCapacity,
+            MarkdownSvgRenderPriority.Visible);
+        _ = QueueSvgTileRange(
+            plan,
+            overscan.FirstX,
+            overscan.FirstY,
+            overscan.LastX,
+            overscan.LastY,
+            remainingQueueCapacity - queued,
+            MarkdownSvgRenderPriority.Overscan);
+    }
+
+    // The visible tile range of the plan's physical grid and the overscan range
+    // one tile beyond it. Clamps run in double precision so a rounded
+    // coordinate at the maximum admitted dimension cannot wrap.
+    private static (int FirstTileX, int FirstTileY, int LastTileX, int LastTileY,
+        int FirstVisibleTileX, int FirstVisibleTileY, int LastVisibleTileX, int LastVisibleTileY) ComputeTileRanges(
+        SvgTileRenderPlan plan,
+        Rect destination,
+        Rect visible)
+    {
         double pixelsPerDipX = plan.PhysicalViewport.Width / destination.Width;
         double pixelsPerDipY = plan.PhysicalViewport.Height / destination.Height;
         // Clamp while still in double precision: a rounded coordinate at the
@@ -177,88 +260,50 @@ internal sealed class SvgTileRenderer
         int firstVisibleTileY = visibleTop / SvgTileSizePixels;
         int lastVisibleTileX = Math.Max(firstVisibleTileX, (visibleRight - 1) / SvgTileSizePixels);
         int lastVisibleTileY = Math.Max(firstVisibleTileY, (visibleBottom - 1) / SvgTileSizePixels);
+        return (firstTileX, firstTileY, lastTileX, lastTileY,
+            firstVisibleTileX, firstVisibleTileY, lastVisibleTileX, lastVisibleTileY);
+    }
 
-        List<SharedCanvasBitmapCache.Lease>? retired = null;
-        List<CancellationTokenSource>? staleWork = null;
-        int remainingQueueCapacity;
+    private void RetirePrunedTileState(
+        List<SharedCanvasBitmapCache.Lease>? retired,
+        List<CancellationTokenSource>? staleWork)
+    {
+        if (retired is not null)
+        {
+            foreach (SharedCanvasBitmapCache.Lease tile in retired)
+                _host.TryImageCleanup(tile.Dispose);
+        }
+        if (staleWork is not null)
+        {
+            foreach (CancellationTokenSource cancellation in staleWork)
+            {
+                try
+                {
+                    _ = CancellationTokenSourceRetirement.RequestCancellation(cancellation);
+                }
+                catch (Exception exception)
+                {
+                    _host.RecordImageRetirementFailure(exception);
+                }
+            }
+        }
+    }
+
+    // Paint found the plan outside the viewport; the viewport gate is held
+    // while the cache records it.
+    private void ObserveOffscreen(SvgTileRenderPlan plan)
+    {
         if (!plan.TryBeginViewportMutation())
             return;
 
         try
         {
-            if (!_cache.TryObserveVisibleTiles(
-                    plan,
-                    destination,
-                    visible,
-                    firstTileX,
-                    firstTileY,
-                    lastTileX,
-                    lastTileY,
-                    firstVisibleTileX,
-                    firstVisibleTileY,
-                    lastVisibleTileX,
-                    lastVisibleTileY,
-                    ref retired,
-                    ref staleWork,
-                    out remainingQueueCapacity))
-            {
-                return;
-            }
+            _cache.ObserveOffscreen(plan);
         }
         finally
         {
-            try
-            {
-                plan.EndViewportMutation();
-            }
-            finally
-            {
-                // Retire outside the tile lock even when a later mutation or
-                // demand update fails. Failed native disposal remains charged.
-                if (retired is not null)
-                {
-                    foreach (SharedCanvasBitmapCache.Lease tile in retired)
-                        _host.TryImageCleanup(tile.Dispose);
-                }
-                if (staleWork is not null)
-                {
-                    foreach (CancellationTokenSource cancellation in staleWork)
-                    {
-                        try
-                        {
-                            _ = CancellationTokenSourceRetirement.RequestCancellation(cancellation);
-                        }
-                        catch (Exception exception)
-                        {
-                            _host.RecordImageRetirementFailure(exception);
-                        }
-                    }
-                }
-            }
+            plan.EndViewportMutation();
         }
-
-        plan.Demand.PromoteVisible();
-        SvgHostAdmissionCoordinator.Touch(plan);
-
-        // The isolated provider has its own bounded priority queue. Keep the
-        // host-side visible burst bounded as well; each completion invalidates
-        // the canvas so remaining visible tiles are discovered next frame.
-        int queued = QueueSvgTileRange(
-            plan,
-            firstVisibleTileX,
-            firstVisibleTileY,
-            lastVisibleTileX,
-            lastVisibleTileY,
-            remainingQueueCapacity,
-            MarkdownSvgRenderPriority.Visible);
-        _ = QueueSvgTileRange(
-            plan,
-            firstTileX,
-            firstTileY,
-            lastTileX,
-            lastTileY,
-            remainingQueueCapacity - queued,
-            MarkdownSvgRenderPriority.Overscan);
     }
 
     internal int QueueSvgTileRange(
@@ -296,62 +341,84 @@ internal sealed class SvgTileRenderer
                     continue;
                 }
 
-                if (!_host.TryBeginImageWork(out ImageWorkLease? tileWork) || tileWork is null)
-                    return queued;
-
-                SvgDocumentUseLease? tileDocumentUse = _host.TryAcquireSvgDocumentUse(plan.Document);
-                if (tileDocumentUse is null)
+                if (!TryQueueTile(plan, key, priority, out bool stop))
                 {
-                    tileWork.Dispose();
-                    return queued;
-                }
-
-                CancellationTokenSource workCancellation;
-                var tileDemand = new MarkdownSvgRenderDemand(priority);
-                try
-                {
-                    workCancellation = new CancellationTokenSource();
-                }
-                catch
-                {
-                    tileDocumentUse.Dispose();
-                    tileWork.Dispose();
-                    throw;
-                }
-                var workOwner = new SvgTileWorkOwner(plan, workCancellation, tileDemand);
-                bool admitted;
-                try
-                {
-                    admitted = _cache.TryAdmitTileWork(plan, key, workOwner);
-                }
-                catch
-                {
-                    try { _host.TryImageCleanup(workCancellation.Dispose); }
-                    finally
-                    {
-                        tileDocumentUse.Dispose();
-                        tileWork.Dispose();
-                    }
-                    throw;
-                }
-                if (!admitted)
-                {
-                    try
-                    {
-                        _host.TryImageCleanup(workCancellation.Dispose);
-                    }
-                    finally
-                    {
-                        tileWork.Dispose();
-                        tileDocumentUse.Dispose();
-                    }
+                    if (stop)
+                        return queued;
                     continue;
                 }
                 queued++;
-                ScheduleSvgTileWork(plan, key, workOwner, tileWork, tileDocumentUse);
             }
         }
         return queued;
+    }
+
+    // Admits and schedules a render of one missing tile. Returns false when
+    // the tile was not queued; <paramref name="stop"/> is then true when no
+    // further tile can be admitted because image work or the document use
+    // could not be acquired.
+    private bool TryQueueTile(
+        SvgTileRenderPlan plan,
+        SvgTileKey key,
+        MarkdownSvgRenderPriority priority,
+        out bool stop)
+    {
+        stop = true;
+        if (!_host.TryBeginImageWork(out ImageWorkLease? tileWork) || tileWork is null)
+            return false;
+
+        SvgDocumentUseLease? tileDocumentUse = _host.TryAcquireSvgDocumentUse(plan.Document);
+        if (tileDocumentUse is null)
+        {
+            tileWork.Dispose();
+            return false;
+        }
+
+        CancellationTokenSource workCancellation;
+        var tileDemand = new MarkdownSvgRenderDemand(priority);
+        try
+        {
+            workCancellation = new CancellationTokenSource();
+        }
+        catch
+        {
+            tileDocumentUse.Dispose();
+            tileWork.Dispose();
+            throw;
+        }
+        var workOwner = new SvgTileWorkOwner(plan, workCancellation, tileDemand);
+        bool admitted;
+        try
+        {
+            admitted = _cache.TryAdmitTileWork(plan, key, workOwner);
+        }
+        catch
+        {
+            try { _host.TryImageCleanup(workCancellation.Dispose); }
+            finally
+            {
+                tileDocumentUse.Dispose();
+                tileWork.Dispose();
+            }
+            throw;
+        }
+        if (!admitted)
+        {
+            try
+            {
+                _host.TryImageCleanup(workCancellation.Dispose);
+            }
+            finally
+            {
+                tileWork.Dispose();
+                tileDocumentUse.Dispose();
+            }
+            stop = false;
+            return false;
+        }
+        ScheduleSvgTileWork(plan, key, workOwner, tileWork, tileDocumentUse);
+        stop = false;
+        return true;
     }
 
     // Only admitted work allocates the asynchronous delegate. Keeping both the
@@ -447,22 +514,8 @@ internal sealed class SvgTileRenderer
                         !_outputAdmission.TryReserveBitmapOutput(checked((long)key.Width * key.Height * 4), out bitmapReservation,
                             isExistingSvgTileOutput: true, expectedWork: bitmapOutputWork))
                         return;
-                    MarkdownSvgRaster raster = await _host.RenderSvgDocumentAsync(
-                            plan.Document,
-                            new MarkdownSvgRenderRequest(
-                                plan.FullWidthPixels,
-                                plan.FullHeightPixels,
-                                new MarkdownSvgTileRegion(
-                                    key.X,
-                                    key.Y,
-                                    key.Width,
-                                    key.Height),
-                                MarkdownSvgPixelFormat.Rgba8Premultiplied,
-                                workOwner.Demand.Priority)
-                            { PhysicalViewport = plan.PhysicalViewport },
-                            cancellationToken,
-                            documentUse,
-                            workOwner.Demand)
+                    MarkdownSvgRaster raster = await RenderTileRasterAsync(
+                            plan, key, workOwner, documentUse, cancellationToken)
                         .ConfigureAwait(false);
                     try
                     {
@@ -470,47 +523,16 @@ internal sealed class SvgTileRenderer
                         {
                             return;
                         }
-                        ImageBox.ValidateSvgRaster(raster, key.Width, key.Height);
-                        {
-                            using var stageTrace = MarkdownSvgStageTrace.Measure(
-                                svgWorkId,
-                                MarkdownSvgWorkStage.BitmapUpload,
-                                svgSourceBytes,
-                                targetPixels);
-                            ownedBitmap = _host.CreateBitmapFromSvgRaster(
-                                raster,
-                                svgWorkId,
-                                svgSourceBytes,
-                                targetPixels,
-                                bitmapReservation: bitmapReservation);
-                        }
-                        try
-                        {
-                            using var stageTrace = MarkdownSvgStageTrace.Measure(
-                                svgWorkId,
-                                MarkdownSvgWorkStage.BitmapCacheStore,
-                                svgSourceBytes,
-                                targetPixels);
-                            bitmapLease = _resources.BitmapCache.StoreSvgAndAcquire(
-                                device,
-                                identity,
-                                ownedBitmap,
-                                intrinsicSize: null,
-                                pixelWidth: raster.WidthPixels,
-                                pixelHeight: raster.HeightPixels
-                                , svgWorkId: svgWorkId,
-                                svgSourceBytes: svgSourceBytes,
-                                svgTargetPixels: targetPixels
-                                , bitmapReservation: bitmapReservation
-                            );
-                            ownedBitmap = null;
-                            bitmapReservation = null;
-                        }
-                        catch
-                        {
-                            _outputAdmission.ReleaseAdmittedBitmap(ref ownedBitmap, ref bitmapReservation);
-                            throw;
-                        }
+                        bitmapLease = UploadTile(
+                            raster,
+                            key,
+                            device,
+                            identity,
+                            svgWorkId,
+                            svgSourceBytes,
+                            targetPixels,
+                            ref ownedBitmap,
+                            ref bitmapReservation);
                     }
                     finally
                     {
@@ -524,50 +546,7 @@ internal sealed class SvgTileRenderer
                     MarkdownSvgFailureReason.WorkerFailure,
                     "The SVG tile cache did not return a lease.");
             bitmapLease = null;
-            SvgTilePublicationOwnership publicationOwnership = default;
-            void ReleaseUntransferredLease()
-            {
-                if (publicationOwnership.TryReleaseUntransferred())
-                    _host.TryImageCleanup(publishedLease.Dispose);
-            }
-
-            _host.PublishOnUiThread(
-                () =>
-                {
-                    SharedCanvasBitmapCache.Lease? previous = null;
-                    bool accepted = false;
-                    bool transferred = false;
-                    try
-                    {
-                        // CacheGeneration is supplied by an external provider.
-                        // Snapshot it outside our lock; recheck only local plan
-                        // and request ownership while mutating the tile map.
-                        bool rendererCurrent = _host.IsCurrentSvgRendererState();
-                        accepted = _cache.TryPublishTile(
-                            plan,
-                            key,
-                            workCancellation,
-                            rendererCurrent,
-                            publishedLease,
-                            ref publicationOwnership,
-                            ref previous,
-                            ref transferred);
-                    }
-                    finally
-                    {
-                        if (previous is { } replacedTile)
-                            _host.TryImageCleanup(replacedTile.Dispose);
-                        if (!transferred)
-                            ReleaseUntransferredLease();
-                    }
-
-                    if (!accepted || !transferred)
-                        return;
-
-                    _cache.MarkTileRendered();
-                    _host.OnSvgTilePublished();
-                },
-                ReleaseUntransferredLease);
+            PublishTileOnUiThread(plan, key, workCancellation, publishedLease);
         }
         catch (OperationCanceledException) when (
             lifetimeWork.Token.IsCancellationRequested ||
@@ -614,54 +593,214 @@ internal sealed class SvgTileRenderer
         finally
         {
             _outputAdmission.ReleaseAdmittedBitmap(ref ownedBitmap, ref bitmapReservation);
-            Task cancellationCallbacks = Task.CompletedTask;
-            try
-            {
-                cancellationCallbacks = RetireTileCancellationSource(workCancellation);
-            }
-            catch (Exception exception)
-            {
-                _host.RecordImageRetirementFailure(exception);
-            }
+            await RetireTileRenderAsync(
+                    key,
+                    workCancellation,
+                    bitmapLease,
+                    renderGateHeld ? renderGate : null,
+                    providerAdmissionHeld,
+                    admissionCancellation,
+                    documentUse,
+                    lifetimeWork)
+                .ConfigureAwait(false);
+        }
+    }
 
+    // Renders one tile region of the plan's physical grid at the work's priority.
+    private Task<MarkdownSvgRaster> RenderTileRasterAsync(
+        SvgTileRenderPlan plan,
+        SvgTileKey key,
+        SvgTileWorkOwner workOwner,
+        SvgDocumentUseLease documentUse,
+        CancellationToken cancellationToken) =>
+        _host.RenderSvgDocumentAsync(
+            plan.Document,
+            new MarkdownSvgRenderRequest(
+                plan.FullWidthPixels,
+                plan.FullHeightPixels,
+                new MarkdownSvgTileRegion(
+                    key.X,
+                    key.Y,
+                    key.Width,
+                    key.Height),
+                MarkdownSvgPixelFormat.Rgba8Premultiplied,
+                workOwner.Demand.Priority)
+            { PhysicalViewport = plan.PhysicalViewport },
+            cancellationToken,
+            documentUse,
+            workOwner.Demand);
+
+    // Validates the raster, uploads it, and stores the bitmap in the shared
+    // cache. On failure the admitted bitmap and its reservation are released.
+    private SharedCanvasBitmapCache.Lease? UploadTile(
+        MarkdownSvgRaster raster,
+        SvgTileKey key,
+        CanvasDevice device,
+        string identity,
+        long svgWorkId,
+        long svgSourceBytes,
+        long targetPixels,
+        ref CanvasBitmap? ownedBitmap,
+        ref BitmapOutputAdmission.Reservation? bitmapReservation)
+    {
+        ImageBox.ValidateSvgRaster(raster, key.Width, key.Height);
+        {
+            using var stageTrace = MarkdownSvgStageTrace.Measure(
+                svgWorkId,
+                MarkdownSvgWorkStage.BitmapUpload,
+                svgSourceBytes,
+                targetPixels);
+            ownedBitmap = _host.CreateBitmapFromSvgRaster(
+                raster,
+                svgWorkId,
+                svgSourceBytes,
+                targetPixels,
+                bitmapReservation: bitmapReservation);
+        }
+        try
+        {
+            using var stageTrace = MarkdownSvgStageTrace.Measure(
+                svgWorkId,
+                MarkdownSvgWorkStage.BitmapCacheStore,
+                svgSourceBytes,
+                targetPixels);
+            SharedCanvasBitmapCache.Lease? lease = _resources.BitmapCache.StoreSvgAndAcquire(
+                device,
+                identity,
+                ownedBitmap,
+                intrinsicSize: null,
+                pixelWidth: raster.WidthPixels,
+                pixelHeight: raster.HeightPixels
+                , svgWorkId: svgWorkId,
+                svgSourceBytes: svgSourceBytes,
+                svgTargetPixels: targetPixels
+                , bitmapReservation: bitmapReservation
+            );
+            ownedBitmap = null;
+            bitmapReservation = null;
+            return lease;
+        }
+        catch
+        {
+            _outputAdmission.ReleaseAdmittedBitmap(ref ownedBitmap, ref bitmapReservation);
+            throw;
+        }
+    }
+
+    // Installs the rendered lease on the UI thread if its work still owns the
+    // tile; a rejected or dropped publication releases the untransferred lease.
+    private void PublishTileOnUiThread(
+        SvgTileRenderPlan plan,
+        SvgTileKey key,
+        CancellationTokenSource workCancellation,
+        SharedCanvasBitmapCache.Lease publishedLease)
+    {
+        SvgTilePublicationOwnership publicationOwnership = default;
+        void ReleaseUntransferredLease()
+        {
+            if (publicationOwnership.TryReleaseUntransferred())
+                _host.TryImageCleanup(publishedLease.Dispose);
+        }
+
+        _host.PublishOnUiThread(
+            () =>
+            {
+                SharedCanvasBitmapCache.Lease? previous = null;
+                bool accepted = false;
+                bool transferred = false;
+                try
+                {
+                    // CacheGeneration is supplied by an external provider.
+                    // Snapshot it outside our lock; recheck only local plan
+                    // and request ownership while mutating the tile map.
+                    bool rendererCurrent = _host.IsCurrentSvgRendererState();
+                    accepted = _cache.TryPublishTile(
+                        plan,
+                        key,
+                        workCancellation,
+                        rendererCurrent,
+                        publishedLease,
+                        ref publicationOwnership,
+                        ref previous,
+                        ref transferred);
+                }
+                finally
+                {
+                    if (previous is { } replacedTile)
+                        _host.TryImageCleanup(replacedTile.Dispose);
+                    if (!transferred)
+                        ReleaseUntransferredLease();
+                }
+
+                if (!accepted || !transferred)
+                    return;
+
+                _cache.MarkTileRendered();
+                _host.OnSvgTilePublished();
+            },
+            ReleaseUntransferredLease);
+    }
+
+    // Ends a tile render: requests cancellation of its work source, releases
+    // the decode gate and provider admission it holds, completes its tile
+    // work, and finally releases its document use and image-work lease.
+    private async Task RetireTileRenderAsync(
+        SvgTileKey key,
+        CancellationTokenSource workCancellation,
+        SharedCanvasBitmapCache.Lease? bitmapLease,
+        SemaphoreSlim? heldRenderGate,
+        bool providerAdmissionHeld,
+        CancellationTokenSource? admissionCancellation,
+        SvgDocumentUseLease documentUse,
+        ImageWorkLease lifetimeWork)
+    {
+        Task cancellationCallbacks = Task.CompletedTask;
+        try
+        {
+            cancellationCallbacks = RetireTileCancellationSource(workCancellation);
+        }
+        catch (Exception exception)
+        {
+            _host.RecordImageRetirementFailure(exception);
+        }
+
+        try
+        {
+            if (bitmapLease is { } abandonedLease)
+                _host.TryImageCleanup(abandonedLease.Dispose);
+            if (heldRenderGate is not null)
+                _host.TryImageCleanup(() => heldRenderGate.Release());
+            if (providerAdmissionHeld)
+                _host.TryImageCleanup(() => _resources.SvgProviderAdmission.Release());
+            _host.TryImageCleanup(() => _cache.CompleteSvgTileWork(key, workCancellation));
+        }
+        finally
+        {
             try
             {
-                if (bitmapLease is { } abandonedLease)
-                    _host.TryImageCleanup(abandonedLease.Dispose);
-                if (renderGateHeld)
-                    _host.TryImageCleanup(() => renderGate!.Release());
-                if (providerAdmissionHeld)
-                    _host.TryImageCleanup(() => _resources.SvgProviderAdmission.Release());
-                _host.TryImageCleanup(() => _cache.CompleteSvgTileWork(key, workCancellation));
+                try
+                {
+                    await cancellationCallbacks.ConfigureAwait(false);
+                }
+                catch (Exception exception)
+                {
+                    _host.RecordImageRetirementFailure(exception);
+                }
             }
             finally
             {
                 try
                 {
-                    try
-                    {
-                        await cancellationCallbacks.ConfigureAwait(false);
-                    }
-                    catch (Exception exception)
-                    {
-                        _host.RecordImageRetirementFailure(exception);
-                    }
+                    if (admissionCancellation is not null)
+                        _host.TryImageCleanup(admissionCancellation.Dispose);
                 }
                 finally
                 {
-                    try
-                    {
-                        if (admissionCancellation is not null)
-                            _host.TryImageCleanup(admissionCancellation.Dispose);
-                    }
-                    finally
-                    {
-                        documentUse.Dispose();
-                        // This parent work lease is the snapshot's proof that the tile
-                        // operation has finished. Release it even if a cleanup action
-                        // fails or an admission gate was already invalidated.
-                        lifetimeWork.Dispose();
-                    }
+                    documentUse.Dispose();
+                    // This parent work lease is the snapshot's proof that the tile
+                    // operation has finished. Release it even if a cleanup action
+                    // fails or an admission gate was already invalidated.
+                    lifetimeWork.Dispose();
                 }
             }
         }
