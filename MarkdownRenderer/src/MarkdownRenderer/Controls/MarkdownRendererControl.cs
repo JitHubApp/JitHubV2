@@ -47,19 +47,18 @@ namespace MarkdownRenderer.Controls;
 /// <see cref="Canvas"/> overlay for hosted WinUI embeds.
 /// </summary>
 public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsyncDisposable,
-    IMarkdownPerformanceLegacyParser, IPointerInputSink, IPointerInteractionHost, IHorizontalOverflowPointerHost,
-    IPointerInputRouterHost, IDeferredGestureLayoutHost, IEmbedRealizationHost, ICodeBlockCopyButtonHost,
-    IFocusRingHost, IHostedElementFocusHost, IHorizontalOverflowScrollHost, IFocusedItemRevealHost,
-    IFocusedItemCommitHost, IFocusGeometryRecoveryHost, IRendererFocusEntryHost, IImageSubscriptionsHost,
-    IImageResidencyHost, ICanvasDeviceRecoveryHost, ICodeBlockHighlightingHost, IRecoveryClockHost,
-    IRasterPlacementHost, IImageRelayoutHost, IImageLoadCompletionHost, IVectorCapacityRetryHost, ILazyLayoutHost,
-    ILayoutCommitHost, IFocusableItemsPublicationHost, IRebuildSchedulerHost, IRebuildLayoutSetupHost,
-    ICanvasTilePainterHost, IDeferredSceneReadinessHost, ILinkActivationHost, IRendererLocalizationHost,
-    IRendererEventSink
+    IMarkdownPerformanceLegacyParser, IEmbedRealizationHost, ICodeBlockCopyButtonHost, IFocusRingHost,
+    IHostedElementFocusHost, IHorizontalOverflowScrollHost, IFocusedItemRevealHost, IFocusedItemCommitHost,
+    IFocusGeometryRecoveryHost, IRendererFocusEntryHost, IImageSubscriptionsHost, IImageResidencyHost,
+    ICanvasDeviceRecoveryHost, ICodeBlockHighlightingHost, IRecoveryClockHost, IRasterPlacementHost,
+    IImageRelayoutHost, IImageLoadCompletionHost, IVectorCapacityRetryHost, ILazyLayoutHost, ILayoutCommitHost,
+    IFocusableItemsPublicationHost, IRebuildSchedulerHost, IRebuildLayoutSetupHost, ICanvasTilePainterHost,
+    IDeferredSceneReadinessHost, ILinkActivationHost, IRendererLocalizationHost, IRendererEventSink
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
     private readonly RendererEvents _events;
+    private readonly PointerHosts _pointerHosts;
     private readonly SelectionHosts _selectionHosts;
     private readonly PublishedLayout _published = new();
     private readonly MarkdownViewport _viewport;
@@ -934,6 +933,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private protected MarkdownRendererControl(bool ownsScrollViewport)
     {
         _events = new RendererEvents(this, _lifetime, DispatcherQueue);
+        _pointerHosts = new PointerHosts(this);
         _selectionHosts = new SelectionHosts(this);
         _cancellationRetirement = new PipelineCancellationRetirement(_snapshotRetirements);
         _imageLifetime = new ImageLifetimeScope(_cancellationRetirement);
@@ -952,14 +952,14 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _selectionCommands = new SelectionCommands(_selectionHosts, _published, _selection);
         _selectionDismissal = new SelectionDismissalHook(_selectionHosts, this, _surface, _lifetime, _published, _selection, _selectionCommands);
         _autoScroll = new SelectionDragAutoScroll(_surface, _viewport);
-        _dragShield = new SelectionDragShield(_surface, _viewport, this);
-        _handles = new SelectionHandlesPresenter(_selectionHosts, this, this, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _adorner, _autoScroll);
+        _dragShield = new SelectionDragShield(_surface, _viewport, _pointerHosts);
+        _handles = new SelectionHandlesPresenter(_selectionHosts, _pointerHosts, this, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _adorner, _autoScroll);
         _contextMenu = new SelectionContextMenuPresenter(_selectionHosts, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _handles, _adorner, _selectionCommands);
-        _horizontalOverflowDrag = new HorizontalOverflowPointerDrag(this, _surface, _published, _touchTapSuppression);
-        _document = new DocumentPointerInteraction(this, _surface, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _horizontalOverflowDrag, _handles, _autoScroll, _dragShield, _adorner, _contextMenu, new PointerHoverTracker(this, _published, _hover, _cursor, _abbreviationTooltip), _cursor, _abbreviationTooltip);
+        _horizontalOverflowDrag = new HorizontalOverflowPointerDrag(_pointerHosts, _surface, _published, _touchTapSuppression);
+        _document = new DocumentPointerInteraction(_pointerHosts, _surface, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _horizontalOverflowDrag, _handles, _autoScroll, _dragShield, _adorner, _contextMenu, new PointerHoverTracker(_pointerHosts, _published, _hover, _cursor, _abbreviationTooltip), _cursor, _abbreviationTooltip);
         _extent = new SnapshotExtent(this, _surface, _dragShield, _document);
-        _touchGestures = new TouchGestureInteraction(this, this, _surface, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _horizontalOverflowDrag, _document);
-        _pointerInput = new PointerInputRouter(this, this, DispatcherQueue, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _handles, _document, _horizontalOverflowDrag, _touchGestures, _contextMenu, _adorner, _dragShield);
+        _touchGestures = new TouchGestureInteraction(_pointerHosts, this, _surface, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _horizontalOverflowDrag, _document);
+        _pointerInput = new PointerInputRouter(_pointerHosts, _pointerHosts, DispatcherQueue, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _handles, _document, _horizontalOverflowDrag, _touchGestures, _contextMenu, _adorner, _dragShield);
         _rebuild = new RebuildScheduler(this, _lifetime, _surface, _pointerInput, _cancellationRetirement);
         _canvasPointerEvents = new CanvasPointerEvents(_surface, _pointerInput);
         _embeds = new EmbedRealization(this, this, _surface, _lifetime, _published, _viewport, DispatcherQueue, OnHostedEmbedKeyDown);
@@ -1019,6 +1019,10 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
             _events, _published, _deviceRecovery, _handles, _pointerInput, _embeds, _rebuild, _geometryRecovery,
             _textAdorner, _touchRestore, _localization, _interactionReset, _pointerResume, _focus, _focusGeometry,
             _focusEntry));
+        _pointerHosts.Connect(new PointerHosts.Parts(
+            _published, _pointerInput, _embeds, _geometryRecovery, _textAdorner, _blockScroll, _links, _layoutCommit,
+            _lazyLayout, _touchRestore, _interactionReset, _pointerResume, _focus, _overflowScroll,
+            _focusGeometryWork, _focusEntry, _focusRing));
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         Loaded += (_, _) => OnLoadedInternal();
@@ -1128,73 +1132,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <summary>Copies the active selection as exact markdown source plus CF_HTML.</summary>
     public bool CopySelectionAsMarkdown()
         => _selectionCommands.CopyAsMarkdown();
-
-    bool IPointerInteractionHost.IsSelectionEnabled => IsSelectionEnabled;
-
-    bool IPointerInteractionHost.IsCurrentScrollTarget(LayoutSnapshot snapshot, long snapshotGeneration, long layoutRevision)
-        => _blockScroll.IsCurrentTarget(snapshot, snapshotGeneration, layoutRevision);
-
-    void IPointerInteractionHost.CancelPendingTouchSelectionRestore()
-        => _touchRestore.Cancel();
-
-    void IPointerInteractionHost.RememberFocusResumePoint(Point documentPoint)
-        => _focusGeometryWork.RememberResumePoint(documentPoint);
-
-    void IPointerInteractionHost.FocusRendererForPointerInteraction() => _focusEntry.FocusWithoutPromotion();
-
-    void IPointerInteractionHost.ClearKeyboardFocusItem()
-    {
-        if (_focus.FocusedIndex >= 0)
-        {
-            _focus.ClearFocus();
-            _focusRing.Update();
-        }
-    }
-
-    bool IPointerInteractionHost.IsPointOverCodeBlockAction(Point point) => _embeds.HitTargets.IsPointOverCodeBlockAction(point);
-
-    bool IPointerInteractionHost.IsPointOverEmbed(Point point) => _embeds.HitTargets.IsPointOverEmbed(point);
-
-    bool IPointerInteractionHost.TryHitTestEmbed(Point point, out DocumentPosition position)
-        => _embeds.HitTargets.TryHitTest(
-            point, FlowDirection == Microsoft.UI.Xaml.FlowDirection.RightToLeft, out position);
-
-    bool IPointerInteractionHost.TryGetVectorPointerState(Point point, out bool linked, out bool selectable)
-        => TryGetVectorPointerState(point, out linked, out selectable);
-
-    void IPointerInteractionHost.InvalidateInteractiveTextAdorner() => _textAdorner.Invalidate();
-
-    void IPointerInteractionHost.UpdateSelectionOverlay() => _textAdorner.UpdateSelectionOverlay();
-
-    void IPointerInteractionHost.ClearSelectionForExternalInteraction() => _interactionReset.ClearSelectionForExternalInteraction();
-
-    void IPointerInteractionHost.ResumePendingRebuildAfterPointerInteraction()
-        => _pointerResume.ResumePendingWork();
-
-    void IHorizontalOverflowPointerHost.RefreshHorizontalOverflowVisualState(IHorizontalOverflowBox target, double oldOffset)
-        => _overflowScroll.Refresh(target, oldOffset);
-
-    void IPointerInputSink.DispatchPointerInput(PointerInputKind kind, object sender, PointerRoutedEventArgs args)
-        => _pointerInput.DispatchPointerInput(kind, sender, args);
-
-    bool IPointerInputSink.DispatchRecognizedGesture(PointerInputKind kind, Point point, Microsoft.UI.Input.PointerDeviceType device)
-        => _pointerInput.DispatchRecognizedGesture(kind, point, device);
-
-    bool IPointerInputRouterHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot)
-        => _geometryRecovery.RequestIfRequired(snapshot);
-
-    void IPointerInputRouterHost.ResumePendingRebuildAfterPointerInteraction()
-        => _pointerResume.ResumePendingWork();
-
-    void IPointerInputRouterHost.ClearSelectionForExternalInteraction(bool resetClickTracking, bool resetDeferredPointerInput)
-        => _interactionReset.ClearSelectionForExternalInteraction(resetClickTracking, resetDeferredPointerInput);
-
-    bool IPointerInputRouterHost.ActivateLinkIntent(
-        LinkActivationIntent intent,
-        LayoutSnapshot snapshot,
-        long snapshotGeneration,
-        long layoutRevision)
-        => _links.ActivateIntent(intent, snapshot, snapshotGeneration, layoutRevision);
 
     CancellationToken IEmbedRealizationHost.PipelineToken => _rebuild.Token;
 
@@ -1595,29 +1532,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     string? IRendererLocalizationHost.EnvironmentLanguage => _environment.Snapshot.Language;
 
-    double IDeferredGestureLayoutHost.RasterizationScale => XamlRoot?.RasterizationScale ?? 1;
-
-    bool IDeferredGestureLayoutHost.IsPointOverEmbed(Point point) => _embeds.HitTargets.IsPointOverEmbed(point);
-
-    bool IDeferredGestureLayoutHost.IsPointOverCodeBlockAction(Point point) => _embeds.HitTargets.IsPointOverCodeBlockAction(point);
-
-    bool IDeferredGestureLayoutHost.IsLayoutPublicationPending(LayoutSnapshot snapshot) =>
-        _layoutCommit.IsPublishing ||
-        _layoutCommit.Pending is not null || _layoutCommit.AppliedRevision < snapshot.LayoutRevision;
-
-    bool IDeferredGestureLayoutHost.IsLazyLayoutBandCovered(LayoutSnapshot snapshot, LazyLayoutBand band) =>
-        _lazyLayout.IsBandCovered(snapshot, band);
-
-    bool IDeferredGestureLayoutHost.HasSupersedingLazyLayoutRequest(LayoutSnapshot snapshot) =>
-        _lazyLayout.HasSupersedingRequest(snapshot);
-
-    void IDeferredGestureLayoutHost.QueueLazyLayoutForBand(
-        LayoutSnapshot snapshot,
-        LazyLayoutBand band,
-        LazyLayoutBand visibleVectorBand,
-        bool preserveScrollAnchor)
-        => _lazyLayout.QueueForBand(snapshot, band, visibleVectorBand, preserveScrollAnchor);
-
     internal void ClearSelectionFromCoordinator()
     {
         _interactionReset.ClearSelectionForExternalInteraction();
@@ -1935,25 +1849,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// is near the top of the viewport.
     /// </summary>
     public void ScrollToBlock(int blockIndex) => _blockScroll.ScrollTo(blockIndex);
-
-    private bool TryGetVectorPointerState(
-        Point point,
-        out bool linked,
-        out bool selectable)
-    {
-        if (_published.Snapshot is not null)
-        {
-            foreach (BlockBox block in _published.Snapshot.Blocks)
-            {
-                if (DocumentHitTesting.TryGetVectorPointerStateInBlock(block, point, out linked, out selectable))
-                    return true;
-            }
-        }
-
-        linked = false;
-        selectable = false;
-        return false;
-    }
 
     private LinkTarget? FindLinkTargetAt(DocumentPosition pos, Point? point = null)
     {
