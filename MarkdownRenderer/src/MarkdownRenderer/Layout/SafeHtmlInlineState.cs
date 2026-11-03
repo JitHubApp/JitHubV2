@@ -139,25 +139,7 @@ internal sealed class SafeHtmlInlineState
 
         if (SafeHtmlParser.IsSuppressedElement(tag.Name))
         {
-            if (_policy.RenderUnknownElementsLiterally)
-                return new TextRun(html.Tag) { SourceSpan = span };
-
-            if (tag.Kind == SafeHtmlTagKind.Closing)
-            {
-                PopThrough(tag.Name);
-            }
-            else if (tag.Kind == SafeHtmlTagKind.Opening)
-            {
-                _scopes.Add(new Scope(
-                    tag.Name,
-                    styleKey: null,
-                    linkUrl: null,
-                    linkTitle: null,
-                    suppressed: true,
-                    styleAliases: Array.Empty<string>()));
-            }
-
-            return null;
+            return ProcessSuppressedElement(_policy, tag, html, span);
         }
 
         if (!IsSupportedElement(tag.Name))
@@ -187,21 +169,7 @@ internal sealed class SafeHtmlInlineState
 
         if (tag.Kind == SafeHtmlTagKind.Opening)
         {
-            ScriptStyleAncestryToken? scriptToken = null;
-            if (IsScriptStyleKey(styleKey))
-            {
-                scriptToken = new ScriptStyleAncestryToken(styleKey!);
-                (_scriptStyleAncestry ??= []).Add(scriptToken);
-            }
-
-            _scopes.Add(new Scope(
-                tag.Name,
-                styleKey,
-                linkUrl,
-                linkTitle,
-                suppressed,
-                GetClassAliases(tag),
-                scriptToken));
+            PushOpeningScope(tag, styleKey, linkUrl, linkTitle, suppressed);
         }
 
         if (suppressed)
@@ -209,6 +177,68 @@ internal sealed class SafeHtmlInlineState
             return null;
         }
 
+        return CreateElementRun(_policy, tag, context, span, containingLinkUrl, containingLinkTitle);
+    }
+
+    private InlineRun? ProcessSuppressedElement(
+        SafeHtmlRenderPolicy policy,
+        in SafeHtmlTag tag,
+        HtmlInline html,
+        SourceSpan span)
+    {
+        if (policy.RenderUnknownElementsLiterally)
+            return new TextRun(html.Tag) { SourceSpan = span };
+
+        if (tag.Kind == SafeHtmlTagKind.Closing)
+        {
+            PopThrough(tag.Name);
+        }
+        else if (tag.Kind == SafeHtmlTagKind.Opening)
+        {
+            _scopes.Add(new Scope(
+                tag.Name,
+                styleKey: null,
+                linkUrl: null,
+                linkTitle: null,
+                suppressed: true,
+                styleAliases: Array.Empty<string>()));
+        }
+
+        return null;
+    }
+
+    private void PushOpeningScope(
+        in SafeHtmlTag tag,
+        string? styleKey,
+        string? linkUrl,
+        string? linkTitle,
+        bool suppressed)
+    {
+        ScriptStyleAncestryToken? scriptToken = null;
+        if (IsScriptStyleKey(styleKey))
+        {
+            scriptToken = new ScriptStyleAncestryToken(styleKey!);
+            (_scriptStyleAncestry ??= []).Add(scriptToken);
+        }
+
+        _scopes.Add(new Scope(
+            tag.Name,
+            styleKey,
+            linkUrl,
+            linkTitle,
+            suppressed,
+            GetClassAliases(tag),
+            scriptToken));
+    }
+
+    private InlineRun? CreateElementRun(
+        SafeHtmlRenderPolicy policy,
+        in SafeHtmlTag tag,
+        MarkdownLayoutContext context,
+        SourceSpan span,
+        string? containingLinkUrl,
+        string? containingLinkTitle)
+    {
         if (tag.Name == "br")
         {
             return new LineBreakRun(isHard: true) { SourceSpan = span };
@@ -235,36 +265,7 @@ internal sealed class SafeHtmlInlineState
 
         if (tag.Name is "video" or "audio")
         {
-            SafeHtmlParser.TryGetSafeImageSource(tag, out string mediaSource);
-            string? posterSource = tag.TryGetAttribute("poster", out string poster) &&
-                SafeHtmlParser.TryNormalizeImageSource(poster, out string safePoster)
-                    ? safePoster
-                    : null;
-            string? accessibilityName = tag.TryGetAttribute("aria-label", out string ariaLabel) &&
-                !string.IsNullOrWhiteSpace(ariaLabel)
-                    ? ariaLabel
-                    : tag.TryGetAttribute("title", out string mediaTitle) &&
-                        !string.IsNullOrWhiteSpace(mediaTitle)
-                            ? mediaTitle
-                            : null;
-            SafeHtmlLength? mediaWidth = SafeHtmlParser.TryGetLength(tag, "width", out SafeHtmlLength parsedWidth)
-                ? parsedWidth
-                : null;
-            SafeHtmlLength? mediaHeight = SafeHtmlParser.TryGetLength(tag, "height", out SafeHtmlLength parsedHeight)
-                ? parsedHeight
-                : null;
-            Scope? containingScope = FindLinkScope();
-            return ApplyAliases(SafeHtmlMediaRunFactory.Create(
-                context,
-                tag.Name == "video",
-                accessibilityName,
-                mediaSource,
-                posterSource,
-                mediaWidth,
-                mediaHeight,
-                span,
-                _policy.EnableLinks ? containingLinkUrl ?? containingScope?.LinkUrl : null,
-                _policy.EnableLinks ? containingLinkTitle ?? containingScope?.LinkTitle : null));
+            return CreateMediaRun(policy, tag, context, span, containingLinkUrl, containingLinkTitle);
         }
 
         if (tag.Name != "img")
@@ -272,9 +273,60 @@ internal sealed class SafeHtmlInlineState
             return null;
         }
 
+        return CreateImageRun(policy, tag, context, span, containingLinkUrl, containingLinkTitle);
+    }
+
+    private InlineRun CreateMediaRun(
+        SafeHtmlRenderPolicy policy,
+        in SafeHtmlTag tag,
+        MarkdownLayoutContext context,
+        SourceSpan span,
+        string? containingLinkUrl,
+        string? containingLinkTitle)
+    {
+        SafeHtmlParser.TryGetSafeImageSource(tag, out string mediaSource);
+        string? posterSource = tag.TryGetAttribute("poster", out string poster) &&
+            SafeHtmlParser.TryNormalizeImageSource(poster, out string safePoster)
+                ? safePoster
+                : null;
+        string? accessibilityName = tag.TryGetAttribute("aria-label", out string ariaLabel) &&
+            !string.IsNullOrWhiteSpace(ariaLabel)
+                ? ariaLabel
+                : tag.TryGetAttribute("title", out string mediaTitle) &&
+                    !string.IsNullOrWhiteSpace(mediaTitle)
+                        ? mediaTitle
+                        : null;
+        SafeHtmlLength? mediaWidth = SafeHtmlParser.TryGetLength(tag, "width", out SafeHtmlLength parsedWidth)
+            ? parsedWidth
+            : null;
+        SafeHtmlLength? mediaHeight = SafeHtmlParser.TryGetLength(tag, "height", out SafeHtmlLength parsedHeight)
+            ? parsedHeight
+            : null;
+        Scope? containingScope = FindLinkScope();
+        return ApplyAliases(SafeHtmlMediaRunFactory.Create(
+            context,
+            tag.Name == "video",
+            accessibilityName,
+            mediaSource,
+            posterSource,
+            mediaWidth,
+            mediaHeight,
+            span,
+            policy.EnableLinks ? containingLinkUrl ?? containingScope?.LinkUrl : null,
+            policy.EnableLinks ? containingLinkTitle ?? containingScope?.LinkTitle : null));
+    }
+
+    private InlineRun? CreateImageRun(
+        SafeHtmlRenderPolicy policy,
+        in SafeHtmlTag tag,
+        MarkdownLayoutContext context,
+        SourceSpan span,
+        string? containingLinkUrl,
+        string? containingLinkTitle)
+    {
         if (SafeHtmlParser.TryGetInertImageSpacerDimensions(
                 tag,
-                _policy.EnableImages,
+                policy.EnableImages,
                 IsInsidePicture(),
                 !string.IsNullOrWhiteSpace(containingLinkUrl) || IsInsideLinkElement(),
                 out float spacerWidth,
@@ -289,7 +341,7 @@ internal sealed class SafeHtmlInlineState
             : SafeHtmlParser.ResolveMissingImageAlternative(
                 tag.TryGetAttribute("src", out string sourceAttribute) ? sourceAttribute : string.Empty,
                 context.ResolveString(MarkdownStringKeys.ImageName, MarkdownLocalizedStrings.ImageName));
-        if (!_policy.EnableImages)
+        if (!policy.EnableImages)
         {
             InlineRun? fallback = string.IsNullOrWhiteSpace(alt)
                 ? null
@@ -314,8 +366,8 @@ internal sealed class SafeHtmlInlineState
             alt,
             source,
             string.IsNullOrWhiteSpace(title) ? null : title,
-            _policy.EnableLinks ? containingLinkUrl ?? link?.LinkUrl : null,
-            _policy.EnableLinks ? containingLinkTitle ?? link?.LinkTitle : null,
+            policy.EnableLinks ? containingLinkUrl ?? link?.LinkUrl : null,
+            policy.EnableLinks ? containingLinkTitle ?? link?.LinkTitle : null,
             width.Value > 0 ? width : null,
             height.Value > 0 ? height : null)
         {
