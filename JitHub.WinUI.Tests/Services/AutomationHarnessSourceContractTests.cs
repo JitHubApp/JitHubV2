@@ -387,7 +387,7 @@ public sealed class AutomationHarnessSourceContractTests
 
         Assert.True(publishFailure >= 0);
         string failureImplementation = source[publishFailure..];
-        Assert.Contains("UpdatePlaceholder(maxWidth, _imageHeight)", failureImplementation, StringComparison.Ordinal);
+        Assert.Contains("UpdatePlaceholder(maxWidth, _measure.ImageHeight)", failureImplementation, StringComparison.Ordinal);
         Assert.Contains("layoutInvalidated: ShouldExpandInlineFailure", failureImplementation, StringComparison.Ordinal);
         Assert.Contains("_requestedWidth is null", source, StringComparison.Ordinal);
         Assert.Contains("_requestedHeight is null", source, StringComparison.Ordinal);
@@ -407,9 +407,12 @@ public sealed class AutomationHarnessSourceContractTests
 
         Assert.Contains("PaintPlaceholder(ds, destination);", source, StringComparison.Ordinal);
         Assert.Contains("EnsureLoading();", source, StringComparison.Ordinal);
-        Assert.Contains("ImageResolverDeadline.RunAsync", source, StringComparison.Ordinal);
-        Assert.Contains("ImageResolverTimeout", source, StringComparison.Ordinal);
-        Assert.Contains("TimeSpan.FromSeconds(45)", source, StringComparison.Ordinal);
+        string sourceLoader = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(), "MarkdownRenderer", "src", "MarkdownRenderer", "Layout", "Boxes",
+            "ImageSourceLoader.cs"));
+        Assert.Contains("ImageResolverDeadline.RunAsync", sourceLoader, StringComparison.Ordinal);
+        Assert.Contains("ImageResolverTimeout", sourceLoader, StringComparison.Ordinal);
+        Assert.Contains("TimeSpan.FromSeconds(45)", sourceLoader, StringComparison.Ordinal);
         Assert.Contains("compactInlineFailure", source, StringComparison.Ordinal);
         Assert.Contains("MeasureInlineFailureWidth", source, StringComparison.Ordinal);
         Assert.Contains("GetInlineFailureText()", source, StringComparison.Ordinal);

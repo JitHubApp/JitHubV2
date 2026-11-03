@@ -268,8 +268,8 @@ Assert-Check -Name 'source guard: controlled sample Body defaults match the artw
      -not $sampleAppSource.Contains('MarkdownRenderer.Body.Margin') -and
      -not $sampleAppSource.Contains('MarkdownRenderer.Body.LineHeightMultiplier'))
 Assert-Check -Name 'source guard: automation destination and paint share ImageBox content placement' -Condition `
-    ($imageBoxSource.Contains('new Rect(GetContentX(), GetContentY(), _imageWidth, _imageHeight)') -and
-     $imageBoxSource.Contains('var imageRect = new Rect(x, y, _imageWidth, _imageHeight);') -and
+    ($imageBoxSource.Contains('new Rect(GetContentX(), GetContentY(), _measure.ImageWidth, _measure.ImageHeight)') -and
+     $imageBoxSource.Contains('var imageRect = new Rect(x, y, _measure.ImageWidth, _measure.ImageHeight);') -and
      $imageBoxSource.Contains('float x = GetContentX();') -and $imageBoxSource.Contains('float y = GetContentY();'))
 
 $runCases = $runnerAst.Find({
