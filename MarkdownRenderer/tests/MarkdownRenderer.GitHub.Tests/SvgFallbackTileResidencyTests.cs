@@ -426,8 +426,8 @@ public sealed class SvgFallbackTileResidencyTests
     private static long GetRendererIdentity(IMarkdownSvgRenderer renderer) =>
         ImageResourceScope.Shared.ProviderIdentities.GetSvgRendererIdentity(renderer);
 
-    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "QueueVisibleSvgTiles")]
-    private static extern void QueueVisible(ImageBox box, Rect destination, Rect viewport);
+    private static void QueueVisible(ImageBox box, Rect destination, Rect viewport) =>
+        box.SvgTileRenderer.QueueVisibleSvgTiles(destination, viewport);
 
     private static Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease> NewTileMap(
         params (int X, int Y, int Width, int Height)[] keys)

@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.Threading;
-using MarkdownRenderer.Images;
 using SvgTileKey = (int X, int Y, int Width, int Height);
 
 namespace MarkdownRenderer.Layout.Boxes;

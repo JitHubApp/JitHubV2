@@ -769,8 +769,7 @@ public sealed class SvgTileQueuePlanTests
     private static bool IsCurrentTilePlan(ImageBox box, SvgTileRenderPlan plan) =>
         box.SvgTileCache.IsCurrentSvgTilePlan(plan);
 
-    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "QueueSvgTileRange")]
-    private static extern int Queue(
+    private static int Queue(
         ImageBox box,
         SvgTileRenderPlan plan,
         int firstTileX,
@@ -778,10 +777,12 @@ public sealed class SvgTileQueuePlanTests
         int lastTileX,
         int lastTileY,
         int capacity,
-        MarkdownSvgRenderPriority priority);
+        MarkdownSvgRenderPriority priority) =>
+        box.SvgTileRenderer.QueueSvgTileRange(
+            plan, firstTileX, firstTileY, lastTileX, lastTileY, capacity, priority);
 
-    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "QueueVisibleSvgTiles")]
-    private static extern void QueueVisible(ImageBox box, Rect destination, Rect viewport);
+    private static void QueueVisible(ImageBox box, Rect destination, Rect viewport) =>
+        box.SvgTileRenderer.QueueVisibleSvgTiles(destination, viewport);
 
     private static long GetRendererIdentity(IMarkdownSvgRenderer renderer) =>
         ImageResourceScope.Shared.ProviderIdentities.GetSvgRendererIdentity(renderer);

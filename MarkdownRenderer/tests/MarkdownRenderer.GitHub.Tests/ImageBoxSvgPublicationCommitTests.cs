@@ -73,10 +73,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
             documentUse?.Dispose();
             if (tileCancellation is not null)
             {
-                Task cancellation = Assert.IsAssignableFrom<Task>(InvokePrivate(
-                    image,
-                    "RetireTileCancellationSource",
-                    tileCancellation));
+                Task cancellation = image.SvgTileRenderer.RetireTileCancellationSource(tileCancellation);
                 await cancellation.WaitAsync(TimeSpan.FromSeconds(10));
             }
             image.Dispose();

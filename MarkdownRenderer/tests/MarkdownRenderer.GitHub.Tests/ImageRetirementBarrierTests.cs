@@ -205,11 +205,9 @@ public sealed class ImageRetirementBarrierTests
             releaseCallback.Task.GetAwaiter().GetResult();
         });
 
-        MethodInfo retireSource = typeof(ImageBox).GetMethod(
-            "RetireTileCancellationSource",
-            BindingFlags.Instance | BindingFlags.NonPublic) ??
-            throw new MissingMethodException(typeof(ImageBox).FullName, "RetireTileCancellationSource");
-        Task request = Task.Run(() => retireSource.Invoke(image, new object[] { source }));
+        // The request returns once cancellation is requested; it does not
+        // wait for the callbacks it tracks.
+        Task request = Task.Run(() => { _ = image.SvgTileRenderer.RetireTileCancellationSource(source); });
 
         try
         {
@@ -240,8 +238,8 @@ public sealed class ImageRetirementBarrierTests
             catch
             {
                 // Preserve the test's primary assertion failure; the request
-                // task is observed here so a failed reflection invocation does
-                // not become an unobserved test-runner task.
+                // task is observed here so a failed request does not become
+                // an unobserved test-runner task.
                 _ = request.Exception;
             }
             image.Dispose();

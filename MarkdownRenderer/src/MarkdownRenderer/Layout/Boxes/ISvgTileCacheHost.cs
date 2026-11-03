@@ -1,5 +1,4 @@
 using System;
-using MarkdownRenderer.Images;
 using Microsoft.Graphics.Canvas;
 using Windows.Foundation;
 
