@@ -5,12 +5,6 @@ using MarkdownRenderer.Extensions;
 namespace MarkdownRenderer.Layout;
 
 /// <summary>
-/// Owns device-dependent resources for one immutable vector scene. Both inline
-/// formulas and block diagrams use this implementation so their paint behavior
-/// cannot drift.
-/// </summary>
-
-/// <summary>
 /// Resolves vector-scene paint: theme-palette and high-contrast colors,
 /// semantic fill roles, font families and bounded text-layout sizes.
 /// </summary>

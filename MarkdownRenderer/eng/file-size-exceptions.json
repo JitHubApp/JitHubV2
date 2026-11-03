@@ -87,11 +87,6 @@
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
-      "path": "src/MarkdownRenderer/Layout/Boxes/VectorSceneBox.cs",
-      "lines": 1336,
-      "reason": "Predates the size rule; split by responsibility in a later structure step."
-    },
-    {
       "path": "tests/MarkdownRenderer.GitHub.Tests/CodeBlockVisualLinePlacementCacheTests.cs",
       "lines": 1052,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."

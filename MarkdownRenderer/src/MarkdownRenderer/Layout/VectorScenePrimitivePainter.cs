@@ -9,12 +9,6 @@ using MarkdownRenderer.Extensions;
 namespace MarkdownRenderer.Layout;
 
 /// <summary>
-/// Owns device-dependent resources for one immutable vector scene. Both inline
-/// formulas and block diagrams use this implementation so their paint behavior
-/// cannot drift.
-/// </summary>
-
-/// <summary>
 /// Draws the styled vector primitives (rectangles, paths, ellipses and text)
 /// of one scene command with resolved semantic paint roles.
 /// </summary>
