@@ -177,45 +177,7 @@ internal static class SvgResourceBudgetCss
 
             int start = cursor;
             cursor += "@namespace".Length;
-            int parentheses = 0;
-            char statementQuote = '\0';
-            bool terminated = false;
-            while (cursor < css.Length)
-            {
-                char current = css[cursor];
-                if (statementQuote != '\0')
-                {
-                    if (current == '\\' && cursor + 1 < css.Length)
-                        cursor += 2;
-                    else
-                    {
-                        if (current == statementQuote)
-                            statementQuote = '\0';
-                        cursor++;
-                    }
-                    continue;
-                }
-                if (current is '\'' or '"')
-                {
-                    statementQuote = current;
-                    cursor++;
-                    continue;
-                }
-                if (current == '(')
-                    parentheses++;
-                else if (current == ')' && parentheses > 0)
-                    parentheses--;
-                else if (current == '{' && parentheses == 0)
-                    break;
-                else if (current == ';' && parentheses == 0)
-                {
-                    cursor++;
-                    terminated = true;
-                    break;
-                }
-                cursor++;
-            }
-            if (!terminated)
+            if (!TryFindNamespaceStatementEnd(css, ref cursor))
             {
                 inspectable = string.Empty;
                 return false;
@@ -226,6 +188,56 @@ internal static class SvgResourceBudgetCss
 
         inspectable = sanitized is null ? css : new string(sanitized);
         return true;
+    }
+
+    /// <summary>
+    /// Advances past an <c>@namespace</c> statement's prelude to just after
+    /// its terminating semicolon, honoring quotes, escapes and parentheses.
+    /// </summary>
+    /// <param name="css">The style sheet.</param>
+    /// <param name="cursor">The first character after <c>@namespace</c>; on return, the scan position.</param>
+    /// <returns><see langword="false"/> when a block opener or the end of the sheet comes first.</returns>
+    private static bool TryFindNamespaceStatementEnd(string css, ref int cursor)
+    {
+        int parentheses = 0;
+        char statementQuote = '\0';
+        bool terminated = false;
+        while (cursor < css.Length)
+        {
+            char current = css[cursor];
+            if (statementQuote != '\0')
+            {
+                if (current == '\\' && cursor + 1 < css.Length)
+                    cursor += 2;
+                else
+                {
+                    if (current == statementQuote)
+                        statementQuote = '\0';
+                    cursor++;
+                }
+                continue;
+            }
+            if (current is '\'' or '"')
+            {
+                statementQuote = current;
+                cursor++;
+                continue;
+            }
+            if (current == '(')
+                parentheses++;
+            else if (current == ')' && parentheses > 0)
+                parentheses--;
+            else if (current == '{' && parentheses == 0)
+                break;
+            else if (current == ';' && parentheses == 0)
+            {
+                cursor++;
+                terminated = true;
+                break;
+            }
+            cursor++;
+        }
+        return terminated;
     }
 
     /// <summary>
