@@ -90,12 +90,9 @@ internal sealed class ImageBitmapOutputDeferral
             return false;
         }
 
-        CancellationTokenRegistration priorImageRegistration = default;
-        CancellationTokenRegistration priorSessionRegistration = default;
-        BitmapOutputAdmission.WaiterRegistration? priorWaiter = null;
+        DetachedBitmapOutputWaiter prior = default;
         ImageBitmapOutputWaiter? waiterOwner = null;
         long waiterEpoch = 0;
-        bool returnPriorOffer = false;
         bool registerCancellation = false;
 
         lock (_bitmapOutputSync)
@@ -116,37 +113,7 @@ internal sealed class ImageBitmapOutputDeferral
                 _bitmapOutputSvgGeneration == svgGeneration &&
                 (_bitmapOutputExistingTile != 0) == isExistingSvgTileOutput;
             if (!sameDemand)
-            {
-                long nextEpoch = _bitmapOutputWaiterEpoch == long.MaxValue
-                    ? 1
-                    : _bitmapOutputWaiterEpoch + 1;
-                // Allocate before detaching the prior registration: failure
-                // leaves its ownership intact and available for cleanup.
-                var nextOwner = new ImageBitmapOutputWaiter(this, nextEpoch);
-                priorWaiter = _bitmapOutputWaiter;
-                returnPriorOffer = _bitmapOutputRetryOfferPending != 0;
-                priorImageRegistration = _bitmapOutputImageCancellation;
-                priorSessionRegistration = _bitmapOutputSessionCancellation;
-                _bitmapOutputWaiter = null;
-                _bitmapOutputImageCancellation = default;
-                _bitmapOutputSessionCancellation = default;
-                _bitmapOutputCancellationRegistered = 0;
-                _bitmapOutputWaiterOwner = null;
-                _bitmapOutputWaiterEpoch = nextEpoch;
-                _bitmapOutputRecoverySignaledEpoch = 0;
-                _bitmapOutputRetryOfferPending = 0;
-                _bitmapOutputRetryInProgress = 0;
-                _bitmapOutputCapacityReady = 0;
-                _bitmapOutputRetryQueued = 0;
-                _bitmapOutputRegistering = 0;
-                _bitmapOutputRegistrationNeeded = 0;
-                _bitmapOutputRegistrationFailed = 0;
-                _bitmapOutputWaiterOwner = nextOwner;
-                _bitmapOutputDemand = demand;
-                _bitmapOutputDemandGeneration = demandGeneration;
-                _bitmapOutputSvgGeneration = svgGeneration;
-                Volatile.Write(ref _bitmapOutputDeferred, 1);
-            }
+                prior = BeginBitmapOutputWaiterEpochNoLock(demand, demandGeneration, svgGeneration);
 
             // The work that still owns source bytes/decoder/document data must
             // drain before cache trimming or waiter publication can happen.
@@ -167,46 +134,85 @@ internal sealed class ImageBitmapOutputDeferral
             }
         }
 
-        if (priorWaiter is not null)
-        {
-            if (returnPriorOffer)
-                priorWaiter.ReturnUnusedNotification();
-            else
-                priorWaiter.Dispose();
-        }
-        priorImageRegistration.Unregister();
-        priorSessionRegistration.Unregister();
+        prior.Release();
 
         // Cancellation must be able to retire even a scalar-only waiter that
         // could not enter the governor's bounded queue. The callback target is
         // weak with respect to ImageBox and contains no source-bearing state.
         if (registerCancellation && waiterOwner is not null)
+            return TryRegisterBitmapOutputCancellations(waiterOwner, waiterEpoch);
+        return true;
+    }
+
+    /// <summary>
+    /// Starts a new waiter epoch for a different demand: allocates its owner,
+    /// detaches the prior waiter and cancellation registrations, and resets the
+    /// retry state. The caller holds <c>_bitmapOutputSync</c> and releases the
+    /// detached prior state after leaving it.
+    /// </summary>
+    private DetachedBitmapOutputWaiter BeginBitmapOutputWaiterEpochNoLock(
+        MarkdownSvgRenderDemand demand, int demandGeneration, int svgGeneration)
+    {
+        long nextEpoch = _bitmapOutputWaiterEpoch == long.MaxValue
+            ? 1
+            : _bitmapOutputWaiterEpoch + 1;
+        // Allocate before detaching the prior registration: failure
+        // leaves its ownership intact and available for cleanup.
+        var nextOwner = new ImageBitmapOutputWaiter(this, nextEpoch);
+        var prior = new DetachedBitmapOutputWaiter(
+            _bitmapOutputWaiter,
+            ReturnUnusedOffer: _bitmapOutputRetryOfferPending != 0,
+            _bitmapOutputImageCancellation,
+            _bitmapOutputSessionCancellation);
+        _bitmapOutputWaiter = null;
+        _bitmapOutputImageCancellation = default;
+        _bitmapOutputSessionCancellation = default;
+        _bitmapOutputCancellationRegistered = 0;
+        _bitmapOutputWaiterOwner = null;
+        _bitmapOutputWaiterEpoch = nextEpoch;
+        _bitmapOutputRecoverySignaledEpoch = 0;
+        _bitmapOutputRetryOfferPending = 0;
+        _bitmapOutputRetryInProgress = 0;
+        _bitmapOutputCapacityReady = 0;
+        _bitmapOutputRetryQueued = 0;
+        _bitmapOutputRegistering = 0;
+        _bitmapOutputRegistrationNeeded = 0;
+        _bitmapOutputRegistrationFailed = 0;
+        _bitmapOutputWaiterOwner = nextOwner;
+        _bitmapOutputDemand = demand;
+        _bitmapOutputDemandGeneration = demandGeneration;
+        _bitmapOutputSvgGeneration = svgGeneration;
+        Volatile.Write(ref _bitmapOutputDeferred, 1);
+        return prior;
+    }
+
+    /// <returns><see langword="false"/> when registration failed and the deferral was canceled.</returns>
+    private bool TryRegisterBitmapOutputCancellations(ImageBitmapOutputWaiter waiterOwner, long waiterEpoch)
+    {
+        try
         {
-            try
+            RegisterBitmapOutputCancellation(
+                waiterOwner,
+                waiterEpoch,
+                _imageLifetime.Token,
+                session: false);
+            CancellationToken sessionToken = _context.PerformanceSession?.LifetimeToken ?? default;
+            if (sessionToken.CanBeCanceled)
             {
                 RegisterBitmapOutputCancellation(
                     waiterOwner,
                     waiterEpoch,
-                    _imageLifetime.Token,
-                    session: false);
-                CancellationToken sessionToken = _context.PerformanceSession?.LifetimeToken ?? default;
-                if (sessionToken.CanBeCanceled)
-                {
-                    RegisterBitmapOutputCancellation(
-                        waiterOwner,
-                        waiterEpoch,
-                        sessionToken,
-                        session: true);
-                }
+                    sessionToken,
+                    session: true);
             }
-            catch (Exception exception)
-            {
-                _host.RecordImageRetirementFailure(exception);
-                CancelBitmapOutputDeferral(waiterEpoch, resetLoad: false);
-                return false;
-            }
+            return true;
         }
-        return true;
+        catch (Exception exception)
+        {
+            _host.RecordImageRetirementFailure(exception);
+            CancelBitmapOutputDeferral(waiterEpoch, resetLoad: false);
+            return false;
+        }
     }
 
     private void RegisterBitmapOutputCancellation(
@@ -381,72 +387,20 @@ internal sealed class ImageBitmapOutputDeferral
         long currentWaiterSlotVersion = admissionSnapshot.WaiterSlotVersion;
         bool replacementSnapshot = _host.HasRetainedBitmapOutput(_bitmapOutputExistingTile != 0);
 
-        MarkdownSvgRenderDemand? demand;
-        BitmapOutputAdmission.WaiterRegistration? waiter;
-        long bytes;
-        long version;
-        bool replacement;
-        bool visibleNow;
-        bool valid;
-        bool staleStoredRequest;
-        bool retryRegistration;
-        long epoch;
+        ObservedBitmapOutputRequest observed;
         lock (_bitmapOutputSync)
         {
             if (_bitmapOutputDeferred == 0)
                 return false;
-            epoch = _bitmapOutputWaiterEpoch;
-            demand = _bitmapOutputDemand;
-            if (demand is null ||
-                !ReferenceEquals(demand, _host.LoadDemand) ||
-                _bitmapOutputDemandGeneration != _host.LoadDemandGeneration ||
-                _bitmapOutputSvgGeneration != _host.SvgRenderGeneration)
-            {
-                staleStoredRequest = true;
-                waiter = null;
-                bytes = 0;
-                version = 0;
-                replacement = false;
-                visibleNow = false;
-                valid = false;
-                retryRegistration = false;
-            }
-            else
-            {
-                staleStoredRequest = false;
-                bool previousVisible = _bitmapOutputVisible != 0;
-                visibleNow = isVisible || demand.Priority == MarkdownSvgRenderPriority.Visible ||
-                    _host.IsViewportVisible;
-                replacement = replacementSnapshot;
-                Volatile.Write(ref _bitmapOutputVisible, visibleNow ? 1 : 0);
-                Volatile.Write(ref _bitmapOutputReplacement, replacement ? 1 : 0);
-                bytes = _bitmapOutputRequiredBytes;
-                version = currentCapacityVersion;
-                waiter = _bitmapOutputWaiter;
-                valid = true;
-                retryRegistration = BitmapOutputAdmission.ShouldRetryWaiterRegistration(
-                    registrationFailed: _bitmapOutputRegistrationFailed != 0,
-                    waiterPresent: waiter is not null,
-                    observedCapacityVersion: _bitmapOutputCapacityVersion,
-                    currentCapacityVersion: version,
-                    observedWaiterSlotVersion: _bitmapOutputWaiterSlotVersion,
-                    currentWaiterSlotVersion: currentWaiterSlotVersion,
-                    visibilityPromoted: !previousVisible && visibleNow);
-                if (retryRegistration)
-                {
-                    _bitmapOutputRegistrationFailed = 0;
-                    _bitmapOutputRegistrationNeeded = 1;
-                    _bitmapOutputCapacityVersion = version;
-                    _bitmapOutputWaiterSlotVersion = currentWaiterSlotVersion;
-                }
-            }
+            observed = ObserveBitmapOutputRequestNoLock(
+                isVisible, replacementSnapshot, currentCapacityVersion, currentWaiterSlotVersion);
         }
 
-        if (!valid || demand is null || bytes == 0)
+        if (!observed.Valid || observed.Demand is null || observed.Bytes == 0)
         {
-            if (staleStoredRequest || bytes == 0)
+            if (observed.StaleStoredRequest || observed.Bytes == 0)
             {
-                ClearBitmapOutputDeferral(expectedEpoch: epoch);
+                ClearBitmapOutputDeferral(expectedEpoch: observed.Epoch);
                 return false;
             }
 
@@ -456,23 +410,78 @@ internal sealed class ImageBitmapOutputDeferral
             return true;
         }
 
-        if (waiter is not null)
+        if (observed.Waiter is { } waiter)
         {
             try
             {
-                if (!waiter.UpdateDemand(bytes, visibleNow, replacement, version))
-                    CancelBitmapOutputDeferral(epoch, resetLoad: false);
+                if (!waiter.UpdateDemand(observed.Bytes, observed.VisibleNow, observed.Replacement, observed.Version))
+                    CancelBitmapOutputDeferral(observed.Epoch, resetLoad: false);
             }
             catch (Exception exception)
             {
                 _host.RecordImageRetirementFailure(exception);
-                CancelBitmapOutputDeferral(epoch, resetLoad: false);
+                CancelBitmapOutputDeferral(observed.Epoch, resetLoad: false);
             }
         }
 
-        if (retryRegistration)
+        if (observed.RetryRegistration)
             ArmDeferredBitmapOutputRetryAfterWorkDrained();
         return true;
+    }
+
+    /// <summary>
+    /// Validates the stored request against the box's current load identity,
+    /// refreshes its visibility and replacement state, and decides whether a
+    /// failed or stale waiter registration should be retried. The caller holds
+    /// <c>_bitmapOutputSync</c> and has checked that output is deferred.
+    /// </summary>
+    private ObservedBitmapOutputRequest ObserveBitmapOutputRequestNoLock(
+        bool isVisible, bool replacementSnapshot, long currentCapacityVersion, long currentWaiterSlotVersion)
+    {
+        long epoch = _bitmapOutputWaiterEpoch;
+        MarkdownSvgRenderDemand? demand = _bitmapOutputDemand;
+        if (demand is null ||
+            !ReferenceEquals(demand, _host.LoadDemand) ||
+            _bitmapOutputDemandGeneration != _host.LoadDemandGeneration ||
+            _bitmapOutputSvgGeneration != _host.SvgRenderGeneration)
+        {
+            return new ObservedBitmapOutputRequest(epoch, demand, StaleStoredRequest: true);
+        }
+
+        bool previousVisible = _bitmapOutputVisible != 0;
+        bool visibleNow = isVisible || demand.Priority == MarkdownSvgRenderPriority.Visible ||
+            _host.IsViewportVisible;
+        bool replacement = replacementSnapshot;
+        Volatile.Write(ref _bitmapOutputVisible, visibleNow ? 1 : 0);
+        Volatile.Write(ref _bitmapOutputReplacement, replacement ? 1 : 0);
+        long bytes = _bitmapOutputRequiredBytes;
+        long version = currentCapacityVersion;
+        BitmapOutputAdmission.WaiterRegistration? waiter = _bitmapOutputWaiter;
+        bool retryRegistration = BitmapOutputAdmission.ShouldRetryWaiterRegistration(
+            registrationFailed: _bitmapOutputRegistrationFailed != 0,
+            waiterPresent: waiter is not null,
+            observedCapacityVersion: _bitmapOutputCapacityVersion,
+            currentCapacityVersion: version,
+            observedWaiterSlotVersion: _bitmapOutputWaiterSlotVersion,
+            currentWaiterSlotVersion: currentWaiterSlotVersion,
+            visibilityPromoted: !previousVisible && visibleNow);
+        if (retryRegistration)
+        {
+            _bitmapOutputRegistrationFailed = 0;
+            _bitmapOutputRegistrationNeeded = 1;
+            _bitmapOutputCapacityVersion = version;
+            _bitmapOutputWaiterSlotVersion = currentWaiterSlotVersion;
+        }
+        return new ObservedBitmapOutputRequest(epoch, demand, StaleStoredRequest: false)
+        {
+            Waiter = waiter,
+            Bytes = bytes,
+            Version = version,
+            Replacement = replacement,
+            VisibleNow = visibleNow,
+            Valid = true,
+            RetryRegistration = retryRegistration,
+        };
     }
 
     /// <summary>
