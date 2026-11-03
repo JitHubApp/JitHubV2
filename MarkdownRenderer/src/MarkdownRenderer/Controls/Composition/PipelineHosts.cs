@@ -2,20 +2,17 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
 using RebuildReason = MarkdownRenderer.Controls.MarkdownRebuildCoordinatorReason;
 using MarkdownRenderer.Accessibility;
-using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Performance;
-using MarkdownRenderer.Theming;
 using MarkdownRenderer.Controls.Composition;
 using MarkdownRenderer.Controls.Embeds;
 using MarkdownRenderer.Controls.Focus;
@@ -108,8 +105,6 @@ internal sealed class PipelineHosts :
     object IRebuildLayoutSetupHost.DocumentOwner => _control;
 
     CancellationTokenSource? IRebuildLayoutSetupHost.ImageLifetimeCts => Owners.ImageLifetime.Source;
-
-    bool IRebuildLayoutSetupHost.EnableStandaloneLayoutDiagnostics => _control.EnableStandaloneLayoutDiagnostics;
 
     void IRebuildLayoutSetupHost.RaiseImageUnavailable(
         string source,

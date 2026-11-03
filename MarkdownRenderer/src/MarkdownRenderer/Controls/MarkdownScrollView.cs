@@ -8,7 +8,13 @@ public sealed partial class MarkdownScrollView : MarkdownRendererControl
 {
     /// <summary>Initializes a scrolling markdown document view.</summary>
     public MarkdownScrollView()
-        : base(ownsScrollViewport: true)
+        : this(MarkdownRendererDiagnosticOptions.None)
+    {
+    }
+
+    /// <summary>Initializes a scrolling markdown document view with construction-time diagnostics.</summary>
+    internal MarkdownScrollView(MarkdownRendererDiagnosticOptions diagnostics)
+        : base(ownsScrollViewport: true, diagnostics)
     {
         Engine = MarkdownEngine.Default;
     }

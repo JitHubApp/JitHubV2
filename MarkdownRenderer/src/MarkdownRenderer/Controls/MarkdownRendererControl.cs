@@ -60,10 +60,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private readonly SelectionController _selection = new();
     private readonly MarkdownTouchSelectionSession _touchSelection = new();
     private readonly TouchTapSuppressionPolicy _touchTapSuppression = new();
-    // Opt-in used only by the standalone quick-profile harness. This does not
-    // attach a PerformanceSession or alter normal layout scheduling; it merely
-    // enables the existing build-stage counters for this control instance.
-    internal bool EnableStandaloneLayoutDiagnostics { get; set; }
 
     // Owners the control reads after construction: property callbacks,
     // public and automation members, and disposal.
@@ -768,7 +764,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// True to create the scroll viewer; false to participate in the nearest
     /// ancestor viewport through EffectiveViewportChanged.
     /// </param>
-    private protected MarkdownRendererControl(bool ownsScrollViewport)
+    /// <param name="diagnostics">The diagnostics this renderer runs with for its lifetime.</param>
+    private protected MarkdownRendererControl(bool ownsScrollViewport, MarkdownRendererDiagnosticOptions diagnostics)
     {
         var events = new RendererEvents(this, _lifetime, DispatcherQueue);
         var pipelineHosts = new PipelineHosts(this);
@@ -831,7 +828,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         // box, or native resource alive while a geometry lease is busy.
         var focusRefresh = new FocusableItemsRefreshRequest(_published);
         var focusableItems = new FocusableItemsPublication(layoutHosts, _lifetime, _published, focusRefresh, focus, recoveryClock);
-        var layoutSetup = new RebuildLayoutSetup(pipelineHosts, _snapshotRetirements, imagePrefetch, completedImageCarry, imagePlans, _embeds, focusableItems, imagePreparationOwnerToken);
+        var layoutSetup = new RebuildLayoutSetup(pipelineHosts, diagnostics, _snapshotRetirements, imagePrefetch, completedImageCarry, imagePlans, _embeds, focusableItems, imagePreparationOwnerToken);
         var hostedFocus = new HostedElementFocus(focusHosts, _lifetime, _published, focus, hostedFocusPlan, _embeds, focusRing);
         _overflowScroll = new HorizontalOverflowScrollVisuals(focusHosts, _surface, _lifetime, _published, _selection, focus, _embeds, DispatcherQueue);
         var reveal = new FocusedItemReveal(focusHosts, _surface, _lifetime, _published, _viewport, focus, _overflowScroll, DispatcherQueue);

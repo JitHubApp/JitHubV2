@@ -14,7 +14,7 @@ public sealed partial class MarkdownDocumentView : MarkdownRendererControl
 {
     /// <summary>Initializes a non-scrolling markdown document view.</summary>
     public MarkdownDocumentView()
-        : base(ownsScrollViewport: false)
+        : base(ownsScrollViewport: false, MarkdownRendererDiagnosticOptions.None)
     {
         Engine = MarkdownEngine.Default;
     }
