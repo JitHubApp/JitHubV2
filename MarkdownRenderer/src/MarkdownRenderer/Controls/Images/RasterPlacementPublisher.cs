@@ -117,18 +117,7 @@ internal sealed class RasterPlacementPublisher
             return false;
         // UI-dispatcher-only, synchronous fence and swap. No host/XAML/native
         // callbacks intervene. Image publication readers verify snapshot identity.
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _layoutCommit.IsPublishing || _host.HasCompetingLayoutWork ||
-            _pointerInput.HasSnapshotInteraction ||
-            !ReferenceEquals(source, _published.Snapshot) || generation != _published.Generation ||
-            source.IsRetiringOrDisposed || source.LayoutRevision != owner.SourceRevision ||
-            _host.LayoutWidth != owner.Width ||
-            !_host.MatchesLayoutInputs(context) ||
-            _embeds.EmbedPlans.Count != 0 ||
-            !owner.MatchesSourceImages(_imagePlans.Items, _imageSubscriptions.Images) ||
-            (_pointerInput.DeferredSnapshot is not null && !ReferenceEquals(_pointerInput.DeferredSnapshot, source)) ||
-            !owner.HasCurrentSourceRaster() ||
-            !ReferenceEquals(source.SourceMap, candidate.SourceMap) ||
-            source.AutomationDocumentGeneration != candidate.AutomationDocumentGeneration)
+        if (HasStalePublicationInputs(source, owner, candidate, context, generation))
             return false;
 
         if (!TryPrepareCodeBlockActionPublication(plan, out IReadOnlyList<CodeBlockActionPlan> oldCodeActionPlans))
@@ -147,26 +136,8 @@ internal sealed class RasterPlacementPublisher
         bool committed = false;
         try
         {
-            _imageSubscriptions.Replace(plan.Subscriptions!);
-            _imagePlans.Adopt(plan.Images!, plan.Publication!.Index);
-            _focus.ReplaceItems(plan.Focus, focusedIdentity, resumeFocusIdentity);
-            _embeds.AdoptCodeBlockActionPublication(
-                plan.CodeActionPlans!,
-                plan.CodeActionIndex,
-                plan.ActiveCodeActionOrdinals!,
-                plan.HasMeasuredCodeBlocks,
-                plan.CodeActionRects!);
-            plan.CodeActionPlans = null;
-            plan.CodeActionIndex = null;
-            plan.ActiveCodeActionOrdinals = null;
-            plan.CodeActionRects = null;
-            _layoutCommit.MarkApplied(candidate.LayoutRevision);
-            _layoutCommit.ClearPending();
-            _host.ForgetHoverTarget();
-            long epoch = _hostedFocusPlan.Invalidate();
-            _published.Snapshot = owner.TransferToControl();
-            _imagePlans.Publication = plan.Publication;
-            _hostedFocusPlan.Publish(generation, candidate.LayoutRevision, epoch);
+            long epoch = CommitCandidate(
+                plan, owner, candidate, generation, focusedIdentity, resumeFocusIdentity);
             committed = true;
 
             try
@@ -183,71 +154,14 @@ internal sealed class RasterPlacementPublisher
                     // cancel it, never silently retarget it to a sibling tree.
                     // Capture release is callback-capable, so perform it only
                     // after ownership has committed and the old tree is retired.
-                    try
-                    {
-                        _pointerInput.Reset();
-                    }
-                    catch (Exception exception)
-                    {
-                        MarkdownDiagnostics.WriteLine(
-                            $"[MarkdownRendererControl] Candidate input-waiter cleanup failed: {exception.GetType().Name}.");
-                    }
+                    ResetSourceInputWaiter();
 
                     if (!IsCurrentPublication(
                             candidate, generation, candidate.LayoutRevision, epoch))
                         return true;
                 }
 
-                foreach (var adoption in plan.CodeActionAdoptions!)
-                {
-                    if (!IsCurrentPublication(
-                            candidate, generation, candidate.LayoutRevision, epoch))
-                        break;
-
-                    bool adopted;
-                    try
-                    {
-                        adopted = adoption.NewPlan.AdoptRealizedFromRasterCandidate(
-                            adoption.OldPlan, _embeds.Context, candidate, generation, candidate.LayoutRevision, epoch);
-                    }
-                    catch (Exception exception)
-                    {
-                        adopted = false;
-                        MarkdownDiagnostics.WriteLine(
-                            $"[MarkdownRendererControl] Candidate code-action adoption failed: {exception.GetType().Name}.");
-                    }
-
-                    if (!IsCurrentPublication(
-                            candidate, generation, candidate.LayoutRevision, epoch))
-                        break;
-
-                    if (adopted && adoption.NewPlan.Realized is { } adoptedElement &&
-                        !adoption.NewPlan.IsCurrentRasterActionOwner(
-                            _embeds.Context.Host, candidate, generation, candidate.LayoutRevision, epoch, adoptedElement))
-                        break;
-
-                    if (!adopted && IsCurrentPublication(
-                            candidate, generation, candidate.LayoutRevision, epoch))
-                    {
-                        if (adoption.NewPlan.Realized is { } failedElement &&
-                            ReferenceEquals(adoption.NewPlan.Box.RealizedCopyButton, failedElement))
-                        {
-                            try
-                            {
-                                adoption.NewPlan.Derealize(_embeds.Context);
-                            }
-                            catch (Exception exception)
-                            {
-                                MarkdownDiagnostics.WriteLine(
-                                    $"[MarkdownRendererControl] Candidate code-action cleanup failed: {exception.GetType().Name}.");
-                            }
-                        }
-                        if (!IsCurrentPublication(
-                                candidate, generation, candidate.LayoutRevision, epoch))
-                            break;
-                        _embeds.ForgetCodeBlockAction(adoption.NewOrdinal, adoption.NewPlan.Box);
-                    }
-                }
+                AdoptCodeBlockActions(plan, candidate, generation, epoch);
 
                 // Highlight tasks are snapshot-bound, so their old callbacks
                 // cannot mutate this candidate. Re-run the normal visible path
@@ -258,77 +172,10 @@ internal sealed class RasterPlacementPublisher
             }
             finally
             {
-                foreach (CodeBlockActionPlan oldPlan in oldCodeActionPlans)
-                {
-                    if (oldPlan.Realized is not null)
-                    {
-                        try
-                        {
-                            oldPlan.Derealize(_embeds.Context);
-                        }
-                        catch (Exception exception)
-                        {
-                            MarkdownDiagnostics.WriteLine(
-                                $"[MarkdownRendererControl] Retired code-action cleanup failed: {exception.GetType().Name}.");
-                        }
-                    }
-                }
+                DerealizeRetiredCodeBlockActions(oldCodeActionPlans);
             }
 
-            if (!IsCurrentPublication(
-                    candidate, generation, candidate.LayoutRevision, epoch))
-                return true;
-            _host.NotifyAutomationSnapshotChanged();
-            if (!IsCurrentPublication(
-                    candidate, generation, candidate.LayoutRevision, epoch))
-                return true;
-            _host.HideAbbreviationTooltip();
-            if (!IsCurrentPublication(
-                    candidate, generation, candidate.LayoutRevision, epoch))
-                return true;
-            _host.ResetCursor();
-            if (!IsCurrentPublication(
-                    candidate, generation, candidate.LayoutRevision, epoch))
-                return true;
-            _host.ApplySnapshotSize(candidate.Size);
-            if (!IsCurrentPublication(
-                    candidate, generation, candidate.LayoutRevision, epoch))
-                return true;
-            if (plan.AnchorOffset is { } target && _surface.Scroll is { } scroll &&
-                LazyLayoutScrollAnchorPolicy.ShouldRestore(plan.CapturedScrollOffset, scroll.VerticalOffset, _host.IsScrollViewIntermediate) &&
-                Math.Abs(target - scroll.VerticalOffset) >= .5)
-                scroll.ChangeView(null, target, null, disableAnimation: true);
-            if (!IsCurrentPublication(
-                    candidate, generation, candidate.LayoutRevision, epoch))
-                return true;
-            _imageResidency.Prepare(candidate);
-            if (!IsCurrentPublication(
-                    candidate, generation, candidate.LayoutRevision, epoch))
-                return true;
-            // Image geometry can move code actions into or out of the current
-            // viewport. Reconcile the new index now, without waiting for a
-            // subsequent scroll to realize newly visible Copy buttons or trim
-            // constructor-acquired offscreen image leases.
-            _embeds.RealizeVisible();
-            if (!IsCurrentPublication(
-                    candidate, generation, candidate.LayoutRevision, epoch))
-                return true;
-            _focusRing.Update();
-            if (!IsCurrentPublication(
-                    candidate, generation, candidate.LayoutRevision, epoch))
-                return true;
-            _host.RefreshInteractiveTextAdornerAfterLayoutChange();
-            if (!IsCurrentPublication(
-                    candidate, generation, candidate.LayoutRevision, epoch))
-                return true;
-            _host.InvalidateAutomationLayout();
-            if (!IsCurrentPublication(
-                    candidate, generation, candidate.LayoutRevision, epoch))
-                return true;
-            _host.InvalidateCanvas();
-            if (!IsCurrentPublication(
-                    candidate, generation, candidate.LayoutRevision, epoch))
-                return true;
+            PublishCandidateUi(plan, candidate, generation, epoch);
             return true;
         }
         finally
@@ -343,6 +190,205 @@ internal sealed class RasterPlacementPublisher
                 _layoutCommit.EndPublishing();
             }
         }
+    }
+
+    private bool HasStalePublicationInputs(
+        LayoutSnapshot source,
+        SingleRasterLayoutCandidate owner,
+        LayoutSnapshot candidate,
+        MarkdownLayoutContext context,
+        long generation) =>
+        _lifetime.IsDisposed || _lifetime.IsUnloaded || _layoutCommit.IsPublishing || _host.HasCompetingLayoutWork ||
+            _pointerInput.HasSnapshotInteraction ||
+            !ReferenceEquals(source, _published.Snapshot) || generation != _published.Generation ||
+            source.IsRetiringOrDisposed || source.LayoutRevision != owner.SourceRevision ||
+            _host.LayoutWidth != owner.Width ||
+            !_host.MatchesLayoutInputs(context) ||
+            _embeds.EmbedPlans.Count != 0 ||
+            !owner.MatchesSourceImages(_imagePlans.Items, _imageSubscriptions.Images) ||
+            (_pointerInput.DeferredSnapshot is not null && !ReferenceEquals(_pointerInput.DeferredSnapshot, source)) ||
+            !owner.HasCurrentSourceRaster() ||
+            !ReferenceEquals(source.SourceMap, candidate.SourceMap) ||
+            source.AutomationDocumentGeneration != candidate.AutomationDocumentGeneration;
+
+    private long CommitCandidate(
+        RasterPlacementPlan plan,
+        SingleRasterLayoutCandidate owner,
+        LayoutSnapshot candidate,
+        long generation,
+        Layout.FocusableItem? focusedIdentity,
+        Layout.FocusableItem? resumeFocusIdentity)
+    {
+        _imageSubscriptions.Replace(plan.Subscriptions!);
+        _imagePlans.Adopt(plan.Images!, plan.Publication!.Index);
+        _focus.ReplaceItems(plan.Focus, focusedIdentity, resumeFocusIdentity);
+        _embeds.AdoptCodeBlockActionPublication(
+            plan.CodeActionPlans!,
+            plan.CodeActionIndex,
+            plan.ActiveCodeActionOrdinals!,
+            plan.HasMeasuredCodeBlocks,
+            plan.CodeActionRects!);
+        plan.CodeActionPlans = null;
+        plan.CodeActionIndex = null;
+        plan.ActiveCodeActionOrdinals = null;
+        plan.CodeActionRects = null;
+        _layoutCommit.MarkApplied(candidate.LayoutRevision);
+        _layoutCommit.ClearPending();
+        _host.ForgetHoverTarget();
+        long epoch = _hostedFocusPlan.Invalidate();
+        _published.Snapshot = owner.TransferToControl();
+        _imagePlans.Publication = plan.Publication;
+        _hostedFocusPlan.Publish(generation, candidate.LayoutRevision, epoch);
+        return epoch;
+    }
+
+    private void ResetSourceInputWaiter()
+    {
+        try
+        {
+            _pointerInput.Reset();
+        }
+        catch (Exception exception)
+        {
+            MarkdownDiagnostics.WriteLine(
+                $"[MarkdownRendererControl] Candidate input-waiter cleanup failed: {exception.GetType().Name}.");
+        }
+    }
+
+    private void AdoptCodeBlockActions(
+        RasterPlacementPlan plan,
+        LayoutSnapshot candidate,
+        long generation,
+        long epoch)
+    {
+        foreach (var adoption in plan.CodeActionAdoptions!)
+        {
+            if (!IsCurrentPublication(
+                    candidate, generation, candidate.LayoutRevision, epoch))
+                return;
+
+            bool adopted;
+            try
+            {
+                adopted = adoption.NewPlan.AdoptRealizedFromRasterCandidate(
+                    adoption.OldPlan, _embeds.Context, candidate, generation, candidate.LayoutRevision, epoch);
+            }
+            catch (Exception exception)
+            {
+                adopted = false;
+                MarkdownDiagnostics.WriteLine(
+                    $"[MarkdownRendererControl] Candidate code-action adoption failed: {exception.GetType().Name}.");
+            }
+
+            if (!IsCurrentPublication(
+                    candidate, generation, candidate.LayoutRevision, epoch))
+                return;
+
+            if (adopted && adoption.NewPlan.Realized is { } adoptedElement &&
+                !adoption.NewPlan.IsCurrentRasterActionOwner(
+                    _embeds.Context.Host, candidate, generation, candidate.LayoutRevision, epoch, adoptedElement))
+                return;
+
+            if (!adopted && IsCurrentPublication(
+                    candidate, generation, candidate.LayoutRevision, epoch))
+            {
+                if (adoption.NewPlan.Realized is { } failedElement &&
+                    ReferenceEquals(adoption.NewPlan.Box.RealizedCopyButton, failedElement))
+                {
+                    try
+                    {
+                        adoption.NewPlan.Derealize(_embeds.Context);
+                    }
+                    catch (Exception exception)
+                    {
+                        MarkdownDiagnostics.WriteLine(
+                            $"[MarkdownRendererControl] Candidate code-action cleanup failed: {exception.GetType().Name}.");
+                    }
+                }
+                if (!IsCurrentPublication(
+                        candidate, generation, candidate.LayoutRevision, epoch))
+                    return;
+                _embeds.ForgetCodeBlockAction(adoption.NewOrdinal, adoption.NewPlan.Box);
+            }
+        }
+    }
+
+    private void DerealizeRetiredCodeBlockActions(IReadOnlyList<CodeBlockActionPlan> oldCodeActionPlans)
+    {
+        foreach (CodeBlockActionPlan oldPlan in oldCodeActionPlans)
+        {
+            if (oldPlan.Realized is not null)
+            {
+                try
+                {
+                    oldPlan.Derealize(_embeds.Context);
+                }
+                catch (Exception exception)
+                {
+                    MarkdownDiagnostics.WriteLine(
+                        $"[MarkdownRendererControl] Retired code-action cleanup failed: {exception.GetType().Name}.");
+                }
+            }
+        }
+    }
+
+    private void PublishCandidateUi(
+        RasterPlacementPlan plan,
+        LayoutSnapshot candidate,
+        long generation,
+        long epoch)
+    {
+        if (!IsCurrentPublication(
+                candidate, generation, candidate.LayoutRevision, epoch))
+            return;
+        _host.NotifyAutomationSnapshotChanged();
+        if (!IsCurrentPublication(
+                candidate, generation, candidate.LayoutRevision, epoch))
+            return;
+        _host.HideAbbreviationTooltip();
+        if (!IsCurrentPublication(
+                candidate, generation, candidate.LayoutRevision, epoch))
+            return;
+        _host.ResetCursor();
+        if (!IsCurrentPublication(
+                candidate, generation, candidate.LayoutRevision, epoch))
+            return;
+        _host.ApplySnapshotSize(candidate.Size);
+        if (!IsCurrentPublication(
+                candidate, generation, candidate.LayoutRevision, epoch))
+            return;
+        if (plan.AnchorOffset is { } target && _surface.Scroll is { } scroll &&
+            LazyLayoutScrollAnchorPolicy.ShouldRestore(plan.CapturedScrollOffset, scroll.VerticalOffset, _host.IsScrollViewIntermediate) &&
+            Math.Abs(target - scroll.VerticalOffset) >= .5)
+            scroll.ChangeView(null, target, null, disableAnimation: true);
+        if (!IsCurrentPublication(
+                candidate, generation, candidate.LayoutRevision, epoch))
+            return;
+        _imageResidency.Prepare(candidate);
+        if (!IsCurrentPublication(
+                candidate, generation, candidate.LayoutRevision, epoch))
+            return;
+        // Image geometry can move code actions into or out of the current
+        // viewport. Reconcile the new index now, without waiting for a
+        // subsequent scroll to realize newly visible Copy buttons or trim
+        // constructor-acquired offscreen image leases.
+        _embeds.RealizeVisible();
+        if (!IsCurrentPublication(
+                candidate, generation, candidate.LayoutRevision, epoch))
+            return;
+        _focusRing.Update();
+        if (!IsCurrentPublication(
+                candidate, generation, candidate.LayoutRevision, epoch))
+            return;
+        _host.RefreshInteractiveTextAdornerAfterLayoutChange();
+        if (!IsCurrentPublication(
+                candidate, generation, candidate.LayoutRevision, epoch))
+            return;
+        _host.InvalidateAutomationLayout();
+        if (!IsCurrentPublication(
+                candidate, generation, candidate.LayoutRevision, epoch))
+            return;
+        _host.InvalidateCanvas();
     }
 
     private bool TryPrepareCodeBlockActionPublication(
