@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Xml;
@@ -221,7 +220,7 @@ internal static class SvgStaticSnapshot
         foreach (XmlElement style in styleElements)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            string styleText = SvgForeignObjectText.GetInnerTextIterative(style, cancellationToken);
+            string styleText = SvgDomText.GetInnerTextIterative(style, cancellationToken);
             if (SvgStaticStyleSheet.TryCreateStaticStyleSheet(styleText, cancellationToken, out string sanitizedCss))
             {
                 style.InnerText = sanitizedCss;
