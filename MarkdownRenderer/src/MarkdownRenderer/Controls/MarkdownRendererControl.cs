@@ -104,6 +104,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private readonly RecoveryClockWork _recoveryWork;
     private readonly VisibleWorkScheduler _visibleWork;
     private readonly ScrollViewTracking _scrolling;
+    private readonly KeyboardInput _keyboard;
     private readonly VisibleImageReadiness _imageReadiness;
     private readonly DeferredSceneReadiness _deferredScenes;
     private readonly BlockScrollNavigation _blockScroll;
@@ -1103,36 +1104,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         CopyCodeBlockToClipboard(new CodeBlockActionPlan { Box = box });
     }
 
-    private void OnHostedEmbedKeyDown(object sender, KeyRoutedEventArgs e)
-    {
-        if (sender is not FrameworkElement element)
-            return;
-
-        bool shift = (Microsoft.UI.Input.InputKeyboardSource
-            .GetKeyStateForCurrentThread(VirtualKey.Shift) & Windows.UI.Core.CoreVirtualKeyStates.Down)
-            == Windows.UI.Core.CoreVirtualKeyStates.Down;
-
-        if (!_hostedFocus.TrySetFocusedItemFor(element)) return;
-
-        if (e.Key == VirtualKey.Tab)
-        {
-            if (HostedFocusNavigation.TryMoveFocusWithinHostedEmbed(element, e.OriginalSource, shift))
-            {
-                e.Handled = true;
-                return;
-            }
-
-            e.Handled = _navigator.MoveTab(reverse: shift);
-            return;
-        }
-
-        if (e.Key is VirtualKey.Left or VirtualKey.Right or VirtualKey.Up or VirtualKey.Down &&
-            element is not TextBox)
-        {
-            e.Handled = _navigator.MoveSpatial(e.Key);
-        }
-    }
-
     internal DocumentRange CurrentSelectionRange => _selection.Range;
 
     internal void SelectAutomationRange(DocumentRange range) => _automation.Select(range);
@@ -1222,6 +1193,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _imageSubscriptions.LoadCompleted += _imageLoadCompletion.OnLoadCompleted;
         _geometryRecovery = new GeometryRecovery(_lifetime, _published, _surface, _pointerInput, _vectorCapacity, _horizontalOverflowDrag, _focusGeometryWork, _overflowScroll, _focusRing, _adorner, _layoutCommit, _imageSubscriptions, _lazyLayout, _imageRelayout, _interactionReset, _dragShield, _contextMenu, _abbreviationTooltip, _cursor, _handles, _automation, _deviceRecovery, _rebuild);
         _visibleWork = new VisibleWorkScheduler(this, _published, _highlighting, _geometryRecovery);
+        _keyboard = new KeyboardInput(this, _published, _selection, _selectionCommands, _contextMenu, _focus, _focusRing, _focusCommit, _hostedFocus, _navigator, _geometryRecovery);
         _recoveryWork = new RecoveryClockWork(_lifetime, _published, _recoveryClock, _layoutCommit, _layoutPublisher, _lazyLayout, _imageSubscriptions, _imageRelayout, _overflowScroll, _focusGeometryWork, _focusRefresh, _focusableItems, _pointerInput, _geometryRecovery, _rebuild);
         _textAdorner = new InteractiveTextAdorner(_surface, _published, _selection, _touchSelection, _hover, _focus, _adorner, _geometryRecovery);
         _scrolling = new ScrollViewTracking(_surface, _lifetime, _viewport, _lazyLayout, _adorner, _textAdorner, _embeds, _visibleWork);
@@ -1251,13 +1223,16 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         BuildVisualTree();
     }
 
+    // Embeds subscribe hosted elements before the keyboard owner exists.
+    private void OnHostedEmbedKeyDown(object sender, KeyRoutedEventArgs e) => _keyboard.OnHostedEmbedKeyDown(sender, e);
+
     private void BuildVisualTree()
     {
         _canvasEvents.EnsureCanvas();
         GettingFocus += OnGettingFocus;
         GotFocus += OnGotFocus;
         LosingFocus += OnLosingFocus;
-        KeyDown += OnKeyDown;
+        KeyDown += _keyboard.OnKeyDown;
 
         if (!_surface.OwnsScrollViewport)
             EffectiveViewportChanged += _scrolling.OnEffectiveViewportChanged;
@@ -2333,7 +2308,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         GettingFocus -= OnGettingFocus;
         GotFocus -= OnGotFocus;
         LosingFocus -= OnLosingFocus;
-        KeyDown -= OnKeyDown;
+        KeyDown -= _keyboard.OnKeyDown;
         _handles.DetachHandlers();
     }
 
@@ -3022,65 +2997,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// is near the top of the viewport.
     /// </summary>
     public void ScrollToBlock(int blockIndex) => _blockScroll.ScrollTo(blockIndex);
-
-    private void OnKeyDown(object sender, KeyRoutedEventArgs e)
-    {
-        if (_published.Snapshot is null || _geometryRecovery.RequestIfRequired(_published.Snapshot)) return;
-        bool ctrl = (Microsoft.UI.Input.InputKeyboardSource
-            .GetKeyStateForCurrentThread(VirtualKey.Control) & Windows.UI.Core.CoreVirtualKeyStates.Down)
-            == Windows.UI.Core.CoreVirtualKeyStates.Down;
-        bool shift = (Microsoft.UI.Input.InputKeyboardSource
-            .GetKeyStateForCurrentThread(VirtualKey.Shift) & Windows.UI.Core.CoreVirtualKeyStates.Down)
-            == Windows.UI.Core.CoreVirtualKeyStates.Down;
-
-        switch (e.Key)
-        {
-            case VirtualKey.C when ctrl && _selection.IsActive:
-                e.Handled = _selectionCommands.Execute(MarkdownCommandKind.CopyRendered);
-                return;
-            case VirtualKey.A when MarkdownKeyboardInputPolicy.ShouldSelectAll(ctrl, IsSelectionEnabled):
-                _selection.SetAnchor(DocumentPosition.Zero);
-                _selection.ExtendTo(new DocumentPosition(int.MaxValue, int.MaxValue, int.MaxValue));
-                e.Handled = true;
-                return;
-            case VirtualKey.F10 when shift && _selection.IsActive:
-                e.Handled = _contextMenu.Show(_contextMenu.GetKeyboardPoint());
-                return;
-            case VirtualKey.Application when _selection.IsActive:
-                e.Handled = _contextMenu.Show(_contextMenu.GetKeyboardPoint());
-                return;
-            case VirtualKey.Tab:
-                e.Handled = _navigator.MoveTab(reverse: shift);
-                return;
-            case VirtualKey.Left:
-            case VirtualKey.Right:
-            case VirtualKey.Home:
-            case VirtualKey.End:
-            case VirtualKey.Up:
-            case VirtualKey.Down:
-                e.Handled = _navigator.Navigate(e.Key);
-                return;
-            case VirtualKey.Enter:
-            case VirtualKey.Space when _focus.FocusedIndex >= 0:
-                _navigator.ClearQueuedKeys();
-                e.Handled = _focusCommit.Activate();
-                return;
-            case VirtualKey.Escape:
-                _navigator.ClearQueuedKeys();
-                if (_focus.FocusedIndex >= 0)
-                {
-                    _focus.ClearFocus();
-                    _focusRing.Update();
-                    e.Handled = true;
-                }
-                else if (_selection.IsActive)
-                {
-                    _selection.Clear();
-                    e.Handled = true;
-                }
-                return;
-        }
-    }
 
     private bool TryGetVectorPointerState(
         Point point,
