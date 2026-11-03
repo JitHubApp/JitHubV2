@@ -27,7 +27,7 @@ internal sealed class MermaidNativeEngine : IDisposable
         _diagnostics = diagnostics;
     }
 
-    internal unsafe MermaidRenderResult RenderNative(
+    internal MermaidRenderResult RenderNative(
         string source,
         byte[] sourceBytes,
         CancellationToken operationCancellation,
@@ -46,51 +46,15 @@ internal sealed class MermaidNativeEngine : IDisposable
                 return _diagnostics.NativeFailure(status, source, diagnosticCulture);
             }
 
-            status = NativeMethods.CancellationCreate(out nint rawCancellation);
-            if (status != NativeStatus.Success || rawCancellation == 0)
-            {
-                return _diagnostics.NativeFailure(status, source, diagnosticCulture);
-            }
-
-            using var nativeCancellation = new MermaidCancellationHandle(rawCancellation);
-            using CancellationTokenRegistration registration = operationCancellation.Register(
-                static state => ((MermaidCancellationHandle)state!).Request(),
-                nativeCancellation);
-
-            var renderOptions = CreateNativeRenderOptions(nativeDeadlineMilliseconds);
-            try
-            {
-                fixed (byte* sourcePointer = sourceBytes)
-                {
-                    status = NativeMethods.Render(
-                        engine,
-                        sourcePointer,
-                        checked((uint)sourceBytes.Length),
-                        in renderOptions,
-                        nativeCancellation,
-                        out nint rawBuffer);
-
-                    if (status != NativeStatus.Success || rawBuffer == 0)
-                    {
-                        return NativeRenderFailure(
-                            status,
-                            source,
-                            producerCancellation,
-                            deadlineCancellation,
-                            diagnosticCulture);
-                    }
-
-                    return MaterializeNativeScene(rawBuffer, source, operationCancellation, diagnosticCulture);
-                }
-            }
-            catch (OperationCanceledException) when (operationCancellation.IsCancellationRequested)
-            {
-                return _diagnostics.CooperativeCancellationResult(
-                    source,
-                    producerCancellation,
-                    deadlineCancellation,
-                    diagnosticCulture);
-            }
+            return RenderWithNativeCancellation(
+                engine,
+                source,
+                sourceBytes,
+                operationCancellation,
+                producerCancellation,
+                deadlineCancellation,
+                diagnosticCulture,
+                nativeDeadlineMilliseconds);
         }
         catch (BadImageFormatException)
         {
@@ -111,6 +75,67 @@ internal sealed class MermaidNativeEngine : IDisposable
                 MermaidStringKeys.EngineBecameUnavailable,
                 diagnosticCulture,
                 "The optional native Mermaid engine became unavailable.");
+        }
+    }
+
+    /// <summary>
+    /// Renders through one native cancellation handle that the operation token
+    /// signals, materializing the returned buffer or mapping its failure.
+    /// </summary>
+    private unsafe MermaidRenderResult RenderWithNativeCancellation(
+        MermaidEngineHandle engine,
+        string source,
+        byte[] sourceBytes,
+        CancellationToken operationCancellation,
+        CancellationToken producerCancellation,
+        CancellationToken deadlineCancellation,
+        CultureInfo diagnosticCulture,
+        uint nativeDeadlineMilliseconds)
+    {
+        NativeStatus status = NativeMethods.CancellationCreate(out nint rawCancellation);
+        if (status != NativeStatus.Success || rawCancellation == 0)
+        {
+            return _diagnostics.NativeFailure(status, source, diagnosticCulture);
+        }
+
+        using var nativeCancellation = new MermaidCancellationHandle(rawCancellation);
+        using CancellationTokenRegistration registration = operationCancellation.Register(
+            static state => ((MermaidCancellationHandle)state!).Request(),
+            nativeCancellation);
+
+        var renderOptions = CreateNativeRenderOptions(nativeDeadlineMilliseconds);
+        try
+        {
+            fixed (byte* sourcePointer = sourceBytes)
+            {
+                status = NativeMethods.Render(
+                    engine,
+                    sourcePointer,
+                    checked((uint)sourceBytes.Length),
+                    in renderOptions,
+                    nativeCancellation,
+                    out nint rawBuffer);
+
+                if (status != NativeStatus.Success || rawBuffer == 0)
+                {
+                    return NativeRenderFailure(
+                        status,
+                        source,
+                        producerCancellation,
+                        deadlineCancellation,
+                        diagnosticCulture);
+                }
+
+                return MaterializeNativeScene(rawBuffer, source, operationCancellation, diagnosticCulture);
+            }
+        }
+        catch (OperationCanceledException) when (operationCancellation.IsCancellationRequested)
+        {
+            return _diagnostics.CooperativeCancellationResult(
+                source,
+                producerCancellation,
+                deadlineCancellation,
+                diagnosticCulture);
         }
     }
 
