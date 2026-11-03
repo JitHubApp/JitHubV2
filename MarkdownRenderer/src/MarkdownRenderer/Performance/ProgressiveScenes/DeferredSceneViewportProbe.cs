@@ -51,44 +51,19 @@ internal sealed class DeferredSceneViewportProbe
         if (snapshot is null || !control.TryGetViewport(out double top, out double height, out _) ||
             !double.IsFinite(top) || !double.IsFinite(height) || height <= 0)
         {
-            control.RequestDeferredSceneProbeAfterPaint();
-            NotifyVisiblePlaceholderStatusIfChanged(control, pending: true);
+            RequestProbeAfterPaint(control);
             return true;
         }
         double bottom = top + height;
-        int visibleMarkerCount = -1;
+        int visibleMarkerCount;
         if (!snapshot.TryBeginPaint())
         {
-            control.RequestDeferredSceneProbeAfterPaint();
-            NotifyVisiblePlaceholderStatusIfChanged(control, pending: true);
+            RequestProbeAfterPaint(control);
             return true;
         }
         try
         {
-            bool bandMeasured = snapshot.TryGetMeasuredTopLevelBlocksInBandForSceneProbe(
-                    top,
-                    bottom,
-                    out IReadOnlyList<BlockBox> visibleBlocks,
-                    out IReadOnlyList<int> visibleOrdinals,
-                    out LayoutPlacementGeneration placements,
-                    out IReadOnlyDictionary<int, int> topLevelOrdinalByBlockIndex);
-            if (bandMeasured &&
-                DeferredSceneMarkerCollector.TryCollect(
-                    visibleBlocks,
-                    visibleOrdinals,
-                    placements,
-                    topLevelOrdinalByBlockIndex,
-                    top,
-                    bottom,
-                    viewport: null,
-                    residencyPolicy: snapshot.VectorSceneResidencyPolicy,
-                    out IReadOnlyList<string> measuredVisibleMarkers,
-                    out _))
-            {
-                // Consume the policy-owned marker scratch before releasing the
-                // snapshot lease, which serializes subsequent viewport probes.
-                visibleMarkerCount = _host.UpdateVisibleMarkers(measuredVisibleMarkers);
-            }
+            visibleMarkerCount = UpdateVisibleMarkersUnderPaintLease(snapshot, top, bottom);
         }
         finally
         {
@@ -101,8 +76,7 @@ internal sealed class DeferredSceneViewportProbe
             // index. A lazy band can finish measuring, or its scenes finish
             // preparing, without another layout commit, so ask the control to
             // re-probe after the next successful paint.
-            control.RequestDeferredSceneProbeAfterPaint();
-            NotifyVisiblePlaceholderStatusIfChanged(control, pending: true);
+            RequestProbeAfterPaint(control);
             return true;
         }
 
@@ -120,6 +94,47 @@ internal sealed class DeferredSceneViewportProbe
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Collects the measured band's visible markers into the plan's visible
+    /// set while the caller holds the snapshot paint lease. Returns -1 when the
+    /// band is not measured or its geometry index is stale.
+    /// </summary>
+    private int UpdateVisibleMarkersUnderPaintLease(LayoutSnapshot snapshot, double top, double bottom)
+    {
+        bool bandMeasured = snapshot.TryGetMeasuredTopLevelBlocksInBandForSceneProbe(
+                top,
+                bottom,
+                out IReadOnlyList<BlockBox> visibleBlocks,
+                out IReadOnlyList<int> visibleOrdinals,
+                out LayoutPlacementGeneration placements,
+                out IReadOnlyDictionary<int, int> topLevelOrdinalByBlockIndex);
+        if (bandMeasured &&
+            DeferredSceneMarkerCollector.TryCollect(
+                visibleBlocks,
+                visibleOrdinals,
+                placements,
+                topLevelOrdinalByBlockIndex,
+                top,
+                bottom,
+                viewport: null,
+                residencyPolicy: snapshot.VectorSceneResidencyPolicy,
+                out IReadOnlyList<string> measuredVisibleMarkers,
+                out _))
+        {
+            // Consume the policy-owned marker scratch before releasing the
+            // snapshot lease, which serializes subsequent viewport probes.
+            return _host.UpdateVisibleMarkers(measuredVisibleMarkers);
+        }
+
+        return -1;
+    }
+
+    private void RequestProbeAfterPaint(MarkdownRendererControl control)
+    {
+        control.RequestDeferredSceneProbeAfterPaint();
+        NotifyVisiblePlaceholderStatusIfChanged(control, pending: true);
     }
 
     private void NotifyVisiblePlaceholderStatusIfChanged(
