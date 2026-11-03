@@ -188,59 +188,9 @@ internal sealed class WorkerScheduler :
 
             while (true)
             {
-                Task? capacityWait = null;
+                Task? capacityWait;
                 lock (_stateLock)
-                {
-                    ThrowIfUnavailableLocked();
-                    bool consumesReservation = fontWaitReservation?.IsActive == true;
-                    bool canEnter = consumesReservation
-                        ? WorkerFontWaitAdmissionPolicy.CanReenter(_queue.Count, _options.QueueCapacity)
-                        : WorkerFontWaitAdmissionPolicy.CanAdmitNew(
-                            _queue.Count,
-                            _detachedFontWaits.Count,
-                            _options.QueueCapacity);
-                    if (!canEnter)
-                    {
-                        // A full queue is backpressure, not a property of the
-                        // SVG: a README with more images than the queue holds
-                        // (flags, sponsor avatars) must render them all.
-                        // Wait for a dispatch, cancellation or
-                        // retirement to free a slot; the queue stays bounded.
-                        capacityWait = _queueCapacityChanged.Task;
-                    }
-                    else
-                    {
-                        pending.SynchronizePriorityFromTicket();
-                        _queue.Enqueue(
-                            pending,
-                            pending.Priority,
-                            operation is WorkerOperation.Render or WorkerOperation.RasterDecode,
-                            requiresFontCatalog,
-                            isOpen: operation == WorkerOperation.Open,
-                            preferredWorkerInstanceId: preferredWorkerInstanceId,
-                            isSecondaryFontProbe: isSecondaryFontProbe);
-                        try
-                        {
-                            if (consumesReservation)
-                            {
-                                if (!fontWaitReservation!.TryConsume())
-                                    throw new InvalidOperationException("The SVG font-wait admission ticket was already consumed.");
-                                _detachedFontWaits.Consume(fontWaitReservation);
-                            }
-
-                            if (cancellationToken.CanBeCanceled)
-                                pending.RegisterCancellation(this, cancellationToken);
-                        }
-                        catch
-                        {
-                            _queue.Remove(pending);
-                            if (consumesReservation)
-                                PulseQueueCapacityChangedLocked();
-                            throw;
-                        }
-                        PumpLocked();
-                    }
-                }
+                    capacityWait = EnqueueOrWaitLocked(pending, fontWaitReservation, cancellationToken);
 
                 if (capacityWait is not null)
                 {
@@ -260,6 +210,69 @@ internal sealed class WorkerScheduler :
             if (admitted is null)
                 pending.CancellationRegistration.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Enqueues <paramref name="pending"/> and pumps when admission has room,
+    /// consuming its font-wait reservation if it re-enters; otherwise returns
+    /// the capacity signal to wait on. A failure after enqueue removes it.
+    /// </summary>
+    /// <param name="pending">The work requesting admission.</param>
+    /// <param name="fontWaitReservation">The detached font-wait reservation it re-enters with, if any.</param>
+    /// <param name="cancellationToken">The admission's cancellation.</param>
+    /// <returns>The capacity wait, or <see langword="null"/> once enqueued.</returns>
+    private Task? EnqueueOrWaitLocked(
+        PendingWork pending,
+        WorkerFontWaitReservation? fontWaitReservation,
+        CancellationToken cancellationToken)
+    {
+        ThrowIfUnavailableLocked();
+        bool consumesReservation = fontWaitReservation?.IsActive == true;
+        bool canEnter = consumesReservation
+            ? WorkerFontWaitAdmissionPolicy.CanReenter(_queue.Count, _options.QueueCapacity)
+            : WorkerFontWaitAdmissionPolicy.CanAdmitNew(
+                _queue.Count,
+                _detachedFontWaits.Count,
+                _options.QueueCapacity);
+        if (!canEnter)
+        {
+            // A full queue is backpressure, not a property of the SVG: a
+            // README with more images than the queue holds (flags, sponsor
+            // avatars) must render them all. Wait for a dispatch,
+            // cancellation or retirement to free a slot; the queue stays bounded.
+            return _queueCapacityChanged.Task;
+        }
+
+        pending.SynchronizePriorityFromTicket();
+        _queue.Enqueue(
+            pending,
+            pending.Priority,
+            pending.Operation is WorkerOperation.Render or WorkerOperation.RasterDecode,
+            pending.RequiresFontCatalog,
+            isOpen: pending.Operation == WorkerOperation.Open,
+            preferredWorkerInstanceId: pending.PreferredWorkerInstanceId,
+            isSecondaryFontProbe: pending.IsSecondaryFontProbe);
+        try
+        {
+            if (consumesReservation)
+            {
+                if (!fontWaitReservation!.TryConsume())
+                    throw new InvalidOperationException("The SVG font-wait admission ticket was already consumed.");
+                _detachedFontWaits.Consume(fontWaitReservation);
+            }
+
+            if (cancellationToken.CanBeCanceled)
+                pending.RegisterCancellation(this, cancellationToken);
+        }
+        catch
+        {
+            _queue.Remove(pending);
+            if (consumesReservation)
+                PulseQueueCapacityChangedLocked();
+            throw;
+        }
+        PumpLocked();
+        return null;
     }
 
     internal WorkerFontWaitReservation ReserveDetachedFontWait(WorkerLease activeLease)
