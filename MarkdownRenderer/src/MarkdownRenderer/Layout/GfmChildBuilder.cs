@@ -60,19 +60,7 @@ internal static class GfmChildBuilder
             {
                 if (!htmlBudgetNoticeAdded)
                 {
-                    var notice = new InlineContainerBox(context, MarkdownElementKeys.Body)
-                    {
-                        BlockIndex = context.NextBlockIndex(),
-                    };
-                    context.RegisterConstructionBlock(notice);
-                    notice.Add(new TextRun(context.ResolveString(
-                        MarkdownStringKeys.HtmlBudgetExceeded,
-                        MarkdownLocalizedStrings.HtmlBudgetExceeded))
-                    {
-                        SourceSpan = MarkdownRenderer.SourceSpan.Empty,
-                    });
-                    stack.Add(notice);
-                    context.AdoptConstructionBlock(notice);
+                    AddHtmlBudgetNotice(stack, context);
                     htmlBudgetNoticeAdded = true;
                 }
 
@@ -83,22 +71,8 @@ internal static class GfmChildBuilder
             if (scopeOnly || suppressedBeforeBlock)
                 continue;
 
-            SafeHtmlBlockScopeTracker? nestedScopes = child is ContainerBlock or HtmlBlock
-                ? htmlScopes?.CloneForNestedContent()
-                : null;
-            BlockBox? box;
-            using (context.PushSafeHtmlBlockContext(
-                       alignmentAtBlockEntry,
-                       nestedScopes,
-                       inlineFlowScopeIdAtBlockEntry))
-                box = TryBuildBlock(child, context);
-            if (box is null)
+            if (!TryAddChild(stack, child, context, htmlScopes, alignmentAtBlockEntry, inlineFlowScopeIdAtBlockEntry))
                 continue;
-
-            if (child is not HtmlBlock)
-                ApplyHtmlAlignment(box, alignmentAtBlockEntry);
-            stack.Add(box);
-            context.AdoptConstructionBlock(box);
 
             if (!suppressedBeforeBlock && child is not HtmlBlock)
             {
@@ -108,23 +82,57 @@ internal static class GfmChildBuilder
                     context.CancellationToken);
                 if (htmlScopes?.BudgetExceeded == true && !htmlBudgetNoticeAdded)
                 {
-                    var notice = new InlineContainerBox(context, MarkdownElementKeys.Body)
-                    {
-                        BlockIndex = context.NextBlockIndex(),
-                    };
-                    context.RegisterConstructionBlock(notice);
-                    notice.Add(new TextRun(context.ResolveString(
-                        MarkdownStringKeys.HtmlBudgetExceeded,
-                        MarkdownLocalizedStrings.HtmlBudgetExceeded))
-                    {
-                        SourceSpan = MarkdownRenderer.SourceSpan.Empty,
-                    });
-                    stack.Add(notice);
-                    context.AdoptConstructionBlock(notice);
+                    AddHtmlBudgetNotice(stack, context);
                     htmlBudgetNoticeAdded = true;
                 }
             }
         }
+    }
+
+    // Builds one child under the safe-HTML context captured at its entry and
+    // adopts it into the stack. Returns false when the child produced no box.
+    private static bool TryAddChild(
+        StackBox stack,
+        Block child,
+        MarkdownLayoutContext context,
+        SafeHtmlBlockScopeTracker? htmlScopes,
+        SafeHtmlAlignment alignmentAtBlockEntry,
+        int? inlineFlowScopeIdAtBlockEntry)
+    {
+        SafeHtmlBlockScopeTracker? nestedScopes = child is ContainerBlock or HtmlBlock
+            ? htmlScopes?.CloneForNestedContent()
+            : null;
+        BlockBox? box;
+        using (context.PushSafeHtmlBlockContext(
+                   alignmentAtBlockEntry,
+                   nestedScopes,
+                   inlineFlowScopeIdAtBlockEntry))
+            box = TryBuildBlock(child, context);
+        if (box is null)
+            return false;
+
+        if (child is not HtmlBlock)
+            ApplyHtmlAlignment(box, alignmentAtBlockEntry);
+        stack.Add(box);
+        context.AdoptConstructionBlock(box);
+        return true;
+    }
+
+    private static void AddHtmlBudgetNotice(StackBox stack, MarkdownLayoutContext context)
+    {
+        var notice = new InlineContainerBox(context, MarkdownElementKeys.Body)
+        {
+            BlockIndex = context.NextBlockIndex(),
+        };
+        context.RegisterConstructionBlock(notice);
+        notice.Add(new TextRun(context.ResolveString(
+            MarkdownStringKeys.HtmlBudgetExceeded,
+            MarkdownLocalizedStrings.HtmlBudgetExceeded))
+        {
+            SourceSpan = MarkdownRenderer.SourceSpan.Empty,
+        });
+        stack.Add(notice);
+        context.AdoptConstructionBlock(notice);
     }
 
     private static void ApplyHtmlAlignment(BlockBox box, SafeHtmlAlignment alignment)
@@ -317,124 +325,178 @@ internal static class GfmChildBuilder
                 bodySourceStart = -1;
                 if (i is LiteralInline straddling && straddling.Span.Start < bodyStart)
                 {
-                    string text = straddling.Content.ToString();
-                    int skip = System.Math.Clamp(bodyStart - straddling.Span.Start, 0, text.Length);
-                    if (skip < text.Length)
-                    {
-                        box.Context.RegisterMarkdownAttributes(i, box.BlockIndex);
-                        box.Add(new TextRun(text.Substring(skip))
-                        {
-                            SourceSpan = new MarkdownRenderer.SourceSpan(bodyStart, straddling.Span.End - bodyStart + 1),
-                        });
-                    }
+                    AddBodySuffix(box, straddling, bodyStart);
                     continue;
                 }
             }
-            int aliasStart = box.Context.StyleAliasCount;
-            using var inlineAttrs = box.Context.PushMarkdownAttributes(i);
-            if (i is EmphasisInline emphasis &&
-                (box.Context.ThemeSnapshot.HasRelativeScriptFontSizeRules || ContainsLink(emphasis)))
-            {
-                box.Context.RegisterMarkdownAttributes(i, box.BlockIndex);
-                int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
-                string emphasisKey = GetEmphasisElementKey(emphasis);
-                using SafeHtmlInlineState.ScriptStyleScope scriptScope =
-                    htmlState.PushMarkdownScript(emphasisKey);
-                AddInlines(
-                    box,
-                    emphasis,
-                    htmlState,
-                    skipFirstIf: null,
-                    inheritedAliasStart: effectiveAliasStart,
-                    inheritedStyleModifiers: AppendStyleModifier(inheritedStyleModifiers, emphasisKey),
-                    containingLinkUrl,
-                    containingLinkTitle);
-                continue;
-            }
-            InlineRun? run;
-            if (i is HtmlInline html)
-            {
-                run = htmlState.Process(
-                    html,
-                    box.Context,
-                    containingLinkUrl,
-                    containingLinkTitle);
-            }
-            else if (i is LinkInline link &&
-                     TryGetOnlyHtmlImageChild(link, out HtmlInline? linkedHtmlImage) &&
-                     htmlState.IsStandaloneImage(linkedHtmlImage, box.Context))
-            {
-                run = htmlState.Process(
-                    linkedHtmlImage,
-                    box.Context,
-                    link.Url,
-                    link.Title,
-                    GetLinkedHtmlImageSourceSpan(link, linkedHtmlImage, box.Context));
-            }
-            else if (i is LinkInline mixedLink &&
-                     !mixedLink.IsImage &&
-                     ContainsRenderableImage(mixedLink, htmlState, box.Context))
-            {
-                box.Context.RegisterMarkdownAttributes(i, box.BlockIndex);
-                int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
-                AddInlines(
-                    box,
-                    mixedLink,
-                    htmlState,
-                    skipFirstIf: null,
-                    inheritedAliasStart: effectiveAliasStart,
-                    inheritedStyleModifiers,
-                    mixedLink.Url,
-                    mixedLink.Title);
-                continue;
-            }
-            else if (!string.IsNullOrWhiteSpace(containingLinkUrl) &&
-                     i is LinkInline { IsImage: true } containedImage)
-            {
-                run = BuildImageRun(
-                    containedImage,
-                    box.Context,
-                    containingLinkUrl,
-                    containingLinkTitle,
-                    containedImage.Span.Start,
-                    containedImage.Span.Length);
-            }
-            else
-            {
-                run = htmlState.Apply(BuildInline(i, box.Context));
-                run = ApplyContainingLink(run, containingLinkUrl, containingLinkTitle);
-            }
-            if (run is not null)
-            {
-                if (run is InlineImageRun image)
-                    box.Context.RegisterConstructionBlock(image.Image);
-                run.StyleModifierKeys = CombineAliases(
-                    run.StyleModifierKeys,
-                    inheritedStyleModifiers);
-                int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
-                run.SetStyleAliases(CombineAliases(
-                    run.StyleAliases,
-                    box.Context.CreateStyleAliasSnapshotFrom(effectiveAliasStart)));
-                box.Context.RegisterMarkdownAttributes(i, box.BlockIndex);
-                box.Add(run);
-                if (run is InlineImageRun addedImage)
-                    box.Context.AdoptConstructionBlock(addedImage.Image);
-            }
-            else if (i is ContainerInline nested)
-            {
-                box.Context.RegisterMarkdownAttributes(i, box.BlockIndex);
-                int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
-                AddInlines(
-                    box,
-                    nested,
-                    htmlState,
-                    skipFirstIf: null,
-                    inheritedAliasStart: effectiveAliasStart,
-                    inheritedStyleModifiers: inheritedStyleModifiers,
-                    containingLinkUrl,
-                    containingLinkTitle);
-            }
+            AddInline(
+                box,
+                i,
+                htmlState,
+                inheritedAliasStart,
+                inheritedStyleModifiers,
+                containingLinkUrl,
+                containingLinkTitle);
         }
+    }
+
+    // A literal that straddles the body start contributes only its body part.
+    private static void AddBodySuffix(InlineContainerBox box, LiteralInline straddling, int bodyStart)
+    {
+        string text = straddling.Content.ToString();
+        int skip = System.Math.Clamp(bodyStart - straddling.Span.Start, 0, text.Length);
+        if (skip < text.Length)
+        {
+            box.Context.RegisterMarkdownAttributes(straddling, box.BlockIndex);
+            box.Add(new TextRun(text.Substring(skip))
+            {
+                SourceSpan = new MarkdownRenderer.SourceSpan(bodyStart, straddling.Span.End - bodyStart + 1),
+            });
+        }
+    }
+
+    private static void AddInline(
+        InlineContainerBox box,
+        Inline i,
+        SafeHtmlInlineState htmlState,
+        int inheritedAliasStart,
+        IReadOnlyList<string> inheritedStyleModifiers,
+        string? containingLinkUrl,
+        string? containingLinkTitle)
+    {
+        int aliasStart = box.Context.StyleAliasCount;
+        using var inlineAttrs = box.Context.PushMarkdownAttributes(i);
+        int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
+        if (i is EmphasisInline emphasis &&
+            (box.Context.ThemeSnapshot.HasRelativeScriptFontSizeRules || ContainsLink(emphasis)))
+        {
+            box.Context.RegisterMarkdownAttributes(i, box.BlockIndex);
+            string emphasisKey = GetEmphasisElementKey(emphasis);
+            using SafeHtmlInlineState.ScriptStyleScope scriptScope =
+                htmlState.PushMarkdownScript(emphasisKey);
+            AddInlines(
+                box,
+                emphasis,
+                htmlState,
+                skipFirstIf: null,
+                inheritedAliasStart: effectiveAliasStart,
+                inheritedStyleModifiers: AppendStyleModifier(inheritedStyleModifiers, emphasisKey),
+                containingLinkUrl,
+                containingLinkTitle);
+            return;
+        }
+        InlineRun? run = ResolveRun(
+            box,
+            i,
+            htmlState,
+            containingLinkUrl,
+            containingLinkTitle,
+            out LinkInline? mixedLink);
+        if (mixedLink is not null)
+        {
+            box.Context.RegisterMarkdownAttributes(i, box.BlockIndex);
+            AddInlines(
+                box,
+                mixedLink,
+                htmlState,
+                skipFirstIf: null,
+                inheritedAliasStart: effectiveAliasStart,
+                inheritedStyleModifiers,
+                mixedLink.Url,
+                mixedLink.Title);
+            return;
+        }
+        if (run is not null)
+        {
+            AddResolvedRun(box, i, run, inheritedStyleModifiers, effectiveAliasStart);
+        }
+        else if (i is ContainerInline nested)
+        {
+            box.Context.RegisterMarkdownAttributes(i, box.BlockIndex);
+            AddInlines(
+                box,
+                nested,
+                htmlState,
+                skipFirstIf: null,
+                inheritedAliasStart: effectiveAliasStart,
+                inheritedStyleModifiers: inheritedStyleModifiers,
+                containingLinkUrl,
+                containingLinkTitle);
+        }
+    }
+
+    // Resolves one inline to its run. A non-image link that contains a
+    // renderable image is returned through mixedLink instead, so its children
+    // flow inline under the link's target.
+    private static InlineRun? ResolveRun(
+        InlineContainerBox box,
+        Inline i,
+        SafeHtmlInlineState htmlState,
+        string? containingLinkUrl,
+        string? containingLinkTitle,
+        out LinkInline? mixedLink)
+    {
+        mixedLink = null;
+        if (i is HtmlInline html)
+        {
+            return htmlState.Process(
+                html,
+                box.Context,
+                containingLinkUrl,
+                containingLinkTitle);
+        }
+        if (i is LinkInline link &&
+            TryGetOnlyHtmlImageChild(link, out HtmlInline? linkedHtmlImage) &&
+            htmlState.IsStandaloneImage(linkedHtmlImage, box.Context))
+        {
+            return htmlState.Process(
+                linkedHtmlImage,
+                box.Context,
+                link.Url,
+                link.Title,
+                GetLinkedHtmlImageSourceSpan(link, linkedHtmlImage, box.Context));
+        }
+        if (i is LinkInline candidate &&
+            !candidate.IsImage &&
+            ContainsRenderableImage(candidate, htmlState, box.Context))
+        {
+            mixedLink = candidate;
+            return null;
+        }
+        if (!string.IsNullOrWhiteSpace(containingLinkUrl) &&
+            i is LinkInline { IsImage: true } containedImage)
+        {
+            return BuildImageRun(
+                containedImage,
+                box.Context,
+                containingLinkUrl,
+                containingLinkTitle,
+                containedImage.Span.Start,
+                containedImage.Span.Length);
+        }
+        InlineRun? run = htmlState.Apply(BuildInline(i, box.Context));
+        return ApplyContainingLink(run, containingLinkUrl, containingLinkTitle);
+    }
+
+    private static void AddResolvedRun(
+        InlineContainerBox box,
+        Inline i,
+        InlineRun run,
+        IReadOnlyList<string> inheritedStyleModifiers,
+        int effectiveAliasStart)
+    {
+        if (run is InlineImageRun image)
+            box.Context.RegisterConstructionBlock(image.Image);
+        run.StyleModifierKeys = CombineAliases(
+            run.StyleModifierKeys,
+            inheritedStyleModifiers);
+        run.SetStyleAliases(CombineAliases(
+            run.StyleAliases,
+            box.Context.CreateStyleAliasSnapshotFrom(effectiveAliasStart)));
+        box.Context.RegisterMarkdownAttributes(i, box.BlockIndex);
+        box.Add(run);
+        if (run is InlineImageRun addedImage)
+            box.Context.AdoptConstructionBlock(addedImage.Image);
     }
 
     private static bool ContainsRenderableImage(

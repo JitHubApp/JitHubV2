@@ -55,88 +55,100 @@ internal sealed class CodeBlockGutterPainter
         DrawLineDecorations(ds, outer, codeStyle, lineNumberStyle, viewport);
     }
 
+    private static readonly Color TransparentLineBackground = Color.FromArgb(0x00, 0, 0, 0);
+    private static readonly Color AdditionLineBackground = Color.FromArgb(0x24, 0x2E, 0xC2, 0x7E);
+    private static readonly Color RemovalLineBackground = Color.FromArgb(0x24, 0xF8, 0x51, 0x49);
+    private static readonly Color HighlightLineBackground = Color.FromArgb(0x26, 0xFF, 0xD8, 0x66);
+
     private void DrawLineDecorations(CanvasDrawingSession ds, Rect outer, ElementStyle codeStyle, ElementStyle lineNumberStyle, Rect viewport)
     {
         double gutterWidth = _box.ComputeGutterWidth(codeStyle);
         if (_box.LineTable.Count == 0)
             return;
 
-        var textViewport = _box.CodeViewportRect(outer, codeStyle);
-        double fullLeft = outer.Left;
-        double fullRight = outer.Right;
-        double numberLeft = outer.Left + (_box.Metadata.IsDiff ? CodeBlockBox.DiffMarkerWidth : 0);
-        double numberWidth = Math.Max(0, gutterWidth - (_box.Metadata.IsDiff ? CodeBlockBox.DiffMarkerWidth : 0) - CodeBlockBox.LineNumberPadding);
-        var additionBg = _box.Context.ThemeSnapshot.IsHighContrast
-            ? Color.FromArgb(0x00, 0, 0, 0)
-            : Color.FromArgb(0x24, 0x2E, 0xC2, 0x7E);
-        var removalBg = _box.Context.ThemeSnapshot.IsHighContrast
-            ? Color.FromArgb(0x00, 0, 0, 0)
-            : Color.FromArgb(0x24, 0xF8, 0x51, 0x49);
-        var highlightBg = _box.Context.ThemeSnapshot.IsHighContrast
-            ? Color.FromArgb(0x00, 0, 0, 0)
-            : Color.FromArgb(0x26, 0xFF, 0xD8, 0x66);
+        double diffMarkerWidth = _box.Metadata.IsDiff ? CodeBlockBox.DiffMarkerWidth : 0;
+        double numberLeft = outer.Left + diffMarkerWidth;
+        double numberWidth = Math.Max(0, gutterWidth - diffMarkerWidth - CodeBlockBox.LineNumberPadding);
 
         if (_box.VisualLineIndex.Lines.Length > 0)
+            DrawVisualLineDecorations(ds, outer, lineNumberStyle, viewport, numberLeft, numberWidth);
+        else
+            DrawChunkLineDecorations(ds, outer, lineNumberStyle, viewport, numberLeft, numberWidth);
+    }
+
+    // Wrapped or indexed code: one background per visible visual row and one
+    // indicator per logical line, starting from the first intersecting row.
+    private void DrawVisualLineDecorations(
+        CanvasDrawingSession ds,
+        Rect outer,
+        ElementStyle lineNumberStyle,
+        Rect viewport,
+        double numberLeft,
+        double numberWidth)
+    {
+        int firstVisual = VerticalViewportIndex.FindFirstIntersecting(
+            _box.VisualLineIndex.BottomEdges,
+            viewport.Top);
+        if (firstVisual >= _box.VisualLineIndex.Lines.Length || _box.VisualLineIndex.Lines[firstVisual].Top > viewport.Bottom)
+            return;
+
+        CanvasTextFormat? lineNumberFormat = GetIndicatorTextFormat(lineNumberStyle);
+        int previousLogicalLine = -1;
+        for (int visualIndex = firstVisual; visualIndex < _box.VisualLineIndex.Lines.Length; visualIndex++)
         {
-            int firstVisual = VerticalViewportIndex.FindFirstIntersecting(
-                _box.VisualLineIndex.BottomEdges,
-                viewport.Top);
-            if (firstVisual >= _box.VisualLineIndex.Lines.Length || _box.VisualLineIndex.Lines[firstVisual].Top > viewport.Bottom)
-                return;
+            CodeVisualLineInfo visual = _box.VisualLineIndex.Lines[visualIndex];
+            if (visual.Top > viewport.Bottom)
+                break;
 
-            CanvasTextFormat? lineNumberFormat = _box.ShowLineNumbers || _box.Metadata.IsDiff
-                ? _box.GetLineNumberTextFormat(lineNumberStyle)
-                : null;
-            int previousLogicalLine = -1;
-            for (int visualIndex = firstVisual; visualIndex < _box.VisualLineIndex.Lines.Length; visualIndex++)
+            CodeLineInfo line = _box.LineTable[visual.LogicalLineIndex];
+            Color? bg = GetLineBackground(line);
+            if (bg is { A: > 0 } lineBg)
             {
-                CodeVisualLineInfo visual = _box.VisualLineIndex.Lines[visualIndex];
-                if (visual.Top > viewport.Bottom)
-                    break;
-
-                CodeLineInfo line = _box.LineTable[visual.LogicalLineIndex];
-                Color? bg = GetLineBackground(line, additionBg, removalBg, highlightBg);
-                if (bg is { A: > 0 } lineBg)
-                {
-                    var backgroundRect = new Rect(
-                        fullLeft,
-                        visual.Top,
-                        fullRight - fullLeft,
-                        visual.Height);
-                    if (CodeBlockBox.IsDrawableRectangle(backgroundRect))
-                        ds.FillRectangle(backgroundRect, lineBg);
-                }
-
-                if (line.Number == previousLogicalLine)
-                    continue;
-                previousLogicalLine = line.Number;
-
-                if (lineNumberFormat is not null)
-                {
-                    DrawLineIndicators(
-                        ds,
-                        outer,
-                        line,
-                        visual.Top,
-                        visual.Height,
-                        numberLeft,
-                        numberWidth,
-                        viewport,
-                        lineNumberStyle,
-                        lineNumberFormat);
-                }
+                var backgroundRect = new Rect(
+                    outer.Left,
+                    visual.Top,
+                    outer.Right - outer.Left,
+                    visual.Height);
+                if (CodeBlockBox.IsDrawableRectangle(backgroundRect))
+                    ds.FillRectangle(backgroundRect, lineBg);
             }
 
-            return;
-        }
+            if (line.Number == previousLogicalLine)
+                continue;
+            previousLogicalLine = line.Number;
 
+            if (lineNumberFormat is not null)
+            {
+                DrawLineIndicators(
+                    ds,
+                    outer,
+                    line,
+                    visual.Top,
+                    visual.Height,
+                    numberLeft,
+                    numberWidth,
+                    viewport,
+                    lineNumberStyle,
+                    lineNumberFormat);
+            }
+        }
+    }
+
+    // Fallback before the visual index exists: walk logical lines covered by
+    // the visible chunks and decorate each of their measured row rectangles.
+    private void DrawChunkLineDecorations(
+        CanvasDrawingSession ds,
+        Rect outer,
+        ElementStyle lineNumberStyle,
+        Rect viewport,
+        double numberLeft,
+        double numberWidth)
+    {
         int firstChunk = _box.FindFirstVisibleChunk(viewport.Top);
         if (firstChunk >= _box.Chunks.Count)
             return;
 
-        CanvasTextFormat? fallbackLineNumberFormat = _box.ShowLineNumbers || _box.Metadata.IsDiff
-            ? _box.GetLineNumberTextFormat(lineNumberStyle)
-            : null;
+        CanvasTextFormat? fallbackLineNumberFormat = GetIndicatorTextFormat(lineNumberStyle);
 
         int lastChunk = firstChunk;
         while (lastChunk + 1 < _box.Chunks.Count &&
@@ -154,32 +166,7 @@ internal sealed class CodeBlockGutterPainter
             CodeLineInfo line = _box.LineTable[lineIndex];
             if (line.Start >= visibleTextEnd)
                 break;
-            Color? bg = GetLineBackground(line, additionBg, removalBg, highlightBg);
-            var rects = GetLineRects(line);
-            Rect first = Rect.Empty;
-            foreach (var rect in rects)
-            {
-                if (!CodeBlockBox.IsDrawableRectangle(rect))
-                    continue;
-
-                double top = rect.Top;
-                double bottom = rect.Bottom;
-                if (bottom < viewport.Top || top > viewport.Bottom)
-                    continue;
-                if (first.IsEmpty)
-                    first = rect;
-
-                if (bg is { A: > 0 } lineBg)
-                {
-                    var backgroundRect = new Rect(
-                        fullLeft,
-                        top,
-                        fullRight - fullLeft,
-                        Math.Max(1, bottom - top));
-                    if (CodeBlockBox.IsDrawableRectangle(backgroundRect))
-                        ds.FillRectangle(backgroundRect, lineBg);
-                }
-            }
+            Rect first = FillLineRowBackgrounds(ds, outer, line, viewport);
 
             if (!first.IsEmpty && fallbackLineNumberFormat is not null)
                 DrawLineIndicators(
@@ -196,16 +183,58 @@ internal sealed class CodeBlockGutterPainter
         }
     }
 
-    private Color? GetLineBackground(
-        CodeLineInfo line,
-        Color addition,
-        Color removal,
-        Color highlight) => line.DiffKind switch
+    // Fills the background of each visible row rectangle of one logical line
+    // and returns the first visible rectangle, or Rect.Empty.
+    private Rect FillLineRowBackgrounds(CanvasDrawingSession ds, Rect outer, CodeLineInfo line, Rect viewport)
     {
-        CodeLineDiffKind.Added => addition,
-        CodeLineDiffKind.Removed => removal,
-        _ => _box.Metadata.HighlightedLines.Contains(line.Number) ? highlight : null,
-    };
+        Color? bg = GetLineBackground(line);
+        Rect first = Rect.Empty;
+        foreach (var rect in GetLineRects(line))
+        {
+            if (!CodeBlockBox.IsDrawableRectangle(rect))
+                continue;
+
+            double top = rect.Top;
+            double bottom = rect.Bottom;
+            if (bottom < viewport.Top || top > viewport.Bottom)
+                continue;
+            if (first.IsEmpty)
+                first = rect;
+
+            if (bg is { A: > 0 } lineBg)
+            {
+                var backgroundRect = new Rect(
+                    outer.Left,
+                    top,
+                    outer.Right - outer.Left,
+                    Math.Max(1, bottom - top));
+                if (CodeBlockBox.IsDrawableRectangle(backgroundRect))
+                    ds.FillRectangle(backgroundRect, lineBg);
+            }
+        }
+
+        return first;
+    }
+
+    private CanvasTextFormat? GetIndicatorTextFormat(ElementStyle lineNumberStyle) =>
+        _box.ShowLineNumbers || _box.Metadata.IsDiff
+            ? _box.GetLineNumberTextFormat(lineNumberStyle)
+            : null;
+
+    // High Contrast keeps diff and highlight rows unfilled; the markers and
+    // line numbers carry the state instead.
+    private Color? GetLineBackground(CodeLineInfo line)
+    {
+        bool highContrast = _box.Context.ThemeSnapshot.IsHighContrast;
+        return line.DiffKind switch
+        {
+            CodeLineDiffKind.Added => highContrast ? TransparentLineBackground : AdditionLineBackground,
+            CodeLineDiffKind.Removed => highContrast ? TransparentLineBackground : RemovalLineBackground,
+            _ => _box.Metadata.HighlightedLines.Contains(line.Number)
+                ? highContrast ? TransparentLineBackground : HighlightLineBackground
+                : null,
+        };
+    }
 
     private void DrawLineIndicators(
         CanvasDrawingSession ds,

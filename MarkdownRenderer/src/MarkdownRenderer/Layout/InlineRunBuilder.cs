@@ -85,130 +85,183 @@ internal sealed class InlineRunBuilder
             _context.CancellationToken.ThrowIfCancellationRequested();
             if (!htmlState.TryAcceptNode(i))
                 break;
-            int aliasStart = _context.StyleAliasCount;
-            using var inlineAttrs = _context.PushMarkdownAttributes(i);
+            AddInline(
+                box,
+                i,
+                htmlState,
+                inheritedAliasStart,
+                inheritedStyleModifiers,
+                containingLinkUrl,
+                containingLinkTitle);
+        }
+    }
 
-            if (_semanticDocument is { } semanticDocument &&
-                semanticDocument.TryGetInlineExtensionContent(i, out var declarativeFragment) &&
-                declarativeFragment is not null &&
-                _declarativeInlines.TryCreateDeclarativeInlineRuns(declarativeFragment, out var declarativeRuns))
-            {
-                int declarativeAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
-                IReadOnlyList<string> aliases = _context.CreateStyleAliasSnapshotFrom(declarativeAliasStart);
-                _context.RegisterMarkdownAttributes(i, box.BlockIndex);
-                foreach (InlineRun sourceRun in declarativeRuns)
-                {
-                    InlineRun declarativeRun = MarkdownInlineSyntax.ApplyContainingLink(
-                        sourceRun,
-                        containingLinkUrl,
-                        containingLinkTitle) ?? sourceRun;
-                    declarativeRun.StyleAliases = aliases;
-                    _tracker.AddInlineRun(box, declarativeRun);
-                }
-                continue;
-            }
+    private void AddInline(
+        InlineContainerBox box,
+        Inline i,
+        SafeHtmlInlineState htmlState,
+        int inheritedAliasStart,
+        IReadOnlyList<string> inheritedStyleModifiers,
+        string? containingLinkUrl,
+        string? containingLinkTitle)
+    {
+        int aliasStart = _context.StyleAliasCount;
+        using var inlineAttrs = _context.PushMarkdownAttributes(i);
+        int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
 
-            if (i is EmphasisInline emphasis)
-            {
-                string emphasisKey = MarkdownInlineSyntax.GetEmphasisElementKey(emphasis);
-                if (_context.ThemeSnapshot.HasRelativeScriptFontSizeRules || MarkdownInlineSyntax.ContainsMarkdownLink(emphasis))
-                {
-                    _context.RegisterMarkdownAttributes(i, box.BlockIndex);
-                    int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
-                    using SafeHtmlInlineState.ScriptStyleScope scriptScope =
-                        htmlState.PushMarkdownScript(emphasisKey);
-                    AddInlines(
-                        box,
-                        emphasis,
-                        htmlState,
-                        effectiveAliasStart,
-                        MarkdownInlineSyntax.AppendStyleModifier(
-                            inheritedStyleModifiers,
-                            emphasisKey),
-                        containingLinkUrl,
-                        containingLinkTitle);
-                    continue;
-                }
-            }
+        if (TryAddDeclarativeRuns(box, i, effectiveAliasStart, containingLinkUrl, containingLinkTitle))
+            return;
 
-            InlineRun? run;
-            if (i is HtmlInline html)
-            {
-                run = _tracker.TrackInlineImageRun(htmlState.Process(
-                    html,
-                    _context,
-                    containingLinkUrl,
-                    containingLinkTitle));
-            }
-            else if (i is LinkInline link &&
-                     MarkdownInlineSyntax.TryGetOnlyHtmlImageChild(link, out HtmlInline? linkedHtmlImage) &&
-                     htmlState.IsStandaloneImage(linkedHtmlImage, _context))
-            {
-                run = _tracker.TrackInlineImageRun(htmlState.Process(
-                    linkedHtmlImage,
-                    _context,
-                    link.Url,
-                    link.Title,
-                    MarkdownInlineSyntax.GetLinkedHtmlImageSourceSpan(link, linkedHtmlImage, _context)));
-            }
-            else if (i is LinkInline mixedLink &&
-                     !mixedLink.IsImage &&
-                     ContainsRenderableLinkedInlineObject(mixedLink, htmlState, _context))
+        if (i is EmphasisInline emphasis)
+        {
+            string emphasisKey = MarkdownInlineSyntax.GetEmphasisElementKey(emphasis);
+            if (_context.ThemeSnapshot.HasRelativeScriptFontSizeRules || MarkdownInlineSyntax.ContainsMarkdownLink(emphasis))
             {
                 _context.RegisterMarkdownAttributes(i, box.BlockIndex);
-                int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
+                using SafeHtmlInlineState.ScriptStyleScope scriptScope =
+                    htmlState.PushMarkdownScript(emphasisKey);
                 AddInlines(
                     box,
-                    mixedLink,
+                    emphasis,
                     htmlState,
                     effectiveAliasStart,
-                    inheritedStyleModifiers,
-                    mixedLink.Url,
-                    mixedLink.Title);
-                continue;
-            }
-            else if (!string.IsNullOrWhiteSpace(containingLinkUrl) &&
-                     i is LinkInline { IsImage: true } containedImage)
-            {
-                run = BuildImageRun(
-                    containedImage,
-                    containingLinkUrl,
-                    containingLinkTitle,
-                    containedImage.Span.Start,
-                    containedImage.Span.Length);
-            }
-            else
-            {
-                int linkStyleAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
-                run = htmlState.Apply(BuildInline(i, box.BlockIndex, linkStyleAliasStart));
-                run = MarkdownInlineSyntax.ApplyContainingLink(run, containingLinkUrl, containingLinkTitle);
-            }
-            if (run is not null)
-            {
-                run.StyleModifierKeys = MarkdownInlineSyntax.CombineStyleAliases(
-                    run.StyleModifierKeys,
-                    inheritedStyleModifiers);
-                int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
-                run.StyleAliases = MarkdownInlineSyntax.CombineStyleAliases(
-                    run.StyleAliases,
-                    _context.CreateStyleAliasSnapshotFrom(effectiveAliasStart));
-                _context.RegisterMarkdownAttributes(i, box.BlockIndex);
-                _tracker.AddInlineRun(box, run);
-            }
-            else if (i is ContainerInline nested)
-            {
-                _context.RegisterMarkdownAttributes(i, box.BlockIndex);
-                int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
-                AddInlines(
-                    box,
-                    nested,
-                    htmlState,
-                    effectiveAliasStart,
-                    inheritedStyleModifiers,
+                    MarkdownInlineSyntax.AppendStyleModifier(
+                        inheritedStyleModifiers,
+                        emphasisKey),
                     containingLinkUrl,
                     containingLinkTitle);
+                return;
             }
         }
+
+        InlineRun? run = ResolveRun(
+            box,
+            i,
+            htmlState,
+            effectiveAliasStart,
+            containingLinkUrl,
+            containingLinkTitle,
+            out LinkInline? mixedLink);
+        if (mixedLink is not null)
+        {
+            _context.RegisterMarkdownAttributes(i, box.BlockIndex);
+            AddInlines(
+                box,
+                mixedLink,
+                htmlState,
+                effectiveAliasStart,
+                inheritedStyleModifiers,
+                mixedLink.Url,
+                mixedLink.Title);
+            return;
+        }
+        if (run is not null)
+        {
+            run.StyleModifierKeys = MarkdownInlineSyntax.CombineStyleAliases(
+                run.StyleModifierKeys,
+                inheritedStyleModifiers);
+            run.StyleAliases = MarkdownInlineSyntax.CombineStyleAliases(
+                run.StyleAliases,
+                _context.CreateStyleAliasSnapshotFrom(effectiveAliasStart));
+            _context.RegisterMarkdownAttributes(i, box.BlockIndex);
+            _tracker.AddInlineRun(box, run);
+        }
+        else if (i is ContainerInline nested)
+        {
+            _context.RegisterMarkdownAttributes(i, box.BlockIndex);
+            AddInlines(
+                box,
+                nested,
+                htmlState,
+                effectiveAliasStart,
+                inheritedStyleModifiers,
+                containingLinkUrl,
+                containingLinkTitle);
+        }
+    }
+
+    // Semantic-document extension content renders through its declarative
+    // runs, all sharing one alias snapshot and the containing link target.
+    private bool TryAddDeclarativeRuns(
+        InlineContainerBox box,
+        Inline i,
+        int declarativeAliasStart,
+        string? containingLinkUrl,
+        string? containingLinkTitle)
+    {
+        if (_semanticDocument is not { } semanticDocument ||
+            !semanticDocument.TryGetInlineExtensionContent(i, out var declarativeFragment) ||
+            declarativeFragment is null ||
+            !_declarativeInlines.TryCreateDeclarativeInlineRuns(declarativeFragment, out var declarativeRuns))
+        {
+            return false;
+        }
+
+        IReadOnlyList<string> aliases = _context.CreateStyleAliasSnapshotFrom(declarativeAliasStart);
+        _context.RegisterMarkdownAttributes(i, box.BlockIndex);
+        foreach (InlineRun sourceRun in declarativeRuns)
+        {
+            InlineRun declarativeRun = MarkdownInlineSyntax.ApplyContainingLink(
+                sourceRun,
+                containingLinkUrl,
+                containingLinkTitle) ?? sourceRun;
+            declarativeRun.StyleAliases = aliases;
+            _tracker.AddInlineRun(box, declarativeRun);
+        }
+        return true;
+    }
+
+    // Resolves one inline to its run. A non-image link that contains a
+    // renderable inline object is returned through mixedLink instead, so its
+    // children flow inline under the link's target.
+    private InlineRun? ResolveRun(
+        InlineContainerBox box,
+        Inline i,
+        SafeHtmlInlineState htmlState,
+        int linkStyleAliasStart,
+        string? containingLinkUrl,
+        string? containingLinkTitle,
+        out LinkInline? mixedLink)
+    {
+        mixedLink = null;
+        if (i is HtmlInline html)
+        {
+            return _tracker.TrackInlineImageRun(htmlState.Process(
+                html,
+                _context,
+                containingLinkUrl,
+                containingLinkTitle));
+        }
+        if (i is LinkInline link &&
+            MarkdownInlineSyntax.TryGetOnlyHtmlImageChild(link, out HtmlInline? linkedHtmlImage) &&
+            htmlState.IsStandaloneImage(linkedHtmlImage, _context))
+        {
+            return _tracker.TrackInlineImageRun(htmlState.Process(
+                linkedHtmlImage,
+                _context,
+                link.Url,
+                link.Title,
+                MarkdownInlineSyntax.GetLinkedHtmlImageSourceSpan(link, linkedHtmlImage, _context)));
+        }
+        if (i is LinkInline candidate &&
+            !candidate.IsImage &&
+            ContainsRenderableLinkedInlineObject(candidate, htmlState, _context))
+        {
+            mixedLink = candidate;
+            return null;
+        }
+        if (!string.IsNullOrWhiteSpace(containingLinkUrl) &&
+            i is LinkInline { IsImage: true } containedImage)
+        {
+            return BuildImageRun(
+                containedImage,
+                containingLinkUrl,
+                containingLinkTitle,
+                containedImage.Span.Start,
+                containedImage.Span.Length);
+        }
+        InlineRun? run = htmlState.Apply(BuildInline(i, box.BlockIndex, linkStyleAliasStart));
+        return MarkdownInlineSyntax.ApplyContainingLink(run, containingLinkUrl, containingLinkTitle);
     }
 
     private bool ContainsRenderableLinkedInlineObject(

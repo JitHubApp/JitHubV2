@@ -96,13 +96,7 @@ internal sealed class LayoutBlockBuilder
             {
                 if (!htmlBudgetNoticeAdded)
                 {
-                    var notice = new InlineContainerBox(_context, MarkdownElementKeys.Body)
-                    {
-                        BlockIndex = _context.NextBlockIndex(),
-                    };
-                    _tracker.TrackBlock(notice);
-                    _tracker.AddHtmlBudgetNotice(notice);
-                    blocks.Add(notice);
+                    blocks.Add(CreateHtmlBudgetNotice());
                     htmlBudgetNoticeAdded = true;
                 }
                 if (b is HtmlBlock || suppressedBeforeBlock)
@@ -118,44 +112,13 @@ internal sealed class LayoutBlockBuilder
                 continue;
             }
 
-            BlockBox? box;
-            SafeHtmlBlockScopeTracker? nestedScopes = b is ContainerBlock or HtmlBlock
-                ? htmlScopes?.CloneForNestedContent()
-                : null;
-            using (_context.PushSafeHtmlBlockContext(
-                       alignmentAtBlockEntry,
-                       nestedScopes,
-                       inlineFlowScopeIdForBlock,
-                       inlineFlowContinuesPrevious))
-                box = BuildBlock(b);
-            if (box is not null)
-            {
-                // The safe renderer has already claimed this HtmlBlock, so an
-                // empty renderer-owned root must not reintroduce vertical gap
-                // for comments/declarations. It cannot fall back to literal
-                // core rendering because BuildBlock has already dispatched it.
-                if (b is HtmlBlock && box is StackBox { Children.Count: 0 })
-                {
-                    _tracker.DiscardUnpublishedBlock(box);
-                    continue;
-                }
-
-                if (htmlScopes is not null &&
-                    b is not HtmlBlock)
-                    ApplyHtmlAlignment(box, alignmentAtBlockEntry);
-
-                if (b is ParagraphBlock paragraph &&
-                    box is InlineContainerBox inlineParagraph &&
-                    inlineFlowScopeIdForBlock is int inlineFlowScopeId &&
-                    SafeHtmlFlowParagraphs.IsBadgeOnlyHtmlFlowParagraph(paragraph))
-                {
-                    inlineParagraph.SafeHtmlInlineFlowScopeId = inlineFlowScopeId;
-                    inlineParagraph.UseContainerMargin = false;
-                    inlineParagraph.Margin = default;
-                }
-
+            if (BuildTopLevelBlock(
+                    b,
+                    htmlScopes,
+                    alignmentAtBlockEntry,
+                    inlineFlowScopeIdForBlock,
+                    inlineFlowContinuesPrevious) is { } box)
                 blocks.Add(box);
-            }
 
             if (!suppressedBeforeBlock && b is not HtmlBlock)
             {
@@ -165,13 +128,7 @@ internal sealed class LayoutBlockBuilder
                     cancellationToken);
                 if (htmlScopes?.BudgetExceeded == true && !htmlBudgetNoticeAdded)
                 {
-                    var notice = new InlineContainerBox(_context, MarkdownElementKeys.Body)
-                    {
-                        BlockIndex = _context.NextBlockIndex(),
-                    };
-                    _tracker.TrackBlock(notice);
-                    _tracker.AddHtmlBudgetNotice(notice);
-                    blocks.Add(notice);
+                    blocks.Add(CreateHtmlBudgetNotice());
                     htmlBudgetNoticeAdded = true;
                 }
             }
@@ -179,6 +136,72 @@ internal sealed class LayoutBlockBuilder
 
         cancellationToken.ThrowIfCancellationRequested();
 
+        ApplyTopLevelMarginPolicy(blocks);
+        return blocks;
+    }
+
+    // Builds one top-level block under the safe-HTML context captured at its
+    // entry. Returns null when the block produced nothing to publish.
+    private BlockBox? BuildTopLevelBlock(
+        Block b,
+        SafeHtmlBlockScopeTracker? htmlScopes,
+        SafeHtmlAlignment alignmentAtBlockEntry,
+        int? inlineFlowScopeIdForBlock,
+        bool inlineFlowContinuesPrevious)
+    {
+        BlockBox? box;
+        SafeHtmlBlockScopeTracker? nestedScopes = b is ContainerBlock or HtmlBlock
+            ? htmlScopes?.CloneForNestedContent()
+            : null;
+        using (_context.PushSafeHtmlBlockContext(
+                   alignmentAtBlockEntry,
+                   nestedScopes,
+                   inlineFlowScopeIdForBlock,
+                   inlineFlowContinuesPrevious))
+            box = BuildBlock(b);
+        if (box is null)
+            return null;
+
+        // The safe renderer has already claimed this HtmlBlock, so an
+        // empty renderer-owned root must not reintroduce vertical gap
+        // for comments/declarations. It cannot fall back to literal
+        // core rendering because BuildBlock has already dispatched it.
+        if (b is HtmlBlock && box is StackBox { Children.Count: 0 })
+        {
+            _tracker.DiscardUnpublishedBlock(box);
+            return null;
+        }
+
+        if (htmlScopes is not null &&
+            b is not HtmlBlock)
+            ApplyHtmlAlignment(box, alignmentAtBlockEntry);
+
+        if (b is ParagraphBlock paragraph &&
+            box is InlineContainerBox inlineParagraph &&
+            inlineFlowScopeIdForBlock is int inlineFlowScopeId &&
+            SafeHtmlFlowParagraphs.IsBadgeOnlyHtmlFlowParagraph(paragraph))
+        {
+            inlineParagraph.SafeHtmlInlineFlowScopeId = inlineFlowScopeId;
+            inlineParagraph.UseContainerMargin = false;
+            inlineParagraph.Margin = default;
+        }
+
+        return box;
+    }
+
+    private InlineContainerBox CreateHtmlBudgetNotice()
+    {
+        var notice = new InlineContainerBox(_context, MarkdownElementKeys.Body)
+        {
+            BlockIndex = _context.NextBlockIndex(),
+        };
+        _tracker.TrackBlock(notice);
+        _tracker.AddHtmlBudgetNotice(notice);
+        return notice;
+    }
+
+    private void ApplyTopLevelMarginPolicy(List<BlockBox> blocks)
+    {
         byte layoutPolicy = _context.ThemeSnapshot.LayoutPolicy;
         if ((layoutPolicy & 4) != 0)
             TopLevelBlockMarginCollapse.ResetLeadingTopMargin(blocks);
@@ -186,7 +209,6 @@ internal sealed class LayoutBlockBuilder
             TopLevelBlockMarginCollapse.Apply(blocks);
         if ((layoutPolicy & 2) != 0)
             TopLevelBlockMarginCollapse.ResetTrailingBottomMargin(blocks);
-        return blocks;
     }
 
     internal static void ApplyHtmlAlignment(BlockBox box, SafeHtmlAlignment alignment)
