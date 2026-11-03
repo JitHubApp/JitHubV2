@@ -676,27 +676,3 @@ internal sealed partial class InstalledFontCatalogTransfer : IDisposable
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool CloseHandle(nint handle);
 }
-
-internal enum InstalledFontCatalogFailure
-{
-    CatalogUnavailable,
-    EmptyCatalog,
-    InvalidGeneration,
-    MappingFailed,
-    ResourceLimit,
-    UnsafePath,
-}
-
-internal sealed class InstalledFontCatalogException : Exception
-{
-    internal InstalledFontCatalogException(
-        InstalledFontCatalogFailure failure,
-        string message,
-        Exception? innerException = null)
-        : base(message, innerException)
-    {
-        Failure = failure;
-    }
-
-    internal InstalledFontCatalogFailure Failure { get; }
-}

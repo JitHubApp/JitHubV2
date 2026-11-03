@@ -63,22 +63,22 @@
     },
     {
       "path": "src/MarkdownRenderer.Svg.Resvg/Internal/SvgPreflight.cs",
-      "lines": 2501,
+      "lines": 2455,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
       "path": "src/MarkdownRenderer.Svg.Resvg/Internal/SvgStaticSnapshot.cs",
-      "lines": 2513,
+      "lines": 2488,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
       "path": "src/MarkdownRenderer.Svg.Resvg/Internal/WindowsWorkerProcess.cs",
-      "lines": 1336,
+      "lines": 1297,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
       "path": "src/MarkdownRenderer.Svg.Resvg/Internal/WorkerPool.cs",
-      "lines": 3334,
+      "lines": 3258,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
