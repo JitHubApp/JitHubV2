@@ -6,49 +6,6 @@ using MarkdownRenderer.Layout.Boxes;
 
 namespace MarkdownRenderer.Layout;
 
-// Borrowed only during descriptor capture. The candidate converts these to weak
-// identities before it can be retained for UI publication.
-internal readonly struct RasterPlacementSourceFence(
-    ImageBox Image, SharedCanvasBitmapCache.Lease? Lease,
-    ImageBox.CompletedSvgPlacementMetadataFence? SvgMetadata = null,
-    bool IsIdleDescriptor = false,
-    int IdleLoadDemandGeneration = 0,
-    bool WasSubscribed = true)
-{
-    public ImageBox Image { get; init; } = Image;
-    public SharedCanvasBitmapCache.Lease? Lease { get; init; } = Lease;
-    public ImageBox.CompletedSvgPlacementMetadataFence? SvgMetadata { get; init; } = SvgMetadata;
-    public bool IsIdleDescriptor { get; init; } = IsIdleDescriptor;
-    public int IdleLoadDemandGeneration { get; init; } = IdleLoadDemandGeneration;
-    public bool WasSubscribed { get; init; } = WasSubscribed;
-}
-
-internal readonly struct HorizontalPlacementSourceFence(IHorizontalOverflowBox Box, double Offset)
-{
-    public IHorizontalOverflowBox Box { get; init; } = Box;
-    public double Offset { get; init; } = Offset;
-}
-
-// These strong identities exist only during bounded source capture. The owner
-// stores the old code box weakly and never owns its retirement lifetime.
-internal readonly struct CodeBlockPlacementSourceFence(
-    CodeBlockBox Source, CodeBlockBox Placement, long Revision, bool WasMeasured = true)
-{
-    public CodeBlockBox Source { get; init; } = Source;
-    public CodeBlockBox Placement { get; init; } = Placement;
-    public long Revision { get; init; } = Revision;
-    public bool WasMeasured { get; init; } = WasMeasured;
-}
-
-internal readonly struct CodeBlockPlacementIdentity(
-    WeakReference<CodeBlockBox> Source, CodeBlockBox Placement, long Revision, bool WasMeasured)
-{
-    public WeakReference<CodeBlockBox> Source { get; init; } = Source;
-    public CodeBlockBox Placement { get; init; } = Placement;
-    public long Revision { get; init; } = Revision;
-    public bool WasMeasured { get; init; } = WasMeasured;
-}
-
 /// <summary>
 /// Strong, one-shot ownership of one unpublished private placement tree.
 /// The historical name does not restrict the root or completed raster count.

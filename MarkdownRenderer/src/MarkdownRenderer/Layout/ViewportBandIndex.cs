@@ -351,9 +351,3 @@ internal sealed class ViewportBandIndex
             => ViewportBandIndex.Compare(left, right);
     }
 }
-
-internal readonly struct ViewportRange(int Start, int End)
-{
-    internal readonly int Start = Start;
-    internal readonly int End = End;
-}

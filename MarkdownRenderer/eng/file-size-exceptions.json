@@ -103,17 +103,12 @@
     },
     {
       "path": "src/MarkdownRenderer/Layout/LayoutSnapshot.cs",
-      "lines": 3740,
-      "reason": "Predates the size rule; split by responsibility in a later structure step."
-    },
-    {
-      "path": "src/MarkdownRenderer/Layout/MarkdownLayoutContext.cs",
-      "lines": 1138,
+      "lines": 3635,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
       "path": "src/MarkdownRenderer/Layout/VectorSceneDrawing.cs",
-      "lines": 1499,
+      "lines": 1478,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {

@@ -4,11 +4,8 @@ using System.Threading;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Theming;
 using Microsoft.Graphics.Canvas.Text;
-using Windows.Foundation;
 
 namespace MarkdownRenderer.Layout;
-
-internal enum PreparedImageRelayoutResult { Unavailable, Committed, Retry }
 
 internal sealed partial class LayoutSnapshot
 {

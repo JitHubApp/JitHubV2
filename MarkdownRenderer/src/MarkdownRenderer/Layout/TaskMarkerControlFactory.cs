@@ -2,16 +2,13 @@ using System;
 using System.Globalization;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Hosting;
-using MarkdownRenderer.Parsing;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Automation;
-using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 
 namespace MarkdownRenderer.Layout;
 
-internal static partial class TaskMarkerControlFactory
+internal static class TaskMarkerControlFactory
 {
     private const float BaseMarkerSize = 20f;
 
@@ -104,44 +101,5 @@ internal static partial class TaskMarkerControlFactory
         checkBox.Resources["CheckBoxCheckGlyphForegroundChecked"] = foregroundBrush;
         checkBox.Resources["CheckBoxCheckGlyphForegroundCheckedPointerOver"] = foregroundBrush;
         checkBox.Resources["CheckBoxCheckGlyphForegroundCheckedPressed"] = foregroundBrush;
-    }
-
-    private sealed partial class ReadOnlyTaskCheckBox : CheckBox
-    {
-        internal ReadOnlyTaskCheckBox(
-            InlineEmbedAutomationMetadata metadata,
-            float markerSize,
-            Windows.UI.Color accent,
-            Windows.UI.Color foreground)
-        {
-            Configure(this, isInteractive: false, metadata.IsChecked, markerSize, accent, foreground);
-            AutomationProperties.SetAccessibilityView(this, AccessibilityView.Raw);
-            AutomationProperties.SetAutomationId(this, metadata.AutomationId);
-            AutomationProperties.SetName(this, metadata.CurrentName);
-            AutomationProperties.SetHelpText(this, metadata.ReadOnlyHelpText);
-        }
-
-        protected override AutomationPeer OnCreateAutomationPeer() =>
-            new ReadOnlyTaskCheckBoxAutomationPeer(this);
-    }
-
-    private sealed partial class ReadOnlyTaskCheckBoxAutomationPeer(ReadOnlyTaskCheckBox owner)
-        : FrameworkElementAutomationPeer(owner)
-    {
-        protected override string GetClassNameCore() => nameof(CheckBox);
-
-        protected override AutomationControlType GetAutomationControlTypeCore() =>
-            AutomationControlType.CheckBox;
-
-        protected override bool IsControlElementCore() => false;
-
-        protected override bool IsContentElementCore() => false;
-
-        protected override bool IsKeyboardFocusableCore() => false;
-
-        protected override object GetPatternCore(PatternInterface patternInterface) =>
-            patternInterface == PatternInterface.Toggle
-                ? null!
-                : base.GetPatternCore(patternInterface);
     }
 }

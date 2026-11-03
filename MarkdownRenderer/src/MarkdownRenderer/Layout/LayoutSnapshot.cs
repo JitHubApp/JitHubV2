@@ -11,50 +11,10 @@ using MarkdownRenderer.Document;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Diagnostics;
-using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Layout;
-
-// Short-lived, value-only handoff for immutable text projections. This must
-// never grow to include a LayoutSnapshot, semantic node/span, box, run, or
-// control reference: candidate construction occurs after the source read gate.
-internal readonly struct MarkdownSemanticTextProjectionReuse
-{
-    internal readonly MarkdownSourceMap SourceMap;
-    internal readonly MarkdownAutomationTextFingerprint SourceFingerprint;
-    internal readonly string Text;
-    internal readonly TextElementBoundaryIndex TextElementBoundaries;
-    internal readonly MarkdownAutomationTextFingerprint TextProjectionFingerprint;
-
-    private MarkdownSemanticTextProjectionReuse(
-        MarkdownSourceMap sourceMap,
-        MarkdownAutomationTextFingerprint sourceFingerprint,
-        string text,
-        TextElementBoundaryIndex textElementBoundaries,
-        MarkdownAutomationTextFingerprint textProjectionFingerprint)
-    {
-        SourceMap = sourceMap;
-        SourceFingerprint = sourceFingerprint;
-        Text = text;
-        TextElementBoundaries = textElementBoundaries;
-        TextProjectionFingerprint = textProjectionFingerprint;
-    }
-
-    internal static MarkdownSemanticTextProjectionReuse Capture(LayoutSnapshot source)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        MarkdownSemanticDocument semantic = source.SemanticDocument;
-        return new MarkdownSemanticTextProjectionReuse(
-            source.SourceMap,
-            source.SourceFingerprint,
-            semantic.Text,
-            semantic.TextElementBoundaries,
-            semantic.TextProjectionFingerprint);
-    }
-}
 
 /// <summary>
 /// Holds the laid-out block tree for a single markdown source. Computed off the
@@ -3672,69 +3632,4 @@ internal sealed partial class LayoutSnapshot : System.IDisposable
         public readonly IHorizontalOverflowBox? HorizontalOverflow = HorizontalOverflow;
     }
 
-}
-
-internal readonly struct LazyLayoutCommit(
-    bool Changed,
-    int MeasuredBlocks,
-    double OldHeight,
-    double NewHeight,
-    long LayoutRevision,
-    bool NativeSceneResourcesChanged = false)
-{
-    internal readonly bool Changed = Changed;
-    internal readonly int MeasuredBlocks = MeasuredBlocks;
-    internal readonly double OldHeight = OldHeight;
-    internal readonly double NewHeight = NewHeight;
-    internal readonly long LayoutRevision = LayoutRevision;
-    internal bool NativeSceneResourcesChanged { get; init; } = NativeSceneResourcesChanged;
-    internal bool SceneGraphRebindRequired { get; init; }
-
-    public static LazyLayoutCommit Unchanged(double height, long layoutRevision)
-        => new(false, 0, height, height, layoutRevision);
-}
-
-internal readonly struct SnapshotScrollAnchor(
-    int? BlockIndex,
-    double OffsetFromTop,
-    double Height)
-{
-    internal readonly int? BlockIndex = BlockIndex;
-    internal readonly double OffsetFromTop = OffsetFromTop;
-    internal readonly double Height = Height;
-}
-
-internal readonly struct SnapshotBlockScrollTarget(
-    int BlockIndex,
-    double TargetTop,
-    double OwnerTop,
-    double OwnerBottom,
-    double OwnerHeight,
-    bool OwnerMeasured,
-    long LayoutRevision)
-{
-    internal readonly int BlockIndex = BlockIndex;
-    internal readonly double TargetTop = TargetTop;
-    internal readonly double OwnerTop = OwnerTop;
-    internal readonly double OwnerBottom = OwnerBottom;
-    internal readonly double OwnerHeight = OwnerHeight;
-    internal readonly bool OwnerMeasured = OwnerMeasured;
-    internal readonly long LayoutRevision = LayoutRevision;
-}
-
-internal enum SnapshotBlockScrollTargetState
-{
-    Ready,
-    RequiresRealization,
-    Busy,
-    NotFound,
-    Unavailable,
-}
-
-internal enum FocusTargetLayoutState
-{
-    Ready,
-    RequiresRealization,
-    Busy,
-    Unavailable,
 }
