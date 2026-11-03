@@ -72,7 +72,7 @@ public sealed class ImmutablePayloadStorageTests
         AssertReadonly(typeof(ThemeSnapshot),
             "SurfaceColor SelectionHighlightColor SelectionForegroundColor FocusVisualColor " +
             "IsDark IsHighContrast DocumentPadding LayoutFingerprint");
-        AssertReadonly(Nested(typeof(ThemeSnapshot), "StyleCacheKey"),
+        AssertReadonly(typeof(ThemeStyleCacheKey),
             "ElementKey ContextKeys AliasKeys Language State");
         AssertReadonly(Nested(typeof(SharedCanvasBitmapCache), "CacheKey"), "Device Identity");
         AssertReadonly(typeof(InlineScenePlacementRollbackState), "Run LocalBounds");
