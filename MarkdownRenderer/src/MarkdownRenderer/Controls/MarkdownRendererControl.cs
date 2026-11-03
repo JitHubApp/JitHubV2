@@ -13,9 +13,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
-using Windows.System;
 using Windows.ApplicationModel.DataTransfer;
-using Windows.UI;
 using RebuildReason = MarkdownRenderer.Controls.MarkdownRebuildCoordinatorReason;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.CodeBlocks;
@@ -38,6 +36,7 @@ using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Controls.LazyLayout;
 using MarkdownRenderer.Controls.Navigation;
 using MarkdownRenderer.Controls.Pipeline;
+using MarkdownRenderer.Controls.Providers;
 using MarkdownRenderer.Controls.Readiness;
 using MarkdownRenderer.Controls.Selection;
 
@@ -50,7 +49,7 @@ namespace MarkdownRenderer.Controls;
 /// Hosts a <see cref="CanvasVirtualControl"/> for paint and a sibling
 /// <see cref="Canvas"/> overlay for hosted WinUI embeds.
 /// </summary>
-public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsyncDisposable, IMarkdownEnvironmentListener,
+public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsyncDisposable,
     IMarkdownPerformanceLegacyParser, ISelectionAdornerHost, ISelectionCommandsHost, ISelectionDismissalHost,
     ISelectionHandlesHost, ISelectionContextMenuHost, IPointerInputSink, IPointerInteractionHost,
     IHorizontalOverflowPointerHost, IPointerInputRouterHost, IDeferredGestureLayoutHost, IEmbedRealizationHost,
@@ -144,8 +143,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private readonly InteractionReset _interactionReset;
 
     private string? _committedImageDocumentId;
-    private MarkdownEnvironmentMonitor.Subscription? _environmentSubscription;
-    private MarkdownEnvironmentSnapshot _environmentSnapshot;
 
     // ---- Keyboard navigation ----
     private readonly KeyboardFocusModel _focus;
@@ -163,11 +160,10 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private readonly FocusableItemsPublication _focusableItems;
     private readonly FocusRingPresenter _focusRing;
 
-    // The provider may raise CacheInvalidated from a worker or system-event
-    // callback. Keep the subscribed instance outside DependencyObject storage
-    // so the callback never reads a thread-affine dependency property.
-    private IMarkdownSvgRenderer? _subscribedSvgRenderer;
-    private IMarkdownPerformanceSessionInternal? _subscribedPerformanceSession;
+    private readonly PerformanceSessionSubscription _performanceSession;
+    private readonly SvgRendererSubscription _svgRenderer;
+    private readonly ThemeSubscription _theme;
+    private readonly EnvironmentSubscription _environment;
 
     // Lazy-load queue: all ImageBox instances in the current snapshot.
     // EnsureLoading() is called for each when its bounds enter the
@@ -321,7 +317,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <summary>Dependency property backing <see cref="Theme"/>.</summary>
     public static readonly DependencyProperty ThemeProperty =
         DependencyProperty.Register(nameof(Theme), typeof(MarkdownTheme), typeof(MarkdownRendererControl),
-            new PropertyMetadata(null, (d, e) => ((MarkdownRendererControl)d).OnThemeDpChanged(e)));
+            new PropertyMetadata(null, (d, e) => ((MarkdownRendererControl)d)._theme.OnThemePropertyChanged(e)));
 
     /// <summary>Gets or sets the renderer theme.</summary>
     public MarkdownTheme? Theme
@@ -370,7 +366,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         DependencyProperty.Register(nameof(SvgRenderer), typeof(IMarkdownSvgRenderer),
             typeof(MarkdownRendererControl),
             new PropertyMetadata(null, static (d, e) =>
-                ((MarkdownRendererControl)d).OnSvgRendererChanged(e)));
+                ((MarkdownRendererControl)d)._svgRenderer.OnChanged(e)));
 
     /// <summary>
     /// Gets or sets the shared provider used to render admitted static SVG
@@ -404,7 +400,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         DependencyProperty.Register(nameof(PerformanceSession), typeof(IMarkdownPerformanceSession),
             typeof(MarkdownRendererControl),
             new PropertyMetadata(null, (d, e) =>
-                ((MarkdownRendererControl)d).OnPerformanceSessionChanged(e)));
+                ((MarkdownRendererControl)d)._performanceSession.OnChanged(e)));
 
     /// <summary>
     /// Gets or sets the optional, host-owned resource preparation session. The
@@ -414,109 +410,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     {
         get => (IMarkdownPerformanceSession?)GetValue(PerformanceSessionProperty);
         set => SetValue(PerformanceSessionProperty, value);
-    }
-
-    private void OnPerformanceSessionChanged(DependencyPropertyChangedEventArgs args)
-    {
-        if (args.NewValue is not null and not IMarkdownPerformanceSessionInternal)
-        {
-            SetValue(PerformanceSessionProperty, args.OldValue);
-            throw new ArgumentException(
-                "The performance session must be supplied by the optional MarkdownRenderer.Performance package.",
-                nameof(PerformanceSession));
-        }
-        DetachPerformanceSessionDisposalNotification();
-        if (args.OldValue is IMarkdownPerformanceSessionInternal oldSession)
-        {
-            _snapshotRetirements.Track(oldSession.ReleaseDeferredSceneDocument(this));
-            oldSession.ReleaseDocumentScope(this);
-        }
-        AttachPerformanceSessionDisposalNotification();
-        RequestRebuild(RebuildReason.Full);
-        if (_selection.IsActive)
-            _textAdorner.UpdateSelectionOverlay();
-        else if (_textAdorner.HasContent())
-            _adorner.InvalidateGeometry();
-    }
-
-    private void AttachPerformanceSessionDisposalNotification()
-    {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded ||
-            PerformanceSession is not IMarkdownPerformanceSessionInternal session)
-        {
-            return;
-        }
-
-        session.Disposed -= OnPerformanceSessionDisposed;
-        Volatile.Write(ref _subscribedPerformanceSession, session);
-        session.Disposed += OnPerformanceSessionDisposed;
-    }
-
-    private void DetachPerformanceSessionDisposalNotification()
-    {
-        IMarkdownPerformanceSessionInternal? previous =
-            Interlocked.Exchange(ref _subscribedPerformanceSession, null);
-        if (previous is not null)
-            previous.Disposed -= OnPerformanceSessionDisposed;
-    }
-
-    private void OnPerformanceSessionDisposed(object? sender, EventArgs args)
-    {
-        if (!ReferenceEquals(sender, Volatile.Read(ref _subscribedPerformanceSession)) ||
-            _lifetime.IsDisposed ||
-            _lifetime.IsUnloaded)
-        {
-            return;
-        }
-
-        DispatcherQueue?.TryEnqueue(() =>
-        {
-            if (ReferenceEquals(sender, Volatile.Read(ref _subscribedPerformanceSession)) &&
-                !_lifetime.IsDisposed && !_lifetime.IsUnloaded)
-            {
-                // RebuildInternalAsync detects the disposed borrowed session
-                // and uses the eager engine/legacy parser path, replacing any
-                // committed code fallback with its native scene.
-                RequestRebuild(RebuildReason.Full);
-            }
-        });
-    }
-
-    private void OnSvgRendererChanged(DependencyPropertyChangedEventArgs args)
-    {
-        IMarkdownSvgRenderer? previous = Interlocked.Exchange(ref _subscribedSvgRenderer, null);
-        if (previous is not null)
-            previous.CacheInvalidated -= OnSvgRendererCacheInvalidated;
-        if (!_lifetime.IsUnloaded && args.NewValue is IMarkdownSvgRenderer current)
-        {
-            current.CacheInvalidated -= OnSvgRendererCacheInvalidated;
-            Volatile.Write(ref _subscribedSvgRenderer, current);
-            current.CacheInvalidated += OnSvgRendererCacheInvalidated;
-        }
-        RequestRebuild(RebuildReason.Full);
-    }
-
-    private void OnSvgRendererCacheInvalidated(object? sender, EventArgs args)
-    {
-        if (!ReferenceEquals(sender, Volatile.Read(ref _subscribedSvgRenderer)) ||
-            _lifetime.IsDisposed ||
-            _lifetime.IsUnloaded)
-            return;
-
-        void InvalidateProviderRasters()
-        {
-            if (!ReferenceEquals(sender, Volatile.Read(ref _subscribedSvgRenderer)) ||
-                _lifetime.IsDisposed ||
-                _lifetime.IsUnloaded)
-                return;
-            RequestRebuild(RebuildReason.Full);
-            _canvasInvalidation.Invalidate();
-        }
-
-        if (DispatcherQueue.HasThreadAccess)
-            InvalidateProviderRasters();
-        else
-            _ = DispatcherQueue.TryEnqueue(InvalidateProviderRasters);
     }
 
     /// <summary>Dependency property backing <see cref="ImageBaseUri"/>.</summary>
@@ -1148,11 +1041,15 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _recoveryWork = new RecoveryClockWork(_lifetime, _published, _recoveryClock, _layoutCommit, _layoutPublisher, _lazyLayout, _imageSubscriptions, _imageRelayout, _overflowScroll, _focusGeometryWork, _focusRefresh, _focusableItems, _pointerInput, _geometryRecovery, _rebuild);
         _textAdorner = new InteractiveTextAdorner(_surface, _published, _selection, _touchSelection, _hover, _focus, _adorner, _geometryRecovery);
         _scrolling = new ScrollViewTracking(_surface, _lifetime, _viewport, _lazyLayout, _adorner, _textAdorner, _embeds, _visibleWork);
+        _performanceSession = new PerformanceSessionSubscription(this, _lifetime, _snapshotRetirements, _rebuild, _selection, _adorner, _textAdorner);
+        _svgRenderer = new SvgRendererSubscription(this, _lifetime, _rebuild, _canvasInvalidation);
+        _theme = new ThemeSubscription(this, _lifetime, _rebuild);
+        _environment = new EnvironmentSubscription(this, _lifetime, _rebuild);
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         Loaded += (_, _) => OnLoadedInternal();
         Unloaded += (_, _) => OnUnloaded();
-        ActualThemeChanged += (_, _) => OnThemeChanged();
+        ActualThemeChanged += (_, _) => _theme.OnThemeChanged();
         // Selection changes update the XAML overlay (not the DirectWrite canvas),
         // so tiles are never invalidated during a drag.
         _selection.Changed += (_, _) => OnSelectionChanged();
@@ -1781,14 +1678,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     string IRebuildSchedulerHost.EffectiveSource => _documentInputs.EffectiveSource;
 
-    void IRebuildSchedulerHost.AdvanceDeferredSceneGeneration()
-    {
-        if (PerformanceSession is IMarkdownPerformanceSessionInternal performanceSession)
-        {
-            Task sceneRetirement = performanceSession.AdvanceDeferredSceneGeneration(this);
-            _snapshotRetirements.Track(sceneRetirement);
-        }
-    }
+    void IRebuildSchedulerHost.AdvanceDeferredSceneGeneration() => _performanceSession.AdvanceDeferredSceneGeneration();
 
     void IRebuildSchedulerHost.CancelSnapshotWork()
     {
@@ -1854,7 +1744,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     void ILinkActivationHost.RaiseLinkClick(MarkdownLinkClickEventArgs args) => _events.RaiseLinkClick(args);
 
-    string? IRendererLocalizationHost.EnvironmentLanguage => _environmentSnapshot.Language;
+    string? IRendererLocalizationHost.EnvironmentLanguage => _environment.Snapshot.Language;
 
     double IDeferredGestureLayoutHost.RasterizationScale => XamlRoot?.RasterizationScale ?? 1;
 
@@ -1930,32 +1820,15 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         }
         MarkdownSelectionCoordinator.Register(this);
         _selectionDismissal.Register();
-        _environmentSubscription?.Dispose();
-        _environmentSubscription = MarkdownEnvironmentMonitor.Acquire(this, this);
-        _environmentSnapshot = _environmentSubscription?.Snapshot ?? default;
+        _environment.Acquire();
         _sizeChangedHandler = (_, e) =>
         {
             if (Math.Abs(_lastWidth - (float)e.NewSize.Width) > 0.5f) RequestRebuild(RebuildReason.Restyle);
         };
         SizeChanged += _sizeChangedHandler;
-        // Re-subscribe to Theme.Changed: OnUnloaded unhooks the handler, and
-        // a Load→Unload→Load cycle (TabView reuse, navigation hide/show)
-        // does not necessarily reassign the Theme DP, so without this the
-        // control would silently stop reacting to theme.Invalidate() after
-        // re-attach.  Unsubscribe first to avoid a duplicate handler if
-        // Loaded fires before any Unload has occurred.
-        if (Theme is { } t)
-        {
-            t.Changed -= OnThemeRevisionChanged;
-            t.Changed += OnThemeRevisionChanged;
-        }
-        if (SvgRenderer is { } svgRenderer)
-        {
-            svgRenderer.CacheInvalidated -= OnSvgRendererCacheInvalidated;
-            Volatile.Write(ref _subscribedSvgRenderer, svgRenderer);
-            svgRenderer.CacheInvalidated += OnSvgRendererCacheInvalidated;
-        }
-        AttachPerformanceSessionDisposalNotification();
+        _theme.Attach();
+        _svgRenderer.Attach();
+        _performanceSession.Attach();
         RequestRebuild(RebuildReason.Full);
     }
 
@@ -1975,7 +1848,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _touchTapSuppression.PrepareForReset();
         _deviceRecovery.Stop();
         _recoveryWork.Stop(force: true);
-        DetachPerformanceSessionDisposalNotification();
+        _performanceSession.Detach();
         _pointerInput.Reset();
         _touchTapSuppression.Reset();
         // An unloaded view is reusable and no longer belongs to this window.
@@ -2010,14 +1883,9 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
             SizeChanged -= _sizeChangedHandler;
             _sizeChangedHandler = null;
         }
-        if (Theme is { } t)
-        {
-            t.Changed -= OnThemeRevisionChanged;
-        }
-        if (Interlocked.Exchange(ref _subscribedSvgRenderer, null) is { } svgRenderer)
-            svgRenderer.CacheInvalidated -= OnSvgRendererCacheInvalidated;
-        _environmentSubscription?.Dispose();
-        _environmentSubscription = null;
+        _theme.Detach();
+        _svgRenderer.Detach();
+        _environment.Release();
         _selectionDismissal.Unregister();
         MarkdownSelectionCoordinator.Unregister(this);
         _rebuild.Retire();
@@ -2049,11 +1917,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _imagePlans.Publication = null;
         _imageResidency.Reset();
         _imagePrefetch.Reset();
-        if (PerformanceSession is IMarkdownPerformanceSessionInternal performanceSession)
-        {
-            _snapshotRetirements.Track(performanceSession.ReleaseDeferredSceneDocument(this));
-            performanceSession.ReleaseDocumentScope(this);
-        }
+        _performanceSession.ReleaseDocumentScope();
         _embeds.ClearHostedElementHitTargets();
         _handles.ResetDrag();
         _touchTapSuppression.Reset();
@@ -2180,69 +2044,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         LosingFocus -= OnLosingFocus;
         KeyDown -= _keyboard.OnKeyDown;
         _handles.DetachHandlers();
-    }
-
-    private void OnThemeChanged()
-    {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded)
-            return;
-
-        // NotifyEnvironmentChanged fires Theme.Changed → OnThemeRevisionChanged → a restyle.
-        // Do NOT call RequestRebuild() here again — that would start two simultaneous
-        // builds and immediately cancel the first one on every theme change.
-        if (Theme is { } t) t.NotifyEnvironmentChanged();
-        else RequestRebuild(RebuildReason.Restyle); // no Theme object: must trigger rebuild directly
-    }
-
-    void IMarkdownEnvironmentListener.OnMarkdownEnvironmentChanged(
-        in MarkdownEnvironmentSnapshot snapshot,
-        MarkdownEnvironmentChange changes)
-    {
-        _environmentSnapshot = snapshot;
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded)
-            return;
-
-        if ((changes & MarkdownEnvironmentChange.Relayout) != 0)
-        {
-            RequestRebuild(RebuildReason.Restyle);
-            return;
-        }
-
-        // Layout boxes hold an immutable ThemeSnapshot. Until paint commands
-        // carry semantic brush roles independently, a palette-only notification
-        // must compile and commit a fresh snapshot; repainting the existing
-        // boxes would retain stale accent or High Contrast colors.
-        if (MarkdownEnvironmentSnapshot.IsBrushOnly(changes))
-            RequestRebuild(RebuildReason.Restyle);
-    }
-
-    private void OnThemeDpChanged(DependencyPropertyChangedEventArgs e)
-    {
-        // Unsubscribe from the previous theme's Changed event so we don't leak
-        // a reference to it (DependencyObjects don't auto-unsubscribe).
-        if (e.OldValue is MarkdownTheme old)
-        {
-            old.Changed -= OnThemeRevisionChanged;
-        }
-        if (e.NewValue is MarkdownTheme @new)
-        {
-            @new.Changed += OnThemeRevisionChanged;
-        }
-        OnThemeChanged();
-    }
-
-    private void OnThemeRevisionChanged(object? sender, EventArgs e)
-    {
-        // A theme property, override, environment notification, or explicit
-        // MarkdownTheme.Invalidate() raised Changed. Rebuild without notifying
-        // the theme again, which would loop.
-        // Guard against cross-thread calls: MarkdownTheme.Changed is a plain
-        // .NET event and a consumer may call Invalidate() from a background thread.
-        // Accessing DependencyObject members off the UI thread throws RPC_E_WRONG_THREAD.
-        var dq = DispatcherQueue;
-        if (dq is null) return;
-        if (dq.HasThreadAccess) { if (!_lifetime.IsUnloaded) RequestRebuild(RebuildReason.Restyle); return; }
-        dq.TryEnqueue(() => { if (!_lifetime.IsUnloaded) RequestRebuild(RebuildReason.Restyle); });
     }
 
     /// <summary>Kicks off (or re-kicks) the parse + layout pipeline.</summary>
@@ -2433,8 +2234,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         WrappingMode = CodeBlockWrappingMode,
         ChromeMode = CodeBlockChromeMode,
         DisclosureStates = _documentInputs.CopyDisclosureStates(),
-        TextScaleFactor = _environmentSnapshot.TextScaleFactor > 0
-            ? _environmentSnapshot.TextScaleFactor
+        TextScaleFactor = _environment.Snapshot.TextScaleFactor > 0
+            ? _environment.Snapshot.TextScaleFactor
             : 1.0,
         // XamlRoot is null until the control is loaded; default to 1.0.
         RasterScale = XamlRoot?.RasterizationScale ?? 1.0,
