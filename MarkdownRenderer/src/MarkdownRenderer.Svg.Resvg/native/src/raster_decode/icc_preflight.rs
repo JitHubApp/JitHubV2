@@ -322,7 +322,9 @@ pub(crate) fn validate_icc_lut_tag(tag: &[u8]) -> Result<usize, Reject> {
             return Err(Reject::Unsupported("invalid embedded ICC LUT stage offset"));
         }
         if offset != 0 && offset % 4 != 0 {
-            return Err(Reject::Unsupported("unaligned embedded ICC LUT stage offset"));
+            return Err(Reject::Unsupported(
+                "unaligned embedded ICC LUT stage offset",
+            ));
         }
         if index == 1 && offset != 0 && offset.checked_add(48).is_none_or(|end| end > tag.len()) {
             return Err(Reject::Unsupported("truncated embedded ICC matrix stage"));
@@ -393,7 +395,11 @@ pub(crate) fn validate_icc_lut_tag(tag: &[u8]) -> Result<usize, Reject> {
     Ok(expanded_curve_bytes)
 }
 
-pub(crate) fn validate_icc_curve_chain(tag: &[u8], offset: usize, count: usize) -> Result<usize, Reject> {
+pub(crate) fn validate_icc_curve_chain(
+    tag: &[u8],
+    offset: usize,
+    count: usize,
+) -> Result<usize, Reject> {
     let mut cursor = offset;
     let mut payload_bytes = 0usize;
     for _ in 0..count {

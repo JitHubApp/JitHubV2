@@ -2,9 +2,14 @@
 
 //! ICC profile preflight.
 
-use crate::raster_decode::icc_preflight::{ICC_TRANSFORM_FIXED_RESERVATION, MAX_ICC_TAG_COUNT, preflight_icc_profile, read_icc_u32};
+use crate::raster_decode::icc_preflight::{
+    ICC_TRANSFORM_FIXED_RESERVATION, MAX_ICC_TAG_COUNT, preflight_icc_profile, read_icc_u32,
+};
 use crate::raster_decode::icc_transform::{apply_icc_transform, create_icc_transform};
-use crate::raster_decode::tests::support::{build_icc_profile, icc_gamma_curve, icc_xyz, minimal_abm_matrix_profile, minimal_abm_profile, minimal_abm_profile_tag, minimal_matrix_profile, minimal_mft2_profile};
+use crate::raster_decode::tests::support::{
+    build_icc_profile, icc_gamma_curve, icc_xyz, minimal_abm_matrix_profile, minimal_abm_profile,
+    minimal_abm_profile_tag, minimal_matrix_profile, minimal_mft2_profile,
+};
 use crate::reject::Reject;
 
 #[test]

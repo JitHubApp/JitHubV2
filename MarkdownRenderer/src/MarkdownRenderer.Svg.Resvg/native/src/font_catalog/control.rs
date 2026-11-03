@@ -3,7 +3,9 @@
 //! Protocol-thread handling of font-catalog requests, probes, and publication.
 
 use crate::font_catalog::initialization::FontCatalogInitialization;
-use crate::font_catalog::mapping::{FONT_CATALOG_ENTRY_BYTES, FONT_CATALOG_HEADER_BYTES, map_font_catalog, MAX_FONT_CATALOG_FILES};
+use crate::font_catalog::mapping::{
+    FONT_CATALOG_ENTRY_BYTES, FONT_CATALOG_HEADER_BYTES, MAX_FONT_CATALOG_FILES, map_font_catalog,
+};
 use crate::font_catalog::phase::{FontCatalogPhase, FontCatalogProbe};
 use crate::metadata::Metadata;
 use crate::parsed_cache::retire_text_font_state;
@@ -11,9 +13,9 @@ use crate::reject::Reject;
 use crate::request::Request;
 use crate::response::Response;
 use crate::worker_state::WorkerState;
-use std::sync::{Arc, mpsc};
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::TryRecvError;
+use std::sync::{Arc, mpsc};
 
 pub(crate) const FONT_CATALOG_BUSY_DETAIL: &str = "font-catalog-busy";
 
@@ -55,7 +57,10 @@ pub(crate) fn validate_font_catalog_request(request: &Request) -> Result<(), Rej
     Ok(())
 }
 
-pub(crate) fn accept_font_catalog(state: &mut WorkerState, request: &Request) -> Result<Response, Reject> {
+pub(crate) fn accept_font_catalog(
+    state: &mut WorkerState,
+    request: &Request,
+) -> Result<Response, Reject> {
     validate_font_catalog_request(request)?;
     if state
         .font_catalog_submitted_generation
@@ -227,7 +232,10 @@ pub(crate) fn request_font_catalog_generation(
     Ok(())
 }
 
-pub(crate) fn publish_font_catalog(state: &mut WorkerState, initialization: FontCatalogInitialization) {
+pub(crate) fn publish_font_catalog(
+    state: &mut WorkerState,
+    initialization: FontCatalogInitialization,
+) {
     if state
         .font_database_generation
         .is_some_and(|published| published >= initialization.generation)

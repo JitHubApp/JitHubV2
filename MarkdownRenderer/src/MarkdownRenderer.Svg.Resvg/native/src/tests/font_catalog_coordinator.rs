@@ -8,9 +8,9 @@ use crate::font_catalog::initialization::FontCatalogInitialization;
 use crate::font_catalog::phase::FontCatalogPhase;
 use crate::font_catalog::timings::FontCatalogInitializationTimings;
 use resvg::usvg;
+use std::sync::atomic::{AtomicU8, AtomicU32, Ordering};
+use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
-use std::sync::{Arc, mpsc, Mutex};
-use std::sync::atomic::{AtomicU32, AtomicU8, Ordering};
 use std::time::Duration;
 
 #[test]

@@ -3,7 +3,9 @@
 //! Preflight rules for references, CSS, filters, and cost weights.
 
 use crate::reject::Reject;
-use crate::svg_preflight::elements::{contains_ascii_case_insensitive, starts_with_ascii_case_insensitive};
+use crate::svg_preflight::elements::{
+    contains_ascii_case_insensitive, starts_with_ascii_case_insensitive,
+};
 use crate::svg_preflight::references::normalize_embedded_image_media_type;
 use crate::tests::support::{embedded_svg, inspect_svg, rgba_png_1x1, test_request};
 use base64::Engine as _;
@@ -58,15 +60,13 @@ fn unicode_attribute_names_are_safe_and_ascii_event_prefix_remains_forbidden() {
     assert!(inspect_svg(nested_accepted.as_bytes(), &test_request(4)).is_ok());
 
     for event_attribute in ["on名", "On名"] {
-        let source =
-            format!("<svg xmlns='http://www.w3.org/2000/svg' {event_attribute}='value'/>");
+        let source = format!("<svg xmlns='http://www.w3.org/2000/svg' {event_attribute}='value'/>");
         assert!(matches!(
             inspect_svg(source.as_bytes(), &test_request(4)),
             Err(Reject::Unsupported("event handlers are forbidden"))
         ));
 
-        let nested =
-            format!("<svg xmlns='http://www.w3.org/2000/svg' {event_attribute}='value'/>");
+        let nested = format!("<svg xmlns='http://www.w3.org/2000/svg' {event_attribute}='value'/>");
         let source = format!(
             "<svg xmlns='http://www.w3.org/2000/svg'><image href='{}'/></svg>",
             embedded_svg(&nested)
@@ -219,7 +219,8 @@ fn invalid_data_uri_media_type_is_accepted_only_for_known_raster_bytes() {
         .unwrap();
     assert_eq!(inspection.embedded_bytes, decoded.len() as u64);
 
-    let unknown = "<svg xmlns='http://www.w3.org/2000/svg'><image href='data:false;base64,AAECAwQ='/></svg>";
+    let unknown =
+        "<svg xmlns='http://www.w3.org/2000/svg'><image href='data:false;base64,AAECAwQ='/></svg>";
     assert!(matches!(
         inspect_svg(unknown.as_bytes(), &test_request(4)),
         Err(Reject::Unsupported(_))

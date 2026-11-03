@@ -4,16 +4,23 @@
 
 use crate::font_catalog::control::poll_font_database;
 use crate::font_catalog::phase::FontCatalogProbe;
-use crate::limits::{HARD_MAX_CACHE_BYTES_32, HARD_MAX_CACHE_BYTES_64, HARD_MAX_DIMENSION, HARD_MAX_EMBEDDED_BYTES, HARD_MAX_EMBEDDED_PIXELS, HARD_MAX_FILTER_BYTES, HARD_MAX_NESTED_SVG_DEPTH, HARD_MAX_OUTPUT_BYTES, HARD_MAX_SOURCE_BYTES, HARD_MAX_STRUCTURAL_COST, HARD_MAX_XML_DEPTH};
+use crate::limits::{
+    HARD_MAX_CACHE_BYTES_32, HARD_MAX_CACHE_BYTES_64, HARD_MAX_DIMENSION, HARD_MAX_EMBEDDED_BYTES,
+    HARD_MAX_EMBEDDED_PIXELS, HARD_MAX_FILTER_BYTES, HARD_MAX_NESTED_SVG_DEPTH,
+    HARD_MAX_OUTPUT_BYTES, HARD_MAX_SOURCE_BYTES, HARD_MAX_STRUCTURAL_COST, HARD_MAX_XML_DEPTH,
+};
 use crate::parsed_cache::{acquire_tree, bind_document, cache_key, retire_uncached_documents};
-use crate::protocol::{FLAG_HAS_PHYSICAL_VIEWPORT, FLAG_HAS_SEMANTIC_COLOR, FLAG_HAS_TILE, KIND_OPEN, KIND_RENDER, MAX_LOCALE, PIXEL_BGRA, PIXEL_RGBA};
+use crate::protocol::{
+    FLAG_HAS_PHYSICAL_VIEWPORT, FLAG_HAS_SEMANTIC_COLOR, FLAG_HAS_TILE, KIND_OPEN, KIND_RENDER,
+    MAX_LOCALE, PIXEL_BGRA, PIXEL_RGBA,
+};
 use crate::reject::Reject;
 use crate::render::render;
 use crate::request::Request;
 use crate::response::Response;
-use crate::shared_mapping::{align64, mapping_length, SharedMapping};
-use crate::svg_preflight::parse_svg;
+use crate::shared_mapping::{SharedMapping, align64, mapping_length};
 use crate::svg_preflight::document::inspect_svg_document;
+use crate::svg_preflight::parse_svg;
 use crate::worker_state::WorkerState;
 use sha2::{Digest, Sha256};
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -74,7 +81,10 @@ pub(crate) fn process(state: &mut WorkerState, request: &Request) -> Result<Resp
     ))
 }
 
-pub(crate) fn open_document(state: &mut WorkerState, request: &Request) -> Result<Response, Reject> {
+pub(crate) fn open_document(
+    state: &mut WorkerState,
+    request: &Request,
+) -> Result<Response, Reject> {
     if state
         .documents
         .get(&request.document_id)

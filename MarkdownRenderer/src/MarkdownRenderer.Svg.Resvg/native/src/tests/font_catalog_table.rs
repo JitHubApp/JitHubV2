@@ -5,7 +5,11 @@
 use crate::font_catalog::control::validate_font_catalog_request;
 use crate::font_catalog::fallback::new_font_fallback_cache;
 use crate::font_catalog::initialization::warm_text_pipeline;
-use crate::font_catalog::mapping::{FONT_CATALOG_VERSION, FONT_MAPPING_VIEW_GRANULARITY, FontCatalogEntry, MAX_FONT_CATALOG_FILES, MAX_FONT_CATALOG_VA_WIDE, MAX_FONT_CATALOG_VA_X86, MAX_FONT_FILE_BYTES, parse_font_catalog_table, parse_font_catalog_table_with_budget};
+use crate::font_catalog::mapping::{
+    FONT_CATALOG_VERSION, FONT_MAPPING_VIEW_GRANULARITY, FontCatalogEntry, MAX_FONT_CATALOG_FILES,
+    MAX_FONT_CATALOG_VA_WIDE, MAX_FONT_CATALOG_VA_X86, MAX_FONT_FILE_BYTES,
+    parse_font_catalog_table, parse_font_catalog_table_with_budget,
+};
 use crate::protocol::{FLAG_HAS_TILE, PIXEL_RGBA, write_u32};
 use crate::reject::Reject;
 use crate::tests::support::{test_font_catalog_request, test_font_catalog_table};
@@ -76,9 +80,7 @@ fn font_catalog_table_enforces_x86_and_wide_virtual_address_budgets_without_file
         .map(|handle| (handle as u64, MAX_FONT_FILE_BYTES))
         .collect();
     let x86_table = test_font_catalog_table(3, &x86_entries);
-    assert!(
-        parse_font_catalog_table_with_budget(&x86_table, 3, MAX_FONT_CATALOG_VA_X86).is_err()
-    );
+    assert!(parse_font_catalog_table_with_budget(&x86_table, 3, MAX_FONT_CATALOG_VA_X86).is_err());
 
     let wide_entries: Vec<_> = (1..=32)
         .map(|handle| (handle as u64, MAX_FONT_FILE_BYTES))
@@ -122,12 +124,8 @@ fn font_catalog_table_charges_each_mapping_at_host_allocation_granularity() {
     let boundary_entries = [(1_u64, FONT_MAPPING_VIEW_GRANULARITY - 1), (2, 2)];
     let boundary_table = test_font_catalog_table(7, &boundary_entries);
     assert!(
-        parse_font_catalog_table_with_budget(
-            &boundary_table,
-            7,
-            FONT_MAPPING_VIEW_GRANULARITY * 2
-        )
-        .is_ok()
+        parse_font_catalog_table_with_budget(&boundary_table, 7, FONT_MAPPING_VIEW_GRANULARITY * 2)
+            .is_ok()
     );
     assert!(
         parse_font_catalog_table_with_budget(

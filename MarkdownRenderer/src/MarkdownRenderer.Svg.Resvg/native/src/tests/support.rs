@@ -5,24 +5,33 @@
 use crate::font_catalog::coordinator::FontCatalogBuildResult;
 use crate::font_catalog::fallback::{FontFallbackCache, new_font_fallback_cache};
 use crate::font_catalog::initialization::{FontCatalogInitialization, warm_text_pipeline};
-use crate::font_catalog::mapping::{FONT_CATALOG_ENTRY_BYTES, FONT_CATALOG_HEADER_BYTES, FONT_CATALOG_MAGIC, FONT_CATALOG_VERSION};
+use crate::font_catalog::mapping::{
+    FONT_CATALOG_ENTRY_BYTES, FONT_CATALOG_HEADER_BYTES, FONT_CATALOG_MAGIC, FONT_CATALOG_VERSION,
+};
 use crate::font_catalog::phase::FontCatalogPhase;
-use crate::font_catalog::timings::{FontCatalogInitializationTimings, FontCatalogTimingPhase, measure_font_catalog_phase};
-use crate::limits::{HARD_MAX_CACHE_BYTES_64, HARD_MAX_EMBEDDED_BYTES, HARD_MAX_EMBEDDED_PIXELS, HARD_MAX_FILTER_BYTES, HARD_MAX_OUTPUT_BYTES, HARD_MAX_STRUCTURAL_COST, HARD_MAX_XML_DEPTH};
+use crate::font_catalog::timings::{
+    FontCatalogInitializationTimings, FontCatalogTimingPhase, measure_font_catalog_phase,
+};
+use crate::limits::{
+    HARD_MAX_CACHE_BYTES_64, HARD_MAX_EMBEDDED_BYTES, HARD_MAX_EMBEDDED_PIXELS,
+    HARD_MAX_FILTER_BYTES, HARD_MAX_OUTPUT_BYTES, HARD_MAX_STRUCTURAL_COST, HARD_MAX_XML_DEPTH,
+};
 use crate::parsed_cache::{CacheKey, POLICY_VERSION};
-use crate::protocol::{KIND_FONT_CATALOG, KIND_OPEN, KIND_RENDER, PIXEL_RGBA, write_u32, write_u64};
+use crate::protocol::{
+    KIND_FONT_CATALOG, KIND_OPEN, KIND_RENDER, PIXEL_RGBA, write_u32, write_u64,
+};
 use crate::reject::Reject;
 use crate::request::Request;
-use crate::svg_preflight::{Inspection, parse_svg};
 use crate::svg_preflight::document::inspect_svg_document;
 use crate::svg_preflight::references::install_embedded_image_resolver;
+use crate::svg_preflight::{Inspection, parse_svg};
 use crate::worker_state::WorkerState;
 use base64::Engine as _;
 use resvg::{tiny_skia, usvg};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::{Arc, mpsc, Mutex};
-use std::sync::atomic::{AtomicU32, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicU8, AtomicU32, Ordering};
+use std::sync::{Arc, Mutex, mpsc};
 
 pub(crate) fn inspect_svg(source: &[u8], request: &Request) -> Result<Inspection, Reject> {
     let document = parse_svg(source)?;
@@ -188,7 +197,11 @@ pub(crate) fn test_geometry_tree() -> Arc<usvg::Tree> {
     Arc::new(usvg::Tree::from_xmltree(&parsed, &usvg::Options::default()).unwrap())
 }
 
-pub(crate) fn test_render_request(document_id: u64, hash: [u8; 32], font_generation: u32) -> Request {
+pub(crate) fn test_render_request(
+    document_id: u64,
+    hash: [u8; 32],
+    font_generation: u32,
+) -> Request {
     let mut request = test_request(4);
     request.kind = KIND_RENDER;
     request.source_length = 0;

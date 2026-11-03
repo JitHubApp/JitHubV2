@@ -2,7 +2,10 @@
 
 //! Font-fallback memoization.
 
-use crate::font_catalog::fallback::{cached_font_fallback_selector, MAX_FONT_FALLBACK_CACHE_ENTRIES, MAX_FONT_FALLBACK_CACHE_USED_FONTS, new_font_fallback_cache, select_font_fallback_cached};
+use crate::font_catalog::fallback::{
+    MAX_FONT_FALLBACK_CACHE_ENTRIES, MAX_FONT_FALLBACK_CACHE_USED_FONTS,
+    cached_font_fallback_selector, new_font_fallback_cache, select_font_fallback_cached,
+};
 use crate::font_catalog::phase::FontCatalogPhase;
 use crate::svg_preflight::parse_svg;
 use crate::tests::support::initialize_font_database;

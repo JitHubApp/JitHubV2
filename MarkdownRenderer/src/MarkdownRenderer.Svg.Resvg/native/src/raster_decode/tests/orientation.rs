@@ -3,7 +3,9 @@
 //! Full-frame orientation mapping and transposition.
 
 use crate::raster_decode::oriented_dimensions;
-use crate::raster_decode::pixels::{premultiply_rgba_in_place, rasterize_oriented, transpose_pixels_in_place};
+use crate::raster_decode::pixels::{
+    premultiply_rgba_in_place, rasterize_oriented, transpose_pixels_in_place,
+};
 use crate::reject::Reject;
 use image_webp::{ColorType, WebPDecoder, WebPEncoder, WebPMetadataRanges};
 use resvg::tiny_skia::{BlendMode, FilterQuality, PixmapMut, PixmapPaint, PixmapRef, Transform};
@@ -20,36 +22,36 @@ fn all_exif_orientations_rasterize_exactly_without_axis_drift() {
     ];
     let expected: [&[u8]; 8] = [
         &[
-            10, 0, 0, 255, 20, 0, 0, 255, 30, 0, 0, 255, 40, 0, 0, 255, 50, 0, 0, 255, 60, 0,
-            0, 255,
+            10, 0, 0, 255, 20, 0, 0, 255, 30, 0, 0, 255, 40, 0, 0, 255, 50, 0, 0, 255, 60, 0, 0,
+            255,
         ],
         &[
-            20, 0, 0, 255, 10, 0, 0, 255, 40, 0, 0, 255, 30, 0, 0, 255, 60, 0, 0, 255, 50, 0,
-            0, 255,
+            20, 0, 0, 255, 10, 0, 0, 255, 40, 0, 0, 255, 30, 0, 0, 255, 60, 0, 0, 255, 50, 0, 0,
+            255,
         ],
         &[
-            60, 0, 0, 255, 50, 0, 0, 255, 40, 0, 0, 255, 30, 0, 0, 255, 20, 0, 0, 255, 10, 0,
-            0, 255,
+            60, 0, 0, 255, 50, 0, 0, 255, 40, 0, 0, 255, 30, 0, 0, 255, 20, 0, 0, 255, 10, 0, 0,
+            255,
         ],
         &[
-            50, 0, 0, 255, 60, 0, 0, 255, 30, 0, 0, 255, 40, 0, 0, 255, 10, 0, 0, 255, 20, 0,
-            0, 255,
+            50, 0, 0, 255, 60, 0, 0, 255, 30, 0, 0, 255, 40, 0, 0, 255, 10, 0, 0, 255, 20, 0, 0,
+            255,
         ],
         &[
-            10, 0, 0, 255, 30, 0, 0, 255, 50, 0, 0, 255, 20, 0, 0, 255, 40, 0, 0, 255, 60, 0,
-            0, 255,
+            10, 0, 0, 255, 30, 0, 0, 255, 50, 0, 0, 255, 20, 0, 0, 255, 40, 0, 0, 255, 60, 0, 0,
+            255,
         ],
         &[
-            50, 0, 0, 255, 30, 0, 0, 255, 10, 0, 0, 255, 60, 0, 0, 255, 40, 0, 0, 255, 20, 0,
-            0, 255,
+            50, 0, 0, 255, 30, 0, 0, 255, 10, 0, 0, 255, 60, 0, 0, 255, 40, 0, 0, 255, 20, 0, 0,
+            255,
         ],
         &[
-            60, 0, 0, 255, 40, 0, 0, 255, 20, 0, 0, 255, 50, 0, 0, 255, 30, 0, 0, 255, 10, 0,
-            0, 255,
+            60, 0, 0, 255, 40, 0, 0, 255, 20, 0, 0, 255, 50, 0, 0, 255, 30, 0, 0, 255, 10, 0, 0,
+            255,
         ],
         &[
-            20, 0, 0, 255, 40, 0, 0, 255, 60, 0, 0, 255, 10, 0, 0, 255, 30, 0, 0, 255, 50, 0,
-            0, 255,
+            20, 0, 0, 255, 40, 0, 0, 255, 60, 0, 0, 255, 10, 0, 0, 255, 30, 0, 0, 255, 50, 0, 0,
+            255,
         ],
     ];
 
@@ -100,12 +102,9 @@ fn scaled_exif_orientations_match_positive_resize_then_pixel_mapping() {
         {
             let source_pixmap =
                 PixmapRef::from_bytes(&source, source_width, source_height).unwrap();
-            let mut resized = PixmapMut::from_bytes(
-                &mut intermediate,
-                intermediate_width,
-                intermediate_height,
-            )
-            .unwrap();
+            let mut resized =
+                PixmapMut::from_bytes(&mut intermediate, intermediate_width, intermediate_height)
+                    .unwrap();
             resized.draw_pixmap(
                 0,
                 0,
@@ -168,20 +167,22 @@ fn in_place_transpose_uses_bounded_rounded_bitset_and_rejects_short_scratch() {
     transpose_pixels_in_place(&mut pixels, 3, 2, &mut scratch).unwrap();
     assert_eq!(
         pixels,
-        [1, 0, 0, 255, 4, 0, 0, 255, 2, 0, 0, 255, 5, 0, 0, 255, 3, 0, 0, 255, 6, 0, 0, 255,]
+        [
+            1, 0, 0, 255, 4, 0, 0, 255, 2, 0, 0, 255, 5, 0, 0, 255, 3, 0, 0, 255, 6, 0, 0, 255,
+        ]
     );
 
     let mut pixels_3x3 = [
-        1, 0, 0, 255, 2, 0, 0, 255, 3, 0, 0, 255, 4, 0, 0, 255, 5, 0, 0, 255, 6, 0, 0, 255, 7,
-        0, 0, 255, 8, 0, 0, 255, 9, 0, 0, 255,
+        1, 0, 0, 255, 2, 0, 0, 255, 3, 0, 0, 255, 4, 0, 0, 255, 5, 0, 0, 255, 6, 0, 0, 255, 7, 0,
+        0, 255, 8, 0, 0, 255, 9, 0, 0, 255,
     ];
     let mut scratch_3x3 = [0_u8; 2];
     transpose_pixels_in_place(&mut pixels_3x3, 3, 3, &mut scratch_3x3).unwrap();
     assert_eq!(
         pixels_3x3,
         [
-            1, 0, 0, 255, 4, 0, 0, 255, 7, 0, 0, 255, 2, 0, 0, 255, 5, 0, 0, 255, 8, 0, 0, 255,
-            3, 0, 0, 255, 6, 0, 0, 255, 9, 0, 0, 255,
+            1, 0, 0, 255, 4, 0, 0, 255, 7, 0, 0, 255, 2, 0, 0, 255, 5, 0, 0, 255, 8, 0, 0, 255, 3,
+            0, 0, 255, 6, 0, 0, 255, 9, 0, 0, 255,
         ]
     );
 

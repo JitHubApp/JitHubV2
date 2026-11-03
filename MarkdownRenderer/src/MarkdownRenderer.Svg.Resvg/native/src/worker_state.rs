@@ -10,8 +10,8 @@ use crate::parsed_cache::{CacheEntry, CacheKey, DocumentEntry};
 use resvg::usvg;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::{Arc, mpsc, Mutex};
-use std::sync::atomic::{AtomicU32, AtomicU8};
+use std::sync::atomic::{AtomicU8, AtomicU32};
+use std::sync::{Arc, Mutex, mpsc};
 
 pub(crate) struct WorkerState {
     pub(crate) cache: HashMap<CacheKey, CacheEntry>,

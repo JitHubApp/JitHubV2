@@ -40,11 +40,12 @@ pub(crate) struct CacheEntry {
 // Four entry slots cover the minimum HashMap allocation and bucket slack up
 // to the sparse-index shrink threshold. Include control/alignment overhead and
 // the bounded locale allocation; source/element weights alone omit these costs.
-pub(crate) const PARSED_CACHE_ENTRY_METADATA_BYTES: u64 = (4 * std::mem::size_of::<(CacheKey, CacheEntry)>()
-    + std::mem::size_of::<usvg::Tree>()
-    + 4 * std::mem::size_of::<usize>()
-    + MAX_LOCALE
-    + 64) as u64;
+pub(crate) const PARSED_CACHE_ENTRY_METADATA_BYTES: u64 =
+    (4 * std::mem::size_of::<(CacheKey, CacheEntry)>()
+        + std::mem::size_of::<usvg::Tree>()
+        + 4 * std::mem::size_of::<usize>()
+        + MAX_LOCALE
+        + 64) as u64;
 
 // Document ids are opaque host handles, not a retention policy. Keep their
 // small alias records bounded even when a caller opens many cached documents.
@@ -210,7 +211,11 @@ pub(crate) fn acquire_tree(
     Ok((tree, metadata, Some(key)))
 }
 
-pub(crate) fn evict_parsed_cache_for_admission(state: &mut WorkerState, incoming: u64, maximum: u64) {
+pub(crate) fn evict_parsed_cache_for_admission(
+    state: &mut WorkerState,
+    incoming: u64,
+    maximum: u64,
+) {
     let available = maximum.saturating_sub(incoming);
     let retained = state.cache_cost.saturating_add(state.raster_reserved_bytes);
     if retained <= available {

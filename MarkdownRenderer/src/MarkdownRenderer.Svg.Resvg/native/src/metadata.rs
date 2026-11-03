@@ -2,7 +2,6 @@
 
 //! Document facts reported to the host and retained with parsed trees.
 
-
 #[derive(Clone, Copy, Default)]
 pub(crate) struct Metadata {
     pub(crate) width: f64,

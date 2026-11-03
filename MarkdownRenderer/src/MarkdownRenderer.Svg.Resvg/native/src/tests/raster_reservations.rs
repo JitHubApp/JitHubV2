@@ -6,12 +6,16 @@ use crate::font_catalog::control::publish_font_catalog;
 use crate::font_catalog::fallback::new_font_fallback_cache;
 use crate::font_catalog::initialization::FontCatalogInitialization;
 use crate::font_catalog::timings::FontCatalogInitializationTimings;
-use crate::parsed_cache::{acquire_tree, bind_document, cache_key, CacheEntry, CacheKey, trim_parsed_cache};
+use crate::parsed_cache::{
+    CacheEntry, CacheKey, acquire_tree, bind_document, cache_key, trim_parsed_cache,
+};
 use crate::reject::Reject;
 use crate::render::render;
-use crate::svg_preflight::parse_svg;
 use crate::svg_preflight::document::inspect_svg_document;
-use crate::tests::support::{inspect_svg, rgba_png_1x1, test_render_request, test_request, test_worker_state};
+use crate::svg_preflight::parse_svg;
+use crate::tests::support::{
+    inspect_svg, rgba_png_1x1, test_render_request, test_request, test_worker_state,
+};
 use crate::worker_state::WorkerState;
 use base64::Engine as _;
 use resvg::usvg;
@@ -75,8 +79,7 @@ fn worker_cache_reservation_retains_many_unique_tiny_rasters() {
         assert_eq!(cache.entry_count(), IMAGE_COUNT);
         assert!(cache.used_bytes() as u64 <= state.raster_reserved_bytes);
         assert!(
-            state.cache_cost.saturating_add(state.raster_reserved_bytes)
-                <= request.max_cache_bytes
+            state.cache_cost.saturating_add(state.raster_reserved_bytes) <= request.max_cache_bytes
         );
     }
     // The cached decoded images must not bypass a smaller per-render
@@ -121,8 +124,7 @@ fn font_refresh_releases_raster_reservations_across_repeated_generations() {
         document_id: u64,
         expected_pixel: &[u8; 4],
     ) -> CacheKey {
-        let request =
-            test_render_request(document_id, Sha256::digest(source).into(), generation);
+        let request = test_render_request(document_id, Sha256::digest(source).into(), generation);
         let parsed = parse_svg(source).unwrap();
         let inspection = inspect_svg_document(&parsed, &request).unwrap();
         let key = cache_key(&request, &inspection.metadata);
@@ -163,8 +165,7 @@ fn font_refresh_releases_raster_reservations_across_repeated_generations() {
 
     let geometry_png =
         base64::engine::general_purpose::STANDARD.encode(rgba_png_1x1(0, 120, 0, 255));
-    let text_png =
-        base64::engine::general_purpose::STANDARD.encode(rgba_png_1x1(220, 0, 0, 255));
+    let text_png = base64::engine::general_purpose::STANDARD.encode(rgba_png_1x1(220, 0, 0, 255));
     let geometry = format!(
         "<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'><image width='1' height='1' href='data:image/png;base64,{geometry_png}'/></svg>"
     );
@@ -176,8 +177,7 @@ fn font_refresh_releases_raster_reservations_across_repeated_generations() {
     let mut state = test_worker_state();
     state.font_database = Some(Arc::new(usvg::fontdb::Database::new()));
     state.font_database_generation = Some(0);
-    let geometry_key =
-        open_and_render(&mut state, geometry.as_bytes(), 0, 1, &[0, 120, 0, 255]);
+    let geometry_key = open_and_render(&mut state, geometry.as_bytes(), 0, 1, &[0, 120, 0, 255]);
     let geometry_reservation = state.raster_reserved_bytes;
     let geometry_cost = state.cache_cost;
     assert!(geometry_reservation > 0);
@@ -255,8 +255,7 @@ fn tiny_parsed_cache_entries_charge_their_retained_index_and_tree_headers() {
     // Source/element estimates alone cannot pay for those allocations.
     // Capacity is a lower bound on bucket count; do not depend on a
     // particular standard-library load factor for the regression.
-    let retained_headers = state.cache.capacity()
-        * std::mem::size_of::<(CacheKey, CacheEntry)>()
+    let retained_headers = state.cache.capacity() * std::mem::size_of::<(CacheKey, CacheEntry)>()
         + std::mem::size_of::<usvg::Tree>()
         + 2 * std::mem::size_of::<usize>();
     assert!(

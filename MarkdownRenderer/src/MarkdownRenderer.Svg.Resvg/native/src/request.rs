@@ -3,7 +3,10 @@
 //! Decoded host request frames and control-operation shape validation.
 
 use crate::VERSION;
-use crate::protocol::{FLAG_HAS_PHYSICAL_VIEWPORT, MAGIC, MAX_LOCALE, read_i32, read_u16, read_u32, read_u64, REQUEST_SIZE};
+use crate::protocol::{
+    FLAG_HAS_PHYSICAL_VIEWPORT, MAGIC, MAX_LOCALE, REQUEST_SIZE, read_i32, read_u16, read_u32,
+    read_u64,
+};
 
 #[derive(Clone)]
 pub(crate) struct Request {
@@ -43,7 +46,10 @@ pub(crate) struct Request {
     pub(crate) orientation: u32,
 }
 
-pub(crate) fn validate_control_request(request: &Request, requires_document: bool) -> Result<(), String> {
+pub(crate) fn validate_control_request(
+    request: &Request,
+    requires_document: bool,
+) -> Result<(), String> {
     let document_valid = if requires_document {
         request.document_id != 0
     } else {

@@ -2,7 +2,9 @@
 
 //! Scratch and decoder-ledger admission.
 
-use crate::raster_decode::scratch::{admit_scratch_budget, requested_allocation_charge, rgba_length};
+use crate::raster_decode::scratch::{
+    admit_scratch_budget, requested_allocation_charge, rgba_length,
+};
 use crate::reject::Reject;
 
 #[test]

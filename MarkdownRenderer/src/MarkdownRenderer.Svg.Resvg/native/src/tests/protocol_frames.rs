@@ -3,7 +3,10 @@
 //! Request frame decoding and render-field validation.
 
 use crate::VERSION;
-use crate::protocol::{FLAG_HAS_PHYSICAL_VIEWPORT, KIND_RASTER_DECODE, KIND_RENDER, MAGIC, REQUEST_SIZE, write_u16, write_u32, write_u64};
+use crate::protocol::{
+    FLAG_HAS_PHYSICAL_VIEWPORT, KIND_RASTER_DECODE, KIND_RENDER, MAGIC, REQUEST_SIZE, write_u16,
+    write_u32, write_u64,
+};
 use crate::request::Request;
 use crate::svg_document::validate_request;
 use crate::tests::support::test_render_request;

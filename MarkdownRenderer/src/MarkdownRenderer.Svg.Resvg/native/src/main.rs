@@ -7,7 +7,10 @@ use crate::font_catalog::phase::FontCatalogProbe;
 use crate::metadata::Metadata;
 use crate::parsed_cache::trim_parsed_cache;
 use crate::process_setup::{apply_process_mitigations, parse_arguments};
-use crate::protocol::{KIND_CLOSE_DOCUMENT, KIND_FONT_CATALOG, KIND_HELLO, KIND_OPEN, KIND_RASTER_DECODE, KIND_RENDER, KIND_TRIM_CACHE, REQUEST_SIZE};
+use crate::protocol::{
+    KIND_CLOSE_DOCUMENT, KIND_FONT_CATALOG, KIND_HELLO, KIND_OPEN, KIND_RASTER_DECODE, KIND_RENDER,
+    KIND_TRIM_CACHE, REQUEST_SIZE,
+};
 use crate::request::{Request, validate_control_request};
 use crate::response::Response;
 use crate::svg_document::process;

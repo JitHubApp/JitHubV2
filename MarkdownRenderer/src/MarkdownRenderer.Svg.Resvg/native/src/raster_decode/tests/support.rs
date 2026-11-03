@@ -182,9 +182,7 @@ pub(crate) fn icc_shared_mluc() -> Vec<u8> {
     tag[..4].copy_from_slice(b"mluc");
     tag[8..12].copy_from_slice(&2_u32.to_be_bytes());
     tag[12..16].copy_from_slice(&12_u32.to_be_bytes());
-    for (record, (language, country)) in
-        [(b"en", b"US"), (b"fr", b"FR")].into_iter().enumerate()
-    {
+    for (record, (language, country)) in [(b"en", b"US"), (b"fr", b"FR")].into_iter().enumerate() {
         let offset = 16 + record * 12;
         tag[offset..offset + 2].copy_from_slice(language);
         tag[offset + 2..offset + 4].copy_from_slice(country);

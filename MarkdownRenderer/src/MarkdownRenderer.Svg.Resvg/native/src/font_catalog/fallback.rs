@@ -20,7 +20,8 @@ pub(crate) struct FontFallbackCacheKey {
     pub(crate) used_fonts: Vec<usvg::fontdb::ID>,
 }
 
-pub(crate) type FontFallbackCache = Arc<Mutex<HashMap<FontFallbackCacheKey, Option<usvg::fontdb::ID>>>>;
+pub(crate) type FontFallbackCache =
+    Arc<Mutex<HashMap<FontFallbackCacheKey, Option<usvg::fontdb::ID>>>>;
 
 pub(crate) fn cached_font_fallback_selector(
     cache: FontFallbackCache,

@@ -24,7 +24,7 @@ use crate::raster_decode::decode::decode_and_render;
 use crate::reject::Reject;
 use crate::request::Request;
 use crate::response::Response;
-use crate::shared_mapping::{align64, mapping_length, SharedMapping};
+use crate::shared_mapping::{SharedMapping, align64, mapping_length};
 use image_webp::DecodingError;
 use std::sync::atomic::{AtomicU8, Ordering};
 

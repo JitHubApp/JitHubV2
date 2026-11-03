@@ -93,8 +93,7 @@ fn nested_svg_uses_the_same_authoritative_xml_node_ceiling() {
 
 #[test]
 fn static_xml_rejects_actual_dtd_and_stylesheet_processing_instruction() {
-    let dtd =
-        "<!DOCTYPE svg [<!ENTITY sample 'text'>]><svg xmlns='http://www.w3.org/2000/svg'/>";
+    let dtd = "<!DOCTYPE svg [<!ENTITY sample 'text'>]><svg xmlns='http://www.w3.org/2000/svg'/>";
     assert!(matches!(
         parse_svg(dtd.as_bytes()),
         Err(Reject::Unsupported(_))

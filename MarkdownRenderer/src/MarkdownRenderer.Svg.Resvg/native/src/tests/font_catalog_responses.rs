@@ -4,8 +4,11 @@
 
 use crate::VERSION;
 use crate::font_catalog::phase::FontCatalogPhase;
-use crate::font_catalog::timings::{FONT_CATALOG_TIMING_DETAIL_PREFIX, FONT_CATALOG_TIMING_PHASE_COUNT, FONT_CATALOG_TIMING_RECORD_BYTES, FontCatalogInitializationTimings, FontCatalogPhaseTiming};
-use crate::protocol::{KIND_HELLO, read_u16, read_u32, STATUS_FONT_CATALOG_PENDING, STATUS_OK};
+use crate::font_catalog::timings::{
+    FONT_CATALOG_TIMING_DETAIL_PREFIX, FONT_CATALOG_TIMING_PHASE_COUNT,
+    FONT_CATALOG_TIMING_RECORD_BYTES, FontCatalogInitializationTimings, FontCatalogPhaseTiming,
+};
+use crate::protocol::{KIND_HELLO, STATUS_FONT_CATALOG_PENDING, STATUS_OK, read_u16, read_u32};
 use crate::response::Response;
 use crate::tests::support::test_request;
 use base64::Engine as _;

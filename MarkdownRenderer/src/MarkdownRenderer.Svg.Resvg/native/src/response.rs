@@ -5,7 +5,11 @@
 use crate::VERSION;
 use crate::font_catalog::timings::FontCatalogInitializationTimings;
 use crate::metadata::Metadata;
-use crate::protocol::{MAGIC, RESPONSE_SIZE, STATUS_DOCUMENT_MISSING, STATUS_FONT_CATALOG_FAILED, STATUS_FONT_CATALOG_PENDING, STATUS_OK, STATUS_RESOURCE, STATUS_UNSUPPORTED, STATUS_WORKER, write_f64, write_u16, write_u32, write_u64};
+use crate::protocol::{
+    MAGIC, RESPONSE_SIZE, STATUS_DOCUMENT_MISSING, STATUS_FONT_CATALOG_FAILED,
+    STATUS_FONT_CATALOG_PENDING, STATUS_OK, STATUS_RESOURCE, STATUS_UNSUPPORTED, STATUS_WORKER,
+    write_f64, write_u16, write_u32, write_u64,
+};
 use crate::reject::Reject;
 use crate::request::Request;
 use std::borrow::Cow;

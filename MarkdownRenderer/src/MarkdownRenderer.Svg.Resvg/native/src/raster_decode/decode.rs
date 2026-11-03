@@ -4,13 +4,19 @@
 
 use crate::metadata::Metadata;
 use crate::protocol::PIXEL_BGRA;
-use crate::raster_decode::{DecodePlan, map_decode_error, PROGRESS_COLOR_CONVERTED, PROGRESS_COMPLETE, PROGRESS_DECODED, PROGRESS_HASHED, PROGRESS_HEADER_VALIDATED, PROGRESS_RASTERIZED};
 use crate::raster_decode::exif::parse_exif_orientation;
 use crate::raster_decode::icc_preflight::preflight_icc_profile;
 use crate::raster_decode::icc_transform::{apply_icc_transform, create_icc_transform};
 use crate::raster_decode::pixels::{premultiply_rgba_in_place, rasterize_oriented, swap_red_blue};
-use crate::raster_decode::scratch::{admit_scratch_budget, allocate_zeroed, allocation_charge, requested_allocation_charge, rgba_length};
+use crate::raster_decode::scratch::{
+    admit_scratch_budget, allocate_zeroed, allocation_charge, requested_allocation_charge,
+    rgba_length,
+};
 use crate::raster_decode::streamed_rows::decode_streamed_rows;
+use crate::raster_decode::{
+    DecodePlan, PROGRESS_COLOR_CONVERTED, PROGRESS_COMPLETE, PROGRESS_DECODED, PROGRESS_HASHED,
+    PROGRESS_HEADER_VALIDATED, PROGRESS_RASTERIZED, map_decode_error,
+};
 use crate::reject::Reject;
 use crate::request::Request;
 use crate::response::Response;
@@ -186,13 +192,8 @@ pub(crate) fn decode_and_render(
             drop(decoded);
             drop(decoder);
             output.fill(0);
-            let mut retry_decoder = reopen_verified_decoder(
-                source,
-                plan,
-                icc,
-                plan.orientation,
-                decoder_limit,
-            )?;
+            let mut retry_decoder =
+                reopen_verified_decoder(source, plan, icc, plan.orientation, decoder_limit)?;
             return decode_streamed_rows(
                 request,
                 plan,
@@ -308,7 +309,9 @@ pub(crate) fn reopen_verified_decoder<'a>(
     let decoder = WebPDecoder::new_static_bounded_with_metadata(Cursor::new(source), decoder_limit)
         .map_err(map_decode_error)?;
     if decoder.dimensions() != (plan.source_width, plan.source_height) {
-        return Err(Reject::Worker("WebP dimensions changed during bounded retry"));
+        return Err(Reject::Worker(
+            "WebP dimensions changed during bounded retry",
+        ));
     }
     let metadata = decoder.bounded_metadata_ranges().ok_or(Reject::Worker(
         "bounded WebP decoder did not expose metadata ranges during retry",

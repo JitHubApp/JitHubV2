@@ -6,7 +6,9 @@ use crate::protocol::{KIND_RASTER_DECODE, PIXEL_RGBA, PROGRESS_AREA_BYTES};
 use crate::raster_decode::DecodePlan;
 use crate::raster_decode::decode::decode_and_render;
 use crate::raster_decode::pixels::{premultiply_rgba_in_place, rasterize_oriented};
-use crate::raster_decode::scratch::{admit_scratch_budget, requested_allocation_charge, rgba_length};
+use crate::raster_decode::scratch::{
+    admit_scratch_budget, requested_allocation_charge, rgba_length,
+};
 use crate::raster_decode::streamed_rows::render_ready_streamed_rows;
 use crate::request::Request;
 use crate::shared_mapping::align64;
@@ -121,7 +123,10 @@ fn streamed_resampling_matches_full_raster_for_all_exif_orientations() {
                 &mut expected,
             )
             .unwrap();
-            assert_eq!(streamed, expected, "orientation={orientation}, intermediate={intermediate_width}x{intermediate_height}");
+            assert_eq!(
+                streamed, expected,
+                "orientation={orientation}, intermediate={intermediate_width}x{intermediate_height}"
+            );
         }
     }
 }
@@ -148,9 +153,10 @@ fn low_budget_opaque_vp8_dispatch_matches_full_frame_resize() {
         .and_then(|length| length.checked_add(PROGRESS_AREA_BYTES))
         .unwrap();
     assert!(mapping_bytes < WORKING_LIMIT);
-    assert!(requested_allocation_charge(rgba_length(SOURCE_WIDTH, SOURCE_HEIGHT).unwrap())
-        .unwrap()
-        > WORKING_LIMIT - mapping_bytes);
+    assert!(
+        requested_allocation_charge(rgba_length(SOURCE_WIDTH, SOURCE_HEIGHT).unwrap()).unwrap()
+            > WORKING_LIMIT - mapping_bytes
+    );
 
     let plan = DecodePlan {
         source_width: SOURCE_WIDTH,
@@ -209,25 +215,20 @@ fn low_budget_opaque_vp8_dispatch_matches_full_frame_resize() {
             .unwrap();
     assert!(preflight_decoder.is_lossy());
     assert!(!preflight_decoder.has_alpha());
-    let full_scratch = requested_allocation_charge(rgba_length(SOURCE_WIDTH, SOURCE_HEIGHT).unwrap())
-        .unwrap();
-    assert!(admit_scratch_budget(
-        WORKING_LIMIT,
-        mapping_bytes,
-        full_scratch,
-        preflight_decoder.bounded_allocation_bytes().unwrap(),
-    )
-    .is_err());
+    let full_scratch =
+        requested_allocation_charge(rgba_length(SOURCE_WIDTH, SOURCE_HEIGHT).unwrap()).unwrap();
+    assert!(
+        admit_scratch_budget(
+            WORKING_LIMIT,
+            mapping_bytes,
+            full_scratch,
+            preflight_decoder.bounded_allocation_bytes().unwrap(),
+        )
+        .is_err()
+    );
 
     let mut actual = vec![0; output_length];
-    decode_and_render(
-        &request,
-        &plan,
-        encoded,
-        &mut actual,
-        &AtomicU8::new(0),
-    )
-    .unwrap();
+    decode_and_render(&request, &plan, encoded, &mut actual, &AtomicU8::new(0)).unwrap();
 
     let mut full_decoder =
         WebPDecoder::new_static_bounded_with_metadata(Cursor::new(encoded), 8 * 1024 * 1024)

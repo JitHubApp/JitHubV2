@@ -5,9 +5,9 @@
 use crate::kernel32::{MapViewOfFile, UnmapViewOfFile};
 use crate::protocol::{read_u32, read_u64};
 use crate::reject::Reject;
-use std::slice;
 use std::collections::HashSet;
 use std::ffi::c_void;
+use std::slice;
 use std::sync::Arc;
 
 pub(crate) const FILE_MAP_READ: u32 = 0x0000_0004;

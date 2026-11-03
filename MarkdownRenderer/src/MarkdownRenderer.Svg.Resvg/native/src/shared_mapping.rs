@@ -6,8 +6,8 @@ use crate::kernel32::{MapViewOfFile, UnmapViewOfFile};
 use crate::protocol::PROGRESS_AREA_BYTES;
 use crate::reject::Reject;
 use crate::request::Request;
-use std::slice;
 use std::ffi::c_void;
+use std::slice;
 
 // A raster transport needs data read/write, never ownership, ACL changes or
 // executable views. ALL_ACCESS needlessly asks a low-integrity worker for

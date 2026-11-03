@@ -4,20 +4,29 @@
 
 use crate::metadata::Metadata;
 use crate::protocol::PIXEL_BGRA;
-use crate::raster_decode::{DecodePlan, map_decode_error, PROGRESS_COLOR_CONVERTED, PROGRESS_COMPLETE, PROGRESS_DECODED, PROGRESS_RASTERIZED};
 use crate::raster_decode::icc_preflight::IccProfilePlan;
 use crate::raster_decode::icc_transform::{apply_icc_transform, create_icc_transform};
 use crate::raster_decode::pixels::{premultiply_rgba_in_place, swap_red_blue};
-use crate::raster_decode::scratch::{admit_scratch_budget, allocate_zeroed, allocation_charge, requested_allocation_charge, rgba_length};
+use crate::raster_decode::scratch::{
+    admit_scratch_budget, allocate_zeroed, allocation_charge, requested_allocation_charge,
+    rgba_length,
+};
+use crate::raster_decode::{
+    DecodePlan, PROGRESS_COLOR_CONVERTED, PROGRESS_COMPLETE, PROGRESS_DECODED, PROGRESS_RASTERIZED,
+    map_decode_error,
+};
 use crate::reject::Reject;
 use crate::request::Request;
 use crate::response::Response;
 use image_webp::WebPDecoder;
-use resvg::tiny_skia::{BlendMode, FilterQuality, PixmapMut, PixmapPaint, PixmapRowRing, Transform};
+use resvg::tiny_skia::{
+    BlendMode, FilterQuality, PixmapMut, PixmapPaint, PixmapRowRing, Transform,
+};
 use std::io::Cursor;
 use std::sync::atomic::{AtomicU8, Ordering};
 
-#[allow(clippy::too_many_arguments)] pub(crate) fn decode_streamed_rows(
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn decode_streamed_rows(
     request: &Request,
     plan: &DecodePlan,
     output: &mut [u8],
@@ -34,8 +43,8 @@ use std::sync::atomic::{AtomicU8, Ordering};
         (plan.target_width, plan.target_height)
     };
     let source_row_bytes = rgba_length(plan.source_width, 1)?;
-    let needs_resize = intermediate_width != plan.source_width
-        || intermediate_height != plan.source_height;
+    let needs_resize =
+        intermediate_width != plan.source_width || intermediate_height != plan.source_height;
     let ring_height = if needs_resize {
         plan.source_height.min(4)
     } else {
@@ -112,7 +121,9 @@ use std::sync::atomic::{AtomicU8, Ordering};
     decoder
         .read_static_rgba_rows_bounded_with_metadata(|row_y, rgba_row| {
             if row_y != next_source_row || rgba_row.len() != source_row_bytes {
-                return Err(Reject::Worker("WebP row decoder returned invalid row order"));
+                return Err(Reject::Worker(
+                    "WebP row decoder returned invalid row order",
+                ));
             }
             next_source_row = next_source_row
                 .checked_add(1)
@@ -179,7 +190,9 @@ use std::sync::atomic::{AtomicU8, Ordering};
         })?;
 
     if next_source_row != plan.source_height {
-        return Err(Reject::Worker("WebP row decoder returned an incomplete image"));
+        return Err(Reject::Worker(
+            "WebP row decoder returned an incomplete image",
+        ));
     }
     while needs_resize && next_output_row < intermediate_height {
         render_streamed_output_row(
@@ -227,7 +240,8 @@ use std::sync::atomic::{AtomicU8, Ordering};
     Ok(response)
 }
 
-#[allow(clippy::too_many_arguments)] pub(crate) fn render_ready_streamed_rows(
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn render_ready_streamed_rows(
     plan: &DecodePlan,
     intermediate_width: u32,
     intermediate_height: u32,
@@ -253,7 +267,9 @@ use std::sync::atomic::{AtomicU8, Ordering};
         if maximum.saturating_sub(minimum) >= ring_height
             || available_source_row.saturating_sub(minimum) >= ring_height
         {
-            return Err(Reject::Worker("WebP source row ring lost a required sample"));
+            return Err(Reject::Worker(
+                "WebP source row ring lost a required sample",
+            ));
         }
         render_streamed_output_row(
             plan,
@@ -312,7 +328,8 @@ pub(crate) fn scatter_unscaled_oriented_row(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)] pub(crate) fn render_streamed_output_row(
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn render_streamed_output_row(
     plan: &DecodePlan,
     intermediate_width: u32,
     intermediate_height: u32,
@@ -323,13 +340,9 @@ pub(crate) fn scatter_unscaled_oriented_row(
     transform: Transform,
     output: &mut [u8],
 ) -> Result<(), Reject> {
-    let source = PixmapRowRing::from_bytes(
-        row_ring,
-        plan.source_width,
-        plan.source_height,
-        ring_height,
-    )
-    .ok_or(Reject::Resource("invalid WebP source row ring"))?;
+    let source =
+        PixmapRowRing::from_bytes(row_ring, plan.source_width, plan.source_height, ring_height)
+            .ok_or(Reject::Resource("invalid WebP source row ring"))?;
     let mut row = PixmapMut::from_bytes(output_row, intermediate_width, 1)
         .ok_or(Reject::Resource("invalid WebP output row"))?;
     let paint = PixmapPaint {

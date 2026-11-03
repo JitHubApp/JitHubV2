@@ -3,11 +3,13 @@
 //! Document handle bindings and font generations.
 
 use crate::metadata::Metadata;
-use crate::parsed_cache::{bind_document, cache_key, CacheEntry, MAX_DOCUMENT_BINDINGS};
+use crate::parsed_cache::{CacheEntry, MAX_DOCUMENT_BINDINGS, bind_document, cache_key};
 use crate::reject::Reject;
 use crate::svg_document::process;
 use crate::svg_preflight::parse_svg;
-use crate::tests::support::{test_geometry_tree, test_render_request, test_request, test_worker_state};
+use crate::tests::support::{
+    test_geometry_tree, test_render_request, test_request, test_worker_state,
+};
 use resvg::usvg;
 use std::sync::Arc;
 

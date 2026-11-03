@@ -375,7 +375,10 @@ pub(crate) fn css_urls(css: &str) -> Result<Vec<String>, Reject> {
     Ok(targets)
 }
 
-pub(crate) fn skip_css_whitespace_and_comments(css: &str, cursor: &mut usize) -> Result<(), Reject> {
+pub(crate) fn skip_css_whitespace_and_comments(
+    css: &str,
+    cursor: &mut usize,
+) -> Result<(), Reject> {
     loop {
         while let Some(character) = css[*cursor..].chars().next() {
             if !character.is_ascii_whitespace() {

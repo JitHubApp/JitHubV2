@@ -3,9 +3,15 @@
 //! Parsed-tree cache admission and LRU eviction.
 
 use crate::metadata::Metadata;
-use crate::parsed_cache::{acquire_tree, bind_document, cache_key, CacheEntry, evict_parsed_cache_for_admission, PARSED_CACHE_ENTRY_METADATA_BYTES, parsed_resource_cost, retire_uncached_documents, trim_parsed_cache};
+use crate::parsed_cache::{
+    CacheEntry, PARSED_CACHE_ENTRY_METADATA_BYTES, acquire_tree, bind_document, cache_key,
+    evict_parsed_cache_for_admission, parsed_resource_cost, retire_uncached_documents,
+    trim_parsed_cache,
+};
 use crate::svg_preflight::{Inspection, parse_svg};
-use crate::tests::support::{inspect_svg, test_cache_key, test_geometry_tree, test_request, test_worker_state};
+use crate::tests::support::{
+    inspect_svg, test_cache_key, test_geometry_tree, test_request, test_worker_state,
+};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};

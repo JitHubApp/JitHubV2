@@ -9,16 +9,18 @@ use crate::font_catalog::initialization::FontCatalogInitialization;
 use crate::font_catalog::phase::{FontCatalogPhase, FontCatalogProbe};
 use crate::font_catalog::timings::FontCatalogInitializationTimings;
 use crate::metadata::Metadata;
-use crate::parsed_cache::{acquire_tree, cache_key, CacheEntry, DocumentEntry};
-use crate::protocol::{read_u16, read_u32, STATUS_FONT_CATALOG_FAILED};
+use crate::parsed_cache::{CacheEntry, DocumentEntry, acquire_tree, cache_key};
+use crate::protocol::{STATUS_FONT_CATALOG_FAILED, read_u16, read_u32};
 use crate::reject::Reject;
 use crate::response::Response;
-use crate::svg_preflight::parse_svg;
 use crate::svg_preflight::document::inspect_svg_document;
-use crate::tests::support::{test_cache_key, test_geometry_tree, test_request, test_worker_state_with_channels};
+use crate::svg_preflight::parse_svg;
+use crate::tests::support::{
+    test_cache_key, test_geometry_tree, test_request, test_worker_state_with_channels,
+};
 use resvg::usvg;
+use std::sync::atomic::{AtomicU8, AtomicU32, Ordering};
 use std::sync::{Arc, mpsc};
-use std::sync::atomic::{AtomicU32, AtomicU8, Ordering};
 
 #[test]
 fn font_catalog_probe_is_nonblocking_and_preserves_completed_catalog() {

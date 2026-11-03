@@ -5,10 +5,13 @@
 use crate::metadata::Metadata;
 use crate::reject::Reject;
 use crate::request::Request;
-use crate::svg_preflight::parse_static_xml;
 use crate::svg_preflight::css::{inspect_css, may_contain_css_resource_or_active_content};
-use crate::svg_preflight::elements::{contains_ascii_case_insensitive, element_cost, is_forbidden_element, payload_cost, starts_with_ascii_case_insensitive};
+use crate::svg_preflight::elements::{
+    contains_ascii_case_insensitive, element_cost, is_forbidden_element, payload_cost,
+    starts_with_ascii_case_insensitive,
+};
 use crate::svg_preflight::filters::inspect_filter_primitive;
+use crate::svg_preflight::parse_static_xml;
 use crate::svg_preflight::references::inspect_element_reference;
 use resvg::usvg;
 use std::collections::HashSet;

@@ -4,7 +4,9 @@
 
 use crate::raster_decode::scratch::rgba_length;
 use crate::reject::Reject;
-use resvg::tiny_skia::{BlendMode, ColorU8, FilterQuality, PixmapMut, PixmapPaint, PixmapRef, Transform};
+use resvg::tiny_skia::{
+    BlendMode, ColorU8, FilterQuality, PixmapMut, PixmapPaint, PixmapRef, Transform,
+};
 
 pub(crate) fn premultiply_rgba_in_place(rgba: &mut [u8]) {
     for pixel in rgba.chunks_exact_mut(4) {

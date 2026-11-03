@@ -78,7 +78,9 @@ impl FontCatalogInitializationTimings {
     }
 }
 
-pub(crate) fn measure_font_catalog_phase<T>(operation: impl FnOnce() -> T) -> (T, FontCatalogPhaseTiming) {
+pub(crate) fn measure_font_catalog_phase<T>(
+    operation: impl FnOnce() -> T,
+) -> (T, FontCatalogPhaseTiming) {
     let cpu_started = current_thread_cpu_ticks();
     let wall_started = Instant::now();
     let result = operation();

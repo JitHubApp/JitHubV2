@@ -2,10 +2,13 @@
 
 //! Building and warming a font database from a mapped catalog snapshot.
 
-use crate::font_catalog::fallback::{cached_font_fallback_selector, FontFallbackCache};
+use crate::font_catalog::fallback::{FontFallbackCache, cached_font_fallback_selector};
 use crate::font_catalog::mapping::FontCatalogSnapshot;
 use crate::font_catalog::phase::FontCatalogPhase;
-use crate::font_catalog::timings::{finish_font_catalog_phase, FontCatalogInitializationTimings, FontCatalogTimingPhase, measure_font_catalog_phase};
+use crate::font_catalog::timings::{
+    FontCatalogInitializationTimings, FontCatalogTimingPhase, finish_font_catalog_phase,
+    measure_font_catalog_phase,
+};
 use crate::kernel32::current_thread_cpu_ticks;
 use crate::reject::Reject;
 use resvg::{tiny_skia, usvg};

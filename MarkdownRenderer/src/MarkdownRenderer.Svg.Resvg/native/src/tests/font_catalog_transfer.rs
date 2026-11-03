@@ -2,20 +2,24 @@
 
 //! Font catalog acceptance, mapping, and retry.
 
-use crate::font_catalog::control::{accept_font_catalog, FONT_CATALOG_BUSY_DETAIL, poll_font_database};
+use crate::font_catalog::control::{
+    FONT_CATALOG_BUSY_DETAIL, accept_font_catalog, poll_font_database,
+};
 use crate::font_catalog::coordinator::FontCatalogBuildResult;
 use crate::font_catalog::fallback::new_font_fallback_cache;
 use crate::font_catalog::initialization::FontCatalogInitialization;
 use crate::font_catalog::phase::{FontCatalogPhase, FontCatalogProbe};
 use crate::font_catalog::timings::FontCatalogInitializationTimings;
-use crate::protocol::{read_u16, read_u32, STATUS_FONT_CATALOG_PENDING, STATUS_OK};
+use crate::protocol::{STATUS_FONT_CATALOG_PENDING, STATUS_OK, read_u16, read_u32};
 use crate::reject::Reject;
 use crate::shared_mapping::SharedMapping;
-use crate::tests::support::{test_font_catalog_request, test_font_catalog_table, test_worker_state_with_channels};
+use crate::tests::support::{
+    test_font_catalog_request, test_font_catalog_table, test_worker_state_with_channels,
+};
 use resvg::usvg;
 use std::ffi::c_void;
+use std::sync::atomic::{AtomicU8, AtomicU32, Ordering};
 use std::sync::{Arc, mpsc};
-use std::sync::atomic::{AtomicU32, AtomicU8, Ordering};
 
 #[test]
 fn busy_font_catalog_is_not_mapped_and_same_transfer_can_be_retried() {
@@ -58,11 +62,9 @@ fn busy_font_catalog_is_not_mapped_and_same_transfer_can_be_retried() {
     let font_mapping = create_mapping(4096);
     let table = test_font_catalog_table(5, &[(font_mapping.0 as usize as u64, 4)]);
     {
-        let mut table_writer =
-            SharedMapping::open(table_mapping.0 as usize as u64, 4096).unwrap();
+        let mut table_writer = SharedMapping::open(table_mapping.0 as usize as u64, 4096).unwrap();
         table_writer.as_mut_slice()[..table.len()].copy_from_slice(&table);
-        let mut font_writer =
-            SharedMapping::open(font_mapping.0 as usize as u64, 4096).unwrap();
+        let mut font_writer = SharedMapping::open(font_mapping.0 as usize as u64, 4096).unwrap();
         font_writer.as_mut_slice()[..4].copy_from_slice(&[0x41, 0x42, 0x43, 0x44]);
     }
 
@@ -185,11 +187,9 @@ fn font_catalog_accept_ack_is_mapping_only_and_views_survive_host_handle_close()
     let font_mapping = create_mapping(4096);
     let table = test_font_catalog_table(5, &[(font_mapping.0 as usize as u64, 4)]);
     {
-        let mut table_writer =
-            SharedMapping::open(table_mapping.0 as usize as u64, 4096).unwrap();
+        let mut table_writer = SharedMapping::open(table_mapping.0 as usize as u64, 4096).unwrap();
         table_writer.as_mut_slice()[..table.len()].copy_from_slice(&table);
-        let mut font_writer =
-            SharedMapping::open(font_mapping.0 as usize as u64, 4096).unwrap();
+        let mut font_writer = SharedMapping::open(font_mapping.0 as usize as u64, 4096).unwrap();
         font_writer.as_mut_slice()[..4].copy_from_slice(&[0x41, 0x42, 0x43, 0x44]);
     }
 

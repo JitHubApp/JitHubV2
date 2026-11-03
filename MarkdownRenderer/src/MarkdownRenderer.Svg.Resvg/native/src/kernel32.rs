@@ -14,7 +14,11 @@ unsafe extern "system" {
         bytes: usize,
     ) -> *mut c_void;
     pub(crate) fn UnmapViewOfFile(address: *const c_void) -> i32;
-    pub(crate) fn SetProcessMitigationPolicy(policy: i32, buffer: *const c_void, length: usize) -> i32;
+    pub(crate) fn SetProcessMitigationPolicy(
+        policy: i32,
+        buffer: *const c_void,
+        length: usize,
+    ) -> i32;
     pub(crate) fn GetCurrentThread() -> *mut c_void;
     pub(crate) fn GetThreadTimes(
         thread: *mut c_void,

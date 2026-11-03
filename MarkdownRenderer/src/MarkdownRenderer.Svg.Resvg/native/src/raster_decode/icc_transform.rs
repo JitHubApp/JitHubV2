@@ -2,7 +2,9 @@
 
 //! Creating and applying a preflighted ICC transform.
 
-use crate::raster_decode::icc_preflight::{align4_checked, IccProfilePlan, MAX_ICC_CLUT_GRID_POINTS, MAX_ICC_TRC_ELEMENTS};
+use crate::raster_decode::icc_preflight::{
+    IccProfilePlan, MAX_ICC_CLUT_GRID_POINTS, MAX_ICC_TRC_ELEMENTS, align4_checked,
+};
 use crate::reject::Reject;
 use moxcms::{ColorProfile, Layout, ParsingOptions, Transform8BitExecutor, TransformOptions};
 

@@ -3,13 +3,15 @@
 //! Background font-catalog thread and its generation hand-off.
 
 use crate::font_catalog::fallback::new_font_fallback_cache;
-use crate::font_catalog::initialization::{FontCatalogInitialization, initialize_font_database_from_snapshot};
+use crate::font_catalog::initialization::{
+    FontCatalogInitialization, initialize_font_database_from_snapshot,
+};
 use crate::font_catalog::mapping::FontCatalogSnapshot;
 use crate::font_catalog::phase::FontCatalogPhase;
 use crate::reject::Reject;
+use std::sync::atomic::{AtomicU8, AtomicU32, Ordering};
+use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
-use std::sync::{Arc, mpsc, Mutex};
-use std::sync::atomic::{AtomicU32, AtomicU8, Ordering};
 
 pub(crate) struct FontCatalogBuildResult {
     pub(crate) generation: u32,
