@@ -763,12 +763,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     internal DeferredSceneReadiness DeferredSceneReadiness => _deferredScenes;
 
-    internal bool TryGetVisibleDocumentRect(out Windows.Foundation.Rect rect)
-    {
-        bool hasViewport = _viewport.TryGet(out double top, out double height, out double width);
-        rect = new Windows.Foundation.Rect(0, top, width, height);
-        return hasViewport;
-    }
+    internal bool TryGetVisibleDocumentRect(out Windows.Foundation.Rect rect) => _viewport.TryGetRect(out rect);
 
     /// <summary>
     /// Initializes a renderer with either an owned scroll viewport or an
