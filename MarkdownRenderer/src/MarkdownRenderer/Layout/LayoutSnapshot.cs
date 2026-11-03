@@ -165,7 +165,9 @@ internal sealed class LayoutSnapshot : System.IDisposable, ILayoutSnapshotRetire
             _geometry, _recovery, _retirement, _planCandidates, vectorSceneResidencyPolicy);
         _locator = new SnapshotBlockLocator(_geometry, _recovery, _retirement);
         _relayout = new ChangedBlockRelayout(_geometry, _recovery);
-        _imageRoots = new CompletedImageRootRelayout(_geometry, _recovery, _retirement, _relayout, sourceMap);
+        _imageRoots = new CompletedImageRootRelayout(
+            _geometry, _recovery, _retirement, _relayout,
+            new CompletedImageRootCapture(_geometry, _recovery, sourceMap));
         _rasterCandidates = new PrivateRasterCandidateFactory(
             this, _geometry, _recovery, _retirement, _bands, _horizontalOverflow,
             _footnoteDefBlocks, _footnoteRefBlocks, _fragmentTargetBlocks, generatedBlockIndexUpperBound);

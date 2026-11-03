@@ -1,9 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using Microsoft.UI.Xaml;
-using Windows.Foundation;
-using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Performance;
 
 namespace MarkdownRenderer.Layout;
@@ -19,6 +16,7 @@ internal sealed class SnapshotBandRealization
     private readonly GeometryRecoveryLatch _recovery;
     private readonly SnapshotRetirement _retirement;
     private readonly LayoutPlanCandidateIndex _planCandidates;
+    private readonly LazyBandMeasurement _measurement;
     private readonly List<int> _sceneBandOrdinalScratch = [];
     private readonly List<BlockBox> _sceneProbeBlockScratch = [];
     private IMarkdownVectorSceneResidencyPolicy? _vectorSceneResidencyPolicy;
@@ -33,7 +31,9 @@ internal sealed class SnapshotBandRealization
         _geometry = geometry;
         _recovery = recovery;
         _retirement = retirement;
-        _planCandidates = planCandidates;        _vectorSceneResidencyPolicy = vectorSceneResidencyPolicy;
+        _planCandidates = planCandidates;
+        _measurement = new LazyBandMeasurement(geometry, planCandidates);
+        _vectorSceneResidencyPolicy = vectorSceneResidencyPolicy;
     }
 
     /// <summary>
@@ -317,128 +317,14 @@ internal sealed class SnapshotBandRealization
                 _vectorSceneResidencyPolicy is null)
                 return LazyLayoutCommit.Unchanged(_geometry.Size.Height, _geometry.LayoutRevision);
 
-            double oldHeight = _geometry.Size.Height;
-            long oldRevision = _geometry.LayoutRevision;
-            int oldMeasuredTopLevelBlockCount = _geometry.MeasuredTopLevelBlockCount;
-            bool oldMeasuredLayoutPlanRootOrdinalsAreSorted =
-                _planCandidates.MeasuredRootOrdinalsAreSorted;
-            int firstMeasureAttempted = _geometry.Blocks.Count;
-            List<int>? measuredOrdinals = null;
-            List<int>? requestedSceneBandOrdinals = null;
-            bool nativeSceneResourcesChanged = false;
-            bool priorPaintOnlyGeometryTainted = _geometry.PaintOnlyGeometryTainted;
-
+            var pass = new LazyBandRealizationPass(_geometry, _planCandidates, effectiveCancellationToken);
             try
             {
                 if (_geometry.LazyLayoutEnabled && _geometry.MeasuredTopLevelBlocks is not null)
-                {
-                    float contentWidth = _geometry.GetContentWidthNoLock();
-                    while (true)
-                    {
-                        effectiveCancellationToken.ThrowIfCancellationRequested();
-                        var range = _geometry.FindViewportRangeNoLock(realizationBand.Top, realizationBand.Bottom);
-                        List<int>? newlyMeasured = null;
-                        int firstAffectedOrdinal = _geometry.Blocks.Count;
-                bool geometryUnchanged = _geometry.CurrentPlacementGenerationNoLock().IsDocumentOrder &&
-                            !priorPaintOnlyGeometryTainted;
-                        for (int i = range.Start; i < range.End; i++)
-                        {
-                            effectiveCancellationToken.ThrowIfCancellationRequested();
-                            int ordinal = _geometry.CurrentPlacementGenerationNoLock().GetBlockOrdinal(i);
-                            BlockBox block = _geometry.Blocks[ordinal];
-                            LayoutRootPlacement committedPlacement = _geometry.CurrentPlacementGenerationNoLock().GetPlacement(ordinal);
-                            if (_geometry.MeasuredTopLevelBlocks[ordinal] ||
-                                !realizationBand.Intersects(committedPlacement.Top, committedPlacement.Bottom))
-                            {
-                                continue;
-                            }
-
-                            // Measure resets most block bounds to local (0,0).
-                            // Preserve the candidate's old top until reflow assigns
-                            // its authoritative position after new heights settle.
-                            Rect priorBounds = block.Bounds;
-                            Thickness priorMargin = block.Margin;
-                            bool priorFlowWithPrevious = ordinal > 0 &&
-                                StackBox.SharesSafeHtmlInlineFlow(_geometry.Blocks[ordinal - 1], block);
-                            bool priorFlowWithNext = ordinal < _geometry.Blocks.Count - 1 &&
-                                StackBox.SharesSafeHtmlInlineFlow(block, _geometry.Blocks[ordinal + 1]);
-                            // A factory/Arrange can mutate then throw before this
-                            // batch gets copied into measuredOrdinals. Rollback must
-                            // include that attempted root, not just completed ones.
-                            firstMeasureAttempted = Math.Min(firstMeasureAttempted, ordinal);
-                            _geometry.PaintOnlyGeometryTainted = true;
-                            block.Measure(contentWidth);
-                            block.Arrange(
-                                (float)_geometry.DocumentPadding.Left,
-                                (float)priorBounds.Top,
-                                contentWidth);
-                            bool flowWithPrevious = ordinal > 0 &&
-                                StackBox.SharesSafeHtmlInlineFlow(_geometry.Blocks[ordinal - 1], block);
-                            bool flowWithNext = ordinal < _geometry.Blocks.Count - 1 &&
-                                StackBox.SharesSafeHtmlInlineFlow(block, _geometry.Blocks[ordinal + 1]);
-                            geometryUnchanged &= LayoutSnapshotGeometry.IsFiniteBounds(priorBounds) &&
-                                double.IsFinite(priorBounds.Right) && double.IsFinite(priorBounds.Bottom) &&
-                                priorBounds.Width >= 0 && priorBounds.Height >= 0 &&
-                                block.Bounds.Equals(priorBounds) &&
-                                block.Margin.Equals(priorMargin) &&
-                                flowWithPrevious == priorFlowWithPrevious &&
-                                flowWithNext == priorFlowWithNext;
-                            firstAffectedOrdinal = Math.Min(firstAffectedOrdinal,
-                                flowWithPrevious != priorFlowWithPrevious ? Math.Max(0, ordinal - 1) : ordinal);
-                            (newlyMeasured ??= []).Add(ordinal);
-                        }
-
-                        if (newlyMeasured is null)
-                            break;
-
-                        foreach (int ordinal in newlyMeasured)
-                        {
-                            // Keep rollback ownership before publishing the bit;
-                            // growing this list can fail without changing the mask.
-                            (measuredOrdinals ??= []).Add(ordinal);
-                            _geometry.MeasuredTopLevelBlocks[ordinal] = true;
-                            _geometry.MeasuredTopLevelBlockCount++;
-                            _planCandidates.AddMeasuredLayoutPlanRootOrdinalNoLock(ordinal);
-                        }
-
-                        // Recompute all candidate ordinals after changed heights
-                        // shift downstream blocks. The next pass measures every
-                        // previously unmeasured block newly entering the band.
-                        if (!geometryUnchanged)
-                            _geometry.ReflowNoLock(incrementRevision: false, firstOrdinal: firstAffectedOrdinal);
-                    }
-                }
+                    _measurement.MeasureBandNoLock(pass, realizationBand);
 
                 if (_vectorSceneResidencyPolicy is { } residencyPolicy)
-                {
-                    LayoutPlacementGeneration scenePlacements = _geometry.CurrentPlacementGenerationNoLock();
-                    var range = _geometry.FindViewportRangeNoLock(visibleVectorBand.Top, visibleVectorBand.Bottom);
-                    requestedSceneBandOrdinals = new List<int>(range.End - range.Start);
-                    for (int i = range.Start; i < range.End; i++)
-                    {
-                        int ordinal = scenePlacements.GetBlockOrdinal(i);
-                        LayoutRootPlacement placement = scenePlacements.GetPlacement(ordinal);
-                        if (!visibleVectorBand.Intersects(placement.Top, placement.Bottom))
-                            continue;
-                        if (_geometry.LazyLayoutEnabled && _geometry.MeasuredTopLevelBlocks is not null &&
-                            !_geometry.MeasuredTopLevelBlocks[ordinal])
-                        {
-                            // The realization band must include the actual
-                            // viewport; never attach a native scene to estimated
-                            // geometry and pretend that scene is visible-ready.
-                            throw new InvalidOperationException(
-                                "The requested visible vector band contains an unrealized top-level block.");
-                        }
-                        requestedSceneBandOrdinals.Add(ordinal);
-                    }
-
-                    nativeSceneResourcesChanged = residencyPolicy.ReplaceActiveBand(
-                        requestedSceneBandOrdinals,
-                        visibleVectorBand,
-                        scenePlacements,
-                        _geometry.TopLevelOrdinalByBlockIndex,
-                        effectiveCancellationToken);
-                }
+                    RefreshSceneResidencyNoLock(pass, residencyPolicy, visibleVectorBand);
 
                 // The measured-root index is consumed by the UI-thread
                 // realization-plan publisher. Finalize any out-of-order band
@@ -450,119 +336,150 @@ internal sealed class SnapshotBandRealization
                 // viewport index under this lock. Commit shared estimates and
                 // advance the revision only after all visible native resources
                 // have been prepared successfully.
-                if (measuredOrdinals is { Count: > 0 })
-                {
-                    foreach (int ordinal in measuredOrdinals)
-                    {
-                        _geometry.SharedLayoutMetrics?.RecordHeight(
-                            ordinal,
-                            (float)_geometry.Blocks[ordinal].Bounds.Height);
-                    }
-                    _geometry.LayoutRevision = oldRevision + 1;
-                    _geometry.PreserveLazyReflowContinuationRevisionNoLock(oldRevision, _geometry.LayoutRevision);
-                }
+                _measurement.CommitMeasuredOrdinalsNoLock(pass);
             }
             catch (Exception realizationFailure)
             {
-                // Even when outer bounds and measured bits are rolled back,
-                // Measure/Arrange may have changed nested native state. A
-                // canceled pass after its first attempted root is not a
-                // certifiable snapshot repair; only replacement can recover it.
-                if (firstMeasureAttempted < _geometry.Blocks.Count)
-                    _recovery.MarkGeometryRecoveryRequiredNoLock(realizationFailure);
-
-                // A failed preparation may have created a prefix of the new
-                // band before cancellation/device loss. Release those unpinned
-                // resources while candidate geometry is still available; the
-                // policy's own transactional catch is defensive duplication.
-                if (requestedSceneBandOrdinals is not null &&
-                    _vectorSceneResidencyPolicy is { } failedBandPolicy)
-                {
-                    try
-                    {
-                        failedBandPolicy.ReleaseUnpinnedResources(
-                            requestedSceneBandOrdinals,
-                            visibleVectorBand,
-                            _geometry.CurrentPlacementGenerationNoLock(),
-                            _geometry.TopLevelOrdinalByBlockIndex);
-                    }
-                    catch
-                    {
-                        // Keep the original measurement/preparation failure.
-                    }
-                }
-
-                // Measure can mutate a box before observing cancellation or a
-                // device-loss exception. Restore the last logically committed
-                // measured/estimated arrangement before another thread can
-                // inspect this snapshot.
-                if (measuredOrdinals is { Count: > 0 })
-                {
-                    foreach (int ordinal in measuredOrdinals)
-                        _geometry.MeasuredTopLevelBlocks![ordinal] = false;
-                    _geometry.MeasuredTopLevelBlockCount = oldMeasuredTopLevelBlockCount;
-                    _planCandidates.RemoveUnmeasuredLayoutPlanRootOrdinalsNoLock();
-                    _planCandidates.MeasuredRootOrdinalsAreSorted =
-                        oldMeasuredLayoutPlanRootOrdinalsAreSorted;
-                }
-                _geometry.LayoutRevision = oldRevision;
-                // Include the predecessor: an unsuccessful Measure may also
-                // have changed the attempted root's safe-HTML flow identity.
-                try
-                {
-                    using var rollbackScope = LayoutPassCancellation.Push(CancellationToken.None);
-                    if (firstMeasureAttempted < _geometry.Blocks.Count)
-                    {
-                        // Capacity-only residency refreshes do not mutate
-                        // arrangement. In particular, eager snapshots must
-                        // not trigger even a suffix Reflow when native
-                        // admission is canceled or fails.
-                        _geometry.ReflowNoLock(incrementRevision: false,
-                            firstOrdinal: Math.Max(0, firstMeasureAttempted - 1));
-                    }
-                }
-                catch (Exception rollbackFailure)
-                {
-                    if (firstMeasureAttempted < _geometry.Blocks.Count)
-                        _recovery.MarkGeometryRecoveryRequiredNoLock(realizationFailure, rollbackFailure);
-
-                    // A custom/native Arrange can fail again during recovery.
-                    // Do not expose partially restored bounds under the previous
-                    // revision. Retirement rejects new read/paint leases and
-                    // drains resources asynchronously after this gate releases.
-                    _geometry.LazyReflowContinuationRevision = null;
-                    _ = _retirement.Retire();
-                    throw new AggregateException(
-                        "Lazy realization and placement recovery both failed.",
-                        realizationFailure, rollbackFailure);
-                }
+                RollBackFailedRealizationNoLock(pass, visibleVectorBand, realizationFailure);
                 throw;
             }
 
+            return PublishRealizationNoLock(pass);
+        }
+    }
+
+    private void RefreshSceneResidencyNoLock(
+        LazyBandRealizationPass pass,
+        IMarkdownVectorSceneResidencyPolicy residencyPolicy,
+        LazyLayoutBand visibleVectorBand)
+    {
+        LayoutPlacementGeneration scenePlacements = _geometry.CurrentPlacementGenerationNoLock();
+        var range = _geometry.FindViewportRangeNoLock(visibleVectorBand.Top, visibleVectorBand.Bottom);
+        var requestedSceneBandOrdinals = new List<int>(range.End - range.Start);
+        pass.RequestedSceneBandOrdinals = requestedSceneBandOrdinals;
+        for (int i = range.Start; i < range.End; i++)
+        {
+            int ordinal = scenePlacements.GetBlockOrdinal(i);
+            LayoutRootPlacement placement = scenePlacements.GetPlacement(ordinal);
+            if (!visibleVectorBand.Intersects(placement.Top, placement.Bottom))
+                continue;
+            if (_geometry.LazyLayoutEnabled && _geometry.MeasuredTopLevelBlocks is not null &&
+                !_geometry.MeasuredTopLevelBlocks[ordinal])
+            {
+                // The realization band must include the actual
+                // viewport; never attach a native scene to estimated
+                // geometry and pretend that scene is visible-ready.
+                throw new InvalidOperationException(
+                    "The requested visible vector band contains an unrealized top-level block.");
+            }
+            requestedSceneBandOrdinals.Add(ordinal);
+        }
+
+        pass.NativeSceneResourcesChanged = residencyPolicy.ReplaceActiveBand(
+            requestedSceneBandOrdinals,
+            visibleVectorBand,
+            scenePlacements,
+            _geometry.TopLevelOrdinalByBlockIndex,
+            pass.CancellationToken);
+    }
+
+    private void RollBackFailedRealizationNoLock(
+        LazyBandRealizationPass pass,
+        LazyLayoutBand visibleVectorBand,
+        Exception realizationFailure)
+    {
+        int firstMeasureAttempted = pass.FirstMeasureAttempted;
+        // Even when outer bounds and measured bits are rolled back,
+        // Measure/Arrange may have changed nested native state. A
+        // canceled pass after its first attempted root is not a
+        // certifiable snapshot repair; only replacement can recover it.
+        if (firstMeasureAttempted < _geometry.Blocks.Count)
+            _recovery.MarkGeometryRecoveryRequiredNoLock(realizationFailure);
+
+        // A failed preparation may have created a prefix of the new
+        // band before cancellation/device loss. Release those unpinned
+        // resources while candidate geometry is still available; the
+        // policy's own transactional catch is defensive duplication.
+        if (pass.RequestedSceneBandOrdinals is { } requestedSceneBandOrdinals &&
+            _vectorSceneResidencyPolicy is { } failedBandPolicy)
+        {
             try
             {
-                _geometry.PublishCommittedMetadataNoLock();
-                _geometry.PaintOnlyGeometryTainted = priorPaintOnlyGeometryTainted;
-                LazyLayoutCommit commit = measuredOrdinals is { Count: > 0 }
-                    ? new LazyLayoutCommit(
-                        true,
-                        measuredOrdinals.Count,
-                        oldHeight,
-                        _geometry.Size.Height,
-                        _geometry.LayoutRevision)
-                    : LazyLayoutCommit.Unchanged(_geometry.Size.Height, _geometry.LayoutRevision);
-                return commit with
-                {
-                    NativeSceneResourcesChanged = nativeSceneResourcesChanged,
-                    SceneGraphRebindRequired = _vectorSceneResidencyPolicy?.HasPendingGraphRebinds == true,
-                };
+                failedBandPolicy.ReleaseUnpinnedResources(
+                    requestedSceneBandOrdinals,
+                    visibleVectorBand,
+                    _geometry.CurrentPlacementGenerationNoLock(),
+                    _geometry.TopLevelOrdinalByBlockIndex);
             }
-            catch (Exception failure)
+            catch
             {
-                if (firstMeasureAttempted < _geometry.Blocks.Count)
-                    _recovery.MarkGeometryRecoveryRequiredNoLock(failure);
-                throw;
+                // Keep the original measurement/preparation failure.
             }
+        }
+
+        // Measure can mutate a box before observing cancellation or a
+        // device-loss exception. Restore the last logically committed
+        // measured/estimated arrangement before another thread can
+        // inspect this snapshot.
+        _measurement.RestoreMeasuredOrdinalsNoLock(pass);
+        _geometry.LayoutRevision = pass.OldRevision;
+        // Include the predecessor: an unsuccessful Measure may also
+        // have changed the attempted root's safe-HTML flow identity.
+        try
+        {
+            using var rollbackScope = LayoutPassCancellation.Push(CancellationToken.None);
+            if (firstMeasureAttempted < _geometry.Blocks.Count)
+            {
+                // Capacity-only residency refreshes do not mutate
+                // arrangement. In particular, eager snapshots must
+                // not trigger even a suffix Reflow when native
+                // admission is canceled or fails.
+                _geometry.ReflowNoLock(incrementRevision: false,
+                    firstOrdinal: Math.Max(0, firstMeasureAttempted - 1));
+            }
+        }
+        catch (Exception rollbackFailure)
+        {
+            if (firstMeasureAttempted < _geometry.Blocks.Count)
+                _recovery.MarkGeometryRecoveryRequiredNoLock(realizationFailure, rollbackFailure);
+
+            // A custom/native Arrange can fail again during recovery.
+            // Do not expose partially restored bounds under the previous
+            // revision. Retirement rejects new read/paint leases and
+            // drains resources asynchronously after this gate releases.
+            _geometry.LazyReflowContinuationRevision = null;
+            _ = _retirement.Retire();
+            throw new AggregateException(
+                "Lazy realization and placement recovery both failed.",
+                realizationFailure, rollbackFailure);
+        }
+    }
+
+    private LazyLayoutCommit PublishRealizationNoLock(LazyBandRealizationPass pass)
+    {
+        try
+        {
+            _geometry.PublishCommittedMetadataNoLock();
+            _geometry.PaintOnlyGeometryTainted = pass.PriorPaintOnlyGeometryTainted;
+            LazyLayoutCommit commit = pass.MeasuredOrdinals is { Count: > 0 } measuredOrdinals
+                ? new LazyLayoutCommit(
+                    true,
+                    measuredOrdinals.Count,
+                    pass.OldHeight,
+                    _geometry.Size.Height,
+                    _geometry.LayoutRevision)
+                : LazyLayoutCommit.Unchanged(_geometry.Size.Height, _geometry.LayoutRevision);
+            return commit with
+            {
+                NativeSceneResourcesChanged = pass.NativeSceneResourcesChanged,
+                SceneGraphRebindRequired = _vectorSceneResidencyPolicy?.HasPendingGraphRebinds == true,
+            };
+        }
+        catch (Exception failure)
+        {
+            if (pass.FirstMeasureAttempted < _geometry.Blocks.Count)
+                _recovery.MarkGeometryRecoveryRequiredNoLock(failure);
+            throw;
         }
     }
 
