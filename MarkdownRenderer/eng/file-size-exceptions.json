@@ -62,11 +62,6 @@
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
 {
-      "path": "src/MarkdownRenderer.Svg.Resvg/Internal/WindowsWorkerProcess.cs",
-      "lines": 1297,
-      "reason": "Predates the size rule; split by responsibility in a later structure step."
-    },
-    {
       "path": "src/MarkdownRenderer.Svg.Resvg/Internal/WorkerPool.cs",
       "lines": 3262,
       "reason": "Predates the size rule; split by responsibility in a later structure step."

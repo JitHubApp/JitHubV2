@@ -12,12 +12,12 @@ public sealed class WindowsWorkerTokenIsolationContractTests
 
         Assert.Matches(
             new Regex(
-                "GetSidBytes\\(\"S-1-5-12\"\\);\\s*fixed \\(byte\\* restrictedCodeSidPointer = restrictedCodeSid\\)\\s*\\{\\s*var restrictingSid = new SidAndAttributes\\s*\\{\\s*Sid = \\(nint\\)restrictedCodeSidPointer,\\s*Attributes = 0,\\s*\\};",
+                "GetSidBytes\\(\"S-1-5-12\"\\);\\s*fixed \\(byte\\* restrictedCodeSidPointer = restrictedCodeSid\\)\\s*\\{\\s*var restrictingSid = new WorkerNativeMethods\\.SidAndAttributes\\s*\\{\\s*Sid = \\(nint\\)restrictedCodeSidPointer,\\s*Attributes = 0,\\s*\\};",
                 RegexOptions.CultureInvariant),
             source);
         Assert.Matches(
             new Regex(
-                "CreateRestrictedToken\\(\\s*sourceToken,\\s*DisableMaxPrivilege,\\s*0,\\s*0,\\s*0,\\s*0,\\s*1,\\s*\\(nint\\)\\(&restrictingSid\\),\\s*out SafeTokenHandle restrictedToken\\)",
+                "WorkerNativeMethods\\.CreateRestrictedToken\\(\\s*sourceToken,\\s*WorkerNativeMethods\\.DisableMaxPrivilege,\\s*0,\\s*0,\\s*0,\\s*0,\\s*1,\\s*\\(nint\\)\\(&restrictingSid\\),\\s*out SafeTokenHandle restrictedToken\\)",
                 RegexOptions.CultureInvariant),
             source);
     }
@@ -34,7 +34,7 @@ public sealed class WindowsWorkerTokenIsolationContractTests
                 "src",
                 "MarkdownRenderer.Svg.Resvg",
                 "Internal",
-                "WindowsWorkerProcess.cs");
+                "WorkerProcessSandbox.cs");
             if (File.Exists(sourcePath))
                 return sourcePath;
         }

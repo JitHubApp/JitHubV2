@@ -709,7 +709,7 @@ public sealed class ResvgProviderTests
     [Fact]
     public void RestrictedWorkerEnvironment_IsAllowlistedAndOmitsHostSecrets()
     {
-        string block = new(WindowsWorkerProcess.BuildSanitizedEnvironment());
+        string block = new(WorkerProcessSandbox.BuildSanitizedEnvironment());
         string[] entries = block.Split('\0', StringSplitOptions.RemoveEmptyEntries);
         Assert.Equal(
             ["LOCALAPPDATA", "SystemRoot", "TEMP", "TMP", "USERPROFILE", "WINDIR"],

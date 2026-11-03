@@ -387,8 +387,8 @@ public sealed partial class WorkerTransportFaultTests
                 typeof(WorkerObjectSecurity.WorkerObjectSecurityContext),
             ],
             modifiers: null) ?? throw new InvalidOperationException("The internal worker constructor was not found.");
-        using WindowsWorkerProcess.SafeTokenHandle primaryToken =
-            WindowsWorkerProcess.OpenCurrentPrimaryTokenForWorker();
+        using SafeTokenHandle primaryToken =
+            WorkerProcessSandbox.OpenCurrentPrimaryTokenForWorker();
         var objectSecurity = WorkerObjectSecurity.CreateForPrimaryToken(primaryToken);
         try
         {

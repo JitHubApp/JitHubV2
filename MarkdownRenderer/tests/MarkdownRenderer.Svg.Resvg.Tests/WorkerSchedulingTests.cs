@@ -181,7 +181,7 @@ public sealed class WorkerSchedulingTests
     public async Task RestartReleasesTheSingleProcessJobSlotBeforeStartingAnotherWorker()
     {
         var options = new ResvgMarkdownSvgRendererOptions();
-        using var job = WindowsWorkerProcess.CreateConstrainedJob(
+        using var job = WorkerProcessSandbox.CreateConstrainedJob(
             options.WorkerCommitBytes,
             activeProcessLimit: 1);
         string executable = Path.Combine(AppContext.BaseDirectory, WorkerProtocol.WorkerFileName);
@@ -194,14 +194,14 @@ public sealed class WorkerSchedulingTests
                 job,
                 CancellationToken.None);
             Assert.False(worker.HasExited);
-            WindowsWorkerProcess.WorkerMemorySnapshot memory = worker.GetProcessMemorySnapshot();
+            WorkerMemorySnapshot memory = worker.GetProcessMemorySnapshot();
             Assert.True(memory.WorkingSetKiB > 0);
             Assert.True(memory.PrivateCommitKiB > 0,
                 $"working={memory.WorkingSetKiB}, private={memory.PrivateCommitKiB}, faults={memory.PageFaults}");
             Assert.True(memory.PageFaults >= 0);
             worker.DisposeForRestart();
             Assert.Equal(
-                WindowsWorkerProcess.WorkerMemorySnapshot.Unavailable,
+                WorkerMemorySnapshot.Unavailable,
                 worker.GetProcessMemorySnapshot());
         }
     }
@@ -211,7 +211,7 @@ public sealed class WorkerSchedulingTests
     {
         using var listener = new TimeoutListener();
         var options = new ResvgMarkdownSvgRendererOptions();
-        using var job = WindowsWorkerProcess.CreateConstrainedJob(
+        using var job = WorkerProcessSandbox.CreateConstrainedJob(
             options.WorkerCommitBytes,
             activeProcessLimit: 1);
         string executable = Path.Combine(AppContext.BaseDirectory, WorkerProtocol.WorkerFileName);

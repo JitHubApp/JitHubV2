@@ -19,7 +19,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
     private readonly Func<string, int, SharedMemoryLease>? _outputMemoryFactory;
     private readonly bool _supportsSecondaryHardware;
     private readonly SvgWorkerPolicyTrace _workerPolicyTrace;
-    private readonly Lazy<WindowsWorkerProcess.WorkerJob> _job;
+    private readonly Lazy<WorkerJob> _job;
     private readonly CancellationTokenSource _disposeCancellation = new();
     private readonly TaskCompletionSource _shutdown = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly WorkerLifetimeRegistry<WindowsWorkerProcess> _workerLifetimes = new();
@@ -77,8 +77,8 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
             RuntimeInformation.ProcessArchitecture,
             Environment.ProcessorCount,
             energySaverOn: false);
-        _job = new Lazy<WindowsWorkerProcess.WorkerJob>(
-            () => WindowsWorkerProcess.CreateConstrainedJob(
+        _job = new Lazy<WorkerJob>(
+            () => WorkerProcessSandbox.CreateConstrainedJob(
                 options.WorkerCommitBytes,
                 _supportsSecondaryHardware ? 2 : 1),
             LazyThreadSafetyMode.ExecutionAndPublication);
@@ -737,9 +737,9 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
         int workerCpuMilliseconds = workerCpuAtStart >= 0 && workerCpuAtTimeout >= workerCpuAtStart
             ? (int)Math.Min((workerCpuAtTimeout - workerCpuAtStart) / 10_000, int.MaxValue)
             : -1;
-        WindowsWorkerProcess.WorkerMemorySnapshot memory = WorkerTimeoutEvents.Log.IsEnabled()
+        WorkerMemorySnapshot memory = WorkerTimeoutEvents.Log.IsEnabled()
             ? worker.GetProcessMemorySnapshot()
-            : WindowsWorkerProcess.WorkerMemorySnapshot.Unavailable;
+            : WorkerMemorySnapshot.Unavailable;
         WorkerTimeoutEvents.Log.Timeout(
             (int)WorkerOperation.Hello,
             (int)WorkerSchedulingPolicy.InitializationDeadline.TotalMilliseconds,

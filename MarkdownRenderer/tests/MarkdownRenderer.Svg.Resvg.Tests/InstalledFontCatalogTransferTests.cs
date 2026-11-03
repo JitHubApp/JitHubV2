@@ -13,8 +13,8 @@ public sealed partial class InstalledFontCatalogTransferTests
     public void CreateBuildsFixedLittleEndianCatalogAndReadOnlyNonInheritableFontAndTableHandles()
     {
         using Process currentProcess = Process.GetCurrentProcess();
-        using WindowsWorkerProcess.SafeTokenHandle sourceToken =
-            WindowsWorkerProcess.OpenCurrentPrimaryTokenForWorker();
+        using SafeTokenHandle sourceToken =
+            WorkerProcessSandbox.OpenCurrentPrimaryTokenForWorker();
         using WorkerObjectSecurity.WorkerObjectSecurityContext objectSecurity =
             WorkerObjectSecurity.CreateForPrimaryToken(sourceToken);
         var transfer = InstalledFontCatalogTransfer.Create(

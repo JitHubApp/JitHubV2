@@ -80,11 +80,11 @@ public sealed partial class WorkerStartupTokenPolicyTests
     [Fact]
     public void BootstrapIsX86OnlyAfterJobAssignmentAndBeforeResume()
     {
-        string source = ReadSource("Internal", "WindowsWorkerProcess.cs");
+        string source = ReadSource("Internal", "WorkerProcessSandbox.cs");
         string contract = "job.Assign(process);\n" +
             "                                if (RuntimeInformation.ProcessArchitecture == Architecture.X86)\n" +
             "                                    AttachX86StartupToken(thread, sourceToken, objectSecurity);\n" +
-            "                                if (ResumeThread(thread) == uint.MaxValue)";
+            "                                if (WorkerNativeMethods.ResumeThread(thread) == uint.MaxValue)";
         Assert.Contains(contract, source.Replace("\r\n", "\n"), StringComparison.Ordinal);
     }
 
