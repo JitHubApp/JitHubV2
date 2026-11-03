@@ -37,7 +37,7 @@ internal sealed class WorkerScheduler :
     private readonly TimeProvider _timeProvider;
     private readonly WorkerEnergySaver _energySaver;
     private readonly bool _supportsSecondaryHardware;
-    private readonly SvgWorkerPolicyTrace _workerPolicyTrace;
+    private readonly WorkerPolicyRecorder _policyRecorder;
     private readonly CancellationTokenSource _disposeCancellation = new();
     private TaskCompletionSource _queueCapacityChanged =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -61,7 +61,7 @@ internal sealed class WorkerScheduler :
         _timeProvider = timeProvider;
         _energySaver = new WorkerEnergySaver(isEnergySaverOn);
         _supportsSecondaryHardware = supportsSecondaryHardware;
-        _workerPolicyTrace = workerPolicyTrace;
+        _policyRecorder = new WorkerPolicyRecorder(workerPolicyTrace, requests, _primary);
         _warmup = new SecondaryWorkerWarmup(this, requests, options);
         _idleRetirement = new SecondaryIdleRetirement(this, _fleet, timeProvider);
         _preemption = new CanceledWorkPreemption(this, _fleet, timeProvider);
@@ -517,20 +517,15 @@ internal sealed class WorkerScheduler :
                     WorkerFontWaitAdmissionPolicy.CountVisibleDemand(
                         _queue.VisibleRenderCount,
                         _detachedFontWaits.VisibleRenderCount));
-            long decisionSequence = 0;
-            SvgWorkerPolicySnapshot policySnapshot = default;
-            if (_workerPolicyTrace.IsEnabled &&
-                (_queue.VisibleOpenCount > 0 || _queue.VisibleRenderCount > 0 || _secondary is not null))
-            {
-                policySnapshot = CreateWorkerPolicySnapshot(
-                    (int)SvgWorkerPolicyPhase.Evaluated,
-                    decisionSequence: 0,
-                    energySaverOn,
-                    energySaverQueryFailed,
-                    canUseSecondary,
-                    shouldStartSecondary);
-                decisionSequence = _workerPolicyTrace.Record(policySnapshot);
-            }
+            long decisionSequence = _policyRecorder.RecordEvaluated(
+                _secondary,
+                _queue.VisibleOpenCount,
+                _queue.VisibleRenderCount,
+                energySaverOn,
+                energySaverQueryFailed,
+                canUseSecondary,
+                shouldStartSecondary,
+                out SvgWorkerPolicySnapshot policySnapshot);
             if (shouldStartSecondary)
             {
                 var newSecondary = new WorkerSlot(isSecondary: true);
@@ -867,40 +862,8 @@ internal sealed class WorkerScheduler :
         }
     }
 
-    private SvgWorkerPolicySnapshot CreateWorkerPolicySnapshot(
-        int phase,
-        long decisionSequence,
-        bool energySaverOn,
-        bool energySaverQueryFailed,
-        bool canUseSecondary,
-        bool shouldStartSecondary) =>
-        WorkerPolicySnapshots.Create(
-            phase,
-            decisionSequence,
-            energySaverOn,
-            energySaverQueryFailed,
-            canUseSecondary,
-            shouldStartSecondary,
-            _primary,
-            _secondary,
-            _queue.VisibleOpenCount,
-            _queue.VisibleRenderCount,
-            _requests.FontGeneration);
-
-    private void RecordWorkerPolicyPhaseLocked(WorkerSlot slot, SvgWorkerPolicyPhase phase)
-    {
-        if (slot.PolicyDecisionSequence == 0)
-            return;
-
-        SvgWorkerPolicySnapshot current = CreateWorkerPolicySnapshot(
-            (int)phase,
-            slot.PolicyDecisionSequence,
-            slot.PolicySnapshot.EnergySaverOn != 0,
-            slot.PolicySnapshot.EnergySaverQueryFailed != 0,
-            slot.PolicySnapshot.CanUseSecondary != 0,
-            slot.PolicySnapshot.ShouldStartSecondary != 0);
-        _workerPolicyTrace.Record(current);
-    }
+    private void RecordWorkerPolicyPhaseLocked(WorkerSlot slot, SvgWorkerPolicyPhase phase) =>
+        _policyRecorder.RecordPhase(slot, phase, _secondary, _queue.VisibleOpenCount, _queue.VisibleRenderCount);
 
     internal bool IsPrimaryFontCatalogReady(long requestGeneration)
     {
