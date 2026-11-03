@@ -186,7 +186,8 @@ public sealed class AutomationHarnessSourceContractTests
             "src",
             "MarkdownRenderer",
             "Controls",
-            "MarkdownRendererControl.cs"));
+            "Input",
+            "KeyboardInput.cs"));
         Assert.Contains("case VirtualKey.Application when _selection.IsActive", rendererSource, StringComparison.Ordinal);
         Assert.Contains("Use a new output directory rather than combining incompatible evidence", source, StringComparison.Ordinal);
     }
@@ -459,7 +460,15 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.True(
             embedSource.IndexOf("_host.AddImagePlan(imageRun.Image);", StringComparison.Ordinal) <
             embedSource.IndexOf("foreach (var _ in icb.EnumerateInlineImageRects())", StringComparison.Ordinal));
-        Assert.Contains("void IEmbedRealizationHost.AddImagePlan(ImageBox image) => AddImagePlan(image);", source, StringComparison.Ordinal);
+        string embedHostsSource = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "src",
+            "MarkdownRenderer",
+            "Controls",
+            "Composition",
+            "EmbedHosts.cs"));
+        Assert.Contains("void IEmbedRealizationHost.AddImagePlan(ImageBox image) => AddImagePlan(image);", embedHostsSource, StringComparison.Ordinal);
         string subscriptionSource = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "MarkdownRenderer",
@@ -468,7 +477,7 @@ public sealed class AutomationHarnessSourceContractTests
             "Controls",
             "Images",
             "ImageSubscriptions.cs"));
-        Assert.Contains("if (!_imageSubscriptions.Subscribe(image))", source, StringComparison.Ordinal);
+        Assert.Contains("if (!Owners.ImageSubscriptions.Subscribe(image))", embedHostsSource, StringComparison.Ordinal);
         Assert.Contains("image.LoadCompleted += OnImageLoadCompleted;", subscriptionSource, StringComparison.Ordinal);
         string completionSource = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
@@ -478,9 +487,16 @@ public sealed class AutomationHarnessSourceContractTests
             "Controls",
             "Images",
             "ImageLoadCompletion.cs"));
-        Assert.Contains("_imageSubscriptions.LoadCompleted += _imageLoadCompletion.OnLoadCompleted;", source, StringComparison.Ordinal);
+        Assert.Contains("imageSubscriptions.LoadCompleted += imageLoadCompletion.OnLoadCompleted;", source, StringComparison.Ordinal);
         Assert.Contains("_imageSubscriptions.Contains(completedImage)", completionSource, StringComparison.Ordinal);
-        Assert.Contains("_imageSubscriptions.UnsubscribeAll();", source, StringComparison.Ordinal);
+        string attachmentSource = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "src",
+            "MarkdownRenderer",
+            "Controls",
+            "ViewAttachment.cs"));
+        Assert.Contains("_imageSubscriptions.UnsubscribeAll();", attachmentSource, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -527,7 +543,15 @@ public sealed class AutomationHarnessSourceContractTests
             "Images",
             "ImageLoadCompletion.cs"));
         Assert.Contains("_imageRelayout.Queue(completedImage.BlockIndex);", completionSource, StringComparison.Ordinal);
-        Assert.Contains("void IImageRelayoutHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);", controlSource, StringComparison.Ordinal);
+        string imageHostsSource = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "src",
+            "MarkdownRenderer",
+            "Controls",
+            "Composition",
+            "ImageHosts.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
+        Assert.Contains("void IImageRelayoutHost.RequestFullRebuild() => Owners.Rebuild.Request(RebuildReason.Full);", imageHostsSource, StringComparison.Ordinal);
         int queueStart = relayoutSource.IndexOf("internal void Queue(int blockIndex)", StringComparison.Ordinal);
         int queueEnd = relayoutSource.IndexOf("internal void QueueFirstPending()", queueStart, StringComparison.Ordinal);
         Assert.True(queueStart >= 0 && queueEnd > queueStart);
@@ -587,8 +611,15 @@ public sealed class AutomationHarnessSourceContractTests
             clockSource,
             StringComparison.Ordinal);
         Assert.Contains(
-            "void IRecoveryClockHost.ProcessRecoveryTick() => ProcessRecoveryTick();",
-            controlSource,
+            "void IRecoveryClockHost.ProcessRecoveryTick() => Owners.RecoveryWork.ProcessTick();",
+            File.ReadAllText(Path.Combine(
+                FindRepositoryRoot(),
+                "MarkdownRenderer",
+                "src",
+                "MarkdownRenderer",
+                "Controls",
+                "Composition",
+                "LayoutHosts.cs")),
             StringComparison.Ordinal);
 
         string weakRecoveryTimer = File.ReadAllText(Path.Combine(
@@ -603,11 +634,18 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("if (!TryGetLiveTarget(out _))", weakRecoveryTimer, StringComparison.Ordinal);
         Assert.Contains("private bool TryGetLiveTarget(out T? target) => _target.TryGetTarget(out target);", weakRecoveryTimer, StringComparison.Ordinal);
 
-        int recoveryTickStart = controlSource.IndexOf("private void ProcessRecoveryTick(", StringComparison.Ordinal);
-        int recoveryTickEnd = controlSource.IndexOf("private void StopRecoveryClock(", recoveryTickStart, StringComparison.Ordinal);
+        string recoveryWorkSource = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "MarkdownRenderer",
+            "src",
+            "MarkdownRenderer",
+            "Controls",
+            "RecoveryClockWork.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
+        int recoveryTickStart = recoveryWorkSource.IndexOf("internal void ProcessTick(", StringComparison.Ordinal);
+        int recoveryTickEnd = recoveryWorkSource.IndexOf("internal void Stop(", recoveryTickStart, StringComparison.Ordinal);
         Assert.True(recoveryTickEnd > recoveryTickStart);
-        string recoveryTick = controlSource[recoveryTickStart..recoveryTickEnd];
-        Assert.Contains("private void ProcessRecoveryTick()", recoveryTick, StringComparison.Ordinal);
+        string recoveryTick = recoveryWorkSource[recoveryTickStart..recoveryTickEnd];
+        Assert.Contains("internal void ProcessTick()", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("_imageSubscriptions.ProcessBitmapOutputRecovery();", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("_imageRelayout.ProcessQueued();", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("internal void ProcessQueued() => ProcessQueued(_dispatchTicket);", relayoutSource, StringComparison.Ordinal);
@@ -630,9 +668,9 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("_overflowScroll.ProcessPendingRetry();", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("_focusGeometryWork.Process();", recoveryTick, StringComparison.Ordinal);
         Assert.Matches(
-            "if\\s*\\(_lifetime\\.IsDisposed \\|\\| _lifetime\\.IsUnloaded\\)\\s*StopRecoveryClock\\(force: true\\);",
+            "if\\s*\\(_lifetime\\.IsDisposed \\|\\| _lifetime\\.IsUnloaded\\)\\s*Stop\\(force: true\\);",
             recoveryTick);
-        Assert.Contains("StopRecoveryClockIfIdle();", recoveryTick, StringComparison.Ordinal);
+        Assert.Contains("StopIfIdle();", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("catch (Exception exception)", recoveryTick, StringComparison.Ordinal);
 
         int processStart = relayoutSource.IndexOf("internal void ProcessQueued(long ticket)", StringComparison.Ordinal);
@@ -640,7 +678,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.True(processStart >= 0 && completionStart > processStart);
         string process = relayoutSource[processStart..completionStart];
         Assert.Contains("if (_host.DefersToRebuild())", process, StringComparison.Ordinal);
-        Assert.Contains("bool IImageRelayoutHost.DefersToRebuild() => _rebuild.DefersToRebuild();", controlSource, StringComparison.Ordinal);
+        Assert.Contains("bool IImageRelayoutHost.DefersToRebuild() => Owners.Rebuild.DefersToRebuild();", imageHostsSource, StringComparison.Ordinal);
         string schedulerSource = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(), "MarkdownRenderer", "src", "MarkdownRenderer", "Controls",
             "Pipeline", "RebuildScheduler.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
@@ -741,7 +779,8 @@ public sealed class AutomationHarnessSourceContractTests
             "src",
             "MarkdownRenderer",
             "Controls",
-            "MarkdownRendererControl.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
+            "Input",
+            "KeyboardInput.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
         string pointerSource = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "MarkdownRenderer",
@@ -781,8 +820,8 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("e.ShowContextMenuAfterInteraction = true;", rightTapped, StringComparison.Ordinal);
         Assert.Contains("e.TouchSelectionContextMenu = touchOrPen;", rightTapped, StringComparison.Ordinal);
 
-        int keyDownStart = source.IndexOf("private void OnKeyDown(", StringComparison.Ordinal);
-        int keyDownEnd = source.IndexOf("private bool TryGetVectorPointerState(", keyDownStart, StringComparison.Ordinal);
+        int keyDownStart = source.IndexOf("internal void OnKeyDown(", StringComparison.Ordinal);
+        int keyDownEnd = source.IndexOf("internal void OnHostedEmbedKeyDown(", keyDownStart, StringComparison.Ordinal);
         Assert.True(keyDownStart >= 0 && keyDownEnd > keyDownStart);
         string keyDown = source[keyDownStart..keyDownEnd];
         Assert.Contains("case VirtualKey.F10 when shift && _selection.IsActive:", keyDown, StringComparison.Ordinal);

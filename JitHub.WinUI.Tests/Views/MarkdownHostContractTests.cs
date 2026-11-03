@@ -272,8 +272,13 @@ public sealed class MarkdownHostContractTests
         Assert.Contains("context.IsDisclosureExpanded", renderer, StringComparison.Ordinal);
         Assert.Contains("if (!expanded)", renderer, StringComparison.Ordinal);
         Assert.Contains("DisclosureId = disclosureId", renderer, StringComparison.Ordinal);
-        Assert.Contains("_disclosureStates.Clear()", control, StringComparison.Ordinal);
-        Assert.Contains("DisclosureStates = new Dictionary<string, bool>(_disclosureStates, StringComparer.Ordinal)", control, StringComparison.Ordinal);
+        string documentInputs = File.ReadAllText(Path.Combine(
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Pipeline", "DocumentInputs.cs"));
+        string inputCapture = File.ReadAllText(Path.Combine(
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Pipeline", "RebuildInputCapture.cs"));
+        Assert.Contains("_disclosureStates.Clear()", documentInputs, StringComparison.Ordinal);
+        Assert.Contains("new(_disclosureStates, StringComparer.Ordinal)", documentInputs, StringComparison.Ordinal);
+        Assert.Contains("DisclosureStates = _documentInputs.CopyDisclosureStates()", inputCapture, StringComparison.Ordinal);
         string layoutSetup = File.ReadAllText(Path.Combine(
             root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Pipeline", "RebuildLayoutSetup.cs"));
         Assert.Contains("DisclosureStates = inputs.DisclosureStates", layoutSetup, StringComparison.Ordinal);
@@ -321,11 +326,15 @@ public sealed class MarkdownHostContractTests
         Assert.True(
             decorativeImageFilter > observeInlineRun,
             "The focus planner must observe linked images before decorative empty-alt runs are omitted from UIA semantics.");
-        Assert.Contains("TryGetFocusedLinkedAtomic", control, StringComparison.Ordinal);
+        string automation = File.ReadAllText(Path.Combine(
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "RendererAutomation.cs"));
+        string focusableItems = File.ReadAllText(Path.Combine(
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Focus", "FocusableItemsPublication.cs"));
+        Assert.Contains("TryGetFocusedLinkedAtomic", automation, StringComparison.Ordinal);
         Assert.Contains("case InlineImageRun { IsLinked: true, LinkUrl: { } imageUrl } image:", linkTargets, StringComparison.Ordinal);
         Assert.Contains("RaiseLinkedImageClickFromAutomation", control, StringComparison.Ordinal);
-        Assert.Contains("InvalidateAutomationLayout();", control, StringComparison.Ordinal);
-        Assert.Contains("FrameworkElementAutomationPeer.FromElement(this)?.InvalidatePeer();", control, StringComparison.Ordinal);
+        Assert.Contains("InvalidateAutomationLayout();", focusableItems, StringComparison.Ordinal);
+        Assert.Contains("FrameworkElementAutomationPeer.FromElement(_control)?.InvalidatePeer();", automation, StringComparison.Ordinal);
         Assert.Contains("RaiseFocusForLinkedImage", automationPeer, StringComparison.Ordinal);
         Assert.Contains("IInvokeProvider", imagePeer, StringComparison.Ordinal);
         Assert.Contains("AutomationControlType.Hyperlink", imagePeer, StringComparison.Ordinal);
@@ -348,7 +357,9 @@ public sealed class MarkdownHostContractTests
 
         Assert.Contains("CodeBlockCopyButtonStyle", control, StringComparison.Ordinal);
         Assert.Contains("CopyCompleted?.Invoke", control, StringComparison.Ordinal);
-        Assert.Contains("MarkdownCopyKind.CodeBlock", control, StringComparison.Ordinal);
+        string codeBlockClipboard = File.ReadAllText(Path.Combine(
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Embeds", "CodeBlockClipboard.cs"));
+        Assert.Contains("MarkdownCopyKind.CodeBlock", codeBlockClipboard, StringComparison.Ordinal);
         Assert.Contains("_host.RaiseCopyCompleted(MarkdownCopyKind.Selection", selectionCommands, StringComparison.Ordinal);
         Assert.Contains("_renderer.CopyCompleted += OnRendererCopyCompleted", viewer, StringComparison.Ordinal);
         Assert.Contains("AppToolbarButtonStyle", viewer, StringComparison.Ordinal);
@@ -774,7 +785,8 @@ public sealed class MarkdownHostContractTests
             "src",
             "MarkdownRenderer",
             "Controls",
-            "MarkdownRendererControl.cs"));
+            "Pipeline",
+            "ReplacementPublisher.cs"));
         Assert.Contains("bool sameDocumentIdentity = _committedImageDocumentId == imageDocumentId", renderer, StringComparison.Ordinal);
         Assert.Contains("string? imageDocumentId = plan.Inputs.ImageDocumentSource?.DocumentId;", renderer, StringComparison.Ordinal);
         Assert.Contains("ReplacementScrollAnchor? scrollAnchor = sameDocumentIdentity", renderer, StringComparison.Ordinal);
