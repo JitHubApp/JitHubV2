@@ -2598,6 +2598,23 @@ internal sealed partial class InlineContainerBox : BlockBox
     public IEnumerable<(InlineEmbedRun Run, Rect Rect)> EnumerateEmbedRects()
         => InlineObjectGeometry.EnumerateEmbedRects(this);
 
+    /// <summary>
+    /// Returns the per-run inline-image x-height cache for the current run
+    /// sequence, replacing a missing or stale array. Zero entries are
+    /// unresolved; negative entries record a stable fallback.
+    /// </summary>
+    internal float[] GetOrCreateInlineImageXHeightCache()
+    {
+        float[]? metrics = _inlineImageXHeightByRunIndex;
+        if (metrics is null || metrics.Length != _runs.Count)
+        {
+            metrics = new float[_runs.Count];
+            _inlineImageXHeightByRunIndex = metrics;
+        }
+
+        return metrics;
+    }
+
     private float ResolveInlineImageXHeightDipForMeasurement(
         InlineImageRun image,
         ref CanvasTextAnalyzer? analyzer,
@@ -2609,13 +2626,7 @@ internal sealed partial class InlineContainerBox : BlockBox
             return 0f;
         }
 
-        float[]? metrics = _inlineImageXHeightByRunIndex;
-        if (metrics is null || metrics.Length != _runs.Count)
-        {
-            metrics = new float[_runs.Count];
-            _inlineImageXHeightByRunIndex = metrics;
-        }
-
+        float[] metrics = GetOrCreateInlineImageXHeightCache();
         int runIndex = image.InlineIndex;
         if ((uint)runIndex >= (uint)metrics.Length)
             return 0f;
