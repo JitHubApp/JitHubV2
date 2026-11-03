@@ -24,19 +24,19 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
     private readonly VectorNativeResourceAdmission? _nativeAdmission;
     private readonly MarkdownVectorSceneEstimateCache _estimates;
     private LazyLayoutBand? _pendingGraphBand;
-    private Dictionary<object, SceneEntry> _activeScenes =
+    private Dictionary<object, VectorSceneResidencyEntry> _activeScenes =
         new(ReferenceEqualityComparer.Instance);
     // Pending fallback/rebound native resources are owned separately from the
     // last committed band. Superseding a pending band retires these pins without
     // touching the still-good committed band.
-    private readonly Dictionary<object, SceneEntry> _transientScenes =
+    private readonly Dictionary<object, VectorSceneResidencyEntry> _transientScenes =
         new(ReferenceEqualityComparer.Instance);
     private Dictionary<InlineContainerBox, InlineSceneGeometryIndex> _activeInlineSceneIndexes =
         new(ReferenceEqualityComparer.Instance);
     // LayoutSnapshot serializes policy calls with its paint/read lock. Reuse
     // this buffer for readiness probes so they do not retain a second document
     // graph or allocate a fresh per-scene array on every viewport check.
-    private readonly List<SceneEntry> _readinessScratch = [];
+    private readonly List<VectorSceneResidencyEntry> _readinessScratch = [];
     private readonly HashSet<object> _readinessSeen = new(ReferenceEqualityComparer.Instance);
     private readonly List<string> _visibleDeferredSceneMarkerScratch = [];
     private LazyLayoutBand? _activeBand;
@@ -85,8 +85,8 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
             return false;
         // Reserve the pin before adoption: even an allocation failure cannot
         // leave a prepared replacement outside policy retirement ownership.
-        bool wasTracked = _transientScenes.TryGetValue(box, out SceneEntry previous);
-        _transientScenes[box] = new SceneEntry(box, estimate);
+        bool wasTracked = _transientScenes.TryGetValue(box, out VectorSceneResidencyEntry previous);
+        _transientScenes[box] = new VectorSceneResidencyEntry(box, estimate);
         try
         {
             box.AdoptPreparedReplacement(replacement);
@@ -99,9 +99,9 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
                 _transientScenes.Remove(box);
             throw;
         }
-        if (_activeScenes.TryGetValue(box, out SceneEntry priorActive))
+        if (_activeScenes.TryGetValue(box, out VectorSceneResidencyEntry priorActive))
         {
-            _activeScenes[box] = new SceneEntry(box, estimate);
+            _activeScenes[box] = new VectorSceneResidencyEntry(box, estimate);
             _transientScenes.Remove(box);
             _activeEstimatedBytes = SaturatingAdd(
                 Math.Max(0, _activeEstimatedBytes - priorActive.EstimatedBytes), estimate);
@@ -125,7 +125,7 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
         get
         {
             long estimate = _activeEstimatedBytes;
-            foreach (SceneEntry entry in _transientScenes.Values)
+            foreach (VectorSceneResidencyEntry entry in _transientScenes.Values)
                 estimate = SaturatingAdd(estimate, entry.EstimatedBytes);
             return estimate;
         }
@@ -358,7 +358,7 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
         IReadOnlyDictionary<int, int> topLevelOrdinalByBlockIndex)
     {
         if (_disposed || placements is null || topLevelOrdinalByBlockIndex is null ||
-            placements.Count != _blocks.Count || !IsValidBand(band))
+            placements.Count != _blocks.Count || !VectorSceneBandGeometry.IsValidBand(band))
             return false;
 
         foreach (object owner in _activeScenes.Keys)
@@ -384,7 +384,7 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
         bool acceptTerminalFailure)
     {
         if (_disposed || topLevelOrdinals is null || placements is null ||
-            topLevelOrdinalByBlockIndex is null || placements.Count != _blocks.Count || !IsValidBand(band))
+            topLevelOrdinalByBlockIndex is null || placements.Count != _blocks.Count || !VectorSceneBandGeometry.IsValidBand(band))
             return false;
 
         _readinessScratch.Clear();
@@ -435,11 +435,11 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
             if (_readinessScratch.Count > _activeScenes.Count)
                 return false;
 
-            foreach (SceneEntry entry in _readinessScratch)
+            foreach (VectorSceneResidencyEntry entry in _readinessScratch)
             {
                 if (!_activeScenes.ContainsKey(entry.Owner) ||
-                    (!IsPrepared(entry) && !(acceptTerminalFailure &&
-                        (IsCapacityFallback(entry) ||
+                    (!entry.IsPrepared && !(acceptTerminalFailure &&
+                        (entry.IsCapacityFallback ||
                          entry.Owner is VectorSceneBox { IsGraphDetached: true, GraphRebindFailed: true }))))
                     return false;
             }
@@ -464,14 +464,14 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
         ArgumentNullException.ThrowIfNull(topLevelOrdinals);
         ArgumentNullException.ThrowIfNull(placements);
         ArgumentNullException.ThrowIfNull(topLevelOrdinalByBlockIndex);
-        if (placements.Count != _blocks.Count || !IsValidBand(band))
+        if (placements.Count != _blocks.Count || !VectorSceneBandGeometry.IsValidBand(band))
             throw new ArgumentOutOfRangeException(nameof(band));
 
         _pendingGraphRebinds.Clear();
         _pendingGraphBand = null;
 
-        List<SceneEntry> requested = [];
-        var requestedByOwner = new Dictionary<object, SceneEntry>(ReferenceEqualityComparer.Instance);
+        List<VectorSceneResidencyEntry> requested = [];
+        var requestedByOwner = new Dictionary<object, VectorSceneResidencyEntry>(ReferenceEqualityComparer.Instance);
         var requestedInlineIndexes = new Dictionary<InlineContainerBox, InlineSceneGeometryIndex>(
             ReferenceEqualityComparer.Instance);
         var seen = new HashSet<object>(ReferenceEqualityComparer.Instance);
@@ -501,15 +501,15 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
                     "Visible vector-scene layout geometry is unavailable; native resources were not published.");
         }
 
-        List<SceneEntry>? obsoleteTransient = null;
-        foreach ((object owner, SceneEntry entry) in _transientScenes)
+        List<VectorSceneResidencyEntry>? obsoleteTransient = null;
+        foreach ((object owner, VectorSceneResidencyEntry entry) in _transientScenes)
         {
             if (!seen.Contains(owner))
                 (obsoleteTransient ??= []).Add(entry);
         }
         if (obsoleteTransient is not null)
         {
-            foreach (SceneEntry entry in obsoleteTransient)
+            foreach (VectorSceneResidencyEntry entry in obsoleteTransient)
                 _transientScenes.Remove(entry.Owner);
             ReleaseEntriesBestEffort(obsoleteTransient, _activeScenes, detachGraphs: true);
         }
@@ -519,12 +519,12 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
         // then let the active lazy request await refill outside this lock/queue
         // slot. No detached owner may be dereferenced through Scene below.
         bool fallbackChanged = false;
-        foreach (SceneEntry entry in requested)
+        foreach (VectorSceneResidencyEntry entry in requested)
         {
             if (entry.Owner is VectorSceneBox { IsGraphDetached: true } box)
             {
                 if (!_activeScenes.ContainsKey(box))
-                    _transientScenes.TryAdd(box, new SceneEntry(box, 8_192));
+                    _transientScenes.TryAdd(box, new VectorSceneResidencyEntry(box, 8_192));
                 fallbackChanged |= box.PrepareDetachedFallback(cancellationToken, MarkdownDetachedSceneFallback.Create);
                 if (!box.GraphRebindFailed)
                     _pendingGraphRebinds.Add(box);
@@ -547,7 +547,7 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
         {
             cancellationToken.ThrowIfCancellationRequested();
             object owner = requested[index].Owner;
-            if (_activeScenes.TryGetValue(owner, out SceneEntry retained) ||
+            if (_activeScenes.TryGetValue(owner, out VectorSceneResidencyEntry retained) ||
                 _transientScenes.TryGetValue(owner, out retained))
             {
                 // The command graph is immutable. Moving the band boundary
@@ -562,7 +562,7 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
                 // A typed failed-refill source fallback remains unready, but
                 // must still join the pin band so leaving it retires its small
                 // native text layout. This is a diagnostic weight, not bytes.
-                var fallbackEntry = new SceneEntry(owner, 8_192);
+                var fallbackEntry = new VectorSceneResidencyEntry(owner, 8_192);
                 requested[index] = fallbackEntry;
                 requestedByOwner.Add(owner, fallbackEntry);
                 continue;
@@ -573,7 +573,7 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
                 InlineVectorSceneRun run => run.Scene,
                 _ => throw new InvalidOperationException("The residency band contains an unsupported scene owner."),
             };
-            var entry = new SceneEntry(owner, GetPreparedResourceEstimateForRebind(scene, cancellationToken));
+            var entry = new VectorSceneResidencyEntry(owner, GetPreparedResourceEstimateForRebind(scene, cancellationToken));
             requested[index] = entry;
             requestedByOwner.Add(owner, entry);
         }
@@ -585,14 +585,14 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
             // Prepare the incoming set first. The old band remains pinned until
             // every visible item in the new band is ready, preventing blank
             // frames at a viewport transition.
-            foreach (SceneEntry entry in requested)
+            foreach (VectorSceneResidencyEntry entry in requested)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (entry.Owner is VectorSceneBox { IsGraphDetached: true })
                     continue;
-                if (!IsPrepared(entry))
+                if (!entry.IsPrepared)
                     resourcesChanged = true;
-                Prepare(entry, cancellationToken);
+                entry.Prepare(cancellationToken);
             }
             cancellationToken.ThrowIfCancellationRequested();
         }
@@ -603,8 +603,8 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
         }
 
         bool changed = resourcesChanged || requestedByOwner.Count != _activeScenes.Count;
-        List<SceneEntry>? retired = null;
-        foreach ((object owner, SceneEntry active) in _activeScenes)
+        List<VectorSceneResidencyEntry>? retired = null;
+        foreach ((object owner, VectorSceneResidencyEntry active) in _activeScenes)
         {
             if (!requestedByOwner.ContainsKey(owner))
             {
@@ -612,7 +612,7 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
                 (retired ??= []).Add(active);
             }
         }
-        foreach ((object owner, SceneEntry transient) in _transientScenes)
+        foreach ((object owner, VectorSceneResidencyEntry transient) in _transientScenes)
         {
             if (!requestedByOwner.ContainsKey(owner) && !_activeScenes.ContainsKey(owner))
                 (retired ??= []).Add(transient);
@@ -624,7 +624,7 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
         // Publish the complete incoming pin set before releasing the outgoing
         // set. LayoutSnapshot holds the lease lock for this entire exchange.
         long estimatedBytes = 0;
-        foreach (SceneEntry entry in requested)
+        foreach (VectorSceneResidencyEntry entry in requested)
             estimatedBytes = SaturatingAdd(estimatedBytes, entry.EstimatedBytes);
         _activeScenes = requestedByOwner;
         _transientScenes.Clear();
@@ -650,8 +650,8 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
         // second native prefix or introduce a cancellation point after commit.
         // Failed disposal never makes those credits available.
         bool hasDeferred = false;
-        foreach (SceneEntry entry in requested)
-            hasDeferred |= IsCapacityDeferred(entry);
+        foreach (VectorSceneResidencyEntry entry in requested)
+            hasDeferred |= entry.IsCapacityDeferred;
         Volatile.Write(ref _activeCapacityGeneration, attemptedCapacityGeneration);
         Volatile.Write(ref _hasCapacityDeferredScenes, hasDeferred);
         return changed;
@@ -666,9 +666,9 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
         ArgumentNullException.ThrowIfNull(topLevelOrdinals);
         ArgumentNullException.ThrowIfNull(placements);
         ArgumentNullException.ThrowIfNull(topLevelOrdinalByBlockIndex);
-        if (placements.Count != _blocks.Count || !IsValidBand(band))
+        if (placements.Count != _blocks.Count || !VectorSceneBandGeometry.IsValidBand(band))
             return;
-        List<SceneEntry> candidates = [];
+        List<VectorSceneResidencyEntry> candidates = [];
         var seen = new HashSet<object>(ReferenceEqualityComparer.Instance);
         foreach (int ordinal in topLevelOrdinals)
         {
@@ -709,7 +709,7 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
             return;
         _disposed = true;
 
-        List<SceneEntry> active = [.. _activeScenes.Values, .. _transientScenes.Values];
+        List<VectorSceneResidencyEntry> active = [.. _activeScenes.Values, .. _transientScenes.Values];
         _activeScenes.Clear();
         _transientScenes.Clear();
         _activeInlineSceneIndexes.Clear();
@@ -738,14 +738,14 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
     private bool TryCollectVisibleBlockScenes(
         BlockBox box,
         LazyLayoutBand band,
-        List<SceneEntry> scenes,
+        List<VectorSceneResidencyEntry> scenes,
         HashSet<object> seen,
         Dictionary<InlineContainerBox, InlineSceneGeometryIndex> inlineIndexes,
         bool allowIndexBuild,
         CancellationToken cancellationToken)
     {
         Rect bounds = box.Bounds;
-        if (!IsFiniteNonNegativeRect(bounds))
+        if (!VectorSceneBandGeometry.IsFiniteNonNegativeRect(bounds))
             return false;
         if (bounds.Width == 0 || bounds.Height == 0 ||
             !band.Intersects(bounds.Top, bounds.Bottom))
@@ -827,7 +827,7 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
         }
 
         rootLocalBand = placements.ToPhysicalBand(ordinal, logicalBand);
-        return IsValidBand(rootLocalBand);
+        return VectorSceneBandGeometry.IsValidBand(rootLocalBand);
     }
 
     private bool IsFailedSceneVisible(
@@ -860,7 +860,7 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
     private bool TryCollectVisibleInlineScenes(
         InlineContainerBox inline,
         LazyLayoutBand band,
-        List<SceneEntry> scenes,
+        List<VectorSceneResidencyEntry> scenes,
         HashSet<object> seen,
         Dictionary<InlineContainerBox, InlineSceneGeometryIndex> inlineIndexes,
         bool allowIndexBuild,
@@ -911,7 +911,7 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
         if (!double.IsFinite(originY))
             return false;
         var localBand = new LazyLayoutBand(band.Top - originY, band.Bottom - originY);
-        if (!IsValidBand(localBand))
+        if (!VectorSceneBandGeometry.IsValidBand(localBand))
             return false;
 
         if (candidateIndexes.TryGetValue(inline, out InlineSceneGeometryIndex? candidate) &&
@@ -1007,9 +1007,9 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
                     originY + entry.Top,
                     entry.Right - entry.Left,
                     entry.Bottom - entry.Top);
-                if (!IsFiniteNonNegativeRect(extent))
+                if (!VectorSceneBandGeometry.IsFiniteNonNegativeRect(extent))
                     return false;
-                if (!Intersects(extent, bounds))
+                if (!VectorSceneBandGeometry.Intersects(extent, bounds))
                     continue;
             }
 
@@ -1018,10 +1018,10 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
             {
                 Rect local = entry.Geometry.GetRegionBounds(regionIndex);
                 var rect = new Rect(originX + local.X, originY + local.Y, local.Width, local.Height);
-                if (!IsFiniteNonNegativeRect(rect))
+                if (!VectorSceneBandGeometry.IsFiniteNonNegativeRect(rect))
                     return false;
                 if (rect.Bottom >= viewportTop && rect.Top <= viewportBottom &&
-                    (viewport is not { } viewportBounds || Intersects(rect, viewportBounds)))
+                    (viewport is not { } viewportBounds || VectorSceneBandGeometry.Intersects(rect, viewportBounds)))
                 {
                     visible = true;
                     break;
@@ -1060,61 +1060,11 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
 
     private static void AddScene(
         object owner,
-        List<SceneEntry> scenes,
+        List<VectorSceneResidencyEntry> scenes,
         HashSet<object> seen)
     {
         if (seen.Add(owner))
-            scenes.Add(new SceneEntry(owner, 0));
-    }
-
-    private static bool Intersects(Rect left, Rect right) =>
-        left.Right > right.Left && left.Left < right.Right &&
-        left.Bottom > right.Top && left.Top < right.Bottom;
-
-    private static bool IsFiniteNonNegativeRect(Rect rect) =>
-        double.IsFinite(rect.X) && double.IsFinite(rect.Y) &&
-        double.IsFinite(rect.Width) && double.IsFinite(rect.Height) &&
-        double.IsFinite(rect.Right) && double.IsFinite(rect.Bottom) &&
-        rect.Width >= 0 && rect.Height >= 0;
-
-    private static bool IsValidBand(LazyLayoutBand band) =>
-        double.IsFinite(band.Top) && double.IsFinite(band.Bottom) && band.Bottom >= band.Top;
-
-    private static bool IsPrepared(SceneEntry entry)
-        => entry.Owner switch
-        {
-            VectorSceneBox box => box.IsNativeResourcesPrepared,
-            InlineVectorSceneRun run => run.IsNativeResourcesPrepared,
-            _ => false,
-        };
-
-    private static bool IsCapacityFallback(SceneEntry entry) => entry.Owner switch
-    {
-        VectorSceneBox box => box.IsCapacityFallbackPaintable,
-        InlineVectorSceneRun run => run.IsCapacityFallbackPaintable,
-        _ => false,
-    };
-
-    private static bool IsCapacityDeferred(SceneEntry entry) => entry.Owner switch
-    {
-        VectorSceneBox box => box.NativePreparationStatus == VectorNativePreparationStatus.DeferredCapacity,
-        InlineVectorSceneRun run => run.NativePreparationStatus == VectorNativePreparationStatus.DeferredCapacity,
-        _ => false,
-    };
-
-    private static void Prepare(SceneEntry entry, CancellationToken cancellationToken)
-    {
-        switch (entry.Owner)
-        {
-            case VectorSceneBox box:
-                box.PrepareNativeResources(cancellationToken);
-                break;
-            case InlineVectorSceneRun run:
-                run.PrepareNativeResources(cancellationToken);
-                break;
-            default:
-                throw new InvalidOperationException("The residency band contains an unsupported scene owner.");
-        }
+            scenes.Add(new VectorSceneResidencyEntry(owner, 0));
     }
 
     internal long GetPreparedResourceEstimate(MarkdownVectorScene scene) =>
@@ -1124,13 +1074,13 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
         _estimates.GetOrEstimate(scene, ref _commandGraphEstimateCount, cancellationToken);
 
     private void ReleaseEntriesBestEffort(
-        IEnumerable<SceneEntry>? candidates,
-        IReadOnlyDictionary<object, SceneEntry>? keep,
+        IEnumerable<VectorSceneResidencyEntry>? candidates,
+        IReadOnlyDictionary<object, VectorSceneResidencyEntry>? keep,
         bool detachGraphs = false)
     {
         if (candidates is null)
             return;
-        foreach (SceneEntry entry in candidates)
+        foreach (VectorSceneResidencyEntry entry in candidates)
         {
             if (keep?.ContainsKey(entry.Owner) == true)
                 continue;
@@ -1140,7 +1090,7 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
                     _graphPlan?.CanDetachGraph(box) == true)
                     box.ReleaseSceneGraph();
                 else
-                    Release(entry);
+                    entry.Release();
             }
             catch
             {
@@ -1151,14 +1101,14 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
         }
     }
 
-    private static void ReleaseScenes(IEnumerable<SceneEntry> scenes)
+    private static void ReleaseScenes(IEnumerable<VectorSceneResidencyEntry> scenes)
     {
         List<Exception>? failures = null;
-        foreach (SceneEntry entry in scenes)
+        foreach (VectorSceneResidencyEntry entry in scenes)
         {
             try
             {
-                Release(entry);
+                entry.Release();
             }
             catch (Exception exception)
             {
@@ -1172,176 +1122,12 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
             throw new AggregateException("One or more native scene resources failed to release.", failures);
     }
 
-    private static void Release(SceneEntry entry)
-    {
-        switch (entry.Owner)
-        {
-            case VectorSceneBox box:
-                box.ReleaseNativeResources();
-                break;
-            case InlineVectorSceneRun run:
-                run.ReleaseNativeResources();
-                break;
-        }
-    }
-
     private static long SaturatingAdd(long left, long right)
         => left > long.MaxValue - right ? long.MaxValue : left + right;
-
-    private sealed class InlineSceneGeometryIndex
-    {
-        private readonly double[] _prefixMaximumBottoms;
-
-        private InlineSceneGeometryIndex(
-            long generation,
-            LazyLayoutBand coverage,
-            InlineSceneIndexEntry[] entries)
-        {
-            Generation = generation;
-            Coverage = coverage;
-            Entries = entries;
-            _prefixMaximumBottoms = new double[entries.Length];
-            double maximum = double.NegativeInfinity;
-            for (int index = 0; index < entries.Length; index++)
-            {
-                maximum = Math.Max(maximum, entries[index].Bottom);
-                _prefixMaximumBottoms[index] = maximum;
-            }
-        }
-
-        internal long Generation { get; }
-        private LazyLayoutBand Coverage { get; }
-        internal InlineSceneIndexEntry[] Entries { get; }
-
-        internal bool Covers(LazyLayoutBand band) =>
-            band.Top >= Coverage.Top && band.Bottom <= Coverage.Bottom;
-
-        internal int FindLastStartingAtOrBefore(double bottom)
-        {
-            int low = 0;
-            int high = Entries.Length;
-            while (low < high)
-            {
-                int middle = low + ((high - low) / 2);
-                if (Entries[middle].Top <= bottom)
-                    low = middle + 1;
-                else
-                    high = middle;
-            }
-            return low - 1;
-        }
-
-        internal int FindFirstWithBottomAtOrAfter(double top)
-        {
-            int low = 0;
-            int high = _prefixMaximumBottoms.Length;
-            while (low < high)
-            {
-                int middle = low + ((high - low) / 2);
-                if (_prefixMaximumBottoms[middle] < top)
-                    low = middle + 1;
-                else
-                    high = middle;
-            }
-            return low;
-        }
-
-        internal static bool TryCreate(
-            long generation,
-            InlineSceneGeometry[] geometry,
-            LazyLayoutBand localBand,
-            CancellationToken cancellationToken,
-            out InlineSceneGeometryIndex? index)
-        {
-            index = null;
-            if (generation == 0 || !IsValidBand(localBand))
-                return false;
-
-            List<InlineSceneIndexEntry> entries = [];
-            foreach (InlineSceneGeometry item in geometry)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (item.RegionCount <= 0)
-                    return false;
-
-                double left = double.PositiveInfinity;
-                double right = double.NegativeInfinity;
-                double top = double.PositiveInfinity;
-                double bottom = double.NegativeInfinity;
-                List<Rect>? retainedRegions = null;
-                for (int regionIndex = 0; regionIndex < item.RegionCount; regionIndex++)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    Rect region = item.GetRegionBounds(regionIndex);
-                    if (!IsFiniteNonNegativeRect(region))
-                        return false;
-
-                    top = Math.Min(top, region.Top);
-                    bottom = Math.Max(bottom, region.Bottom);
-                    if (!localBand.Intersects(region.Top, region.Bottom))
-                        continue;
-
-                    left = Math.Min(left, region.Left);
-                    right = Math.Max(right, region.Right);
-                    (retainedRegions ??= []).Add(region);
-                }
-
-                // Only retain scene owners and line fragments intersecting the
-                // candidate band. A long paragraph's off-band Math graph stays
-                // owned by its snapshot boxes, not duplicated by this index.
-                if (retainedRegions is null)
-                    continue;
-
-                Rect[] retained = retainedRegions.ToArray();
-                var filteredGeometry = new InlineSceneGeometry(item.Run, retained);
-                double retainedTop = double.PositiveInfinity;
-                double retainedBottom = double.NegativeInfinity;
-                foreach (Rect region in retained)
-                {
-                    retainedTop = Math.Min(retainedTop, region.Top);
-                    retainedBottom = Math.Max(retainedBottom, region.Bottom);
-                }
-                entries.Add(new InlineSceneIndexEntry(
-                    filteredGeometry,
-                    retainedTop,
-                    retainedBottom,
-                    left,
-                    right));
-            }
-
-            entries.Sort(static (left, right) =>
-            {
-                int comparison = left.Top.CompareTo(right.Top);
-                return comparison != 0 ? comparison : left.Bottom.CompareTo(right.Bottom);
-            });
-            index = new InlineSceneGeometryIndex(generation, localBand, entries.ToArray());
-            return true;
-        }
-    }
-
-    private readonly struct InlineSceneIndexEntry(
-        InlineSceneGeometry Geometry,
-        double Top,
-        double Bottom,
-        double Left,
-        double Right)
-    {
-        public InlineSceneGeometry Geometry { get; } = Geometry;
-        public double Top { get; } = Top;
-        public double Bottom { get; } = Bottom;
-        public double Left { get; } = Left;
-        public double Right { get; } = Right;
-    }
 
     private void ThrowIfDisposed()
     {
         if (_disposed)
             throw new ObjectDisposedException(nameof(MarkdownVectorSceneResidencyPolicy));
-    }
-
-    private readonly struct SceneEntry(object Owner, long EstimatedBytes)
-    {
-        public object Owner { get; } = Owner;
-        public long EstimatedBytes { get; } = EstimatedBytes;
     }
 }
