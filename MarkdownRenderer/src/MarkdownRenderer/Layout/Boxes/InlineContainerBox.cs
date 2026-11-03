@@ -968,7 +968,12 @@ internal sealed class InlineContainerBox : BlockBox
                         InlineObjectGeometry.BuildInlineImageLineBaselines(this, TryGetLineMetrics());
                     publishInlineImageLineBaselines = true;
                 }
-                replacementSceneGeometry = UpdateVectorScenePlacements(candidateLayout);
+                replacementSceneGeometry = InlineVectorScenePlacement.UpdatePlacements(
+                    _runs,
+                    candidateLayout,
+                    TryGetLineMetrics(),
+                    _usesProgressiveNativeSceneResidency,
+                    _vectorSceneState);
                 _lastWidth = availableWidth;
             }
 
@@ -1457,7 +1462,7 @@ internal sealed class InlineContainerBox : BlockBox
         if (_vectorSceneRunCount == 0)
             return true;
 
-        geometry = CaptureVectorSceneGeometry(layout, cancellationToken);
+        geometry = InlineVectorScenePlacement.CaptureGeometry(_runs, layout, cancellationToken, _vectorSceneState);
         return true;
     }
 
@@ -1597,68 +1602,6 @@ internal sealed class InlineContainerBox : BlockBox
 
     internal CanvasTextLayout EnsureSelectionLayout(Color color, ElementStyle style)
         => _selection.Ensure(this, color, style);
-
-    private InlineSceneGeometry[] UpdateVectorScenePlacements(CanvasTextLayout layout)
-    {
-        CanvasLineMetrics[]? lineMetrics = TryGetLineMetrics();
-        List<InlineSceneGeometry>? sceneGeometry = null;
-        int cumulative = 0;
-        foreach (InlineRun run in _runs)
-        {
-            int length = run.TextLength;
-            if (run is InlineVectorSceneRun vector && length > 0)
-            {
-                CanvasTextLayoutRegion[]? regions = layout.GetCharacterRegions(cumulative, length);
-                RecordSceneCharacterRegionQuery();
-                if (_usesProgressiveNativeSceneResidency)
-                    (sceneGeometry ??= []).Add(new InlineSceneGeometry(vector, regions));
-
-                if (regions is { Length: > 0 })
-                {
-                    CanvasTextLayoutRegion region = regions[0];
-                    Rect bounds = region.LayoutBounds;
-                    CanvasLineMetrics metric = FindLineMetrics(lineMetrics, region);
-                    float baseline = metric.Baseline > 0
-                        ? metric.Baseline
-                        : (float)bounds.Height * 0.8f;
-                    double y = bounds.Y + baseline - vector.DesiredBaseline;
-                    vector.SetLocalBounds(new Rect(
-                        bounds.X,
-                        y,
-                        Math.Min(vector.DesiredWidth, bounds.Width),
-                        vector.DesiredHeight));
-                }
-            }
-            cumulative += length;
-        }
-
-        return sceneGeometry?.ToArray() ?? Array.Empty<InlineSceneGeometry>();
-    }
-
-    private InlineSceneGeometry[] CaptureVectorSceneGeometry(
-        CanvasTextLayout layout,
-        CancellationToken cancellationToken)
-    {
-        List<InlineSceneGeometry>? sceneGeometry = null;
-        int cumulative = 0;
-        foreach (InlineRun run in _runs)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            int length = run.TextLength;
-            if (run is InlineVectorSceneRun vector && length > 0)
-            {
-                CanvasTextLayoutRegion[]? regions = layout.GetCharacterRegions(cumulative, length);
-                RecordSceneCharacterRegionQuery();
-                (sceneGeometry ??= []).Add(new InlineSceneGeometry(vector, regions));
-            }
-
-            if (length > int.MaxValue - cumulative)
-                throw new InvalidOperationException("Inline text geometry exceeded the supported layout range.");
-            cumulative += length;
-        }
-
-        return sceneGeometry?.ToArray() ?? Array.Empty<InlineSceneGeometry>();
-    }
 
     internal CanvasLineMetrics[]? GetLineMetricsSnapshot()
         => TryGetLineMetrics();
