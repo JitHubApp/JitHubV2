@@ -46,17 +46,16 @@ namespace MarkdownRenderer.Controls;
 /// <see cref="Canvas"/> overlay for hosted WinUI embeds.
 /// </summary>
 public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsyncDisposable,
-    IMarkdownPerformanceLegacyParser, IFocusRingHost, IHostedElementFocusHost, IHorizontalOverflowScrollHost,
-    IFocusedItemRevealHost, IFocusedItemCommitHost, IFocusGeometryRecoveryHost, IRendererFocusEntryHost,
-    IImageSubscriptionsHost, IImageResidencyHost, ICanvasDeviceRecoveryHost, IRecoveryClockHost,
-    IRasterPlacementHost, IImageRelayoutHost, IImageLoadCompletionHost, IVectorCapacityRetryHost, ILazyLayoutHost,
-    ILayoutCommitHost, IFocusableItemsPublicationHost, IRebuildSchedulerHost, IRebuildLayoutSetupHost,
-    ICanvasTilePainterHost, IDeferredSceneReadinessHost, ILinkActivationHost, IRendererLocalizationHost,
-    IRendererEventSink
+    IMarkdownPerformanceLegacyParser, IImageSubscriptionsHost, IImageResidencyHost, ICanvasDeviceRecoveryHost,
+    IRecoveryClockHost, IRasterPlacementHost, IImageRelayoutHost, IImageLoadCompletionHost, IVectorCapacityRetryHost,
+    ILazyLayoutHost, ILayoutCommitHost, IFocusableItemsPublicationHost, IRebuildSchedulerHost,
+    IRebuildLayoutSetupHost, ICanvasTilePainterHost, IDeferredSceneReadinessHost, ILinkActivationHost,
+    IRendererLocalizationHost, IRendererEventSink
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
     private readonly RendererEvents _events;
+    private readonly FocusHosts _focusHosts;
     private readonly EmbedHosts _embedHosts;
     private readonly PointerHosts _pointerHosts;
     private readonly SelectionHosts _selectionHosts;
@@ -928,6 +927,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private protected MarkdownRendererControl(bool ownsScrollViewport)
     {
         _events = new RendererEvents(this, _lifetime, DispatcherQueue);
+        _focusHosts = new FocusHosts(this);
         _embedHosts = new EmbedHosts(this);
         _pointerHosts = new PointerHosts(this);
         _selectionHosts = new SelectionHosts(this);
@@ -965,21 +965,21 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _highlighting = new CodeBlockHighlighting(_embedHosts, _lifetime, _published, _viewport, _embeds);
         _focus = new KeyboardFocusModel(_lifetime, _published);
         _focusGeometry = new FocusGeometryReader(_lifetime, _published);
-        _focusRing = new FocusRingPresenter(this, _focus, _focusGeometry, _surface, _lifetime, _published, DispatcherQueue);
+        _focusRing = new FocusRingPresenter(_focusHosts, _focus, _focusGeometry, _surface, _lifetime, _published, DispatcherQueue);
         _interactionReset = new InteractionReset(_surface, _selection, _touchSelection, _touchRestore, _touchTapSuppression, _pointerInput, _document, _handles, _autoScroll, _dragShield, _contextMenu, _adorner, _hover, _abbreviationTooltip, _cursor, _focus, _focusRing);
         _rasterPlacement = new RasterPlacementPublisher(this, _lifetime, _published, _layoutCommit, _surface, _pointerInput, _imageSubscriptions, _imagePlans, _imageResidency, _embeds, _focus, _focusRing, _hostedFocusPlan, _snapshotRetirements);
         _focusRefresh = new FocusableItemsRefreshRequest(_published);
         _focusableItems = new FocusableItemsPublication(this, _lifetime, _published, _focusRefresh, _focus, _recoveryClock);
         _layoutSetup = new RebuildLayoutSetup(this, _snapshotRetirements, _imagePrefetch, _completedImageCarry, _imagePlans, _embeds, _focusableItems, _imagePreparationOwnerToken);
-        _hostedFocus = new HostedElementFocus(this, _lifetime, _published, _focus, _hostedFocusPlan, _embeds, _focusRing);
-        _overflowScroll = new HorizontalOverflowScrollVisuals(this, _surface, _lifetime, _published, _selection, _focus, _embeds, DispatcherQueue);
-        _reveal = new FocusedItemReveal(this, _surface, _lifetime, _published, _viewport, _focus, _overflowScroll, DispatcherQueue);
+        _hostedFocus = new HostedElementFocus(_focusHosts, _lifetime, _published, _focus, _hostedFocusPlan, _embeds, _focusRing);
+        _overflowScroll = new HorizontalOverflowScrollVisuals(_focusHosts, _surface, _lifetime, _published, _selection, _focus, _embeds, DispatcherQueue);
+        _reveal = new FocusedItemReveal(_focusHosts, _surface, _lifetime, _published, _viewport, _focus, _overflowScroll, DispatcherQueue);
         _automationScrolling = new AutomationScrolling(_surface, _reveal);
-        _focusCommit = new FocusedItemCommit(this, _lifetime, _published, _focus, _focusRing, _reveal, _hostedFocus, _embeds, DispatcherQueue);
+        _focusCommit = new FocusedItemCommit(_focusHosts, _lifetime, _published, _focus, _focusRing, _reveal, _hostedFocus, _embeds, DispatcherQueue);
         var queuedFocusKeys = new SpatialFocusKeyQueue();
-        _navigator = new KeyboardFocusNavigator(this, _lifetime, _published, _focus, _focusGeometry, _focusRing, _overflowScroll, _embeds, _focusCommit, queuedFocusKeys, DispatcherQueue);
-        _focusGeometryWork = new PendingFocusGeometryWork(this, _lifetime, _published, _focus, _focusGeometry, _focusRing, _reveal, queuedFocusKeys, _navigator);
-        _focusEntry = new RendererFocusEntry(this, _lifetime, _focus, _focusRing, _focusCommit, _navigator, DispatcherQueue);
+        _navigator = new KeyboardFocusNavigator(_focusHosts, _lifetime, _published, _focus, _focusGeometry, _focusRing, _overflowScroll, _embeds, _focusCommit, queuedFocusKeys, DispatcherQueue);
+        _focusGeometryWork = new PendingFocusGeometryWork(_focusHosts, _lifetime, _published, _focus, _focusGeometry, _focusRing, _reveal, queuedFocusKeys, _navigator);
+        _focusEntry = new RendererFocusEntry(_focusHosts, _lifetime, _focus, _focusRing, _focusCommit, _navigator, DispatcherQueue);
         _layoutPublisher = new LayoutCommitPublisher(this, _lifetime, _published, _layoutCommit, _surface, _recoveryClock, _pointerInput, _embeds, _imageSubscriptions, _imagePlans, _imageResidency, _focus, _focusRing, _focusCommit, _focusRefresh, _hostedFocusPlan);
         _lazyLayout = new LazyLayoutRealization(this, _lifetime, _published, _layoutCommit, _layoutPublisher, _surface, _viewport, _recoveryClock, _vectorCapacity, _pointerInput, _focus, _focusCommit);
         _blockScroll = new BlockScrollNavigation(_lifetime, _published, _surface, _viewport, _lazyLayout, _reveal);
@@ -1023,6 +1023,9 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
             _events, _published, _cancellationRetirement, _rebuild, _canvasInvalidation, _visibleWork, _automation,
             _layoutPublisher, _rasterPlacement, _lazyLayout, _hostedFocusPlan, _localization, _codeBlockClipboard,
             _visibleImages, _hostedFocus, _imagePlans, _imageSubscriptions));
+        _focusHosts.Connect(new FocusHosts.Parts(
+            _surface, _published, _viewport, _recoveryClock, _rebuild, _geometryRecovery, _textAdorner, _links,
+            _automation, _layoutCommit, _lazyLayout, _focusGeometryWork, _focusRing));
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         Loaded += (_, _) => OnLoadedInternal();
@@ -1132,80 +1135,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <summary>Copies the active selection as exact markdown source plus CF_HTML.</summary>
     public bool CopySelectionAsMarkdown()
         => _selectionCommands.CopyAsMarkdown();
-
-    XamlRoot? IFocusRingHost.XamlRoot => XamlRoot;
-
-    Windows.UI.Color? IFocusRingHost.FocusVisualColor => _published.Theme?.FocusVisualColor;
-
-    void IFocusRingHost.InvalidateInteractiveTextAdorner() => _textAdorner.Invalidate();
-
-    void IFocusRingHost.RequestFocusGeometryRetry() => _focusGeometryWork.RequestRetry();
-
-    FocusState IHostedElementFocusHost.FocusState => FocusState;
-
-    XamlRoot? IHostedElementFocusHost.XamlRoot => XamlRoot;
-
-    long IHostedElementFocusHost.AppliedLazyLayoutRevision => _layoutCommit.AppliedRevision;
-
-    bool IHostedElementFocusHost.FocusRenderer() => Focus(FocusState.Keyboard);
-
-    void IHorizontalOverflowScrollHost.UpdateSelectionOverlay() => _textAdorner.UpdateSelectionOverlay();
-
-    void IHorizontalOverflowScrollHost.UpdateFocusRing() => _focusRing.Update();
-
-    void IHorizontalOverflowScrollHost.StartRecoveryClock() => _recoveryClock.Start();
-
-    bool IHorizontalOverflowScrollHost.HasRecoveryClock => _recoveryClock.IsRunning;
-
-    void IHorizontalOverflowScrollHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);
-
-    bool IHorizontalOverflowScrollHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot)
-        => _geometryRecovery.RequestIfRequired(snapshot);
-
-    MarkdownAutomationPeer? IHorizontalOverflowScrollHost.FindAutomationPeer()
-        => _automation.FindPeer();
-
-    void IFocusedItemRevealHost.RequestFocusGeometryRetry() => _focusGeometryWork.RequestRetry();
-
-    bool IFocusedItemCommitHost.FocusRenderer() => Focus(FocusState.Keyboard);
-
-    bool IFocusedItemCommitHost.FocusRendererProgrammatically() => Focus(FocusState.Programmatic);
-
-    bool IRendererFocusEntryHost.FocusRendererProgrammatically() => Focus(FocusState.Programmatic);
-
-    void IFocusedItemCommitHost.RealizeLazyFocusTarget(LayoutSnapshot snapshot, LazyLayoutBand estimatedBand)
-    {
-        var realizationBand = LazyLayoutBand.FromViewport(
-            estimatedBand.Top,
-            Math.Max(1, estimatedBand.Bottom - estimatedBand.Top),
-            MarkdownLazyLayoutPolicy.OverscanPx);
-        LazyLayoutBand visibleVectorBand = _viewport.GetVisibleBand();
-        _lazyLayout.QueueForBand(
-            snapshot,
-            LazyLayoutBand.Union(realizationBand, visibleVectorBand),
-            visibleVectorBand,
-            preserveScrollAnchor: _surface.Scroll is not null);
-    }
-
-    LinkTarget? IFocusedItemCommitHost.FindLinkTargetAt(DocumentPosition position) => FindLinkTargetAt(position);
-
-    bool IFocusedItemCommitHost.ActivateLink(
-        LinkTarget link,
-        MarkdownLinkInputKind inputKind,
-        MarkdownInputModifiers modifiers)
-        => _links.Activate(link, inputKind, modifiers);
-
-    MarkdownAutomationPeer? IFocusedItemCommitHost.GetOrCreateAutomationPeer()
-        => _automation.GetOrCreatePeer();
-
-    bool IFocusGeometryRecoveryHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot)
-        => _geometryRecovery.RequestIfRequired(snapshot);
-
-    void IFocusGeometryRecoveryHost.StartRecoveryClock() => _recoveryClock.Start();
-
-    bool IFocusGeometryRecoveryHost.HasRecoveryClock => _recoveryClock.IsRunning;
-
-    void IFocusGeometryRecoveryHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);
 
     void IImageSubscriptionsHost.StartRecoveryClock() => _recoveryClock.Start();
 
@@ -1768,10 +1697,4 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// </summary>
     public void ScrollToBlock(int blockIndex) => _blockScroll.ScrollTo(blockIndex);
 
-    private LinkTarget? FindLinkTargetAt(DocumentPosition pos, Point? point = null)
-    {
-        return _published.Snapshot is { } snapshot
-            ? LinkTargets.FindLinkTargetAt(snapshot, pos, point)
-            : null;
-    }
 }
