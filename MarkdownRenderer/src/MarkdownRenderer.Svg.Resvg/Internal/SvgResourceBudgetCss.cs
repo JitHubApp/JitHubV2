@@ -85,43 +85,58 @@ internal static class SvgResourceBudgetCss
             if (separator >= css.Length || css[separator] != ':' || !SvgContentRules.IsMotionProperty(property))
                 continue;
 
-            int end = separator + 1;
-            char quote = '\0';
-            int parentheses = 0;
-            while (end < css.Length)
-            {
-                char current = css[end];
-                if (quote != '\0')
-                {
-                    if (current == '\\' && end + 1 < css.Length)
-                        end += 2;
-                    else
-                    {
-                        if (current == quote)
-                            quote = '\0';
-                        end++;
-                    }
-                    continue;
-                }
-                if (current is '\'' or '"')
-                    quote = current;
-                else if (current == '(')
-                    parentheses++;
-                else if (current == ')' && parentheses > 0)
-                    parentheses--;
-                else if (parentheses == 0 && current == '{')
-                    break;
-                else if (parentheses == 0 && current is (';' or '}'))
-                    return true;
-                end++;
-            }
-
-            if (end >= css.Length)
+            if (EndsDeclaration(css, separator + 1, out int end))
                 return true;
             cursor = end + 1;
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Scans a declaration value from <paramref name="valueStart"/>, honoring
+    /// quotes, escapes and parentheses.
+    /// </summary>
+    /// <param name="css">The style sheet.</param>
+    /// <param name="valueStart">The first character after the colon.</param>
+    /// <param name="end">The block opener's index when the value is a selector or prelude.</param>
+    /// <returns>
+    /// <see langword="true"/> when the value ends at a terminator or the end of
+    /// the sheet; <see langword="false"/> when a block opener comes first.
+    /// </returns>
+    private static bool EndsDeclaration(string css, int valueStart, out int end)
+    {
+        end = valueStart;
+        char quote = '\0';
+        int parentheses = 0;
+        while (end < css.Length)
+        {
+            char current = css[end];
+            if (quote != '\0')
+            {
+                if (current == '\\' && end + 1 < css.Length)
+                    end += 2;
+                else
+                {
+                    if (current == quote)
+                        quote = '\0';
+                    end++;
+                }
+                continue;
+            }
+            if (current is '\'' or '"')
+                quote = current;
+            else if (current == '(')
+                parentheses++;
+            else if (current == ')' && parentheses > 0)
+                parentheses--;
+            else if (parentheses == 0 && current == '{')
+                break;
+            else if (parentheses == 0 && current is (';' or '}'))
+                return true;
+            end++;
+        }
+        return end >= css.Length;
     }
 
     internal static void SkipCssString(string css, ref int cursor)
