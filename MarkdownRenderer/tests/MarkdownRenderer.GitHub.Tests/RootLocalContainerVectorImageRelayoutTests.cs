@@ -367,7 +367,7 @@ public sealed class RootLocalContainerVectorImageRelayoutTests
                 LayoutWidth,
                 cancellation.Token,
                 out constructionContext,
-                beforeMeasureOutsideGateForTests: cancellation.Cancel,
+                phaseHooks: CompletedImageRelayoutPhaseHooks.BeforeMeasure(cancellation.Cancel),
                 expectedPointerInputEpoch: document.Snapshot.PointerInputEpoch));
             Assert.NotNull(constructionContext);
             await constructionContext.DrainOwnedRetirementsAsync().WaitAsync(AsyncDeadline);
@@ -425,12 +425,12 @@ public sealed class RootLocalContainerVectorImageRelayoutTests
         {
             PreparedImageRelayoutResult staleResult = stale.Snapshot.TryRelayoutCompletedImageRoots(
                 [staleImage.BlockIndex], LayoutWidth, CancellationToken.None, out staleContext,
-                beforeMeasureOutsideGateForTests: () =>
+                phaseHooks: CompletedImageRelayoutPhaseHooks.BeforeMeasure(() =>
                 {
                     injected = true;
                     staleVector.RestoreLayoutState(staleVector.DesiredWidth, staleVector.DesiredHeight,
                         staleVector.DesiredBaseline, injectedBounds);
-                },
+                }),
                 expectedPointerInputEpoch: stale.Snapshot.PointerInputEpoch);
             Assert.True(injected);
             Assert.Equal(PreparedImageRelayoutResult.Retry, staleResult);

@@ -3,8 +3,6 @@ using System.Numerics;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using MarkdownRenderer.Accessibility;
-using MarkdownRenderer.Document;
-using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
@@ -32,10 +30,6 @@ internal static class VectorSceneCapacityFallback
     private static readonly object Gate = new();
     private static SharedCanvasTextFormatCache.Lease? _leftToRightFormat;
     private static SharedCanvasTextFormatCache.Lease? _rightToLeftFormat;
-
-    internal static int PreparedDescriptorCountForTests =>
-        (Volatile.Read(ref _leftToRightFormat) is null ? 0 : 1) +
-        (Volatile.Read(ref _rightToLeftFormat) is null ? 0 : 1);
 
     internal static VectorNativeResourceAdmission? ResolveNativeAdmission(
         MarkdownLayoutContext context,

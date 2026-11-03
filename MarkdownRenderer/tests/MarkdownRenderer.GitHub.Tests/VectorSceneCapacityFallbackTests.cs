@@ -24,6 +24,10 @@ public sealed class VectorSceneCapacityFallbackTests
     private static readonly Color ClearColor = Color.FromArgb(255, 255, 255, 255);
     private static readonly Color SceneColor = Color.FromArgb(255, 18, 34, 50);
     private static readonly Color SelectionColor = Color.FromArgb(255, 12, 220, 28);
+
+    private static int PreparedFallbackDescriptorCount() =>
+        (VectorSceneCapacityFallback.TryGetFormat(FlowDirection.LeftToRight, out _) ? 1 : 0) +
+        (VectorSceneCapacityFallback.TryGetFormat(FlowDirection.RightToLeft, out _) ? 1 : 0);
     private static readonly Color SelectionBackgroundColor = Color.FromArgb(255, 0, 90, 190);
 
     [Fact]
@@ -71,7 +75,7 @@ public sealed class VectorSceneCapacityFallbackTests
             Assert.False(box.IsNativeResourcesPrepared);
             Assert.True(box.IsCapacityFallbackPaintable);
             Assert.Equal(0, resourceCreator.DeviceRequestCount);
-            Assert.InRange(VectorSceneCapacityFallback.PreparedDescriptorCountForTests, 1, 2);
+            Assert.InRange(PreparedFallbackDescriptorCount(), 1, 2);
 
             Assert.Equal("Release flow", box.AccessibilityName);
             Assert.Equal("A two-step release flow.", box.AccessibilityDescription);
@@ -116,7 +120,7 @@ public sealed class VectorSceneCapacityFallbackTests
             for (int index = 0; index < 4; index++)
                 _ = PaintBlock(box, height, selection: null);
             Assert.Equal(cacheBeforePaint, SharedCanvasTextFormatCache.Statistics);
-            Assert.InRange(VectorSceneCapacityFallback.PreparedDescriptorCountForTests, 1, 2);
+            Assert.InRange(PreparedFallbackDescriptorCount(), 1, 2);
 
             box.Dispose();
             Assert.Throws<ObjectDisposedException>(() => box.Paint(null!, new Rect(0, 0, 200, 100)));
@@ -328,7 +332,7 @@ public sealed class VectorSceneCapacityFallbackTests
                         Assert.InRange(ink.Top, (int)System.Math.Floor(15d * dpi / 96d) - 1, (int)System.Math.Ceiling(69d * dpi / 96d));
                         Assert.InRange(ink.Bottom, (int)System.Math.Floor(15d * dpi / 96d), (int)System.Math.Ceiling(69d * dpi / 96d) + 1);
                         pixelHeights[(scale, dpi, direction)] = ink.Height * 96d / dpi;
-                        Assert.InRange(VectorSceneCapacityFallback.PreparedDescriptorCountForTests, 1, 2);
+                        Assert.InRange(PreparedFallbackDescriptorCount(), 1, 2);
                     }
                     finally
                     {

@@ -140,7 +140,7 @@ public sealed class RootLocalContainerImageRelayoutTests
         {
             PreparedImageRelayoutResult result = snapshot.TryRelayoutCompletedImageRoots(
                 changedIndices, LayoutWidth, CancellationToken.None, out constructionContext,
-                beforeMeasureOutsideGateForTests: () => AssertSourceLayoutLockReleased(snapshot),
+                phaseHooks: CompletedImageRelayoutPhaseHooks.BeforeMeasure(() => AssertSourceLayoutLockReleased(snapshot)),
                 expectedPointerInputEpoch: snapshot.PointerInputEpoch);
 
             Assert.Equal(PreparedImageRelayoutResult.Committed, result);
@@ -370,7 +370,7 @@ public sealed class RootLocalContainerImageRelayoutTests
             PreparedImageRelayoutResult result = snapshot.TryRelayoutCompletedImageRoots(
                 images.Select(static image => image.BlockIndex).Distinct().ToArray(),
                 LayoutWidth, CancellationToken.None, out constructionContext,
-                beforeMeasureOutsideGateForTests: () =>
+                phaseHooks: CompletedImageRelayoutPhaseHooks.BeforeMeasure(() =>
                 {
                     AssertSourceLayoutLockReleased(snapshot);
                     mutated = true;
@@ -399,7 +399,7 @@ public sealed class RootLocalContainerImageRelayoutTests
                         default:
                             throw new ArgumentOutOfRangeException(nameof(mutation));
                     }
-                },
+                }),
                 expectedPointerInputEpoch: snapshot.PointerInputEpoch);
 
             Assert.True(mutated);
@@ -508,7 +508,7 @@ public sealed class RootLocalContainerImageRelayoutTests
             {
                 Assert.ThrowsAny<OperationCanceledException>(() => snapshot.TryRelayoutCompletedImageRoots(
                     changed, LayoutWidth, canceled.Token, out canceledContext,
-                    beforeMeasureOutsideGateForTests: canceled.Cancel,
+                    phaseHooks: CompletedImageRelayoutPhaseHooks.BeforeMeasure(canceled.Cancel),
                     expectedPointerInputEpoch: snapshot.PointerInputEpoch));
             }
             finally
@@ -1068,7 +1068,7 @@ public sealed class RootLocalContainerImageRelayoutTests
         {
             result = snapshot.TryRelayoutCompletedImageRoots(
                 changedBlockIndices, LayoutWidth, CancellationToken.None, out constructionContext,
-                beforeMeasureOutsideGateForTests: () => privateMeasurementStarted = true,
+                phaseHooks: CompletedImageRelayoutPhaseHooks.BeforeMeasure(() => privateMeasurementStarted = true),
                 expectedPointerInputEpoch: snapshot.PointerInputEpoch);
             constructionContextCreated = constructionContext is not null;
         }

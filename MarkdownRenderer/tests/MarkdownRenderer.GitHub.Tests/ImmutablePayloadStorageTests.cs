@@ -107,7 +107,7 @@ public sealed class ImmutablePayloadStorageTests
         AssertReadonly(typeof(LoadCompletedEventArgs), "LayoutInvalidated");
         AssertReadonly(Nested(typeof(SharedCanvasBitmapCache), "Entry"),
             "Bitmap WeightBytes IntrinsicSize PixelWidth PixelHeight");
-        AssertReadonly(Nested(typeof(SharedCanvasTextFormatCache), "Entry"), "Format WeightBytes");
+        AssertReadonly(typeof(SharedCanvasTextFormatEntry), "Format WeightBytes");
         AssertReadonly(typeof(SharedLayoutMetrics), "EstimatedWeightBytes");
         AssertReadonly(typeof(LayoutSnapshot), "Blocks SourceMap SourceFingerprint SemanticDocument");
         AssertReadonly(typeof(IntrinsicWidthMetrics), "Minimum Preferred");
@@ -429,7 +429,7 @@ public sealed class ImmutablePayloadStorageTests
                 cachedEntry.GetType().GetMethod("Release", flags)!.Invoke(cachedEntry, null);
         }
 
-        Type textEntryType = Nested(typeof(SharedCanvasTextFormatCache), "Entry");
+        Type textEntryType = typeof(SharedCanvasTextFormatEntry);
         var textRetirement = new NativeResourceRetirement(createTimer: false);
         NativeResourceRetirementRecord textRetirementRecord = textRetirement.Reserve(0, 1);
         var format = new CanvasTextFormat();

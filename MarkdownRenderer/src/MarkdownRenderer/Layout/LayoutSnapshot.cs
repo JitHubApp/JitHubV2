@@ -315,24 +315,22 @@ internal sealed class LayoutSnapshot : System.IDisposable, ILayoutSnapshotRetire
         float availableWidth,
         CancellationToken cancellationToken,
         out MarkdownLayoutContext? constructionContext,
-        Action? beforeMeasureOutsideGateForTests = null,
         long? expectedPointerInputEpoch = null,
-        Action? beforeCommitOutsideGateForTests = null)
+        CompletedImageRelayoutPhaseHooks? phaseHooks = null)
         => _imageRoots.TryRelayoutCompletedImageRoot(
             changedBlockIndices, availableWidth, cancellationToken, out constructionContext,
-            beforeMeasureOutsideGateForTests, expectedPointerInputEpoch, beforeCommitOutsideGateForTests);
+            expectedPointerInputEpoch, phaseHooks);
 
     internal PreparedImageRelayoutResult TryRelayoutCompletedImageRoots(
         IReadOnlyCollection<int> changedBlockIndices,
         float availableWidth,
         CancellationToken cancellationToken,
         out MarkdownLayoutContext? constructionContext,
-        Action? beforeMeasureOutsideGateForTests = null,
         long? expectedPointerInputEpoch = null,
-        Action? beforeCommitOutsideGateForTests = null)
+        CompletedImageRelayoutPhaseHooks? phaseHooks = null)
         => _imageRoots.TryRelayoutCompletedImageRoots(
             changedBlockIndices, availableWidth, cancellationToken, out constructionContext,
-            beforeMeasureOutsideGateForTests, expectedPointerInputEpoch, beforeCommitOutsideGateForTests);
+            expectedPointerInputEpoch, phaseHooks);
 
     internal SingleRasterLayoutCandidate? CreateSingleRasterCandidate(
         IReadOnlyCollection<int> changedBlockIndices,

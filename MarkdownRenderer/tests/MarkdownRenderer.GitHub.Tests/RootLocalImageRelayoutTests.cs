@@ -294,13 +294,13 @@ public sealed class RootLocalImageRelayoutTests
                 cancellation.Token,
                 out constructionContext,
                 expectedPointerInputEpoch: snapshot.PointerInputEpoch,
-                beforeCommitOutsideGateForTests: () =>
+                phaseHooks: CompletedImageRelayoutPhaseHooks.BeforeCommit(() =>
                 {
                     // This hook is reached only after private measurement,
                     // native-owner validation and successor generation creation.
                     commitBoundaryReached = true;
                     cancellation.Cancel();
-                }));
+                })));
 
             Assert.True(commitBoundaryReached,
                 "Cancellation must be exercised at the prepared-to-publication boundary.");
@@ -370,7 +370,7 @@ public sealed class RootLocalImageRelayoutTests
             Assert.Throws<OperationCanceledException>(() => snapshot.TryRelayoutCompletedImageRoots(
                 [second.BlockIndex, first.BlockIndex], LayoutWidth, cancellation.Token,
                 out constructionContext,
-                beforeMeasureOutsideGateForTests: cancellation.Cancel,
+                phaseHooks: CompletedImageRelayoutPhaseHooks.BeforeMeasure(cancellation.Cancel),
                 expectedPointerInputEpoch: snapshot.PointerInputEpoch));
 
             Assert.True(cancellation.IsCancellationRequested);
@@ -427,12 +427,12 @@ public sealed class RootLocalImageRelayoutTests
                         LayoutWidth,
                         CancellationToken.None,
                         out context,
-                        beforeMeasureOutsideGateForTests: () =>
+                        phaseHooks: CompletedImageRelayoutPhaseHooks.BeforeMeasure(() =>
                         {
                             entered.Set();
                             if (!release.Wait(TimeSpan.FromSeconds(10)))
                                 throw new TimeoutException("The native preparation test gate was not released.");
-                        },
+                        }),
                         expectedPointerInputEpoch: pointerEpoch);
                 }
                 finally
@@ -499,7 +499,7 @@ public sealed class RootLocalImageRelayoutTests
                 LayoutWidth,
                 CancellationToken.None,
                 out constructionContext,
-                beforeMeasureOutsideGateForTests: snapshot.NotifyPointerInput,
+                phaseHooks: CompletedImageRelayoutPhaseHooks.BeforeMeasure(snapshot.NotifyPointerInput),
                 expectedPointerInputEpoch: pointerEpochBefore);
             Assert.Equal(PreparedImageRelayoutResult.Retry, result);
             Assert.Equal(pointerEpochBefore + 1, snapshot.PointerInputEpoch);
@@ -546,13 +546,13 @@ public sealed class RootLocalImageRelayoutTests
                 LayoutWidth,
                 CancellationToken.None,
                 out constructionContext,
-                beforeMeasureOutsideGateForTests: () =>
+                phaseHooks: CompletedImageRelayoutPhaseHooks.BeforeMeasure(() =>
                 {
                     snapshot.RelayoutChangedBlocks([nonImageSibling.BlockIndex], LayoutWidth, CancellationToken.None);
                     stateAfterExternalCommit = snapshot.Blocks.Select(static block => block.Bounds).ToArray();
                     sizeAfterExternalCommit = snapshot.Size;
                     revisionAfterExternalCommit = snapshot.LayoutRevision;
-                },
+                }),
                 expectedPointerInputEpoch: snapshot.PointerInputEpoch);
             Assert.Equal(PreparedImageRelayoutResult.Retry, result);
             Assert.Equal(revisionAfterExternalCommit, snapshot.LayoutRevision);
@@ -594,7 +594,7 @@ public sealed class RootLocalImageRelayoutTests
                 LayoutWidth,
                 cancellation.Token,
                 out constructionContext,
-                beforeMeasureOutsideGateForTests: cancellation.Cancel,
+                phaseHooks: CompletedImageRelayoutPhaseHooks.BeforeMeasure(cancellation.Cancel),
                 expectedPointerInputEpoch: snapshot.PointerInputEpoch));
 
             Assert.Equal(revisionBefore, snapshot.LayoutRevision);
@@ -825,13 +825,13 @@ public sealed class RootLocalImageRelayoutTests
             PreparedImageRelayoutResult result = snapshot.TryRelayoutCompletedImageRoot(
                 [source.BlockIndex], LayoutWidth, CancellationToken.None,
                 out constructionContext,
-                beforeMeasureOutsideGateForTests: () =>
+                phaseHooks: CompletedImageRelayoutPhaseHooks.BeforeMeasure(() =>
                 {
                     replacementBitmap = CreateBitmap(seed.Device, 24, 12);
                     SharedCanvasBitmapCache.Lease replacementLease =
                         SharedCanvasBitmapCache.CreateUncachedLease(replacementBitmap);
                     InvokeReplaceBitmap(source, replacementLease);
-                },
+                }),
                 expectedPointerInputEpoch: snapshot.PointerInputEpoch);
 
             Assert.Equal(PreparedImageRelayoutResult.Retry, result);
@@ -887,12 +887,12 @@ public sealed class RootLocalImageRelayoutTests
             PreparedImageRelayoutResult result = snapshot.TryRelayoutCompletedImageRoots(
                 [second.BlockIndex, first.BlockIndex], LayoutWidth, CancellationToken.None,
                 out constructionContext,
-                beforeMeasureOutsideGateForTests: () =>
+                phaseHooks: CompletedImageRelayoutPhaseHooks.BeforeMeasure(() =>
                 {
                     replacementBitmap = CreateBitmap(seed.Device, 24, 12);
                     InvokeReplaceBitmap(second,
                         SharedCanvasBitmapCache.CreateUncachedLease(replacementBitmap));
-                },
+                }),
                 expectedPointerInputEpoch: snapshot.PointerInputEpoch);
 
             Assert.Equal(PreparedImageRelayoutResult.Retry, result);

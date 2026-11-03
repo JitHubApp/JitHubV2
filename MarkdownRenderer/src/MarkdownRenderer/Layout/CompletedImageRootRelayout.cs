@@ -78,17 +78,15 @@ internal sealed class CompletedImageRootRelayout
         float availableWidth,
         CancellationToken cancellationToken,
         out MarkdownLayoutContext? constructionContext,
-        Action? beforeMeasureOutsideGateForTests = null,
         long? expectedPointerInputEpoch = null,
-        Action? beforeCommitOutsideGateForTests = null)
+        CompletedImageRelayoutPhaseHooks? phaseHooks = null)
     {
         ArgumentNullException.ThrowIfNull(changedBlockIndices);
         constructionContext = null;
         if (changedBlockIndices.Count != 1)
             return PreparedImageRelayoutResult.Unavailable;
         return TryRelayoutCompletedImageRoots(changedBlockIndices, availableWidth,
-            cancellationToken, out constructionContext, beforeMeasureOutsideGateForTests,
-            expectedPointerInputEpoch, beforeCommitOutsideGateForTests);
+            cancellationToken, out constructionContext, expectedPointerInputEpoch, phaseHooks);
     }
 
     /// <summary>
@@ -104,9 +102,8 @@ internal sealed class CompletedImageRootRelayout
         float availableWidth,
         CancellationToken cancellationToken,
         out MarkdownLayoutContext? constructionContext,
-        Action? beforeMeasureOutsideGateForTests = null,
         long? expectedPointerInputEpoch = null,
-        Action? beforeCommitOutsideGateForTests = null)
+        CompletedImageRelayoutPhaseHooks? phaseHooks = null)
     {
         ArgumentNullException.ThrowIfNull(changedBlockIndices);
         constructionContext = null;
@@ -410,7 +407,7 @@ internal sealed class CompletedImageRootRelayout
             // must never run under the source's read/paint/interaction gate.
             if (!SingleRasterLayoutCandidate.AreSourceProvidersCurrent(sources, context))
                 return PreparedImageRelayoutResult.Retry;
-            beforeMeasureOutsideGateForTests?.Invoke();
+            phaseHooks?.BeforeMeasureOutsideGate?.Invoke();
             // Measure changed clones under their exact logical flow origin so
             // native text/vector metrics snap identically to a fresh full
             // layout. Then arrange each detached root at that absolute origin,
@@ -557,7 +554,7 @@ internal sealed class CompletedImageRootRelayout
             // but before any retained owner or published metadata is changed.
             // The following token check is also the first operation under the
             // publication lock, so cancellation cannot expose a partial commit.
-            beforeCommitOutsideGateForTests?.Invoke();
+            phaseHooks?.BeforeCommitOutsideGate?.Invoke();
             cancellationToken.ThrowIfCancellationRequested();
 
             lock (_geometry.Gate)
