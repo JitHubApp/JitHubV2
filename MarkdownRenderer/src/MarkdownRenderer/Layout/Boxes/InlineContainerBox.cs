@@ -589,37 +589,20 @@ internal sealed partial class InlineContainerBox : BlockBox
                 targetContext.CancellationToken.ThrowIfCancellationRequested();
             }
 
-            privateCandidate = new InlineContainerBox(targetContext, this, allowCodeForegroundSpans);
+            privateCandidate = CreatePrivatePlacementShell(targetContext, allowCodeForegroundSpans);
             int offset = 0;
             for (int index = 0; index < copiedRuns.Length; index++)
             {
                 targetContext.CancellationToken.ThrowIfCancellationRequested();
                 InlineRun copiedRun = copiedRuns[index];
-                // Preflight required the source ordinals to be exact; preserve
-                // rather than repair them so malformed identity never passes.
-                privateCandidate._runs.Add(copiedRun);
+                privateCandidate.AddPrivatePlacementRun(copiedRun);
                 if (copiedRun is InlineImageRun copiedImage)
                     unownedImageClones.Remove(copiedImage.Image);
-                string[]? sourceAliasOverride = GetEffectiveRunAliasOverride(index);
-                privateCandidate.AppendEffectiveRunAliasOverride(
-                    index,
-                    sourceAliasOverride is null ? null : CopyKeys(sourceAliasOverride));
-                if (_resolvedRunStyles is not null)
-                    (privateCandidate._resolvedRunStyles ??= new(runCount)).Add(_resolvedRunStyles[index]);
-                if (copiedRun is InlineImageRun imageRun)
-                {
-                    imageRun.Image.BlockIndex = BlockIndex;
-                    (privateCandidate._inlineImageRuns ??= new()).Add((imageRun, offset));
-                }
-                else if (copiedRun is InlineVectorSceneRun)
-                {
-                    VectorSceneState vectorState = privateCandidate._vectorSceneState ??= new VectorSceneState();
-                    vectorState.VectorSceneRunCount++;
-                }
+                privateCandidate.RecordPrivatePlacementRunState(this, index, copiedRun, offset, runCount);
                 offset += copiedRun.TextLength;
             }
             targetContext.CancellationToken.ThrowIfCancellationRequested();
-            privateCandidate._runTextLength = offset;
+            privateCandidate.SetPrivatePlacementRunTextLength(offset);
 
             if (unownedImageClones.Count != 0 || sourceFences.Count != imageCount)
                 throw new InvalidOperationException("The private inline candidate did not take ownership of every cloned image.");
@@ -638,6 +621,59 @@ internal sealed partial class InlineContainerBox : BlockBox
             throw;
         }
     }
+
+    /// <summary>
+    /// Creates the unmeasured private placement candidate that copies this
+    /// box's container state. The caller adds the copied runs.
+    /// </summary>
+    private InlineContainerBox CreatePrivatePlacementShell(
+        MarkdownLayoutContext targetContext,
+        bool copyCodeForegroundSpans)
+        => new(targetContext, this, copyCodeForegroundSpans);
+
+    /// <summary>
+    /// Appends a copied run to this private placement candidate. Once added,
+    /// the candidate owns the run's cloned image.
+    /// </summary>
+    private void AddPrivatePlacementRun(InlineRun copiedRun)
+    {
+        // Preflight required the source ordinals to be exact; preserve
+        // rather than repair them so malformed identity never passes.
+        _runs.Add(copiedRun);
+    }
+
+    /// <summary>
+    /// Records the per-run state of a run just added to this private placement
+    /// candidate: the source ordinal's alias override and resolved style, and
+    /// the image or vector-scene index entry.
+    /// </summary>
+    private void RecordPrivatePlacementRunState(
+        InlineContainerBox source,
+        int index,
+        InlineRun copiedRun,
+        int offset,
+        int runCount)
+    {
+        string[]? sourceAliasOverride = source.GetEffectiveRunAliasOverride(index);
+        AppendEffectiveRunAliasOverride(
+            index,
+            sourceAliasOverride is null ? null : CopyKeys(sourceAliasOverride));
+        if (source._resolvedRunStyles is not null)
+            (_resolvedRunStyles ??= new(runCount)).Add(source._resolvedRunStyles[index]);
+        if (copiedRun is InlineImageRun imageRun)
+        {
+            imageRun.Image.BlockIndex = source.BlockIndex;
+            (_inlineImageRuns ??= new()).Add((imageRun, offset));
+        }
+        else if (copiedRun is InlineVectorSceneRun)
+        {
+            VectorSceneState vectorState = _vectorSceneState ??= new VectorSceneState();
+            vectorState.VectorSceneRunCount++;
+        }
+    }
+
+    private void SetPrivatePlacementRunTextLength(int textLength)
+        => _runTextLength = textLength;
 
     private static bool TryCreateImageRunPlacement(
         InlineImageRun source,
