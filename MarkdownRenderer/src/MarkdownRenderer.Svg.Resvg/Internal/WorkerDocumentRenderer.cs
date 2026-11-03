@@ -101,24 +101,11 @@ internal sealed class WorkerDocumentRenderer(
                 demandTicket: demand).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             document.ValidateContentAdmission();
-            SvgWorkerStageTrace.Record(
-                diagnosticWorkId,
-                SvgWorkerStageId.PoolSchedulingQueueWait,
-                0,
-                requestId,
-                document.DocumentId,
-                queueStartedAt,
-                sourceBytes: preflight.Source.Length,
-                targetPixels: targetPixels);
+            RecordQueueWait(preflight, document, requestId, targetPixels, diagnosticWorkId, queueStartedAt);
             cancellationToken.ThrowIfCancellationRequested();
             WindowsWorkerProcess worker = await _scheduler.EnsureWorkerAsync(
-                lease
-                ,
-                diagnosticWorkId,
-                requestId,
-                document.DocumentId,
-                preflight.Source.Length,
-                targetPixels).ConfigureAwait(false);
+                lease, diagnosticWorkId, requestId, document.DocumentId, preflight.Source.Length, targetPixels)
+                .ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             if (preflight.Info.HasText)
             {
@@ -129,14 +116,12 @@ internal sealed class WorkerDocumentRenderer(
                     demand?.Priority ?? renderRequest.Priority,
                     requestGeneration,
                     cancellationToken,
-                    demand
-                    ,
+                    demand,
                     diagnosticWorkId,
                     requestId,
                     document.DocumentId,
                     preflight.Source.Length,
-                    targetPixels
-                    ).ConfigureAwait(false);
+                    targetPixels).ConfigureAwait(false);
                 lease = textAdmission.Lease;
                 worker = textAdmission.Worker;
             }
@@ -167,6 +152,23 @@ internal sealed class WorkerDocumentRenderer(
             }
         }
     }
+
+    private static void RecordQueueWait(
+        SvgPreflightResult preflight,
+        WorkerDocumentHandle document,
+        ulong requestId,
+        long targetPixels,
+        long diagnosticWorkId,
+        long queueStartedAt) =>
+        SvgWorkerStageTrace.Record(
+            diagnosticWorkId,
+            SvgWorkerStageId.PoolSchedulingQueueWait,
+            0,
+            requestId,
+            document.DocumentId,
+            queueStartedAt,
+            sourceBytes: preflight.Source.Length,
+            targetPixels: targetPixels);
 
     [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
     private async ValueTask<WorkerResponse> RenderDocumentAdmittedAsync(
