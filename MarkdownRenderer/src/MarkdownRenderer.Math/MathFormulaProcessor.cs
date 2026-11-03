@@ -81,93 +81,29 @@ internal sealed class MathFormulaProcessor
         // exact untrusted source is retained only by the request/copy fields.
         EmergencyLocalizationSnapshot emergency = CreateEnglishEmergencySnapshot(request);
 
-        // Host string providers are synchronous and cannot be force-cancelled.
-        // Invoke them away from the caller thread, bound the await by the same
-        // deadline as parsing, and observe the task in case a blocking provider
-        // completes with a fault after this operation has already returned.
         try
         {
             operationToken.ThrowIfCancellationRequested();
 
             if (_strings is not null)
             {
-                string texPreview = emergency.TexPreview;
-                Task<EmergencyLocalizationSnapshot> localizationTask =
-                    await MathHostCallbackGate.StartAsync(
-                        token => ValueTask.FromResult(CreateLocalizedEmergencySnapshot(
-                            request,
-                            languageTag,
-                            localizationCulture,
-                            texPreview,
-                            token)),
-                        operationToken)
-                    .ConfigureAwait(false);
-
-                try
-                {
-                    emergency = await localizationTask
-                        .WaitAsync(operationToken)
-                        .ConfigureAwait(false);
-                }
-                catch (OperationCanceledException) when (operationToken.IsCancellationRequested)
-                {
-                    throw;
-                }
-                catch
-                {
-                    // The English snapshot is a guaranteed boundary even for an
-                    // unexpected failure outside the provider resolver's guard.
-                }
-            }
-
-            bool hasHostCallbacks = _strings is not null ||
-                _hasReplacementAccessibilityFormatter;
-            if (hasHostCallbacks)
-            {
-                MathAccessibilityDescription guaranteedAccessibility = emergency.Accessibility;
-                Task<MathFormulaResult> coreTask =
-                    await MathHostCallbackGate.StartAsync(
-                        token => ProcessCoreAsync(
-                            request,
-                            options,
-                            token,
-                            languageTag,
-                            localizationCulture,
-                            guaranteedAccessibility),
-                        operationToken)
-                    .ConfigureAwait(false);
-                return await coreTask
-                    .WaitAsync(operationToken)
-                    .ConfigureAwait(false);
-            }
-
-            // Public callback-free processing owns exactly one worker dispatch
-            // for compilation. The internal worker path stays entirely inline.
-            if (!callerOwnsWorker)
-            {
-                Task<MathFormulaResult> coreTask = Task.Run(
-                    async () => await ProcessCoreAsync(
+                emergency = await LocalizeEmergencySnapshotAsync(
                         request,
-                        options,
-                        operationToken,
                         languageTag,
                         localizationCulture,
-                        emergency.Accessibility)
-                    .ConfigureAwait(false),
-                    CancellationToken.None);
-                ObserveFault(coreTask);
-                return await coreTask
-                    .WaitAsync(operationToken)
+                        emergency,
+                        operationToken)
                     .ConfigureAwait(false);
             }
 
-            return await ProcessCoreAsync(
+            return await DispatchCoreAsync(
                     request,
                     options,
                     operationToken,
                     languageTag,
                     localizationCulture,
-                    emergency.Accessibility)
+                    emergency.Accessibility,
+                    callerOwnsWorker)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -182,6 +118,113 @@ internal sealed class MathFormulaProcessor
                 emergency.TimeoutDiagnostic,
                 emergency.Accessibility);
         }
+    }
+
+    /// <summary>
+    /// Resolves the emergency (timeout) strings through the host provider.
+    /// Host string providers are synchronous and cannot be force-cancelled, so
+    /// they run away from the caller thread, the await is bounded by the
+    /// operation deadline, and any other failure keeps the English snapshot.
+    /// </summary>
+    private async ValueTask<EmergencyLocalizationSnapshot> LocalizeEmergencySnapshotAsync(
+        MathFormulaRequest request,
+        string languageTag,
+        CultureInfo localizationCulture,
+        EmergencyLocalizationSnapshot english,
+        CancellationToken operationToken)
+    {
+        string texPreview = english.TexPreview;
+        Task<EmergencyLocalizationSnapshot> localizationTask =
+            await MathHostCallbackGate.StartAsync(
+                token => ValueTask.FromResult(CreateLocalizedEmergencySnapshot(
+                    request,
+                    languageTag,
+                    localizationCulture,
+                    texPreview,
+                    token)),
+                operationToken)
+            .ConfigureAwait(false);
+
+        try
+        {
+            return await localizationTask
+                .WaitAsync(operationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (operationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            // The English snapshot is a guaranteed boundary even for an
+            // unexpected failure outside the provider resolver's guard.
+            return english;
+        }
+    }
+
+    /// <summary>
+    /// Runs the core on the right worker: bounded host-callback isolation when
+    /// host callbacks are configured, one thread-pool dispatch for public
+    /// callback-free calls, and inline when the caller already owns a worker.
+    /// </summary>
+    private async ValueTask<MathFormulaResult> DispatchCoreAsync(
+        MathFormulaRequest request,
+        MathProcessingOptions options,
+        CancellationToken operationToken,
+        string languageTag,
+        CultureInfo localizationCulture,
+        MathAccessibilityDescription guaranteedAccessibility,
+        bool callerOwnsWorker)
+    {
+        bool hasHostCallbacks = _strings is not null ||
+            _hasReplacementAccessibilityFormatter;
+        if (hasHostCallbacks)
+        {
+            Task<MathFormulaResult> coreTask =
+                await MathHostCallbackGate.StartAsync(
+                    token => ProcessCoreAsync(
+                        request,
+                        options,
+                        token,
+                        languageTag,
+                        localizationCulture,
+                        guaranteedAccessibility),
+                    operationToken)
+                .ConfigureAwait(false);
+            return await coreTask
+                .WaitAsync(operationToken)
+                .ConfigureAwait(false);
+        }
+
+        // Public callback-free processing owns exactly one worker dispatch
+        // for compilation. The internal worker path stays entirely inline.
+        if (!callerOwnsWorker)
+        {
+            Task<MathFormulaResult> coreTask = Task.Run(
+                async () => await ProcessCoreAsync(
+                    request,
+                    options,
+                    operationToken,
+                    languageTag,
+                    localizationCulture,
+                    guaranteedAccessibility)
+                .ConfigureAwait(false),
+                CancellationToken.None);
+            ObserveFault(coreTask);
+            return await coreTask
+                .WaitAsync(operationToken)
+                .ConfigureAwait(false);
+        }
+
+        return await ProcessCoreAsync(
+                request,
+                options,
+                operationToken,
+                languageTag,
+                localizationCulture,
+                guaranteedAccessibility)
+            .ConfigureAwait(false);
     }
 
     private async ValueTask<MathFormulaResult> ProcessCoreAsync(
