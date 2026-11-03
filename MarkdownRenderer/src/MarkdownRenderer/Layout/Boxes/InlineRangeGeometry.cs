@@ -99,25 +99,8 @@ internal static class InlineRangeGeometry
             yield break;
 
         box.EnsureBuffer();
-        if (documentRange is { } range)
-        {
-            from = ToBufferIndex(box, range.Start);
-            length = ToBufferIndex(box, range.End) - from;
-            if (length <= 0)
-                yield break;
-        }
-        else
-        {
-            if (box.LayoutBuffer.Length == 0)
-                yield break;
-
-            from = Math.Clamp(from, 0, box.LayoutBuffer.Length);
-            length = Math.Clamp(length, 0, box.LayoutBuffer.Length - from);
-            if (length <= 0)
-                length = from < box.LayoutBuffer.Length ? 1 : 0;
-            if (length <= 0)
-                yield break;
-        }
+        if (!TryResolveBufferRange(box, documentRange, ref from, ref length))
+            yield break;
 
         var style = box.GetContainerStyle();
         var (rootLocalX, rootLocalY) = box.GetSnappedOrigin(
@@ -150,31 +133,17 @@ internal static class InlineRangeGeometry
             foreach (var region in regions)
             {
                 var bounds = region.LayoutBounds;
-                double left = bounds.X;
-                double right = bounds.X + bounds.Width;
-                if (clipLines is not null && double.IsFinite(contentWidth) && contentWidth > 0 &&
-                    TryGetLineIndex(clipLines, region.CharacterIndex, out int lineIndex, out int clipLineStart))
+                if (!TryClipRegionToContent(
+                        box.TextLayout,
+                        clipLines,
+                        region,
+                        contentLeft,
+                        contentWidth,
+                        ref lineInk,
+                        out double left,
+                        out double right))
                 {
-                    lineInk ??= new Dictionary<int, (double Left, double Right)>();
-                    if (!lineInk.TryGetValue(lineIndex, out (double Left, double Right) ink))
-                    {
-                        ink = MeasureLineInk(box.TextLayout, clipLines[lineIndex], clipLineStart);
-                        lineInk[lineIndex] = ink;
-                    }
-
-                    double allowedLeft = Math.Min(contentLeft, ink.Left);
-                    double allowedRight = Math.Max(contentLeft + contentWidth, ink.Right);
-                    if (double.IsFinite(contentLeft) && bounds.Width > 0)
-                    {
-                        // Only whitespace hanging outside the box is removed;
-                        // a region made of nothing else has no rectangle,
-                        // like any other zero-area selection fragment.
-                        // Zero-width regions such as line breaks are kept.
-                        if (left >= allowedRight || right <= allowedLeft)
-                            continue;
-                        left = Math.Max(left, allowedLeft);
-                        right = Math.Min(right, allowedRight);
-                    }
+                    continue;
                 }
 
                 yield return new Rect(
@@ -206,6 +175,75 @@ internal static class InlineRangeGeometry
             y += metric.Height;
             lineStart = lineEnd;
         }
+    }
+
+    // A document range maps to its buffer offsets; a raw buffer range is
+    // clamped, and an empty one widens to the character at its start.
+    private static bool TryResolveBufferRange(
+        InlineContainerBox box,
+        DocumentRange? documentRange,
+        ref int from,
+        ref int length)
+    {
+        if (documentRange is { } range)
+        {
+            from = ToBufferIndex(box, range.Start);
+            length = ToBufferIndex(box, range.End) - from;
+            return length > 0;
+        }
+
+        if (box.LayoutBuffer.Length == 0)
+            return false;
+
+        from = Math.Clamp(from, 0, box.LayoutBuffer.Length);
+        length = Math.Clamp(length, 0, box.LayoutBuffer.Length - from);
+        if (length <= 0)
+            length = from < box.LayoutBuffer.Length ? 1 : 0;
+        return length > 0;
+    }
+
+    // Clips a region's horizontal extent to the content box, widened to its
+    // line's non-whitespace ink. Returns false for a region made only of
+    // whitespace hanging outside the box.
+    private static bool TryClipRegionToContent(
+        CanvasTextLayout layout,
+        CanvasLineMetrics[]? clipLines,
+        CanvasTextLayoutRegion region,
+        double contentLeft,
+        double contentWidth,
+        ref Dictionary<int, (double Left, double Right)>? lineInk,
+        out double left,
+        out double right)
+    {
+        var bounds = region.LayoutBounds;
+        left = bounds.X;
+        right = bounds.X + bounds.Width;
+        if (clipLines is not null && double.IsFinite(contentWidth) && contentWidth > 0 &&
+            TryGetLineIndex(clipLines, region.CharacterIndex, out int lineIndex, out int clipLineStart))
+        {
+            lineInk ??= new Dictionary<int, (double Left, double Right)>();
+            if (!lineInk.TryGetValue(lineIndex, out (double Left, double Right) ink))
+            {
+                ink = MeasureLineInk(layout, clipLines[lineIndex], clipLineStart);
+                lineInk[lineIndex] = ink;
+            }
+
+            double allowedLeft = Math.Min(contentLeft, ink.Left);
+            double allowedRight = Math.Max(contentLeft + contentWidth, ink.Right);
+            if (double.IsFinite(contentLeft) && bounds.Width > 0)
+            {
+                // Only whitespace hanging outside the box is removed;
+                // a region made of nothing else has no rectangle,
+                // like any other zero-area selection fragment.
+                // Zero-width regions such as line breaks are kept.
+                if (left >= allowedRight || right <= allowedLeft)
+                    return false;
+                left = Math.Max(left, allowedLeft);
+                right = Math.Min(right, allowedRight);
+            }
+        }
+
+        return true;
     }
 
     private static bool TryGetLineIndex(
