@@ -655,12 +655,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <see cref="RenderedContentSize"/>, it changes when a new rendering is
     /// displayed, not when the setting changes.
     /// </remarks>
-    public MarkdownThemeVariant? RenderedThemeVariant =>
-        _published.Snapshot is null || _published.Theme is not { } theme
-            ? null
-            : theme.IsHighContrast
-                ? MarkdownThemeVariant.HighContrast
-                : theme.IsDark ? MarkdownThemeVariant.Dark : MarkdownThemeVariant.Light;
+    public MarkdownThemeVariant? RenderedThemeVariant => _published.ThemeVariant;
 
     /// <summary>
     /// Raised after every embed realisation pass (initial layout commit,

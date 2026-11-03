@@ -62,4 +62,15 @@ internal sealed class PublishedLayout
     /// colours here, so they always match the painted snapshot.
     /// </summary>
     public ThemeSnapshot? Theme { get; set; }
+
+    /// <summary>
+    /// The variant <see cref="Theme"/> renders, or null while no snapshot is
+    /// shown: high contrast first, then dark or light.
+    /// </summary>
+    public MarkdownThemeVariant? ThemeVariant =>
+        Snapshot is null || Theme is not { } theme
+            ? null
+            : theme.IsHighContrast
+                ? MarkdownThemeVariant.HighContrast
+                : theme.IsDark ? MarkdownThemeVariant.Dark : MarkdownThemeVariant.Light;
 }
