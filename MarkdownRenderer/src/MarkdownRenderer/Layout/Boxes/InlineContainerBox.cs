@@ -43,6 +43,7 @@ internal sealed partial class InlineContainerBox : BlockBox
     private bool _hasAtomicInlineObject;
     internal bool HasAtomicInlineObject => _hasAtomicInlineObject;
     private int _runTextLength;
+    internal int RunTextLength => _runTextLength;
     // Most runs inherit the container aliases. Keep that common case implicit;
     // once an override exists, null slots preserve the exact run ordinals.
     private List<string[]?>? _effectiveRunAliasOverrides;
@@ -53,7 +54,7 @@ internal sealed partial class InlineContainerBox : BlockBox
     // allocate this cache, and immutable maps remain safely shareable by private
     // placement clones while each clone resolves against its own context.
     private List<ElementStyle[]?>? _resolvedLinkInlineSpanStyles;
-    private int ResolvedRunStyleCount => _resolvedRunStyles?.Count ?? _runs.Count;
+    internal int ResolvedRunStyleCount => _resolvedRunStyles?.Count ?? _runs.Count;
     private ElementStyle? GetCachedRunStyle(int index)
     {
         if ((uint)index >= (uint)_runs.Count)
@@ -69,6 +70,7 @@ internal sealed partial class InlineContainerBox : BlockBox
     private CanvasLineMetrics[]? _cachedLineMetrics;
     private bool _lineMetricsRead;
     private CanvasTextLayout? _selectionLayout;
+    internal CanvasTextLayout? SelectionLayout => _selectionLayout;
     private NativeResourceRetirementRecord? _selectionLayoutRetirementRecord;
     private Color _selectionLayoutColor;
     private float _selectionLayoutWidth;
@@ -85,6 +87,7 @@ internal sealed partial class InlineContainerBox : BlockBox
     private string _buffer = string.Empty;
     internal string LayoutBuffer => _buffer;
     private bool _bufferDirty;
+    internal bool IsBufferDirty => _bufferDirty;
     private float _lastWidth;
 
     private sealed class VectorSceneState
@@ -113,6 +116,7 @@ internal sealed partial class InlineContainerBox : BlockBox
                 throw new InvalidOperationException("Vector geometry requires vector-scene state.");
         }
     }
+    internal InlineSceneGeometry[] PendingSceneGeometry => _pendingSceneGeometry;
     private long _sceneGeometryGeneration
     {
         get => _vectorSceneState?.SceneGeometryGeneration ?? 0;
@@ -124,6 +128,7 @@ internal sealed partial class InlineContainerBox : BlockBox
                 throw new InvalidOperationException("A scene generation requires vector-scene state.");
         }
     }
+    internal long CurrentSceneGeometryGeneration => _sceneGeometryGeneration;
     private long _pendingSceneGeometryGeneration
     {
         get => _vectorSceneState?.PendingSceneGeometryGeneration ?? 0;
@@ -135,6 +140,7 @@ internal sealed partial class InlineContainerBox : BlockBox
                 throw new InvalidOperationException("Pending scene geometry requires vector-scene state.");
         }
     }
+    internal long PendingSceneGeometryGeneration => _pendingSceneGeometryGeneration;
     private int _sceneCharacterRegionQueryCount => _vectorSceneState?.SceneCharacterRegionQueryCount ?? 0;
     private int _vectorSceneRunCount
     {
@@ -160,11 +166,13 @@ internal sealed partial class InlineContainerBox : BlockBox
     }
     public readonly MarkdownLayoutContext Context;
     private readonly bool _usesProgressiveNativeSceneResidency;
+    internal bool UsesProgressiveNativeSceneResidency => _usesProgressiveNativeSceneResidency;
     private readonly IReadOnlyList<string> _styleContextKeys;
     internal IReadOnlyList<string> StyleContextKeys => _styleContextKeys;
     private readonly IReadOnlyList<string> _styleAliasKeys;
     internal IReadOnlyList<string> StyleAliasKeys => _styleAliasKeys;
     private ElementStyle? _resolvedContainerStyle;
+    internal ElementStyle? ResolvedContainerStyle => _resolvedContainerStyle;
     private IReadOnlyList<CodeBlockHighlightSpan> _foregroundSpans = Array.Empty<CodeBlockHighlightSpan>();
     internal IReadOnlyList<CodeBlockHighlightSpan> ForegroundSpans => _foregroundSpans;
     private readonly NativeResourceRetirement _nativeRetirement;
@@ -354,8 +362,14 @@ internal sealed partial class InlineContainerBox : BlockBox
         out int imageCount,
         bool allowUnmeasuredTextOnly = false,
         bool allowIdleImagePlacements = false)
-        => TryGetPrivateRasterPlacementCounts(
-            targetContext, availableWidth, out runCount, out imageCount, out _, allowUnmeasuredTextOnly, allowIdleImagePlacements);
+        => InlinePrivatePlacementPreflight.TryGetPrivateRasterPlacementCounts(
+            this,
+            targetContext,
+            availableWidth,
+            out runCount,
+            out imageCount,
+            allowUnmeasuredTextOnly,
+            allowIdleImagePlacements);
 
     internal bool TryGetPrivateRasterPlacementCounts(
         MarkdownLayoutContext targetContext,
@@ -366,10 +380,16 @@ internal sealed partial class InlineContainerBox : BlockBox
         bool allowUnmeasuredTextOnly = false,
         bool allowIdleImagePlacements = false,
         bool allowCodeForegroundSpans = false)
-        => TryGetPrivateRasterPlacementCountsCore(
-            targetContext, availableWidth, out runCount, out imageCount, out styleKeyCopyEntries,
-            allowUnmeasuredTextOnly, allowIdleImagePlacements, allowCodeForegroundSpans,
-            allowMeasuredVectorPlacement: false);
+        => InlinePrivatePlacementPreflight.TryGetPrivateRasterPlacementCounts(
+            this,
+            targetContext,
+            availableWidth,
+            out runCount,
+            out imageCount,
+            out styleKeyCopyEntries,
+            allowUnmeasuredTextOnly,
+            allowIdleImagePlacements,
+            allowCodeForegroundSpans);
 
     /// <summary>
     /// Root-local measurement may borrow immutable vector metrics while the
@@ -382,50 +402,13 @@ internal sealed partial class InlineContainerBox : BlockBox
         out int runCount,
         out int imageCount,
         out long styleKeyCopyEntries)
-        => TryGetPrivateRasterPlacementCountsCore(
-            targetContext, availableWidth, out runCount, out imageCount, out styleKeyCopyEntries,
-            allowUnmeasuredTextOnly: false, allowIdleImagePlacements: false,
-            allowCodeForegroundSpans: false, allowMeasuredVectorPlacement: true);
-
-    private bool TryGetPrivateRasterPlacementCountsCore(
-        MarkdownLayoutContext targetContext,
-        float availableWidth,
-        out int runCount,
-        out int imageCount,
-        out long styleKeyCopyEntries,
-        bool allowUnmeasuredTextOnly,
-        bool allowIdleImagePlacements,
-        bool allowCodeForegroundSpans,
-        bool allowMeasuredVectorPlacement)
-    {
-        ArgumentNullException.ThrowIfNull(targetContext);
-        runCount = 0;
-        imageCount = 0;
-        styleKeyCopyEntries = 0;
-        targetContext.CancellationToken.ThrowIfCancellationRequested();
-        if (!IsEligibleForPrivateInlinePlacementClone(
-                targetContext, availableWidth, allowUnmeasuredTextOnly, allowIdleImagePlacements,
-                allowCodeForegroundSpans, allowMeasuredVectorPlacement) ||
-            !TryGetPrivateRasterPlacementShapeCounts(allowUnmeasuredTextOnly,
-                out int candidateRunCount, out int candidateImageCount, out long candidateStyleKeyCopyEntries,
-                allowIdleImagePlacements, allowCodeForegroundSpans, allowMeasuredVectorPlacement) ||
-            (_layout is null && candidateImageCount != 0 && !allowIdleImagePlacements))
-            return false;
-
-        // Prove the complete source shape before any earlier root can acquire
-        // candidate bitmap leases. The clone and final commit repeat these
-        // lifecycle checks because image work can start after this inspection.
-        if (_inlineImageRuns is { } imageEntries)
-            foreach (var entry in imageEntries)
-                if (!entry.Run.TryClassifyPrivateImagePlacement(
-                        targetContext, allowIdleImagePlacements, out _, out _))
-                    return false;
-
-        runCount = candidateRunCount;
-        imageCount = candidateImageCount;
-        styleKeyCopyEntries = candidateStyleKeyCopyEntries;
-        return true;
-    }
+        => InlinePrivatePlacementPreflight.TryGetPrivateRasterPlacementCountsWithMeasuredVectorPlacement(
+            this,
+            targetContext,
+            availableWidth,
+            out runCount,
+            out imageCount,
+            out styleKeyCopyEntries);
 
     /// <summary>
     /// Allocation-free count of every key reference array copied by a private
@@ -433,54 +416,7 @@ internal sealed partial class InlineContainerBox : BlockBox
     /// document roots; this per-inline check also protects clone entry points.
     /// </summary>
     internal bool TryGetPrivateRasterPlacementStyleKeyCopyEntries(out long entries)
-    {
-        entries = 0;
-        if (_runs.Count > MaximumPrivateRasterPlacementRuns ||
-            !HasWellFormedEffectiveRunAliases ||
-            !HasWellFormedResolvedLinkInlineStyleCache ||
-            !TryAccumulateStyleKeyCopyEntries(ref entries, _styleContextKeys) ||
-            !TryAccumulateStyleKeyCopyEntries(ref entries, _styleAliasKeys))
-            return false;
-
-        for (int index = 0; index < _runs.Count; index++)
-        {
-            InlineRun run = _runs[index];
-            string[]? aliasOverride = GetEffectiveRunAliasOverride(index);
-            if (run is null ||
-                !TryAccumulateStyleKeyCopyEntries(ref entries, run.StyleAliases) ||
-                !TryAccumulateStyleKeyCopyEntries(ref entries, run.StyleModifierKeys) ||
-                !TryAccumulateStyleKeyCopyEntries(ref entries, run.ScriptStyleAncestryKeys) ||
-                run is LinkRun linkRun && linkRun.InlineStyleMap is { } inlineStyleMap &&
-                    (!inlineStyleMap.IsValidForTextLength(run.TextLength) ||
-                     !TryAccumulateStyleKeyCopyEntryCount(ref entries, inlineStyleMap.StyleKeyEntryCount)) ||
-                aliasOverride is not null &&
-                    !TryAccumulateStyleKeyCopyEntries(ref entries, aliasOverride))
-                return false;
-        }
-
-        return true;
-    }
-
-    private static bool TryAccumulateStyleKeyCopyEntries(
-        ref long total,
-        IReadOnlyList<string>? keys)
-    {
-        if (keys is null)
-            return false;
-
-        int count = keys.Count;
-        if (count < 0)
-            return false;
-        return TryAccumulateStyleKeyCopyEntryCount(ref total, count);
-    }
-
-    private static bool TryAccumulateStyleKeyCopyEntryCount(ref long total, long count)
-    {
-        if (count < 0)
-            return false;
-        total = total > long.MaxValue - count ? long.MaxValue : total + count;
-        return total <= MaximumPrivateRasterPlacementStyleKeyCopyEntries;
-    }
+        => InlinePrivatePlacementPreflight.TryGetPrivateRasterPlacementStyleKeyCopyEntries(this, out entries);
 
     /// <summary>
     /// Builds an unmeasured private copy of a plain inline paragraph/heading.
@@ -712,155 +648,6 @@ internal sealed partial class InlineContainerBox : BlockBox
         return true;
     }
 
-    private bool TryGetPrivateRasterPlacementShapeCounts(
-        bool allowUnmeasuredTextOnly,
-        out int runCount,
-        out int imageCount,
-        out long styleKeyCopyEntries,
-        bool allowIdleImagePlacements = false,
-        bool allowCodeForegroundSpans = false,
-        bool allowMeasuredVectorPlacement = false)
-    {
-        runCount = 0;
-        imageCount = 0;
-        styleKeyCopyEntries = 0;
-        if (_runs.Count > MaximumPrivateRasterPlacementRuns ||
-            _runTextLength > MaximumPrivateRasterPlacementTextLength ||
-            _inlineImageRuns is { Count: > MaximumPrivateRasterPlacementImages } ||
-            !HasWellFormedEffectiveRunAliases || !HasWellFormedResolvedLinkInlineStyleCache ||
-            ResolvedRunStyleCount != _runs.Count ||
-            (_inlineImageRuns?.Count ?? 0) > _runs.Count ||
-            !CanCopyPrivateCodeForegroundSpans(allowCodeForegroundSpans) ||
-            !TryAccumulateStyleKeyCopyEntries(ref styleKeyCopyEntries, _styleContextKeys) ||
-            !TryAccumulateStyleKeyCopyEntries(ref styleKeyCopyEntries, _styleAliasKeys))
-            return false;
-
-        // Empty table cells have no logical inline runs but still own mutable
-        // native layout state and must be privately reconstructed with their
-        // table candidate. Admit only the exact clean empty shape; malformed
-        // partial indexes, atomic runs, or stale text buffers remain rejected.
-        if (_runs.Count == 0)
-        {
-            if (_runTextLength != 0 || _buffer.Length != 0 || _inlineImageRuns is not null ||
-                _inlineEmbedRuns is not null || _hasAtomicInlineObject ||
-                _vectorSceneRunCount != 0 || _hasDeferredSceneMarker ||
-                _foregroundSpans.Count != 0 ||
-                (_layout is null && _selectionLayout is not null))
-                return false;
-
-            return true;
-        }
-
-        IReadOnlyList<(InlineImageRun Run, int Offset)> imageEntries = _inlineImageRuns is { } entries
-            ? entries
-            : Array.Empty<(InlineImageRun Run, int Offset)>();
-        int imageOrdinal = 0;
-        int vectorOrdinal = 0;
-        long offset = 0;
-        for (int runIndex = 0; runIndex < _runs.Count; runIndex++)
-        {
-            InlineRun run = _runs[runIndex];
-            if (run is null || run.InlineIndex != runIndex || run.RenderedLength != run.TextLength ||
-                run.LayoutTextLength != run.TextLength)
-                return false;
-
-            string[]? aliasOverride = GetEffectiveRunAliasOverride(runIndex);
-            if (!TryAccumulateStyleKeyCopyEntries(ref styleKeyCopyEntries, run.StyleAliases) ||
-                !TryAccumulateStyleKeyCopyEntries(ref styleKeyCopyEntries, run.StyleModifierKeys) ||
-                !TryAccumulateStyleKeyCopyEntries(ref styleKeyCopyEntries, run.ScriptStyleAncestryKeys) ||
-                run is LinkRun linkRun && linkRun.InlineStyleMap is { } inlineStyleMap &&
-                    (!inlineStyleMap.IsValidForTextLength(run.TextLength) ||
-                     !TryAccumulateStyleKeyCopyEntryCount(
-                         ref styleKeyCopyEntries,
-                         inlineStyleMap.StyleKeyEntryCount)) ||
-                aliasOverride is not null &&
-                    !TryAccumulateStyleKeyCopyEntries(ref styleKeyCopyEntries, aliasOverride))
-                return false;
-
-            if (PrivateTextRunPlacement.IsSupported(run) || run is LinkRun)
-            {
-                if (run is LinkRun disclosureLink && (disclosureLink.IsDisclosure || disclosureLink.IsExpanded))
-                    return false;
-            }
-            else if (run is InlineImageRun imageRun)
-            {
-                if (imageOrdinal >= imageEntries.Count)
-                    return false;
-                var entry = imageEntries[imageOrdinal++];
-                if (!ReferenceEquals(entry.Run, imageRun) || offset > int.MaxValue || entry.Offset != (int)offset ||
-                    imageRun.Image.BlockIndex != BlockIndex)
-                    return false;
-
-                // Bounding this duplicate check at 64 keeps it allocation-free
-                // while rejecting aliases before acquiring any clone leases.
-                for (int priorIndex = 0; priorIndex < imageOrdinal - 1; priorIndex++)
-                {
-                    if (ReferenceEquals(imageEntries[priorIndex].Run.Image, imageRun.Image))
-                        return false;
-                }
-            }
-            else if (allowMeasuredVectorPlacement && run is InlineVectorSceneRun vectorRun)
-            {
-                // Read only renderer-owned identity and scalar state. A
-                // placeholder or another measurement-only run cannot become
-                // a publishable drawing through this private recipe.
-                if (vectorRun.IsDisposed || vectorRun.IsMeasuredPlacementOnly ||
-                    vectorRun.DeferredSceneMarker is not null ||
-                    !float.IsFinite(vectorRun.DesiredWidth) || vectorRun.DesiredWidth <= 0 ||
-                    !float.IsFinite(vectorRun.DesiredHeight) || vectorRun.DesiredHeight <= 0 ||
-                    !float.IsFinite(vectorRun.DesiredBaseline) || vectorRun.DesiredBaseline < 0 ||
-                    vectorRun.DesiredBaseline > vectorRun.DesiredHeight ||
-                    !double.IsFinite(vectorRun.LocalBounds.X) || !double.IsFinite(vectorRun.LocalBounds.Y) ||
-                    !double.IsFinite(vectorRun.LocalBounds.Width) || vectorRun.LocalBounds.Width < 0 ||
-                    !double.IsFinite(vectorRun.LocalBounds.Height) || vectorRun.LocalBounds.Height < 0)
-                    return false;
-                vectorOrdinal++;
-            }
-            else
-            {
-                return false;
-            }
-
-            offset += run.TextLength;
-            if (offset > int.MaxValue)
-                return false;
-        }
-
-        bool unmeasuredDirtyText = allowUnmeasuredTextOnly && _layout is null && _bufferDirty;
-        if (imageOrdinal != imageEntries.Count || vectorOrdinal != _vectorSceneRunCount || offset != _runTextLength ||
-            (!unmeasuredDirtyText && offset != _buffer.Length))
-            return false;
-
-        if (allowMeasuredVectorPlacement && _pendingSceneGeometry.Length != 0)
-        {
-            if (_pendingSceneGeometry.Length != vectorOrdinal || _sceneGeometryGeneration == 0 ||
-                _pendingSceneGeometryGeneration !=
-                    (_usesProgressiveNativeSceneResidency ? _sceneGeometryGeneration : 0))
-                return false;
-            int geometryIndex = 0;
-            foreach (InlineRun run in _runs)
-                if (run is InlineVectorSceneRun vectorRun &&
-                    !ReferenceEquals(_pendingSceneGeometry[geometryIndex++].Run, vectorRun))
-                    return false;
-        }
-
-        // Unmeasured images can carry only pristine descriptors, never an
-        // active load, accepted payload, or shared mutable source owner.
-        if (_layout is null && imageOrdinal != 0)
-        {
-            if (!allowIdleImagePlacements)
-                return false;
-            foreach (var entry in imageEntries)
-                if (!ReferenceEquals(entry.Run.Image.Context, Context) ||
-                    !entry.Run.Image.IsCurrentIdleImagePlacement(0))
-                    return false;
-        }
-
-        runCount = _runs.Count;
-        imageCount = imageOrdinal;
-        return true;
-    }
-
     private static Exception? DiscardPrivateRasterCloneConstruction(
         MarkdownLayoutContext targetContext,
         InlineContainerBox? privateCandidate,
@@ -912,63 +699,6 @@ internal sealed partial class InlineContainerBox : BlockBox
         }
     }
 
-    private bool IsEligibleForPrivateInlinePlacementClone(
-        MarkdownLayoutContext targetContext,
-        float availableWidth,
-        bool allowUnmeasuredTextOnly,
-        bool allowIdleImagePlacements = false,
-        bool allowCodeForegroundSpans = false,
-        bool allowMeasuredVectorPlacement = false)
-    {
-        bool unmeasuredTextOnly = allowUnmeasuredTextOnly && _layout is null &&
-            _selectionLayout is null && (_inlineImageRuns is null || allowIdleImagePlacements) && _inlineEmbedRuns is null &&
-            (!_hasAtomicInlineObject || (allowIdleImagePlacements && _inlineImageRuns is not null)) &&
-            _vectorSceneRunCount == 0 && !_hasDeferredSceneMarker &&
-            _pendingSceneGeometry.Length == 0 && CanCopyPrivateCodeForegroundSpans(allowCodeForegroundSpans);
-        bool cleanEmptyCell = _runs.Count == 0 && _runTextLength == 0 &&
-            _buffer.Length == 0 && _inlineImageRuns is null &&
-            _inlineEmbedRuns is null && !_hasAtomicInlineObject;
-        bool zeroLengthBuiltInTextTableCell = IsZeroLengthBuiltInTextTableCell();
-        if ((!unmeasuredTextOnly &&
-                (_layout is null || _bufferDirty ||
-                 (_buffer.Length == 0 && !cleanEmptyCell && !zeroLengthBuiltInTextTableCell) ||
-                 _resolvedContainerStyle is null)) ||
-            !float.IsFinite(availableWidth) || availableWidth <= 0 ||
-            _inlineEmbedRuns is not null ||
-            (!allowMeasuredVectorPlacement && _vectorSceneRunCount != 0) ||
-            _hasDeferredSceneMarker ||
-            (!allowMeasuredVectorPlacement && _pendingSceneGeometry.Length != 0) ||
-            !CanCopyPrivateCodeForegroundSpans(allowCodeForegroundSpans) ||
-            !ArePrivateRasterPlacementContextsCompatible(Context, targetContext))
-            return false;
-
-        return true;
-    }
-
-    private bool IsZeroLengthBuiltInTextTableCell()
-    {
-        if (ElementKey is not (MarkdownElementKeys.TableHeader or MarkdownElementKeys.TableCell) ||
-            _runs.Count == 0 || _runs.Count > MaximumPrivateRasterPlacementRuns ||
-            _runTextLength != 0 || _buffer.Length != 0 ||
-            _inlineImageRuns is not null || _inlineEmbedRuns is not null || _hasAtomicInlineObject ||
-            _vectorSceneRunCount != 0 || _hasDeferredSceneMarker ||
-            _pendingSceneGeometry.Length != 0 || _foregroundSpans.Count != 0)
-        {
-            return false;
-        }
-
-        foreach (InlineRun run in _runs)
-        {
-            if (run is null || !PrivateTextRunPlacement.IsSupported(run) ||
-                run.TextLength != 0 || run.RenderedLength != 0 || run.LayoutTextLength != 0)
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
     internal static bool ArePrivateRasterPlacementContextsCompatible(
         MarkdownLayoutContext sourceContext,
         MarkdownLayoutContext targetContext)
@@ -991,16 +721,6 @@ internal sealed partial class InlineContainerBox : BlockBox
            ReferenceEquals(sourceContext.StringProvider, targetContext.StringProvider) &&
            ReferenceEquals(sourceContext.CommandProvider, targetContext.CommandProvider) &&
            ReferenceEquals(sourceContext.DisclosureStates, targetContext.DisclosureStates);
-
-    private bool CanCopyPrivateCodeForegroundSpans(bool allowCodeForegroundSpans)
-    {
-        if (_foregroundSpans.Count == 0)
-            return true;
-
-        return allowCodeForegroundSpans &&
-            ElementKey == MarkdownElementKeys.CodeBlock &&
-            _foregroundSpans.Count <= MaximumPrivateRasterPlacementRuns;
-    }
 
     private static string[] CopyKeys(IReadOnlyList<string> source)
     {
@@ -1864,10 +1584,10 @@ internal sealed partial class InlineContainerBox : BlockBox
     internal override void ThrowIfCancellationRequested()
         => Context.CancellationToken.ThrowIfCancellationRequested();
 
-    private bool HasWellFormedEffectiveRunAliases =>
+    internal bool HasWellFormedEffectiveRunAliases =>
         _effectiveRunAliasOverrides is null || _effectiveRunAliasOverrides.Count == _runs.Count;
 
-    private bool HasWellFormedResolvedLinkInlineStyleCache
+    internal bool HasWellFormedResolvedLinkInlineStyleCache
     {
         get
         {
@@ -1907,7 +1627,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         return (string[])_styleAliasKeys;
     }
 
-    private string[]? GetEffectiveRunAliasOverride(int index)
+    internal string[]? GetEffectiveRunAliasOverride(int index)
     {
         if ((uint)index >= (uint)_runs.Count)
             throw new ArgumentOutOfRangeException(nameof(index));
