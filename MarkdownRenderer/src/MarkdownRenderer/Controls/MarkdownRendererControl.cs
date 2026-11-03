@@ -61,10 +61,11 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     IImageRelayoutHost, IImageLoadCompletionHost, IVectorCapacityRetryHost,
     ILazyLayoutHost, ILayoutCommitHost, IFocusableItemsPublicationHost,
     IRebuildSchedulerHost, IRebuildLayoutSetupHost, ICanvasTilePainterHost,
-    IDeferredSceneReadinessHost, ILinkActivationHost, IRendererLocalizationHost
+    IDeferredSceneReadinessHost, ILinkActivationHost, IRendererLocalizationHost, IRendererEventSink
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
+    private readonly RendererEvents _events;
     private readonly PublishedLayout _published = new();
     private readonly MarkdownViewport _viewport;
     private readonly PointerHoverState _hover = new();
@@ -977,7 +978,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         void Apply()
         {
             _disclosureStates[id] = expanded;
-            DisclosureToggled?.Invoke(this, new MarkdownDisclosureToggledEventArgs(expanded));
+            _events.RaiseDisclosureToggled(expanded);
             RequestRebuild(RebuildReason.Restyle);
         }
 
@@ -1040,27 +1041,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
             : theme.IsHighContrast
                 ? MarkdownThemeVariant.HighContrast
                 : theme.IsDark ? MarkdownThemeVariant.Dark : MarkdownThemeVariant.Light;
-
-    private void RaiseImageUnavailable(
-        string source,
-        MarkdownImageUnavailableReason reason,
-        MarkdownSvgFailureReason? svgFailureReason)
-    {
-        if (_lifetime.IsDisposed || reason == MarkdownImageUnavailableReason.None)
-            return;
-
-        void Raise()
-        {
-            if (!_lifetime.IsDisposed)
-                ImageUnavailable?.Invoke(this, new MarkdownImageUnavailableEventArgs(source, reason, svgFailureReason));
-        }
-
-        var dispatcher = DispatcherQueue;
-        if (dispatcher is not null && !dispatcher.HasThreadAccess)
-            dispatcher.TryEnqueue(Raise);
-        else
-            Raise();
-    }
 
     /// <summary>
     /// Raised after every embed realisation pass (initial layout commit,
@@ -1212,7 +1192,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
             MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] Code block copy failed: {ex.Message}");
         }
 
-        RaiseCopyCompleted(MarkdownCopyKind.CodeBlock, succeeded);
+        _events.RaiseCopyCompleted(MarkdownCopyKind.CodeBlock, succeeded);
     }
 
     internal void CopyCodeBlockFromAutomation(Layout.Boxes.CodeBlockBox box)
@@ -1233,18 +1213,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         // viewport-owned XAML button is realized. Copy directly without
         // realizing an overlay element or mutating the UIA child tree.
         CopyCodeBlockToClipboard(new CodeBlockActionPlan { Box = box });
-    }
-
-    private void RaiseCopyCompleted(MarkdownCopyKind kind, bool succeeded)
-    {
-        try
-        {
-            CopyCompleted?.Invoke(this, new MarkdownCopyCompletedEventArgs(kind, succeeded));
-        }
-        catch (Exception ex)
-        {
-            MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] Copy completion subscriber failed: {ex.Message}");
-        }
     }
 
     private void OnHostedEmbedKeyDown(object sender, KeyRoutedEventArgs e)
@@ -1310,6 +1278,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// </param>
     private protected MarkdownRendererControl(bool ownsScrollViewport)
     {
+        _events = new RendererEvents(this, _lifetime, DispatcherQueue);
         _cancellationRetirement = new PipelineCancellationRetirement(_snapshotRetirements);
         _touchRestore = new TouchSelectionRestore(_published, _selection, _touchSelection);
         _localization = new RendererLocalization(this, _published);
@@ -1607,7 +1576,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     IMarkdownCommandProvider? ISelectionCommandsHost.CommandProvider => CommandProvider;
 
     void ISelectionCommandsHost.RaiseCopyCompleted(MarkdownCopyKind kind, bool succeeded)
-        => RaiseCopyCompleted(kind, succeeded);
+        => _events.RaiseCopyCompleted(kind, succeeded);
 
     Theming.ThemeSnapshot? ISelectionHandlesHost.ThemeSnapshot => _published.Theme;
 
@@ -1640,7 +1609,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         => _localization.Resolve(key, fallback);
 
     void ISelectionContextMenuHost.RaiseCopyCompleted(MarkdownCopyKind kind, bool succeeded)
-        => RaiseCopyCompleted(kind, succeeded);
+        => _events.RaiseCopyCompleted(kind, succeeded);
 
     Rect? ISelectionContextMenuHost.GetFocusedItemRect()
         => _focus.Items is { } items &&
@@ -1806,11 +1775,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     void IEmbedRealizationHost.InvalidateAutomationLayout() => InvalidateAutomationLayout();
 
-    void IEmbedRealizationHost.RaiseEmbedsRealizationChanged()
-    {
-        try { EmbedsRealizationChanged?.Invoke(this, EventArgs.Empty); }
-        catch { /* subscriber threw — swallow to keep scroll pipeline alive. */ }
-    }
+    void IEmbedRealizationHost.RaiseEmbedsRealizationChanged() => _events.RaiseEmbedsRealizationChanged();
 
     Style? ICodeBlockCopyButtonHost.CodeBlockCopyButtonStyle => CodeBlockCopyButtonStyle;
 
@@ -1990,7 +1955,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     void IRasterPlacementHost.RaiseImageUnavailable(
         string url, MarkdownImageUnavailableReason reason, MarkdownSvgFailureReason? svgReason) =>
-        RaiseImageUnavailable(url, reason, svgReason);
+        _events.RaiseImageUnavailable(url, reason, svgReason);
 
     Microsoft.UI.Dispatching.DispatcherQueue? IImageRelayoutHost.DispatcherQueue => DispatcherQueue;
 
@@ -2161,7 +2126,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         string source,
         MarkdownImageUnavailableReason reason,
         MarkdownSvgFailureReason? svgFailureReason) =>
-        RaiseImageUnavailable(source, reason, svgFailureReason);
+        _events.RaiseImageUnavailable(source, reason, svgFailureReason);
 
     Microsoft.UI.Dispatching.DispatcherQueue? ICanvasTilePainterHost.DispatcherQueue => DispatcherQueue;
 
@@ -2188,7 +2153,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     void ILinkActivationHost.SetDisclosureExpanded(string disclosureId, bool expanded) =>
         SetDisclosureExpanded(disclosureId, expanded);
 
-    void ILinkActivationHost.RaiseLinkClick(MarkdownLinkClickEventArgs args) => LinkClick?.Invoke(this, args);
+    void ILinkActivationHost.RaiseLinkClick(MarkdownLinkClickEventArgs args) => _events.RaiseLinkClick(args);
 
     string? IRendererLocalizationHost.EnvironmentLanguage => _environmentSnapshot.Language;
 
@@ -2513,7 +2478,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         if (ownedEngine is not null)
             RetireOwnedEngine(ownedEngine);
         _lifetime.MarkDisposalComplete();
-        try { Disposed?.Invoke(this, EventArgs.Empty); }
+        try { ((IRendererEventSink)this).InvokeDisposed(); }
         catch (Exception ex)
         {
             MarkdownDiagnostics.WriteLine(
@@ -2551,6 +2516,24 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// whether the app or the view's window started it.
     /// </summary>
     public event EventHandler? Disposed;
+
+    void IRendererEventSink.InvokeLinkClick(MarkdownLinkClickEventArgs args) => LinkClick?.Invoke(this, args);
+
+    void IRendererEventSink.InvokeDisclosureToggled(MarkdownDisclosureToggledEventArgs args) =>
+        DisclosureToggled?.Invoke(this, args);
+
+    void IRendererEventSink.InvokeCopyCompleted(MarkdownCopyCompletedEventArgs args) => CopyCompleted?.Invoke(this, args);
+
+    void IRendererEventSink.InvokeImageUnavailable(MarkdownImageUnavailableEventArgs args) =>
+        ImageUnavailable?.Invoke(this, args);
+
+    void IRendererEventSink.InvokeEmbedsRealizationChanged() => EmbedsRealizationChanged?.Invoke(this, EventArgs.Empty);
+
+    void IRendererEventSink.InvokeRenderCompleted() => RenderCompleted?.Invoke(this, EventArgs.Empty);
+
+    void IRendererEventSink.InvokeRenderFailed(MarkdownRenderFailedEventArgs args) => RenderFailed?.Invoke(this, args);
+
+    void IRendererEventSink.InvokeDisposed() => Disposed?.Invoke(this, EventArgs.Empty);
 
     private void DetachCanvasHandlers()
     {
@@ -2762,7 +2745,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
         try
         {
-            RenderCompleted?.Invoke(this, EventArgs.Empty);
+            ((IRendererEventSink)this).InvokeRenderCompleted();
         }
         catch (Exception ex)
         {
@@ -2779,7 +2762,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
         try
         {
-            RenderFailed?.Invoke(this, new MarkdownRenderFailedEventArgs(exception));
+            ((IRendererEventSink)this).InvokeRenderFailed(new MarkdownRenderFailedEventArgs(exception));
         }
         catch (Exception ex)
         {
