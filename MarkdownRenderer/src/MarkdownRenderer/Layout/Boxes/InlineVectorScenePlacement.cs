@@ -98,6 +98,102 @@ internal static class InlineVectorScenePlacement
         return sceneGeometry?.ToArray() ?? Array.Empty<InlineSceneGeometry>();
     }
 
+    /// <summary>
+    /// Returns the pending geometry published for the current scene generation.
+    /// A box without vector runs reports an empty but current result.
+    /// </summary>
+    /// <param name="vectorState">The box's vector-scene state, if any.</param>
+    /// <param name="currentGeneration">The box's current scene generation, or 0.</param>
+    /// <param name="generation">The current scene generation.</param>
+    /// <param name="geometry">The pending geometry for that generation.</param>
+    internal static bool TryGetCurrentGeometry(
+        InlineVectorSceneState? vectorState,
+        long currentGeneration,
+        out long generation,
+        out InlineSceneGeometry[] geometry)
+    {
+        generation = currentGeneration;
+        geometry = Array.Empty<InlineSceneGeometry>();
+        if (generation == 0)
+            return false;
+        if (vectorState is null || vectorState.VectorSceneRunCount == 0)
+            return true;
+        if (vectorState.PendingSceneGeometryGeneration != generation)
+            return false;
+
+        geometry = vectorState.PendingSceneGeometry;
+        return true;
+    }
+
+    /// <summary>
+    /// Captures scalar regions for the current layout, without moving any run.
+    /// </summary>
+    /// <param name="runs">The owning box's runs, in ordinal order.</param>
+    /// <param name="layout">The box's current native layout, if measured.</param>
+    /// <param name="vectorState">The box's vector-scene state, if any.</param>
+    /// <param name="currentGeneration">The box's current scene generation, or 0.</param>
+    /// <param name="cancellationToken">Observed before each run.</param>
+    /// <param name="generation">The current scene generation.</param>
+    /// <param name="geometry">The captured geometry.</param>
+    internal static bool TryCaptureCurrentGeometry(
+        SingletonMutableList<InlineRun> runs,
+        CanvasTextLayout? layout,
+        InlineVectorSceneState? vectorState,
+        long currentGeneration,
+        CancellationToken cancellationToken,
+        out long generation,
+        out InlineSceneGeometry[] geometry)
+    {
+        generation = currentGeneration;
+        geometry = Array.Empty<InlineSceneGeometry>();
+        if (generation == 0 || layout is null)
+            return false;
+        if (vectorState is null || vectorState.VectorSceneRunCount == 0)
+            return true;
+
+        geometry = CaptureGeometry(runs, layout, cancellationToken, vectorState);
+        return true;
+    }
+
+    /// <summary>
+    /// Reads the character regions of a buffer range in the box's current
+    /// layout and the snapped text-origin Y used to place them.
+    /// </summary>
+    /// <param name="box">The measured inline container.</param>
+    /// <param name="start">The buffer offset of the range.</param>
+    /// <param name="length">The range length.</param>
+    /// <param name="regions">The laid-out regions.</param>
+    /// <param name="originY">The snapped text-origin Y.</param>
+    internal static bool TryGetRunCharacterRegions(
+        InlineContainerBox box,
+        int start,
+        int length,
+        out CanvasTextLayoutRegion[]? regions,
+        out double originY)
+    {
+        regions = null;
+        originY = 0;
+        CanvasTextLayout? layout = box.TextLayout;
+        if (start < 0 || length <= 0 || layout is null || box.IsBufferDirty ||
+            start > box.LayoutBuffer.Length - length)
+        {
+            return false;
+        }
+
+        CanvasTextLayoutRegion[]? currentRegions = layout.GetCharacterRegions(start, length);
+        RecordRegionQuery(box.VectorSceneStateHolder);
+        if (currentRegions is not { Length: > 0 })
+            return false;
+
+        var (_, snappedOriginY) = box.GetSnappedOrigin(box.GetContainerStyle());
+        if (!double.IsFinite(snappedOriginY))
+            return false;
+
+        regions = currentRegions;
+        originY = snappedOriginY;
+        return true;
+    }
+
     private static void RecordRegionQuery(InlineVectorSceneState? vectorState)
     {
         if (vectorState is not null)

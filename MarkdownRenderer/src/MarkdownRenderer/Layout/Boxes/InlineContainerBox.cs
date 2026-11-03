@@ -90,65 +90,10 @@ internal sealed class InlineContainerBox : BlockBox
     // create their own holder rather than sharing it with the source box.
     private InlineVectorSceneState? _vectorSceneState;
     internal InlineVectorSceneState? VectorSceneStateHolder => _vectorSceneState;
-    private InlineSceneGeometry[] _pendingSceneGeometry
-    {
-        get => _vectorSceneState?.PendingSceneGeometry ?? Array.Empty<InlineSceneGeometry>();
-        set
-        {
-            if (_vectorSceneState is { } state)
-                state.PendingSceneGeometry = value;
-            else if (value.Length != 0)
-                throw new InvalidOperationException("Vector geometry requires vector-scene state.");
-        }
-    }
-    internal InlineSceneGeometry[] PendingSceneGeometry => _pendingSceneGeometry;
-    private long _sceneGeometryGeneration
-    {
-        get => _vectorSceneState?.SceneGeometryGeneration ?? 0;
-        set
-        {
-            if (_vectorSceneState is { } state)
-                state.SceneGeometryGeneration = value;
-            else if (value != 0)
-                throw new InvalidOperationException("A scene generation requires vector-scene state.");
-        }
-    }
-    internal long CurrentSceneGeometryGeneration => _sceneGeometryGeneration;
-    private long _pendingSceneGeometryGeneration
-    {
-        get => _vectorSceneState?.PendingSceneGeometryGeneration ?? 0;
-        set
-        {
-            if (_vectorSceneState is { } state)
-                state.PendingSceneGeometryGeneration = value;
-            else if (value != 0)
-                throw new InvalidOperationException("Pending scene geometry requires vector-scene state.");
-        }
-    }
-    internal long PendingSceneGeometryGeneration => _pendingSceneGeometryGeneration;
-    private int _sceneCharacterRegionQueryCount => _vectorSceneState?.SceneCharacterRegionQueryCount ?? 0;
-    private int _vectorSceneRunCount
-    {
-        get => _vectorSceneState?.VectorSceneRunCount ?? 0;
-        set
-        {
-            if (_vectorSceneState is { } state)
-                state.VectorSceneRunCount = value;
-            else if (value != 0)
-                throw new InvalidOperationException("Vector runs require vector-scene state.");
-        }
-    }
-    private bool _hasDeferredSceneMarker
-    {
-        get => _vectorSceneState?.HasDeferredSceneMarker ?? false;
-        set
-        {
-            if (_vectorSceneState is { } state)
-                state.HasDeferredSceneMarker = value;
-            else if (value)
-                throw new InvalidOperationException("A deferred scene marker requires vector-scene state.");
-        }
-    }
+    internal InlineSceneGeometry[] PendingSceneGeometry =>
+        _vectorSceneState?.PendingSceneGeometry ?? Array.Empty<InlineSceneGeometry>();
+    internal long CurrentSceneGeometryGeneration => _vectorSceneState?.SceneGeometryGeneration ?? 0;
+    internal long PendingSceneGeometryGeneration => _vectorSceneState?.PendingSceneGeometryGeneration ?? 0;
     public readonly MarkdownLayoutContext Context;
     private readonly bool _usesProgressiveNativeSceneResidency;
     internal bool UsesProgressiveNativeSceneResidency => _usesProgressiveNativeSceneResidency;
@@ -193,11 +138,11 @@ internal sealed class InlineContainerBox : BlockBox
     internal CanvasWordWrapping WordWrapping { get; init; } = CanvasWordWrapping.Wrap;
     public CanvasHorizontalAlignment TextAlignment { get; set; } = CanvasHorizontalAlignment.Left;
     internal bool HasMeasuredLayout => _layout is not null;
-    internal bool HasDeferredSceneMarker => _hasDeferredSceneMarker;
-    internal int VectorSceneRunCount => _vectorSceneRunCount;
+    internal bool HasDeferredSceneMarker => _vectorSceneState?.HasDeferredSceneMarker ?? false;
+    internal int VectorSceneRunCount => _vectorSceneState?.VectorSceneRunCount ?? 0;
     internal long SceneGeometryGeneration =>
-        _layout is not null && !_bufferDirty ? _sceneGeometryGeneration : 0;
-    internal int SceneCharacterRegionQueryCount => _sceneCharacterRegionQueryCount;
+        _layout is not null && !_bufferDirty ? CurrentSceneGeometryGeneration : 0;
+    internal int SceneCharacterRegionQueryCount => _vectorSceneState?.SceneCharacterRegionQueryCount ?? 0;
     internal float ContentWidth => _layout is null ? (float)Bounds.Width : (float)Math.Max(_layout.LayoutBounds.Width, _layout.DrawBounds.Width);
     internal bool DrawContainerChrome { get; set; } = true;
     internal bool UseContainerPadding { get; set; } = true;
@@ -650,8 +595,7 @@ internal sealed class InlineContainerBox : BlockBox
         _inlineImageLineBaselineByRunIndex = null;
         _hasAtomicInlineObject = false;
         _runTextLength = 0;
-        _vectorSceneRunCount = 0;
-        _hasDeferredSceneMarker = false;
+        _vectorSceneState?.ResetRunCounters();
         _runStyleCache.Clear();
 
         for (int index = 0; index < _runs.Count; index++)
@@ -670,9 +614,9 @@ internal sealed class InlineContainerBox : BlockBox
             else if (run is InlineVectorSceneRun vectorScene)
             {
                 _hasAtomicInlineObject = true;
-                _vectorSceneState ??= new InlineVectorSceneState();
-                _vectorSceneRunCount++;
-                _hasDeferredSceneMarker |= vectorScene.DeferredSceneMarker is not null;
+                InlineVectorSceneState vectorState = _vectorSceneState ??= new InlineVectorSceneState();
+                vectorState.VectorSceneRunCount++;
+                vectorState.HasDeferredSceneMarker |= vectorScene.DeferredSceneMarker is not null;
             }
             else if (run is InlineSpacerRun)
             {
@@ -687,9 +631,7 @@ internal sealed class InlineContainerBox : BlockBox
 
         _buffer = string.Empty;
         _bufferDirty = true;
-        _sceneGeometryGeneration = 0;
-        _pendingSceneGeometryGeneration = 0;
-        _pendingSceneGeometry = Array.Empty<InlineSceneGeometry>();
+        _vectorSceneState?.ResetGeometry();
     }
 
     internal void SetForegroundSpans(IReadOnlyList<CodeBlockHighlightSpan>? spans)
@@ -1118,20 +1060,20 @@ internal sealed class InlineContainerBox : BlockBox
         // source-run identities before the final gate; adopt that bounded
         // array only for the stable source and keep the candidate's prior
         // pending array from becoming another source owner.
-        if (prepared._vectorSceneState is not null)
+        if (prepared._vectorSceneState is { } preparedState)
         {
-            prepared._sceneGeometryGeneration = sourceSceneGeneration;
-            prepared._pendingSceneGeometryGeneration = sourcePendingSceneGeneration;
-            prepared._pendingSceneGeometry = sourcePendingSceneGeometry;
+            preparedState.SceneGeometryGeneration = sourceSceneGeneration;
+            preparedState.PendingSceneGeometryGeneration = sourcePendingSceneGeneration;
+            preparedState.PendingSceneGeometry = sourcePendingSceneGeometry;
         }
-        if (source._vectorSceneState is not null)
+        if (source._vectorSceneState is { } sourceState)
         {
             long nextSceneGeneration = unchecked(sourceSceneGeneration + 1);
-            source._sceneGeometryGeneration = nextSceneGeneration == 0 ? 1 : nextSceneGeneration;
-            source._pendingSceneGeometryGeneration = source._usesProgressiveNativeSceneResidency
-                ? source._sceneGeometryGeneration
+            sourceState.SceneGeometryGeneration = nextSceneGeneration == 0 ? 1 : nextSceneGeneration;
+            sourceState.PendingSceneGeometryGeneration = source._usesProgressiveNativeSceneResidency
+                ? sourceState.SceneGeometryGeneration
                 : 0;
-            source._pendingSceneGeometry = adoptPreparedGeometry &&
+            sourceState.PendingSceneGeometry = adoptPreparedGeometry &&
                 source._usesProgressiveNativeSceneResidency
                 ? preparedGeometryForSource!
                 : Array.Empty<InlineSceneGeometry>();
@@ -1429,19 +1371,11 @@ internal sealed class InlineContainerBox : BlockBox
     internal bool TryGetCurrentSceneGeometry(
         out long generation,
         out InlineSceneGeometry[] geometry)
-    {
-        generation = SceneGeometryGeneration;
-        geometry = Array.Empty<InlineSceneGeometry>();
-        if (generation == 0)
-            return false;
-        if (_vectorSceneRunCount == 0)
-            return true;
-        if (_pendingSceneGeometryGeneration != generation)
-            return false;
-
-        geometry = _pendingSceneGeometry;
-        return true;
-    }
+        => InlineVectorScenePlacement.TryGetCurrentGeometry(
+            _vectorSceneState,
+            SceneGeometryGeneration,
+            out generation,
+            out geometry);
 
     /// <summary>
     /// Captures immutable scalar regions for a current layout when an active
@@ -1453,33 +1387,17 @@ internal sealed class InlineContainerBox : BlockBox
         CancellationToken cancellationToken,
         out long generation,
         out InlineSceneGeometry[] geometry)
-    {
-        generation = SceneGeometryGeneration;
-        geometry = Array.Empty<InlineSceneGeometry>();
-        CanvasTextLayout? layout = _layout;
-        if (generation == 0 || layout is null)
-            return false;
-        if (_vectorSceneRunCount == 0)
-            return true;
-
-        geometry = InlineVectorScenePlacement.CaptureGeometry(_runs, layout, cancellationToken, _vectorSceneState);
-        return true;
-    }
+        => InlineVectorScenePlacement.TryCaptureCurrentGeometry(
+            _runs,
+            _layout,
+            _vectorSceneState,
+            SceneGeometryGeneration,
+            cancellationToken,
+            out generation,
+            out geometry);
 
     internal void ReleasePendingSceneGeometry(long generation)
-    {
-        if (generation == _sceneGeometryGeneration)
-        {
-            _pendingSceneGeometry = Array.Empty<InlineSceneGeometry>();
-            _pendingSceneGeometryGeneration = 0;
-        }
-    }
-
-    private void RecordSceneCharacterRegionQuery()
-    {
-        if (_vectorSceneState is { } vectorState)
-            vectorState.SceneCharacterRegionQueryCount++;
-    }
+        => _vectorSceneState?.ReleasePendingGeometry(generation);
 
     internal void GetSceneGeometryOrigin(out double x, out double y)
     {
@@ -1493,28 +1411,7 @@ internal sealed class InlineContainerBox : BlockBox
         int length,
         out CanvasTextLayoutRegion[]? regions,
         out double originY)
-    {
-        regions = null;
-        originY = 0;
-        if (start < 0 || length <= 0 || _layout is null || _bufferDirty ||
-            start > _buffer.Length - length)
-        {
-            return false;
-        }
-
-        CanvasTextLayoutRegion[]? currentRegions = _layout.GetCharacterRegions(start, length);
-        RecordSceneCharacterRegionQuery();
-        if (currentRegions is not { Length: > 0 })
-            return false;
-
-        var (_, snappedOriginY) = GetSnappedOrigin(GetContainerStyle());
-        if (!double.IsFinite(snappedOriginY))
-            return false;
-
-        regions = currentRegions;
-        originY = snappedOriginY;
-        return true;
-    }
+        => InlineVectorScenePlacement.TryGetRunCharacterRegions(this, start, length, out regions, out originY);
 
     internal bool IsPointInsideRunBounds(InlineRun run, Point point)
         => InlineTextHitTesting.IsPointInsideRunBounds(this, run, point);
@@ -1537,9 +1434,7 @@ internal sealed class InlineContainerBox : BlockBox
         _layout = null;
         _layoutRetirementRecord = null;
         _selection.Detach();
-        _sceneGeometryGeneration = 0;
-        _pendingSceneGeometryGeneration = 0;
-        _pendingSceneGeometry = Array.Empty<InlineSceneGeometry>();
+        _vectorSceneState?.ResetGeometry();
         InvalidateLineMetrics();
 
         bool layoutsAlias = ReferenceEquals(layout, selectionLayout);
