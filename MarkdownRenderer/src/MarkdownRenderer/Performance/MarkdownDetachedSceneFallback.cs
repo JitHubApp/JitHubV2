@@ -1,7 +1,6 @@
 using System;
 using System.Threading;
 using MarkdownRenderer.Accessibility;
-using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;

@@ -1,17 +1,7 @@
 using System;
-using System.Collections.Generic;
 using System.Threading;
-using Markdig.Extensions.Abbreviations;
-using Markdig.Extensions.DefinitionLists;
-using Markdig.Extensions.Figures;
-using Markdig.Extensions.Footnotes;
-using Markdig.Extensions.Mathematics;
-using Markdig.Extensions.Tables;
 using Markdig.Syntax;
-using Markdig.Syntax.Inlines;
 using MarkdownRenderer.Extensions;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Parsing;
 using MarkdownDocumentSnapshot = MarkdownRenderer.Document.MarkdownDocument;
 
 namespace MarkdownRenderer.Performance;
