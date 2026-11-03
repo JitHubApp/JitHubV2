@@ -44,8 +44,8 @@ public sealed class InlineVectorGeometryTransferValidationTests
             ImageBox sourceImage = Assert.Single(source.InlineImageRuns).Run.Image;
             await LoadImageAsync(sourceImage);
 
-            CanvasTextLayout sourceLayout = GetField<CanvasTextLayout>(source, "_layout");
-            object sourceVectorState = GetObjectField(source, "_vectorSceneState");
+            CanvasTextLayout sourceLayout = source.TextLayout!;
+            object sourceVectorState = source.VectorSceneStateHolder!;
             InlineSceneGeometry[] sourcePendingGeometry = GetField<InlineSceneGeometry[]>(
                 sourceVectorState, "PendingSceneGeometry");
             long sourceRevision = snapshot.LayoutRevision;
@@ -72,7 +72,7 @@ public sealed class InlineVectorGeometryTransferValidationTests
             Assert.True(source.TryCaptureMeasuredPlacementTransferWithMeasuredVectorPlacement(
                 prepared!, LayoutWidth, out InlineMeasuredPlacementTransfer? transfer));
             Assert.NotNull(transfer);
-            object preparedVectorState = GetObjectField(prepared!, "_vectorSceneState");
+            object preparedVectorState = prepared!.VectorSceneStateHolder!;
             Assert.NotSame(sourceVectorState, preparedVectorState);
             InlineSceneGeometry[] initialPreparedGeometry = GetField<InlineSceneGeometry[]>(
                 preparedVectorState, "PendingSceneGeometry");
@@ -106,8 +106,8 @@ public sealed class InlineVectorGeometryTransferValidationTests
             Assert.True(sourceSceneRegionQueries > 0);
             Assert.Equal(sourceSceneRegionQueries, source.SceneCharacterRegionQueryCount);
             Assert.Equal(sourceBounds, source.Bounds);
-            Assert.Same(sourceVectorState, GetObjectField(source, "_vectorSceneState"));
-            Assert.Same(sourceLayout, GetField<CanvasTextLayout>(source, "_layout"));
+            Assert.Same(sourceVectorState, source.VectorSceneStateHolder);
+            Assert.Same(sourceLayout, source.TextLayout!);
             Assert.Same(sourcePendingGeometry, GetField<InlineSceneGeometry[]>(
                 sourceVectorState, "PendingSceneGeometry"));
             Assert.Same(sourceVector.Scene, transfer.Source.Runs.OfType<InlineVectorSceneRun>().Single().Scene);
@@ -215,15 +215,6 @@ public sealed class InlineVectorGeometryTransferValidationTests
             name, BindingFlags.Instance | BindingFlags.NonPublic)
             ?? throw new InvalidOperationException($"Missing test field '{name}'.");
         return Assert.IsType<T>(field.GetValue(instance));
-    }
-
-    private static object GetObjectField(object instance, string name)
-    {
-        FieldInfo field = instance.GetType().GetField(
-            name, BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException($"Missing test field '{name}'.");
-        return field.GetValue(instance)
-            ?? throw new InvalidOperationException($"Test field '{name}' was null.");
     }
 
     private static void SetField<T>(object instance, string name, T value)

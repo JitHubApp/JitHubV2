@@ -841,9 +841,7 @@ public sealed class SelectionAdornerViewportParityTests
                 Rect[] clipped = raw
                     .Select(rectangle => IntersectForTest(rectangle, fixture.Code.HorizontalViewportBounds))
                     .ToArray();
-                string nativeRequestedSize = typeof(InlineContainerBox)
-                    .GetField("_layout", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
-                    ?.GetValue(chunk) is CanvasTextLayout nativeLayout
+                string nativeRequestedSize = chunk.TextLayout is CanvasTextLayout nativeLayout
                         ? nativeLayout.RequestedSize.ToString()
                         : "<no-layout>";
                 return $"block={chunk.BlockIndex};bounds={chunk.Bounds};offset={chunk.CodeBlockTextOffset};" +
@@ -951,10 +949,6 @@ public sealed class SelectionAdornerViewportParityTests
         RtlNativeCodeFixture fixture,
         float rasterizationScale)
     {
-        const System.Reflection.BindingFlags privateInstance =
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
-        var layoutField = typeof(InlineContainerBox).GetField("_layout", privateInstance);
-        Assert.NotNull(layoutField);
         Rect viewport = fixture.Code.HorizontalViewportBounds;
         float scale = (float)fixture.Code.Context.RasterizationScale;
         if (scale <= 0)
@@ -963,7 +957,7 @@ public sealed class SelectionAdornerViewportParityTests
         var result = new List<Rect>();
         foreach (InlineContainerBox chunk in fixture.Code.Chunks)
         {
-            CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(layoutField!.GetValue(chunk));
+            CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(chunk.TextLayout);
             CanvasTextLayoutRegion[] regions = layout.GetCharacterRegions(0, chunk.CodeBlockTextLength);
             float originX = SnapIndependentTextOrigin((float)(chunk.Bounds.X + chunk.Margin.Left), scale);
             float originY = SnapIndependentTextOrigin((float)(chunk.Bounds.Y + chunk.Margin.Top), scale);
@@ -1003,9 +997,7 @@ public sealed class SelectionAdornerViewportParityTests
             " || ",
             fixture.Code.Chunks.Select(chunk =>
             {
-                CanvasTextLayout layout = (CanvasTextLayout)typeof(InlineContainerBox)
-                    .GetField("_layout", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-                    .GetValue(chunk)!;
+                CanvasTextLayout layout = chunk.TextLayout!;
                 float oracleOriginY = SnapIndependentTextOrigin(
                     (float)(chunk.Bounds.Y + chunk.Margin.Top),
                     (float)fixture.Code.Context.RasterizationScale);

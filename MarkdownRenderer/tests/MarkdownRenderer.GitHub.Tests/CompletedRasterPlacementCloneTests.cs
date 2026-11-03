@@ -37,7 +37,7 @@ public sealed class CompletedRasterPlacementCloneTests
             sourceImageUnavailable: sourceUnavailable,
             sourceTaskAvailabilityChanged: sourceTaskAvailabilityChanged,
             sourceRetirementSink: sourceRetirementSink);
-        CanvasTextLayout sourceLayout = GetField<CanvasTextLayout>(fixture.Source, "_layout");
+        CanvasTextLayout sourceLayout = fixture.Source.TextLayout!;
         Rect sourceBounds = fixture.Source.Bounds;
         MarkdownLayoutContext candidateContext = fixture.CreateContext(
             imageUnavailable: candidateUnavailable,
@@ -106,9 +106,9 @@ public sealed class CompletedRasterPlacementCloneTests
         Assert.True(float.IsFinite(measuredHeight));
         Assert.True(measuredHeight > 0);
         Assert.True(clonedContainer.HasMeasuredLayout);
-        Assert.NotSame(sourceLayout, GetField<CanvasTextLayout>(clonedContainer, "_layout"));
+        Assert.NotSame(sourceLayout, clonedContainer.TextLayout!);
         Assert.Equal(sourceBounds, fixture.Source.Bounds);
-        Assert.Same(sourceLayout, GetField<CanvasTextLayout>(fixture.Source, "_layout"));
+        Assert.Same(sourceLayout, fixture.Source.TextLayout!);
         Assert.Same(fixture.SourceContext.SourceMap, candidateContext.SourceMap);
         Assert.Equal(0, unavailableCalls);
         Assert.Equal(0, taskAvailabilityCalls);

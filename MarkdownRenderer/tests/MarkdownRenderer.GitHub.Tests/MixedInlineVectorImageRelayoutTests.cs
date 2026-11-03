@@ -846,7 +846,7 @@ public sealed class MixedInlineVectorImageRelayoutTests
     }
 
     private static CanvasTextLayout GetInlineLayout(InlineContainerBox inline) =>
-        Assert.IsType<CanvasTextLayout>(ReadRawField(inline, "_layout"));
+        Assert.IsType<CanvasTextLayout>(inline.TextLayout);
 
     private static SharedCanvasBitmapCache.Lease GetBitmapLease(ImageBox image) =>
         Assert.IsType<SharedCanvasBitmapCache.Lease>(ReadRawField(image, "_bitmapLease"));

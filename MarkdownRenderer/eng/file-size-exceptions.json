@@ -138,7 +138,7 @@
     },
     {
       "path": "src/MarkdownRenderer/Layout/Boxes/InlineContainerBox.cs",
-      "lines": 1381,
+      "lines": 1168,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
 {
@@ -208,7 +208,7 @@
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/CodeBlockVisualLinePlacementCacheTests.cs",
-      "lines": 1059,
+      "lines": 1053,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
@@ -303,7 +303,7 @@
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/SelectionAdornerViewportParityTests.cs",
-      "lines": 1537,
+      "lines": 1529,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {

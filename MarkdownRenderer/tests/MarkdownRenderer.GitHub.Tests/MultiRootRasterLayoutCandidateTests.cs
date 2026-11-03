@@ -290,7 +290,7 @@ public sealed class MultiRootRasterLayoutCandidateTests
         InlineContainerBox[] sourceRoots = document.Roots.ToArray();
         Rect[] sourceBounds = sourceRoots.Select(static root => root.Bounds).ToArray();
         CanvasTextLayout[] sourceLayouts = sourceRoots
-            .Select(static root => GetField<CanvasTextLayout>(root, "_layout"))
+            .Select(static root => root.TextLayout!)
             .ToArray();
         ImageBox[] sourceImages = document.Images.ToArray();
         CanvasBitmap[] sourceBitmaps = sourceImages
@@ -344,9 +344,9 @@ public sealed class MultiRootRasterLayoutCandidateTests
                 Assert.Equal(original.ElementKey, clone.ElementKey);
                 Assert.True(clone.HasMeasuredLayout);
                 Assert.False(clone.IsDirty);
-                Assert.NotSame(sourceLayouts[index], GetField<CanvasTextLayout>(clone, "_layout"));
+                Assert.NotSame(sourceLayouts[index], clone.TextLayout!);
                 Assert.Equal(sourceBounds[index], original.Bounds);
-                Assert.Equal(sourceLayouts[index], GetField<CanvasTextLayout>(original, "_layout"));
+                Assert.Equal(sourceLayouts[index], original.TextLayout!);
 
                 // The private tree keeps both the raw margin inputs and the
                 // effective, measured margin state rather than reconstructing

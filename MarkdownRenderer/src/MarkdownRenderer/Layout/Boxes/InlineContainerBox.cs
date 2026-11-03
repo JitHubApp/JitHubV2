@@ -47,16 +47,13 @@ internal sealed class InlineContainerBox : BlockBox
     internal int ResolvedRunStyleCount => _runStyleCache.GetRunStyleCount(RunList.Count);
     internal ElementStyle? GetCachedRunStyle(int index) => _runStyleCache.GetCachedRunStyle(index, RunList.Count);
     public readonly string ElementKey;
-    private CanvasTextLayout? _layout;
-    internal CanvasTextLayout? TextLayout => _layout;
-    private NativeResourceRetirementRecord? _layoutRetirementRecord;
-    internal NativeResourceRetirementRecord? TextLayoutRetirementRecord => _layoutRetirementRecord;
-    private ScriptBaselineGeometry _scriptBaselineGeometry = ScriptBaselineGeometry.Empty;
-    internal ScriptBaselineGeometry ScriptBaselineGeometry => _scriptBaselineGeometry;
-    private CanvasLineMetrics[]? _cachedLineMetrics;
-    internal CanvasLineMetrics[]? CachedLineMetrics => _cachedLineMetrics;
-    private bool _lineMetricsRead;
-    internal bool HasReadLineMetrics => _lineMetricsRead;
+    // Owned by value and mutated in place; never copy it out of this field.
+    private InlineTextLayoutState _textLayout = new();
+    internal CanvasTextLayout? TextLayout => _textLayout.Layout;
+    internal NativeResourceRetirementRecord? TextLayoutRetirementRecord => _textLayout.RetirementRecord;
+    internal ScriptBaselineGeometry ScriptBaselineGeometry => _textLayout.ScriptBaselineGeometry;
+    internal CanvasLineMetrics[]? CachedLineMetrics => _textLayout.CachedLineMetrics;
+    internal bool HasReadLineMetrics => _textLayout.HasReadLineMetrics;
     // Owned by value and mutated in place; never copy it out of this field.
     private InlineSelectionLayoutState _selection;
     internal CanvasTextLayout? SelectionLayout => _selection.Layout;
@@ -75,8 +72,7 @@ internal sealed class InlineContainerBox : BlockBox
     internal float[]? InlineImageLineBaselineByRunIndex => _inlineImageLineBaselineByRunIndex;
     internal string LayoutBuffer => _sequence.Buffer;
     internal bool IsBufferDirty => _sequence.IsBufferDirty;
-    private float _lastWidth;
-    internal float LastMeasuredWidth => _lastWidth;
+    internal float LastMeasuredWidth => _textLayout.LastWidth;
 
     // Text-only inline boxes are the common case. Keep their vector-specific
     // counters and geometry in no per-box holder until a vector run is added.
@@ -131,13 +127,13 @@ internal sealed class InlineContainerBox : BlockBox
     internal int CodeBlockTextLength { get; init; }
     internal CanvasWordWrapping WordWrapping { get; init; } = CanvasWordWrapping.Wrap;
     public CanvasHorizontalAlignment TextAlignment { get; set; } = CanvasHorizontalAlignment.Left;
-    internal bool HasMeasuredLayout => _layout is not null;
+    internal bool HasMeasuredLayout => _textLayout.Layout is not null;
     internal bool HasDeferredSceneMarker => _vectorSceneState?.HasDeferredSceneMarker ?? false;
     internal int VectorSceneRunCount => _vectorSceneState?.VectorSceneRunCount ?? 0;
     internal long SceneGeometryGeneration =>
-        _layout is not null && !_sequence.IsBufferDirty ? CurrentSceneGeometryGeneration : 0;
+        _textLayout.Layout is not null && !_sequence.IsBufferDirty ? CurrentSceneGeometryGeneration : 0;
     internal int SceneCharacterRegionQueryCount => _vectorSceneState?.SceneCharacterRegionQueryCount ?? 0;
-    internal float ContentWidth => _layout is null ? (float)Bounds.Width : (float)Math.Max(_layout.LayoutBounds.Width, _layout.DrawBounds.Width);
+    internal float ContentWidth => _textLayout.Layout is null ? (float)Bounds.Width : (float)Math.Max(_textLayout.Layout.LayoutBounds.Width, _textLayout.Layout.DrawBounds.Width);
     internal bool DrawContainerChrome { get; set; } = true;
     internal bool UseContainerPadding { get; set; } = true;
     internal bool UseContainerMargin { get; set; } = true;
@@ -145,7 +141,7 @@ internal sealed class InlineContainerBox : BlockBox
     internal bool TrySetMeasuredCodeBlockChunkEffectiveHeight(double effectiveHeight)
     {
         if (ElementKey != MarkdownElementKeys.CodeBlock ||
-            _layout is null ||
+            _textLayout.Layout is null ||
             CodeBlockTextOffset < 0 ||
             CodeBlockTextLength <= 0 ||
             !double.IsFinite(Bounds.Height) ||
@@ -220,7 +216,7 @@ internal sealed class InlineContainerBox : BlockBox
         // may have a stale buffer. Preserve that fact so the candidate builds
         // its own buffer later, outside the source snapshot gate.
         _sequence.CopyBufferFrom(in source._sequence);
-        _lastWidth = source._lastWidth;
+        _textLayout.CopyLastWidthFrom(in source._textLayout);
         if (copyCodeForegroundSpans && source._foregroundSpans.Count != 0)
         {
             var spans = new CodeBlockHighlightSpan[source._foregroundSpans.Count];
@@ -492,7 +488,7 @@ internal sealed class InlineContainerBox : BlockBox
     /// </summary>
     internal InlineImageRun[] DetachInlineImagesForTransfer()
     {
-        if (_layout is not null || _selection.Layout is not null)
+        if (_textLayout.Layout is not null || _selection.Layout is not null)
         {
             throw new InvalidOperationException(
                 "Inline image runs can only be transferred before their container is measured.");
@@ -511,7 +507,7 @@ internal sealed class InlineContainerBox : BlockBox
     /// </summary>
     internal InlineRun[] DetachInlineImagesAndSpacersForTransfer()
     {
-        if (_layout is not null || _selection.Layout is not null)
+        if (_textLayout.Layout is not null || _selection.Layout is not null)
         {
             throw new InvalidOperationException(
                 "Inline image and spacer runs can only be transferred before their container is measured.");
@@ -535,8 +531,8 @@ internal sealed class InlineContainerBox : BlockBox
     internal void SetForegroundSpans(IReadOnlyList<CodeBlockHighlightSpan>? spans)
     {
         _foregroundSpans = spans ?? Array.Empty<CodeBlockHighlightSpan>();
-        if (_layout is not null)
-            InlineRunStyleApplier.ApplyForegroundSpans(this, _layout);
+        if (_textLayout.Layout is not null)
+            InlineRunStyleApplier.ApplyForegroundSpans(this, _textLayout.Layout);
     }
 
     /// <summary>
@@ -661,202 +657,26 @@ internal sealed class InlineContainerBox : BlockBox
             out transfer);
 
     public override float Measure(float availableWidth)
-    {
-        ThrowIfCancellationRequested();
-        if (!InlineMeasuredPlacementCapture.HasValidNativeLayoutCustody(this))
-            throw new InvalidOperationException("An inline text layout is missing its reserved native-retirement owner.");
-        var style = GetContainerStyle();
-        var padding = GetEffectivePadding(style);
-        CanvasTextLayout? previousLayout = _layout;
-        NativeResourceRetirementRecord? previousLayoutRetirementRecord = _layoutRetirementRecord;
-        CanvasLineMetrics[]? previousLineMetrics = _cachedLineMetrics;
-        bool previousLineMetricsRead = _lineMetricsRead;
-        CanvasTextLayout? previousSelectionLayout = _selection.Layout;
-        NativeResourceRetirementRecord? previousSelectionLayoutRetirementRecord =
-            _selection.RetirementRecord;
-        Color previousSelectionLayoutColor = _selection.Color;
-        float previousSelectionLayoutWidth = _selection.Width;
-        string previousBuffer = _sequence.Buffer;
-        bool previousBufferDirty = _sequence.IsBufferDirty;
-        float previousWidth = _lastWidth;
-        Rect previousBounds = Bounds;
-        List<InlineMeasureRollbackState>? changedInlineMeasures = null;
-        InlineScenePlacementRollbackState[]? previousScenePlacements = null;
-        CanvasTextLayout? replacementLayout = null;
-        NativeResourceRetirementRecord? replacementLayoutRetirementRecord = null;
-        ScriptBaselineGeometry? replacementScriptBaselineGeometry = null;
-        InlineSceneGeometry[]? replacementSceneGeometry = null;
-        float[]? replacementInlineImageLineBaselines = null;
-        bool publishInlineImageLineBaselines = false;
-        float measuredHeight;
-        // Measure with the same effective margin that Arrange/paint will use.
-        // Resolving from the current style keeps remeasurement correct when a
-        // theme changes authored margins, without publishing state before the
-        // measurement succeeds.
-        Thickness margin = UseContainerMargin ? ResolvePlacementMargin(style.Margin) : Margin;
-        float horizontalPadding = (float)(padding.Left + padding.Right);
-        float layoutWidth = Math.Max(1f, availableWidth - horizontalPadding);
+        => _textLayout.Measure(this, availableWidth);
 
-        try
-        {
-            bool atomicMetricsChanged = InlineAtomicObjectLayout.MeasureAtomicInlineRuns(
-                this,
-                layoutWidth,
-                style.FontSize,
-                out changedInlineMeasures);
-            if (atomicMetricsChanged)
-            {
-                InvalidateLineMetrics();
-            }
+    internal void SetMeasuredBounds(Rect bounds) => Bounds = bounds;
 
-            if (_layout is null || atomicMetricsChanged || _sequence.IsBufferDirty ||
-                Math.Abs(_lastWidth - availableWidth) > 0.5f)
-            {
-                // Only rebuild the run-content string when runs changed; skip on pure
-                // width-change reflow so repeated window resizes don't re-allocate.
-                _sequence.BuildIfDirty(Context);
-                InvalidateLineMetrics();
-                if (previousLayout is not null)
-                    previousScenePlacements = InlineMeasureRollback.CaptureScenePlacements(RunList);
+    internal void BuildLayoutBufferIfDirty() => _sequence.BuildIfDirty(Context);
 
-                using var formatLease = CreateTextFormatLease(style, WordWrapping, TextAlignment);
-                NativeResourceRetirementRecord candidateRetirementRecord =
-                    _nativeRetirement.Reserve(
-                        resourceGroupCount: 0,
-                        temporarySlotCount: 1,
-                        disposer: _nativeDisposer);
-                replacementLayoutRetirementRecord = candidateRetirementRecord;
-                CanvasTextLayout candidateLayout = CanvasTextLayoutFactory.Create(
-                    Context.ResourceCreator,
-                    _sequence.Buffer,
-                    formatLease.Format,
-                    layoutWidth,
-                    float.MaxValue,
-                    Context.LayoutDiagnostics);
-                candidateRetirementRecord.SetTemporary(0, candidateLayout);
-                replacementLayout = candidateLayout;
-                _layout = candidateLayout;
-                _layoutRetirementRecord = candidateRetirementRecord;
-                // CanvasTextLayout construction is one native call and cannot
-                // be interrupted safely. Observe a superseding lazy-band
-                // request immediately afterward, before walking/styling runs.
-                ThrowIfCancellationRequested();
-                // Enable DirectWrite color font path (Segoe UI Emoji / COLR-CPAL glyphs).
-                candidateLayout.Options = CanvasDrawTextOptions.EnableColorFont;
-                InlineRunStyleApplier.ApplyRunStyles(this, candidateLayout, applyColors: true);
-                InlineRunStyleApplier.ApplyForegroundSpans(this, candidateLayout);
-                float inlineMetricScale = InlineAtomicObjectLayout.ApplyContentAwareLineSpacing(this, candidateLayout, style, layoutWidth);
-                InlineAtomicObjectLayout.ApplyEmbedSpacing(
-                    this,
-                    candidateLayout,
-                    inverseMetricScale: inlineMetricScale,
-                    maxInlineWidth: layoutWidth);
-                replacementScriptBaselineGeometry = InlineScriptBaselineLayout.BuildScriptBaselineGeometry(this, style.FontSize);
-                if (Context.ThemeSnapshot.MiddleAlignInlineImages &&
-                    _sequence.ImageEntries is { Count: > 0 })
-                {
-                    replacementInlineImageLineBaselines =
-                        InlineObjectGeometry.BuildInlineImageLineBaselines(this, TryGetLineMetrics());
-                    publishInlineImageLineBaselines = true;
-                }
-                replacementSceneGeometry = InlineVectorScenePlacement.UpdatePlacements(
-                    RunList,
-                    candidateLayout,
-                    TryGetLineMetrics(),
-                    _usesProgressiveNativeSceneResidency,
-                    _vectorSceneState);
-                _lastWidth = availableWidth;
-            }
+    internal void RestoreLayoutBuffer(string buffer, bool bufferDirty)
+        => _sequence.RestoreBuffer(buffer, bufferDirty);
 
-            // Keep defensive recovery for an absent/stale baseline snapshot
-            // on the measurement path, never on paint.
-            else if (Context.ThemeSnapshot.MiddleAlignInlineImages &&
-                _sequence.ImageEntries is { Count: > 0 } &&
-                (_inlineImageLineBaselineByRunIndex is null ||
-                    _inlineImageLineBaselineByRunIndex.Length != RunList.Count))
-            {
-                replacementInlineImageLineBaselines =
-                    InlineObjectGeometry.BuildInlineImageLineBaselines(this, TryGetLineMetrics());
-                publishInlineImageLineBaselines = true;
-            }
+    internal void PublishInlineImageLineBaselines(float[]? baselines)
+        => _inlineImageLineBaselineByRunIndex = baselines;
 
-            var bounds = _layout!.LayoutBounds;
-            float top = (float)(margin.Top + padding.Top);
-            float bottom = (float)(margin.Bottom + padding.Bottom);
-            ScriptBaselineGeometry scriptGeometry =
-                replacementScriptBaselineGeometry ?? _scriptBaselineGeometry;
-            measuredHeight = (float)bounds.Height + top + bottom +
-                scriptGeometry.TopInset + scriptGeometry.BottomInset;
-            // Do not retire the previously published native layout if the
-            // candidate was superseded while placement metrics were computed.
-            ThrowIfCancellationRequested();
-            Bounds = new Rect(0, 0, availableWidth, measuredHeight);
-        }
-        catch (Exception measureFailure)
-        {
-            _layout = previousLayout;
-            _layoutRetirementRecord = previousLayoutRetirementRecord;
-            _cachedLineMetrics = previousLineMetrics;
-            _lineMetricsRead = previousLineMetricsRead;
-            _selection.Restore(
-                previousSelectionLayout,
-                previousSelectionLayoutRetirementRecord,
-                previousSelectionLayoutColor,
-                previousSelectionLayoutWidth);
-            _sequence.RestoreBuffer(previousBuffer, previousBufferDirty);
-            _lastWidth = previousWidth;
-            Bounds = previousBounds;
+    internal void RestoreSelectionLayout(
+        CanvasTextLayout? layout,
+        NativeResourceRetirementRecord? retirementRecord,
+        Color color,
+        float width)
+        => _selection.Restore(layout, retirementRecord, color, width);
 
-            InlineMeasureRollback.RollBackSpeculativeMeasure(
-                measureFailure,
-                changedInlineMeasures,
-                previousScenePlacements,
-                replacementLayout,
-                replacementLayoutRetirementRecord,
-                previousLayout);
-            throw;
-        }
-
-        if (changedInlineMeasures is not null)
-        {
-            foreach (InlineMeasureRollbackState state in changedInlineMeasures)
-                state.Commit();
-        }
-
-        if (publishInlineImageLineBaselines)
-            _inlineImageLineBaselineByRunIndex = replacementInlineImageLineBaselines;
-
-        if (replacementScriptBaselineGeometry is not null)
-            _scriptBaselineGeometry = replacementScriptBaselineGeometry;
-
-        if (UseContainerMargin)
-            Margin = style.Margin;
-
-        if (!ReferenceEquals(previousLayout, _layout))
-        {
-            if (_vectorSceneState is { } vectorState)
-            {
-                long nextGeneration = unchecked(vectorState.SceneGeometryGeneration + 1);
-                vectorState.SceneGeometryGeneration = nextGeneration == 0 ? 1 : nextGeneration;
-                vectorState.PendingSceneGeometry =
-                    replacementSceneGeometry ?? Array.Empty<InlineSceneGeometry>();
-                vectorState.PendingSceneGeometryGeneration = _usesProgressiveNativeSceneResidency
-                    ? vectorState.SceneGeometryGeneration
-                    : 0;
-            }
-            _selection.Detach();
-
-            Exception? supersededCleanupFailure = InlineMeasureRollback.RetireSupersededLayouts(
-                previousLayout,
-                previousLayoutRetirementRecord,
-                previousSelectionLayout,
-                previousSelectionLayoutRetirementRecord);
-            if (supersededCleanupFailure is not null)
-                Context.RegisterRetirement(Task.FromException(supersededCleanupFailure));
-        }
-
-        return measuredHeight;
-    }
+    internal void DetachSelectionLayout() => _selection.Detach();
 
     /// <summary>
     /// Measures the natural single-line width and the widest unbreakable text
@@ -890,17 +710,8 @@ internal sealed class InlineContainerBox : BlockBox
     {
         InlineContainerBox source = this;
 
-        (source._layout, prepared._layout) = (prepared._layout, source._layout);
-        (source._layoutRetirementRecord, prepared._layoutRetirementRecord) =
-            (prepared._layoutRetirementRecord, source._layoutRetirementRecord);
-        (source._scriptBaselineGeometry, prepared._scriptBaselineGeometry) =
-            (prepared._scriptBaselineGeometry, source._scriptBaselineGeometry);
-        (source._cachedLineMetrics, prepared._cachedLineMetrics) =
-            (prepared._cachedLineMetrics, source._cachedLineMetrics);
-        (source._lineMetricsRead, prepared._lineMetricsRead) =
-            (prepared._lineMetricsRead, source._lineMetricsRead);
+        (source._textLayout, prepared._textLayout) = (prepared._textLayout, source._textLayout);
         (source._selection, prepared._selection) = (prepared._selection, source._selection);
-        (source._lastWidth, prepared._lastWidth) = (prepared._lastWidth, source._lastWidth);
         (source.Bounds, prepared.Bounds) = (prepared.Bounds, source.Bounds);
 
         // Scene generation belongs to the stable source box, not the
@@ -1044,7 +855,7 @@ internal sealed class InlineContainerBox : BlockBox
         var margin = Margin;
         var padding = GetEffectivePadding(style);
         float xDip = (float)(Bounds.X + margin.Left + padding.Left);
-        float yDip = (float)(Bounds.Y + margin.Top + padding.Top + _scriptBaselineGeometry.TopInset);
+        float yDip = (float)(Bounds.Y + margin.Top + padding.Top + _textLayout.ScriptBaselineGeometry.TopInset);
         LayoutPlacementTransformContext.SnapOriginToDevicePixels(
             xDip,
             yDip,
@@ -1220,7 +1031,7 @@ internal sealed class InlineContainerBox : BlockBox
         out InlineSceneGeometry[] geometry)
         => InlineVectorScenePlacement.TryCaptureCurrentGeometry(
             RunList,
-            _layout,
+            _textLayout.Layout,
             _vectorSceneState,
             SceneGeometryGeneration,
             cancellationToken,
@@ -1253,8 +1064,8 @@ internal sealed class InlineContainerBox : BlockBox
             throw new InvalidOperationException("Cannot detach inline text layouts without their reserved native-retirement owners.");
 
         var cleanup = new BlockBoxCleanupScope();
-        CanvasTextLayout? layout = _layout;
-        NativeResourceRetirementRecord? layoutRetirementRecord = _layoutRetirementRecord;
+        CanvasTextLayout? layout = _textLayout.Layout;
+        NativeResourceRetirementRecord? layoutRetirementRecord = _textLayout.RetirementRecord;
         CanvasTextLayout? selectionLayout = _selection.Layout;
         NativeResourceRetirementRecord? selectionLayoutRetirementRecord =
             _selection.RetirementRecord;
@@ -1262,11 +1073,10 @@ internal sealed class InlineContainerBox : BlockBox
         // Detach all box/context-owned state before publishing any failed
         // native slots. The retirement registry must retain only the layouts,
         // never this box, its runs, or the document context.
-        _layout = null;
-        _layoutRetirementRecord = null;
+        _textLayout.DetachLayout();
         _selection.Detach();
         _vectorSceneState?.ResetGeometry();
-        InvalidateLineMetrics();
+        _textLayout.InvalidateLineMetrics();
 
         bool layoutsAlias = ReferenceEquals(layout, selectionLayout);
         Exception? layoutFailure = InlineNativeLayoutRetirement.RetireNativeLayout(
@@ -1326,30 +1136,7 @@ internal sealed class InlineContainerBox : BlockBox
         return GetSnappedOrigin(style).Y;
     }
 
-    internal CanvasLineMetrics[]? TryGetLineMetrics()
-    {
-        if (_lineMetricsRead)
-            return _cachedLineMetrics;
-
-        _lineMetricsRead = true;
-        try
-        {
-            _cachedLineMetrics = _layout?.LineMetrics;
-            return _cachedLineMetrics;
-        }
-        catch (NotSupportedException)
-        {
-            // Some WinRT/Release projections cannot marshal CanvasLineMetrics.
-            // Text still renders; decoration placement can use region bounds.
-            return null;
-        }
-    }
-
-    private void InvalidateLineMetrics()
-    {
-        _cachedLineMetrics = null;
-        _lineMetricsRead = false;
-    }
+    internal CanvasLineMetrics[]? TryGetLineMetrics() => _textLayout.TryGetLineMetrics();
 
     internal static CanvasLineMetrics FindLineMetrics(CanvasLineMetrics[]? metrics, CanvasTextLayoutRegion region)
     {
