@@ -299,7 +299,7 @@ internal static class SvgPreflight
         if (workId == 0)
         {
             return Thread.CurrentThread.IsThreadPoolThread
-                ? operation()
+                ? InvokeInline(operation, cancellationToken)
                 : Task.Run(operation, cancellationToken);
         }
 
@@ -314,7 +314,7 @@ internal static class SvgPreflight
                 documentId: 0,
                 startedAt: dispatchStartedAt,
                 workerCpuTicks: -1);
-            return operation();
+            return InvokeInline(operation, cancellationToken);
         }
 
         return Task.Run(() =>
@@ -329,6 +329,33 @@ internal static class SvgPreflight
                 workerCpuTicks: -1);
             return operation();
         }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Runs the dispatch delegate on the current pool thread and reports its
+    /// failure through the returned task, as <see cref="Task.Run(Func{Task}, CancellationToken)"/>
+    /// does: cancellation by <paramref name="cancellationToken"/> yields a canceled
+    /// task, and any other exception a faulted one. A caller never sees a
+    /// synchronous throw that depends on which thread it called from.
+    /// </summary>
+    private static Task<TResult> InvokeInline<TResult>(
+        Func<Task<TResult>> operation,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return operation();
+        }
+        catch (OperationCanceledException exception) when (
+            exception.CancellationToken == cancellationToken &&
+            cancellationToken.IsCancellationRequested)
+        {
+            return Task.FromCanceled<TResult>(cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            return Task.FromException<TResult>(exception);
+        }
     }
 
     internal static async Task<SvgPreflightResult> InspectCoreAsync(

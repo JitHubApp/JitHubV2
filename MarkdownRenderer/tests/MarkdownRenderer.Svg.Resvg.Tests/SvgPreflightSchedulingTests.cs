@@ -719,6 +719,38 @@ public sealed class SvgPreflightSchedulingTests
     }
 
     [Fact]
+    public async Task InlinePoolDispatchReportsFailureThroughTheTaskLikeTaskRun()
+    {
+        using var cancellation = new CancellationTokenSource();
+
+        var outcomes = await Task.Factory.StartNew(
+            () =>
+            {
+                Task<int> canceled = SvgPreflight.RunInspectCoreAsync<int>(
+                    () =>
+                    {
+                        cancellation.Cancel();
+                        cancellation.Token.ThrowIfCancellationRequested();
+                        return Task.FromResult(1);
+                    },
+                    cancellation.Token);
+                Task<int> faulted = SvgPreflight.RunInspectCoreAsync<int>(
+                    () => throw new InvalidDataException("inline failure"),
+                    CancellationToken.None);
+                return (Canceled: canceled, Faulted: faulted);
+            },
+            CancellationToken.None,
+            TaskCreationOptions.DenyChildAttach,
+            TaskScheduler.Default);
+
+        Assert.True(outcomes.Canceled.IsCanceled);
+        Assert.True(outcomes.Faulted.IsFaulted);
+        InvalidDataException failure = await Assert.ThrowsAsync<InvalidDataException>(
+            async () => await outcomes.Faulted);
+        Assert.Equal("inline failure", failure.Message);
+    }
+
+    [Fact]
     public async Task PoolThreadFastPathStillRejectsActiveSvgContent()
     {
         var options = new ResvgMarkdownSvgRendererOptions();
