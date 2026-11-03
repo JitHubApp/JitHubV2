@@ -26,7 +26,7 @@ public sealed class VectorSemanticParentProjectionTests
         MarkdownSemanticNode?[] nodes = CreateSemanticNodes(semantics);
         var sceneNode = new MarkdownSemanticNode(MarkdownSemanticRole.Diagram);
 
-        MarkdownSemanticDocument.AttachVectorSemanticNodes(
+        MarkdownVectorSemanticTree.AttachVectorSemanticNodes(
             semantics,
             nodes,
             sceneNode,
@@ -51,7 +51,7 @@ public sealed class VectorSemanticParentProjectionTests
             var actualRoot = new MarkdownSemanticNode(MarkdownSemanticRole.Diagram);
             var expectedRoot = new MarkdownSemanticNode(MarkdownSemanticRole.Diagram);
 
-            MarkdownSemanticDocument.AttachVectorSemanticNodes(
+            MarkdownVectorSemanticTree.AttachVectorSemanticNodes(
                 semantics,
                 actualNodes,
                 actualRoot,
@@ -71,7 +71,7 @@ public sealed class VectorSemanticParentProjectionTests
         var sceneNode = new MarkdownSemanticNode(MarkdownSemanticRole.Diagram);
         var countedItems = new CountingSemanticItemList(items);
 
-        MarkdownSemanticDocument.AttachVectorSemanticNodes(
+        MarkdownVectorSemanticTree.AttachVectorSemanticNodes(
             countedItems,
             nodes,
             sceneNode,
@@ -89,7 +89,7 @@ public sealed class VectorSemanticParentProjectionTests
         {
             alreadyCanceled.Cancel();
             Assert.Throws<OperationCanceledException>(() =>
-                MarkdownSemanticDocument.AttachVectorSemanticNodes(
+                MarkdownVectorSemanticTree.AttachVectorSemanticNodes(
                     Array.Empty<MarkdownVectorSemanticItem>(),
                     Array.Empty<MarkdownSemanticNode?>(),
                     new MarkdownSemanticNode(MarkdownSemanticRole.Diagram),
@@ -111,7 +111,7 @@ public sealed class VectorSemanticParentProjectionTests
             var sceneNode = new MarkdownSemanticNode(MarkdownSemanticRole.Diagram);
 
             Assert.Throws<OperationCanceledException>(() =>
-                MarkdownSemanticDocument.AttachVectorSemanticNodes(
+                MarkdownVectorSemanticTree.AttachVectorSemanticNodes(
                     countedItems,
                     nodes,
                     sceneNode,
@@ -132,7 +132,7 @@ public sealed class VectorSemanticParentProjectionTests
             var sceneNode = new MarkdownSemanticNode(MarkdownSemanticRole.Diagram);
 
             Assert.Throws<OperationCanceledException>(() =>
-                MarkdownSemanticDocument.AttachVectorSemanticNodes(
+                MarkdownVectorSemanticTree.AttachVectorSemanticNodes(
                     items,
                     countedNodes,
                     sceneNode,
@@ -155,7 +155,7 @@ public sealed class VectorSemanticParentProjectionTests
         var sceneNode = new MarkdownSemanticNode(MarkdownSemanticRole.Diagram);
 
         Assert.Throws<OperationCanceledException>(() =>
-            MarkdownSemanticDocument.AttachVectorSemanticNodes(
+            MarkdownVectorSemanticTree.AttachVectorSemanticNodes(
                 countedItems,
                 nodes,
                 sceneNode,

@@ -10,9 +10,6 @@ namespace MarkdownRenderer.Math;
 /// </summary>
 internal sealed class MathFormulaProcessor
 {
-    private const int MaximumEmergencyTexPreviewLength = 256;
-    private const int MaximumEmergencyHelpTextLength = 2048;
-
     private readonly IMathAccessibilityFormatter _accessibilityFormatter;
     private readonly IMathStringProvider? _strings;
     private readonly CultureInfo _localizationCulture;
@@ -79,95 +76,31 @@ internal sealed class MathFormulaProcessor
         // This payload is deliberately provider-free and fixed-size: it is
         // safe to create on the caller thread after the deadline starts, and
         // exact untrusted source is retained only by the request/copy fields.
-        EmergencyLocalizationSnapshot emergency = CreateEnglishEmergencySnapshot(request);
+        MathEmergencyLocalizationSnapshot emergency = MathEmergencyLocalization.CreateEnglishEmergencySnapshot(request);
 
-        // Host string providers are synchronous and cannot be force-cancelled.
-        // Invoke them away from the caller thread, bound the await by the same
-        // deadline as parsing, and observe the task in case a blocking provider
-        // completes with a fault after this operation has already returned.
         try
         {
             operationToken.ThrowIfCancellationRequested();
 
             if (_strings is not null)
             {
-                string texPreview = emergency.TexPreview;
-                Task<EmergencyLocalizationSnapshot> localizationTask =
-                    await MathHostCallbackGate.StartAsync(
-                        token => ValueTask.FromResult(CreateLocalizedEmergencySnapshot(
-                            request,
-                            languageTag,
-                            localizationCulture,
-                            texPreview,
-                            token)),
-                        operationToken)
-                    .ConfigureAwait(false);
-
-                try
-                {
-                    emergency = await localizationTask
-                        .WaitAsync(operationToken)
-                        .ConfigureAwait(false);
-                }
-                catch (OperationCanceledException) when (operationToken.IsCancellationRequested)
-                {
-                    throw;
-                }
-                catch
-                {
-                    // The English snapshot is a guaranteed boundary even for an
-                    // unexpected failure outside the provider resolver's guard.
-                }
-            }
-
-            bool hasHostCallbacks = _strings is not null ||
-                _hasReplacementAccessibilityFormatter;
-            if (hasHostCallbacks)
-            {
-                MathAccessibilityDescription guaranteedAccessibility = emergency.Accessibility;
-                Task<MathFormulaResult> coreTask =
-                    await MathHostCallbackGate.StartAsync(
-                        token => ProcessCoreAsync(
-                            request,
-                            options,
-                            token,
-                            languageTag,
-                            localizationCulture,
-                            guaranteedAccessibility),
-                        operationToken)
-                    .ConfigureAwait(false);
-                return await coreTask
-                    .WaitAsync(operationToken)
-                    .ConfigureAwait(false);
-            }
-
-            // Public callback-free processing owns exactly one worker dispatch
-            // for compilation. The internal worker path stays entirely inline.
-            if (!callerOwnsWorker)
-            {
-                Task<MathFormulaResult> coreTask = Task.Run(
-                    async () => await ProcessCoreAsync(
+                emergency = await LocalizeEmergencySnapshotAsync(
                         request,
-                        options,
-                        operationToken,
                         languageTag,
                         localizationCulture,
-                        emergency.Accessibility)
-                    .ConfigureAwait(false),
-                    CancellationToken.None);
-                ObserveFault(coreTask);
-                return await coreTask
-                    .WaitAsync(operationToken)
+                        emergency,
+                        operationToken)
                     .ConfigureAwait(false);
             }
 
-            return await ProcessCoreAsync(
+            return await DispatchCoreAsync(
                     request,
                     options,
                     operationToken,
                     languageTag,
                     localizationCulture,
-                    emergency.Accessibility)
+                    emergency.Accessibility,
+                    callerOwnsWorker)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -184,6 +117,114 @@ internal sealed class MathFormulaProcessor
         }
     }
 
+    /// <summary>
+    /// Resolves the emergency (timeout) strings through the host provider.
+    /// Host string providers are synchronous and cannot be force-cancelled, so
+    /// they run away from the caller thread, the await is bounded by the
+    /// operation deadline, and any other failure keeps the English snapshot.
+    /// </summary>
+    private async ValueTask<MathEmergencyLocalizationSnapshot> LocalizeEmergencySnapshotAsync(
+        MathFormulaRequest request,
+        string languageTag,
+        CultureInfo localizationCulture,
+        MathEmergencyLocalizationSnapshot english,
+        CancellationToken operationToken)
+    {
+        string texPreview = english.TexPreview;
+        Task<MathEmergencyLocalizationSnapshot> localizationTask =
+            await MathHostCallbackGate.StartAsync(
+                token => ValueTask.FromResult(MathEmergencyLocalization.CreateLocalizedEmergencySnapshot(
+                    _strings,
+                    request,
+                    languageTag,
+                    localizationCulture,
+                    texPreview,
+                    token)),
+                operationToken)
+            .ConfigureAwait(false);
+
+        try
+        {
+            return await localizationTask
+                .WaitAsync(operationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (operationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            // The English snapshot is a guaranteed boundary even for an
+            // unexpected failure outside the provider resolver's guard.
+            return english;
+        }
+    }
+
+    /// <summary>
+    /// Runs the core on the right worker: bounded host-callback isolation when
+    /// host callbacks are configured, one thread-pool dispatch for public
+    /// callback-free calls, and inline when the caller already owns a worker.
+    /// </summary>
+    private async ValueTask<MathFormulaResult> DispatchCoreAsync(
+        MathFormulaRequest request,
+        MathProcessingOptions options,
+        CancellationToken operationToken,
+        string languageTag,
+        CultureInfo localizationCulture,
+        MathAccessibilityDescription guaranteedAccessibility,
+        bool callerOwnsWorker)
+    {
+        bool hasHostCallbacks = _strings is not null ||
+            _hasReplacementAccessibilityFormatter;
+        if (hasHostCallbacks)
+        {
+            Task<MathFormulaResult> coreTask =
+                await MathHostCallbackGate.StartAsync(
+                    token => ProcessCoreAsync(
+                        request,
+                        options,
+                        token,
+                        languageTag,
+                        localizationCulture,
+                        guaranteedAccessibility),
+                    operationToken)
+                .ConfigureAwait(false);
+            return await coreTask
+                .WaitAsync(operationToken)
+                .ConfigureAwait(false);
+        }
+
+        // Public callback-free processing owns exactly one worker dispatch
+        // for compilation. The internal worker path stays entirely inline.
+        if (!callerOwnsWorker)
+        {
+            Task<MathFormulaResult> coreTask = Task.Run(
+                async () => await ProcessCoreAsync(
+                    request,
+                    options,
+                    operationToken,
+                    languageTag,
+                    localizationCulture,
+                    guaranteedAccessibility)
+                .ConfigureAwait(false),
+                CancellationToken.None);
+            ObserveFault(coreTask);
+            return await coreTask
+                .WaitAsync(operationToken)
+                .ConfigureAwait(false);
+        }
+
+        return await ProcessCoreAsync(
+                request,
+                options,
+                operationToken,
+                languageTag,
+                localizationCulture,
+                guaranteedAccessibility)
+            .ConfigureAwait(false);
+    }
+
     private async ValueTask<MathFormulaResult> ProcessCoreAsync(
         MathFormulaRequest request,
         MathProcessingOptions options,
@@ -192,7 +233,8 @@ internal sealed class MathFormulaProcessor
         CultureInfo localizationCulture,
         MathAccessibilityDescription guaranteedAccessibility)
     {
-        MathFormulaDiagnostic? preflight = ValidateInput(
+        MathFormulaDiagnostic? preflight = MathInputPreflight.ValidateInput(
+            _strings,
             request,
             options,
             cancellationToken,
@@ -212,86 +254,16 @@ internal sealed class MathFormulaProcessor
             return MathFormulaResult.InvalidSource(request, preflight, accessibility);
         }
 
-        MathScene? scene;
-        try
-        {
-            scene = CSharpMathSceneCompiler.Compile(request, options, cancellationToken);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (MathParserRecursionLimitException)
-        {
-            return MathFormulaResult.Unsupported(
+        (MathScene? scene, MathFormulaResult? compileFailure) = await CompileSceneAsync(
                 request,
-                Diagnostic(
-                    "MATH102",
-                    MathStringKeys.NestingTooDeep,
-                    request.ContentRange,
-                    languageTag,
-                    cancellationToken),
-                guaranteedAccessibility);
-        }
-        catch (MathSceneBudgetException exception)
-            when (exception.Budget == MathSceneBudget.WorkingMemory)
-        {
-            return MathFormulaResult.Unsupported(
-                request,
-                Diagnostic(
-                    "MATH105",
-                    MathStringKeys.WorkingMemoryExceeded,
-                    request.ContentRange,
-                    languageTag,
-                    cancellationToken),
-                guaranteedAccessibility);
-        }
-        catch (MathSceneBudgetException)
-        {
-            return MathFormulaResult.Unsupported(
-                request,
-                Diagnostic(
-                    "MATH103",
-                    MathStringKeys.SceneTooComplex,
-                    request.ContentRange,
-                    languageTag,
-                    cancellationToken),
-                guaranteedAccessibility);
-        }
-        catch (MathSceneDimensionException)
-        {
-            return MathFormulaResult.Unsupported(
-                request,
-                Diagnostic(
-                    "MATH104",
-                    MathStringKeys.SceneTooLarge,
-                    request.ContentRange,
-                    languageTag,
-                    cancellationToken),
-                guaranteedAccessibility);
-        }
-        catch (Exception)
-        {
-            // If an unexpected compiler failure races cancellation, cancellation
-            // remains the observable operation outcome. Letting the unrelated
-            // compiler exception escape here would bypass the caller-cancellation
-            // and deadline handling in ProcessWithDeadlineAsync.
-            cancellationToken.ThrowIfCancellationRequested();
-            return MathFormulaResult.Failed(
-                request,
-                Diagnostic(
-                    "MATH199",
-                    MathStringKeys.ProcessingFailed,
-                    request.ContentRange,
-                    languageTag,
-                    cancellationToken),
-                await FormatAccessibilityAsync(
-                    request,
-                    languageTag,
-                    localizationCulture,
-                    guaranteedAccessibility,
-                    cancellationToken).ConfigureAwait(false));
-        }
+                options,
+                cancellationToken,
+                languageTag,
+                localizationCulture,
+                guaranteedAccessibility)
+            .ConfigureAwait(false);
+        if (compileFailure is not null)
+            return compileFailure;
 
         if (scene is null)
         {
@@ -321,76 +293,82 @@ internal sealed class MathFormulaProcessor
         return MathFormulaResult.Accepted(request, scene, acceptedAccessibility);
     }
 
-    private MathFormulaDiagnostic? ValidateInput(
+    /// <summary>
+    /// Compiles the scene (null for invalid TeX). Compiler limits and unexpected
+    /// compiler failures are returned as the failure result instead.
+    /// </summary>
+    private async ValueTask<(MathScene? Scene, MathFormulaResult? Failure)> CompileSceneAsync(
         MathFormulaRequest request,
         MathProcessingOptions options,
         CancellationToken cancellationToken,
-        string languageTag)
+        string languageTag,
+        CultureInfo localizationCulture,
+        MathAccessibilityDescription guaranteedAccessibility)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        if (request.TexSource.Length == 0)
+        try
         {
-            return Diagnostic(
-                "MATH100",
-                MathStringKeys.InvalidFormula,
-                request.ContentRange,
-                languageTag,
-                cancellationToken);
+            return (CSharpMathSceneCompiler.Compile(request, options, cancellationToken), null);
         }
-
-        if (request.TexSource.Length > options.MaximumTexLength)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            return Diagnostic(
-                "MATH101",
-                MathStringKeys.SourceTooLong,
-                request.ContentRange,
-                languageTag,
-                cancellationToken);
+            throw;
         }
-
-        if (MathWorkingMemoryBudget.EstimateSourceBytes(request.TexSource.Length) >
-            options.MaximumWorkingMemoryBytes)
+        catch (MathParserRecursionLimitException)
         {
-            return Diagnostic(
-                "MATH105",
-                MathStringKeys.WorkingMemoryExceeded,
-                request.ContentRange,
-                languageTag,
-                cancellationToken);
+            return (null, CompilerLimitResult(
+                request, "MATH102", MathStringKeys.NestingTooDeep, languageTag, guaranteedAccessibility, cancellationToken));
         }
-
-        int depth = 0;
-        for (int i = 0; i < request.TexSource.Length; i++)
+        catch (MathSceneBudgetException exception)
+            when (exception.Budget == MathSceneBudget.WorkingMemory)
         {
-            if ((i & 0xff) == 0)
-                cancellationToken.ThrowIfCancellationRequested();
-
-            char value = request.TexSource[i];
-            if ((value != '{' && value != '}') || IsEscaped(request.TexSource, i))
-                continue;
-
-            if (value == '{')
-            {
-                depth++;
-                if (depth > options.MaximumNestingDepth)
-                {
-                    return Diagnostic(
-                        "MATH102",
-                        MathStringKeys.NestingTooDeep,
-                        request.ContentRange,
-                        languageTag,
-                        cancellationToken);
-                }
-            }
-            else
-            {
-                depth--;
-            }
+            return (null, CompilerLimitResult(
+                request, "MATH105", MathStringKeys.WorkingMemoryExceeded, languageTag, guaranteedAccessibility, cancellationToken));
         }
-
-        return null;
+        catch (MathSceneBudgetException)
+        {
+            return (null, CompilerLimitResult(
+                request, "MATH103", MathStringKeys.SceneTooComplex, languageTag, guaranteedAccessibility, cancellationToken));
+        }
+        catch (MathSceneDimensionException)
+        {
+            return (null, CompilerLimitResult(
+                request, "MATH104", MathStringKeys.SceneTooLarge, languageTag, guaranteedAccessibility, cancellationToken));
+        }
+        catch (Exception)
+        {
+            // If an unexpected compiler failure races cancellation, cancellation
+            // remains the observable operation outcome. Letting the unrelated
+            // compiler exception escape here would bypass the caller-cancellation
+            // and deadline handling in ProcessWithDeadlineAsync.
+            cancellationToken.ThrowIfCancellationRequested();
+            return (null, MathFormulaResult.Failed(
+                request,
+                Diagnostic(
+                    "MATH199",
+                    MathStringKeys.ProcessingFailed,
+                    request.ContentRange,
+                    languageTag,
+                    cancellationToken),
+                await FormatAccessibilityAsync(
+                    request,
+                    languageTag,
+                    localizationCulture,
+                    guaranteedAccessibility,
+                    cancellationToken).ConfigureAwait(false)));
+        }
     }
+
+    private MathFormulaResult CompilerLimitResult(
+        MathFormulaRequest request,
+        string code,
+        string stringKey,
+        string languageTag,
+        MathAccessibilityDescription guaranteedAccessibility,
+        CancellationToken cancellationToken) =>
+        MathFormulaResult.Unsupported(
+            request,
+            Diagnostic(code, stringKey, request.ContentRange, languageTag, cancellationToken),
+            guaranteedAccessibility);
 
     private async ValueTask<MathAccessibilityDescription> FormatAccessibilityAsync(
         MathFormulaRequest request,
@@ -452,104 +430,8 @@ internal sealed class MathFormulaProcessor
         string stringKey,
         MathSourceRange range,
         string? languageTag,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        string message = MathStringResolver.Resolve(_strings, stringKey, languageTag);
-        cancellationToken.ThrowIfCancellationRequested();
-        return new MathFormulaDiagnostic(code, message, range);
-    }
-
-    private EmergencyLocalizationSnapshot CreateLocalizedEmergencySnapshot(
-        MathFormulaRequest request,
-        string languageTag,
-        CultureInfo localizationCulture,
-        string texPreview,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        string automationName = MathStringResolver.Resolve(
-            _strings,
-            MathStringKeys.AutomationName,
-            languageTag);
-
-        // Every synchronous callback has its own preceding checkpoint. In
-        // particular, a provider blocked in one call cannot start the next call
-        // after the deadline has been observed.
-        cancellationToken.ThrowIfCancellationRequested();
-        string helpText = MathStringResolver.FormatOriginalTex(
-            _strings,
-            languageTag,
-            texPreview,
-            localizationCulture,
-            MaximumEmergencyHelpTextLength,
-            cancellationToken);
-
-        cancellationToken.ThrowIfCancellationRequested();
-        string timeoutMessage = MathStringResolver.Resolve(
-            _strings,
-            MathStringKeys.ProcessingTimedOut,
-            languageTag);
-        cancellationToken.ThrowIfCancellationRequested();
-
-        return new EmergencyLocalizationSnapshot(
-            new MathAccessibilityDescription(
-                automationName,
-                texPreview,
-                helpText,
-                request.TexSource),
-            new MathFormulaDiagnostic(
-                "MATH106",
-                timeoutMessage,
-                request.ContentRange),
-            texPreview);
-    }
-
-    private static EmergencyLocalizationSnapshot CreateEnglishEmergencySnapshot(
-        MathFormulaRequest request)
-    {
-        string texPreview = CreateBoundedText(
-            request.TexSource,
-            MaximumEmergencyTexPreviewLength);
-        string helpText = CreateBoundedText(
-            "Original TeX: " + texPreview,
-            MaximumEmergencyHelpTextLength);
-        return new EmergencyLocalizationSnapshot(
-            new MathAccessibilityDescription(
-                MathStringResolver.GetEnglishString(MathStringKeys.AutomationName),
-                texPreview,
-                helpText,
-                request.TexSource),
-            new MathFormulaDiagnostic(
-                "MATH106",
-                MathStringResolver.GetEnglishString(MathStringKeys.ProcessingTimedOut),
-                request.ContentRange),
-            texPreview);
-    }
-
-    private static string CreateBoundedText(string value, int maximumLength)
-    {
-        if (value.Length <= maximumLength)
-            return value;
-
-        int prefixLength = maximumLength - 1;
-        if (prefixLength > 0 &&
-            char.IsHighSurrogate(value[prefixLength - 1]) &&
-            char.IsLowSurrogate(value[prefixLength]))
-        {
-            prefixLength--;
-        }
-
-        return string.Create(
-            prefixLength + 1,
-            (Value: value, PrefixLength: prefixLength),
-            static (destination, state) =>
-            {
-                state.Value.AsSpan(0, state.PrefixLength).CopyTo(destination);
-                destination[^1] = '\u2026';
-            });
-    }
-
+        CancellationToken cancellationToken) =>
+        MathFormulaDiagnostics.Create(_strings, code, stringKey, range, languageTag, cancellationToken);
     private static void ObserveFault(Task task)
     {
         if (task.IsCompleted)
@@ -564,18 +446,5 @@ internal sealed class MathFormulaProcessor
             TaskContinuationOptions.ExecuteSynchronously |
                 TaskContinuationOptions.OnlyOnFaulted,
             TaskScheduler.Default);
-    }
-
-    private readonly record struct EmergencyLocalizationSnapshot(
-        MathAccessibilityDescription Accessibility,
-        MathFormulaDiagnostic TimeoutDiagnostic,
-        string TexPreview);
-
-    private static bool IsEscaped(string source, int index)
-    {
-        int slashCount = 0;
-        for (int cursor = index - 1; cursor >= 0 && source[cursor] == '\\'; cursor--)
-            slashCount++;
-        return (slashCount & 1) != 0;
     }
 }

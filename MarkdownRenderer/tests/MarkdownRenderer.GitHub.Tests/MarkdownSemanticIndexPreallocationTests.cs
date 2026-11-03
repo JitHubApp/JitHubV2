@@ -1,4 +1,3 @@
-using System.Reflection;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Hosting;
@@ -154,22 +153,11 @@ public sealed class MarkdownSemanticIndexPreallocationTests
 
     private static Dictionary<(int BlockIndex, int InlineIndex), int> GetSpanMap(
         MarkdownSemanticDocument document)
-    {
-        FieldInfo field = typeof(MarkdownSemanticDocument).GetField(
-            "_spanByPosition",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return Assert.IsType<Dictionary<(int BlockIndex, int InlineIndex), int>>(
-            field.GetValue(document));
-    }
+        => Assert.IsType<Dictionary<(int BlockIndex, int InlineIndex), int>>(document.Positions.SpanIndexByPosition);
 
     private static Dictionary<int, MarkdownSemanticNode> GetInlineBlockMap(
         MarkdownSemanticDocument document)
-    {
-        FieldInfo field = typeof(MarkdownSemanticDocument).GetField(
-            "_nodeByInlineBlockIndex",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return Assert.IsType<Dictionary<int, MarkdownSemanticNode>>(field.GetValue(document));
-    }
+        => document.NodeIndexes.ByInlineBlockIndex;
 
     private static MarkdownLayoutContext CreateContext()
     {

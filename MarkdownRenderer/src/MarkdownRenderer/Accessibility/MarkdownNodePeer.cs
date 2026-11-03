@@ -5,13 +5,19 @@ using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Provider;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Extensions;
-using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Accessibility;
 
+/// <summary>
+/// The UIA peer for one semantic node: its properties, children and the grid,
+/// table, scroll, invoke and toggle patterns the node supports.
+/// </summary>
+/// <remarks>
+/// <c>partial</c> is required by the CsWinRT AOT generator (CsWinRT1028), which
+/// emits the WinRT vtable for a peer that adds provider interfaces.
+/// </remarks>
 internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
     IGridProvider,
     ITableProvider,
@@ -49,61 +55,7 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
     protected override string GetClassNameCore()
     {
         EnsureCurrentDocument();
-        if (TaskMetadata is { } task)
-            return task.CanToggle ? "MarkdownTaskCheckBox" : "MarkdownTaskState";
-
-        if (_node.HostedElementBox is not null)
-        {
-            return _node.AccessibilityRole switch
-            {
-                MarkdownAccessibilityRole.Text => "MarkdownHostedText",
-                MarkdownAccessibilityRole.Group => "MarkdownHostedGroup",
-                MarkdownAccessibilityRole.Paragraph => "MarkdownHostedParagraph",
-                MarkdownAccessibilityRole.Heading => "MarkdownHostedHeading",
-                MarkdownAccessibilityRole.Link => "MarkdownHostedLink",
-                MarkdownAccessibilityRole.Image => "MarkdownHostedImage",
-                MarkdownAccessibilityRole.Code => "MarkdownHostedCode",
-                MarkdownAccessibilityRole.List => "MarkdownHostedList",
-                MarkdownAccessibilityRole.ListItem => "MarkdownHostedListItem",
-                MarkdownAccessibilityRole.Table => "MarkdownHostedTable",
-                MarkdownAccessibilityRole.Row => "MarkdownHostedRow",
-                MarkdownAccessibilityRole.Cell => "MarkdownHostedCell",
-                MarkdownAccessibilityRole.Math => "MarkdownHostedMath",
-                MarkdownAccessibilityRole.Diagram => "MarkdownHostedDiagram",
-                MarkdownAccessibilityRole.Status => "MarkdownHostedStatus",
-                _ => "MarkdownHostedElement",
-            };
-        }
-
-        if (_node.VectorSceneBox is not null && _node.VectorSemanticIndex >= 0)
-        {
-            return _node.Role == MarkdownSemanticRole.Link
-                ? "MarkdownDiagramLink"
-                : _node.VectorSemanticRole switch
-                {
-                    MarkdownVectorSemanticRole.Node => "MarkdownDiagramNode",
-                    MarkdownVectorSemanticRole.Edge => "MarkdownDiagramEdge",
-                    MarkdownVectorSemanticRole.Label => "MarkdownDiagramLabel",
-                    MarkdownVectorSemanticRole.Legend => "MarkdownDiagramLegend",
-                    _ => "MarkdownDiagramGroup",
-                };
-        }
-
-        return _node.Role switch
-        {
-            MarkdownSemanticRole.Heading => "MarkdownHeading",
-            MarkdownSemanticRole.CodeBlock => "MarkdownCodeBlock",
-            MarkdownSemanticRole.List => "MarkdownList",
-            MarkdownSemanticRole.ListItem => "MarkdownListItem",
-            MarkdownSemanticRole.Table => "MarkdownTable",
-            MarkdownSemanticRole.TableCell => "MarkdownTableCell",
-            MarkdownSemanticRole.Image => "MarkdownImage",
-            MarkdownSemanticRole.Math => "MarkdownMath",
-            MarkdownSemanticRole.Diagram => "MarkdownDiagram",
-            MarkdownSemanticRole.Embed => "MarkdownEmbed",
-            MarkdownSemanticRole.Abbreviation => "MarkdownAbbreviation",
-            _ => "MarkdownGroup",
-        };
+        return MarkdownNodeAutomationDescriptor.GetClassName(_node, TaskMetadata);
     }
 
     protected override bool IsControlElementCore()
@@ -183,158 +135,31 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
     protected override AutomationControlType GetAutomationControlTypeCore()
     {
         EnsureCurrentDocument();
-        if (TaskMetadata is { } task)
-            return task.CanToggle ? AutomationControlType.CheckBox : AutomationControlType.Text;
-
-        if (_node.HostedElementBox is not null)
-        {
-            return _node.AccessibilityRole switch
-            {
-                MarkdownAccessibilityRole.Text or MarkdownAccessibilityRole.Paragraph or
-                MarkdownAccessibilityRole.Status => AutomationControlType.Text,
-                MarkdownAccessibilityRole.Heading => AutomationControlType.Header,
-                MarkdownAccessibilityRole.Link => AutomationControlType.Hyperlink,
-                MarkdownAccessibilityRole.Image or MarkdownAccessibilityRole.Math or
-                MarkdownAccessibilityRole.Diagram => AutomationControlType.Image,
-                MarkdownAccessibilityRole.List => AutomationControlType.List,
-                MarkdownAccessibilityRole.ListItem => AutomationControlType.ListItem,
-                MarkdownAccessibilityRole.Table => AutomationControlType.Table,
-                MarkdownAccessibilityRole.Cell => AutomationControlType.DataItem,
-                MarkdownAccessibilityRole.Row or MarkdownAccessibilityRole.Group => AutomationControlType.Group,
-                _ => AutomationControlType.Custom,
-            };
-        }
-
-        if (LinkedInlineVectorScene is not null)
-            return AutomationControlType.Hyperlink;
-
-        if (_node.VectorSceneBox is not null && _node.VectorSemanticIndex >= 0)
-        {
-            if (_node.Role == MarkdownSemanticRole.Link)
-                return AutomationControlType.Hyperlink;
-            return _node.VectorSemanticRole == MarkdownVectorSemanticRole.Label
-                ? AutomationControlType.Text
-                : AutomationControlType.Group;
-        }
-
-        return _node.Role switch
-        {
-            MarkdownSemanticRole.Heading => AutomationControlType.Header,
-            MarkdownSemanticRole.CodeBlock => AutomationControlType.Group,
-            MarkdownSemanticRole.List => AutomationControlType.List,
-            MarkdownSemanticRole.ListItem => AutomationControlType.ListItem,
-            MarkdownSemanticRole.Table => AutomationControlType.Table,
-            MarkdownSemanticRole.TableCell => AutomationControlType.DataItem,
-            MarkdownSemanticRole.Image => AutomationControlType.Image,
-            MarkdownSemanticRole.Math => AutomationControlType.Image,
-            MarkdownSemanticRole.Diagram => AutomationControlType.Image,
-            MarkdownSemanticRole.Link when _node.VectorSceneBox is not null => AutomationControlType.Hyperlink,
-            MarkdownSemanticRole.Embed => AutomationControlType.Custom,
-            MarkdownSemanticRole.Abbreviation => AutomationControlType.Text,
-            _ => AutomationControlType.Group,
-        };
+        return MarkdownNodeAutomationDescriptor.GetControlType(_node, TaskMetadata);
     }
 
     protected override AutomationHeadingLevel GetHeadingLevelCore()
     {
         EnsureCurrentDocument();
-        return _node.HeadingLevel switch
-        {
-            1 => AutomationHeadingLevel.Level1,
-            2 => AutomationHeadingLevel.Level2,
-            3 => AutomationHeadingLevel.Level3,
-            4 => AutomationHeadingLevel.Level4,
-            5 => AutomationHeadingLevel.Level5,
-            6 => AutomationHeadingLevel.Level6,
-            _ => AutomationHeadingLevel.None,
-        };
+        return MarkdownNodeAutomationDescriptor.GetHeadingLevel(_node);
     }
 
     protected override string GetNameCore()
     {
         EnsureCurrentDocument();
-        if (TaskMetadata is { } task)
-            return task.CurrentName;
-
-        if (!string.IsNullOrWhiteSpace(_node.AccessibilityName))
-            return _node.AccessibilityName;
-
-        if (_node.Role == MarkdownSemanticRole.Diagram)
-        {
-            return _owner.Localization.Resolve(
-                MarkdownStringKeys.DiagramName,
-                MarkdownLocalizedStrings.DiagramName);
-        }
-        if (_node.VectorSceneBox is not null && _node.VectorSemanticIndex >= 0)
-            return _node.HelpText ?? string.Empty;
-
-        if (_node.Role == MarkdownSemanticRole.CodeBlock && _node.Box is CodeBlockBox)
-        {
-            return _owner.Localization.Resolve(
-                MarkdownStringKeys.StyleCodeBlock,
-                MarkdownLocalizedStrings.StyleName(MarkdownElementKeys.CodeBlock));
-        }
-
-        var text = _root.GetSemanticDocument().GetText(_node);
-        if (_node.Role == MarkdownSemanticRole.Image)
-            return GetImageName(text, _node.ImageBox?.AccessibilityState);
-
-        if (!string.IsNullOrWhiteSpace(text) &&
-            !string.Equals(text, MarkdownRenderer.Layout.InlineEmbedRun.PlaceholderChar, System.StringComparison.Ordinal))
-            return text;
-        return _node.Role switch
-        {
-            MarkdownSemanticRole.Image => _owner.Localization.Resolve(
-                MarkdownStringKeys.ImageName,
-                MarkdownLocalizedStrings.ImageName),
-            MarkdownSemanticRole.Table => _owner.Localization.Resolve(
-                MarkdownStringKeys.TableName,
-                MarkdownLocalizedStrings.TableName),
-            MarkdownSemanticRole.List => _owner.Localization.Resolve(
-                MarkdownStringKeys.ListName,
-                MarkdownLocalizedStrings.ListName),
-            MarkdownSemanticRole.Embed => _owner.Localization.Resolve(
-                MarkdownStringKeys.EmbeddedContentName,
-                MarkdownLocalizedStrings.EmbeddedContentName),
-            _ => string.Empty,
-        };
+        return MarkdownNodeAutomationText.GetName(_owner, _root, _node, TaskMetadata);
     }
 
     protected override string GetHelpTextCore()
     {
         EnsureCurrentDocument();
-        if (TaskMetadata is { } task)
-            return task.CurrentHelpText;
-
-        if (_node.Role == MarkdownSemanticRole.CodeBlock &&
-            !string.IsNullOrWhiteSpace(_node.CodeLanguage))
-        {
-            return _owner.Localization.ResolveFormatted(
-                MarkdownStringKeys.CodeLanguageHelp,
-                MarkdownLocalizedStrings.CodeLanguageHelpFormat,
-                _node.CodeLanguage);
-        }
-
-        return _node.AccessibilityDescription ??
-               (_node.Role == MarkdownSemanticRole.Image ? _node.ImageBox?.SvgDesc : null) ??
-               _node.HelpText ??
-               string.Empty;
+        return MarkdownNodeAutomationText.GetHelpText(_owner, _node, TaskMetadata);
     }
 
     protected override string GetItemStatusCore()
     {
         EnsureCurrentDocument();
-        if (_node.Box is Layout.Boxes.VectorSceneBox { GraphRebindFailed: true })
-            return _owner.Localization.Resolve(MarkdownStringKeys.EmbeddedContentUnavailable,
-                MarkdownLocalizedStrings.EmbeddedContentUnavailable);
-        if (_node.Role == MarkdownSemanticRole.Image &&
-            _node.ImageBox?.AccessibilityState == MarkdownImageAccessibilityState.Loading)
-        {
-            string text = _root.GetSemanticDocument().GetText(_node);
-            return GetImageName(text, MarkdownImageAccessibilityState.Loading);
-        }
-
-        return string.Empty;
+        return MarkdownNodeAutomationText.GetItemStatus(_owner, _root, _node);
     }
 
     protected override string GetAutomationIdCore()
@@ -477,35 +302,13 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
     IRawElementProviderSimple IGridProvider.GetItem(int row, int column)
     {
         EnsureCurrentDocument();
-        foreach (var child in _node.Children)
-        {
-            if (child.Role == MarkdownSemanticRole.TableCell &&
-                child.Row == row &&
-                child.Column == column &&
-                _root.TryGetProviderForSemanticNode(child, out var provider))
-            {
-                return provider;
-            }
-        }
-
-        return null!;
+        return MarkdownNodeTableNavigation.GetItem(_root, _node, row, column);
     }
 
     IRawElementProviderSimple[] ITableProvider.GetColumnHeaders()
     {
         EnsureCurrentDocument();
-        var providers = new List<IRawElementProviderSimple>();
-        foreach (var child in _node.Children)
-        {
-            if (child.Role == MarkdownSemanticRole.TableCell &&
-                child.IsHeader &&
-                _root.TryGetProviderForSemanticNode(child, out var provider))
-            {
-                providers.Add(provider);
-            }
-        }
-
-        return providers.ToArray();
+        return MarkdownNodeTableNavigation.GetColumnHeaders(_root, _node);
     }
 
     IRawElementProviderSimple[] ITableProvider.GetRowHeaders()
@@ -544,32 +347,14 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
         get
         {
             EnsureCurrentDocument();
-            var table = FindAncestorTable(_node);
-            return table is not null && _root.TryGetProviderForSemanticNode(table, out var provider)
-                ? provider
-                : null!;
+            return MarkdownNodeTableNavigation.GetContainingGrid(_root, _node);
         }
     }
 
     IRawElementProviderSimple[] ITableItemProvider.GetColumnHeaderItems()
     {
         EnsureCurrentDocument();
-        var table = FindAncestorTable(_node);
-        if (table is null) return System.Array.Empty<IRawElementProviderSimple>();
-
-        var providers = new List<IRawElementProviderSimple>();
-        foreach (var child in table.Children)
-        {
-            if (child.Role == MarkdownSemanticRole.TableCell &&
-                child.IsHeader &&
-                child.Column == _node.Column &&
-                _root.TryGetProviderForSemanticNode(child, out var provider))
-            {
-                providers.Add(provider);
-            }
-        }
-
-        return providers.ToArray();
+        return MarkdownNodeTableNavigation.GetColumnHeaderItems(_root, _node);
     }
 
     IRawElementProviderSimple[] ITableItemProvider.GetRowHeaderItems()
@@ -700,8 +485,8 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
             return;
 
         string text = _root.GetSemanticDocument().GetText(node);
-        string oldName = GetImageName(text, previous);
-        string newName = GetImageName(text, current);
+        string oldName = MarkdownNodeAutomationText.GetImageName(_owner, text, previous);
+        string newName = MarkdownNodeAutomationText.GetImageName(_owner, text, current);
         string oldStatus = previous == MarkdownImageAccessibilityState.Loading ? oldName : string.Empty;
         string newStatus = current == MarkdownImageAccessibilityState.Loading ? newName : string.Empty;
         _lastImageState = current;
@@ -785,38 +570,9 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
             task.CurrentName);
     }
 
-    private static MarkdownSemanticNode? FindAncestorTable(MarkdownSemanticNode node)
-    {
-        for (var current = node.Parent; current is not null; current = current.Parent)
-        {
-            if (current.Role == MarkdownSemanticRole.Table) return current;
-        }
-
-        return null;
-    }
-
     private bool IsCurrentDocument() => _lifetime.IsCurrent();
 
     private void EnsureCurrentDocument() => _lifetime.EnsureCurrent();
 
     private MarkdownSemanticNode _node => MarkdownAutomationPeerLifetime.GetPayloadOrThrow(_nodeReference);
-
-    private string GetImageName(string text, MarkdownImageAccessibilityState? state)
-    {
-        string description = string.IsNullOrWhiteSpace(text)
-            ? _owner.Localization.Resolve(MarkdownStringKeys.ImageName, MarkdownLocalizedStrings.ImageName)
-            : text;
-        return state switch
-        {
-            MarkdownImageAccessibilityState.Loading => _owner.Localization.ResolveFormatted(
-                MarkdownStringKeys.ImageLoading,
-                MarkdownLocalizedStrings.ImageLoadingFormat,
-                description),
-            MarkdownImageAccessibilityState.Error => _owner.Localization.ResolveFormatted(
-                MarkdownStringKeys.ImageError,
-                MarkdownLocalizedStrings.ImageErrorFormat,
-                description),
-            _ => description,
-        };
-    }
 }

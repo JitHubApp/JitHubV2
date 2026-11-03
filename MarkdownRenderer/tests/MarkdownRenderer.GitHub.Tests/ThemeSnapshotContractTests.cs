@@ -125,7 +125,7 @@ public sealed class ThemeSnapshotContractTests
     {
         Assert.Equal(
             expected,
-            ThemeResolver.GetThemeDictionaryKeysForTesting(isHighContrast, actualTheme));
+            ThemeResourceScope.GetThemeDictionaryKeys(isHighContrast, actualTheme));
     }
 
     [Fact]
@@ -395,24 +395,24 @@ public sealed class ThemeSnapshotContractTests
         Assert.Equal(
             new[] { ".align-center", "Body", "Extension.Role" },
             demandedRoles.Order(StringComparer.Ordinal));
-        Assert.True(ThemeResolver.IsScopedResourceRequiredForSnapshot(
+        Assert.True(ThemeResourceScope.IsScopedResourceRequiredForSnapshot(
             MarkdownResourceKeys.ForRole(MarkdownStyleRole.Body, MarkdownStyleProperty.ForegroundBrush),
             demandedRoles));
-        Assert.False(ThemeResolver.IsScopedResourceRequiredForSnapshot(
+        Assert.False(ThemeResourceScope.IsScopedResourceRequiredForSnapshot(
             MarkdownResourceKeys.ForRole(MarkdownStyleRole.CodeBlock, MarkdownStyleProperty.ForegroundBrush),
             demandedRoles));
-        Assert.True(ThemeResolver.IsScopedResourceRequiredForSnapshot(
+        Assert.True(ThemeResourceScope.IsScopedResourceRequiredForSnapshot(
             MarkdownResourceKeys.DocumentSurfaceBrush,
             demandedRoles));
-        Assert.True(ThemeResolver.IsScopedResourceRequiredForSnapshot(
+        Assert.True(ThemeResourceScope.IsScopedResourceRequiredForSnapshot(
             "TextControlForeground",
             demandedRoles));
-        Assert.True(ThemeResolver.IsScopedResourceRequiredForSnapshot(
+        Assert.True(ThemeResourceScope.IsScopedResourceRequiredForSnapshot(
             MarkdownResourceKeys.ForRole(
                 MarkdownStyleRole.FromElementKey(MarkdownElementKeys.Class("align-center")),
                 MarkdownStyleProperty.ForegroundBrush),
             demandedRoles));
-        Assert.False(ThemeResolver.IsScopedResourceRequiredForSnapshot(
+        Assert.False(ThemeResourceScope.IsScopedResourceRequiredForSnapshot(
             "ControlCornerRadius",
             demandedRoles));
 
@@ -431,7 +431,7 @@ public sealed class ThemeSnapshotContractTests
             MarkdownResourceKeys.OverflowIndicatorBrush,
         })
         {
-            Assert.True(ThemeResolver.IsScopedResourceRequiredForSnapshot(globalKey, demandedRoles));
+            Assert.True(ThemeResourceScope.IsScopedResourceRequiredForSnapshot(globalKey, demandedRoles));
         }
 
         HashSet<string> fullResolutionRoles = ThemeResolver.GetScopedResourceStyleRoles(
@@ -477,7 +477,7 @@ public sealed class ThemeSnapshotContractTests
             },
             static dictionary => dictionary.Merged.Count,
             static (dictionary, index) => dictionary.Merged[index],
-            key => ThemeResolver.IsScopedResourceRequiredForSnapshot(key, demandedRoles),
+            key => ThemeResourceScope.IsScopedResourceRequiredForSnapshot(key, demandedRoles),
             captured);
 
         int unfilteredValueCount = extensionRoleCount * Enum.GetValues<MarkdownStyleProperty>().Length +
@@ -574,16 +574,16 @@ public sealed class ThemeSnapshotContractTests
     [InlineData("FocusVisualPrimaryBrush")]
     public void ScopedPlatformCapture_RecognizesEveryFixedLookup(string resourceKey)
     {
-        Assert.True(ThemeResolver.IsScopedPlatformResourceKey(resourceKey));
+        Assert.True(ThemeResourceScope.IsScopedPlatformResourceKey(resourceKey));
     }
 
     [Fact]
     public void ScopedPlatformCapture_RejectsUnrelatedPlatformKey()
     {
-        Assert.False(ThemeResolver.IsScopedPlatformResourceKey("ControlCornerRadius"));
-        Assert.False(ThemeResolver.IsScopedPlatformResourceKey(null!));
-        Assert.False(ThemeResolver.IsScopedPlatformResourceKey("textControlForeground"));
-        Assert.False(ThemeResolver.IsScopedPlatformResourceKey("TextControlForegroundSuffix"));
+        Assert.False(ThemeResourceScope.IsScopedPlatformResourceKey("ControlCornerRadius"));
+        Assert.False(ThemeResourceScope.IsScopedPlatformResourceKey(null!));
+        Assert.False(ThemeResourceScope.IsScopedPlatformResourceKey("textControlForeground"));
+        Assert.False(ThemeResourceScope.IsScopedPlatformResourceKey("TextControlForegroundSuffix"));
     }
 
     [Fact]
@@ -714,12 +714,12 @@ public sealed class ThemeSnapshotContractTests
             hostTheme == ElementTheme.Dark,
             applicationTheme == ApplicationTheme.Dark);
 
-        ThemeResolver.PlatformThemeColors resolved = ThemeResolver.ResolvePlatformThemeColorsForTesting(
+        PlatformThemeColors resolved = PlatformThemeColors.Resolve(
             hostTheme,
             scoped: default);
         ThemeSnapshot snapshot = CreatePlatformColorSnapshot(hostTheme, resolved);
 
-        ThemeResolver.PlatformThemeColorOverrides expected = hostTheme == ElementTheme.Light
+        PlatformThemeColorOverrides expected = hostTheme == ElementTheme.Light
             ? LightPlatformColors()
             : DarkPlatformColors();
         Assert.Equal(expected.PrimaryText, snapshot.GetStyle(MarkdownElementKeys.Body).Foreground);
@@ -739,13 +739,13 @@ public sealed class ThemeSnapshotContractTests
         Assert.NotEqual(
             hostTheme == ElementTheme.Dark,
             applicationTheme == ApplicationTheme.Dark);
-        var scoped = new ThemeResolver.PlatformThemeColorOverrides(
+        var scoped = new PlatformThemeColorOverrides(
             PrimaryText: Color.FromArgb(0xFF, 0x11, 0x22, 0x33),
             SecondaryText: Color.FromArgb(0xFF, 0x44, 0x55, 0x66),
             AccentText: Color.FromArgb(0xFF, 0x77, 0x88, 0x99),
             Surface: Color.FromArgb(0xFF, 0xAA, 0xBB, 0xCC));
 
-        ThemeResolver.PlatformThemeColors resolved = ThemeResolver.ResolvePlatformThemeColorsForTesting(
+        PlatformThemeColors resolved = PlatformThemeColors.Resolve(
             hostTheme,
             scoped);
         ThemeSnapshot snapshot = CreatePlatformColorSnapshot(hostTheme, resolved);
@@ -1237,7 +1237,7 @@ public sealed class ThemeSnapshotContractTests
 
     private static ThemeSnapshot CreatePlatformColorSnapshot(
         ElementTheme hostTheme,
-        ThemeResolver.PlatformThemeColors colors)
+        PlatformThemeColors colors)
     {
         var styles = new Dictionary<string, ElementStyle>
         {
@@ -1259,14 +1259,14 @@ public sealed class ThemeSnapshotContractTests
             MarkdownStyleSheet.Empty);
     }
 
-    private static ThemeResolver.PlatformThemeColorOverrides LightPlatformColors()
+    private static PlatformThemeColorOverrides LightPlatformColors()
         => new(
             PrimaryText: Color.FromArgb(0xFF, 0x1A, 0x1A, 0x1A),
             SecondaryText: Color.FromArgb(0xFF, 0x7A, 0x7A, 0x7A),
             AccentText: Color.FromArgb(0xFF, 0x00, 0x5F, 0xB8),
             Surface: Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF));
 
-    private static ThemeResolver.PlatformThemeColorOverrides DarkPlatformColors()
+    private static PlatformThemeColorOverrides DarkPlatformColors()
         => new(
             PrimaryText: Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF),
             SecondaryText: Color.FromArgb(0xFF, 0x9D, 0x9D, 0x9D),

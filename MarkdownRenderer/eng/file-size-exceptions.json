@@ -57,21 +57,6 @@
       "reason": "Vendored third-party source, kept as upstream wrote it so it can be compared with its release."
     },
     {
-      "path": "src/MarkdownRenderer.Mermaid/MermaidSceneDecoder.cs",
-      "lines": 1076,
-      "reason": "Predates the size rule; split by responsibility in a later structure step."
-    },
-{
-      "path": "src/MarkdownRenderer/Accessibility/MarkdownAutomationPeer.cs",
-      "lines": 1093,
-      "reason": "Predates the size rule; split by responsibility in a later structure step."
-    },
-    {
-      "path": "src/MarkdownRenderer/Accessibility/MarkdownSemanticDocument.cs",
-      "lines": 2845,
-      "reason": "Predates the size rule; split by responsibility in a later structure step."
-    },
-    {
       "path": "src/MarkdownRenderer/Controls/MarkdownRendererControl.cs",
       "lines": 3807,
       "reason": "Composition root: dependency properties, the explicit host adapters its owners call, and the commit, recovery and lifecycle sequencing across those owners. Structure step 3d moved its logic into owners (7,795 to 3,825 lines); this cap holds that."
@@ -101,7 +86,7 @@
       "lines": 2358,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
-{
+    {
       "path": "src/MarkdownRenderer/Layout/Boxes/CodeBlockBox.cs",
       "lines": 1720,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
@@ -116,7 +101,7 @@
       "lines": 9561,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
-{
+    {
       "path": "src/MarkdownRenderer/Layout/Boxes/RasterNativeWicDecoder.cs",
       "lines": 1148,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
@@ -131,7 +116,7 @@
       "lines": 1415,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
-{
+    {
       "path": "src/MarkdownRenderer/Layout/Boxes/VectorSceneBox.cs",
       "lines": 1336,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
@@ -174,11 +159,6 @@
     {
       "path": "src/MarkdownRenderer/Performance/MarkdownVectorSceneResidencyPolicy.cs",
       "lines": 1421,
-      "reason": "Predates the size rule; split by responsibility in a later structure step."
-    },
-    {
-      "path": "src/MarkdownRenderer/Theming/ThemeResolver.cs",
-      "lines": 1056,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
@@ -298,7 +278,7 @@
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/VectorAccessibilityContractTests.cs",
-      "lines": 1574,
+      "lines": 1562,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
@@ -316,7 +296,7 @@
       "lines": 1414,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
-{
+    {
       "path": "tests/MarkdownRenderer.Tests/MarkdownEngineTests.cs",
       "lines": 1378,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."

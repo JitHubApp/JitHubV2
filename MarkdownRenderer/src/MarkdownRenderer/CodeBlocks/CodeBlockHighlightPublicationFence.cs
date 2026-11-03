@@ -3,13 +3,6 @@ using MarkdownRenderer.Hosting;
 
 namespace MarkdownRenderer.CodeBlocks;
 
-internal enum CodeBlockHighlightCompletionAction
-{
-    Drop,
-    Publish,
-    RetryCurrentSnapshot,
-}
-
 /// <summary>Rejects results produced by a replaced or revised highlighter.</summary>
 internal static class CodeBlockHighlightPublicationFence
 {

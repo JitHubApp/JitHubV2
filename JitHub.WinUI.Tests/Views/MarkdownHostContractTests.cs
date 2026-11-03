@@ -299,7 +299,7 @@ public sealed class MarkdownHostContractTests
         string snapshotIndexes = File.ReadAllText(Path.Combine(
             root, "MarkdownRenderer", "src", "MarkdownRenderer", "Layout", "LayoutSnapshotIndexBuilder.cs"));
         string semanticDocument = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Accessibility", "MarkdownSemanticDocument.cs"));
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Accessibility", "MarkdownSemanticDocumentBuilder.cs"));
         string control = File.ReadAllText(Path.Combine(
             root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "MarkdownRendererControl.cs"));
         string automationPeer = File.ReadAllText(Path.Combine(

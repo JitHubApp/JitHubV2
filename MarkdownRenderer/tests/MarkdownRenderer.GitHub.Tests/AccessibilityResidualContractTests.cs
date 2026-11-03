@@ -144,28 +144,28 @@ public sealed class AccessibilityResidualContractTests
     {
         Assert.Equal(
             TextUnit.Document,
-            MarkdownTextRangeProvider.NormalizeSupportedTextUnit(TextUnit.Page));
+            MarkdownTextUnitNavigation.NormalizeSupportedTextUnit(TextUnit.Page));
         Assert.Equal(
             TextUnit.Paragraph,
-            MarkdownTextRangeProvider.NormalizeSupportedTextUnit(TextUnit.Paragraph));
+            MarkdownTextUnitNavigation.NormalizeSupportedTextUnit(TextUnit.Paragraph));
     }
 
     [Fact]
     public void CollapsedFormatCaretChoosesExactlyOneHalfOpenRun()
     {
-        Assert.False(MarkdownTextRangeProvider.ContainsHalfOpenOffset(
+        Assert.False(MarkdownTextFormatRunSearch.ContainsHalfOpenOffset(
             offset: 5,
             start: 0,
             end: 5,
             isFinalRun: false,
             documentLength: 10));
-        Assert.True(MarkdownTextRangeProvider.ContainsHalfOpenOffset(
+        Assert.True(MarkdownTextFormatRunSearch.ContainsHalfOpenOffset(
             offset: 5,
             start: 5,
             end: 10,
             isFinalRun: true,
             documentLength: 10));
-        Assert.True(MarkdownTextRangeProvider.ContainsHalfOpenOffset(
+        Assert.True(MarkdownTextFormatRunSearch.ContainsHalfOpenOffset(
             offset: 10,
             start: 5,
             end: 10,
@@ -180,7 +180,7 @@ public sealed class AccessibilityResidualContractTests
         for (int i = 0; i < boundaries.Length; i++)
             boundaries[i] = i * 2;
 
-        int current = MarkdownTextRangeProvider.MoveAcrossSortedBoundaries(
+        int current = MarkdownTextFormatRunSearch.MoveAcrossSortedBoundaries(
             boundaries,
             current: 1,
             count: 1,
@@ -192,7 +192,7 @@ public sealed class AccessibilityResidualContractTests
         for (int i = 0; i < 10_000; i++)
         {
             int count = (i & 1) == 0 ? 1 : -1;
-            current = MarkdownTextRangeProvider.MoveAcrossSortedBoundaries(
+            current = MarkdownTextFormatRunSearch.MoveAcrossSortedBoundaries(
                 boundaries,
                 current,
                 count,
@@ -203,14 +203,14 @@ public sealed class AccessibilityResidualContractTests
         Assert.Equal(0, allocated);
         Assert.Equal(
             boundaries[^1],
-            MarkdownTextRangeProvider.MoveAcrossSortedBoundaries(
+            MarkdownTextFormatRunSearch.MoveAcrossSortedBoundaries(
                 boundaries,
                 current,
                 int.MaxValue,
                 out _));
         Assert.Equal(
             boundaries[0],
-            MarkdownTextRangeProvider.MoveAcrossSortedBoundaries(
+            MarkdownTextFormatRunSearch.MoveAcrossSortedBoundaries(
                 boundaries,
                 current,
                 int.MinValue,
@@ -225,6 +225,9 @@ public sealed class AccessibilityResidualContractTests
             System.Reflection.BindingFlags.NonPublic;
         Assert.Contains(
             typeof(MarkdownAutomationPeer).GetFields(Fields),
+            field => field.FieldType == typeof(MarkdownAutomationProjection));
+        Assert.Contains(
+            typeof(MarkdownAutomationProjection).GetFields(Fields),
             field => field.FieldType == typeof(MarkdownTextFormatCacheStore));
         Assert.DoesNotContain(
             typeof(MarkdownTextRangeProvider).GetFields(Fields),

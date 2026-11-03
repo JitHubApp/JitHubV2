@@ -7,7 +7,7 @@ Set-StrictMode -Version Latest
 $script:RunnerPath = Join-Path $PSScriptRoot 'Invoke-MarkdownCorrectnessUiTests.ps1'
 $script:ImageBoxPath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Layout\Boxes\ImageBox.cs'
 $script:LayoutBuilderPath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Layout\LayoutBuilder.cs'
-$script:ThemeResolverPath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Theming\ThemeResolver.cs'
+$script:ThemeDefaultStylesPath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Theming\ThemeDefaultStyles.cs'
 $script:ElementStylePath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Theming\ElementStyle.cs'
 $script:ThemeSnapshotPath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Theming\ThemeSnapshot.cs'
 $script:SampleWindowPath = Join-Path $PSScriptRoot '..\samples\MarkdownRenderer.Sample\MainWindow.xaml.cs'
@@ -219,7 +219,7 @@ Assert-Throws -Name 'image helper rejects artwork not wholly visible in renderer
 # a live WinUI visual was rendered or touch-tested.
 $imageBoxSource = [System.IO.File]::ReadAllText($script:ImageBoxPath)
 $layoutBuilderSource = [System.IO.File]::ReadAllText($script:LayoutBuilderPath)
-$themeResolverSource = [System.IO.File]::ReadAllText($script:ThemeResolverPath)
+$themeDefaultStylesSource = [System.IO.File]::ReadAllText($script:ThemeDefaultStylesPath)
 $elementStyleSource = [System.IO.File]::ReadAllText($script:ElementStylePath)
 $themeSnapshotSource = [System.IO.File]::ReadAllText($script:ThemeSnapshotPath)
 $sampleWindowSource = [System.IO.File]::ReadAllText($script:SampleWindowPath)
@@ -255,7 +255,7 @@ Assert-Check -Name 'source guard: promoted image replaces ImageBox defaults with
      $promotionSource.Contains('MinimumParagraphLineHeight = paragraphStyle.FontSize * paragraphStyle.LineHeightMultiplier') -and
      $imageBoxSource.Contains('ContentAlignment { get; set; } = CanvasHorizontalAlignment.Left;'))
 Assert-Check -Name 'source guard: controlled sample Body defaults match the artwork placement inputs' -Condition `
-    ([regex]::IsMatch($themeResolverSource, $bodyDefaultPattern) -and
+    ([regex]::IsMatch($themeDefaultStylesSource, $bodyDefaultPattern) -and
      $elementStyleSource.Contains('public float LineHeightMultiplier { get; init; } = 1.4f;') -and
      $themeSnapshotSource.Contains('Margin = ov.Margin ?? defaults.Margin') -and
      $themeSnapshotSource.Contains('LineHeightMultiplier = ov.LineHeightMultiplier ?? defaults.LineHeightMultiplier') -and

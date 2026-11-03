@@ -1,7 +1,6 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Security.Cryptography;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Document;
@@ -201,15 +200,7 @@ public sealed class SemanticRangeFingerprintBatchingTests
         string text,
         MarkdownSemanticNode root,
         IReadOnlyList<MarkdownTextSpan> spans)
-    {
-        ConstructorInfo constructor = typeof(MarkdownSemanticDocument).GetConstructor(
-            BindingFlags.Instance | BindingFlags.NonPublic,
-            binder: null,
-            [typeof(MarkdownSemanticNode), typeof(string), typeof(IReadOnlyList<MarkdownTextSpan>)],
-            modifiers: null)!;
-        Assert.NotNull(constructor);
-        return (MarkdownSemanticDocument)constructor.Invoke([root, text, spans]);
-    }
+        => new(root, text, spans);
 
     private static MarkdownLayoutContext CreateContext(string source)
     {

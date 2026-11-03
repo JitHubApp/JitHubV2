@@ -28,7 +28,7 @@ internal sealed class ThemeSnapshot
     private readonly FrozenDictionary<string, ElementStyleOverride> _overrides;
     private readonly CompiledMarkdownStyleSheet _compiledStyleSheet;
     private readonly FrozenDictionary<string, ElementStyle> _simpleStyles;
-    private readonly ConcurrentDictionary<StyleCacheKey, ElementStyle> _contextualStyles = new();
+    private readonly ConcurrentDictionary<ThemeStyleCacheKey, ElementStyle> _contextualStyles = new();
     private int _contextualStyleCacheEntryCount;
     private readonly float _textScaleFactor;
     private readonly float _minimumInteractiveSize;
@@ -86,7 +86,7 @@ internal sealed class ThemeSnapshot
             ? ResolveMandatoryOverflowIndicatorColor(_styles, focusVisualColor)
             : overflowIndicatorColor;
         _simpleStyles = CompileSimpleStyles();
-        LayoutFingerprint = ComputeLayoutFingerprint(
+        LayoutFingerprint = ThemeLayoutFingerprint.Compute(
             _simpleStyles,
             _minimumInteractiveSize,
             DocumentPadding,
@@ -217,7 +217,7 @@ internal sealed class ThemeSnapshot
             return simpleStyle;
         }
 
-        var lookupKey = StyleCacheKey.CreateLookup(
+        var lookupKey = ThemeStyleCacheKey.CreateLookup(
             elementKey,
             contextKeys,
             aliasKeys,
@@ -263,64 +263,6 @@ internal sealed class ThemeSnapshot
         return result.ToFrozenDictionary(StringComparer.Ordinal);
     }
 
-    private static ulong ComputeLayoutFingerprint(
-        IReadOnlyDictionary<string, ElementStyle> styles,
-        float minimumInteractiveSize,
-        Thickness documentPadding,
-        float blockSpacing,
-        byte layoutPolicy,
-        bool hasRelativeScriptFontSizeRules,
-        bool hasRelativeInlineCodeFontSizeRules)
-    {
-        const ulong offset = 14695981039346656037UL;
-        var keys = new List<string>(styles.Keys);
-        keys.Sort(StringComparer.Ordinal);
-
-        // Salt the seed so the effective layout policy participates in the
-        // fingerprint without feeding an extra four-byte word through Mix.
-        ulong hash = offset ^ layoutPolicy;
-        // Even if later absolute declarations mask a relative rule's simple
-        // style marker, the policy flag still selects different script
-        // shaping and per-run resolution paths. Preserve historical hashes
-        // for all snapshots without this opt-in policy.
-        if (hasRelativeScriptFontSizeRules)
-            hash = Mix(hash, 0x52534350u); // "RSCP"
-        // A later absolute declaration may mask the percentage but still opts
-        // heading code out of the legacy preserve-containing-size behavior.
-        if (hasRelativeInlineCodeFontSizeRules)
-            hash = Mix(hash, 0x52494350u); // "RICP"
-        hash = Mix(hash, BitConverter.SingleToUInt32Bits(minimumInteractiveSize));
-        hash = Mix(hash, documentPadding);
-        hash = Mix(hash, BitConverter.SingleToUInt32Bits(blockSpacing));
-        foreach (string key in keys)
-        {
-            hash = Mix(hash, key);
-            ElementStyle style = styles[key];
-            hash = Mix(hash, style.FontFamily);
-            hash = Mix(hash, BitConverter.SingleToUInt32Bits(style.FontSize));
-            if (style.RelativeFontSizeScale is float relativeScale)
-            {
-                hash = Mix(hash, 0x52534331u); // "RSC1"
-                hash = Mix(hash, BitConverter.SingleToUInt32Bits(relativeScale));
-            }
-            hash = Mix(hash, style.FontWeight.Weight);
-            hash = Mix(hash, (uint)style.FontStyle);
-            hash = Mix(hash, BitConverter.SingleToUInt32Bits(style.AccentBarThickness));
-            hash = Mix(hash, style.AccentBarAffectsContentLayout ? 1u : 0u);
-            hash = Mix(hash, BitConverter.SingleToUInt32Bits(style.BorderThickness));
-            hash = Mix(hash, BitConverter.SingleToUInt32Bits(style.CornerRadius));
-            hash = Mix(hash, BitConverter.SingleToUInt32Bits(style.ListIndent));
-            hash = Mix(hash, BitConverter.SingleToUInt32Bits(style.NestedListIndent));
-            hash = Mix(hash, style.Underline ? 1u : 0u);
-            hash = Mix(hash, style.Strikethrough ? 1u : 0u);
-            hash = Mix(hash, BitConverter.SingleToUInt32Bits(style.LineHeightMultiplier));
-            hash = Mix(hash, style.Margin);
-            hash = Mix(hash, style.Padding);
-        }
-
-        return hash;
-    }
-
     private static Thickness SanitizeDocumentPadding(Thickness padding)
         => new(
             SanitizeDocumentGeometryValue(padding.Left),
@@ -342,50 +284,6 @@ internal sealed class ThemeSnapshot
     {
         byte alpha = (byte)((color.A * opacity + 127) / byte.MaxValue);
         return Color.FromArgb(alpha, color.R, color.G, color.B);
-    }
-
-    private static ulong Mix(ulong hash, string? value)
-    {
-        value ??= string.Empty;
-        for (int i = 0; i < value.Length; i++)
-        {
-            hash ^= value[i];
-            hash *= 1099511628211UL;
-        }
-
-        // Preserve sequence boundaries ("ab", "c") != ("a", "bc").
-        hash ^= 0xff;
-        return hash * 1099511628211UL;
-    }
-
-    private static ulong Mix(ulong hash, uint value)
-    {
-        for (int shift = 0; shift < 32; shift += 8)
-        {
-            hash ^= (byte)(value >> shift);
-            hash *= 1099511628211UL;
-        }
-
-        return hash;
-    }
-
-    private static ulong Mix(ulong hash, Thickness value)
-    {
-        hash = Mix(hash, BitConverter.DoubleToUInt64Bits(value.Left));
-        hash = Mix(hash, BitConverter.DoubleToUInt64Bits(value.Top));
-        hash = Mix(hash, BitConverter.DoubleToUInt64Bits(value.Right));
-        return Mix(hash, BitConverter.DoubleToUInt64Bits(value.Bottom));
-    }
-
-    private static ulong Mix(ulong hash, ulong value)
-    {
-        for (int shift = 0; shift < 64; shift += 8)
-        {
-            hash ^= (byte)(value >> shift);
-            hash *= 1099511628211UL;
-        }
-
-        return hash;
     }
 
     private ElementStyle ResolveStyleCore(
@@ -499,155 +397,6 @@ internal sealed class ThemeSnapshot
         }
 
         return depth;
-    }
-
-    private readonly struct StyleCacheKey : IEquatable<StyleCacheKey>
-    {
-        private readonly int _hashCode;
-
-        private StyleCacheKey(
-            string elementKey,
-            IReadOnlyList<string>? contextKeys,
-            IReadOnlyList<string>? aliasKeys,
-            string? language,
-            string? state)
-        {
-            ElementKey = elementKey;
-            ContextKeys = contextKeys;
-            AliasKeys = aliasKeys;
-            Language = language;
-            State = state;
-            _hashCode = ComputeHashCode(elementKey, contextKeys, aliasKeys, language, state);
-        }
-
-        private readonly string ElementKey;
-
-        private readonly IReadOnlyList<string>? ContextKeys;
-
-        private readonly IReadOnlyList<string>? AliasKeys;
-
-        private readonly string? Language;
-
-        private readonly string? State;
-
-        internal static StyleCacheKey CreateLookup(
-            string elementKey,
-            IReadOnlyList<string>? contextKeys,
-            IReadOnlyList<string>? aliasKeys,
-            string? language,
-            string? state)
-            => new(elementKey, contextKeys, aliasKeys, language, state);
-
-        internal StyleCacheKey CreateStableCopy()
-            => new(
-                ElementKey,
-                CopySequence(ContextKeys),
-                CopySequence(AliasKeys),
-                Language,
-                State);
-
-        public bool Equals(StyleCacheKey other)
-            => string.Equals(ElementKey, other.ElementKey, StringComparison.Ordinal) &&
-               QualifierEquals(Language, other.Language) &&
-               QualifierEquals(State, other.State) &&
-               SequenceEqual(ContextKeys, other.ContextKeys) &&
-               SequenceEqual(AliasKeys, other.AliasKeys);
-
-        public override bool Equals(object? obj)
-            => obj is StyleCacheKey other && Equals(other);
-
-        public override int GetHashCode() => _hashCode;
-
-        private static IReadOnlyList<string>? CopySequence(IReadOnlyList<string>? values)
-        {
-            if (values is null || values.Count == 0)
-                return null;
-
-            var copy = new string[values.Count];
-            for (int i = 0; i < copy.Length; i++)
-                copy[i] = values[i];
-            return copy;
-        }
-
-        private static bool SequenceEqual(
-            IReadOnlyList<string>? left,
-            IReadOnlyList<string>? right)
-        {
-            int leftCount = left?.Count ?? 0;
-            int rightCount = right?.Count ?? 0;
-            if (leftCount != rightCount)
-                return false;
-
-            for (int i = 0; i < leftCount; i++)
-            {
-                if (!string.Equals(left![i], right![i], StringComparison.Ordinal))
-                    return false;
-            }
-
-            return true;
-        }
-
-        private static int ComputeHashCode(
-            string elementKey,
-            IReadOnlyList<string>? contextKeys,
-            IReadOnlyList<string>? aliasKeys,
-            string? language,
-            string? state)
-        {
-            unchecked
-            {
-                int hash = StringComparer.Ordinal.GetHashCode(elementKey);
-                hash = (hash * 397) ^ GetSequenceHashCode(contextKeys);
-                hash = (hash * 397) ^ GetSequenceHashCode(aliasKeys);
-                hash = (hash * 397) ^ GetQualifierHashCode(language);
-                hash = (hash * 397) ^ GetQualifierHashCode(state);
-                return hash;
-            }
-        }
-
-        private static bool QualifierEquals(string? left, string? right)
-            => TrimQualifier(left).Equals(TrimQualifier(right), StringComparison.OrdinalIgnoreCase);
-
-        private static int GetQualifierHashCode(string? value)
-        {
-            ReadOnlySpan<char> normalized = TrimQualifier(value);
-            return normalized.IsEmpty
-                ? 0
-                : string.GetHashCode(normalized, StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static ReadOnlySpan<char> TrimQualifier(string? value)
-        {
-            if (string.IsNullOrEmpty(value))
-                return ReadOnlySpan<char>.Empty;
-
-            ReadOnlySpan<char> span = value.AsSpan();
-            int start = 0;
-            while (start < span.Length && char.IsWhiteSpace(span[start]))
-                start++;
-
-            int end = span.Length;
-            while (end > start && char.IsWhiteSpace(span[end - 1]))
-                end--;
-
-            return span[start..end];
-        }
-
-        private static int GetSequenceHashCode(IReadOnlyList<string>? values)
-        {
-            int count = values?.Count ?? 0;
-            unchecked
-            {
-                int hash = count;
-                for (int i = 0; i < count; i++)
-                {
-                    string? value = values![i];
-                    hash = (hash * 397) ^ (value is null ? 0 : StringComparer.Ordinal.GetHashCode(value));
-                }
-
-                return hash;
-            }
-        }
     }
 
     private ElementStyle GetBaseStyle(string elementKey)

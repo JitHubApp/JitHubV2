@@ -18,6 +18,7 @@ namespace MarkdownRenderer.Accessibility;
 /// as the accessible name and maps headings/links to the appropriate
 /// AutomationControlType so screen readers can announce structure.
 /// </summary>
+/// <remarks><c>partial</c> is required by the CsWinRT AOT generator (CsWinRT1028), which emits the WinRT vtable for this peer's provider interfaces.</remarks>
 internal sealed partial class MarkdownBlockPeer : FrameworkElementAutomationPeer, ITextProvider, ITextProvider2
 {
     private readonly MarkdownRendererControl _owner;

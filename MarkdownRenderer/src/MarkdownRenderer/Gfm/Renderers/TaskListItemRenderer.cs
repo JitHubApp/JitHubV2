@@ -1,13 +1,8 @@
 using System;
-using System.Globalization;
 using Markdig.Extensions.TaskLists;
 using Markdig.Syntax;
-using Markdig.Syntax.Inlines;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Automation;
-using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Accessibility;
@@ -22,7 +17,7 @@ namespace MarkdownRenderer.Gfm.Renderers;
 /// with a real WinUI <see cref="CheckBox"/> as its marker. The CheckBox is hosted on
 /// the renderer's overlay <c>Canvas</c> via <see cref="InlineEmbedRun"/>.
 /// </summary>
-internal sealed partial class TaskListItemRenderer : MarkdownNodeRenderer<ListItemBlock>
+internal sealed class TaskListItemRenderer : MarkdownNodeRenderer<ListItemBlock>
 {
     /// <inheritdoc />
     public override BlockBox? BuildBlock(ListItemBlock listItem, MarkdownLayoutContext context)
@@ -221,120 +216,4 @@ internal sealed partial class TaskListItemRenderer : MarkdownNodeRenderer<ListIt
         MarkdownLayoutContext context,
         string key,
         string fallback) => context.ResolveString(key, fallback);
-
-    private sealed partial class EditableTaskCheckBox : CheckBox, IDisposable
-    {
-        private readonly InlineEmbedAutomationMetadata _automationMetadata;
-        private readonly Action? _availabilityChanged;
-        private readonly TaskToggleCommandSet _taskCommands;
-        private readonly IDisposable _commandSubscription;
-        private bool _committedState;
-        private bool _isDisposed;
-        private bool _suppress;
-
-        public EditableTaskCheckBox(
-            InlineEmbedAutomationMetadata automationMetadata,
-            TaskToggleCommandSet taskCommands,
-            Action? availabilityChanged,
-            float markerSize,
-            Windows.UI.Color selectionAccent,
-            Windows.UI.Color selectionForeground)
-        {
-            _automationMetadata = automationMetadata;
-            _availabilityChanged = availabilityChanged;
-            _taskCommands = taskCommands;
-            _committedState = automationMetadata.IsChecked;
-
-            TaskMarkerControlFactory.Configure(
-                this,
-                isInteractive: true,
-                _committedState,
-                markerSize,
-                selectionAccent,
-                selectionForeground);
-            AutomationProperties.SetAutomationId(this, automationMetadata.AutomationId);
-            AutomationProperties.SetHelpText(this, automationMetadata.ToggleHelpText);
-            UpdateAutomationName(_committedState);
-
-            Checked += OnToggleStateChanged;
-            Unchecked += OnToggleStateChanged;
-            _commandSubscription = _taskCommands.Subscribe(OnCommandCanExecuteChanged);
-            RefreshAvailability();
-        }
-
-        public void Dispose()
-        {
-            if (_isDisposed)
-                return;
-
-            _isDisposed = true;
-            Checked -= OnToggleStateChanged;
-            Unchecked -= OnToggleStateChanged;
-            _commandSubscription.Dispose();
-            Command = null;
-        }
-
-        private void OnCommandCanExecuteChanged(object? sender, EventArgs e)
-        {
-            if (_isDisposed)
-                return;
-
-            if (DispatcherQueue.HasThreadAccess)
-            {
-                RefreshAvailability();
-                return;
-            }
-
-            _ = DispatcherQueue.TryEnqueue(RefreshAvailability);
-        }
-
-        private void OnToggleStateChanged(object sender, RoutedEventArgs e)
-        {
-            if (_suppress)
-                return;
-
-            bool requestedState = IsChecked == true;
-            if (!_automationMetadata.TrySetState(requestedState))
-            {
-                RestoreCommittedState();
-                return;
-            }
-
-            _committedState = _automationMetadata.IsChecked;
-            UpdateAutomationName(_committedState);
-            RefreshAvailability();
-        }
-
-        private void RestoreCommittedState()
-        {
-            _suppress = true;
-            IsChecked = _committedState;
-            _suppress = false;
-            UpdateAutomationName(_committedState);
-        }
-
-        private void RefreshAvailability()
-        {
-            if (_isDisposed)
-                return;
-
-            bool canToggle = _taskCommands.CanSetState(!_committedState);
-            bool availabilityChanged = IsEnabled != canToggle;
-            IsEnabled = canToggle;
-            AutomationProperties.SetHelpText(
-                this,
-                canToggle
-                    ? _automationMetadata.ToggleHelpText
-                    : _automationMetadata.ReadOnlyHelpText);
-            if (availabilityChanged)
-                _availabilityChanged?.Invoke();
-        }
-
-        private void UpdateAutomationName(bool isChecked)
-            => AutomationProperties.SetName(
-                this,
-                isChecked
-                    ? _automationMetadata.CheckedName
-                    : _automationMetadata.UncheckedName);
-    }
 }

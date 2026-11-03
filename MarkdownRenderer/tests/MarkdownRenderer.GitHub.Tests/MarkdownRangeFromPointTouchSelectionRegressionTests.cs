@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using Markdig;
 using MarkdownRenderer.Accessibility;
@@ -141,10 +139,6 @@ public sealed class MarkdownRangeFromPointTouchSelectionRegressionTests
 
         Final selection target: **stationary edge dragging continues here**.
         """;
-
-    private static readonly MethodInfo GetDocumentRectsForSpan = typeof(MarkdownSemanticDocument)
-        .GetMethod("GetDocumentRectsForSpan", BindingFlags.NonPublic | BindingFlags.Static)
-        ?? throw new InvalidOperationException("Could not find the semantic span geometry callback.");
 
     [Fact]
     public async Task TouchSelectionRangeFromPointEagerGeometryCompletesForOwnedAndAncestorViewportMapping()
@@ -311,7 +305,8 @@ public sealed class MarkdownRangeFromPointTouchSelectionRegressionTests
         Assert.True(snapshot.TryBeginInteraction(), "Could not acquire layout interaction lease for Mermaid bounds.");
         try
         {
-            var emptyPeer = (MarkdownAutomationPeer)RuntimeHelpers.GetUninitializedObject(typeof(MarkdownAutomationPeer));
+            // No owner and no clip source: an empty rect must return before either is read.
+            var emptyGeometry = new MarkdownAutomationScreenGeometry(owner: null!, clip: null!);
             Rect visibleScreenBounds = new(
                 RendererScreenX,
                 RendererScreenY,
@@ -339,20 +334,20 @@ public sealed class MarkdownRangeFromPointTouchSelectionRegressionTests
                     .ToArray();
                 Assert.NotEmpty(scrollIntoViewRects);
                 Assert.All(scrollIntoViewRects, static rect => Assert.True(rect.IsEmpty));
-                Assert.False(MarkdownTextRangeProvider.TryGetFirstNonEmptyScrollRect(
+                Assert.False(MarkdownTextRangeGeometry.TryGetFirstNonEmptyScrollRect(
                     scrollIntoViewRects,
                     out Rect scrollTarget));
                 Assert.Equal(default, scrollTarget);
                 Assert.True(semantic.TryGetDocumentRange(span.TextStart, span.TextEnd, out DocumentRange range));
                 Assert.Equal(span.LayoutBlockIndex, range.Normalized().Start.BlockIndex);
 
-                // The empty case is deliberately invoked on an uninitialized peer:
+                // The empty case is deliberately invoked on geometry without an owner:
                 // its production early return must happen before owner/XamlRoot access.
                 Rect[] screenRects = documentRects
-                    .Select(emptyPeer.GetScreenRectForDocumentRect)
+                    .Select(emptyGeometry.GetScreenRectForDocumentRect)
                     .ToArray();
                 Assert.All(screenRects, static rect => Assert.True(rect.IsEmpty));
-                Assert.Empty(MarkdownTextRangeProvider.BuildVisibleBoundingRectangles(
+                Assert.Empty(MarkdownTextRangeGeometry.BuildVisibleBoundingRectangles(
                     span.TextStart,
                     span.TextEnd,
                     screenRects,
@@ -379,16 +374,16 @@ public sealed class MarkdownRangeFromPointTouchSelectionRegressionTests
 
             Rect finiteZeroWidthCaret = new(RendererScreenX + 20, RendererScreenY + 20, 0, 18);
             Assert.False(finiteZeroWidthCaret.IsEmpty);
-            Assert.True(MarkdownTextRangeProvider.TryGetFirstNonEmptyScrollRect(
+            Assert.True(MarkdownTextRangeGeometry.TryGetFirstNonEmptyScrollRect(
                 [Rect.Empty, finiteZeroWidthCaret],
                 out Rect selectedCaret));
             Assert.Equal(finiteZeroWidthCaret, selectedCaret);
-            Assert.False(MarkdownTextRangeProvider.TryGetFirstNonEmptyScrollRect(
+            Assert.False(MarkdownTextRangeGeometry.TryGetFirstNonEmptyScrollRect(
                 [Rect.Empty, Rect.Empty],
                 out Rect noScrollTarget));
             Assert.Equal(default, noScrollTarget);
 
-            Assert.Empty(MarkdownTextRangeProvider.BuildVisibleBoundingRectangles(
+            Assert.Empty(MarkdownTextRangeGeometry.BuildVisibleBoundingRectangles(
                 caretOffset,
                 caretOffset,
                 [new Rect(RendererScreenX + 20, RendererScreenY + 20, 0, 18)],
@@ -404,15 +399,15 @@ public sealed class MarkdownRangeFromPointTouchSelectionRegressionTests
         CanvasDevice device,
         MarkdownExtensionRegistry registry)
     {
-        ThemeResolver.PlatformThemeColors platformColors =
-            ThemeResolver.ResolvePlatformThemeColorsForTesting(ElementTheme.Light, default);
+        PlatformThemeColors platformColors =
+            PlatformThemeColors.Resolve(ElementTheme.Light, default);
         FontWeight semiBold = new() { Weight = 600 };
         var styles = new Dictionary<string, ElementStyle>(StringComparer.Ordinal);
         foreach (string role in SampleDefaultThemeRoles)
         {
             styles.Add(
                 role,
-                ThemeResolver.CreateDefaultStyle(
+                ThemeDefaultStyles.CreateDefaultStyle(
                     role,
                     isDark: false,
                     isHighContrast: false,
@@ -500,9 +495,8 @@ public sealed class MarkdownRangeFromPointTouchSelectionRegressionTests
                 using LayoutPlacementTransformContext.Scope scope =
                     snapshot.EnterPlacementTransformScopeForBlockIndexUnderPaint(span.LayoutBlockIndex);
                 bool logicalInlineCoordinates = span.InlineBox is not null;
-                var rectangles = ((IEnumerable<Rect>)GetDocumentRectsForSpan.Invoke(
-                        null,
-                        [span, span.TextStart, span.TextEnd, logicalInlineCoordinates])!)
+                var rectangles = MarkdownTextSpanProjection.GetDocumentRectsForSpan(
+                        span, span.TextStart, span.TextEnd, logicalInlineCoordinates)
                     .Select(rect => span.InlineBox is not null
                         ? rect
                         : snapshot.ToLogicalRectForBlockIndexUnderPaint(span.LayoutBlockIndex, rect))
@@ -546,9 +540,8 @@ public sealed class MarkdownRangeFromPointTouchSelectionRegressionTests
                     bool logicalInlineCoordinates = span.InlineBox is not null;
 
                     stage = "invoke-get-document-rects-for-span";
-                    IEnumerable<Rect> sourceRects = (IEnumerable<Rect>)GetDocumentRectsForSpan.Invoke(
-                        null,
-                        [span, span.TextStart, span.TextEnd, logicalInlineCoordinates])!;
+                    IEnumerable<Rect> sourceRects = MarkdownTextSpanProjection.GetDocumentRectsForSpan(
+                        span, span.TextStart, span.TextEnd, logicalInlineCoordinates);
 
                     stage = "enumerate-span-rectangles";
                     Rect[] physicalRectangles = sourceRects.ToArray();
@@ -590,12 +583,9 @@ public sealed class MarkdownRangeFromPointTouchSelectionRegressionTests
                 }
                 catch (Exception exception)
                 {
-                    Exception cause = exception is TargetInvocationException { InnerException: { } inner }
-                        ? inner
-                        : exception;
                     throw new Xunit.Sdk.XunitException(
                         $"Eager semantic range geometry failed at {stage}; {DescribeSpan(semantic, index, span)}; " +
-                        $"exception={cause.GetType().FullName}; hresult=0x{cause.HResult:X8}; message={cause.Message}");
+                        $"exception={exception.GetType().FullName}; hresult=0x{exception.HResult:X8}; message={exception.Message}");
                 }
             }
         }
