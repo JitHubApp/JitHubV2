@@ -10,7 +10,6 @@ using Windows.UI;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Theming;
-using MarkdownRenderer.Utilities;
 
 namespace MarkdownRenderer.Layout.Boxes;
 
@@ -30,26 +29,23 @@ internal sealed class InlineContainerBox : BlockBox
     // run-alias overrides. Inherited aliases use the clone's copied container
     // array, so count repeated references only when an override is retained.
     internal const int MaximumPrivateRasterPlacementStyleKeyCopyEntries = 8 * 1024;
-    internal int PrivateRasterPlacementTextLength => _runTextLength;
+    internal int PrivateRasterPlacementTextLength => _sequence.TextLength;
     internal int PrivateRasterPlacementForegroundSpanCount => _foregroundSpans.Count;
 
-    private readonly SingletonMutableList<InlineRun> _runs = new();
-    internal SingletonMutableList<InlineRun> RunList => _runs;
-    private List<(InlineImageRun Run, int Offset)>? _inlineImageRuns;
-    internal List<(InlineImageRun Run, int Offset)>? InlineImageEntries => _inlineImageRuns;
-    private List<(InlineEmbedRun Run, int Offset)>? _inlineEmbedRuns;
-    internal List<(InlineEmbedRun Run, int Offset)>? InlineEmbedEntries => _inlineEmbedRuns;
-    private bool _hasAtomicInlineObject;
-    internal bool HasAtomicInlineObject => _hasAtomicInlineObject;
-    private int _runTextLength;
-    internal int RunTextLength => _runTextLength;
+    // Owned by value and mutated in place; never copy it out of this field.
+    private InlineRunSequence _sequence = new();
+    internal SingletonMutableList<InlineRun> RunList => _sequence.Runs;
+    internal List<(InlineImageRun Run, int Offset)>? InlineImageEntries => _sequence.ImageEntries;
+    internal List<(InlineEmbedRun Run, int Offset)>? InlineEmbedEntries => _sequence.EmbedEntries;
+    internal bool HasAtomicInlineObject => _sequence.HasAtomicInlineObject;
+    internal int RunTextLength => _sequence.TextLength;
     // Owned by value and mutated in place; never copy it out of this field.
     private InlineRunStyleCache _runStyleCache;
     internal List<string[]?>? EffectiveRunAliasOverrides => _runStyleCache.AliasOverrides;
     internal List<ElementStyle?>? ResolvedRunStyles => _runStyleCache.RunStyles;
     internal List<ElementStyle[]?>? ResolvedLinkInlineSpanStyles => _runStyleCache.LinkSpanStyles;
-    internal int ResolvedRunStyleCount => _runStyleCache.GetRunStyleCount(_runs.Count);
-    internal ElementStyle? GetCachedRunStyle(int index) => _runStyleCache.GetCachedRunStyle(index, _runs.Count);
+    internal int ResolvedRunStyleCount => _runStyleCache.GetRunStyleCount(RunList.Count);
+    internal ElementStyle? GetCachedRunStyle(int index) => _runStyleCache.GetCachedRunStyle(index, RunList.Count);
     public readonly string ElementKey;
     private CanvasTextLayout? _layout;
     internal CanvasTextLayout? TextLayout => _layout;
@@ -77,10 +73,8 @@ internal sealed class InlineContainerBox : BlockBox
     // every image (or materializing metrics on the paint path).
     private float[]? _inlineImageLineBaselineByRunIndex;
     internal float[]? InlineImageLineBaselineByRunIndex => _inlineImageLineBaselineByRunIndex;
-    private string _buffer = string.Empty;
-    internal string LayoutBuffer => _buffer;
-    private bool _bufferDirty;
-    internal bool IsBufferDirty => _bufferDirty;
+    internal string LayoutBuffer => _sequence.Buffer;
+    internal bool IsBufferDirty => _sequence.IsBufferDirty;
     private float _lastWidth;
     internal float LastMeasuredWidth => _lastWidth;
 
@@ -124,11 +118,11 @@ internal sealed class InlineContainerBox : BlockBox
     /// </summary>
     public InlineRun? HoveredRun { get; set; }
 
-    public IReadOnlyList<InlineRun> Runs => _runs;
-    internal bool HasInlineImages => _inlineImageRuns is not null;
-    internal bool HasInlineEmbeds => _inlineEmbedRuns is not null;
+    public IReadOnlyList<InlineRun> Runs => _sequence.Runs;
+    internal bool HasInlineImages => _sequence.ImageEntries is not null;
+    internal bool HasInlineEmbeds => _sequence.EmbedEntries is not null;
     internal IReadOnlyList<(InlineImageRun Run, int Offset)> InlineImageRuns =>
-        _inlineImageRuns is { } runs
+        _sequence.ImageEntries is { } runs
             ? runs
             : Array.Empty<(InlineImageRun Run, int Offset)>();
     public string? CodeLanguage { get; init; }
@@ -141,7 +135,7 @@ internal sealed class InlineContainerBox : BlockBox
     internal bool HasDeferredSceneMarker => _vectorSceneState?.HasDeferredSceneMarker ?? false;
     internal int VectorSceneRunCount => _vectorSceneState?.VectorSceneRunCount ?? 0;
     internal long SceneGeometryGeneration =>
-        _layout is not null && !_bufferDirty ? CurrentSceneGeometryGeneration : 0;
+        _layout is not null && !_sequence.IsBufferDirty ? CurrentSceneGeometryGeneration : 0;
     internal int SceneCharacterRegionQueryCount => _vectorSceneState?.SceneCharacterRegionQueryCount ?? 0;
     internal float ContentWidth => _layout is null ? (float)Bounds.Width : (float)Math.Max(_layout.LayoutBounds.Width, _layout.DrawBounds.Width);
     internal bool DrawContainerChrome { get; set; } = true;
@@ -210,8 +204,8 @@ internal sealed class InlineContainerBox : BlockBox
         // is captured; the source box holds the authoritative lifetime mode.
         _usesProgressiveNativeSceneResidency = source._usesProgressiveNativeSceneResidency;
         ElementKey = source.ElementKey;
-        _styleContextKeys = CopyKeys(source._styleContextKeys);
-        _styleAliasKeys = CopyKeys(source._styleAliasKeys);
+        _styleContextKeys = InlineRunStyleCache.CopyKeys(source._styleContextKeys);
+        _styleAliasKeys = InlineRunStyleCache.CopyKeys(source._styleAliasKeys);
         _resolvedContainerStyle = source._resolvedContainerStyle;
         CodeLanguage = source.CodeLanguage;
         StyleState = source.StyleState;
@@ -222,11 +216,10 @@ internal sealed class InlineContainerBox : BlockBox
         DrawContainerChrome = source.DrawContainerChrome;
         UseContainerPadding = source.UseContainerPadding;
         UseContainerMargin = source.UseContainerMargin;
-        _buffer = source._buffer;
         // The string is immutable and safe to share, but an unmeasured source
         // may have a stale buffer. Preserve that fact so the candidate builds
         // its own buffer later, outside the source snapshot gate.
-        _bufferDirty = source._bufferDirty;
+        _sequence.CopyBufferFrom(in source._sequence);
         _lastWidth = source._lastWidth;
         if (copyCodeForegroundSpans && source._foregroundSpans.Count != 0)
         {
@@ -239,7 +232,7 @@ internal sealed class InlineContainerBox : BlockBox
         {
             _foregroundSpans = Array.Empty<CodeBlockHighlightSpan>();
         }
-        _hasAtomicInlineObject = source._hasAtomicInlineObject;
+        _sequence.CopyAtomicObjectFlagFrom(in source._sequence);
         BlockIndex = source.BlockIndex;
         SafeHtmlInlineFlowScopeId = source.SafeHtmlInlineFlowScopeId;
         CopyPlacementMarginsFrom(source);
@@ -390,7 +383,7 @@ internal sealed class InlineContainerBox : BlockBox
     {
         // Preflight required the source ordinals to be exact; preserve
         // rather than repair them so malformed identity never passes.
-        _runs.Add(copiedRun);
+        _sequence.Runs.Add(copiedRun);
     }
 
     /// <summary>
@@ -408,13 +401,13 @@ internal sealed class InlineContainerBox : BlockBox
         string[]? sourceAliasOverride = source.GetEffectiveRunAliasOverride(index);
         AppendEffectiveRunAliasOverride(
             index,
-            sourceAliasOverride is null ? null : CopyKeys(sourceAliasOverride));
+            sourceAliasOverride is null ? null : InlineRunStyleCache.CopyKeys(sourceAliasOverride));
         if (source._runStyleCache.RunStyles is { } sourceRunStyles)
             _runStyleCache.AppendCopiedRunStyle(sourceRunStyles[index], runCount);
         if (copiedRun is InlineImageRun imageRun)
         {
             imageRun.Image.BlockIndex = source.BlockIndex;
-            (_inlineImageRuns ??= new()).Add((imageRun, offset));
+            _sequence.AddImageEntry(imageRun, offset);
         }
         else if (copiedRun is InlineVectorSceneRun)
         {
@@ -424,7 +417,7 @@ internal sealed class InlineContainerBox : BlockBox
     }
 
     internal void SetPrivatePlacementRunTextLength(int textLength)
-        => _runTextLength = textLength;
+        => _sequence.SetTextLength(textLength);
 
     internal static bool ArePrivateRasterPlacementContextsCompatible(
         MarkdownLayoutContext sourceContext,
@@ -449,14 +442,6 @@ internal sealed class InlineContainerBox : BlockBox
            ReferenceEquals(sourceContext.CommandProvider, targetContext.CommandProvider) &&
            ReferenceEquals(sourceContext.DisclosureStates, targetContext.DisclosureStates);
 
-    private static string[] CopyKeys(IReadOnlyList<string> source)
-    {
-        var copy = new string[source.Count];
-        for (int index = 0; index < copy.Length; index++)
-            copy[index] = source[index];
-        return copy;
-    }
-
     public void Add(InlineRun run) => Add(run, sourceProjection: null);
 
     internal void Add(InlineRun run, MarkdownSourceMap.SourceProjection? sourceProjection)
@@ -466,24 +451,7 @@ internal sealed class InlineContainerBox : BlockBox
         InlineVectorSceneState? vectorStateForAddedRun = run is InlineVectorSceneRun
             ? _vectorSceneState ?? new InlineVectorSceneState()
             : null;
-        run.InlineIndex = _runs.Count;
-        int runOffset = _runTextLength;
-        _runTextLength += run.TextLength;
-        if (run is InlineImageRun or InlineEmbedRun or InlineVectorSceneRun or InlineSpacerRun)
-            _hasAtomicInlineObject = true;
-        if (run is InlineImageRun imageRun)
-        {
-            (_inlineImageRuns ??= new()).Add((imageRun, runOffset));
-            // The image participates in asynchronous relayout and UIA using
-            // the owning paragraph's logical block. Keep that identity on the
-            // nested ImageBox so a late load can invalidate only this owner.
-            imageRun.Image.BlockIndex = BlockIndex;
-        }
-        else if (run is InlineEmbedRun embedRun)
-        {
-            (_inlineEmbedRuns ??= new()).Add((embedRun, runOffset));
-        }
-        _runs.Add(run);
+        _sequence.Append(run, BlockIndex);
         _inlineImageXHeightByRunIndex = null;
         _inlineImageLineBaselineByRunIndex = null;
         if (run is InlineVectorSceneRun vectorScene)
@@ -495,7 +463,7 @@ internal sealed class InlineContainerBox : BlockBox
         }
         AppendEffectiveRunAliasOverride(
             run.InlineIndex,
-            run.StyleAliases.Count == 0 ? null : CombineAliases(_styleAliasKeys, run.StyleAliases));
+            run.StyleAliases.Count == 0 ? null : InlineRunStyleCache.CombineAliases(_styleAliasKeys, run.StyleAliases));
         _runStyleCache.AppendUnresolvedRunSlots();
         if (sourceProjection is not null)
         {
@@ -512,7 +480,7 @@ internal sealed class InlineContainerBox : BlockBox
         {
             Context.SourceMap.Add(BlockIndex, run.InlineIndex, run.RenderedLength, run.SourceSpan, run.Text);
         }
-        _bufferDirty = true; // buffer is stale until next BuildBuffer()
+        _sequence.MarkBufferDirty();
     }
 
     /// <summary>
@@ -530,21 +498,9 @@ internal sealed class InlineContainerBox : BlockBox
                 "Inline image runs can only be transferred before their container is measured.");
         }
 
-        List<(InlineImageRun Run, int Offset)>? imageEntries = _inlineImageRuns;
-        if (imageEntries is null || imageEntries.Count == 0)
-            return Array.Empty<InlineImageRun>();
-
-        var detached = new InlineImageRun[imageEntries.Count];
-        for (int index = 0; index < imageEntries.Count; index++)
-            detached[index] = imageEntries[index].Run;
-
-        for (int index = _runs.Count - 1; index >= 0; index--)
-        {
-            if (_runs[index] is InlineImageRun)
-                _runs.RemoveAt(index);
-        }
-
-        RebuildAfterInlineRunTransfer();
+        InlineImageRun[] detached = _sequence.RemoveImageRuns();
+        if (detached.Length != 0)
+            RebuildAfterInlineRunTransfer();
         return detached;
     }
 
@@ -561,76 +517,18 @@ internal sealed class InlineContainerBox : BlockBox
                 "Inline image and spacer runs can only be transferred before their container is measured.");
         }
 
-        int detachedCount = 0;
-        foreach (InlineRun run in _runs)
-        {
-            if (run is InlineImageRun or InlineSpacerRun)
-                detachedCount++;
-        }
-
-        if (detachedCount == 0)
-            return Array.Empty<InlineRun>();
-
-        var detached = new InlineRun[detachedCount];
-        int writeIndex = detached.Length;
-        for (int index = _runs.Count - 1; index >= 0; index--)
-        {
-            InlineRun run = _runs[index];
-            if (run is InlineImageRun or InlineSpacerRun)
-            {
-                detached[--writeIndex] = run;
-                _runs.RemoveAt(index);
-            }
-        }
-
-        RebuildAfterInlineRunTransfer();
+        InlineRun[] detached = _sequence.RemoveImageAndSpacerRuns();
+        if (detached.Length != 0)
+            RebuildAfterInlineRunTransfer();
         return detached;
     }
 
     private void RebuildAfterInlineRunTransfer()
     {
-        _inlineImageRuns = null;
-        _inlineEmbedRuns = null;
         _inlineImageXHeightByRunIndex = null;
         _inlineImageLineBaselineByRunIndex = null;
-        _hasAtomicInlineObject = false;
-        _runTextLength = 0;
         _vectorSceneState?.ResetRunCounters();
-        _runStyleCache.Clear();
-
-        for (int index = 0; index < _runs.Count; index++)
-        {
-            InlineRun run = _runs[index];
-            run.InlineIndex = index;
-            int runOffset = _runTextLength;
-            int runLength = run.TextLength;
-            _runTextLength += runLength;
-
-            if (run is InlineEmbedRun embedRun)
-            {
-                (_inlineEmbedRuns ??= new()).Add((embedRun, runOffset));
-                _hasAtomicInlineObject = true;
-            }
-            else if (run is InlineVectorSceneRun vectorScene)
-            {
-                _hasAtomicInlineObject = true;
-                InlineVectorSceneState vectorState = _vectorSceneState ??= new InlineVectorSceneState();
-                vectorState.VectorSceneRunCount++;
-                vectorState.HasDeferredSceneMarker |= vectorScene.DeferredSceneMarker is not null;
-            }
-            else if (run is InlineSpacerRun)
-            {
-                _hasAtomicInlineObject = true;
-            }
-
-            _runStyleCache.AppendRebuiltAliasOverride(
-                index,
-                _runs.Count,
-                run.StyleAliases.Count == 0 ? null : CombineAliases(_styleAliasKeys, run.StyleAliases));
-        }
-
-        _buffer = string.Empty;
-        _bufferDirty = true;
+        _sequence.RebuildAfterTransfer(ref _runStyleCache, ref _vectorSceneState, _styleAliasKeys);
         _vectorSceneState?.ResetGeometry();
     }
 
@@ -646,46 +544,16 @@ internal sealed class InlineContainerBox : BlockBox
     /// absolute character index within the concatenated inline buffer.
     /// </summary>
     public int GetBufferCharOffset(DocumentPosition pos)
-    {
-        int offset = 0;
-        for (int i = 0; i < _runs.Count; i++)
-        {
-            if (i == pos.InlineIndex) return offset + Math.Clamp(pos.CharacterOffset, 0, _runs[i].TextLength);
-            offset += _runs[i].TextLength;
-        }
-        return offset;
-    }
+        => _sequence.GetBufferCharOffset(pos);
 
     /// <summary>
     /// Converts an absolute character index within the buffer back to a
     /// <see cref="DocumentPosition"/> targeting this box.
     /// </summary>
     public DocumentPosition GetPositionFromBufferOffset(int bufOffset)
-    {
-        bufOffset = Math.Max(0, bufOffset);
-        int offset = 0;
-        for (int i = 0; i < _runs.Count; i++)
-        {
-            int len = _runs[i].TextLength;
-            if (bufOffset < offset + len)
-                return new DocumentPosition(BlockIndex, _runs[i].InlineIndex, bufOffset - offset);
-            // At exact run boundary: prefer start of next run (continue loop).
-            offset += len;
-        }
-        // bufOffset >= total length: clamp to end of last run.
-        if (_runs.Count == 0) return new DocumentPosition(BlockIndex, 0, 0);
-        int last = _runs.Count - 1;
-        return new DocumentPosition(BlockIndex, last, _runs[last].TextLength);
-    }
+        => _sequence.GetPositionFromBufferOffset(BlockIndex, bufOffset);
 
-    internal void EnsureBuffer()
-    {
-        if (_runs.Count == 0) { _buffer = string.Empty; _bufferDirty = false; return; }
-        // Rely solely on _bufferDirty (set by Add()) — the _buffer.Length == 0 fallback
-        // would cause repeated BuildBuffer() calls for boxes whose runs all produce empty
-        // text (e.g. embed-placeholder runs), burning CPU without changing anything.
-        if (_bufferDirty) BuildBuffer();
-    }
+    internal void EnsureBuffer() => _sequence.EnsureBuilt(Context);
 
     /// <summary>
     /// Returns the start and end positions that span the word containing
@@ -694,30 +562,11 @@ internal sealed class InlineContainerBox : BlockBox
     /// and punctuation keep the established nearest-word behavior.
     /// </summary>
     public (DocumentPosition Start, DocumentPosition End) GetWordBoundaries(DocumentPosition pos)
-    {
-        EnsureBuffer();
-        if (_buffer.Length == 0) return (pos, pos);
-        int idx = Math.Clamp(GetBufferCharOffset(pos), 0, Math.Max(0, _buffer.Length - 1));
-        var (start, end) = TextBoundaryHelper.FindWordBoundaries(_buffer, idx);
-        return (GetPositionFromBufferOffset(start), GetPositionFromBufferOffset(end));
-    }
+        => _sequence.GetWordBoundaries(Context, BlockIndex, pos);
 
     /// <summary>Returns positions for the very start and end of this inline container.</summary>
     public (DocumentPosition Start, DocumentPosition End) GetBlockBoundaries()
-    {
-        var start = new DocumentPosition(BlockIndex, 0, 0);
-        DocumentPosition end;
-        if (_runs.Count == 0)
-        {
-            end = start;
-        }
-        else
-        {
-            int last = _runs.Count - 1;
-            end = new DocumentPosition(BlockIndex, last, _runs[last].TextLength);
-        }
-        return (start, end);
-    }
+        => _sequence.GetBlockBoundaries(BlockIndex);
 
     /// <summary>
     /// Captures a measured Body/Heading source and the exact private clone
@@ -827,8 +676,8 @@ internal sealed class InlineContainerBox : BlockBox
             _selection.RetirementRecord;
         Color previousSelectionLayoutColor = _selection.Color;
         float previousSelectionLayoutWidth = _selection.Width;
-        string previousBuffer = _buffer;
-        bool previousBufferDirty = _bufferDirty;
+        string previousBuffer = _sequence.Buffer;
+        bool previousBufferDirty = _sequence.IsBufferDirty;
         float previousWidth = _lastWidth;
         Rect previousBounds = Bounds;
         List<InlineMeasureRollbackState>? changedInlineMeasures = null;
@@ -860,15 +709,15 @@ internal sealed class InlineContainerBox : BlockBox
                 InvalidateLineMetrics();
             }
 
-            if (_layout is null || atomicMetricsChanged || _bufferDirty ||
+            if (_layout is null || atomicMetricsChanged || _sequence.IsBufferDirty ||
                 Math.Abs(_lastWidth - availableWidth) > 0.5f)
             {
                 // Only rebuild the run-content string when runs changed; skip on pure
                 // width-change reflow so repeated window resizes don't re-allocate.
-                if (_bufferDirty) BuildBuffer();
+                _sequence.BuildIfDirty(Context);
                 InvalidateLineMetrics();
                 if (previousLayout is not null)
-                    previousScenePlacements = InlineMeasureRollback.CaptureScenePlacements(_runs);
+                    previousScenePlacements = InlineMeasureRollback.CaptureScenePlacements(RunList);
 
                 using var formatLease = CreateTextFormatLease(style, WordWrapping, TextAlignment);
                 NativeResourceRetirementRecord candidateRetirementRecord =
@@ -879,7 +728,7 @@ internal sealed class InlineContainerBox : BlockBox
                 replacementLayoutRetirementRecord = candidateRetirementRecord;
                 CanvasTextLayout candidateLayout = CanvasTextLayoutFactory.Create(
                     Context.ResourceCreator,
-                    _buffer,
+                    _sequence.Buffer,
                     formatLease.Format,
                     layoutWidth,
                     float.MaxValue,
@@ -904,14 +753,14 @@ internal sealed class InlineContainerBox : BlockBox
                     maxInlineWidth: layoutWidth);
                 replacementScriptBaselineGeometry = InlineScriptBaselineLayout.BuildScriptBaselineGeometry(this, style.FontSize);
                 if (Context.ThemeSnapshot.MiddleAlignInlineImages &&
-                    _inlineImageRuns is { Count: > 0 })
+                    _sequence.ImageEntries is { Count: > 0 })
                 {
                     replacementInlineImageLineBaselines =
                         InlineObjectGeometry.BuildInlineImageLineBaselines(this, TryGetLineMetrics());
                     publishInlineImageLineBaselines = true;
                 }
                 replacementSceneGeometry = InlineVectorScenePlacement.UpdatePlacements(
-                    _runs,
+                    RunList,
                     candidateLayout,
                     TryGetLineMetrics(),
                     _usesProgressiveNativeSceneResidency,
@@ -922,9 +771,9 @@ internal sealed class InlineContainerBox : BlockBox
             // Keep defensive recovery for an absent/stale baseline snapshot
             // on the measurement path, never on paint.
             else if (Context.ThemeSnapshot.MiddleAlignInlineImages &&
-                _inlineImageRuns is { Count: > 0 } &&
+                _sequence.ImageEntries is { Count: > 0 } &&
                 (_inlineImageLineBaselineByRunIndex is null ||
-                    _inlineImageLineBaselineByRunIndex.Length != _runs.Count))
+                    _inlineImageLineBaselineByRunIndex.Length != RunList.Count))
             {
                 replacementInlineImageLineBaselines =
                     InlineObjectGeometry.BuildInlineImageLineBaselines(this, TryGetLineMetrics());
@@ -954,8 +803,7 @@ internal sealed class InlineContainerBox : BlockBox
                 previousSelectionLayoutRetirementRecord,
                 previousSelectionLayoutColor,
                 previousSelectionLayoutWidth);
-            _buffer = previousBuffer;
-            _bufferDirty = previousBufferDirty;
+            _sequence.RestoreBuffer(previousBuffer, previousBufferDirty);
             _lastWidth = previousWidth;
             Bounds = previousBounds;
 
@@ -1090,7 +938,7 @@ internal sealed class InlineContainerBox : BlockBox
             horizontalAlignment,
             Context.FlowDirection,
             Context.Language,
-            useContentAwareLineSpacing: _hasAtomicInlineObject);
+            useContentAwareLineSpacing: _sequence.HasAtomicInlineObject);
 
     internal ElementStyle GetContainerStyle()
         => _resolvedContainerStyle ??= Context.ThemeSnapshot.GetStyle(
@@ -1113,7 +961,7 @@ internal sealed class InlineContainerBox : BlockBox
             return resolved;
 
         resolved = InlineRunStyleResolver.ResolveRunStyle(this, run);
-        _runStyleCache.CacheRunStyle(run.InlineIndex, resolved, _runs.Count);
+        _runStyleCache.CacheRunStyle(run.InlineIndex, resolved, RunList.Count);
         return resolved;
     }
 
@@ -1122,9 +970,9 @@ internal sealed class InlineContainerBox : BlockBox
         LinkInlineStyleMap map = link.InlineStyleMap
             ?? throw new ArgumentException("The link has no nested inline style map.", nameof(link));
 
-        List<ElementStyle[]?> cache = _runStyleCache.GetOrCreateLinkSpanStyles(_runs.Count);
+        List<ElementStyle[]?> cache = _runStyleCache.GetOrCreateLinkSpanStyles(RunList.Count);
         if ((uint)link.InlineIndex >= (uint)cache.Count ||
-            !ReferenceEquals(_runs[link.InlineIndex], link))
+            !ReferenceEquals(RunList[link.InlineIndex], link))
         {
             throw new InvalidOperationException("A styled link's inline ordinal is inconsistent.");
         }
@@ -1150,36 +998,19 @@ internal sealed class InlineContainerBox : BlockBox
         => Context.CancellationToken.ThrowIfCancellationRequested();
 
     internal bool HasWellFormedEffectiveRunAliases =>
-        _runStyleCache.HasWellFormedAliasOverrides(_runs.Count);
+        _runStyleCache.HasWellFormedAliasOverrides(RunList.Count);
 
     internal bool HasWellFormedResolvedLinkInlineStyleCache =>
-        _runStyleCache.HasWellFormedLinkSpanStyles(_runs);
+        _runStyleCache.HasWellFormedLinkSpanStyles(RunList);
 
     internal string[] GetEffectiveRunAliases(int index)
-        => _runStyleCache.GetEffectiveAliases(index, _runs.Count, _styleAliasKeys);
+        => _runStyleCache.GetEffectiveAliases(index, RunList.Count, _styleAliasKeys);
 
     internal string[]? GetEffectiveRunAliasOverride(int index)
-        => _runStyleCache.GetAliasOverride(index, _runs.Count);
+        => _runStyleCache.GetAliasOverride(index, RunList.Count);
 
     internal void AppendEffectiveRunAliasOverride(int index, string[]? aliases)
-        => _runStyleCache.AppendAliasOverride(index, _runs.Count, aliases);
-
-    private static string[] CombineAliases(
-        IReadOnlyList<string> containerAliases,
-        IReadOnlyList<string> runAliases)
-    {
-        if (runAliases.Count == 0)
-            return containerAliases as string[] ?? CopyKeys(containerAliases);
-        if (containerAliases.Count == 0)
-            return runAliases as string[] ?? CopyKeys(runAliases);
-
-        var aliases = new string[containerAliases.Count + runAliases.Count];
-        for (int n = 0; n < containerAliases.Count; n++)
-            aliases[n] = containerAliases[n];
-        for (int n = 0; n < runAliases.Count; n++)
-            aliases[containerAliases.Count + n] = runAliases[n];
-        return aliases;
-    }
+        => _runStyleCache.AppendAliasOverride(index, RunList.Count, aliases);
 
     /// <summary>
     /// Returns the integer-pixel-snapped origin of the text layout in
@@ -1331,9 +1162,9 @@ internal sealed class InlineContainerBox : BlockBox
     internal float[] GetOrCreateInlineImageXHeightCache()
     {
         float[]? metrics = _inlineImageXHeightByRunIndex;
-        if (metrics is null || metrics.Length != _runs.Count)
+        if (metrics is null || metrics.Length != RunList.Count)
         {
-            metrics = new float[_runs.Count];
+            metrics = new float[RunList.Count];
             _inlineImageXHeightByRunIndex = metrics;
         }
 
@@ -1388,7 +1219,7 @@ internal sealed class InlineContainerBox : BlockBox
         out long generation,
         out InlineSceneGeometry[] geometry)
         => InlineVectorScenePlacement.TryCaptureCurrentGeometry(
-            _runs,
+            RunList,
             _layout,
             _vectorSceneState,
             SceneGeometryGeneration,
@@ -1455,7 +1286,7 @@ internal sealed class InlineContainerBox : BlockBox
         if (selectionFailure is not null)
             cleanup.RecordFailure(selectionFailure);
 
-        foreach (InlineRun run in _runs)
+        foreach (InlineRun run in RunList)
         {
             switch (run)
             {
@@ -1474,25 +1305,13 @@ internal sealed class InlineContainerBox : BlockBox
     internal override void CollectRetirementTasks(List<Task> pendingTasks)
     {
         var cleanup = new BlockBoxCleanupScope();
-        foreach (InlineRun run in _runs)
+        foreach (InlineRun run in RunList)
         {
             if (run is InlineImageRun image)
                 cleanup.TryCollectRetirementTasks(image.Image, pendingTasks);
         }
 
         cleanup.ThrowIfAny("collecting inline-container retirement tasks");
-    }
-
-    private void BuildBuffer()
-    {
-        var sb = StringBuilderPool.Rent();
-        foreach (var run in _runs)
-        {
-            Context.CancellationToken.ThrowIfCancellationRequested();
-            run.AppendLayoutTextTo(sb);
-        }
-        _buffer = StringBuilderPool.ToStringAndReturn(sb);
-        _bufferDirty = false;
     }
 
     internal CanvasTextLayout EnsureSelectionLayout(Color color, ElementStyle style)

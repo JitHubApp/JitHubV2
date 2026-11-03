@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Threading;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout;
@@ -42,8 +41,8 @@ public sealed class LazyTextDescriptorCloneTests
             });
 
             Assert.False(source.HasMeasuredLayout);
-            Assert.True(GetField<bool>(source, "_bufferDirty"));
-            Assert.Equal(string.Empty, GetField<string>(source, "_buffer"));
+            Assert.True(source.IsBufferDirty);
+            Assert.Equal(string.Empty, source.LayoutBuffer);
             Assert.False(source.TryGetPrivateRasterPlacementCounts(
                 targetContext, 320f, out _, out _));
 
@@ -76,9 +75,9 @@ public sealed class LazyTextDescriptorCloneTests
             clone = Assert.IsType<InlineContainerBox>(clonedBlock);
             Assert.Empty(fences!);
             Assert.False(clone.HasMeasuredLayout);
-            Assert.True(GetField<bool>(clone, "_bufferDirty"));
-            Assert.Equal(string.Empty, GetField<string>(clone, "_buffer"));
-            Assert.Null(GetField<object?>(clone, "_resolvedContainerStyle"));
+            Assert.True(clone.IsBufferDirty);
+            Assert.Equal(string.Empty, clone.LayoutBuffer);
+            Assert.Null(clone.ResolvedContainerStyle);
             Assert.NotSame(source.Runs[0], clone.Runs[0]);
             Assert.NotSame(source.Runs[1], clone.Runs[1]);
             Assert.NotSame(source.Runs[0].StyleAliases, clone.Runs[0].StyleAliases);
@@ -87,13 +86,13 @@ public sealed class LazyTextDescriptorCloneTests
             _ = clone.Measure(320f);
             clone.Arrange(0f, 0f, 320f);
             Assert.True(clone.HasMeasuredLayout);
-            Assert.False(GetField<bool>(clone, "_bufferDirty"));
-            Assert.Equal(sourceText, GetField<string>(clone, "_buffer"));
+            Assert.False(clone.IsBufferDirty);
+            Assert.Equal(sourceText, clone.LayoutBuffer);
 
             Assert.False(source.HasMeasuredLayout);
-            Assert.True(GetField<bool>(source, "_bufferDirty"));
-            Assert.Equal(string.Empty, GetField<string>(source, "_buffer"));
-            Assert.Null(GetField<object?>(source, "_resolvedContainerStyle"));
+            Assert.True(source.IsBufferDirty);
+            Assert.Equal(string.Empty, source.LayoutBuffer);
+            Assert.Null(source.ResolvedContainerStyle);
         }
         finally
         {
@@ -218,11 +217,4 @@ public sealed class LazyTextDescriptorCloneTests
             ImageResolver = seed.SourceContext.ImageResolver,
             SvgRenderer = seed.SourceContext.SvgRenderer,
         };
-
-    private static T GetField<T>(object instance, string name)
-    {
-        FieldInfo field = instance.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!;
-        object? value = field.GetValue(instance);
-        return value is null ? default! : (T)value;
-    }
 }

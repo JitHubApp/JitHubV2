@@ -39,12 +39,12 @@ public sealed class MultiRootInlinePlacementCloneTests
         textOnly.SetCandidate(textContext, textCandidate);
         InlineContainerBox textClone = Assert.IsType<InlineContainerBox>(textCandidate);
         Assert.Empty(textSources!);
-        Assert.False(GetField<bool>(textClone, "_hasAtomicInlineObject"));
+        Assert.False(textClone.HasAtomicInlineObject);
         float textHeight = textClone.Measure(240f);
         textClone.Arrange(0f, 0f, 240f);
         Assert.True(float.IsFinite(textHeight));
         Assert.True(textHeight > 0f);
-        Assert.False(GetField<bool>(textClone, "_hasAtomicInlineObject"));
+        Assert.False(textClone.HasAtomicInlineObject);
 
         await using var rasterOnly = new InlinePlacementFixture(InlinePlacementKind.RasterOnly);
         MarkdownLayoutContext rasterContext = rasterOnly.CreateCandidateContext();

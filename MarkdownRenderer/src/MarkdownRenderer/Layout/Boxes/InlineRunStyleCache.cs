@@ -198,4 +198,37 @@ internal struct InlineRunStyleCache
         _runStyles = null;
         _linkSpanStyles = null;
     }
+
+    /// <summary>Copies style keys into a private array the source can never mutate.</summary>
+    /// <param name="source">The keys to copy.</param>
+    internal static string[] CopyKeys(IReadOnlyList<string> source)
+    {
+        var copy = new string[source.Count];
+        for (int index = 0; index < copy.Length; index++)
+            copy[index] = source[index];
+        return copy;
+    }
+
+    /// <summary>
+    /// Returns a run's effective aliases: the container's aliases followed by
+    /// the run's own, reusing either array when the other is empty.
+    /// </summary>
+    /// <param name="containerAliases">The owning container's aliases.</param>
+    /// <param name="runAliases">The run's own aliases.</param>
+    internal static string[] CombineAliases(
+        IReadOnlyList<string> containerAliases,
+        IReadOnlyList<string> runAliases)
+    {
+        if (runAliases.Count == 0)
+            return containerAliases as string[] ?? CopyKeys(containerAliases);
+        if (containerAliases.Count == 0)
+            return runAliases as string[] ?? CopyKeys(runAliases);
+
+        var aliases = new string[containerAliases.Count + runAliases.Count];
+        for (int n = 0; n < containerAliases.Count; n++)
+            aliases[n] = containerAliases[n];
+        for (int n = 0; n < runAliases.Count; n++)
+            aliases[containerAliases.Count + n] = runAliases[n];
+        return aliases;
+    }
 }
