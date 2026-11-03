@@ -1,9 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Controls;
@@ -12,9 +8,6 @@ using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
-using Windows.Networking.Connectivity;
-using Windows.System.Power;
 using Windows.Foundation;
 
 namespace MarkdownRenderer.Performance;
@@ -29,10 +22,8 @@ public sealed class MarkdownPerformanceSession :
     IDisposable,
     IAsyncDisposable
 {
-    private readonly BoundedMarkdownLayoutScheduler _layoutWorkScheduler;
-    private readonly BoundedMarkdownImageActivationScheduler _imageActivationScheduler = new();
-    internal MarkdownCompletedSceneCache CompletedSceneCache { get; }
     private readonly MarkdownPerformanceSessionLifetime _lifetime = new();
+    private readonly MarkdownSessionWorkDispatch _workDispatch;
     private readonly MarkdownSessionAdmissions _admissions;
     private readonly MarkdownSharedImageFetcher _fetcher;
     private readonly MarkdownSessionImageServices _imageServices;
@@ -40,16 +31,16 @@ public sealed class MarkdownPerformanceSession :
     private readonly bool _memoryPressureSubscribed;
     private readonly MarkdownDeferredScenePlanRegistry _scenePlans;
     private readonly MarkdownVisibleSceneReadinessProbe _readinessProbe;
-    private readonly object _styleRoleDemandGate = new();
-    private readonly ConditionalWeakTable<MarkdownDocument, Task<MarkdownStyleRoleDemandResult>> _styleRoleDemandCache = new();
+    private readonly MarkdownStyleRoleDemandCache _styleRoleDemand;
+    private readonly MarkdownSessionParsePipeline _parsePipeline;
 
     /// <summary>Creates an opt-in session. Use a distinct session for each account/security partition.</summary>
     public MarkdownPerformanceSession(MarkdownPerformanceOptions options)
     {
         Options = options ?? throw new ArgumentNullException(nameof(options));
-        ValidateOptions(options);
+        MarkdownPerformanceOptionsValidation.Validate(options);
         CompletedSceneCache = new MarkdownCompletedSceneCache(options.SceneCacheBudgetBytes);
-        _layoutWorkScheduler = new BoundedMarkdownLayoutScheduler();
+        _workDispatch = new MarkdownSessionWorkDispatch(_lifetime);
         _admissions = new MarkdownSessionAdmissions(_lifetime, options);
         SourceCache = new MarkdownImageSourceCache(_lifetime, options.SourceCacheBudgetBytes);
         _fetcher = new MarkdownSharedImageFetcher(_lifetime, _admissions, SourceCache, options);
@@ -59,6 +50,9 @@ public sealed class MarkdownPerformanceSession :
             this, this, _lifetime, options.PrefetchDocumentImages);
         _scenePlans = new MarkdownDeferredScenePlanRegistry(this, _lifetime);
         _readinessProbe = new MarkdownVisibleSceneReadinessProbe(this);
+        _styleRoleDemand = new MarkdownStyleRoleDemandCache(_lifetime);
+        _parsePipeline = new MarkdownSessionParsePipeline(
+            _lifetime, _scenePlans, _styleRoleDemand, options.DeferOffscreenScenes);
         try
         {
             Windows.System.MemoryManager.AppMemoryUsageIncreased += OnAppMemoryUsageIncreased;
@@ -76,7 +70,13 @@ public sealed class MarkdownPerformanceSession :
     // in-process owner identity, fixed stage ID, and stopwatch ticks—never source
     // content or resource identifiers. A typed callback avoids runtime event
     // discovery and remains compatible with NativeAOT trimming.
-    internal Action<int, int, long>? ParseStageDiagnosticRecorder { get; set; }
+    internal Action<int, int, long>? ParseStageDiagnosticRecorder
+    {
+        get => _parsePipeline.StageRecorder;
+        set => _parsePipeline.StageRecorder = value;
+    }
+
+    internal MarkdownCompletedSceneCache CompletedSceneCache { get; }
 
     // Admission queue depth is sampled only by internal diagnostics/tests. It
     // adds no work to the CPU-preparation hot path.
@@ -97,39 +97,6 @@ public sealed class MarkdownPerformanceSession :
     // The renderer checks this once per layout request so stopwatch reads and
     // native-layout counting are absent unless a host explicitly enables layout diagnostics.
     internal bool IsLayoutDiagnosticCaptureEnabled { get; set; }
-
-    private static void ValidateOptions(MarkdownPerformanceOptions options)
-    {
-        if (options.MaxConcurrentImageFetches < 2 ||
-            options.MaxConcurrentImageFetches > (IntPtr.Size == 4 ? 8 : 16))
-            throw new ArgumentOutOfRangeException(nameof(options.MaxConcurrentImageFetches));
-        if (options.ReservedVisibleImageFetches < 1 ||
-            options.ReservedVisibleImageFetches >= options.MaxConcurrentImageFetches)
-            throw new ArgumentOutOfRangeException(nameof(options.ReservedVisibleImageFetches));
-        if (options.MaxConcurrentCpuPreparations < 1 ||
-            options.MaxConcurrentCpuPreparations > (IntPtr.Size == 4 ? 1 : 2))
-            throw new ArgumentOutOfRangeException(nameof(options.MaxConcurrentCpuPreparations));
-        if (options.MaxConcurrentScenePreparations < 1 ||
-            options.MaxConcurrentScenePreparations > (IntPtr.Size == 4 ? 1 : 2))
-            throw new ArgumentOutOfRangeException(nameof(options.MaxConcurrentScenePreparations));
-        if (options.SourceCacheBudgetBytes < 0 ||
-            options.SourceCacheBudgetBytes > (IntPtr.Size == 4 ? 32L : 64L) * 1024 * 1024)
-            throw new ArgumentOutOfRangeException(nameof(options.SourceCacheBudgetBytes));
-        if (options.SceneCacheBudgetBytes < 0 ||
-            options.SceneCacheBudgetBytes > (IntPtr.Size == 4 ? 32L : 64L) * 1024 * 1024)
-            throw new ArgumentOutOfRangeException(nameof(options.SceneCacheBudgetBytes));
-        if (options.MaxInFlightSourceBytes < 2 ||
-            options.MaxInFlightSourceBytes > (IntPtr.Size == 4 ? 32L : 64L) * 1024 * 1024)
-            throw new ArgumentOutOfRangeException(nameof(options.MaxInFlightSourceBytes));
-        if (options.ReservedVisibleSourceBytes < 1 ||
-            options.ReservedVisibleSourceBytes >= options.MaxInFlightSourceBytes)
-            throw new ArgumentOutOfRangeException(nameof(options.ReservedVisibleSourceBytes));
-        if (options.MaxRasterOutputPixels < 1 ||
-            options.MaxRasterOutputPixels > (IntPtr.Size == 4 ? 4_194_304 : 8_388_608))
-            throw new ArgumentOutOfRangeException(nameof(options.MaxRasterOutputPixels));
-        if (options.LookAheadViewports is < 0 or > 4)
-            throw new ArgumentOutOfRangeException(nameof(options.LookAheadViewports));
-    }
 
     /// <summary>Gets the immutable settings captured at construction.</summary>
     public MarkdownPerformanceOptions Options { get; }
@@ -165,72 +132,8 @@ public sealed class MarkdownPerformanceSession :
     bool IMarkdownPerformanceSessionInternal.TryGetStyleRoleDemandMask(
         MarkdownDocument document,
         CancellationToken cancellationToken,
-        out ulong roleDemandMask)
-    {
-        ArgumentNullException.ThrowIfNull(document);
-        if (IsDisposed)
-        {
-            roleDemandMask = 0;
-            return false;
-        }
-
-        cancellationToken.ThrowIfCancellationRequested();
-        Task<MarkdownStyleRoleDemandResult>? collection;
-        lock (_styleRoleDemandGate)
-        {
-            if (!_styleRoleDemandCache.TryGetValue(document, out collection) ||
-                !collection.IsCompletedSuccessfully)
-            {
-                roleDemandMask = 0;
-                return false;
-            }
-        }
-
-        MarkdownStyleRoleDemandResult result = collection.GetAwaiter().GetResult();
-        roleDemandMask = result.Mask;
-        return result.IsComplete;
-    }
-
-    private async ValueTask CacheStyleRoleDemandMaskAsync(
-        MarkdownDocument document,
-        CancellationToken cancellationToken)
-    {
-        if (IsDisposed || cancellationToken.IsCancellationRequested)
-            return;
-
-        Task<MarkdownStyleRoleDemandResult> collection;
-        lock (_styleRoleDemandGate)
-        {
-            if (!_styleRoleDemandCache.TryGetValue(document, out collection!))
-            {
-                // Start once per immutable document. The session cache uses a
-                // weak key, and the control only reads completed results.
-                collection = Task.Run(
-                    () => MarkdownStyleRoleDemandCollector.Collect(document));
-                _styleRoleDemandCache.Add(document, collection);
-            }
-        }
-
-        await collection.WaitAsync(cancellationToken).ConfigureAwait(false);
-    }
-
-    private static long StartParseStageTiming(bool enabled) =>
-        enabled ? Stopwatch.GetTimestamp() : 0;
-
-    private static void RecordParseStageTiming(
-        Action<int, int, long>? recorder,
-        int ownerIdentity,
-        MarkdownParsePipelineStage stage,
-        long startedTimestamp)
-    {
-        if (recorder is null)
-            return;
-
-        long elapsedTicks = stage == MarkdownParsePipelineStage.Begin
-            ? 0
-            : Stopwatch.GetTimestamp() - startedTimestamp;
-        recorder(ownerIdentity, (int)stage, elapsedTicks);
-    }
+        out ulong roleDemandMask) =>
+        _styleRoleDemand.TryGetMask(document, cancellationToken, out roleDemandMask);
 
     ValueTask<MarkdownRenderer.Document.MarkdownDocument?>
         IMarkdownPerformanceSessionInternal.ParseAndPrepareDocumentAsync(
@@ -239,514 +142,28 @@ public sealed class MarkdownPerformanceSession :
         string? source,
         MarkdownRenderer.Parsing.MarkdownExtensionRegistry legacyRegistry,
         object documentOwner,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(documentOwner);
-        ArgumentNullException.ThrowIfNull(legacyRegistry);
-        cancellationToken.ThrowIfCancellationRequested();
-
-        // Parsing may create and later retire a progressive scene plan. Count
-        // the complete parse/plan transaction as admitted work so shutdown
-        // cannot perform its final retirement drain before that transaction
-        // registers cleanup. Calls made after shutdown retain the historical
-        // eager fallback, but do not touch session-owned plan/cache state.
-        if (!_lifetime.TryRegisterWork())
-        {
-            return ParseForDisposedSessionAsync(
-                engine,
-                document,
-                source,
-                legacyRegistry,
-                documentOwner,
-                cancellationToken);
-        }
-
-        return ParseAndPrepareRegisteredDocumentAsync(
+        CancellationToken cancellationToken) =>
+        _parsePipeline.ParseAndPrepareDocumentAsync(
             engine,
             document,
             source,
             legacyRegistry,
             documentOwner,
             cancellationToken);
-    }
-
-    private async ValueTask<MarkdownRenderer.Document.MarkdownDocument?>
-        ParseAndPrepareRegisteredDocumentAsync(
-        MarkdownEngine? engine,
-        MarkdownRenderer.Document.MarkdownDocument? document,
-        string? source,
-        MarkdownRenderer.Parsing.MarkdownExtensionRegistry legacyRegistry,
-        object documentOwner,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await ParseAndPrepareDocumentCoreAsync(
-                engine,
-                document,
-                source,
-                legacyRegistry,
-                documentOwner,
-                cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            _lifetime.RetireWork();
-        }
-    }
-
-    private async ValueTask<MarkdownRenderer.Document.MarkdownDocument?>
-        ParseAndPrepareDocumentCoreAsync(
-        MarkdownEngine? engine,
-        MarkdownRenderer.Document.MarkdownDocument? document,
-        string? source,
-        MarkdownRenderer.Parsing.MarkdownExtensionRegistry legacyRegistry,
-        object documentOwner,
-        CancellationToken cancellationToken)
-    {
-        Action<int, int, long>? parseStageRecorder = ParseStageDiagnosticRecorder;
-        bool captureParseStageTimings = parseStageRecorder is not null;
-        int ownerIdentity = captureParseStageTimings
-            ? RuntimeHelpers.GetHashCode(documentOwner)
-            : 0;
-        long sessionStarted = StartParseStageTiming(captureParseStageTimings);
-        if (captureParseStageTimings)
-        {
-            RecordParseStageTiming(
-                parseStageRecorder,
-                ownerIdentity,
-                MarkdownParsePipelineStage.Begin,
-                startedTimestamp: 0);
-        }
-
-        bool parseProgressively = engine is not null && Options.DeferOffscreenScenes && !IsDisposed;
-        if (document is null && engine is not null)
-        {
-            long engineParseStarted = StartParseStageTiming(captureParseStageTimings);
-            document = parseProgressively
-                ? await engine.ParseForProgressivePresentationAsync(source, cancellationToken).ConfigureAwait(false)
-                : await engine.ParseAsync(source, cancellationToken).ConfigureAwait(false);
-            if (captureParseStageTimings)
-            {
-                RecordParseStageTiming(
-                    parseStageRecorder,
-                    ownerIdentity,
-                    MarkdownParsePipelineStage.EngineParseAndCache,
-                    engineParseStarted);
-            }
-        }
-        else if (document is null && documentOwner is IMarkdownPerformanceLegacyParser legacyParser)
-        {
-            long legacyParseStarted = StartParseStageTiming(captureParseStageTimings);
-            MarkdownRenderer.Parsing.ParsedMarkdown? parsed = await legacyParser.ParseLegacyMarkdownAsync(
-                source ?? string.Empty,
-                legacyRegistry,
-                cancellationToken).ConfigureAwait(false);
-            if (parsed is not null)
-            {
-                document = await Task.Run(
-                    () => MarkdownRenderer.Document.MarkdownDocument.FromParsed(
-                        parsed.SourceText,
-                        parsed.Document,
-                        diagnostics: [],
-                    cancellationToken),
-                    CancellationToken.None).ConfigureAwait(false);
-            }
-            if (captureParseStageTimings)
-            {
-                RecordParseStageTiming(
-                    parseStageRecorder,
-                    ownerIdentity,
-                    MarkdownParsePipelineStage.LegacyParseAndDocument,
-                    legacyParseStarted);
-            }
-        }
-
-        if (document is null)
-        {
-            await ((IMarkdownPerformanceSessionInternal)this)
-                .ReleaseDeferredSceneDocument(documentOwner)
-                .ConfigureAwait(false);
-            if (captureParseStageTimings)
-            {
-                RecordParseStageTiming(
-                    parseStageRecorder,
-                    ownerIdentity,
-                    MarkdownParsePipelineStage.SessionTotal,
-                    sessionStarted);
-            }
-            return null;
-        }
-
-        if (engine is null || !parseProgressively)
-        {
-            await ((IMarkdownPerformanceSessionInternal)this)
-                .ReleaseDeferredSceneDocument(documentOwner)
-                .ConfigureAwait(false);
-            if (MarkdownProgressiveScenePlan.ContainsDeferredSceneFallback(document))
-            {
-                if (engine is not null)
-                {
-                    long engineParseStarted = StartParseStageTiming(captureParseStageTimings);
-                    document = await engine.ParseAsync(document.Source, cancellationToken).ConfigureAwait(false);
-                    if (captureParseStageTimings)
-                    {
-                        RecordParseStageTiming(
-                            parseStageRecorder,
-                            ownerIdentity,
-                            MarkdownParsePipelineStage.EngineParseAndCache,
-                            engineParseStarted);
-                    }
-                }
-                else if (documentOwner is IMarkdownPerformanceLegacyParser legacyParser)
-                {
-                    long legacyParseStarted = StartParseStageTiming(captureParseStageTimings);
-                    MarkdownRenderer.Parsing.ParsedMarkdown? parsed = await legacyParser.ParseLegacyMarkdownAsync(
-                        document.Source,
-                        legacyRegistry,
-                        cancellationToken).ConfigureAwait(false);
-                    if (parsed is not null)
-                    {
-                        document = await Task.Run(
-                            () => MarkdownRenderer.Document.MarkdownDocument.FromParsed(
-                                parsed.SourceText,
-                                parsed.Document,
-                                diagnostics: [],
-                                cancellationToken),
-                                CancellationToken.None).ConfigureAwait(false);
-                    }
-                    if (captureParseStageTimings)
-                    {
-                        RecordParseStageTiming(
-                            parseStageRecorder,
-                            ownerIdentity,
-                            MarkdownParsePipelineStage.LegacyParseAndDocument,
-                            legacyParseStarted);
-                    }
-                }
-            }
-            long roleDemandStarted = StartParseStageTiming(captureParseStageTimings);
-            await CacheStyleRoleDemandMaskAsync(document, cancellationToken).ConfigureAwait(false);
-            if (captureParseStageTimings)
-            {
-                RecordParseStageTiming(
-                    parseStageRecorder,
-                    ownerIdentity,
-                    MarkdownParsePipelineStage.StyleRoleDemand,
-                    roleDemandStarted);
-                RecordParseStageTiming(
-                    parseStageRecorder,
-                    ownerIdentity,
-                    MarkdownParsePipelineStage.SessionTotal,
-                    sessionStarted);
-            }
-            return document;
-        }
-
-        long scenePlanStarted = StartParseStageTiming(captureParseStageTimings);
-        await PrepareProgressiveSceneDocumentAsync(
-            document,
-            documentOwner,
-            cancellationToken).ConfigureAwait(false);
-        if (captureParseStageTimings)
-        {
-            RecordParseStageTiming(
-                parseStageRecorder,
-                ownerIdentity,
-                MarkdownParsePipelineStage.ProgressiveScenePlan,
-                scenePlanStarted);
-        }
-
-        // If the borrowed session is disposed while parse/plan construction is
-        // in flight, never leave this control with a deferred fallback and no
-        // scheduler. Reparse eagerly; disposal remains safe for concurrent
-        // controls because ParseAsync does not depend on the session lifetime.
-        if (IsDisposed && MarkdownProgressiveScenePlan.ContainsDeferredSceneFallback(document))
-        {
-            await ((IMarkdownPerformanceSessionInternal)this)
-                .ReleaseDeferredSceneDocument(documentOwner)
-                .ConfigureAwait(false);
-            long engineParseStarted = StartParseStageTiming(captureParseStageTimings);
-            document = await engine.ParseAsync(document.Source, cancellationToken).ConfigureAwait(false);
-            if (captureParseStageTimings)
-            {
-                RecordParseStageTiming(
-                    parseStageRecorder,
-                    ownerIdentity,
-                    MarkdownParsePipelineStage.EngineParseAndCache,
-                    engineParseStarted);
-            }
-        }
-
-        long progressiveRoleDemandStarted = StartParseStageTiming(captureParseStageTimings);
-        await CacheStyleRoleDemandMaskAsync(document, cancellationToken).ConfigureAwait(false);
-        if (captureParseStageTimings)
-        {
-            RecordParseStageTiming(
-                parseStageRecorder,
-                ownerIdentity,
-                MarkdownParsePipelineStage.StyleRoleDemand,
-                progressiveRoleDemandStarted);
-            RecordParseStageTiming(
-                parseStageRecorder,
-                ownerIdentity,
-                MarkdownParsePipelineStage.SessionTotal,
-                sessionStarted);
-        }
-        return document;
-    }
-
-    private static async ValueTask<MarkdownRenderer.Document.MarkdownDocument?>
-        ParseForDisposedSessionAsync(
-        MarkdownEngine? engine,
-        MarkdownRenderer.Document.MarkdownDocument? document,
-        string? source,
-        MarkdownRenderer.Parsing.MarkdownExtensionRegistry legacyRegistry,
-        object documentOwner,
-        CancellationToken cancellationToken)
-    {
-        if (document is null)
-        {
-            if (engine is not null)
-            {
-                return await engine.ParseAsync(source, cancellationToken).ConfigureAwait(false);
-            }
-
-            if (documentOwner is IMarkdownPerformanceLegacyParser legacyParser)
-            {
-                MarkdownRenderer.Parsing.ParsedMarkdown? parsed = await legacyParser
-                    .ParseLegacyMarkdownAsync(source ?? string.Empty, legacyRegistry, cancellationToken)
-                    .ConfigureAwait(false);
-                if (parsed is null)
-                    return null;
-
-                return await Task.Run(
-                    () => MarkdownRenderer.Document.MarkdownDocument.FromParsed(
-                        parsed.SourceText,
-                        parsed.Document,
-                        diagnostics: [],
-                        cancellationToken),
-                    CancellationToken.None).ConfigureAwait(false);
-            }
-
-            return null;
-        }
-
-        if (!MarkdownProgressiveScenePlan.ContainsDeferredSceneFallback(document))
-            return document;
-
-        if (engine is not null)
-            return await engine.ParseAsync(document.Source, cancellationToken).ConfigureAwait(false);
-
-        if (documentOwner is not IMarkdownPerformanceLegacyParser legacyDocumentParser)
-            return document;
-
-        MarkdownRenderer.Parsing.ParsedMarkdown? reparsed = await legacyDocumentParser
-            .ParseLegacyMarkdownAsync(document.Source, legacyRegistry, cancellationToken)
-            .ConfigureAwait(false);
-        if (reparsed is null)
-            return document;
-
-        return await Task.Run(
-            () => MarkdownRenderer.Document.MarkdownDocument.FromParsed(
-                reparsed.SourceText,
-                reparsed.Document,
-                diagnostics: [],
-                cancellationToken),
-            CancellationToken.None).ConfigureAwait(false);
-    }
 
     Task<T> IMarkdownPerformanceSessionInternal.ScheduleLayoutWorkAsync<T>(
         MarkdownLayoutWorkPriority priority,
         Func<CancellationToken, T> work,
-        CancellationToken cancellationToken)
-    {
-        if (work is null)
-            return Task.FromException<T>(new ArgumentNullException(nameof(work)));
-        if (!_lifetime.TryRegisterWork())
-            return CreateLayoutWorkFailure<T>(new OperationCanceledException(cancellationToken));
-
-        CancellationTokenSource? linked = null;
-        Task<T>? scheduled = null;
-        try
-        {
-            linked = CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken,
-                _lifetime.Token);
-            scheduled = _layoutWorkScheduler.ScheduleAsync(priority, work, linked.Token);
-        }
-        catch (Exception exception)
-        {
-            linked?.Dispose();
-            _lifetime.RetireWork();
-            return CreateLayoutWorkFailure<T>(exception);
-        }
-
-        var completion = new LayoutWorkCompletion(this, linked);
-        try
-        {
-            _ = scheduled.ContinueWith(
-                static (_, state) => ((LayoutWorkCompletion)state!).Complete(),
-                completion,
-                CancellationToken.None,
-                TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default);
-        }
-        catch
-        {
-            // Retain the original await-and-retire behavior if completion
-            // tracking itself cannot be attached.
-            return AwaitLayoutWorkAndCompleteAsync(scheduled, completion);
-        }
-
-        return scheduled;
-    }
+        CancellationToken cancellationToken) =>
+        _workDispatch.ScheduleLayoutWorkAsync(priority, work, cancellationToken);
 
     bool IMarkdownPerformanceSessionInternal.TryScheduleImageActivation(
         IMarkdownImageActivationDemand demand,
         Action startAsyncWork,
         Action onNotStarted,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(demand);
-        ArgumentNullException.ThrowIfNull(startAsyncWork);
-        ArgumentNullException.ThrowIfNull(onNotStarted);
-        if (cancellationToken.IsCancellationRequested || !_lifetime.TryRegisterWork())
-            return false;
-
-        CancellationTokenSource? linked = null;
-        ImageActivationCompletion? completion = null;
-        try
-        {
-            linked = CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken,
-                _lifetime.Token);
-            ImageActivationCompletion workCompletion = new(this, linked, onNotStarted);
-            completion = workCompletion;
-            bool scheduled = _imageActivationScheduler.TrySchedule(
-                demand,
-                () =>
-                {
-                    try
-                    {
-                        startAsyncWork();
-                    }
-                    finally
-                    {
-                        workCompletion.Complete(started: true);
-                    }
-                },
-                () => workCompletion.Complete(started: false),
-                linked.Token);
-            if (scheduled)
-                return true;
-
-            completion.Complete(started: false);
-            return false;
-        }
-        catch (Exception exception)
-        {
-            if (completion is not null)
-                completion.Complete(started: false);
-            else
-            {
-                linked?.Dispose();
-                _lifetime.RetireWork();
-            }
-
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownPerformanceSession] Image activation could not be scheduled: {exception.Message}");
-            return false;
-        }
-    }
-
-    private sealed class ImageActivationCompletion(
-        MarkdownPerformanceSession session,
-        CancellationTokenSource linked,
-        Action onNotStarted)
-    {
-        private int _completed;
-
-        internal void Complete(bool started)
-        {
-            if (Interlocked.Exchange(ref _completed, 1) != 0)
-                return;
-
-            try
-            {
-                if (!started)
-                    onNotStarted();
-            }
-            catch (Exception exception)
-            {
-                MarkdownDiagnostics.WriteLine(
-                    $"[MarkdownPerformanceSession] Image activation retirement failed: {exception.Message}");
-            }
-            finally
-            {
-                try
-                {
-                    linked.Dispose();
-                }
-                finally
-                {
-                    session._lifetime.RetireWork();
-                }
-            }
-        }
-    }
-
-    private static Task<T> CreateLayoutWorkFailure<T>(Exception exception)
-    {
-        if (exception is not OperationCanceledException canceled)
-            return Task.FromException<T>(exception);
-
-        var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
-        completion.TrySetCanceled(canceled.CancellationToken);
-        return completion.Task;
-    }
-
-    private static async Task<T> AwaitLayoutWorkAndCompleteAsync<T>(
-        Task<T> scheduled,
-        LayoutWorkCompletion completion)
-    {
-        try
-        {
-            return await scheduled.ConfigureAwait(false);
-        }
-        finally
-        {
-            completion.Complete();
-        }
-    }
-
-    private sealed class LayoutWorkCompletion(
-        MarkdownPerformanceSession session,
-        CancellationTokenSource linked)
-    {
-        private int _completed;
-
-        internal void Complete()
-        {
-            if (Interlocked.Exchange(ref _completed, 1) != 0)
-                return;
-
-            try
-            {
-                linked.Dispose();
-            }
-            finally
-            {
-                session._lifetime.RetireWork();
-            }
-        }
-    }
-
-    private ValueTask PrepareProgressiveSceneDocumentAsync(
-        MarkdownRenderer.Document.MarkdownDocument document,
-        object documentOwner,
         CancellationToken cancellationToken) =>
-        _scenePlans.PrepareAsync(document, documentOwner, cancellationToken);
+        _workDispatch.TryScheduleImageActivation(demand, startAsyncWork, onNotStarted, cancellationToken);
+
 
     bool IMarkdownPerformanceSessionInternal.TryGetDeferredSceneResult(
         object documentOwner,
@@ -992,8 +409,7 @@ public sealed class MarkdownPerformanceSession :
         if (!_lifetime.TryBeginShutdown(out drain, out completed, out disposedHandlers))
             return;
 
-        _layoutWorkScheduler.Dispose();
-        _imageActivationScheduler.Dispose();
+        _workDispatch.Dispose();
 
         ParseStageDiagnosticRecorder = null;
         IsLayoutDiagnosticCaptureEnabled = false;
@@ -1083,7 +499,7 @@ public sealed class MarkdownPerformanceSession :
 
         try
         {
-            await _layoutWorkScheduler.Completion.ConfigureAwait(false);
+            await _workDispatch.LayoutCompletion.ConfigureAwait(false);
         }
         catch (Exception exception)
         {
@@ -1092,7 +508,7 @@ public sealed class MarkdownPerformanceSession :
 
         try
         {
-            await _imageActivationScheduler.Completion.ConfigureAwait(false);
+            await _workDispatch.ActivationCompletion.ConfigureAwait(false);
         }
         catch (Exception exception)
         {
@@ -1101,7 +517,7 @@ public sealed class MarkdownPerformanceSession :
 
         try
         {
-            _layoutWorkScheduler.ReleaseResources();
+            _workDispatch.ReleaseLayoutResources();
         }
         catch (Exception exception)
         {
