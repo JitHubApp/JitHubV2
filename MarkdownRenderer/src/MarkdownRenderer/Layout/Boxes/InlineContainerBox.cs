@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Numerics;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,9 +8,7 @@ using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using Windows.UI;
-using Windows.UI.Text;
 using MarkdownRenderer.CodeBlocks;
-using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Theming;
 using MarkdownRenderer.Utilities;
@@ -26,11 +23,6 @@ namespace MarkdownRenderer.Layout.Boxes;
 internal sealed partial class InlineContainerBox : BlockBox
 {
     private const float MinimumRelativeInlineFontSize = ThemeSnapshot.MinimumRelativeScriptFontSize;
-
-    private const float MinimumContentAwareLineScale = 0.1f;
-    private const float MaximumContentAwareLineScale = 32f;
-    private const float MaximumContentAwareLineHeight = 1_000_000f;
-    private const float MinimumInverseInlineMetricHeight = 1f;
     // Keep descriptor scans under the snapshot lock and source-fence checks on
     // the publishing UI thread predictably bounded for unusual Markdown input.
     internal const int MaximumPrivateRasterPlacementRuns = 256;
@@ -50,6 +42,7 @@ internal sealed partial class InlineContainerBox : BlockBox
     private List<(InlineEmbedRun Run, int Offset)>? _inlineEmbedRuns;
     internal List<(InlineEmbedRun Run, int Offset)>? InlineEmbedEntries => _inlineEmbedRuns;
     private bool _hasAtomicInlineObject;
+    internal bool HasAtomicInlineObject => _hasAtomicInlineObject;
     private int _runTextLength;
     // Most runs inherit the container aliases. Keep that common case implicit;
     // once an override exists, null slots preserve the exact run ordinals.
@@ -94,18 +87,6 @@ internal sealed partial class InlineContainerBox : BlockBox
     internal string LayoutBuffer => _buffer;
     private bool _bufferDirty;
     private float _lastWidth;
-
-    private const int MaximumInlineImageFontMetricsPerMeasure = 32;
-    private readonly record struct InlineImageFontMetricKey(
-        string FontFamily,
-        float FontSize,
-        ushort FontWeight,
-        FontStyle FontStyle,
-        FlowDirection FlowDirection,
-        string Language,
-        bool IsDark,
-        bool IsHighContrast,
-        double TextScaleFactor);
 
     private sealed class VectorSceneState
     {
@@ -187,52 +168,6 @@ internal sealed partial class InlineContainerBox : BlockBox
     internal IReadOnlyList<CodeBlockHighlightSpan> ForegroundSpans => _foregroundSpans;
     private readonly NativeResourceRetirement _nativeRetirement;
     private readonly Action<IDisposable>? _nativeDisposer;
-
-    private readonly struct InlineRollbackState
-    {
-        private readonly InlineImageRun? _imageRun;
-        private readonly InlineVectorSceneRun? _vectorRun;
-        private readonly float _desiredWidth;
-        private readonly float _desiredHeight;
-        private readonly float _desiredBaseline;
-        private readonly Rect _localBounds;
-        private readonly ImageBox.InlineMeasureCheckpoint _imageCheckpoint;
-
-        internal InlineRollbackState(
-            InlineImageRun? imageRun,
-            InlineVectorSceneRun? vectorRun,
-            float desiredWidth,
-            float desiredHeight,
-            float desiredBaseline,
-            Rect localBounds,
-            ImageBox.InlineMeasureCheckpoint imageCheckpoint = default)
-        {
-            _imageRun = imageRun;
-            _vectorRun = vectorRun;
-            _desiredWidth = desiredWidth;
-            _desiredHeight = desiredHeight;
-            _desiredBaseline = desiredBaseline;
-            _localBounds = localBounds;
-            _imageCheckpoint = imageCheckpoint;
-        }
-
-        internal void Commit() => _imageCheckpoint.Commit();
-
-        internal void Restore()
-        {
-            _imageCheckpoint.Rollback();
-            if (_imageRun is { } image)
-                image.RestoreMeasuredSize(_desiredWidth, _desiredHeight);
-            if (_vectorRun is { } vector)
-            {
-                vector.RestoreLayoutState(
-                    _desiredWidth,
-                    _desiredHeight,
-                    _desiredBaseline,
-                    _localBounds);
-            }
-        }
-    }
 
     private readonly struct InlineScenePlacementRollbackState
     {
@@ -1325,7 +1260,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         bool previousBufferDirty = _bufferDirty;
         float previousWidth = _lastWidth;
         Rect previousBounds = Bounds;
-        List<InlineRollbackState>? changedInlineMeasures = null;
+        List<InlineMeasureRollbackState>? changedInlineMeasures = null;
         InlineScenePlacementRollbackState[]? previousScenePlacements = null;
         CanvasTextLayout? replacementLayout = null;
         NativeResourceRetirementRecord? replacementLayoutRetirementRecord = null;
@@ -1344,7 +1279,8 @@ internal sealed partial class InlineContainerBox : BlockBox
 
         try
         {
-            bool atomicMetricsChanged = MeasureAtomicInlineRuns(
+            bool atomicMetricsChanged = InlineAtomicObjectLayout.MeasureAtomicInlineRuns(
+                this,
                 layoutWidth,
                 style.FontSize,
                 out changedInlineMeasures);
@@ -1411,8 +1347,9 @@ internal sealed partial class InlineContainerBox : BlockBox
                 candidateLayout.Options = CanvasDrawTextOptions.EnableColorFont;
                 InlineRunStyleApplier.ApplyRunStyles(this, candidateLayout, applyColors: true);
                 InlineRunStyleApplier.ApplyForegroundSpans(this, candidateLayout);
-                float inlineMetricScale = ApplyContentAwareLineSpacing(candidateLayout, style, layoutWidth);
-                ApplyEmbedSpacing(
+                float inlineMetricScale = InlineAtomicObjectLayout.ApplyContentAwareLineSpacing(this, candidateLayout, style, layoutWidth);
+                InlineAtomicObjectLayout.ApplyEmbedSpacing(
+                    this,
                     candidateLayout,
                     inverseMetricScale: inlineMetricScale,
                     maxInlineWidth: layoutWidth);
@@ -1472,7 +1409,7 @@ internal sealed partial class InlineContainerBox : BlockBox
             {
                 if (changedInlineMeasures is not null)
                 {
-                    foreach (InlineRollbackState state in changedInlineMeasures)
+                    foreach (InlineMeasureRollbackState state in changedInlineMeasures)
                     {
                         try
                         {
@@ -1547,7 +1484,7 @@ internal sealed partial class InlineContainerBox : BlockBox
 
         if (changedInlineMeasures is not null)
         {
-            foreach (InlineRollbackState state in changedInlineMeasures)
+            foreach (InlineMeasureRollbackState state in changedInlineMeasures)
                 state.Commit();
         }
 
@@ -1615,14 +1552,15 @@ internal sealed partial class InlineContainerBox : BlockBox
         var padding = GetEffectivePadding(style);
         float horizontalPadding = (float)(padding.Left + padding.Right);
         float measurementWidth = Math.Clamp(maximumPreferredWidth, 1f, 1_000_000f);
-        List<InlineRollbackState>? candidateMeasures = null;
+        List<InlineMeasureRollbackState>? candidateMeasures = null;
         NativeResourceRetirementRecord? layoutRetirementRecord = null;
         CanvasTextLayout? layout = null;
         IntrinsicWidthMetrics result = default;
         Exception? failure = null;
         try
         {
-            _ = MeasureAtomicInlineRuns(
+            _ = InlineAtomicObjectLayout.MeasureAtomicInlineRuns(
+                this,
                 measurementWidth,
                 style.FontSize,
                 out candidateMeasures);
@@ -1645,7 +1583,7 @@ internal sealed partial class InlineContainerBox : BlockBox
             layoutRetirementRecord.SetTemporary(0, layout);
             layout.Options = CanvasDrawTextOptions.EnableColorFont;
             InlineRunStyleApplier.ApplyRunStyles(this, layout, applyColors: false);
-            ApplyEmbedSpacing(layout, maxInlineWidth: measurementWidth);
+            InlineAtomicObjectLayout.ApplyEmbedSpacing(this, layout, maxInlineWidth: measurementWidth);
 
             var layoutBounds = layout.LayoutBounds;
             var drawBounds = layout.DrawBounds;
@@ -1675,7 +1613,7 @@ internal sealed partial class InlineContainerBox : BlockBox
             {
                 if (candidateMeasures is not null)
                 {
-                    foreach (InlineRollbackState state in candidateMeasures)
+                    foreach (InlineMeasureRollbackState state in candidateMeasures)
                     {
                         try
                         {
@@ -1801,7 +1739,7 @@ internal sealed partial class InlineContainerBox : BlockBox
     private static bool IsIntrinsicBreakOpportunity(char value)
         => char.IsWhiteSpace(value) || value is '-' or '\u2010' or '\u2013' or '/';
 
-    private SharedCanvasTextFormatCache.Lease CreateTextFormatLease(
+    internal SharedCanvasTextFormatCache.Lease CreateTextFormatLease(
         ElementStyle style,
         CanvasWordWrapping wordWrapping,
         CanvasHorizontalAlignment horizontalAlignment)
@@ -2615,112 +2553,6 @@ internal sealed partial class InlineContainerBox : BlockBox
         return metrics;
     }
 
-    private float ResolveInlineImageXHeightDipForMeasurement(
-        InlineImageRun image,
-        ref CanvasTextAnalyzer? analyzer,
-        ref Dictionary<InlineImageFontMetricKey, float>? styleMetrics)
-    {
-        if (!Context.ThemeSnapshot.MiddleAlignInlineImages ||
-            image.Image.IsFailedDecorativeImageCollapsed)
-        {
-            return 0f;
-        }
-
-        float[] metrics = GetOrCreateInlineImageXHeightCache();
-        int runIndex = image.InlineIndex;
-        if ((uint)runIndex >= (uint)metrics.Length)
-            return 0f;
-
-        // Zero means not resolved; a negative value records a stable fallback.
-        // Positive values are the only metrics consumed by paint/selection.
-        float alreadyResolved = metrics[runIndex];
-        if (alreadyResolved != 0f)
-            return alreadyResolved > 0f ? alreadyResolved : 0f;
-
-        Context.CancellationToken.ThrowIfCancellationRequested();
-        ElementStyle style = GetRunStyle(image);
-        if (!float.IsFinite(style.FontSize) || style.FontSize <= 0f)
-        {
-            metrics[runIndex] = -1f;
-            return 0f;
-        }
-
-        var key = new InlineImageFontMetricKey(
-            style.FontFamily ?? string.Empty,
-            style.FontSize,
-            style.FontWeight.Weight,
-            style.FontStyle,
-            Context.FlowDirection,
-            Context.Language,
-            Context.ThemeSnapshot.IsDark,
-            Context.ThemeSnapshot.IsHighContrast,
-            Context.ThemeSnapshot.TextScaleFactor);
-        if (styleMetrics is { } existingStyleMetrics &&
-            existingStyleMetrics.TryGetValue(key, out float cached))
-        {
-            metrics[runIndex] = cached;
-            return cached > 0f ? cached : 0f;
-        }
-
-        float resolvedXHeightDip = 0f;
-        try
-        {
-            using SharedCanvasTextFormatCache.Lease formatLease = CreateTextFormatLease(
-                style,
-                CanvasWordWrapping.NoWrap,
-                CanvasHorizontalAlignment.Left);
-            if (analyzer is null)
-            {
-                CanvasTextDirection direction = Context.FlowDirection == FlowDirection.RightToLeft
-                    ? CanvasTextDirection.RightToLeftThenTopToBottom
-                    : CanvasTextDirection.LeftToRightThenTopToBottom;
-                analyzer = new CanvasTextAnalyzer("x", direction);
-            }
-
-            IReadOnlyList<KeyValuePair<CanvasCharacterRange, CanvasScaledFont>> fonts =
-                analyzer.GetFonts(formatLease.Format);
-            foreach (KeyValuePair<CanvasCharacterRange, CanvasScaledFont> fontSpan in fonts)
-            {
-                CanvasScaledFont scaledFont = fontSpan.Value;
-                CanvasFontFace face = scaledFont.FontFace;
-                try
-                {
-                    if (resolvedXHeightDip <= 0f &&
-                        float.IsFinite(scaledFont.ScaleFactor) && scaledFont.ScaleFactor > 0f)
-                    {
-                        double metric = (double)formatLease.Format.FontSize *
-                            scaledFont.ScaleFactor * face.LowercaseLetterHeight;
-                        if (double.IsFinite(metric) && metric > 0d && metric <= float.MaxValue)
-                            resolvedXHeightDip = (float)metric;
-                    }
-                }
-                finally
-                {
-                    face.Dispose();
-                }
-            }
-
-            Context.CancellationToken.ThrowIfCancellationRequested();
-        }
-        catch (Exception exception) when (
-            exception is not OutOfMemoryException &&
-            exception is not OperationCanceledException)
-        {
-            // Font metrics are an optional visual-profile enhancement. If a
-            // particular DirectWrite face cannot be inspected, retain the
-            // renderer's established inline-image placement.
-            MarkdownDiagnostics.WriteLine(
-                $"[InlineContainerBox] inline image x-height unavailable: {exception.GetType().Name}");
-        }
-
-        float storedMetric = resolvedXHeightDip > 0f ? resolvedXHeightDip : -1f;
-        metrics[runIndex] = storedMetric;
-        styleMetrics ??= new Dictionary<InlineImageFontMetricKey, float>(4);
-        if (styleMetrics.Count < MaximumInlineImageFontMetricsPerMeasure)
-            styleMetrics[key] = storedMetric;
-        return resolvedXHeightDip;
-    }
-
     /// <summary>
     /// For each <see cref="InlineImageRun"/>, returns the image rectangle in
     /// document coordinates and syncs the backnng <see cref="ImageBox"/> bounds
@@ -2966,11 +2798,13 @@ internal sealed partial class InlineContainerBox : BlockBox
             // snapshot's build token, but cancellation must never escape Draw.
             InlineRunStyleApplier.ApplyRunStyles(this, candidateLayout, applyColors: false, observeCancellation: false);
             float selectionLayoutWidth = Math.Max(1f, _lastWidth - horizontalPadding);
-            float inlineMetricScale = ApplyContentAwareLineSpacing(
+            float inlineMetricScale = InlineAtomicObjectLayout.ApplyContentAwareLineSpacing(
+                this,
                 candidateLayout,
                 style,
                 selectionLayoutWidth);
-            ApplyEmbedSpacing(
+            InlineAtomicObjectLayout.ApplyEmbedSpacing(
+                this,
                 candidateLayout,
                 observeCancellation: false,
                 inverseMetricScale: inlineMetricScale,
@@ -3045,394 +2879,6 @@ internal sealed partial class InlineContainerBox : BlockBox
         _selectionLayoutColor = color;
         _selectionLayoutWidth = _lastWidth;
         return candidateLayout!;
-    }
-
-    /// <summary>
-    /// Restores the authored block line-height for text while retaining
-    /// content-aware growth for atomic inline runs. DirectWrite's proportional
-    /// mode scales inline-object metrics as well as text metrics, so the inline
-    /// objects receive inverse-scaled dimensions below. Text-only layouts keep
-    /// their existing absolute CSS line-spacing format.
-    /// </summary>
-    private float ApplyContentAwareLineSpacing(
-        CanvasTextLayout layout,
-        ElementStyle style,
-        float maxInlineWidth)
-    {
-        if (!_hasAtomicInlineObject)
-            return 1f;
-
-        float requestedHeight = style.FontSize * style.LineHeightMultiplier;
-        if (!float.IsFinite(requestedHeight) ||
-            requestedHeight <= 0f ||
-            requestedHeight > MaximumContentAwareLineHeight)
-        {
-            return 1f;
-        }
-
-        // A short atomic run must still occupy the authored text line box.
-        // DirectWrite can collapse an image-only line to the image's height
-        // when the content-aware format has no absolute line spacing. Use the
-        // ordinary CSS line spacing while every inline object fits within it;
-        // only taller objects need the proportional, content-aware path below.
-        bool hasOversizedInline = false;
-        foreach (InlineRun run in _runs)
-        {
-            float height = run switch
-            {
-                InlineEmbedRun embed => embed.DesiredHeight,
-                InlineImageRun image => image.DesiredHeight,
-                InlineVectorSceneRun vector => vector.DesiredHeight,
-                InlineSpacerRun spacer => GetFittedSpacerHeight(spacer, maxInlineWidth),
-                _ => 0f,
-            };
-            if (height > requestedHeight)
-            {
-                hasOversizedInline = true;
-                break;
-            }
-        }
-
-        if (!hasOversizedInline)
-        {
-            layout.LineSpacing = requestedHeight;
-            layout.LineSpacingBaseline = requestedHeight * 0.8f;
-            return 1f;
-        }
-
-        CanvasLineMetrics[] naturalLines;
-        try
-        {
-            naturalLines = layout.LineMetrics;
-        }
-        catch (NotSupportedException)
-        {
-            // Some WinRT projections cannot marshal DirectWrite line metrics.
-            // Preserve the existing content-aware fallback instead of failing
-            // the entire paragraph.
-            return 1f;
-        }
-
-        if (naturalLines.Length == 0 ||
-            !float.IsFinite(naturalLines[0].Height) ||
-            naturalLines[0].Height <= 0f)
-        {
-            return 1f;
-        }
-
-        float scale = requestedHeight / naturalLines[0].Height;
-        if (!float.IsFinite(scale) ||
-            scale < MinimumContentAwareLineScale ||
-            scale > MaximumContentAwareLineScale ||
-            !CanInverseScaleInlineMetrics(scale, maxInlineWidth))
-        {
-            return 1f;
-        }
-
-        layout.LineSpacingMode = CanvasLineSpacingMode.Proportional;
-        layout.LineSpacing = scale;
-        layout.LineSpacingBaseline = scale * 0.8f;
-        return scale;
-    }
-
-    private bool CanInverseScaleInlineMetrics(float scale, float maxInlineWidth)
-    {
-        foreach (InlineRun run in _runs)
-        {
-            float height = run switch
-            {
-                InlineEmbedRun embed => embed.DesiredHeight,
-                InlineImageRun image => image.DesiredHeight,
-                InlineVectorSceneRun vector => vector.DesiredHeight,
-                InlineSpacerRun spacer => GetFittedSpacerHeight(spacer, maxInlineWidth),
-                _ => 0f,
-            };
-
-            if (height > 0f)
-            {
-                float inverseHeight = height / scale;
-                if (!float.IsFinite(inverseHeight) ||
-                    inverseHeight < MinimumInverseInlineMetricHeight ||
-                    inverseHeight > MaximumContentAwareLineHeight)
-                {
-                    return false;
-                }
-            }
-        }
-
-        return true;
-    }
-
-    /// <summary>
-    /// Resolves a decorative spacer's authored size against the current
-    /// inline formatting width. This mirrors the renderer's inline-image
-    /// max-width:100% behavior while preserving the authored ratio and keeps
-    /// the immutable run dimensions independent from text scaling.
-    /// </summary>
-    private static void GetFittedSpacerDimensions(
-        InlineSpacerRun spacer,
-        float maxInlineWidth,
-        out float width,
-        out float height)
-    {
-        width = spacer.Width;
-        height = spacer.Height;
-        if (float.IsPositiveInfinity(maxInlineWidth))
-            return;
-
-        float available = float.IsFinite(maxInlineWidth) && maxInlineWidth > 0f
-            ? maxInlineWidth
-            : 1f;
-        width = Math.Min(width, available);
-        float scale = width / spacer.Width;
-        height = Math.Max(float.Epsilon, spacer.Height * scale);
-    }
-
-    private static float GetFittedSpacerHeight(InlineSpacerRun spacer, float maxInlineWidth)
-    {
-        GetFittedSpacerDimensions(spacer, maxInlineWidth, out _, out float height);
-        return height;
-    }
-
-    private void ApplyEmbedSpacing(
-        CanvasTextLayout layout,
-        bool observeCancellation = true,
-        float inverseMetricScale = 1f,
-        float maxInlineWidth = float.PositiveInfinity,
-        bool computeInlineImageMetrics = true)
-    {
-        // CanvasTextAnalyzer is a short-lived WinRT projection and is not
-        // actually IClosable in the native Win2D implementation. Keep it
-        // local to this measured pass; never retain it on the box.
-        CanvasTextAnalyzer? inlineImageMetricAnalyzer = null;
-        Dictionary<InlineImageFontMetricKey, float>? inlineImageStyleMetrics = null;
-        int cumulative = 0;
-        foreach (var run in _runs)
-        {
-            if (observeCancellation)
-            {
-                Context.CancellationToken.ThrowIfCancellationRequested();
-            }
-
-            int len = run.TextLength;
-            if (run is InlineEmbedRun emb && len > 0)
-            {
-                try
-                {
-                    layout.SetInlineObject(
-                        cumulative,
-                        len,
-                        new LayoutInlineObject(emb.DesiredWidth, emb.DesiredHeight, inverseMetricScale));
-                }
-                catch (Exception ex)
-                {
-                    MarkdownDiagnostics.WriteLine($"[InlineContainerBox] inline embed layout failed: {ex.Message}");
-                }
-            }
-            else if (run is InlineImageRun image && len > 0)
-            {
-                float baselineXHeightDip = -1f;
-                if (!image.Image.IsFailedDecorativeImageCollapsed &&
-                    Context.ThemeSnapshot.MiddleAlignInlineImages)
-                {
-                    float xHeightDip = 0f;
-                    bool hasXHeight;
-                    if (computeInlineImageMetrics)
-                    {
-                        xHeightDip = ResolveInlineImageXHeightDipForMeasurement(
-                            image,
-                            ref inlineImageMetricAnalyzer,
-                            ref inlineImageStyleMetrics);
-                        hasXHeight = xHeightDip > 0f;
-                    }
-                    else
-                    {
-                        hasXHeight = InlineObjectGeometry.TryGetCachedInlineImageXHeightDip(this, image, out xHeightDip);
-                    }
-
-                    if (hasXHeight && xHeightDip > 0f)
-                        baselineXHeightDip = xHeightDip;
-                }
-
-                try
-                {
-                    layout.SetInlineObject(
-                        cumulative,
-                        len,
-                        new LayoutInlineObject(
-                            image.DesiredWidth,
-                            image.DesiredHeight,
-                            inverseMetricScale,
-                            allowZeroDimensions: image.Image.IsFailedDecorativeImageCollapsed,
-                            baselineXHeightDip: baselineXHeightDip));
-                }
-                catch (Exception ex)
-                {
-                    MarkdownDiagnostics.WriteLine($"[InlineContainerBox] inline image layout failed: {ex.Message}");
-                }
-            }
-            else if (run is InlineVectorSceneRun vector && len > 0)
-            {
-                try
-                {
-                    layout.SetInlineObject(
-                        cumulative,
-                        len,
-                        new LayoutInlineObject(
-                            vector.DesiredWidth,
-                            vector.DesiredHeight,
-                            inverseMetricScale));
-                }
-                catch (Exception ex)
-                {
-                    MarkdownDiagnostics.WriteLine($"[InlineContainerBox] vector scene layout failed: {ex.Message}");
-                }
-            }
-            else if (run is InlineSpacerRun spacer && len > 0)
-            {
-                GetFittedSpacerDimensions(
-                    spacer,
-                    maxInlineWidth,
-                    out float effectiveWidth,
-                    out float effectiveHeight);
-                // Keep this native call inside the enclosing measurement
-                // transaction. Swallowing failure would leave the private
-                // U+FFFC fallback glyph visible instead of an invisible spacer.
-                layout.SetInlineObject(
-                    cumulative,
-                    len,
-                    new LayoutInlineObject(
-                        effectiveWidth,
-                        effectiveHeight,
-                        inverseMetricScale,
-                        preserveSubUnitDimensions: true));
-            }
-
-            cumulative += len;
-        }
-    }
-
-    /// <summary>
-    /// Supplies DirectWrite with the exact advance and line height of an
-    /// atomic Markdown run. Painting remains owned by the renderer so the
-    /// callback is intentionally empty. Using a real inline object avoids the
-    /// font-dependent U+FFFC glyph advance that previously made tall images
-    /// consume hundreds of extra horizontal DIPs and wrap unnecessarily.
-    /// </summary>
-    private sealed partial class LayoutInlineObject : ICanvasTextInlineObject
-    {
-        public LayoutInlineObject(
-            float width,
-            float height,
-            float inverseMetricScale = 1f,
-            bool preserveSubUnitDimensions = false,
-            bool allowZeroDimensions = false,
-            float baselineXHeightDip = -1f)
-        {
-            float minimumDimension = allowZeroDimensions
-                ? 0f
-                : preserveSubUnitDimensions ? float.Epsilon : 1f;
-            float safeWidth = Math.Max(minimumDimension, width);
-            float scale = float.IsFinite(inverseMetricScale) && inverseMetricScale > 0f
-                ? inverseMetricScale
-                : 1f;
-            float safeHeight = Math.Max(minimumDimension, height / scale);
-            Size = new Size(safeWidth, safeHeight);
-            DrawBounds = new Rect(0, 0, safeWidth, safeHeight);
-            Baseline = !allowZeroDimensions &&
-                float.IsFinite(baselineXHeightDip) && baselineXHeightDip >= 0f
-                    ? (safeHeight + baselineXHeightDip / scale) / 2f
-                    : safeHeight;
-        }
-
-        public Size Size { get; }
-        public float Baseline { get; }
-        public bool SupportsSideways => false;
-        public Rect DrawBounds { get; }
-        public CanvasLineBreakCondition BreakBefore => CanvasLineBreakCondition.Neutral;
-        public CanvasLineBreakCondition BreakAfter => CanvasLineBreakCondition.Neutral;
-
-        public void Draw(
-            ICanvasTextRenderer textRenderer,
-            Vector2 point,
-            bool isSideways,
-            bool isRightToLeft,
-            object brush)
-        {
-        }
-    }
-
-    private bool MeasureAtomicInlineRuns(
-        float maxWidth,
-        float lineHeight,
-        out List<InlineRollbackState>? rollbackStates)
-    {
-        bool changed = false;
-        rollbackStates = null;
-        // Keep the out list published before each mutation: a later run may
-        // throw or cancel, and the caller must be able to restore the prefix.
-        foreach (var run in _runs)
-        {
-            Context.CancellationToken.ThrowIfCancellationRequested();
-            if (run is InlineImageRun image)
-            {
-                float oldW = image.DesiredWidth;
-                float oldH = image.DesiredHeight;
-                List<InlineRollbackState> imageStates =
-                    rollbackStates ??= new List<InlineRollbackState>();
-                imageStates.EnsureCapacity(imageStates.Count + 1);
-                ImageBox.InlineMeasureCheckpoint checkpoint =
-                    image.Image.BeginInlineCheckpoint();
-                imageStates.Add(new InlineRollbackState(
-                    image,
-                    null,
-                    oldW,
-                    oldH,
-                    0,
-                    default,
-                    checkpoint));
-                image.Measure(maxWidth, lineHeight, checkpoint);
-                if (!float.IsFinite(image.DesiredWidth) || !float.IsFinite(image.DesiredHeight))
-                    throw new InvalidOperationException("Inline image measurement returned non-finite dimensions.");
-                if (Math.Abs(oldW - image.DesiredWidth) > 0.5f ||
-                    Math.Abs(oldH - image.DesiredHeight) > 0.5f)
-                {
-                    changed = true;
-                }
-            }
-            else if (run is InlineVectorSceneRun vector)
-            {
-                float oldW = vector.DesiredWidth;
-                float oldH = vector.DesiredHeight;
-                float oldBaseline = vector.DesiredBaseline;
-                Rect oldLocalBounds = vector.LocalBounds;
-                List<InlineRollbackState> vectorStates =
-                    rollbackStates ??= new List<InlineRollbackState>();
-                vectorStates.EnsureCapacity(vectorStates.Count + 1);
-                vectorStates.Add(new InlineRollbackState(
-                    null,
-                    vector,
-                    oldW,
-                    oldH,
-                    oldBaseline,
-                    oldLocalBounds));
-
-                vector.Measure(lineHeight);
-                if (!float.IsFinite(vector.DesiredWidth) ||
-                    !float.IsFinite(vector.DesiredHeight) ||
-                    !float.IsFinite(vector.DesiredBaseline))
-                {
-                    throw new InvalidOperationException("Inline vector measurement returned non-finite dimensions.");
-                }
-                if (Math.Abs(oldW - vector.DesiredWidth) > 0.5f ||
-                    Math.Abs(oldH - vector.DesiredHeight) > 0.5f)
-                {
-                    changed = true;
-                }
-            }
-        }
-
-        return changed;
     }
 
     private InlineSceneGeometry[] UpdateVectorScenePlacements(CanvasTextLayout layout)
