@@ -886,7 +886,7 @@ public sealed class RootLocalContainerVectorImageRelayoutTests
 
     private static int GetLeaseReferenceCount(SharedCanvasBitmapCache.Lease lease)
     {
-        object entry = Assert.IsAssignableFrom<SharedCanvasBitmapCache.Entry>(
+        object entry = Assert.IsAssignableFrom<SharedCanvasBitmapCacheEntry>(
             ReadRawField(lease, "_entry"));
         return Assert.IsType<int>(ReadRawField(entry, "_referenceCount"));
     }

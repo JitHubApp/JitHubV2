@@ -539,7 +539,7 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
         using var bitmap = CreateBitmap(device, width: 2, height: 1);
         long before = ImageResourceScope.Shared.BitmapCache.GetSnapshot().LivePixelWeightBytes;
         var lease = new SharedCanvasBitmapCache.Lease();
-        var entry = new SharedCanvasBitmapCache.Entry(ImageResourceScope.Shared.BitmapCache, bitmap, 2, 1);
+        var entry = new SharedCanvasBitmapCacheEntry(ImageResourceScope.Shared.BitmapCache, bitmap, 2, 1);
         lease.Attach(entry);
         entry.AddCacheReference();
         Assert.Equal(before + 8, ImageResourceScope.Shared.BitmapCache.GetSnapshot().LivePixelWeightBytes);

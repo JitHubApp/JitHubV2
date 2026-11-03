@@ -261,8 +261,8 @@ public sealed class MultiRootInlinePlacementCloneTests
     {
         FieldInfo entryField = typeof(SharedCanvasBitmapCache.Lease).GetField(
             "_entry", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        object entry = Assert.IsAssignableFrom<SharedCanvasBitmapCache.Entry>(entryField.GetValue(lease));
-        FieldInfo countField = typeof(SharedCanvasBitmapCache.Entry).GetField(
+        object entry = Assert.IsAssignableFrom<SharedCanvasBitmapCacheEntry>(entryField.GetValue(lease));
+        FieldInfo countField = typeof(SharedCanvasBitmapCacheEntry).GetField(
             "_referenceCount", BindingFlags.Instance | BindingFlags.NonPublic)!;
         return Assert.IsType<int>(countField.GetValue(entry));
     }

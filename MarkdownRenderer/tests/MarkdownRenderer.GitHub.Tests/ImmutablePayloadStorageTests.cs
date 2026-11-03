@@ -105,7 +105,7 @@ public sealed class ImmutablePayloadStorageTests
         AssertReadonly(typeof(InlineSceneGeometry), "Run RegionCount");
         AssertReadonly(typeof(FocusableItem), "BlockIndex InlineIndex Kind");
         AssertReadonly(typeof(LoadCompletedEventArgs), "LayoutInvalidated");
-        AssertReadonly(Nested(typeof(SharedCanvasBitmapCache), "Entry"),
+        AssertReadonly(typeof(SharedCanvasBitmapCacheEntry),
             "Bitmap WeightBytes IntrinsicSize PixelWidth PixelHeight");
         AssertReadonly(typeof(SharedCanvasTextFormatEntry), "Format WeightBytes");
         AssertReadonly(typeof(SharedLayoutMetrics), "EstimatedWeightBytes");
@@ -369,10 +369,10 @@ public sealed class ImmutablePayloadStorageTests
         SharedCanvasBitmapCache cache = ImageResourceScope.Shared.BitmapCache;
 
         CanvasBitmap uncachedBitmap = CreateBitmap(device);
-        SharedCanvasBitmapCache.Entry? uncachedEntry = null;
+        SharedCanvasBitmapCacheEntry? uncachedEntry = null;
         try
         {
-            uncachedEntry = new SharedCanvasBitmapCache.Entry(cache, uncachedBitmap, bitmapReservation: null);
+            uncachedEntry = new SharedCanvasBitmapCacheEntry(cache, uncachedBitmap, bitmapReservation: null);
             Assert.Same(uncachedBitmap, uncachedEntry.Bitmap);
             Assert.Equal(4L, uncachedEntry.WeightBytes);
             Assert.Equal(4L, uncachedEntry.PixelWeightBytes);
@@ -389,10 +389,10 @@ public sealed class ImmutablePayloadStorageTests
         }
 
         CanvasBitmap cachedBitmap = CreateBitmap(device);
-        SharedCanvasBitmapCache.Entry? cachedEntry = null;
+        SharedCanvasBitmapCacheEntry? cachedEntry = null;
         try
         {
-            cachedEntry = new SharedCanvasBitmapCache.Entry(
+            cachedEntry = new SharedCanvasBitmapCacheEntry(
                 cache,
                 cachedBitmap,
                 intrinsicSize: new Size(24, 16),

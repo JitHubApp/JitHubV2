@@ -193,7 +193,7 @@ public sealed class SharedCanvasBitmapCacheSvgTests
     {
         using var device = new CanvasDevice();
         long retainedBefore = ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes;
-        var entry = new SharedCanvasBitmapCache.Entry(ImageResourceScope.Shared.BitmapCache, CreateBitmap(device, width: 2, height: 1));
+        var entry = new SharedCanvasBitmapCacheEntry(ImageResourceScope.Shared.BitmapCache, CreateBitmap(device, width: 2, height: 1));
         try
         {
             Assert.Null(entry.IntrinsicSize);

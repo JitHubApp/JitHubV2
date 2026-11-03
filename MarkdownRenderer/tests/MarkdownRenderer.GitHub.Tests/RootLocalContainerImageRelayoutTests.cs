@@ -1560,8 +1560,8 @@ public sealed class RootLocalContainerImageRelayoutTests
         FieldInfo entryField = typeof(SharedCanvasBitmapCache.Lease).GetField("_entry",
             BindingFlags.Instance | BindingFlags.NonPublic)
             ?? throw new InvalidOperationException("Missing shared bitmap cache entry field.");
-        object entry = Assert.IsAssignableFrom<SharedCanvasBitmapCache.Entry>(entryField.GetValue(lease));
-        FieldInfo countField = typeof(SharedCanvasBitmapCache.Entry).GetField("_referenceCount",
+        object entry = Assert.IsAssignableFrom<SharedCanvasBitmapCacheEntry>(entryField.GetValue(lease));
+        FieldInfo countField = typeof(SharedCanvasBitmapCacheEntry).GetField("_referenceCount",
             BindingFlags.Instance | BindingFlags.NonPublic)
             ?? throw new InvalidOperationException("Missing shared bitmap reference count.");
         return Assert.IsType<int>(countField.GetValue(entry));
