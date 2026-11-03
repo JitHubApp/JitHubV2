@@ -11,7 +11,11 @@ namespace MarkdownRenderer.Svg.Resvg.Internal;
 /// The startup method keeps the single try/finally that owns the pipe, the
 /// process handle and the object security until the worker adopts them; its
 /// steps create, read or report but never keep those handles. The diagnostic
-/// identity read stays open across process creation.
+/// identity read stays open across process creation. It stays near 90 lines
+/// on purpose: the remaining body is the ownership sequence itself (label,
+/// identity read, process creation, connection wait, adoption), and an async
+/// step cannot take the handle locals by reference, so moving any of it would
+/// let a failure between assignment and the outer finally leak a handle.
 /// </remarks>
 internal sealed class WindowsWorkerProcessLauncher(
     string workerPath,

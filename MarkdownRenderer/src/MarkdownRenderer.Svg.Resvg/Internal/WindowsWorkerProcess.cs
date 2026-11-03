@@ -88,15 +88,18 @@ internal sealed class WindowsWorkerProcess : IAsyncDisposable, IDisposable, IWor
     // when consumed; source/raster ownership is never pooled here. Callers that
     // need Task semantics must convert once with AsTask before sharing it.
     // Only the awaits stay in this method; its synchronous steps share one
-    // WorkerExchangeTrace local by reference and allocate nothing.
+    // WorkerExchangeTrace local by reference and allocate nothing. The rest is
+    // one ownership region: the transaction gate, the linked deadline, the
+    // duplicated mapping and the three pipe awaits must share the finally that
+    // scrubs the shared frames and releases the gate, and an async step cannot
+    // take the trace by reference.
     [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
     public async ValueTask<WorkerResponse> ExchangeAsync(
         WorkerRequest request,
         TimeSpan deadline,
         CancellationToken cancellationToken,
         SharedMemoryLease? sharedMemory = null,
-        WorkerTimeoutEvidenceScope? timeoutEvidenceScope = null
-        ,
+        WorkerTimeoutEvidenceScope? timeoutEvidenceScope = null,
         long diagnosticWorkId = 0,
         int diagnosticStageId = 0,
         ulong diagnosticDocumentId = 0,
