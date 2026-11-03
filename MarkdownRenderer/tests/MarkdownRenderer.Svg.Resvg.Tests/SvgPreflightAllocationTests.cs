@@ -28,10 +28,12 @@ public sealed class SvgPreflightAllocationTests(ITestOutputHelper output)
         Assert.NotNull(fixturePath);
         byte[] source = File.ReadAllBytes(fixturePath);
         var options = new ResvgMarkdownSvgRendererOptions();
-        InspectDenseAndRelease(source, options);
+        // A renderer reuses its inspection workspaces across preflights.
+        var workspaces = new SvgResourceInspectionWorkspacePool();
+        InspectDenseAndRelease(source, options, workspaces);
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < 100; i++)
-            InspectDenseAndRelease(source, options);
+            InspectDenseAndRelease(source, options, workspaces);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         output.WriteLine($"Dense 182-image preflight: {allocated} allocated bytes / 100 inspections.");
         Assert.True(allocated < 100 * 80 * 1024,
@@ -39,9 +41,13 @@ public sealed class SvgPreflightAllocationTests(ITestOutputHelper output)
             "The private source clone and all synchronous validation work are included; no forced GC or retained memo is used.");
     }
 
-    private static void InspectDenseAndRelease(byte[] source, ResvgMarkdownSvgRendererOptions options)
+    private static void InspectDenseAndRelease(
+        byte[] source,
+        ResvgMarkdownSvgRendererOptions options,
+        SvgResourceInspectionWorkspacePool workspaces)
     {
-        Task<SvgPreflightResult> inspection = SvgPreflight.InspectCoreAsync(source.ToArray(), options, CancellationToken.None);
+        Task<SvgPreflightResult> inspection = SvgPreflight.InspectCoreAsync(
+            source.ToArray(), options, CancellationToken.None, inspectionWorkspaces: workspaces);
         Assert.True(inspection.IsCompletedSuccessfully);
         SvgPreflightResult result = inspection.GetAwaiter().GetResult();
         try

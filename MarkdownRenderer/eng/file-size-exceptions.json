@@ -63,7 +63,7 @@
     },
     {
       "path": "src/MarkdownRenderer.Svg.Resvg/Internal/SvgPreflight.cs",
-      "lines": 2455,
+      "lines": 2333,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
 {

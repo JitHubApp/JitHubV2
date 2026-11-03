@@ -1,6 +1,4 @@
-using System.Buffers.Binary;
 using System.Globalization;
-using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Xml;
@@ -12,131 +10,6 @@ internal static class SvgPreflight
 {
     private const string SvgNamespace = "http://www.w3.org/2000/svg";
     private static ReadOnlySpan<byte> PngSignature => [137, 80, 78, 71, 13, 10, 26, 10];
-
-    /// <summary>
-    /// Keeps byte/pixel accounting deduplicated by payload while retaining
-    /// bounded context-sensitive validation for nested SVGs. A shared payload
-    /// may be reached at different nesting depths, and each depth can expose a
-    /// different over-limit descendant path.
-    /// </summary>
-    private sealed class ResourceInspectionContext : IDisposable
-    {
-        private const int MaximumPooledCollectionCapacity = 1024;
-        private static ResourceInspectionWorkspace? s_workspace0;
-        private static ResourceInspectionWorkspace? s_workspace1;
-
-        private ResourceInspectionWorkspace? _workspace;
-
-        internal ResourceInspectionContext()
-        {
-            ResourceInspectionWorkspace workspace =
-                Interlocked.Exchange(ref s_workspace0, null) ??
-                Interlocked.Exchange(ref s_workspace1, null) ??
-                new ResourceInspectionWorkspace();
-            _workspace = workspace;
-        }
-
-        // Per inspection, digest-only and positive raster entries: never retain
-        // an XML attribute string or decoded payload. Nested SVG validation is
-        // depth-sensitive and deliberately cannot take this shortcut.
-        internal bool IsRasterValidated(RasterReferenceKey key) =>
-            GetWorkspace().ValidatedRasterReferences.Contains(key);
-
-        internal void RememberRaster(RasterReferenceKey key)
-        {
-            ResourceInspectionWorkspace workspace = GetWorkspace();
-            if (workspace.ValidatedRasterReferences.Count < 256)
-                workspace.ValidatedRasterReferences.Add(key);
-        }
-
-        public bool AddResource(RasterReferenceKey identity) =>
-            GetWorkspace().Resources.Add(identity);
-
-        internal char[] GetAttributeScratch(int maximumCapacity)
-        {
-            ResourceInspectionWorkspace workspace = GetWorkspace();
-            int capacity = Math.Min(1026, maximumCapacity);
-            if (workspace.AttributeScratch is not { } scratch || scratch.Length != capacity)
-                workspace.AttributeScratch = scratch = new char[capacity];
-            return scratch;
-        }
-
-        public bool IsNestedSvgValidatedAtDepth(RasterReferenceKey identity, int embeddedDepth) =>
-            GetWorkspace().DeepestValidatedNestedSvgDepth.TryGetValue(identity, out int deepestDepth) &&
-            deepestDepth >= embeddedDepth;
-
-        public void MarkNestedSvgValidated(RasterReferenceKey identity, int embeddedDepth)
-        {
-            Dictionary<RasterReferenceKey, int> validated = GetWorkspace().DeepestValidatedNestedSvgDepth;
-            if (!validated.TryGetValue(identity, out int deepestDepth) ||
-                embeddedDepth > deepestDepth)
-            {
-                validated[identity] = embeddedDepth;
-            }
-        }
-
-        public void Dispose()
-        {
-            ResourceInspectionWorkspace? workspace = Interlocked.Exchange(ref _workspace, null);
-            if (workspace is null)
-                return;
-
-            // Detach the lease before making the workspace visible to another
-            // inspection. A stale or repeated Dispose on this context can then
-            // neither clear nor observe a later borrower's keys.
-            workspace.Clear();
-
-            if (workspace.CombinedCollectionCapacity > MaximumPooledCollectionCapacity)
-                return;
-            if (Interlocked.CompareExchange(ref s_workspace0, workspace, null) is null)
-                return;
-            _ = Interlocked.CompareExchange(ref s_workspace1, workspace, null);
-        }
-
-        private ResourceInspectionWorkspace GetWorkspace() =>
-            Volatile.Read(ref _workspace) ?? throw new ObjectDisposedException(nameof(ResourceInspectionContext));
-
-        private sealed class ResourceInspectionWorkspace
-        {
-            internal HashSet<RasterReferenceKey> Resources { get; } = [];
-            internal Dictionary<RasterReferenceKey, int> DeepestValidatedNestedSvgDepth { get; } = [];
-            internal HashSet<RasterReferenceKey> ValidatedRasterReferences { get; } = [];
-            // Retain only the small initial destination, never a grown data-URI
-            // or path buffer. Two workspaces retain at most 4,104 char bytes.
-            internal char[]? AttributeScratch { get; set; }
-
-            internal long CombinedCollectionCapacity =>
-                (long)Resources.EnsureCapacity(0) +
-                DeepestValidatedNestedSvgDepth.EnsureCapacity(0) +
-                ValidatedRasterReferences.EnsureCapacity(0);
-
-            internal void Clear()
-            {
-                Resources.Clear();
-                DeepestValidatedNestedSvgDepth.Clear();
-                ValidatedRasterReferences.Clear();
-                if (AttributeScratch is { } scratch)
-                    scratch.AsSpan().Clear();
-            }
-        }
-    }
-
-    private readonly record struct RasterReferenceKey(ulong A, ulong B, ulong C, ulong D)
-    {
-        internal static RasterReferenceKey Create(ReadOnlySpan<char> reference)
-            => Create(MemoryMarshal.AsBytes(reference));
-
-        internal static RasterReferenceKey Create(ReadOnlySpan<byte> payload)
-        {
-            Span<byte> digest = stackalloc byte[32];
-            SHA256.HashData(payload, digest);
-            return new(
-                BinaryPrimitives.ReadUInt64LittleEndian(digest),
-                BinaryPrimitives.ReadUInt64LittleEndian(digest[8..]),
-                BinaryPrimitives.ReadUInt64LittleEndian(digest[16..]),
-                BinaryPrimitives.ReadUInt64LittleEndian(digest[24..]));
-        }
-    }
 
     private static readonly string[] ForbiddenElements =
     [
@@ -158,6 +31,7 @@ internal static class SvgPreflight
         , SvgProcessSnapshotAdmission.Lease? snapshotAdmission = null
         , MarkdownSvgRenderDemand? demand = null
         , Action? beforeFirstNormalizedSegmentAllocation = null
+        , SvgResourceInspectionWorkspacePool? inspectionWorkspaces = null
         )
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -196,6 +70,7 @@ internal static class SvgPreflight
                         , demand
                         , sourcePriority
                         , allocationObserver
+                        , inspectionWorkspaces
                         );
                     allocationObserver = null;
                     ownership = null; // The inspection owns its terminal cleanup.
@@ -267,6 +142,7 @@ internal static class SvgPreflight
         , MarkdownSvgRenderDemand? demand = null
         , MarkdownSvgRenderPriority sourcePriority = MarkdownSvgRenderPriority.Visible
         , Action? beforeFirstNormalizedSegmentAllocation = null
+        , SvgResourceInspectionWorkspacePool? inspectionWorkspaces = null
         )
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -279,7 +155,8 @@ internal static class SvgPreflight
             , snapshotAdmission
             , demand
             , sourcePriority
-            , beforeFirstNormalizedSegmentAllocation).ConfigureAwait(false);
+            , beforeFirstNormalizedSegmentAllocation
+            , inspectionWorkspaces).ConfigureAwait(false);
     }
 
     internal static async Task<SvgPreflightResult> InspectCoreAsync(
@@ -291,6 +168,7 @@ internal static class SvgPreflight
         , MarkdownSvgRenderDemand? demand = null
         , MarkdownSvgRenderPriority sourcePriority = MarkdownSvgRenderPriority.Visible
         , Action? beforeFirstNormalizedSegmentAllocation = null
+        , SvgResourceInspectionWorkspacePool? inspectionWorkspaces = null
         )
     {
         SvgSourceBuffer? sourceBuffer = source;
@@ -313,7 +191,7 @@ internal static class SvgPreflight
             string? description = null;
             long embeddedBytes = 0;
             long embeddedPixels = 0;
-            var resources = new ResourceInspectionContext();
+            var resources = new SvgResourceInspectionContext(inspectionWorkspaces);
             char[]? attributeScratch = null;
             bool readNext = true;
 
@@ -1128,7 +1006,7 @@ internal static class SvgPreflight
     private static void InspectReference(
         ReadOnlySpan<char> value,
         ResvgMarkdownSvgRendererOptions options,
-        ResourceInspectionContext resources,
+        SvgResourceInspectionContext resources,
         ref long embeddedBytes,
         ref long embeddedPixels,
         CancellationToken cancellationToken,
@@ -1155,11 +1033,11 @@ internal static class SvgPreflight
         // payload-only or sampled keys could bypass validation of another URI.
         bool memoizeRaster = value.Length >= 1024 &&
             !declaredMediaType.Equals("image/svg+xml".AsSpan(), StringComparison.OrdinalIgnoreCase);
-        RasterReferenceKey referenceKey = default;
+        SvgRasterReferenceKey referenceKey = default;
         if (memoizeRaster)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            referenceKey = RasterReferenceKey.Create(value);
+            referenceKey = SvgRasterReferenceKey.Create(value);
             cancellationToken.ThrowIfCancellationRequested();
             if (resources.IsRasterValidated(referenceKey))
                 return;
@@ -1203,7 +1081,7 @@ internal static class SvgPreflight
         // byte[] digest plus a 64-character hex string per image needlessly
         // expands transient host memory on contributor grids. This keeps the
         // exact same SHA-256 deduplication without retaining either payload.
-        RasterReferenceKey identity = RasterReferenceKey.Create(decoded);
+        SvgRasterReferenceKey identity = SvgRasterReferenceKey.Create(decoded);
         bool isSvg = mediaType == "image/svg+xml";
         int nestedSvgDepth = embeddedSvgDepth + 1;
         if (isSvg && nestedSvgDepth >= options.MaxNestedSvgDepth)
@@ -1350,7 +1228,7 @@ internal static class SvgPreflight
     private static void InspectNestedSvgMetadata(
         byte[] source,
         ResvgMarkdownSvgRendererOptions options,
-        ResourceInspectionContext resources,
+        SvgResourceInspectionContext resources,
         ref long embeddedBytes,
         ref long embeddedPixels,
         CancellationToken cancellationToken,
@@ -1525,7 +1403,7 @@ internal static class SvgPreflight
         string attributeName,
         ReadOnlySpan<char> value,
         ResvgMarkdownSvgRendererOptions options,
-        ResourceInspectionContext resources,
+        SvgResourceInspectionContext resources,
         ref long embeddedBytes,
         ref long embeddedPixels,
         CancellationToken cancellationToken,
@@ -2036,7 +1914,7 @@ internal static class SvgPreflight
     private static void InspectCss(
         string css,
         ResvgMarkdownSvgRendererOptions options,
-        ResourceInspectionContext resources,
+        SvgResourceInspectionContext resources,
         ref long embeddedBytes,
         ref long embeddedPixels,
         CancellationToken cancellationToken,

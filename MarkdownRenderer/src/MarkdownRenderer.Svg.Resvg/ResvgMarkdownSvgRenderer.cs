@@ -125,6 +125,7 @@ public sealed partial class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMa
     private readonly ResvgMarkdownSvgRendererOptions _options;
     private readonly WorkerPool _workers;
     private readonly SvgRendererDocumentRegistry _documents = new();
+    private readonly SvgResourceInspectionWorkspacePool _preflightWorkspaces = new();
     private readonly SvgProcessSnapshotAdmission _snapshotAdmission;
     // This separate lifetime borrows in-flight opens, including background
     // preflight. It never retains returned document handles or source arrays.
@@ -387,6 +388,7 @@ public sealed partial class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMa
                     , _sourceOwnership
                     , snapshotAdmission
                     , demand
+                    , inspectionWorkspaces: _preflightWorkspaces
                     ).ConfigureAwait(false);
             }
             catch (SvgPreflightCapacityUnavailableException exception)
