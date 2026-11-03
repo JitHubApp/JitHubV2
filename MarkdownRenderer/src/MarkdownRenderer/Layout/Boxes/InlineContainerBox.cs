@@ -20,7 +20,7 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// Owns a <see cref="CanvasTextLayout"/> built from a single concatenated buffer
 /// with per-run style spans.
 /// </summary>
-internal sealed partial class InlineContainerBox : BlockBox
+internal sealed class InlineContainerBox : BlockBox
 {
     // Keep descriptor scans under the snapshot lock and source-fence checks on
     // the publishing UI thread predictably bounded for unusual Markdown input.
@@ -55,7 +55,7 @@ internal sealed partial class InlineContainerBox : BlockBox
     // placement clones while each clone resolves against its own context.
     private List<ElementStyle[]?>? _resolvedLinkInlineSpanStyles;
     internal int ResolvedRunStyleCount => _resolvedRunStyles?.Count ?? _runs.Count;
-    private ElementStyle? GetCachedRunStyle(int index)
+    internal ElementStyle? GetCachedRunStyle(int index)
     {
         if ((uint)index >= (uint)_runs.Count)
             throw new ArgumentOutOfRangeException(nameof(index));
@@ -792,10 +792,102 @@ internal sealed partial class InlineContainerBox : BlockBox
         return (start, end);
     }
 
+    /// <summary>
+    /// Captures a measured Body/Heading source and the exact private clone
+    /// created from it. The clone must be measured and arranged outside the
+    /// source gate before <see cref="InlineMeasuredPlacementTransfer.IsCurrentAndPrepared"/>
+    /// succeeds. Unsupported roots fail closed.
+    /// </summary>
+    internal bool TryCaptureMeasuredPlacementTransfer(
+        InlineContainerBox prepared,
+        float expectedAvailableWidth,
+        out InlineMeasuredPlacementTransfer? transfer)
+        => InlineMeasuredPlacementCapture.TryCaptureMeasuredPlacementTransfer(
+            this,
+            prepared,
+            expectedAvailableWidth,
+            out transfer);
+
+    /// <summary>
+    /// Root-local-only variant for the explicit measurement-only vector-run
+    /// recipe. Do not call from whole-tree COW; the candidate has no painter.
+    /// </summary>
+    internal bool TryCaptureMeasuredPlacementTransferWithMeasuredVectorPlacement(
+        InlineContainerBox prepared,
+        float expectedAvailableWidth,
+        out InlineMeasuredPlacementTransfer? transfer)
+        => InlineMeasuredPlacementCapture.TryCaptureMeasuredPlacementTransferWithMeasuredVectorPlacement(
+            this,
+            prepared,
+            expectedAvailableWidth,
+            out transfer);
+
+    /// <summary>
+    /// Root-local image-completion variant for a table cell. The candidate is
+    /// measurement-only and its vector geometry is remapped to stable source
+    /// runs before the placement transaction commits.
+    /// </summary>
+    internal bool TryCaptureTableCellMeasuredPlacementTransferWithMeasuredVectorPlacement(
+        InlineContainerBox prepared,
+        float expectedSourceWidth,
+        out InlineMeasuredPlacementTransfer? transfer)
+        => InlineMeasuredPlacementCapture.TryCaptureTableCellMeasuredPlacementTransferWithMeasuredVectorPlacement(
+            this,
+            prepared,
+            expectedSourceWidth,
+            out transfer);
+
+    /// <summary>
+    /// Captures a table-cell source and its private clone before the candidate
+    /// table is measured. The source remains fenced at its exact current cell
+    /// width; the prepared cell may later be measured at a different width as
+    /// the candidate table rebalances its columns.
+    /// </summary>
+    internal bool TryCaptureTableCellMeasuredPlacementTransfer(
+        InlineContainerBox prepared,
+        float expectedSourceWidth,
+        out InlineMeasuredPlacementTransfer? transfer)
+        => InlineMeasuredPlacementCapture.TryCaptureTableCellMeasuredPlacementTransfer(
+            this,
+            prepared,
+            expectedSourceWidth,
+            out transfer);
+
+    /// <summary>
+    /// Captures a measured image-free Body, Heading, or ListMarker leaf inside
+    /// an ordinary StackBox/ListItemBox placement tree. Both the published
+    /// source and the completed private leaf remain fenced at the same exact
+    /// width; unlike a table cell this mode never permits column rebalancing.
+    /// </summary>
+    internal bool TryCaptureContainerLeafMeasuredPlacementTransfer(
+        InlineContainerBox prepared,
+        float expectedAvailableWidth,
+        out InlineMeasuredPlacementTransfer? transfer)
+        => InlineMeasuredPlacementCapture.TryCaptureContainerLeafMeasuredPlacementTransfer(
+            this,
+            prepared,
+            expectedAvailableWidth,
+            out transfer);
+
+    /// <summary>
+    /// Root-local image-completion variant for a vector-bearing leaf in an
+    /// ordinary stack/list placement tree. It never publishes its measured-only
+    /// candidate runs.
+    /// </summary>
+    internal bool TryCaptureContainerLeafMeasuredPlacementTransferWithMeasuredVectorPlacement(
+        InlineContainerBox prepared,
+        float expectedAvailableWidth,
+        out InlineMeasuredPlacementTransfer? transfer)
+        => InlineMeasuredPlacementCapture.TryCaptureContainerLeafMeasuredPlacementTransferWithMeasuredVectorPlacement(
+            this,
+            prepared,
+            expectedAvailableWidth,
+            out transfer);
+
     public override float Measure(float availableWidth)
     {
         ThrowIfCancellationRequested();
-        if (!HasValidNativeLayoutCustody(this))
+        if (!InlineMeasuredPlacementCapture.HasValidNativeLayoutCustody(this))
             throw new InvalidOperationException("An inline text layout is missing its reserved native-retirement owner.");
         var style = GetContainerStyle();
         var padding = GetEffectivePadding(style);
@@ -1665,7 +1757,7 @@ internal sealed partial class InlineContainerBox : BlockBox
 
     public override void Dispose()
     {
-        if (!HasValidNativeLayoutCustody(this))
+        if (!InlineMeasuredPlacementCapture.HasValidNativeLayoutCustody(this))
             throw new InvalidOperationException("Cannot detach inline text layouts without their reserved native-retirement owners.");
 
         var cleanup = new BlockBoxCleanupScope();
@@ -1748,7 +1840,7 @@ internal sealed partial class InlineContainerBox : BlockBox
 
     internal CanvasTextLayout EnsureSelectionLayout(Color color, ElementStyle style)
     {
-        if (!HasValidNativeLayoutCustody(this))
+        if (!InlineMeasuredPlacementCapture.HasValidNativeLayoutCustody(this))
             throw new InvalidOperationException("Cannot replace an inline selection layout without its reserved native-retirement owner.");
 
         EnsureBuffer();

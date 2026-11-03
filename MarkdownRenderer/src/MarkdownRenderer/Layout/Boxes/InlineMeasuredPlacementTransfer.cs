@@ -174,7 +174,7 @@ internal sealed class InlineMeasuredPlacementTransfer
             vectorCount != prepared.VectorSceneRunCount ||
             (vectorCount != 0 && !_allowMeasuredVectorPlacement) ||
             prepared.IsDirty || prepared.TextLayout is null || prepared.IsBufferDirty ||
-            !InlineContainerBox.HasValidNativeLayoutCustody(prepared))
+            !InlineMeasuredPlacementCapture.HasValidNativeLayoutCustody(prepared))
         {
             return false;
         }
@@ -191,7 +191,7 @@ internal sealed class InlineMeasuredPlacementTransfer
             }
             if (placementOrdinal >= _preparedVectorPlacements.Length ||
                 !run.MatchesSourceAndPreparedVectorState(_allowMeasuredVectorPlacement) ||
-                !InlineContainerBox.IsFiniteNonnegative(preparedVector.LocalBounds))
+                !InlineMeasuredPlacementCapture.IsFiniteNonnegative(preparedVector.LocalBounds))
             {
                 return false;
             }
@@ -225,7 +225,7 @@ internal sealed class InlineMeasuredPlacementTransfer
                 InlineSceneGeometry measuredGeometry = candidateGeometry[geometryOrdinal];
                 if (!ReferenceEquals(measuredGeometry.Run, preparedVector) ||
                     !ReferenceEquals(measuredGeometry.Run.Scene, run.VectorScene) ||
-                    !InlineContainerBox.HasUsableMeasuredVectorRegions(measuredGeometry))
+                    !InlineMeasuredPlacementCapture.HasUsableMeasuredVectorRegions(measuredGeometry))
                 {
                     return false;
                 }
@@ -330,8 +330,8 @@ internal sealed class InlineMeasuredPlacementTransfer
                 prepared.DesiredWidth != expected.Width ||
                 prepared.DesiredHeight != expected.Height ||
                 prepared.DesiredBaseline != expected.Baseline ||
-                !InlineContainerBox.SameRect(prepared.LocalBounds, expected.LocalBounds) ||
-                !InlineContainerBox.IsFiniteNonnegative(prepared.LocalBounds))
+                !InlineMeasuredPlacementCapture.SameRect(prepared.LocalBounds, expected.LocalBounds) ||
+                !InlineMeasuredPlacementCapture.IsFiniteNonnegative(prepared.LocalBounds))
             {
                 return false;
             }
@@ -351,10 +351,10 @@ internal sealed class InlineMeasuredPlacementTransfer
         InlineContainerBox source = _source;
         InlineContainerBox prepared = _prepared;
         bool compatibleRootInputs = _isTableCellTransfer
-            ? InlineContainerBox.AreCompatibleTableCellRootInputs(source, prepared, _allowMeasuredVectorPlacement)
+            ? InlineMeasuredPlacementCapture.AreCompatibleTableCellRootInputs(source, prepared, _allowMeasuredVectorPlacement)
             : _isContainerLeafTransfer
-            ? InlineContainerBox.AreCompatibleContainerLeafRootInputs(source, prepared, _allowMeasuredVectorPlacement)
-            : InlineContainerBox.AreCompatibleMeasuredRootInputs(
+            ? InlineMeasuredPlacementCapture.AreCompatibleContainerLeafRootInputs(source, prepared, _allowMeasuredVectorPlacement)
+            : InlineMeasuredPlacementCapture.AreCompatibleMeasuredRootInputs(
                 source, prepared, _expectedAvailableWidth, _allowMeasuredVectorPlacement);
         bool preparedWidthMatches = _isTableCellTransfer
             ? float.IsFinite(prepared.LastMeasuredWidth) && prepared.LastMeasuredWidth > 0f &&
@@ -378,7 +378,7 @@ internal sealed class InlineMeasuredPlacementTransfer
             source.IsBufferDirty != _sourceBufferDirty ||
             !ReferenceEquals(source.LayoutBuffer, _sourceBuffer) ||
             source.RunTextLength != _sourceRunTextLength ||
-            !InlineContainerBox.SameRect(source.Bounds, _sourceBounds) ||
+            !InlineMeasuredPlacementCapture.SameRect(source.Bounds, _sourceBounds) ||
             !source.RawPlacementMargin.Equals(_sourceRawMargin) ||
             !prepared.RawPlacementMargin.Equals(_preparedRawMargin) ||
             source.CurrentSceneGeometryGeneration != _sourceSceneGeneration ||
@@ -389,9 +389,9 @@ internal sealed class InlineMeasuredPlacementTransfer
             source.UsesProgressiveNativeSceneResidency != _sourceProgressiveSceneResidency ||
             !ReferenceEquals(source.ResolvedContainerStyle, _resolvedContainerStyle) ||
             !ReferenceEquals(prepared.ResolvedContainerStyle, _resolvedContainerStyle) ||
-            !InlineContainerBox.MatchesContainerKeys(source, _containerContextKeys, _containerAliasKeys) ||
-            !InlineContainerBox.MatchesContainerKeys(prepared, _containerContextKeys, _containerAliasKeys) ||
-            !InlineContainerBox.MatchesRuns(
+            !InlineMeasuredPlacementCapture.MatchesContainerKeys(source, _containerContextKeys, _containerAliasKeys) ||
+            !InlineMeasuredPlacementCapture.MatchesContainerKeys(prepared, _containerContextKeys, _containerAliasKeys) ||
+            !InlineMeasuredPlacementCapture.MatchesRuns(
                 source, prepared, _runs, _effectiveRunAliases, _sourceResolvedRunStyles,
                 _allowMeasuredVectorPlacement))
         {
@@ -408,7 +408,7 @@ internal sealed class InlineMeasuredPlacementTransfer
             prepared.IsDirty || prepared.IsBufferDirty ||
             !float.IsFinite(prepared.LastMeasuredWidth) ||
             !preparedWidthMatches ||
-            !InlineContainerBox.IsFiniteNonnegative(prepared.Bounds) ||
+            !InlineMeasuredPlacementCapture.IsFiniteNonnegative(prepared.Bounds) ||
             prepared.Bounds.Width != prepared.LastMeasuredWidth ||
             source.IsDirty ||
             !ReferenceEquals(source.TextLayout, _sourceLayout) ||
@@ -419,7 +419,7 @@ internal sealed class InlineMeasuredPlacementTransfer
             ReferenceEquals(prepared.TextLayout, prepared.SelectionLayout) ||
             (!_allowMeasuredVectorPlacement &&
                 (source.VectorSceneRunCount != 0 || prepared.VectorSceneRunCount != 0)) ||
-            !InlineContainerBox.HasValidNativeLayoutCustody(source) || !InlineContainerBox.HasValidNativeLayoutCustody(prepared) ||
+            !InlineMeasuredPlacementCapture.HasValidNativeLayoutCustody(source) || !InlineMeasuredPlacementCapture.HasValidNativeLayoutCustody(prepared) ||
             (!_allowMeasuredVectorPlacement &&
                 (source.PendingSceneGeometry.Length != 0 || prepared.PendingSceneGeometry.Length != 0)) ||
             !MatchesPreparedVectorGeometry() ||
@@ -458,38 +458,38 @@ internal sealed class InlineMeasuredPlacementTransfer
     internal bool HasNativeLayoutAlias(InlineMeasuredPlacementTransfer other)
     {
         ArgumentNullException.ThrowIfNull(other);
-        return InlineContainerBox.Aliases(_source.TextLayout, other._source.TextLayout) ||
-            InlineContainerBox.Aliases(_source.TextLayout, other._source.SelectionLayout) ||
-            InlineContainerBox.Aliases(_source.SelectionLayout, other._source.TextLayout) ||
-            InlineContainerBox.Aliases(_source.SelectionLayout, other._source.SelectionLayout) ||
-            InlineContainerBox.Aliases(_source.TextLayout, other._prepared.TextLayout) ||
-            InlineContainerBox.Aliases(_source.TextLayout, other._prepared.SelectionLayout) ||
-            InlineContainerBox.Aliases(_source.SelectionLayout, other._prepared.TextLayout) ||
-            InlineContainerBox.Aliases(_source.SelectionLayout, other._prepared.SelectionLayout) ||
-            InlineContainerBox.Aliases(_prepared.TextLayout, other._source.TextLayout) ||
-            InlineContainerBox.Aliases(_prepared.TextLayout, other._source.SelectionLayout) ||
-            InlineContainerBox.Aliases(_prepared.SelectionLayout, other._source.TextLayout) ||
-            InlineContainerBox.Aliases(_prepared.SelectionLayout, other._source.SelectionLayout) ||
-            InlineContainerBox.Aliases(_prepared.TextLayout, other._prepared.TextLayout) ||
-            InlineContainerBox.Aliases(_prepared.TextLayout, other._prepared.SelectionLayout) ||
-            InlineContainerBox.Aliases(_prepared.SelectionLayout, other._prepared.TextLayout) ||
-            InlineContainerBox.Aliases(_prepared.SelectionLayout, other._prepared.SelectionLayout) ||
-            InlineContainerBox.Aliases(_source.TextLayoutRetirementRecord, other._source.TextLayoutRetirementRecord) ||
-            InlineContainerBox.Aliases(_source.TextLayoutRetirementRecord, other._source.SelectionLayoutRetirementRecord) ||
-            InlineContainerBox.Aliases(_source.SelectionLayoutRetirementRecord, other._source.TextLayoutRetirementRecord) ||
-            InlineContainerBox.Aliases(_source.SelectionLayoutRetirementRecord, other._source.SelectionLayoutRetirementRecord) ||
-            InlineContainerBox.Aliases(_source.TextLayoutRetirementRecord, other._prepared.TextLayoutRetirementRecord) ||
-            InlineContainerBox.Aliases(_source.TextLayoutRetirementRecord, other._prepared.SelectionLayoutRetirementRecord) ||
-            InlineContainerBox.Aliases(_source.SelectionLayoutRetirementRecord, other._prepared.TextLayoutRetirementRecord) ||
-            InlineContainerBox.Aliases(_source.SelectionLayoutRetirementRecord, other._prepared.SelectionLayoutRetirementRecord) ||
-            InlineContainerBox.Aliases(_prepared.TextLayoutRetirementRecord, other._source.TextLayoutRetirementRecord) ||
-            InlineContainerBox.Aliases(_prepared.TextLayoutRetirementRecord, other._source.SelectionLayoutRetirementRecord) ||
-            InlineContainerBox.Aliases(_prepared.SelectionLayoutRetirementRecord, other._source.TextLayoutRetirementRecord) ||
-            InlineContainerBox.Aliases(_prepared.SelectionLayoutRetirementRecord, other._source.SelectionLayoutRetirementRecord) ||
-            InlineContainerBox.Aliases(_prepared.TextLayoutRetirementRecord, other._prepared.TextLayoutRetirementRecord) ||
-            InlineContainerBox.Aliases(_prepared.TextLayoutRetirementRecord, other._prepared.SelectionLayoutRetirementRecord) ||
-            InlineContainerBox.Aliases(_prepared.SelectionLayoutRetirementRecord, other._prepared.TextLayoutRetirementRecord) ||
-            InlineContainerBox.Aliases(_prepared.SelectionLayoutRetirementRecord, other._prepared.SelectionLayoutRetirementRecord);
+        return InlineMeasuredPlacementCapture.Aliases(_source.TextLayout, other._source.TextLayout) ||
+            InlineMeasuredPlacementCapture.Aliases(_source.TextLayout, other._source.SelectionLayout) ||
+            InlineMeasuredPlacementCapture.Aliases(_source.SelectionLayout, other._source.TextLayout) ||
+            InlineMeasuredPlacementCapture.Aliases(_source.SelectionLayout, other._source.SelectionLayout) ||
+            InlineMeasuredPlacementCapture.Aliases(_source.TextLayout, other._prepared.TextLayout) ||
+            InlineMeasuredPlacementCapture.Aliases(_source.TextLayout, other._prepared.SelectionLayout) ||
+            InlineMeasuredPlacementCapture.Aliases(_source.SelectionLayout, other._prepared.TextLayout) ||
+            InlineMeasuredPlacementCapture.Aliases(_source.SelectionLayout, other._prepared.SelectionLayout) ||
+            InlineMeasuredPlacementCapture.Aliases(_prepared.TextLayout, other._source.TextLayout) ||
+            InlineMeasuredPlacementCapture.Aliases(_prepared.TextLayout, other._source.SelectionLayout) ||
+            InlineMeasuredPlacementCapture.Aliases(_prepared.SelectionLayout, other._source.TextLayout) ||
+            InlineMeasuredPlacementCapture.Aliases(_prepared.SelectionLayout, other._source.SelectionLayout) ||
+            InlineMeasuredPlacementCapture.Aliases(_prepared.TextLayout, other._prepared.TextLayout) ||
+            InlineMeasuredPlacementCapture.Aliases(_prepared.TextLayout, other._prepared.SelectionLayout) ||
+            InlineMeasuredPlacementCapture.Aliases(_prepared.SelectionLayout, other._prepared.TextLayout) ||
+            InlineMeasuredPlacementCapture.Aliases(_prepared.SelectionLayout, other._prepared.SelectionLayout) ||
+            InlineMeasuredPlacementCapture.Aliases(_source.TextLayoutRetirementRecord, other._source.TextLayoutRetirementRecord) ||
+            InlineMeasuredPlacementCapture.Aliases(_source.TextLayoutRetirementRecord, other._source.SelectionLayoutRetirementRecord) ||
+            InlineMeasuredPlacementCapture.Aliases(_source.SelectionLayoutRetirementRecord, other._source.TextLayoutRetirementRecord) ||
+            InlineMeasuredPlacementCapture.Aliases(_source.SelectionLayoutRetirementRecord, other._source.SelectionLayoutRetirementRecord) ||
+            InlineMeasuredPlacementCapture.Aliases(_source.TextLayoutRetirementRecord, other._prepared.TextLayoutRetirementRecord) ||
+            InlineMeasuredPlacementCapture.Aliases(_source.TextLayoutRetirementRecord, other._prepared.SelectionLayoutRetirementRecord) ||
+            InlineMeasuredPlacementCapture.Aliases(_source.SelectionLayoutRetirementRecord, other._prepared.TextLayoutRetirementRecord) ||
+            InlineMeasuredPlacementCapture.Aliases(_source.SelectionLayoutRetirementRecord, other._prepared.SelectionLayoutRetirementRecord) ||
+            InlineMeasuredPlacementCapture.Aliases(_prepared.TextLayoutRetirementRecord, other._source.TextLayoutRetirementRecord) ||
+            InlineMeasuredPlacementCapture.Aliases(_prepared.TextLayoutRetirementRecord, other._source.SelectionLayoutRetirementRecord) ||
+            InlineMeasuredPlacementCapture.Aliases(_prepared.SelectionLayoutRetirementRecord, other._source.TextLayoutRetirementRecord) ||
+            InlineMeasuredPlacementCapture.Aliases(_prepared.SelectionLayoutRetirementRecord, other._source.SelectionLayoutRetirementRecord) ||
+            InlineMeasuredPlacementCapture.Aliases(_prepared.TextLayoutRetirementRecord, other._prepared.TextLayoutRetirementRecord) ||
+            InlineMeasuredPlacementCapture.Aliases(_prepared.TextLayoutRetirementRecord, other._prepared.SelectionLayoutRetirementRecord) ||
+            InlineMeasuredPlacementCapture.Aliases(_prepared.SelectionLayoutRetirementRecord, other._prepared.TextLayoutRetirementRecord) ||
+            InlineMeasuredPlacementCapture.Aliases(_prepared.SelectionLayoutRetirementRecord, other._prepared.SelectionLayoutRetirementRecord);
     }
 
     /// <summary>

@@ -1,94 +1,80 @@
 using System;
 using System.Collections.Generic;
-using MarkdownRenderer.Theming;
 using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
+using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Layout.Boxes;
 
-internal sealed partial class InlineContainerBox
+/// <summary>
+/// Captures an inline measured-placement transfer between a published
+/// inline box and its private measured clone, and holds the shared fences
+/// that validate it: supported roots, compatible inputs, run and key
+/// identity, and native-layout custody.
+/// </summary>
+internal static class InlineMeasuredPlacementCapture
 {
-
-    /// <summary>
-    /// Captures a measured Body/Heading source and the exact private clone
-    /// created from it. The clone must be measured and arranged outside the
-    /// source gate before <see cref="InlineMeasuredPlacementTransfer.IsCurrentAndPrepared"/>
-    /// succeeds. Unsupported roots fail closed.
-    /// </summary>
-    internal bool TryCaptureMeasuredPlacementTransfer(
+    internal static bool TryCaptureMeasuredPlacementTransfer(
+        InlineContainerBox box,
         InlineContainerBox prepared,
         float expectedAvailableWidth,
         out InlineMeasuredPlacementTransfer? transfer)
         => TryCaptureMeasuredPlacementTransferCore(
+            box,
             prepared, expectedAvailableWidth, isTableCellTransfer: false, out transfer);
 
-    /// <summary>
-    /// Root-local-only variant for the explicit measurement-only vector-run
-    /// recipe. Do not call from whole-tree COW; the candidate has no painter.
-    /// </summary>
-    internal bool TryCaptureMeasuredPlacementTransferWithMeasuredVectorPlacement(
+    internal static bool TryCaptureMeasuredPlacementTransferWithMeasuredVectorPlacement(
+        InlineContainerBox box,
         InlineContainerBox prepared,
         float expectedAvailableWidth,
         out InlineMeasuredPlacementTransfer? transfer)
         => TryCaptureMeasuredPlacementTransferCore(
+            box,
             prepared, expectedAvailableWidth, isTableCellTransfer: false, out transfer,
             allowMeasuredVectorPlacement: true);
 
-    /// <summary>
-    /// Root-local image-completion variant for a table cell. The candidate is
-    /// measurement-only and its vector geometry is remapped to stable source
-    /// runs before the placement transaction commits.
-    /// </summary>
-    internal bool TryCaptureTableCellMeasuredPlacementTransferWithMeasuredVectorPlacement(
+    internal static bool TryCaptureTableCellMeasuredPlacementTransferWithMeasuredVectorPlacement(
+        InlineContainerBox box,
         InlineContainerBox prepared,
         float expectedSourceWidth,
         out InlineMeasuredPlacementTransfer? transfer)
         => TryCaptureMeasuredPlacementTransferCore(
+            box,
             prepared, expectedSourceWidth, isTableCellTransfer: true, out transfer,
             allowMeasuredVectorPlacement: true);
 
-    /// <summary>
-    /// Captures a table-cell source and its private clone before the candidate
-    /// table is measured. The source remains fenced at its exact current cell
-    /// width; the prepared cell may later be measured at a different width as
-    /// the candidate table rebalances its columns.
-    /// </summary>
-    internal bool TryCaptureTableCellMeasuredPlacementTransfer(
+    internal static bool TryCaptureTableCellMeasuredPlacementTransfer(
+        InlineContainerBox box,
         InlineContainerBox prepared,
         float expectedSourceWidth,
         out InlineMeasuredPlacementTransfer? transfer)
         => TryCaptureMeasuredPlacementTransferCore(
+            box,
             prepared, expectedSourceWidth, isTableCellTransfer: true, out transfer);
 
-    /// <summary>
-    /// Captures a measured image-free Body, Heading, or ListMarker leaf inside
-    /// an ordinary StackBox/ListItemBox placement tree. Both the published
-    /// source and the completed private leaf remain fenced at the same exact
-    /// width; unlike a table cell this mode never permits column rebalancing.
-    /// </summary>
-    internal bool TryCaptureContainerLeafMeasuredPlacementTransfer(
+    internal static bool TryCaptureContainerLeafMeasuredPlacementTransfer(
+        InlineContainerBox box,
         InlineContainerBox prepared,
         float expectedAvailableWidth,
         out InlineMeasuredPlacementTransfer? transfer)
         => TryCaptureMeasuredPlacementTransferCore(
+            box,
             prepared, expectedAvailableWidth, isTableCellTransfer: false, out transfer,
             isContainerLeafTransfer: true);
 
-    /// <summary>
-    /// Root-local image-completion variant for a vector-bearing leaf in an
-    /// ordinary stack/list placement tree. It never publishes its measured-only
-    /// candidate runs.
-    /// </summary>
-    internal bool TryCaptureContainerLeafMeasuredPlacementTransferWithMeasuredVectorPlacement(
+    internal static bool TryCaptureContainerLeafMeasuredPlacementTransferWithMeasuredVectorPlacement(
+        InlineContainerBox box,
         InlineContainerBox prepared,
         float expectedAvailableWidth,
         out InlineMeasuredPlacementTransfer? transfer)
         => TryCaptureMeasuredPlacementTransferCore(
+            box,
             prepared, expectedAvailableWidth, isTableCellTransfer: false, out transfer,
             isContainerLeafTransfer: true, allowMeasuredVectorPlacement: true);
 
-    private bool TryCaptureMeasuredPlacementTransferCore(
+    private static bool TryCaptureMeasuredPlacementTransferCore(
+        InlineContainerBox box,
         InlineContainerBox prepared,
         float expectedAvailableWidth,
         bool isTableCellTransfer,
@@ -99,45 +85,45 @@ internal sealed partial class InlineContainerBox
         ArgumentNullException.ThrowIfNull(prepared);
         transfer = null;
         bool rootsSupported = isTableCellTransfer
-            ? IsSupportedTableCellMeasuredPlacementRoot(this, allowMeasuredVectorPlacement) &&
+            ? IsSupportedTableCellMeasuredPlacementRoot(box, allowMeasuredVectorPlacement) &&
                 IsSupportedTableCellMeasuredPlacementRoot(prepared, allowMeasuredVectorPlacement)
             : isContainerLeafTransfer
-            ? IsSupportedContainerLeafMeasuredPlacementRoot(this, allowMeasuredVectorPlacement) &&
+            ? IsSupportedContainerLeafMeasuredPlacementRoot(box, allowMeasuredVectorPlacement) &&
                 IsSupportedContainerLeafMeasuredPlacementRoot(prepared, allowMeasuredVectorPlacement)
-            : IsSupportedMeasuredPlacementRoot(this, allowMeasuredVectorPlacement) &&
+            : IsSupportedMeasuredPlacementRoot(box, allowMeasuredVectorPlacement) &&
                 IsSupportedMeasuredPlacementRoot(prepared, allowMeasuredVectorPlacement);
         bool measuredSource = isTableCellTransfer
-            ? IsMeasuredSourceForTableCellTransfer(expectedAvailableWidth, allowMeasuredVectorPlacement)
+            ? IsMeasuredSourceForTableCellTransfer(box, expectedAvailableWidth, allowMeasuredVectorPlacement)
             : isContainerLeafTransfer
-            ? IsMeasuredSourceForContainerLeafTransfer(expectedAvailableWidth, allowMeasuredVectorPlacement)
-            : IsMeasuredSourceForTransfer(expectedAvailableWidth, allowMeasuredVectorPlacement);
+            ? IsMeasuredSourceForContainerLeafTransfer(box, expectedAvailableWidth, allowMeasuredVectorPlacement)
+            : IsMeasuredSourceForTransfer(box, expectedAvailableWidth, allowMeasuredVectorPlacement);
         int runCount = 0;
         int imageCount = 0;
         bool placementCountsValid = allowMeasuredVectorPlacement
-            ? TryGetPrivateRasterPlacementCountsWithMeasuredVectorPlacement(
+            ? box.TryGetPrivateRasterPlacementCountsWithMeasuredVectorPlacement(
                 prepared.Context, expectedAvailableWidth, out runCount,
                 out imageCount, out _)
-            : TryGetPrivateRasterPlacementCounts(
+            : box.TryGetPrivateRasterPlacementCounts(
                 prepared.Context, expectedAvailableWidth, out runCount,
                 out imageCount, out _, allowUnmeasuredTextOnly: false,
                 allowIdleImagePlacements: false, allowCodeForegroundSpans: false);
-        if (ReferenceEquals(this, prepared) ||
+        if (ReferenceEquals(box, prepared) ||
             !float.IsFinite(expectedAvailableWidth) || expectedAvailableWidth <= 0f ||
             !rootsSupported ||
-            !ArePrivateRasterPlacementContextsCompatible(Context, prepared.Context) ||
-            !RawPlacementMargin.Equals(prepared.RawPlacementMargin) ||
+            !InlineContainerBox.ArePrivateRasterPlacementContextsCompatible(box.Context, prepared.Context) ||
+            !box.RawPlacementMargin.Equals(prepared.RawPlacementMargin) ||
             !placementCountsValid ||
             (!isTableCellTransfer && !isContainerLeafTransfer && imageCount == 0) ||
             (isContainerLeafTransfer && imageCount != 0) ||
-            imageCount > MaximumPrivateRasterPlacementImages ||
+            imageCount > InlineContainerBox.MaximumPrivateRasterPlacementImages ||
             (!isTableCellTransfer && !isContainerLeafTransfer && runCount == 0) ||
-            runCount > MaximumPrivateRasterPlacementRuns ||
+            runCount > InlineContainerBox.MaximumPrivateRasterPlacementRuns ||
             !measuredSource ||
             !IsUnmeasuredPrivateCloneOf(
-                this, prepared, expectedAvailableWidth,
+                box, prepared, expectedAvailableWidth,
                 allowImageFree: isTableCellTransfer || isContainerLeafTransfer,
                 allowMeasuredVectorPlacement: allowMeasuredVectorPlacement) ||
-            !NativeLayoutsAreDistinct(this) || !NativeLayoutsAreDistinct(prepared))
+            !NativeLayoutsAreDistinct(box) || !NativeLayoutsAreDistinct(prepared))
         {
             return false;
         }
@@ -149,11 +135,11 @@ internal sealed partial class InlineContainerBox
         var seenPreparedImages = new ImageBox[imageCount];
         for (int index = 0; index < runCount; index++)
         {
-            InlineRun sourceRun = _runs[index];
-            InlineRun preparedRun = prepared._runs[index];
+            InlineRun sourceRun = box.RunList[index];
+            InlineRun preparedRun = prepared.RunList[index];
             if (!InlineMeasuredRunState.TryCreate(
                     sourceRun, preparedRun, index, offset,
-                    allowMeasuredVectorPlacement, _resolvedContainerStyle!.FontSize,
+                    allowMeasuredVectorPlacement, box.ResolvedContainerStyle!.FontSize,
                     out runStates[index]))
                 return false;
 
@@ -178,10 +164,10 @@ internal sealed partial class InlineContainerBox
             offset += sourceRun.TextLength;
         }
 
-        if (imageOrdinal != imageCount || offset != _runTextLength ||
-            (_inlineImageRuns?.Count ?? 0) != imageCount ||
-            (prepared._inlineImageRuns?.Count ?? 0) != imageCount ||
-            ((_inlineImageRuns is null) != (prepared._inlineImageRuns is null)))
+        if (imageOrdinal != imageCount || offset != box.RunTextLength ||
+            (box.InlineImageEntries?.Count ?? 0) != imageCount ||
+            (prepared.InlineImageEntries?.Count ?? 0) != imageCount ||
+            ((box.InlineImageEntries is null) != (prepared.InlineImageEntries is null)))
         {
             return false;
         }
@@ -191,10 +177,10 @@ internal sealed partial class InlineContainerBox
         {
             if (run.SourceImageRun is null || run.PreparedImageRun is null)
                 continue;
-            if (_inlineImageRuns is null || prepared._inlineImageRuns is null)
+            if (box.InlineImageEntries is null || prepared.InlineImageEntries is null)
                 return false;
             if (!run.MatchesImageEntries(
-                    _inlineImageRuns[imageOrdinal], prepared._inlineImageRuns[imageOrdinal]))
+                    box.InlineImageEntries[imageOrdinal], prepared.InlineImageEntries[imageOrdinal]))
             {
                 return false;
             }
@@ -205,33 +191,33 @@ internal sealed partial class InlineContainerBox
         var resolvedStyles = new ElementStyle?[runCount];
         for (int index = 0; index < runCount; index++)
         {
-            string[] sourceAliases = GetEffectiveRunAliases(index);
+            string[] sourceAliases = box.GetEffectiveRunAliases(index);
             string[] preparedAliases = prepared.GetEffectiveRunAliases(index);
             if (ReferenceEquals(sourceAliases, preparedAliases) ||
                 !MatchesKeys(sourceAliases, preparedAliases) ||
-                !ReferenceEquals(GetCachedRunStyle(index), prepared.GetCachedRunStyle(index)))
+                !ReferenceEquals(box.GetCachedRunStyle(index), prepared.GetCachedRunStyle(index)))
             {
                 return false;
             }
             effectiveAliases[index] = preparedAliases;
-            resolvedStyles[index] = GetCachedRunStyle(index);
+            resolvedStyles[index] = box.GetCachedRunStyle(index);
         }
 
-        if (ReferenceEquals(_styleContextKeys, prepared._styleContextKeys) ||
-            ReferenceEquals(_styleAliasKeys, prepared._styleAliasKeys) ||
-            !MatchesKeys(_styleContextKeys, prepared._styleContextKeys) ||
-            !MatchesKeys(_styleAliasKeys, prepared._styleAliasKeys))
+        if (ReferenceEquals(box.StyleContextKeys, prepared.StyleContextKeys) ||
+            ReferenceEquals(box.StyleAliasKeys, prepared.StyleAliasKeys) ||
+            !MatchesKeys(box.StyleContextKeys, prepared.StyleContextKeys) ||
+            !MatchesKeys(box.StyleAliasKeys, prepared.StyleAliasKeys))
         {
             return false;
         }
 
         transfer = new InlineMeasuredPlacementTransfer(
-            this,
+            box,
             prepared,
             expectedAvailableWidth,
             runStates,
-            prepared._styleContextKeys,
-            prepared._styleAliasKeys,
+            prepared.StyleContextKeys,
+            prepared.StyleAliasKeys,
             effectiveAliases,
             resolvedStyles,
             isTableCellTransfer,
@@ -247,11 +233,11 @@ internal sealed partial class InlineContainerBox
         box.CodeLanguage is null && box.StyleState is null &&
         box.CodeBlockTextOffset == 0 && box.CodeBlockTextLength == 0 &&
         box.SafeHtmlInlineFlowScopeId is null &&
-        box._inlineEmbedRuns is null &&
-        (allowMeasuredVectorPlacement || box._vectorSceneRunCount == 0) &&
-        !box._hasDeferredSceneMarker &&
-        (allowMeasuredVectorPlacement || box._pendingSceneGeometry.Length == 0) &&
-        box._foregroundSpans.Count == 0;
+        box.InlineEmbedEntries is null &&
+        (allowMeasuredVectorPlacement || box.VectorSceneRunCount == 0) &&
+        !box.HasDeferredSceneMarker &&
+        (allowMeasuredVectorPlacement || box.PendingSceneGeometry.Length == 0) &&
+        box.ForegroundSpans.Count == 0;
 
     private static bool IsSupportedTableCellMeasuredPlacementRoot(
         InlineContainerBox box,
@@ -260,11 +246,11 @@ internal sealed partial class InlineContainerBox
         box.BlockIndex > 0 && box.CodeLanguage is null && box.StyleState is null &&
         box.CodeBlockTextOffset == 0 && box.CodeBlockTextLength == 0 &&
         box.SafeHtmlInlineFlowScopeId is null &&
-        box._inlineEmbedRuns is null &&
-        (allowMeasuredVectorPlacement || box._vectorSceneRunCount == 0) &&
-        !box._hasDeferredSceneMarker &&
-        (allowMeasuredVectorPlacement || box._pendingSceneGeometry.Length == 0) &&
-        box._foregroundSpans.Count == 0;
+        box.InlineEmbedEntries is null &&
+        (allowMeasuredVectorPlacement || box.VectorSceneRunCount == 0) &&
+        !box.HasDeferredSceneMarker &&
+        (allowMeasuredVectorPlacement || box.PendingSceneGeometry.Length == 0) &&
+        box.ForegroundSpans.Count == 0;
 
     private static bool IsSupportedContainerLeafMeasuredPlacementRoot(
         InlineContainerBox box,
@@ -277,11 +263,11 @@ internal sealed partial class InlineContainerBox
         box.BlockIndex > 0 && box.CodeLanguage is null && box.StyleState is null &&
         box.CodeBlockTextOffset == 0 && box.CodeBlockTextLength == 0 &&
         box.SafeHtmlInlineFlowScopeId is null &&
-        box._inlineEmbedRuns is null &&
-        (allowMeasuredVectorPlacement || box._vectorSceneRunCount == 0) &&
-        !box._hasDeferredSceneMarker &&
-        (allowMeasuredVectorPlacement || box._pendingSceneGeometry.Length == 0) &&
-        box._foregroundSpans.Count == 0;
+        box.InlineEmbedEntries is null &&
+        (allowMeasuredVectorPlacement || box.VectorSceneRunCount == 0) &&
+        !box.HasDeferredSceneMarker &&
+        (allowMeasuredVectorPlacement || box.PendingSceneGeometry.Length == 0) &&
+        box.ForegroundSpans.Count == 0;
 
     internal static bool AreCompatibleMeasuredRootInputs(
         InlineContainerBox source,
@@ -312,7 +298,7 @@ internal sealed partial class InlineContainerBox
     private static bool AreCompatiblePlacementRootInputs(
         InlineContainerBox source,
         InlineContainerBox prepared) =>
-        ArePrivateRasterPlacementContextsCompatible(source.Context, prepared.Context) &&
+        InlineContainerBox.ArePrivateRasterPlacementContextsCompatible(source.Context, prepared.Context) &&
         source.BlockIndex == prepared.BlockIndex &&
         string.Equals(source.ElementKey, prepared.ElementKey, StringComparison.Ordinal) &&
         string.Equals(source.CodeLanguage, prepared.CodeLanguage, StringComparison.Ordinal) &&
@@ -329,30 +315,31 @@ internal sealed partial class InlineContainerBox
         source.CollapsedTopMargin == prepared.CollapsedTopMargin &&
         source.SuppressTopMargin == prepared.SuppressTopMargin &&
         source.SuppressBottomMargin == prepared.SuppressBottomMargin &&
-        source._usesProgressiveNativeSceneResidency == prepared._usesProgressiveNativeSceneResidency &&
-        source._hasAtomicInlineObject == prepared._hasAtomicInlineObject &&
-        source._bufferDirty == prepared._bufferDirty &&
-        source._runTextLength == prepared._runTextLength &&
-        ReferenceEquals(source._buffer, prepared._buffer) &&
-        ReferenceEquals(source._resolvedContainerStyle, prepared._resolvedContainerStyle) &&
-        MatchesKeys(source._styleContextKeys, prepared._styleContextKeys) &&
-        MatchesKeys(source._styleAliasKeys, prepared._styleAliasKeys);
+        source.UsesProgressiveNativeSceneResidency == prepared.UsesProgressiveNativeSceneResidency &&
+        source.HasAtomicInlineObject == prepared.HasAtomicInlineObject &&
+        source.IsBufferDirty == prepared.IsBufferDirty &&
+        source.RunTextLength == prepared.RunTextLength &&
+        ReferenceEquals(source.LayoutBuffer, prepared.LayoutBuffer) &&
+        ReferenceEquals(source.ResolvedContainerStyle, prepared.ResolvedContainerStyle) &&
+        MatchesKeys(source.StyleContextKeys, prepared.StyleContextKeys) &&
+        MatchesKeys(source.StyleAliasKeys, prepared.StyleAliasKeys);
 
-    private bool IsMeasuredSourceForTransfer(
+    private static bool IsMeasuredSourceForTransfer(
+        InlineContainerBox box,
         float expectedAvailableWidth,
         bool allowMeasuredVectorPlacement = false)
     {
-        bool expectedAtomic = (_inlineImageRuns?.Count ?? 0) > 0 ||
-            allowMeasuredVectorPlacement && _vectorSceneRunCount > 0;
-        if (IsDirty || _layout is null || _bufferDirty || _resolvedContainerStyle is null ||
-            !float.IsFinite(_lastWidth) || _lastWidth <= 0f ||
-            Math.Abs(_lastWidth - expectedAvailableWidth) > 0.5f ||
-            !IsFiniteNonnegative(Bounds) || Bounds.Width != expectedAvailableWidth ||
-            _runs.Count == 0 || _runTextLength != _buffer.Length ||
-            _runTextLength > MaximumPrivateRasterPlacementTextLength ||
-            !HasWellFormedEffectiveRunAliases || ResolvedRunStyleCount != _runs.Count ||
-            _hasAtomicInlineObject != expectedAtomic ||
-            !IsFiniteThickness(Margin) || !double.IsFinite(CollapsedTopMargin))
+        bool expectedAtomic = (box.InlineImageEntries?.Count ?? 0) > 0 ||
+            allowMeasuredVectorPlacement && box.VectorSceneRunCount > 0;
+        if (box.IsDirty || box.TextLayout is null || box.IsBufferDirty || box.ResolvedContainerStyle is null ||
+            !float.IsFinite(box.LastMeasuredWidth) || box.LastMeasuredWidth <= 0f ||
+            Math.Abs(box.LastMeasuredWidth - expectedAvailableWidth) > 0.5f ||
+            !IsFiniteNonnegative(box.Bounds) || box.Bounds.Width != expectedAvailableWidth ||
+            box.RunList.Count == 0 || box.RunTextLength != box.LayoutBuffer.Length ||
+            box.RunTextLength > InlineContainerBox.MaximumPrivateRasterPlacementTextLength ||
+            !box.HasWellFormedEffectiveRunAliases || box.ResolvedRunStyleCount != box.RunList.Count ||
+            box.HasAtomicInlineObject != expectedAtomic ||
+            !IsFiniteThickness(box.Margin) || !double.IsFinite(box.CollapsedTopMargin))
         {
             return false;
         }
@@ -360,23 +347,24 @@ internal sealed partial class InlineContainerBox
         return true;
     }
 
-    private bool IsMeasuredSourceForTableCellTransfer(
+    private static bool IsMeasuredSourceForTableCellTransfer(
+        InlineContainerBox box,
         float expectedSourceWidth,
         bool allowMeasuredVectorPlacement = false)
     {
-        int imageCount = _inlineImageRuns?.Count ?? 0;
+        int imageCount = box.InlineImageEntries?.Count ?? 0;
         bool expectedAtomic = imageCount > 0 ||
-            allowMeasuredVectorPlacement && _vectorSceneRunCount > 0;
-        if (IsDirty || _layout is null || _bufferDirty || _resolvedContainerStyle is null ||
+            allowMeasuredVectorPlacement && box.VectorSceneRunCount > 0;
+        if (box.IsDirty || box.TextLayout is null || box.IsBufferDirty || box.ResolvedContainerStyle is null ||
             !float.IsFinite(expectedSourceWidth) || expectedSourceWidth <= 0f ||
-            !float.IsFinite(_lastWidth) || _lastWidth != expectedSourceWidth ||
-            !IsFiniteNonnegative(Bounds) || Bounds.Width != expectedSourceWidth ||
-            _runTextLength != _buffer.Length ||
-            _runTextLength > MaximumPrivateRasterPlacementTextLength ||
-            !HasWellFormedEffectiveRunAliases || ResolvedRunStyleCount != _runs.Count ||
-            imageCount > MaximumPrivateRasterPlacementImages ||
-            _hasAtomicInlineObject != expectedAtomic ||
-            !IsFiniteThickness(Margin) || !double.IsFinite(CollapsedTopMargin))
+            !float.IsFinite(box.LastMeasuredWidth) || box.LastMeasuredWidth != expectedSourceWidth ||
+            !IsFiniteNonnegative(box.Bounds) || box.Bounds.Width != expectedSourceWidth ||
+            box.RunTextLength != box.LayoutBuffer.Length ||
+            box.RunTextLength > InlineContainerBox.MaximumPrivateRasterPlacementTextLength ||
+            !box.HasWellFormedEffectiveRunAliases || box.ResolvedRunStyleCount != box.RunList.Count ||
+            imageCount > InlineContainerBox.MaximumPrivateRasterPlacementImages ||
+            box.HasAtomicInlineObject != expectedAtomic ||
+            !IsFiniteThickness(box.Margin) || !double.IsFinite(box.CollapsedTopMargin))
         {
             return false;
         }
@@ -384,22 +372,23 @@ internal sealed partial class InlineContainerBox
         return true;
     }
 
-    private bool IsMeasuredSourceForContainerLeafTransfer(
+    private static bool IsMeasuredSourceForContainerLeafTransfer(
+        InlineContainerBox box,
         float expectedAvailableWidth,
         bool allowMeasuredVectorPlacement = false)
     {
-        int imageCount = _inlineImageRuns?.Count ?? 0;
-        bool expectedAtomic = allowMeasuredVectorPlacement && _vectorSceneRunCount > 0;
-        if (IsDirty || _layout is null || _bufferDirty || _resolvedContainerStyle is null ||
+        int imageCount = box.InlineImageEntries?.Count ?? 0;
+        bool expectedAtomic = allowMeasuredVectorPlacement && box.VectorSceneRunCount > 0;
+        if (box.IsDirty || box.TextLayout is null || box.IsBufferDirty || box.ResolvedContainerStyle is null ||
             !float.IsFinite(expectedAvailableWidth) || expectedAvailableWidth <= 0f ||
-            !float.IsFinite(_lastWidth) || _lastWidth != expectedAvailableWidth ||
-            !IsFiniteNonnegative(Bounds) || Bounds.Width != expectedAvailableWidth ||
-            _runTextLength != _buffer.Length ||
-            _runTextLength > MaximumPrivateRasterPlacementTextLength ||
-            !HasWellFormedEffectiveRunAliases || ResolvedRunStyleCount != _runs.Count ||
-            imageCount != 0 || _inlineImageRuns is not null || _hasAtomicInlineObject != expectedAtomic ||
-            !IsFiniteThickness(RawPlacementMargin) || !IsFiniteThickness(Margin) ||
-            !double.IsFinite(CollapsedTopMargin))
+            !float.IsFinite(box.LastMeasuredWidth) || box.LastMeasuredWidth != expectedAvailableWidth ||
+            !IsFiniteNonnegative(box.Bounds) || box.Bounds.Width != expectedAvailableWidth ||
+            box.RunTextLength != box.LayoutBuffer.Length ||
+            box.RunTextLength > InlineContainerBox.MaximumPrivateRasterPlacementTextLength ||
+            !box.HasWellFormedEffectiveRunAliases || box.ResolvedRunStyleCount != box.RunList.Count ||
+            imageCount != 0 || box.InlineImageEntries is not null || box.HasAtomicInlineObject != expectedAtomic ||
+            !IsFiniteThickness(box.RawPlacementMargin) || !IsFiniteThickness(box.Margin) ||
+            !double.IsFinite(box.CollapsedTopMargin))
         {
             return false;
         }
@@ -407,10 +396,10 @@ internal sealed partial class InlineContainerBox
         // Empty paragraphs may have no runs, but only the established clean
         // empty native-layout shape is admitted. Zero-length runs remain
         // restricted to the existing table-cell path.
-        return _runs.Count != 0 ||
-            (_buffer.Length == 0 && _runTextLength == 0 && _inlineEmbedRuns is null &&
-             _vectorSceneRunCount == 0 && !_hasDeferredSceneMarker &&
-             _pendingSceneGeometry.Length == 0 && _foregroundSpans.Count == 0);
+        return box.RunList.Count != 0 ||
+            (box.LayoutBuffer.Length == 0 && box.RunTextLength == 0 && box.InlineEmbedEntries is null &&
+             box.VectorSceneRunCount == 0 && !box.HasDeferredSceneMarker &&
+             box.PendingSceneGeometry.Length == 0 && box.ForegroundSpans.Count == 0);
     }
 
     private static bool IsUnmeasuredPrivateCloneOf(
@@ -421,25 +410,25 @@ internal sealed partial class InlineContainerBox
         bool allowMeasuredVectorPlacement = false)
     {
         bool imageIndexShapeMatches = allowImageFree
-            ? (prepared._inlineImageRuns?.Count ?? 0) == (source._inlineImageRuns?.Count ?? 0) &&
-                ((prepared._inlineImageRuns is null) == (source._inlineImageRuns is null))
-            : prepared._inlineImageRuns is { Count: > 0 } &&
-                prepared._inlineImageRuns.Count == source._inlineImageRuns?.Count;
-        return prepared.IsDirty && prepared._layout is null && prepared._selectionLayout is null &&
-            prepared._layoutRetirementRecord is null &&
-            prepared._selectionLayoutRetirementRecord is null &&
-            prepared._cachedLineMetrics is null && !prepared._lineMetricsRead &&
-            !prepared._bufferDirty && ReferenceEquals(prepared._buffer, source._buffer) &&
-            prepared._runTextLength == source._runTextLength &&
-            prepared._runs.Count == source._runs.Count && imageIndexShapeMatches &&
-            prepared._vectorSceneRunCount == source._vectorSceneRunCount &&
-            (allowMeasuredVectorPlacement || source._vectorSceneRunCount == 0) &&
-            !source._hasDeferredSceneMarker && !prepared._hasDeferredSceneMarker &&
-            prepared._sceneGeometryGeneration == 0 &&
-            prepared._pendingSceneGeometryGeneration == 0 &&
-            prepared._pendingSceneGeometry.Length == 0 &&
-            prepared._lastWidth == source._lastWidth &&
-            ReferenceEquals(prepared._resolvedContainerStyle, source._resolvedContainerStyle) &&
+            ? (prepared.InlineImageEntries?.Count ?? 0) == (source.InlineImageEntries?.Count ?? 0) &&
+                ((prepared.InlineImageEntries is null) == (source.InlineImageEntries is null))
+            : prepared.InlineImageEntries is { Count: > 0 } &&
+                prepared.InlineImageEntries.Count == source.InlineImageEntries?.Count;
+        return prepared.IsDirty && prepared.TextLayout is null && prepared.SelectionLayout is null &&
+            prepared.TextLayoutRetirementRecord is null &&
+            prepared.SelectionLayoutRetirementRecord is null &&
+            prepared.CachedLineMetrics is null && !prepared.HasReadLineMetrics &&
+            !prepared.IsBufferDirty && ReferenceEquals(prepared.LayoutBuffer, source.LayoutBuffer) &&
+            prepared.RunTextLength == source.RunTextLength &&
+            prepared.RunList.Count == source.RunList.Count && imageIndexShapeMatches &&
+            prepared.VectorSceneRunCount == source.VectorSceneRunCount &&
+            (allowMeasuredVectorPlacement || source.VectorSceneRunCount == 0) &&
+            !source.HasDeferredSceneMarker && !prepared.HasDeferredSceneMarker &&
+            prepared.CurrentSceneGeometryGeneration == 0 &&
+            prepared.PendingSceneGeometryGeneration == 0 &&
+            prepared.PendingSceneGeometry.Length == 0 &&
+            prepared.LastMeasuredWidth == source.LastMeasuredWidth &&
+            ReferenceEquals(prepared.ResolvedContainerStyle, source.ResolvedContainerStyle) &&
             prepared.Bounds.Width == 0 && prepared.Bounds.Height == 0 &&
             float.IsFinite(expectedAvailableWidth);
     }
@@ -452,26 +441,26 @@ internal sealed partial class InlineContainerBox
         ElementStyle?[] sourceResolvedStyles,
         bool allowMeasuredVectorPlacement)
     {
-        int sourceImageCount = source._inlineImageRuns?.Count ?? 0;
-        int preparedImageCount = prepared._inlineImageRuns?.Count ?? 0;
+        int sourceImageCount = source.InlineImageEntries?.Count ?? 0;
+        int preparedImageCount = prepared.InlineImageEntries?.Count ?? 0;
         int vectorCount = 0;
         foreach (InlineMeasuredRunState run in runs)
             if (run.SourceVectorRun is not null)
                 vectorCount++;
-        if (source._runs.Count != runs.Length || prepared._runs.Count != runs.Length ||
-            source._runTextLength != prepared._runTextLength ||
+        if (source.RunList.Count != runs.Length || prepared.RunList.Count != runs.Length ||
+            source.RunTextLength != prepared.RunTextLength ||
             sourceImageCount != preparedImageCount ||
-            ((source._inlineImageRuns is null) != (prepared._inlineImageRuns is null)) ||
+            ((source.InlineImageEntries is null) != (prepared.InlineImageEntries is null)) ||
             !source.HasWellFormedEffectiveRunAliases ||
             !prepared.HasWellFormedEffectiveRunAliases ||
             source.ResolvedRunStyleCount != runs.Length ||
             prepared.ResolvedRunStyleCount != runs.Length ||
-            source._foregroundSpans.Count != 0 || prepared._foregroundSpans.Count != 0 ||
-            source._inlineEmbedRuns is not null || prepared._inlineEmbedRuns is not null ||
-            source._hasDeferredSceneMarker || prepared._hasDeferredSceneMarker ||
-            source._vectorSceneRunCount != vectorCount || prepared._vectorSceneRunCount != vectorCount ||
+            source.ForegroundSpans.Count != 0 || prepared.ForegroundSpans.Count != 0 ||
+            source.InlineEmbedEntries is not null || prepared.InlineEmbedEntries is not null ||
+            source.HasDeferredSceneMarker || prepared.HasDeferredSceneMarker ||
+            source.VectorSceneRunCount != vectorCount || prepared.VectorSceneRunCount != vectorCount ||
             (!allowMeasuredVectorPlacement && vectorCount != 0) ||
-            source._hasAtomicInlineObject != prepared._hasAtomicInlineObject)
+            source.HasAtomicInlineObject != prepared.HasAtomicInlineObject)
         {
             return false;
         }
@@ -479,8 +468,8 @@ internal sealed partial class InlineContainerBox
         for (int index = 0; index < runs.Length; index++)
         {
             InlineMeasuredRunState run = runs[index];
-            if (!ReferenceEquals(source._runs[index], run.SourceRun) ||
-                !ReferenceEquals(prepared._runs[index], run.PreparedRun) ||
+            if (!ReferenceEquals(source.RunList[index], run.SourceRun) ||
+                !ReferenceEquals(prepared.RunList[index], run.PreparedRun) ||
                 !run.MatchesSourceAndPrepared() ||
                 !MatchesKeys(source.GetEffectiveRunAliases(index), effectiveAliases[index]) ||
                 !MatchesKeys(prepared.GetEffectiveRunAliases(index), effectiveAliases[index]) ||
@@ -495,11 +484,11 @@ internal sealed partial class InlineContainerBox
         {
             if (run.SourceImageRun is null || run.PreparedImageRun is null)
                 continue;
-            if (source._inlineImageRuns is null || prepared._inlineImageRuns is null ||
+            if (source.InlineImageEntries is null || prepared.InlineImageEntries is null ||
                 imageOrdinal >= sourceImageCount ||
                 !run.MatchesImageEntries(
-                    source._inlineImageRuns[imageOrdinal],
-                    prepared._inlineImageRuns[imageOrdinal]))
+                    source.InlineImageEntries[imageOrdinal],
+                    prepared.InlineImageEntries[imageOrdinal]))
             {
                 return false;
             }
@@ -512,8 +501,8 @@ internal sealed partial class InlineContainerBox
         InlineContainerBox box,
         IReadOnlyList<string> contextKeys,
         IReadOnlyList<string> aliasKeys) =>
-        MatchesKeys(box._styleContextKeys, contextKeys) &&
-        MatchesKeys(box._styleAliasKeys, aliasKeys);
+        MatchesKeys(box.StyleContextKeys, contextKeys) &&
+        MatchesKeys(box.StyleAliasKeys, aliasKeys);
 
     private static bool MatchesKeys(IReadOnlyList<string>? left, IReadOnlyList<string>? right)
     {
@@ -529,12 +518,12 @@ internal sealed partial class InlineContainerBox
         HasValidNativeLayoutCustody(box);
 
     internal static bool HasValidNativeLayoutCustody(InlineContainerBox box) =>
-        (box._layout is null) == (box._layoutRetirementRecord is null) &&
-        (box._selectionLayout is null) == (box._selectionLayoutRetirementRecord is null) &&
-        (box._layout is null || box._selectionLayout is null ||
-            !ReferenceEquals(box._layout, box._selectionLayout)) &&
-        (box._layoutRetirementRecord is null || box._selectionLayoutRetirementRecord is null ||
-            !ReferenceEquals(box._layoutRetirementRecord, box._selectionLayoutRetirementRecord));
+        (box.TextLayout is null) == (box.TextLayoutRetirementRecord is null) &&
+        (box.SelectionLayout is null) == (box.SelectionLayoutRetirementRecord is null) &&
+        (box.TextLayout is null || box.SelectionLayout is null ||
+            !ReferenceEquals(box.TextLayout, box.SelectionLayout)) &&
+        (box.TextLayoutRetirementRecord is null || box.SelectionLayoutRetirementRecord is null ||
+            !ReferenceEquals(box.TextLayoutRetirementRecord, box.SelectionLayoutRetirementRecord));
 
     internal static bool Aliases(CanvasTextLayout? first, CanvasTextLayout? second) =>
         first is not null && ReferenceEquals(first, second);

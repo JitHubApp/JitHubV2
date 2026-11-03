@@ -268,8 +268,8 @@ internal readonly struct InlineMeasuredRunState
                 sourceVectorRun.DesiredWidth != preparedVectorRun.DesiredWidth ||
                 sourceVectorRun.DesiredHeight != preparedVectorRun.DesiredHeight ||
                 sourceVectorRun.DesiredBaseline != preparedVectorRun.DesiredBaseline ||
-                !InlineContainerBox.SameRect(sourceVectorRun.LocalBounds, preparedVectorRun.LocalBounds) ||
-                !InlineContainerBox.IsFiniteNonnegative(sourceVectorRun.LocalBounds) ||
+                !InlineMeasuredPlacementCapture.SameRect(sourceVectorRun.LocalBounds, preparedVectorRun.LocalBounds) ||
+                !InlineMeasuredPlacementCapture.IsFiniteNonnegative(sourceVectorRun.LocalBounds) ||
                 !float.IsFinite(vectorFontSize) || vectorFontSize <= 0f)
             {
                 return false;
@@ -314,10 +314,10 @@ internal readonly struct InlineMeasuredRunState
             SourceVectorRun.DesiredWidth != _sourceVectorWidth ||
             SourceVectorRun.DesiredHeight != _sourceVectorHeight ||
             SourceVectorRun.DesiredBaseline != _sourceVectorBaseline ||
-            !InlineContainerBox.SameRect(SourceVectorRun.LocalBounds, _sourceVectorLocalBounds) ||
-            !InlineContainerBox.IsFiniteNonnegative(SourceVectorRun.LocalBounds) ||
+            !InlineMeasuredPlacementCapture.SameRect(SourceVectorRun.LocalBounds, _sourceVectorLocalBounds) ||
+            !InlineMeasuredPlacementCapture.IsFiniteNonnegative(SourceVectorRun.LocalBounds) ||
             !PreparedVectorRun.HasExpectedMeasuredDimensions(_vectorFontSize) ||
-            !InlineContainerBox.IsFiniteNonnegative(PreparedVectorRun.LocalBounds))
+            !InlineMeasuredPlacementCapture.IsFiniteNonnegative(PreparedVectorRun.LocalBounds))
         {
             return false;
         }
