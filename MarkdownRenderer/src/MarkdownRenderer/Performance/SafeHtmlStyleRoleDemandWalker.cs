@@ -245,7 +245,7 @@ internal sealed class SafeHtmlStyleRoleDemandWalker
         if (parent is null)
             return MarkdownStyleRoleDemand.None;
 
-        // Match HtmlBlockRenderer.FindDescendantHeadingKey: first heading
+        // Match HtmlElementQueries.FindDescendantHeadingKey: first heading
         // in document order wins, including a heading nested in pre,
         // suppressed wrappers, or otherwise non-rendered inline wrappers.
         foreach (SafeHtmlNode node in parent.Children)
@@ -279,7 +279,7 @@ internal sealed class SafeHtmlStyleRoleDemandWalker
         if (parent is null)
             return false;
 
-        // Match HtmlBlockRenderer.DescendantPreformatted, which searches
+        // Match HtmlElementQueries.DescendantPreformatted, which searches
         // through form/button wrappers but skips active/raw-content trees.
         foreach (SafeHtmlNode node in parent.Children)
         {
