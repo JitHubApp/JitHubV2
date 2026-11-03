@@ -81,7 +81,7 @@ public sealed class LazyIdleImageLayoutCandidateTests
             Assert.False(replacement.IsTopLevelBlockMeasured(privateTailRoot));
             Assert.Equal(tailBounds.Height, privateTailRoot.Bounds.Height);
             Assert.Equal(0, privateTail.ActiveImageWorkCountForTests);
-            Assert.Null(privateTail.PlaceholderLayoutForTests);
+            Assert.Null(privateTail.MeasureCustody.GetLayoutState().Placeholder);
             if (privateTailRoot is InlineContainerBox privateInline)
                 Assert.False(privateInline.HasMeasuredLayout);
             Assert.Same(sourceMap, replacement.SourceMap);

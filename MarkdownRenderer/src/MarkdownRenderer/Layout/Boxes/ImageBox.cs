@@ -46,7 +46,7 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// device-scoped bitmap leases. SVG text remains inside the provider render so
 /// transforms, clipping, bidi, and text paths are preserved.
 /// </summary>
-internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometrySource, IImageBitmapOutputHost, ISvgTileGapFill
+internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometrySource, IImageBitmapOutputHost, ISvgTileGapFill, IImageMeasureHost
 {
     // Selected artwork keeps the same translucent tint as Math and
     // Mermaid scenes instead of an opaque block-wide band.
@@ -299,30 +299,12 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     private const int SvgHostDeferredNone = 0;
     private const int SvgHostDeferredWaiting = 1;
     private const int SvgHostDeferredRetryQueued = 2;
-    private CanvasTextLayout? _placeholder;
-    private CanvasTextLayout? _caption;
     private volatile bool _loadStarted;
     private bool _loadFailed;
     private int _unavailableReported;
-    private bool _isInlineLayout;
     private volatile bool _disposed;
-    private float _availableWidth;
-    private float _imageWidth;
-    private float _imageHeight;
-    private float _captionHeight;
-    private readonly object _inlineMeasureSync = new();
-    private bool _inlineMeasureCheckpointActive;
-    private int _inlineMeasureCheckpointGeneration;
-    private CanvasTextLayout? _inlineMeasureOriginalPlaceholder;
-    private NativeResourceRetirementRecord? _inlineMeasureOriginalPlaceholderRetirementRecord;
-    private CanvasTextLayout? _inlineMeasureOriginalCaption;
-    private NativeResourceRetirementRecord? _inlineMeasureOriginalCaptionRetirementRecord;
-    private int _nativeLayoutGeneration;
-    private NativeResourceRetirementRecord? _placeholderRetirementRecord;
-    private NativeResourceRetirementRecord? _captionRetirementRecord;
-    private readonly NativeResourceRetirement _nativeRetirement;
-    private readonly Action<IDisposable>? _nativeDisposer;
-    private readonly Action<CanvasTextLayout>? _nativeLayoutOptionsSetter;
+    // Measured geometry and the placeholder/caption layouts, under their own lock.
+    private readonly ImageMeasureCustody _measure;
     // Accessibility metadata extracted from the SVG root, set after a successful
     // load. Null when the SVG is missing <title>/<desc>, the asset is a bitmap,
     // or extraction failed.
@@ -398,9 +380,8 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             throw new ArgumentException("Native fault plans require an isolated retirement owner.", nameof(nativeRetirement));
         Context = context;
         _resources = resources ?? throw new ArgumentNullException(nameof(resources));
-        _nativeRetirement = nativeRetirement;
-        _nativeDisposer = nativeDisposer;
-        _nativeLayoutOptionsSetter = nativeLayoutOptionsSetter;
+        _measure = new ImageMeasureCustody(
+            this, context, nativeRetirement, nativeDisposer, nativeLayoutOptionsSetter);
         Url = url ?? string.Empty;
         Alt = alt ?? string.Empty;
         _requestedWidth = requestedWidth;
@@ -1013,13 +994,13 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             return false;
         }
 
-        if (!Monitor.TryEnter(_inlineMeasureSync))
+        if (!Monitor.TryEnter(_measure.Sync))
             return false;
 
         try
         {
             if (_disposed || _resourcesSuspended || _loadFailed || !_loadStarted ||
-                _imageLifetimeCancellation.IsCancellationRequested || _inlineMeasureCheckpointActive ||
+                _imageLifetimeCancellation.IsCancellationRequested || _measure.CheckpointActive ||
                 _isSvg || _bitmap is null)
             {
                 return false;
@@ -1029,16 +1010,16 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 !float.IsFinite(width.Value) || width.Value <= 0 ||
                 _requestedHeight is not { IsPercent: false } height ||
                 !float.IsFinite(height.Value) || height.Value <= 0 ||
-                !float.IsFinite(_availableWidth) || _availableWidth <= 0)
+                !float.IsFinite(_measure.AvailableWidth) || _measure.AvailableWidth <= 0)
             {
                 return false;
             }
 
             float available = Math.Max(
                 1f,
-                _isInlineLayout
-                    ? _availableWidth
-                    : _availableWidth - (float)(Margin.Left + Margin.Right));
+                _measure.IsInlineLayout
+                    ? _measure.AvailableWidth
+                    : _measure.AvailableWidth - (float)(Margin.Left + Margin.Right));
             if (!float.IsFinite(available))
                 return false;
 
@@ -1054,13 +1035,13 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             float expectedWidth = Math.Max(1f, requestedWidth * scale);
             float expectedHeight = Math.Max(1f, requestedHeight * scale);
             return float.IsFinite(expectedWidth) && float.IsFinite(expectedHeight) &&
-                   _imageWidth == expectedWidth && _imageHeight == expectedHeight &&
-                   (!_isInlineLayout ||
+                   _measure.ImageWidth == expectedWidth && _measure.ImageHeight == expectedHeight &&
+                   (!_measure.IsInlineLayout ||
                        (Bounds.Width == expectedWidth && Bounds.Height == expectedHeight));
         }
         finally
         {
-            Monitor.Exit(_inlineMeasureSync);
+            Monitor.Exit(_measure.Sync);
         }
     }
 
@@ -1089,9 +1070,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     {
         Context = context;
         _resources = source._resources;
-        _nativeRetirement = source._nativeRetirement;
-        _nativeDisposer = source._nativeDisposer;
-        _nativeLayoutOptionsSetter = source._nativeLayoutOptionsSetter;
+        _measure = source._measure.CreateForClone(this, context);
         Url = source.Url;
         Alt = source.Alt;
         _requestedWidth = source._requestedWidth;
@@ -1109,7 +1088,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             _activeCacheKey = source._preResolutionCacheKey;
             _isSvg = source._isSvg; // a URI hint only; accepted SVG state is not copied
             _carriedCompletion = source._carriedCompletion; // immutable scalars
-            _isInlineLayout = source._isInlineLayout;
+            _measure.IsInlineLayout = source._measure.IsInlineLayout;
             _loadStarted = false;
             _loadFailed = false;
             ContentAlignment = source.ContentAlignment;
@@ -1147,9 +1126,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     {
         Context = context;
         _resources = source._resources;
-        _nativeRetirement = source._nativeRetirement;
-        _nativeDisposer = source._nativeDisposer;
-        _nativeLayoutOptionsSetter = source._nativeLayoutOptionsSetter;
+        _measure = source._measure.CreateForClone(this, context);
         Url = source.Url;
         Alt = source.Alt;
         _requestedWidth = source._requestedWidth;
@@ -1166,7 +1143,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             _activeCacheKey = svgMetadataFence is { } svgFence
                 ? svgFence.ActiveCacheKey
                 : source._activeCacheKey;
-            _isInlineLayout = source._isInlineLayout;
+            _measure.IsInlineLayout = source._measure.IsInlineLayout;
             _loadStarted = true;
             ContentAlignment = source.ContentAlignment;
             MinimumParagraphLineHeight = source.MinimumParagraphLineHeight;
@@ -1334,9 +1311,9 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         return carried.HasUsableIntrinsicSize;
     }
 
-    internal Rect AutomationRenderDestination => _isInlineLayout
+    internal Rect AutomationRenderDestination => _measure.IsInlineLayout
         ? Bounds
-        : new Rect(GetContentX(), GetContentY(), _imageWidth, _imageHeight);
+        : new Rect(GetContentX(), GetContentY(), _measure.ImageWidth, _measure.ImageHeight);
 
     internal bool HasAllSvgTilesForAutomation(
         int firstTileX,
@@ -1372,35 +1349,16 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     }
 
     /// <summary>Test-only: height of the image content area at last measure (excludes margins).</summary>
-    public float MeasuredImageHeight => _imageHeight;
+    public float MeasuredImageHeight => _measure.ImageHeight;
 
     /// <summary>Test-only: width of the image content area at last measure (excludes margins).</summary>
-    public float MeasuredImageWidth => _imageWidth;
+    public float MeasuredImageWidth => _measure.ImageWidth;
 
     /// <summary>Test-only: height of the caption area at last measure (excludes margins).</summary>
-    public float MeasuredCaptionHeight => _captionHeight;
+    public float MeasuredCaptionHeight => _measure.CaptionHeight;
 
-    internal CanvasTextLayout? PlaceholderLayoutForTests => _placeholder;
-    internal CanvasTextLayout? CaptionLayoutForTests => _caption;
-    internal NativeResourceRetirementRecord? PlaceholderRetirementRecordForTests => _placeholderRetirementRecord;
-    internal NativeResourceRetirementRecord? CaptionRetirementRecordForTests => _captionRetirementRecord;
-    internal bool HasNativeLayoutCustodyForTests
-    {
-        get
-        {
-            lock (_inlineMeasureSync)
-                return HasValidNativeLayoutCustodyNoLock();
-        }
-    }
-
-    internal void SetCaptionRetirementRecordForTests(NativeResourceRetirementRecord? record)
-    {
-        lock (_inlineMeasureSync)
-        {
-            _captionRetirementRecord = record;
-            AdvanceNativeLayoutGenerationNoLock();
-        }
-    }
+    /// <summary>The measured geometry and native text-layout custody.</summary>
+    internal ImageMeasureCustody MeasureCustody => _measure;
 
     internal void SetCompletedBitmapForTests(SharedCanvasBitmapCache.Lease lease)
     {
@@ -1430,11 +1388,11 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         {
             Owner = owner;
             Generation = generation;
-            WasInlineLayout = owner._isInlineLayout;
-            PreviousAvailableWidth = owner._availableWidth;
-            PreviousImageWidth = owner._imageWidth;
-            PreviousImageHeight = owner._imageHeight;
-            PreviousCaptionHeight = owner._captionHeight;
+            WasInlineLayout = owner._measure.IsInlineLayout;
+            PreviousAvailableWidth = owner._measure.AvailableWidth;
+            PreviousImageWidth = owner._measure.ImageWidth;
+            PreviousImageHeight = owner._measure.ImageHeight;
+            PreviousCaptionHeight = owner._measure.CaptionHeight;
             PreviousBounds = owner.Bounds;
         }
 
@@ -1448,445 +1406,32 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
     internal InlineMeasureCheckpoint BeginInlineCheckpoint()
     {
-        lock (_inlineMeasureSync)
+        lock (_measure.Sync)
         {
             if (_disposed)
                 throw new ObjectDisposedException(nameof(ImageBox));
-            if (_inlineMeasureCheckpointActive)
-                throw new InvalidOperationException("An inline image measure is already active.");
-
-            int generation = unchecked(_inlineMeasureCheckpointGeneration + 1);
-            _inlineMeasureCheckpointGeneration = generation == 0 ? 1 : generation;
-            _inlineMeasureCheckpointActive = true;
-            _inlineMeasureOriginalPlaceholder = _placeholder;
-            _inlineMeasureOriginalPlaceholderRetirementRecord = _placeholderRetirementRecord;
-            _inlineMeasureOriginalCaption = _caption;
-            _inlineMeasureOriginalCaptionRetirementRecord = _captionRetirementRecord;
-            AdvanceNativeLayoutGenerationNoLock();
-            return new InlineMeasureCheckpoint(this, _inlineMeasureCheckpointGeneration);
+            return new InlineMeasureCheckpoint(this, _measure.OpenCheckpointNoLock());
         }
     }
+
+    bool IImageMeasureHost.IsDisposed => _disposed;
+
+    void IImageMeasureHost.RestoreBounds(Rect bounds) => Bounds = bounds;
 
     private void FinishInlineCheckpoint(
         InlineMeasureCheckpoint checkpoint,
         bool commit)
     {
-        lock (_inlineMeasureSync)
+        lock (_measure.Sync)
         {
-            if (!_inlineMeasureCheckpointActive ||
-                !checkpoint.BelongsTo(this, _inlineMeasureCheckpointGeneration))
+            if (!_measure.CheckpointActive ||
+                !checkpoint.BelongsTo(this, _measure.CheckpointGeneration))
             {
                 return;
             }
 
-            CanvasTextLayout? originalPlaceholder = _inlineMeasureOriginalPlaceholder;
-            NativeResourceRetirementRecord? originalPlaceholderRecord = _inlineMeasureOriginalPlaceholderRetirementRecord;
-            CanvasTextLayout? originalCaption = _inlineMeasureOriginalCaption;
-            NativeResourceRetirementRecord? originalCaptionRecord = _inlineMeasureOriginalCaptionRetirementRecord;
-            if (_disposed)
-            {
-                // Dispose owns both current and checkpoint-original pairs.
-                // Revoke this token but leave every layout/record attached
-                // until the asynchronous terminal cleanup can attempt them.
-                RevokeInlineCheckpointNoLock();
-                return;
-            }
-
-            if (commit)
-            {
-                ClearInlineCheckpoint();
-                RetireIfDetached(originalPlaceholder, originalPlaceholderRecord,
-                    _placeholder, _placeholderRetirementRecord);
-                RetireIfDetached(originalCaption, originalCaptionRecord,
-                    _caption, _captionRetirementRecord);
-                return;
-            }
-
-            CanvasTextLayout? candidatePlaceholder = _placeholder;
-            NativeResourceRetirementRecord? candidatePlaceholderRecord = _placeholderRetirementRecord;
-            CanvasTextLayout? candidateCaption = _caption;
-            NativeResourceRetirementRecord? candidateCaptionRecord = _captionRetirementRecord;
-            if (!HasValidNativeLayoutCustodyNoLock() ||
-                (originalPlaceholder is null) != (originalPlaceholderRecord is null) ||
-                (originalCaption is null) != (originalCaptionRecord is null) ||
-                (candidatePlaceholder is null) != (candidatePlaceholderRecord is null) ||
-                (candidateCaption is null) != (candidateCaptionRecord is null))
-            {
-                throw new InvalidOperationException("Image inline-checkpoint native-layout custody is inconsistent.");
-            }
-
-            _placeholder = originalPlaceholder;
-            _placeholderRetirementRecord = originalPlaceholderRecord;
-            _caption = originalCaption;
-            _captionRetirementRecord = originalCaptionRecord;
-            _isInlineLayout = checkpoint.WasInlineLayout;
-            _availableWidth = checkpoint.PreviousAvailableWidth;
-            _imageWidth = checkpoint.PreviousImageWidth;
-            _imageHeight = checkpoint.PreviousImageHeight;
-            _captionHeight = checkpoint.PreviousCaptionHeight;
-            Bounds = checkpoint.PreviousBounds;
-            AdvanceNativeLayoutGenerationNoLock();
-            ClearInlineCheckpoint();
-
-            // Restore the exact original owner pair before publishing the
-            // detached candidates. The records are pre-reserved and this
-            // handoff invokes no native callbacks under the image lock.
-            RetireIfDetached(candidatePlaceholder, candidatePlaceholderRecord,
-                _placeholder, _placeholderRetirementRecord);
-            RetireIfDetached(candidateCaption, candidateCaptionRecord,
-                _caption, _captionRetirementRecord);
+            _measure.FinishCheckpointNoLock(checkpoint, commit);
         }
-    }
-
-    private void ClearInlineCheckpoint()
-    {
-        _inlineMeasureCheckpointActive = false;
-        _inlineMeasureOriginalPlaceholder = null;
-        _inlineMeasureOriginalPlaceholderRetirementRecord = null;
-        _inlineMeasureOriginalCaption = null;
-        _inlineMeasureOriginalCaptionRetirementRecord = null;
-    }
-
-    private void InvalidateInlineCheckpointForDisposal()
-    {
-        lock (_inlineMeasureSync)
-        {
-            if (!_inlineMeasureCheckpointActive)
-                return;
-
-            // Do not publish the original owners here: RetirementTask still
-            // has to make its synchronous best-effort disposal attempt and
-            // surface those failures. Late checkpoint completion is revoked
-            // while its exact original pairs remain attached for that drain.
-            RevokeInlineCheckpointNoLock();
-        }
-    }
-
-    private void RevokeInlineCheckpointNoLock()
-    {
-        _inlineMeasureCheckpointActive = false;
-        int generation = unchecked(_inlineMeasureCheckpointGeneration + 1);
-        _inlineMeasureCheckpointGeneration = generation == 0 ? 1 : generation;
-        AdvanceNativeLayoutGenerationNoLock();
-    }
-
-    private static void RetireNativeLayout(
-        CanvasTextLayout? layout,
-        NativeResourceRetirementRecord? retirementRecord)
-    {
-        if (retirementRecord is null)
-        {
-            if (layout is not null)
-                throw new InvalidOperationException("A detached image text layout has no durable retirement owner.");
-            return;
-        }
-
-        // Every participating layout is paired with a record reserved before
-        // construction. Never invoke native disposal on a detached layout or
-        // lose it if Win2D disposal fails.
-        retirementRecord?.Publish();
-    }
-
-    private static void RetireIfDetached(
-        CanvasTextLayout? layout,
-        NativeResourceRetirementRecord? retirementRecord,
-        CanvasTextLayout? activeLayout,
-        NativeResourceRetirementRecord? activeRecord)
-    {
-        if (layout is null && retirementRecord is null)
-            return;
-        if (ReferenceEquals(layout, activeLayout) && ReferenceEquals(retirementRecord, activeRecord))
-            return;
-        RetireNativeLayout(layout, retirementRecord);
-    }
-
-    private NativeResourceRetirementRecord ReserveNativeLayoutRetirementRecord() =>
-        _nativeRetirement.Reserve(0, 1, _nativeDisposer);
-
-    private CanvasTextLayout CreateOwnedTextLayout(
-        string text,
-        CanvasTextFormat format,
-        float width,
-        float height,
-        out NativeResourceRetirementRecord retirementRecord)
-    {
-        // Reserve the source-free owner before Win2D allocates its layout.
-        NativeResourceRetirementRecord reserved = ReserveNativeLayoutRetirementRecord();
-        CanvasTextLayout? layout = null;
-        try
-        {
-            layout = CanvasTextLayoutFactory.Create(
-                Context.ResourceCreator,
-                text,
-                format,
-                width,
-                height,
-                Context.LayoutDiagnostics);
-            reserved.SetTemporary(0, layout);
-            if (_nativeLayoutOptionsSetter is { } testSetter)
-                testSetter(layout);
-            else
-                layout.Options = CanvasDrawTextOptions.EnableColorFont;
-            retirementRecord = reserved;
-            return layout;
-        }
-        catch
-        {
-            if (layout is not null)
-                reserved.SetTemporary(0, layout);
-            reserved.Publish();
-            throw;
-        }
-    }
-
-    private void AdvanceNativeLayoutGenerationNoLock() =>
-        _nativeLayoutGeneration = unchecked(_nativeLayoutGeneration + 1);
-
-    private bool HasValidNativeLayoutCustodyNoLock() =>
-        (_placeholder is null) == (_placeholderRetirementRecord is null) &&
-        (_caption is null) == (_captionRetirementRecord is null) &&
-        (_placeholder is null || _caption is null || !ReferenceEquals(_placeholder, _caption)) &&
-        (_placeholderRetirementRecord is null || _captionRetirementRecord is null ||
-            !ReferenceEquals(_placeholderRetirementRecord, _captionRetirementRecord));
-
-    private void ReplacePlaceholder(
-        CanvasTextLayout? replacement,
-        NativeResourceRetirementRecord? replacementRecord)
-    {
-        CanvasTextLayout? previous;
-        NativeResourceRetirementRecord? previousRecord;
-        bool checkpointOwnsPrevious;
-        try
-        {
-            lock (_inlineMeasureSync)
-            {
-                if (_disposed && replacement is not null)
-                    throw new ObjectDisposedException(nameof(ImageBox));
-
-                if (!HasValidNativeLayoutCustodyNoLock() ||
-                    (replacement is null) != (replacementRecord is null))
-                {
-                    throw new InvalidOperationException("Image placeholder native-layout custody is inconsistent.");
-                }
-
-                previous = _placeholder;
-                previousRecord = _placeholderRetirementRecord;
-                checkpointOwnsPrevious = _inlineMeasureCheckpointActive &&
-                    ReferenceEquals(previous, _inlineMeasureOriginalPlaceholder) &&
-                    ReferenceEquals(previousRecord, _inlineMeasureOriginalPlaceholderRetirementRecord);
-                _placeholder = replacement;
-                _placeholderRetirementRecord = replacementRecord;
-                AdvanceNativeLayoutGenerationNoLock();
-            }
-        }
-        catch
-        {
-            RetireNativeLayout(replacement, replacementRecord);
-            throw;
-        }
-
-        if (!checkpointOwnsPrevious)
-            RetireNativeLayout(previous, previousRecord);
-    }
-
-    private void ReplaceCaption(
-        CanvasTextLayout? replacement,
-        NativeResourceRetirementRecord? replacementRecord,
-        float replacementHeight)
-    {
-        CanvasTextLayout? previous;
-        NativeResourceRetirementRecord? previousRecord;
-        bool checkpointOwnsPrevious;
-        try
-        {
-            lock (_inlineMeasureSync)
-            {
-                if (_disposed && replacement is not null)
-                    throw new ObjectDisposedException(nameof(ImageBox));
-
-                if (!HasValidNativeLayoutCustodyNoLock() ||
-                    (replacement is null) != (replacementRecord is null))
-                {
-                    throw new InvalidOperationException("Image caption native-layout custody is inconsistent.");
-                }
-
-                previous = _caption;
-                previousRecord = _captionRetirementRecord;
-                checkpointOwnsPrevious = _inlineMeasureCheckpointActive &&
-                    ReferenceEquals(previous, _inlineMeasureOriginalCaption) &&
-                    ReferenceEquals(previousRecord, _inlineMeasureOriginalCaptionRetirementRecord);
-                _caption = replacement;
-                _captionRetirementRecord = replacementRecord;
-                _captionHeight = replacementHeight;
-                AdvanceNativeLayoutGenerationNoLock();
-            }
-        }
-        catch
-        {
-            RetireNativeLayout(replacement, replacementRecord);
-            throw;
-        }
-
-        if (!checkpointOwnsPrevious)
-            RetireNativeLayout(previous, previousRecord);
-    }
-
-    private void RetireNativeLayoutsForDisposal(Action<Exception> addFailure)
-    {
-        CanvasTextLayout? placeholder;
-        CanvasTextLayout? caption;
-        CanvasTextLayout? originalPlaceholder;
-        CanvasTextLayout? originalCaption;
-        NativeResourceRetirementRecord? placeholderRecord;
-        NativeResourceRetirementRecord? captionRecord;
-        NativeResourceRetirementRecord? originalPlaceholderRecord;
-        NativeResourceRetirementRecord? originalCaptionRecord;
-        lock (_inlineMeasureSync)
-        {
-            placeholder = _placeholder;
-            caption = _caption;
-            originalPlaceholder = _inlineMeasureOriginalPlaceholder;
-            originalCaption = _inlineMeasureOriginalCaption;
-            placeholderRecord = _placeholderRetirementRecord;
-            captionRecord = _captionRetirementRecord;
-            originalPlaceholderRecord = _inlineMeasureOriginalPlaceholderRetirementRecord;
-            originalCaptionRecord = _inlineMeasureOriginalCaptionRetirementRecord;
-
-            if (!HasValidNativeLayoutCustodyNoLock() ||
-                (originalPlaceholder is null) != (originalPlaceholderRecord is null) ||
-                (originalCaption is null) != (originalCaptionRecord is null) ||
-                !HasCoherentTerminalOwnerPairs(
-                    placeholder, placeholderRecord,
-                    caption, captionRecord,
-                    originalPlaceholder, originalPlaceholderRecord,
-                    originalCaption, originalCaptionRecord))
-            {
-                throw new InvalidOperationException("Image terminal native-layout custody is inconsistent.");
-            }
-
-            _placeholder = null;
-            _placeholderRetirementRecord = null;
-            _caption = null;
-            _captionRetirementRecord = null;
-            _inlineMeasureCheckpointActive = false;
-            _inlineMeasureOriginalPlaceholder = null;
-            _inlineMeasureOriginalPlaceholderRetirementRecord = null;
-            _inlineMeasureOriginalCaption = null;
-            _inlineMeasureOriginalCaptionRetirementRecord = null;
-            AdvanceNativeLayoutGenerationNoLock();
-        }
-
-        NativeRetirementFailurePair placeholderFailure =
-            RetireTerminalNativeLayout(placeholder, placeholderRecord);
-        NativeRetirementFailurePair captionFailure = default;
-        NativeRetirementFailurePair originalPlaceholderFailure = default;
-        NativeRetirementFailurePair originalCaptionFailure = default;
-        if (!ReferenceEquals(caption, placeholder) || !ReferenceEquals(captionRecord, placeholderRecord))
-            captionFailure = RetireTerminalNativeLayout(caption, captionRecord);
-        if (!ReferenceEquals(originalPlaceholder, placeholder) ||
-            !ReferenceEquals(originalPlaceholderRecord, placeholderRecord))
-            originalPlaceholderFailure = RetireTerminalNativeLayout(
-                originalPlaceholder, originalPlaceholderRecord);
-        if ((!ReferenceEquals(originalCaption, placeholder) ||
-             !ReferenceEquals(originalCaptionRecord, placeholderRecord)) &&
-            (!ReferenceEquals(originalCaption, caption) ||
-             !ReferenceEquals(originalCaptionRecord, captionRecord)) &&
-            (!ReferenceEquals(originalCaption, originalPlaceholder) ||
-             !ReferenceEquals(originalCaptionRecord, originalPlaceholderRecord)))
-        {
-            originalCaptionFailure = RetireTerminalNativeLayout(originalCaption, originalCaptionRecord);
-        }
-
-        // Every detached record has either completed or reached the durable
-        // retry registry before diagnostics can allocate, aggregate, or fail.
-        AddRetirementFailure(addFailure, placeholderFailure);
-        AddRetirementFailure(addFailure, captionFailure);
-        AddRetirementFailure(addFailure, originalPlaceholderFailure);
-        AddRetirementFailure(addFailure, originalCaptionFailure);
-    }
-
-    private static bool HasCoherentTerminalOwnerPairs(
-        CanvasTextLayout? placeholder,
-        NativeResourceRetirementRecord? placeholderRecord,
-        CanvasTextLayout? caption,
-        NativeResourceRetirementRecord? captionRecord,
-        CanvasTextLayout? originalPlaceholder,
-        NativeResourceRetirementRecord? originalPlaceholderRecord,
-        CanvasTextLayout? originalCaption,
-        NativeResourceRetirementRecord? originalCaptionRecord)
-    {
-        return SameOrSeparateOwner(placeholder, placeholderRecord,
-                   originalPlaceholder, originalPlaceholderRecord) &&
-               SameOrSeparateOwner(caption, captionRecord,
-                   originalCaption, originalCaptionRecord) &&
-               AreDisjointOwners(placeholder, placeholderRecord, caption, captionRecord) &&
-               AreDisjointOwners(placeholder, placeholderRecord, originalCaption, originalCaptionRecord) &&
-               AreDisjointOwners(caption, captionRecord, originalPlaceholder, originalPlaceholderRecord) &&
-               AreDisjointOwners(originalPlaceholder, originalPlaceholderRecord,
-                   originalCaption, originalCaptionRecord);
-    }
-
-    private static bool SameOrSeparateOwner(
-        CanvasTextLayout? leftLayout,
-        NativeResourceRetirementRecord? leftRecord,
-        CanvasTextLayout? rightLayout,
-        NativeResourceRetirementRecord? rightRecord) =>
-        ReferenceEquals(leftLayout, rightLayout) == ReferenceEquals(leftRecord, rightRecord);
-
-    private static bool AreDisjointOwners(
-        CanvasTextLayout? leftLayout,
-        NativeResourceRetirementRecord? leftRecord,
-        CanvasTextLayout? rightLayout,
-        NativeResourceRetirementRecord? rightRecord) =>
-        (leftLayout is null || rightLayout is null || !ReferenceEquals(leftLayout, rightLayout)) &&
-        (leftRecord is null || rightRecord is null || !ReferenceEquals(leftRecord, rightRecord));
-
-    private static NativeRetirementFailurePair RetireTerminalNativeLayout(
-        CanvasTextLayout? layout,
-        NativeResourceRetirementRecord? record)
-    {
-        if (layout is null)
-            return default;
-        if (record is null)
-        {
-            return new NativeRetirementFailurePair(
-                new InvalidOperationException("A terminal image text layout has no pre-reserved native owner."),
-                null);
-        }
-
-        try
-        {
-            // Preserve the existing RetirementTask contract: make one
-            // synchronous best-effort close outside the image lock. A failure
-            // is published before its bounded diagnostic is recorded.
-            record.Disposer(layout);
-            record.SetTemporary(0, null);
-            record.Publish();
-        }
-        catch (Exception failure)
-        {
-            try
-            {
-                record.Publish();
-                return new NativeRetirementFailurePair(failure, null);
-            }
-            catch (Exception publicationFailure)
-            {
-                return new NativeRetirementFailurePair(failure, publicationFailure);
-            }
-        }
-
-        return default;
-    }
-
-    private static void AddRetirementFailure(
-        Action<Exception> addFailure,
-        NativeRetirementFailurePair failures)
-    {
-        if (failures.DisposalFailure is { } disposalFailure)
-            addFailure(disposalFailure);
-        if (failures.PublicationFailure is { } publicationFailure)
-            addFailure(publicationFailure);
     }
 
     /// <summary>
@@ -1896,11 +1441,11 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     /// </summary>
     internal Size MeasureInline(float availableWidth, float lineHeight)
     {
-        lock (_inlineMeasureSync)
+        lock (_measure.Sync)
         {
             if (_disposed)
                 throw new ObjectDisposedException(nameof(ImageBox));
-            if (_inlineMeasureCheckpointActive)
+            if (_measure.CheckpointActive)
                 throw new InvalidOperationException("An inline image measure requires its active checkpoint.");
             return MeasureInlineCore(availableWidth, lineHeight);
         }
@@ -1911,12 +1456,12 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         float lineHeight,
         InlineMeasureCheckpoint checkpoint)
     {
-        lock (_inlineMeasureSync)
+        lock (_measure.Sync)
         {
             if (_disposed)
                 throw new ObjectDisposedException(nameof(ImageBox));
-            if (!_inlineMeasureCheckpointActive ||
-                !checkpoint.BelongsTo(this, _inlineMeasureCheckpointGeneration))
+            if (!_measure.CheckpointActive ||
+                !checkpoint.BelongsTo(this, _measure.CheckpointGeneration))
             {
                 throw new InvalidOperationException("The inline image measure checkpoint is no longer active.");
             }
@@ -1926,8 +1471,8 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
     private Size MeasureInlineCore(float availableWidth, float lineHeight)
     {
-        _isInlineLayout = true;
-        _availableWidth = availableWidth;
+        _measure.IsInlineLayout = true;
+        _measure.AvailableWidth = availableWidth;
         if (ShouldCollapseFailedDecorativeImage)
         {
             CollapseFailedDecorativeImage(availableWidth);
@@ -1995,14 +1540,14 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         }
 
         ApplyRequestedSize(ref w, ref h, maxW);
-        _imageWidth = w;
-        _imageHeight = h;
+        _measure.ImageWidth = w;
+        _measure.ImageHeight = h;
         if (_bitmap is null)
         {
             UpdatePlaceholder(w, h);
         }
-        _captionHeight = 0f;
-        ReplaceCaption(null, null, 0f);
+        _measure.CaptionHeight = 0f;
+        _measure.ReplaceCaption(null, null, 0f);
         Bounds = new Rect(0, 0, w, h);
         return new Size(w, h);
     }
@@ -2013,13 +1558,13 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         Bounds = rect;
         if (ShouldCollapseFailedDecorativeImage)
         {
-            _imageWidth = 0;
-            _imageHeight = 0;
+            _measure.ImageWidth = 0;
+            _measure.ImageHeight = 0;
             return;
         }
 
-        _imageWidth = (float)Math.Max(1, rect.Width);
-        _imageHeight = (float)Math.Max(1, rect.Height);
+        _measure.ImageWidth = (float)Math.Max(1, rect.Width);
+        _measure.ImageHeight = (float)Math.Max(1, rect.Height);
     }
 
     /// <summary>Paiits this image into an inline cell.</summary>
@@ -2532,7 +2077,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
     public override float Measure(float availableWidth)
     {
-        _availableWidth = availableWidth;
+        _measure.AvailableWidth = availableWidth;
         if (ShouldCollapseFailedDecorativeImage)
         {
             CollapseFailedDecorativeImage(availableWidth);
@@ -2601,8 +2146,8 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         }
 
         ApplyRequestedSize(ref w, ref h, maxW);
-        _imageWidth = w;
-        _imageHeight = h;
+        _measure.ImageWidth = w;
+        _measure.ImageHeight = h;
         if (_bitmap is null)
         {
             UpdatePlaceholder(w, h);
@@ -2625,7 +2170,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 Context.Language,
                 true,
                 CanvasVerticalAlignment.Top);
-            replacementCaption = CreateOwnedTextLayout(
+            replacementCaption = _measure.CreateOwnedTextLayout(
                 Alt,
                 cfmtLease.Format,
                 maxW,
@@ -2643,7 +2188,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             }
         }
 
-        ReplaceCaption(replacementCaption, replacementCaptionRecord, replacementCaptionHeight);
+        _measure.ReplaceCaption(replacementCaption, replacementCaptionRecord, replacementCaptionHeight);
 
         float contentHeight = Math.Max(h, GetParagraphLineHeight());
         float total = contentHeight + replacementCaptionHeight + (float)(Margin.Top + Margin.Bottom);
@@ -2677,8 +2222,8 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     internal bool HasExactReservedRasterGeometry(Size intrinsicSize)
     {
         if (_disposed || _resourcesSuspended || _isSvg || _loadFailed ||
-            _inlineMeasureCheckpointActive || !float.IsFinite(_availableWidth) ||
-            _availableWidth <= 0 || !double.IsFinite(intrinsicSize.Width) ||
+            _measure.CheckpointActive || !float.IsFinite(_measure.AvailableWidth) ||
+            _measure.AvailableWidth <= 0 || !double.IsFinite(intrinsicSize.Width) ||
             !double.IsFinite(intrinsicSize.Height) || intrinsicSize.Width <= 0 ||
             intrinsicSize.Height <= 0 || intrinsicSize.Width > int.MaxValue ||
             intrinsicSize.Height > int.MaxValue)
@@ -2686,27 +2231,27 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             return false;
         }
 
-        float maxWidth = Math.Max(1f, _isInlineLayout ? _availableWidth :
-            _availableWidth - (float)(Margin.Left + Margin.Right));
+        float maxWidth = Math.Max(1f, _measure.IsInlineLayout ? _measure.AvailableWidth :
+            _measure.AvailableWidth - (float)(Margin.Left + Margin.Right));
         float scale = Math.Min(1f, maxWidth / (float)intrinsicSize.Width);
         float width = (float)intrinsicSize.Width * scale;
         float height = (float)intrinsicSize.Height * scale;
-        if (_isInlineLayout)
+        if (_measure.IsInlineLayout)
         {
             width = Math.Max(1f, width);
             height = Math.Max(1f, height);
         }
         ApplyRequestedSize(ref width, ref height, maxWidth);
-        if (_imageWidth != width || _imageHeight != height)
+        if (_measure.ImageWidth != width || _measure.ImageHeight != height)
             return false;
 
         // Prove actual committed geometry, not just matching advisory source
         // dimensions. Inline checkpoint rollback and clipped inline placement
         // can restore a different rectangle before publication.
-        return _isInlineLayout
-            ? Bounds.Width == width && Bounds.Height == height && _captionHeight == 0
-            : Bounds.Width == _availableWidth && Bounds.Height ==
-                Math.Max(height, GetParagraphLineHeight()) + _captionHeight +
+        return _measure.IsInlineLayout
+            ? Bounds.Width == width && Bounds.Height == height && _measure.CaptionHeight == 0
+            : Bounds.Width == _measure.AvailableWidth && Bounds.Height ==
+                Math.Max(height, GetParagraphLineHeight()) + _measure.CaptionHeight +
                 (float)(Margin.Top + Margin.Bottom);
     }
 
@@ -2754,15 +2299,15 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         float y = GetContentY();
 
         // Use cached image dimensions from Measure() so paint matches layout.
-        var imageRect = new Rect(x, y, _imageWidth, _imageHeight);
+        var imageRect = new Rect(x, y, _measure.ImageWidth, _measure.ImageHeight);
         PaintImageContent(ds, imageRect, viewport);
 
-        if (_caption is not null)
+        if (_measure.Caption is not null)
         {
             var cs = Context.ThemeSnapshot.GetStyle(MarkdownElementKeys.ImageCaption);
             float cy = (float)(Bounds.Y + Margin.Top) +
-                Math.Max(_imageHeight, GetParagraphLineHeight()) + (float)cs.Margin.Top;
-            PlacementAwareTextDrawing.DrawAtRootLocalOrigin(ds, _caption, x, cy, cs.Foreground);
+                Math.Max(_measure.ImageHeight, GetParagraphLineHeight()) + (float)cs.Margin.Top;
+            PlacementAwareTextDrawing.DrawAtRootLocalOrigin(ds, _measure.Caption, x, cy, cs.Foreground);
         }
     }
 
@@ -2815,7 +2360,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
         float x = GetContentX();
         float y = GetContentY();
-        var imageRect = new Rect(x, y, _imageWidth, _imageHeight);
+        var imageRect = new Rect(x, y, _measure.ImageWidth, _measure.ImageHeight);
 
         if (imageRect.Width > 0 && imageRect.Height > 0)
         {
@@ -2835,12 +2380,12 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             ds.DrawRoundedRectangle(imageRect, 3, 3, color, 2f);
         }
 
-        if (_caption is not null)
+        if (_measure.Caption is not null)
         {
             var cs = Context.ThemeSnapshot.GetStyle(MarkdownElementKeys.ImageCaption);
             float cy = (float)(Bounds.Y + Margin.Top) +
-                Math.Max(_imageHeight, GetParagraphLineHeight()) + (float)cs.Margin.Top;
-            PlacementAwareTextDrawing.DrawAtRootLocalOrigin(ds, _caption, x, cy, color);
+                Math.Max(_measure.ImageHeight, GetParagraphLineHeight()) + (float)cs.Margin.Top;
+            PlacementAwareTextDrawing.DrawAtRootLocalOrigin(ds, _measure.Caption, x, cy, color);
         }
     }
 
@@ -2857,7 +2402,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             yield break;
 
         // An inline image's arranged bounds are its painted content.
-        if (_isInlineLayout)
+        if (_measure.IsInlineLayout)
         {
             yield return new SelectionBackgroundGeometry(Bounds, 1f);
             yield break;
@@ -2865,21 +2410,21 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
         float x = GetContentX();
         float y = GetContentY();
-        if (_imageWidth > 0 && _imageHeight > 0)
+        if (_measure.ImageWidth > 0 && _measure.ImageHeight > 0)
         {
             yield return new SelectionBackgroundGeometry(
-                new Rect(x, y, _imageWidth, _imageHeight),
+                new Rect(x, y, _measure.ImageWidth, _measure.ImageHeight),
                 SelectionArtworkBackgroundOpacity);
         }
 
-        if (_caption is { } caption)
+        if (_measure.Caption is { } caption)
         {
             Rect layout = caption.LayoutBounds;
             if (layout.Width > 0 && layout.Height > 0)
             {
                 var cs = Context.ThemeSnapshot.GetStyle(MarkdownElementKeys.ImageCaption);
                 float cy = (float)(Bounds.Y + Margin.Top) +
-                    Math.Max(_imageHeight, GetParagraphLineHeight()) + (float)cs.Margin.Top;
+                    Math.Max(_measure.ImageHeight, GetParagraphLineHeight()) + (float)cs.Margin.Top;
                 yield return new SelectionBackgroundGeometry(
                     new Rect(x + layout.X, cy + layout.Y, layout.Width, layout.Height),
                     1f);
@@ -2917,7 +2462,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
         ClearSvgHostDeferral();
         OutputDeferral.ClearBitmapOutputDeferral();
-        InvalidateInlineCheckpointForDisposal();
+        _measure.InvalidateInlineCheckpointForDisposal();
 
         AdvanceSvgRenderGeneration();
         Task cancellation;
@@ -3304,7 +2849,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             }
             try { ReleaseSvgTiles(); } catch (Exception exception) { AddFailure(exception); }
             try { ReleaseBitmap(); } catch (Exception exception) { AddFailure(exception); }
-            try { RetireNativeLayoutsForDisposal(AddFailure); }
+            try { _measure.RetireNativeLayoutsForDisposal(AddFailure); }
             catch (Exception exception) { AddFailure(exception); }
             LoadCompleted = null;
         }
@@ -3778,15 +3323,15 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         float available = Math.Max(0, (float)Bounds.Width - (float)(Margin.Left + Margin.Right));
         return ContentAlignment switch
         {
-            CanvasHorizontalAlignment.Center => left + Math.Max(0, (available - _imageWidth) / 2f),
-            CanvasHorizontalAlignment.Right => left + Math.Max(0, available - _imageWidth),
+            CanvasHorizontalAlignment.Center => left + Math.Max(0, (available - _measure.ImageWidth) / 2f),
+            CanvasHorizontalAlignment.Right => left + Math.Max(0, available - _measure.ImageWidth),
             _ => left,
         };
     }
 
     private float GetContentY()
         => (float)(Bounds.Y + Margin.Top) +
-           Math.Max(0f, (GetParagraphLineHeight() - _imageHeight) / 2f);
+           Math.Max(0f, (GetParagraphLineHeight() - _measure.ImageHeight) / 2f);
 
     private float GetParagraphLineHeight()
         => float.IsFinite(MinimumParagraphLineHeight) &&
@@ -4021,7 +3566,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             maximumOutputPixels = Math.Min(maximumOutputPixels,
                 _resources.BitmapOutput.MaximumSingleOutputBytes / (composeGifCanvas ? 8 : 4));
         var sizingRequest = new RasterImageSizingRequest(
-            sizingPolicyApplies ? _availableWidth - Margin.Left - Margin.Right : budget.Width,
+            sizingPolicyApplies ? _measure.AvailableWidth - Margin.Left - Margin.Right : budget.Width,
             sizingPolicyApplies ? Context.RasterizationScale : 1d,
             sizingPolicyApplies ? _requestedWidth : null,
             sizingPolicyApplies ? _requestedHeight : null,
@@ -6913,8 +6458,8 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                     ReportUnavailable(MarkdownImageUnavailableReason.Unavailable, exception.Reason);
                     float maxWidth = Math.Max(
                         1f,
-                        _availableWidth - (float)(Margin.Left + Margin.Right));
-                    UpdatePlaceholder(maxWidth, _imageHeight);
+                        _measure.AvailableWidth - (float)(Margin.Left + Margin.Right));
+                    UpdatePlaceholder(maxWidth, _measure.ImageHeight);
                 }
 
                 RaiseLoadCompleted(layoutInvalidated: loadFailed);
@@ -8189,8 +7734,8 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 ReportUnavailable(MarkdownImageUnavailableReason.Unavailable, reason);
                 float maxWidth = Math.Max(
                     1f,
-                    _availableWidth - (float)(Margin.Left + Margin.Right));
-                UpdatePlaceholder(maxWidth, _imageHeight);
+                    _measure.AvailableWidth - (float)(Margin.Left + Margin.Right));
+                UpdatePlaceholder(maxWidth, _measure.ImageHeight);
             }
 
             RaiseLoadCompleted(layoutInvalidated: _loadFailed);
@@ -8231,10 +7776,10 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     {
         float naturalWidth = (float)Math.Max(1d, intrinsic.Width);
         float naturalHeight = (float)Math.Max(1d, intrinsic.Height);
-        float maxWidth = _isInlineLayout
-            ? Math.Max(1f, _availableWidth)
-            : Math.Max(1f, _availableWidth - (float)(Margin.Left + Margin.Right));
-        if (!float.IsFinite(maxWidth) || _availableWidth <= 0)
+        float maxWidth = _measure.IsInlineLayout
+            ? Math.Max(1f, _measure.AvailableWidth)
+            : Math.Max(1f, _measure.AvailableWidth - (float)(Margin.Left + Margin.Right));
+        if (!float.IsFinite(maxWidth) || _measure.AvailableWidth <= 0)
             maxWidth = naturalWidth;
 
         float fit = naturalWidth > maxWidth ? maxWidth / naturalWidth : 1f;
@@ -8522,8 +8067,8 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             // text; the host relayouts the committed snapshot and does not recreate or retry it.
             float maxWidth = Math.Max(
                 1f,
-                _availableWidth - (float)(Margin.Left + Margin.Right));
-            UpdatePlaceholder(maxWidth, _imageHeight);
+                _measure.AvailableWidth - (float)(Margin.Left + Margin.Right));
+            UpdatePlaceholder(maxWidth, _measure.ImageHeight);
             RaiseLoadCompleted(
                 layoutInvalidated: ShouldExpandInlineFailure ||
                     ShouldCollapseFailedDecorativeImage);
@@ -8532,10 +8077,10 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
     private void CollapseFailedDecorativeImage(float availableWidth)
     {
-        ReplacePlaceholder(null, null);
-        ReplaceCaption(null, null, 0f);
-        _imageWidth = 0;
-        _imageHeight = 0;
+        _measure.ReplacePlaceholder(null, null);
+        _measure.ReplaceCaption(null, null, 0f);
+        _measure.ImageWidth = 0;
+        _measure.ImageHeight = 0;
         Bounds = new Rect(0, 0, Math.Max(0, availableWidth), 0);
     }
 
@@ -8554,8 +8099,8 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         ds.FillRoundedRectangle(rect, radius, radius, fill);
         ds.DrawRoundedRectangle(rect, radius, radius, border, 1f);
 
-        bool compactInlineFailure = _isInlineLayout && _loadFailed;
-        if (_placeholder is null ||
+        bool compactInlineFailure = _measure.IsInlineLayout && _loadFailed;
+        if (_measure.Placeholder is null ||
             (!compactInlineFailure && (rect.Width < 96 || rect.Height < 32)))
         {
             return;
@@ -8568,7 +8113,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         {
             PlacementAwareTextDrawing.DrawAtRootLocalOrigin(
                 ds,
-                _placeholder,
+                _measure.Placeholder,
                 (float)rect.X + Math.Min(horizontalPadding, (float)rect.Width / 4f),
                 (float)rect.Y + Math.Min(verticalPadding, (float)rect.Height / 4f),
                 caption.Foreground);
@@ -8584,7 +8129,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     private void UpdatePlaceholder(float maxWidth, float maxHeight = float.MaxValue)
     {
         var style = Context.ThemeSnapshot.GetStyle(MarkdownElementKeys.ImageCaption);
-        bool compactInlineFailure = _isInlineLayout && _loadFailed;
+        bool compactInlineFailure = _measure.IsInlineLayout && _loadFailed;
         using SharedCanvasTextFormatCache.Lease formatLease = SharedCanvasTextFormatCache.Acquire(
             style,
             compactInlineFailure ? CanvasWordWrapping.NoWrap : CanvasWordWrapping.Wrap,
@@ -8619,7 +8164,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         float layoutHeight = float.IsFinite(maxHeight)
             ? Math.Max(1f, maxHeight - Math.Min(verticalPadding, maxHeight / 2f))
             : float.MaxValue;
-        CanvasTextLayout replacement = CreateOwnedTextLayout(
+        CanvasTextLayout replacement = _measure.CreateOwnedTextLayout(
             text,
             formatLease.Format,
             layoutWidth,
@@ -8634,11 +8179,11 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             replacement.TrimmingGranularity = CanvasTextTrimmingGranularity.Character;
             replacement.TrimmingSign = CanvasTrimmingSign.Ellipsis;
         }
-        ReplacePlaceholder(replacement, replacementRecord);
+        _measure.ReplacePlaceholder(replacement, replacementRecord);
     }
 
     private bool ShouldExpandInlineFailure =>
-        _isInlineLayout &&
+        _measure.IsInlineLayout &&
         _loadFailed &&
         _requestedWidth is null &&
         _requestedHeight is null;
@@ -8662,7 +8207,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             Context.Language,
             true,
             CanvasVerticalAlignment.Top);
-        NativeResourceRetirementRecord retirementRecord = ReserveNativeLayoutRetirementRecord();
+        NativeResourceRetirementRecord retirementRecord = _measure.ReserveNativeLayoutRetirementRecord();
         CanvasTextLayout? layout = null;
         float measuredWidth;
         try

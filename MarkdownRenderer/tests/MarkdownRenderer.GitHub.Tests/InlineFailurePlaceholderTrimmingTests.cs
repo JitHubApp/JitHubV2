@@ -39,7 +39,7 @@ public sealed class InlineFailurePlaceholderTrimmingTests
             try
             {
                 _ = image.MeasureInline(maxWidth, 22f);
-                CanvasTextLayout label = Assert.IsType<CanvasTextLayout>(image.PlaceholderLayoutForTests);
+                CanvasTextLayout label = Assert.IsType<CanvasTextLayout>(image.MeasureCustody.GetLayoutState().Placeholder);
                 Assert.True(
                     label.LayoutBounds.Width <= label.RequestedSize.Width + 0.5,
                     $"The inline failure label is {label.LayoutBounds.Width:F1} DIP wide in a {label.RequestedSize.Width:F1} DIP layout; it must be trimmed, not clipped.");

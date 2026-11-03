@@ -1249,10 +1249,7 @@ public sealed class RootLocalTableImageRelayoutTests
         InlineContainerBox cell = table.GetCellBoxes().First(static candidate => candidate.Runs.Count > 0);
         CanvasTextLayout cellLayout = GetInlineLayout(cell);
         ImageBox imageSource = images[0];
-        FieldInfo placeholderField = typeof(ImageBox).GetField("_placeholder",
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Missing image placeholder native-layout field.");
-        CanvasTextLayout? originalPlaceholder = imageSource.PlaceholderLayoutForTests;
+        CanvasTextLayout? originalPlaceholder = imageSource.MeasureCustody.GetLayoutState().Placeholder;
         Assert.NotSame(cellLayout, originalPlaceholder);
 
         TableSourceState initialState = CaptureState(document.Snapshot, table);
@@ -1275,7 +1272,7 @@ public sealed class RootLocalTableImageRelayoutTests
                 {
                     hookCalls++;
                     aliasInstalled = true;
-                    placeholderField.SetValue(imageSource, cellLayout);
+                    imageSource.MeasureCustody.Placeholder = cellLayout;
                 }),
                 expectedPointerInputEpoch: document.Snapshot.PointerInputEpoch);
         }
@@ -1287,7 +1284,7 @@ public sealed class RootLocalTableImageRelayoutTests
                 // Restore its exact prior owner field before draining candidates
                 // or the document snapshot, even when the assertion path throws.
                 if (aliasInstalled)
-                    placeholderField.SetValue(imageSource, originalPlaceholder);
+                    imageSource.MeasureCustody.Placeholder = originalPlaceholder;
             }
             finally
             {
@@ -1296,7 +1293,7 @@ public sealed class RootLocalTableImageRelayoutTests
             }
         }
 
-        Assert.Same(originalPlaceholder, imageSource.PlaceholderLayoutForTests);
+        Assert.Same(originalPlaceholder, imageSource.MeasureCustody.GetLayoutState().Placeholder);
         Assert.Equal(1, hookCalls);
         Assert.Equal(PreparedImageRelayoutResult.Retry, result);
         Assert.Equal(revisionBefore, document.Snapshot.LayoutRevision);

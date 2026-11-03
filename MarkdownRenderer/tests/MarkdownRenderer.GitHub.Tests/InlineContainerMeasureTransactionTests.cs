@@ -96,7 +96,7 @@ public sealed class InlineContainerMeasureTransactionTests
             float oldImageWidth = imageRun.Image.MeasuredImageWidth;
             float oldImageHeight = imageRun.Image.MeasuredImageHeight;
             CanvasTextLayout oldPlaceholder = Assert.IsType<CanvasTextLayout>(
-                imageRun.Image.PlaceholderLayoutForTests);
+                imageRun.Image.MeasureCustody.GetLayoutState().Placeholder);
             Windows.Foundation.Rect oldPlaceholderBounds = oldPlaceholder.LayoutBounds;
 
             cancelRun.CancelOnNextRead();
@@ -109,7 +109,7 @@ public sealed class InlineContainerMeasureTransactionTests
             Assert.Equal(oldParagraphBounds, paragraph.Bounds);
             Assert.Equal(oldRunBounds, paragraph.GetRunRect(imageRun.InlineIndex));
             Assert.Equal(oldAutomationBounds, imageRun.Image.AutomationRenderDestination);
-            Assert.Same(oldPlaceholder, imageRun.Image.PlaceholderLayoutForTests);
+            Assert.Same(oldPlaceholder, imageRun.Image.MeasureCustody.GetLayoutState().Placeholder);
             Assert.Equal(oldPlaceholderBounds, oldPlaceholder.LayoutBounds);
 
             // The failed candidate did not poison the next reflow: this commit
@@ -122,7 +122,7 @@ public sealed class InlineContainerMeasureTransactionTests
             Assert.True(imageRun.DesiredWidth < oldDesiredWidth);
             Assert.True(imageRun.Image.MeasuredImageWidth < oldImageWidth);
             CanvasTextLayout replacementPlaceholder = Assert.IsType<CanvasTextLayout>(
-                imageRun.Image.PlaceholderLayoutForTests);
+                imageRun.Image.MeasureCustody.GetLayoutState().Placeholder);
             Assert.NotSame(oldPlaceholder, replacementPlaceholder);
             Assert.True(replacementPlaceholder.LayoutBounds.Width >= 0);
         }
@@ -168,7 +168,7 @@ public sealed class InlineContainerMeasureTransactionTests
             float oldImageWidth = imageRun.Image.MeasuredImageWidth;
             float oldImageHeight = imageRun.Image.MeasuredImageHeight;
             CanvasTextLayout oldPlaceholder = Assert.IsType<CanvasTextLayout>(
-                imageRun.Image.PlaceholderLayoutForTests);
+                imageRun.Image.MeasureCustody.GetLayoutState().Placeholder);
             Windows.Foundation.Rect oldPlaceholderBounds = oldPlaceholder.LayoutBounds;
 
             IntrinsicWidthMetrics metrics = paragraph.MeasureIntrinsicWidths();
@@ -180,7 +180,7 @@ public sealed class InlineContainerMeasureTransactionTests
             Assert.Equal(oldImageWidth, imageRun.Image.MeasuredImageWidth);
             Assert.Equal(oldImageHeight, imageRun.Image.MeasuredImageHeight);
             Assert.Equal(oldAutomationBounds, imageRun.Image.AutomationRenderDestination);
-            Assert.Same(oldPlaceholder, imageRun.Image.PlaceholderLayoutForTests);
+            Assert.Same(oldPlaceholder, imageRun.Image.MeasureCustody.GetLayoutState().Placeholder);
             Assert.Equal(oldPlaceholderBounds, oldPlaceholder.LayoutBounds);
             Assert.Equal(oldRunBounds, paragraph.GetRunRect(imageRun.InlineIndex));
 
@@ -193,7 +193,7 @@ public sealed class InlineContainerMeasureTransactionTests
             Assert.Equal(oldImageWidth, imageRun.Image.MeasuredImageWidth);
             Assert.Equal(oldImageHeight, imageRun.Image.MeasuredImageHeight);
             Assert.Equal(oldAutomationBounds, imageRun.Image.AutomationRenderDestination);
-            Assert.Same(oldPlaceholder, imageRun.Image.PlaceholderLayoutForTests);
+            Assert.Same(oldPlaceholder, imageRun.Image.MeasureCustody.GetLayoutState().Placeholder);
             Assert.Equal(oldPlaceholderBounds, oldPlaceholder.LayoutBounds);
             Assert.Equal(oldRunBounds, paragraph.GetRunRect(imageRun.InlineIndex));
         }
@@ -225,13 +225,13 @@ public sealed class InlineContainerMeasureTransactionTests
         {
             _ = paragraph.Measure(320f);
             CanvasTextLayout originalPlaceholder = Assert.IsType<CanvasTextLayout>(
-                imageRun.Image.PlaceholderLayoutForTests);
+                imageRun.Image.MeasureCustody.GetLayoutState().Placeholder);
 
             ImageBox.InlineMeasureCheckpoint checkpoint =
                 imageRun.Image.BeginInlineCheckpoint();
             imageRun.Measure(150f, 20f, checkpoint);
             CanvasTextLayout replacementPlaceholder = Assert.IsType<CanvasTextLayout>(
-                imageRun.Image.PlaceholderLayoutForTests);
+                imageRun.Image.MeasureCustody.GetLayoutState().Placeholder);
             Assert.NotSame(originalPlaceholder, replacementPlaceholder);
 
             imageRun.Image.Dispose();
@@ -242,7 +242,7 @@ public sealed class InlineContainerMeasureTransactionTests
 
             await imageRun.Image.RetirementTask.WaitAsync(TimeSpan.FromSeconds(5));
 
-            Assert.Null(imageRun.Image.PlaceholderLayoutForTests);
+            Assert.Null(imageRun.Image.MeasureCustody.GetLayoutState().Placeholder);
         }
         finally
         {
@@ -283,7 +283,7 @@ public sealed class InlineContainerMeasureTransactionTests
             float oldDesiredWidth = firstImage.DesiredWidth;
             float oldImageWidth = firstImage.Image.MeasuredImageWidth;
             CanvasTextLayout oldPlaceholder = Assert.IsType<CanvasTextLayout>(
-                firstImage.Image.PlaceholderLayoutForTests);
+                firstImage.Image.MeasureCustody.GetLayoutState().Placeholder);
             Windows.Foundation.Rect oldPlaceholderBounds = oldPlaceholder.LayoutBounds;
 
             // This throws after the first image has been measured and captured,
@@ -294,7 +294,7 @@ public sealed class InlineContainerMeasureTransactionTests
             Assert.Equal(oldDesiredWidth, firstImage.DesiredWidth);
             Assert.Equal(oldImageWidth, firstImage.Image.MeasuredImageWidth);
             Assert.Equal(oldAutomationBounds, firstImage.Image.AutomationRenderDestination);
-            Assert.Same(oldPlaceholder, firstImage.Image.PlaceholderLayoutForTests);
+            Assert.Same(oldPlaceholder, firstImage.Image.MeasureCustody.GetLayoutState().Placeholder);
             Assert.Equal(oldPlaceholderBounds, oldPlaceholder.LayoutBounds);
             Assert.Equal(oldRunBounds, paragraph.GetRunRect(firstImage.InlineIndex));
         }
