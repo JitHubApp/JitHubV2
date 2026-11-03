@@ -61,11 +61,6 @@
       "lines": 1076,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
-    {
-      "path": "src/MarkdownRenderer.Svg.Resvg/Internal/SvgPreflight.cs",
-      "lines": 2333,
-      "reason": "Predates the size rule; split by responsibility in a later structure step."
-    },
 {
       "path": "src/MarkdownRenderer.Svg.Resvg/Internal/WindowsWorkerProcess.cs",
       "lines": 1297,

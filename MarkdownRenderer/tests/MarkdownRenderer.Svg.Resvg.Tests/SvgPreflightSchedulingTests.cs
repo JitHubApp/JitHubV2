@@ -321,7 +321,7 @@ public sealed class SvgPreflightSchedulingTests
                 cancellation.Token));
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
-            await SvgPreflight.NormalizeToUtf8SegmentsAsync(
+            await SvgUtf8Normalization.NormalizeToUtf8SegmentsAsync(
                 source,
                 new ResvgMarkdownSvgRendererOptions(),
                 cancellation.Token));
@@ -330,9 +330,9 @@ public sealed class SvgPreflightSchedulingTests
     [Fact]
     public async Task CompletedNormalizationTaskDoesNotRetainOriginalSourceBytes()
     {
-        (Task<SvgPreflight.BoundedOutputStream> task, WeakReference<byte[]> source) = StartUtf16Normalization();
+        (Task<BoundedOutputStream> task, WeakReference<byte[]> source) = StartUtf16Normalization();
 
-        using SvgPreflight.BoundedOutputStream normalizedOutput = await task.WaitAsync(TimeSpan.FromSeconds(5));
+        using BoundedOutputStream normalizedOutput = await task.WaitAsync(TimeSpan.FromSeconds(5));
         AssertCollected(source);
         using SvgSourceBuffer normalizedSource = normalizedOutput.DetachSourceBuffer();
         byte[] normalized = normalizedSource.CopyToArrayForTest();
@@ -345,7 +345,7 @@ public sealed class SvgPreflightSchedulingTests
     [Fact]
     public async Task FaultedNormalizationTaskDoesNotRetainOriginalSourceBytes()
     {
-        (Task<SvgPreflight.BoundedOutputStream> task, WeakReference<byte[]> source) = StartFaultedUtf16Normalization();
+        (Task<BoundedOutputStream> task, WeakReference<byte[]> source) = StartFaultedUtf16Normalization();
 
         await Assert.ThrowsAsync<XmlException>(async () =>
             await task.WaitAsync(TimeSpan.FromSeconds(5)));
@@ -357,7 +357,7 @@ public sealed class SvgPreflightSchedulingTests
     [Fact]
     public async Task CanceledNormalizationTaskDoesNotRetainOriginalSourceBytes()
     {
-        (Task<SvgPreflight.BoundedOutputStream> task, WeakReference<byte[]> source) = StartCanceledUtf16Normalization();
+        (Task<BoundedOutputStream> task, WeakReference<byte[]> source) = StartCanceledUtf16Normalization();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
             await task.WaitAsync(TimeSpan.FromSeconds(5)));
@@ -784,12 +784,12 @@ public sealed class SvgPreflightSchedulingTests
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static (Task<SvgPreflight.BoundedOutputStream> Task, WeakReference<byte[]> Source) StartUtf16Normalization()
+    private static (Task<BoundedOutputStream> Task, WeakReference<byte[]> Source) StartUtf16Normalization()
     {
         string sourceText = "<?xml version='1.0' encoding='utf-16'?><svg xmlns='http://www.w3.org/2000/svg'/>";
         byte[] source = EncodeWithPreamble(new UnicodeEncoding(false, true), sourceText);
         WeakReference<byte[]> sourceReference = new(source);
-        Task<SvgPreflight.BoundedOutputStream> task = SvgPreflight.NormalizeToUtf8SegmentsAsync(
+        Task<BoundedOutputStream> task = SvgUtf8Normalization.NormalizeToUtf8SegmentsAsync(
             source,
             new ResvgMarkdownSvgRendererOptions(),
             CancellationToken.None);
@@ -797,12 +797,12 @@ public sealed class SvgPreflightSchedulingTests
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static (Task<SvgPreflight.BoundedOutputStream> Task, WeakReference<byte[]> Source) StartFaultedUtf16Normalization()
+    private static (Task<BoundedOutputStream> Task, WeakReference<byte[]> Source) StartFaultedUtf16Normalization()
     {
         string sourceText = "<?xml version='1.0' encoding='utf-16'?><svg xmlns='http://www.w3.org/2000/svg'>";
         byte[] source = EncodeWithPreamble(new UnicodeEncoding(false, true), sourceText);
         WeakReference<byte[]> sourceReference = new(source);
-        Task<SvgPreflight.BoundedOutputStream> task = SvgPreflight.NormalizeToUtf8SegmentsAsync(
+        Task<BoundedOutputStream> task = SvgUtf8Normalization.NormalizeToUtf8SegmentsAsync(
             source,
             new ResvgMarkdownSvgRendererOptions(),
             CancellationToken.None);
@@ -810,14 +810,14 @@ public sealed class SvgPreflightSchedulingTests
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static (Task<SvgPreflight.BoundedOutputStream> Task, WeakReference<byte[]> Source) StartCanceledUtf16Normalization()
+    private static (Task<BoundedOutputStream> Task, WeakReference<byte[]> Source) StartCanceledUtf16Normalization()
     {
         string sourceText = "<?xml version='1.0' encoding='utf-16'?><svg xmlns='http://www.w3.org/2000/svg'/>";
         byte[] source = EncodeWithPreamble(new UnicodeEncoding(false, true), sourceText);
         WeakReference<byte[]> sourceReference = new(source);
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
-        Task<SvgPreflight.BoundedOutputStream> task = SvgPreflight.NormalizeToUtf8SegmentsAsync(
+        Task<BoundedOutputStream> task = SvgUtf8Normalization.NormalizeToUtf8SegmentsAsync(
             source,
             new ResvgMarkdownSvgRendererOptions(),
             cancellation.Token);

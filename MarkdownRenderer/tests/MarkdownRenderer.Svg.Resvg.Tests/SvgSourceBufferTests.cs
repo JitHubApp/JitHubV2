@@ -16,7 +16,7 @@ public sealed class SvgSourceBufferTests
         for (int index = 0; index < expected.Length; index++)
             expected[index] = unchecked((byte)(index * 31));
 
-        using var output = new SvgPreflight.BoundedOutputStream(
+        using var output = new BoundedOutputStream(
             maximumBytes: expected.Length + SvgSourceBuffer.SegmentSize,
             CancellationToken.None);
         output.Write(expected);
@@ -423,7 +423,7 @@ public sealed class SvgSourceBufferTests
         // Also exercise a first-byte match with the wrong trailing bytes.
         expected[first - 2] = marker[0];
 
-        using var writer = new SvgPreflight.BoundedOutputStream(expected.Length, CancellationToken.None);
+        using var writer = new BoundedOutputStream(expected.Length, CancellationToken.None);
         if (segmented)
             writer.Write(expected);
         using SvgSourceBuffer source = segmented
@@ -455,7 +455,7 @@ public sealed class SvgSourceBufferTests
         bytes.AsSpan().Fill((byte)'x');
         int markerStart = SvgSourceBuffer.SegmentSize - 2;
         "<!--"u8.CopyTo(bytes.AsSpan(markerStart));
-        using var writer = new SvgPreflight.BoundedOutputStream(bytes.Length, CancellationToken.None);
+        using var writer = new BoundedOutputStream(bytes.Length, CancellationToken.None);
         if (segmented)
             writer.Write(bytes);
         using SvgSourceBuffer source = segmented

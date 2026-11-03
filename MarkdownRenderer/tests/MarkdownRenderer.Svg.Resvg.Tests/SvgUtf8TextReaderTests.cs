@@ -145,7 +145,7 @@ public sealed class SvgUtf8TextReaderTests
     {
         string expected = new string('x', SvgSourceBuffer.SegmentSize - 1) + "🙂tail";
         byte[] bytes = Encoding.UTF8.GetBytes(expected);
-        using var output = new SvgPreflight.BoundedOutputStream(bytes.Length, CancellationToken.None);
+        using var output = new BoundedOutputStream(bytes.Length, CancellationToken.None);
         output.Write(bytes);
         SvgSourceBuffer owner = output.DetachSourceBuffer();
         var reader = new SvgUtf8TextReader(owner.AcquireReadLease(), 0);
