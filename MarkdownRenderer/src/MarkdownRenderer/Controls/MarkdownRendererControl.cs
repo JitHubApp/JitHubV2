@@ -87,7 +87,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private readonly EmbedRealization _embeds;
     private readonly WindowDestroyingWatch _windowDestroying;
     private readonly RecoveryClock _recoveryClock;
-    private MarkdownEngine? _ownedEngine;
 
     private readonly SnapshotRetirementTracker _snapshotRetirements = new(
         static exception => MarkdownDiagnostics.WriteLine(
@@ -105,6 +104,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private readonly VisibleWorkScheduler _visibleWork;
     private readonly ScrollViewTracking _scrolling;
     private readonly KeyboardInput _keyboard;
+    private readonly DocumentInputs _documentInputs;
     private readonly VisibleImageReadiness _imageReadiness;
     private readonly DeferredSceneReadiness _deferredScenes;
     private readonly BlockScrollNavigation _blockScroll;
@@ -133,10 +133,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     // The theme used while Theme is null. A MarkdownTheme is a thread-affine
     // DependencyObject, so each control owns one rather than sharing a static.
     private readonly MarkdownTheme _defaultTheme = new();
-    private readonly Dictionary<string, bool> _disclosureStates = new(StringComparer.Ordinal);
     private readonly ParsedMarkdownCache _parseCache = new();
-    private bool _isUpdatingDocumentProperty;
-    private bool _hasExplicitDocument;
     private SizeChangedEventHandler? _sizeChangedHandler;
     private readonly SelectionController _selection = new();
     private readonly MarkdownTouchSelectionSession _touchSelection = new();
@@ -208,7 +205,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <summary>Dependency property backing <see cref="Markdown"/>.</summary>
     public static readonly DependencyProperty MarkdownProperty =
         DependencyProperty.Register(nameof(Markdown), typeof(string), typeof(MarkdownRendererControl),
-            new PropertyMetadata(string.Empty, (d, _) => ((MarkdownRendererControl)d).OnMarkdownChanged()));
+            new PropertyMetadata(string.Empty, (d, _) => ((MarkdownRendererControl)d)._documentInputs.OnMarkdownChanged()));
 
     /// <summary>Gets or sets the markdown source text to render.</summary>
     public string Markdown
@@ -223,7 +220,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
             nameof(Document),
             typeof(MarkdownRenderer.Document.MarkdownDocument),
             typeof(MarkdownRendererControl),
-            new PropertyMetadata(null, (d, e) => ((MarkdownRendererControl)d).OnDocumentChanged(e)));
+            new PropertyMetadata(null, (d, e) => ((MarkdownRendererControl)d)._documentInputs.OnDocumentChanged(e)));
 
     /// <summary>
     /// Gets or sets an immutable, reusable parsed document. When set, the
@@ -242,7 +239,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
             nameof(Engine),
             typeof(MarkdownEngine),
             typeof(MarkdownRendererControl),
-            new PropertyMetadata(null, (d, e) => ((MarkdownRendererControl)d).OnEngineChanged(e)));
+            new PropertyMetadata(null, (d, e) => ((MarkdownRendererControl)d)._documentInputs.OnEngineChanged(e)));
 
     /// <summary>
     /// Gets or sets the immutable parser engine used for markdown replacements.
@@ -259,26 +256,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// assignments are borrowed; only engines assigned through this internal
     /// ownership boundary are disposed with the control.
     /// </summary>
-    internal void SetOwnedEngine(MarkdownEngine engine)
-    {
-        ArgumentNullException.ThrowIfNull(engine);
-        MarkdownEngine? previous = _ownedEngine;
-        _ownedEngine = null;
-        try
-        {
-            Engine = engine;
-            _ownedEngine = engine;
-        }
-        catch
-        {
-            _ownedEngine = previous;
-            RetireOwnedEngine(engine);
-            throw;
-        }
-
-        if (previous is not null && !ReferenceEquals(previous, engine))
-            RetireOwnedEngine(previous);
-    }
+    internal void SetOwnedEngine(MarkdownEngine engine) => _documentInputs.SetOwnedEngine(engine);
 
     /// <summary>Dependency property backing <see cref="StyleSheet"/>.</summary>
     public static readonly DependencyProperty StyleSheetProperty =
@@ -355,7 +333,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     internal static readonly DependencyProperty ExtensionRegistryProperty =
         DependencyProperty.Register(nameof(ExtensionRegistry), typeof(MarkdownExtensionRegistry),
             typeof(MarkdownRendererControl),
-            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d).OnParserConfigurationChanged()));
+            new PropertyMetadata(null, (d, _) => ((MarkdownRendererControl)d)._documentInputs.OnParserConfigurationChanged()));
 
     internal MarkdownExtensionRegistry? ExtensionRegistry
     {
@@ -866,36 +844,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     internal void RaiseInlineVectorSceneClickFromAutomation(InlineVectorSceneRun run) =>
         _automation.ActivateLinkedAtomic(run);
 
-    internal void SetDisclosureExpanded(LinkRun run, bool expanded)
-    {
-        if (run is not { IsDisclosure: true, DisclosureId: { Length: > 0 } id } ||
-            run.IsExpanded == expanded)
-        {
-            return;
-        }
-
-        SetDisclosureExpanded(id, expanded);
-    }
-
-    private void SetDisclosureExpanded(string id, bool expanded)
-    {
-        void Apply()
-        {
-            _disclosureStates[id] = expanded;
-            _events.RaiseDisclosureToggled(expanded);
-            RequestRebuild(RebuildReason.Restyle);
-        }
-
-        if (DispatcherQueue is { HasThreadAccess: false } dispatcher)
-        {
-            dispatcher.TryEnqueue(Apply);
-        }
-        else
-        {
-            Apply();
-        }
-    }
-
     /// <summary>Raised when the user activates a non-internal markdown link.</summary>
     public event EventHandler<MarkdownLinkClickEventArgs>? LinkClick;
 
@@ -1043,6 +991,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// without relying on heuristic descendant counts.
     /// </summary>
     public int RealizedEmbedCount => _embeds.RealizedEmbedCount;
+
+    internal void SetDisclosureExpanded(LinkRun run, bool expanded) => _documentInputs.SetDisclosureExpanded(run, expanded);
 
     internal string ResolvedCodeBlockCopyButtonLabel =>
         string.IsNullOrWhiteSpace(CodeBlockCopyButtonLabel)
@@ -1193,6 +1143,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _imageSubscriptions.LoadCompleted += _imageLoadCompletion.OnLoadCompleted;
         _geometryRecovery = new GeometryRecovery(_lifetime, _published, _surface, _pointerInput, _vectorCapacity, _horizontalOverflowDrag, _focusGeometryWork, _overflowScroll, _focusRing, _adorner, _layoutCommit, _imageSubscriptions, _lazyLayout, _imageRelayout, _interactionReset, _dragShield, _contextMenu, _abbreviationTooltip, _cursor, _handles, _automation, _deviceRecovery, _rebuild);
         _visibleWork = new VisibleWorkScheduler(this, _published, _highlighting, _geometryRecovery);
+        _documentInputs = new DocumentInputs(this, _events, _interactionReset, _embeds, _highlighting, _rebuild, _snapshotRetirements);
         _keyboard = new KeyboardInput(this, _published, _selection, _selectionCommands, _contextMenu, _focus, _focusRing, _focusCommit, _hostedFocus, _navigator, _geometryRecovery);
         _recoveryWork = new RecoveryClockWork(_lifetime, _published, _recoveryClock, _layoutCommit, _layoutPublisher, _lazyLayout, _imageSubscriptions, _imageRelayout, _overflowScroll, _focusGeometryWork, _focusRefresh, _focusableItems, _pointerInput, _geometryRecovery, _rebuild);
         _textAdorner = new InteractiveTextAdorner(_surface, _published, _selection, _touchSelection, _hover, _focus, _adorner, _geometryRecovery);
@@ -1267,82 +1218,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         {
             _document.ForgetDragAnchor();
         }
-    }
-
-    private void OnMarkdownChanged()
-    {
-        _interactionReset.ResetInputForDocumentReplacement();
-        // Document has documented precedence over Markdown. A source change
-        // invalidates only the document that this control published itself;
-        // it must never clear a host-supplied/bound document based on DP
-        // notification order. Hosts switch back to source parsing by clearing
-        // Document explicitly.
-        if (!_hasExplicitDocument && !_isUpdatingDocumentProperty && Document is not null)
-        {
-            _isUpdatingDocumentProperty = true;
-            try { ClearValue(DocumentProperty); }
-            finally { _isUpdatingDocumentProperty = false; }
-        }
-        _disclosureStates.Clear();
-        _embeds.ClearHostedElementFallbacks();
-        _highlighting.ClearCache();
-        RequestRebuild(RebuildReason.Full);
-    }
-
-    private void OnDocumentChanged(DependencyPropertyChangedEventArgs e)
-    {
-        if (_isUpdatingDocumentProperty)
-            return;
-
-        _interactionReset.ResetInputForDocumentReplacement();
-        _hasExplicitDocument = e.NewValue is MarkdownRenderer.Document.MarkdownDocument;
-        _disclosureStates.Clear();
-        _embeds.ClearHostedElementFallbacks();
-        _highlighting.ClearCache();
-        RequestRebuild(RebuildReason.Full);
-    }
-
-    private void OnEngineChanged(DependencyPropertyChangedEventArgs e)
-    {
-        MarkdownEngine? retiredOwnedEngine = null;
-        if (_ownedEngine is not null &&
-            ReferenceEquals(e.OldValue, _ownedEngine) &&
-            !ReferenceEquals(e.NewValue, _ownedEngine))
-        {
-            retiredOwnedEngine = _ownedEngine;
-            _ownedEngine = null;
-        }
-
-        try
-        {
-            // Supersede the current parse before disposing the previous owner.
-            // The retirement helper also snapshots other already-pending work.
-            OnParserConfigurationChanged();
-        }
-        finally
-        {
-            if (retiredOwnedEngine is not null)
-                RetireOwnedEngine(retiredOwnedEngine);
-        }
-    }
-
-    private void OnParserConfigurationChanged()
-    {
-        // Document is both an input and the published output of Markdown
-        // parsing. Only a document supplied by the host is authoritative.
-        // Clear an internally published value so changing Engine or the legacy
-        // registry cannot silently reuse an AST produced by old settings.
-        if (!_hasExplicitDocument && Document is not null)
-        {
-            _isUpdatingDocumentProperty = true;
-            try { ClearValue(DocumentProperty); }
-            finally { _isUpdatingDocumentProperty = false; }
-        }
-
-        _disclosureStates.Clear();
-        _embeds.ClearHostedElementFallbacks();
-        _highlighting.ClearCache();
-        RequestRebuild(RebuildReason.Full);
     }
 
     private void OnHostedElementFactoryChanged()
@@ -1904,9 +1779,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     bool IRebuildSchedulerHost.IsLoaded => IsLoaded;
 
-    string IRebuildSchedulerHost.EffectiveSource => _hasExplicitDocument
-        ? Document?.Source ?? string.Empty
-        : Markdown ?? string.Empty;
+    string IRebuildSchedulerHost.EffectiveSource => _documentInputs.EffectiveSource;
 
     void IRebuildSchedulerHost.AdvanceDeferredSceneGeneration()
     {
@@ -1974,10 +1847,10 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     IMarkdownCommandProvider? ILinkActivationHost.CommandProvider => CommandProvider;
 
     void ILinkActivationHost.SetDisclosureExpanded(LinkRun run, bool expanded) =>
-        SetDisclosureExpanded(run, expanded);
+        _documentInputs.SetDisclosureExpanded(run, expanded);
 
     void ILinkActivationHost.SetDisclosureExpanded(string disclosureId, bool expanded) =>
-        SetDisclosureExpanded(disclosureId, expanded);
+        _documentInputs.SetDisclosureExpanded(disclosureId, expanded);
 
     void ILinkActivationHost.RaiseLinkClick(MarkdownLinkClickEventArgs args) => _events.RaiseLinkClick(args);
 
@@ -2239,10 +2112,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _dragShield.Release();
         Content = null;
         _surface.Detach();
-        MarkdownEngine? ownedEngine = _ownedEngine;
-        _ownedEngine = null;
-        if (ownedEngine is not null)
-            RetireOwnedEngine(ownedEngine);
+        _documentInputs.ReleaseOwnedEngine();
         _lifetime.MarkDisposalComplete();
         try { ((IRendererEventSink)this).InvokeDisposed(); }
         catch (Exception ex)
@@ -2396,21 +2266,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         RequestRebuild(RebuildReason.Restyle);
     }
 
-    private Task RetireOwnedEngine(MarkdownEngine engine)
-    {
-        ArgumentNullException.ThrowIfNull(engine);
-
-        // Snapshot the barrier before tracking this engine's own retirement;
-        // otherwise a later shutdown drain could wait on a task that waits on
-        // that same drain.
-        if (_rebuild.ActiveTask is { } activePipeline)
-            _snapshotRetirements.Track(activePipeline);
-        Task lifetime = _snapshotRetirements.WaitForPendingAsync();
-        Task retirement = OwnedResourceRetirement.DisposeAfterPropagating(engine, lifetime);
-        _snapshotRetirements.Track(retirement);
-        return retirement;
-    }
-
     private async Task RebuildAsync(
         CancellationToken ct,
         RebuildReason reason,
@@ -2545,7 +2400,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
             PerformanceSession as IMarkdownPerformanceSessionInternal;
         if (performanceSession?.IsDisposed == true)
             performanceSession = null;
-        var reusableDocument = _hasExplicitDocument ? Document : null;
+        var reusableDocument = _documentInputs.HasExplicitDocument ? Document : null;
         return new RebuildSourceInputs(
             extensionRegistry,
             legacyRegistry,
@@ -2577,7 +2432,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         LineNumberMode = CodeBlockLineNumberMode,
         WrappingMode = CodeBlockWrappingMode,
         ChromeMode = CodeBlockChromeMode,
-        DisclosureStates = new Dictionary<string, bool>(_disclosureStates, StringComparer.Ordinal),
+        DisclosureStates = _documentInputs.CopyDisclosureStates(),
         TextScaleFactor = _environmentSnapshot.TextScaleFactor > 0
             ? _environmentSnapshot.TextScaleFactor
             : 1.0,
@@ -2812,13 +2667,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         ReplacementPublication publication)
     {
         _layoutCommit.MarkApplied(snapshot.LayoutRevision);
-        MarkdownRenderer.Document.MarkdownDocument semanticDocument = plan.Parse.SemanticDocument;
-        if (!ReferenceEquals(Document, semanticDocument))
-        {
-            _isUpdatingDocumentProperty = true;
-            try { SetValue(DocumentProperty, semanticDocument); }
-            finally { _isUpdatingDocumentProperty = false; }
-        }
+        _documentInputs.PublishParsedDocument(plan.Parse.SemanticDocument);
         if (publication.Old is not null)
             _contextMenu.Close();
         // Dependency-property publication above can reenter Dispose before
