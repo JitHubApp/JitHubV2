@@ -1,4 +1,3 @@
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
 using System.Diagnostics;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;
@@ -6,8 +5,8 @@ using Microsoft.Graphics.Canvas.Text;
 namespace MarkdownRenderer.Layout;
 
 /// <summary>
-/// Keeps diagnostic timing around the native Win2D/DirectWrite constructor itself,
-/// without adding a clock read to normal layout builds.
+/// Keeps diagnostic timing around the native Win2D/DirectWrite constructor itself.
+/// Without a <see cref="MarkdownLayoutDiagnostics"/> capture it adds no clock read.
 /// </summary>
 internal static class CanvasTextLayoutFactory
 {
@@ -35,4 +34,3 @@ internal static class CanvasTextLayoutFactory
         }
     }
 }
-#endif

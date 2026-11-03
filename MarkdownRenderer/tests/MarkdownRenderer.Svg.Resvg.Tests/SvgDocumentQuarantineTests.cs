@@ -21,9 +21,7 @@ public sealed class SvgDocumentQuarantineTests
             request,
             options,
             CancellationToken.None
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             , renderer.SourceOwnership
-#endif
             );
         string identity = Convert.ToHexString(preflight.Hash);
         preflight.ReleaseSource();

@@ -39,9 +39,7 @@ internal sealed class RebuildLayoutPlan
     internal required double ThemeSnapshotMilliseconds { get; init; }
     internal required CanvasDevice Device { get; init; }
     internal required MarkdownLayoutContext Context { get; init; }
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
     internal required MarkdownLayoutDiagnostics? LayoutDiagnostics { get; init; }
-#endif
 
     /// <summary>The identity that decides whether automation sees the same logical document.</summary>
     internal MarkdownAutomationDocumentIdentity CreateAutomationDocumentIdentity(LayoutSnapshot snapshot) =>

@@ -1,6 +1,3 @@
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
-using System.Diagnostics.Tracing;
-
 namespace MarkdownRenderer.Svg.Resvg.Internal;
 
 /// <summary>
@@ -277,56 +274,3 @@ internal sealed class SvgProviderSnapshotLedger
             sequence == long.MaxValue ? sequence : sequence + 1;
     }
 }
-
-/// <summary>A coherent, content-free view of one provider snapshot ledger.</summary>
-internal readonly record struct SvgProviderSnapshotLedgerSnapshot(
-    long LiveBytes,
-    long PeakBytes,
-    long LiveSnapshots,
-    long PeakSnapshots,
-    long Sequence);
-
-[EventSource(Name = "MarkdownRenderer.Svg.Resvg.SourceSnapshots")]
-internal sealed class SvgProviderSnapshotLedgerEvents : EventSource
-{
-    internal static readonly SvgProviderSnapshotLedgerEvents Log = new();
-
-    private SvgProviderSnapshotLedgerEvents()
-    {
-    }
-
-    [Event(1, Level = EventLevel.Verbose)]
-    public void SnapshotChanged(
-        long scopeId,
-        long liveBytes,
-        long peakBytes,
-        long liveSnapshots,
-        long peakSnapshots,
-        long sequence)
-    {
-        if (IsEnabled())
-        {
-            WriteEvent(1, [scopeId, liveBytes, peakBytes, liveSnapshots, peakSnapshots, sequence]);
-        }
-    }
-
-    [NonEvent]
-    internal void TryPublish(long scopeId, SvgProviderSnapshotLedgerSnapshot snapshot)
-    {
-        try
-        {
-            SnapshotChanged(
-                scopeId,
-                snapshot.LiveBytes,
-                snapshot.PeakBytes,
-                snapshot.LiveSnapshots,
-                snapshot.PeakSnapshots,
-                snapshot.Sequence);
-        }
-        catch (Exception)
-        {
-            // Telemetry is best effort and must never fail an image operation.
-        }
-    }
-}
-#endif

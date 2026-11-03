@@ -64,7 +64,6 @@ internal sealed class FirstViewportStageProfileSample
     public int? ProcessGen0CollectionsThroughFirstViewport { get; init; }
     public int? ProcessGen1CollectionsThroughFirstViewport { get; init; }
     public int? ProcessGen2CollectionsThroughFirstViewport { get; init; }
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
     public int? LayoutTopLevelBlockCount { get; init; }
     public int? CanvasTextLayoutConstructorCalls { get; init; }
     public double? CanvasTextLayoutConstructorMilliseconds { get; init; }
@@ -76,7 +75,6 @@ internal sealed class FirstViewportStageProfileSample
     public double? InitialLayoutDispatcherSentinelDelayMilliseconds { get; init; }
     public int? InitialLayoutDispatcherHeartbeatSampleCount { get; init; }
     public double? InitialLayoutDispatcherHeartbeatMaxGapMilliseconds { get; init; }
-#endif
 }
 
 [JsonSourceGenerationOptions(

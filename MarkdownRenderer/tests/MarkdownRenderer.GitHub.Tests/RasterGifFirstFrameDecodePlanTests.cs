@@ -67,15 +67,11 @@ public sealed class RasterGifFirstFrameDecodePlanTests
             RasterImageResourceBudget.Validate(bytes), new(4, 1, null, null, 64), out var plan));
         byte[] truncated = bytes[..^1]; // A valid frame must not hide a missing trailer.
         var credit = new RasterNativeWicProductParity.CountingCredit();
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         var before = RasterNativeWicDiagnostics.GetSnapshot();
-#endif
         await Assert.ThrowsAsync<InvalidDataException>(() => Task.Run(() =>
             RasterNativeWicDecoder.DecodeGifFirstFrame(truncated, plan, credit, CancellationToken.None)));
         Assert.Equal(1, credit.DisposeCount);
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         Assert.Equal(before, RasterNativeWicDiagnostics.GetSnapshot());
-#endif
     }
 
     [Fact]

@@ -716,9 +716,7 @@ internal sealed class PerformanceWindow : Window
                 // The sidecar is explicitly diagnostic-only and quick-run-only.
                 // Enable stage counters before Markdown starts the initial build;
                 // regular quick/release measurements retain the uninstrumented path.
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                 EnableStandaloneLayoutDiagnostics = captureStageProfile,
-#endif
                 Markdown = source,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 VerticalAlignment = VerticalAlignment.Stretch,
@@ -851,7 +849,6 @@ internal sealed class PerformanceWindow : Window
                 profile.ThreadMetrics?.ProcessGen1Collections,
             ProcessGen2CollectionsThroughFirstViewport =
                 profile.ThreadMetrics?.ProcessGen2Collections,
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             LayoutTopLevelBlockCount = timing.LayoutTopLevelBlockCount,
             CanvasTextLayoutConstructorCalls = timing.CanvasTextLayoutConstructorCalls,
             CanvasTextLayoutConstructorMilliseconds = timing.CanvasTextLayoutConstructorMilliseconds,
@@ -866,7 +863,6 @@ internal sealed class PerformanceWindow : Window
                 timing.InitialLayoutDispatcherHeartbeatSampleCount,
             InitialLayoutDispatcherHeartbeatMaxGapMilliseconds =
                 timing.InitialLayoutDispatcherHeartbeatMaxGapMilliseconds,
-#endif
         });
     }
 
@@ -972,11 +968,7 @@ internal sealed class PerformanceWindow : Window
                 CompletedUtc = _report.CompletedUtc,
                 SourceUtf16Bytes = _stageProfileSourceBytes,
                 Corpus = PerformanceDocumentFactory.GetCorpusName(_stageProfileSourceBytes),
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                 LayoutDiagnosticsEnabled = true,
-#else
-                LayoutDiagnosticsEnabled = false,
-#endif
                 AllocationScope =
                     "Process allocated bytes from immediately before MarkdownScrollView construction through " +
                     "the first-viewport event and timing snapshot; includes all process threads and the " +

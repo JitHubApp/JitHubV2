@@ -130,10 +130,8 @@ public sealed partial class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMa
     // preflight. It never retains returned document handles or source arrays.
     private readonly SvgDocumentLifetime _openOperations = new(static () => { });
     private readonly TaskCompletionSource _shutdown = new(TaskCreationOptions.RunContinuationsAsynchronously);
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
     private readonly SvgProviderSnapshotLedger _sourceOwnership = new(SvgProviderSnapshotLedger.Process);
     internal SvgProviderSnapshotLedger SourceOwnership => _sourceOwnership;
-#endif
     private readonly ConcurrentDictionary<string, byte> _quarantine = new(StringComparer.Ordinal);
     private readonly bool _memoryPressureSubscribed;
     private int _disposed;
@@ -385,9 +383,7 @@ public sealed partial class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMa
             {
                 preflight = await SvgPreflight.InspectAsync(
                     request, _options, cancellationToken
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                     , _sourceOwnership
-#endif
                     , snapshotAdmission
                     , demand
                     ).ConfigureAwait(false);

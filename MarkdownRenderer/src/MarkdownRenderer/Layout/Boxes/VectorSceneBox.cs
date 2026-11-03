@@ -5,10 +5,8 @@ using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;
 using Windows.Foundation;
 using Windows.UI;
-using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
-using MarkdownRenderer.Layout;
 using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Layout.Boxes;
@@ -112,9 +110,7 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox, ISelect
             scene,
             context.CancellationToken,
             Style.FontFamily
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             , context.LayoutDiagnostics
-#endif
             , deferNativeResources: true,
             nativeAdmission: resolvedNativeAdmission);
         Margin = Style.Margin;

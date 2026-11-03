@@ -174,11 +174,9 @@ internal static class SharedCanvasBitmapCache
         string identity,
         CanvasBitmap bitmap,
         Size? intrinsicSize = null
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         , long svgWorkId = 0,
         long svgSourceBytes = 0,
         long svgTargetPixels = 0
-#endif
         , BitmapOutputAdmission.Reservation? bitmapReservation = null
     )
         => StoreAndAcquireCore(
@@ -188,11 +186,9 @@ internal static class SharedCanvasBitmapCache
             intrinsicSize,
             null,
             null
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             , svgWorkId,
             svgSourceBytes,
             svgTargetPixels
-#endif
             , bitmapReservation
         );
 
@@ -207,11 +203,9 @@ internal static class SharedCanvasBitmapCache
         Size? intrinsicSize,
         int pixelWidth,
         int pixelHeight
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         , long svgWorkId,
         long svgSourceBytes,
         long svgTargetPixels
-#endif
         , BitmapOutputAdmission.Reservation? bitmapReservation = null
     )
         => StoreAndAcquireCore(
@@ -221,11 +215,9 @@ internal static class SharedCanvasBitmapCache
             intrinsicSize,
             pixelWidth,
             pixelHeight
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             , svgWorkId,
             svgSourceBytes,
             svgTargetPixels
-#endif
             , bitmapReservation
         );
 
@@ -236,11 +228,9 @@ internal static class SharedCanvasBitmapCache
         Size? intrinsicSize,
         int? knownPixelWidth,
         int? knownPixelHeight
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         , long svgWorkId,
         long svgSourceBytes,
         long svgTargetPixels
-#endif
         , BitmapOutputAdmission.Reservation? bitmapReservation
     )
     {
@@ -268,11 +258,9 @@ internal static class SharedCanvasBitmapCache
                 intrinsicSize,
                 knownPixelWidth,
                 knownPixelHeight
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                 , svgWorkId,
                 svgSourceBytes,
                 svgTargetPixels
-#endif
                 , bitmapReservation: null
             );
             lease.Attach(entry);
@@ -293,11 +281,9 @@ internal static class SharedCanvasBitmapCache
                     intrinsicSize,
                     knownPixelWidth,
                     knownPixelHeight
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                     , svgWorkId,
                     svgSourceBytes,
                     svgTargetPixels
-#endif
                     , bitmapReservation
                 );
                 lease.Attach(entry);
@@ -312,13 +298,11 @@ internal static class SharedCanvasBitmapCache
         bool insertionCompleted = false;
         try
         {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             using (MarkdownSvgStageTrace.Measure(
                 svgWorkId,
                 MarkdownSvgWorkStage.SvgCacheLruInsertAndEviction,
                 svgSourceBytes,
                 svgTargetPixels))
-#endif
             {
                 // Set preallocates its mutation batch. This key's hashing and
                 // the cache's contained eviction callback cannot throw during
@@ -707,11 +691,9 @@ internal static class SharedCanvasBitmapCache
             Size? intrinsicSize,
             int? knownPixelWidth,
             int? knownPixelHeight
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             , long svgWorkId,
             long svgSourceBytes,
             long svgTargetPixels
-#endif
             , BitmapOutputAdmission.Reservation? bitmapReservation
         )
         {
@@ -727,14 +709,12 @@ internal static class SharedCanvasBitmapCache
                 Bitmap = bitmap;
                 return;
             }
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             using (MarkdownSvgStageTrace.Measure(
                 svgWorkId,
                 MarkdownSvgWorkStage.SvgCacheWeightSizeQuery,
                 svgSourceBytes,
                 svgTargetPixels))
             {
-#endif
             try
             {
                 var pixels = bitmap.SizeInPixels;
@@ -752,9 +732,7 @@ internal static class SharedCanvasBitmapCache
                 // the bounded cache budget.
                 WeightBytes = InvalidBitmapFallbackWeightBytes;
             }
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             }
-#endif
             // Finish tracing before transferring ownership/accounting, so a
             // tracing failure cannot leave a phantom retained bitmap charge.
             PixelWeightBytes = WeightBytes;

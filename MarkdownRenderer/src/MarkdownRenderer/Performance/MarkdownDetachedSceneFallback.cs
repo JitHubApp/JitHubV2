@@ -1,13 +1,11 @@
 using System;
 using System.Threading;
 using MarkdownRenderer.Accessibility;
-using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Theming;
-using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;
 
 namespace MarkdownRenderer.Performance;
@@ -164,7 +162,6 @@ internal static class MarkdownDetachedSceneFallback
                 context.FlowDirection,
                 context.Language))
             {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                 candidate = CanvasTextLayoutFactory.Create(
                     context.ResourceCreator,
                     text,
@@ -172,14 +169,6 @@ internal static class MarkdownDetachedSceneFallback
                     width,
                     height,
                     context.LayoutDiagnostics);
-#else
-                candidate = new CanvasTextLayout(
-                    context.ResourceCreator,
-                    text,
-                    format.Format,
-                    width,
-                    height);
-#endif
             }
 
             // Record ownership immediately after the native factory returns,

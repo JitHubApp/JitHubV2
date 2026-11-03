@@ -235,16 +235,12 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
         CancellationToken cancellationToken,
         SharedMemoryLease? sharedMemory = null,
         WorkerTimeoutEvidenceScope? timeoutEvidenceScope = null
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         ,
         long diagnosticWorkId = 0,
         int diagnosticStageId = 0,
         ulong diagnosticDocumentId = 0,
         long diagnosticSourceBytes = -1,
         long diagnosticTargetPixels = -1)
-#else
-        )
-#endif
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         int queued = Interlocked.Increment(ref _queued);
@@ -257,14 +253,11 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
         }
 
         bool entered = false;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         long transactionQueueStartedAt = SvgWorkerStageTrace.Start(diagnosticWorkId);
-#endif
         try
         {
             await _transactions.WaitAsync(cancellationToken).ConfigureAwait(false);
             entered = true;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             SvgWorkerStageTrace.Record(
                 diagnosticWorkId,
                 SvgWorkerStageId.WorkerTransactionQueueWait,
@@ -276,12 +269,10 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
                 targetPixels: diagnosticTargetPixels >= 0
                     ? diagnosticTargetPixels
                     : (long)request.TargetWidth * request.TargetHeight);
-#endif
             ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
             if (HasExited)
                 throw new WorkerProtocolException("The resvg worker exited before the request.");
 
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             int effectiveStageId = request.Operation == WorkerOperation.Render &&
                 diagnosticStageId == (int)SvgWorkerStageId.RenderTransaction
                 ? (int)SvgWorkerStageId.RenderTransaction
@@ -292,7 +283,6 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
                 request.Operation is WorkerOperation.Open or WorkerOperation.Render
                     ? GetProcessCpuTicks()
                     : -1;
-#endif
             // Diagnostic capture must not add a process query to every normal
             // SVG request. The listener is installed before diagnostic rendering.
             bool captureTimeoutEvidence = WorkerTimeoutEvents.Log.IsEnabled();
@@ -320,11 +310,8 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
             int requestWriteMilliseconds = -1;
             try
             {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                 long pipeStageStartedAt = SvgWorkerStageTrace.Start(diagnosticWorkId);
-#endif
                 await _pipe.WriteAsync(requestFrame, operation.Token).ConfigureAwait(false);
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                 SvgWorkerStageTrace.Record(
                     diagnosticWorkId,
                     SvgWorkerStageId.PipeRequestWrite,
@@ -333,10 +320,8 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
                     diagnosticDocumentId != 0 ? diagnosticDocumentId : request.DocumentId,
                     pipeStageStartedAt);
                 pipeStageStartedAt = SvgWorkerStageTrace.Start(diagnosticWorkId);
-#endif
                 transportPhase = 1;
                 await _pipe.FlushAsync(operation.Token).ConfigureAwait(false);
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                 SvgWorkerStageTrace.Record(
                     diagnosticWorkId,
                     SvgWorkerStageId.PipeRequestFlush,
@@ -344,7 +329,6 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
                     request.RequestId,
                     diagnosticDocumentId != 0 ? diagnosticDocumentId : request.DocumentId,
                     pipeStageStartedAt);
-#endif
                 if (captureTimeoutEvidence)
                 {
                     requestWriteMilliseconds = (int)Math.Min(
@@ -352,11 +336,8 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
                         int.MaxValue);
                 }
                 transportPhase = 2;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                 pipeStageStartedAt = SvgWorkerStageTrace.Start(diagnosticWorkId);
-#endif
                 await _pipe.ReadExactlyAsync(responseFrame, operation.Token).ConfigureAwait(false);
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                 SvgWorkerStageTrace.Record(
                     diagnosticWorkId,
                     SvgWorkerStageId.PipeResponseRead,
@@ -364,7 +345,6 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
                     request.RequestId,
                     diagnosticDocumentId != 0 ? diagnosticDocumentId : request.DocumentId,
                     pipeStageStartedAt);
-#endif
             }
             catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
             {
@@ -428,7 +408,6 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
                 DisposeForRestart();
                 throw new WorkerProtocolException("The resvg worker returned an invalid response.", exception);
             }
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             if (request.Operation == WorkerOperation.Render &&
                 decoded.Status == WorkerStatus.DocumentMissing)
             {
@@ -441,7 +420,7 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
                 if (workerCpuAtEnd >= diagnosticWorkerCpuStartedAt)
                     diagnosticWorkerCpuTicks = workerCpuAtEnd - diagnosticWorkerCpuStartedAt;
             }
-            if (Enum.IsDefined(typeof(SvgWorkerStageId), effectiveStageId))
+            if (diagnosticTransactionStartedAt != 0 && Enum.IsDefined((SvgWorkerStageId)effectiveStageId))
             {
                 SvgWorkerStageTrace.Record(
                     diagnosticWorkId,
@@ -456,7 +435,6 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
                         ? diagnosticTargetPixels
                         : (long)request.TargetWidth * request.TargetHeight);
             }
-#endif
             return decoded;
         }
         finally

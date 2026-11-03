@@ -19,27 +19,21 @@ internal readonly struct VectorScenePreparation
     private readonly string? _hostFontFamily;
     private readonly VectorNativeResourceAdmission? _nativeAdmission;
     private readonly FlowDirection _fallbackFlowDirection;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
     private readonly MarkdownLayoutDiagnostics? _layoutDiagnostics;
-#endif
 
     private VectorScenePreparation(
         ICanvasResourceCreator resourceCreator,
         string? hostFontFamily,
         VectorNativeResourceAdmission? nativeAdmission,
         FlowDirection fallbackFlowDirection
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         , MarkdownLayoutDiagnostics? layoutDiagnostics
-#endif
         )
     {
         _resourceCreator = resourceCreator;
         _hostFontFamily = hostFontFamily;
         _nativeAdmission = nativeAdmission;
         _fallbackFlowDirection = fallbackFlowDirection;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         _layoutDiagnostics = layoutDiagnostics;
-#endif
     }
 
     internal static VectorScenePreparation Capture(VectorSceneBox box)
@@ -51,9 +45,7 @@ internal readonly struct VectorScenePreparation
             box.ResolvedStyle.FontFamily,
             box.NativeAdmission,
             context.FlowDirection
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             , context.LayoutDiagnostics
-#endif
             );
     }
 
@@ -66,9 +58,7 @@ internal readonly struct VectorScenePreparation
             scene,
             cancellationToken,
             _hostFontFamily
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             , _layoutDiagnostics
-#endif
             , deferNativeResources, nativeAdmission: _nativeAdmission);
 
     /// <summary>Prewarms bounded fallback outside the snapshot/plan swap gates.</summary>

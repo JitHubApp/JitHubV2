@@ -1,19 +1,6 @@
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
 using System.Diagnostics;
-using MarkdownRenderer.Diagnostics;
 
 namespace MarkdownRenderer.Svg.Resvg.Internal;
-
-internal enum SvgWorkerPolicyPhase
-{
-    Evaluated = 1,
-    StartRequested = 2,
-    WorkerLaunchStarted = 3,
-    WorkerProcessStarted = 4,
-    Ready = 5,
-    Failed = 6,
-    TraceLimitReached = 7,
-}
 
 /// <summary>
 /// Emits opt-in scheduling snapshots with a strict per-pool event bound.
@@ -27,17 +14,17 @@ internal sealed class SvgWorkerPolicyTrace(int maximumEvents = 256)
     private int _eventCount;
     private int _limitEventWritten;
 
-    internal bool IsEnabled => MarkdownPerformanceEventSource.Log.IsSvgWorkerPolicyMeasurementEnabled();
+    internal bool IsEnabled => ResvgEventSource.Log.IsWorkerPolicyMeasurementEnabled();
 
     /// <summary>
     /// Records one numeric scheduling snapshot. For an evaluation event whose
     /// decision sequence is zero, the assigned event sequence becomes that
     /// decision's correlation ID.
     /// </summary>
-    internal long Record(MarkdownSvgWorkerPolicySnapshot snapshot)
+    internal long Record(SvgWorkerPolicySnapshot snapshot)
     {
-        MarkdownPerformanceEventSource log = MarkdownPerformanceEventSource.Log;
-        if (!log.IsSvgWorkerPolicyMeasurementEnabled())
+        ResvgEventSource log = ResvgEventSource.Log;
+        if (!log.IsWorkerPolicyMeasurementEnabled())
             return 0;
 
         int eventCount = Interlocked.Increment(ref _eventCount);
@@ -46,7 +33,7 @@ internal sealed class SvgWorkerPolicyTrace(int maximumEvents = 256)
             if (Interlocked.CompareExchange(ref _limitEventWritten, 1, 0) == 0)
             {
                 long limitSequence = Interlocked.Increment(ref _nextEventSequence);
-                log.RecordSvgWorkerPolicy(CreateSignal(
+                log.RecordWorkerPolicy(CreateSignal(
                     snapshot with
                     {
                         Phase = (int)SvgWorkerPolicyPhase.TraceLimitReached,
@@ -62,7 +49,7 @@ internal sealed class SvgWorkerPolicyTrace(int maximumEvents = 256)
         if (snapshot.Phase == (int)SvgWorkerPolicyPhase.Evaluated && decisionSequence == 0)
             decisionSequence = sequence;
 
-        log.RecordSvgWorkerPolicy(CreateSignal(snapshot with
+        log.RecordWorkerPolicy(CreateSignal(snapshot with
         {
             EventSequence = sequence,
             DecisionSequence = decisionSequence,
@@ -70,8 +57,8 @@ internal sealed class SvgWorkerPolicyTrace(int maximumEvents = 256)
         return sequence;
     }
 
-    private static MarkdownSvgWorkerPolicySnapshot CreateSignal(
-        MarkdownSvgWorkerPolicySnapshot snapshot) =>
+    private static SvgWorkerPolicySnapshot CreateSignal(
+        SvgWorkerPolicySnapshot snapshot) =>
         snapshot with
         {
             ProcessId = Environment.ProcessId,
@@ -79,4 +66,3 @@ internal sealed class SvgWorkerPolicyTrace(int maximumEvents = 256)
             StopwatchFrequency = Stopwatch.Frequency,
         };
 }
-#endif

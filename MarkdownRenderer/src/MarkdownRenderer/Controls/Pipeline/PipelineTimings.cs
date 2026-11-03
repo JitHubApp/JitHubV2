@@ -1,8 +1,6 @@
 using System.Diagnostics;
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
 using MarkdownRenderer.Layout;
 using Microsoft.UI.Dispatching;
-#endif
 
 namespace MarkdownRenderer.Controls.Pipeline;
 
@@ -13,11 +11,9 @@ namespace MarkdownRenderer.Controls.Pipeline;
 /// </summary>
 internal sealed class PipelineTimings
 {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
     private bool _hasInitialDispatcher;
     private MarkdownInitialLayoutDispatcherDiagnosticsSnapshot _initialDispatcher;
     private MarkdownLayoutDiagnostics? _initialDispatcherSource;
-#endif
 
     /// <summary>The timings of the committed snapshot's pipeline.</summary>
     internal MarkdownPipelineTimingSnapshot Last { get; private set; }
@@ -34,9 +30,7 @@ internal sealed class PipelineTimings
         long sourceUtf16Bytes,
         RebuildLayoutPlan plan,
         RebuildLayoutRunResult run,
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         MarkdownLayoutDiagnosticsSnapshot layoutDiagnostics,
-#endif
         ReplacementTimeline timeline) =>
         Publish(new MarkdownPipelineTimingSnapshot(
             generation,
@@ -49,7 +43,6 @@ internal sealed class PipelineTimings
             run.QueueMilliseconds,
             run.WorkerWallMilliseconds,
             run.ContinuationMilliseconds,
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             layoutDiagnostics.TopLevelBlockCount,
             layoutDiagnostics.CanvasTextLayoutConstructorCalls,
             layoutDiagnostics.CanvasTextLayoutConstructorMilliseconds,
@@ -61,7 +54,6 @@ internal sealed class PipelineTimings
             _initialDispatcher.SentinelDelayMilliseconds,
             _initialDispatcher.HeartbeatSampleCount,
             _initialDispatcher.HeartbeatMaxGapMilliseconds,
-#endif
             timeline.PublicationStarted,
             timeline.CommitEnded,
             timeline.OverlayResetEnded,
@@ -72,7 +64,6 @@ internal sealed class PipelineTimings
             timeline.VisibleRealizationEnded,
             timeline.PublicationEnded));
 
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
     /// <summary>The dispatcher diagnostics of the first captured layout build.</summary>
     internal MarkdownInitialLayoutDispatcherDiagnosticsSnapshot InitialDispatcher => _initialDispatcher;
 
@@ -108,5 +99,4 @@ internal sealed class PipelineTimings
         _initialDispatcher = diagnostics.CaptureDispatcher();
         Last = Last.WithInitialLayoutDispatcherDiagnostics(_initialDispatcher);
     }
-#endif
 }

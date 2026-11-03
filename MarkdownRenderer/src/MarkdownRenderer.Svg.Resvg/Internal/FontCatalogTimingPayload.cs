@@ -1,13 +1,7 @@
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
 using System.Buffers.Binary;
 using System.Diagnostics;
 
 namespace MarkdownRenderer.Svg.Resvg.Internal;
-
-internal readonly record struct FontCatalogPhaseTiming(
-    SvgWorkerStageId StageId,
-    long WallStopwatchTicks,
-    long WorkerCpuTicks);
 
 /// <summary>
 /// Parses the fixed-size, content-free timing payload carried in the existing
@@ -90,4 +84,3 @@ internal static class FontCatalogTimingPayload
         return checked((long)Math.Round(converted, MidpointRounding.AwayFromZero));
     }
 }
-#endif

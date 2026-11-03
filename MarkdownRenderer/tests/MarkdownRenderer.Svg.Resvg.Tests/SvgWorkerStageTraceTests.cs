@@ -1,8 +1,6 @@
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Tracing;
-using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Svg.Resvg.Internal;
 using Xunit;
 
@@ -27,7 +25,7 @@ public sealed class SvgWorkerStageTraceTests
             targetPixels: 1_880);
 
         WorkerStageEvent payload = await listener.NextAsync();
-        Assert.Equal(13, payload.EventId);
+        Assert.Equal(1, payload.EventId);
         Assert.Equal(9, payload.Values.Length);
         Assert.Equal(8721L, payload.Values[0]);
         Assert.Equal(107, payload.Values[1]);
@@ -79,7 +77,7 @@ public sealed class SvgWorkerStageTraceTests
             workerCpuTicks: 125_000);
 
         WorkerStageEvent payload = await listener.NextAsync();
-        Assert.Equal(13, payload.EventId);
+        Assert.Equal(1, payload.EventId);
         Assert.Equal(9, payload.Values.Length);
         Assert.Equal(8721L, payload.Values[0]);
         Assert.Equal(115, payload.Values[1]);
@@ -113,7 +111,7 @@ public sealed class SvgWorkerStageTraceTests
             workerCpuTicks: -1);
 
         WorkerStageEvent payload = await listener.NextAsync();
-        Assert.Equal(13, payload.EventId);
+        Assert.Equal(1, payload.EventId);
         Assert.Equal(9, payload.Values.Length);
         Assert.Equal(8721L, payload.Values[0]);
         Assert.Equal(120, payload.Values[1]);
@@ -138,13 +136,13 @@ public sealed class SvgWorkerStageTraceTests
 
         protected override void OnEventSourceCreated(EventSource eventSource)
         {
-            if (eventSource.Name == "MarkdownRenderer-Performance")
+            if (eventSource.Name == ResvgEventSource.ProviderName)
                 EnableEvents(eventSource, EventLevel.Informational);
         }
 
         protected override void OnEventWritten(EventWrittenEventArgs eventData)
         {
-            if (eventData.EventId != 13)
+            if (eventData.EventId != 1)
                 return;
 
             _events.Enqueue(new WorkerStageEvent(
@@ -166,4 +164,3 @@ public sealed class SvgWorkerStageTraceTests
 
     private sealed record WorkerStageEvent(int EventId, object?[] Values, string[] Names);
 }
-#endif

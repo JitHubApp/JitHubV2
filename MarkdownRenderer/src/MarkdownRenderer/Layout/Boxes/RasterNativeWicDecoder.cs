@@ -3,7 +3,6 @@ using System.IO;
 using System.Threading;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.Marshalling;
-using MarkdownRenderer.Layout;
 
 namespace MarkdownRenderer.Layout.Boxes;
 
@@ -39,7 +38,6 @@ internal sealed class RasterDecodedPixelLease : IDisposable
     }
 }
 
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
 internal readonly record struct RasterNativeWicDiagnosticSnapshot(long NativeStarted, long PixelLeaseCompleted);
 
 internal static class RasterNativeWicDiagnostics
@@ -53,7 +51,6 @@ internal static class RasterNativeWicDiagnostics
     internal static void RecordNativeStarted() => Interlocked.Increment(ref s_nativeStarted);
     internal static void RecordPixelLeaseCompleted() => Interlocked.Increment(ref s_pixelLeaseCompleted);
 }
-#endif
 
 /// <summary>
 /// Synchronous MTA WIC path for a source whose host budget and geometry have
@@ -131,7 +128,6 @@ internal static partial class RasterNativeWicDecoder
         DecodeCore(source, default, plan, isGif: true, processDecodeCredit, cancellationToken,
             diagnosticCopyBandRows: 0, useDiagnosticCopyBands: false);
 
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
     private const int MaximumDiagnosticCopyBandRows = 1_024;
 
     /// <summary>
@@ -156,7 +152,6 @@ internal static partial class RasterNativeWicDecoder
         CancellationToken cancellationToken) =>
         DecodeCore(source, default, plan, isGif: true, processDecodeCredit, cancellationToken,
             copyBandRows, useDiagnosticCopyBands: true);
-#endif
 
     private static RasterDecodedPixelLease DecodeCore(
         byte[] source, RasterImageDecodePlan staticPlan, RasterGifFirstFrameDecodePlan gifPlan,
@@ -172,16 +167,11 @@ internal static partial class RasterNativeWicDecoder
         bool graphOwnsLease = false;
         try
         {
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             if (useDiagnosticCopyBands &&
                 (diagnosticCopyBandRows < 1 || diagnosticCopyBandRows > MaximumDiagnosticCopyBandRows))
             {
                 throw new ArgumentOutOfRangeException(nameof(diagnosticCopyBandRows));
             }
-#else
-            _ = diagnosticCopyBandRows;
-            _ = useDiagnosticCopyBands;
-#endif
             ArgumentNullException.ThrowIfNull(source);
             cancellationToken.ThrowIfCancellationRequested();
             if (source.Length == 0 || source.Length > RasterImageResourceBudget.MaxInputBytes ||
@@ -214,9 +204,7 @@ internal static partial class RasterNativeWicDecoder
             graphOwnsLease = true;
 
             graph.InitializeApartment();
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             RasterNativeWicDiagnostics.RecordNativeStarted();
-#endif
             cancellationToken.ThrowIfCancellationRequested();
             graph.CreateFactory();
             cancellationToken.ThrowIfCancellationRequested();
@@ -234,11 +222,9 @@ internal static partial class RasterNativeWicDecoder
             cancellationToken.ThrowIfCancellationRequested();
             graph.CreatePremultipliedConverter();
             cancellationToken.ThrowIfCancellationRequested();
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             if (useDiagnosticCopyBands)
                 graph.CopyPixelsInBands(diagnosticCopyBandRows, cancellationToken);
             else
-#endif
                 graph.CopyPixels();
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -262,9 +248,7 @@ internal static partial class RasterNativeWicDecoder
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             RasterNativeWicDiagnostics.RecordPixelLeaseCompleted();
-#endif
             RasterDecodedPixelLease completed = pixelLease
                 ?? throw new InvalidOperationException("The native WIC pixel lease was already transferred.");
             pixelLease = null;
@@ -831,7 +815,6 @@ internal static partial class RasterNativeWicDecoder
             }
         }
 
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         internal void CopyPixelsInBands(int copyBandRows, CancellationToken cancellationToken)
         {
             if (copyBandRows is < 1 or > MaximumDiagnosticCopyBandRows)
@@ -873,7 +856,6 @@ internal static partial class RasterNativeWicDecoder
                 Height = height;
             }
         }
-#endif
 
         public void Dispose()
         {

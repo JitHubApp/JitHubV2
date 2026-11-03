@@ -1,4 +1,3 @@
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Text;
@@ -123,4 +122,3 @@ public sealed class FontCatalogTimingPayloadTests
         return FontCatalogTimingPayload.Prefix + Convert.ToBase64String(payload);
     }
 }
-#endif

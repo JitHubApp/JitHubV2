@@ -19,9 +19,7 @@ internal interface IRebuildLayoutSetupHost
     /// <summary>The loaded lifetime of image resolution, if loaded.</summary>
     CancellationTokenSource? ImageLifetimeCts { get; }
 
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
     bool EnableStandaloneLayoutDiagnostics { get; }
-#endif
 
     void RaiseImageUnavailable(
         string source,

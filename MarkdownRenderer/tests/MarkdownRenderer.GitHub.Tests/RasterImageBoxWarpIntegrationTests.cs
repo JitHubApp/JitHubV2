@@ -86,9 +86,7 @@ public sealed class RasterImageBoxWarpIntegrationTests(ITestOutputHelper output)
         var resolveContext = new MarkdownImageResolveContext(BaseUri: null);
         IMarkdownPerformanceDocumentScope resolverScope = session.OpenDocument(resolver, resolveContext);
 
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         RasterNativeWicDiagnosticSnapshot nativeBefore = RasterNativeWicDiagnostics.GetSnapshot();
-#endif
         ImageBox? first = null;
         ImageBox? warmCache = null;
         ImageBox? coldBitmapWarmSource = null;
@@ -112,7 +110,6 @@ public sealed class RasterImageBoxWarpIntegrationTests(ITestOutputHelper output)
             Assert.Equal(outputBaseline.ChargedBytes + expectedWidth * (long)expectedHeight * 4,
                 outputAdmission.GetSnapshot().ChargedBytes);
 
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             RasterNativeWicDiagnosticSnapshot afterFirst = RasterNativeWicDiagnostics.GetSnapshot();
             Assert.True(afterFirst.NativeStarted > nativeBefore.NativeStarted,
                 "The diagnostic build must prove that ImageBox entered the owned native WIC branch.");
@@ -121,10 +118,6 @@ public sealed class RasterImageBoxWarpIntegrationTests(ITestOutputHelper output)
             output.WriteLine($"Native path deltas after ImageBox publication: started=" +
                 $"{afterFirst.NativeStarted - nativeBefore.NativeStarted}, " +
                 $"pixelLeases={afterFirst.PixelLeaseCompleted - nativeBefore.PixelLeaseCompleted}.");
-#else
-            output.WriteLine("Native decoder counters are compiled only in MARKDOWN_LAYOUT_DIAGNOSTICS; " +
-                "this run verifies the ImageBox WARP pipeline and full-byte oracle, not branch identity.");
-#endif
 
             // Hold the complete process decode admission while requesting an
             // identical image. A warm bitmap cache hit must finish without
@@ -140,11 +133,9 @@ public sealed class RasterImageBoxWarpIntegrationTests(ITestOutputHelper output)
                 Assert.Equal(1, processAdmission.ActiveCount);
                 Assert.Equal(processAdmission.CapacityBytes, processAdmission.ActiveBytes);
 
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                 RasterNativeWicDiagnosticSnapshot afterWarmCache = RasterNativeWicDiagnostics.GetSnapshot();
                 Assert.Equal(afterFirst.NativeStarted, afterWarmCache.NativeStarted);
                 Assert.Equal(afterFirst.PixelLeaseCompleted, afterWarmCache.PixelLeaseCompleted);
-#endif
             }
 
             warmCache.Dispose();
@@ -158,9 +149,7 @@ public sealed class RasterImageBoxWarpIntegrationTests(ITestOutputHelper output)
             // authorized source cache while the device bitmap cache is empty.
             // Recreating the image must perform a new decode/upload, without
             // another host resolve, and produce the same orientation-aware pixels.
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             RasterNativeWicDiagnosticSnapshot beforeSourceWarmDecode = RasterNativeWicDiagnostics.GetSnapshot();
-#endif
             coldBitmapWarmSource = CreateImage(device, resolverScope, session, documentOwner);
             await LoadAndAssertGeometryAsync(coldBitmapWarmSource);
             CanvasBitmap redecodedBitmap = Assert.IsType<CanvasBitmap>(coldBitmapWarmSource.Bitmap);
@@ -170,13 +159,11 @@ public sealed class RasterImageBoxWarpIntegrationTests(ITestOutputHelper output)
             Assert.Equal(sourceCacheBytes, session.GetSnapshot().SourceCacheBytes);
             Assert.Equal(MarkdownImageAccessibilityState.Loaded, coldBitmapWarmSource.AccessibilityState);
 
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             RasterNativeWicDiagnosticSnapshot afterSourceWarmDecode = RasterNativeWicDiagnostics.GetSnapshot();
             Assert.True(afterSourceWarmDecode.NativeStarted > beforeSourceWarmDecode.NativeStarted,
                 "Evicting the Win2D bitmap must make the ImageBox source-cache hit decode again.");
             Assert.True(afterSourceWarmDecode.PixelLeaseCompleted > beforeSourceWarmDecode.PixelLeaseCompleted,
                 "The re-decode must complete native pixel ownership before publication.");
-#endif
         }
         finally
         {

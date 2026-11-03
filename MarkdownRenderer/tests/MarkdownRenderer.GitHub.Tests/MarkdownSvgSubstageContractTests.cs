@@ -1,6 +1,6 @@
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
 using MarkdownRenderer.Layout.Boxes;
 using Xunit;
+using MarkdownRenderer.Diagnostics;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
@@ -44,4 +44,3 @@ public sealed class MarkdownSvgSubstageContractTests
         Assert.Equal(previousWorkId, MarkdownSvgStageTrace.CurrentWorkId);
     }
 }
-#endif

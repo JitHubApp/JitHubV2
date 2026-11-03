@@ -105,11 +105,9 @@ public sealed class SharedCanvasBitmapCacheSvgTests
                 intrinsicSize: new Size(4, 2),
                 pixelWidth: 2,
                 pixelHeight: 1
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                 , svgWorkId: 0,
                 svgSourceBytes: 0,
                 svgTargetPixels: 0
-#endif
             );
 
             Assert.Equal(
@@ -317,11 +315,9 @@ public sealed class SharedCanvasBitmapCacheSvgTests
                 intrinsicSize: null,
                 pixelWidth: 2,
                 pixelHeight: 1
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
                 , svgWorkId: 0,
                 svgSourceBytes: 0,
                 svgTargetPixels: 0
-#endif
             );
 
             Assert.Equal(0, SharedCanvasBitmapCache.RetainedBytesForTests);
@@ -337,7 +333,6 @@ public sealed class SharedCanvasBitmapCacheSvgTests
         }
     }
 
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
     [Fact]
     public void SvgStoreAvoidsWin2DSizeQueriesWhileGenericRasterStoreRetainsFallback()
     {
@@ -397,7 +392,6 @@ public sealed class SharedCanvasBitmapCacheSvgTests
             svgLease?.Dispose();
         }
     }
-#endif
 
     private static CanvasBitmap CreateBitmap(CanvasDevice device, int width, int height)
     {
@@ -483,7 +477,6 @@ public sealed class SharedCanvasBitmapCacheSvgTests
         }
     }
 
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
     private sealed class SvgStageListener : EventListener
     {
         private readonly object _gate = new();
@@ -519,5 +512,4 @@ public sealed class SharedCanvasBitmapCacheSvgTests
                     .ToArray();
         }
     }
-#endif
 }

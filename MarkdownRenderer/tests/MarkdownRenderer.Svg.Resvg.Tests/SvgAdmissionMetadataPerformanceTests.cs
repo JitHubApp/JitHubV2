@@ -1,4 +1,3 @@
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Globalization;
@@ -190,4 +189,3 @@ public sealed class SvgAdmissionMetadataPerformanceTests(ITestOutputHelper outpu
         return ~crc;
     }
 }
-#endif

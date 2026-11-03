@@ -92,13 +92,11 @@ internal sealed class RebuildLayoutSetup
         // CanvasVirtualControl only has a device after CreateResources fires, so
         // passing the canvas directly would crash if layout runs before first draw.
         var device = CanvasDevice.GetSharedDevice();
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         MarkdownLayoutDiagnostics? layoutDiagnostics =
             performanceSession?.IsLayoutDiagnosticCaptureEnabled == true ||
             _host.EnableStandaloneLayoutDiagnostics
                 ? new MarkdownLayoutDiagnostics()
                 : null;
-#endif
         MarkdownLayoutContext context = CreateContext(
             parsed,
             layoutRegistry,
@@ -108,9 +106,7 @@ internal sealed class RebuildLayoutSetup
             theme,
             device,
             reason,
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             layoutDiagnostics,
-#endif
             ct);
         return new RebuildLayoutPlan
         {
@@ -128,9 +124,7 @@ internal sealed class RebuildLayoutSetup
             ThemeSnapshotMilliseconds = themeMilliseconds,
             Device = device,
             Context = context,
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             LayoutDiagnostics = layoutDiagnostics,
-#endif
         };
     }
 
@@ -281,9 +275,7 @@ internal sealed class RebuildLayoutSetup
         ThemeSnapshot themeSnapshot,
         CanvasDevice device,
         RebuildReason reason,
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
         MarkdownLayoutDiagnostics? layoutDiagnostics,
-#endif
         CancellationToken ct)
     {
         var imageCarryIdentity = new Layout.Boxes.MarkdownImageCarryIdentity(
@@ -333,9 +325,7 @@ internal sealed class RebuildLayoutSetup
             CodeBlockLineNumberMode = inputs.LineNumberMode,
             CodeBlockWrappingMode = inputs.WrappingMode,
             CodeBlockChromeMode = inputs.ChromeMode,
-#if MARKDOWN_LAYOUT_DIAGNOSTICS
             LayoutDiagnostics = layoutDiagnostics,
-#endif
             ImageResolver = imageResolver,
             PerformanceSession = performanceSession,
             PerformanceDocumentOwner = _host.DocumentOwner,
