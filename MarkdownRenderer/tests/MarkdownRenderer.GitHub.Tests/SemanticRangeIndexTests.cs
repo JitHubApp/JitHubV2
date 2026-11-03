@@ -215,9 +215,9 @@ public sealed class SemanticRangeIndexTests
     [Fact]
     public void PrivateCodeLinePayloadsRemainExactReadonlyValues()
     {
-        Type logicalType = typeof(CodeBlockBox).GetNestedType("CodeLineInfo", BindingFlags.NonPublic)!;
-        Type visualType = typeof(CodeBlockBox).GetNestedType("CodeVisualLineInfo", BindingFlags.NonPublic)!;
-        Type diffType = typeof(CodeBlockBox).GetNestedType("CodeLineDiffKind", BindingFlags.NonPublic)!;
+        Type logicalType = typeof(CodeLineInfo);
+        Type visualType = typeof(CodeVisualLineInfo);
+        Type diffType = typeof(CodeLineDiffKind);
         object removed = Enum.Parse(diffType, "Removed");
         AssertFields(logicalType, [37, 11, 19, removed, "line label"],
             ["Number", "Start", "Length", "DiffKind", "Label"]);

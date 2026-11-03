@@ -62,11 +62,6 @@
       "reason": "Composition root: dependency properties, the explicit host adapters its owners call, and the commit, recovery and lifecycle sequencing across those owners. Structure step 3d moved its logic into owners (7,795 to 3,825 lines); this cap holds that."
     },
     {
-      "path": "src/MarkdownRenderer/Layout/Boxes/CodeBlockBox.cs",
-      "lines": 1720,
-      "reason": "Predates the size rule; split by responsibility in a later structure step."
-    },
-    {
       "path": "src/MarkdownRenderer/Layout/Boxes/ImageBox.BitmapAdmission.cs",
       "lines": 1365,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
@@ -103,7 +98,7 @@
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/CodeBlockVisualLinePlacementCacheTests.cs",
-      "lines": 1053,
+      "lines": 1052,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {

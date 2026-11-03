@@ -403,8 +403,7 @@ public sealed class CodeBlockNativeFormatLeaseTests
 
     private static VisualLine[] GetVisualLines(CodeBlockBox box)
     {
-        FieldInfo field = Assert.IsAssignableFrom<FieldInfo>(typeof(CodeBlockBox).GetField("_visualLines", PrivateInstance));
-        Array values = Assert.IsAssignableFrom<Array>(field.GetValue(box));
+        Array values = box.VisualLineIndex.Lines;
         Type valueType = values.GetType().GetElementType()!;
         FieldInfo logicalLineIndex = Assert.IsAssignableFrom<FieldInfo>(valueType.GetField("LogicalLineIndex", InstanceFields));
         FieldInfo top = Assert.IsAssignableFrom<FieldInfo>(valueType.GetField("Top", InstanceFields));
