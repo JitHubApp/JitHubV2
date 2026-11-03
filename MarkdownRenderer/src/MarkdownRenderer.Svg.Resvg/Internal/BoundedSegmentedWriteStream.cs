@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Xml;
@@ -11,6 +10,7 @@ internal sealed class BoundedSegmentedWriteStream : Stream
 
     private readonly int _maximumLength;
     private readonly CancellationToken _cancellationToken;
+    private readonly Func<int, byte[]> _allocateSegment;
     private readonly List<byte[]> _segments = [];
     private byte[]? _currentSegment;
     private int _currentOffset;
@@ -18,13 +18,23 @@ internal sealed class BoundedSegmentedWriteStream : Stream
     private int _allocatedLength;
     private bool _disposed;
 
-    internal BoundedSegmentedWriteStream(int maximumLength, CancellationToken cancellationToken)
+    /// <param name="maximumLength">The output ceiling.</param>
+    /// <param name="cancellationToken">Cancels writes and finalization.</param>
+    /// <param name="allocateSegment">
+    /// Allocates one zeroed segment of exactly the requested length; the
+    /// default allocates a new array. Every segment is cleared on dispose.
+    /// </param>
+    internal BoundedSegmentedWriteStream(
+        int maximumLength,
+        CancellationToken cancellationToken,
+        Func<int, byte[]>? allocateSegment = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumLength);
         if (maximumLength > SvgResourceBudget.MaxInputBytes)
             throw new ArgumentOutOfRangeException(nameof(maximumLength));
         _maximumLength = maximumLength;
         _cancellationToken = cancellationToken;
+        _allocateSegment = allocateSegment ?? (static size => new byte[size]);
     }
 
     internal bool LimitExceeded { get; private set; }
@@ -166,7 +176,10 @@ internal sealed class BoundedSegmentedWriteStream : Stream
         }
 
         int size = Math.Min(SegmentSize, remaining);
-        _currentSegment = new byte[size];
+        byte[] segment = _allocateSegment(size);
+        if (segment.Length != size)
+            throw new InvalidOperationException("An SVG output segment has the wrong length.");
+        _currentSegment = segment;
         _segments.Add(_currentSegment);
         _allocatedLength += size;
         _currentOffset = 0;

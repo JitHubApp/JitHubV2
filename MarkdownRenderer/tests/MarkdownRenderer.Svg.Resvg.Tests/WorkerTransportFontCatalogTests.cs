@@ -4,10 +4,12 @@ using MarkdownRenderer.Images;
 using MarkdownRenderer.Svg.Resvg.Internal;
 using Microsoft.Win32.SafeHandles;
 using Xunit;
+using static MarkdownRenderer.Svg.Resvg.Tests.WorkerTransportExchanges;
+using static MarkdownRenderer.Svg.Resvg.Tests.WorkerTransportNative;
 
 namespace MarkdownRenderer.Svg.Resvg.Tests;
 
-public sealed partial class WorkerTransportFaultTests
+public sealed class WorkerTransportFontCatalogTests
 {
     [Fact]
     public async Task FontCatalogSupplyCoalescesAndCallerCancellationDoesNotCancelSharedTransfer()

@@ -2,10 +2,12 @@ using System.Buffers.Binary;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Svg.Resvg.Internal;
 using Xunit;
+using static MarkdownRenderer.Svg.Resvg.Tests.WorkerTransportExchanges;
+using static MarkdownRenderer.Svg.Resvg.Tests.WorkerTransportNative;
 
 namespace MarkdownRenderer.Svg.Resvg.Tests;
 
-public sealed partial class WorkerTransportFaultTests
+public sealed class WorkerTransportRasterDecodeTests
 {
     [Theory]
     [InlineData(TransportFault.WrongRequestId)]

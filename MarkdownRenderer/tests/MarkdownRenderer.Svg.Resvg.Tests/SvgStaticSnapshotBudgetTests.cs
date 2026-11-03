@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -257,9 +257,8 @@ public sealed class SvgStaticSnapshotBudgetTests
     [Fact]
     public void CancellationAwareReadStreamChecksTokenOnEveryReadAndDropsItsSourceOnDispose()
     {
-        byte[] source = [1, 2, 3, 4];
         using var cancellation = new CancellationTokenSource();
-        var stream = new CancellationAwareReadStream(source, cancellation.Token);
+        (CancellationAwareReadStream stream, WeakReference source) = CreateReadStream(cancellation.Token);
         byte[] buffer = new byte[2];
 
         Assert.Equal(2, stream.Read(buffer));
@@ -267,38 +266,43 @@ public sealed class SvgStaticSnapshotBudgetTests
         cancellation.Cancel();
         Assert.Throws<OperationCanceledException>(() => stream.Read(buffer));
 
+        Assert.True(source.IsAlive);
         stream.Dispose();
-        FieldInfo sourceField = typeof(CancellationAwareReadStream).GetField(
-            "_source",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        Assert.Same(Array.Empty<byte>(), sourceField.GetValue(stream));
+        ForceCollection();
+        Assert.False(source.IsAlive);
+        GC.KeepAlive(stream);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static (CancellationAwareReadStream Stream, WeakReference Source) CreateReadStream(
+        CancellationToken cancellationToken)
+    {
+        byte[] source = [1, 2, 3, 4];
+        return (new CancellationAwareReadStream(source, cancellationToken), new WeakReference(source));
     }
 
     [Fact]
     public void SegmentedOutputAcceptsExactLimitThenClearsEverySegmentOnDispose()
     {
         byte[] expected = Enumerable.Range(0, 32_771).Select(static value => (byte)value).ToArray();
-        var output = new BoundedSegmentedWriteStream(expected.Length, CancellationToken.None);
+        var allocated = new List<byte[]>();
+        var output = new BoundedSegmentedWriteStream(expected.Length, CancellationToken.None, RecordSegments(allocated));
         output.Write(expected);
-        List<byte[]> segments = GetSegments(output);
-        byte[][] allocated = segments.ToArray();
 
         Assert.Equal(expected, output.ToArray());
         Assert.Equal((long)expected.Length, output.Length);
 
         output.Dispose();
 
-        Assert.Empty(segments);
-        Assert.All(allocated, static segment => Assert.All(segment, static value => Assert.Equal(0, value)));
+        AssertSegmentsClearedAndReleased(output, allocated);
     }
 
     [Fact]
     public void SegmentedOutputRejectsFirstByteBeyondLimitWithoutGrowingAndClearsBuffers()
     {
-        var output = new BoundedSegmentedWriteStream(3, CancellationToken.None);
+        var allocated = new List<byte[]>();
+        var output = new BoundedSegmentedWriteStream(3, CancellationToken.None, RecordSegments(allocated));
         output.Write([1, 2, 3]);
-        List<byte[]> segments = GetSegments(output);
-        byte[][] allocated = segments.ToArray();
 
         SvgStaticSnapshotResourceException exception = Assert.Throws<SvgStaticSnapshotResourceException>(
             () => output.WriteByte(4));
@@ -306,44 +310,39 @@ public sealed class SvgStaticSnapshotBudgetTests
         Assert.Equal(SvgStaticSnapshotResourceException.OutputBytesReason, exception.Reason);
         Assert.True(output.LimitExceeded);
         Assert.Equal(3L, output.Length);
-        Assert.Single(segments);
+        Assert.Single(allocated);
         output.Dispose();
-        Assert.Empty(segments);
-        Assert.All(allocated, static segment => Assert.All(segment, static value => Assert.Equal(0, value)));
+        AssertSegmentsClearedAndReleased(output, allocated);
     }
 
     [Fact]
     public void SegmentedOutputCancellationStopsWritesAndClearsBuffers()
     {
         using var cancellation = new CancellationTokenSource();
-        var output = new BoundedSegmentedWriteStream(32, cancellation.Token);
+        var allocated = new List<byte[]>();
+        var output = new BoundedSegmentedWriteStream(32, cancellation.Token, RecordSegments(allocated));
         output.Write([1, 2, 3]);
-        List<byte[]> segments = GetSegments(output);
-        byte[][] allocated = segments.ToArray();
 
         cancellation.Cancel();
         Assert.Throws<OperationCanceledException>(() => output.WriteByte(4));
 
         output.Dispose();
-        Assert.Empty(segments);
-        Assert.All(allocated, static segment => Assert.All(segment, static value => Assert.Equal(0, value)));
+        AssertSegmentsClearedAndReleased(output, allocated);
     }
 
     [Fact]
     public void SegmentedOutputCancellationDuringFinalizationDoesNotReturnPartialBytes()
     {
         using var cancellation = new CancellationTokenSource();
-        var output = new BoundedSegmentedWriteStream(32, cancellation.Token);
+        var allocated = new List<byte[]>();
+        var output = new BoundedSegmentedWriteStream(32, cancellation.Token, RecordSegments(allocated));
         output.Write([1, 2, 3]);
-        List<byte[]> segments = GetSegments(output);
-        byte[][] allocated = segments.ToArray();
 
         cancellation.Cancel();
         Assert.Throws<OperationCanceledException>(() => output.ToArray());
 
         output.Dispose();
-        Assert.Empty(segments);
-        Assert.All(allocated, static segment => Assert.All(segment, static value => Assert.Equal(0, value)));
+        AssertSegmentsClearedAndReleased(output, allocated);
     }
 
     [Fact]
@@ -361,12 +360,35 @@ public sealed class SvgStaticSnapshotBudgetTests
             SvgStaticSnapshot.Create([], CancellationToken.None, SvgResourceBudget.MaxInputBytes + 1));
     }
 
-    private static List<byte[]> GetSegments(BoundedSegmentedWriteStream output)
+    private static Func<int, byte[]> RecordSegments(List<byte[]> allocated) => size =>
     {
-        FieldInfo segmentsField = typeof(BoundedSegmentedWriteStream).GetField(
-            "_segments",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return (List<byte[]>)segmentsField.GetValue(output)!;
+        byte[] segment = new byte[size];
+        allocated.Add(segment);
+        return segment;
+    };
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void AssertSegmentsClearedAndReleased(BoundedSegmentedWriteStream output, List<byte[]> allocated)
+    {
+        Assert.NotEmpty(allocated);
+        Assert.All(allocated, static segment => Assert.All(segment, static value => Assert.Equal(0, value)));
+        WeakReference[] released = ToWeakReferences(allocated);
+        allocated.Clear();
+        ForceCollection();
+        Assert.All(released, static segment => Assert.False(segment.IsAlive));
+        GC.KeepAlive(output);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference[] ToWeakReferences(List<byte[]> values) =>
+        values.Select(static value => new WeakReference(value)).ToArray();
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ForceCollection()
+    {
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
     }
 
     private static XmlReader CreateParser(string source) => XmlReader.Create(

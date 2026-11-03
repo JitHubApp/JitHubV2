@@ -326,10 +326,4 @@ public sealed class WorkerFontWaitPoolTests
         (int)typeof(MarkdownSvgRenderDemand).GetField(
             "_activeRegistrations",
             BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(ticket)!;
-
-    private static object? GetPendingProperty(IDisposable active, string name)
-    {
-        object pending = active.GetType().GetProperty("Pending")!.GetValue(active)!;
-        return pending.GetType().GetProperty(name)!.GetValue(pending);
-    }
 }

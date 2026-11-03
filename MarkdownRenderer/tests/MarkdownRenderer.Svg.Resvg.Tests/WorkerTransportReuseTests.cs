@@ -1,12 +1,13 @@
 using System.Buffers.Binary;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using MarkdownRenderer.Svg.Resvg.Internal;
 using Xunit;
+using static MarkdownRenderer.Svg.Resvg.Tests.WorkerTransportExchanges;
+using static MarkdownRenderer.Svg.Resvg.Tests.WorkerTransportNative;
 
 namespace MarkdownRenderer.Svg.Resvg.Tests;
 
-public sealed partial class WorkerTransportFaultTests
+public sealed class WorkerTransportReuseTests
 {
     [Fact]
     public async Task RepeatedExchangesDoNotLeakRequestOrResponseState()
@@ -25,7 +26,7 @@ public sealed partial class WorkerTransportFaultTests
             await fixture.Peer.WriteAsync(CreateResponse(frame));
             WorkerResponse response = await exchange;
             Assert.Equal(WorkerStatus.Ok, response.Status);
-            AssertExchangeFramesCleared(fixture.Worker);
+            AssertExchangeFramesCleared(fixture);
         }
         Assert.False(fixture.Child.HasExited);
     }
@@ -51,7 +52,7 @@ public sealed partial class WorkerTransportFaultTests
 
         await fixture.Peer.WriteAsync(CreateResponse(firstFrame));
         Assert.Equal(WorkerStatus.Ok, (await first).Status);
-        AssertExchangeFramesCleared(fixture.Worker);
+        AssertExchangeFramesCleared(fixture);
 
         ValueTask<WorkerResponse> next = fixture.Worker.ExchangeAsync(
             CreateRenderRequest() with { RequestId = 103 },
@@ -60,7 +61,7 @@ public sealed partial class WorkerTransportFaultTests
         Assert.Equal(103ul, BinaryPrimitives.ReadUInt64LittleEndian(nextFrame.AsSpan(8)));
         await fixture.Peer.WriteAsync(CreateResponse(nextFrame));
         Assert.Equal(WorkerStatus.Ok, (await next).Status);
-        AssertExchangeFramesCleared(fixture.Worker);
+        AssertExchangeFramesCleared(fixture);
     }
 
     [Fact]
@@ -95,13 +96,9 @@ public sealed partial class WorkerTransportFaultTests
         return (operation, hashReference, mappingReference);
     }
 
-    private static void AssertExchangeFramesCleared(WindowsWorkerProcess worker)
+    private static void AssertExchangeFramesCleared(WorkerTransportFixture fixture)
     {
-        foreach (string name in new[] { "_requestFrame", "_responseFrame" })
-        {
-            byte[] frame = (byte[])typeof(WindowsWorkerProcess).GetField(
-                name, BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(worker)!;
-            Assert.True(frame.AsSpan().IndexOfAnyExcept((byte)0) < 0);
-        }
+        Assert.True(fixture.Frames.Request.AsSpan().IndexOfAnyExcept((byte)0) < 0);
+        Assert.True(fixture.Frames.Response.AsSpan().IndexOfAnyExcept((byte)0) < 0);
     }
 }

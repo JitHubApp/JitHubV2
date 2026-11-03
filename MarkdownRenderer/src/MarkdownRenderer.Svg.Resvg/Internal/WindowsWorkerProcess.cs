@@ -18,8 +18,8 @@ internal sealed class WindowsWorkerProcess : IAsyncDisposable, IDisposable, IWor
     private WorkerObjectSecurity.WorkerObjectSecurityContext? _objectSecurity;
     private readonly object _disposeGate = new();
     private readonly SemaphoreSlim _transactions = new(1, 1);
-    private readonly byte[] _requestFrame = new byte[WorkerProtocol.RequestSize];
-    private readonly byte[] _responseFrame = new byte[WorkerProtocol.ResponseSize];
+    private readonly byte[] _requestFrame;
+    private readonly byte[] _responseFrame;
     internal WorkerDocumentStateGate DocumentStateGate { get; } = new();
     private readonly int _queueCapacity;
     private int _queued;
@@ -31,7 +31,8 @@ internal sealed class WindowsWorkerProcess : IAsyncDisposable, IDisposable, IWor
     // StartAsync is the production path. This constructor adopts a process
     // handle and an already-connected pipe whose handshake the caller owns.
     // The optional factory composes the font-catalog supplier around this
-    // worker as its host; the default supplies the catalog directly.
+    // worker as its host; the default supplies the catalog directly. The
+    // optional frames are the reusable exchange buffers; the default is new.
     internal WindowsWorkerProcess(
         SafeProcessHandle process,
         NamedPipeServerStream pipe,
@@ -40,8 +41,12 @@ internal sealed class WindowsWorkerProcess : IAsyncDisposable, IDisposable, IWor
         string? workerExecutableSha256,
         int queueCapacity,
         WorkerObjectSecurity.WorkerObjectSecurityContext objectSecurity,
-        Func<IWorkerFontCatalogHost, WorkerFontCatalogSupplier>? fontCatalogSupplierFactory = null)
+        Func<IWorkerFontCatalogHost, WorkerFontCatalogSupplier>? fontCatalogSupplierFactory = null,
+        WorkerExchangeFrames? exchangeFrames = null)
     {
+        exchangeFrames ??= new WorkerExchangeFrames();
+        _requestFrame = exchangeFrames.Request;
+        _responseFrame = exchangeFrames.Response;
         _process = process;
         _pipe = pipe;
         _objectSecurity = objectSecurity;
