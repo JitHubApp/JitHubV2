@@ -1,12 +1,8 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Markdig.Syntax;
-using Markdig.Syntax.Inlines;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
@@ -23,6 +19,17 @@ namespace MarkdownRenderer.Performance;
 /// built once from immutable parser output, then visible boxes resolve their
 /// private marker without rescanning the syntax tree.
 /// </summary>
+/// <remarks>
+/// The plan is the composition root for one document's deferred scenes. It
+/// owns the gate, the relayout generation, the active producer table and the
+/// visible set, and sequences generation advance and retirement. Its
+/// collaborators each own one stage: <see cref="DeferredSceneViewportProbe"/>
+/// finds visible markers, <see cref="DeferredScenePublisher"/> prepares and
+/// queues results, <see cref="DeferredSceneGraphRebinder"/> refills detached
+/// graphs, and <see cref="DeferredSceneResultStore"/> and
+/// <see cref="DeferredSceneDiagnostics"/> hold what was published. They reach
+/// back only through the host interfaces the plan implements explicitly.
+/// </remarks>
 internal sealed class MarkdownProgressiveScenePlan :
     IScenePublicationTarget,
     IDeferredSceneGraphRebindHost,

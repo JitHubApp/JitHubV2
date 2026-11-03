@@ -5,7 +5,6 @@ using System.Collections.ObjectModel;
 using System.Threading;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
-using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Performance;
 

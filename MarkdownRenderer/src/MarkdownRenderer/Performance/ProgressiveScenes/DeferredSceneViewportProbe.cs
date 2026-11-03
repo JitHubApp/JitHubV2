@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
 
 namespace MarkdownRenderer.Performance.ProgressiveScenes;
 
