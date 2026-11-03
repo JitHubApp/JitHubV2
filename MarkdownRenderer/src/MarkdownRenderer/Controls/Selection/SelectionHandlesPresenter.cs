@@ -13,7 +13,6 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
 using Windows.System;
-using Windows.UI;
 
 namespace MarkdownRenderer.Controls.Selection;
 
@@ -27,6 +26,8 @@ namespace MarkdownRenderer.Controls.Selection;
 /// The handles are <see cref="SelectionHandleButtons"/> in the overlay above
 /// the canvas. Their pointer events enter the renderer's ordered input path
 /// through <see cref="IPointerInputSink"/>, which replays them here.
+/// <see cref="SelectionHandlePlacement"/> places them during the adorner
+/// paint and leaves the captured one where the drag holds it.
 /// </para>
 /// <para>
 /// A drag is coalesced onto the compositor frame: pointer moves only record
@@ -42,7 +43,7 @@ namespace MarkdownRenderer.Controls.Selection;
 /// make one class reset another's state.
 /// </para>
 /// </remarks>
-internal sealed class SelectionHandlesPresenter
+internal sealed class SelectionHandlesPresenter : ISelectionHandleDragView
 {
     private readonly ISelectionHandlesHost _host;
     private readonly FrameworkElement _renderer;
@@ -56,11 +57,7 @@ internal sealed class SelectionHandlesPresenter
     private readonly SelectionAdornerPresenter _adorner;
     private readonly SelectionDragAutoScroll _autoScroll;
     private readonly SelectionHandleButtons _buttons;
-
-    private Point _startEndpoint;
-    private Point _endEndpoint;
-    private bool _startEndpointAvailable;
-    private bool _endEndpointAvailable;
+    private readonly SelectionHandlePlacement _placement;
 
     // The drag in progress. The fixed position is the endpoint that stays
     // put; the active endpoint can swap roles as the drag crosses it.
@@ -101,6 +98,7 @@ internal sealed class SelectionHandlesPresenter
         _adorner = adorner;
         _autoScroll = autoScroll;
         _buttons = new SelectionHandleButtons(host, input, renderer, surface, OnHandleKeyDown);
+        _placement = new SelectionHandlePlacement(host, renderer, selection, touchSelection, _buttons, this);
     }
 
     /// <summary>The pointer that owns the drag in progress, or 0.</summary>
@@ -129,11 +127,7 @@ internal sealed class SelectionHandlesPresenter
     /// Marks both endpoints unplaced, so a handle press waits for the next
     /// paint to place the handles on the new layout.
     /// </summary>
-    internal void MarkEndpointsUnavailable()
-    {
-        _startEndpointAvailable = false;
-        _endEndpointAvailable = false;
-    }
+    internal void MarkEndpointsUnavailable() => _placement.MarkEndpointsUnavailable();
 
     /// <summary>
     /// Detaches the handles and forgets them on unload. The overlay's children
@@ -146,7 +140,7 @@ internal sealed class SelectionHandlesPresenter
     {
         if (!_touchSelection.ShouldShowHandles || !_selection.IsActive)
         {
-            HideUncapturedHandles();
+            _placement.HideUncapturedHandles();
             _adorner.MarkVisualDirty();
             _adorner.RequestRefresh();
             return;
@@ -160,94 +154,8 @@ internal sealed class SelectionHandlesPresenter
     }
 
     /// <summary>Places the handles at the selection's endpoints while the snapshot paint lease is held.</summary>
-    /// <remarks>
-    /// Kept whole: each endpoint's availability, placement and visibility
-    /// must be decided from the same viewport and snapshot in one pass.
-    /// </remarks>
     internal void UpdateUnderPaint(LayoutSnapshot snapshot, Rect viewport)
-    {
-        if (snapshot.GeometryRecoveryRequired || snapshot.IsRetiringOrDisposed ||
-            !_touchSelection.ShouldShowHandles || !_selection.IsActive || !_buttons.EnsureAttached())
-        {
-            HideUncapturedHandles();
-            return;
-        }
-
-        double targetSize = Math.Clamp(
-            _host.ThemeSnapshot?.MinimumInteractiveSize ?? 40,
-            44,
-            128);
-        double dotSize = Math.Clamp(targetSize * 0.36, 12, 20);
-        // The hit target keeps one physical pixel of slack over the minimum so
-        // its reported size meets the minimum at any sub-pixel alignment.
-        double handleExtent = SelectionController.ComputeSelectionHandleExtent(
-            targetSize,
-            _renderer.XamlRoot?.RasterizationScale ?? 1.0);
-        Color handleColor = _host.ThemeSnapshot?.SelectionHighlightColor
-            ?? Color.FromArgb(0xFF, 0x00, 0x78, 0xD4);
-        bool startCaptured = IsCaptured(SelectionHandleEndpoint.Start);
-        bool endCaptured = IsCaptured(SelectionHandleEndpoint.End);
-        bool pointerDragActive = IsPointerDragActive();
-        SelectionHandleEndpoint freeLogicalEndpoint = pointerDragActive
-            ? _activeEndpoint == SelectionHandleEndpoint.Start
-                ? SelectionHandleEndpoint.End
-                : SelectionHandleEndpoint.Start
-            : SelectionHandleEndpoint.None;
-        if (!startCaptured)
-            SelectionHandleButtons.UpdateAppearance(_buttons.Start!, handleExtent, dotSize, handleColor);
-        if (!endCaptured)
-            SelectionHandleButtons.UpdateAppearance(_buttons.End!, handleExtent, dotSize, handleColor);
-
-        Point startPoint = _startEndpoint;
-        Point endPoint = _endEndpoint;
-        bool startAvailable = startCaptured || TryGetEndpointPoint(
-            snapshot,
-            pointerDragActive ? freeLogicalEndpoint : SelectionHandleEndpoint.Start,
-            viewport,
-            targetSize / 2,
-            out startPoint);
-        bool endAvailable = endCaptured || TryGetEndpointPoint(
-            snapshot,
-            pointerDragActive ? freeLogicalEndpoint : SelectionHandleEndpoint.End,
-            viewport,
-            targetSize / 2,
-            out endPoint);
-
-        if (startCaptured)
-        {
-            // Keep the captured Button and its stored endpoint stationary until
-            // release. Hiding or moving it during an edge-scroll frame can
-            // synthesize PointerCaptureLost and terminate the drag.
-            _startEndpointAvailable = true;
-        }
-        else if (startAvailable)
-        {
-            _startEndpoint = startPoint;
-            _startEndpointAvailable = _buttons.Place(
-                _buttons.Start!, startPoint, handleExtent, viewport);
-        }
-        else
-        {
-            _startEndpointAvailable = false;
-            _buttons.Start!.Visibility = Visibility.Collapsed;
-        }
-
-        if (endCaptured)
-        {
-            _endEndpointAvailable = true;
-        }
-        else if (endAvailable)
-        {
-            _endEndpoint = endPoint;
-            _endEndpointAvailable = _buttons.Place(
-                _buttons.End!, endPoint, handleExtent, viewport);
-        }
-        else
-        {
-            _endEndpointAvailable = false;
-            _buttons.End!.Visibility = Visibility.Collapsed;
-        }
-    }
+        => _placement.UpdateUnderPaint(snapshot, viewport);
 
     private bool IsCaptured(SelectionHandleEndpoint endpoint)
     {
@@ -265,23 +173,6 @@ internal sealed class SelectionHandlesPresenter
            _touchSelection.ContactPointerId == _dragPointerId &&
            _touchSelection.State is TouchSelectionState.DraggingStartHandle or
                TouchSelectionState.DraggingEndHandle;
-
-    private void HideUncapturedHandles()
-    {
-        if (!IsCaptured(SelectionHandleEndpoint.Start))
-        {
-            _startEndpointAvailable = false;
-            if (_buttons.Start is not null)
-                _buttons.Start.Visibility = Visibility.Collapsed;
-        }
-
-        if (!IsCaptured(SelectionHandleEndpoint.End))
-        {
-            _endEndpointAvailable = false;
-            if (_buttons.End is not null)
-                _buttons.End.Visibility = Visibility.Collapsed;
-        }
-    }
 
     /// <summary>Starts a drag when a primary contact presses a placed handle.</summary>
     /// <remarks>
@@ -316,8 +207,8 @@ internal sealed class SelectionHandlesPresenter
             return;
 
         bool endpointAvailable = endpoint == SelectionHandleEndpoint.Start
-            ? _startEndpointAvailable
-            : _endEndpointAvailable;
+            ? _placement.StartEndpointAvailable
+            : _placement.EndEndpointAvailable;
         if (!endpointAvailable)
             return;
 
@@ -329,7 +220,7 @@ internal sealed class SelectionHandlesPresenter
             : range.Start;
         _viewport.TryGet(out double viewportTop, out _, out _);
         _autoScroll.TrackPointer(point.Position.Y - viewportTop);
-        Point endpointPoint = GetEndpointPoint(endpoint);
+        Point endpointPoint = _placement.GetEndpointPoint(endpoint);
         _caretOffset = new Point(
             endpointPoint.X - point.Position.X,
             endpointPoint.Y - point.Position.Y);
@@ -439,7 +330,7 @@ internal sealed class SelectionHandlesPresenter
         e.ResumeRebuildAfterInteraction = true;
         _autoScroll.Reset();
         StopFrameClock();
-        CollapseForPendingRefresh();
+        _placement.CollapseForPendingRefresh();
         _buttons.SetGlyphVisibility(visible: true);
         if (e.Sender is UIElement element)
             element.ReleasePointerCapture(e.Pointer);
@@ -629,66 +520,6 @@ internal sealed class SelectionHandlesPresenter
             : viewportTop < maxOffset - 0.0001;
     }
 
-    private bool TryGetEndpointPoint(
-        LayoutSnapshot snapshot,
-        SelectionHandleEndpoint endpoint,
-        Rect viewport,
-        double verticalSearchMargin,
-        out Point point)
-    {
-        point = default;
-        if (!_selection.IsActive)
-            return false;
-
-        DocumentRange normalized = _selection.Range.Normalized();
-        bool rangeStart = endpoint == SelectionHandleEndpoint.Start;
-        DocumentPosition position = rangeStart ? normalized.Start : normalized.End;
-        if (!_selection.TryGetSelectionEndpointGeometry(
-                snapshot,
-                position,
-                normalized,
-                viewport,
-                verticalSearchMargin,
-                rangeStart,
-                out Point caretPoint,
-                out Rect rectangle,
-                out bool hasCaret))
-        {
-            return false;
-        }
-
-        if (hasCaret)
-        {
-            point = SnapPoint(caretPoint);
-            return double.IsFinite(point.X) && double.IsFinite(point.Y);
-        }
-
-        if (rectangle.Width <= 0 || rectangle.Height <= 0)
-            return false;
-
-        bool rightToLeft = _renderer.FlowDirection == FlowDirection.RightToLeft;
-        point = rangeStart
-            ? new Point(rightToLeft ? rectangle.Right : rectangle.Left, rectangle.Bottom)
-            : new Point(rightToLeft ? rectangle.Left : rectangle.Right, rectangle.Bottom);
-        return double.IsFinite(point.X) && double.IsFinite(point.Y);
-    }
-
-    private Point GetEndpointPoint(SelectionHandleEndpoint endpoint)
-        => endpoint == SelectionHandleEndpoint.Start
-            ? (_startEndpointAvailable ? _startEndpoint : default)
-            : (_endEndpointAvailable ? _endEndpoint : default);
-
-    private Point SnapPoint(Point point)
-    {
-        double scale = _renderer.XamlRoot?.RasterizationScale ?? 1.0;
-        if (!double.IsFinite(scale) || scale <= 0)
-            scale = 1.0;
-
-        return new Point(
-            Math.Round(point.X * scale) / scale,
-            Math.Round(point.Y * scale) / scale);
-    }
-
     /// <summary>Stops the drag's frame clock.</summary>
     internal void StopFrameClock()
     {
@@ -833,7 +664,7 @@ internal sealed class SelectionHandlesPresenter
         {
             StopFrameClock();
             if (hadCapturedButton)
-                CollapseForPendingRefresh();
+                _placement.CollapseForPendingRefresh();
             _buttons.SetGlyphVisibility(visible: true);
         }
         finally
@@ -845,9 +676,9 @@ internal sealed class SelectionHandlesPresenter
             _adorner.RequestRefresh();
     }
 
-    private void CollapseForPendingRefresh()
-    {
-        MarkEndpointsUnavailable();
-        _buttons.SetVisibility(Visibility.Collapsed);
-    }
+    SelectionHandleEndpoint ISelectionHandleDragView.ActiveEndpoint => _activeEndpoint;
+
+    bool ISelectionHandleDragView.IsPointerDragActive => IsPointerDragActive();
+
+    bool ISelectionHandleDragView.IsCaptured(SelectionHandleEndpoint endpoint) => IsCaptured(endpoint);
 }
