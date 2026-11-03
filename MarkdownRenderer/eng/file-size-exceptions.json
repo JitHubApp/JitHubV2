@@ -123,7 +123,7 @@
     },
     {
       "path": "src/MarkdownRenderer/Layout/Boxes/BlockMeasuredPlacementTransfer.cs",
-      "lines": 1009,
+      "lines": 1008,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
@@ -143,12 +143,12 @@
     },
     {
       "path": "src/MarkdownRenderer/Layout/Boxes/InlineContainerBox.cs",
-      "lines": 1988,
+      "lines": 1996,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
       "path": "src/MarkdownRenderer/Layout/Boxes/InlineContainerBox.MeasuredPlacementTransfer.cs",
-      "lines": 1783,
+      "lines": 1184,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {

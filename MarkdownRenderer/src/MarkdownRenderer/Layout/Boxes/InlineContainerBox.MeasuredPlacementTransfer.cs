@@ -5,610 +5,11 @@ using MarkdownRenderer.Theming;
 using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
-using Windows.UI;
 
 namespace MarkdownRenderer.Layout.Boxes;
 
 internal sealed partial class InlineContainerBox
 {
-    /// <summary>
-    /// Captures a source inline box and its private measured clone so placement
-    /// can be moved without replacing the source box, runs, source-map entries,
-    /// or image event subscribers. The clone owns the retired native layouts
-    /// after the no-throw swap and is retired only after the snapshot gate is
-    /// released.
-    /// </summary>
-    internal sealed class MeasuredPlacementTransfer
-    {
-        private readonly struct PreparedVectorPlacement
-        {
-            internal PreparedVectorPlacement(
-                InlineVectorSceneRun source,
-                InlineVectorSceneRun prepared)
-            {
-                Source = source;
-                Prepared = prepared;
-                Width = prepared.DesiredWidth;
-                Height = prepared.DesiredHeight;
-                Baseline = prepared.DesiredBaseline;
-                LocalBounds = prepared.LocalBounds;
-            }
-
-            internal readonly InlineVectorSceneRun Source;
-            internal readonly InlineVectorSceneRun Prepared;
-            internal readonly float Width;
-            internal readonly float Height;
-            internal readonly float Baseline;
-            internal readonly Rect LocalBounds;
-        }
-
-        private readonly InlineContainerBox _source;
-        private readonly InlineContainerBox _prepared;
-        private readonly float _expectedAvailableWidth;
-        private readonly bool _isTableCellTransfer;
-        private readonly bool _isContainerLeafTransfer;
-        private readonly bool _allowMeasuredVectorPlacement;
-        private readonly int _vectorRunCount;
-        private readonly Rect _sourceBounds;
-        private readonly Thickness _sourceRawMargin;
-        private readonly Thickness _preparedRawMargin;
-        private readonly CanvasTextLayout _sourceLayout;
-        private readonly NativeResourceRetirementRecord _sourceLayoutRetirementRecord;
-        private readonly ScriptBaselineGeometry _sourceScriptBaselineGeometry;
-        private readonly CanvasTextLayout? _sourceSelectionLayout;
-        private readonly NativeResourceRetirementRecord? _sourceSelectionLayoutRetirementRecord;
-        private readonly CanvasLineMetrics[]? _sourceLineMetrics;
-        private readonly bool _sourceLineMetricsRead;
-        private readonly Color _sourceSelectionColor;
-        private readonly float _sourceSelectionWidth;
-        private readonly float _sourceLastWidth;
-        private readonly bool _sourceBufferDirty;
-        private readonly string _sourceBuffer;
-        private readonly int _sourceRunTextLength;
-        private readonly long _sourceSceneGeneration;
-        private readonly long _sourcePendingSceneGeneration;
-        private readonly InlineSceneGeometry[] _sourcePendingSceneGeometry;
-        private readonly object? _sourceVectorSceneState;
-        private readonly object? _preparedVectorSceneState;
-        private readonly bool _sourceProgressiveSceneResidency;
-        private InlineSceneGeometry[]? _preparedVectorGeometrySnapshot;
-        private InlineSceneGeometry[]? _preparedVectorGeometryForSource;
-        private readonly PreparedVectorPlacement[] _preparedVectorPlacements;
-        private long _preparedSceneGeometryGeneration;
-        private long _preparedPendingSceneGeometryGeneration;
-        private bool _preparedVectorGeometryReady;
-        private readonly RunState[] _runs;
-        private readonly IReadOnlyList<string> _containerContextKeys;
-        private readonly IReadOnlyList<string> _containerAliasKeys;
-        private readonly IReadOnlyList<string>[] _effectiveRunAliases;
-        private readonly ElementStyle?[] _sourceResolvedRunStyles;
-        private readonly ElementStyle _resolvedContainerStyle;
-
-        internal MeasuredPlacementTransfer(
-            InlineContainerBox source,
-            InlineContainerBox prepared,
-            float expectedAvailableWidth,
-            RunState[] runs,
-            IReadOnlyList<string> containerContextKeys,
-            IReadOnlyList<string> containerAliasKeys,
-            IReadOnlyList<string>[] effectiveRunAliases,
-            ElementStyle?[] sourceResolvedRunStyles,
-            bool isTableCellTransfer = false,
-            bool isContainerLeafTransfer = false,
-            bool allowMeasuredVectorPlacement = false)
-        {
-            _source = source;
-            _prepared = prepared;
-            _expectedAvailableWidth = expectedAvailableWidth;
-            _isTableCellTransfer = isTableCellTransfer;
-            _isContainerLeafTransfer = isContainerLeafTransfer;
-            _allowMeasuredVectorPlacement = allowMeasuredVectorPlacement;
-            int vectorRunCount = 0;
-            foreach (RunState run in runs)
-                if (run.SourceVectorRun is not null)
-                    vectorRunCount++;
-            _vectorRunCount = vectorRunCount;
-            _preparedVectorPlacements = new PreparedVectorPlacement[vectorRunCount];
-            _sourceBounds = source.Bounds;
-            _sourceRawMargin = source.RawPlacementMargin;
-            _preparedRawMargin = prepared.RawPlacementMargin;
-            _sourceLayout = source._layout!;
-            _sourceLayoutRetirementRecord = source._layoutRetirementRecord!;
-            _sourceScriptBaselineGeometry = source._scriptBaselineGeometry;
-            _sourceSelectionLayout = source._selectionLayout;
-            _sourceSelectionLayoutRetirementRecord = source._selectionLayoutRetirementRecord;
-            _sourceLineMetrics = source._cachedLineMetrics;
-            _sourceLineMetricsRead = source._lineMetricsRead;
-            _sourceSelectionColor = source._selectionLayoutColor;
-            _sourceSelectionWidth = source._selectionLayoutWidth;
-            _sourceLastWidth = source._lastWidth;
-            _sourceBufferDirty = source._bufferDirty;
-            _sourceBuffer = source._buffer;
-            _sourceRunTextLength = source._runTextLength;
-            _sourceSceneGeneration = source._sceneGeometryGeneration;
-            _sourcePendingSceneGeneration = source._pendingSceneGeometryGeneration;
-            _sourcePendingSceneGeometry = source._pendingSceneGeometry;
-            _sourceVectorSceneState = source._vectorSceneState;
-            _preparedVectorSceneState = prepared._vectorSceneState;
-            _sourceProgressiveSceneResidency = source._usesProgressiveNativeSceneResidency;
-            _runs = runs;
-            // These arrays belong to the still-private candidate. Measurement
-            // does not mutate them, so borrowing them avoids a second copy of
-            // style-key payload during the final-fence capture.
-            _containerContextKeys = containerContextKeys;
-            _containerAliasKeys = containerAliasKeys;
-            _effectiveRunAliases = effectiveRunAliases;
-            _sourceResolvedRunStyles = sourceResolvedRunStyles;
-            _resolvedContainerStyle = source._resolvedContainerStyle!;
-        }
-
-        internal InlineContainerBox Source => _source;
-
-        internal InlineContainerBox Prepared => _prepared;
-
-        /// <summary>
-        /// Returns the measured candidate cell width after a table candidate
-        /// has completed Measure and Arrange. The table publisher first calls
-        /// <see cref="IsCurrentAndPrepared"/> to validate this scalar.
-        /// </summary>
-        internal float PreparedAvailableWidth => _prepared._lastWidth;
-
-        /// <summary>
-        /// Builds a bounded source-run remap for candidate vector geometry.
-        /// Call after the private candidate has completed Measure/Arrange and
-        /// before entering the snapshot's final publication gate. This is the
-        /// only allocation in the vector-geometry transfer; final validation
-        /// and the swap use the captured arrays and managed references only.
-        /// </summary>
-        internal bool TryPrepareMeasuredVectorGeometry()
-        {
-            if (_vectorRunCount == 0)
-                return true;
-            if (_preparedVectorGeometryReady)
-                return MatchesPreparedVectorGeometry();
-
-            int vectorCount = 0;
-            foreach (RunState run in _runs)
-                if (run.SourceVectorRun is not null)
-                    vectorCount++;
-
-            InlineContainerBox prepared = _prepared;
-            if (vectorCount != _source._vectorSceneRunCount ||
-                vectorCount != prepared._vectorSceneRunCount ||
-                (vectorCount != 0 && !_allowMeasuredVectorPlacement) ||
-                prepared.IsDirty || prepared._layout is null || prepared._bufferDirty ||
-                !HasValidNativeLayoutCustody(prepared))
-            {
-                return false;
-            }
-
-            InlineSceneGeometry[] candidateGeometry = prepared._pendingSceneGeometry;
-            InlineSceneGeometry[] remappedGeometry = Array.Empty<InlineSceneGeometry>();
-            int placementOrdinal = 0;
-            foreach (RunState run in _runs)
-            {
-                if (run.SourceVectorRun is not { } sourceVector ||
-                    run.PreparedVectorRun is not { } preparedVector)
-                {
-                    continue;
-                }
-                if (placementOrdinal >= _preparedVectorPlacements.Length ||
-                    !run.MatchesSourceAndPreparedVectorState(_allowMeasuredVectorPlacement) ||
-                    !IsFiniteNonnegative(preparedVector.LocalBounds))
-                {
-                    return false;
-                }
-                _preparedVectorPlacements[placementOrdinal++] = new PreparedVectorPlacement(
-                    sourceVector, preparedVector);
-            }
-            if (placementOrdinal != vectorCount)
-                return false;
-
-            if (vectorCount > 0 && prepared._usesProgressiveNativeSceneResidency)
-            {
-                if (candidateGeometry.Length != vectorCount ||
-                    prepared._pendingSceneGeometryGeneration == 0 ||
-                    prepared._pendingSceneGeometryGeneration != prepared._sceneGeometryGeneration)
-                {
-                    return false;
-                }
-
-                remappedGeometry = new InlineSceneGeometry[vectorCount];
-                int geometryOrdinal = 0;
-                foreach (RunState run in _runs)
-                {
-                    if (run.SourceVectorRun is not { } sourceVector)
-                        continue;
-                    if (run.PreparedVectorRun is not { IsMeasuredPlacementOnly: true } preparedVector ||
-                        geometryOrdinal >= candidateGeometry.Length)
-                    {
-                        return false;
-                    }
-
-                    InlineSceneGeometry measuredGeometry = candidateGeometry[geometryOrdinal];
-                    if (!ReferenceEquals(measuredGeometry.Run, preparedVector) ||
-                        !ReferenceEquals(measuredGeometry.Run.Scene, run.VectorScene) ||
-                        !HasUsableMeasuredVectorRegions(measuredGeometry))
-                    {
-                        return false;
-                    }
-
-                    remappedGeometry[geometryOrdinal] = measuredGeometry.WithRun(sourceVector);
-                    geometryOrdinal++;
-                }
-
-                if (geometryOrdinal != vectorCount)
-                    return false;
-            }
-            else if (candidateGeometry.Length != 0 || prepared._pendingSceneGeometryGeneration != 0 &&
-                     !prepared._usesProgressiveNativeSceneResidency)
-            {
-                return false;
-            }
-
-            _preparedVectorGeometrySnapshot = candidateGeometry;
-            _preparedVectorGeometryForSource = remappedGeometry;
-            _preparedSceneGeometryGeneration = prepared._sceneGeometryGeneration;
-            _preparedPendingSceneGeometryGeneration = prepared._pendingSceneGeometryGeneration;
-            _preparedVectorGeometryReady = true;
-            return MatchesPreparedVectorGeometry();
-        }
-
-        private bool MatchesPreparedVectorGeometry()
-        {
-            if (!ReferenceEquals(_prepared._vectorSceneState, _preparedVectorSceneState))
-                return false;
-            if (_vectorRunCount == 0)
-                return true;
-            if (!_preparedVectorGeometryReady ||
-                !ReferenceEquals(_prepared._pendingSceneGeometry, _preparedVectorGeometrySnapshot) ||
-                _prepared._sceneGeometryGeneration != _preparedSceneGeometryGeneration ||
-                _prepared._pendingSceneGeometryGeneration != _preparedPendingSceneGeometryGeneration)
-            {
-                return false;
-            }
-
-            int vectorCount = 0;
-            foreach (RunState run in _runs)
-                if (run.SourceVectorRun is not null)
-                    vectorCount++;
-
-            if (!_allowMeasuredVectorPlacement && vectorCount != 0)
-                return false;
-            if (!MatchesPreparedVectorPlacements(vectorCount))
-                return false;
-            if (_prepared._usesProgressiveNativeSceneResidency && vectorCount != 0)
-            {
-                if (_preparedVectorGeometrySnapshot is null ||
-                    _preparedVectorGeometrySnapshot.Length != vectorCount ||
-                    _preparedVectorGeometryForSource is null ||
-                    _preparedVectorGeometryForSource.Length != vectorCount)
-                {
-                    return false;
-                }
-
-                int geometryOrdinal = 0;
-                foreach (RunState run in _runs)
-                {
-                    if (run.SourceVectorRun is not { } sourceVector ||
-                        run.PreparedVectorRun is not { } preparedVector)
-                    {
-                        continue;
-                    }
-
-                    InlineSceneGeometry candidateGeometry = _preparedVectorGeometrySnapshot[geometryOrdinal];
-                    InlineSceneGeometry sourceGeometry = _preparedVectorGeometryForSource[geometryOrdinal];
-                    if (!ReferenceEquals(candidateGeometry.Run, preparedVector) ||
-                        !ReferenceEquals(sourceGeometry.Run, sourceVector) ||
-                        !candidateGeometry.HasSameRegions(in sourceGeometry))
-                    {
-                        return false;
-                    }
-                    // WithRun value-copies the scalar region fields and shares
-                    // inaccessible immutable Rect[] storage. This exact
-                    // identity/value check stays constant-time under the gate.
-                    geometryOrdinal++;
-                }
-
-                return geometryOrdinal == vectorCount;
-            }
-
-            return _preparedVectorGeometryForSource is { Length: 0 } &&
-                (_preparedVectorGeometrySnapshot?.Length ?? 0) == 0;
-        }
-
-        private bool MatchesPreparedVectorPlacements(int vectorCount)
-        {
-            if (_preparedVectorPlacements.Length != vectorCount)
-                return false;
-
-            for (int index = 0; index < vectorCount; index++)
-            {
-                PreparedVectorPlacement expected = _preparedVectorPlacements[index];
-                InlineVectorSceneRun source = expected.Source;
-                InlineVectorSceneRun prepared = expected.Prepared;
-                if (prepared.IsDisposed || !prepared.IsMeasuredPlacementOnly ||
-                    source.IsDisposed || source.IsMeasuredPlacementOnly ||
-                    !ReferenceEquals(prepared.Scene, source.Scene) ||
-                    prepared.DesiredWidth != expected.Width ||
-                    prepared.DesiredHeight != expected.Height ||
-                    prepared.DesiredBaseline != expected.Baseline ||
-                    !SameRect(prepared.LocalBounds, expected.LocalBounds) ||
-                    !IsFiniteNonnegative(prepared.LocalBounds))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        /// <summary>
-        /// Revalidates immutable run/source identity and the captured source
-        /// layout state after private measurement. The caller holds the owning
-        /// snapshot's exclusive layout gate. This performs managed identity and
-        /// scalar checks only; it makes no native or host calls.
-        /// </summary>
-        internal bool IsCurrentAndPrepared()
-        {
-            InlineContainerBox source = _source;
-            InlineContainerBox prepared = _prepared;
-            bool compatibleRootInputs = _isTableCellTransfer
-                ? AreCompatibleTableCellRootInputs(source, prepared, _allowMeasuredVectorPlacement)
-                : _isContainerLeafTransfer
-                ? AreCompatibleContainerLeafRootInputs(source, prepared, _allowMeasuredVectorPlacement)
-                : AreCompatibleMeasuredRootInputs(
-                    source, prepared, _expectedAvailableWidth, _allowMeasuredVectorPlacement);
-            bool preparedWidthMatches = _isTableCellTransfer
-                ? float.IsFinite(prepared._lastWidth) && prepared._lastWidth > 0f &&
-                    prepared.Bounds.Width == prepared._lastWidth
-                : prepared._lastWidth == _expectedAvailableWidth &&
-                    prepared.Bounds.Width == _expectedAvailableWidth;
-            bool sourceWidthMatches = !_isTableCellTransfer && !_isContainerLeafTransfer ||
-                (source._lastWidth == _expectedAvailableWidth &&
-                 source.Bounds.Width == _expectedAvailableWidth);
-            if (!compatibleRootInputs || !sourceWidthMatches ||
-                !ReferenceEquals(source._layout, _sourceLayout) ||
-                !ReferenceEquals(source._layoutRetirementRecord, _sourceLayoutRetirementRecord) ||
-                !ReferenceEquals(source._selectionLayout, _sourceSelectionLayout) ||
-                !ReferenceEquals(source._selectionLayoutRetirementRecord,
-                    _sourceSelectionLayoutRetirementRecord) ||
-                !ReferenceEquals(source._cachedLineMetrics, _sourceLineMetrics) ||
-                source._lineMetricsRead != _sourceLineMetricsRead ||
-                !source._selectionLayoutColor.Equals(_sourceSelectionColor) ||
-                source._selectionLayoutWidth != _sourceSelectionWidth ||
-                source._lastWidth != _sourceLastWidth ||
-                source._bufferDirty != _sourceBufferDirty ||
-                !ReferenceEquals(source._buffer, _sourceBuffer) ||
-                source._runTextLength != _sourceRunTextLength ||
-                !SameRect(source.Bounds, _sourceBounds) ||
-                !source.RawPlacementMargin.Equals(_sourceRawMargin) ||
-                !prepared.RawPlacementMargin.Equals(_preparedRawMargin) ||
-                source._sceneGeometryGeneration != _sourceSceneGeneration ||
-                source._pendingSceneGeometryGeneration != _sourcePendingSceneGeneration ||
-                !ReferenceEquals(source._pendingSceneGeometry, _sourcePendingSceneGeometry) ||
-                !ReferenceEquals(source._vectorSceneState, _sourceVectorSceneState) ||
-                !ReferenceEquals(prepared._vectorSceneState, _preparedVectorSceneState) ||
-                source._usesProgressiveNativeSceneResidency != _sourceProgressiveSceneResidency ||
-                !ReferenceEquals(source._resolvedContainerStyle, _resolvedContainerStyle) ||
-                !ReferenceEquals(prepared._resolvedContainerStyle, _resolvedContainerStyle) ||
-                !MatchesContainerKeys(source, _containerContextKeys, _containerAliasKeys) ||
-                !MatchesContainerKeys(prepared, _containerContextKeys, _containerAliasKeys) ||
-                !MatchesRuns(
-                    source, prepared, _runs, _effectiveRunAliases, _sourceResolvedRunStyles,
-                    _allowMeasuredVectorPlacement))
-            {
-                return false;
-            }
-
-            // The clone must have a complete measured native layout at the
-            // requested width, or at its rebalanced table-cell width. Its
-            // selection layout is intentionally absent:
-            // the source selection layout, if any, moves to the retirement
-            // owner and the next source selection paint will lazily rebuild it.
-            if (prepared._layout is null || prepared._layoutRetirementRecord is null ||
-                prepared._selectionLayout is not null || prepared._selectionLayoutRetirementRecord is not null ||
-                prepared.IsDirty || prepared._bufferDirty ||
-                !float.IsFinite(prepared._lastWidth) ||
-                !preparedWidthMatches ||
-                !IsFiniteNonnegative(prepared.Bounds) ||
-                prepared.Bounds.Width != prepared._lastWidth ||
-                source.IsDirty ||
-                !ReferenceEquals(source._layout, _sourceLayout) ||
-                !source._scriptBaselineGeometry.HasSameGeometry(_sourceScriptBaselineGeometry) ||
-                !prepared._scriptBaselineGeometry.HasSameGeometry(_sourceScriptBaselineGeometry) ||
-                ReferenceEquals(prepared._layout, _sourceLayout) ||
-                ReferenceEquals(prepared._layout, _sourceSelectionLayout) ||
-                ReferenceEquals(prepared._layout, prepared._selectionLayout) ||
-                (!_allowMeasuredVectorPlacement &&
-                    (source._vectorSceneRunCount != 0 || prepared._vectorSceneRunCount != 0)) ||
-                !HasValidNativeLayoutCustody(source) || !HasValidNativeLayoutCustody(prepared) ||
-                (!_allowMeasuredVectorPlacement &&
-                    (source._pendingSceneGeometry.Length != 0 || prepared._pendingSceneGeometry.Length != 0)) ||
-                !MatchesPreparedVectorGeometry() ||
-                (_isContainerLeafTransfer &&
-                    (source._inlineImageRuns is { Count: > 0 } ||
-                     prepared._inlineImageRuns is { Count: > 0 } ||
-                     source._hasAtomicInlineObject != (_vectorRunCount != 0) ||
-                     prepared._hasAtomicInlineObject != (_vectorRunCount != 0))))
-            {
-                return false;
-            }
-
-            // The source image placement must retain its captured dimensions.
-            // A table clone may have a different completed width/height after
-            // column rebalancing; its ImageBox pair validates that measured
-            // target placement separately. This is scalar-only locked state:
-            // ownership, provider, and cancellation fences are repeated by the
-            // ImageBox batch.
-            foreach (RunState run in _runs)
-            {
-                if (!run.MatchesSourceImageState() ||
-                    !run.MatchesPreparedImageState(_isTableCellTransfer) ||
-                    !run.MatchesSourceAndPreparedVectorState(_allowMeasuredVectorPlacement))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        /// <summary>
-        /// Reports any native text-layout identity shared with another
-        /// transfer. It intentionally uses managed reference comparisons only.
-        /// </summary>
-        internal bool HasNativeLayoutAlias(MeasuredPlacementTransfer other)
-        {
-            ArgumentNullException.ThrowIfNull(other);
-            return Aliases(_source._layout, other._source._layout) ||
-                Aliases(_source._layout, other._source._selectionLayout) ||
-                Aliases(_source._selectionLayout, other._source._layout) ||
-                Aliases(_source._selectionLayout, other._source._selectionLayout) ||
-                Aliases(_source._layout, other._prepared._layout) ||
-                Aliases(_source._layout, other._prepared._selectionLayout) ||
-                Aliases(_source._selectionLayout, other._prepared._layout) ||
-                Aliases(_source._selectionLayout, other._prepared._selectionLayout) ||
-                Aliases(_prepared._layout, other._source._layout) ||
-                Aliases(_prepared._layout, other._source._selectionLayout) ||
-                Aliases(_prepared._selectionLayout, other._source._layout) ||
-                Aliases(_prepared._selectionLayout, other._source._selectionLayout) ||
-                Aliases(_prepared._layout, other._prepared._layout) ||
-                Aliases(_prepared._layout, other._prepared._selectionLayout) ||
-                Aliases(_prepared._selectionLayout, other._prepared._layout) ||
-                Aliases(_prepared._selectionLayout, other._prepared._selectionLayout) ||
-                Aliases(_source._layoutRetirementRecord, other._source._layoutRetirementRecord) ||
-                Aliases(_source._layoutRetirementRecord, other._source._selectionLayoutRetirementRecord) ||
-                Aliases(_source._selectionLayoutRetirementRecord, other._source._layoutRetirementRecord) ||
-                Aliases(_source._selectionLayoutRetirementRecord, other._source._selectionLayoutRetirementRecord) ||
-                Aliases(_source._layoutRetirementRecord, other._prepared._layoutRetirementRecord) ||
-                Aliases(_source._layoutRetirementRecord, other._prepared._selectionLayoutRetirementRecord) ||
-                Aliases(_source._selectionLayoutRetirementRecord, other._prepared._layoutRetirementRecord) ||
-                Aliases(_source._selectionLayoutRetirementRecord, other._prepared._selectionLayoutRetirementRecord) ||
-                Aliases(_prepared._layoutRetirementRecord, other._source._layoutRetirementRecord) ||
-                Aliases(_prepared._layoutRetirementRecord, other._source._selectionLayoutRetirementRecord) ||
-                Aliases(_prepared._selectionLayoutRetirementRecord, other._source._layoutRetirementRecord) ||
-                Aliases(_prepared._selectionLayoutRetirementRecord, other._source._selectionLayoutRetirementRecord) ||
-                Aliases(_prepared._layoutRetirementRecord, other._prepared._layoutRetirementRecord) ||
-                Aliases(_prepared._layoutRetirementRecord, other._prepared._selectionLayoutRetirementRecord) ||
-                Aliases(_prepared._selectionLayoutRetirementRecord, other._prepared._layoutRetirementRecord) ||
-                Aliases(_prepared._selectionLayoutRetirementRecord, other._prepared._selectionLayoutRetirementRecord);
-        }
-
-        /// <summary>
-        /// Adds the current source and candidate native layout owners to a
-        /// caller-owned reference-identity set. A duplicate means a native
-        /// layout would have more than one placement owner in the batch.
-        /// </summary>
-        internal bool TryAddNativeLayoutOwners(HashSet<CanvasTextLayout> owners)
-        {
-            ArgumentNullException.ThrowIfNull(owners);
-            return AddOwner(_source._layout, owners) &&
-                AddOwner(_source._selectionLayout, owners) &&
-                AddOwner(_prepared._layout, owners) &&
-                AddOwner(_prepared._selectionLayout, owners);
-        }
-
-        internal bool TryAddNativeLayoutOwners(
-            HashSet<CanvasTextLayout> layouts,
-            HashSet<NativeResourceRetirementRecord> retirementRecords)
-        {
-            ArgumentNullException.ThrowIfNull(layouts);
-            ArgumentNullException.ThrowIfNull(retirementRecords);
-            return AddOwner(_source._layout, layouts) &&
-                AddOwner(_source._selectionLayout, layouts) &&
-                AddOwner(_prepared._layout, layouts) &&
-                AddOwner(_prepared._selectionLayout, layouts) &&
-                AddRetirementOwner(_source._layoutRetirementRecord, retirementRecords) &&
-                AddRetirementOwner(_source._selectionLayoutRetirementRecord, retirementRecords) &&
-                AddRetirementOwner(_prepared._layoutRetirementRecord, retirementRecords) &&
-                AddRetirementOwner(_prepared._selectionLayoutRetirementRecord, retirementRecords);
-        }
-
-        private static bool AddOwner(CanvasTextLayout? layout, HashSet<CanvasTextLayout> owners) =>
-            layout is null || owners.Add(layout);
-
-        private static bool AddRetirementOwner(
-            NativeResourceRetirementRecord? record,
-            HashSet<NativeResourceRetirementRecord> owners) =>
-            record is null || owners.Add(record);
-
-        /// <summary>
-        /// Reports a native-layout alias against either generation of this
-        /// inline container and an image's caption/placeholder layout. The
-        /// ImageBox helper takes its short placement lock and performs only
-        /// reference comparisons.
-        /// </summary>
-        internal bool HasNativeLayoutAlias(ImageBox image)
-        {
-            ArgumentNullException.ThrowIfNull(image);
-            return image.HasNativePlacementLayoutAlias(_source._layout) ||
-                image.HasNativePlacementLayoutAlias(_source._selectionLayout) ||
-                image.HasNativePlacementLayoutAlias(_prepared._layout) ||
-                image.HasNativePlacementLayoutAlias(_prepared._selectionLayout);
-        }
-
-        /// <summary>
-        /// Reports whether this cell's source or candidate layout is shared
-        /// with either generation of a separately published image placement.
-        /// This is an identity-only managed check; the ImageBox helper takes
-        /// its short placement lock and makes no native calls.
-        /// </summary>
-        internal bool HasNativeLayoutAlias(ImageBox.MeasuredPlacementTransfer imageTransfer)
-        {
-            ArgumentNullException.ThrowIfNull(imageTransfer.Source);
-            ArgumentNullException.ThrowIfNull(imageTransfer.Prepared);
-            return HasNativeLayoutAlias(imageTransfer.Source) ||
-                HasNativeLayoutAlias(imageTransfer.Prepared);
-        }
-
-        /// <summary>
-        /// No-throw reference/scalar transfer. All shape, source, cancellation,
-        /// geometry, and image lease fences must have succeeded immediately
-        /// beforehand while the snapshot gate is held.
-        /// </summary>
-        internal void SwapPlacementNoThrow()
-        {
-            _source.SwapMeasuredPlacementStateNoThrow(
-                _prepared,
-                _sourceSceneGeneration,
-                _sourcePendingSceneGeneration,
-                _sourcePendingSceneGeometry,
-                _allowMeasuredVectorPlacement && _vectorRunCount > 0,
-                _preparedVectorGeometryForSource);
-
-            foreach (RunState run in _runs)
-            {
-                if (run.SourceImageRun is not { } sourceImageRun ||
-                    run.PreparedImageRun is not { } preparedImageRun)
-                {
-                    continue;
-                }
-
-                float sourceWidth = sourceImageRun.DesiredWidth;
-                float sourceHeight = sourceImageRun.DesiredHeight;
-                sourceImageRun.RestoreMeasuredSize(
-                    preparedImageRun.DesiredWidth,
-                    preparedImageRun.DesiredHeight);
-                preparedImageRun.RestoreMeasuredSize(sourceWidth, sourceHeight);
-            }
-
-            foreach (RunState run in _runs)
-            {
-                if (run.SourceVectorRun is not { } sourceVector ||
-                    run.PreparedVectorRun is not { } preparedVector)
-                {
-                    continue;
-                }
-
-                sourceVector.RestoreLayoutState(
-                    preparedVector.DesiredWidth,
-                    preparedVector.DesiredHeight,
-                    preparedVector.DesiredBaseline,
-                    preparedVector.LocalBounds);
-            }
-        }
-    }
 
     internal readonly struct RunState
     {
@@ -1217,13 +618,13 @@ internal sealed partial class InlineContainerBox
     /// <summary>
     /// Captures a measured Body/Heading source and the exact private clone
     /// created from it. The clone must be measured and arranged outside the
-    /// source gate before <see cref="MeasuredPlacementTransfer.IsCurrentAndPrepared"/>
+    /// source gate before <see cref="InlineMeasuredPlacementTransfer.IsCurrentAndPrepared"/>
     /// succeeds. Unsupported roots fail closed.
     /// </summary>
     internal bool TryCaptureMeasuredPlacementTransfer(
         InlineContainerBox prepared,
         float expectedAvailableWidth,
-        out MeasuredPlacementTransfer? transfer)
+        out InlineMeasuredPlacementTransfer? transfer)
         => TryCaptureMeasuredPlacementTransferCore(
             prepared, expectedAvailableWidth, isTableCellTransfer: false, out transfer);
 
@@ -1234,7 +635,7 @@ internal sealed partial class InlineContainerBox
     internal bool TryCaptureMeasuredPlacementTransferWithMeasuredVectorPlacement(
         InlineContainerBox prepared,
         float expectedAvailableWidth,
-        out MeasuredPlacementTransfer? transfer)
+        out InlineMeasuredPlacementTransfer? transfer)
         => TryCaptureMeasuredPlacementTransferCore(
             prepared, expectedAvailableWidth, isTableCellTransfer: false, out transfer,
             allowMeasuredVectorPlacement: true);
@@ -1247,7 +648,7 @@ internal sealed partial class InlineContainerBox
     internal bool TryCaptureTableCellMeasuredPlacementTransferWithMeasuredVectorPlacement(
         InlineContainerBox prepared,
         float expectedSourceWidth,
-        out MeasuredPlacementTransfer? transfer)
+        out InlineMeasuredPlacementTransfer? transfer)
         => TryCaptureMeasuredPlacementTransferCore(
             prepared, expectedSourceWidth, isTableCellTransfer: true, out transfer,
             allowMeasuredVectorPlacement: true);
@@ -1261,7 +662,7 @@ internal sealed partial class InlineContainerBox
     internal bool TryCaptureTableCellMeasuredPlacementTransfer(
         InlineContainerBox prepared,
         float expectedSourceWidth,
-        out MeasuredPlacementTransfer? transfer)
+        out InlineMeasuredPlacementTransfer? transfer)
         => TryCaptureMeasuredPlacementTransferCore(
             prepared, expectedSourceWidth, isTableCellTransfer: true, out transfer);
 
@@ -1274,7 +675,7 @@ internal sealed partial class InlineContainerBox
     internal bool TryCaptureContainerLeafMeasuredPlacementTransfer(
         InlineContainerBox prepared,
         float expectedAvailableWidth,
-        out MeasuredPlacementTransfer? transfer)
+        out InlineMeasuredPlacementTransfer? transfer)
         => TryCaptureMeasuredPlacementTransferCore(
             prepared, expectedAvailableWidth, isTableCellTransfer: false, out transfer,
             isContainerLeafTransfer: true);
@@ -1287,7 +688,7 @@ internal sealed partial class InlineContainerBox
     internal bool TryCaptureContainerLeafMeasuredPlacementTransferWithMeasuredVectorPlacement(
         InlineContainerBox prepared,
         float expectedAvailableWidth,
-        out MeasuredPlacementTransfer? transfer)
+        out InlineMeasuredPlacementTransfer? transfer)
         => TryCaptureMeasuredPlacementTransferCore(
             prepared, expectedAvailableWidth, isTableCellTransfer: false, out transfer,
             isContainerLeafTransfer: true, allowMeasuredVectorPlacement: true);
@@ -1296,7 +697,7 @@ internal sealed partial class InlineContainerBox
         InlineContainerBox prepared,
         float expectedAvailableWidth,
         bool isTableCellTransfer,
-        out MeasuredPlacementTransfer? transfer,
+        out InlineMeasuredPlacementTransfer? transfer,
         bool isContainerLeafTransfer = false,
         bool allowMeasuredVectorPlacement = false)
     {
@@ -1429,7 +830,7 @@ internal sealed partial class InlineContainerBox
             return false;
         }
 
-        transfer = new MeasuredPlacementTransfer(
+        transfer = new InlineMeasuredPlacementTransfer(
             this,
             prepared,
             expectedAvailableWidth,
@@ -1487,7 +888,7 @@ internal sealed partial class InlineContainerBox
         (allowMeasuredVectorPlacement || box._pendingSceneGeometry.Length == 0) &&
         box._foregroundSpans.Count == 0;
 
-    private static bool AreCompatibleMeasuredRootInputs(
+    internal static bool AreCompatibleMeasuredRootInputs(
         InlineContainerBox source,
         InlineContainerBox prepared,
         float expectedAvailableWidth,
@@ -1497,7 +898,7 @@ internal sealed partial class InlineContainerBox
         IsSupportedMeasuredPlacementRoot(prepared, allowMeasuredVectorPlacement) &&
         AreCompatiblePlacementRootInputs(source, prepared);
 
-    private static bool AreCompatibleTableCellRootInputs(
+    internal static bool AreCompatibleTableCellRootInputs(
         InlineContainerBox source,
         InlineContainerBox prepared,
         bool allowMeasuredVectorPlacement = false) =>
@@ -1505,7 +906,7 @@ internal sealed partial class InlineContainerBox
         IsSupportedTableCellMeasuredPlacementRoot(prepared, allowMeasuredVectorPlacement) &&
         AreCompatiblePlacementRootInputs(source, prepared);
 
-    private static bool AreCompatibleContainerLeafRootInputs(
+    internal static bool AreCompatibleContainerLeafRootInputs(
         InlineContainerBox source,
         InlineContainerBox prepared,
         bool allowMeasuredVectorPlacement = false) =>
@@ -1648,7 +1049,7 @@ internal sealed partial class InlineContainerBox
             float.IsFinite(expectedAvailableWidth);
     }
 
-    private static bool MatchesRuns(
+    internal static bool MatchesRuns(
         InlineContainerBox source,
         InlineContainerBox prepared,
         RunState[] runs,
@@ -1712,7 +1113,7 @@ internal sealed partial class InlineContainerBox
         return imageOrdinal == sourceImageCount;
     }
 
-    private static bool MatchesContainerKeys(
+    internal static bool MatchesContainerKeys(
         InlineContainerBox box,
         IReadOnlyList<string> contextKeys,
         IReadOnlyList<string> aliasKeys) =>
@@ -1732,7 +1133,7 @@ internal sealed partial class InlineContainerBox
     private static bool NativeLayoutsAreDistinct(InlineContainerBox box) =>
         HasValidNativeLayoutCustody(box);
 
-    private static bool HasValidNativeLayoutCustody(InlineContainerBox box) =>
+    internal static bool HasValidNativeLayoutCustody(InlineContainerBox box) =>
         (box._layout is null) == (box._layoutRetirementRecord is null) &&
         (box._selectionLayout is null) == (box._selectionLayoutRetirementRecord is null) &&
         (box._layout is null || box._selectionLayout is null ||
@@ -1740,24 +1141,24 @@ internal sealed partial class InlineContainerBox
         (box._layoutRetirementRecord is null || box._selectionLayoutRetirementRecord is null ||
             !ReferenceEquals(box._layoutRetirementRecord, box._selectionLayoutRetirementRecord));
 
-    private static bool Aliases(CanvasTextLayout? first, CanvasTextLayout? second) =>
+    internal static bool Aliases(CanvasTextLayout? first, CanvasTextLayout? second) =>
         first is not null && ReferenceEquals(first, second);
 
-    private static bool Aliases(
+    internal static bool Aliases(
         NativeResourceRetirementRecord? first,
         NativeResourceRetirementRecord? second) =>
         first is not null && ReferenceEquals(first, second);
 
-    private static bool SameRect(Rect first, Rect second) =>
+    internal static bool SameRect(Rect first, Rect second) =>
         first.X == second.X && first.Y == second.Y &&
         first.Width == second.Width && first.Height == second.Height;
 
-    private static bool IsFiniteNonnegative(Rect bounds) =>
+    internal static bool IsFiniteNonnegative(Rect bounds) =>
         double.IsFinite(bounds.X) && double.IsFinite(bounds.Y) &&
         double.IsFinite(bounds.Width) && bounds.Width >= 0 &&
         double.IsFinite(bounds.Height) && bounds.Height >= 0;
 
-    private static bool HasUsableMeasuredVectorRegions(in InlineSceneGeometry geometry)
+    internal static bool HasUsableMeasuredVectorRegions(in InlineSceneGeometry geometry)
     {
         if (geometry.RegionCount <= 0)
             return false;

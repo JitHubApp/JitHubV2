@@ -65,15 +65,21 @@ internal sealed partial class InlineContainerBox : BlockBox
     private CanvasTextLayout? _layout;
     internal CanvasTextLayout? TextLayout => _layout;
     private NativeResourceRetirementRecord? _layoutRetirementRecord;
+    internal NativeResourceRetirementRecord? TextLayoutRetirementRecord => _layoutRetirementRecord;
     private ScriptBaselineGeometry _scriptBaselineGeometry = ScriptBaselineGeometry.Empty;
     internal ScriptBaselineGeometry ScriptBaselineGeometry => _scriptBaselineGeometry;
     private CanvasLineMetrics[]? _cachedLineMetrics;
+    internal CanvasLineMetrics[]? CachedLineMetrics => _cachedLineMetrics;
     private bool _lineMetricsRead;
+    internal bool HasReadLineMetrics => _lineMetricsRead;
     private CanvasTextLayout? _selectionLayout;
     internal CanvasTextLayout? SelectionLayout => _selectionLayout;
     private NativeResourceRetirementRecord? _selectionLayoutRetirementRecord;
+    internal NativeResourceRetirementRecord? SelectionLayoutRetirementRecord => _selectionLayoutRetirementRecord;
     private Color _selectionLayoutColor;
+    internal Color SelectionLayoutColor => _selectionLayoutColor;
     private float _selectionLayoutWidth;
+    internal float SelectionLayoutWidth => _selectionLayoutWidth;
     // Per-run scalar snapshot populated only while applying the measured
     // layout. Paint, selection and geometry consumers only read this array;
     // they never create DirectWrite analyzers or inspect cancellation state.
@@ -89,12 +95,14 @@ internal sealed partial class InlineContainerBox : BlockBox
     private bool _bufferDirty;
     internal bool IsBufferDirty => _bufferDirty;
     private float _lastWidth;
+    internal float LastMeasuredWidth => _lastWidth;
 
     // Text-only inline boxes are the common case. Keep their vector-specific
     // counters and geometry in no per-box holder until a vector run is added.
     // This state is mutable and strictly box-owned; private placement clones
     // create their own holder rather than sharing it with the source box.
     private InlineVectorSceneState? _vectorSceneState;
+    internal InlineVectorSceneState? VectorSceneStateHolder => _vectorSceneState;
     private InlineSceneGeometry[] _pendingSceneGeometry
     {
         get => _vectorSceneState?.PendingSceneGeometry ?? Array.Empty<InlineSceneGeometry>();
@@ -1094,7 +1102,7 @@ internal sealed partial class InlineContainerBox : BlockBox
     /// No-throw exchange of this source box's measured native-layout state
     /// with its private measured candidate. Scene generations stay with this
     /// stable source box. Called by
-    /// <see cref="MeasuredPlacementTransfer.SwapPlacementNoThrow"/> only after
+    /// <see cref="InlineMeasuredPlacementTransfer.SwapPlacementNoThrow"/> only after
     /// every transfer fence has succeeded under the snapshot gate.
     /// </summary>
     /// <param name="prepared">The private measured candidate.</param>

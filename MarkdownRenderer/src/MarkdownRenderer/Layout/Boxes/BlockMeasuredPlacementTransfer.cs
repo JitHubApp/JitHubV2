@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using MarkdownRenderer.Layout;
 using MarkdownRenderer.Theming;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
@@ -36,7 +35,7 @@ internal sealed class BlockMeasuredPlacementTransfer
     private readonly BlockBox _prepared;
     private readonly float _expectedRootWidth;
     private readonly NodeFence[] _nodes;
-    private readonly InlineContainerBox.MeasuredPlacementTransfer[] _inlineTransfers;
+    private readonly InlineMeasuredPlacementTransfer[] _inlineTransfers;
     private readonly ImagePair[] _imagePairs;
     private readonly HashSet<double[]> _sourceEdgeOwners;
     private readonly HashSet<double[]> _candidateEdgeOwners;
@@ -49,7 +48,7 @@ internal sealed class BlockMeasuredPlacementTransfer
         BlockBox prepared,
         float expectedRootWidth,
         NodeFence[] nodes,
-        InlineContainerBox.MeasuredPlacementTransfer[] inlineTransfers,
+        InlineMeasuredPlacementTransfer[] inlineTransfers,
         ImagePair[] imagePairs,
         HashSet<double[]> sourceEdgeOwners)
     {
@@ -67,7 +66,7 @@ internal sealed class BlockMeasuredPlacementTransfer
 
     internal BlockBox Source => _source;
     internal BlockBox Prepared => _prepared;
-    internal ReadOnlySpan<InlineContainerBox.MeasuredPlacementTransfer> InlineTransfers => _inlineTransfers;
+    internal ReadOnlySpan<InlineMeasuredPlacementTransfer> InlineTransfers => _inlineTransfers;
     internal ReadOnlySpan<ImagePair> ImagePairs => _imagePairs;
 
     /// <summary>
@@ -333,7 +332,7 @@ internal sealed class BlockMeasuredPlacementTransfer
         private long _styleKeyCount;
 
         internal readonly List<NodeFence> Nodes = new(MaximumNodes);
-        internal readonly List<InlineContainerBox.MeasuredPlacementTransfer> InlineTransfers = new(MaximumNodes);
+        internal readonly List<InlineMeasuredPlacementTransfer> InlineTransfers = new(MaximumNodes);
         internal readonly List<ImagePair> ImagePairs = new(ImageBox.MaximumMeasuredPlacementTransferBatchCount);
         internal HashSet<double[]> SourceEdgeOwners => _sourceEdgeOwners;
         internal MarkdownLayoutContext? SourceContext;
@@ -475,7 +474,7 @@ internal sealed class BlockMeasuredPlacementTransfer
                 return false;
             }
 
-            InlineContainerBox.MeasuredPlacementTransfer? inlineTransfer;
+            InlineMeasuredPlacementTransfer? inlineTransfer;
             bool captured = _allowMeasuredVectorPlacement
                 ? imageCount > 0
                     ? source.TryCaptureMeasuredPlacementTransferWithMeasuredVectorPlacement(

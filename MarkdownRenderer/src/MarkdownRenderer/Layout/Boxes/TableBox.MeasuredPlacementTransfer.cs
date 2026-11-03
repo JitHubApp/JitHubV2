@@ -26,7 +26,7 @@ internal sealed partial class TableBox
         private readonly InlineContainerBox[][] _preparedBodyOuter;
         private readonly RowFence[] _rows;
         private readonly CellFence[] _cells;
-        private readonly InlineContainerBox.MeasuredPlacementTransfer[] _cellTransfers;
+        private readonly InlineMeasuredPlacementTransfer[] _cellTransfers;
         private readonly CellAlignment[] _sourceAlignments;
         private readonly CellAlignment[] _preparedAlignments;
         private readonly CellAlignment[] _alignmentValues;
@@ -64,7 +64,7 @@ internal sealed partial class TableBox
             float expectedRootWidth,
             RowFence[] rows,
             CellFence[] cells,
-            InlineContainerBox.MeasuredPlacementTransfer[] cellTransfers,
+            InlineMeasuredPlacementTransfer[] cellTransfers,
             CellAlignment[] alignmentValues,
             Thickness headerPadding,
             Thickness bodyPadding)
@@ -118,7 +118,7 @@ internal sealed partial class TableBox
         /// check. The source and prepared cell identities are preserved when
         /// this table placement is committed.
         /// </summary>
-        internal ReadOnlySpan<InlineContainerBox.MeasuredPlacementTransfer> CellTransfers
+        internal ReadOnlySpan<InlineMeasuredPlacementTransfer> CellTransfers
             => _cellTransfers;
 
         /// <summary>
@@ -625,7 +625,7 @@ internal sealed partial class TableBox
             rows[rowIndex++] = new RowFence(false, index, _bodyCells[index], prepared._bodyCells[index]);
 
         var cells = new CellFence[cellCount];
-        var cellTransfers = new InlineContainerBox.MeasuredPlacementTransfer[cellCount];
+        var cellTransfers = new InlineMeasuredPlacementTransfer[cellCount];
         int cellIndex = 0;
         for (int row = 0; row < _headerCells.Length; row++)
         {
@@ -636,7 +636,7 @@ internal sealed partial class TableBox
                 float expectedSourceWidth = GetCellMeasureWidth(_colWidths!, column, headerPadding);
                 if (!IsSourceCellAtTablePlacement(this, sourceRow[column], true, row, column, headerPadding))
                     return false;
-                InlineContainerBox.MeasuredPlacementTransfer? cellTransfer;
+                InlineMeasuredPlacementTransfer? cellTransfer;
                 bool captured = allowMeasuredVectorPlacement
                     ? sourceRow[column].TryCaptureTableCellMeasuredPlacementTransferWithMeasuredVectorPlacement(
                         preparedRow[column], expectedSourceWidth, out cellTransfer)
@@ -661,7 +661,7 @@ internal sealed partial class TableBox
                 float expectedSourceWidth = GetCellMeasureWidth(_colWidths!, column, bodyPadding);
                 if (!IsSourceCellAtTablePlacement(this, sourceRow[column], false, row, column, bodyPadding))
                     return false;
-                InlineContainerBox.MeasuredPlacementTransfer? cellTransfer;
+                InlineMeasuredPlacementTransfer? cellTransfer;
                 bool captured = allowMeasuredVectorPlacement
                     ? sourceRow[column].TryCaptureTableCellMeasuredPlacementTransferWithMeasuredVectorPlacement(
                         preparedRow[column], expectedSourceWidth, out cellTransfer)
@@ -1020,13 +1020,13 @@ internal sealed partial class TableBox
         int ColumnIndex,
         InlineContainerBox Source,
         InlineContainerBox Prepared,
-        InlineContainerBox.MeasuredPlacementTransfer Transfer)
+        InlineMeasuredPlacementTransfer Transfer)
     {
         public bool IsHeader { get; init; } = IsHeader;
         public int RowIndex { get; init; } = RowIndex;
         public int ColumnIndex { get; init; } = ColumnIndex;
         public InlineContainerBox Source { get; init; } = Source;
         public InlineContainerBox Prepared { get; init; } = Prepared;
-        public InlineContainerBox.MeasuredPlacementTransfer Transfer { get; init; } = Transfer;
+        public InlineMeasuredPlacementTransfer Transfer { get; init; } = Transfer;
     }
 }

@@ -100,10 +100,10 @@ internal sealed partial class LayoutSnapshot
             RasterPlacementSourceFence[] sources;
             ChangedBlockMeasure[] changed;
             ImageBox.MeasuredPlacementTransfer[] transfers;
-            InlineContainerBox.MeasuredPlacementTransfer?[] inlineTransfers;
+            InlineMeasuredPlacementTransfer?[] inlineTransfers;
             TableBox.MeasuredPlacementTransfer?[] tableTransfers;
             BlockMeasuredPlacementTransfer?[] containerTransfers;
-            var allInlineTransfers = new List<InlineContainerBox.MeasuredPlacementTransfer>();
+            var allInlineTransfers = new List<InlineMeasuredPlacementTransfer>();
             float contentWidth;
             float contentX;
             long revision;
@@ -146,7 +146,7 @@ internal sealed partial class LayoutSnapshot
                 count = uniqueRootCount;
                 sourceRoots = new BlockBox[count];
                 changed = new ChangedBlockMeasure[count];
-                inlineTransfers = new InlineContainerBox.MeasuredPlacementTransfer?[count];
+                inlineTransfers = new InlineMeasuredPlacementTransfer?[count];
                 tableTransfers = new TableBox.MeasuredPlacementTransfer?[count];
                 containerTransfers = new BlockMeasuredPlacementTransfer?[count];
                 contentWidth = GetContentWidthNoLock();
@@ -326,7 +326,7 @@ internal sealed partial class LayoutSnapshot
                                 out tableTransfers[index]) || tableTransfers[index] is not { } tableTransfer)
                             return PreparedImageRelayoutResult.Unavailable;
                         int imageIndex = 0;
-                        foreach (InlineContainerBox.MeasuredPlacementTransfer cellTransfer in tableTransfer.CellTransfers)
+                        foreach (InlineMeasuredPlacementTransfer cellTransfer in tableTransfer.CellTransfers)
                         {
                             allInlineTransfers.Add(cellTransfer);
                             IReadOnlyList<(InlineImageRun Run, int Offset)> sourceImages = cellTransfer.Source.InlineImageRuns;
@@ -360,7 +360,7 @@ internal sealed partial class LayoutSnapshot
                             !BlockMeasuredPlacementTransfer.TryCaptureWithMeasuredVectorPlacement(sourceRoots[index], clone, contentWidth,
                                 out containerTransfers[index]) || containerTransfers[index] is not { } containerTransfer)
                             return PreparedImageRelayoutResult.Unavailable;
-                        foreach (InlineContainerBox.MeasuredPlacementTransfer leafTransfer in containerTransfer.InlineTransfers)
+                        foreach (InlineMeasuredPlacementTransfer leafTransfer in containerTransfer.InlineTransfers)
                             allInlineTransfers.Add(leafTransfer);
                         if (containerTransfer.ImagePairs.Length != fences.Length)
                             return PreparedImageRelayoutResult.Unavailable;
@@ -511,7 +511,7 @@ internal sealed partial class LayoutSnapshot
             // Vector regions refer to the non-publishable metric clones.
             // Rebind them to the retained semantic runs before taking the
             // final gate; publication performs only validated scalar swaps.
-            foreach (InlineContainerBox.MeasuredPlacementTransfer inlineTransfer in allInlineTransfers)
+            foreach (InlineMeasuredPlacementTransfer inlineTransfer in allInlineTransfers)
                 if (!inlineTransfer.TryPrepareMeasuredVectorGeometry())
                     return PreparedImageRelayoutResult.Retry;
             cancellationToken.ThrowIfCancellationRequested();
@@ -565,10 +565,10 @@ internal sealed partial class LayoutSnapshot
                 foreach (BlockMeasuredPlacementTransfer? containerTransfer in containerTransfers)
                     if (containerTransfer is not null && !containerTransfer.IsCurrentAndPrepared())
                         return PreparedImageRelayoutResult.Retry;
-                foreach (InlineContainerBox.MeasuredPlacementTransfer? inlineTransfer in inlineTransfers)
+                foreach (InlineMeasuredPlacementTransfer? inlineTransfer in inlineTransfers)
                     if (inlineTransfer is not null && !inlineTransfer.IsCurrentAndPrepared())
                         return PreparedImageRelayoutResult.Retry;
-                foreach (InlineContainerBox.MeasuredPlacementTransfer inlineTransfer in allInlineTransfers)
+                foreach (InlineMeasuredPlacementTransfer inlineTransfer in allInlineTransfers)
                     if (!inlineTransfer.TryAddNativeLayoutOwners(nativeLayoutOwners, nativeRetirementOwners))
                         return PreparedImageRelayoutResult.Retry;
                 foreach (ImageBox.MeasuredPlacementTransfer imageTransfer in transfers)
@@ -589,7 +589,7 @@ internal sealed partial class LayoutSnapshot
                             transfers, currentProviderGeneration, contentWidth))
                         return PreparedImageRelayoutResult.Retry;
                     placementsAdopted = true;
-                    foreach (InlineContainerBox.MeasuredPlacementTransfer? inlineTransfer in inlineTransfers)
+                    foreach (InlineMeasuredPlacementTransfer? inlineTransfer in inlineTransfers)
                         inlineTransfer?.SwapPlacementNoThrow();
                     foreach (TableBox.MeasuredPlacementTransfer? tableTransfer in tableTransfers)
                         tableTransfer?.SwapPlacementNoThrow();
