@@ -365,8 +365,8 @@ public sealed class CompletedSvgPlacementCloneTests
         {
             SvgPlacementFixture readyFixture = await SvgPlacementFixture.CreateStartedAsync();
             fixture = readyFixture;
-            await WaitUntilAsync(() => GetField<int>(readyFixture.Image, "_bitmapOutputDeferred") != 0 &&
-                GetField(readyFixture.Image, "_bitmapOutputWaiter") is not null &&
+            await WaitUntilAsync(() => readyFixture.Image.OutputDeferral.GetState().Deferred &&
+                readyFixture.Image.OutputDeferral.GetState().HasWaiter &&
                 readyFixture.Image.ActiveImageWorkCountForTests == 0);
             Assert.Null(readyFixture.Image.Bitmap);
             AssertCloneRejected(readyFixture.Image, readyFixture.CreateTargetContext());

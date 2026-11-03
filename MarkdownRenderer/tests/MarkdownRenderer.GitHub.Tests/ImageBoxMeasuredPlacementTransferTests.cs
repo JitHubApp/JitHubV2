@@ -171,11 +171,11 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             Assert.NotNull(expectedLease);
             PrepareAtDifferentOrigin(source, prepared);
 
-            SetField(source, "_bitmapOutputWaiterEpoch", 11L);
-            SetField(source, "_bitmapOutputRecoverySignaledEpoch", 7L);
-            SetField(source, "_bitmapOutputVisible", 1);
-            SetField(source, "_bitmapOutputReplacement", 1);
-            SetField(source, "_bitmapOutputExistingTile", 1);
+            SetField(source.OutputDeferral, "_bitmapOutputWaiterEpoch", 11L);
+            SetField(source.OutputDeferral, "_bitmapOutputRecoverySignaledEpoch", 7L);
+            SetField(source.OutputDeferral, "_bitmapOutputVisible", 1);
+            SetField(source.OutputDeferral, "_bitmapOutputReplacement", 1);
+            SetField(source.OutputDeferral, "_bitmapOutputExistingTile", 1);
             Rect preparedBounds = prepared.Bounds;
             CanvasTextLayout preparedCaption = GetField<CanvasTextLayout>(prepared, "_caption");
 
@@ -194,11 +194,10 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
                 snapshot.EndInteraction();
             }
 
-            Assert.Equal(11L, GetField<long>(source, "_bitmapOutputWaiterEpoch"));
-            Assert.Equal(7L, GetField<long>(source, "_bitmapOutputRecoverySignaledEpoch"));
-            Assert.Equal(1, GetField<int>(source, "_bitmapOutputVisible"));
-            Assert.Equal(1, GetField<int>(source, "_bitmapOutputReplacement"));
-            Assert.Equal(1, GetField<int>(source, "_bitmapOutputExistingTile"));
+            ImageBitmapOutputState history = source.OutputDeferral.GetState();
+            Assert.Equal(11L, history.WaiterEpoch);
+            Assert.Equal(7L, history.RecoverySignaledEpoch);
+            Assert.True(history.Visible && history.Replacement && history.ExistingTile);
             Assert.Equal(preparedBounds, source.Bounds);
             Assert.Same(preparedCaption, GetField<CanvasTextLayout>(source, "_caption"));
         }
@@ -234,7 +233,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             Rect preparedBounds = prepared.Bounds;
             CanvasTextLayout sourceCaption = GetField<CanvasTextLayout>(source, "_caption");
             CanvasTextLayout preparedCaption = GetField<CanvasTextLayout>(prepared, "_caption");
-            var fakeOwner = CreateUnattachedBitmapOutputWaiterOwner(source);
+            var fakeOwner = new ImageBitmapOutputWaiter(source.OutputDeferral, 17L);
             var liveStates = new (string Field, object? Value)[]
             {
                 ("_bitmapOutputDeferred", 1),
@@ -245,7 +244,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
 
             foreach ((string field, object? value) in liveStates)
             {
-                SetField(source, field, value);
+                SetField(source.OutputDeferral, field, value);
                 try
                 {
                     Assert.True(snapshot.TryBeginInteraction());
@@ -271,9 +270,9 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
                 finally
                 {
                     if (field == "_bitmapOutputDeferred" || field == "_bitmapOutputRetryOfferPending")
-                        SetField(source, field, 0);
+                        SetField(source.OutputDeferral, field, 0);
                     else
-                        SetField(source, field, null);
+                        SetField(source.OutputDeferral, field, null);
                 }
             }
         }
@@ -319,7 +318,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             Assert.NotNull(candidate);
             Assert.True(candidate!.HasCurrentSourceRaster());
 
-            SetField(sourceImage, "_bitmapOutputDeferred", 1);
+            SetField(sourceImage.OutputDeferral, "_bitmapOutputDeferred", 1);
             try
             {
                 Assert.False(sourceImage.IsCurrentCompletedRasterPlacement(retainedLease));
@@ -349,7 +348,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             }
             finally
             {
-                SetField(sourceImage, "_bitmapOutputDeferred", 0);
+                SetField(sourceImage.OutputDeferral, "_bitmapOutputDeferred", 0);
             }
         }
         finally
@@ -765,17 +764,6 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
         FieldInfo field = instance.GetType().GetField(name,
             BindingFlags.Instance | BindingFlags.NonPublic)!;
         field.SetValue(instance, value);
-    }
-
-    private static object CreateUnattachedBitmapOutputWaiterOwner(ImageBox image)
-    {
-        Type ownerType = typeof(ImageBox).GetNestedType("BitmapOutputWaiter", BindingFlags.NonPublic)!;
-        ConstructorInfo constructor = ownerType.GetConstructor(
-            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
-            binder: null,
-            types: [typeof(ImageBox), typeof(long)],
-            modifiers: null)!;
-        return constructor.Invoke([image, 17L]);
     }
 
     private static T GetAssignableField<T>(object instance, string name) where T : class

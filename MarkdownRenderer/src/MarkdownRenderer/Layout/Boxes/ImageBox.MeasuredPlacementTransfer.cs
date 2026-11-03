@@ -273,8 +273,8 @@ internal sealed partial class ImageBox
                 prepared.Context.CancellationToken.IsCancellationRequested ||
                 source.Context.PerformanceSession is IMarkdownPerformanceSessionInternal { IsDisposed: true } ||
                 prepared.Context.PerformanceSession is IMarkdownPerformanceSessionInternal { IsDisposed: true } ||
-                !source.HasNoLiveBitmapOutputPlacementWork() ||
-                !prepared.HasNoLiveBitmapOutputPlacementWork())
+                !source.OutputDeferral.GetState().HasNoLiveWork ||
+                !prepared.OutputDeferral.GetState().HasNoLiveWork)
             {
                 return false;
             }
@@ -373,8 +373,8 @@ internal sealed partial class ImageBox
                     !validatedTransfer.Source.IsCurrentNativeLayoutPlacementFenceNoLock(
                         validatedTransfer.ExpectedSourceNativeLayouts) ||
                     !validatedTransfer.Prepared.IsCurrentNativeLayoutPlacementFenceNoLock(preparedNativeFence) ||
-                    !validatedTransfer.Source.HasNoLiveBitmapOutputPlacementWork() ||
-                    !validatedTransfer.Prepared.HasNoLiveBitmapOutputPlacementWork() ||
+                    !validatedTransfer.Source.OutputDeferral.GetState().HasNoLiveWork ||
+                    !validatedTransfer.Prepared.OutputDeferral.GetState().HasNoLiveWork ||
                     !validatedTransfer.Source.IsTransferSourceEligibleForWidthsNoLock(
                         validatedTransfer.Prepared,
                         validatedTransfer.ExpectedSourceLease,
@@ -543,37 +543,6 @@ internal sealed partial class ImageBox
                SuppressBottomMargin == other.SuppressBottomMargin &&
                _rasterIntrinsicSize.Equals(other._rasterIntrinsicSize) &&
                _svgIntrinsicSize.Equals(other._svgIntrinsicSize);
-    }
-
-    private bool HasNoLiveBitmapOutputPlacementWork()
-    {
-        lock (_bitmapOutputSync)
-        {
-            // Successful admission leaves monotonic waiter epochs and cached
-            // visibility/tier hints behind. They are historical bookkeeping,
-            // not pending ownership. A private placement transfer only needs
-            // to exclude live waiters, registrations, deferrals, and retries.
-            return _bitmapOutputWaiter is null &&
-                _bitmapOutputWaiterOwner is null &&
-                _bitmapOutputImageCancellation.Equals(default(CancellationTokenRegistration)) &&
-                _bitmapOutputSessionCancellation.Equals(default(CancellationTokenRegistration)) &&
-                _bitmapOutputDemand is null &&
-                _bitmapOutputRequiredBytes == 0 &&
-                _bitmapOutputCapacityVersion == 0 &&
-                _bitmapOutputWaiterSlotVersion == 0 &&
-                _bitmapOutputDemandGeneration == 0 &&
-                _bitmapOutputSvgGeneration == 0 &&
-                _bitmapOutputDeferred == 0 &&
-                _bitmapOutputNeedsTrim == 0 &&
-                _bitmapOutputRegistering == 0 &&
-                _bitmapOutputRegistrationNeeded == 0 &&
-                _bitmapOutputCapacityReady == 0 &&
-                _bitmapOutputRetryQueued == 0 &&
-                _bitmapOutputRetryInProgress == 0 &&
-                _bitmapOutputRetryOfferPending == 0 &&
-                _bitmapOutputRegistrationFailed == 0 &&
-                _bitmapOutputCancellationRegistered == 0;
-        }
     }
 
     private static bool RequestedSizeMatches(SafeHtmlLength? left, SafeHtmlLength? right)

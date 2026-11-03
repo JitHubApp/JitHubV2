@@ -638,7 +638,7 @@ internal sealed partial class ImageBox : IMarkdownImageResidencyTarget
 
         AdvanceSvgRenderGeneration();
         ClearSvgHostDeferral();
-        ClearBitmapOutputDeferral();
+        OutputDeferral.ClearBitmapOutputDeferral();
         if (cancellation is not null)
             _ = CancelResidencyAsync(cancellation, cancellationWork!);
     }
@@ -698,7 +698,7 @@ internal sealed partial class ImageBox : IMarkdownImageResidencyTarget
         }
 
         ClearSvgHostDeferral();
-        ClearBitmapOutputDeferral();
+        OutputDeferral.ClearBitmapOutputDeferral();
         ownerSlot?.Dispose();
         ReleaseSvgTiles();
         ReleaseBitmap();

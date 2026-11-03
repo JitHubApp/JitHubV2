@@ -70,7 +70,7 @@ public sealed class BitmapOutputDeferralTests
             Assert.True(resolver.ResolveCount >= 2,
                 "The byte-source reservation was drained before the source-free waiter re-resolved the image.");
             Assert.Equal(MarkdownImageAccessibilityState.Loaded, image.AccessibilityState);
-            Assert.Equal(0, GetField<int>(image, "_bitmapOutputDeferred"));
+            Assert.False(image.OutputDeferral.GetState().Deferred);
         }
         finally
         {
@@ -129,7 +129,7 @@ public sealed class BitmapOutputDeferralTests
                 TimeSpan.FromMinutes(2));
 
             RasterStormItem[] initiallyDeferred = items
-                .Where(item => GetField<int>(item.Image, "_bitmapOutputDeferred") != 0)
+                .Where(item => item.Image.OutputDeferral.GetState().Deferred)
                 .ToArray();
             RasterStormItem[] initiallyAdmitted = items
                 .Where(item => item.Image.Bitmap is not null)
@@ -198,8 +198,8 @@ public sealed class BitmapOutputDeferralTests
 
             bool IsSettled(RasterStormItem item) => item.Resolver.ResolveCount > 0 &&
                 (item.Image.Bitmap is not null ||
-                 (GetField<int>(item.Image, "_bitmapOutputDeferred") != 0 &&
-                  GetField(item.Image, "_bitmapOutputWaiter") is not null &&
+                 (item.Image.OutputDeferral.GetState().Deferred &&
+                  item.Image.OutputDeferral.GetState().HasWaiter &&
                   item.Image.ActiveImageWorkCountForTests == 0));
         }
         finally
@@ -345,8 +345,8 @@ public sealed class BitmapOutputDeferralTests
                 Assert.Equal((20_000, 4_000), image.SvgRasterPixelSize);
                 Assert.Equal(0, renderer.RenderCount);
                 Assert.Equal(0, image.ActiveImageWorkCountForTests);
-                Assert.Null(GetField(image, "_bitmapOutputWaiter"));
-                Assert.Equal(0, GetField<int>(image, "_bitmapOutputDeferred"));
+                Assert.False(image.OutputDeferral.GetState().HasWaiter);
+                Assert.False(image.OutputDeferral.GetState().Deferred);
 
                 // The capacity notification only invalidates the accepted tile
                 // tree. Rendering resumes on a later paint; without one, no
@@ -396,7 +396,7 @@ public sealed class BitmapOutputDeferralTests
             image.Measure(2);
             image.EnsureLoading();
             await WaitForDeferredAndDrainedAsync(image, () => resolver.ResolveCount);
-            Assert.NotNull(GetField(image, "_bitmapOutputWaiter"));
+            Assert.True(image.OutputDeferral.GetState().HasWaiter);
             Assert.Equal(0, image.ActiveImageWorkCountForTests);
 
             if (cancelSession)
@@ -405,9 +405,9 @@ public sealed class BitmapOutputDeferralTests
                 image.Dispose();
 
             await WaitUntilAsync(() =>
-                GetField(image, "_bitmapOutputWaiter") is null &&
-                GetField(image, "_bitmapOutputWaiterOwner") is null &&
-                GetField<int>(image, "_bitmapOutputDeferred") == 0 &&
+                !image.OutputDeferral.GetState().HasWaiter &&
+                !image.OutputDeferral.GetState().HasWaiterOwner &&
+                !image.OutputDeferral.GetState().Deferred &&
                 image.ActiveImageWorkCountForTests == 0);
             ReleaseReservations(blockers);
             Assert.Null(image.Bitmap);
@@ -450,7 +450,7 @@ public sealed class BitmapOutputDeferralTests
             using SharedCanvasBitmapCache.Lease lease =
                 Assert.IsType<SharedCanvasBitmapCache.Lease>(image.AcquireBitmapLease());
             Assert.False(lease.IsBitmapOutputAdmitted);
-            Assert.Equal(0, GetField<int>(image, "_bitmapOutputDeferred"));
+            Assert.False(image.OutputDeferral.GetState().Deferred);
         }
         finally
         {
@@ -579,19 +579,12 @@ public sealed class BitmapOutputDeferralTests
         ImageBox image,
         SharedCanvasBitmapCache.Lease lease)
     {
-        MethodInfo method = typeof(ImageBox).GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
-            .Single(candidate => candidate.Name == "TryAdmitCachedBitmapOutput" &&
-                candidate.GetParameters().Length == 2 &&
-                candidate.GetParameters()[0].ParameterType == typeof(SharedCanvasBitmapCache.Lease));
-        return (bool)method.Invoke(image, [lease, null])!;
+        return image.OutputAdmission.TryAdmitCachedBitmapOutput(lease, expectedWork: null);
     }
 
     private static bool InvokeSourceSizedCacheLookup(ImageBox image, string cacheKey)
     {
-        MethodInfo method = typeof(ImageBox).GetMethod(
-            "TryAcquireSourceSizedRasterBitmap",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return (bool)method.Invoke(image, [cacheKey, null, null])!;
+        return image.OutputAdmission.TryAcquireSourceSizedRasterBitmap(cacheKey, out _);
     }
 
     private static bool InvokeRasterSizedCacheLookup(
@@ -599,16 +592,13 @@ public sealed class BitmapOutputDeferralTests
         CanvasDevice device,
         string cacheKey)
     {
-        MethodInfo method = typeof(ImageBox).GetMethod(
-            "TryAcquireRasterBitmap",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
         var request = new RasterImageSizingRequest(
             availableWidth: 1,
             rasterizationScale: 1,
             requestedWidth: null,
             requestedHeight: null,
             maximumPixels: 1);
-        return (bool)method.Invoke(image, [device, cacheKey, request, false, null, null])!;
+        return image.OutputAdmission.TryAcquireRasterBitmap(device, cacheKey, request, transformed: false, out _);
     }
 
     private static MarkdownPerformanceSession CreateProgressiveSession() =>
@@ -722,8 +712,8 @@ public sealed class BitmapOutputDeferralTests
         Func<int>? resolverCount = null)
     {
         bool IsDeferredAndDrained() =>
-            GetField<int>(image, "_bitmapOutputDeferred") != 0 &&
-            GetField(image, "_bitmapOutputWaiter") is not null &&
+            image.OutputDeferral.GetState().Deferred &&
+            image.OutputDeferral.GetState().HasWaiter &&
             image.ActiveImageWorkCountForTests == 0;
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
@@ -736,18 +726,7 @@ public sealed class BitmapOutputDeferralTests
         {
             BitmapOutputAdmission.Snapshot capacity = ImageResourceScope.Shared.BitmapOutput.GetSnapshot();
             string state =
-                $"deferred={GetField<int>(image, "_bitmapOutputDeferred")}, " +
-                $"owner={GetField(image, "_bitmapOutputWaiterOwner") is not null}, " +
-                $"waiter={GetField(image, "_bitmapOutputWaiter") is not null}, " +
-                $"registering={GetField<int>(image, "_bitmapOutputRegistering")}, " +
-                $"registrationNeeded={GetField<int>(image, "_bitmapOutputRegistrationNeeded")}, " +
-                $"registrationFailed={GetField<int>(image, "_bitmapOutputRegistrationFailed")}, " +
-                $"capacityReady={GetField<int>(image, "_bitmapOutputCapacityReady")}, " +
-                $"retryQueued={GetField<int>(image, "_bitmapOutputRetryQueued")}, " +
-                $"retryInProgress={GetField<int>(image, "_bitmapOutputRetryInProgress")}, " +
-                $"retryOffer={GetField<int>(image, "_bitmapOutputRetryOfferPending")}, " +
-                $"needsTrim={GetField<int>(image, "_bitmapOutputNeedsTrim")}, " +
-                $"requiredBytes={GetField<long>(image, "_bitmapOutputRequiredBytes")}, " +
+                $"{image.OutputDeferral.GetState()}, " +
                 $"activeWork={image.ActiveImageWorkCountForTests}, " +
                 $"loadStarted={GetField<bool>(image, "_loadStarted")}, " +
                 $"loadFailed={GetField<bool>(image, "_loadFailed")}, " +

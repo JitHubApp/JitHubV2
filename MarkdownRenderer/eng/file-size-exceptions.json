@@ -62,13 +62,8 @@
       "reason": "Composition root: dependency properties, the explicit host adapters its owners call, and the commit, recovery and lifecycle sequencing across those owners. Structure step 3d moved its logic into owners (7,795 to 3,825 lines); this cap holds that."
     },
     {
-      "path": "src/MarkdownRenderer/Layout/Boxes/ImageBox.BitmapAdmission.cs",
-      "lines": 1362,
-      "reason": "Predates the size rule; split by responsibility in a later structure step."
-    },
-    {
       "path": "src/MarkdownRenderer/Layout/Boxes/ImageBox.cs",
-      "lines": 8979,
+      "lines": 8953,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
@@ -78,7 +73,7 @@
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/ImageBoxMeasuredPlacementTransferTests.cs",
-      "lines": 1128,
+      "lines": 1116,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
@@ -143,7 +138,7 @@
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/RootLocalImageRelayoutTests.cs",
-      "lines": 1626,
+      "lines": 1590,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {

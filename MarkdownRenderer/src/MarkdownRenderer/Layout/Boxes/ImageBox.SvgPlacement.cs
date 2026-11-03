@@ -2,7 +2,6 @@ using System;
 using System.Threading;
 using Windows.Foundation;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout;
 using MarkdownRenderer.Performance;
 
 namespace MarkdownRenderer.Layout.Boxes;
@@ -190,7 +189,7 @@ internal sealed partial class ImageBox
     {
         sourceLease = null;
         fence = default;
-        if (IsBitmapOutputDeferred)
+        if (OutputDeferral.IsBitmapOutputDeferred)
             return false;
 
         lock (_svgWorkSync)
@@ -255,7 +254,7 @@ internal sealed partial class ImageBox
         SharedCanvasBitmapCache.Lease expectedSourceLease,
         CompletedSvgPlacementMetadataFence expected)
     {
-        if (IsBitmapOutputDeferred)
+        if (OutputDeferral.IsBitmapOutputDeferred)
             return false;
 
         lock (_svgWorkSync)
@@ -264,7 +263,7 @@ internal sealed partial class ImageBox
                 return false;
         }
 
-        if (!AreSvgPlacementAuxiliaryStatesClear() || IsBitmapOutputDeferred)
+        if (!AreSvgPlacementAuxiliaryStatesClear() || OutputDeferral.IsBitmapOutputDeferred)
             return false;
 
         // Do not nest the image, tile, and host locks. Recheck the image
@@ -272,7 +271,7 @@ internal sealed partial class ImageBox
         // newly admitted work cannot cross the metadata fence.
         lock (_svgWorkSync)
         {
-            return !IsBitmapOutputDeferred &&
+            return !OutputDeferral.IsBitmapOutputDeferred &&
                    CompletedSvgPlacementMetadataMatchesNoLock(expectedSourceLease, expected);
         }
     }

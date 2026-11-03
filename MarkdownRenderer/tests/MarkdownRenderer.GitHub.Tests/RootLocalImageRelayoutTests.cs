@@ -97,7 +97,7 @@ public sealed class RootLocalImageRelayoutTests
                 out constructionContext,
                 expectedPointerInputEpoch: snapshot.PointerInputEpoch);
             Assert.Equal(PreparedImageRelayoutResult.Committed, result);
-            Assert.Equal(sourceWaiterEpoch, ReadPrivateLongField(optimizedImage, "_bitmapOutputWaiterEpoch"));
+            Assert.Equal(sourceWaiterEpoch, optimizedImage.OutputDeferral.GetState().WaiterEpoch);
             Assert.Equal(oldRevision + 1, snapshot.LayoutRevision);
             Assert.NotEqual(oldSize, snapshot.Size);
             Assert.Equal(fallback.Snapshot.Size, snapshot.Size);
@@ -1256,13 +1256,11 @@ public sealed class RootLocalImageRelayoutTests
             _ = prepared.Measure(availableWidth);
             prepared.Arrange(0, 0, availableWidth);
 
-            string waiterState = DescribeBitmapOutputWaiterState(source);
-            bool sourcePristineWaiterState =
-                InvokePrivateBool(source, "HasNoBitmapOutputPlacementWaiterState");
-            bool sourceHasNoLiveWaiterWork =
-                InvokePrivateBool(source, "HasNoLiveBitmapOutputPlacementWork");
-            bool preparedWaiterStateIsClear =
-                InvokePrivateBool(prepared, "HasNoLiveBitmapOutputPlacementWork");
+            ImageBitmapOutputState sourceWaiter = source.OutputDeferral.GetState();
+            string waiterState = sourceWaiter.ToString();
+            bool sourcePristineWaiterState = sourceWaiter.IsPristine;
+            bool sourceHasNoLiveWaiterWork = sourceWaiter.HasNoLiveWork;
+            bool preparedWaiterStateIsClear = prepared.OutputDeferral.GetState().HasNoLiveWork;
             bool sourcePlacementIsCoherent =
                 InvokePrivateBool(source, "HasCoherentMeasuredPlacementNoLock", availableWidth, false);
             bool preparedPlacementIsCoherent =
@@ -1270,7 +1268,7 @@ public sealed class RootLocalImageRelayoutTests
             bool inputsMatch = InvokePrivateBool(source, "HasMatchingPlacementInputs", prepared);
             bool transferEligible = InvokePrivateBool(source, "IsTransferSourceEligibleNoLock",
                 prepared, expectedLease, svgFence, 0L, availableWidth, false);
-            long sourceWaiterEpoch = ReadPrivateLongField(source, "_bitmapOutputWaiterEpoch");
+            long sourceWaiterEpoch = sourceWaiter.WaiterEpoch;
 
             Assert.True(sourceWaiterEpoch > 0,
                 $"The completed source did not exercise historical admission state: {waiterState}");
@@ -1331,40 +1329,6 @@ public sealed class RootLocalImageRelayoutTests
         // SVG viewport explicitly so the source-lease retry tests continue to
         // exercise the current replacement contract.
         method.Invoke(image, [lease.Bitmap, lease, null]);
-    }
-
-    private static long ReadPrivateLongField(ImageBox image, string fieldName)
-    {
-        FieldInfo field = typeof(ImageBox).GetField(fieldName,
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException($"Missing private field {fieldName}.");
-        return Assert.IsType<long>(field.GetValue(image));
-    }
-
-    private static string DescribeBitmapOutputWaiterState(ImageBox image)
-    {
-        string[] fields =
-        [
-            "_bitmapOutputWaiterEpoch",
-            "_bitmapOutputWaiterOwner",
-            "_bitmapOutputWaiter",
-            "_bitmapOutputDeferred",
-            "_bitmapOutputRetryOfferPending",
-            "_bitmapOutputRetryInProgress",
-            "_bitmapOutputRetryQueued",
-            "_bitmapOutputRegistering",
-            "_bitmapOutputRegistrationNeeded",
-            "_bitmapOutputRegistrationFailed",
-            "_bitmapOutputCancellationRegistered",
-        ];
-        return string.Join(", ", fields.Select(name =>
-        {
-            FieldInfo field = typeof(ImageBox).GetField(name,
-                BindingFlags.Instance | BindingFlags.NonPublic)
-                ?? throw new InvalidOperationException($"Missing bitmap-output field {name}.");
-            object? value = field.GetValue(image);
-            return $"{name}={(value is null ? "null" : Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture))}";
-        }));
     }
 
     private static async Task StartPendingSiblingAsync(ImageDocument document)
