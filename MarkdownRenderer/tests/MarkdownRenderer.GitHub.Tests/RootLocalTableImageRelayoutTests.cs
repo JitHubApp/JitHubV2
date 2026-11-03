@@ -56,7 +56,7 @@ public sealed class RootLocalTableImageRelayoutTests
                 Assert.NotNull(clone);
                 try
                 {
-                    Assert.True(cell.TryCaptureTableCellMeasuredPlacementTransfer(clone, width, out var transfer),
+                    Assert.True(InlineMeasuredPlacementCapture.TryCaptureTableCellMeasuredPlacementTransfer(cell, clone, width, out var transfer),
                         "Capture: " + state);
                     Assert.NotNull(transfer);
                     _ = clone.Measure(width);

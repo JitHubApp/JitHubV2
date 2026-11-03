@@ -173,11 +173,12 @@ internal sealed class BlockMeasuredPlacementCaptureBuilder
             ? imageCount > 0
                 ? source.TryCaptureMeasuredPlacementTransferWithMeasuredVectorPlacement(
                     prepared, width, out inlineTransfer)
-                : source.TryCaptureContainerLeafMeasuredPlacementTransferWithMeasuredVectorPlacement(
+                : InlineMeasuredPlacementCapture.TryCaptureContainerLeafMeasuredPlacementTransferWithMeasuredVectorPlacement(
+                    source,
                     prepared, width, out inlineTransfer)
             : imageCount > 0
-                ? source.TryCaptureMeasuredPlacementTransfer(prepared, width, out inlineTransfer)
-                : source.TryCaptureContainerLeafMeasuredPlacementTransfer(prepared, width, out inlineTransfer);
+                ? InlineMeasuredPlacementCapture.TryCaptureMeasuredPlacementTransfer(source, prepared, width, out inlineTransfer)
+                : InlineMeasuredPlacementCapture.TryCaptureContainerLeafMeasuredPlacementTransfer(source, prepared, width, out inlineTransfer);
         if (!captured || inlineTransfer is null ||
             !RecordContexts(source.Context, prepared.Context))
         {

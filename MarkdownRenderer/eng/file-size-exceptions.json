@@ -138,7 +138,7 @@
     },
     {
       "path": "src/MarkdownRenderer/Layout/Boxes/InlineContainerBox.cs",
-      "lines": 1168,
+      "lines": 1071,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
 {

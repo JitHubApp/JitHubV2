@@ -64,7 +64,8 @@ public sealed class NeutralSelectionLayoutCacheTests(ITestOutputHelper output)
             out InlineContainerBox? prepared,
             out _));
         InlineContainerBox candidate = harness.Own(Assert.IsType<InlineContainerBox>(prepared));
-        Assert.True(source.TryCaptureContainerLeafMeasuredPlacementTransfer(
+        Assert.True(InlineMeasuredPlacementCapture.TryCaptureContainerLeafMeasuredPlacementTransfer(
+            source,
             candidate,
             Width,
             out InlineMeasuredPlacementTransfer? transfer));

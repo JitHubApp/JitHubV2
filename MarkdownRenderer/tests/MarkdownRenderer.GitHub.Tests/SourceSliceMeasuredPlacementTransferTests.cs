@@ -83,7 +83,8 @@ public sealed class SourceSliceMeasuredPlacementTransferTests
 
             candidateContext = CreateContext(device, theme, sourceMap, registry, documentOwner, preparationOwner, disclosures);
             Assert.True(InlineContainerBox.ArePrivateRasterPlacementContextsCompatible(sourceContext, candidateContext));
-            Assert.True(source.TryCreatePrivateRasterImageCandidates(
+            Assert.True(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
+                source,
                 candidateContext,
                 320f,
                 out candidate,
@@ -95,7 +96,8 @@ public sealed class SourceSliceMeasuredPlacementTransferTests
             AssertUnmaterialized(left, right);
             AssertUnmaterialized(candidateSlices);
 
-            Assert.True(source.TryCaptureMeasuredPlacementTransfer(
+            Assert.True(InlineMeasuredPlacementCapture.TryCaptureMeasuredPlacementTransfer(
+                source,
                 candidate,
                 320f,
                 out InlineMeasuredPlacementTransfer? transfer));

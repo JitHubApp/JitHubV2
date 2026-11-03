@@ -98,9 +98,11 @@ internal static class TableMeasuredPlacementCapture
                     return false;
                 InlineMeasuredPlacementTransfer? cellTransfer;
                 bool captured = allowMeasuredVectorPlacement
-                    ? sourceRow[column].TryCaptureTableCellMeasuredPlacementTransferWithMeasuredVectorPlacement(
+                    ? InlineMeasuredPlacementCapture.TryCaptureTableCellMeasuredPlacementTransferWithMeasuredVectorPlacement(
+                        sourceRow[column],
                         preparedRow[column], expectedSourceWidth, out cellTransfer)
-                    : sourceRow[column].TryCaptureTableCellMeasuredPlacementTransfer(
+                    : InlineMeasuredPlacementCapture.TryCaptureTableCellMeasuredPlacementTransfer(
+                        sourceRow[column],
                         preparedRow[column], expectedSourceWidth, out cellTransfer);
                 if (!captured || cellTransfer is null)
                 {
@@ -123,9 +125,11 @@ internal static class TableMeasuredPlacementCapture
                     return false;
                 InlineMeasuredPlacementTransfer? cellTransfer;
                 bool captured = allowMeasuredVectorPlacement
-                    ? sourceRow[column].TryCaptureTableCellMeasuredPlacementTransferWithMeasuredVectorPlacement(
+                    ? InlineMeasuredPlacementCapture.TryCaptureTableCellMeasuredPlacementTransferWithMeasuredVectorPlacement(
+                        sourceRow[column],
                         preparedRow[column], expectedSourceWidth, out cellTransfer)
-                    : sourceRow[column].TryCaptureTableCellMeasuredPlacementTransfer(
+                    : InlineMeasuredPlacementCapture.TryCaptureTableCellMeasuredPlacementTransfer(
+                        sourceRow[column],
                         preparedRow[column], expectedSourceWidth, out cellTransfer);
                 if (!captured || cellTransfer is null)
                 {

@@ -157,7 +157,8 @@ public sealed class PrivateRasterPlacementStyleKeyCopyTests
             Assert.Equal(MarkdownElementKeys.Superscript, sourceScriptKeys[1]);
             copiedScriptKeys[1] = MarkdownElementKeys.Superscript;
 
-            Assert.True(source.TryCaptureContainerLeafMeasuredPlacementTransfer(
+            Assert.True(InlineMeasuredPlacementCapture.TryCaptureContainerLeafMeasuredPlacementTransfer(
+                source,
                 clone,
                 Width,
                 out InlineMeasuredPlacementTransfer? transfer));

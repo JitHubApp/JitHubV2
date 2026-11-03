@@ -44,7 +44,8 @@ public sealed class CompletedRasterPlacementCloneTests
             taskAvailabilityChanged: candidateTaskAvailabilityChanged,
             retirementSink: candidateRetirementSink);
 
-        Assert.True(fixture.Source.TryCreatePrivateRasterImageCandidates(
+        Assert.True(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
+            fixture.Source,
             candidateContext,
             320f,
             out InlineContainerBox? candidate,
@@ -126,7 +127,8 @@ public sealed class CompletedRasterPlacementCloneTests
         Size resolvedIntrinsic = GetField<Size>(fixture.ImageRun.Image, "_rasterIntrinsicSize");
         MarkdownLayoutContext targetContext = fixture.CreateContext();
 
-        Assert.True(fixture.Source.TryCreatePrivateRasterImageCandidates(
+        Assert.True(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
+            fixture.Source,
             targetContext, 320f, out InlineContainerBox? candidate, out _));
         fixture.SetCandidate(targetContext, candidate);
         InlineContainerBox clone = Assert.IsType<InlineContainerBox>(candidate);
@@ -146,7 +148,8 @@ public sealed class CompletedRasterPlacementCloneTests
     {
         await using var fixture = new PlacementFixture();
         MarkdownLayoutContext candidateContext = fixture.CreateContext();
-        Assert.True(fixture.Source.TryCreatePrivateRasterImageCandidates(
+        Assert.True(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
+            fixture.Source,
             candidateContext,
             320f,
             out InlineContainerBox? candidate,
@@ -174,7 +177,8 @@ public sealed class CompletedRasterPlacementCloneTests
     {
         await using var fixture = new PlacementFixture();
         MarkdownLayoutContext candidateContext = fixture.CreateContext();
-        Assert.True(fixture.Source.TryCreatePrivateRasterImageCandidates(
+        Assert.True(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
+            fixture.Source,
             candidateContext,
             320f,
             out InlineContainerBox? candidate,
@@ -217,7 +221,8 @@ public sealed class CompletedRasterPlacementCloneTests
             imageCancellationToken: candidateImageLifetime.Token,
             imageUnavailable: (_, _, _) => candidateUnavailableCalls++,
             taskAvailabilityChanged: () => { });
-        Assert.True(fixture.Source.TryCreatePrivateRasterImageCandidates(
+        Assert.True(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
+            fixture.Source,
             candidateContext,
             320f,
             out InlineContainerBox? candidate,
@@ -252,7 +257,8 @@ public sealed class CompletedRasterPlacementCloneTests
         await using (var svgFixture = new PlacementFixture(svgSource: true))
         {
             Assert.True(svgFixture.ImageRun.Image.IsSvg);
-            Assert.False(svgFixture.Source.TryCreatePrivateRasterImageCandidates(
+            Assert.False(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
+                svgFixture.Source,
                 svgFixture.CreateContext(),
                 320f,
                 out InlineContainerBox? candidate,
@@ -264,7 +270,8 @@ public sealed class CompletedRasterPlacementCloneTests
         {
             using IDisposable activeWork = BeginImageWork(activeFixture.ImageRun.Image);
             Assert.Equal(1, activeFixture.ImageRun.Image.ActiveImageWorkCountForTests);
-            Assert.False(activeFixture.Source.TryCreatePrivateRasterImageCandidates(
+            Assert.False(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
+                activeFixture.Source,
                 activeFixture.CreateContext(),
                 320f,
                 out InlineContainerBox? candidate,
@@ -279,7 +286,8 @@ public sealed class CompletedRasterPlacementCloneTests
         await using (var dataFixture = new PlacementFixture(dataUriSource: true))
         {
             Assert.NotNull(dataFixture.ImageRun.Image.Bitmap);
-            Assert.False(dataFixture.Source.TryCreatePrivateRasterImageCandidates(
+            Assert.False(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
+                dataFixture.Source,
                 dataFixture.CreateContext(),
                 320f,
                 out InlineContainerBox? candidate,
@@ -295,7 +303,8 @@ public sealed class CompletedRasterPlacementCloneTests
             _ = multiRunFixture.Source.Measure(320f);
             multiRunFixture.Source.Arrange(0, 0, 320f);
             Assert.Equal(4, multiRunFixture.Source.Runs.Count);
-            Assert.False(multiRunFixture.Source.TryCreatePrivateRasterImageCandidates(
+            Assert.False(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
+                multiRunFixture.Source,
                 multiRunFixture.CreateContext(),
                 320f,
                 out InlineContainerBox? candidate,

@@ -286,7 +286,7 @@ public sealed class InlineNativeDurableRetirementTests
             out InlineContainerBox? prepared,
             out _));
         InlineContainerBox candidate = Assert.IsType<InlineContainerBox>(prepared);
-        Assert.True(source.TryCaptureContainerLeafMeasuredPlacementTransfer(candidate, Width, out var transfer));
+        Assert.True(InlineMeasuredPlacementCapture.TryCaptureContainerLeafMeasuredPlacementTransfer(source, candidate, Width, out var transfer));
         Assert.NotNull(transfer);
 
         // Capture is intentionally before candidate Measure/Arrange: the

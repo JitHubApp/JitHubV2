@@ -235,25 +235,6 @@ internal sealed class InlineContainerBox : BlockBox
     }
 
     /// <summary>
-    /// Builds a private, unmeasured candidate for a bounded inline sequence
-    /// containing at least one completed raster. The caller must separately
-    /// prove top-level/suffix ownership and rebuild semantic projections.
-    /// Source image/lease outputs are borrowed identity fences; candidate
-    /// cleanup owns only cloned ImageBoxes until the caller measures it.
-    /// </summary>
-    internal bool TryCreatePrivateRasterImageCandidates(
-        MarkdownLayoutContext targetContext,
-        float availableWidth,
-        out InlineContainerBox? candidate,
-        out RasterPlacementSourceFence[]? expectedSources)
-        => InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
-            this,
-            targetContext,
-            availableWidth,
-            out candidate,
-            out expectedSources);
-
-    /// <summary>
     /// Allocation-free preflight for a private inline root clone. This is used
     /// for every root before the snapshot acquires any candidate bitmap leases.
     /// It accepts text-only/raster-only roots but rejects stateful or unsupported
@@ -565,22 +546,6 @@ internal sealed class InlineContainerBox : BlockBox
         => _sequence.GetBlockBoundaries(BlockIndex);
 
     /// <summary>
-    /// Captures a measured Body/Heading source and the exact private clone
-    /// created from it. The clone must be measured and arranged outside the
-    /// source gate before <see cref="InlineMeasuredPlacementTransfer.IsCurrentAndPrepared"/>
-    /// succeeds. Unsupported roots fail closed.
-    /// </summary>
-    internal bool TryCaptureMeasuredPlacementTransfer(
-        InlineContainerBox prepared,
-        float expectedAvailableWidth,
-        out InlineMeasuredPlacementTransfer? transfer)
-        => InlineMeasuredPlacementCapture.TryCaptureMeasuredPlacementTransfer(
-            this,
-            prepared,
-            expectedAvailableWidth,
-            out transfer);
-
-    /// <summary>
     /// Root-local-only variant for the explicit measurement-only vector-run
     /// recipe. Do not call from whole-tree COW; the candidate has no painter.
     /// </summary>
@@ -589,68 +554,6 @@ internal sealed class InlineContainerBox : BlockBox
         float expectedAvailableWidth,
         out InlineMeasuredPlacementTransfer? transfer)
         => InlineMeasuredPlacementCapture.TryCaptureMeasuredPlacementTransferWithMeasuredVectorPlacement(
-            this,
-            prepared,
-            expectedAvailableWidth,
-            out transfer);
-
-    /// <summary>
-    /// Root-local image-completion variant for a table cell. The candidate is
-    /// measurement-only and its vector geometry is remapped to stable source
-    /// runs before the placement transaction commits.
-    /// </summary>
-    internal bool TryCaptureTableCellMeasuredPlacementTransferWithMeasuredVectorPlacement(
-        InlineContainerBox prepared,
-        float expectedSourceWidth,
-        out InlineMeasuredPlacementTransfer? transfer)
-        => InlineMeasuredPlacementCapture.TryCaptureTableCellMeasuredPlacementTransferWithMeasuredVectorPlacement(
-            this,
-            prepared,
-            expectedSourceWidth,
-            out transfer);
-
-    /// <summary>
-    /// Captures a table-cell source and its private clone before the candidate
-    /// table is measured. The source remains fenced at its exact current cell
-    /// width; the prepared cell may later be measured at a different width as
-    /// the candidate table rebalances its columns.
-    /// </summary>
-    internal bool TryCaptureTableCellMeasuredPlacementTransfer(
-        InlineContainerBox prepared,
-        float expectedSourceWidth,
-        out InlineMeasuredPlacementTransfer? transfer)
-        => InlineMeasuredPlacementCapture.TryCaptureTableCellMeasuredPlacementTransfer(
-            this,
-            prepared,
-            expectedSourceWidth,
-            out transfer);
-
-    /// <summary>
-    /// Captures a measured image-free Body, Heading, or ListMarker leaf inside
-    /// an ordinary StackBox/ListItemBox placement tree. Both the published
-    /// source and the completed private leaf remain fenced at the same exact
-    /// width; unlike a table cell this mode never permits column rebalancing.
-    /// </summary>
-    internal bool TryCaptureContainerLeafMeasuredPlacementTransfer(
-        InlineContainerBox prepared,
-        float expectedAvailableWidth,
-        out InlineMeasuredPlacementTransfer? transfer)
-        => InlineMeasuredPlacementCapture.TryCaptureContainerLeafMeasuredPlacementTransfer(
-            this,
-            prepared,
-            expectedAvailableWidth,
-            out transfer);
-
-    /// <summary>
-    /// Root-local image-completion variant for a vector-bearing leaf in an
-    /// ordinary stack/list placement tree. It never publishes its measured-only
-    /// candidate runs.
-    /// </summary>
-    internal bool TryCaptureContainerLeafMeasuredPlacementTransferWithMeasuredVectorPlacement(
-        InlineContainerBox prepared,
-        float expectedAvailableWidth,
-        out InlineMeasuredPlacementTransfer? transfer)
-        => InlineMeasuredPlacementCapture.TryCaptureContainerLeafMeasuredPlacementTransferWithMeasuredVectorPlacement(
             this,
             prepared,
             expectedAvailableWidth,

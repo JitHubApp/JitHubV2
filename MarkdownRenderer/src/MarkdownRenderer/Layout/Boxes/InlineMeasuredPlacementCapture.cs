@@ -15,6 +15,12 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// </summary>
 internal static class InlineMeasuredPlacementCapture
 {
+    /// <summary>
+    /// Captures a measured Body/Heading source and the exact private clone
+    /// created from it. The clone must be measured and arranged outside the
+    /// source gate before <see cref="InlineMeasuredPlacementTransfer.IsCurrentAndPrepared"/>
+    /// succeeds. Unsupported roots fail closed.
+    /// </summary>
     internal static bool TryCaptureMeasuredPlacementTransfer(
         InlineContainerBox box,
         InlineContainerBox prepared,
@@ -34,6 +40,11 @@ internal static class InlineMeasuredPlacementCapture
             prepared, expectedAvailableWidth, isTableCellTransfer: false, out transfer,
             allowMeasuredVectorPlacement: true);
 
+    /// <summary>
+    /// Root-local image-completion variant for a table cell. The candidate is
+    /// measurement-only and its vector geometry is remapped to stable source
+    /// runs before the placement transaction commits.
+    /// </summary>
     internal static bool TryCaptureTableCellMeasuredPlacementTransferWithMeasuredVectorPlacement(
         InlineContainerBox box,
         InlineContainerBox prepared,
@@ -44,6 +55,12 @@ internal static class InlineMeasuredPlacementCapture
             prepared, expectedSourceWidth, isTableCellTransfer: true, out transfer,
             allowMeasuredVectorPlacement: true);
 
+    /// <summary>
+    /// Captures a table-cell source and its private clone before the candidate
+    /// table is measured. The source remains fenced at its exact current cell
+    /// width; the prepared cell may later be measured at a different width as
+    /// the candidate table rebalances its columns.
+    /// </summary>
     internal static bool TryCaptureTableCellMeasuredPlacementTransfer(
         InlineContainerBox box,
         InlineContainerBox prepared,
@@ -53,6 +70,12 @@ internal static class InlineMeasuredPlacementCapture
             box,
             prepared, expectedSourceWidth, isTableCellTransfer: true, out transfer);
 
+    /// <summary>
+    /// Captures a measured image-free Body, Heading, or ListMarker leaf inside
+    /// an ordinary StackBox/ListItemBox placement tree. Both the published
+    /// source and the completed private leaf remain fenced at the same exact
+    /// width; unlike a table cell this mode never permits column rebalancing.
+    /// </summary>
     internal static bool TryCaptureContainerLeafMeasuredPlacementTransfer(
         InlineContainerBox box,
         InlineContainerBox prepared,
@@ -63,6 +86,11 @@ internal static class InlineMeasuredPlacementCapture
             prepared, expectedAvailableWidth, isTableCellTransfer: false, out transfer,
             isContainerLeafTransfer: true);
 
+    /// <summary>
+    /// Root-local image-completion variant for a vector-bearing leaf in an
+    /// ordinary stack/list placement tree. It never publishes its measured-only
+    /// candidate runs.
+    /// </summary>
     internal static bool TryCaptureContainerLeafMeasuredPlacementTransferWithMeasuredVectorPlacement(
         InlineContainerBox box,
         InlineContainerBox prepared,

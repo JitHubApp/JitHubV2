@@ -29,7 +29,8 @@ public sealed class MultiRasterPlacementCloneTests
         CanvasTextLayout sourceLayout = Assert.IsType<CanvasTextLayout>(fixture.Source.TextLayout);
         Rect sourceBounds = fixture.Source.Bounds;
 
-        Assert.True(fixture.Source.TryCreatePrivateRasterImageCandidates(
+        Assert.True(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
+            fixture.Source,
             candidateContext,
             320f,
             out InlineContainerBox? candidate,
@@ -106,7 +107,8 @@ public sealed class MultiRasterPlacementCloneTests
     {
         await using var fixture = new MultiRasterFixture(imageCount: 3);
         MarkdownLayoutContext candidateContext = fixture.CreateCandidateContext();
-        Assert.True(fixture.Source.TryCreatePrivateRasterImageCandidates(
+        Assert.True(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
+            fixture.Source,
             candidateContext,
             320f,
             out InlineContainerBox? candidate,
@@ -140,7 +142,8 @@ public sealed class MultiRasterPlacementCloneTests
         int referencesBefore = GetEntryReferenceCount(earlierLease);
         MarkdownLayoutContext candidateContext = fixture.CreateCandidateContext();
 
-        Assert.False(fixture.Source.TryCreatePrivateRasterImageCandidates(
+        Assert.False(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
+            fixture.Source,
             candidateContext,
             320f,
             out InlineContainerBox? candidate,
@@ -165,7 +168,8 @@ public sealed class MultiRasterPlacementCloneTests
         cancellation.Cancel();
         MarkdownLayoutContext candidateContext = fixture.CreateCandidateContext(cancellation.Token);
 
-        Assert.Throws<OperationCanceledException>(() => fixture.Source.TryCreatePrivateRasterImageCandidates(
+        Assert.Throws<OperationCanceledException>(() => InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
+            fixture.Source,
             candidateContext,
             320f,
             out InlineContainerBox? candidate,
@@ -193,7 +197,8 @@ public sealed class MultiRasterPlacementCloneTests
             imageField.SetValue(secondRun, firstImage);
             MarkdownLayoutContext candidateContext = fixture.CreateCandidateContext();
 
-            Assert.False(fixture.Source.TryCreatePrivateRasterImageCandidates(
+            Assert.False(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
+                fixture.Source,
                 candidateContext,
                 320f,
                 out InlineContainerBox? candidate,
@@ -224,7 +229,8 @@ public sealed class MultiRasterPlacementCloneTests
         {
             entries[1] = (secondEntry.Run, secondEntry.Offset + 1);
             MarkdownLayoutContext badOffsetContext = fixture.CreateCandidateContext();
-            Assert.False(fixture.Source.TryCreatePrivateRasterImageCandidates(
+            Assert.False(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
+                fixture.Source,
                 badOffsetContext,
                 320f,
                 out InlineContainerBox? offsetCandidate,
@@ -244,7 +250,8 @@ public sealed class MultiRasterPlacementCloneTests
         {
             secondEntry.Run.InlineIndex = originalIndex + 1;
             MarkdownLayoutContext badIndexContext = fixture.CreateCandidateContext();
-            Assert.False(fixture.Source.TryCreatePrivateRasterImageCandidates(
+            Assert.False(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
+                fixture.Source,
                 badIndexContext,
                 320f,
                 out InlineContainerBox? indexCandidate,
@@ -270,7 +277,8 @@ public sealed class MultiRasterPlacementCloneTests
             .ToArray();
         MarkdownLayoutContext imageContext = tooManyImages.CreateCandidateContext();
 
-        Assert.False(tooManyImages.Source.TryCreatePrivateRasterImageCandidates(
+        Assert.False(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
+            tooManyImages.Source,
             imageContext,
             320f,
             out InlineContainerBox? imageCandidate,
@@ -285,7 +293,8 @@ public sealed class MultiRasterPlacementCloneTests
         int runReferenceCount = GetEntryReferenceCount(GetImageLease(tooManyRuns.ImageBoxes[0]));
         MarkdownLayoutContext runContext = tooManyRuns.CreateCandidateContext();
 
-        Assert.False(tooManyRuns.Source.TryCreatePrivateRasterImageCandidates(
+        Assert.False(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
+            tooManyRuns.Source,
             runContext,
             320f,
             out InlineContainerBox? runCandidate,
@@ -308,7 +317,8 @@ public sealed class MultiRasterPlacementCloneTests
         MarkdownLayoutContext candidateContext = fixture.CreateCandidateContext();
 
         Assert.Equal(InlineContainerBox.MaximumPrivateRasterPlacementRuns, fixture.Source.Runs.Count);
-        Assert.True(fixture.Source.TryCreatePrivateRasterImageCandidates(
+        Assert.True(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
+            fixture.Source,
             candidateContext,
             320f,
             out InlineContainerBox? candidate,
@@ -355,7 +365,8 @@ public sealed class MultiRasterPlacementCloneTests
             flowDirection: flowDirection);
         MarkdownLayoutContext candidateContext = fixture.CreateCandidateContext();
 
-        Assert.True(fixture.Source.TryCreatePrivateRasterImageCandidates(
+        Assert.True(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
+            fixture.Source,
             candidateContext,
             320f,
             out InlineContainerBox? candidate,
@@ -394,7 +405,8 @@ public sealed class MultiRasterPlacementCloneTests
             flowDirection: FlowDirection.LeftToRight);
 
         MarkdownLayoutContext changedScale = fixture.CreateCandidateContext(rasterizationScale: 2.0);
-        Assert.False(fixture.Source.TryCreatePrivateRasterImageCandidates(
+        Assert.False(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
+            fixture.Source,
             changedScale,
             320f,
             out InlineContainerBox? scaleCandidate,
@@ -403,7 +415,8 @@ public sealed class MultiRasterPlacementCloneTests
         Assert.Null(scaleFences);
 
         MarkdownLayoutContext changedFlow = fixture.CreateCandidateContext(flowDirection: FlowDirection.RightToLeft);
-        Assert.False(fixture.Source.TryCreatePrivateRasterImageCandidates(
+        Assert.False(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
+            fixture.Source,
             changedFlow,
             320f,
             out InlineContainerBox? flowCandidate,

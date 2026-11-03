@@ -96,7 +96,8 @@ public sealed class InlineContainerRunStorageTests
         IReadOnlyList<InlineRun> sourceView = fixture.Source.Runs;
         MarkdownLayoutContext targetContext = fixture.CreateContext();
 
-        Assert.True(fixture.Source.TryCreatePrivateRasterImageCandidates(
+        Assert.True(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
+            fixture.Source,
             targetContext,
             320f,
             out InlineContainerBox? candidate,

@@ -10,6 +10,13 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// </summary>
 internal static class InlinePrivatePlacementCloner
 {
+    /// <summary>
+    /// Builds a private, unmeasured candidate for a bounded inline sequence
+    /// containing at least one completed raster. The caller must separately
+    /// prove top-level/suffix ownership and rebuild semantic projections.
+    /// Source image/lease outputs are borrowed identity fences; candidate
+    /// cleanup owns only cloned ImageBoxes until the caller measures it.
+    /// </summary>
     internal static bool TryCreatePrivateRasterImageCandidates(
         InlineContainerBox box,
         MarkdownLayoutContext targetContext,
