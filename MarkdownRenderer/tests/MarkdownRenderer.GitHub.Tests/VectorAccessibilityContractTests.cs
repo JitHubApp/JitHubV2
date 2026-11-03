@@ -1291,7 +1291,7 @@ public sealed class VectorAccessibilityContractTests
             int end = System.Math.Min(textEnd, span.TextEnd);
             if (end >= start)
             {
-                IEnumerable<Rect> rectangles = MarkdownSemanticDocument.GetDocumentRectsForSpan(span, start, end, false);
+                IEnumerable<Rect> rectangles = MarkdownTextSpanProjection.GetDocumentRectsForSpan(span, start, end, false);
                 result.AddRange(rectangles);
             }
         }

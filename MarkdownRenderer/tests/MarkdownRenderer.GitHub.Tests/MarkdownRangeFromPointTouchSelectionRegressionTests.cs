@@ -495,7 +495,7 @@ public sealed class MarkdownRangeFromPointTouchSelectionRegressionTests
                 using LayoutPlacementTransformContext.Scope scope =
                     snapshot.EnterPlacementTransformScopeForBlockIndexUnderPaint(span.LayoutBlockIndex);
                 bool logicalInlineCoordinates = span.InlineBox is not null;
-                var rectangles = MarkdownSemanticDocument.GetDocumentRectsForSpan(
+                var rectangles = MarkdownTextSpanProjection.GetDocumentRectsForSpan(
                         span, span.TextStart, span.TextEnd, logicalInlineCoordinates)
                     .Select(rect => span.InlineBox is not null
                         ? rect
@@ -540,7 +540,7 @@ public sealed class MarkdownRangeFromPointTouchSelectionRegressionTests
                     bool logicalInlineCoordinates = span.InlineBox is not null;
 
                     stage = "invoke-get-document-rects-for-span";
-                    IEnumerable<Rect> sourceRects = MarkdownSemanticDocument.GetDocumentRectsForSpan(
+                    IEnumerable<Rect> sourceRects = MarkdownTextSpanProjection.GetDocumentRectsForSpan(
                         span, span.TextStart, span.TextEnd, logicalInlineCoordinates);
 
                     stage = "enumerate-span-rectangles";

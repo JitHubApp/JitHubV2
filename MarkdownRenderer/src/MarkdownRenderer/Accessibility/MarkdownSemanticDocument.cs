@@ -4,6 +4,7 @@ using Windows.Foundation;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using static MarkdownRenderer.Accessibility.MarkdownTextSpanProjection;
 
 namespace MarkdownRenderer.Accessibility;
 
@@ -434,65 +435,6 @@ internal sealed class MarkdownSemanticDocument
         }
     }
 
-    internal static IEnumerable<Rect> GetDocumentRectsForSpan(
-        MarkdownTextSpan span,
-        int start,
-        int end,
-        bool logicalInlineCoordinates = false)
-    {
-        start = Math.Clamp(start, span.TextStart, span.TextEnd);
-        end = Math.Clamp(end, start, span.TextEnd);
-
-        if (span.InlineBox is { } icb)
-        {
-            DocumentPosition startPos;
-            DocumentPosition endPos;
-            if (span.InlineRun is { } run)
-            {
-                int textLength = span.TextEnd - span.TextStart;
-                startPos = new DocumentPosition(
-                    icb.BlockIndex,
-                    run.InlineIndex,
-                    ProjectTextOffsetToRendered(run, start - span.TextStart, textLength));
-                endPos = new DocumentPosition(
-                    icb.BlockIndex,
-                    run.InlineIndex,
-                    ProjectTextOffsetToRendered(run, end - span.TextStart, textLength));
-                if (end > start && endPos.CharacterOffset == startPos.CharacterOffset && run.RenderedLength > 0)
-                    endPos = endPos with { CharacterOffset = run.RenderedLength };
-            }
-            else
-            {
-                startPos = icb.GetPositionFromBufferOffset(start - span.TextStart);
-                endPos = icb.GetPositionFromBufferOffset(end - span.TextStart);
-            }
-
-            IEnumerable<Rect> inlineRects = logicalInlineCoordinates
-                ? icb.GetLogicalRangeRects(new DocumentRange(startPos, endPos))
-                : icb.GetRangeRects(new DocumentRange(startPos, endPos));
-            foreach (var rect in inlineRects)
-                yield return rect;
-        }
-        else if (span.ImageBox is { } image)
-        {
-            yield return image.Bounds;
-        }
-        else if (span.EmbedBox is { } embed)
-        {
-            yield return embed.Bounds;
-        }
-        else if (span.HostedElementBox is { } hosted)
-        {
-            yield return hosted.Bounds;
-        }
-        else if (span.VectorSceneBox is { } vector)
-        {
-            yield return span.VectorSemanticIndex >= 0
-                ? vector.GetVisibleSemanticBounds(span.VectorSemanticIndex)
-                : vector.VisibleContentBounds;
-        }
-    }
-
     public IEnumerable<ImageBox> GetImagesIntersectingTextRange(int textStart, int textEnd)
     {
         textStart = Math.Clamp(textStart, 0, Text.Length);
@@ -708,63 +650,5 @@ internal sealed class MarkdownSemanticDocument
             path.Add((child, 0));
             yield return child;
         }
-    }
-
-    private static DocumentPosition PositionFromSpanEnd(MarkdownTextSpan span)
-    {
-        if (span.InlineBox is { } icb)
-        {
-            if (span.InlineRun is { } run)
-                return new DocumentPosition(icb.BlockIndex, run.InlineIndex, run.RenderedLength);
-            return icb.GetPositionFromBufferOffset(span.TextEnd - span.TextStart);
-        }
-        if (span.ImageBox is { } image)
-            return new DocumentPosition(image.BlockIndex, 0, 1);
-        if (span.EmbedBox is { } embed)
-            return new DocumentPosition(embed.BlockIndex, 0, 1);
-        if (span.HostedElementBox is { } hosted)
-            return new DocumentPosition(hosted.BlockIndex, 0, 1);
-        if (span.VectorSceneBox is { } vector)
-            return new DocumentPosition(vector.BlockIndex, GetVectorDocumentInlineIndex(span.VectorSemanticIndex), 1);
-        return DocumentPosition.Zero;
-    }
-
-    // The negative vector-semantic index is a metadata sentinel for a whole,
-    // unstructured scene, not a public document coordinate. Atomic source-map
-    // and selection positions for that scene use the zero-based document slot.
-    private static int GetVectorDocumentInlineIndex(int vectorSemanticIndex) =>
-        vectorSemanticIndex < 0 ? 0 : vectorSemanticIndex;
-
-    private static int ProjectRenderedOffsetToText(InlineRun run, int renderedOffset, int textLength)
-    {
-        if (textLength <= 0 || run.RenderedLength <= 0)
-            return 0;
-
-        renderedOffset = Math.Clamp(renderedOffset, 0, run.RenderedLength);
-        if (run is InlineImageRun or InlineEmbedRun or InlineVectorSceneRun or InlineSpacerRun)
-            return renderedOffset <= 0 ? 0 : textLength;
-
-        if (run.RenderedLength == textLength)
-            return renderedOffset;
-
-        return Math.Clamp((int)Math.Round(renderedOffset * (double)textLength / run.RenderedLength), 0, textLength);
-    }
-
-    private static int ProjectTextOffsetToRendered(InlineRun run, int textOffset, int textLength)
-    {
-        if (run.RenderedLength <= 0)
-            return 0;
-
-        textOffset = Math.Clamp(textOffset, 0, Math.Max(0, textLength));
-        if (run is InlineImageRun or InlineEmbedRun or InlineVectorSceneRun or InlineSpacerRun)
-            return textOffset <= 0 ? 0 : run.RenderedLength;
-
-        if (run.RenderedLength == textLength)
-            return textOffset;
-
-        if (textLength <= 0)
-            return 0;
-
-        return Math.Clamp((int)Math.Round(textOffset * (double)run.RenderedLength / textLength), 0, run.RenderedLength);
     }
 }
