@@ -198,19 +198,18 @@ public sealed class SemanticRangeIndexTests
         const int count = 8192;
         var children = new CountingList<MarkdownSemanticNode>(Enumerable.Range(0, count)
             .Select(index => Node(index * 2, index * 2 + 1)).ToArray());
-        MethodInfo search = typeof(MarkdownSemanticDocument).GetMethod("GetOrderedChildStartIndex",
-            BindingFlags.Static | BindingFlags.NonPublic)!;
-        Assert.NotNull(search);
+        static int Search(IReadOnlyList<MarkdownSemanticNode> nodes, int textStart)
+            => MarkdownSemanticDocument.GetOrderedChildStartIndex(nodes, textStart);
 
-        Assert.Equal(count - 1, search.Invoke(null, [children, count * 2 - 1]));
+        Assert.Equal(count - 1, Search(children, count * 2 - 1));
         Assert.InRange(children.Reads, 1, 14);
         children.ResetReads();
-        Assert.Equal(count, search.Invoke(null, [children, count * 2]));
+        Assert.Equal(count, Search(children, count * 2));
         Assert.InRange(children.Reads, 1, 14);
 
         MarkdownSemanticNode[] tied = [Node(0, 1), Node(1, 1), Node(1, 1), Node(1, 2)];
-        Assert.Equal(0, search.Invoke(null, [tied, 1]));
-        Assert.Equal(3, search.Invoke(null, [tied, 2]));
+        Assert.Equal(0, Search(tied, 1));
+        Assert.Equal(3, Search(tied, 2));
     }
 
     [Fact]
@@ -267,13 +266,7 @@ public sealed class SemanticRangeIndexTests
 
     private static MarkdownSemanticDocument CreateDocument(string text, MarkdownSemanticNode root,
         IReadOnlyList<MarkdownTextSpan> spans)
-    {
-        ConstructorInfo constructor = typeof(MarkdownSemanticDocument).GetConstructor(
-            BindingFlags.Instance | BindingFlags.NonPublic, null,
-            [typeof(MarkdownSemanticNode), typeof(string), typeof(IReadOnlyList<MarkdownTextSpan>)], null)!;
-        Assert.NotNull(constructor);
-        return (MarkdownSemanticDocument)constructor.Invoke([root, text, spans]);
-    }
+        => new(root, text, spans);
 
     private static MarkdownLayoutContext CreateContext()
     {

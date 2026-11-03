@@ -1264,15 +1264,7 @@ public sealed class VectorAccessibilityContractTests
         string text,
         MarkdownSemanticNode root,
         IReadOnlyList<MarkdownTextSpan> spans)
-    {
-        var constructor = typeof(MarkdownSemanticDocument).GetConstructor(
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
-            binder: null,
-            types: [typeof(MarkdownSemanticNode), typeof(string), typeof(IReadOnlyList<MarkdownTextSpan>)],
-            modifiers: null);
-        Assert.NotNull(constructor);
-        return (MarkdownSemanticDocument)constructor.Invoke([root, text, spans]);
-    }
+        => new(root, text, spans);
 
     private static Rect[] GetLinearDocumentRects(
         MarkdownSemanticDocument document,
@@ -1290,10 +1282,6 @@ public sealed class VectorAccessibilityContractTests
                 textStart = System.Math.Max(0, textStart - 1);
         }
 
-        var method = typeof(MarkdownSemanticDocument).GetMethod(
-            "GetDocumentRectsForSpan",
-            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
-        Assert.NotNull(method);
         var result = new List<Rect>();
         foreach (MarkdownTextSpan span in document.TextSpans)
         {
@@ -1303,7 +1291,7 @@ public sealed class VectorAccessibilityContractTests
             int end = System.Math.Min(textEnd, span.TextEnd);
             if (end >= start)
             {
-                var rectangles = (IEnumerable<Rect>)method.Invoke(null, [span, start, end, false])!;
+                IEnumerable<Rect> rectangles = MarkdownSemanticDocument.GetDocumentRectsForSpan(span, start, end, false);
                 result.AddRange(rectangles);
             }
         }

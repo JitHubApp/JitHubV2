@@ -17,10 +17,10 @@ internal sealed class MarkdownSemanticDocument
     public readonly TextElementBoundaryIndex TextElementBoundaries;
     public readonly IReadOnlyList<MarkdownTextSpan> TextSpans;
 
+    /// <summary>The builder's (or a manual root's) node lookups by inline box, block index and overflow box.</summary>
+    internal readonly MarkdownSemanticNodeIndexes NodeIndexes;
+
     private readonly IReadOnlyDictionary<(int BlockIndex, int InlineIndex), int> _spanByPosition;
-    private readonly IReadOnlyDictionary<InlineContainerBox, MarkdownSemanticNode> _nodeByInlineBox;
-    private readonly IReadOnlyDictionary<int, MarkdownSemanticNode> _nodeByInlineBlockIndex;
-    private readonly IReadOnlyDictionary<IHorizontalOverflowBox, MarkdownSemanticNode> _nodeByHorizontalOverflow;
 
     public static MarkdownSemanticDocument Empty { get; } = new(
         new MarkdownSemanticNode(MarkdownSemanticRole.Document)
@@ -31,7 +31,7 @@ internal sealed class MarkdownSemanticDocument
         string.Empty,
         Array.Empty<MarkdownTextSpan>());
 
-    private MarkdownSemanticDocument(MarkdownSemanticNode root, string text, IReadOnlyList<MarkdownTextSpan> spans)
+    internal MarkdownSemanticDocument(MarkdownSemanticNode root, string text, IReadOnlyList<MarkdownTextSpan> spans)
         : this(root, text, spans, textProjectionReuse: null)
     {
     }
@@ -114,12 +114,15 @@ internal sealed class MarkdownSemanticDocument
 
         // Manually constructed roots carry no builder indexes; walk them once.
         // Production builder snapshots pass indexes populated as nodes are created.
-        MarkdownSemanticNodeIndexes indexes = nodeIndexes ?? MarkdownSemanticNodeIndexes.FromTree(root);
-        _nodeByInlineBox = indexes.ByInlineBox;
-        _nodeByInlineBlockIndex = indexes.ByInlineBlockIndex;
-        _nodeByHorizontalOverflow = indexes.ByHorizontalOverflow;
+        NodeIndexes = nodeIndexes ?? MarkdownSemanticNodeIndexes.FromTree(root);
         SemanticRangeFingerprint = MarkdownSemanticRangeFingerprint.NormalizeNodeRangesAndComputeSemanticRangeFingerprint(root, spans, text.Length);
     }
+
+    /// <summary>
+    /// The first text span index for each mapped (block, inline) document
+    /// position; sized from the distinct consecutive mapped keys.
+    /// </summary>
+    internal IReadOnlyDictionary<(int BlockIndex, int InlineIndex), int> SpanIndexByPosition => _spanByPosition;
 
     public static MarkdownSemanticDocument Build(LayoutSnapshot snapshot)
         => Build(snapshot, textProjectionReuse: null);
@@ -227,7 +230,7 @@ internal sealed class MarkdownSemanticDocument
         // A box containing only omitted decorative objects still has its
         // zero-length semantic block node. Use that boundary so a spacer-only
         // paragraph between other paragraphs does not map to document end.
-        if (_nodeByInlineBlockIndex.TryGetValue(position.BlockIndex, out MarkdownSemanticNode? inlineNode))
+        if (NodeIndexes.ByInlineBlockIndex.TryGetValue(position.BlockIndex, out MarkdownSemanticNode? inlineNode))
             return inlineNode.TextStart;
 
         return position.BlockIndex <= 0 ? 0 : Text.Length;
@@ -431,7 +434,7 @@ internal sealed class MarkdownSemanticDocument
         }
     }
 
-    private static IEnumerable<Rect> GetDocumentRectsForSpan(
+    internal static IEnumerable<Rect> GetDocumentRectsForSpan(
         MarkdownTextSpan span,
         int start,
         int end,
@@ -543,7 +546,7 @@ internal sealed class MarkdownSemanticDocument
             MarkdownSemanticNode? next = null;
             MarkdownSemanticNode.ChildrenView children = enclosing.Children;
             bool ordered = ReferenceEquals(enclosing, Root);
-            int firstChild = ordered ? GetOrderedChildStartIndexCore(children, textStart) : 0;
+            int firstChild = ordered ? GetOrderedChildStartIndex(children, textStart) : 0;
             for (int index = firstChild; index < children.Count; index++)
             {
                 MarkdownSemanticNode child = children[index];
@@ -570,7 +573,7 @@ internal sealed class MarkdownSemanticDocument
         textStart = Math.Clamp(textStart, 0, Text.Length);
         textEnd = Math.Clamp(textEnd, textStart, Text.Length);
         if (exactRangeScope is not null &&
-            _nodeByInlineBox.TryGetValue(exactRangeScope, out MarkdownSemanticNode? scopedNode) &&
+            NodeIndexes.ByInlineBox.TryGetValue(exactRangeScope, out MarkdownSemanticNode? scopedNode) &&
             textStart == scopedNode.TextStart &&
             textEnd == scopedNode.TextEnd)
         {
@@ -588,7 +591,7 @@ internal sealed class MarkdownSemanticDocument
         textStart = Math.Clamp(textStart, 0, Text.Length);
         textEnd = Math.Clamp(textEnd, textStart, Text.Length);
         if (exactRangeScopeBlockIndex is int blockIndex &&
-            _nodeByInlineBlockIndex.TryGetValue(blockIndex, out MarkdownSemanticNode? scopedNode) &&
+            NodeIndexes.ByInlineBlockIndex.TryGetValue(blockIndex, out MarkdownSemanticNode? scopedNode) &&
             textStart == scopedNode.TextStart &&
             textEnd == scopedNode.TextEnd)
         {
@@ -603,7 +606,7 @@ internal sealed class MarkdownSemanticDocument
         out MarkdownSemanticNode node)
     {
         ArgumentNullException.ThrowIfNull(inlineBox);
-        return _nodeByInlineBox.TryGetValue(inlineBox, out node!);
+        return NodeIndexes.ByInlineBox.TryGetValue(inlineBox, out node!);
     }
 
     internal bool TryGetHorizontalOverflowNode(
@@ -611,7 +614,7 @@ internal sealed class MarkdownSemanticDocument
         out MarkdownSemanticNode node)
     {
         ArgumentNullException.ThrowIfNull(overflow);
-        return _nodeByHorizontalOverflow.TryGetValue(overflow, out node!);
+        return NodeIndexes.ByHorizontalOverflow.TryGetValue(overflow, out node!);
     }
 
     internal IEnumerable<MarkdownSemanticNode> GetImmediateChildrenIntersectingTextRange(
@@ -627,7 +630,7 @@ internal sealed class MarkdownSemanticDocument
 
         MarkdownSemanticNode.ChildrenView children = enclosing.Children;
         bool ordered = ReferenceEquals(enclosing, Root);
-        int firstChild = ordered ? GetOrderedChildStartIndexCore(children, textStart) : 0;
+        int firstChild = ordered ? GetOrderedChildStartIndex(children, textStart) : 0;
         for (int index = firstChild; index < children.Count; index++)
         {
             MarkdownSemanticNode child = children[index];
@@ -638,13 +641,12 @@ internal sealed class MarkdownSemanticDocument
         }
     }
 
-    // Retain the original read-only-list entry point for the independent
-    // logarithmic-read contract. Production passes its concrete value view to
-    // the same constrained core, avoiding an interface conversion/box.
-    private static int GetOrderedChildStartIndex(IReadOnlyList<MarkdownSemanticNode> children, int textStart)
-        => GetOrderedChildStartIndexCore(children, textStart);
-
-    private static int GetOrderedChildStartIndexCore<TChildren>(TChildren children, int textStart)
+    /// <summary>
+    /// Binary-searches ordered siblings for the first child ending at or after
+    /// <paramref name="textStart"/>. Production passes the concrete children
+    /// view, avoiding an interface conversion/box.
+    /// </summary>
+    internal static int GetOrderedChildStartIndex<TChildren>(TChildren children, int textStart)
         where TChildren : IReadOnlyList<MarkdownSemanticNode>
     {
         // Only the document's top-level siblings are guaranteed to have ordered

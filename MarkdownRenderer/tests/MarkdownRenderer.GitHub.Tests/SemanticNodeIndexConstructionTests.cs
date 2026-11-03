@@ -1,6 +1,5 @@
 using System.Buffers.Binary;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Security.Cryptography;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.CodeBlocks;
@@ -479,30 +478,19 @@ public sealed class SemanticNodeIndexConstructionTests
 
     private static Dictionary<InlineContainerBox, MarkdownSemanticNode> GetInlineBoxMap(
         MarkdownSemanticDocument document)
-        => GetMap<InlineContainerBox, MarkdownSemanticNode>(document, "_nodeByInlineBox");
+        => document.NodeIndexes.ByInlineBox;
 
     private static Dictionary<int, MarkdownSemanticNode> GetInlineBlockMap(
         MarkdownSemanticDocument document)
-        => GetMap<int, MarkdownSemanticNode>(document, "_nodeByInlineBlockIndex");
+        => document.NodeIndexes.ByInlineBlockIndex;
 
     private static Dictionary<IHorizontalOverflowBox, MarkdownSemanticNode> GetHorizontalOverflowMap(
         MarkdownSemanticDocument document)
-        => GetMap<IHorizontalOverflowBox, MarkdownSemanticNode>(document, "_nodeByHorizontalOverflow");
+        => document.NodeIndexes.ByHorizontalOverflow;
 
     private static Dictionary<(int BlockIndex, int InlineIndex), int> GetSpanMap(
         MarkdownSemanticDocument document)
-        => GetMap<(int BlockIndex, int InlineIndex), int>(document, "_spanByPosition");
-
-    private static Dictionary<TKey, TValue> GetMap<TKey, TValue>(
-        MarkdownSemanticDocument document,
-        string fieldName)
-        where TKey : notnull
-    {
-        FieldInfo field = typeof(MarkdownSemanticDocument).GetField(
-            fieldName,
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return Assert.IsType<Dictionary<TKey, TValue>>(field.GetValue(document));
-    }
+        => Assert.IsType<Dictionary<(int BlockIndex, int InlineIndex), int>>(document.SpanIndexByPosition);
 
     private static MarkdownLayoutContext CreateContext(string source, FlowDirection flowDirection)
     {

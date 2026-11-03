@@ -278,7 +278,7 @@
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/VectorAccessibilityContractTests.cs",
-      "lines": 1574,
+      "lines": 1562,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {

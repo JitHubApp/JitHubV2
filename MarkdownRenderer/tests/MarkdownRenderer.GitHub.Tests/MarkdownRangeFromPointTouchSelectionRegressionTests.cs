@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Threading;
 using Markdig;
 using MarkdownRenderer.Accessibility;
@@ -140,10 +139,6 @@ public sealed class MarkdownRangeFromPointTouchSelectionRegressionTests
 
         Final selection target: **stationary edge dragging continues here**.
         """;
-
-    private static readonly MethodInfo GetDocumentRectsForSpan = typeof(MarkdownSemanticDocument)
-        .GetMethod("GetDocumentRectsForSpan", BindingFlags.NonPublic | BindingFlags.Static)
-        ?? throw new InvalidOperationException("Could not find the semantic span geometry callback.");
 
     [Fact]
     public async Task TouchSelectionRangeFromPointEagerGeometryCompletesForOwnedAndAncestorViewportMapping()
@@ -500,9 +495,8 @@ public sealed class MarkdownRangeFromPointTouchSelectionRegressionTests
                 using LayoutPlacementTransformContext.Scope scope =
                     snapshot.EnterPlacementTransformScopeForBlockIndexUnderPaint(span.LayoutBlockIndex);
                 bool logicalInlineCoordinates = span.InlineBox is not null;
-                var rectangles = ((IEnumerable<Rect>)GetDocumentRectsForSpan.Invoke(
-                        null,
-                        [span, span.TextStart, span.TextEnd, logicalInlineCoordinates])!)
+                var rectangles = MarkdownSemanticDocument.GetDocumentRectsForSpan(
+                        span, span.TextStart, span.TextEnd, logicalInlineCoordinates)
                     .Select(rect => span.InlineBox is not null
                         ? rect
                         : snapshot.ToLogicalRectForBlockIndexUnderPaint(span.LayoutBlockIndex, rect))
@@ -546,9 +540,8 @@ public sealed class MarkdownRangeFromPointTouchSelectionRegressionTests
                     bool logicalInlineCoordinates = span.InlineBox is not null;
 
                     stage = "invoke-get-document-rects-for-span";
-                    IEnumerable<Rect> sourceRects = (IEnumerable<Rect>)GetDocumentRectsForSpan.Invoke(
-                        null,
-                        [span, span.TextStart, span.TextEnd, logicalInlineCoordinates])!;
+                    IEnumerable<Rect> sourceRects = MarkdownSemanticDocument.GetDocumentRectsForSpan(
+                        span, span.TextStart, span.TextEnd, logicalInlineCoordinates);
 
                     stage = "enumerate-span-rectangles";
                     Rect[] physicalRectangles = sourceRects.ToArray();
@@ -590,12 +583,9 @@ public sealed class MarkdownRangeFromPointTouchSelectionRegressionTests
                 }
                 catch (Exception exception)
                 {
-                    Exception cause = exception is TargetInvocationException { InnerException: { } inner }
-                        ? inner
-                        : exception;
                     throw new Xunit.Sdk.XunitException(
                         $"Eager semantic range geometry failed at {stage}; {DescribeSpan(semantic, index, span)}; " +
-                        $"exception={cause.GetType().FullName}; hresult=0x{cause.HResult:X8}; message={cause.Message}");
+                        $"exception={exception.GetType().FullName}; hresult=0x{exception.HResult:X8}; message={exception.Message}");
                 }
             }
         }
