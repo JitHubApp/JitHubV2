@@ -937,21 +937,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         // Selection changes update the XAML overlay (not the DirectWrite canvas),
         // so tiles are never invalidated during a drag.
         _selection.Changed += (_, _) => _selectionChanges.OnSelectionChanged();
-        // FlowDirection has no DP-changed callback we can register at the
-        // class level (it's defined by FrameworkElement). Listen for live
-        // changes via the dependency-property-changed callback API so RTL
-        // toggling at runtime rebuilds the layout instead of leaving stale
-        // CanvasTextLayouts in the previous direction. Gate on IsLoaded so
-        // the inheritance pass during initial visual-tree attach doesn't
-        // race against the Loaded handler's own RequestRebuild.
-        RegisterPropertyChangedCallback(FlowDirectionProperty, (_, _) =>
-        {
-            if (IsLoaded) RequestRebuild(RebuildReason.Full);
-        });
-        RegisterPropertyChangedCallback(LanguageProperty, (_, _) =>
-        {
-            if (IsLoaded) RequestRebuild(RebuildReason.Restyle);
-        });
+        new InheritedLayoutInputWatch(this, _rebuild).Register();
         BuildVisualTree();
     }
 
