@@ -70,6 +70,7 @@ internal sealed partial class InlineContainerBox : BlockBox
     }
     public readonly string ElementKey;
     private CanvasTextLayout? _layout;
+    internal CanvasTextLayout? TextLayout => _layout;
     private NativeResourceRetirementRecord? _layoutRetirementRecord;
     private ScriptBaselineGeometry _scriptBaselineGeometry = ScriptBaselineGeometry.Empty;
     private CanvasLineMetrics[]? _cachedLineMetrics;
@@ -2702,12 +2703,12 @@ internal sealed partial class InlineContainerBox : BlockBox
         // for the rationale; the same snapped origin is used for hit-test,
         // selection rects and embed placement so they stay in sync.
         var (sx, sy) = GetSnappedOrigin(style, out float textOriginX, out float textOriginY);
-        DrawRunBackgrounds(ds, sx, sy);
+        InlineDecorationPainter.DrawRunBackgrounds(this, ds, sx, sy);
         DrawTextLayoutAtFinalOrigin(ds, _layout, textOriginX, textOriginY, style.Foreground);
-        DrawInlineImages(ds, sx, sy, viewport);
-        DrawInlineVectorScenes(ds, sx, sy, viewport);
+        InlineObjectPainter.DrawInlineImages(this, ds, sx, sy, viewport);
+        InlineObjectPainter.DrawInlineVectorScenes(this, ds, sx, sy, viewport);
 
-        DrawDecorations(ds, sx, sy);
+        InlineDecorationPainter.DrawDecorations(this, ds, sx, sy);
     }
 
     public override bool HitTest(Point point, out DocumentPosition position)
@@ -3086,7 +3087,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         return (left, right);
     }
 
-    private CanvasTextLayoutRegion[]? GetAdjustedCharacterRegions(
+    internal CanvasTextLayoutRegion[]? GetAdjustedCharacterRegions(
         CanvasTextLayout layout,
         int start,
         int length)
@@ -3192,9 +3193,9 @@ internal sealed partial class InlineContainerBox : BlockBox
             }
             layer.Close();
         }
-        DrawSelectedDecorations(ds, sx, sy, color, from, to - from);
-        DrawSelectedInlineImages(ds, sx, sy, viewport, normalized, color);
-        DrawSelectedInlineVectorScenes(ds, sx, sy, viewport, normalized, color);
+        InlineDecorationPainter.DrawSelectedDecorations(this, ds, sx, sy, color, from, to - from);
+        InlineObjectPainter.DrawSelectedInlineImages(this, ds, sx, sy, viewport, normalized, color);
+        InlineObjectPainter.DrawSelectedInlineVectorScenes(this, ds, sx, sy, viewport, normalized, color);
     }
 
     public void PaintLinkStateForeground(CanvasDrawingSession ds, LinkRun link, bool focused, Rect viewport)
@@ -3247,7 +3248,7 @@ internal sealed partial class InlineContainerBox : BlockBox
                         color,
                         foregroundOverrideStart: cumulative,
                         foregroundOverrideLength: len);
-                    DrawRunDecorations(ds, sx, sy, lineMetrics, r, run, runStyle, color);
+                    InlineDecorationPainter.DrawRunDecorations(ds, sx, sy, lineMetrics, r, run, runStyle, color);
                 }
                 catch (Exception primary)
                 {
@@ -3257,7 +3258,8 @@ internal sealed partial class InlineContainerBox : BlockBox
                 layer.Close();
             }
 
-            DrawLinkInlineSpanDecorations(
+            InlineDecorationPainter.DrawLinkInlineSpanDecorations(
+                this,
                 ds,
                 sx,
                 sy,
@@ -3345,7 +3347,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         }
     }
 
-    private Rect GetInlineImageDocumentRect(
+    internal Rect GetInlineImageDocumentRect(
         CanvasTextLayoutRegion region,
         InlineImageRun image,
         float baseX,
@@ -4576,506 +4578,6 @@ internal sealed partial class InlineContainerBox : BlockBox
         return sceneGeometry?.ToArray() ?? Array.Empty<InlineSceneGeometry>();
     }
 
-    private void DrawInlineImages(CanvasDrawingSession ds, float baseX, float baseY, Rect viewport)
-    {
-        if (_layout is null) return;
-
-        int cumulative = 0;
-        foreach (var run in _runs)
-        {
-            int len = run.TextLength;
-            if (run is InlineImageRun image && len > 0)
-            {
-            var regions = GetAdjustedCharacterRegions(_layout, cumulative, len);
-                if (regions is null) { cumulative += len; continue; }
-                foreach (var r in regions)
-                {
-                    Rect rect = GetInlineImageDocumentRect(r, image, baseX, baseY);
-                    image.Image.SetInlineBounds(rect);
-                    image.Image.PaintInline(ds, rect, viewport);
-                    break;
-                }
-            }
-
-            cumulative += len;
-        }
-    }
-
-    private void DrawSelectedInlineImages(
-        CanvasDrawingSession ds,
-        float baseX,
-        float baseY,
-        Rect viewport,
-        DocumentRange range,
-        Color selectionForeground)
-    {
-        if (_layout is null) return;
-
-        int cumulative = 0;
-        foreach (var run in _runs)
-        {
-            int len = run.TextLength;
-            if (run is InlineImageRun image && len > 0 && SelectionIntersectsRun(range, run, len))
-            {
-                var regions = GetAdjustedCharacterRegions(_layout, cumulative, len);
-                if (regions is null) { cumulative += len; continue; }
-                foreach (var r in regions)
-                {
-                    Rect rect = GetInlineImageDocumentRect(r, image, baseX, baseY);
-                    image.Image.SetInlineBounds(rect);
-                    image.Image.PaintInlineSelectionForeground(ds, rect, viewport, selectionForeground);
-                    break;
-                }
-            }
-
-            cumulative += len;
-        }
-    }
-
-    private void DrawInlineVectorScenes(
-        CanvasDrawingSession drawingSession,
-        float baseX,
-        float baseY,
-        Rect viewport)
-    {
-        foreach (InlineRun run in _runs)
-        {
-            if (run is not InlineVectorSceneRun vector)
-                continue;
-
-            Rect local = vector.LocalBounds;
-            var bounds = new Rect(
-                baseX + local.X,
-                baseY + local.Y,
-                local.Width,
-                local.Height);
-            if (!Intersects(bounds, viewport))
-                continue;
-            vector.Paint(
-                drawingSession,
-                baseX,
-                baseY,
-                GetRunStyle(vector).Foreground,
-                Context.ThemeSnapshot.IsHighContrast);
-        }
-    }
-
-    private void DrawSelectedInlineVectorScenes(
-        CanvasDrawingSession drawingSession,
-        float baseX,
-        float baseY,
-        Rect viewport,
-        DocumentRange range,
-        Color selectionForeground)
-    {
-        foreach (InlineRun run in _runs)
-        {
-            if (run is not InlineVectorSceneRun vector ||
-                !SelectionIntersectsRun(range, run, run.TextLength))
-            {
-                continue;
-            }
-
-            Rect local = vector.LocalBounds;
-            var bounds = new Rect(
-                baseX + local.X,
-                baseY + local.Y,
-                local.Width,
-                local.Height);
-            if (!Intersects(bounds, viewport))
-                continue;
-            vector.Paint(
-                drawingSession,
-                baseX,
-                baseY,
-                selectionForeground,
-                highContrast: true,
-                foregroundOverride: selectionForeground);
-        }
-    }
-
-    private bool SelectionIntersectsRun(DocumentRange range, InlineRun run, int length)
-    {
-        var start = new DocumentPosition(BlockIndex, run.InlineIndex, 0);
-        var end = new DocumentPosition(BlockIndex, run.InlineIndex, length);
-        return end > range.Start && start < range.End;
-    }
-
-    private static bool Intersects(Rect left, Rect right) =>
-        left.Right >= right.Left && left.Left <= right.Right &&
-        left.Bottom >= right.Top && left.Top <= right.Bottom;
-
-    private void DrawDecorations(CanvasDrawingSession ds, float baseX, float baseY)
-        => DrawDecorations(ds, baseX, baseY, null);
-
-    private void DrawDecorations(CanvasDrawingSession ds, float baseX, float baseY, Color? overrideColor)
-    {
-        if (_layout is null) return;
-
-        int cumulative = 0;
-        CanvasLineMetrics[]? lineMetrics = null;
-        bool lineMetricsAttempted = false;
-        foreach (var run in _runs)
-        {
-            int len = run.TextLength;
-            if (len == 0) { continue; }
-            if (run is InlineEmbedRun or InlineImageRun or InlineVectorSceneRun or InlineSpacerRun) { cumulative += len; continue; }
-            // Superscript link runs (footnote citation markers ¹²³…) should not
-            // have an underline drawn at the normal line baseline — the small
-            // Unicode glyphs sit high in the line and the baseline underline ends
-            // up drawn ~10 px below them, looking completely detached.  Skip
-            // decorations for these runs entirely; their link appearance is already
-            // communicated by the accent foreground color.
-            if (run is LinkRun { IsSuperscript: true }) { cumulative += len; continue; }
-
-            var rs = GetRunStyle(run);
-            var decorationColor = overrideColor ?? rs.Foreground;
-
-            if (rs.Underline || rs.Strikethrough)
-            {
-                if (!lineMetricsAttempted)
-                {
-                    lineMetrics = TryGetLineMetrics();
-                    lineMetricsAttempted = true;
-                }
-                var regions = GetAdjustedCharacterRegions(_layout, cumulative, len);
-                if (regions is null) { cumulative += len; continue; } // Win2D can return null on DirectWrite errors
-                foreach (var r in regions)
-                {
-                    DrawRunDecorations(ds, baseX, baseY, lineMetrics, r, run, rs, decorationColor);
-                }
-            }
-            if (run is LinkRun { InlineStyleMap: not null } styledLink)
-            {
-                if (!lineMetricsAttempted)
-                {
-                    lineMetrics = TryGetLineMetrics();
-                    lineMetricsAttempted = true;
-                }
-                DrawLinkInlineSpanDecorations(
-                    ds,
-                    baseX,
-                    baseY,
-                    styledLink,
-                    cumulative,
-                    rs,
-                    decorationColor,
-                    selectedStart: null,
-                    viewport: null,
-                    selectedEnd: null,
-                    lineMetrics: lineMetrics);
-            }
-            cumulative += len;
-        }
-    }
-
-    private void DrawSelectedDecorations(CanvasDrawingSession ds, float baseX, float baseY, Color color, int selectedStart, int selectedLength)
-    {
-        if (_layout is null || selectedLength <= 0)
-            return;
-
-        int selectedEnd = selectedStart + selectedLength;
-        int cumulative = 0;
-        CanvasLineMetrics[]? lineMetrics = null;
-        bool lineMetricsAttempted = false;
-        foreach (var run in _runs)
-        {
-            int len = run.TextLength;
-            if (len == 0)
-                continue;
-
-            int runStart = cumulative;
-            int runEnd = cumulative + len;
-            cumulative = runEnd;
-
-            if (runEnd <= selectedStart || runStart >= selectedEnd)
-                continue;
-            if (run is InlineEmbedRun or InlineImageRun or InlineVectorSceneRun or InlineSpacerRun)
-                continue;
-            if (run is LinkRun { IsSuperscript: true })
-                continue;
-
-            var rs = GetRunStyle(run);
-            if ((rs.Underline || rs.Strikethrough) && !lineMetricsAttempted)
-            {
-                lineMetrics = TryGetLineMetrics();
-                lineMetricsAttempted = true;
-            }
-
-            if (rs.Underline || rs.Strikethrough)
-            {
-                int segmentStart = Math.Max(runStart, selectedStart);
-                int segmentLength = Math.Min(runEnd, selectedEnd) - segmentStart;
-                var regions = GetAdjustedCharacterRegions(_layout, segmentStart, segmentLength);
-                if (regions is not null)
-                {
-                    foreach (var r in regions)
-                        DrawRunDecorations(ds, baseX, baseY, lineMetrics, r, run, rs, color);
-                }
-            }
-
-            if (run is LinkRun { InlineStyleMap: not null } styledLink)
-            {
-                if (!lineMetricsAttempted)
-                {
-                    lineMetrics = TryGetLineMetrics();
-                    lineMetricsAttempted = true;
-                }
-                DrawLinkInlineSpanDecorations(
-                    ds,
-                    baseX,
-                    baseY,
-                    styledLink,
-                    runStart,
-                    rs,
-                    color,
-                    selectedStart,
-                    Math.Min(runEnd, selectedEnd),
-                    viewport: null,
-                    lineMetrics: lineMetrics);
-            }
-        }
-    }
-
-    private static void DrawRunDecorations(
-        CanvasDrawingSession ds,
-        float baseX,
-        float baseY,
-        CanvasLineMetrics[]? lineMetrics,
-        CanvasTextLayoutRegion region,
-        InlineRun run,
-        ElementStyle style,
-        Color color)
-        => DrawRunDecorations(
-            ds,
-            baseX,
-            baseY,
-            lineMetrics,
-            region,
-            run,
-            style,
-            color,
-            style.Underline,
-            style.Strikethrough);
-
-    private static void DrawRunDecorations(
-        CanvasDrawingSession ds,
-        float baseX,
-        float baseY,
-        CanvasLineMetrics[]? lineMetrics,
-        CanvasTextLayoutRegion region,
-        InlineRun run,
-        ElementStyle style,
-        Color color,
-        bool underline,
-        bool strikethrough)
-    {
-        if (!underline && !strikethrough)
-            return;
-        if (run is LinkRun { IsSuperscript: true })
-            return;
-
-        var lb = region.LayoutBounds;
-        var lm = FindLineMetrics(lineMetrics, region);
-        float baselineFromTop = lm.Baseline > 0 ? lm.Baseline : (float)lb.Height * 0.80f;
-        float xHeight = baselineFromTop * 0.50f;
-        float strikeY = (float)(baseY + lb.Y + (baselineFromTop - xHeight * 0.5f));
-        float underlineY = (float)(baseY + lb.Y + baselineFromTop + 1.5f);
-
-        if (underline)
-        {
-            if (run is AbbreviationRun)
-                DrawDottedUnderline(ds, (float)(baseX + lb.X), (float)(baseX + lb.X + lb.Width), underlineY, style.AccentBar ?? color);
-            else
-                ds.DrawLine((float)(baseX + lb.X), underlineY, (float)(baseX + lb.X + lb.Width),
-                    underlineY, color, 1.0f);
-        }
-
-        if (strikethrough)
-        {
-            ds.DrawLine((float)(baseX + lb.X), strikeY, (float)(baseX + lb.X + lb.Width),
-                strikeY, color, 1.0f);
-        }
-    }
-
-    private static void DrawDottedUnderline(CanvasDrawingSession ds, float startX, float endX, float y, Color color)
-    {
-        const float dot = 1.25f;
-        const float gap = 2.25f;
-        for (float x = startX; x < endX; x += dot + gap)
-        {
-            float x2 = MathF.Min(x + dot, endX);
-            ds.DrawLine(x, y, x2, y, color, 1.0f);
-        }
-    }
-
-    private void DrawRunBackgrounds(CanvasDrawingSession ds, float baseX, float baseY)
-    {
-        if (_layout is null) return;
-
-        int cumulative = 0;
-        foreach (var run in _runs)
-        {
-            int len = run.TextLength;
-            if (len == 0) { continue; }
-            if (run is InlineEmbedRun or InlineImageRun or InlineVectorSceneRun or InlineSpacerRun) { cumulative += len; continue; }
-
-            var rs = GetRunStyle(run);
-            bool hasRunSpecificStyle = HasRunSpecificStyle(run);
-            bool drawRunBg = hasRunSpecificStyle && rs.Background is { };
-            if (drawRunBg)
-            {
-                DrawInlineStyleBackground(
-                    ds,
-                    baseX,
-                    baseY,
-                    cumulative,
-                    len,
-                    rs,
-                    hasInlineCodePadding: run is CodeInlineRun);
-            }
-
-            if (run is LinkRun { InlineStyleMap: not null } styledLink)
-            {
-                LinkInlineStyleMap map = styledLink.InlineStyleMap!;
-                ElementStyle[] spanStyles = GetLinkInlineSpanStyles(styledLink);
-                for (int index = 0; index < map.Count; index++)
-                {
-                    ElementStyle spanStyle = spanStyles[index];
-                    if (spanStyle.Background is not { } background || background == rs.Background)
-                        continue;
-                    LinkInlineStyleSpan span = map.GetSpan(index);
-                    DrawInlineStyleBackground(
-                        ds,
-                        baseX,
-                        baseY,
-                        cumulative + span.Start,
-                        span.Length,
-                        spanStyle,
-                        hasInlineCodePadding: InlineCodePaddingLayout.HasInlineCodeStylePath(span.Path));
-                }
-            }
-
-            cumulative += len;
-        }
-    }
-
-    private void DrawInlineStyleBackground(
-        CanvasDrawingSession ds,
-        float baseX,
-        float baseY,
-        int start,
-        int length,
-        ElementStyle style,
-        bool hasInlineCodePadding = false)
-    {
-        if (_layout is null || style.Background is not { } background)
-            return;
-
-        var regions = GetAdjustedCharacterRegions(_layout, start, length);
-        if (regions is null)
-            return;
-
-        foreach (var region in regions)
-        {
-            var bounds = region.LayoutBounds;
-            double backgroundTop;
-            double backgroundHeight;
-            if (hasInlineCodePadding)
-            {
-                // SetCharacterSpacing already reserves the two physical
-                // horizontal padding advances in these character regions.
-                // Vertical inline padding is paint-only: it expands the chip
-                // without changing DirectWrite's line height or text offsets.
-                double topPadding = InlineCodePaddingLayout.ToInlineCodeAdvance(style.Padding.Top);
-                double bottomPadding = InlineCodePaddingLayout.ToInlineCodeAdvance(style.Padding.Bottom);
-                backgroundTop = bounds.Y + bounds.Height * 0.05 - topPadding;
-                backgroundHeight = bounds.Height * 0.90 + topPadding + bottomPadding;
-            }
-            else
-            {
-                // Preserve the existing non-code inline background geometry.
-                backgroundTop = bounds.Y + bounds.Height * 0.05;
-                backgroundHeight = bounds.Height * 0.90;
-            }
-            ds.FillRoundedRectangle(
-                new Rect(
-                    baseX + bounds.X - (hasInlineCodePadding ? 0 : 2),
-                    baseY + backgroundTop,
-                    bounds.Width + (hasInlineCodePadding ? 0 : 4),
-                    backgroundHeight),
-                style.CornerRadius,
-                style.CornerRadius,
-                background);
-        }
-    }
-
-    private void DrawLinkInlineSpanDecorations(
-        CanvasDrawingSession ds,
-        float baseX,
-        float baseY,
-        LinkRun link,
-        int runStart,
-        ElementStyle linkStyle,
-        Color color,
-        int? selectedStart,
-        int? selectedEnd,
-        Rect? viewport,
-        CanvasLineMetrics[]? lineMetrics = null)
-    {
-        if (_layout is null || link.InlineStyleMap is not { } map || link.IsSuperscript)
-            return;
-
-        ElementStyle[] spanStyles = GetLinkInlineSpanStyles(link);
-        for (int index = 0; index < map.Count; index++)
-        {
-            LinkInlineStyleSpan span = map.GetSpan(index);
-            int spanStart = runStart + span.Start;
-            int spanLength = span.Length;
-            bool underline = spanStyles[index].Underline && !linkStyle.Underline;
-            bool strikethrough = spanStyles[index].Strikethrough && !linkStyle.Strikethrough;
-            if ((!underline && !strikethrough) || spanLength <= 0)
-                continue;
-
-            if (selectedStart is int selectionStart && selectedEnd is int selectionEnd)
-            {
-                int clippedStart = Math.Max(spanStart, selectionStart);
-                int clippedEnd = Math.Min(spanStart + spanLength, selectionEnd);
-                spanStart = clippedStart;
-                spanLength = clippedEnd - clippedStart;
-                if (spanLength <= 0)
-                    continue;
-            }
-
-            var regions = GetAdjustedCharacterRegions(_layout, spanStart, spanLength);
-            if (regions is null)
-                continue;
-            lineMetrics ??= TryGetLineMetrics();
-            foreach (var region in regions)
-            {
-                var bounds = region.LayoutBounds;
-                if (viewport is { } clip)
-                {
-                    Rect placed = new(baseX + bounds.X, baseY + bounds.Y, bounds.Width, bounds.Height);
-                    if (!Intersects(placed, clip))
-                        continue;
-                }
-
-                DrawRunDecorations(
-                    ds,
-                    baseX,
-                    baseY,
-                    lineMetrics,
-                    region,
-                    link,
-                    spanStyles[index],
-                    color,
-                    underline,
-                    strikethrough);
-            }
-        }
-    }
-
     internal CanvasLineMetrics[]? GetLineMetricsSnapshot()
         => TryGetLineMetrics();
 
@@ -5085,7 +4587,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         return GetSnappedOrigin(style).Y;
     }
 
-    private CanvasLineMetrics[]? TryGetLineMetrics()
+    internal CanvasLineMetrics[]? TryGetLineMetrics()
     {
         if (_lineMetricsRead)
             return _cachedLineMetrics;
@@ -5110,7 +4612,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         _lineMetricsRead = false;
     }
 
-    private static CanvasLineMetrics FindLineMetrics(CanvasLineMetrics[]? metrics, CanvasTextLayoutRegion region)
+    internal static CanvasLineMetrics FindLineMetrics(CanvasLineMetrics[]? metrics, CanvasTextLayoutRegion region)
     {
         if (metrics is null || metrics.Length == 0)
             return default;
@@ -5129,7 +4631,7 @@ internal sealed partial class InlineContainerBox : BlockBox
     internal bool ShouldApplyRunTextStyle(InlineRun run)
         => HasRunSpecificStyle(run);
 
-    private bool HasRunSpecificStyle(InlineRun run)
+    internal bool HasRunSpecificStyle(InlineRun run)
     {
         return (!string.IsNullOrEmpty(run.ElementKey) && run.ElementKey != ElementKey) ||
             run.StyleAliases.Count > 0 ||
