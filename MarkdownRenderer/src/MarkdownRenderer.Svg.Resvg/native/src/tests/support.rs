@@ -30,6 +30,7 @@ use base64::Engine as _;
 use resvg::{tiny_skia, usvg};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicU8, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 
@@ -44,7 +45,8 @@ pub(crate) fn initialize_font_database(
     generation: u32,
 ) -> Result<FontCatalogInitialization, Reject> {
     // Test-only convenience for the ignored local font benchmark. Shipping
-    // code must only use the explicit host-brokered mapping operation above.
+    // code must only use the explicit host-brokered mapping operation in
+    // initialize_font_database_from_snapshot.
     let mut database = usvg::fontdb::Database::new();
     let machine_fonts = std::env::var_os("SYSTEMROOT")
         .map(|root| std::path::PathBuf::from(root).join("Fonts"))
@@ -148,7 +150,30 @@ pub(crate) fn test_request(max_nested_svg_depth: u32) -> Request {
     }
 }
 
-pub(crate) fn test_worker_state() -> WorkerState {
+/// A worker state paired with the receiving end of its font-catalog
+/// publication acknowledgements. In the shipping worker the coordinator thread
+/// owns that receiver; tests keep it here so acknowledgements stay observable
+/// and the protocol thread's sends succeed for as long as the state lives.
+pub(crate) struct TestWorkerState {
+    pub(crate) state: WorkerState,
+    pub(crate) publication_acks: mpsc::Receiver<u32>,
+}
+
+impl Deref for TestWorkerState {
+    type Target = WorkerState;
+
+    fn deref(&self) -> &WorkerState {
+        &self.state
+    }
+}
+
+impl DerefMut for TestWorkerState {
+    fn deref_mut(&mut self) -> &mut WorkerState {
+        &mut self.state
+    }
+}
+
+pub(crate) fn test_worker_state() -> TestWorkerState {
     let (request_sender, request_receiver) = mpsc::sync_channel(1);
     drop(request_receiver);
     let (result_sender, result_receiver) = mpsc::channel();
@@ -166,9 +191,9 @@ pub(crate) fn test_worker_state_with_channels(
     font_catalog_result_receiver: mpsc::Receiver<FontCatalogBuildResult>,
     font_catalog_requested_generation: Arc<AtomicU32>,
     font_catalog_phase: Arc<AtomicU8>,
-) -> WorkerState {
-    let (publication_ack_sender, publication_ack_receiver) = mpsc::sync_channel(1);
-    WorkerState {
+) -> TestWorkerState {
+    let (publication_ack_sender, publication_acks) = mpsc::sync_channel(1);
+    let state = WorkerState {
         cache: HashMap::new(),
         documents: HashMap::new(),
         cache_cost: 0,
@@ -180,7 +205,6 @@ pub(crate) fn test_worker_state_with_channels(
         font_fallback_cache: new_font_fallback_cache(),
         font_catalog_request_sender,
         font_catalog_publication_ack_sender: publication_ack_sender,
-        font_catalog_test_ack_receiver: Some(publication_ack_receiver),
         font_catalog_result_receiver,
         font_catalog_requested_generation,
         font_catalog_snapshot_slot: Arc::new(Mutex::new(None)),
@@ -188,6 +212,10 @@ pub(crate) fn test_worker_state_with_channels(
         font_catalog_failed_generation: None,
         font_catalog_phase,
         font_catalog_timings: None,
+    };
+    TestWorkerState {
+        state,
+        publication_acks,
     }
 }
 

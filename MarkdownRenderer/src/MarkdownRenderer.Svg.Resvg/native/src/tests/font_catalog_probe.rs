@@ -58,15 +58,7 @@ fn font_catalog_probe_is_nonblocking_and_preserves_completed_catalog() {
         Ok(FontCatalogProbe::Ready)
     ));
     assert_eq!(state.font_database_generation, Some(0));
-    assert_eq!(
-        state
-            .font_catalog_test_ack_receiver
-            .as_ref()
-            .unwrap()
-            .try_recv()
-            .unwrap(),
-        0
-    );
+    assert_eq!(state.publication_acks.try_recv().unwrap(), 0);
     assert!(!Arc::ptr_eq(
         &old_fallback_cache,
         &state.font_fallback_cache
@@ -125,15 +117,7 @@ fn current_font_catalog_failure_has_a_distinct_status() {
     };
     assert!(matches!(rejection, Reject::FontCatalogFailed(_)));
     assert!(request_receiver.try_recv().is_err());
-    assert_eq!(
-        state
-            .font_catalog_test_ack_receiver
-            .as_ref()
-            .unwrap()
-            .try_recv()
-            .unwrap(),
-        1
-    );
+    assert_eq!(state.publication_acks.try_recv().unwrap(), 1);
     let response = Response::rejected(&test_request(4), rejection)
         .with_ready_font_generation(0)
         .encode();
@@ -276,15 +260,7 @@ fn font_catalog_swap_retires_text_trees_and_keeps_geometry_entries() {
     ));
     assert!(Arc::ptr_eq(&state.font_fallback_cache, &new_fallback_cache));
     assert!(state.font_fallback_cache.lock().unwrap().is_empty());
-    assert_eq!(
-        state
-            .font_catalog_test_ack_receiver
-            .as_ref()
-            .unwrap()
-            .try_recv()
-            .unwrap(),
-        1
-    );
+    assert_eq!(state.publication_acks.try_recv().unwrap(), 1);
     assert_eq!(state.cache.len(), 1);
     assert!(state.cache.contains_key(&geometry_key));
     assert_eq!(state.cache_cost, 20);
@@ -327,15 +303,7 @@ fn stale_catalog_completion_is_discarded_without_blocking_text_open() {
         poll_font_database(&mut state, 2),
         Ok(FontCatalogProbe::Pending(FontCatalogPhase::CatalogMappings))
     ));
-    assert_eq!(
-        state
-            .font_catalog_test_ack_receiver
-            .as_ref()
-            .unwrap()
-            .try_recv()
-            .unwrap(),
-        1
-    );
+    assert_eq!(state.publication_acks.try_recv().unwrap(), 1);
     assert_eq!(state.font_database_generation, Some(0));
     assert!(request_receiver.try_recv().is_err());
 

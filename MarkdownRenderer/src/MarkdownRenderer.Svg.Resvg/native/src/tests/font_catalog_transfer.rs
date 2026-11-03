@@ -113,15 +113,7 @@ fn busy_font_catalog_is_not_mapped_and_same_transfer_can_be_retried() {
         Ok(FontCatalogProbe::Pending(FontCatalogPhase::Ready))
     ));
     assert_eq!(state.font_database_generation, Some(4));
-    assert_eq!(
-        state
-            .font_catalog_test_ack_receiver
-            .as_ref()
-            .unwrap()
-            .try_recv()
-            .unwrap(),
-        4
-    );
+    assert_eq!(state.publication_acks.try_recv().unwrap(), 4);
 
     let accepted = accept_font_catalog(&mut state, &retry).unwrap();
     assert_eq!(accepted.status, STATUS_OK);

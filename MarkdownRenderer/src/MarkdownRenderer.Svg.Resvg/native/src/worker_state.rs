@@ -25,8 +25,6 @@ pub(crate) struct WorkerState {
     pub(crate) font_fallback_cache: FontFallbackCache,
     pub(crate) font_catalog_request_sender: mpsc::SyncSender<u32>,
     pub(crate) font_catalog_publication_ack_sender: mpsc::SyncSender<u32>,
-    #[cfg(test)]
-    pub(crate) font_catalog_test_ack_receiver: Option<mpsc::Receiver<u32>>,
     pub(crate) font_catalog_result_receiver: mpsc::Receiver<FontCatalogBuildResult>,
     pub(crate) font_catalog_requested_generation: Arc<AtomicU32>,
     pub(crate) font_catalog_snapshot_slot: Arc<Mutex<Option<Arc<FontCatalogSnapshot>>>>,

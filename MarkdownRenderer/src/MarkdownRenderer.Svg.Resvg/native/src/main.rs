@@ -77,8 +77,6 @@ fn run() -> Result<(), String> {
         font_fallback_cache: new_font_fallback_cache(),
         font_catalog_request_sender: font_catalog.request_sender,
         font_catalog_publication_ack_sender: font_catalog.publication_ack_sender,
-        #[cfg(test)]
-        font_catalog_test_ack_receiver: None,
         font_catalog_result_receiver: font_catalog.result_receiver,
         font_catalog_requested_generation: font_catalog.requested_generation,
         font_catalog_snapshot_slot: font_catalog.snapshot_slot,
