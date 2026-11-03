@@ -170,12 +170,7 @@ public sealed class MermaidTypographyRegressionTests
 
         Assert.InRange(textLayoutSlot, 0, layouts.Length - 1);
         CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(layouts[textLayoutSlot]);
-        MethodInfo resolveOrigin = typeof(VectorSceneDrawing).GetMethod(
-            "ResolveTextOrigin",
-            BindingFlags.Static | BindingFlags.NonPublic)!;
-        Vector2 origin = Assert.IsType<Vector2>(resolveOrigin.Invoke(
-            null,
-            [command, layout]));
+        Vector2 origin = VectorSceneNativeFactory.ResolveTextOrigin(command, layout);
         Rect ink = layout.DrawBounds;
         return new Rect(origin.X + ink.X, origin.Y + ink.Y, ink.Width, ink.Height);
     }

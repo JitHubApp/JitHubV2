@@ -165,7 +165,7 @@ public sealed class VectorSceneClipLifetimeTests
                     vectorDisposalAttempts.Add(layer);
                 resource.Dispose();
             });
-        drawing.SetClipFactoryForTest((drawingSession, geometry) =>
+        drawing.UseClipLayerFactory((drawingSession, geometry) =>
         {
             CanvasActiveLayer layer = drawingSession.CreateLayer(1f, geometry);
             createdVectorLayers.Add(layer);
@@ -307,7 +307,7 @@ public sealed class VectorSceneClipLifetimeTests
                     geometryDisposalAttempts.Add(geometry);
                 resource.Dispose();
             });
-        drawing.SetClipFactoryForTest((drawingSession, geometry) =>
+        drawing.UseClipLayerFactory((drawingSession, geometry) =>
         {
             CanvasActiveLayer layer = drawingSession.CreateLayer(1f, geometry);
             createdVectorLayers.Add(layer);
@@ -394,7 +394,7 @@ public sealed class VectorSceneClipLifetimeTests
         var scene = new MarkdownVectorScene(8, 8, 8, Array.Empty<MarkdownVectorCommand>());
         using var drawing = new VectorSceneDrawing(device, scene, CancellationToken.None);
 
-        Assert.Throws<InvalidOperationException>(() => drawing.SetClipFactoryForTest(
+        Assert.Throws<InvalidOperationException>(() => drawing.UseClipLayerFactory(
             static (_, _) => throw new InvalidOperationException("The factory must not run.")));
         Assert.True(drawing.IsPrepared);
     }
