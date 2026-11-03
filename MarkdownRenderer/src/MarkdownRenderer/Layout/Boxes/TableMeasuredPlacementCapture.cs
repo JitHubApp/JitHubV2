@@ -76,69 +76,18 @@ internal static class TableMeasuredPlacementCapture
                 prepared, cellCount, headerPadding, bodyPadding, allowMeasuredVectorPlacement))
             return false;
 
-        int rowCount = table.HeaderCells.Length + table.BodyCells.Length;
-        var rows = new TableMeasuredRowFence[rowCount];
-        int rowIndex = 0;
-        for (int index = 0; index < table.HeaderCells.Length; index++)
-            rows[rowIndex++] = new TableMeasuredRowFence(true, index, table.HeaderCells[index], prepared.HeaderCells[index]);
-        for (int index = 0; index < table.BodyCells.Length; index++)
-            rows[rowIndex++] = new TableMeasuredRowFence(false, index, table.BodyCells[index], prepared.BodyCells[index]);
-
+        TableMeasuredRowFence[] rows = CreateRowFences(table, prepared);
         var cells = new TableMeasuredCellFence[cellCount];
         var cellTransfers = new InlineMeasuredPlacementTransfer[cellCount];
         int cellIndex = 0;
-        for (int row = 0; row < table.HeaderCells.Length; row++)
+        if (!TryCaptureSectionCells(
+                table, table.HeaderCells, prepared.HeaderCells, isHeader: true, headerPadding,
+                allowMeasuredVectorPlacement, cells, cellTransfers, ref cellIndex) ||
+            !TryCaptureSectionCells(
+                table, table.BodyCells, prepared.BodyCells, isHeader: false, bodyPadding,
+                allowMeasuredVectorPlacement, cells, cellTransfers, ref cellIndex))
         {
-            InlineContainerBox[] sourceRow = table.HeaderCells[row];
-            InlineContainerBox[] preparedRow = prepared.HeaderCells[row];
-            for (int column = 0; column < sourceRow.Length; column++)
-            {
-                float expectedSourceWidth = GetCellMeasureWidth(table.ColumnWidths!, column, headerPadding);
-                if (!IsSourceCellAtTablePlacement(table, sourceRow[column], true, row, column, headerPadding))
-                    return false;
-                InlineMeasuredPlacementTransfer? cellTransfer;
-                bool captured = allowMeasuredVectorPlacement
-                    ? InlineMeasuredPlacementCapture.TryCaptureTableCellMeasuredPlacementTransferWithMeasuredVectorPlacement(
-                        sourceRow[column],
-                        preparedRow[column], expectedSourceWidth, out cellTransfer)
-                    : InlineMeasuredPlacementCapture.TryCaptureTableCellMeasuredPlacementTransfer(
-                        sourceRow[column],
-                        preparedRow[column], expectedSourceWidth, out cellTransfer);
-                if (!captured || cellTransfer is null)
-                {
-                    return false;
-                }
-
-                cells[cellIndex] = new TableMeasuredCellFence(true, row, column, sourceRow[column], preparedRow[column], cellTransfer);
-                cellTransfers[cellIndex++] = cellTransfer;
-            }
-        }
-
-        for (int row = 0; row < table.BodyCells.Length; row++)
-        {
-            InlineContainerBox[] sourceRow = table.BodyCells[row];
-            InlineContainerBox[] preparedRow = prepared.BodyCells[row];
-            for (int column = 0; column < sourceRow.Length; column++)
-            {
-                float expectedSourceWidth = GetCellMeasureWidth(table.ColumnWidths!, column, bodyPadding);
-                if (!IsSourceCellAtTablePlacement(table, sourceRow[column], false, row, column, bodyPadding))
-                    return false;
-                InlineMeasuredPlacementTransfer? cellTransfer;
-                bool captured = allowMeasuredVectorPlacement
-                    ? InlineMeasuredPlacementCapture.TryCaptureTableCellMeasuredPlacementTransferWithMeasuredVectorPlacement(
-                        sourceRow[column],
-                        preparedRow[column], expectedSourceWidth, out cellTransfer)
-                    : InlineMeasuredPlacementCapture.TryCaptureTableCellMeasuredPlacementTransfer(
-                        sourceRow[column],
-                        preparedRow[column], expectedSourceWidth, out cellTransfer);
-                if (!captured || cellTransfer is null)
-                {
-                    return false;
-                }
-
-                cells[cellIndex] = new TableMeasuredCellFence(false, row, column, sourceRow[column], preparedRow[column], cellTransfer);
-                cellTransfers[cellIndex++] = cellTransfer;
-            }
+            return false;
         }
 
         if (cellIndex != cellCount)
@@ -155,6 +104,62 @@ internal static class TableMeasuredPlacementCapture
             alignmentValues,
             headerPadding,
             bodyPadding);
+        return true;
+    }
+
+    private static TableMeasuredRowFence[] CreateRowFences(TableBox table, TableBox prepared)
+    {
+        int rowCount = table.HeaderCells.Length + table.BodyCells.Length;
+        var rows = new TableMeasuredRowFence[rowCount];
+        int rowIndex = 0;
+        for (int index = 0; index < table.HeaderCells.Length; index++)
+            rows[rowIndex++] = new TableMeasuredRowFence(true, index, table.HeaderCells[index], prepared.HeaderCells[index]);
+        for (int index = 0; index < table.BodyCells.Length; index++)
+            rows[rowIndex++] = new TableMeasuredRowFence(false, index, table.BodyCells[index], prepared.BodyCells[index]);
+        return rows;
+    }
+
+    // Captures a measured-placement transfer for every cell of one table
+    // section, row by row, after checking the source cell sits at its
+    // published table placement.
+    private static bool TryCaptureSectionCells(
+        TableBox table,
+        InlineContainerBox[][] sourceRows,
+        InlineContainerBox[][] preparedRows,
+        bool isHeader,
+        Thickness padding,
+        bool allowMeasuredVectorPlacement,
+        TableMeasuredCellFence[] cells,
+        InlineMeasuredPlacementTransfer[] cellTransfers,
+        ref int cellIndex)
+    {
+        for (int row = 0; row < sourceRows.Length; row++)
+        {
+            InlineContainerBox[] sourceRow = sourceRows[row];
+            InlineContainerBox[] preparedRow = preparedRows[row];
+            for (int column = 0; column < sourceRow.Length; column++)
+            {
+                float expectedSourceWidth = GetCellMeasureWidth(table.ColumnWidths!, column, padding);
+                if (!IsSourceCellAtTablePlacement(table, sourceRow[column], isHeader, row, column, padding))
+                    return false;
+                InlineMeasuredPlacementTransfer? cellTransfer;
+                bool captured = allowMeasuredVectorPlacement
+                    ? InlineMeasuredPlacementCapture.TryCaptureTableCellMeasuredPlacementTransferWithMeasuredVectorPlacement(
+                        sourceRow[column],
+                        preparedRow[column], expectedSourceWidth, out cellTransfer)
+                    : InlineMeasuredPlacementCapture.TryCaptureTableCellMeasuredPlacementTransfer(
+                        sourceRow[column],
+                        preparedRow[column], expectedSourceWidth, out cellTransfer);
+                if (!captured || cellTransfer is null)
+                {
+                    return false;
+                }
+
+                cells[cellIndex] = new TableMeasuredCellFence(isHeader, row, column, sourceRow[column], preparedRow[column], cellTransfer);
+                cellTransfers[cellIndex++] = cellTransfer;
+            }
+        }
+
         return true;
     }
 
