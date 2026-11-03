@@ -327,7 +327,7 @@ internal sealed class CodeBlockHighlighting
             {
                 using IMarkdownScenePreparationLease? sceneLease = sceneSession is null
                     ? null
-                    : await sceneSession.EnterScenePreparationAsync(_host, token)
+                    : await sceneSession.EnterScenePreparationAsync(_host.DocumentOwner, token)
                         .ConfigureAwait(false);
                 CancellationToken workToken = sceneLease?.CancellationToken ?? token;
                 if (workToken.IsCancellationRequested)

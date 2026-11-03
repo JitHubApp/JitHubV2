@@ -18,7 +18,6 @@ using MarkdownRenderer.Document;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Selection;
@@ -47,17 +46,18 @@ namespace MarkdownRenderer.Controls;
 /// <see cref="Canvas"/> overlay for hosted WinUI embeds.
 /// </summary>
 public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsyncDisposable,
-    IMarkdownPerformanceLegacyParser, IEmbedRealizationHost, ICodeBlockCopyButtonHost, IFocusRingHost,
-    IHostedElementFocusHost, IHorizontalOverflowScrollHost, IFocusedItemRevealHost, IFocusedItemCommitHost,
-    IFocusGeometryRecoveryHost, IRendererFocusEntryHost, IImageSubscriptionsHost, IImageResidencyHost,
-    ICanvasDeviceRecoveryHost, ICodeBlockHighlightingHost, IRecoveryClockHost, IRasterPlacementHost,
-    IImageRelayoutHost, IImageLoadCompletionHost, IVectorCapacityRetryHost, ILazyLayoutHost, ILayoutCommitHost,
-    IFocusableItemsPublicationHost, IRebuildSchedulerHost, IRebuildLayoutSetupHost, ICanvasTilePainterHost,
-    IDeferredSceneReadinessHost, ILinkActivationHost, IRendererLocalizationHost, IRendererEventSink
+    IMarkdownPerformanceLegacyParser, IFocusRingHost, IHostedElementFocusHost, IHorizontalOverflowScrollHost,
+    IFocusedItemRevealHost, IFocusedItemCommitHost, IFocusGeometryRecoveryHost, IRendererFocusEntryHost,
+    IImageSubscriptionsHost, IImageResidencyHost, ICanvasDeviceRecoveryHost, IRecoveryClockHost,
+    IRasterPlacementHost, IImageRelayoutHost, IImageLoadCompletionHost, IVectorCapacityRetryHost, ILazyLayoutHost,
+    ILayoutCommitHost, IFocusableItemsPublicationHost, IRebuildSchedulerHost, IRebuildLayoutSetupHost,
+    ICanvasTilePainterHost, IDeferredSceneReadinessHost, ILinkActivationHost, IRendererLocalizationHost,
+    IRendererEventSink
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
     private readonly RendererEvents _events;
+    private readonly EmbedHosts _embedHosts;
     private readonly PointerHosts _pointerHosts;
     private readonly SelectionHosts _selectionHosts;
     private readonly PublishedLayout _published = new();
@@ -888,11 +888,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
             ? _localization.Resolve(MarkdownStringKeys.CopyCode, MarkdownLocalizedStrings.CodeBlockCopyAutomationName)
             : CodeBlockCopyButtonLabel!;
 
-    private string ResolvedCodeBlockCopiedButtonLabel =>
-        string.IsNullOrWhiteSpace(CodeBlockCopiedButtonLabel)
-            ? _localization.Resolve(MarkdownStringKeys.CodeCopied, MarkdownLocalizedStrings.CodeBlockCopied)
-            : CodeBlockCopiedButtonLabel!;
-
     private void OnStringProviderChanged()
     {
         _handles.UpdateLocalization();
@@ -933,6 +928,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private protected MarkdownRendererControl(bool ownsScrollViewport)
     {
         _events = new RendererEvents(this, _lifetime, DispatcherQueue);
+        _embedHosts = new EmbedHosts(this);
         _pointerHosts = new PointerHosts(this);
         _selectionHosts = new SelectionHosts(this);
         _cancellationRetirement = new PipelineCancellationRetirement(_snapshotRetirements);
@@ -962,11 +958,11 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _pointerInput = new PointerInputRouter(_pointerHosts, _pointerHosts, DispatcherQueue, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _handles, _document, _horizontalOverflowDrag, _touchGestures, _contextMenu, _adorner, _dragShield);
         _rebuild = new RebuildScheduler(this, _lifetime, _surface, _pointerInput, _cancellationRetirement);
         _canvasPointerEvents = new CanvasPointerEvents(_surface, _pointerInput);
-        _embeds = new EmbedRealization(this, this, _surface, _lifetime, _published, _viewport, DispatcherQueue, OnHostedEmbedKeyDown);
+        _embeds = new EmbedRealization(_embedHosts, _embedHosts, _surface, _lifetime, _published, _viewport, DispatcherQueue, OnHostedEmbedKeyDown);
         _imagePlans = new ImagePlanSet(_lifetime, _published);
         _imageSubscriptions = new ImageSubscriptions(this, _lifetime, _published, _imagePlans);
         _imageResidency = new ImageResidency(this, _lifetime, _published, _imagePlans, _embeds);
-        _highlighting = new CodeBlockHighlighting(this, _lifetime, _published, _viewport, _embeds);
+        _highlighting = new CodeBlockHighlighting(_embedHosts, _lifetime, _published, _viewport, _embeds);
         _focus = new KeyboardFocusModel(_lifetime, _published);
         _focusGeometry = new FocusGeometryReader(_lifetime, _published);
         _focusRing = new FocusRingPresenter(this, _focus, _focusGeometry, _surface, _lifetime, _published, DispatcherQueue);
@@ -1023,6 +1019,10 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
             _published, _pointerInput, _embeds, _geometryRecovery, _textAdorner, _blockScroll, _links, _layoutCommit,
             _lazyLayout, _touchRestore, _interactionReset, _pointerResume, _focus, _overflowScroll,
             _focusGeometryWork, _focusEntry, _focusRing));
+        _embedHosts.Connect(new EmbedHosts.Parts(
+            _events, _published, _cancellationRetirement, _rebuild, _canvasInvalidation, _visibleWork, _automation,
+            _layoutPublisher, _rasterPlacement, _lazyLayout, _hostedFocusPlan, _localization, _codeBlockClipboard,
+            _visibleImages, _hostedFocus, _imagePlans, _imageSubscriptions));
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         Loaded += (_, _) => OnLoadedInternal();
@@ -1133,61 +1133,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     public bool CopySelectionAsMarkdown()
         => _selectionCommands.CopyAsMarkdown();
 
-    CancellationToken IEmbedRealizationHost.PipelineToken => _rebuild.Token;
-
-    long IEmbedRealizationHost.PipelineGeneration => _rebuild.Generation;
-
-    IMarkdownHostedElementFactory? IEmbedRealizationHost.HostedElementFactory => HostedElementFactory;
-
-    ViewportBandIndex? IEmbedRealizationHost.ImagePlanIndex => _imagePlans.Index;
-
-    void IEmbedRealizationHost.AddImagePlan(ImageBox image) => AddImagePlan(image);
-
-    bool IEmbedRealizationHost.RealizeVisibleImages(
-        in VisibleRealizationPass pass,
-        double top,
-        double viewportHeight,
-        double bottom)
-        => _visibleImages.Realize(pass, top, viewportHeight, bottom);
-
-    bool IEmbedRealizationHost.IsCurrentPlanPublication(
-        LayoutSnapshot snapshot,
-        long generation,
-        long hostedFocusPlanEpoch,
-        long layoutRevision)
-        => _layoutPublisher.IsCurrentPlanPublication(snapshot, generation, hostedFocusPlanEpoch, layoutRevision);
-
-    bool IEmbedRealizationHost.IsCurrentRasterCodeActionPublication(
-        LayoutSnapshot candidate,
-        long generation,
-        long layoutRevision,
-        long hostedFocusPlanEpoch)
-        => _rasterPlacement.IsCurrentPublication(candidate, generation, layoutRevision, hostedFocusPlanEpoch);
-
-    void IEmbedRealizationHost.InvalidateHostedFocusPlanPublication() => _hostedFocusPlan.Invalidate();
-
-    void IEmbedRealizationHost.CopyCodeBlockToClipboard(CodeBlockActionPlan plan) => _codeBlockClipboard.Copy(plan);
-
-    void IEmbedRealizationHost.RestoreFocusedCodeBlockActionIfNeeded(CodeBlockActionPlan plan)
-        => _hostedFocus.RestoreCodeBlockActionIfNeeded(plan);
-
-    void IEmbedRealizationHost.PreserveLogicalFocusBeforeDerealizingCodeBlockAction(FrameworkElement element)
-        => _hostedFocus.PreserveLogicalFocusBeforeDerealizingCodeBlockAction(element);
-
-    void IEmbedRealizationHost.RestoreFocusedHostedElementIfNeeded(DeclarativeHostedElementPlan plan)
-        => _hostedFocus.RestoreHostedElementIfNeeded(plan);
-
-    void IEmbedRealizationHost.RequestFallbackRebuild() => RequestRebuild(RebuildReason.Restyle);
-
-    void IEmbedRealizationHost.InvalidateAutomationLayout() => _automation.InvalidateLayout();
-
-    void IEmbedRealizationHost.RaiseEmbedsRealizationChanged() => _events.RaiseEmbedsRealizationChanged();
-
-    Style? ICodeBlockCopyButtonHost.CodeBlockCopyButtonStyle => CodeBlockCopyButtonStyle;
-
-    string ICodeBlockCopyButtonHost.ResolveCodeBlockCopyButtonLabel(bool copied) =>
-        copied ? ResolvedCodeBlockCopiedButtonLabel : ResolvedCodeBlockCopyButtonLabel;
-
     XamlRoot? IFocusRingHost.XamlRoot => XamlRoot;
 
     Windows.UI.Color? IFocusRingHost.FocusVisualColor => _published.Theme?.FocusVisualColor;
@@ -1275,25 +1220,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     void ICanvasDeviceRecoveryHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);
 
     void ICanvasDeviceRecoveryHost.InvalidateCanvas() => _canvasInvalidation.Invalidate();
-
-    Microsoft.UI.Dispatching.DispatcherQueue? ICodeBlockHighlightingHost.DispatcherQueue => DispatcherQueue;
-
-    ICodeHighlighter? ICodeBlockHighlightingHost.CodeHighlighter => CodeHighlighter;
-
-    bool ICodeBlockHighlightingHost.IsCodeBlockSyntaxHighlightingEnabled => IsCodeBlockSyntaxHighlightingEnabled;
-
-    IMarkdownPerformanceSession? ICodeBlockHighlightingHost.PerformanceSession => PerformanceSession;
-
-    Theming.ThemeSnapshot? ICodeBlockHighlightingHost.ThemeSnapshot => _published.Theme;
-
-    double ICodeBlockHighlightingHost.LazyScrollVelocityPixelsPerSecond => _lazyLayout.ScrollVelocity;
-
-    void ICodeBlockHighlightingHost.ScheduleVisibleCodeBlockHighlighting() => _visibleWork.ScheduleCodeBlockHighlighting();
-
-    void ICodeBlockHighlightingHost.InvalidateCanvas() => _canvasInvalidation.Invalidate();
-
-    Task ICodeBlockHighlightingHost.RetireCancellationTokenSource(CancellationTokenSource? cts, Task? lifetime) =>
-        _cancellationRetirement.Retire(cts, lifetime);
 
     Microsoft.UI.Dispatching.DispatcherQueue? IRecoveryClockHost.DispatcherQueue => DispatcherQueue;
 
@@ -1822,14 +1748,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <summary>Re-runs the visible deferred-scene probe after the next successful paint.</summary>
     internal void RequestDeferredSceneProbeAfterPaint()
         => _painter.RequestDeferredSceneProbe();
-
-    private void AddImagePlan(Layout.Boxes.ImageBox image)
-    {
-        if (!_imageSubscriptions.Subscribe(image))
-            return;
-
-        _imagePlans.Add(image);
-    }
 
     internal void ScrollHorizontalOverflowForAutomation(
         IHorizontalOverflowBox target,
