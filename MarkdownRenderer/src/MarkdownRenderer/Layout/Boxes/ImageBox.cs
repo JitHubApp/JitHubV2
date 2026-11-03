@@ -47,115 +47,12 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// transforms, clipping, bidi, and text paths are preserved.
 /// </summary>
 internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometrySource, IImageBitmapOutputHost, ISvgTileGapFill, IImageMeasureHost, ISvgHostDeferralHost,
-    IImageRasterLoadHost
+    IImageRasterLoadHost, ISvgLoadHost
 {
     // Selected artwork keeps the same translucent tint as Math and
     // Mermaid scenes instead of an opaque block-wide band.
     private const float SelectionArtworkBackgroundOpacity = 0.25f;
 
-    // An accepted UI callback may remain queued after the source-read lease has
-    // drained. Carry only weak source identity and scalar/display metadata into
-    // that callback; never capture the resolver/provider byte array or a cache
-    // entry that owns it.
-    private readonly struct SvgOpenStageResult(
-        SvgOpenedRenderWork? Work, SvgHostCapacityDeferral? Deferral)
-    {
-        public SvgOpenedRenderWork? Work { get; init; } = Work;
-        public SvgHostCapacityDeferral? Deferral { get; init; } = Deferral;
-    }
-
-    /// <summary>
-    /// One-shot source-free ownership between actual Open completion and Render.
-    /// Pending disposal retires an unconsumed candidate; after consumption only
-    /// actual render completion may release documents, cancellation and gates.
-    /// </summary>
-    private sealed class SvgOpenedRenderWork(
-        ImageBox owner, SvgPublicationMetadata metadata, string contentCacheKey,
-        string? builtInSourceAliasKey, bool usesTiles, IMarkdownSvgDocument document, SvgDocumentUseLease documentUse,
-        SvgHostOwnerSlot? ownerSlot, ImageWorkLease imageWork,
-        CancellationTokenSource? preparationCancellation, CancellationToken cancellationToken,
-        CancellationToken sessionLifetimeToken, BoundedAsyncKeyedGate.Entry? openAdmissionEntry,
-        bool providerAdmissionHeld) : IDisposable
-    {
-        private ImageBox? _owner = owner;
-        private SvgOpenedRenderOwnership _ownership;
-        private CancellationTokenSource? _preparationCancellation = preparationCancellation;
-        private readonly ImageWorkLease _imageWork = imageWork;
-        private readonly bool _providerAdmissionHeld = providerAdmissionHeld;
-        internal readonly SvgPublicationMetadata Metadata = metadata;
-        internal readonly string ContentCacheKey = contentCacheKey;
-        internal readonly string? BuiltInSourceAliasKey = builtInSourceAliasKey;
-        internal readonly bool UsesTiles = usesTiles;
-        internal readonly CancellationToken CancellationToken = cancellationToken;
-        internal readonly CancellationToken SessionLifetimeToken = sessionLifetimeToken;
-        internal IMarkdownSvgDocument? Document = document;
-        internal SvgDocumentUseLease? DocumentUse = documentUse;
-        internal SvgHostOwnerSlot? OwnerSlot = ownerSlot;
-        private BoundedAsyncKeyedGate.Entry? _openAdmissionEntry = openAdmissionEntry;
-
-        internal bool TryConsume() => _ownership.TryConsume();
-
-        internal void TransferTiledOwnership()
-        {
-            Document = null;
-            DocumentUse = null;
-            OwnerSlot = null;
-        }
-
-        public void Dispose()
-        {
-            if (_ownership.TryDisposePending())
-                Cleanup();
-        }
-
-        internal void Complete()
-        {
-            if (_ownership.TryCompleteConsumed())
-                Cleanup();
-        }
-
-        private void Cleanup()
-        {
-            ImageBox? owner = Interlocked.Exchange(ref _owner, null);
-            if (owner is null)
-                return;
-            IMarkdownSvgDocument? document = Document;
-            SvgDocumentUseLease? documentUse = DocumentUse;
-            SvgHostOwnerSlot? ownerSlot = OwnerSlot;
-            CancellationTokenSource? cancellation = _preparationCancellation;
-            Document = null;
-            DocumentUse = null;
-            OwnerSlot = null;
-            _preparationCancellation = null;
-            try
-            {
-                try
-                {
-                    owner._resources.SvgOpenAdmissions.Release(ref _openAdmissionEntry);
-                }
-                catch (Exception exception)
-                {
-                    owner.RecordImageRetirementFailure(exception);
-                }
-                if (_providerAdmissionHeld)
-                    owner.TryImageCleanup(() => owner._resources.SvgProviderAdmission.Release());
-                if (document is not null)
-                    owner.RetireUncommittedSvgDocument(document);
-                if (documentUse is not null)
-                    owner.TryImageCleanup(documentUse.Dispose);
-                if (ownerSlot is not null)
-                    owner.TryImageCleanup(ownerSlot.Dispose);
-            }
-            finally
-            {
-                if (cancellation is not null)
-                    owner.TryImageCleanup(cancellation.Dispose);
-                _imageWork.Dispose();
-            }
-        }
-    }
-
-    private const int MaxSvgBytes = 8 * 1024 * 1024;
     private const long MaxSvgOutputRasterBytes = 64L * 1024 * 1024;
     // Direct2D bitmap limits vary by feature level and a recovering/WARP
     // device can transiently report a larger capability than it can allocate.
@@ -183,6 +80,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     internal SvgHostLoadDeferral SvgHostDeferral => _svgHostDeferral;
     // The load pipeline's owners, bound to this box and its scope.
     private readonly ImageRasterLoader _rasterLoader;
+    private readonly SvgSourceOpener _svgOpener;
     internal readonly string Url;
     public readonly string Alt;
     private readonly SafeHtmlLength? _requestedWidth;
@@ -372,6 +270,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             Context.ImageCancellationToken);
         (OutputDeferral, OutputAdmission) = _resources.CreateBitmapOutput(this, Context, _imageLifetimeCancellation);
         _rasterLoader = CreateRasterLoader();
+        _svgOpener = CreateSvgOpener();
         _builtInSource = MarkdownBuiltInImageSourcePolicy.TryResolve(
             Url,
             Context.ImageBaseUri,
@@ -1050,6 +949,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             context.ImageCancellationToken);
         (OutputDeferral, OutputAdmission) = _resources.CreateBitmapOutput(this, Context, _imageLifetimeCancellation);
         _rasterLoader = CreateRasterLoader();
+        _svgOpener = CreateSvgOpener();
         try
         {
             // These are immutable request descriptors, not resource state.
@@ -1108,6 +1008,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             context.ImageCancellationToken);
         (OutputDeferral, OutputAdmission) = _resources.CreateBitmapOutput(this, Context, _imageLifetimeCancellation);
         _rasterLoader = CreateRasterLoader();
+        _svgOpener = CreateSvgOpener();
         try
         {
             _builtInSource = source._builtInSource;
@@ -2996,7 +2897,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         {
             (byte[] bytes, IDisposable? reservation) = await Task.Run(() => ReadBuiltInSourceBytesAsync(
                     source,
-                    isSvg ? MaxSvgBytes : MaxRemoteImageBytes,
+                    isSvg ? SvgSourceOpener.MaxSvgBytes : MaxRemoteImageBytes,
                     isSvg ? "SVG" : "raster image",
                     imageWork.Token), CancellationToken.None)
                 .ConfigureAwait(false);
@@ -3290,7 +3191,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         try
         {
             (rawBytes, reservation) = await Task.Run(
-                    () => ReadDataUriSourceBytesAsync(rawDataUri, MaxSvgBytes, imageWork.Token),
+                    () => ReadDataUriSourceBytesAsync(rawDataUri, SvgSourceOpener.MaxSvgBytes, imageWork.Token),
                     CancellationToken.None)
                 .ConfigureAwait(false);
         }
@@ -3345,67 +3246,99 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         consumed?.Dispose();
     }
 
-    /// <summary>
-    /// Prepares and opens an admitted SVG off the UI thread. A successful result
-    /// owns a source-free render handoff; callers release original source
-    /// reservations before consuming it.
-    /// </summary>
-    private async Task<SvgOpenStageResult> OpenSvgSourceAsync(
+    private SvgSourceOpener CreateSvgOpener() =>
+        new(this, Context, _resources, OutputAdmission, OutputDeferral, Url);
+
+    private Task<SvgOpenStageResult> OpenSvgSourceAsync(
         byte[] rawBytes,
         Size intrinsicHint,
         string? securityPartitionKey,
         string? builtInSourceAliasKey,
         MarkdownSvgRenderDemand demand,
         int loadDemandGeneration)
+        => _svgOpener.OpenAsync(
+            rawBytes, intrinsicHint, securityPartitionKey, builtInSourceAliasKey, demand, loadDemandGeneration);
+
+    long ISvgLoadHost.SvgHostVisualDemandEpoch => Volatile.Read(ref _svgHostVisualDemandEpoch);
+
+    int ISvgLoadHost.AdvanceSvgRenderGeneration() => AdvanceSvgRenderGeneration();
+
+    string ISvgLoadHost.GetSvgSourceSecurityPartitionKey(string resolvedCacheKey) =>
+        GetSvgSourceSecurityPartitionKey(resolvedCacheKey);
+
+    bool ISvgLoadHost.IsKnownSvgSource(byte[] rawBytes, string securityPartitionHash) =>
+        IsKnownSvgSource(rawBytes, securityPartitionHash);
+
+    bool ISvgLoadHost.TryGetKnownSvgPreflight(
+        byte[] rawBytes, string securityPartitionHash, Size intrinsicHint, out SvgPreflight preflight)
     {
-        if (!TryBeginImageWork(out ImageWorkLease? renderWork) || renderWork is null)
-            return default;
+        if (IsKnownSvgSource(rawBytes, securityPartitionHash) &&
+            _svgContentHash is { } cachedContentHash &&
+            _svgSecurityPartitionHash is { } cachedPartitionHash)
+        {
+            preflight = (
+                intrinsicHint,
+                _svgTitle,
+                _svgDesc,
+                cachedContentHash,
+                cachedPartitionHash);
+            return true;
+        }
 
-        try
-        {
-            long svgWorkId = MarkdownSvgStageTrace.BeginWork();
-            long dispatchStartedAt = svgWorkId != 0 &&
-                MarkdownPerformanceEventSource.Log.IsSvgWorkMeasurementEnabled()
-                    ? Stopwatch.GetTimestamp()
-                    : 0;
-            async Task<SvgOpenStageResult> RunCoreAsync(byte[] bytes)
-            {
-                using var svgWorkScope = MarkdownSvgStageTrace.BeginWorkScope(svgWorkId);
-                using (MarkdownSvgStageTrace.MeasureFrom(
-                    svgWorkId,
-                    MarkdownSvgWorkStage.OuterDispatchQueueWait,
-                    dispatchStartedAt,
-                    bytes.LongLength))
-                {
-                }
-                try
-                {
-                    return await OpenSvgSourceCoreAsync(
-                            bytes, intrinsicHint, renderWork, securityPartitionKey,
-                            builtInSourceAliasKey, demand, loadDemandGeneration)
-                        .ConfigureAwait(false);
-                }
-                finally
-                {
-                    bytes = Array.Empty<byte>();
-                }
-            }
-
-            Task<SvgOpenStageResult> core = Context.Dispatcher?.HasThreadAccess == true
-                ? Task.Run(() => RunCoreAsync(rawBytes), CancellationToken.None)
-                : RunCoreAsync(rawBytes);
-            return await core.ConfigureAwait(false);
-        }
-        catch
-        {
-            renderWork.Dispose();
-            throw;
-        }
-        finally
-        {
-            rawBytes = Array.Empty<byte>();
-        }
+        preflight = default;
+        return false;
     }
+
+    void ISvgLoadHost.PublishSvgFailure(
+        MarkdownSvgException exception, string failureCacheKey, bool cachePermanently, int renderGeneration) =>
+        PublishSvgFailure(exception, failureCacheKey, cachePermanently, renderGeneration);
+
+    void ISvgLoadHost.PublishSvgFailure(
+        MarkdownSvgFailureReason reason, string description, string failureCacheKey,
+        bool cachePermanently, int renderGeneration) =>
+        PublishSvgFailure(reason, description, failureCacheKey, cachePermanently, renderGeneration);
+
+    MarkdownSvgColor ISvgLoadHost.GetSemanticSvgColor() => GetSemanticSvgColor();
+
+    MarkdownSvgColorScheme ISvgLoadHost.GetSvgColorScheme() => GetSvgColorScheme();
+
+    bool ISvgLoadHost.TryPublishContentCachedSvg(
+        string contentCacheKey, string resolvedCacheKey, string? builtInSourceAliasKey,
+        bool layoutInvalidated, int renderGeneration, BitmapOutputWorkContext bitmapOutputWork) =>
+        TryPublishContentCachedSvg(
+            contentCacheKey, resolvedCacheKey, builtInSourceAliasKey,
+            layoutInvalidated, renderGeneration, bitmapOutputWork);
+
+    SvgDocumentUseLease? ISvgLoadHost.TryAcquireCandidateSvgDocumentUse(
+        IMarkdownSvgDocument document, out bool ownershipConflict) =>
+        TryAcquireCandidateSvgDocumentUse(document, out ownershipConflict);
+
+    bool ISvgLoadHost.IsSvgProviderCurrent(
+        IMarkdownSvgRenderer renderer, long providerCacheGeneration, bool hasText) =>
+        IsSvgProviderCurrent(renderer, providerCacheGeneration, hasText);
+
+    void ISvgLoadHost.PublishSvgGenerationInvalidated(int renderGeneration) =>
+        PublishSvgGenerationInvalidated(renderGeneration);
+
+    SvgRasterPlan ISvgLoadHost.PickRasterDimensions(Size intrinsic) => PickRasterDimensions(intrinsic);
+
+    string ISvgLoadHost.BuildSvgBitmapIdentity(
+        string contentHash, string securityPartitionHash, MarkdownSvgDocumentInfo info, int width, int height,
+        MarkdownSvgColorScheme colorScheme, MarkdownSvgColor semanticColor, long rendererIdentity,
+        long providerCacheGeneration, MarkdownSvgPhysicalViewport physicalViewport) =>
+        BuildSvgBitmapIdentity(
+            contentHash, securityPartitionHash, info, width, height, colorScheme, semanticColor,
+            rendererIdentity, providerCacheGeneration, physicalViewport);
+
+    void ISvgLoadHost.HandleSvgWorkFailure(
+        Exception exception, CancellationToken cancellationToken, CancellationToken sessionLifetimeToken,
+        string resolvedCacheKey, string svgFailureCacheKey, int renderGeneration) =>
+        HandleSvgWorkFailure(
+            exception, cancellationToken, sessionLifetimeToken, resolvedCacheKey, svgFailureCacheKey, renderGeneration);
+
+    void ISvgLoadHost.RetireUncommittedSvgDocument(IMarkdownSvgDocument document) =>
+        RetireUncommittedSvgDocument(document);
+
 
     internal static Task RunSvgCoreOnBackgroundIfNeeded(
         bool dispatcherHasThreadAccess,
@@ -3424,605 +3357,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             return localKey;
         string created = "svg-local:" + Guid.NewGuid().ToString("N");
         return Interlocked.CompareExchange(ref _svgAnonymousPartitionKey, created, null) ?? created;
-    }
-
-    private async Task<SvgOpenStageResult> OpenSvgSourceCoreAsync(
-        byte[] rawBytes,
-        Size intrinsicHint,
-        ImageWorkLease renderWork,
-        string? securityPartitionKey,
-        string? builtInSourceAliasKey,
-        MarkdownSvgRenderDemand demand,
-        int loadDemandGeneration)
-    {
-        CancellationToken lifetimeToken = renderWork.Token;
-        int renderGeneration = AdvanceSvgRenderGeneration();
-        string resolvedCacheKey = securityPartitionKey ?? Url;
-        string effectiveSecurityPartitionKey = GetSvgSourceSecurityPartitionKey(resolvedCacheKey);
-        IMarkdownSvgRenderer? renderer = Context.SvgRenderer;
-        IMarkdownSvgAdmission? hostAdmission = renderer as IMarkdownSvgAdmission;
-        long svgWorkId = MarkdownSvgStageTrace.CurrentWorkId;
-        long svgSourceBytes = rawBytes.LongLength;
-        if (renderer is null)
-        {
-            PublishSvgFailure(
-                new MarkdownSvgException(
-                    MarkdownSvgFailureReason.ArchitectureMismatch,
-                    "No static SVG renderer is configured."),
-                resolvedCacheKey,
-                cachePermanently: false,
-                renderGeneration: renderGeneration);
-            renderWork.Dispose();
-            return default;
-        }
-
-        IMarkdownPerformanceSessionInternal? preparationSession =
-            Context.PerformanceSession as IMarkdownPerformanceSessionInternal;
-        CancellationToken sessionLifetimeToken = preparationSession?.LifetimeToken ?? CancellationToken.None;
-        // Session retirement cancels the complete preparation/open/render
-        // operation, not only the CPU-admitted synchronous region. Keep this
-        // token alive through actual work drain so retirement is never mistaken
-        // for a retryable provider generation transition.
-        CancellationTokenSource? preparationCancellation = preparationSession is null
-            ? null
-            : CancellationTokenSource.CreateLinkedTokenSource(
-                lifetimeToken, sessionLifetimeToken);
-        CancellationToken cancellationToken = preparationCancellation?.Token ?? lifetimeToken;
-        BitmapOutputWorkContext bitmapOutputWork = OutputAdmission.CaptureBitmapOutputWorkContext(
-            cancellationToken, expectedDemand: demand, expectedSvgGeneration: renderGeneration);
-        IMarkdownSvgDocument? openedDocument = null;
-        SvgDocumentUseLease? openedDocumentUse = null;
-        SvgHostOwnerSlot? ownerSlot = null;
-        SvgHostCapacityDeferral? hostCapacityDeferral = null;
-        IMarkdownSvgPreparationLease? hostPreparationLease = null;
-        long hostPreparationScratchBytes = 0;
-        long hostPreparedSourceBytes = 0;
-        MarkdownSvgSourcePreparation? preparation = null;
-        MarkdownSvgOpenRequest? openRequest = null;
-        SvgCacheEntry? sourceEntry = null;
-        long sourceReservationBytes = 0;
-        object? admissionDomain = null;
-        BoundedAsyncKeyedGate.Entry? openAdmissionEntry = null;
-        bool providerAdmissionHeld = false;
-        bool renderOwnershipTransferred = false;
-        string currentSecurityPartitionHash = SvgSourcePreflight.HashSecurityPartition(effectiveSecurityPartitionKey);
-        bool metadataWasKnown = IsKnownSvgSource(rawBytes, currentSecurityPartitionHash);
-        long providerCacheGeneration = 0;
-        long rendererIdentity = _resources.ProviderIdentities.GetSvgRendererIdentity(renderer);
-        string svgFailureCacheKey = string.Empty;
-
-        try
-        {
-            // The optional provider prepares a bounded inert static image on
-            // this background path. The host inspects its metadata and the
-            // provider repeats authoritative checks before worker admission.
-            SvgPreflight preflight;
-            // Sanitization, hashing and metadata inspection are preparation
-            // work too. Borrow the optional session slot and process-wide
-            // preparation gate only for that synchronous region, never across
-            // a keyed/provider/worker wait. The source-scaled weight schedules
-            // transient work; it does not reserve retained source bytes.
-            {
-                CancellationToken preparationToken = cancellationToken;
-                try
-                {
-                    preparationToken.ThrowIfCancellationRequested();
-                    using IDisposable? preparationSlot = preparationSession is null
-                        ? null
-                        : await preparationSession.EnterCpuPreparationAsync(
-                                Context.EffectiveImagePreparationOwner ?? Context,
-                                exclusive: false,
-                                preparationToken)
-                            .ConfigureAwait(false);
-                    using IDisposable processPreparationSlot =
-                        await _resources.Preparation.EnterAsync(
-                                Context.EffectiveImagePreparationOwner ?? Context,
-                                rawBytes.LongLength * 3,
-                                exclusive: false,
-                                preparationToken)
-                            .ConfigureAwait(false);
-                    // CPU admission is complete before taking byte ownership.
-                    // Only the opt-in session path and a participating provider
-                    // use this reservation; legacy/custom providers are unchanged.
-                    if (preparationSession is not null &&
-                        renderer is IMarkdownSvgPreparationAdmission scratchAdmission)
-                    {
-                        long demandVersionAtPreparation = demand.Version;
-                        bool admitted = scratchAdmission.TryReservePreparationScratch(
-                            demand,
-                            out hostPreparationLease,
-                            out long capacityVersionAtPreparation,
-                            out hostPreparationScratchBytes);
-                        if (hostPreparationScratchBytes <= 0 ||
-                            capacityVersionAtPreparation < 0 ||
-                            admitted != (hostPreparationLease is not null))
-                        {
-                            throw new MarkdownSvgException(
-                                MarkdownSvgFailureReason.WorkerFailure,
-                                "The SVG provider returned invalid preparation admission.");
-                        }
-                        if (!admitted)
-                        {
-                            hostCapacityDeferral = new SvgHostCapacityDeferral(
-                                scratchAdmission,
-                                demand,
-                                loadDemandGeneration,
-                                capacityVersionAtPreparation,
-                                hostPreparationScratchBytes,
-                                RequiresOwnerSlot: false,
-                                OwnerVersionAtDenial: 0,
-                                DemandVersionAtDenial: demandVersionAtPreparation,
-                                VisualDemandEpochAtDenial: Volatile.Read(ref _svgHostVisualDemandEpoch));
-                            // Do not call PrepareSource or park while owning bytes.
-                            // The caller drains the original resolver lease before
-                            // registering the scalar-only capacity waiter.
-                            rawBytes = Array.Empty<byte>();
-                            return new SvgOpenStageResult(null, hostCapacityDeferral);
-                        }
-                    }
-                    {
-                        using var stageTrace = MarkdownSvgStageTrace.Measure(
-                            svgWorkId,
-                            MarkdownSvgWorkStage.SourcePreparation,
-                            svgSourceBytes);
-                        preparationToken.ThrowIfCancellationRequested();
-                        preparation = renderer.PrepareSource(rawBytes, preparationToken);
-                        preparationToken.ThrowIfCancellationRequested();
-                    }
-                    if (preparation is null)
-                        throw new MarkdownSvgException(
-                            MarkdownSvgFailureReason.WorkerFailure,
-                            "The SVG provider returned no source preparation result.");
-                    if (preparation.SanitizedBytes is { Length: 0 } or { Length: > MaxSvgBytes })
-                        preparation = MarkdownSvgSourcePreparation.Reject(
-                            MarkdownSvgFailureReason.ResourceLimitExceeded,
-                            "The SVG provider returned an empty or over-budget source.");
-                    if (preparation.SanitizedBytes is null && preparation.FailureReason is null)
-                        preparation = MarkdownSvgSourcePreparation.Reject(
-                            MarkdownSvgFailureReason.UnsupportedContent,
-                            "The SVG provider did not admit this source.");
-                    if (hostPreparationLease is not null)
-                    {
-                        if (preparation.SanitizedBytes is { } preparedSource &&
-                            !ReferenceEquals(preparedSource, rawBytes))
-                        {
-                            hostPreparedSourceBytes = preparedSource.LongLength;
-                            hostPreparationLease.SetLength(hostPreparedSourceBytes);
-                        }
-                        else
-                        {
-                            // Rejection/identity preparation owns no distinct
-                            // host output. The resolver still owns the input.
-                            hostPreparationLease.Dispose();
-                            hostPreparationLease = null;
-                        }
-                    }
-                    rawBytes = preparation.SanitizedBytes ?? rawBytes;
-                    providerCacheGeneration = renderer.CacheGeneration;
-                    {
-                        using var stageTrace = MarkdownSvgStageTrace.Measure(
-                            svgWorkId,
-                            MarkdownSvgWorkStage.HostPreflight,
-                            svgSourceBytes);
-                        if (preparation.SanitizedBytes is not null &&
-                            IsKnownSvgSource(rawBytes, currentSecurityPartitionHash) &&
-                            _svgContentHash is { } cachedContentHash &&
-                            _svgSecurityPartitionHash is { } cachedPartitionHash)
-                        {
-                            preflight = (
-                                intrinsicHint,
-                                _svgTitle,
-                                _svgDesc,
-                                cachedContentHash,
-                                cachedPartitionHash);
-                        }
-                        else
-                        {
-                            preflight = SvgSourcePreflight.Preflight(
-                                rawBytes,
-                                preparation,
-                                intrinsicHint,
-                                effectiveSecurityPartitionKey,
-                                preparationToken);
-                        }
-                    }
-                    preparationToken.ThrowIfCancellationRequested();
-                }
-                catch (ObjectDisposedException) when (
-                    preparationToken.IsCancellationRequested || sessionLifetimeToken.IsCancellationRequested)
-                {
-                    // A provider/preparation disposal race coinciding with
-                    // linked session/image cancellation is not invalid SVG
-                    // content and must not publish an unavailable image.
-                    throw new OperationCanceledException(preparationToken);
-                }
-            }
-
-            svgFailureCacheKey = SvgCacheKeys.Failure(
-                preflight.ContentHash,
-                preflight.SecurityPartitionHash,
-                rendererIdentity,
-                providerCacheGeneration);
-            if (_resources.Failures.TryGetSvgFailure(
-                    svgFailureCacheKey,
-                    out SvgFailure cachedFailure))
-            {
-                PublishSvgFailure(
-                    cachedFailure.Reason,
-                    cachedFailure.Description,
-                    svgFailureCacheKey,
-                    cachePermanently: true,
-                    renderGeneration);
-                return default;
-            }
-
-            if (preparation.FailureReason is { } preflightFailureReason)
-            {
-                PublishSvgFailure(
-                    preflightFailureReason,
-                    preparation.FailureDescription ??
-                        "The SVG was rejected by host preflight (invalid-content).",
-                    svgFailureCacheKey,
-                    cachePermanently: true,
-                    renderGeneration);
-                return default;
-            }
-
-            cancellationToken.ThrowIfCancellationRequested();
-            MarkdownSvgColor semanticColor = GetSemanticSvgColor();
-            MarkdownSvgColorScheme colorScheme = GetSvgColorScheme();
-            string contentCacheKey = SvgCacheKeys.Content(
-                preflight.ContentHash,
-                preflight.SecurityPartitionHash,
-                rendererIdentity,
-                providerCacheGeneration,
-                Context.Language,
-                colorScheme,
-                semanticColor);
-
-            // The source cache cannot prevent concurrent boxes for the same
-            // remote SVG from all entering the provider: host resolution and
-            // preflight happen independently, and the old bitmap gate was
-            // reached only after OpenAsync. Serialize the first provider open
-            // by admitted content identity, then let followers consume the
-            // completed source + device bitmap cache without waking the
-            // worker. Exact-key admission avoids serializing unrelated content;
-            // the bounded registry falls back to fixed overflow stripes only
-            // during unusually large bursts. Content identity includes the
-            // security partition and conservative rendering inputs, so
-            // unrelated trust domains never share admitted state.
-            if (TryPublishContentCachedSvg(
-                    contentCacheKey,
-                    resolvedCacheKey,
-                    builtInSourceAliasKey,
-                    layoutInvalidated: !metadataWasKnown,
-                    renderGeneration,
-                    bitmapOutputWork))
-            {
-                return default;
-            }
-            if (OutputDeferral.IsBitmapOutputDeferred)
-                return default;
-
-            if (hostAdmission is null)
-            {
-                using var stageTrace = MarkdownSvgStageTrace.Measure(
-                    svgWorkId,
-                    MarkdownSvgWorkStage.HostAdmissionWait,
-                    svgSourceBytes);
-                openAdmissionEntry = await _resources.SvgOpenAdmissions
-                    .AcquireAsync(contentCacheKey, cancellationToken)
-                    .ConfigureAwait(false);
-
-                if (TryPublishContentCachedSvg(
-                        contentCacheKey,
-                        resolvedCacheKey,
-                        builtInSourceAliasKey,
-                        layoutInvalidated: !metadataWasKnown,
-                        renderGeneration,
-                        bitmapOutputWork))
-                {
-                    return default;
-                }
-                if (OutputDeferral.IsBitmapOutputDeferred)
-                    return default;
-
-                await _resources.SvgProviderAdmission.WaitAsync(cancellationToken).ConfigureAwait(false);
-                providerAdmissionHeld = true;
-            }
-
-            // The provider owns the hard deadline for each active worker
-            // transaction. Do not start a second wall-clock deadline around
-            // provider queueing plus Open + Render: a visible badge burst can
-            // legitimately wait behind earlier visible work even though every
-            // individual worker request stays inside its immutable ceiling.
-
-            openRequest = new MarkdownSvgOpenRequest(
-                rawBytes,
-                Context.Language,
-                colorScheme,
-                semanticColor,
-                demand.Priority);
-
-            {
-                using var stageTrace = MarkdownSvgStageTrace.Measure(
-                    svgWorkId,
-                    MarkdownSvgWorkStage.ProviderOpen,
-                    svgSourceBytes);
-                // Open may still read the caller's bytes until it really
-                // completes. Keep the source reservation and image-work lease
-                // across that completion, even if the provider ignores cancel.
-                // The provider owns its bounded transaction deadline; do not
-                // release caller memory on cancellation of just our await.
-                if (hostAdmission is not null)
-                {
-                    long demandVersionAtOpen = demand.Version;
-                    MarkdownSvgAdmissionResult hostResult = await hostAdmission.TryOpenAsync(
-                            openRequest,
-                            demand,
-                            cancellationToken)
-                        .ConfigureAwait(false);
-                    if (hostResult.Status == MarkdownSvgAdmissionStatus.CapacityUnavailable)
-                    {
-                        if (hostResult.Document is not null ||
-                            hostResult.SourceReservationBytes != 0 ||
-                            hostResult.AdmissionDomain is not null ||
-                            hostResult.RequiredSourceReservationBytes <= 0)
-                        {
-                            openedDocument = hostResult.Document;
-                            throw new MarkdownSvgException(
-                                MarkdownSvgFailureReason.WorkerFailure,
-                                "The SVG provider returned an invalid capacity denial.");
-                        }
-
-                        hostCapacityDeferral = new SvgHostCapacityDeferral(
-                            hostAdmission,
-                            demand,
-                            loadDemandGeneration,
-                            hostResult.CapacityVersion,
-                            Math.Max(hostPreparationScratchBytes,
-                                checked(hostPreparedSourceBytes + hostResult.RequiredSourceReservationBytes)),
-                            RequiresOwnerSlot: false,
-                            OwnerVersionAtDenial: 0,
-                            DemandVersionAtDenial: demandVersionAtOpen,
-                            VisualDemandEpochAtDenial: Volatile.Read(ref _svgHostVisualDemandEpoch));
-                        openRequest = null;
-                        preparation = null!;
-                        rawBytes = Array.Empty<byte>();
-                        return new SvgOpenStageResult(null, hostCapacityDeferral);
-                    }
-
-                    // Keep a returned candidate in the outer cleanup owner
-                    // before validating its admission metadata. Malformed or
-                    // foreign-domain handles are still caller-owned and must
-                    // be retired in finally.
-                    openedDocument = hostResult.Document;
-                    if (hostResult.Status != MarkdownSvgAdmissionStatus.Opened ||
-                        openedDocument is null)
-                    {
-                        throw new MarkdownSvgException(
-                            MarkdownSvgFailureReason.WorkerFailure,
-                            "The SVG provider returned no opened document.");
-                    }
-                    admissionDomain = hostResult.AdmissionDomain;
-                    sourceReservationBytes = hostResult.SourceReservationBytes;
-                    if (admissionDomain is null || sourceReservationBytes <= 0 ||
-                        !ReferenceEquals(admissionDomain, hostAdmission.AdmissionDomain))
-                    {
-                        throw new MarkdownSvgException(
-                            MarkdownSvgFailureReason.WorkerFailure,
-                            "The SVG provider returned inconsistent source-admission ownership.");
-                    }
-                    openRequest = null;
-                }
-                else
-                {
-                    openedDocument = await renderer.OpenAsync(openRequest, cancellationToken)
-                        .ConfigureAwait(false);
-                    openRequest = null;
-                }
-            }
-            cancellationToken.ThrowIfCancellationRequested();
-
-            if (hostAdmission is not null && TryPublishContentCachedSvg(
-                    contentCacheKey,
-                    resolvedCacheKey,
-                    builtInSourceAliasKey,
-                    layoutInvalidated: !metadataWasKnown,
-                    renderGeneration,
-                    bitmapOutputWork))
-            {
-                return default;
-            }
-            if (OutputDeferral.IsBitmapOutputDeferred)
-                return default;
-
-            // Open is a candidate, not a replacement of the accepted tile
-            // document. Hold a use until raster completion or UI publication.
-            openedDocumentUse = TryAcquireCandidateSvgDocumentUse(openedDocument, out bool ownershipConflict);
-            if (ownershipConflict)
-            {
-                // A broken provider returned a handle already reserved by
-                // another Open. That owner (or the accepted image) must remain
-                // responsible for it; this request must not dispose its handle.
-                openedDocument = null;
-                throw new MarkdownSvgException(
-                    MarkdownSvgFailureReason.WorkerFailure,
-                    "The SVG renderer returned an already-owned document handle.");
-            }
-            if (openedDocumentUse is null)
-                throw new OperationCanceledException(cancellationToken);
-
-            MarkdownSvgDocumentInfo info = openedDocument.Info ??
-                throw new MarkdownSvgException(
-                    MarkdownSvgFailureReason.WorkerFailure,
-                    "The SVG renderer returned no document metadata.");
-            if (!IsSvgProviderCurrent(renderer, providerCacheGeneration, info.HasText))
-            {
-                PublishSvgGenerationInvalidated(renderGeneration);
-                return default;
-            }
-            Size intrinsic = ResolveIntrinsicSize(info, preflight.Intrinsic);
-            string? description = string.IsNullOrWhiteSpace(info.Description)
-                ? preflight.Desc
-                : SvgSourcePreflight.TrimMetadata(info.Description);
-
-            sourceEntry = new SvgCacheEntry(
-                rawBytes,
-                intrinsic,
-                preflight.Title,
-                description,
-                preflight.ContentHash,
-                preflight.SecurityPartitionHash,
-                info,
-                rendererIdentity,
-                providerCacheGeneration);
-            // Resolver CacheKey is a security/content identity, never a
-            // built-in URI alias. Only authorized built-in reads may publish
-            // entries consumed by pre-resolution and NotHandled fallback.
-            if (!string.IsNullOrEmpty(builtInSourceAliasKey))
-                _resources.SvgSources.Set(builtInSourceAliasKey, sourceEntry);
-            _resources.SvgSources.Set(contentCacheKey, sourceEntry);
-
-            SvgRasterPlan rasterPlan = PickRasterDimensions(intrinsic);
-            int targetWidth = rasterPlan.Width;
-            int targetHeight = rasterPlan.Height;
-            long targetPixels = (long)targetWidth * targetHeight;
-            string bitmapIdentity = BuildSvgBitmapIdentity(
-                preflight.ContentHash,
-                preflight.SecurityPartitionHash,
-                info,
-                targetWidth,
-                targetHeight,
-                colorScheme,
-                semanticColor,
-                rendererIdentity,
-                providerCacheGeneration,
-                rasterPlan.PhysicalViewport);
-
-            // From here only the bounded source cache owns the prepared array.
-            // Render waits and completed async tasks must not pin an evicted
-            // entry beyond that policy. UI publication uses weak source identity;
-            // later bitmap memoization rechecks the exact bounded cache key.
-            var publicationSourceIdentity = new WeakReference<byte[]>(rawBytes);
-            long publicationSourceBytes = rawBytes.LongLength;
-            sourceEntry = null;
-            preparation = null;
-            openRequest = null;
-            rawBytes = Array.Empty<byte>();
-            hostPreparedSourceBytes = 0;
-            hostPreparationLease?.Dispose();
-            hostPreparationLease = null;
-
-            if (rasterPlan.UsesTiles)
-            {
-                if (hostAdmission is not null)
-                {
-                    ownerSlot = _resources.SvgHostAdmission.TryReserveOwnerSlot(
-                        admissionDomain!,
-                        demand,
-                        out long ownerVersionAtDenial);
-                    if (ownerSlot is null)
-                    {
-                        hostCapacityDeferral = new SvgHostCapacityDeferral(
-                            hostAdmission,
-                            demand,
-                            loadDemandGeneration,
-                            hostAdmission.CapacityVersion,
-                            sourceReservationBytes,
-                            RequiresOwnerSlot: true,
-                            OwnerVersionAtDenial: ownerVersionAtDenial,
-                            DemandVersionAtDenial: demand.Version,
-                            VisualDemandEpochAtDenial: Volatile.Read(ref _svgHostVisualDemandEpoch));
-                        rawBytes = Array.Empty<byte>();
-                        preparation = null!;
-                        return new SvgOpenStageResult(null, hostCapacityDeferral);
-                    }
-                }
-            }
-
-            SvgPublicationMetadata metadata = new(
-                publicationSourceIdentity,
-                publicationSourceBytes,
-                renderer,
-                rendererIdentity,
-                providerCacheGeneration,
-                renderGeneration,
-                metadataWasKnown,
-                resolvedCacheKey,
-                svgFailureCacheKey,
-                intrinsic,
-                preflight.Title,
-                description,
-                preflight.ContentHash,
-                preflight.SecurityPartitionHash,
-                info,
-                targetWidth,
-                targetHeight,
-                bitmapIdentity,
-                svgWorkId,
-                PublishRequestedAt: 0,
-                targetPixels,
-                demand,
-                hostAdmission,
-                sourceReservationBytes,
-                ownerSlot,
-                rasterPlan.PhysicalViewport);
-            // Allocate the entire handoff before relinquishing any owner. It
-            // contains no caller bytes/preparation/cache-entry aliases. Pending
-            // disposal and consumed render completion are mutually exclusive.
-            var work = new SvgOpenedRenderWork(
-                this, metadata, contentCacheKey, builtInSourceAliasKey, rasterPlan.UsesTiles,
-                openedDocument, openedDocumentUse, ownerSlot, renderWork,
-                preparationCancellation, cancellationToken, sessionLifetimeToken,
-                openAdmissionEntry, providerAdmissionHeld);
-            renderOwnershipTransferred = true;
-            openedDocument = null;
-            openedDocumentUse = null;
-            ownerSlot = null;
-            preparationCancellation = null;
-            openAdmissionEntry = null;
-            providerAdmissionHeld = false;
-            return new SvgOpenStageResult(work, null);
-        }
-        catch (Exception exception)
-        {
-            HandleSvgWorkFailure(exception, cancellationToken, sessionLifetimeToken,
-                resolvedCacheKey, svgFailureCacheKey, renderGeneration);
-        }
-        finally
-        {
-            // Clear every source-bearing state-machine alias before returning
-            // to the caller, which can then retire its original source lease.
-            sourceEntry = null;
-            openRequest = null;
-            preparation = null;
-            rawBytes = Array.Empty<byte>();
-            if (hostPreparationLease is not null)
-                TryImageCleanup(hostPreparationLease.Dispose);
-            try
-            {
-                _resources.SvgOpenAdmissions.Release(ref openAdmissionEntry);
-            }
-            catch (Exception exception)
-            {
-                RecordImageRetirementFailure(exception);
-            }
-            if (providerAdmissionHeld)
-                TryImageCleanup(() => _resources.SvgProviderAdmission.Release());
-            if (openedDocument is not null)
-                RetireUncommittedSvgDocument(openedDocument);
-            if (openedDocumentUse is not null)
-                TryImageCleanup(openedDocumentUse.Dispose);
-            if (ownerSlot is not null)
-                TryImageCleanup(ownerSlot.Dispose);
-            if (preparationCancellation is not null)
-                TryImageCleanup(preparationCancellation.Dispose);
-            if (!renderOwnershipTransferred)
-                renderWork.Dispose();
-        }
-
-        return new SvgOpenStageResult(null, hostCapacityDeferral);
     }
 
     private Task RenderOpenedSvgAsync(SvgOpenedRenderWork work)
@@ -6629,36 +5963,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             RaiseLoadCompleted(layoutInvalidated: _loadFailed);
         });
     }
-
-    private Size ResolveIntrinsicSize(MarkdownSvgDocumentInfo info, Size fallback)
-    {
-        double? width = SanitizeSvgDimension(info.IntrinsicWidthDips);
-        double? height = SanitizeSvgDimension(info.IntrinsicHeightDips);
-        double? ratio = SanitizeSvgRatio(info.IntrinsicAspectRatio);
-
-        if (width is > 0 && height is null && ratio is > 0)
-            height = width.Value / ratio.Value;
-        else if (height is > 0 && width is null && ratio is > 0)
-            width = height.Value * ratio.Value;
-
-        if (width is null && fallback.Width > 0 && double.IsFinite(fallback.Width))
-            width = fallback.Width;
-        if (height is null && fallback.Height > 0 && double.IsFinite(fallback.Height))
-            height = fallback.Height;
-
-        if (width is > 0 && height is null)
-            height = ratio is > 0 ? width.Value / ratio.Value : width.Value / 2d;
-        if (height is > 0 && width is null)
-            width = ratio is > 0 ? height.Value * ratio.Value : height.Value * 2d;
-
-        return new Size(width ?? 300d, height ?? 150d);
-    }
-
-    private static double? SanitizeSvgDimension(double? value) =>
-        value is > 0 && double.IsFinite(value.Value) ? value : null;
-
-    private static double? SanitizeSvgRatio(double? value) =>
-        value is > 0 && double.IsFinite(value.Value) ? value : null;
 
     private SvgRasterPlan PickRasterDimensions(Size intrinsic)
     {

@@ -25,7 +25,7 @@ public sealed class ImagePublicationCarrierContractTests
     [Fact]
     public void OpenedRenderHandoffContainsNoSourceBearingPayloadFields()
     {
-        Type work = typeof(ImageBox).GetNestedType("SvgOpenedRenderWork", BindingFlags.NonPublic)!;
+        Type work = typeof(SvgOpenedRenderWork);
         FieldInfo[] fields = work.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         Assert.DoesNotContain(fields, field => field.FieldType == typeof(byte[]) ||
             field.FieldType == typeof(Memory<byte>) || field.FieldType == typeof(ReadOnlyMemory<byte>) ||

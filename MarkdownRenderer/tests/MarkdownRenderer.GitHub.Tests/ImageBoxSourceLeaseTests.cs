@@ -531,15 +531,13 @@ public sealed class ImageBoxSourceLeaseTests
         try
         {
             image.Measure(80);
-            MethodInfo open = typeof(ImageBox).GetMethod("OpenSvgSourceAsync",
-                BindingFlags.Instance | BindingFlags.NonPublic)!;
-            object operation = open.Invoke(image, [CreateSvgBytes("unconsumed-handoff"),
-                default(Windows.Foundation.Size), image.Url, null,
-                new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Visible), 0])!;
-            await ((Task)operation).WaitAsync(TimeSpan.FromSeconds(5));
-            object result = operation.GetType().GetProperty("Result")!.GetValue(operation)!;
-            openedWork = Assert.IsAssignableFrom<IDisposable>(
-                result.GetType().GetProperty("Work")!.GetValue(result));
+            var opener = new SvgSourceOpener(image, image.Context, ImageResourceScope.Shared,
+                image.OutputAdmission, image.OutputDeferral, image.Url);
+            SvgOpenStageResult result = await opener.OpenAsync(CreateSvgBytes("unconsumed-handoff"),
+                    default, image.Url, null,
+                    new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Visible), 0)
+                .WaitAsync(TimeSpan.FromSeconds(5));
+            openedWork = Assert.IsAssignableFrom<IDisposable>(result.Work);
             Assert.Equal(1, renderer.OpenCount);
             Assert.Equal(0, renderer.RenderCount);
             Assert.Equal(0, renderer.DocumentDisposeCount);
