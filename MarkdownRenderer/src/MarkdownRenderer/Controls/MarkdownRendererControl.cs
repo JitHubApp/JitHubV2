@@ -91,6 +91,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private readonly EmbedRealization _embeds;
     private readonly CodeBlockHighlighting _highlighting;
     private readonly CodeBlockClipboard _codeBlockClipboard;
+    private readonly PresentationInputChanges _inputChanges;
     private readonly SelectionAdornerPresenter _adorner;
     private readonly SelectionCommands _selectionCommands;
     private readonly SelectionDragShield _dragShield;
@@ -204,7 +205,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <summary>Dependency property backing <see cref="StringProvider"/>.</summary>
     public static readonly DependencyProperty StringProviderProperty =
         Register<IMarkdownStringProvider>(nameof(StringProvider), null,
-            (d, _) => ((MarkdownRendererControl)d).OnStringProviderChanged());
+            (d, _) => ((MarkdownRendererControl)d)._inputChanges.OnStringProviderChanged());
 
     /// <summary>Gets or sets a host provider for localized visible and automation strings.</summary>
     public IMarkdownStringProvider? StringProvider
@@ -227,7 +228,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <summary>Dependency property backing <see cref="HostedElementFactory"/>.</summary>
     public static readonly DependencyProperty HostedElementFactoryProperty =
         Register<IMarkdownHostedElementFactory>(nameof(HostedElementFactory), null,
-            (d, _) => ((MarkdownRendererControl)d).OnHostedElementFactoryChanged());
+            (d, _) => ((MarkdownRendererControl)d)._inputChanges.OnHostedElementFactoryChanged());
 
     /// <summary>Gets or sets the viewport-aware factory for declarative hosted content.</summary>
     public IMarkdownHostedElementFactory? HostedElementFactory
@@ -400,7 +401,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <summary>Dependency property backing <see cref="CodeBlockCopyButtonLabel"/>.</summary>
     public static readonly DependencyProperty CodeBlockCopyButtonLabelProperty =
         Register<string>(nameof(CodeBlockCopyButtonLabel), null,
-            (d, _) => ((MarkdownRendererControl)d).UpdateCodeBlockCopyButtonLabels());
+            (d, _) => ((MarkdownRendererControl)d)._embeds.UpdateCodeBlockCopyButtonLabels());
 
     /// <summary>
     /// Gets or sets the accessible label and tooltip text used for code-block copy buttons.
@@ -415,7 +416,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <summary>Dependency property backing <see cref="CodeBlockCopiedButtonLabel"/>.</summary>
     public static readonly DependencyProperty CodeBlockCopiedButtonLabelProperty =
         Register<string>(nameof(CodeBlockCopiedButtonLabel), null,
-            (d, _) => ((MarkdownRendererControl)d).UpdateCodeBlockCopyButtonLabels());
+            (d, _) => ((MarkdownRendererControl)d)._embeds.UpdateCodeBlockCopyButtonLabels());
 
     /// <summary>
     /// Gets or sets the accessible label and tooltip text announced briefly after a code block is copied.
@@ -430,7 +431,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <summary>Dependency property backing <see cref="CodeBlockCopyButtonStyle"/>.</summary>
     public static readonly DependencyProperty CodeBlockCopyButtonStyleProperty =
         Register<Style>(nameof(CodeBlockCopyButtonStyle), null,
-            (d, _) => ((MarkdownRendererControl)d).UpdateCodeBlockCopyButtonStyles());
+            (d, e) => ((MarkdownRendererControl)d)._embeds.UpdateCodeBlockCopyButtonStyles((Style?)e.NewValue));
 
     /// <summary>Gets or sets the host-provided style for code-block copy buttons.</summary>
     public Style? CodeBlockCopyButtonStyle
@@ -468,7 +469,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <summary>Dependency property backing <see cref="CodeHighlighter"/>.</summary>
     public static readonly DependencyProperty CodeHighlighterProperty =
         Register<ICodeHighlighter>(nameof(CodeHighlighter), null,
-            static (d, e) => ((MarkdownRendererControl)d).OnCodeHighlighterChanged(e));
+            static (d, e) => ((MarkdownRendererControl)d)._inputChanges.OnCodeHighlighterChanged(e));
 
     /// <summary>
     /// Gets or sets the stable asynchronous, cancellation-aware code highlighter.
@@ -768,16 +769,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
             ? _localization.Resolve(MarkdownStringKeys.CopyCode, MarkdownLocalizedStrings.CodeBlockCopyAutomationName)
             : CodeBlockCopyButtonLabel!;
 
-    private void OnStringProviderChanged()
-    {
-        _handles.UpdateLocalization();
-        RequestRebuild(RebuildReason.Restyle);
-    }
-
-    private void UpdateCodeBlockCopyButtonLabels() => _embeds.UpdateCodeBlockCopyButtonLabels();
-
-    private void UpdateCodeBlockCopyButtonStyles() => _embeds.UpdateCodeBlockCopyButtonStyles(CodeBlockCopyButtonStyle);
-
     internal void CopyCodeBlockFromAutomation(Layout.Boxes.CodeBlockBox box) => _codeBlockClipboard.CopyFromAutomation(box);
 
     internal DocumentRange CurrentSelectionRange => _selection.Range;
@@ -858,6 +849,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         var imageSubscriptions = new ImageSubscriptions(imageHosts, _lifetime, _published, imagePlans);
         var imageResidency = new ImageResidency(imageHosts, _lifetime, _published, imagePlans, _embeds);
         _highlighting = new CodeBlockHighlighting(embedHosts, _lifetime, _published, _viewport, _embeds);
+        _inputChanges = new PresentationInputChanges(_lifetime, _rebuild, _embeds, _highlighting, _handles);
         var focus = new KeyboardFocusModel(_lifetime, _published);
         var focusGeometry = new FocusGeometryReader(_lifetime, _published);
         var focusRing = new FocusRingPresenter(focusHosts, focus, focusGeometry, _surface, _lifetime, _published, DispatcherQueue);
@@ -981,29 +973,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     internal bool TryGetViewport(out double top, out double height, out double width)
         => _viewport.TryGet(out top, out height, out width);
-
-    private void OnHostedElementFactoryChanged()
-    {
-        _embeds.ClearHostedElementFallbacks();
-        RequestRebuild(RebuildReason.Full);
-    }
-
-    private void OnCodeHighlighterChanged(DependencyPropertyChangedEventArgs e)
-        => OnEffectiveCodeHighlighterChanged(
-            e.OldValue as ICodeHighlighter,
-            e.NewValue as ICodeHighlighter);
-
-    private void OnEffectiveCodeHighlighterChanged(
-        ICodeHighlighter? previous,
-        ICodeHighlighter? current)
-    {
-        if (ReferenceEquals(previous, current))
-            return;
-
-        _highlighting.Retire(restart: !_lifetime.IsUnloaded && !_lifetime.IsDisposed);
-        _highlighting.ClearCache();
-        RequestRebuild(RebuildReason.Full);
-    }
 
     /// <summary>
     /// Copies the active selection to the clipboard.

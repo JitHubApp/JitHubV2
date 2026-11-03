@@ -58,7 +58,7 @@
     },
     {
       "path": "src/MarkdownRenderer/Controls/MarkdownRendererControl.cs",
-      "lines": 1176,
+      "lines": 1145,
       "reason": "Composition root: dependency properties, the explicit host adapters its owners call, and the commit, recovery and lifecycle sequencing across those owners. Structure step 3d moved its logic into owners (7,795 to 3,825 lines); this cap holds that."
     },
     {
