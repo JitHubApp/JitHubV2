@@ -24,6 +24,7 @@ public sealed class MermaidRenderer : IDisposable
     private readonly MermaidSceneCache _sceneCache;
     private readonly MermaidRenderLifetime _lifetime;
     private readonly CultureInfo _diagnosticCulture;
+    private readonly MermaidRenderDiagnostics _diagnostics;
     private readonly object _engineSync = new();
     private readonly string? _validationError;
     private MermaidEngineHandle? _engine;
@@ -39,6 +40,7 @@ public sealed class MermaidRenderer : IDisposable
             DiagnosticCulture = _diagnosticCulture,
         };
         _fontCatalog = fontCatalog ?? MermaidFontCatalog.Default;
+        _diagnostics = new MermaidRenderDiagnostics(_options);
         _options.TryValidate(out _validationError);
         MermaidRenderBudgets budgets = _options.Budgets ?? MermaidRenderBudgets.Default;
         int concurrency = Math.Clamp(budgets.MaxConcurrentRenders, 1, 64);
@@ -131,14 +133,14 @@ public sealed class MermaidRenderer : IDisposable
                         diagnosticCulture,
                         scheduleNativeRender);
                 },
-                () => OverloadedResult(source, diagnosticCulture),
-                () => TimedOutResult(source, diagnosticCulture),
+                () => _diagnostics.OverloadedResult(source, diagnosticCulture),
+                () => _diagnostics.TimedOutResult(source, diagnosticCulture),
                 deadlineTimestamp,
                 requestCancellation.Token).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             return deadlineCancellation.IsCancellationRequested &&
                 result.Status == MermaidRenderStatus.Success
-                    ? TimedOutResult(source, diagnosticCulture)
+                    ? _diagnostics.TimedOutResult(source, diagnosticCulture)
                     : result;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -148,7 +150,7 @@ public sealed class MermaidRenderer : IDisposable
         }
         catch (OperationCanceledException) when (deadlineCancellation.IsCancellationRequested)
         {
-            return TimedOutResult(source, diagnosticCulture);
+            return _diagnostics.TimedOutResult(source, diagnosticCulture);
         }
         finally
         {
@@ -172,7 +174,7 @@ public sealed class MermaidRenderer : IDisposable
         sourceByteLength = 0;
         if (source is null)
         {
-            return Result(
+            return _diagnostics.Result(
                 MermaidRenderStatus.InvalidInput,
                 string.Empty,
                 "MMR0003",
@@ -183,7 +185,7 @@ public sealed class MermaidRenderer : IDisposable
 
         if (_validationError is not null)
         {
-            return Result(
+            return _diagnostics.Result(
                 MermaidRenderStatus.InvalidOptions,
                 source,
                 "MMR0001",
@@ -194,7 +196,7 @@ public sealed class MermaidRenderer : IDisposable
 
         if (_options.Layout == MermaidLayoutMode.Elk)
         {
-            return Result(
+            return _diagnostics.Result(
                 MermaidRenderStatus.UnsupportedLayout,
                 source,
                 "MMR0002",
@@ -205,7 +207,7 @@ public sealed class MermaidRenderer : IDisposable
 
         if (source.Length > _options.Budgets.MaxSourceBytes)
         {
-            return SourceTooLargeResult(source, diagnosticCulture);
+            return _diagnostics.SourceTooLargeResult(source, diagnosticCulture);
         }
 
         // Start the request deadline before UTF-8 conversion and cache-key
@@ -218,7 +220,7 @@ public sealed class MermaidRenderer : IDisposable
         }
         catch (EncoderFallbackException)
         {
-            return Result(
+            return _diagnostics.Result(
                 MermaidRenderStatus.InvalidInput,
                 source,
                 "MMR0003",
@@ -229,7 +231,7 @@ public sealed class MermaidRenderer : IDisposable
 
         if (sourceByteLength > _options.Budgets.MaxSourceBytes)
         {
-            return SourceTooLargeResult(source, diagnosticCulture);
+            return _diagnostics.SourceTooLargeResult(source, diagnosticCulture);
         }
 
         return null;
@@ -269,7 +271,7 @@ public sealed class MermaidRenderer : IDisposable
                 operationCancellation.Token.ThrowIfCancellationRequested();
                 if (!runtime.IsAvailable)
                 {
-                    return Result(
+                    return _diagnostics.Result(
                         MermaidRenderStatus.EngineUnavailable,
                         source,
                         "MMR0006",
@@ -280,7 +282,7 @@ public sealed class MermaidRenderer : IDisposable
 
                 uint nativeDeadlineMilliseconds = GetNativeDeadlineMilliseconds(deadlineTimestamp);
                 if (nativeDeadlineMilliseconds == 0)
-                    return TimedOutResult(source, diagnosticCulture);
+                    return _diagnostics.TimedOutResult(source, diagnosticCulture);
 
                 MermaidRenderResult result;
                 if (scheduleNativeRender)
@@ -313,7 +315,7 @@ public sealed class MermaidRenderer : IDisposable
             }
             catch (OperationCanceledException) when (operationCancellation.IsCancellationRequested)
             {
-                return CooperativeCancellationResult(
+                return _diagnostics.CooperativeCancellationResult(
                     source,
                     cancellationToken,
                     deadlineCancellation.Token,
@@ -348,13 +350,13 @@ public sealed class MermaidRenderer : IDisposable
             operationCancellation.ThrowIfCancellationRequested();
             if (status != NativeStatus.Success || engine is null)
             {
-                return NativeFailure(status, source, diagnosticCulture);
+                return _diagnostics.NativeFailure(status, source, diagnosticCulture);
             }
 
             status = NativeMethods.CancellationCreate(out nint rawCancellation);
             if (status != NativeStatus.Success || rawCancellation == 0)
             {
-                return NativeFailure(status, source, diagnosticCulture);
+                return _diagnostics.NativeFailure(status, source, diagnosticCulture);
             }
 
             using var nativeCancellation = new MermaidCancellationHandle(rawCancellation);
@@ -390,7 +392,7 @@ public sealed class MermaidRenderer : IDisposable
             }
             catch (OperationCanceledException) when (operationCancellation.IsCancellationRequested)
             {
-                return CooperativeCancellationResult(
+                return _diagnostics.CooperativeCancellationResult(
                     source,
                     producerCancellation,
                     deadlineCancellation,
@@ -399,7 +401,7 @@ public sealed class MermaidRenderer : IDisposable
         }
         catch (BadImageFormatException)
         {
-            return Result(
+            return _diagnostics.Result(
                 MermaidRenderStatus.EngineUnavailable,
                 source,
                 "MMR0006",
@@ -409,7 +411,7 @@ public sealed class MermaidRenderer : IDisposable
         }
         catch (Exception exception) when (exception is DllNotFoundException or EntryPointNotFoundException or FileLoadException)
         {
-            return Result(
+            return _diagnostics.Result(
                 MermaidRenderStatus.EngineUnavailable,
                 source,
                 "MMR0006",
@@ -433,15 +435,15 @@ public sealed class MermaidRenderer : IDisposable
         if (status is NativeStatus.Cancelled or NativeStatus.TimedOut)
         {
             return status == NativeStatus.TimedOut
-                ? TimedOutResult(source, diagnosticCulture)
-                : CooperativeCancellationResult(
+                ? _diagnostics.TimedOutResult(source, diagnosticCulture)
+                : _diagnostics.CooperativeCancellationResult(
                     source,
                     producerCancellation,
                     deadlineCancellation,
                     diagnosticCulture);
         }
 
-        return NativeFailure(status, source, diagnosticCulture);
+        return _diagnostics.NativeFailure(status, source, diagnosticCulture);
     }
 
     /// <summary>
@@ -461,7 +463,7 @@ public sealed class MermaidRenderer : IDisposable
         if (status != NativeStatus.Success || data == 0 || nativeLength > (uint)_options.Budgets.MaxSceneBytes || nativeLength > (uint)int.MaxValue)
         {
             return status == NativeStatus.BudgetExceeded || nativeLength > (uint)_options.Budgets.MaxSceneBytes
-                ? Result(
+                ? _diagnostics.Result(
                     MermaidRenderStatus.BudgetExceeded,
                     source,
                     "MMR0008",
@@ -469,7 +471,7 @@ public sealed class MermaidRenderer : IDisposable
                     diagnosticCulture,
                     "The native scene exceeds MaxSceneBytes ({0} bytes).",
                     _options.Budgets.MaxSceneBytes)
-                : NativeFailure(status, source, diagnosticCulture);
+                : _diagnostics.NativeFailure(status, source, diagnosticCulture);
         }
 
         int length = checked((int)nativeLength);
@@ -482,7 +484,7 @@ public sealed class MermaidRenderer : IDisposable
             operationCancellation);
         if (!decoded.IsSuccess)
         {
-            return Result(
+            return _diagnostics.Result(
                 decoded.Status == MermaidSceneDecodeStatus.BudgetExceeded ? MermaidRenderStatus.BudgetExceeded : MermaidRenderStatus.InvalidScene,
                 source,
                 "MMR0009",
@@ -492,7 +494,7 @@ public sealed class MermaidRenderer : IDisposable
         }
 
         operationCancellation.ThrowIfCancellationRequested();
-        MermaidScene scene = LocalizeSceneDiagnostics(decoded.Scene!, diagnosticCulture);
+        MermaidScene scene = _diagnostics.LocalizeSceneDiagnostics(decoded.Scene!, diagnosticCulture);
         return new MermaidRenderResult(
             MermaidRenderStatus.Success,
             scene,
@@ -579,164 +581,12 @@ public sealed class MermaidRenderer : IDisposable
         cancellationToken.ThrowIfCancellationRequested();
     }
 
-    private MermaidRenderResult CooperativeCancellationResult(
-        string source,
-        CancellationToken producerCancellation,
-        CancellationToken deadlineCancellation,
-        CultureInfo diagnosticCulture)
-    {
-        bool timedOut = deadlineCancellation.IsCancellationRequested &&
-            !producerCancellation.IsCancellationRequested;
-        return Result(
-            timedOut ? MermaidRenderStatus.TimedOut : MermaidRenderStatus.Cancelled,
-            source,
-            timedOut ? "MMR0007" : "MMR0005",
-            timedOut ? MermaidStringKeys.RenderTimedOut : MermaidStringKeys.RenderCancelled,
-            diagnosticCulture,
-            timedOut
-                ? "The Mermaid render exceeded its end-to-end deadline."
-                : "The Mermaid render was cancelled.");
-    }
-
-    private MermaidRenderResult NativeFailure(
-        NativeStatus status,
-        string source,
-        CultureInfo diagnosticCulture) => status switch
-    {
-        NativeStatus.InvalidInput => Result(
-            MermaidRenderStatus.InvalidInput,
-            source,
-            "MMR0010",
-            MermaidStringKeys.NativeSourceRejected,
-            diagnosticCulture,
-            "The native Mermaid engine rejected the source."),
-        NativeStatus.BudgetExceeded => Result(
-            MermaidRenderStatus.BudgetExceeded,
-            source,
-            "MMR0011",
-            MermaidStringKeys.NativeBudgetExceeded,
-            diagnosticCulture,
-            "The native Mermaid engine exhausted a configured budget."),
-        NativeStatus.UnsupportedLayout => Result(
-            MermaidRenderStatus.UnsupportedLayout,
-            source,
-            "MMR0002",
-            MermaidStringKeys.NativeLayoutUnsupported,
-            diagnosticCulture,
-            "The requested native layout is unsupported."),
-        NativeStatus.TimedOut => TimedOutResult(source, diagnosticCulture),
-        NativeStatus.Cancelled => Result(
-            MermaidRenderStatus.Cancelled,
-            source,
-            "MMR0005",
-            MermaidStringKeys.RenderCancelled,
-            diagnosticCulture,
-            "The Mermaid render was cancelled."),
-        NativeStatus.IncompatibleAbi => Result(
-            MermaidRenderStatus.EngineUnavailable,
-            source,
-            "MMR0006",
-            MermaidStringKeys.EngineIncompatibleAbi,
-            diagnosticCulture,
-            "The installed native Mermaid engine has an incompatible ABI."),
-        NativeStatus.InvalidScene => Result(
-            MermaidRenderStatus.InvalidScene,
-            source,
-            "MMR0009",
-            MermaidStringKeys.SceneInvalid,
-            diagnosticCulture,
-            "The native Mermaid engine produced a scene that could not be represented safely."),
-        _ => Result(
-            MermaidRenderStatus.NativeFailure,
-            source,
-            "MMR0012",
-            MermaidStringKeys.NativeFailure,
-            diagnosticCulture,
-            "The native Mermaid engine failed without producing a scene."),
-    };
-
-    private MermaidRenderResult SourceTooLargeResult(string source, CultureInfo diagnosticCulture) =>
-        Result(
-            MermaidRenderStatus.BudgetExceeded,
-            source,
-            "MMR0004",
-            MermaidStringKeys.SourceTooLarge,
-            diagnosticCulture,
-            "The Mermaid source exceeds MaxSourceBytes ({0} UTF-8 bytes).",
-            _options.Budgets.MaxSourceBytes);
-
-    private MermaidRenderResult OverloadedResult(string source, CultureInfo diagnosticCulture) =>
-        Result(
-            MermaidRenderStatus.Overloaded,
-            source,
-            "MMR0013",
-            MermaidStringKeys.RenderOverloaded,
-            diagnosticCulture,
-            "The Mermaid renderer admission limit is full; retry after an outstanding render completes.");
-
-    private MermaidRenderResult TimedOutResult(string source, CultureInfo diagnosticCulture) =>
-        Result(
-            MermaidRenderStatus.TimedOut,
-            source,
-            "MMR0007",
-            MermaidStringKeys.RenderTimedOut,
-            diagnosticCulture,
-            "The Mermaid render exceeded its end-to-end deadline.");
-
-    private MermaidRenderResult Result(
-        MermaidRenderStatus status,
-        string source,
-        string code,
-        string resourceKey,
-        CultureInfo diagnosticCulture,
-        string englishFormat,
-        params object?[] arguments) =>
-        new(
-            status,
-            null,
-            [new MermaidDiagnostic(
-                code,
-                MermaidDiagnosticSeverity.Error,
-                ResolveString(resourceKey, diagnosticCulture, englishFormat, arguments))],
-            source);
-
     internal string ResolveString(
         string resourceKey,
         CultureInfo diagnosticCulture,
         string englishFormat,
         params object?[] arguments) =>
-        MermaidStringResolver.Resolve(
-            _options.StringProvider,
-            resourceKey,
-            diagnosticCulture,
-            englishFormat,
-            arguments);
-
-    private MermaidScene LocalizeSceneDiagnostics(
-        MermaidScene scene,
-        CultureInfo diagnosticCulture)
-    {
-        if (_options.StringProvider is null || scene.Diagnostics.Count == 0)
-            return scene;
-
-        var localized = new MermaidDiagnostic[scene.Diagnostics.Count];
-        for (int index = 0; index < localized.Length; index++)
-        {
-            MermaidDiagnostic diagnostic = scene.Diagnostics[index];
-            localized[index] = diagnostic with
-            {
-                Message = ResolveString(
-                    MermaidStringKeys.NativeDiagnostic,
-                    diagnosticCulture,
-                    "{1}",
-                    diagnostic.Code,
-                    diagnostic.Message),
-            };
-        }
-
-        return scene.WithDiagnostics(localized);
-    }
-
+        _diagnostics.ResolveString(resourceKey, diagnosticCulture, englishFormat, arguments);
     private static uint GetNativeDeadlineMilliseconds(long deadlineTimestamp)
     {
         TimeSpan remaining = MermaidDeadline.GetRemaining(deadlineTimestamp);
