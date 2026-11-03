@@ -342,19 +342,14 @@ public sealed class ImageBoxSvgRendererTests
             Set("_svgFallbackTiles", fallback);
             Set("_svgFallbackWidthPixels", columns * tilePixels);
             Set("_svgFallbackHeightPixels", rows * tilePixels);
-            var paint = typeof(ImageBox).GetMethod("PaintSvgTileLayerNoLock",
-                BindingFlags.Instance | BindingFlags.NonPublic)!.CreateDelegate<
-                Action<CanvasDrawingSession,
-                    Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease>,
-                    Rect, Rect, int, int, MarkdownSvgPhysicalViewport?, bool>>(image);
             var destination = new Rect(0, 0, columns * displayTile, rows * displayTile);
             using var target = new CanvasRenderTarget(device,
                 columns * displayTile, rows * displayTile, 96);
             using (CanvasDrawingSession drawing = target.CreateDrawingSession())
             {
                 drawing.Clear(background);
-                paint(drawing, current, destination, destination,
-                    columns * tilePixels, rows * tilePixels, null, true);
+                SvgTilePainter.PaintLayer(drawing, current, destination, destination,
+                    columns * tilePixels, rows * tilePixels, null, image, useFallbackTiles: true);
                 Assert.Equal(CanvasAntialiasing.Antialiased, drawing.Antialiasing);
             }
             Color[] pixels = target.GetPixelColors();

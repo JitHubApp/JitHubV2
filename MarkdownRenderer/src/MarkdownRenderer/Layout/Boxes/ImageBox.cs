@@ -46,7 +46,7 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// device-scoped bitmap leases. SVG text remains inside the provider render so
 /// transforms, clipping, bidi, and text paths are preserved.
 /// </summary>
-internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometrySource, IImageBitmapOutputHost
+internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometrySource, IImageBitmapOutputHost, ISvgTileGapFill
 {
     // Selected artwork keeps the same translucent tint as Math and
     // Mermaid scenes instead of an opaque block-wide band.
@@ -5914,7 +5914,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
         lock (_svgTileLock)
         {
-            PaintSvgTileLayerNoLock(
+            SvgTilePainter.PaintLayer(
                 ds,
                 _svgTiles,
                 destination,
@@ -5922,10 +5922,32 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 _svgTileCacheWidthPixels,
                 _svgTileCacheHeightPixels,
                 _svgTileCachePhysicalViewport,
+                this,
                 useFallbackTiles: true);
         }
 
         QueueVisibleSvgTiles(destination, viewport);
+    }
+
+    // The caller holds _svgTileLock. A hole in the new tile grid shows the
+    // fallback grid, then the previous whole bitmap, then the placeholder.
+    void ISvgTileGapFill.FillSvgTileGap(CanvasDrawingSession ds, Rect destination, Rect gap, bool useFallbackTiles)
+    {
+        if (useFallbackTiles && _svgFallbackTiles is { Count: > 0 } fallback &&
+            _svgFallbackWidthPixels > 0 && _svgFallbackHeightPixels > 0)
+        {
+            SvgTilePainter.PaintLayer(ds, fallback, destination, gap,
+                _svgFallbackWidthPixels, _svgFallbackHeightPixels,
+                _svgFallbackPhysicalViewport, this, useFallbackTiles: false);
+        }
+        else if (_bitmap is { } previousBitmap)
+        {
+            PaintWholeBitmap(ds, previousBitmap, destination);
+        }
+        else
+        {
+            PaintPlaceholder(ds, destination);
+        }
     }
 
     private void PaintWholeBitmap(CanvasDrawingSession ds, CanvasBitmap bitmap, Rect destination)
@@ -5940,43 +5962,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             destination.Height *= bitmap.SizeInPixels.Height / physical.Height;
         }
         ds.DrawImage(bitmap, destination);
-    }
-
-    private static void DrawSvgTileSetNoLock(
-        CanvasDrawingSession ds,
-        Dictionary<SvgTileKey, SharedCanvasBitmapCache.Lease> tiles,
-        Rect destination,
-        Rect viewport,
-        int widthPixels,
-        int heightPixels,
-        MarkdownSvgPhysicalViewport? physicalViewport)
-    {
-        if (widthPixels <= 0 || heightPixels <= 0)
-            return;
-
-        double physicalWidth = physicalViewport?.Width ?? widthPixels;
-        double physicalHeight = physicalViewport?.Height ?? heightPixels;
-        double scaleX = destination.Width / physicalWidth;
-        double scaleY = destination.Height / physicalHeight;
-        foreach (KeyValuePair<SvgTileKey, SharedCanvasBitmapCache.Lease> tile in tiles)
-        {
-            Rect tileDestination = new(
-                destination.X + tile.Key.X * scaleX,
-                destination.Y + tile.Key.Y * scaleY,
-                tile.Key.Width * scaleX,
-                tile.Key.Height * scaleY);
-            if (tileDestination.Right < viewport.Left ||
-                tileDestination.Left > viewport.Right ||
-                tileDestination.Bottom < viewport.Top ||
-                tileDestination.Top > viewport.Bottom)
-            {
-                continue;
-            }
-
-            // As with whole rasters, the worker owns antialiasing at the outer
-            // fractional viewport. Do not multiply the final tile's coverage.
-            ds.DrawImage(tile.Value.Bitmap, tileDestination);
-        }
     }
 
     private void QueueVisibleSvgTiles(Rect destination, Rect viewport)
@@ -5995,7 +5980,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             return;
         }
 
-        Rect visible = IntersectRects(destination, viewport);
+        Rect visible = SvgTilePainter.IntersectRects(destination, viewport);
         if (visible.Width <= 0 || visible.Height <= 0)
         {
             if (!plan.TryBeginViewportMutation())
@@ -7381,15 +7366,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         Task sourceRetirement = CancellationTokenSourceRetirement.DisposeAfter(source, callbacks);
         TrackDetachedImageWork(sourceRetirement, failRetirementOnFault: true);
         return callbacks;
-    }
-
-    private static Rect IntersectRects(Rect left, Rect right)
-    {
-        double x = Math.Max(left.Left, right.Left);
-        double y = Math.Max(left.Top, right.Top);
-        double width = Math.Max(0, Math.Min(left.Right, right.Right) - x);
-        double height = Math.Max(0, Math.Min(left.Bottom, right.Bottom) - y);
-        return new Rect(x, y, width, height);
     }
 
     private bool TryPublishCachedSvgBitmap(

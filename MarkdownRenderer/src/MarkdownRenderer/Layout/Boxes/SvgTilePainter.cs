@@ -8,17 +8,22 @@ using SvgTileKey = (int X, int Y, int Width, int Height);
 
 namespace MarkdownRenderer.Layout.Boxes;
 
-internal sealed partial class ImageBox
+/// <summary>
+/// Paints a grid of SVG tiles. Holes in the grid are clipped and handed to an
+/// <see cref="ISvgTileGapFill"/>, so transparent tiles never overlay older
+/// content.
+/// </summary>
+internal static class SvgTilePainter
 {
     // A transparent replacement tile is not an overlay. Paint older content
     // only in holes in the new tile grid, otherwise loading chrome or an old
     // theme shows through fully rendered transparent pixels indefinitely.
-    // The caller holds _svgTileLock throughout both coverage and drawing.
-    private void PaintSvgTileLayerNoLock(
+    // The caller holds its tile lock throughout both coverage and drawing.
+    internal static void PaintLayer(
         CanvasDrawingSession ds,
         Dictionary<SvgTileKey, SharedCanvasBitmapCache.Lease> tiles,
         Rect destination, Rect viewport, int widthPixels, int heightPixels,
-        MarkdownSvgPhysicalViewport? physicalViewport, bool useFallbackTiles)
+        MarkdownSvgPhysicalViewport? physicalViewport, ISvgTileGapFill fill, bool useFallbackTiles)
     {
         Rect visible = IntersectRects(destination, viewport);
         if (visible.Width <= 0 || visible.Height <= 0)
@@ -60,26 +65,26 @@ internal sealed partial class ImageBox
             {
                 double rowTop = coverage[index].Top;
                 double rowBottom = coverage[index].Bottom;
-                PaintSvgTileGap(ds, destination,
-                    visible.Left, y, visible.Right, rowTop, useFallbackTiles);
+                PaintGap(ds, destination,
+                    visible.Left, y, visible.Right, rowTop, fill, useFallbackTiles);
                 double x = visible.Left;
                 do
                 {
                     Rect covered = coverage[index++];
-                    PaintSvgTileGap(ds, destination,
-                        x, rowTop, covered.Left, rowBottom, useFallbackTiles);
+                    PaintGap(ds, destination,
+                        x, rowTop, covered.Left, rowBottom, fill, useFallbackTiles);
                     x = covered.Right;
                 }
                 while (index < count && coverage[index].Top == rowTop);
 
-                PaintSvgTileGap(ds, destination,
-                    x, rowTop, visible.Right, rowBottom, useFallbackTiles);
+                PaintGap(ds, destination,
+                    x, rowTop, visible.Right, rowBottom, fill, useFallbackTiles);
                 y = rowBottom;
             }
-            PaintSvgTileGap(ds, destination,
-                visible.Left, y, visible.Right, visible.Bottom, useFallbackTiles);
+            PaintGap(ds, destination,
+                visible.Left, y, visible.Right, visible.Bottom, fill, useFallbackTiles);
 
-            DrawSvgTileSetNoLock(ds, tiles, destination, viewport,
+            DrawTileSet(ds, tiles, destination, viewport,
                 widthPixels, heightPixels, physicalViewport);
         }
         finally
@@ -89,8 +94,8 @@ internal sealed partial class ImageBox
         }
     }
 
-    private void PaintSvgTileGap(CanvasDrawingSession ds, Rect destination,
-        double left, double top, double right, double bottom, bool useFallbackTiles)
+    private static void PaintGap(CanvasDrawingSession ds, Rect destination,
+        double left, double top, double right, double bottom, ISvgTileGapFill fill, bool useFallbackTiles)
     {
         // Adjacent physical edges can differ by one floating-point unit after
         // DIP mapping. Do not construct an invalid negative-sized WinRT Rect.
@@ -122,21 +127,7 @@ internal sealed partial class ImageBox
             // Keep restoration inside the lease's failure scope as well:
             // device loss here must not abandon an already-pushed clip.
             ds.Antialiasing = originalAntialiasing;
-            if (useFallbackTiles && _svgFallbackTiles is { Count: > 0 } fallback &&
-                _svgFallbackWidthPixels > 0 && _svgFallbackHeightPixels > 0)
-            {
-                PaintSvgTileLayerNoLock(ds, fallback, destination, gap,
-                    _svgFallbackWidthPixels, _svgFallbackHeightPixels,
-                    _svgFallbackPhysicalViewport, useFallbackTiles: false);
-            }
-            else if (_bitmap is { } previousBitmap)
-            {
-                PaintWholeBitmap(ds, previousBitmap, destination);
-            }
-            else
-            {
-                PaintPlaceholder(ds, destination);
-            }
+            fill.FillSvgTileGap(ds, destination, gap, useFallbackTiles);
         }
         catch (Exception primary)
         {
@@ -144,5 +135,51 @@ internal sealed partial class ImageBox
             throw;
         }
         clip.Close();
+    }
+
+    internal static void DrawTileSet(
+        CanvasDrawingSession ds,
+        Dictionary<SvgTileKey, SharedCanvasBitmapCache.Lease> tiles,
+        Rect destination,
+        Rect viewport,
+        int widthPixels,
+        int heightPixels,
+        MarkdownSvgPhysicalViewport? physicalViewport)
+    {
+        if (widthPixels <= 0 || heightPixels <= 0)
+            return;
+
+        double physicalWidth = physicalViewport?.Width ?? widthPixels;
+        double physicalHeight = physicalViewport?.Height ?? heightPixels;
+        double scaleX = destination.Width / physicalWidth;
+        double scaleY = destination.Height / physicalHeight;
+        foreach (KeyValuePair<SvgTileKey, SharedCanvasBitmapCache.Lease> tile in tiles)
+        {
+            Rect tileDestination = new(
+                destination.X + tile.Key.X * scaleX,
+                destination.Y + tile.Key.Y * scaleY,
+                tile.Key.Width * scaleX,
+                tile.Key.Height * scaleY);
+            if (tileDestination.Right < viewport.Left ||
+                tileDestination.Left > viewport.Right ||
+                tileDestination.Bottom < viewport.Top ||
+                tileDestination.Top > viewport.Bottom)
+            {
+                continue;
+            }
+
+            // As with whole rasters, the worker owns antialiasing at the outer
+            // fractional viewport. Do not multiply the final tile's coverage.
+            ds.DrawImage(tile.Value.Bitmap, tileDestination);
+        }
+    }
+
+    internal static Rect IntersectRects(Rect left, Rect right)
+    {
+        double x = Math.Max(left.Left, right.Left);
+        double y = Math.Max(left.Top, right.Top);
+        double width = Math.Max(0, Math.Min(left.Right, right.Right) - x);
+        double height = Math.Max(0, Math.Min(left.Bottom, right.Bottom) - y);
+        return new Rect(x, y, width, height);
     }
 }

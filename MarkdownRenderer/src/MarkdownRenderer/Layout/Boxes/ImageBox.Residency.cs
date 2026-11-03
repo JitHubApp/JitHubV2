@@ -43,7 +43,7 @@ internal sealed partial class ImageBox : IMarkdownImageResidencyTarget
             return false;
         }
 
-        Rect visible = IntersectRects(destination, viewport);
+        Rect visible = SvgTilePainter.IntersectRects(destination, viewport);
         if (visible.Width <= 0 || visible.Height <= 0)
         {
             lock (_svgTileLock)
