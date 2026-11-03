@@ -79,7 +79,7 @@ public sealed class ImmutablePayloadStorageTests
         AssertReadonly(Nested(typeof(ImageBox), "InlineMeasureCheckpoint"),
             "Owner Generation WasInlineLayout PreviousAvailableWidth PreviousImageWidth PreviousImageHeight " +
             "PreviousCaptionHeight PreviousBounds");
-        AssertReadonly(Nested(typeof(RasterImageResourceBudget), "IconPayloadRange"), "Offset Length");
+        AssertReadonly(Nested(typeof(RasterIconHeaderReader), "IconPayloadRange"), "Offset Length");
         AssertReadonly(Nested(typeof(ImageProviderIdentities), "Identity"), "Value");
         AssertReadonly(Nested(typeof(SnapshotRetirementTracker), "RetirementFailure"), "Sequence Exception");
         AssertReadonly(Nested(typeof(DeferredInputQueue<>), "Entry"), "Value PointerId Coalescible");
@@ -521,7 +521,7 @@ public sealed class ImmutablePayloadStorageTests
     [Fact]
     public void CompactPrivateRangeAndRetirementPayloadsPreserveConstructorValues()
     {
-        object range = Construct(Nested(typeof(RasterImageResourceBudget), "IconPayloadRange"), [31, 17]);
+        object range = Construct(Nested(typeof(RasterIconHeaderReader), "IconPayloadRange"), [31, 17]);
         Assert.Equal(31, Field(range, "Offset"));
         Assert.Equal(17, Field(range, "Length"));
         Assert.Equal(48, range.GetType().GetProperty("End")!.GetValue(range));
