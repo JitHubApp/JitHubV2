@@ -99,9 +99,8 @@ internal sealed class SvgSourceOpener
                 }
             }
 
-            Task<SvgOpenStageResult> core = _context.Dispatcher?.HasThreadAccess == true
-                ? Task.Run(() => RunCoreAsync(rawBytes), CancellationToken.None)
-                : RunCoreAsync(rawBytes);
+            Task<SvgOpenStageResult> core = SvgWorkDispatch.RunOffDispatcher(
+                _context.Dispatcher?.HasThreadAccess == true, () => RunCoreAsync(rawBytes));
             return await core.ConfigureAwait(false);
         }
         catch

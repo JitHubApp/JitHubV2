@@ -2776,12 +2776,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     void ISvgLoadHost.RetireUncommittedSvgDocument(IMarkdownSvgDocument document) =>
         RetireUncommittedSvgDocument(document);
 
-
-    internal static Task RunSvgCoreOnBackgroundIfNeeded(
-        bool dispatcherHasThreadAccess,
-        Func<Task> runCore) =>
-        dispatcherHasThreadAccess ? Task.Run(runCore) : runCore();
-
     private string GetSvgSourceSecurityPartitionKey(string resolvedCacheKey)
     {
         if (!string.IsNullOrEmpty(resolvedCacheKey))
@@ -2818,7 +2812,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         long diagnosticTargetPixels, BitmapOutputAdmission.Reservation? bitmapReservation) =>
         CreateBitmapFromSvgRaster(
             raster, diagnosticWorkId, diagnosticSourceBytes, diagnosticTargetPixels, bitmapReservation);
-
 
     private void HandleSvgWorkFailure(
         Exception exception, CancellationToken cancellationToken,

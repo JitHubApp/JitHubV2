@@ -48,9 +48,8 @@ internal sealed class SvgOpenedRenderer
         {
             // Even an asynchronously opened source can complete on the UI
             // dispatcher when every admission/cache operation is synchronous.
-            return _context.Dispatcher?.HasThreadAccess == true
-                ? Task.Run(() => RenderCoreAsync(work, dispatchStartedAt), CancellationToken.None)
-                : RenderCoreAsync(work, dispatchStartedAt);
+            return SvgWorkDispatch.RunOffDispatcher(
+                _context.Dispatcher?.HasThreadAccess == true, () => RenderCoreAsync(work, dispatchStartedAt));
         }
         catch
         {

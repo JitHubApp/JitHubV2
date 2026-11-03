@@ -2084,7 +2084,7 @@ public sealed class ImageBoxSvgRendererTests
             UsesCurrentColor: false,
             UsesColorScheme: false));
         int callerThread = Environment.CurrentManagedThreadId;
-        await ImageBox.RunSvgCoreOnBackgroundIfNeeded(
+        await SvgWorkDispatch.RunOffDispatcher(
             dispatcherHasThreadAccess: false,
             () =>
             {
@@ -2111,7 +2111,7 @@ public sealed class ImageBoxSvgRendererTests
             dispatcherCallerThreadId = Environment.CurrentManagedThreadId;
             try
             {
-                ImageBox.RunSvgCoreOnBackgroundIfNeeded(
+                SvgWorkDispatch.RunOffDispatcher(
                     dispatcherHasThreadAccess: true,
                     () =>
                     {
