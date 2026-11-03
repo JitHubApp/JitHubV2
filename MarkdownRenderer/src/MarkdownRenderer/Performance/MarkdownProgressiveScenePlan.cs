@@ -26,6 +26,7 @@ namespace MarkdownRenderer.Performance;
 internal sealed class MarkdownProgressiveScenePlan :
     IScenePublicationTarget,
     IDeferredSceneGraphRebindHost,
+    IDeferredScenePublicationHost,
     IDisposable
 {
     private readonly object _gate = new();
@@ -39,6 +40,7 @@ internal sealed class MarkdownProgressiveScenePlan :
     private readonly Dictionary<string, ActiveSceneWork> _active = new(StringComparer.Ordinal);
     private readonly DeferredSceneDiagnostics _diagnosticSet = new();
     private readonly DeferredSceneGraphRebinder _graphRebinder;
+    private readonly DeferredScenePublisher _publisher;
     private HashSet<string> _visibleMarkers = new(StringComparer.Ordinal);
     private MarkdownRendererControl? _callbackOwner;
     private Func<Action, bool>? _enqueuePublication;
@@ -72,6 +74,13 @@ internal sealed class MarkdownProgressiveScenePlan :
             _results,
             _diagnosticSet,
             _retirements);
+        _publisher = new DeferredScenePublisher(
+            _gate,
+            this,
+            this,
+            session,
+            documentOwner,
+            _diagnosticSet);
     }
 
     /// <summary>
@@ -230,6 +239,13 @@ internal sealed class MarkdownProgressiveScenePlan :
     CancellationToken IDeferredSceneGraphRebindHost.GenerationTokenNoLock => _generationCancellation.Token;
 
     long IDeferredSceneGraphRebindHost.CurrentGeneration => Volatile.Read(ref _generation);
+
+    bool IDeferredScenePublicationHost.TryRestoreOnWorker(
+        string marker,
+        CancellationToken cancellationToken,
+        out MarkdownDeferredSceneResult? result,
+        out MarkdownCompletedSceneDescriptor? descriptor) =>
+        TryRestoreOnWorker(marker, cancellationToken, out result, out descriptor);
 
     bool IDeferredSceneGraphRebindHost.TryRestoreOnWorker(
         string marker,
@@ -473,7 +489,7 @@ internal sealed class MarkdownProgressiveScenePlan :
                 _generation,
                 CancellationTokenSource.CreateLinkedTokenSource(token));
             Task task = Task.Run(
-                () => PrepareAndPublishAsync(
+                () => _publisher.PrepareAndPublishAsync(
                     marker,
                     work,
                     activeWork,
@@ -488,228 +504,6 @@ internal sealed class MarkdownProgressiveScenePlan :
         }
 
         return true;
-    }
-
-    private async Task PrepareAndPublishAsync(
-        string marker,
-        DeferredSceneWork work,
-        ActiveSceneWork activeWork,
-        CancellationToken generationToken,
-        Func<Action, bool> enqueuePublication,
-        Action onPublished,
-        Action? onRetryVisibleBand)
-    {
-        MarkdownDeferredSceneResult? result = null;
-        MarkdownCompletedSceneDescriptor? descriptor = null;
-        IMarkdownScenePreparationLease? sceneLease = null;
-        ScenePublicationEnvelope? publicationEnvelope = null;
-        CancellationTokenRegistration publicationCancellation = default;
-        bool publicationCancellationRegistered = false;
-        bool diagnosticGateHeld = false;
-        try
-        {
-            try
-            {
-                activeWork.Token.ThrowIfCancellationRequested();
-                if (!IsVisible(marker, activeWork))
-                    throw new OperationCanceledException(activeWork.Token);
-                sceneLease = await _session
-                    .EnterScenePreparationAsync(_documentOwner, activeWork.Token)
-                    .ConfigureAwait(false);
-                CancellationToken workToken = sceneLease.CancellationToken;
-                activeWork.Token.ThrowIfCancellationRequested();
-                workToken.ThrowIfCancellationRequested();
-                if (!IsVisible(marker, activeWork))
-                    throw new OperationCanceledException(activeWork.Token);
-                if (!TryRestoreOnWorker(marker, workToken, out result, out descriptor))
-                {
-                    result = await work.RenderAsync(workToken).ConfigureAwait(false);
-                    workToken.ThrowIfCancellationRequested();
-                    descriptor = MarkdownCompletedSceneDescriptor.Create(result, workToken);
-                }
-                workToken.ThrowIfCancellationRequested();
-            }
-            catch (OperationCanceledException)
-            {
-                CompleteWithoutPublication(marker, activeWork, onRetryVisibleBand);
-                return;
-            }
-            catch (Exception)
-            {
-                // A worker/provider failure never escapes into layout or the UI
-                // thread. Preserve the original source as accessible code fallback
-                // and retain the exact syntax range for the diagnostic.
-                result = work.CreateFailureResult("MDP0001", "Deferred native content could not be prepared.");
-                descriptor = MarkdownCompletedSceneDescriptor.Create(result);
-            }
-
-            // Scene-preparation time ends when the immutable result is ready.
-            // Its shared admission slot remains held below until the queued
-            // layout publication commits or cancellation wins while queued.
-            MarkdownPerformanceSession.CompleteScenePreparationTiming(sceneLease);
-
-            if (result is null || descriptor is null || generationToken.IsCancellationRequested || activeWork.Token.IsCancellationRequested)
-            {
-                CompleteWithoutPublication(marker, activeWork, onRetryVisibleBand);
-                return;
-            }
-
-            ImmutableArray<MarkdownDiagnostic> newContribution = descriptor.DiagnosticContribution;
-            bool publicationIsCurrent;
-            bool diagnosticsChanged;
-            lock (_gate)
-            {
-                publicationIsCurrent = IsPublicationCurrentNoLock(marker, activeWork, generationToken);
-                diagnosticsChanged = publicationIsCurrent && !_diagnosticSet.ContributionEquals(marker, newContribution);
-            }
-
-            if (!publicationIsCurrent)
-            {
-                CompleteWithoutPublication(marker, activeWork, onRetryVisibleBand);
-                return;
-            }
-
-            PreparedDiagnosticPublication? diagnosticPublication = null;
-            if (diagnosticsChanged)
-            {
-                await _diagnosticSet.WaitPublicationAsync(activeWork.Token).ConfigureAwait(false);
-                diagnosticGateHeld = true;
-
-                DeferredSceneDiagnosticBasis basis = default;
-                lock (_gate)
-                {
-                    publicationIsCurrent = IsPublicationCurrentNoLock(marker, activeWork, generationToken);
-                    if (publicationIsCurrent)
-                    {
-                        if (_diagnosticSet.ContributionEquals(marker, newContribution))
-                        {
-                            diagnosticsChanged = false;
-                        }
-                        else
-                        {
-                            basis = _diagnosticSet.BeginPublication(marker);
-                        }
-                    }
-                }
-
-                if (!publicationIsCurrent)
-                {
-                    CompleteWithoutPublication(marker, activeWork, onRetryVisibleBand);
-                    return;
-                }
-
-                if (diagnosticsChanged)
-                {
-                    ImmutableDictionary<string, ImmutableArray<MarkdownDiagnostic>> updatedContributions = newContribution.IsEmpty
-                        ? basis.Contributions.Remove(marker)
-                        : basis.Contributions.SetItem(marker, newContribution);
-                    ImmutableList<MarkdownDiagnostic> updatedDiagnostics = DeferredSceneDiagnostics.ReplaceContribution(
-                        basis.Diagnostics,
-                        basis.PreviousContribution,
-                        newContribution);
-                    activeWork.Token.ThrowIfCancellationRequested();
-                    diagnosticPublication = new PreparedDiagnosticPublication(
-                        basis.Version,
-                        updatedContributions,
-                        updatedDiagnostics);
-                }
-                else
-                {
-                    _diagnosticSet.ReleasePublication();
-                    diagnosticGateHeld = false;
-                }
-            }
-
-            activeWork.Token.ThrowIfCancellationRequested();
-            CancellationToken publicationToken = sceneLease?.CancellationToken ?? activeWork.Token;
-            publicationEnvelope = new ScenePublicationEnvelope(
-                new QueuedScenePublication(
-                    this,
-                    marker,
-                    activeWork,
-                    generationToken,
-                    result,
-                    descriptor,
-                    diagnosticPublication,
-                    onPublished,
-                    onRetryVisibleBand));
-            publicationCancellation = publicationToken.Register(
-                static state => ((ScenePublicationEnvelope)state!).CancelQueued(),
-                publicationEnvelope);
-            publicationCancellationRegistered = true;
-
-            if (!publicationEnvelope.TryMarkQueued())
-            {
-                CompleteWithoutPublication(marker, activeWork, onRetryVisibleBand);
-                return;
-            }
-
-            if (publicationEnvelope.IsQueued)
-            {
-                bool queued;
-                try
-                {
-                    // This bound delegate captures only the clearable envelope.
-                    // A canceled dispatcher item cannot pin its result,
-                    // descriptor, plan, control, or callback roots.
-                    queued = enqueuePublication(publicationEnvelope.Dispatch);
-                }
-                catch
-                {
-                    await publicationEnvelope.CancelQueuedOrWaitAsync().ConfigureAwait(false);
-                    throw;
-                }
-
-                if (!queued)
-                {
-                    await publicationEnvelope.CancelQueuedOrWaitAsync().ConfigureAwait(false);
-                    CompleteWithoutPublication(marker, activeWork, onRetryVisibleBand);
-                    return;
-                }
-            }
-
-            await publicationEnvelope.Completion.ConfigureAwait(false);
-            publicationToken.ThrowIfCancellationRequested();
-            generationToken.ThrowIfCancellationRequested();
-            activeWork.Token.ThrowIfCancellationRequested();
-        }
-        catch (OperationCanceledException)
-        {
-            CompleteWithoutPublication(marker, activeWork, onRetryVisibleBand);
-        }
-        catch
-        {
-            CompleteWithoutPublication(marker, activeWork, onRetryVisibleBand);
-            throw;
-        }
-        finally
-        {
-            try
-            {
-                if (publicationEnvelope is not null)
-                    await publicationEnvelope.CancelQueuedOrWaitAsync().ConfigureAwait(false);
-            }
-            finally
-            {
-                try
-                {
-                    if (publicationCancellationRegistered)
-                        publicationCancellation.Dispose();
-                }
-                finally
-                {
-                    try
-                    {
-                        sceneLease?.Dispose();
-                    }
-                    finally
-                    {
-                        if (diagnosticGateHeld)
-                            _diagnosticSet.ReleasePublication();
-                    }
-                }
-            }
-        }
     }
 
     void IScenePublicationTarget.PublishOnUiThread(QueuedScenePublication publication)
@@ -759,7 +553,7 @@ internal sealed class MarkdownProgressiveScenePlan :
             InvokeRetry(publication.OnRetryVisibleBand);
     }
 
-    private bool IsPublicationCurrentNoLock(
+    bool IDeferredScenePublicationHost.IsPublicationCurrentNoLock(
         string marker,
         ActiveSceneWork activeWork,
         CancellationToken generationToken)
@@ -772,7 +566,7 @@ internal sealed class MarkdownProgressiveScenePlan :
             !generationToken.IsCancellationRequested &&
             !activeWork.Token.IsCancellationRequested;
 
-    private void CompleteWithoutPublication(
+    void IDeferredScenePublicationHost.CompleteWithoutPublication(
         string marker,
         ActiveSceneWork activeWork,
         Action? onRetryVisibleBand)
@@ -797,7 +591,7 @@ internal sealed class MarkdownProgressiveScenePlan :
             InvokeRetry(onRetryVisibleBand);
     }
 
-    private bool IsVisible(string marker, ActiveSceneWork activeWork)
+    bool IDeferredScenePublicationHost.IsVisible(string marker, ActiveSceneWork activeWork)
     {
         lock (_gate)
         {
