@@ -675,23 +675,50 @@ internal sealed class WorkerScheduler :
         using var startupReservation = startupOwnership;
         _fleet.RetireForRestart(stale);
 
-        WindowsWorkerProcess created;
         if (lease.Slot.IsSecondary)
         {
             lock (_stateLock)
             {
                 if (ReferenceEquals(_secondary, lease.Slot))
-                {
-                    RecordWorkerPolicyPhaseLocked(
-                        lease.Slot,
-                        SvgWorkerPolicyPhase.WorkerLaunchStarted);
-                }
+                    RecordWorkerPolicyPhaseLocked(lease.Slot, SvgWorkerPolicyPhase.WorkerLaunchStarted);
             }
         }
         long startupStartedAt = SvgWorkerStageTrace.Start(diagnosticWorkId);
+        WindowsWorkerProcess created = await StartWorkerProcessAsync().ConfigureAwait(false);
+
+        startupOwnership.Attach(created);
+        bool adopted;
+        lock (_stateLock)
+            adopted = TryAdoptStartedWorkerLocked(lease, created);
+        if (!adopted)
+            ThrowStartedWorkerRejected(lease, created);
+        SvgWorkerStageTrace.Record(
+            diagnosticWorkId,
+            SvgWorkerStageId.WorkerStartupAndPipeHandshake,
+            created.InstanceId,
+            diagnosticRequestId,
+            diagnosticDocumentId,
+            startupStartedAt,
+            sourceBytes: diagnosticSourceBytes,
+            targetPixels: diagnosticTargetPixels);
+        // Start preparation off-thread, but do not delay non-text requests.
+        // The worker observes this cached task even if no text is ever opened.
+        _ = created.EnsureFontCatalogSuppliedAsync(
+            _requests.CreateControlRequest(WorkerOperation.FontCatalog, created, fontGeneration: _requests.FontGeneration),
+            CancellationToken.None);
+        return created;
+    }
+
+    /// <summary>
+    /// Starts a worker process, recording a startup failure for the circuit
+    /// breaker unless the pool itself is shutting down.
+    /// </summary>
+    /// <returns>The started, connected worker.</returns>
+    private async Task<WindowsWorkerProcess> StartWorkerProcessAsync()
+    {
         try
         {
-            created = await _fleet.StartAsync(_disposeCancellation.Token).ConfigureAwait(false);
+            return await _fleet.StartAsync(_disposeCancellation.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (_disposeCancellation.IsCancellationRequested)
         {
@@ -712,45 +739,38 @@ internal sealed class WorkerScheduler :
                 "The isolated SVG worker could not start.",
                 exception);
         }
+    }
 
-        startupOwnership.Attach(created);
-        bool rejectCreated;
-        lock (_stateLock)
-        {
-            rejectCreated = Volatile.Read(ref _disposed) != 0 ||
-                !ReferenceEquals(lease.Slot.Active, lease.Pending) ||
-                (lease.Slot.KillCanceledWhenStarted &&
-                 lease.Pending.IsCanceled &&
-                 _queue.VisibleCount > 0);
-            if (!rejectCreated)
-            {
-                lease.Slot.Worker = created;
-                if (lease.Slot.IsSecondary)
-                    RecordWorkerPolicyPhaseLocked(lease.Slot, SvgWorkerPolicyPhase.WorkerProcessStarted);
-            }
-        }
+    /// <summary>
+    /// Installs a started worker in the lease's slot unless the pool was
+    /// disposed, the lease no longer owns the slot, or the slot was asked to
+    /// kill canceled work while visible work waits.
+    /// </summary>
+    /// <param name="lease">The lease that started the worker.</param>
+    /// <param name="created">The started worker.</param>
+    /// <returns>Whether the worker was installed.</returns>
+    private bool TryAdoptStartedWorkerLocked(WorkerLease lease, WindowsWorkerProcess created)
+    {
+        bool rejectCreated = Volatile.Read(ref _disposed) != 0 ||
+            !ReferenceEquals(lease.Slot.Active, lease.Pending) ||
+            (lease.Slot.KillCanceledWhenStarted &&
+             lease.Pending.IsCanceled &&
+             _queue.VisibleCount > 0);
         if (rejectCreated)
-        {
-            _fleet.Retire(created);
-            if (lease.Pending.IsCanceled)
-                throw new OperationCanceledException(lease.Pending.CancellationToken);
-            throw new ObjectDisposedException(nameof(WorkerPool));
-        }
-        SvgWorkerStageTrace.Record(
-            diagnosticWorkId,
-            SvgWorkerStageId.WorkerStartupAndPipeHandshake,
-            created.InstanceId,
-            diagnosticRequestId,
-            diagnosticDocumentId,
-            startupStartedAt,
-            sourceBytes: diagnosticSourceBytes,
-            targetPixels: diagnosticTargetPixels);
-        // Start preparation off-thread, but do not delay non-text requests.
-        // The worker observes this cached task even if no text is ever opened.
-        _ = created.EnsureFontCatalogSuppliedAsync(
-            _requests.CreateControlRequest(WorkerOperation.FontCatalog, created, fontGeneration: _requests.FontGeneration),
-            CancellationToken.None);
-        return created;
+            return false;
+
+        lease.Slot.Worker = created;
+        if (lease.Slot.IsSecondary)
+            RecordWorkerPolicyPhaseLocked(lease.Slot, SvgWorkerPolicyPhase.WorkerProcessStarted);
+        return true;
+    }
+
+    private void ThrowStartedWorkerRejected(WorkerLease lease, WindowsWorkerProcess created)
+    {
+        _fleet.Retire(created);
+        if (lease.Pending.IsCanceled)
+            throw new OperationCanceledException(lease.Pending.CancellationToken);
+        throw new ObjectDisposedException(nameof(WorkerPool));
     }
 
     bool ISecondaryWorkerWarmupHost.CanContinueSecondaryWarmup(WorkerSlot slot, WindowsWorkerProcess worker)
