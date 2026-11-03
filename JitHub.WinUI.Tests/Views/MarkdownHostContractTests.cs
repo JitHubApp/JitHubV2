@@ -801,7 +801,11 @@ public sealed class MarkdownHostContractTests
         Assert.Contains("ResetOwnedViewportForNewDocument();", source, StringComparison.Ordinal);
         Assert.Contains("oldSource?.DocumentId, newSource?.DocumentId", source, StringComparison.Ordinal);
         Assert.Contains("if (!OwnsScrollViewport || _rendererSlot.Current is null)", source, StringComparison.Ordinal);
-        Assert.Contains("viewport.ChangeView(null, 0, null, disableAnimation: true)", source, StringComparison.Ordinal);
+        Assert.Contains("MarkdownRendererViewport.ScrollToTop(_rendererSlot.Current);", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "viewport.ChangeView(null, 0, null, disableAnimation: true)",
+            File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "Services", "Markdown", "Hosting", "MarkdownRendererViewport.cs")),
+            StringComparison.Ordinal);
         Assert.DoesNotContain(viewer.Descendants(), element => element.Name.LocalName == "ScrollViewer");
         Assert.DoesNotContain("DesiredSize", source, StringComparison.Ordinal);
         // The reading-region sizing rules are covered by MarkdownReadingRegionLayoutTests.

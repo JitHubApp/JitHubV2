@@ -438,24 +438,6 @@ public sealed partial class MarkdownViewer :
         _runtimeSettingsWatch = null;
     }
 
-    private static ScrollViewer? FindDescendantVerticalScrollViewer(DependencyObject root)
-    {
-        int childCount = VisualTreeHelper.GetChildrenCount(root);
-        for (int index = 0; index < childCount; index++)
-        {
-            DependencyObject child = VisualTreeHelper.GetChild(root, index);
-            if (child is ScrollViewer scrollViewer &&
-                scrollViewer.VerticalScrollMode != ScrollMode.Disabled)
-            {
-                return scrollViewer;
-            }
-
-            if (FindDescendantVerticalScrollViewer(child) is { } descendant)
-                return descendant;
-        }
-
-        return null;
-    }
 
     private void ThemePaletteRuntime_PaletteChanged(
         object? sender,
@@ -538,9 +520,7 @@ public sealed partial class MarkdownViewer :
         if (!OwnsScrollViewport || _rendererSlot.Current is null)
             return;
 
-        ScrollViewer? viewport = FindDescendantVerticalScrollViewer(_rendererSlot.Current);
-        if (viewport is { VerticalOffset: > 0.5 })
-            viewport.ChangeView(null, 0, null, disableAnimation: true);
+        MarkdownRendererViewport.ScrollToTop(_rendererSlot.Current);
     }
 
     bool IMarkdownRendererAttachmentHost<MarkdownRendererControl>.IsShutdownRequested => _shutdownRequested;
