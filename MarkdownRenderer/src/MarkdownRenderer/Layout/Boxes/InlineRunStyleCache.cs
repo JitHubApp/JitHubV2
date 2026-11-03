@@ -192,6 +192,61 @@ internal struct InlineRunStyleCache
         _linkSpanStyles?.Add(null);
     }
 
+    /// <summary>
+    /// Returns <paramref name="run"/>'s resolved style, resolving and caching
+    /// it at the run's ordinal on first use.
+    /// </summary>
+    /// <param name="box">The box that owns this cache in its field.</param>
+    /// <param name="run">A run of <paramref name="box"/>.</param>
+    internal ElementStyle GetRunStyle(InlineContainerBox box, InlineRun run)
+    {
+        // A decorative spacer has no text styling, baseline, or foreground.
+        // Its authored dimensions are applied independently as an inline
+        // object and must not inherit a script/font-size modifier.
+        if (run is InlineSpacerRun)
+            return box.GetContainerStyle();
+
+        ElementStyle? resolved = GetCachedRunStyle(run.InlineIndex, box.RunList.Count);
+        if (resolved is not null)
+            return resolved;
+
+        resolved = InlineRunStyleResolver.ResolveRunStyle(box, run);
+        CacheRunStyle(run.InlineIndex, resolved, box.RunList.Count);
+        return resolved;
+    }
+
+    /// <summary>
+    /// Returns the resolved styles of <paramref name="link"/>'s nested inline
+    /// spans, validating its style map and caching the styles on first use.
+    /// </summary>
+    /// <param name="box">The box that owns this cache in its field.</param>
+    /// <param name="link">A styled link run of <paramref name="box"/>.</param>
+    internal ElementStyle[] GetLinkInlineSpanStyles(InlineContainerBox box, LinkRun link)
+    {
+        LinkInlineStyleMap map = link.InlineStyleMap
+            ?? throw new ArgumentException("The link has no nested inline style map.", nameof(link));
+
+        List<ElementStyle[]?> cache = GetOrCreateLinkSpanStyles(box.RunList.Count);
+        if ((uint)link.InlineIndex >= (uint)cache.Count ||
+            !ReferenceEquals(box.RunList[link.InlineIndex], link))
+        {
+            throw new InvalidOperationException("A styled link's inline ordinal is inconsistent.");
+        }
+
+        if (cache[link.InlineIndex] is { } resolved)
+            return resolved;
+
+        // The map and link text are immutable after publication. Validate on
+        // first resolution, then let paint/hover/selection reuse the cached
+        // styles without walking every span and nested path on each draw.
+        if (!map.IsValidForTextLength(link.TextLength))
+            throw new InvalidOperationException("A link's nested inline style map is malformed.");
+
+        ElementStyle[] spanStyles = InlineRunStyleResolver.ResolveLinkInlineSpanStyles(box, link, map);
+        cache[link.InlineIndex] = spanStyles;
+        return spanStyles;
+    }
+
     internal void Clear()
     {
         _aliasOverrides = null;

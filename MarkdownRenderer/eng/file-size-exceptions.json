@@ -136,11 +136,6 @@
       "lines": 9561,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
-    {
-      "path": "src/MarkdownRenderer/Layout/Boxes/InlineContainerBox.cs",
-      "lines": 1018,
-      "reason": "Predates the size rule; split by responsibility in a later structure step."
-    },
 {
       "path": "src/MarkdownRenderer/Layout/Boxes/RasterNativeWicDecoder.cs",
       "lines": 1148,

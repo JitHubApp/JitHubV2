@@ -644,48 +644,10 @@ internal sealed class InlineContainerBox : BlockBox
                 CodeLanguage,
                 StyleState);
 
-    internal ElementStyle GetRunStyle(InlineRun run)
-    {
-        // A decorative spacer has no text styling, baseline, or foreground.
-        // Its authored dimensions are applied independently as an inline
-        // object and must not inherit a script/font-size modifier.
-        if (run is InlineSpacerRun)
-            return GetContainerStyle();
-
-        ElementStyle? resolved = GetCachedRunStyle(run.InlineIndex);
-        if (resolved is not null)
-            return resolved;
-
-        resolved = InlineRunStyleResolver.ResolveRunStyle(this, run);
-        _runStyleCache.CacheRunStyle(run.InlineIndex, resolved, RunList.Count);
-        return resolved;
-    }
+    internal ElementStyle GetRunStyle(InlineRun run) => _runStyleCache.GetRunStyle(this, run);
 
     internal ElementStyle[] GetLinkInlineSpanStyles(LinkRun link)
-    {
-        LinkInlineStyleMap map = link.InlineStyleMap
-            ?? throw new ArgumentException("The link has no nested inline style map.", nameof(link));
-
-        List<ElementStyle[]?> cache = _runStyleCache.GetOrCreateLinkSpanStyles(RunList.Count);
-        if ((uint)link.InlineIndex >= (uint)cache.Count ||
-            !ReferenceEquals(RunList[link.InlineIndex], link))
-        {
-            throw new InvalidOperationException("A styled link's inline ordinal is inconsistent.");
-        }
-
-        if (cache[link.InlineIndex] is { } resolved)
-            return resolved;
-
-        // The map and link text are immutable after publication. Validate on
-        // first resolution, then let paint/hover/selection reuse the cached
-        // styles without walking every span and nested path on each draw.
-        if (!map.IsValidForTextLength(link.TextLength))
-            throw new InvalidOperationException("A link's nested inline style map is malformed.");
-
-        ElementStyle[] spanStyles = InlineRunStyleResolver.ResolveLinkInlineSpanStyles(this, link, map);
-        cache[link.InlineIndex] = spanStyles;
-        return spanStyles;
-    }
+        => _runStyleCache.GetLinkInlineSpanStyles(this, link);
 
     internal Thickness GetEffectivePadding(ElementStyle style)
         => UseContainerPadding ? style.Padding : default;
