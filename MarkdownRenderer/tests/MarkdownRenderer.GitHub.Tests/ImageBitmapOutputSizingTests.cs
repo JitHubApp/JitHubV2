@@ -210,7 +210,7 @@ public sealed class ImageBitmapOutputSizingTests
             }
 
             await WaitUntilAsync(() => renderer.RenderRequests.TryPeek(out _));
-            await WaitUntilAsync(() => image.HasAllSvgTilesForAutomation(0, 0, 0, 0));
+            await WaitUntilAsync(() => SvgTileCacheTestOperations.HasAllTiles(image, 0, 0, 0, 0));
             Assert.Contains(renderer.RenderRequests, request => request.TileRegion.HasValue);
             Assert.All(renderer.RenderRequests, request =>
             {

@@ -213,7 +213,7 @@ public sealed class ImageBoxSvgRendererTests
             }
 
             PaintLastTile();
-            await WaitUntilAsync(() => image.HasAllSvgTilesForAutomation(tileIndex, 0, tileIndex, 0));
+            await WaitUntilAsync(() => SvgTileCacheTestOperations.HasAllTiles(image, tileIndex, 0, tileIndex, 0));
             PaintLastTile();
             Assert.Contains(renderer.RenderRequests, request =>
                 request.TileRegion is { } tile && tile.X == firstPixel &&
@@ -287,8 +287,8 @@ public sealed class ImageBoxSvgRendererTests
 
             PaintVisible();
             await renderer.SecondVisibleTileStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            await WaitUntilAsync(() => image.HasAllSvgTilesForAutomation(0, 0, 0, 0));
-            Assert.False(image.HasAllSvgTilesForAutomation(0, 0, 1, 0));
+            await WaitUntilAsync(() => SvgTileCacheTestOperations.HasAllTiles(image, 0, 0, 0, 0));
+            Assert.False(SvgTileCacheTestOperations.HasAllTiles(image, 0, 0, 1, 0));
             Color[] partial = PaintVisible();
             for (int y = 0; y < height; y++)
                 for (int x = 0; x < 1024; x++)
@@ -298,7 +298,7 @@ public sealed class ImageBoxSvgRendererTests
                 Assert.Equal(Color.FromArgb(255, 255, 255, 255), partial[4 * 2048 + 1536]);
 
             renderer.ReleaseSecondVisibleTile.TrySetResult();
-            await WaitUntilAsync(() => image.HasAllSvgTilesForAutomation(0, 0, 1, 0));
+            await WaitUntilAsync(() => SvgTileCacheTestOperations.HasAllTiles(image, 0, 0, 1, 0));
             Assert.All(PaintVisible(), pixel => Assert.Equal(background, pixel));
         }
         finally
@@ -1774,13 +1774,13 @@ public sealed class ImageBoxSvgRendererTests
             }
 
             await renderer.SecondVisibleTileStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            await WaitUntilAsync(() => image.HasAllSvgTilesForAutomation(0, 0, 0, 0));
-            Assert.False(image.HasAllSvgTilesForAutomation(0, 0, 1, 0));
-            Assert.False(image.HasAllSvgTilesForAutomation(-1, 0, 0, 0));
-            Assert.False(image.HasAllSvgTilesForAutomation(2, 0, 1, 0));
+            await WaitUntilAsync(() => SvgTileCacheTestOperations.HasAllTiles(image, 0, 0, 0, 0));
+            Assert.False(SvgTileCacheTestOperations.HasAllTiles(image, 0, 0, 1, 0));
+            Assert.False(SvgTileCacheTestOperations.HasAllTiles(image, -1, 0, 0, 0));
+            Assert.False(SvgTileCacheTestOperations.HasAllTiles(image, 2, 0, 1, 0));
 
             renderer.ReleaseSecondVisibleTile.TrySetResult();
-            await WaitUntilAsync(() => image.HasAllSvgTilesForAutomation(0, 0, 1, 0));
+            await WaitUntilAsync(() => SvgTileCacheTestOperations.HasAllTiles(image, 0, 0, 1, 0));
         }
         finally
         {

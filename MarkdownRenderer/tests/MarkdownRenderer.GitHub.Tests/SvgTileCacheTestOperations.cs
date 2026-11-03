@@ -63,4 +63,11 @@ internal static class SvgTileCacheTestOperations
         previous?.Dispose();
         cache.CompleteSvgTileWork(key, cancellation);
     }
+
+    /// <summary>Whether every tile in the range is resident for the image's current raster size.</summary>
+    internal static bool HasAllTiles(ImageBox image, int firstTileX, int firstTileY, int lastTileX, int lastTileY)
+    {
+        (int width, int height) = image.SvgRasterPixelSize;
+        return image.SvgTileCache.HasAllTiles(firstTileX, firstTileY, lastTileX, lastTileY, width, height);
+    }
 }

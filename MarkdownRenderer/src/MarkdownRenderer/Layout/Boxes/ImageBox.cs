@@ -1154,14 +1154,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         ? Bounds
         : new Rect(GetContentX(), GetContentY(), _measure.ImageWidth, _measure.ImageHeight);
 
-    internal bool HasAllSvgTilesForAutomation(
-        int firstTileX,
-        int firstTileY,
-        int lastTileX,
-        int lastTileY) =>
-        _svgTileCache.HasAllTiles(
-            firstTileX, firstTileY, lastTileX, lastTileY, _svgBitmapWidthPixels, _svgBitmapHeightPixels);
-
     /// <summary>Test-only: height of the image content area at last measure (excludes margins).</summary>
     public float MeasuredImageHeight => _measure.ImageHeight;
 
