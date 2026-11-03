@@ -29,6 +29,7 @@ internal sealed class WorkerScheduler :
     private readonly SecondaryIdleRetirement _idleRetirement;
     private readonly CanceledWorkPreemption _preemption;
     private readonly Action<WorkerFontWaitReservation> _promoteDetachedFontWait;
+    private readonly Action<WorkerFontWaitReservation> _releaseDetachedFontWait;
     private readonly WorkerSchedulingQueue<PendingWork> _queue = new();
     private readonly WorkerStartupCircuitBreaker _startupFailures = new();
     private readonly object _stateLock = new();
@@ -69,6 +70,7 @@ internal sealed class WorkerScheduler :
         _idleRetirement = new SecondaryIdleRetirement(this, _fleet, timeProvider);
         _preemption = new CanceledWorkPreemption(this, _fleet, timeProvider);
         _promoteDetachedFontWait = PromoteDetachedFontWait;
+        _releaseDetachedFontWait = ReleaseDetachedFontWait;
     }
 
     internal bool IsDisposed => Volatile.Read(ref _disposed) != 0;
@@ -288,25 +290,7 @@ internal sealed class WorkerScheduler :
                     MarkdownSvgFailureReason.ResourceLimitExceeded,
                     "The SVG worker font-wait admission limit is full.");
             }
-            bool visibleRender = (activeLease.Pending.Operation is WorkerOperation.Render or WorkerOperation.RasterDecode) &&
-                activeLease.Pending.Priority == MarkdownSvgRenderPriority.Visible;
-            bool visibleTextRender = visibleRender && activeLease.Pending.RequiresFontCatalog;
-            WorkerFontWaitReservation reservation = null!;
-            reservation = new WorkerFontWaitReservation(
-                () => ReleaseDetachedFontWait(reservation),
-                visibleRender,
-                visibleTextRender,
-                activeLease.Pending.DemandTicket,
-                isRender: activeLease.Pending.Operation is WorkerOperation.Render or WorkerOperation.RasterDecode,
-                requiresFontCatalog: activeLease.Pending.RequiresFontCatalog,
-                consumed: () => activeLease.Pending.HasDetachedFontWaitReservation = false);
-            _detachedFontWaits.Register(
-                reservation,
-                visibleRender,
-                visibleTextRender,
-                activeLease.Pending,
-                _promoteDetachedFontWait);
-            return reservation;
+            return _detachedFontWaits.Reserve(activeLease.Pending, _releaseDetachedFontWait, _promoteDetachedFontWait);
         }
     }
 

@@ -1,3 +1,5 @@
+using MarkdownRenderer.Images;
+
 namespace MarkdownRenderer.Svg.Resvg.Internal;
 
 /// <summary>
@@ -33,6 +35,41 @@ internal sealed class DetachedFontWaitLedger
         if (!_reservations.Add(reservation))
             throw new InvalidOperationException("The SVG font-wait reservation is already registered.");
         _counts = next;
+    }
+
+    /// <summary>
+    /// Creates the reservation for active work that is detaching to wait for
+    /// a font catalog, counting it as a visible render or visible text render
+    /// from the work's current priority, and registers it.
+    /// </summary>
+    /// <param name="pending">The active work whose lease transfers to the reservation.</param>
+    /// <param name="release">Releases an abandoned reservation under the state lock.</param>
+    /// <param name="promote">Applies a later demand-ticket promotion under the state lock.</param>
+    /// <returns>The registered reservation.</returns>
+    internal WorkerFontWaitReservation Reserve(
+        PendingWork pending,
+        Action<WorkerFontWaitReservation> release,
+        Action<WorkerFontWaitReservation> promote)
+    {
+        bool visibleRender = (pending.Operation is WorkerOperation.Render or WorkerOperation.RasterDecode) &&
+            pending.Priority == MarkdownSvgRenderPriority.Visible;
+        bool visibleTextRender = visibleRender && pending.RequiresFontCatalog;
+        WorkerFontWaitReservation reservation = null!;
+        reservation = new WorkerFontWaitReservation(
+            () => release(reservation),
+            visibleRender,
+            visibleTextRender,
+            pending.DemandTicket,
+            isRender: pending.Operation is WorkerOperation.Render or WorkerOperation.RasterDecode,
+            requiresFontCatalog: pending.RequiresFontCatalog,
+            consumed: () => pending.HasDetachedFontWaitReservation = false);
+        Register(
+            reservation,
+            visibleRender,
+            visibleTextRender,
+            pending,
+            promote);
+        return reservation;
     }
 
     /// <summary>
