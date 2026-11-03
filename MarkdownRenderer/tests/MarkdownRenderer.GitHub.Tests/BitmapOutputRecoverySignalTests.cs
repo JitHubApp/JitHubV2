@@ -99,7 +99,7 @@ public sealed class BitmapOutputRecoverySignalTests
             image.EnsureLoading();
             LoadCompletedEventArgs received = await signal.Task.WaitAsync(TimeSpan.FromSeconds(30));
             await DisplaySizedRasterDecodeTests.WaitUntilAsync(() =>
-                image.ActiveImageWorkCountForTests == 0 && image.NeedsBitmapOutputRecovery);
+                image.GetWorkState().ActiveWorkCount == 0 && image.NeedsBitmapOutputRecovery);
 
             Assert.True(received.IsBitmapOutputRecoverySignal);
             Assert.False(received.LayoutInvalidated);
@@ -114,7 +114,7 @@ public sealed class BitmapOutputRecoverySignalTests
             await Task.Delay(50);
             Assert.Equal(1, notificationCount);
             Assert.Equal(1, resolver.ResolveCount);
-            Assert.Equal(0, image.ActiveImageWorkCountForTests);
+            Assert.Equal(0, image.GetWorkState().ActiveWorkCount);
 
             // A released queue slot is observed without releasing any bitmap
             // charge. Recovery joins the bounded governor queue but still does
@@ -127,7 +127,7 @@ public sealed class BitmapOutputRecoverySignalTests
             GC.KeepAlive(waiterOwners);
             Assert.Equal(1, resolver.ResolveCount);
             Assert.Equal(1, notificationCount);
-            Assert.Equal(0, image.ActiveImageWorkCountForTests);
+            Assert.Equal(0, image.GetWorkState().ActiveWorkCount);
         }
         finally
         {

@@ -773,7 +773,7 @@ public sealed class MixedInlineVectorImageRelayoutTests
     private static async Task LoadImageAsync(ImageBox image)
     {
         await DisplaySizedRasterDecodeTests.WaitForLoadAsync(image).WaitAsync(TimeSpan.FromSeconds(10));
-        await DisplaySizedRasterDecodeTests.WaitUntilAsync(() => image.ActiveImageWorkCountForTests == 0);
+        await DisplaySizedRasterDecodeTests.WaitUntilAsync(() => image.GetWorkState().ActiveWorkCount == 0);
         Assert.NotNull(image.Bitmap);
     }
 

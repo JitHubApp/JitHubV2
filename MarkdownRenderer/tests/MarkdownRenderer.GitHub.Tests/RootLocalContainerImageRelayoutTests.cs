@@ -602,7 +602,7 @@ public sealed class RootLocalContainerImageRelayoutTests
             Assert.Equal(farBoundsBefore.Height, farRootAfter.Bounds.Height);
             Assert.Same(pending, Assert.Single(EnumerateImages(snapshot.Blocks), image => image.Url == resolver.PendingUrl));
             Assert.Same(pendingBitmapBefore, pending.Bitmap);
-            Assert.True(pending.ActiveImageWorkCountForTests > 0,
+            Assert.True(pending.GetWorkState().ActiveWorkCount > 0,
                 "The pending sibling's active resolver work must survive another root's transfer.");
             Assert.Equal(pendingResolveCountBefore, resolver.ResolveCountFor(resolver.PendingUrl));
             Assert.Equal(targetResolveCountBefore, resolver.ResolveCountFor(resolver.FirstUrl));
@@ -1002,7 +1002,7 @@ public sealed class RootLocalContainerImageRelayoutTests
         foreach (ImageBox image in images)
         {
             Assert.NotNull(image.Bitmap);
-            Assert.Equal(0, image.ActiveImageWorkCountForTests);
+            Assert.Equal(0, image.GetWorkState().ActiveWorkCount);
             if (!inlineImages.Contains(image))
                 Assert.False(image.IsDirty,
                     "Non-inline image boxes must have a completed measured source placement.");
@@ -1519,7 +1519,7 @@ public sealed class RootLocalContainerImageRelayoutTests
         // essential when repeated URLs complete synchronously from the cache.
         await DisplaySizedRasterDecodeTests.WaitForLoadAsync(image).WaitAsync(AsyncDeadline);
         await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-            () => image.ActiveImageWorkCountForTests == 0).WaitAsync(AsyncDeadline);
+            () => image.GetWorkState().ActiveWorkCount == 0).WaitAsync(AsyncDeadline);
         Assert.NotNull(image.Bitmap);
     }
 
@@ -1528,7 +1528,7 @@ public sealed class RootLocalContainerImageRelayoutTests
         foreach (ImageBox image in images)
         {
             await LoadImageAsync(image);
-            Assert.Equal(0, image.ActiveImageWorkCountForTests);
+            Assert.Equal(0, image.GetWorkState().ActiveWorkCount);
         }
     }
 

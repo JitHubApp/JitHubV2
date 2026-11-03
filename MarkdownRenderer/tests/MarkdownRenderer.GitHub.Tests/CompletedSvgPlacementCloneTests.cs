@@ -105,13 +105,13 @@ public sealed class CompletedSvgPlacementCloneTests
         Assert.Empty(Assert.IsAssignableFrom<IDictionary>(GetField(privateImage, "_svgTiles")));
         Assert.Empty(Assert.IsAssignableFrom<IDictionary>(GetField(privateImage, "_svgTilesInFlight")));
         Assert.Empty(Assert.IsAssignableFrom<IDictionary>(GetField(privateImage, "_svgTileWorkOwners")));
-        Assert.Equal(0, privateImage.ActiveImageWorkCountForTests);
+        Assert.Equal(0, privateImage.GetWorkState().ActiveWorkCount);
 
         await fixture.RetireSourceAsync();
         Assert.Null(sourceImage.Bitmap);
-        Assert.True(sourceImage.ImageLifetimeDisposedForTests);
+        Assert.True(sourceImage.GetWorkState().LifetimeDisposed);
         Assert.Same(bitmap, privateImage.Bitmap);
-        Assert.False(privateImage.ImageLifetimeDisposedForTests);
+        Assert.False(privateImage.GetWorkState().LifetimeDisposed);
 
         using var target = new CanvasRenderTarget(
             CanvasDevice.GetSharedDevice(),
@@ -310,7 +310,7 @@ public sealed class CompletedSvgPlacementCloneTests
             intrinsicHeight: 1_000,
             layoutWidth: 5_000);
         await WaitUntilAsync(() => fixture.Image.UsesSvgTilesForAutomation &&
-            fixture.Image.ActiveImageWorkCountForTests == 0);
+            fixture.Image.GetWorkState().ActiveWorkCount == 0);
 
         Assert.True(fixture.Image.UsesSvgTilesForAutomation);
         Assert.Null(fixture.Image.Bitmap);
@@ -338,7 +338,7 @@ public sealed class CompletedSvgPlacementCloneTests
         };
         await using var fixture = await SvgPlacementFixture.CreateStartedAsync(renderer: renderer);
         await renderer.OpenStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.True(fixture.Image.ActiveImageWorkCountForTests > 0);
+        Assert.True(fixture.Image.GetWorkState().ActiveWorkCount > 0);
         AssertCloneRejected(fixture.Image, fixture.CreateTargetContext());
     }
 
@@ -367,7 +367,7 @@ public sealed class CompletedSvgPlacementCloneTests
             fixture = readyFixture;
             await WaitUntilAsync(() => readyFixture.Image.OutputDeferral.GetState().Deferred &&
                 readyFixture.Image.OutputDeferral.GetState().HasWaiter &&
-                readyFixture.Image.ActiveImageWorkCountForTests == 0);
+                readyFixture.Image.GetWorkState().ActiveWorkCount == 0);
             Assert.Null(readyFixture.Image.Bitmap);
             AssertCloneRejected(readyFixture.Image, readyFixture.CreateTargetContext());
         }
@@ -659,7 +659,7 @@ public sealed class CompletedSvgPlacementCloneTests
 
         private async Task WaitForFullBitmapAsync()
         {
-            await WaitUntilAsync(() => Image.Bitmap is not null && Image.ActiveImageWorkCountForTests == 0);
+            await WaitUntilAsync(() => Image.Bitmap is not null && Image.GetWorkState().ActiveWorkCount == 0);
             float height = Root.Measure(LayoutWidth);
             Root.Arrange(0, 0, LayoutWidth);
             Snapshot = new LayoutSnapshot([Root], SourceMap, LayoutWidth, System.Math.Max(1, height));

@@ -1020,8 +1020,8 @@ public sealed class RootLocalTableImageRelayoutTests
         fallbackPending.EnsureLoading();
         await resolver.WaitForPendingResolveAsync().WaitAsync(TimeSpan.FromSeconds(10));
         await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-            () => pending.ActiveImageWorkCountForTests > 0 &&
-                  fallbackPending.ActiveImageWorkCountForTests > 0 &&
+            () => pending.GetWorkState().ActiveWorkCount > 0 &&
+                  fallbackPending.GetWorkState().ActiveWorkCount > 0 &&
                   resolver.ResolveCountFor(resolver.PendingUrl) >= 2);
         foreach (ImageBox image in EnumerateTableImages(table))
             await LoadImageAsync(image);
@@ -1032,7 +1032,7 @@ public sealed class RootLocalTableImageRelayoutTests
         Rect[] rootBoundsBefore = rootsBefore.Select(static root => root.Bounds).ToArray();
         Rect[] tableCellBoundsBefore = CaptureCellBounds(optimized.Snapshot, table);
         long revisionBefore = optimized.Snapshot.LayoutRevision;
-        int pendingWorkBefore = pending.ActiveImageWorkCountForTests;
+        int pendingWorkBefore = pending.GetWorkState().ActiveWorkCount;
         int pendingResolveCount = resolver.ResolveCountFor(resolver.PendingUrl);
         int farResolveCount = resolver.ResolveCountFor(resolver.FarUrl);
         fallback.Snapshot.RelayoutChangedBlocks([fallbackTable.BlockIndex], LayoutWidth, CancellationToken.None);
@@ -1050,8 +1050,8 @@ public sealed class RootLocalTableImageRelayoutTests
             Assert.Equal(tableCellBoundsBefore.Length, CaptureCellBounds(optimized.Snapshot, table).Length);
             Assert.Same(pending, FindImage(optimized.Snapshot, resolver.PendingUrl));
             Assert.Same(far, FindImage(optimized.Snapshot, resolver.FarUrl));
-            Assert.True(pending.ActiveImageWorkCountForTests > 0);
-            Assert.Equal(pendingWorkBefore, pending.ActiveImageWorkCountForTests);
+            Assert.True(pending.GetWorkState().ActiveWorkCount > 0);
+            Assert.Equal(pendingWorkBefore, pending.GetWorkState().ActiveWorkCount);
             Assert.Null(pending.Bitmap);
             Assert.Equal(pendingResolveCount, resolver.ResolveCountFor(resolver.PendingUrl));
             Assert.Equal(farResolveCount, resolver.ResolveCountFor(resolver.FarUrl));
@@ -1616,7 +1616,7 @@ public sealed class RootLocalTableImageRelayoutTests
     private static async Task LoadImageAsync(ImageBox image)
     {
         await DisplaySizedRasterDecodeTests.WaitForLoadAsync(image).WaitAsync(TimeSpan.FromSeconds(10));
-        await DisplaySizedRasterDecodeTests.WaitUntilAsync(() => image.ActiveImageWorkCountForTests == 0);
+        await DisplaySizedRasterDecodeTests.WaitUntilAsync(() => image.GetWorkState().ActiveWorkCount == 0);
         Assert.NotNull(image.Bitmap);
     }
 

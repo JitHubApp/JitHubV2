@@ -874,7 +874,7 @@ public sealed class RootLocalContainerVectorImageRelayoutTests
     {
         await DisplaySizedRasterDecodeTests.WaitForLoadAsync(image).WaitAsync(AsyncDeadline);
         await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-            () => image.ActiveImageWorkCountForTests == 0).WaitAsync(AsyncDeadline);
+            () => image.GetWorkState().ActiveWorkCount == 0).WaitAsync(AsyncDeadline);
         Assert.NotNull(image.Bitmap);
     }
 

@@ -70,7 +70,7 @@ public sealed class AnimatedWebpFirstCanvasImageBoxTests(ITestOutputHelper outpu
                     image.Measure(3);
                     await DisplaySizedRasterDecodeTests.WaitForLoadAsync(image);
                     await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-                        () => image.ActiveImageWorkCountForTests == 0);
+                        () => image.GetWorkState().ActiveWorkCount == 0);
 
                     Assert.NotNull(image.Bitmap);
                     Assert.Equal(MarkdownImageAccessibilityState.Loaded, image.AccessibilityState);
@@ -109,7 +109,7 @@ public sealed class AnimatedWebpFirstCanvasImageBoxTests(ITestOutputHelper outpu
                 {
                     image.Dispose();
                     await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-                        () => image.ActiveImageWorkCountForTests == 0);
+                        () => image.GetWorkState().ActiveWorkCount == 0);
                 }
             }
         }

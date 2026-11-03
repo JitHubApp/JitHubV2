@@ -52,13 +52,13 @@ public sealed class BitmapOutputDeferralTests
             await WaitForDeferredAndDrainedAsync(image, () => resolver.ResolveCount);
 
             Assert.Null(image.Bitmap);
-            Assert.Equal(0, image.ActiveImageWorkCountForTests);
+            Assert.Equal(0, image.GetWorkState().ActiveWorkCount);
             Assert.False(completed.Task.IsCompleted);
             Assert.Equal(1, resolver.ResolveCount);
 
             ReleaseReservations(blockers);
             LoadCompletedEventArgs result = await completed.Task.WaitAsync(TimeSpan.FromSeconds(30));
-            await WaitUntilAsync(() => image.ActiveImageWorkCountForTests == 0);
+            await WaitUntilAsync(() => image.GetWorkState().ActiveWorkCount == 0);
 
             Assert.True(result.LayoutInvalidated);
             CanvasBitmap bitmap = Assert.IsType<CanvasBitmap>(image.Bitmap);
@@ -138,7 +138,7 @@ public sealed class BitmapOutputDeferralTests
             Assert.NotEmpty(initiallyAdmitted);
             Assert.All(initiallyDeferred, item =>
             {
-                Assert.Equal(0, item.Image.ActiveImageWorkCountForTests);
+                Assert.Equal(0, item.Image.GetWorkState().ActiveWorkCount);
                 Assert.Null(item.Image.Bitmap);
                 Assert.False(GetField<bool>(item.Image, "_loadFailed"));
                 Assert.Equal(MarkdownImageAccessibilityState.Loading, item.Image.AccessibilityState);
@@ -157,7 +157,7 @@ public sealed class BitmapOutputDeferralTests
                 item.Image.SuspendResources();
 
             await WaitUntilAsync(
-                () => initiallyAdmitted.All(item => item.Image.ActiveImageWorkCountForTests == 0),
+                () => initiallyAdmitted.All(item => item.Image.GetWorkState().ActiveWorkCount == 0),
                 TimeSpan.FromSeconds(30));
             Assert.All(initiallyAdmitted, item => Assert.True(item.Image.TryReleaseSuspendedResources()));
             Assert.All(initiallyAdmitted, item => Assert.Null(item.Image.Bitmap));
@@ -167,7 +167,7 @@ public sealed class BitmapOutputDeferralTests
                 .WaitAsync(TimeSpan.FromMinutes(2));
             await WaitUntilAsync(
                 () => items.All(item => item.SuccessfulPublications > 0 &&
-                    item.Image.ActiveImageWorkCountForTests == 0),
+                    item.Image.GetWorkState().ActiveWorkCount == 0),
                 TimeSpan.FromMinutes(2));
 
             Assert.All(items, item =>
@@ -189,7 +189,7 @@ public sealed class BitmapOutputDeferralTests
             foreach (RasterStormItem item in items)
                 item.Image.SuspendResources();
             await WaitUntilAsync(
-                () => items.All(item => item.Image.ActiveImageWorkCountForTests == 0),
+                () => items.All(item => item.Image.GetWorkState().ActiveWorkCount == 0),
                 TimeSpan.FromSeconds(30));
             Assert.All(items, item => Assert.True(item.Image.TryReleaseSuspendedResources()));
             ImageResourceScope.Shared.BitmapCache.Clear();
@@ -200,7 +200,7 @@ public sealed class BitmapOutputDeferralTests
                 (item.Image.Bitmap is not null ||
                  (item.Image.OutputDeferral.GetState().Deferred &&
                   item.Image.OutputDeferral.GetState().HasWaiter &&
-                  item.Image.ActiveImageWorkCountForTests == 0));
+                  item.Image.GetWorkState().ActiveWorkCount == 0));
         }
         finally
         {
@@ -262,14 +262,14 @@ public sealed class BitmapOutputDeferralTests
             await WaitForDeferredAndDrainedAsync(image, () => resolver.ResolveCount);
 
             Assert.Null(image.Bitmap);
-            Assert.Equal(0, image.ActiveImageWorkCountForTests);
+            Assert.Equal(0, image.GetWorkState().ActiveWorkCount);
             Assert.Equal(0, renderer.RenderCount);
             Assert.False(completed.Task.IsCompleted);
             Assert.Null(image.SvgFailureReason);
 
             ReleaseReservations(blockers);
             await completed.Task.WaitAsync(TimeSpan.FromSeconds(30));
-            await WaitUntilAsync(() => image.ActiveImageWorkCountForTests == 0);
+            await WaitUntilAsync(() => image.GetWorkState().ActiveWorkCount == 0);
 
             Assert.IsType<CanvasBitmap>(image.Bitmap);
             using SharedCanvasBitmapCache.Lease lease =
@@ -344,7 +344,7 @@ public sealed class BitmapOutputDeferralTests
                 Assert.True(image.UsesSvgTilesForAutomation);
                 Assert.Equal((20_000, 4_000), image.SvgRasterPixelSize);
                 Assert.Equal(0, renderer.RenderCount);
-                Assert.Equal(0, image.ActiveImageWorkCountForTests);
+                Assert.Equal(0, image.GetWorkState().ActiveWorkCount);
                 Assert.False(image.OutputDeferral.GetState().HasWaiter);
                 Assert.False(image.OutputDeferral.GetState().Deferred);
 
@@ -358,7 +358,7 @@ public sealed class BitmapOutputDeferralTests
                 }
 
                 await WaitUntilAsync(() => renderer.RenderCount > 0);
-                await WaitUntilAsync(() => image.ActiveImageWorkCountForTests == 0);
+                await WaitUntilAsync(() => image.GetWorkState().ActiveWorkCount == 0);
                 Assert.True(image.UsesSvgTilesForAutomation);
                 Assert.Null(image.SvgFailureReason);
             }
@@ -397,7 +397,7 @@ public sealed class BitmapOutputDeferralTests
             image.EnsureLoading();
             await WaitForDeferredAndDrainedAsync(image, () => resolver.ResolveCount);
             Assert.True(image.OutputDeferral.GetState().HasWaiter);
-            Assert.Equal(0, image.ActiveImageWorkCountForTests);
+            Assert.Equal(0, image.GetWorkState().ActiveWorkCount);
 
             if (cancelSession)
                 await session.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
@@ -408,7 +408,7 @@ public sealed class BitmapOutputDeferralTests
                 !image.OutputDeferral.GetState().HasWaiter &&
                 !image.OutputDeferral.GetState().HasWaiterOwner &&
                 !image.OutputDeferral.GetState().Deferred &&
-                image.ActiveImageWorkCountForTests == 0);
+                image.GetWorkState().ActiveWorkCount == 0);
             ReleaseReservations(blockers);
             Assert.Null(image.Bitmap);
         }
@@ -714,7 +714,7 @@ public sealed class BitmapOutputDeferralTests
         bool IsDeferredAndDrained() =>
             image.OutputDeferral.GetState().Deferred &&
             image.OutputDeferral.GetState().HasWaiter &&
-            image.ActiveImageWorkCountForTests == 0;
+            image.GetWorkState().ActiveWorkCount == 0;
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         try
@@ -727,7 +727,7 @@ public sealed class BitmapOutputDeferralTests
             BitmapOutputAdmission.Snapshot capacity = ImageResourceScope.Shared.BitmapOutput.GetSnapshot();
             string state =
                 $"{image.OutputDeferral.GetState()}, " +
-                $"activeWork={image.ActiveImageWorkCountForTests}, " +
+                $"activeWork={image.GetWorkState().ActiveWorkCount}, " +
                 $"loadStarted={GetField<bool>(image, "_loadStarted")}, " +
                 $"loadFailed={GetField<bool>(image, "_loadFailed")}, " +
                 $"disposed={GetField<bool>(image, "_disposed")}, " +

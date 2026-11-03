@@ -119,7 +119,7 @@ public sealed class ProcessRasterDecodeIntegrationTests
         {
             await WaitUntilAsync(() => gate.PendingRequests == 1);
             secondLoad = WaitForLoadAsync(second);
-            await WaitUntilAsync(() => second.ActiveImageWorkCountForTests >= 2);
+            await WaitUntilAsync(() => second.GetWorkState().ActiveWorkCount >= 2);
             Assert.Equal(1, gate.PendingRequests);
             Assert.Equal(1, gate.ActiveCount);
             Assert.Equal(0, sharedStripe.CurrentCount);
@@ -131,8 +131,8 @@ public sealed class ProcessRasterDecodeIntegrationTests
 
             held.Dispose();
             await Task.WhenAll(firstLoad, secondLoad);
-            await WaitUntilAsync(() => first.ActiveImageWorkCountForTests == 0 &&
-                second.ActiveImageWorkCountForTests == 0);
+            await WaitUntilAsync(() => first.GetWorkState().ActiveWorkCount == 0 &&
+                second.GetWorkState().ActiveWorkCount == 0);
             Assert.NotNull(first.Bitmap);
             Assert.NotNull(second.Bitmap);
             Assert.Equal(0, gate.PendingRequests);
@@ -145,8 +145,8 @@ public sealed class ProcessRasterDecodeIntegrationTests
             first.Dispose();
             second.Dispose();
             held.Dispose();
-            await WaitUntilAsync(() => first.ActiveImageWorkCountForTests == 0 &&
-                second.ActiveImageWorkCountForTests == 0);
+            await WaitUntilAsync(() => first.GetWorkState().ActiveWorkCount == 0 &&
+                second.GetWorkState().ActiveWorkCount == 0);
         }
     }
 
@@ -169,7 +169,7 @@ public sealed class ProcessRasterDecodeIntegrationTests
                 await session.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
             else
                 image.Dispose();
-            await WaitUntilAsync(() => gate.PendingRequests == 0 && image.ActiveImageWorkCountForTests == 0);
+            await WaitUntilAsync(() => gate.PendingRequests == 0 && image.GetWorkState().ActiveWorkCount == 0);
             Assert.Null(image.Bitmap);
             Assert.Equal(0, Volatile.Read(ref publications));
             Assert.Equal(1, gate.ActiveCount); // Only the deliberately held lease remains.
@@ -216,7 +216,7 @@ public sealed class ProcessRasterDecodeIntegrationTests
         {
             image.Measure(64);
             image.EnsureLoading();
-            await WaitUntilAsync(() => image.ActiveImageWorkCountForTests >= 2 &&
+            await WaitUntilAsync(() => image.GetWorkState().ActiveWorkCount >= 2 &&
                 session.ActiveWork == 1);
             Assert.Equal(0, session.GetSnapshot().CpuPreparations);
             Assert.Equal(0, ImageResourceScope.Shared.Preparation.PendingRequests);
@@ -225,7 +225,7 @@ public sealed class ProcessRasterDecodeIntegrationTests
             // token can end this wait; CPU admission has not been entered yet.
             await session.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
             Assert.Equal(0, session.ActiveWork);
-            await WaitUntilAsync(() => image.ActiveImageWorkCountForTests == 0);
+            await WaitUntilAsync(() => image.GetWorkState().ActiveWorkCount == 0);
             Assert.Null(image.Bitmap);
             Assert.Equal(0, Volatile.Read(ref publications));
             Assert.Equal(0, keyedGate.CurrentCount);

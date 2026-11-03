@@ -32,12 +32,12 @@ public sealed class SvgHostDeferredSourceRetentionTests
             image.EnsureLoading();
             await admission.OpenStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
             await admission.CapacityWaitStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            await WaitUntilAsync(() => image.ActiveImageWorkCountForTests == 0);
+            await WaitUntilAsync(() => image.GetWorkState().ActiveWorkCount == 0);
 
             WeakReference<byte[]> source = Assert.IsType<WeakReference<byte[]>>(resolver.LastSource);
             Assert.Equal(Encoding.UTF8.GetByteCount(resolver.Svg), admission.ObservedSourceLength);
             Assert.Null(image.SvgFailureReason);
-            Assert.False(image.ImageLifetimeDisposedForTests);
+            Assert.False(image.GetWorkState().LifetimeDisposed);
             AssertSourceReleased(source);
 
             GC.KeepAlive(image);

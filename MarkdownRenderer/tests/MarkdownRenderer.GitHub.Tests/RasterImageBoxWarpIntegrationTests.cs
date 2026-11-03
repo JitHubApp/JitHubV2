@@ -258,7 +258,7 @@ public sealed class RasterImageBoxWarpIntegrationTests(ITestOutputHelper output)
         {
             image.Measure(DisplayWidth);
             image.EnsureLoading();
-            if (image.Bitmap is null || image.ActiveImageWorkCountForTests != 0)
+            if (image.Bitmap is null || image.GetWorkState().ActiveWorkCount != 0)
                 await completed.Task.WaitAsync(TimeSpan.FromSeconds(20));
         }
         finally
@@ -267,7 +267,7 @@ public sealed class RasterImageBoxWarpIntegrationTests(ITestOutputHelper output)
         }
 
         await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-            () => image.ActiveImageWorkCountForTests == 0);
+            () => image.GetWorkState().ActiveWorkCount == 0);
         image.Measure(DisplayWidth);
         Assert.Equal(DisplayWidth, image.MeasuredImageWidth, precision: 2);
         Assert.Equal(DisplayWidth * SourceWidth / SourceHeight,
@@ -413,7 +413,7 @@ public sealed class RasterImageBoxWarpIntegrationTests(ITestOutputHelper output)
     private static async Task WaitForImageWorkToDrainAsync(params ImageBox?[] images)
     {
         await DisplaySizedRasterDecodeTests.WaitUntilAsync(() =>
-            images.All(static image => image is null || image.ActiveImageWorkCountForTests == 0));
+            images.All(static image => image is null || image.GetWorkState().ActiveWorkCount == 0));
     }
 
     private sealed class CountingResolver(byte[] bytes, string cacheKey) : IMarkdownImageResolver

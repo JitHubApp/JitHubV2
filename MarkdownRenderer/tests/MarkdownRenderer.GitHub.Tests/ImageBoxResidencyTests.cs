@@ -119,7 +119,7 @@ public sealed class ImageBoxResidencyTests
             resolver.Complete(DisplaySizedRasterDecodeTests.CreatePng(320, 160));
             await drained.WaitAsync(TimeSpan.FromSeconds(10));
 
-            Assert.Equal(0, image.ActiveImageWorkCountForTests);
+            Assert.Equal(0, image.GetWorkState().ActiveWorkCount);
             Assert.True(image.TryReleaseSuspendedResources());
             Assert.Null(image.Bitmap);
             Assert.Equal(0, Volatile.Read(ref publications));
@@ -162,7 +162,7 @@ public sealed class ImageBoxResidencyTests
                 });
 
             Action callback = await queued.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            Assert.True(image.ActiveImageWorkCountForTests > 0);
+            Assert.True(image.GetWorkState().ActiveWorkCount > 0);
             Task drained = ObserveResidencyDrainAsync(image);
             image.SuspendResources();
             Assert.False(image.TryReleaseSuspendedResources());
@@ -172,7 +172,7 @@ public sealed class ImageBoxResidencyTests
 
             Assert.Equal(0, Volatile.Read(ref publications));
             Assert.Equal(1, Volatile.Read(ref dropped));
-            Assert.Equal(0, image.ActiveImageWorkCountForTests);
+            Assert.Equal(0, image.GetWorkState().ActiveWorkCount);
             Assert.True(image.TryReleaseSuspendedResources());
         }
         finally
@@ -212,7 +212,7 @@ public sealed class ImageBoxResidencyTests
             // The document retirement lease is held by the blocked provider
             // Dispose call. Register while that work is known to be active so
             // the drained signal cannot have raced ahead of this observer.
-            Assert.True(image.ActiveImageWorkCountForTests > 0);
+            Assert.True(image.GetWorkState().ActiveWorkCount > 0);
             Task documentDisposalDrained = ObserveResidencyDrainAsync(image);
             image.SuspendResources();
             Assert.False(image.TryReleaseSuspendedResources());
@@ -369,7 +369,7 @@ public sealed class ImageBoxResidencyTests
                     $"cache(retained={ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes}, " +
                     $"pixelLedger={ImageResourceScope.Shared.BitmapCache.GetSnapshot().LivePixelWeightBytes}, " +
                     $"uncertainPixelLedger={ImageResourceScope.Shared.BitmapCache.GetSnapshot().UncertainDisposePixelWeightBytes}); " +
-                    $"image(work={image.ActiveImageWorkCountForTests}, " +
+                    $"image(work={image.GetWorkState().ActiveWorkCount}, " +
                     $"needsRecovery={image.NeedsBitmapOutputRecovery}, " +
                     $"svgTiles={image.UsesSvgTilesForAutomation}, raster={image.SvgRasterPixelSize}, " +
                     $"accessibility={image.AccessibilityState}); " +
@@ -481,7 +481,7 @@ public sealed class ImageBoxResidencyTests
             await drain.WaitAsync(TimeSpan.FromSeconds(10));
 
             Assert.Equal(1, renderer.LastRasterOwner!.DisposeCount);
-            Assert.Equal(0, image.ActiveImageWorkCountForTests);
+            Assert.Equal(0, image.GetWorkState().ActiveWorkCount);
             if (renderer.Document.DisposeCount == 0)
             {
                 Task releaseDrained = ObserveResidencyDrainAsync(image);
@@ -711,7 +711,7 @@ public sealed class ImageBoxResidencyTests
     private static async Task WaitForWorkCountAsync(ImageBox image, int expected)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        while (image.ActiveImageWorkCountForTests != expected)
+        while (image.GetWorkState().ActiveWorkCount != expected)
             await Task.Delay(1, timeout.Token);
     }
 

@@ -36,13 +36,13 @@ public sealed class DisplaySizedRasterDecodeTests
             // Resolver and decode phases both hold the image lifetime now.
             // Observe the actual admission waiter, not a transient work count.
             await WaitUntilAsync(() => session.PendingCpuPreparations == 1);
-            Assert.True(image.ActiveImageWorkCountForTests > 0);
+            Assert.True(image.GetWorkState().ActiveWorkCount > 0);
             Assert.Null(image.Bitmap);
             Assert.Equal(1, session.GetSnapshot().CpuPreparations);
 
             image.Dispose();
-            await WaitUntilAsync(() => image.ImageLifetimeDisposedForTests);
-            Assert.Equal(0, image.ActiveImageWorkCountForTests);
+            await WaitUntilAsync(() => image.GetWorkState().LifetimeDisposed);
+            Assert.Equal(0, image.GetWorkState().ActiveWorkCount);
             Assert.Equal(0, session.PendingCpuPreparations);
             Assert.Equal(0, Volatile.Read(ref publications));
             Assert.Equal(1, session.GetSnapshot().CpuPreparations);

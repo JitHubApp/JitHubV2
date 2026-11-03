@@ -89,11 +89,11 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             await prepared.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.Null(prepared.Bitmap);
             Assert.Same(sourceBitmap, source.Bitmap);
-            Assert.False(source.ImageLifetimeDisposedForTests);
+            Assert.False(source.GetWorkState().LifetimeDisposed);
         }
         finally
         {
-            if (prepared is not null && !prepared.ImageLifetimeDisposedForTests)
+            if (prepared is not null && !prepared.GetWorkState().LifetimeDisposed)
             {
                 targetContext.DiscardConstructionBlock(prepared);
                 await prepared.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
@@ -141,11 +141,11 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
 
             Assert.Same(source, Assert.IsType<ImageBox>(Assert.Single(snapshot.Blocks)));
             Assert.NotNull(source.Bitmap);
-            Assert.False(source.ImageLifetimeDisposedForTests);
+            Assert.False(source.GetWorkState().LifetimeDisposed);
         }
         finally
         {
-            if (prepared is not null && !prepared.ImageLifetimeDisposedForTests)
+            if (prepared is not null && !prepared.GetWorkState().LifetimeDisposed)
             {
                 targetContext.DiscardConstructionBlock(prepared);
                 await prepared.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
@@ -203,7 +203,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
         }
         finally
         {
-            if (prepared is not null && !prepared.ImageLifetimeDisposedForTests)
+            if (prepared is not null && !prepared.GetWorkState().LifetimeDisposed)
             {
                 targetContext.DiscardConstructionBlock(prepared);
                 await prepared.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
@@ -278,7 +278,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
         }
         finally
         {
-            if (prepared is not null && !prepared.ImageLifetimeDisposedForTests)
+            if (prepared is not null && !prepared.GetWorkState().LifetimeDisposed)
             {
                 targetContext.DiscardConstructionBlock(prepared);
                 await prepared.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
@@ -436,12 +436,12 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
         }
         finally
         {
-            if (prepared1 is not null && !prepared1.ImageLifetimeDisposedForTests)
+            if (prepared1 is not null && !prepared1.GetWorkState().LifetimeDisposed)
             {
                 targetContext1.DiscardConstructionBlock(prepared1);
                 await prepared1.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
             }
-            if (prepared2 is not null && !prepared2.ImageLifetimeDisposedForTests)
+            if (prepared2 is not null && !prepared2.GetWorkState().LifetimeDisposed)
             {
                 targetContext2.DiscardConstructionBlock(prepared2);
                 await prepared2.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
@@ -528,12 +528,12 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
         finally
         {
             staleLease?.Dispose();
-            if (prepared1 is not null && !prepared1.ImageLifetimeDisposedForTests)
+            if (prepared1 is not null && !prepared1.GetWorkState().LifetimeDisposed)
             {
                 targetContext1.DiscardConstructionBlock(prepared1);
                 await prepared1.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
             }
-            if (prepared2 is not null && !prepared2.ImageLifetimeDisposedForTests)
+            if (prepared2 is not null && !prepared2.GetWorkState().LifetimeDisposed)
             {
                 targetContext2.DiscardConstructionBlock(prepared2);
                 await prepared2.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
@@ -617,12 +617,12 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
         {
             if (originalSource2Caption is not null)
                 source2.MeasureCustody.Caption = originalSource2Caption;
-            if (prepared1 is not null && !prepared1.ImageLifetimeDisposedForTests)
+            if (prepared1 is not null && !prepared1.GetWorkState().LifetimeDisposed)
             {
                 targetContext1.DiscardConstructionBlock(prepared1);
                 await prepared1.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
             }
-            if (prepared2 is not null && !prepared2.ImageLifetimeDisposedForTests)
+            if (prepared2 is not null && !prepared2.GetWorkState().LifetimeDisposed)
             {
                 targetContext2.DiscardConstructionBlock(prepared2);
                 await prepared2.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
@@ -692,7 +692,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
         }
         finally
         {
-            if (prepared is not null && !prepared.ImageLifetimeDisposedForTests)
+            if (prepared is not null && !prepared.GetWorkState().LifetimeDisposed)
             {
                 targetContext.DiscardConstructionBlock(prepared);
                 await prepared.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
@@ -993,7 +993,7 @@ public sealed class ImageBoxMeasuredSvgPlacementTransferTests
             image.EnsureLoading();
             await completion.Task.WaitAsync(TimeSpan.FromSeconds(10));
             await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-                () => image.ActiveImageWorkCountForTests == 0);
+                () => image.GetWorkState().ActiveWorkCount == 0);
             Assert.NotNull(image.Bitmap);
             _ = image.Measure(Width);
             image.Arrange(5, 8, Width);

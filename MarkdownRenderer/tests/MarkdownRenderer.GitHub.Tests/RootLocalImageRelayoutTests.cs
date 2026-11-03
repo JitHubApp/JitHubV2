@@ -315,8 +315,8 @@ public sealed class RootLocalImageRelayoutTests
             Assert.Same(secondBitmap, second.Bitmap);
             Assert.Same(firstLease, GetImageLease(first));
             Assert.Same(secondLease, GetImageLease(second));
-            Assert.Equal(0, first.ActiveImageWorkCountForTests);
-            Assert.Equal(0, second.ActiveImageWorkCountForTests);
+            Assert.Equal(0, first.GetWorkState().ActiveWorkCount);
+            Assert.Equal(0, second.GetWorkState().ActiveWorkCount);
             Assert.Equal(rootsBefore.Length, snapshot.Blocks.Count);
             for (int ordinal = 0; ordinal < rootsBefore.Length; ordinal++)
             {
@@ -734,7 +734,7 @@ public sealed class RootLocalImageRelayoutTests
         await StartPendingSiblingAsync(optimized);
         await StartPendingSiblingAsync(fallback);
         await WaitForPendingWorkAndResolverStabilityAsync(optimized, fallback);
-        Assert.True(fallbackPending.ActiveImageWorkCountForTests > 0);
+        Assert.True(fallbackPending.GetWorkState().ActiveWorkCount > 0);
 
         LayoutSnapshot snapshot = optimized.Snapshot;
         BlockBox[] rootsBefore = snapshot.Blocks.ToArray();
@@ -746,7 +746,7 @@ public sealed class RootLocalImageRelayoutTests
         int targetResolvesBefore = resolver.ResolveCountFor(optimized.Resolver.TargetUrl);
         int secondResolvesBefore = resolver.ResolveCountFor(optimized.Resolver.SecondTargetUrl);
         int pendingResolvesBefore = resolver.ResolveCountFor(optimized.Resolver.PendingUrl);
-        int pendingWorkBefore = optimizedPending.ActiveImageWorkCountForTests;
+        int pendingWorkBefore = optimizedPending.GetWorkState().ActiveWorkCount;
         Assert.True(pendingWorkBefore > 0);
         Assert.Null(optimizedPending.Bitmap);
 
@@ -773,8 +773,8 @@ public sealed class RootLocalImageRelayoutTests
             Assert.Equal(targetResolvesBefore, resolver.ResolveCountFor(optimized.Resolver.TargetUrl));
             Assert.Equal(secondResolvesBefore, resolver.ResolveCountFor(optimized.Resolver.SecondTargetUrl));
             Assert.Equal(pendingResolvesBefore, resolver.ResolveCountFor(optimized.Resolver.PendingUrl));
-            Assert.True(optimizedPending.ActiveImageWorkCountForTests > 0);
-            Assert.Equal(pendingWorkBefore, optimizedPending.ActiveImageWorkCountForTests);
+            Assert.True(optimizedPending.GetWorkState().ActiveWorkCount > 0);
+            Assert.Equal(pendingWorkBefore, optimizedPending.GetWorkState().ActiveWorkCount);
             Assert.Null(optimizedPending.Bitmap);
             Assert.False(snapshot.IsTopLevelBlockMeasured(optimizedFar));
             Assert.Null(optimizedFar.Bitmap);
@@ -843,7 +843,7 @@ public sealed class RootLocalImageRelayoutTests
             Assert.Same(semanticsBefore, snapshot.SemanticDocument);
             Assert.Contains(snapshot.Blocks, block => ReferenceEquals(block, source));
             Assert.Equal(sourceBounds, source.Bounds);
-            Assert.Equal(0, source.ActiveImageWorkCountForTests);
+            Assert.Equal(0, source.GetWorkState().ActiveWorkCount);
             for (int ordinal = 0; ordinal < rootsBefore.Length; ordinal++)
             {
                 Assert.Same(rootsBefore[ordinal], snapshot.Blocks[ordinal]);
@@ -1230,7 +1230,7 @@ public sealed class RootLocalImageRelayoutTests
     {
         await DisplaySizedRasterDecodeTests.WaitForLoadAsync(image).WaitAsync(TimeSpan.FromSeconds(10));
         await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-            () => image.ActiveImageWorkCountForTests == 0);
+            () => image.GetWorkState().ActiveWorkCount == 0);
         Assert.NotNull(image.Bitmap);
     }
 
@@ -1344,8 +1344,8 @@ public sealed class RootLocalImageRelayoutTests
         ImageDocument second)
     {
         await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-            () => first.PendingImage is { ActiveImageWorkCountForTests: > 0 } &&
-                  second.PendingImage is { ActiveImageWorkCountForTests: > 0 } &&
+            () => first.PendingImage?.GetWorkState().ActiveWorkCount > 0 &&
+                  second.PendingImage?.GetWorkState().ActiveWorkCount > 0 &&
                   first.Resolver.ResolveCountFor(first.Resolver.PendingUrl) > 0);
 
         int previousCount = first.Resolver.ResolveCountFor(first.Resolver.PendingUrl);
@@ -1355,8 +1355,8 @@ public sealed class RootLocalImageRelayoutTests
             await Task.Delay(TimeSpan.FromMilliseconds(25));
             int currentCount = first.Resolver.ResolveCountFor(first.Resolver.PendingUrl);
             bool bothWorkItemsRemainActive =
-                first.PendingImage is { ActiveImageWorkCountForTests: > 0 } &&
-                second.PendingImage is { ActiveImageWorkCountForTests: > 0 };
+                first.PendingImage?.GetWorkState().ActiveWorkCount > 0 &&
+                second.PendingImage?.GetWorkState().ActiveWorkCount > 0;
             stableSamples = bothWorkItemsRemainActive && currentCount == previousCount
                 ? stableSamples + 1
                 : 0;

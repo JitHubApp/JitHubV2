@@ -1039,8 +1039,8 @@ public sealed class ImageBoxSvgRendererTests
 
         await renderer.Canceled.Task.WaitAsync(TimeSpan.FromSeconds(10));
         await WaitUntilAsync(() =>
-            image.ActiveImageWorkCountForTests == 0 &&
-            image.ImageLifetimeDisposedForTests);
+            image.GetWorkState().ActiveWorkCount == 0 &&
+            image.GetWorkState().LifetimeDisposed);
     }
 
     [Fact]
@@ -1064,7 +1064,7 @@ public sealed class ImageBoxSvgRendererTests
                     delivery = callback;
                     return true;
                 });
-            Assert.Equal(1, image.ActiveImageWorkCountForTests);
+            Assert.Equal(1, image.GetWorkState().ActiveWorkCount);
 
             await session.DisposeAsync();
             Assert.Equal(0, Volatile.Read(ref dropped));
@@ -1074,7 +1074,7 @@ public sealed class ImageBoxSvgRendererTests
 
             Assert.Equal(0, Volatile.Read(ref published));
             Assert.Equal(1, Volatile.Read(ref dropped));
-            Assert.Equal(0, image.ActiveImageWorkCountForTests);
+            Assert.Equal(0, image.GetWorkState().ActiveWorkCount);
         }
         finally
         {
@@ -1138,7 +1138,7 @@ public sealed class ImageBoxSvgRendererTests
                 image.Dispose();
             foreach (Task load in loads)
                 await ObserveTaskForCleanupAsync(load);
-            await WaitUntilAsync(() => images.All(image => image.ActiveImageWorkCountForTests == 0));
+            await WaitUntilAsync(() => images.All(image => image.GetWorkState().ActiveWorkCount == 0));
         }
     }
 
@@ -1182,7 +1182,7 @@ public sealed class ImageBoxSvgRendererTests
             renderer.ReleaseOpenRequests();
             image.Dispose();
             await ObserveTaskForCleanupAsync(load);
-            await WaitUntilAsync(() => image.ActiveImageWorkCountForTests == 0);
+            await WaitUntilAsync(() => image.GetWorkState().ActiveWorkCount == 0);
         }
     }
 
@@ -1218,7 +1218,7 @@ public sealed class ImageBoxSvgRendererTests
 
             await retiringSession.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
             await WaitUntilAsync(() => gate.PendingRequests == 1 &&
-                retired.ActiveImageWorkCountForTests == 0);
+                retired.GetWorkState().ActiveWorkCount == 0);
             Assert.Equal(0, renderer.PrepareSourceCount);
             Assert.Equal(0, Volatile.Read(ref retiredPublications));
 
@@ -1237,8 +1237,8 @@ public sealed class ImageBoxSvgRendererTests
             retired.Dispose();
             survivor.Dispose();
             await ObserveTaskForCleanupAsync(survivorLoad);
-            await WaitUntilAsync(() => retired.ActiveImageWorkCountForTests == 0 &&
-                survivor.ActiveImageWorkCountForTests == 0);
+            await WaitUntilAsync(() => retired.GetWorkState().ActiveWorkCount == 0 &&
+                survivor.GetWorkState().ActiveWorkCount == 0);
         }
     }
 
@@ -1289,7 +1289,7 @@ public sealed class ImageBoxSvgRendererTests
                 image.Dispose();
             foreach (Task load in loads)
                 await ObserveTaskForCleanupAsync(load);
-            await WaitUntilAsync(() => images.All(image => image.ActiveImageWorkCountForTests == 0));
+            await WaitUntilAsync(() => images.All(image => image.GetWorkState().ActiveWorkCount == 0));
         }
     }
 
@@ -1353,8 +1353,8 @@ public sealed class ImageBoxSvgRendererTests
             first.Dispose();
             second.Dispose();
             await WaitUntilAsync(() =>
-                first.ActiveImageWorkCountForTests == 0 &&
-                second.ActiveImageWorkCountForTests == 0);
+                first.GetWorkState().ActiveWorkCount == 0 &&
+                second.GetWorkState().ActiveWorkCount == 0);
         }
     }
 
@@ -1394,8 +1394,8 @@ public sealed class ImageBoxSvgRendererTests
 
             queued.Dispose();
             await WaitUntilAsync(() =>
-                queued.ActiveImageWorkCountForTests == 0 &&
-                queued.ImageLifetimeDisposedForTests);
+                queued.GetWorkState().ActiveWorkCount == 0 &&
+                queued.GetWorkState().LifetimeDisposed);
             Assert.Equal(1, renderer.PrepareSourceCount);
             Assert.Equal(0, Volatile.Read(ref queuedPublications));
             Assert.Null(queued.SvgFailureReason);
@@ -1411,8 +1411,8 @@ public sealed class ImageBoxSvgRendererTests
             first.Dispose();
             queued.Dispose();
             await WaitUntilAsync(() =>
-                first.ActiveImageWorkCountForTests == 0 &&
-                queued.ActiveImageWorkCountForTests == 0);
+                first.GetWorkState().ActiveWorkCount == 0 &&
+                queued.GetWorkState().ActiveWorkCount == 0);
         }
     }
 
@@ -1461,7 +1461,7 @@ public sealed class ImageBoxSvgRendererTests
 
             Task shutdown = session.DisposeAsync().AsTask();
             await renderer.FirstPreparationCancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            await WaitUntilAsync(() => queued.ActiveImageWorkCountForTests == 0);
+            await WaitUntilAsync(() => queued.GetWorkState().ActiveWorkCount == 0);
 
             Assert.False(shutdown.IsCompleted);
             Assert.Equal(1, renderer.PrepareSourceCount);
@@ -1474,7 +1474,7 @@ public sealed class ImageBoxSvgRendererTests
 
             renderer.ReleaseFirstPreparationAfterCancellation.Set();
             await shutdown.WaitAsync(TimeSpan.FromSeconds(10));
-            await WaitUntilAsync(() => first.ActiveImageWorkCountForTests == 0);
+            await WaitUntilAsync(() => first.GetWorkState().ActiveWorkCount == 0);
             Assert.Equal(1, renderer.PrepareSourceCount);
             Assert.Equal(0, renderer.OpenCount);
             Assert.Equal(0, Volatile.Read(ref firstPublications));
@@ -1489,8 +1489,8 @@ public sealed class ImageBoxSvgRendererTests
             first.Dispose();
             queued.Dispose();
             await WaitUntilAsync(() =>
-                first.ActiveImageWorkCountForTests == 0 &&
-                queued.ActiveImageWorkCountForTests == 0);
+                first.GetWorkState().ActiveWorkCount == 0 &&
+                queued.GetWorkState().ActiveWorkCount == 0);
         }
     }
 
@@ -1524,7 +1524,7 @@ public sealed class ImageBoxSvgRendererTests
             Assert.Equal(1, renderer.OpenCount);
 
             await session.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
-            await WaitUntilAsync(() => image.ActiveImageWorkCountForTests == 0);
+            await WaitUntilAsync(() => image.GetWorkState().ActiveWorkCount == 0);
 
             Assert.Equal(0, Volatile.Read(ref publications));
             Assert.Empty(unavailable);
@@ -1536,7 +1536,7 @@ public sealed class ImageBoxSvgRendererTests
             renderer.ReleaseFirstOpen.TrySetResult();
             image.Dispose();
             await session.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
-            await WaitUntilAsync(() => image.ActiveImageWorkCountForTests == 0);
+            await WaitUntilAsync(() => image.GetWorkState().ActiveWorkCount == 0);
         }
     }
 
@@ -1582,11 +1582,11 @@ public sealed class ImageBoxSvgRendererTests
             using (await session.EnterCpuPreparationAsync(new object(), false, CancellationToken.None))
             {
                 Assert.Equal(0, queuedRenderer.OpenCount);
-                Assert.True(queued.ActiveImageWorkCountForTests > 0);
+                Assert.True(queued.GetWorkState().ActiveWorkCount > 0);
             }
 
             await session.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
-            await WaitUntilAsync(() => queued.ActiveImageWorkCountForTests == 0);
+            await WaitUntilAsync(() => queued.GetWorkState().ActiveWorkCount == 0);
 
             Assert.Equal(0, queuedRenderer.OpenCount);
             Assert.Equal(0, Volatile.Read(ref publications));
@@ -1603,8 +1603,8 @@ public sealed class ImageBoxSvgRendererTests
                 blocker.Image.Dispose();
             await session.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
             await WaitUntilAsync(() =>
-                queued.ActiveImageWorkCountForTests == 0 &&
-                blockers.All(blocker => blocker.Image.ActiveImageWorkCountForTests == 0));
+                queued.GetWorkState().ActiveWorkCount == 0 &&
+                blockers.All(blocker => blocker.Image.GetWorkState().ActiveWorkCount == 0));
             foreach (var blocker in blockers)
                 blocker.Renderer.Dispose();
         }
@@ -1654,8 +1654,8 @@ public sealed class ImageBoxSvgRendererTests
             recovered.Dispose();
             await session.DisposeAsync();
             await WaitUntilAsync(() =>
-                failed.ActiveImageWorkCountForTests == 0 &&
-                recovered.ActiveImageWorkCountForTests == 0);
+                failed.GetWorkState().ActiveWorkCount == 0 &&
+                recovered.GetWorkState().ActiveWorkCount == 0);
         }
     }
 

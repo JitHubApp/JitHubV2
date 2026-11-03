@@ -60,7 +60,7 @@ public sealed class LazyIdleImageLayoutCandidateTests
             var tailBounds = tailRoot.Bounds;
             int measuredCount = source.MeasuredTopLevelBlockCount;
             await DisplaySizedRasterDecodeTests.WaitForLoadAsync(front);
-            await DisplaySizedRasterDecodeTests.WaitUntilAsync(() => front.ActiveImageWorkCountForTests == 0);
+            await DisplaySizedRasterDecodeTests.WaitUntilAsync(() => front.GetWorkState().ActiveWorkCount == 0);
             Assert.Equal(1, resolver.ResolveCount);
 
             candidate = source.CreateSingleRasterCandidate([front.BlockIndex], 320, CancellationToken.None,
@@ -80,7 +80,7 @@ public sealed class LazyIdleImageLayoutCandidateTests
             Assert.Equal(measuredCount, replacement.MeasuredTopLevelBlockCount);
             Assert.False(replacement.IsTopLevelBlockMeasured(privateTailRoot));
             Assert.Equal(tailBounds.Height, privateTailRoot.Bounds.Height);
-            Assert.Equal(0, privateTail.ActiveImageWorkCountForTests);
+            Assert.Equal(0, privateTail.GetWorkState().ActiveWorkCount);
             Assert.Null(privateTail.MeasureCustody.GetLayoutState().Placeholder);
             if (privateTailRoot is InlineContainerBox privateInline)
                 Assert.False(privateInline.HasMeasuredLayout);
@@ -103,7 +103,7 @@ public sealed class LazyIdleImageLayoutCandidateTests
             Assert.Equal(1, resolver.ResolveCount);
             Assert.Equal(tailBounds, tailRoot.Bounds);
             await DisplaySizedRasterDecodeTests.WaitForLoadAsync(privateTail);
-            await DisplaySizedRasterDecodeTests.WaitUntilAsync(() => privateTail.ActiveImageWorkCountForTests == 0);
+            await DisplaySizedRasterDecodeTests.WaitUntilAsync(() => privateTail.GetWorkState().ActiveWorkCount == 0);
             Assert.NotNull(privateTail.Bitmap);
             Assert.Equal(2, resolver.ResolveCount);
             Assert.Null(tail.Bitmap);

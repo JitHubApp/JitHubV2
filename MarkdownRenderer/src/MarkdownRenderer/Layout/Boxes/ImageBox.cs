@@ -522,24 +522,11 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     /// <summary>True when this box is using bounded visible SVG tiles.</summary>
     internal bool UsesSvgTilesForAutomation => _svgUsesTiles;
 
-    /// <summary>Number of admitted image operations that have not drained.</summary>
-    internal int ActiveImageWorkCountForTests
+    /// <summary>One read of the admitted image work, under the image-work lock.</summary>
+    internal ImageWorkState GetWorkState()
     {
-        get
-        {
-            lock (_svgWorkSync)
-                return _svgWorkCount;
-        }
-    }
-
-    /// <summary>True after disposal and all admitted image operations drained.</summary>
-    internal bool ImageLifetimeDisposedForTests
-    {
-        get
-        {
-            lock (_svgWorkSync)
-                return _svgCancellationDisposed;
-        }
+        lock (_svgWorkSync)
+            return new ImageWorkState(_svgWorkCount, _svgCancellationDisposed);
     }
 
     /// <summary>

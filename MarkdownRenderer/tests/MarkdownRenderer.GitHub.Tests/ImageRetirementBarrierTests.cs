@@ -62,7 +62,7 @@ public sealed class ImageRetirementBarrierTests
             Assert.Null(document.DisposeContext);
             Assert.Equal(0, Volatile.Read(ref callerContext.PostCount));
             Assert.False(image.RetirementTask.IsCompleted);
-            Assert.False(image.ImageLifetimeDisposedForTests);
+            Assert.False(image.GetWorkState().LifetimeDisposed);
 
             image.Dispose();
             document.ReleaseDispose.TrySetResult();
@@ -77,7 +77,7 @@ public sealed class ImageRetirementBarrierTests
                 await image.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
             }
             Assert.Equal(1, Volatile.Read(ref document.DisposeCount));
-            Assert.True(image.ImageLifetimeDisposedForTests);
+            Assert.True(image.GetWorkState().LifetimeDisposed);
         }
         finally
         {
@@ -138,13 +138,13 @@ public sealed class ImageRetirementBarrierTests
 
         await renderer.Canceled.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.False(retirement.IsCompleted);
-        Assert.False(image.ImageLifetimeDisposedForTests);
+        Assert.False(image.GetWorkState().LifetimeDisposed);
 
         renderer.ReleaseOpen.TrySetResult();
         await retirement.WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.Equal(1, renderer.DocumentDisposeCount);
-        Assert.True(image.ImageLifetimeDisposedForTests);
+        Assert.True(image.GetWorkState().LifetimeDisposed);
     }
 
     [Fact]
@@ -309,7 +309,7 @@ public sealed class ImageRetirementBarrierTests
 
         resolver.Release.TrySetResult();
         await retirement.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.True(image.ImageLifetimeDisposedForTests);
+        Assert.True(image.GetWorkState().LifetimeDisposed);
     }
 
     [Fact]

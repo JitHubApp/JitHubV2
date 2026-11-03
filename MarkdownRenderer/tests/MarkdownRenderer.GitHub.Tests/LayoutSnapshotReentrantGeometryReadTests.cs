@@ -181,7 +181,7 @@ public sealed class LayoutSnapshotReentrantGeometryReadTests
     {
         await DisplaySizedRasterDecodeTests.WaitForLoadAsync(image).WaitAsync(TimeSpan.FromSeconds(10));
         await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-            () => image.ActiveImageWorkCountForTests == 0);
+            () => image.GetWorkState().ActiveWorkCount == 0);
         Assert.NotNull(image.Bitmap);
     }
 

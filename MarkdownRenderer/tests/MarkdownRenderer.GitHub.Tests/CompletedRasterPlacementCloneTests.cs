@@ -95,7 +95,7 @@ public sealed class CompletedRasterPlacementCloneTests
         Assert.NotSame(
             GetField<CancellationTokenSource>(fixture.ImageRun.Image, "_imageLifetimeCancellation"),
             GetField<CancellationTokenSource>(clonedImageRun.Image, "_imageLifetimeCancellation"));
-        Assert.Equal(0, clonedImageRun.Image.ActiveImageWorkCountForTests);
+        Assert.Equal(0, clonedImageRun.Image.GetWorkState().ActiveWorkCount);
         Assert.Null(GetNullableField<IMarkdownSvgDocument>(clonedImageRun.Image, "_svgDocument"));
         Assert.Null(GetNullableField<WeakReference<byte[]>>(clonedImageRun.Image, "_svgSourceIdentity"));
         AssertPrivateDictionaryEmpty(clonedImageRun.Image, "_svgTiles");
@@ -246,7 +246,7 @@ public sealed class CompletedRasterPlacementCloneTests
         Assert.Equal(0, candidateUnavailableCalls);
 
         await fixture.RetireCandidateAsync();
-        Assert.True(cloneRun.Image.ImageLifetimeDisposedForTests);
+        Assert.True(cloneRun.Image.GetWorkState().LifetimeDisposed);
         Assert.Null(cloneRun.Image.Bitmap);
         Assert.False(originalLifetime.IsCancellationRequested);
     }
@@ -269,7 +269,7 @@ public sealed class CompletedRasterPlacementCloneTests
         await using (var activeFixture = new PlacementFixture())
         {
             using IDisposable activeWork = BeginImageWork(activeFixture.ImageRun.Image);
-            Assert.Equal(1, activeFixture.ImageRun.Image.ActiveImageWorkCountForTests);
+            Assert.Equal(1, activeFixture.ImageRun.Image.GetWorkState().ActiveWorkCount);
             Assert.False(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
                 activeFixture.Source,
                 activeFixture.CreateContext(),

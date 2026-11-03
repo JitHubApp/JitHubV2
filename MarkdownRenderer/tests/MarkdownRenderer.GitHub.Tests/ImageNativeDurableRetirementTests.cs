@@ -275,7 +275,7 @@ public sealed class ImageNativeDurableRetirementTests
         }
         finally
         {
-            if (prepared is not null && !prepared.ImageLifetimeDisposedForTests)
+            if (prepared is not null && !prepared.GetWorkState().LifetimeDisposed)
             {
                 targetContext.DiscardConstructionBlock(prepared);
                 await prepared.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
@@ -356,7 +356,7 @@ public sealed class ImageNativeDurableRetirementTests
         {
             if (prepared is not null && originalPreparedRecord is not null)
                 prepared.MeasureCustody.ReplaceCaptionRecord(originalPreparedRecord);
-            if (prepared is not null && !prepared.ImageLifetimeDisposedForTests)
+            if (prepared is not null && !prepared.GetWorkState().LifetimeDisposed)
             {
                 targetContext.DiscardConstructionBlock(prepared);
                 await prepared.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));

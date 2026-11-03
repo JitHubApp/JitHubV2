@@ -187,7 +187,7 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
                 {
                     image.Dispose();
                     await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-                        () => image.ActiveImageWorkCountForTests == 0);
+                        () => image.GetWorkState().ActiveWorkCount == 0);
                 }
             }
         }
@@ -259,7 +259,7 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
         {
             image.Dispose();
             await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-                () => image.ActiveImageWorkCountForTests == 0);
+                () => image.GetWorkState().ActiveWorkCount == 0);
         }
 
         // A one-pixel cap must retain the same fractional alpha coverage as
@@ -295,7 +295,7 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
         {
             onePixel.Dispose();
             await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-                () => onePixel.ActiveImageWorkCountForTests == 0);
+                () => onePixel.GetWorkState().ActiveWorkCount == 0);
         }
     }
 
@@ -393,7 +393,7 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
         {
             image.Dispose();
             await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-                () => image.ActiveImageWorkCountForTests == 0);
+                () => image.GetWorkState().ActiveWorkCount == 0);
             ImageResourceScope.Shared.BitmapCache.Clear();
             await DisplaySizedRasterDecodeTests.WaitUntilAsync(
                 () => ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes == 0);
@@ -613,10 +613,10 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
         {
             image.Measure(availableWidth);
             image.EnsureLoading();
-            if (image.Bitmap is null || image.ActiveImageWorkCountForTests != 0)
+            if (image.Bitmap is null || image.GetWorkState().ActiveWorkCount != 0)
                 await completed.Task.WaitAsync(TimeSpan.FromSeconds(15));
             await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-                () => image.ActiveImageWorkCountForTests == 0);
+                () => image.GetWorkState().ActiveWorkCount == 0);
         }
         finally
         {

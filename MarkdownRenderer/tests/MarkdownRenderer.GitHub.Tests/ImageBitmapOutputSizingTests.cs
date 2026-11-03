@@ -318,8 +318,8 @@ public sealed class ImageBitmapOutputSizingTests
         BitmapOutputAdmission.Snapshot snapshot = admission.GetSnapshot();
         string imageState = image is null
             ? "not supplied"
-            : $"active work={image.ActiveImageWorkCountForTests}, " +
-                $"lifetime disposed={image.ImageLifetimeDisposedForTests}, " +
+            : $"active work={image.GetWorkState().ActiveWorkCount}, " +
+                $"lifetime disposed={image.GetWorkState().LifetimeDisposed}, " +
                 $"retirement task={image.RetirementTask.Status}, " +
                 $"SVG tiles={image.UsesSvgTilesForAutomation}, " +
                 $"SVG raster pixels={image.SvgRasterPixelSize.Width}x{image.SvgRasterPixelSize.Height}";

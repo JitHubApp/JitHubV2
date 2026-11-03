@@ -96,7 +96,7 @@ public sealed class ImageBoxInlineMeasuredPlacementTransferTests
         }
         finally
         {
-            if (prepared is not null && !prepared.ImageLifetimeDisposedForTests)
+            if (prepared is not null && !prepared.GetWorkState().LifetimeDisposed)
             {
                 candidateContext.DiscardConstructionBlock(prepared);
                 await prepared.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
@@ -195,7 +195,7 @@ public sealed class ImageBoxInlineMeasuredPlacementTransferTests
         }
         finally
         {
-            if (prepared is not null && !prepared.ImageLifetimeDisposedForTests)
+            if (prepared is not null && !prepared.GetWorkState().LifetimeDisposed)
             {
                 candidateContext.DiscardConstructionBlock(prepared);
                 await prepared.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
