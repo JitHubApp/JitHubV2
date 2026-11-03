@@ -8,7 +8,6 @@ using MarkdownRenderer.Controls.Embeds;
 using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
 using Microsoft.UI.Dispatching;
@@ -437,8 +436,8 @@ internal sealed class CodeBlockHighlighting
                 _host.ScheduleVisibleCodeBlockHighlighting();
             }
             else if (callbackSnapshot is not null &&
-                ApplyUncachedResult(
-                    callbackSnapshot, key, result,
+                CodeBlockHighlightTargets.ApplyUncachedResult(
+                    _host, _viewport, callbackSnapshot, key, result,
                     out retryAfterSnapshotBusy))
             {
                 // Oversized results cannot enter the bounded cache.
@@ -504,68 +503,6 @@ internal sealed class CodeBlockHighlighting
     {
         if (generation == _generation)
             _inFlight.Remove(key);
-    }
-
-    private bool ApplyUncachedResult(
-        LayoutSnapshot snapshot,
-        CodeBlockHighlightCacheKey key,
-        CodeBlockHighlightResult result,
-        out bool snapshotBusy)
-    {
-        snapshotBusy = false;
-        if (!snapshot.TryBeginInteraction())
-        {
-            snapshotBusy = true;
-            return false;
-        }
-
-        try
-        {
-            IReadOnlyList<BlockBox> inspectedBlocks;
-            IEnumerable<CodeBlockBox> candidates;
-            LazyLayoutBand band = default;
-            if (_host.PerformanceSession is null)
-            {
-                inspectedBlocks = snapshot.GetMeasuredTopLevelBlocks();
-                candidates = CodeBlockHighlightTargets.EnumerateCodeBlocks(inspectedBlocks);
-            }
-            else
-            {
-                _viewport.TryGet(out double viewportTop, out double viewportHeight, out _);
-                band = LazyLayoutBand.FromDirectionalViewport(
-                    viewportTop,
-                    viewportHeight,
-                    _host.PerformanceSession.Options.LookAheadViewports,
-                    _host.LazyScrollVelocityPixelsPerSecond);
-                if (!snapshot.TryGetMeasuredTopLevelBlocksInBandForSceneProbe(
-                        band.Top, band.Bottom, out inspectedBlocks))
-                {
-                    // The snapshot may still be measuring this band or waiting
-                    // for deferred native scenes. Keep the oversized result
-                    // retryable after the in-flight key is released.
-                    snapshotBusy = true;
-                    return false;
-                }
-
-                candidates = CodeBlockHighlightTargets.EnumerateCodeBlocks(inspectedBlocks);
-            }
-
-            bool changed = false;
-            foreach (var candidate in candidates)
-            {
-                if (_host.PerformanceSession is not null &&
-                    !CodeBlockHighlightTargets.IsInBand(snapshot, candidate, band.Top, band.Bottom))
-                    continue;
-                if (CodeBlockHighlightTargets.CreateCacheKey(candidate, key.ThemeVariant, key.ProviderIdentity, key.ProviderRevision).Equals(key))
-                    changed |= candidate.ApplySyntaxHighlighting(key, result.Spans);
-            }
-
-            return changed;
-        }
-        finally
-        {
-            snapshot.EndInteraction();
-        }
     }
 
     /// <summary>Drops every cached highlight result.</summary>
