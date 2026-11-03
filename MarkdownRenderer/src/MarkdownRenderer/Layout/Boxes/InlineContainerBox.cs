@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Graphics.Canvas;
@@ -44,26 +43,13 @@ internal sealed class InlineContainerBox : BlockBox
     internal bool HasAtomicInlineObject => _hasAtomicInlineObject;
     private int _runTextLength;
     internal int RunTextLength => _runTextLength;
-    // Most runs inherit the container aliases. Keep that common case implicit;
-    // once an override exists, null slots preserve the exact run ordinals.
-    private List<string[]?>? _effectiveRunAliasOverrides;
-    internal List<string[]?>? EffectiveRunAliasOverrides => _effectiveRunAliasOverrides;
-    // Offscreen lazy boxes have not resolved any run style yet. Preserve the
-    // ordinal cache contract without allocating a List and null slots for them.
-    private List<ElementStyle?>? _resolvedRunStyles;
-    internal List<ElementStyle?>? ResolvedRunStyles => _resolvedRunStyles;
-    // Nested link styles are resolved once per measured box. Plain links never
-    // allocate this cache, and immutable maps remain safely shareable by private
-    // placement clones while each clone resolves against its own context.
-    private List<ElementStyle[]?>? _resolvedLinkInlineSpanStyles;
-    internal List<ElementStyle[]?>? ResolvedLinkInlineSpanStyles => _resolvedLinkInlineSpanStyles;
-    internal int ResolvedRunStyleCount => _resolvedRunStyles?.Count ?? _runs.Count;
-    internal ElementStyle? GetCachedRunStyle(int index)
-    {
-        if ((uint)index >= (uint)_runs.Count)
-            throw new ArgumentOutOfRangeException(nameof(index));
-        return _resolvedRunStyles?[index];
-    }
+    // Owned by value and mutated in place; never copy it out of this field.
+    private InlineRunStyleCache _runStyleCache;
+    internal List<string[]?>? EffectiveRunAliasOverrides => _runStyleCache.AliasOverrides;
+    internal List<ElementStyle?>? ResolvedRunStyles => _runStyleCache.RunStyles;
+    internal List<ElementStyle[]?>? ResolvedLinkInlineSpanStyles => _runStyleCache.LinkSpanStyles;
+    internal int ResolvedRunStyleCount => _runStyleCache.GetRunStyleCount(_runs.Count);
+    internal ElementStyle? GetCachedRunStyle(int index) => _runStyleCache.GetCachedRunStyle(index, _runs.Count);
     public readonly string ElementKey;
     private CanvasTextLayout? _layout;
     internal CanvasTextLayout? TextLayout => _layout;
@@ -75,14 +61,12 @@ internal sealed class InlineContainerBox : BlockBox
     internal CanvasLineMetrics[]? CachedLineMetrics => _cachedLineMetrics;
     private bool _lineMetricsRead;
     internal bool HasReadLineMetrics => _lineMetricsRead;
-    private CanvasTextLayout? _selectionLayout;
-    internal CanvasTextLayout? SelectionLayout => _selectionLayout;
-    private NativeResourceRetirementRecord? _selectionLayoutRetirementRecord;
-    internal NativeResourceRetirementRecord? SelectionLayoutRetirementRecord => _selectionLayoutRetirementRecord;
-    private Color _selectionLayoutColor;
-    internal Color SelectionLayoutColor => _selectionLayoutColor;
-    private float _selectionLayoutWidth;
-    internal float SelectionLayoutWidth => _selectionLayoutWidth;
+    // Owned by value and mutated in place; never copy it out of this field.
+    private InlineSelectionLayoutState _selection;
+    internal CanvasTextLayout? SelectionLayout => _selection.Layout;
+    internal NativeResourceRetirementRecord? SelectionLayoutRetirementRecord => _selection.RetirementRecord;
+    internal Color SelectionLayoutColor => _selection.Color;
+    internal float SelectionLayoutWidth => _selection.Width;
     // Per-run scalar snapshot populated only while applying the measured
     // layout. Paint, selection and geometry consumers only read this array;
     // they never create DirectWrite analyzers or inspect cancellation state.
@@ -480,8 +464,8 @@ internal sealed class InlineContainerBox : BlockBox
         AppendEffectiveRunAliasOverride(
             index,
             sourceAliasOverride is null ? null : CopyKeys(sourceAliasOverride));
-        if (source._resolvedRunStyles is not null)
-            (_resolvedRunStyles ??= new(runCount)).Add(source._resolvedRunStyles[index]);
+        if (source._runStyleCache.RunStyles is { } sourceRunStyles)
+            _runStyleCache.AppendCopiedRunStyle(sourceRunStyles[index], runCount);
         if (copiedRun is InlineImageRun imageRun)
         {
             imageRun.Image.BlockIndex = source.BlockIndex;
@@ -567,8 +551,7 @@ internal sealed class InlineContainerBox : BlockBox
         AppendEffectiveRunAliasOverride(
             run.InlineIndex,
             run.StyleAliases.Count == 0 ? null : CombineAliases(_styleAliasKeys, run.StyleAliases));
-        _resolvedRunStyles?.Add(null);
-        _resolvedLinkInlineSpanStyles?.Add(null);
+        _runStyleCache.AppendUnresolvedRunSlots();
         if (sourceProjection is not null)
         {
             Context.SourceMap.Add(BlockIndex, run.InlineIndex, run.RenderedLength, run.SourceSpan, sourceProjection);
@@ -596,7 +579,7 @@ internal sealed class InlineContainerBox : BlockBox
     /// </summary>
     internal InlineImageRun[] DetachInlineImagesForTransfer()
     {
-        if (_layout is not null || _selectionLayout is not null)
+        if (_layout is not null || _selection.Layout is not null)
         {
             throw new InvalidOperationException(
                 "Inline image runs can only be transferred before their container is measured.");
@@ -627,7 +610,7 @@ internal sealed class InlineContainerBox : BlockBox
     /// </summary>
     internal InlineRun[] DetachInlineImagesAndSpacersForTransfer()
     {
-        if (_layout is not null || _selectionLayout is not null)
+        if (_layout is not null || _selection.Layout is not null)
         {
             throw new InvalidOperationException(
                 "Inline image and spacer runs can only be transferred before their container is measured.");
@@ -669,9 +652,7 @@ internal sealed class InlineContainerBox : BlockBox
         _runTextLength = 0;
         _vectorSceneRunCount = 0;
         _hasDeferredSceneMarker = false;
-        _effectiveRunAliasOverrides = null;
-        _resolvedRunStyles = null;
-        _resolvedLinkInlineSpanStyles = null;
+        _runStyleCache.Clear();
 
         for (int index = 0; index < _runs.Count; index++)
         {
@@ -698,8 +679,9 @@ internal sealed class InlineContainerBox : BlockBox
                 _hasAtomicInlineObject = true;
             }
 
-            AppendRebuiltEffectiveRunAliasOverride(
+            _runStyleCache.AppendRebuiltAliasOverride(
                 index,
+                _runs.Count,
                 run.StyleAliases.Count == 0 ? null : CombineAliases(_styleAliasKeys, run.StyleAliases));
         }
 
@@ -898,11 +880,11 @@ internal sealed class InlineContainerBox : BlockBox
         NativeResourceRetirementRecord? previousLayoutRetirementRecord = _layoutRetirementRecord;
         CanvasLineMetrics[]? previousLineMetrics = _cachedLineMetrics;
         bool previousLineMetricsRead = _lineMetricsRead;
-        CanvasTextLayout? previousSelectionLayout = _selectionLayout;
+        CanvasTextLayout? previousSelectionLayout = _selection.Layout;
         NativeResourceRetirementRecord? previousSelectionLayoutRetirementRecord =
-            _selectionLayoutRetirementRecord;
-        Color previousSelectionLayoutColor = _selectionLayoutColor;
-        float previousSelectionLayoutWidth = _selectionLayoutWidth;
+            _selection.RetirementRecord;
+        Color previousSelectionLayoutColor = _selection.Color;
+        float previousSelectionLayoutWidth = _selection.Width;
         string previousBuffer = _buffer;
         bool previousBufferDirty = _bufferDirty;
         float previousWidth = _lastWidth;
@@ -1043,10 +1025,11 @@ internal sealed class InlineContainerBox : BlockBox
             _layoutRetirementRecord = previousLayoutRetirementRecord;
             _cachedLineMetrics = previousLineMetrics;
             _lineMetricsRead = previousLineMetricsRead;
-            _selectionLayout = previousSelectionLayout;
-            _selectionLayoutRetirementRecord = previousSelectionLayoutRetirementRecord;
-            _selectionLayoutColor = previousSelectionLayoutColor;
-            _selectionLayoutWidth = previousSelectionLayoutWidth;
+            _selection.Restore(
+                previousSelectionLayout,
+                previousSelectionLayoutRetirementRecord,
+                previousSelectionLayoutColor,
+                previousSelectionLayoutWidth);
             _buffer = previousBuffer;
             _bufferDirty = previousBufferDirty;
             _lastWidth = previousWidth;
@@ -1156,9 +1139,7 @@ internal sealed class InlineContainerBox : BlockBox
                     ? vectorState.SceneGeometryGeneration
                     : 0;
             }
-            _selectionLayout = null;
-            _selectionLayoutRetirementRecord = null;
-            _selectionLayoutWidth = 0;
+            _selection.Detach();
 
             bool previousLayoutsAlias = ReferenceEquals(previousLayout, previousSelectionLayout);
             Exception? layoutCleanupFailure = InlineNativeLayoutRetirement.RetireNativeLayout(
@@ -1225,14 +1206,7 @@ internal sealed class InlineContainerBox : BlockBox
             (prepared._cachedLineMetrics, source._cachedLineMetrics);
         (source._lineMetricsRead, prepared._lineMetricsRead) =
             (prepared._lineMetricsRead, source._lineMetricsRead);
-        (source._selectionLayout, prepared._selectionLayout) =
-            (prepared._selectionLayout, source._selectionLayout);
-        (source._selectionLayoutRetirementRecord, prepared._selectionLayoutRetirementRecord) =
-            (prepared._selectionLayoutRetirementRecord, source._selectionLayoutRetirementRecord);
-        (source._selectionLayoutColor, prepared._selectionLayoutColor) =
-            (prepared._selectionLayoutColor, source._selectionLayoutColor);
-        (source._selectionLayoutWidth, prepared._selectionLayoutWidth) =
-            (prepared._selectionLayoutWidth, source._selectionLayoutWidth);
+        (source._selection, prepared._selection) = (prepared._selection, source._selection);
         (source._lastWidth, prepared._lastWidth) = (prepared._lastWidth, source._lastWidth);
         (source.Bounds, prepared.Bounds) = (prepared.Bounds, source.Bounds);
 
@@ -1294,20 +1268,8 @@ internal sealed class InlineContainerBox : BlockBox
             return resolved;
 
         resolved = InlineRunStyleResolver.ResolveRunStyle(this, run);
-        CacheRunStyle(run.InlineIndex, resolved);
+        _runStyleCache.CacheRunStyle(run.InlineIndex, resolved, _runs.Count);
         return resolved;
-    }
-
-    private void CacheRunStyle(int index, ElementStyle resolved)
-    {
-        if (_resolvedRunStyles is null)
-        {
-            var styles = new List<ElementStyle?>(_runs.Count);
-            for (int slot = 0; slot < _runs.Count; slot++)
-                styles.Add(null);
-            _resolvedRunStyles = styles;
-        }
-        _resolvedRunStyles[index] = resolved;
     }
 
     internal ElementStyle[] GetLinkInlineSpanStyles(LinkRun link)
@@ -1315,14 +1277,7 @@ internal sealed class InlineContainerBox : BlockBox
         LinkInlineStyleMap map = link.InlineStyleMap
             ?? throw new ArgumentException("The link has no nested inline style map.", nameof(link));
 
-        List<ElementStyle[]?>? cache = _resolvedLinkInlineSpanStyles;
-        if (cache is null)
-        {
-            cache = new List<ElementStyle[]?>(_runs.Count);
-            for (int index = 0; index < _runs.Count; index++)
-                cache.Add(null);
-            _resolvedLinkInlineSpanStyles = cache;
-        }
+        List<ElementStyle[]?> cache = _runStyleCache.GetOrCreateLinkSpanStyles(_runs.Count);
         if ((uint)link.InlineIndex >= (uint)cache.Count ||
             !ReferenceEquals(_runs[link.InlineIndex], link))
         {
@@ -1350,116 +1305,19 @@ internal sealed class InlineContainerBox : BlockBox
         => Context.CancellationToken.ThrowIfCancellationRequested();
 
     internal bool HasWellFormedEffectiveRunAliases =>
-        _effectiveRunAliasOverrides is null || _effectiveRunAliasOverrides.Count == _runs.Count;
+        _runStyleCache.HasWellFormedAliasOverrides(_runs.Count);
 
-    internal bool HasWellFormedResolvedLinkInlineStyleCache
-    {
-        get
-        {
-            List<ElementStyle[]?>? cache = _resolvedLinkInlineSpanStyles;
-            if (cache is null)
-                return true;
-            if (cache.Count != _runs.Count)
-                return false;
-
-            for (int index = 0; index < cache.Count; index++)
-            {
-                if (cache[index] is not { } styles)
-                    continue;
-                if (_runs[index] is not LinkRun link ||
-                    link.InlineStyleMap is not { } map ||
-                    !map.IsValidForTextLength(link.TextLength) || styles.Length != map.Count)
-                    return false;
-            }
-            return true;
-        }
-    }
+    internal bool HasWellFormedResolvedLinkInlineStyleCache =>
+        _runStyleCache.HasWellFormedLinkSpanStyles(_runs);
 
     internal string[] GetEffectiveRunAliases(int index)
-    {
-        if ((uint)index >= (uint)_runs.Count)
-            throw new ArgumentOutOfRangeException(nameof(index));
-
-        List<string[]?>? overrides = _effectiveRunAliasOverrides;
-        if (overrides is not null)
-        {
-            if (overrides.Count != _runs.Count)
-                throw new InvalidOperationException("Run alias override ordinals are inconsistent.");
-            if (overrides[index] is { } aliases)
-                return aliases;
-        }
-
-        return (string[])_styleAliasKeys;
-    }
+        => _runStyleCache.GetEffectiveAliases(index, _runs.Count, _styleAliasKeys);
 
     internal string[]? GetEffectiveRunAliasOverride(int index)
-    {
-        if ((uint)index >= (uint)_runs.Count)
-            throw new ArgumentOutOfRangeException(nameof(index));
-
-        List<string[]?>? overrides = _effectiveRunAliasOverrides;
-        if (overrides is null)
-            return null;
-        if (overrides.Count != _runs.Count)
-            throw new InvalidOperationException("Run alias override ordinals are inconsistent.");
-        return overrides[index];
-    }
+        => _runStyleCache.GetAliasOverride(index, _runs.Count);
 
     internal void AppendEffectiveRunAliasOverride(int index, string[]? aliases)
-    {
-        // Add the run before recording its override so the logical ordinal and
-        // run count remain the same fence used by style lookup and transfers.
-        if ((uint)index >= (uint)_runs.Count || index != _runs.Count - 1)
-            throw new InvalidOperationException("Run alias overrides must be appended in run order.");
-
-        List<string[]?>? overrides = _effectiveRunAliasOverrides;
-        if (overrides is null)
-        {
-            if (aliases is null)
-                return;
-
-            overrides = new List<string[]?>(_runs.Count);
-            for (int prior = 0; prior < index; prior++)
-                overrides.Add(null);
-            overrides.Add(aliases);
-            _effectiveRunAliasOverrides = overrides;
-            return;
-        }
-
-        if (overrides.Count != index)
-            throw new InvalidOperationException("Run alias overrides must be contiguous by ordinal.");
-        overrides.Add(aliases);
-    }
-
-    private void AppendRebuiltEffectiveRunAliasOverride(int index, string[]? aliases)
-    {
-        // DetachInlineImagesForTransfer has already removed all image runs, so
-        // the retained run list is complete before its effective aliases are
-        // rebuilt. Keep normal Add/clone appends strict, but let this dedicated
-        // ordered rebuild fill the null ordinals preceding the current run.
-        if ((uint)index >= (uint)_runs.Count)
-            throw new InvalidOperationException("Rebuilt run alias ordinals must belong to the retained runs.");
-
-        List<string[]?>? overrides = _effectiveRunAliasOverrides;
-        if (overrides is null)
-        {
-            if (aliases is null)
-                return;
-
-            overrides = new List<string[]?>(_runs.Count);
-            for (int prior = 0; prior < index; prior++)
-                overrides.Add(null);
-            overrides.Add(aliases);
-            _effectiveRunAliasOverrides = overrides;
-            return;
-        }
-
-        if (overrides.Count > index)
-            throw new InvalidOperationException("Rebuilt run alias overrides must be appended in run order.");
-        while (overrides.Count < index)
-            overrides.Add(null);
-        overrides.Add(aliases);
-    }
+        => _runStyleCache.AppendAliasOverride(index, _runs.Count, aliases);
 
     private static string[] CombineAliases(
         IReadOnlyList<string> containerAliases,
@@ -1766,18 +1624,16 @@ internal sealed class InlineContainerBox : BlockBox
         var cleanup = new BlockBoxCleanupScope();
         CanvasTextLayout? layout = _layout;
         NativeResourceRetirementRecord? layoutRetirementRecord = _layoutRetirementRecord;
-        CanvasTextLayout? selectionLayout = _selectionLayout;
+        CanvasTextLayout? selectionLayout = _selection.Layout;
         NativeResourceRetirementRecord? selectionLayoutRetirementRecord =
-            _selectionLayoutRetirementRecord;
+            _selection.RetirementRecord;
 
         // Detach all box/context-owned state before publishing any failed
         // native slots. The retirement registry must retain only the layouts,
         // never this box, its runs, or the document context.
         _layout = null;
         _layoutRetirementRecord = null;
-        _selectionLayout = null;
-        _selectionLayoutRetirementRecord = null;
-        _selectionLayoutWidth = 0;
+        _selection.Detach();
         _sceneGeometryGeneration = 0;
         _pendingSceneGeometryGeneration = 0;
         _pendingSceneGeometry = Array.Empty<InlineSceneGeometry>();
@@ -1842,128 +1698,7 @@ internal sealed class InlineContainerBox : BlockBox
     }
 
     internal CanvasTextLayout EnsureSelectionLayout(Color color, ElementStyle style)
-    {
-        if (!InlineMeasuredPlacementCapture.HasValidNativeLayoutCustody(this))
-            throw new InvalidOperationException("Cannot replace an inline selection layout without its reserved native-retirement owner.");
-
-        EnsureBuffer();
-        // The neutral clone covers the full native layout. The current range
-        // only supplies paint clips and decorations, so endpoint movement must
-        // not recreate a native layout or change its retirement owner.
-        if (_selectionLayout is not null &&
-            _selectionLayoutColor == color &&
-            Math.Abs(_selectionLayoutWidth - _lastWidth) <= 0.5f)
-        {
-            return _selectionLayout;
-        }
-
-        using var formatLease = CreateTextFormatLease(style, WordWrapping, TextAlignment);
-        var padding = GetEffectivePadding(style);
-        float horizontalPadding = (float)(padding.Left + padding.Right);
-        NativeResourceRetirementRecord candidateRetirementRecord = _nativeRetirement.Reserve(
-            resourceGroupCount: 0,
-            temporarySlotCount: 1,
-            disposer: _nativeDisposer);
-        CanvasTextLayout? candidateLayout = null;
-        Exception? candidateFailure = null;
-        try
-        {
-            candidateLayout = CanvasTextLayoutFactory.Create(
-                Context.ResourceCreator,
-                _buffer,
-                formatLease.Format,
-                Math.Max(1f, _lastWidth - horizontalPadding),
-                float.MaxValue,
-                Context.LayoutDiagnostics);
-            candidateRetirementRecord.SetTemporary(0, candidateLayout);
-            candidateLayout.Options = CanvasDrawTextOptions.EnableColorFont;
-            // Selection is painted synchronously by a Win2D Draw callback against
-            // an already-committed snapshot. A newer layout may have cancelled the
-            // snapshot's build token, but cancellation must never escape Draw.
-            InlineRunStyleApplier.ApplyRunStyles(this, candidateLayout, applyColors: false, observeCancellation: false);
-            float selectionLayoutWidth = Math.Max(1f, _lastWidth - horizontalPadding);
-            float inlineMetricScale = InlineAtomicObjectLayout.ApplyContentAwareLineSpacing(
-                this,
-                candidateLayout,
-                style,
-                selectionLayoutWidth);
-            InlineAtomicObjectLayout.ApplyEmbedSpacing(
-                this,
-                candidateLayout,
-                observeCancellation: false,
-                inverseMetricScale: inlineMetricScale,
-                maxInlineWidth: selectionLayoutWidth,
-                computeInlineImageMetrics: false);
-        }
-        catch (Exception exception)
-        {
-            candidateFailure = exception;
-        }
-
-        if (candidateFailure is not null)
-        {
-            Exception? cleanupFailure = InlineNativeLayoutRetirement.RetireNativeLayout(
-                ref candidateLayout,
-                candidateRetirementRecord,
-                "disposing a failed inline selection-layout candidate");
-            Exception combined = InlineNativeLayoutRetirement.CombineFailures(
-                "building an inline selection layout",
-                candidateFailure,
-                cleanupFailure)!;
-            ExceptionDispatchInfo.Capture(combined).Throw();
-        }
-
-        CanvasTextLayout? previousSelectionLayout = _selectionLayout;
-        NativeResourceRetirementRecord? previousSelectionRetirementRecord =
-            _selectionLayoutRetirementRecord;
-        if (previousSelectionLayout is not null)
-        {
-            try
-            {
-                if (previousSelectionRetirementRecord is null)
-                    previousSelectionLayout.Dispose();
-                else
-                    previousSelectionRetirementRecord.Disposer(previousSelectionLayout);
-            }
-            catch (Exception previousCleanupFailure)
-            {
-                Exception? candidateCleanupFailure = InlineNativeLayoutRetirement.RetireNativeLayout(
-                    ref candidateLayout,
-                    candidateRetirementRecord,
-                    "disposing a superseded inline selection-layout candidate");
-                Exception combined = InlineNativeLayoutRetirement.CombineFailures(
-                    "replacing an inline selection layout",
-                    previousCleanupFailure,
-                    candidateCleanupFailure)!;
-                ExceptionDispatchInfo.Capture(combined).Throw();
-            }
-        }
-
-        // The previous native owner was released successfully. Clear its box
-        // reference before publishing the now-empty preallocated record, then
-        // commit the fully styled candidate in one non-throwing field group.
-        _selectionLayout = null;
-        _selectionLayoutRetirementRecord = null;
-        Exception? previousRecordFailure = InlineNativeLayoutRetirement.ReleaseEmptyNativeRecord(previousSelectionRetirementRecord);
-        if (previousRecordFailure is not null)
-        {
-            Exception? candidateCleanupFailure = InlineNativeLayoutRetirement.RetireNativeLayout(
-                ref candidateLayout,
-                candidateRetirementRecord,
-                "disposing an uncommitted inline selection-layout candidate");
-            Exception combined = InlineNativeLayoutRetirement.CombineFailures(
-                "retiring the previous inline selection layout",
-                previousRecordFailure,
-                candidateCleanupFailure)!;
-            ExceptionDispatchInfo.Capture(combined).Throw();
-        }
-
-        _selectionLayout = candidateLayout;
-        _selectionLayoutRetirementRecord = candidateRetirementRecord;
-        _selectionLayoutColor = color;
-        _selectionLayoutWidth = _lastWidth;
-        return candidateLayout!;
-    }
+        => _selection.Ensure(this, color, style);
 
     private InlineSceneGeometry[] UpdateVectorScenePlacements(CanvasTextLayout layout)
     {
