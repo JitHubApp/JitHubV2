@@ -130,6 +130,6 @@ public sealed class ChildInlineConstructionScopeTests
     [Fact]
     public void DefaultScopeDisposalIsSafe()
     {
-        default(MarkdownLayoutContext.ChildInlineBuildScope).Dispose();
+        default(LayoutChildInlineBuildScope).Dispose();
     }
 }

@@ -108,7 +108,7 @@ public sealed class ChildBlockConstructionScopeTests
         else
             Assert.Throws<InvalidOperationException>(Invoke);
         Assert.False(context.TryBuildChildBlock(node, out _));
-        default(MarkdownLayoutContext.ChildBlockBuildScope).Dispose();
+        default(LayoutChildBlockBuildScope).Dispose();
     }
 
     [Theory]
