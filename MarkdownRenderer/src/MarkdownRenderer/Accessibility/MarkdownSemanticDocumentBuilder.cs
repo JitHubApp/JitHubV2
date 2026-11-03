@@ -1,7 +1,5 @@
-using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
-using System.Text;
 using System.Threading;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
@@ -67,28 +65,12 @@ internal sealed class MarkdownSemanticDocumentBuilder
             textProjectionReuse is { } projection && ReferenceEquals(text, projection.Text)
                 ? projection
                 : null;
-        // The graph indexes are collected in preorder during construction.
-        // Build the compact integer index once at its exact final capacity;
-        // growing it alongside the graph adds rehashes and oversized arrays.
-        // This loop visits only unique indexed inline boxes, not the tree.
-        var nodeByInlineBlockIndex = new Dictionary<int, MarkdownSemanticNode>(_nodeByInlineBox.Count);
-        var ambiguousInlineBlockIndices = new HashSet<int>();
-        foreach (KeyValuePair<InlineContainerBox, MarkdownSemanticNode> entry in _nodeByInlineBox)
-        {
-            if (!nodeByInlineBlockIndex.TryAdd(entry.Key.BlockIndex, entry.Value))
-                ambiguousInlineBlockIndices.Add(entry.Key.BlockIndex);
-        }
-        foreach (int blockIndex in ambiguousInlineBlockIndices)
-            nodeByInlineBlockIndex.Remove(blockIndex);
         return new MarkdownSemanticDocument(
             root,
             text,
             _spans.Freeze(),
             matchedProjection,
-            new MarkdownSemanticNodeIndexes(
-                _nodeByInlineBox,
-                nodeByInlineBlockIndex,
-                _nodeByHorizontalOverflow));
+            MarkdownSemanticNodeIndexes.FromNodeMaps(_nodeByInlineBox, _nodeByHorizontalOverflow));
     }
 
     private void RegisterNodeIndexes(MarkdownSemanticNode node)
@@ -622,7 +604,7 @@ internal sealed class MarkdownSemanticDocumentBuilder
             semanticNodes[i] = child;
         }
 
-        MarkdownSemanticDocument.AttachVectorSemanticNodes(
+        MarkdownVectorSemanticTree.AttachVectorSemanticNodes(
             semantics,
             semanticNodes,
             node,

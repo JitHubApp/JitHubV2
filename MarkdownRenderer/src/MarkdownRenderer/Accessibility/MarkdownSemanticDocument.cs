@@ -1,11 +1,8 @@
 using System;
-using System.Buffers.Binary;
 using System.Collections.Generic;
-using System.Security.Cryptography;
 using System.Threading;
 using Windows.Foundation;
 using MarkdownRenderer.Document;
-using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 
@@ -13,8 +10,6 @@ namespace MarkdownRenderer.Accessibility;
 
 internal sealed class MarkdownSemanticDocument
 {
-    private const int SemanticRangeFingerprintBatchBytes = 4 * 1024;
-
 
     public readonly MarkdownSemanticNode Root;
     public readonly string Text;
@@ -118,49 +113,13 @@ internal sealed class MarkdownSemanticDocument
         }
         _spanByPosition = spanByPosition;
 
-        if (nodeIndexes is { } indexes)
-        {
-            _nodeByInlineBox = indexes.ByInlineBox;
-            _nodeByInlineBlockIndex = indexes.ByInlineBlockIndex;
-            _nodeByHorizontalOverflow = indexes.ByHorizontalOverflow;
-        }
-        else
-        {
-            // Keep the fallback for manually-constructed semantic roots and
-            // private-constructor consumers. Production Builder snapshots pass
-            // indexes populated as nodes are created, avoiding this extra walk.
-            var nodeByInlineBox = new Dictionary<InlineContainerBox, MarkdownSemanticNode>();
-            var nodeByHorizontalOverflow = new Dictionary<IHorizontalOverflowBox, MarkdownSemanticNode>(
-                ReferenceEqualityComparer.Instance);
-            foreach (MarkdownSemanticNode node in EnumerateDepthFirst(root))
-            {
-                // Inline semantic descendants share their parent's layout box. Index
-                // only the block node so its TextProvider owns the full paragraph or
-                // heading range instead of whichever inline span happened to be first.
-                if (node.InlineBox is { } inline &&
-                    node.InlineRun is null &&
-                    node.Role is MarkdownSemanticRole.Paragraph or
-                        MarkdownSemanticRole.Heading or
-                        MarkdownSemanticRole.CodeBlock)
-                    nodeByInlineBox.TryAdd(inline, node);
-                if (node.VectorSemanticIndex < 0 && node.Box is IHorizontalOverflowBox overflow)
-                    nodeByHorizontalOverflow.TryAdd(overflow, node);
-            }
-            _nodeByInlineBox = nodeByInlineBox;
-            var nodeByInlineBlockIndex = new Dictionary<int, MarkdownSemanticNode>(nodeByInlineBox.Count);
-            var ambiguousInlineBlockIndices = new HashSet<int>();
-            foreach (KeyValuePair<InlineContainerBox, MarkdownSemanticNode> entry in nodeByInlineBox)
-            {
-                int blockIndex = entry.Key.BlockIndex;
-                if (!nodeByInlineBlockIndex.TryAdd(blockIndex, entry.Value))
-                    ambiguousInlineBlockIndices.Add(blockIndex);
-            }
-            foreach (int blockIndex in ambiguousInlineBlockIndices)
-                nodeByInlineBlockIndex.Remove(blockIndex);
-            _nodeByInlineBlockIndex = nodeByInlineBlockIndex;
-            _nodeByHorizontalOverflow = nodeByHorizontalOverflow;
-        }
-        SemanticRangeFingerprint = NormalizeNodeRangesAndComputeSemanticRangeFingerprint(root, spans, text.Length);
+        // Manually constructed roots carry no builder indexes; walk them once.
+        // Production builder snapshots pass indexes populated as nodes are created.
+        MarkdownSemanticNodeIndexes indexes = nodeIndexes ?? MarkdownSemanticNodeIndexes.FromTree(root);
+        _nodeByInlineBox = indexes.ByInlineBox;
+        _nodeByInlineBlockIndex = indexes.ByInlineBlockIndex;
+        _nodeByHorizontalOverflow = indexes.ByHorizontalOverflow;
+        SemanticRangeFingerprint = MarkdownSemanticRangeFingerprint.NormalizeNodeRangesAndComputeSemanticRangeFingerprint(root, spans, text.Length);
     }
 
     public static MarkdownSemanticDocument Build(LayoutSnapshot snapshot)
@@ -182,179 +141,6 @@ internal sealed class MarkdownSemanticDocument
 
         var builder = new MarkdownSemanticDocumentBuilder(textProjectionReuse?.Text, indexBuilder);
         return builder.Build(snapshot, textProjectionReuse);
-    }
-
-    internal static void AttachVectorSemanticNodes(
-        IReadOnlyList<MarkdownVectorSemanticItem> semantics,
-        IReadOnlyList<MarkdownSemanticNode?> semanticNodes,
-        MarkdownSemanticNode sceneNode,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        int semanticCount = semantics.Count;
-        if (semanticCount == 0)
-            return;
-
-        // Parent indices may point forward. Cache each item's nearest exposed
-        // ancestor (including itself) while resolving parents iteratively, so
-        // deep runs of omitted/decorative items are walked only once. The final
-        // loop still attaches in semantic-index order, preserving sibling order.
-        // MarkdownVectorScene has already validated parent indices and rejected cycles.
-        const int UnresolvedAncestor = int.MinValue;
-        var nearestExposedAncestors = new int[semanticCount];
-        Array.Fill(nearestExposedAncestors, UnresolvedAncestor);
-        var path = new int[semanticCount];
-
-        for (int i = 0; i < semanticCount; i++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            MarkdownSemanticNode? child = semanticNodes[i];
-            if (child is null)
-                continue;
-
-            int current = semantics[i].ParentIndex;
-            int pathCount = 0;
-            int nearestExposedAncestor = -1;
-            while ((uint)current < (uint)semanticCount)
-            {
-                if ((pathCount & 0x3F) == 0)
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                int cachedAncestor = nearestExposedAncestors[current];
-                if (cachedAncestor != UnresolvedAncestor)
-                {
-                    nearestExposedAncestor = cachedAncestor;
-                    break;
-                }
-
-                if (semanticNodes[current] is not null)
-                {
-                    nearestExposedAncestor = current;
-                    nearestExposedAncestors[current] = current;
-                    break;
-                }
-
-                path[pathCount++] = current;
-                current = semantics[current].ParentIndex;
-            }
-
-            int unwindCount = 0;
-            while (pathCount > 0)
-            {
-                if ((unwindCount++ & 0x3F) == 0)
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                int ancestorIndex = path[--pathCount];
-                if (semanticNodes[ancestorIndex] is not null)
-                    nearestExposedAncestor = ancestorIndex;
-                nearestExposedAncestors[ancestorIndex] = nearestExposedAncestor;
-            }
-
-            cancellationToken.ThrowIfCancellationRequested();
-            if ((uint)nearestExposedAncestor < (uint)semanticCount &&
-                semanticNodes[nearestExposedAncestor] is { } parentNode)
-            {
-                parentNode.Add(child);
-            }
-            else
-            {
-                sceneNode.Add(child);
-            }
-        }
-    }
-
-    private static MarkdownAutomationTextFingerprint NormalizeNodeRangesAndComputeSemanticRangeFingerprint(
-        MarkdownSemanticNode root,
-        IReadOnlyList<MarkdownTextSpan> spans,
-        int textLength)
-    {
-        using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        Span<byte> record = stackalloc byte[64];
-        Span<byte> batch = stackalloc byte[SemanticRangeFingerprintBatchBytes];
-        int batchLength = 0;
-        foreach (MarkdownSemanticNode node in EnumerateDepthFirst(root))
-        {
-            // The builder trims synthetic terminal separators after creating semantic
-            // nodes. Keep each published range inside the final projection;
-            // this is folded into the existing fingerprint traversal so it
-            // does not add a second document-tree walk.
-            node.TextStart = Math.Clamp(node.TextStart, 0, textLength);
-            node.TextEnd = Math.Clamp(node.TextEnd, node.TextStart, textLength);
-            AppendNodeRangeProjection(node, record);
-            AppendFingerprintRecord(hash, batch, ref batchLength, record);
-        }
-        for (int index = 0; index < spans.Count; index++)
-        {
-            MarkdownTextSpan span = spans[index];
-            record.Clear();
-            record[0] = 0x53;
-            BinaryPrimitives.WriteInt32LittleEndian(record[4..], span.TextStart);
-            BinaryPrimitives.WriteInt32LittleEndian(record[8..], span.TextEnd);
-            BinaryPrimitives.WriteInt32LittleEndian(record[12..], span.InlineBox?.BlockIndex ?? -1);
-            BinaryPrimitives.WriteInt32LittleEndian(record[16..], span.InlineRun?.InlineIndex ?? -1);
-            BinaryPrimitives.WriteInt32LittleEndian(record[20..], span.ImageBox?.BlockIndex ?? -1);
-            BinaryPrimitives.WriteInt32LittleEndian(record[24..], span.EmbedBox?.BlockIndex ?? -1);
-            BinaryPrimitives.WriteInt32LittleEndian(record[28..], span.HostedElementBox?.BlockIndex ?? -1);
-            BinaryPrimitives.WriteInt32LittleEndian(record[32..], span.VectorSceneBox?.BlockIndex ?? -1);
-            BinaryPrimitives.WriteInt32LittleEndian(record[36..], span.VectorSemanticIndex);
-            BinaryPrimitives.WriteInt32LittleEndian(record[40..], span.InlineRun?.SourceSpan.Start ?? -1);
-            BinaryPrimitives.WriteInt32LittleEndian(record[44..], span.InlineRun?.SourceSpan.Length ?? -1);
-            int kindFlags =
-                (span.InlineBox is null ? 0 : 1) |
-                (span.InlineRun is null ? 0 : 2) |
-                (span.ImageBox is null ? 0 : 4) |
-                (span.EmbedBox is null ? 0 : 8) |
-                (span.HostedElementBox is null ? 0 : 16) |
-                (span.VectorSceneBox is null ? 0 : 32);
-            BinaryPrimitives.WriteInt32LittleEndian(record[48..], kindFlags);
-            AppendFingerprintRecord(hash, batch, ref batchLength, record[..52]);
-        }
-
-        if (batchLength > 0)
-            hash.AppendData(batch[..batchLength]);
-
-        Span<byte> digest = stackalloc byte[32];
-        hash.GetHashAndReset(digest);
-        return MarkdownAutomationTextFingerprint.FromSha256(textLength, digest);
-    }
-
-    private static void AppendFingerprintRecord(
-        IncrementalHash hash,
-        Span<byte> batch,
-        ref int batchLength,
-        ReadOnlySpan<byte> record)
-    {
-        if (batch.Length - batchLength < record.Length)
-        {
-            hash.AppendData(batch[..batchLength]);
-            batchLength = 0;
-        }
-
-        record.CopyTo(batch[batchLength..]);
-        batchLength += record.Length;
-    }
-
-    private static void AppendNodeRangeProjection(
-        MarkdownSemanticNode node,
-        Span<byte> record)
-    {
-        record.Clear();
-        record[0] = 0x4E;
-        BinaryPrimitives.WriteInt32LittleEndian(record[4..], (int)node.Role);
-        BinaryPrimitives.WriteInt32LittleEndian(record[8..], node.TextStart);
-        BinaryPrimitives.WriteInt32LittleEndian(record[12..], node.TextEnd);
-        BinaryPrimitives.WriteInt32LittleEndian(record[16..], node.Box?.BlockIndex ?? -1);
-        BinaryPrimitives.WriteInt32LittleEndian(record[20..], node.InlineBox?.BlockIndex ?? -1);
-        BinaryPrimitives.WriteInt32LittleEndian(record[24..], node.ImageBox?.BlockIndex ?? -1);
-        BinaryPrimitives.WriteInt32LittleEndian(record[28..], node.EmbedBox?.BlockIndex ?? -1);
-        BinaryPrimitives.WriteInt32LittleEndian(record[32..], node.HostedElementBox?.BlockIndex ?? -1);
-        BinaryPrimitives.WriteInt32LittleEndian(record[36..], node.VectorSceneBox?.BlockIndex ?? -1);
-        BinaryPrimitives.WriteInt32LittleEndian(record[40..], node.InlineRun?.InlineIndex ?? -1);
-        BinaryPrimitives.WriteInt32LittleEndian(record[44..], node.VectorSemanticIndex);
-        BinaryPrimitives.WriteInt32LittleEndian(record[48..], node.HeadingLevel);
-        BinaryPrimitives.WriteInt32LittleEndian(record[52..], node.Row);
-        BinaryPrimitives.WriteInt32LittleEndian(record[56..], node.Column);
-        BinaryPrimitives.WriteInt32LittleEndian(record[60..], (int)node.AccessibilityRole);
     }
 
     public string GetText(MarkdownSemanticNode node)
