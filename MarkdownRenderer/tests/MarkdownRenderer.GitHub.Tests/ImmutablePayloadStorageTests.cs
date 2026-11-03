@@ -146,9 +146,9 @@ public sealed class ImmutablePayloadStorageTests
             "ExtensionIds Features BlockRenderers InlineRenderers SynchronousBlockRenderers " +
             "SynchronousInlineRenderers OwnedExtensionFactories Registrations");
         AssertReadonly(typeof(MarkdownRuntimeExtensionSet), "Extensions OwnedResources CallbackLifetime");
-        AssertReadonly(Nested(typeof(MarkdownEngine), "CompletedParse"),
+        AssertReadonly(typeof(MarkdownCompletedParse),
             "Document Key ParseGeneration WeightBytes");
-        AssertReadonly(Nested(typeof(MarkdownEngine), "InFlightParse"),
+        AssertReadonly(typeof(MarkdownInFlightParse),
             "CancellationToken Key Completion ParseGeneration SourceBytes");
     }
 
