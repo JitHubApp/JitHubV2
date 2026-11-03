@@ -399,25 +399,7 @@ internal sealed class InlineContainerBox : BlockBox
     internal static bool ArePrivateRasterPlacementContextsCompatible(
         MarkdownLayoutContext sourceContext,
         MarkdownLayoutContext targetContext)
-        => ReferenceEquals(sourceContext.ResourceCreator, targetContext.ResourceCreator) &&
-           ReferenceEquals(sourceContext.ThemeSnapshot, targetContext.ThemeSnapshot) &&
-           ReferenceEquals(sourceContext.Registry, targetContext.Registry) &&
-           ReferenceEquals(sourceContext.Dispatcher, targetContext.Dispatcher) &&
-           ReferenceEquals(sourceContext.ImageResolver, targetContext.ImageResolver) &&
-           ReferenceEquals(sourceContext.SvgRenderer, targetContext.SvgRenderer) &&
-           ReferenceEquals(sourceContext.PerformanceSession, targetContext.PerformanceSession) &&
-           ReferenceEquals(sourceContext.ImagePreparationOwner, targetContext.ImagePreparationOwner) &&
-           ReferenceEquals(sourceContext.ImageDocumentSource, targetContext.ImageDocumentSource) &&
-           ReferenceEquals(sourceContext.SourceMap, targetContext.SourceMap) &&
-           sourceContext.FlowDirection == targetContext.FlowDirection &&
-           sourceContext.RasterizationScale == targetContext.RasterizationScale &&
-           sourceContext.AllowThirdPartyRemoteImages == targetContext.AllowThirdPartyRemoteImages &&
-           string.Equals(sourceContext.Language, targetContext.Language, StringComparison.Ordinal) &&
-           string.Equals(sourceContext.ImageDocumentPath, targetContext.ImageDocumentPath, StringComparison.Ordinal) &&
-           Equals(sourceContext.ImageBaseUri, targetContext.ImageBaseUri) &&
-           ReferenceEquals(sourceContext.StringProvider, targetContext.StringProvider) &&
-           ReferenceEquals(sourceContext.CommandProvider, targetContext.CommandProvider) &&
-           ReferenceEquals(sourceContext.DisclosureStates, targetContext.DisclosureStates);
+        => InlinePrivatePlacementPreflight.ArePrivateRasterPlacementContextsCompatible(sourceContext, targetContext);
 
     public void Add(InlineRun run) => Add(run, sourceProjection: null);
 

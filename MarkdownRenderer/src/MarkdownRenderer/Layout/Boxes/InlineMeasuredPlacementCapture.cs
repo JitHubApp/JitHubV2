@@ -138,7 +138,7 @@ internal static class InlineMeasuredPlacementCapture
         if (ReferenceEquals(box, prepared) ||
             !float.IsFinite(expectedAvailableWidth) || expectedAvailableWidth <= 0f ||
             !rootsSupported ||
-            !InlineContainerBox.ArePrivateRasterPlacementContextsCompatible(box.Context, prepared.Context) ||
+            !InlinePrivatePlacementPreflight.ArePrivateRasterPlacementContextsCompatible(box.Context, prepared.Context) ||
             !box.RawPlacementMargin.Equals(prepared.RawPlacementMargin) ||
             !placementCountsValid ||
             (!isTableCellTransfer && !isContainerLeafTransfer && imageCount == 0) ||
@@ -326,7 +326,7 @@ internal static class InlineMeasuredPlacementCapture
     private static bool AreCompatiblePlacementRootInputs(
         InlineContainerBox source,
         InlineContainerBox prepared) =>
-        InlineContainerBox.ArePrivateRasterPlacementContextsCompatible(source.Context, prepared.Context) &&
+        InlinePrivatePlacementPreflight.ArePrivateRasterPlacementContextsCompatible(source.Context, prepared.Context) &&
         source.BlockIndex == prepared.BlockIndex &&
         string.Equals(source.ElementKey, prepared.ElementKey, StringComparison.Ordinal) &&
         string.Equals(source.CodeLanguage, prepared.CodeLanguage, StringComparison.Ordinal) &&

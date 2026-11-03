@@ -11,6 +11,36 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// </summary>
 internal static class InlinePrivatePlacementPreflight
 {
+    /// <summary>
+    /// Whether a candidate built in <paramref name="targetContext"/> shares every
+    /// resource, policy and document identity of <paramref name="sourceContext"/>
+    /// that a copied run or its measured layout depends on.
+    /// </summary>
+    /// <param name="sourceContext">The published source box's context.</param>
+    /// <param name="targetContext">The private candidate's context.</param>
+    internal static bool ArePrivateRasterPlacementContextsCompatible(
+        MarkdownLayoutContext sourceContext,
+        MarkdownLayoutContext targetContext)
+        => ReferenceEquals(sourceContext.ResourceCreator, targetContext.ResourceCreator) &&
+           ReferenceEquals(sourceContext.ThemeSnapshot, targetContext.ThemeSnapshot) &&
+           ReferenceEquals(sourceContext.Registry, targetContext.Registry) &&
+           ReferenceEquals(sourceContext.Dispatcher, targetContext.Dispatcher) &&
+           ReferenceEquals(sourceContext.ImageResolver, targetContext.ImageResolver) &&
+           ReferenceEquals(sourceContext.SvgRenderer, targetContext.SvgRenderer) &&
+           ReferenceEquals(sourceContext.PerformanceSession, targetContext.PerformanceSession) &&
+           ReferenceEquals(sourceContext.ImagePreparationOwner, targetContext.ImagePreparationOwner) &&
+           ReferenceEquals(sourceContext.ImageDocumentSource, targetContext.ImageDocumentSource) &&
+           ReferenceEquals(sourceContext.SourceMap, targetContext.SourceMap) &&
+           sourceContext.FlowDirection == targetContext.FlowDirection &&
+           sourceContext.RasterizationScale == targetContext.RasterizationScale &&
+           sourceContext.AllowThirdPartyRemoteImages == targetContext.AllowThirdPartyRemoteImages &&
+           string.Equals(sourceContext.Language, targetContext.Language, StringComparison.Ordinal) &&
+           string.Equals(sourceContext.ImageDocumentPath, targetContext.ImageDocumentPath, StringComparison.Ordinal) &&
+           Equals(sourceContext.ImageBaseUri, targetContext.ImageBaseUri) &&
+           ReferenceEquals(sourceContext.StringProvider, targetContext.StringProvider) &&
+           ReferenceEquals(sourceContext.CommandProvider, targetContext.CommandProvider) &&
+           ReferenceEquals(sourceContext.DisclosureStates, targetContext.DisclosureStates);
+
     internal static bool TryGetPrivateRasterPlacementCounts(
         InlineContainerBox box,
         MarkdownLayoutContext targetContext,
@@ -322,7 +352,7 @@ internal static class InlinePrivatePlacementPreflight
             box.HasDeferredSceneMarker ||
             (!allowMeasuredVectorPlacement && box.PendingSceneGeometry.Length != 0) ||
             !CanCopyPrivateCodeForegroundSpans(box, allowCodeForegroundSpans) ||
-            !InlineContainerBox.ArePrivateRasterPlacementContextsCompatible(box.Context, targetContext))
+            !ArePrivateRasterPlacementContextsCompatible(box.Context, targetContext))
             return false;
 
         return true;
