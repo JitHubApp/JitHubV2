@@ -237,10 +237,9 @@ internal sealed class HostedElementRealization
     /// being current.
     /// </summary>
     /// <remarks>
-    /// Kept as one method, over 80 lines, because realization, release and
-    /// the count notification run in a fixed order against one captured
-    /// <see cref="VisibleRealizationPass"/>; every step that can reenter is
-    /// followed by the same currency check.
+    /// Realization, release and the count notification run in a fixed order
+    /// against one captured <see cref="VisibleRealizationPass"/>; every step
+    /// that can reenter is followed by the same currency check.
     /// </remarks>
     internal void RealizeVisible(in VisibleRealizationPass pass, double top, double bottom)
     {
@@ -293,6 +292,30 @@ internal sealed class HostedElementRealization
             _activeEmbedOrdinals.RemoveAt(index);
         }
 
+        AddRealizedHitTargets();
+
+        // Surface the realised count to subscribers (e.g. sample app exposing
+        // it via a hidden TextBlock for UI-automation tests) — but only when
+        // the count actually changed. Firing on every scroll tick causes a
+        // property-change event storm for any UIA listener bound to a Name
+        // property mirror in the subscriber's UI.
+        int realised = RealizedCount;
+        if (realised != _lastFiredRealizedCount)
+        {
+            _lastFiredRealizedCount = realised;
+            _host.InvalidateAutomationLayout();
+            if (!_realization.IsCurrent(pass))
+                return;
+            _host.RaiseEmbedsRealizationChanged();
+        }
+    }
+
+    /// <summary>
+    /// Adds the hit rectangles of the realized elements, in document order.
+    /// Runs no callbacks.
+    /// </summary>
+    private void AddRealizedHitTargets()
+    {
         foreach (int ordinal in _activeEmbedOrdinals)
         {
             EmbedPlan plan = _embedPlans[ordinal];
@@ -323,26 +346,6 @@ internal sealed class HostedElementRealization
             {
                 _hitTargets.AddBlock(declarative.Box, declarative.Rect);
             }
-        }
-
-        // Surface the realised count to subscribers (e.g. sample app exposing
-        // it via a hidden TextBlock for UI-automation tests) — but only when
-        // the count actually changed. Firing on every scroll tick causes a
-        // property-change event storm for any UIA listener bound to a Name
-        // property mirror in the subscriber's UI.
-        int realised = 0;
-        foreach (int ordinal in _activeEmbedOrdinals)
-        {
-            if (_embedPlans[ordinal].Realized is not null)
-                realised++;
-        }
-        if (realised != _lastFiredRealizedCount)
-        {
-            _lastFiredRealizedCount = realised;
-            _host.InvalidateAutomationLayout();
-            if (!_realization.IsCurrent(pass))
-                return;
-            _host.RaiseEmbedsRealizationChanged();
         }
     }
 
