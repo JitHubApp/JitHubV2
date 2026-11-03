@@ -542,6 +542,33 @@ internal sealed class MarkdownSemanticDocumentBuilder
     {
         IReadOnlyList<MarkdownVectorSemanticItem> semantics = vector.SemanticItems;
         int start = _text.Length;
+        (int Start, int End)?[] semanticRanges = AppendVectorSceneText(vector, semantics, start);
+        int end = _text.Length;
+
+        string? accessibilityName = ResolveVectorSceneAccessibilityName(vector, semantics);
+        MarkdownSemanticNode node = CreateVectorSceneNode(vector, start, end, accessibilityName);
+        RegisterNodeIndexes(node);
+
+        MarkdownSemanticNode?[] semanticNodes = BuildVectorSemanticNodes(vector, semantics, semanticRanges, start);
+        MarkdownVectorSemanticTree.AttachVectorSemanticNodes(
+            semantics,
+            semanticNodes,
+            node,
+            vector.CancellationToken);
+
+        AppendBlockSeparator();
+        return node;
+    }
+
+    /// <summary>
+    /// Appends the scene's exposed text and returns the text range of each
+    /// named semantic item (null for items that contribute no text).
+    /// </summary>
+    private (int Start, int End)?[] AppendVectorSceneText(
+        VectorSceneBox vector,
+        IReadOnlyList<MarkdownVectorSemanticItem> semantics,
+        int start)
+    {
         var semanticRanges = new (int Start, int End)?[semantics.Count];
         for (int i = 0; i < semantics.Count; i++)
         {
@@ -574,8 +601,17 @@ internal sealed class MarkdownSemanticDocumentBuilder
         {
             AppendVectorText(vector, -1, vector.AccessibilityName!, start);
         }
-        int end = _text.Length;
 
+        return semanticRanges;
+    }
+
+    /// <summary>
+    /// The scene's own name, or else the name of its exposed root diagram item.
+    /// </summary>
+    private static string? ResolveVectorSceneAccessibilityName(
+        VectorSceneBox vector,
+        IReadOnlyList<MarkdownVectorSemanticItem> semantics)
+    {
         string? accessibilityName = vector.AccessibilityName;
         if (string.IsNullOrWhiteSpace(accessibilityName))
         {
@@ -594,7 +630,14 @@ internal sealed class MarkdownSemanticDocumentBuilder
             }
         }
 
-        var node = new MarkdownSemanticNode(
+        return accessibilityName;
+    }
+
+    private static MarkdownSemanticNode CreateVectorSceneNode(
+        VectorSceneBox vector,
+        int start,
+        int end,
+        string? accessibilityName) => new(
             vector.AccessibilityRole == MarkdownAccessibilityRole.Math
                 ? MarkdownSemanticRole.Math
                 : MarkdownSemanticRole.Diagram,
@@ -612,8 +655,17 @@ internal sealed class MarkdownSemanticDocumentBuilder
                 "_",
                 vector.SourceRange.Length.ToString(System.Globalization.CultureInfo.InvariantCulture)),
         };
-        RegisterNodeIndexes(node);
 
+    /// <summary>
+    /// Creates and registers a node for each exposed, non-root semantic item,
+    /// indexed by semantic item (null for items that are not exposed).
+    /// </summary>
+    private MarkdownSemanticNode?[] BuildVectorSemanticNodes(
+        VectorSceneBox vector,
+        IReadOnlyList<MarkdownVectorSemanticItem> semantics,
+        (int Start, int End)?[] semanticRanges,
+        int start)
+    {
         var semanticNodes = new MarkdownSemanticNode?[semantics.Count];
         for (int i = 0; i < semanticNodes.Length; i++)
         {
@@ -624,42 +676,45 @@ internal sealed class MarkdownSemanticDocumentBuilder
             {
                 continue;
             }
-            MarkdownVectorLinkAction? link = vector.GetSemanticLinkAction(i);
-            bool invokable = MarkdownVectorSemanticPolicy.IsInvokable(item.Flags, link is not null);
-            var child = new MarkdownSemanticNode(invokable
-                ? MarkdownSemanticRole.Link
-                : MarkdownSemanticRole.Group, vector)
-            {
-                VectorSceneBox = vector,
-                VectorSemanticIndex = i,
-                VectorSemanticRole = item.Role,
-                VectorSemanticFlags = item.Flags,
-                TextStart = semanticRanges[i]?.Start ?? start,
-                TextEnd = semanticRanges[i]?.End ?? start,
-                AccessibilityRole = invokable
-                    ? MarkdownAccessibilityRole.Link
-                    : MarkdownAccessibilityRole.Group,
-                AccessibilityName = item.Name,
-                AccessibilityDescription = item.Description,
-                HelpText = link?.Target ?? link?.Action,
-                AutomationId = string.Concat(
-                    "MarkdownDiagramItem_",
-                    vector.SourceRange.Start.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    "_",
-                    item.SourceId.ToString("X8", System.Globalization.CultureInfo.InvariantCulture)),
-            };
+            MarkdownSemanticNode child = CreateVectorSemanticNode(vector, i, item, semanticRanges[i], start);
             RegisterNodeIndexes(child);
             semanticNodes[i] = child;
         }
 
-        MarkdownVectorSemanticTree.AttachVectorSemanticNodes(
-            semantics,
-            semanticNodes,
-            node,
-            vector.CancellationToken);
+        return semanticNodes;
+    }
 
-        AppendBlockSeparator();
-        return node;
+    private static MarkdownSemanticNode CreateVectorSemanticNode(
+        VectorSceneBox vector,
+        int semanticIndex,
+        MarkdownVectorSemanticItem item,
+        (int Start, int End)? range,
+        int start)
+    {
+        MarkdownVectorLinkAction? link = vector.GetSemanticLinkAction(semanticIndex);
+        bool invokable = MarkdownVectorSemanticPolicy.IsInvokable(item.Flags, link is not null);
+        return new MarkdownSemanticNode(invokable
+            ? MarkdownSemanticRole.Link
+            : MarkdownSemanticRole.Group, vector)
+        {
+            VectorSceneBox = vector,
+            VectorSemanticIndex = semanticIndex,
+            VectorSemanticRole = item.Role,
+            VectorSemanticFlags = item.Flags,
+            TextStart = range?.Start ?? start,
+            TextEnd = range?.End ?? start,
+            AccessibilityRole = invokable
+                ? MarkdownAccessibilityRole.Link
+                : MarkdownAccessibilityRole.Group,
+            AccessibilityName = item.Name,
+            AccessibilityDescription = item.Description,
+            HelpText = link?.Target ?? link?.Action,
+            AutomationId = string.Concat(
+                "MarkdownDiagramItem_",
+                vector.SourceRange.Start.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                "_",
+                item.SourceId.ToString("X8", System.Globalization.CultureInfo.InvariantCulture)),
+        };
     }
 
     private (int Start, int End) AppendVectorText(
