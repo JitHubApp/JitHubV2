@@ -1,7 +1,6 @@
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Diagnostics.Tracing;
-using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using MarkdownRenderer.Controls;
@@ -152,7 +151,7 @@ public sealed class ResvgProviderTests
         Assert.True(document.Info.HasText);
         Assert.Equal(800, raster.WidthPixels);
         Assert.Equal(130, raster.HeightPixels);
-        Assert.True(HasVisiblePixel(raster.Pixels.Span));
+        Assert.True(ProviderTestRasters.HasVisiblePixel(raster.Pixels.Span));
     }
 
     [Fact]
@@ -176,7 +175,7 @@ public sealed class ResvgProviderTests
         Assert.True(document.Info.HasText);
         Assert.Equal(43, raster.WidthPixels);
         Assert.Equal(20, raster.HeightPixels);
-        Assert.True(HasVisiblePixel(raster.Pixels.Span));
+        Assert.True(ProviderTestRasters.HasVisiblePixel(raster.Pixels.Span));
     }
 
     [Fact]
@@ -206,7 +205,7 @@ public sealed class ResvgProviderTests
                 new MarkdownSvgRenderRequest(164, 20));
 
             Assert.True(document.Info.HasText);
-            Assert.True(HasVisiblePixel(raster.Pixels.Span));
+            Assert.True(ProviderTestRasters.HasVisiblePixel(raster.Pixels.Span));
         }
     }
 
@@ -279,7 +278,7 @@ public sealed class ResvgProviderTests
     [Fact]
     public async Task CssDataImages_AreDecodedChargedAndDeduplicatedAcrossEscapesAndQuotes()
     {
-        byte[] png = CreatePng(10, 20, 30, byte.MaxValue);
+        byte[] png = ProviderTestRasters.CreatePng(10, 20, 30, byte.MaxValue);
         string payload = Convert.ToBase64String(png);
         string source = $"<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'><style>.a{{fill:url(\"data\\3a image/png;base64,{payload}\")}}.b{{fill:url('data:image/png;base64,{payload}')}}</style><rect class='a' width='1' height='1'/></svg>";
         var options = new ResvgMarkdownSvgRendererOptions(
@@ -294,7 +293,7 @@ public sealed class ResvgProviderTests
     [Fact]
     public async Task OpenCollectiveFalseMediaTypePng_IsSniffedAndRendered()
     {
-        byte[] png = CreatePng(24, 120, 220, byte.MaxValue);
+        byte[] png = ProviderTestRasters.CreatePng(24, 120, 220, byte.MaxValue);
         string source = $"<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'><image width='1' height='1' href='data:false;base64,{Convert.ToBase64String(png)}'/></svg>";
         await using var renderer = new ResvgMarkdownSvgRenderer();
 
@@ -310,7 +309,7 @@ public sealed class ResvgProviderTests
     [Fact]
     public async Task MislabeledGifDataUriWithPngBytes_IsSniffedAndRendered()
     {
-        byte[] png = CreatePng(24, 120, 220, byte.MaxValue);
+        byte[] png = ProviderTestRasters.CreatePng(24, 120, 220, byte.MaxValue);
         string source = $"<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'><image width='1' height='1' href='data:image/gif;base64,{Convert.ToBase64String(png)}'/></svg>";
         await using var renderer = new ResvgMarkdownSvgRenderer();
 
@@ -381,7 +380,7 @@ public sealed class ResvgProviderTests
     [Fact]
     public async Task MislabeledRasterInsideNestedSvg_IsSniffedAndRendered()
     {
-        byte[] png = CreatePng(24, 120, 220, byte.MaxValue);
+        byte[] png = ProviderTestRasters.CreatePng(24, 120, 220, byte.MaxValue);
         string nested =
             "<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'>" +
             $"<image width='1' height='1' href='data:image/gif;base64,{Convert.ToBase64String(png)}'/>" +
@@ -774,7 +773,7 @@ public sealed class ResvgProviderTests
         }
 
         using MarkdownSvgRaster replacement = await document.RenderAsync(new MarkdownSvgRenderRequest(200, 24));
-        Assert.True(HasVisiblePixel(replacement.Pixels.Span));
+        Assert.True(ProviderTestRasters.HasVisiblePixel(replacement.Pixels.Span));
     }
 
     [Fact]
@@ -795,12 +794,12 @@ public sealed class ResvgProviderTests
         Assert.True(PrimaryPublishedFontGeneration() < renderer.CacheGeneration);
 
         using MarkdownSvgRaster textRaster = await textDocument.RenderAsync(new MarkdownSvgRenderRequest(96, 24));
-        Assert.True(HasVisiblePixel(textRaster.Pixels.Span));
+        Assert.True(ProviderTestRasters.HasVisiblePixel(textRaster.Pixels.Span));
         Assert.Equal(attachmentsBeforeRotation + 1, renderer.SourceAttachmentCount);
         Assert.Equal(renderer.CacheGeneration, PrimaryPublishedFontGeneration());
 
         using MarkdownSvgRaster geometryRaster = await geometryDocument.RenderAsync(new MarkdownSvgRenderRequest(24, 24));
-        Assert.True(HasVisiblePixel(geometryRaster.Pixels.Span));
+        Assert.True(ProviderTestRasters.HasVisiblePixel(geometryRaster.Pixels.Span));
         Assert.Equal(attachmentsBeforeRotation + 1, renderer.SourceAttachmentCount);
 
         // The primary slot always starts the first worker; nothing here
@@ -819,7 +818,7 @@ public sealed class ResvgProviderTests
             128,
             64,
             new MarkdownSvgTileRegion(48, 0, 32, 64)));
-        AssertTileMatchesCrop(full.Pixels.Span, tile.Pixels.Span, 128, 48, 0, 32, 64);
+        ProviderTestRasters.AssertTileMatchesCrop(full.Pixels.Span, tile.Pixels.Span, 128, 48, 0, 32, 64);
 
         const string unbounded = "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16'><filter id='f'><feTurbulence/><feTile/></filter><rect width='16' height='16' filter='url(#f)'/></svg>";
         using IMarkdownSvgDocument unboundedDocument = await renderer.OpenAsync(new MarkdownSvgOpenRequest(Svg(unbounded)));
@@ -866,7 +865,7 @@ public sealed class ResvgProviderTests
         // take the real DocumentMissing -> OPEN -> retry path.
         await renderer.TrimCachesAsync();
         using (MarkdownSvgRaster reattached = await document.RenderAsync(new MarkdownSvgRenderRequest(16, 8)))
-            Assert.True(HasVisiblePixel(reattached.Pixels.Span));
+            Assert.True(ProviderTestRasters.HasVisiblePixel(reattached.Pixels.Span));
         Assert.Equal(attachmentsAfterOpen + 1, renderer.SourceAttachmentCount);
 
         // Start render transactions and trims together. The worker-local gate
@@ -884,7 +883,7 @@ public sealed class ResvgProviderTests
         {
             await Task.WhenAll(renders.Cast<Task>().Concat(trims));
             foreach (Task<MarkdownSvgRaster> render in renders)
-                Assert.True(HasVisiblePixel((await render).Pixels.Span));
+                Assert.True(ProviderTestRasters.HasVisiblePixel((await render).Pixels.Span));
         }
         finally
         {
@@ -934,7 +933,7 @@ public sealed class ResvgProviderTests
         var body = new StringBuilder();
         for (int index = 0; index < 182; index++)
         {
-            byte[] png = CreatePng(
+            byte[] png = ProviderTestRasters.CreatePng(
                 checked((byte)index),
                 checked((byte)((index * 37) & 0xff)),
                 checked((byte)((index * 83) & 0xff)),
@@ -954,7 +953,7 @@ public sealed class ResvgProviderTests
 
         Assert.Equal(890, raster.WidthPixels);
         Assert.Equal(158, raster.HeightPixels);
-        Assert.True(HasVisiblePixel(raster.Pixels.Span));
+        Assert.True(ProviderTestRasters.HasVisiblePixel(raster.Pixels.Span));
     }
 
     [Fact]
@@ -964,7 +963,7 @@ public sealed class ResvgProviderTests
         // scale of an image-heavy sponsor grid without depending on live or
         // private README assets. A prior image-only shape missed its open cost.
         string[] payloads = Enumerable.Range(0, 380)
-            .Select(index => Convert.ToBase64String(CreatePng(
+            .Select(index => Convert.ToBase64String(ProviderTestRasters.CreatePng(
                 checked((byte)(index & 0xff)),
                 checked((byte)(index >> 8)),
                 64,
@@ -996,13 +995,13 @@ public sealed class ResvgProviderTests
 
         Assert.Equal(600, raster.WidthPixels);
         Assert.Equal(4060, raster.HeightPixels);
-        Assert.True(HasVisiblePixel(raster.Pixels.Span));
+        Assert.True(ProviderTestRasters.HasVisiblePixel(raster.Pixels.Span));
     }
 
     [Fact]
     public async Task RepeatedEmbeddedPayload_IsDeduplicatedAndRendersWithinUniqueBudget()
     {
-        byte[] png = CreatePng(20, 100, 220, byte.MaxValue);
+        byte[] png = ProviderTestRasters.CreatePng(20, 100, 220, byte.MaxValue);
         string data = Convert.ToBase64String(png);
         string images = string.Concat(Enumerable.Range(0, 200).Select(index =>
             $"<image x='{index % 20}' y='{index / 20}' width='1' height='1' href='data:image/png;base64,{data}'/>"));
@@ -1014,7 +1013,7 @@ public sealed class ResvgProviderTests
             $"<svg xmlns='http://www.w3.org/2000/svg' width='20' height='10'>{images}</svg>")));
         using MarkdownSvgRaster raster = await document.RenderAsync(new MarkdownSvgRenderRequest(20, 10));
 
-        Assert.True(HasVisiblePixel(raster.Pixels.Span));
+        Assert.True(ProviderTestRasters.HasVisiblePixel(raster.Pixels.Span));
     }
 
     [Fact]
@@ -1032,7 +1031,7 @@ public sealed class ResvgProviderTests
             try
             {
                 MarkdownSvgRaster[] rasters = await Task.WhenAll(renders);
-                Assert.All(rasters, raster => Assert.True(HasVisiblePixel(raster.Pixels.Span)));
+                Assert.All(rasters, raster => Assert.True(ProviderTestRasters.HasVisiblePixel(raster.Pixels.Span)));
             }
             finally
             {
@@ -1049,98 +1048,5 @@ public sealed class ResvgProviderTests
         }
 
         await renderer.TrimCachesAsync();
-    }
-
-    private static bool HasVisiblePixel(ReadOnlySpan<byte> pixels)
-    {
-        for (int index = 3; index < pixels.Length; index += 4)
-        {
-            if (pixels[index] != 0)
-                return true;
-        }
-        return false;
-    }
-
-    private static void AssertTileMatchesCrop(
-        ReadOnlySpan<byte> full,
-        ReadOnlySpan<byte> tile,
-        int fullWidth,
-        int tileX,
-        int tileY,
-        int tileWidth,
-        int tileHeight)
-    {
-        long totalDelta = 0;
-        for (int row = 0; row < tileHeight; row++)
-        {
-            int fullStart = (((tileY + row) * fullWidth) + tileX) * 4;
-            int tileStart = row * tileWidth * 4;
-            for (int index = 0; index < tileWidth * 4; index++)
-                totalDelta += Math.Abs(full[fullStart + index] - tile[tileStart + index]);
-        }
-        double meanDelta = totalDelta / (double)(tileWidth * tileHeight * 4);
-        Assert.InRange(meanDelta, 0, 1);
-    }
-
-    private static byte[] CreatePng(
-        byte red,
-        byte green,
-        byte blue,
-        byte alpha,
-        int metadataBytes = 0,
-        int metadataSeed = 0)
-    {
-        using var output = new MemoryStream();
-        output.Write([137, 80, 78, 71, 13, 10, 26, 10]);
-        byte[] header = new byte[13];
-        BinaryPrimitives.WriteUInt32BigEndian(header, 1);
-        BinaryPrimitives.WriteUInt32BigEndian(header.AsSpan(4), 1);
-        header[8] = 8;
-        header[9] = 6;
-        WritePngChunk(output, "IHDR", header);
-
-        if (metadataBytes > 0)
-        {
-            byte[] metadata = new byte[metadataBytes];
-            "Comment\0"u8.CopyTo(metadata);
-            for (int index = 8; index < metadata.Length; index++)
-                metadata[index] = checked((byte)('A' + ((index + metadataSeed) % 26)));
-            WritePngChunk(output, "tEXt", metadata);
-        }
-
-        using var compressed = new MemoryStream();
-        using (var zlib = new ZLibStream(compressed, CompressionLevel.SmallestSize, leaveOpen: true))
-            zlib.Write([0, red, green, blue, alpha]);
-        WritePngChunk(output, "IDAT", compressed.ToArray());
-        WritePngChunk(output, "IEND", []);
-        return output.ToArray();
-    }
-
-    private static void WritePngChunk(Stream destination, string type, byte[] data)
-    {
-        byte[] length = new byte[4];
-        BinaryPrimitives.WriteUInt32BigEndian(length, checked((uint)data.Length));
-        destination.Write(length);
-        byte[] typeBytes = Encoding.ASCII.GetBytes(type);
-        destination.Write(typeBytes);
-        destination.Write(data);
-        byte[] crcInput = new byte[typeBytes.Length + data.Length];
-        typeBytes.CopyTo(crcInput, 0);
-        data.CopyTo(crcInput, typeBytes.Length);
-        byte[] crc = new byte[4];
-        BinaryPrimitives.WriteUInt32BigEndian(crc, ComputeCrc32(crcInput));
-        destination.Write(crc);
-    }
-
-    private static uint ComputeCrc32(ReadOnlySpan<byte> bytes)
-    {
-        uint crc = uint.MaxValue;
-        foreach (byte value in bytes)
-        {
-            crc ^= value;
-            for (int bit = 0; bit < 8; bit++)
-                crc = (crc >> 1) ^ (0xedb88320u & (uint)-(int)(crc & 1));
-        }
-        return ~crc;
     }
 }
