@@ -10,9 +10,9 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// Owns the caches, budgets and admission gates that image boxes share:
 /// uploaded bitmaps, bitmap output admission, decode preparation admission,
 /// SVG source metadata, the negative failure caches, provider cache
-/// identities, the SVG open and provider gates, and native WIC decode
-/// counters. Every view given the same scope shares its budgets, so a
-/// scope's bounds hold across all of those views together.
+/// identities, the SVG open and provider gates, tiled SVG host admission,
+/// and native WIC decode counters. Every view given the same scope shares
+/// its budgets, so a scope's bounds hold across all of those views together.
 /// </summary>
 /// <remarks>
 /// An image box reaches its scope through one property and hands it to the
@@ -84,6 +84,9 @@ internal sealed class ImageResourceScope
     internal BoundedAsyncKeyedGate SvgOpenAdmissions { get; } = new(
         maximumTrackedKeys: 256,
         overflowStripeCount: 128);
+
+    /// <summary>Coordinates host-side admission of tiled SVG source snapshots.</summary>
+    internal SvgHostAdmissionCoordinator SvgHostAdmission { get; } = new();
 
     /// <summary>Bounds concurrent SVG provider opens and renders.</summary>
     internal SemaphoreSlim SvgProviderAdmission { get; } =

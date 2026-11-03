@@ -217,8 +217,8 @@ public sealed class SvgTileQueuePlanTests
     {
         var document = new CountingDocument();
         MarkdownSvgRenderDemand demand = new(MarkdownSvgRenderPriority.Overscan);
-        SvgHostAdmissionCoordinator.DomainState domain = new();
-        SvgHostAdmissionCoordinator.OwnerSlot ownerSlot = domain.TryReserveOwnerSlot(
+        SvgHostAdmissionDomain domain = new();
+        SvgHostOwnerSlot ownerSlot = domain.Owners.TryReserveOwnerSlot(
             new object(),
             out _) ?? throw new Xunit.Sdk.XunitException("Could not reserve test owner slot.");
         ImageBox.SvgTileRenderPlan plan = NewPlan(
@@ -252,8 +252,8 @@ public sealed class SvgTileQueuePlanTests
     {
         var document = new CountingDocument();
         MarkdownSvgRenderDemand demand = new(MarkdownSvgRenderPriority.Overscan);
-        SvgHostAdmissionCoordinator.DomainState domain = new();
-        SvgHostAdmissionCoordinator.OwnerSlot ownerSlot = domain.TryReserveOwnerSlot(
+        SvgHostAdmissionDomain domain = new();
+        SvgHostOwnerSlot ownerSlot = domain.Owners.TryReserveOwnerSlot(
             new object(),
             out _) ?? throw new Xunit.Sdk.XunitException("Could not reserve test owner slot.");
         ImageBox.SvgTileRenderPlan plan = NewPlan(
@@ -305,8 +305,8 @@ public sealed class SvgTileQueuePlanTests
         var document = new CountingDocument();
         MarkdownSvgRenderDemand demand = new(
             initiallyVisible ? MarkdownSvgRenderPriority.Visible : MarkdownSvgRenderPriority.Overscan);
-        SvgHostAdmissionCoordinator.DomainState domain = new();
-        SvgHostAdmissionCoordinator.OwnerSlot ownerSlot = domain.TryReserveOwnerSlot(
+        SvgHostAdmissionDomain domain = new();
+        SvgHostOwnerSlot ownerSlot = domain.Owners.TryReserveOwnerSlot(
             new object(),
             out _) ?? throw new Xunit.Sdk.XunitException("Could not reserve test owner slot.");
         ImageBox.SvgTileRenderPlan plan = NewPlan(
@@ -348,8 +348,8 @@ public sealed class SvgTileQueuePlanTests
     {
         var document = new CountingDocument();
         MarkdownSvgRenderDemand demand = new(MarkdownSvgRenderPriority.Overscan);
-        SvgHostAdmissionCoordinator.DomainState domain = new();
-        SvgHostAdmissionCoordinator.OwnerSlot ownerSlot = domain.TryReserveOwnerSlot(
+        SvgHostAdmissionDomain domain = new();
+        SvgHostOwnerSlot ownerSlot = domain.Owners.TryReserveOwnerSlot(
             new object(),
             out _) ?? throw new Xunit.Sdk.XunitException("Could not reserve test owner slot.");
         ImageBox.SvgTileRenderPlan plan = NewPlan(
@@ -419,8 +419,8 @@ public sealed class SvgTileQueuePlanTests
     {
         var document = new CountingDocument();
         MarkdownSvgRenderDemand demand = new(MarkdownSvgRenderPriority.Overscan);
-        SvgHostAdmissionCoordinator.DomainState domain = new();
-        SvgHostAdmissionCoordinator.OwnerSlot ownerSlot = domain.TryReserveOwnerSlot(
+        SvgHostAdmissionDomain domain = new();
+        SvgHostOwnerSlot ownerSlot = domain.Owners.TryReserveOwnerSlot(
             new object(),
             out _) ?? throw new Xunit.Sdk.XunitException("Could not reserve test owner slot.");
         ImageBox.SvgTileRenderPlan plan = NewPlan(
@@ -458,8 +458,8 @@ public sealed class SvgTileQueuePlanTests
     {
         var document = new CountingDocument();
         MarkdownSvgRenderDemand demand = new(MarkdownSvgRenderPriority.Overscan);
-        SvgHostAdmissionCoordinator.DomainState domain = new();
-        SvgHostAdmissionCoordinator.OwnerSlot ownerSlot = domain.TryReserveOwnerSlot(
+        SvgHostAdmissionDomain domain = new();
+        SvgHostOwnerSlot ownerSlot = domain.Owners.TryReserveOwnerSlot(
             new object(),
             out _) ?? throw new Xunit.Sdk.XunitException("Could not reserve test owner slot.");
         ImageBox.SvgTileRenderPlan plan = NewPlan(
@@ -965,7 +965,7 @@ public sealed class SvgTileQueuePlanTests
         int fullHeightPixels,
         int renderGeneration,
         MarkdownSvgRenderDemand? demand = null,
-        SvgHostAdmissionCoordinator.OwnerSlot? ownerSlot = null)
+        SvgHostOwnerSlot? ownerSlot = null)
         => new(
             document,
             identityPrefix,

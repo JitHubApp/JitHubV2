@@ -83,7 +83,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         MarkdownSvgRenderDemand? Demand = null,
         IMarkdownSvgAdmission? HostAdmission = null,
         long SourceReservationBytes = 0,
-        SvgHostAdmissionCoordinator.OwnerSlot? OwnerSlot = null,
+        SvgHostOwnerSlot? OwnerSlot = null,
         MarkdownSvgPhysicalViewport? PhysicalViewport = null)
     {
         internal readonly WeakReference<byte[]> SourceIdentity = SourceIdentity;
@@ -110,7 +110,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         internal readonly MarkdownSvgRenderDemand? Demand = Demand;
         internal readonly IMarkdownSvgAdmission? HostAdmission = HostAdmission;
         internal readonly long SourceReservationBytes = SourceReservationBytes;
-        internal readonly SvgHostAdmissionCoordinator.OwnerSlot? OwnerSlot = OwnerSlot;
+        internal readonly SvgHostOwnerSlot? OwnerSlot = OwnerSlot;
         internal readonly MarkdownSvgPhysicalViewport? PhysicalViewport = PhysicalViewport;
     }
 
@@ -143,7 +143,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     private sealed class SvgOpenedRenderWork(
         ImageBox owner, SvgPublicationMetadata metadata, string contentCacheKey,
         string? builtInSourceAliasKey, bool usesTiles, IMarkdownSvgDocument document, SvgDocumentUseLease documentUse,
-        SvgHostAdmissionCoordinator.OwnerSlot? ownerSlot, ImageWorkLease imageWork,
+        SvgHostOwnerSlot? ownerSlot, ImageWorkLease imageWork,
         CancellationTokenSource? preparationCancellation, CancellationToken cancellationToken,
         CancellationToken sessionLifetimeToken, BoundedAsyncKeyedGate.Entry? openAdmissionEntry,
         bool providerAdmissionHeld) : IDisposable
@@ -161,7 +161,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         internal readonly CancellationToken SessionLifetimeToken = sessionLifetimeToken;
         internal IMarkdownSvgDocument? Document = document;
         internal SvgDocumentUseLease? DocumentUse = documentUse;
-        internal SvgHostAdmissionCoordinator.OwnerSlot? OwnerSlot = ownerSlot;
+        internal SvgHostOwnerSlot? OwnerSlot = ownerSlot;
         private BoundedAsyncKeyedGate.Entry? _openAdmissionEntry = openAdmissionEntry;
 
         internal bool TryConsume() => _ownership.TryConsume();
@@ -192,7 +192,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 return;
             IMarkdownSvgDocument? document = Document;
             SvgDocumentUseLease? documentUse = DocumentUse;
-            SvgHostAdmissionCoordinator.OwnerSlot? ownerSlot = OwnerSlot;
+            SvgHostOwnerSlot? ownerSlot = OwnerSlot;
             CancellationTokenSource? cancellation = _preparationCancellation;
             Document = null;
             DocumentUse = null;
@@ -401,7 +401,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     private MarkdownSvgRenderDemand? _svgLoadDemandTicket;
     private int _svgLoadDemandGeneration;
     private readonly object _svgHostDeferredSync = new();
-    private SvgHostAdmissionCoordinator.PendingWaiter? _svgHostDeferredWaiter;
+    private SvgHostPendingWaiter? _svgHostDeferredWaiter;
     private object? _svgHostDeferredWaiterIdentity;
     private object? _svgHostDeferredRegistrationAttempt;
     private object? _svgHostDeferredDenialIdentity;
@@ -485,7 +485,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         MarkdownSvgRenderDemand? demand = null,
         IMarkdownSvgAdmission? hostAdmission = null,
         long sourceReservationBytes = 0,
-        SvgHostAdmissionCoordinator.OwnerSlot? ownerSlot = null,
+        SvgHostOwnerSlot? ownerSlot = null,
         MarkdownSvgPhysicalViewport? physicalViewport = null)
     {
         // Serializes the short viewport-state mutation with the final owner
@@ -505,7 +505,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         internal readonly IMarkdownSvgAdmission? HostAdmission = hostAdmission;
         internal readonly object? AdmissionDomain = ownerSlot?.AdmissionDomain;
         internal readonly long SourceReservationBytes = sourceReservationBytes;
-        internal readonly SvgHostAdmissionCoordinator.OwnerSlot? OwnerSlot = ownerSlot;
+        internal readonly SvgHostOwnerSlot? OwnerSlot = ownerSlot;
 
         // 0=open, 1=viewport mutation in progress, 2=parking commit claimed.
         internal bool TryBeginViewportMutation() =>
@@ -2359,7 +2359,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     private void DeferSvgHostLoad(
         SvgHostCapacityDeferral deferral, object? expectedDenialIdentity = null)
     {
-        SvgHostAdmissionCoordinator.PendingWaiter? previousWaiter;
+        SvgHostPendingWaiter? previousWaiter;
         object registrationAttempt = new();
         CancellationToken cancellationToken;
         lock (_svgWorkSync)
@@ -2407,10 +2407,10 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         }
         previousWaiter?.Dispose();
 
-        SvgHostAdmissionCoordinator.PendingWaiter? waiter = null;
+        SvgHostPendingWaiter? waiter = null;
         try
         {
-            waiter = SvgHostAdmissionCoordinator.Defer(
+            waiter = Resources.SvgHostAdmission.Defer(
                 this,
                 deferral.Admission,
                 deferral.Demand,
@@ -2512,7 +2512,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         {
             capacityVersion = requiresOwnerSlot ? 0 : admission.CapacityVersion;
             ownerVersion = requiresOwnerSlot
-                ? SvgHostAdmissionCoordinator.GetOwnerVersion(admission.AdmissionDomain)
+                ? Resources.SvgHostAdmission.GetOwnerVersion(admission.AdmissionDomain)
                 : 0;
         }
         catch (Exception exception)
@@ -2558,7 +2558,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         bool capacityThresholdSatisfied = false,
         object? waiterIdentity = null)
     {
-        SvgHostAdmissionCoordinator.PendingWaiter? waiter;
+        SvgHostPendingWaiter? waiter;
         SvgDeferredLoadWork retry;
         lock (_svgHostDeferredSync)
         {
@@ -2700,7 +2700,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         MarkdownSvgRenderDemand demand,
         int loadGeneration,
         object registrationAttempt,
-        SvgHostAdmissionCoordinator.PendingWaiter waiter)
+        SvgHostPendingWaiter waiter)
     {
         lock (_svgHostDeferredSync)
         {
@@ -2723,7 +2723,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         int loadGeneration,
         object waiterIdentity)
     {
-        SvgHostAdmissionCoordinator.PendingWaiter? waiter = null;
+        SvgHostPendingWaiter? waiter = null;
         lock (_svgHostDeferredSync)
         {
             if (ReferenceEquals(Volatile.Read(ref _svgLoadDemandTicket), demand) &&
@@ -3538,7 +3538,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         try
         {
             IMarkdownSvgDocument? terminalDocument;
-            SvgHostAdmissionCoordinator.OwnerSlot? terminalOwnerSlot;
+            SvgHostOwnerSlot? terminalOwnerSlot;
             lock (_svgWorkSync)
             {
                 terminalDocument = _svgDocument;
@@ -5348,7 +5348,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             cancellationToken, expectedDemand: demand, expectedSvgGeneration: renderGeneration);
         IMarkdownSvgDocument? openedDocument = null;
         SvgDocumentUseLease? openedDocumentUse = null;
-        SvgHostAdmissionCoordinator.OwnerSlot? ownerSlot = null;
+        SvgHostOwnerSlot? ownerSlot = null;
         SvgHostCapacityDeferral? hostCapacityDeferral = null;
         IMarkdownSvgPreparationLease? hostPreparationLease = null;
         long hostPreparationScratchBytes = 0;
@@ -5794,7 +5794,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             {
                 if (hostAdmission is not null)
                 {
-                    ownerSlot = SvgHostAdmissionCoordinator.TryReserveOwnerSlot(
+                    ownerSlot = Resources.SvgHostAdmission.TryReserveOwnerSlot(
                         admissionDomain!,
                         demand,
                         out long ownerVersionAtDenial);
@@ -7931,7 +7931,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         MarkdownSvgRenderDemand? demand = null,
         IMarkdownSvgAdmission? hostAdmission = null,
         long sourceReservationBytes = 0,
-        SvgHostAdmissionCoordinator.OwnerSlot? ownerSlot = null,
+        SvgHostOwnerSlot? ownerSlot = null,
         MarkdownSvgPhysicalViewport? physicalViewport = null) =>
         new(
             sourceIdentity,
@@ -8143,7 +8143,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         IMarkdownSvgDocument? previous = null;
         SvgTileRenderPlan? previousPlan = null;
         ImageWorkLease? previousCleanup = null;
-        SvgHostAdmissionCoordinator.OwnerSlot? abandonedOwnerSlot = null;
+        SvgHostOwnerSlot? abandonedOwnerSlot = null;
         IMarkdownSvgDocument? abandonedDocument = null;
         ImageWorkLease? abandonedDocumentCleanup = null;
         SvgTileCacheTransition? tileTransition;

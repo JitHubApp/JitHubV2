@@ -365,7 +365,7 @@ internal sealed partial class ImageBox : IMarkdownImageResidencyTarget
         long viewportObservationVersion = 0;
         long parkedPublicationEpoch = 0;
         IMarkdownSvgDocument? document = null;
-        SvgHostAdmissionCoordinator.OwnerSlot? ownerSlot = null;
+        SvgHostOwnerSlot? ownerSlot = null;
         ImageWorkLease? cleanup = null;
         try
         {
@@ -666,7 +666,7 @@ internal sealed partial class ImageBox : IMarkdownImageResidencyTarget
     public bool TryReleaseSuspendedResources()
     {
         IMarkdownSvgDocument? document;
-        SvgHostAdmissionCoordinator.OwnerSlot? ownerSlot;
+        SvgHostOwnerSlot? ownerSlot;
         ImageWorkLease? documentCleanup = null;
         lock (_svgWorkSync)
         {
