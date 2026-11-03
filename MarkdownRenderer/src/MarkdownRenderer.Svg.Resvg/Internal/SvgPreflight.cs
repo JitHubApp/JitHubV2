@@ -480,6 +480,36 @@ internal static class SvgPreflight
             reader.MoveToElement();
         }
 
+        if (TryScanElementContent(reader, name, isSvgElement, options, resources, ref scan, cancellationToken))
+            return false;
+
+        if (reader.IsEmptyElement && isSvgElement &&
+            name.Equals("svg", StringComparison.OrdinalIgnoreCase))
+            scan.SvgNesting--;
+        return true;
+    }
+
+    /// <summary>
+    /// Reads and checks the content of a non-empty style element, or of a
+    /// top-level description, which the scan consumes whole.
+    /// </summary>
+    /// <param name="reader">The reader, positioned on the element.</param>
+    /// <param name="name">The element's local name.</param>
+    /// <param name="isSvgElement">Whether the element is in the SVG namespace.</param>
+    /// <param name="options">The renderer ceilings.</param>
+    /// <param name="resources">The inspection context for embedded resources.</param>
+    /// <param name="scan">The running totals.</param>
+    /// <param name="cancellationToken">Cancels the scan.</param>
+    /// <returns>True when the content was read and the reader is on the next node.</returns>
+    private static bool TryScanElementContent(
+        XmlReader reader,
+        string name,
+        bool isSvgElement,
+        ResvgMarkdownSvgRendererOptions options,
+        SvgResourceInspectionContext resources,
+        ref SvgPreflightScan scan,
+        CancellationToken cancellationToken)
+    {
         if (name.Equals("style", StringComparison.OrdinalIgnoreCase) && !reader.IsEmptyElement)
         {
             string css = reader.ReadElementContentAsString();
@@ -500,7 +530,7 @@ internal static class SvgPreflight
             // next node. Process that node before asking the reader to
             // advance again, or adjacent security-sensitive elements
             // and metadata would be silently skipped.
-            return false;
+            return true;
         }
 
         if (reader.Depth == 1 && name.Equals("desc", StringComparison.OrdinalIgnoreCase) && !reader.IsEmptyElement)
@@ -512,13 +542,10 @@ internal static class SvgPreflight
                 ref scan.StructuralCost,
                 "The SVG exceeds the weighted description ceiling.");
             scan.Description ??= text.Length <= 4096 ? text.Trim() : text[..4096].Trim();
-            return false;
+            return true;
         }
 
-        if (reader.IsEmptyElement && isSvgElement &&
-            name.Equals("svg", StringComparison.OrdinalIgnoreCase))
-            scan.SvgNesting--;
-        return true;
+        return false;
     }
 
     /// <summary>Charges and checks the attribute the reader is positioned on.</summary>
