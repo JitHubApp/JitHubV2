@@ -1063,8 +1063,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
             IntrinsicHeightDips: intrinsicSize.Height,
             IntrinsicAspectRatio: intrinsicSize.Width / intrinsicSize.Height,
             Description: "SVG publication test");
-        return InvokePrivateStatic(
-            "CreateSvgPublicationMetadata",
+        return new SvgPublicationMetadata(
             new WeakReference<byte[]>(source),
             source.LongLength,
             renderer,
@@ -1090,7 +1089,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
             null, // No host admission capability.
             0L,
             null,
-            null)!;
+            null);
     }
 
     private static object CreatePlan(

@@ -5594,7 +5594,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 }
             }
 
-            SvgPublicationMetadata metadata = CreateSvgPublicationMetadata(
+            SvgPublicationMetadata metadata = new(
                 publicationSourceIdentity,
                 publicationSourceBytes,
                 renderer,
@@ -5614,7 +5614,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 targetHeight,
                 bitmapIdentity,
                 svgWorkId,
-                publishRequestedAt: 0,
+                PublishRequestedAt: 0,
                 targetPixels,
                 demand,
                 hostAdmission,
@@ -7682,61 +7682,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                    currentSecurityPartitionHash,
                    StringComparison.Ordinal);
     }
-
-    private static SvgPublicationMetadata CreateSvgPublicationMetadata(
-        WeakReference<byte[]> sourceIdentity,
-        long sourceByteLength,
-        IMarkdownSvgRenderer renderer,
-        long rendererIdentity,
-        long providerCacheGeneration,
-        int renderGeneration,
-        bool metadataWasKnown,
-        string resolvedCacheKey,
-        string svgFailureCacheKey,
-        Size intrinsic,
-        string? title,
-        string? description,
-        string contentHash,
-        string securityPartitionHash,
-        MarkdownSvgDocumentInfo info,
-        int targetWidthPixels,
-        int targetHeightPixels,
-        string bitmapIdentity,
-        long workId,
-        long publishRequestedAt,
-        long targetPixels,
-        MarkdownSvgRenderDemand? demand = null,
-        IMarkdownSvgAdmission? hostAdmission = null,
-        long sourceReservationBytes = 0,
-        SvgHostOwnerSlot? ownerSlot = null,
-        MarkdownSvgPhysicalViewport? physicalViewport = null) =>
-        new(
-            sourceIdentity,
-            sourceByteLength,
-            renderer,
-            rendererIdentity,
-            providerCacheGeneration,
-            renderGeneration,
-            metadataWasKnown,
-            resolvedCacheKey,
-            svgFailureCacheKey,
-            intrinsic,
-            title,
-            description,
-            contentHash,
-            securityPartitionHash,
-            info,
-            targetWidthPixels,
-            targetHeightPixels,
-            bitmapIdentity,
-            workId,
-            publishRequestedAt,
-            targetPixels,
-            demand,
-            hostAdmission,
-            sourceReservationBytes,
-            ownerSlot,
-            physicalViewport);
 
     // Transient callback pairs use a built-in value tuple: no separate carrier
     // object is allocated or retained alongside the actual publication owner.

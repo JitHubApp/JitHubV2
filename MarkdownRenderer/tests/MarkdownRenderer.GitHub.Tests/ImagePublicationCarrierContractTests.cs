@@ -9,13 +9,13 @@ public sealed class ImagePublicationCarrierContractTests
     [Fact]
     public void SvgPublicationFactoryAcceptsOnlyWeakSourceIdentityAndScalarLength()
     {
-        MethodInfo factory = typeof(ImageBox).GetMethod(
-            "CreateSvgPublicationMetadata", BindingFlags.Static | BindingFlags.NonPublic)!;
+        ConstructorInfo factory = Assert.Single(typeof(SvgPublicationMetadata).GetConstructors(
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic));
         ParameterInfo[] parameters = factory.GetParameters();
         Assert.Equal(typeof(WeakReference<byte[]>), parameters[0].ParameterType);
         Assert.Equal(typeof(long), parameters[1].ParameterType);
         Assert.DoesNotContain(parameters, parameter => parameter.ParameterType == typeof(byte[]));
-        FieldInfo[] fields = factory.ReturnType.GetFields(
+        FieldInfo[] fields = typeof(SvgPublicationMetadata).GetFields(
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         Assert.DoesNotContain(fields, field => field.FieldType == typeof(byte[]));
         Assert.Equal(typeof(WeakReference<byte[]>),
