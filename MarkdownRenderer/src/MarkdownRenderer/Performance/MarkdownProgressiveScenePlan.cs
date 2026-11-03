@@ -27,6 +27,7 @@ internal sealed class MarkdownProgressiveScenePlan :
     IScenePublicationTarget,
     IDeferredSceneGraphRebindHost,
     IDeferredScenePublicationHost,
+    IDeferredSceneViewportHost,
     IDisposable
 {
     private readonly object _gate = new();
@@ -41,14 +42,9 @@ internal sealed class MarkdownProgressiveScenePlan :
     private readonly DeferredSceneDiagnostics _diagnosticSet = new();
     private readonly DeferredSceneGraphRebinder _graphRebinder;
     private readonly DeferredScenePublisher _publisher;
+    private readonly DeferredSceneViewportProbe _viewportProbe;
     private HashSet<string> _visibleMarkers = new(StringComparer.Ordinal);
-    private MarkdownRendererControl? _callbackOwner;
-    private Func<Action, bool>? _enqueuePublication;
-    private Action? _onPublished;
-    private Action? _onRetryVisibleBand;
     private bool _hasVisibleBand;
-    private bool _hasObservedVisiblePlaceholderStatus;
-    private bool _visiblePlaceholderStatusPending;
     private CancellationTokenSource _generationCancellation = new();
     private long _generation;
     private bool _disposed;
@@ -81,6 +77,7 @@ internal sealed class MarkdownProgressiveScenePlan :
             session,
             documentOwner,
             _diagnosticSet);
+        _viewportProbe = new DeferredSceneViewportProbe(_gate, this, session);
     }
 
     /// <summary>
@@ -310,125 +307,7 @@ internal sealed class MarkdownProgressiveScenePlan :
         }
     }
 
-    internal bool ScheduleVisible(object documentOwner)
-    {
-        if (_session.IsDisposed || documentOwner is not MarkdownRendererControl control)
-            return false;
-
-        EnsureControlCallbacks(control);
-
-        LayoutSnapshot? snapshot = control.CurrentSnapshot;
-        if (snapshot is null || !control.TryGetViewport(out double top, out double height, out _) ||
-            !double.IsFinite(top) || !double.IsFinite(height) || height <= 0)
-        {
-            control.RequestDeferredSceneProbeAfterPaint();
-            NotifyVisiblePlaceholderStatusIfChanged(control, pending: true);
-            return true;
-        }
-        double bottom = top + height;
-        int visibleMarkerCount = -1;
-        if (!snapshot.TryBeginPaint())
-        {
-            control.RequestDeferredSceneProbeAfterPaint();
-            NotifyVisiblePlaceholderStatusIfChanged(control, pending: true);
-            return true;
-        }
-        try
-        {
-            bool bandMeasured = snapshot.TryGetMeasuredTopLevelBlocksInBandForSceneProbe(
-                    top,
-                    bottom,
-                    out IReadOnlyList<BlockBox> visibleBlocks,
-                    out IReadOnlyList<int> visibleOrdinals,
-                    out LayoutPlacementGeneration placements,
-                    out IReadOnlyDictionary<int, int> topLevelOrdinalByBlockIndex);
-            if (bandMeasured &&
-                TryCollectVisibleDeferredSceneMarkers(
-                    visibleBlocks,
-                    visibleOrdinals,
-                    placements,
-                    topLevelOrdinalByBlockIndex,
-                    top,
-                    bottom,
-                    viewport: null,
-                    residencyPolicy: snapshot.VectorSceneResidencyPolicy,
-                    out IReadOnlyList<string> measuredVisibleMarkers,
-                    out _))
-            {
-                // Consume the policy-owned marker scratch before releasing the
-                // snapshot lease, which serializes subsequent viewport probes.
-                visibleMarkerCount = UpdateVisibleMarkers(measuredVisibleMarkers);
-            }
-        }
-        finally
-        {
-            snapshot.EndPaint();
-        }
-
-        if (visibleMarkerCount < 0)
-        {
-            // The snapshot is being measured or has a stale inline geometry
-            // index. A lazy band can finish measuring, or its scenes finish
-            // preparing, without another layout commit, so ask the control to
-            // re-probe after the next successful paint.
-            control.RequestDeferredSceneProbeAfterPaint();
-            NotifyVisiblePlaceholderStatusIfChanged(control, pending: true);
-            return true;
-        }
-
-        NotifyVisiblePlaceholderStatusIfChanged(control, pending: visibleMarkerCount != 0);
-
-        // The visible set is plan-owned and updated in place. Scheduling under
-        // the same reentrant monitor avoids a per-scroll copy; TrySchedule only
-        // queues background work and takes no external/UI callback inline.
-        lock (_gate)
-        {
-            foreach (string marker in _visibleMarkers)
-            {
-                TrySchedule(
-                    marker,
-                    _enqueuePublication!,
-                    _onPublished!,
-                    _onRetryVisibleBand);
-            }
-        }
-
-        return true;
-    }
-
-    private void NotifyVisiblePlaceholderStatusIfChanged(
-        MarkdownRendererControl control,
-        bool pending)
-    {
-        bool changed;
-        lock (_gate)
-        {
-            if (_disposed)
-                return;
-
-            changed = !_hasObservedVisiblePlaceholderStatus ||
-                _visiblePlaceholderStatusPending != pending;
-            _hasObservedVisiblePlaceholderStatus = true;
-            _visiblePlaceholderStatusPending = pending;
-        }
-
-        if (changed)
-            control.DeferredSceneReadiness.NotifyItemStatusMayHaveChanged();
-    }
-
-    private void EnsureControlCallbacks(MarkdownRendererControl control)
-    {
-        if (ReferenceEquals(_callbackOwner, control))
-            return;
-
-        _callbackOwner = control;
-        _enqueuePublication = action => control.DispatcherQueue?.TryEnqueue(() => action()) == true;
-        _onPublished = control.RequestRebuildAfterDeferredScene;
-        _onRetryVisibleBand = () =>
-        {
-            control.DispatcherQueue?.TryEnqueue(control.ScheduleVisibleDeferredScenes);
-        };
-    }
+    internal bool ScheduleVisible(object documentOwner) => _viewportProbe.ScheduleVisible(documentOwner);
 
     /// <summary>
     /// Reconciles queued and active scene requests with the latest measured
@@ -461,6 +340,26 @@ internal sealed class MarkdownProgressiveScenePlan :
             _results.RetireHandoffsOutside(_visibleMarkers);
 
             return _visibleMarkers.Count;
+        }
+    }
+
+    bool IDeferredSceneViewportHost.IsDisposedNoLock => _disposed;
+
+    int IDeferredSceneViewportHost.UpdateVisibleMarkers(IEnumerable<string> markers) =>
+        UpdateVisibleMarkers(markers);
+
+    void IDeferredSceneViewportHost.ScheduleVisibleMarkersNoLock(
+        Func<Action, bool> enqueuePublication,
+        Action onPublished,
+        Action? onRetryVisibleBand)
+    {
+        foreach (string marker in _visibleMarkers)
+        {
+            TrySchedule(
+                marker,
+                enqueuePublication,
+                onPublished,
+                onRetryVisibleBand);
         }
     }
 
@@ -638,10 +537,7 @@ internal sealed class MarkdownProgressiveScenePlan :
                 _active.Clear();
                 _graphRebinder.ClearNoLock();
                 _results.Clear();
-                _callbackOwner = null;
-                _enqueuePublication = null;
-                _onPublished = null;
-                _onRetryVisibleBand = null;
+                _viewportProbe.ReleaseControlNoLock();
                 _diagnosticSet.Reset();
             }
 
