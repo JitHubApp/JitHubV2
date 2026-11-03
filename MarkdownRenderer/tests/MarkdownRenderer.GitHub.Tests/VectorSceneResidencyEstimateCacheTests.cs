@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using System.Reflection;
 using System.Threading;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
@@ -25,8 +24,9 @@ public sealed class VectorSceneResidencyEstimateCacheTests
     public void SharedSceneWeightIsComputedOnceAcrossConcurrentPolicies()
     {
         MarkdownVectorScene scene = CreateScene();
+        var sharedEstimates = new MarkdownVectorSceneEstimateCache();
         MarkdownVectorSceneResidencyPolicy[] policies = Enumerable.Range(0, 16)
-            .Select(_ => new MarkdownVectorSceneResidencyPolicy([])).ToArray();
+            .Select(_ => new MarkdownVectorSceneResidencyPolicy([], estimates: sharedEstimates)).ToArray();
         try
         {
             Func<MarkdownVectorScene, long>[] estimates = policies.Select(CreateEstimateDelegate).ToArray();
@@ -67,12 +67,7 @@ public sealed class VectorSceneResidencyEstimateCacheTests
     }
 
     private static Func<MarkdownVectorScene, long> CreateEstimateDelegate(MarkdownVectorSceneResidencyPolicy policy)
-    {
-        MethodInfo method = typeof(MarkdownVectorSceneResidencyPolicy).GetMethod(
-            "GetPreparedResourceEstimate", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        Assert.NotNull(method);
-        return method.CreateDelegate<Func<MarkdownVectorScene, long>>(policy);
-    }
+        => policy.GetPreparedResourceEstimate;
 
     [Theory]
     [InlineData(false)]

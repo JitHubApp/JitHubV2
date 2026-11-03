@@ -33,6 +33,7 @@ public sealed class MarkdownPerformanceSession :
     private readonly MarkdownVisibleSceneReadinessProbe _readinessProbe;
     private readonly MarkdownStyleRoleDemandCache _styleRoleDemand;
     private readonly MarkdownSessionParsePipeline _parsePipeline;
+    private readonly MarkdownVectorSceneEstimateCache _vectorSceneEstimates = new();
 
     /// <summary>Creates an opt-in session. Use a distinct session for each account/security partition.</summary>
     public MarkdownPerformanceSession(MarkdownPerformanceOptions options)
@@ -215,7 +216,8 @@ public sealed class MarkdownPerformanceSession :
         if (plan is null && MarkdownVectorSceneResidencyPolicy.CanOmitForPrivatePlacement(blocks))
             return null;
 
-        return new MarkdownVectorSceneResidencyPolicy(blocks, plan, VectorNativeResourceAdmission.Shared);
+        return new MarkdownVectorSceneResidencyPolicy(
+            blocks, plan, VectorNativeResourceAdmission.Shared, _vectorSceneEstimates);
     }
 
     Task<bool> IMarkdownPerformanceSessionInternal.PrepareDeferredSceneBandAsync(

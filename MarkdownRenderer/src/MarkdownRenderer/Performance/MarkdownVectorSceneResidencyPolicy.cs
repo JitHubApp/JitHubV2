@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using Windows.Foundation;
 using MarkdownRenderer.Extensions;
@@ -18,16 +17,12 @@ namespace MarkdownRenderer.Performance;
 /// </summary>
 internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneResidencyPolicy
 {
-    // Command graphs are immutable and may be visited by more than one layout
-    // snapshot during resize/rebuild. Keep only the scalar estimate here: the
-    // weak key must never become another owner of a scene graph.
-    private static readonly ConditionalWeakTable<MarkdownVectorScene, SceneResourceEstimate> s_resourceEstimates = new();
-
     private IReadOnlyList<BlockBox> _blocks;
     private MarkdownProgressiveScenePlan? _graphPlan;
     private readonly List<VectorSceneBox> _pendingGraphRebinds = [];
     private readonly List<VectorSceneBox> _graphStatusChanges = [];
     private readonly VectorNativeResourceAdmission? _nativeAdmission;
+    private readonly MarkdownVectorSceneEstimateCache _estimates;
     private LazyLayoutBand? _pendingGraphBand;
     private Dictionary<object, SceneEntry> _activeScenes =
         new(ReferenceEqualityComparer.Instance);
@@ -55,11 +50,14 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
     internal MarkdownVectorSceneResidencyPolicy(
         IReadOnlyList<BlockBox> blocks,
         MarkdownProgressiveScenePlan? graphPlan = null,
-        VectorNativeResourceAdmission? nativeAdmission = null)
+        VectorNativeResourceAdmission? nativeAdmission = null,
+        MarkdownVectorSceneEstimateCache? estimates = null)
     {
         _blocks = blocks ?? throw new ArgumentNullException(nameof(blocks));
         _graphPlan = graphPlan;
         _nativeAdmission = nativeAdmission;
+        // A policy without a scope memoizes only its own walks.
+        _estimates = estimates ?? new MarkdownVectorSceneEstimateCache();
     }
 
     public bool HasPendingGraphRebinds => _pendingGraphRebinds.Count != 0;
@@ -1119,55 +1117,11 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
         }
     }
 
-    private long EstimatePreparedResourceBytes(MarkdownVectorScene scene, CancellationToken cancellationToken)
-    {
-        // Win2D does not expose allocation sizes for these device resources.
-        // This model is a relative diagnostic weight only, never a hard budget.
-        long estimate = 256;
-        foreach (MarkdownVectorCommand command in scene.Commands)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            estimate = SaturatingAdd(estimate, 256);
-            if (command.Path is { } path)
-            {
-                estimate = SaturatingAdd(estimate, 2_048);
-                estimate = SaturatingAdd(estimate, SaturatingMultiply(path.Count, 96));
-            }
-
-            if (command.Kind == MarkdownVectorCommandKind.DrawText && command.Text is { } text)
-            {
-                estimate = SaturatingAdd(estimate, 4_096);
-                estimate = SaturatingAdd(estimate, SaturatingMultiply(text.Length, 64));
-            }
-
-            if (command.Style is { } style && VectorSceneDrawing.RequiresStrokeStyle(style))
-            {
-                estimate = SaturatingAdd(estimate, 1_024);
-                estimate = SaturatingAdd(
-                    estimate,
-                    SaturatingMultiply(style.DashArray.Count, sizeof(float)));
-            }
-        }
-
-        estimate = SaturatingAdd(estimate, SaturatingMultiply(scene.Semantics.Count, 128));
-        estimate = SaturatingAdd(estimate, SaturatingMultiply(scene.Links.Count, 96));
-        Interlocked.Increment(ref _commandGraphEstimateCount);
-        return Math.Max(estimate, 1);
-    }
-
     internal long GetPreparedResourceEstimate(MarkdownVectorScene scene) =>
         GetPreparedResourceEstimateForRebind(scene, CancellationToken.None);
 
-    internal long GetPreparedResourceEstimateForRebind(MarkdownVectorScene scene, CancellationToken cancellationToken)
-    {
-        // The warm path does not need a factory or the table's insertion path.
-        if (s_resourceEstimates.TryGetValue(scene, out SceneResourceEstimate? retained))
-            return retained.GetOrEstimate(scene, this, cancellationToken);
-        return s_resourceEstimates.GetValue(
-                scene,
-                static _ => new SceneResourceEstimate())
-            .GetOrEstimate(scene, this, cancellationToken);
-    }
+    internal long GetPreparedResourceEstimateForRebind(MarkdownVectorScene scene, CancellationToken cancellationToken) =>
+        _estimates.GetOrEstimate(scene, ref _commandGraphEstimateCount, cancellationToken);
 
     private void ReleaseEntriesBestEffort(
         IEnumerable<SceneEntry>? candidates,
@@ -1230,9 +1184,6 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
                 break;
         }
     }
-
-    private static long SaturatingMultiply(int count, int weight)
-        => count > 0 ? Math.Min(long.MaxValue, (long)count * weight) : 0;
 
     private static long SaturatingAdd(long left, long right)
         => left > long.MaxValue - right ? long.MaxValue : left + right;
@@ -1386,31 +1337,6 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
     {
         if (_disposed)
             throw new ObjectDisposedException(nameof(MarkdownVectorSceneResidencyPolicy));
-    }
-
-    private sealed class SceneResourceEstimate
-    {
-        private long _estimatedBytes;
-        private int _initialized;
-
-        internal long GetOrEstimate(MarkdownVectorScene scene, MarkdownVectorSceneResidencyPolicy policy,
-            CancellationToken cancellationToken)
-        {
-            if (Volatile.Read(ref _initialized) != 0)
-                return Volatile.Read(ref _estimatedBytes);
-
-            lock (this)
-            {
-                if (_initialized == 0)
-                {
-                    long estimate = policy.EstimatePreparedResourceBytes(scene, cancellationToken);
-                    Volatile.Write(ref _estimatedBytes, estimate);
-                    Volatile.Write(ref _initialized, 1);
-                }
-
-                return Volatile.Read(ref _estimatedBytes);
-            }
-        }
     }
 
     private readonly struct SceneEntry(object Owner, long EstimatedBytes)
