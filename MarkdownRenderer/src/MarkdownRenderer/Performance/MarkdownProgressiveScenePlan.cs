@@ -102,90 +102,11 @@ internal sealed class MarkdownProgressiveScenePlan :
         if (session.IsDisposed || cancellationToken.IsCancellationRequested)
             return null;
 
-        var works = new Dictionary<string, DeferredSceneWork>(StringComparer.Ordinal);
-        foreach (KeyValuePair<Block, MarkdownContentFragment> entry in document.ExtensionBlockNodeContent)
-        {
-            if (cancellationToken.IsCancellationRequested)
-                return null;
-
-            Block block = entry.Key;
-            if (!MarkdownSyntaxAdapter.TryGetBlockKind(block, out string syntaxKind))
-            {
-                continue;
-            }
-
-            MarkdownSyntaxNode? node = null;
-            DeferredSceneWorkCatalog.Collect(entry.Value.Items, content =>
-            {
-                if (!content.Attributes.TryGetValue(MarkdownContentAttributes.DeferredScene, out string? marker) ||
-                    marker is null ||
-                    !DeferredSceneWorkCatalog.TryReadMarker(marker, syntaxKind, out _) ||
-                    entry.Value.DeferredSceneRenderer is not { } renderer)
-                {
-                    return;
-                }
-
-                MarkdownSyntaxNode blockNode = node ??= MarkdownSyntaxAdapter.CreateBlockNode(block, document.Source);
-                if (!content.SourceSpan.Equals(blockNode.SourceSpan))
-                    return;
-
-                var work = new DeferredSceneWork(
-                    blockNode,
-                    renderer,
-                    entry.Value.DeferredSceneRendererLifetime,
-                    content.Text ?? blockNode.Literal ?? string.Empty,
-                    content.Language,
-                    IsInline: false);
-                // A malformed producer must not cause two visible boxes to
-                // invoke the same callback/result slot. Independent markers
-                // remain distinct even when their SourceSpan values coincide.
-                works.TryAdd(marker, work);
-            });
-        }
-
-        foreach (KeyValuePair<Inline, MarkdownContentFragment> entry in document.ExtensionInlineNodeContent)
-        {
-            if (cancellationToken.IsCancellationRequested)
-                return null;
-
-            Inline inline = entry.Key;
-            if (!MarkdownSyntaxAdapter.TryGetInlineKind(inline, out string syntaxKind))
-                continue;
-
-            MarkdownSyntaxNode? node = null;
-            DeferredSceneWorkCatalog.Collect(entry.Value.Items, content =>
-            {
-                if (!content.Attributes.TryGetValue(MarkdownContentAttributes.DeferredScene, out string? marker) ||
-                    marker is null ||
-                    !DeferredSceneWorkCatalog.TryReadMarker(marker, syntaxKind, out _) ||
-                    entry.Value.DeferredSceneRenderer is not { } renderer)
-                {
-                    return;
-                }
-
-                MarkdownSyntaxNode inlineNode = node ??= MarkdownSyntaxAdapter.CreateInlineNode(inline, document.Source);
-                if (!content.SourceSpan.Equals(inlineNode.SourceSpan))
-                    return;
-
-                var work = new DeferredSceneWork(
-                    inlineNode,
-                    renderer,
-                    entry.Value.DeferredSceneRendererLifetime,
-                    content.SemanticText ?? inlineNode.Literal ?? string.Empty,
-                    content.Language,
-                    IsInline: true);
-                works.TryAdd(marker, work);
-            });
-        }
-
-        if (cancellationToken.IsCancellationRequested || works.Count == 0)
-            return null;
-
-        return new MarkdownProgressiveScenePlan(
-            document,
-            session,
-            documentOwner,
-            new ReadOnlyDictionary<string, DeferredSceneWork>(works));
+        IReadOnlyDictionary<string, DeferredSceneWork>? works =
+            DeferredSceneWorkCatalog.TryBuild(document, cancellationToken);
+        return works is null
+            ? null
+            : new MarkdownProgressiveScenePlan(document, session, documentOwner, works);
     }
 
     internal static bool ContainsDeferredSceneFallback(RendererDocument document) =>
