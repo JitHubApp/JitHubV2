@@ -1771,6 +1771,26 @@ internal sealed partial class InlineContainerBox : BlockBox
         if (resolved is not null)
             return resolved;
 
+        resolved = ResolveRunStyle(run);
+        CacheRunStyle(run.InlineIndex, resolved);
+        return resolved;
+    }
+
+    private void CacheRunStyle(int index, ElementStyle resolved)
+    {
+        if (_resolvedRunStyles is null)
+        {
+            var styles = new List<ElementStyle?>(_runs.Count);
+            for (int slot = 0; slot < _runs.Count; slot++)
+                styles.Add(null);
+            _resolvedRunStyles = styles;
+        }
+        _resolvedRunStyles[index] = resolved;
+    }
+
+    private ElementStyle ResolveRunStyle(InlineRun run)
+    {
+        ElementStyle resolved;
         // A link or formatting run inside a heading inherits the heading's
         // typography. Its own role supplies only the nested decoration/color;
         // resolving Link as the base style would silently turn linked heading
@@ -1878,14 +1898,6 @@ internal sealed partial class InlineContainerBox : BlockBox
                 ResolveRelativeInlineCodeFontSize(containingFontSize, inlineCodeScale));
         }
 
-        if (_resolvedRunStyles is null)
-        {
-            var styles = new List<ElementStyle?>(_runs.Count);
-            for (int index = 0; index < _runs.Count; index++)
-                styles.Add(null);
-            _resolvedRunStyles = styles;
-        }
-        _resolvedRunStyles[run.InlineIndex] = resolved;
         return resolved;
     }
 
@@ -1970,6 +1982,13 @@ internal sealed partial class InlineContainerBox : BlockBox
         if (!map.IsValidForTextLength(link.TextLength))
             throw new InvalidOperationException("A link's nested inline style map is malformed.");
 
+        ElementStyle[] spanStyles = ResolveLinkInlineSpanStyles(link, map);
+        cache[link.InlineIndex] = spanStyles;
+        return spanStyles;
+    }
+
+    private ElementStyle[] ResolveLinkInlineSpanStyles(LinkRun link, LinkInlineStyleMap map)
+    {
         var spanStyles = new ElementStyle[map.Count];
         ElementStyle linkStyle = GetRunStyle(link);
         bool preserveHeadingCodeFontSize = GetHeadingStyleKey(link).Length > 0;
@@ -1982,7 +2001,6 @@ internal sealed partial class InlineContainerBox : BlockBox
                 preserveHeadingCodeFontSize,
                 pathScratch);
         }
-        cache[link.InlineIndex] = spanStyles;
         return spanStyles;
     }
 
