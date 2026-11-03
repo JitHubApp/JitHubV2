@@ -873,11 +873,10 @@ public sealed class ImageBoxSvgPublicationCommitTests
 
             ImageResourceScope.Shared.SvgSources.Set(cacheKey, entry);
 
-            Assert.False(Assert.IsType<bool>(InvokePrivate(
-                image,
-                "TryLoadFallbackFromProcessCache",
-                cacheKey,
-                null)));
+            var sourceLoader = new ImageSourceLoader(
+                image, image.Context, ImageResourceScope.Shared, image.OutputAdmission, image.OutputDeferral,
+                image.SvgHostDeferral, image.Url, requestedWidth: null, requestedHeight: null);
+            Assert.False(sourceLoader.TryLoadFallbackFromProcessCache(cacheKey, expectedWork: null));
 
             Assert.True(Field<bool>(image, "_isSvg"));
             Assert.Equal(acceptedIntrinsic, Field<Size>(image, "_svgIntrinsicSize"));

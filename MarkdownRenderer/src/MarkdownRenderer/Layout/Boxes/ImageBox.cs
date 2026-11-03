@@ -47,7 +47,7 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// transforms, clipping, bidi, and text paths are preserved.
 /// </summary>
 internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometrySource, IImageBitmapOutputHost, ISvgTileGapFill, IImageMeasureHost, ISvgHostDeferralHost,
-    IImageRasterLoadHost, ISvgLoadHost
+    IImageSourceLoadHost
 {
     // Selected artwork keeps the same translucent tint as Math and
     // Mermaid scenes instead of an opaque block-wide band.
@@ -61,13 +61,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     private const int MaxUntiledSvgDimensionPixels = 16_384;
     private const int MaxPooledSvgUploadBytes = 1024 * 1024;
     internal const int SvgTileSizePixels = 1024;
-    private const int MaxRemoteImageBytes = RasterImageResourceBudget.MaxInputBytes;
-    // Resolver implementations can have their own bounded network attempt and
-    // then switch to a safe alternate representation (for example, from
-    // GitHub Camo to the canonical HTTPS origin).  Keep this document-level
-    // guard outside two 20-second transport attempts so it remains the final
-    // safety net instead of racing the resolver's recovery path.
-    private static readonly TimeSpan ImageResolverTimeout = TimeSpan.FromSeconds(45);
 
     internal readonly MarkdownLayoutContext Context;
     // Caches, budgets and gates shared with the scope's boxes; clones keep their source's.
@@ -78,10 +71,8 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     internal ImageBitmapOutputAdmission OutputAdmission { get; }
     private readonly SvgHostLoadDeferral _svgHostDeferral;
     internal SvgHostLoadDeferral SvgHostDeferral => _svgHostDeferral;
-    // The load pipeline's owners, bound to this box and its scope.
-    private readonly ImageRasterLoader _rasterLoader;
-    private readonly SvgSourceOpener _svgOpener;
-    private readonly SvgOpenedRenderer _svgRenderer;
+    // The load pipeline's owner, bound to this box and its scope.
+    private readonly ImageSourceLoader _sourceLoader;
     internal readonly string Url;
     public readonly string Alt;
     private readonly SafeHtmlLength? _requestedWidth;
@@ -270,9 +261,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         _imageLifetimeCancellation = CancellationTokenSource.CreateLinkedTokenSource(
             Context.ImageCancellationToken);
         (OutputDeferral, OutputAdmission) = _resources.CreateBitmapOutput(this, Context, _imageLifetimeCancellation);
-        _rasterLoader = CreateRasterLoader();
-        _svgOpener = CreateSvgOpener();
-        _svgRenderer = CreateSvgRenderer();
+        _sourceLoader = CreateSourceLoader();
         _builtInSource = MarkdownBuiltInImageSourcePolicy.TryResolve(
             Url,
             Context.ImageBaseUri,
@@ -950,9 +939,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         _imageLifetimeCancellation = CancellationTokenSource.CreateLinkedTokenSource(
             context.ImageCancellationToken);
         (OutputDeferral, OutputAdmission) = _resources.CreateBitmapOutput(this, Context, _imageLifetimeCancellation);
-        _rasterLoader = CreateRasterLoader();
-        _svgOpener = CreateSvgOpener();
-        _svgRenderer = CreateSvgRenderer();
+        _sourceLoader = CreateSourceLoader();
         try
         {
             // These are immutable request descriptors, not resource state.
@@ -1010,9 +997,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         _imageLifetimeCancellation = CancellationTokenSource.CreateLinkedTokenSource(
             context.ImageCancellationToken);
         (OutputDeferral, OutputAdmission) = _resources.CreateBitmapOutput(this, Context, _imageLifetimeCancellation);
-        _rasterLoader = CreateRasterLoader();
-        _svgOpener = CreateSvgOpener();
-        _svgRenderer = CreateSvgRenderer();
+        _sourceLoader = CreateSourceLoader();
         try
         {
             _builtInSource = source._builtInSource;
@@ -2423,7 +2408,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         // false. Parse them directly from the raw URL string.
         if (_isSvg && Url.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
         {
-            _ = LoadSvgDataUriAsync(Url, demand, loadDemandGeneration);
+            _ = _sourceLoader.LoadSvgDataUriAsync(Url, demand, loadDemandGeneration);
             return;
         }
 
@@ -2445,7 +2430,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                         demand,
                         () =>
                         {
-                            Task resolution = ResolveAndLoadAsync(resolver, demand, loadDemandGeneration);
+                            Task resolution = _sourceLoader.ResolveAndLoadAsync(resolver, demand, loadDemandGeneration);
                             queuedWork.Dispose();
                             ObserveImageActivationTask(resolution);
                         },
@@ -2479,7 +2464,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             }
             else
             {
-                _ = ResolveAndLoadAsync(resolver, demand, loadDemandGeneration);
+                _ = _sourceLoader.ResolveAndLoadAsync(resolver, demand, loadDemandGeneration);
             }
             return;
         }
@@ -2490,7 +2475,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             return;
         }
 
-        LoadFromDefaultSource(source, demand, loadDemandGeneration);
+        _sourceLoader.LoadFromDefaultSource(source, demand, loadDemandGeneration);
     }
 
     private void ResetLoadStartedAfterUnstartedActivation(
@@ -2542,236 +2527,55 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         }
     }
 
-    private void LoadFromDefaultSource(
-        MarkdownBuiltInImageSource source,
-        MarkdownSvgRenderDemand demand,
-        int loadDemandGeneration)
+    private ImageSourceLoader CreateSourceLoader() =>
+        new(this, Context, _resources, OutputAdmission, OutputDeferral, _svgHostDeferral, Url,
+            _requestedWidth, _requestedHeight);
+
+    bool IImageSourceLoadHost.IsSvg
     {
-        switch (source.Kind)
-        {
-            case MarkdownBuiltInImageSourceKind.InsecureHttp:
-                ReportUnavailable(MarkdownImageUnavailableReason.InsecureRemoteContent);
-                PublishFailure(cacheKey: string.Empty);
-                return;
-
-            case MarkdownBuiltInImageSourceKind.RemoteHttps:
-                // Network loading is resolver-owned so the host can apply consent,
-                // authentication, account partitioning, and its own fetch cache.
-                ReportUnavailable(MarkdownImageUnavailableReason.RemoteContentBlocked);
-                PublishFailure(cacheKey: string.Empty);
-                return;
-
-            case MarkdownBuiltInImageSourceKind.Data:
-            case MarkdownBuiltInImageSourceKind.Local:
-                _ = LoadBuiltInImageAsync(source, _isSvg, demand, loadDemandGeneration);
-                return;
-
-            default:
-                ReportUnavailable(MarkdownImageUnavailableReason.Unavailable);
-                PublishFailure(cacheKey: string.Empty);
-                return;
-        }
+        get => _isSvg;
+        set => _isSvg = value;
     }
 
-    private async Task ResolveAndLoadAsync(
-        IMarkdownImageResolver resolver,
-        MarkdownSvgRenderDemand demand,
-        int loadDemandGeneration)
+    string? IImageSourceLoadHost.ActiveCacheKey
     {
-        // Keep the document resolver and any returned-but-not-yet-rasterized
-        // source inside this box's retirement barrier. The lifetime token is
-        // linked to the host token, so replacement cancels either path.
-        if (!TryBeginImageWork(out ImageWorkLease? admittedWork) || admittedWork is null)
-            return;
+        get => _activeCacheKey;
+        set => _activeCacheKey = value;
+    }
 
-        using ImageWorkLease imageWork = admittedWork;
-        CancellationToken lifetimeToken = imageWork.Token;
-        BitmapOutputWorkContext bitmapOutputWork = OutputAdmission.CaptureBitmapOutputWorkContext(
-            lifetimeToken, expectedDemand: demand);
+    MarkdownBuiltInImageSource? IImageSourceLoadHost.BuiltInSource => _builtInSource;
 
-        MarkdownImageResolution resolution;
-        MarkdownImageAsset? asset = null;
-        IMarkdownImageResolutionLease? sourceLease = null;
-        Task? resolverTask = null;
-        var resolveContext = new MarkdownImageResolveContext(
-            Context.ImageBaseUri,
-            Context.ImageDocumentPath,
-            Context.AllowThirdPartyRemoteImages,
-            Context.ImageDocumentSource);
+    void IImageSourceLoadHost.TrackDetachedImageWork(Task detachedOperation, bool failRetirementOnFault) =>
+        TrackDetachedImageWork(detachedOperation, failRetirementOnFault);
 
-        ValueTask<MarkdownImageResolution> StartResolver(CancellationToken token)
+    void IImageSourceLoadHost.PresentCachedRasterBitmap(SharedCanvasBitmapCache.Lease cachedLease)
+    {
+        if (_disposed)
         {
-            ValueTask<MarkdownImageResolution> operation =
-                resolver.ResolveAsync(Url, resolveContext, token);
-            Task<MarkdownImageResolution> task = operation.AsTask();
-            resolverTask = task;
-            return new ValueTask<MarkdownImageResolution>(task);
-        }
-
-        ValueTask<IMarkdownImageResolutionLease> StartLeasedResolver(CancellationToken token)
-        {
-            var scope = (IMarkdownPerformanceDocumentScope)resolver;
-            ValueTask<IMarkdownImageResolutionLease> operation =
-                scope.ResolveWithSourceLeaseAsync(Url, resolveContext, token);
-            Task<IMarkdownImageResolutionLease> task = operation.AsTask();
-            resolverTask = task;
-            return new ValueTask<IMarkdownImageResolutionLease>(task);
-        }
-
-        try
-        {
-            if (resolver is IMarkdownPerformanceDocumentScope)
-            {
-                sourceLease = await ImageResolverDeadline.RunAsync(
-                        StartLeasedResolver,
-                        ImageResolverTimeout,
-                        lifetimeToken,
-                        abandonedResultDisposer: static lease => lease.Dispose(),
-                        abandonedCompletionObserver: cleanup =>
-                            TrackDetachedImageWork(cleanup, failRetirementOnFault: true))
-                    .ConfigureAwait(false);
-                resolution = sourceLease.Resolution;
-            }
-            else
-            {
-                resolution = await ImageResolverDeadline.RunAsync(
-                    StartResolver,
-                    ImageResolverTimeout,
-                    lifetimeToken)
-                .ConfigureAwait(false);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            if (!_disposed)
-                _loadStarted = false;
+            TryImageCleanup(cachedLease.Dispose);
             return;
         }
-        catch (TimeoutException)
-        {
-            MarkdownDiagnostics.WriteLine("[ImageBox] image resolver timed out.");
-            ReportUnavailable(MarkdownImageUnavailableReason.Unavailable);
-            PublishFailure(cacheKey: string.Empty);
-            return;
-        }
-        catch (Exception ex)
-        {
-            if (sourceLease is not null)
-                TryImageCleanup(sourceLease.Dispose);
-            MarkdownDiagnostics.WriteLine(
-                $"[ImageBox] image resolver failed: {ex.GetType().Name} {GraphicsDeviceErrors.FormatHResult(ex.HResult)}");
-            PublishFailure(cacheKey: string.Empty);
-            return;
-        }
-        finally
-        {
-            // Register even if completion raced the resolver deadline: the
-            // helper observes a completed fault and otherwise adds a lease for
-            // an operation that is still running. The current resolver lease
-            // remains active until after this finally block.
-            if (resolverTask is not null)
-                TrackDetachedImageWork(resolverTask);
-            // A completed resolver task stores its source-bearing result.
-            // Detached tracking owns only work still draining; this caller no
-            // longer needs the task alias once resolution has returned.
-            resolverTask = null;
-        }
 
-        // Keep original source ownership through preparation and actual Open,
-        // then release it before source-free Render. Fetch slots are not bytes.
-        IMarkdownImageResolutionLease? consumerSourceLease = sourceLease;
-        try
-        {
-            if (_disposed)
-                return;
+        ReplaceBitmap(cachedLease.Bitmap, cachedLease);
+        RaiseLoadCompleted(layoutInvalidated: true);
+    }
 
-            if (MarkdownImageCacheIdentityPolicy.CanUseSourceAfterResolution(resolution))
-            {
-                if (_builtInSource is not { } fallbackSource)
-                {
-                    PublishFailure(cacheKey: string.Empty);
-                    return;
-                }
+    bool IImageSourceLoadHost.TryPublishCachedSvgSource(
+        SvgCacheEntry entry, string resolvedCacheKey, BitmapOutputWorkContext? expectedWork) =>
+        IsSvgCacheEntryCurrent(entry) && TryPublishCachedSvgBitmap(
+            layoutInvalidated: true,
+            sourceEntry: entry,
+            resolvedCacheKey: resolvedCacheKey,
+            expectedWork: expectedWork);
 
-                _activeCacheKey = fallbackSource.CacheKey;
-
-                // Only sources the built-in loader is allowed to expose can consult
-                // its process-wide caches. This prevents a NotHandled HTTPS result
-                // from observing bytes cached by an earlier resolver-owned request.
-                if (fallbackSource.CanLoadWithoutResolver &&
-                    TryLoadFallbackFromProcessCache(fallbackSource.CacheKey, bitmapOutputWork))
-                {
-                    return;
-                }
-
-                LoadFromDefaultSource(fallbackSource, demand, loadDemandGeneration);
-                return;
-            }
-
-            asset = resolution.Asset;
-            if (asset is null || asset.Bytes.Length == 0)
-            {
-                ReportUnavailable(resolution.UnavailableReason);
-                PublishFailure(cacheKey: string.Empty);
-                return;
-            }
-
-            bool isSvg = LooksLikeSvg(asset);
-            // Replace the constructor's source-URI hint as soon as the resolver has
-            // supplied the actual representation. This also covers warm raster-cache
-            // hits, which return before the decode path below.
-            _isSvg = isSvg;
-            // Both SVG and raster cache reuse require the resolver's explicit
-            // security-partitioned identity. ResolvedUri is metadata, not an
-            // account boundary; an unkeyed asset remains local to this box.
-            string cacheKey = MarkdownImageCacheIdentityPolicy.GetResolvedAssetKey(asset);
-            _activeCacheKey = cacheKey;
-            if (cacheKey.Length > 0 && _resources.Failures.HasFailedUrl(cacheKey))
-            {
-                PublishFailure(cacheKey: string.Empty);
-                return;
-            }
-
-            if (!isSvg && TryPublishCachedRasterBitmap(cacheKey, bitmapOutputWork))
-            {
-                return;
-            }
-
-            if (isSvg)
-            {
-                SvgOpenStageResult result = await OpenSvgSourceAsync(
-                        asset.Bytes, intrinsicHint: default, securityPartitionKey: cacheKey,
-                        builtInSourceAliasKey: null, demand, loadDemandGeneration)
-                    .ConfigureAwait(false);
-                using SvgOpenedRenderWork? openedWork = result.Work;
-                // Clear source aliases before invoking user cleanup. A synchronous
-                // helper detaches and disposes the lease without leaving a disposed
-                // lease (whose Resolution may still own bytes) in this async frame.
-                asset = null;
-                resolution = default;
-                sourceLease = null;
-                DisposeCallerSource(ref consumerSourceLease);
-                if (result.Deferral is { } hostDeferral)
-                    SvgHostDeferral.DeferSvgHostLoad(hostDeferral);
-                else if (openedWork is not null)
-                    await RenderOpenedSvgAsync(openedWork).ConfigureAwait(false);
-                return;
-            }
-
-            // A resolver can follow redirects to a representation whose format differs
-            // from the source URI suffix (for example, an *.svg URL that resolves to a
-            // transparent PNG). Once bytes have been resolved, their representation is
-            // authoritative and the pre-resolution URL hint must not leak into layout,
-            // accessibility, or subsequent cache decisions.
-            await LoadBitmapBytesAsync(asset.Bytes, cacheKey, bitmapOutputWork).ConfigureAwait(false);
-        }
-        finally
-        {
-            asset = null;
-            resolution = default;
-            sourceLease = null;
-            DisposeCallerSource(ref consumerSourceLease);
-        }
+    void IImageSourceLoadHost.PresentSvgDataUriFailure()
+    {
+        if (_disposed) return;
+        _loadFailed = true;
+        _failureCarryable = true;
+        string cacheKey = _activeCacheKey ?? Url;
+        _resources.Failures.RememberFailedUrl(cacheKey);
+        RaiseLoadCompleted(layoutInvalidated: true);
     }
 
     private float GetContentX()
@@ -2806,154 +2610,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             Context.ImageUnavailable?.Invoke(Url, reason, svgFailureReason);
         }
     }
-
-    private bool TryPublishCachedRasterBitmap(
-        string cacheKey, BitmapOutputWorkContext? expectedWork = null)
-    {
-        if (!OutputAdmission.TryAcquireSourceSizedRasterBitmap(cacheKey, out SharedCanvasBitmapCache.Lease? cachedLease, expectedWork) ||
-            cachedLease is null)
-        {
-            return false;
-        }
-
-        PublishOnUiThread(() =>
-        {
-            if (_disposed)
-            {
-                TryImageCleanup(cachedLease.Dispose);
-                return;
-            }
-
-            ReplaceBitmap(cachedLease.Bitmap, cachedLease);
-            RaiseLoadCompleted(layoutInvalidated: true);
-        }, cachedLease.Dispose);
-        return true;
-    }
-
-    private bool TryLoadFallbackFromProcessCache(
-        string cacheKey, BitmapOutputWorkContext? expectedWork = null)
-    {
-        if (_resources.Failures.HasFailedUrl(cacheKey))
-        {
-            PublishFailure(cacheKey: string.Empty);
-            return true;
-        }
-
-        if (!_isSvg && TryPublishCachedRasterBitmap(cacheKey, expectedWork))
-        {
-            return true;
-        }
-
-        if (!_resources.SvgSources.TryGetValue(cacheKey, out SvgCacheEntry? entry))
-        {
-            return false;
-        }
-
-        _isSvg = true;
-        // Classification selects the authorized built-in loader on a miss;
-        // accepted dimensions/title/description remain untouched until an
-        // exact cached bitmap publication commits, just like content followers.
-        return IsSvgCacheEntryCurrent(entry) && TryPublishCachedSvgBitmap(
-            layoutInvalidated: true,
-            sourceEntry: entry,
-            resolvedCacheKey: cacheKey,
-            expectedWork: expectedWork);
-    }
-
-    private static bool LooksLikeSvg(MarkdownImageAsset asset)
-    {
-        // Resolved payload metadata supersedes the spelling of the requested URI.
-        // Redirecting image services commonly retain an .svg source URL while
-        // returning a raster placeholder. Treating ResolvedUri as a format signal
-        // in that case feeds PNG/JPEG bytes to the SVG provider and produces a
-        // misleading unavailable state.
-        if (LooksLikeSvgBytes(asset.Bytes))
-            return true;
-
-        string? contentType = asset.ContentType;
-        if (string.IsNullOrWhiteSpace(contentType))
-            return false;
-
-        ReadOnlySpan<char> mediaType = contentType.AsSpan();
-        int parameterSeparator = mediaType.IndexOf(';');
-        if (parameterSeparator >= 0)
-            mediaType = mediaType[..parameterSeparator];
-        mediaType = mediaType.Trim();
-
-        return mediaType.Equals("image/svg+xml", StringComparison.OrdinalIgnoreCase) ||
-               mediaType.Equals("image/svg", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private async Task LoadBuiltInImageAsync(
-        MarkdownBuiltInImageSource source,
-        bool isSvg,
-        MarkdownSvgRenderDemand demand,
-        int loadDemandGeneration)
-    {
-        if (!TryBeginImageWork(out ImageWorkLease? admittedWork) || admittedWork is null)
-            return;
-
-        using ImageWorkLease imageWork = admittedWork;
-        string cacheKey = source.CacheKey;
-        BitmapOutputWorkContext bitmapOutputWork = OutputAdmission.CaptureBitmapOutputWorkContext(
-            imageWork.Token, expectedDemand: demand);
-        try
-        {
-            (byte[] bytes, IDisposable? reservation) = await Task.Run(() => ReadBuiltInSourceBytesAsync(
-                    source,
-                    isSvg ? SvgSourceOpener.MaxSvgBytes : MaxRemoteImageBytes,
-                    isSvg ? "SVG" : "raster image",
-                    imageWork.Token), CancellationToken.None)
-                .ConfigureAwait(false);
-            try
-            {
-                if (isSvg)
-                {
-                    SvgOpenStageResult result = await OpenSvgSourceAsync(
-                            bytes, intrinsicHint: default, securityPartitionKey: cacheKey,
-                            builtInSourceAliasKey: cacheKey, demand, loadDemandGeneration)
-                        .ConfigureAwait(false);
-                    using SvgOpenedRenderWork? openedWork = result.Work;
-                    bytes = Array.Empty<byte>();
-                    source = default;
-                    DisposeCallerSource(ref reservation);
-                    if (result.Deferral is { } hostDeferral)
-                        SvgHostDeferral.DeferSvgHostLoad(hostDeferral);
-                    else if (openedWork is not null)
-                        await RenderOpenedSvgAsync(openedWork).ConfigureAwait(false);
-                }
-                else
-                {
-                    await LoadBitmapBytesAsync(bytes, source.CacheKey, bitmapOutputWork).ConfigureAwait(false);
-                }
-            }
-            finally
-            {
-                bytes = Array.Empty<byte>();
-                source = default;
-                DisposeCallerSource(ref reservation);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            if (!_disposed)
-                _loadStarted = false;
-        }
-        catch (Exception ex)
-        {
-            MarkdownDiagnostics.WriteLine(
-                $"[ImageBox] built-in source read failed: {ex.GetType().Name} {GraphicsDeviceErrors.FormatHResult(ex.HResult)}");
-            ReportUnavailable(MarkdownImageUnavailableReason.Unavailable);
-            PublishFailure(cacheKey);
-        }
-    }
-
-    private ImageRasterLoader CreateRasterLoader() =>
-        new(this, Context, _resources, OutputAdmission, OutputDeferral, _requestedWidth, _requestedHeight);
-
-    private Task LoadBitmapBytesAsync(
-        byte[] bytes, string cacheKey, BitmapOutputWorkContext bitmapOutputWork)
-        => _rasterLoader.LoadAsync(bytes, cacheKey, bitmapOutputWork);
 
     bool IImageLoadHost.IsDisposed => _disposed;
 
@@ -3039,229 +2695,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
         RaiseLoadCompleted(layoutInvalidated: layoutChanged);
     }
-
-    private async Task<(byte[] Bytes, IDisposable? Reservation)> ReadBuiltInSourceBytesAsync(
-        MarkdownBuiltInImageSource source,
-        int maxBytes,
-        string assetKind,
-        CancellationToken cancellationToken)
-    {
-        if (!source.CanLoadWithoutResolver)
-            throw new InvalidOperationException("The source requires a host image resolver.");
-
-        cancellationToken.ThrowIfCancellationRequested();
-        if (source.Kind == MarkdownBuiltInImageSourceKind.Data)
-        {
-            // Measure without a byte buffer, then admit before decoding. This
-            // whole method runs off the UI thread, including local opens.
-            return await ReadDataUriSourceBytesAsync(
-                source.Uri.OriginalString, maxBytes, cancellationToken).ConfigureAwait(false);
-        }
-
-        if (source.Kind == MarkdownBuiltInImageSourceKind.Local && source.Uri.IsFile)
-        {
-            await using FileStream stream = new(
-                source.Uri.LocalPath,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.Read,
-                bufferSize: 64 * 1024,
-                FileOptions.Asynchronous | FileOptions.SequentialScan);
-            if (stream.Length == 0 || stream.Length > maxBytes)
-            {
-                throw new InvalidDataException(
-                    $"The local {assetKind} exceeds the compressed input budget.");
-            }
-
-            int fileLength = checked((int)stream.Length);
-            IDisposable? reservation = await ReserveBuiltInSourceBytesAsync(fileLength, cancellationToken)
-                .ConfigureAwait(false);
-            try
-            {
-                byte[] bytes = new byte[fileLength];
-                await stream.ReadExactlyAsync(bytes, cancellationToken).ConfigureAwait(false);
-                return (bytes, reservation);
-            }
-            catch
-            {
-                reservation?.Dispose();
-                throw;
-            }
-        }
-
-        cancellationToken.ThrowIfCancellationRequested();
-        using IRandomAccessStreamWithContentType randomAccessStream = await RandomAccessStreamReference
-            .CreateFromUri(source.Uri)
-            .OpenReadAsync()
-            .AsTask()
-            .ConfigureAwait(false);
-        // Do not cancel the WinRT bridge task and dispose its returned stream
-        // while the underlying open is still completing. The enclosing image
-        // work lease keeps snapshot retirement pending until this native
-        // operation has actually returned.
-        cancellationToken.ThrowIfCancellationRequested();
-        if (randomAccessStream.Size == 0 || randomAccessStream.Size > (ulong)maxBytes)
-        {
-            throw new InvalidDataException(
-                $"The local {assetKind} exceeds the compressed input budget.");
-        }
-
-        int byteLength = checked((int)randomAccessStream.Size);
-        // DataReader keeps a native input buffer alongside the managed array.
-        // Cover both before either is materialized; do not cancel and dispose
-        // the native operation until it has really returned.
-        IDisposable? nativeReservation = await ReserveBuiltInSourceBytesAsync(
-            checked(byteLength * 2L), cancellationToken).ConfigureAwait(false);
-        try
-        {
-            uint requestedLength = (uint)byteLength;
-            byte[] result = new byte[byteLength];
-            using DataReader reader = new(randomAccessStream.GetInputStreamAt(0));
-            cancellationToken.ThrowIfCancellationRequested();
-            uint loaded = await reader.LoadAsync(requestedLength)
-                .AsTask()
-                .ConfigureAwait(false);
-            cancellationToken.ThrowIfCancellationRequested();
-            if (loaded != requestedLength)
-                throw new EndOfStreamException($"The local {assetKind} ended before its declared size.");
-
-            reader.ReadBytes(result);
-            return (result, nativeReservation);
-        }
-        catch
-        {
-            nativeReservation?.Dispose();
-            throw;
-        }
-    }
-
-    private async ValueTask<IDisposable?> ReserveBuiltInSourceBytesAsync(
-        long bytes, CancellationToken cancellationToken) =>
-        Context.PerformanceSession is { } session
-            ? await session.ReserveImageSourceBytesAsync(
-                Context.EffectiveImagePreparationOwner ?? this, bytes, cancellationToken).ConfigureAwait(false)
-            : null;
-
-    private async Task<(byte[] Bytes, IDisposable? Reservation)> ReadDataUriSourceBytesAsync(
-        string source, int maxBytes, CancellationToken cancellationToken)
-    {
-        int length = MarkdownDataUriDecoder.GetDecodedLength(source, maxBytes, cancellationToken);
-        IDisposable? reservation = await ReserveBuiltInSourceBytesAsync(length, cancellationToken)
-            .ConfigureAwait(false);
-        try
-        {
-            return (MarkdownDataUriDecoder.Decode(source, maxBytes, cancellationToken), reservation);
-        }
-        catch
-        {
-            reservation?.Dispose();
-            throw;
-        }
-    }
-
-    private static bool LooksLikeSvgBytes(byte[]? bytes)
-    {
-        if (bytes is null || bytes.Length == 0)
-            return false;
-
-        int index = 0;
-        if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
-            index = 3;
-
-        while (index < bytes.Length && char.IsWhiteSpace((char)bytes[index]))
-            index++;
-
-        int length = Math.Min(bytes.Length - index, 512);
-        if (length <= 0)
-            return false;
-
-        string prefix = System.Text.Encoding.UTF8.GetString(bytes, index, length);
-        return prefix.StartsWith("<svg", StringComparison.OrdinalIgnoreCase) ||
-               (prefix.StartsWith("<?xml", StringComparison.OrdinalIgnoreCase) &&
-                prefix.IndexOf("<svg", StringComparison.OrdinalIgnoreCase) >= 0);
-    }
-
-    private async Task LoadSvgDataUriAsync(
-        string rawDataUri,
-        MarkdownSvgRenderDemand demand,
-        int loadDemandGeneration)
-    {
-        if (!TryBeginImageWork(out ImageWorkLease? decodeWork) || decodeWork is null)
-            return;
-
-        using ImageWorkLease imageWork = decodeWork;
-        byte[] rawBytes;
-        IDisposable? reservation = null;
-        try
-        {
-            (rawBytes, reservation) = await Task.Run(
-                    () => ReadDataUriSourceBytesAsync(rawDataUri, SvgSourceOpener.MaxSvgBytes, imageWork.Token),
-                    CancellationToken.None)
-                .ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            if (!_disposed)
-                _loadStarted = false;
-            return;
-        }
-        catch (Exception ex)
-        {
-            MarkdownDiagnostics.WriteLine(
-                $"[ImageBox] SVG data URI decode failed: {ex.GetType().Name} {GraphicsDeviceErrors.FormatHResult(ex.HResult)}");
-            PublishOnUiThread(() =>
-            {
-                if (_disposed) return;
-                _loadFailed = true;
-                _failureCarryable = true;
-                string cacheKey = _activeCacheKey ?? Url;
-                _resources.Failures.RememberFailedUrl(cacheKey);
-                RaiseLoadCompleted(layoutInvalidated: true);
-            });
-            return;
-        }
-
-        try
-        {
-            rawDataUri = string.Empty;
-            SvgOpenStageResult result = await OpenSvgSourceAsync(
-                    rawBytes, intrinsicHint: default, securityPartitionKey: _activeCacheKey ?? Url,
-                    builtInSourceAliasKey: _activeCacheKey ?? Url, demand, loadDemandGeneration)
-                .ConfigureAwait(false);
-            using SvgOpenedRenderWork? openedWork = result.Work;
-            rawBytes = Array.Empty<byte>();
-            DisposeCallerSource(ref reservation);
-            if (result.Deferral is { } hostDeferral)
-                SvgHostDeferral.DeferSvgHostLoad(hostDeferral);
-            else if (openedWork is not null)
-                await RenderOpenedSvgAsync(openedWork).ConfigureAwait(false);
-        }
-        finally
-        {
-            reservation?.Dispose();
-        }
-    }
-
-    private static void DisposeCallerSource<T>(ref T? source)
-        where T : class, IDisposable
-    {
-        T? consumed = source;
-        source = null;
-        consumed?.Dispose();
-    }
-
-    private SvgSourceOpener CreateSvgOpener() =>
-        new(this, Context, _resources, OutputAdmission, OutputDeferral, Url);
-
-    private Task<SvgOpenStageResult> OpenSvgSourceAsync(
-        byte[] rawBytes,
-        Size intrinsicHint,
-        string? securityPartitionKey,
-        string? builtInSourceAliasKey,
-        MarkdownSvgRenderDemand demand,
-        int loadDemandGeneration)
-        => _svgOpener.OpenAsync(
-            rawBytes, intrinsicHint, securityPartitionKey, builtInSourceAliasKey, demand, loadDemandGeneration);
 
     long ISvgLoadHost.SvgHostVisualDemandEpoch => Volatile.Read(ref _svgHostVisualDemandEpoch);
 
@@ -3362,11 +2795,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         string created = "svg-local:" + Guid.NewGuid().ToString("N");
         return Interlocked.CompareExchange(ref _svgAnonymousPartitionKey, created, null) ?? created;
     }
-
-    private SvgOpenedRenderer CreateSvgRenderer() =>
-        new(this, Context, _resources, OutputAdmission, OutputDeferral);
-
-    private Task RenderOpenedSvgAsync(SvgOpenedRenderWork work) => _svgRenderer.RenderAsync(work);
 
     (Action Publish, Action? OnDropped) ISvgLoadHost.CreateTiledSvgPublication(
         SvgPublicationMetadata metadata, IMarkdownSvgDocument openedDocument,
