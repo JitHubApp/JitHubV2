@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Net;
 
 namespace MarkdownRenderer.Document;
 
@@ -84,7 +83,7 @@ public sealed class MarkdownSourceMap
                 InsertionOrder: insertionOrder);
 
             if (_entriesWereAddedInOrder && insertionOrder > 0 &&
-                CompareDocumentOrder(_entries[insertionOrder - 1], entry) > 0)
+                SourceMapEntryOrderComparer.CompareDocumentOrder(_entries[insertionOrder - 1], entry) > 0)
             {
                 _entriesWereAddedInOrder = false;
             }
@@ -181,14 +180,14 @@ public sealed class MarkdownSourceMap
         // boundaries independently: the source between them is copied verbatim,
         // so visiting every intervening entry would only add linear work.
         Entry[] entries = GetEntryIndex().Entries;
-        int searchStart = LowerBound(entries, range.Start.BlockIndex, range.Start.InlineIndex);
+        int searchStart = SourceMapRangeSearch.LowerBound(entries, range.Start.BlockIndex, range.Start.InlineIndex);
         int searchEnd = range.End.CharacterOffset <= 0
-            ? LowerBound(entries, range.End.BlockIndex, range.End.InlineIndex)
-            : UpperBound(entries, range.End.BlockIndex, range.End.InlineIndex);
+            ? SourceMapRangeSearch.LowerBound(entries, range.End.BlockIndex, range.End.InlineIndex)
+            : SourceMapRangeSearch.UpperBound(entries, range.End.BlockIndex, range.End.InlineIndex);
 
         if (searchStart >= searchEnd ||
-            !TryFindFirstHit(entries, searchStart, searchEnd, range, out int firstIndex, out int firstFromOffset) ||
-            !TryFindLastHit(entries, firstIndex, searchEnd, range, out int lastIndex, out int lastToOffset))
+            !SourceMapRangeSearch.TryFindFirstHit(entries, searchStart, searchEnd, range, out int firstIndex, out int firstFromOffset) ||
+            !SourceMapRangeSearch.TryFindLastHit(entries, firstIndex, searchEnd, range, out int lastIndex, out int lastToOffset))
         {
             sourceSpan = SourceSpan.Empty;
             return false;
@@ -200,73 +199,6 @@ public sealed class MarkdownSourceMap
         int sourceEnd = ClampSourceOffset(lastHit.Span.Start, lastToOffset, sourceStart);
         sourceSpan = new SourceSpan(sourceStart, sourceEnd - sourceStart);
         return true;
-    }
-
-    /// <summary>
-    /// Maps a rendered-text offset within an entry to a source offset within the
-    /// entry's source span. Exact when render-length matches span-length;
-    /// otherwise proportional.
-    /// </summary>
-    private static int ProjectStartOffset(Entry entry, int renderedOffset)
-    {
-        if (entry.SourcePrefixLength == 0 && entry.SourceSuffixLength == 0)
-            return entry.Projection?.ProjectStart(renderedOffset)
-                ?? ProjectOffset(entry, renderedOffset);
-
-        if (renderedOffset <= 0)
-            return 0;
-
-        return entry.SourcePrefixLength + ProjectContentStartOffset(entry, renderedOffset);
-    }
-
-    private static int ProjectEndOffset(Entry entry, int renderedOffset)
-    {
-        if (entry.SourcePrefixLength == 0 && entry.SourceSuffixLength == 0)
-            return entry.Projection?.ProjectEnd(renderedOffset)
-                ?? ProjectOffset(entry, renderedOffset);
-
-        if (renderedOffset >= entry.RenderedLength)
-            return entry.Span.Length;
-
-        return entry.SourcePrefixLength + ProjectContentEndOffset(entry, renderedOffset);
-    }
-
-    private static int ProjectContentStartOffset(Entry entry, int renderedOffset)
-        => entry.Projection?.ProjectStart(renderedOffset)
-            ?? ProjectAffixedContentOffset(entry, renderedOffset);
-
-    private static int ProjectContentEndOffset(Entry entry, int renderedOffset)
-        => entry.Projection?.ProjectEnd(renderedOffset)
-            ?? ProjectAffixedContentOffset(entry, renderedOffset);
-
-    private static int ProjectAffixedContentOffset(Entry entry, int renderedOffset)
-    {
-        int contentLength = GetContentSourceLength(entry);
-        if (entry.RenderedLength <= 0)
-            return 0;
-
-        int contentOffset = entry.RenderedLength == contentLength
-            ? renderedOffset
-            : (int)Math.Round(renderedOffset * (double)contentLength / Math.Max(1, entry.RenderedLength));
-        return Math.Clamp(contentOffset, 0, contentLength);
-    }
-
-    private static int GetContentSourceLength(Entry entry)
-    {
-        int prefixLength = Math.Clamp(entry.SourcePrefixLength, 0, entry.Span.Length);
-        int suffixLength = Math.Clamp(entry.SourceSuffixLength, 0, entry.Span.Length - prefixLength);
-        return Math.Max(0, entry.Span.Length - prefixLength - suffixLength);
-    }
-
-    private static int ProjectOffset(Entry entry, int renderedOffset)
-    {
-        if (entry.RenderedLength <= 0)
-            return 0;
-        if (entry.RenderedLength == entry.Span.Length)
-            return renderedOffset;
-
-        double scale = (double)entry.Span.Length / Math.Max(1, entry.RenderedLength);
-        return (int)Math.Round(renderedOffset * scale);
     }
 
     private int ClampSourceOffset(int spanStart, int relativeOffset, int minimum)
@@ -343,11 +275,11 @@ public sealed class MarkdownSourceMap
         }
 
         int firstEntryIndex = bounds.FirstEntryIndex;
-        if (CompareDocumentOrder(entry, _entries[firstEntryIndex]) < 0)
+        if (SourceMapEntryOrderComparer.CompareDocumentOrder(entry, _entries[firstEntryIndex]) < 0)
             firstEntryIndex = entryIndex;
 
         int lastEntryIndex = bounds.LastEntryIndex;
-        if (CompareDocumentOrder(entry, _entries[lastEntryIndex]) > 0)
+        if (SourceMapEntryOrderComparer.CompareDocumentOrder(entry, _entries[lastEntryIndex]) > 0)
             lastEntryIndex = entryIndex;
 
         blockEntryBounds[entry.BlockIndex] = new BlockEntryBounds(firstEntryIndex, lastEntryIndex);
@@ -362,126 +294,11 @@ public sealed class MarkdownSourceMap
 
             Entry[] sortedEntries = _entries.ToArray();
             if (!_entriesWereAddedInOrder)
-                Array.Sort(sortedEntries, EntryDocumentOrderComparer.Instance);
+                Array.Sort(sortedEntries, SourceMapEntryOrderComparer.Instance);
 
             _entryIndex = new EntryIndex(sortedEntries);
             return _entryIndex;
         }
-    }
-
-    private static bool TryFindFirstHit(
-        Entry[] entries,
-        int searchStart,
-        int searchEnd,
-        DocumentRange range,
-        out int entryIndex,
-        out int projectedOffset)
-    {
-        for (int i = searchStart; i < searchEnd; i++)
-        {
-            if (!TryGetSelectedOffsets(entries[i], range, out int from, out _))
-                continue;
-
-            entryIndex = i;
-            projectedOffset = ProjectStartOffset(entries[i], from);
-            return true;
-        }
-
-        entryIndex = -1;
-        projectedOffset = 0;
-        return false;
-    }
-
-    private static bool TryFindLastHit(
-        Entry[] entries,
-        int searchStart,
-        int searchEnd,
-        DocumentRange range,
-        out int entryIndex,
-        out int projectedOffset)
-    {
-        for (int i = searchEnd - 1; i >= searchStart; i--)
-        {
-            if (!TryGetSelectedOffsets(entries[i], range, out _, out int to))
-                continue;
-
-            entryIndex = i;
-            projectedOffset = ProjectEndOffset(entries[i], to);
-            return true;
-        }
-
-        entryIndex = -1;
-        projectedOffset = 0;
-        return false;
-    }
-
-    private static bool TryGetSelectedOffsets(Entry entry, DocumentRange range, out int from, out int to)
-    {
-        var startPosition = new DocumentPosition(entry.BlockIndex, entry.InlineIndex, 0);
-        var endPosition = new DocumentPosition(entry.BlockIndex, entry.InlineIndex, entry.RenderedLength);
-        if (endPosition <= range.Start || startPosition >= range.End)
-        {
-            from = 0;
-            to = 0;
-            return false;
-        }
-
-        from = 0;
-        to = entry.RenderedLength;
-        if (range.Start.BlockIndex == entry.BlockIndex && range.Start.InlineIndex == entry.InlineIndex)
-            from = Math.Max(0, range.Start.CharacterOffset);
-        if (range.End.BlockIndex == entry.BlockIndex && range.End.InlineIndex == entry.InlineIndex)
-            to = Math.Min(entry.RenderedLength, range.End.CharacterOffset);
-
-        return to > from;
-    }
-
-    private static int LowerBound(Entry[] entries, int blockIndex, int inlineIndex)
-    {
-        int low = 0;
-        int high = entries.Length;
-        while (low < high)
-        {
-            int middle = low + ((high - low) / 2);
-            if (CompareDocumentKey(entries[middle], blockIndex, inlineIndex) < 0)
-                low = middle + 1;
-            else
-                high = middle;
-        }
-
-        return low;
-    }
-
-    private static int UpperBound(Entry[] entries, int blockIndex, int inlineIndex)
-    {
-        int low = 0;
-        int high = entries.Length;
-        while (low < high)
-        {
-            int middle = low + ((high - low) / 2);
-            if (CompareDocumentKey(entries[middle], blockIndex, inlineIndex) <= 0)
-                low = middle + 1;
-            else
-                high = middle;
-        }
-
-        return low;
-    }
-
-    private static int CompareDocumentKey(Entry entry, int blockIndex, int inlineIndex)
-    {
-        int comparison = entry.BlockIndex.CompareTo(blockIndex);
-        return comparison != 0 ? comparison : entry.InlineIndex.CompareTo(inlineIndex);
-    }
-
-    private static int CompareDocumentOrder(Entry left, Entry right)
-    {
-        int comparison = left.BlockIndex.CompareTo(right.BlockIndex);
-        if (comparison != 0)
-            return comparison;
-
-        comparison = left.InlineIndex.CompareTo(right.InlineIndex);
-        return comparison != 0 ? comparison : left.InsertionOrder.CompareTo(right.InsertionOrder);
     }
 
     internal IReadOnlyList<Entry> Entries => GetEntryIndex().ReadOnlyEntries;
@@ -521,15 +338,10 @@ public sealed class MarkdownSourceMap
 
     internal sealed class SourceProjection
     {
-        private const int MaxRenderedLength = 16 * 1024;
-        private const int MaxSourceLength = 32 * 1024;
-        private const int MaxEntityLength = 64;
-        private const int MaxEmojiShortcodeLength = 64;
-
         // Each range stores two span-relative offsets in one 32-bit word.
-        // MaxSourceLength is intentionally <= UInt16.MaxValue so this is exact;
-        // retain the explicit TryCreate guard below so a future ceiling increase
-        // cannot silently truncate source offsets.
+        // SourceProjectionUnitRanges keeps its source-length ceiling <=
+        // UInt16.MaxValue so this is exact, and retains an explicit guard so a
+        // future ceiling increase cannot silently truncate source offsets.
         private readonly uint[]? _unitSourceRanges;
         private readonly ProjectionSegment[]? _segments;
         private readonly int _renderedLength;
@@ -543,7 +355,7 @@ public sealed class MarkdownSourceMap
             _renderedLength = unitSourceRanges.Length;
             _sourceLength = unitSourceRanges.Length == 0
                 ? 0
-                : GetRangeEnd(unitSourceRanges[^1]);
+                : SourceProjectionUnitRanges.GetRangeEnd(unitSourceRanges[^1]);
             _includeSourcePrefix = true;
             _includeSourceSuffix = true;
         }
@@ -561,6 +373,11 @@ public sealed class MarkdownSourceMap
             _includeSourcePrefix = includeSourcePrefix;
             _includeSourceSuffix = includeSourceSuffix;
         }
+
+        internal static SourceProjection? TryCreate(string sourceText, SourceSpan span, string renderedText)
+            => SourceProjectionUnitRanges.TryBuild(sourceText, span, renderedText) is { } unitSourceRanges
+                ? new SourceProjection(unitSourceRanges)
+                : null;
 
         internal int RenderedLength => _renderedLength;
 
@@ -627,9 +444,9 @@ public sealed class MarkdownSourceMap
                 if (unitSourceRanges.Length == 0 || renderedOffset <= 0)
                     return 0;
                 if (renderedOffset >= unitSourceRanges.Length)
-                    return GetRangeEnd(unitSourceRanges[^1]);
+                    return SourceProjectionUnitRanges.GetRangeEnd(unitSourceRanges[^1]);
 
-                return GetRangeStart(unitSourceRanges[renderedOffset]);
+                return SourceProjectionUnitRanges.GetRangeStart(unitSourceRanges[renderedOffset]);
             }
 
             ProjectionSegment[] segments = _segments!;
@@ -638,11 +455,11 @@ public sealed class MarkdownSourceMap
             if (renderedOffset <= 0)
                 return _includeSourcePrefix ? 0 : segments[0].SourceStart;
             if (renderedOffset >= _renderedLength)
-                return _includeSourceSuffix ? _sourceLength : GetSegmentSourceEnd(segments[^1]);
+                return _includeSourceSuffix ? _sourceLength : ProjectionSegmentSearch.GetSegmentSourceEnd(segments[^1]);
 
-            int index = FindSegmentForStart(segments, renderedOffset);
+            int index = ProjectionSegmentSearch.FindSegmentForStart(segments, renderedOffset);
             ProjectionSegment segment = segments[index];
-            return MapSegmentStartBoundary(segment, renderedOffset - segment.RenderedStart);
+            return ProjectionSegmentSearch.MapSegmentStartBoundary(segment, renderedOffset - segment.RenderedStart);
         }
 
         internal int ProjectEnd(int renderedOffset)
@@ -652,9 +469,9 @@ public sealed class MarkdownSourceMap
                 if (unitSourceRanges.Length == 0 || renderedOffset <= 0)
                     return 0;
                 if (renderedOffset >= unitSourceRanges.Length)
-                    return GetRangeEnd(unitSourceRanges[^1]);
+                    return SourceProjectionUnitRanges.GetRangeEnd(unitSourceRanges[^1]);
 
-                return GetRangeEnd(unitSourceRanges[renderedOffset - 1]);
+                return SourceProjectionUnitRanges.GetRangeEnd(unitSourceRanges[renderedOffset - 1]);
             }
 
             ProjectionSegment[] segments = _segments!;
@@ -663,311 +480,13 @@ public sealed class MarkdownSourceMap
             if (renderedOffset <= 0)
                 return _includeSourcePrefix ? 0 : segments[0].SourceStart;
             if (renderedOffset >= _renderedLength)
-                return _includeSourceSuffix ? _sourceLength : GetSegmentSourceEnd(segments[^1]);
+                return _includeSourceSuffix ? _sourceLength : ProjectionSegmentSearch.GetSegmentSourceEnd(segments[^1]);
 
-            int index = FindSegmentForEnd(segments, renderedOffset);
+            int index = ProjectionSegmentSearch.FindSegmentForEnd(segments, renderedOffset);
             ProjectionSegment segment = segments[index];
-            return MapSegmentEndBoundary(segment, renderedOffset - segment.RenderedStart);
+            return ProjectionSegmentSearch.MapSegmentEndBoundary(segment, renderedOffset - segment.RenderedStart);
         }
 
-        private static int FindSegmentForStart(ProjectionSegment[] segments, int renderedOffset)
-        {
-            int low = 0;
-            int high = segments.Length;
-            while (low < high)
-            {
-                int middle = low + ((high - low) / 2);
-                if (segments[middle].RenderedStart <= renderedOffset)
-                    low = middle + 1;
-                else
-                    high = middle;
-            }
-
-            return low - 1;
-        }
-
-        private static int FindSegmentForEnd(ProjectionSegment[] segments, int renderedOffset)
-        {
-            int low = 0;
-            int high = segments.Length;
-            while (low < high)
-            {
-                int middle = low + ((high - low) / 2);
-                if (segments[middle].RenderedStart < renderedOffset)
-                    low = middle + 1;
-                else
-                    high = middle;
-            }
-
-            return Math.Max(0, low - 1);
-        }
-
-        private static int MapSegmentStartBoundary(ProjectionSegment segment, int renderedDelta)
-        {
-            if (segment.IsAtomic)
-                return segment.SourceStart;
-
-            if (segment.SourceLength == segment.RenderedLength)
-                return segment.SourceStart + renderedDelta;
-            return segment.SourceStart;
-        }
-
-        private static int MapSegmentEndBoundary(ProjectionSegment segment, int renderedDelta)
-        {
-            if (segment.IsAtomic)
-                return GetSegmentSourceEnd(segment);
-
-            if (segment.SourceLength == segment.RenderedLength)
-                return segment.SourceStart + renderedDelta;
-            return GetSegmentSourceEnd(segment);
-        }
-
-        private static int GetSegmentSourceEnd(ProjectionSegment segment)
-            => segment.SourceStart + segment.SourceLength;
-
-        internal static SourceProjection? TryCreate(string sourceText, SourceSpan span, string renderedText)
-        {
-            if (string.IsNullOrEmpty(renderedText) ||
-                span.Start < 0 ||
-                span.Length <= 0 ||
-                span.End > sourceText.Length ||
-                renderedText.Length > MaxRenderedLength ||
-                span.Length > MaxSourceLength ||
-                span.Length > ushort.MaxValue)
-            {
-                return null;
-            }
-
-            ReadOnlySpan<char> source = sourceText.AsSpan(span.Start, span.Length);
-            if (source.SequenceEqual(renderedText.AsSpan()))
-                return null;
-
-            var ranges = new uint[renderedText.Length];
-            int sourceCursor = 0;
-            int renderedCursor = 0;
-
-            while (renderedCursor < renderedText.Length)
-            {
-                if (!TryFindNextEmission(source, sourceCursor, renderedText, renderedCursor, out Emission emission))
-                {
-                    // A single visual scalar is intrinsically atomic even when its
-                    // producer is host-defined (for example a custom emoji map).
-                    if (renderedCursor == 0 && GetScalarLength(renderedText, 0) == renderedText.Length)
-                    {
-                        Array.Fill(ranges, PackRange(0, source.Length));
-                        return new SourceProjection(ranges);
-                    }
-
-                    return null;
-                }
-
-                // The span limit above makes these casts exact. Keep this local
-                // guard too, so any future change to emission/bounds fails closed.
-                if ((uint)emission.SourceStart > ushort.MaxValue ||
-                    (uint)emission.SourceEnd > ushort.MaxValue)
-                {
-                    return null;
-                }
-
-                uint packedRange = PackRange(emission.SourceStart, emission.SourceEnd);
-                for (int index = 0; index < emission.RenderedLength; index++)
-                {
-                    ranges[renderedCursor + index] = packedRange;
-                }
-
-                sourceCursor = emission.SourceEnd;
-                renderedCursor += emission.RenderedLength;
-            }
-
-            // Source-only opening and closing syntax belongs to the corresponding
-            // edge selection, while interior selections remain delimiter-free.
-            ranges[0] = PackRange(0, GetRangeEnd(ranges[0]));
-            ranges[^1] = PackRange(GetRangeStart(ranges[^1]), source.Length);
-
-            if (!IsValidProjection(ranges, source.Length))
-                return null;
-
-            return new SourceProjection(ranges);
-        }
-
-        private static uint PackRange(int sourceStart, int sourceEnd) =>
-            (uint)sourceStart | ((uint)sourceEnd << 16);
-
-        private static int GetRangeStart(uint packedRange) =>
-            (int)(packedRange & ushort.MaxValue);
-
-        private static int GetRangeEnd(uint packedRange) =>
-            (int)(packedRange >> 16);
-
-        private static bool TryFindNextEmission(
-            ReadOnlySpan<char> source,
-            int sourceCursor,
-            string rendered,
-            int renderedCursor,
-            out Emission emission)
-        {
-            for (int sourceIndex = sourceCursor; sourceIndex < source.Length; sourceIndex++)
-            {
-                if (TryMatchEntity(source, sourceIndex, rendered, renderedCursor, out emission) ||
-                    TryMatchEscape(source, sourceIndex, rendered, renderedCursor, out emission) ||
-                    TryMatchEmojiShortcode(source, sourceIndex, rendered, renderedCursor, out emission))
-                {
-                    return true;
-                }
-
-                if (source[sourceIndex] == rendered[renderedCursor])
-                {
-                    emission = new Emission(sourceIndex, sourceIndex + 1, 1);
-                    return true;
-                }
-            }
-
-            emission = default;
-            return false;
-        }
-
-        private static bool TryMatchEscape(
-            ReadOnlySpan<char> source,
-            int sourceIndex,
-            string rendered,
-            int renderedCursor,
-            out Emission emission)
-        {
-            if (source[sourceIndex] == '\\' &&
-                sourceIndex + 1 < source.Length &&
-                source[sourceIndex + 1] == rendered[renderedCursor])
-            {
-                emission = new Emission(sourceIndex, sourceIndex + 2, 1);
-                return true;
-            }
-
-            emission = default;
-            return false;
-        }
-
-        private static bool TryMatchEntity(
-            ReadOnlySpan<char> source,
-            int sourceIndex,
-            string rendered,
-            int renderedCursor,
-            out Emission emission)
-        {
-            if (source[sourceIndex] != '&')
-            {
-                emission = default;
-                return false;
-            }
-
-            int searchLength = Math.Min(MaxEntityLength, source.Length - sourceIndex);
-            int relativeEnd = source.Slice(sourceIndex, searchLength).IndexOf(';');
-            if (relativeEnd <= 1)
-            {
-                emission = default;
-                return false;
-            }
-
-            int sourceLength = relativeEnd + 1;
-            string encoded = source.Slice(sourceIndex, sourceLength).ToString();
-            string decoded = WebUtility.HtmlDecode(encoded);
-            if (decoded.Length == 0 ||
-                string.Equals(decoded, encoded, StringComparison.Ordinal) ||
-                renderedCursor + decoded.Length > rendered.Length ||
-                !rendered.AsSpan(renderedCursor, decoded.Length).SequenceEqual(decoded.AsSpan()))
-            {
-                emission = default;
-                return false;
-            }
-
-            emission = new Emission(sourceIndex, sourceIndex + sourceLength, decoded.Length);
-            return true;
-        }
-
-        private static bool TryMatchEmojiShortcode(
-            ReadOnlySpan<char> source,
-            int sourceIndex,
-            string rendered,
-            int renderedCursor,
-            out Emission emission)
-        {
-            if (source[sourceIndex] != ':')
-            {
-                emission = default;
-                return false;
-            }
-
-            int scalarLength = GetScalarLength(rendered, renderedCursor);
-            int scalarValue = scalarLength == 2
-                ? char.ConvertToUtf32(rendered[renderedCursor], rendered[renderedCursor + 1])
-                : rendered[renderedCursor];
-            if (scalarValue <= 0x7F)
-            {
-                emission = default;
-                return false;
-            }
-
-            int maximumEnd = Math.Min(source.Length, sourceIndex + MaxEmojiShortcodeLength);
-            int end = sourceIndex + 1;
-            while (end < maximumEnd && source[end] != ':')
-            {
-                char value = source[end];
-                if (!(char.IsAsciiLetterOrDigit(value) || value is '_' or '+' or '-'))
-                {
-                    emission = default;
-                    return false;
-                }
-
-                end++;
-            }
-
-            if (end <= sourceIndex + 1 || end >= maximumEnd || source[end] != ':')
-            {
-                emission = default;
-                return false;
-            }
-
-            emission = new Emission(sourceIndex, end + 1, scalarLength);
-            return true;
-        }
-
-        private static int GetScalarLength(string value, int index)
-            => index + 1 < value.Length &&
-               char.IsHighSurrogate(value[index]) &&
-               char.IsLowSurrogate(value[index + 1])
-                ? 2
-                : 1;
-
-        private static bool IsValidProjection(uint[] ranges, int sourceLength)
-        {
-            int previousStart = -1;
-            int previousEnd = -1;
-            for (int index = 0; index < ranges.Length; index++)
-            {
-                uint packedRange = ranges[index];
-                int start = GetRangeStart(packedRange);
-                int end = GetRangeEnd(packedRange);
-                if (end < start ||
-                    end > sourceLength ||
-                    start < previousStart ||
-                    end < previousEnd)
-                {
-                    return false;
-                }
-
-                previousStart = start;
-                previousEnd = end;
-            }
-
-            return true;
-        }
-
-        private readonly struct Emission(int sourceStart, int sourceEnd, int renderedLength)
-        {
-            internal readonly int SourceStart = sourceStart;
-
-            internal readonly int SourceEnd = sourceEnd;
-
-            internal readonly int RenderedLength = renderedLength;
-        }
     }
 
     private readonly struct BlockEntryBounds(int firstEntryIndex, int lastEntryIndex)
@@ -975,13 +494,6 @@ public sealed class MarkdownSourceMap
         internal readonly int FirstEntryIndex = firstEntryIndex;
 
         internal readonly int LastEntryIndex = lastEntryIndex;
-    }
-
-    private sealed class EntryDocumentOrderComparer : IComparer<Entry>
-    {
-        internal static EntryDocumentOrderComparer Instance { get; } = new();
-
-        public int Compare(Entry x, Entry y) => CompareDocumentOrder(x, y);
     }
 
     private sealed class EntryIndex

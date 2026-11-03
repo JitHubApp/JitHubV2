@@ -138,7 +138,7 @@ public sealed class ImmutablePayloadStorageTests
         AssertReadonly(typeof(SvgIntrinsics.SvgRootGeometry),
             "IntrinsicWidth IntrinsicHeight ViewBoxX ViewBoxY ViewBoxWidth ViewBoxHeight");
         AssertReadonly(typeof(TableBox.CellInfo), "Box Row Column IsHeader");
-        AssertReadonly(Nested(typeof(MarkdownSourceMap.SourceProjection), "Emission"),
+        AssertReadonly(Nested(typeof(SourceProjectionUnitRanges), "Emission"),
             "SourceStart SourceEnd RenderedLength");
         AssertReadonly(Nested(typeof(MarkdownSourceMap), "BlockEntryBounds"), "FirstEntryIndex LastEntryIndex");
         AssertReadonly(Nested(typeof(MarkdownSourceMap), "EntryIndex"), "Entries ReadOnlyEntries");
