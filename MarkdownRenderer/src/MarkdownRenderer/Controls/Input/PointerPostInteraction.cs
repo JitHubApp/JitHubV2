@@ -70,30 +70,7 @@ internal sealed class PointerPostInteraction
         // must join the existing FIFO queue instead of nesting here.
         if (input.ReleaseCanvasCaptureAfterInteraction)
         {
-            UIElement captureTarget = input.InteractionCanvas!;
-            if (input.ReleasePointerIdAfterInteraction == 0)
-            {
-                captureTarget.ReleasePointerCapture(input.Pointer);
-            }
-            else if (captureTarget.PointerCaptures is { } captures)
-            {
-                foreach (Pointer capturedPointer in captures)
-                {
-                    if (capturedPointer.PointerId == input.ReleasePointerIdAfterInteraction)
-                    {
-                        _contextCaptureReleaseInFlightId = input.ReleasePointerIdAfterInteraction;
-                        try
-                        {
-                            captureTarget.ReleasePointerCapture(capturedPointer);
-                        }
-                        finally
-                        {
-                            _contextCaptureReleaseInFlightId = 0;
-                        }
-                        break;
-                    }
-                }
-            }
+            ReleaseCanvasCapture(ref input);
             if (!IsCurrent(snapshot, snapshotGeneration, layoutRevision) ||
                 !ReferenceEquals(_surface.Canvas, input.InteractionCanvas))
             {
@@ -134,6 +111,34 @@ internal sealed class PointerPostInteraction
                 layoutRevision);
 
         return IsCurrent(snapshot, snapshotGeneration, layoutRevision);
+    }
+
+    private void ReleaseCanvasCapture(ref PointerInput input)
+    {
+        UIElement captureTarget = input.InteractionCanvas!;
+        if (input.ReleasePointerIdAfterInteraction == 0)
+        {
+            captureTarget.ReleasePointerCapture(input.Pointer);
+        }
+        else if (captureTarget.PointerCaptures is { } captures)
+        {
+            foreach (Pointer capturedPointer in captures)
+            {
+                if (capturedPointer.PointerId == input.ReleasePointerIdAfterInteraction)
+                {
+                    _contextCaptureReleaseInFlightId = input.ReleasePointerIdAfterInteraction;
+                    try
+                    {
+                        captureTarget.ReleasePointerCapture(capturedPointer);
+                    }
+                    finally
+                    {
+                        _contextCaptureReleaseInFlightId = 0;
+                    }
+                    break;
+                }
+            }
+        }
     }
 
     private bool IsCurrent(
