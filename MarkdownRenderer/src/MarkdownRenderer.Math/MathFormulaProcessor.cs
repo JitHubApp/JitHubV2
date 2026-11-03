@@ -212,86 +212,16 @@ internal sealed class MathFormulaProcessor
             return MathFormulaResult.InvalidSource(request, preflight, accessibility);
         }
 
-        MathScene? scene;
-        try
-        {
-            scene = CSharpMathSceneCompiler.Compile(request, options, cancellationToken);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (MathParserRecursionLimitException)
-        {
-            return MathFormulaResult.Unsupported(
+        (MathScene? scene, MathFormulaResult? compileFailure) = await CompileSceneAsync(
                 request,
-                Diagnostic(
-                    "MATH102",
-                    MathStringKeys.NestingTooDeep,
-                    request.ContentRange,
-                    languageTag,
-                    cancellationToken),
-                guaranteedAccessibility);
-        }
-        catch (MathSceneBudgetException exception)
-            when (exception.Budget == MathSceneBudget.WorkingMemory)
-        {
-            return MathFormulaResult.Unsupported(
-                request,
-                Diagnostic(
-                    "MATH105",
-                    MathStringKeys.WorkingMemoryExceeded,
-                    request.ContentRange,
-                    languageTag,
-                    cancellationToken),
-                guaranteedAccessibility);
-        }
-        catch (MathSceneBudgetException)
-        {
-            return MathFormulaResult.Unsupported(
-                request,
-                Diagnostic(
-                    "MATH103",
-                    MathStringKeys.SceneTooComplex,
-                    request.ContentRange,
-                    languageTag,
-                    cancellationToken),
-                guaranteedAccessibility);
-        }
-        catch (MathSceneDimensionException)
-        {
-            return MathFormulaResult.Unsupported(
-                request,
-                Diagnostic(
-                    "MATH104",
-                    MathStringKeys.SceneTooLarge,
-                    request.ContentRange,
-                    languageTag,
-                    cancellationToken),
-                guaranteedAccessibility);
-        }
-        catch (Exception)
-        {
-            // If an unexpected compiler failure races cancellation, cancellation
-            // remains the observable operation outcome. Letting the unrelated
-            // compiler exception escape here would bypass the caller-cancellation
-            // and deadline handling in ProcessWithDeadlineAsync.
-            cancellationToken.ThrowIfCancellationRequested();
-            return MathFormulaResult.Failed(
-                request,
-                Diagnostic(
-                    "MATH199",
-                    MathStringKeys.ProcessingFailed,
-                    request.ContentRange,
-                    languageTag,
-                    cancellationToken),
-                await FormatAccessibilityAsync(
-                    request,
-                    languageTag,
-                    localizationCulture,
-                    guaranteedAccessibility,
-                    cancellationToken).ConfigureAwait(false));
-        }
+                options,
+                cancellationToken,
+                languageTag,
+                localizationCulture,
+                guaranteedAccessibility)
+            .ConfigureAwait(false);
+        if (compileFailure is not null)
+            return compileFailure;
 
         if (scene is null)
         {
@@ -320,6 +250,83 @@ internal sealed class MathFormulaProcessor
                 cancellationToken).ConfigureAwait(false);
         return MathFormulaResult.Accepted(request, scene, acceptedAccessibility);
     }
+
+    /// <summary>
+    /// Compiles the scene (null for invalid TeX). Compiler limits and unexpected
+    /// compiler failures are returned as the failure result instead.
+    /// </summary>
+    private async ValueTask<(MathScene? Scene, MathFormulaResult? Failure)> CompileSceneAsync(
+        MathFormulaRequest request,
+        MathProcessingOptions options,
+        CancellationToken cancellationToken,
+        string languageTag,
+        CultureInfo localizationCulture,
+        MathAccessibilityDescription guaranteedAccessibility)
+    {
+        try
+        {
+            return (CSharpMathSceneCompiler.Compile(request, options, cancellationToken), null);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (MathParserRecursionLimitException)
+        {
+            return (null, CompilerLimitResult(
+                request, "MATH102", MathStringKeys.NestingTooDeep, languageTag, guaranteedAccessibility, cancellationToken));
+        }
+        catch (MathSceneBudgetException exception)
+            when (exception.Budget == MathSceneBudget.WorkingMemory)
+        {
+            return (null, CompilerLimitResult(
+                request, "MATH105", MathStringKeys.WorkingMemoryExceeded, languageTag, guaranteedAccessibility, cancellationToken));
+        }
+        catch (MathSceneBudgetException)
+        {
+            return (null, CompilerLimitResult(
+                request, "MATH103", MathStringKeys.SceneTooComplex, languageTag, guaranteedAccessibility, cancellationToken));
+        }
+        catch (MathSceneDimensionException)
+        {
+            return (null, CompilerLimitResult(
+                request, "MATH104", MathStringKeys.SceneTooLarge, languageTag, guaranteedAccessibility, cancellationToken));
+        }
+        catch (Exception)
+        {
+            // If an unexpected compiler failure races cancellation, cancellation
+            // remains the observable operation outcome. Letting the unrelated
+            // compiler exception escape here would bypass the caller-cancellation
+            // and deadline handling in ProcessWithDeadlineAsync.
+            cancellationToken.ThrowIfCancellationRequested();
+            return (null, MathFormulaResult.Failed(
+                request,
+                Diagnostic(
+                    "MATH199",
+                    MathStringKeys.ProcessingFailed,
+                    request.ContentRange,
+                    languageTag,
+                    cancellationToken),
+                await FormatAccessibilityAsync(
+                    request,
+                    languageTag,
+                    localizationCulture,
+                    guaranteedAccessibility,
+                    cancellationToken).ConfigureAwait(false)));
+        }
+    }
+
+    private MathFormulaResult CompilerLimitResult(
+        MathFormulaRequest request,
+        string code,
+        string stringKey,
+        string languageTag,
+        MathAccessibilityDescription guaranteedAccessibility,
+        CancellationToken cancellationToken) =>
+        MathFormulaResult.Unsupported(
+            request,
+            Diagnostic(code, stringKey, request.ContentRange, languageTag, cancellationToken),
+            guaranteedAccessibility);
 
     private MathFormulaDiagnostic? ValidateInput(
         MathFormulaRequest request,
