@@ -187,15 +187,7 @@ internal static class InlinePrivatePlacementPreflight
         runCount = 0;
         imageCount = 0;
         styleKeyCopyEntries = 0;
-        if (box.RunList.Count > InlineContainerBox.MaximumPrivateRasterPlacementRuns ||
-            box.RunTextLength > InlineContainerBox.MaximumPrivateRasterPlacementTextLength ||
-            box.InlineImageEntries is { Count: > InlineContainerBox.MaximumPrivateRasterPlacementImages } ||
-            !box.HasWellFormedEffectiveRunAliases || !box.HasWellFormedResolvedLinkInlineStyleCache ||
-            box.ResolvedRunStyleCount != box.RunList.Count ||
-            (box.InlineImageEntries?.Count ?? 0) > box.RunList.Count ||
-            !CanCopyPrivateCodeForegroundSpans(box, allowCodeForegroundSpans) ||
-            !TryAccumulateStyleKeyCopyEntries(ref styleKeyCopyEntries, box.StyleContextKeys) ||
-            !TryAccumulateStyleKeyCopyEntries(ref styleKeyCopyEntries, box.StyleAliasKeys))
+        if (!IsWithinContainerShapeLimits(box, allowCodeForegroundSpans, ref styleKeyCopyEntries))
             return false;
 
         // Empty table cells have no logical inline runs but still own mutable
@@ -203,16 +195,7 @@ internal static class InlinePrivatePlacementPreflight
         // table candidate. Admit only the exact clean empty shape; malformed
         // partial indexes, atomic runs, or stale text buffers remain rejected.
         if (box.RunList.Count == 0)
-        {
-            if (box.RunTextLength != 0 || box.LayoutBuffer.Length != 0 || box.InlineImageEntries is not null ||
-                box.InlineEmbedEntries is not null || box.HasAtomicInlineObject ||
-                box.VectorSceneRunCount != 0 || box.HasDeferredSceneMarker ||
-                box.ForegroundSpans.Count != 0 ||
-                (box.TextLayout is null && box.SelectionLayout is not null))
-                return false;
-
-            return true;
-        }
+            return IsCleanEmptyShape(box);
 
         IReadOnlyList<(InlineImageRun Run, int Offset)> imageEntries = box.InlineImageEntries is { } entries
             ? entries
@@ -227,17 +210,7 @@ internal static class InlinePrivatePlacementPreflight
                 run.LayoutTextLength != run.TextLength)
                 return false;
 
-            string[]? aliasOverride = box.GetEffectiveRunAliasOverride(runIndex);
-            if (!TryAccumulateStyleKeyCopyEntries(ref styleKeyCopyEntries, run.StyleAliases) ||
-                !TryAccumulateStyleKeyCopyEntries(ref styleKeyCopyEntries, run.StyleModifierKeys) ||
-                !TryAccumulateStyleKeyCopyEntries(ref styleKeyCopyEntries, run.ScriptStyleAncestryKeys) ||
-                run is LinkRun linkRun && linkRun.InlineStyleMap is { } inlineStyleMap &&
-                    (!inlineStyleMap.IsValidForTextLength(run.TextLength) ||
-                     !TryAccumulateStyleKeyCopyEntryCount(
-                         ref styleKeyCopyEntries,
-                         inlineStyleMap.StyleKeyEntryCount)) ||
-                aliasOverride is not null &&
-                    !TryAccumulateStyleKeyCopyEntries(ref styleKeyCopyEntries, aliasOverride))
+            if (!TryAccumulateRunStyleKeyCopyEntries(box, run, runIndex, ref styleKeyCopyEntries))
                 return false;
 
             if (PrivateTextRunPlacement.IsSupported(run) || run is LinkRun)
@@ -247,35 +220,12 @@ internal static class InlinePrivatePlacementPreflight
             }
             else if (run is InlineImageRun imageRun)
             {
-                if (imageOrdinal >= imageEntries.Count)
+                if (!IsAdmissibleImageRun(box, imageEntries, imageRun, ref imageOrdinal, offset))
                     return false;
-                var entry = imageEntries[imageOrdinal++];
-                if (!ReferenceEquals(entry.Run, imageRun) || offset > int.MaxValue || entry.Offset != (int)offset ||
-                    imageRun.Image.BlockIndex != box.BlockIndex)
-                    return false;
-
-                // Bounding this duplicate check at 64 keeps it allocation-free
-                // while rejecting aliases before acquiring any clone leases.
-                for (int priorIndex = 0; priorIndex < imageOrdinal - 1; priorIndex++)
-                {
-                    if (ReferenceEquals(imageEntries[priorIndex].Run.Image, imageRun.Image))
-                        return false;
-                }
             }
             else if (allowMeasuredVectorPlacement && run is InlineVectorSceneRun vectorRun)
             {
-                // Read only renderer-owned identity and scalar state. A
-                // placeholder or another measurement-only run cannot become
-                // a publishable drawing through this private recipe.
-                if (vectorRun.IsDisposed || vectorRun.IsMeasuredPlacementOnly ||
-                    vectorRun.DeferredSceneMarker is not null ||
-                    !float.IsFinite(vectorRun.DesiredWidth) || vectorRun.DesiredWidth <= 0 ||
-                    !float.IsFinite(vectorRun.DesiredHeight) || vectorRun.DesiredHeight <= 0 ||
-                    !float.IsFinite(vectorRun.DesiredBaseline) || vectorRun.DesiredBaseline < 0 ||
-                    vectorRun.DesiredBaseline > vectorRun.DesiredHeight ||
-                    !double.IsFinite(vectorRun.LocalBounds.X) || !double.IsFinite(vectorRun.LocalBounds.Y) ||
-                    !double.IsFinite(vectorRun.LocalBounds.Width) || vectorRun.LocalBounds.Width < 0 ||
-                    !double.IsFinite(vectorRun.LocalBounds.Height) || vectorRun.LocalBounds.Height < 0)
+                if (!IsAdmissibleVectorRun(vectorRun))
                     return false;
                 vectorOrdinal++;
             }
@@ -294,33 +244,127 @@ internal static class InlinePrivatePlacementPreflight
             (!unmeasuredDirtyText && offset != box.LayoutBuffer.Length))
             return false;
 
-        if (allowMeasuredVectorPlacement && box.PendingSceneGeometry.Length != 0)
-        {
-            if (box.PendingSceneGeometry.Length != vectorOrdinal || box.CurrentSceneGeometryGeneration == 0 ||
-                box.PendingSceneGeometryGeneration !=
-                    (box.UsesProgressiveNativeSceneResidency ? box.CurrentSceneGeometryGeneration : 0))
-                return false;
-            int geometryIndex = 0;
-            foreach (InlineRun run in box.RunList)
-                if (run is InlineVectorSceneRun vectorRun &&
-                    !ReferenceEquals(box.PendingSceneGeometry[geometryIndex++].Run, vectorRun))
-                    return false;
-        }
+        if (allowMeasuredVectorPlacement && box.PendingSceneGeometry.Length != 0 &&
+            !PendingSceneGeometryMatchesRuns(box, vectorOrdinal))
+            return false;
 
-        // Unmeasured images can carry only pristine descriptors, never an
-        // active load, accepted payload, or shared mutable source owner.
-        if (box.TextLayout is null && imageOrdinal != 0)
-        {
-            if (!allowIdleImagePlacements)
-                return false;
-            foreach (var entry in imageEntries)
-                if (!ReferenceEquals(entry.Run.Image.Context, box.Context) ||
-                    !entry.Run.Image.IsCurrentIdleImagePlacement(0))
-                    return false;
-        }
+        if (box.TextLayout is null && imageOrdinal != 0 &&
+            !UnmeasuredImagesArePristine(box, imageEntries, allowIdleImagePlacements))
+            return false;
 
         runCount = box.RunList.Count;
         imageCount = imageOrdinal;
+        return true;
+    }
+
+    // The container-level size bounds and cache shape, accumulating its own
+    // style-key copies before any run is inspected.
+    private static bool IsWithinContainerShapeLimits(
+        InlineContainerBox box,
+        bool allowCodeForegroundSpans,
+        ref long styleKeyCopyEntries)
+        => !(box.RunList.Count > InlineContainerBox.MaximumPrivateRasterPlacementRuns ||
+            box.RunTextLength > InlineContainerBox.MaximumPrivateRasterPlacementTextLength ||
+            box.InlineImageEntries is { Count: > InlineContainerBox.MaximumPrivateRasterPlacementImages } ||
+            !box.HasWellFormedEffectiveRunAliases || !box.HasWellFormedResolvedLinkInlineStyleCache ||
+            box.ResolvedRunStyleCount != box.RunList.Count ||
+            (box.InlineImageEntries?.Count ?? 0) > box.RunList.Count ||
+            !CanCopyPrivateCodeForegroundSpans(box, allowCodeForegroundSpans) ||
+            !TryAccumulateStyleKeyCopyEntries(ref styleKeyCopyEntries, box.StyleContextKeys) ||
+            !TryAccumulateStyleKeyCopyEntries(ref styleKeyCopyEntries, box.StyleAliasKeys));
+
+    private static bool IsCleanEmptyShape(InlineContainerBox box)
+        => !(box.RunTextLength != 0 || box.LayoutBuffer.Length != 0 || box.InlineImageEntries is not null ||
+            box.InlineEmbedEntries is not null || box.HasAtomicInlineObject ||
+            box.VectorSceneRunCount != 0 || box.HasDeferredSceneMarker ||
+            box.ForegroundSpans.Count != 0 ||
+            (box.TextLayout is null && box.SelectionLayout is not null));
+
+    private static bool TryAccumulateRunStyleKeyCopyEntries(
+        InlineContainerBox box,
+        InlineRun run,
+        int runIndex,
+        ref long styleKeyCopyEntries)
+    {
+        string[]? aliasOverride = box.GetEffectiveRunAliasOverride(runIndex);
+        return !(!TryAccumulateStyleKeyCopyEntries(ref styleKeyCopyEntries, run.StyleAliases) ||
+            !TryAccumulateStyleKeyCopyEntries(ref styleKeyCopyEntries, run.StyleModifierKeys) ||
+            !TryAccumulateStyleKeyCopyEntries(ref styleKeyCopyEntries, run.ScriptStyleAncestryKeys) ||
+            run is LinkRun linkRun && linkRun.InlineStyleMap is { } inlineStyleMap &&
+                (!inlineStyleMap.IsValidForTextLength(run.TextLength) ||
+                 !TryAccumulateStyleKeyCopyEntryCount(
+                     ref styleKeyCopyEntries,
+                     inlineStyleMap.StyleKeyEntryCount)) ||
+            aliasOverride is not null &&
+                !TryAccumulateStyleKeyCopyEntries(ref styleKeyCopyEntries, aliasOverride));
+    }
+
+    private static bool IsAdmissibleImageRun(
+        InlineContainerBox box,
+        IReadOnlyList<(InlineImageRun Run, int Offset)> imageEntries,
+        InlineImageRun imageRun,
+        ref int imageOrdinal,
+        long offset)
+    {
+        if (imageOrdinal >= imageEntries.Count)
+            return false;
+        var entry = imageEntries[imageOrdinal++];
+        if (!ReferenceEquals(entry.Run, imageRun) || offset > int.MaxValue || entry.Offset != (int)offset ||
+            imageRun.Image.BlockIndex != box.BlockIndex)
+            return false;
+
+        // Bounding this duplicate check at 64 keeps it allocation-free
+        // while rejecting aliases before acquiring any clone leases.
+        for (int priorIndex = 0; priorIndex < imageOrdinal - 1; priorIndex++)
+        {
+            if (ReferenceEquals(imageEntries[priorIndex].Run.Image, imageRun.Image))
+                return false;
+        }
+
+        return true;
+    }
+
+    // Read only renderer-owned identity and scalar state. A placeholder or
+    // another measurement-only run cannot become a publishable drawing
+    // through this private recipe.
+    private static bool IsAdmissibleVectorRun(InlineVectorSceneRun vectorRun)
+        => !(vectorRun.IsDisposed || vectorRun.IsMeasuredPlacementOnly ||
+            vectorRun.DeferredSceneMarker is not null ||
+            !float.IsFinite(vectorRun.DesiredWidth) || vectorRun.DesiredWidth <= 0 ||
+            !float.IsFinite(vectorRun.DesiredHeight) || vectorRun.DesiredHeight <= 0 ||
+            !float.IsFinite(vectorRun.DesiredBaseline) || vectorRun.DesiredBaseline < 0 ||
+            vectorRun.DesiredBaseline > vectorRun.DesiredHeight ||
+            !double.IsFinite(vectorRun.LocalBounds.X) || !double.IsFinite(vectorRun.LocalBounds.Y) ||
+            !double.IsFinite(vectorRun.LocalBounds.Width) || vectorRun.LocalBounds.Width < 0 ||
+            !double.IsFinite(vectorRun.LocalBounds.Height) || vectorRun.LocalBounds.Height < 0);
+
+    private static bool PendingSceneGeometryMatchesRuns(InlineContainerBox box, int vectorOrdinal)
+    {
+        if (box.PendingSceneGeometry.Length != vectorOrdinal || box.CurrentSceneGeometryGeneration == 0 ||
+            box.PendingSceneGeometryGeneration !=
+                (box.UsesProgressiveNativeSceneResidency ? box.CurrentSceneGeometryGeneration : 0))
+            return false;
+        int geometryIndex = 0;
+        foreach (InlineRun run in box.RunList)
+            if (run is InlineVectorSceneRun vectorRun &&
+                !ReferenceEquals(box.PendingSceneGeometry[geometryIndex++].Run, vectorRun))
+                return false;
+        return true;
+    }
+
+    // Unmeasured images can carry only pristine descriptors, never an
+    // active load, accepted payload, or shared mutable source owner.
+    private static bool UnmeasuredImagesArePristine(
+        InlineContainerBox box,
+        IReadOnlyList<(InlineImageRun Run, int Offset)> imageEntries,
+        bool allowIdleImagePlacements)
+    {
+        if (!allowIdleImagePlacements)
+            return false;
+        foreach (var entry in imageEntries)
+            if (!ReferenceEquals(entry.Run.Image.Context, box.Context) ||
+                !entry.Run.Image.IsCurrentIdleImagePlacement(0))
+                return false;
         return true;
     }
 
