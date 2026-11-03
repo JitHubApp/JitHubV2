@@ -181,6 +181,39 @@ internal sealed class InlineMeasuredPlacementTransfer
 
         InlineSceneGeometry[] candidateGeometry = prepared.PendingSceneGeometry;
         InlineSceneGeometry[] remappedGeometry = Array.Empty<InlineSceneGeometry>();
+        if (!TryCapturePreparedVectorPlacements(vectorCount))
+            return false;
+
+        if (vectorCount > 0 && prepared.UsesProgressiveNativeSceneResidency)
+        {
+            if (candidateGeometry.Length != vectorCount ||
+                prepared.PendingSceneGeometryGeneration == 0 ||
+                prepared.PendingSceneGeometryGeneration != prepared.CurrentSceneGeometryGeneration)
+            {
+                return false;
+            }
+
+            remappedGeometry = new InlineSceneGeometry[vectorCount];
+            if (!TryRemapMeasuredGeometryToSource(candidateGeometry, remappedGeometry))
+                return false;
+        }
+        else if (candidateGeometry.Length != 0 || prepared.PendingSceneGeometryGeneration != 0 &&
+                 !prepared.UsesProgressiveNativeSceneResidency)
+        {
+            return false;
+        }
+
+        _preparedVectorGeometrySnapshot = candidateGeometry;
+        _preparedVectorGeometryForSource = remappedGeometry;
+        _preparedSceneGeometryGeneration = prepared.CurrentSceneGeometryGeneration;
+        _preparedPendingSceneGeometryGeneration = prepared.PendingSceneGeometryGeneration;
+        _preparedVectorGeometryReady = true;
+        return MatchesPreparedVectorGeometry();
+    }
+
+    // Pairs each source vector run with its prepared clone in run order.
+    private bool TryCapturePreparedVectorPlacements(int vectorCount)
+    {
         int placementOrdinal = 0;
         foreach (InlineMeasuredRunState run in _runs)
         {
@@ -198,57 +231,40 @@ internal sealed class InlineMeasuredPlacementTransfer
             _preparedVectorPlacements[placementOrdinal++] = new PreparedVectorPlacement(
                 sourceVector, preparedVector);
         }
-        if (placementOrdinal != vectorCount)
-            return false;
 
-        if (vectorCount > 0 && prepared.UsesProgressiveNativeSceneResidency)
+        return placementOrdinal == vectorCount;
+    }
+
+    // Rebinds each measured candidate geometry entry to its source vector
+    // run, filling remappedGeometry, whose length is the vector count.
+    private bool TryRemapMeasuredGeometryToSource(
+        InlineSceneGeometry[] candidateGeometry,
+        InlineSceneGeometry[] remappedGeometry)
+    {
+        int geometryOrdinal = 0;
+        foreach (InlineMeasuredRunState run in _runs)
         {
-            if (candidateGeometry.Length != vectorCount ||
-                prepared.PendingSceneGeometryGeneration == 0 ||
-                prepared.PendingSceneGeometryGeneration != prepared.CurrentSceneGeometryGeneration)
+            if (run.SourceVectorRun is not { } sourceVector)
+                continue;
+            if (run.PreparedVectorRun is not { IsMeasuredPlacementOnly: true } preparedVector ||
+                geometryOrdinal >= candidateGeometry.Length)
             {
                 return false;
             }
 
-            remappedGeometry = new InlineSceneGeometry[vectorCount];
-            int geometryOrdinal = 0;
-            foreach (InlineMeasuredRunState run in _runs)
+            InlineSceneGeometry measuredGeometry = candidateGeometry[geometryOrdinal];
+            if (!ReferenceEquals(measuredGeometry.Run, preparedVector) ||
+                !ReferenceEquals(measuredGeometry.Run.Scene, run.VectorScene) ||
+                !InlineMeasuredPlacementCapture.HasUsableMeasuredVectorRegions(measuredGeometry))
             {
-                if (run.SourceVectorRun is not { } sourceVector)
-                    continue;
-                if (run.PreparedVectorRun is not { IsMeasuredPlacementOnly: true } preparedVector ||
-                    geometryOrdinal >= candidateGeometry.Length)
-                {
-                    return false;
-                }
-
-                InlineSceneGeometry measuredGeometry = candidateGeometry[geometryOrdinal];
-                if (!ReferenceEquals(measuredGeometry.Run, preparedVector) ||
-                    !ReferenceEquals(measuredGeometry.Run.Scene, run.VectorScene) ||
-                    !InlineMeasuredPlacementCapture.HasUsableMeasuredVectorRegions(measuredGeometry))
-                {
-                    return false;
-                }
-
-                remappedGeometry[geometryOrdinal] = measuredGeometry.WithRun(sourceVector);
-                geometryOrdinal++;
+                return false;
             }
 
-            if (geometryOrdinal != vectorCount)
-                return false;
-        }
-        else if (candidateGeometry.Length != 0 || prepared.PendingSceneGeometryGeneration != 0 &&
-                 !prepared.UsesProgressiveNativeSceneResidency)
-        {
-            return false;
+            remappedGeometry[geometryOrdinal] = measuredGeometry.WithRun(sourceVector);
+            geometryOrdinal++;
         }
 
-        _preparedVectorGeometrySnapshot = candidateGeometry;
-        _preparedVectorGeometryForSource = remappedGeometry;
-        _preparedSceneGeometryGeneration = prepared.CurrentSceneGeometryGeneration;
-        _preparedPendingSceneGeometryGeneration = prepared.PendingSceneGeometryGeneration;
-        _preparedVectorGeometryReady = true;
-        return MatchesPreparedVectorGeometry();
+        return geometryOrdinal == remappedGeometry.Length;
     }
 
     private bool MatchesPreparedVectorGeometry()
