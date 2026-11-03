@@ -2,7 +2,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Media;
 using Windows.UI;
 
 namespace MarkdownRenderer.Theming;
@@ -12,7 +11,7 @@ namespace MarkdownRenderer.Theming;
 /// effective style at render time merges defaults (from Win11 typography &amp;
 /// theme brushes resolved against current ActualTheme) with these overrides.
 /// </summary>
-public sealed partial class MarkdownTheme : DependencyObject
+public sealed class MarkdownTheme : DependencyObject
 {
     private int _updateDepth;
     private bool _hasDeferredChange;
