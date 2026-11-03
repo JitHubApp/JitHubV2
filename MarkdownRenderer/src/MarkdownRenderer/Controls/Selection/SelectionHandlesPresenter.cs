@@ -34,6 +34,13 @@ namespace MarkdownRenderer.Controls.Selection;
 /// is stationary, so edge auto-scroll continues, and it retires a drag whose
 /// capture was lost without a routed terminal.
 /// </para>
+/// <para>
+/// This file is longer than 500 lines because the drag lifecycle (press,
+/// frame-coalesced move, release, cancel and silent capture loss) and the
+/// endpoint edits that both drags and keyboard nudges make read and reset
+/// the same drag fields; splitting them would make one class reset
+/// another's state.
+/// </para>
 /// </remarks>
 internal sealed class SelectionHandlesPresenter : ISelectionHandleFrameTarget
 {
