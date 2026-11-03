@@ -10,9 +10,6 @@ namespace MarkdownRenderer.Math;
 /// </summary>
 internal sealed class MathFormulaProcessor
 {
-    private const int MaximumEmergencyTexPreviewLength = 256;
-    private const int MaximumEmergencyHelpTextLength = 2048;
-
     private readonly IMathAccessibilityFormatter _accessibilityFormatter;
     private readonly IMathStringProvider? _strings;
     private readonly CultureInfo _localizationCulture;
@@ -79,7 +76,7 @@ internal sealed class MathFormulaProcessor
         // This payload is deliberately provider-free and fixed-size: it is
         // safe to create on the caller thread after the deadline starts, and
         // exact untrusted source is retained only by the request/copy fields.
-        EmergencyLocalizationSnapshot emergency = CreateEnglishEmergencySnapshot(request);
+        MathEmergencyLocalizationSnapshot emergency = MathEmergencyLocalization.CreateEnglishEmergencySnapshot(request);
 
         try
         {
@@ -126,17 +123,18 @@ internal sealed class MathFormulaProcessor
     /// they run away from the caller thread, the await is bounded by the
     /// operation deadline, and any other failure keeps the English snapshot.
     /// </summary>
-    private async ValueTask<EmergencyLocalizationSnapshot> LocalizeEmergencySnapshotAsync(
+    private async ValueTask<MathEmergencyLocalizationSnapshot> LocalizeEmergencySnapshotAsync(
         MathFormulaRequest request,
         string languageTag,
         CultureInfo localizationCulture,
-        EmergencyLocalizationSnapshot english,
+        MathEmergencyLocalizationSnapshot english,
         CancellationToken operationToken)
     {
         string texPreview = english.TexPreview;
-        Task<EmergencyLocalizationSnapshot> localizationTask =
+        Task<MathEmergencyLocalizationSnapshot> localizationTask =
             await MathHostCallbackGate.StartAsync(
-                token => ValueTask.FromResult(CreateLocalizedEmergencySnapshot(
+                token => ValueTask.FromResult(MathEmergencyLocalization.CreateLocalizedEmergencySnapshot(
+                    _strings,
                     request,
                     languageTag,
                     localizationCulture,
@@ -510,96 +508,6 @@ internal sealed class MathFormulaProcessor
         return new MathFormulaDiagnostic(code, message, range);
     }
 
-    private EmergencyLocalizationSnapshot CreateLocalizedEmergencySnapshot(
-        MathFormulaRequest request,
-        string languageTag,
-        CultureInfo localizationCulture,
-        string texPreview,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        string automationName = MathStringResolver.Resolve(
-            _strings,
-            MathStringKeys.AutomationName,
-            languageTag);
-
-        // Every synchronous callback has its own preceding checkpoint. In
-        // particular, a provider blocked in one call cannot start the next call
-        // after the deadline has been observed.
-        cancellationToken.ThrowIfCancellationRequested();
-        string helpText = MathStringResolver.FormatOriginalTex(
-            _strings,
-            languageTag,
-            texPreview,
-            localizationCulture,
-            MaximumEmergencyHelpTextLength,
-            cancellationToken);
-
-        cancellationToken.ThrowIfCancellationRequested();
-        string timeoutMessage = MathStringResolver.Resolve(
-            _strings,
-            MathStringKeys.ProcessingTimedOut,
-            languageTag);
-        cancellationToken.ThrowIfCancellationRequested();
-
-        return new EmergencyLocalizationSnapshot(
-            new MathAccessibilityDescription(
-                automationName,
-                texPreview,
-                helpText,
-                request.TexSource),
-            new MathFormulaDiagnostic(
-                "MATH106",
-                timeoutMessage,
-                request.ContentRange),
-            texPreview);
-    }
-
-    private static EmergencyLocalizationSnapshot CreateEnglishEmergencySnapshot(
-        MathFormulaRequest request)
-    {
-        string texPreview = CreateBoundedText(
-            request.TexSource,
-            MaximumEmergencyTexPreviewLength);
-        string helpText = CreateBoundedText(
-            "Original TeX: " + texPreview,
-            MaximumEmergencyHelpTextLength);
-        return new EmergencyLocalizationSnapshot(
-            new MathAccessibilityDescription(
-                MathStringResolver.GetEnglishString(MathStringKeys.AutomationName),
-                texPreview,
-                helpText,
-                request.TexSource),
-            new MathFormulaDiagnostic(
-                "MATH106",
-                MathStringResolver.GetEnglishString(MathStringKeys.ProcessingTimedOut),
-                request.ContentRange),
-            texPreview);
-    }
-
-    private static string CreateBoundedText(string value, int maximumLength)
-    {
-        if (value.Length <= maximumLength)
-            return value;
-
-        int prefixLength = maximumLength - 1;
-        if (prefixLength > 0 &&
-            char.IsHighSurrogate(value[prefixLength - 1]) &&
-            char.IsLowSurrogate(value[prefixLength]))
-        {
-            prefixLength--;
-        }
-
-        return string.Create(
-            prefixLength + 1,
-            (Value: value, PrefixLength: prefixLength),
-            static (destination, state) =>
-            {
-                state.Value.AsSpan(0, state.PrefixLength).CopyTo(destination);
-                destination[^1] = '\u2026';
-            });
-    }
-
     private static void ObserveFault(Task task)
     {
         if (task.IsCompleted)
@@ -615,11 +523,6 @@ internal sealed class MathFormulaProcessor
                 TaskContinuationOptions.OnlyOnFaulted,
             TaskScheduler.Default);
     }
-
-    private readonly record struct EmergencyLocalizationSnapshot(
-        MathAccessibilityDescription Accessibility,
-        MathFormulaDiagnostic TimeoutDiagnostic,
-        string TexPreview);
 
     private static bool IsEscaped(string source, int index)
     {
