@@ -46,6 +46,7 @@ internal sealed partial class InlineContainerBox : BlockBox
     internal int PrivateRasterPlacementForegroundSpanCount => _foregroundSpans.Count;
 
     private readonly SingletonMutableList<InlineRun> _runs = new();
+    internal SingletonMutableList<InlineRun> RunList => _runs;
     private List<(InlineImageRun Run, int Offset)>? _inlineImageRuns;
     private List<(InlineEmbedRun Run, int Offset)>? _inlineEmbedRuns;
     private bool _hasAtomicInlineObject;
@@ -179,6 +180,7 @@ internal sealed partial class InlineContainerBox : BlockBox
     private readonly IReadOnlyList<string> _styleAliasKeys;
     private ElementStyle? _resolvedContainerStyle;
     private IReadOnlyList<CodeBlockHighlightSpan> _foregroundSpans = Array.Empty<CodeBlockHighlightSpan>();
+    internal IReadOnlyList<CodeBlockHighlightSpan> ForegroundSpans => _foregroundSpans;
     private readonly NativeResourceRetirement _nativeRetirement;
     private readonly Action<IDisposable>? _nativeDisposer;
 
@@ -1218,7 +1220,7 @@ internal sealed partial class InlineContainerBox : BlockBox
     {
         _foregroundSpans = spans ?? Array.Empty<CodeBlockHighlightSpan>();
         if (_layout is not null)
-            ApplyForegroundSpans(_layout);
+            InlineRunStyleApplier.ApplyForegroundSpans(this, _layout);
     }
 
     /// <summary>
@@ -1258,7 +1260,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         return new DocumentPosition(BlockIndex, last, _runs[last].TextLength);
     }
 
-    private void EnsureBuffer()
+    internal void EnsureBuffer()
     {
         if (_runs.Count == 0) { _buffer = string.Empty; _bufferDirty = false; return; }
         // Rely solely on _bufferDirty (set by Add()) — the _buffer.Length == 0 fallback
@@ -1403,8 +1405,8 @@ internal sealed partial class InlineContainerBox : BlockBox
                 ThrowIfCancellationRequested();
                 // Enable DirectWrite color font path (Segoe UI Emoji / COLR-CPAL glyphs).
                 candidateLayout.Options = CanvasDrawTextOptions.EnableColorFont;
-                ApplyRunStyles(candidateLayout, applyColors: true);
-                ApplyForegroundSpans(candidateLayout);
+                InlineRunStyleApplier.ApplyRunStyles(this, candidateLayout, applyColors: true);
+                InlineRunStyleApplier.ApplyForegroundSpans(this, candidateLayout);
                 float inlineMetricScale = ApplyContentAwareLineSpacing(candidateLayout, style, layoutWidth);
                 ApplyEmbedSpacing(
                     candidateLayout,
@@ -1638,7 +1640,7 @@ internal sealed partial class InlineContainerBox : BlockBox
                 Context.LayoutDiagnostics);
             layoutRetirementRecord.SetTemporary(0, layout);
             layout.Options = CanvasDrawTextOptions.EnableColorFont;
-            ApplyRunStyles(layout, applyColors: false);
+            InlineRunStyleApplier.ApplyRunStyles(this, layout, applyColors: false);
             ApplyEmbedSpacing(layout, maxInlineWidth: measurementWidth);
 
             var layoutBounds = layout.LayoutBounds;
@@ -1807,7 +1809,7 @@ internal sealed partial class InlineContainerBox : BlockBox
             Context.Language,
             useContentAwareLineSpacing: _hasAtomicInlineObject);
 
-    private ElementStyle GetContainerStyle()
+    internal ElementStyle GetContainerStyle()
         => _resolvedContainerStyle ??= Context.ThemeSnapshot.GetStyle(
                 ElementKey,
                 _styleContextKeys,
@@ -1815,7 +1817,7 @@ internal sealed partial class InlineContainerBox : BlockBox
                 CodeLanguage,
                 StyleState);
 
-    private ElementStyle GetRunStyle(InlineRun run)
+    internal ElementStyle GetRunStyle(InlineRun run)
     {
         // A decorative spacer has no text styling, baseline, or foreground.
         // Its authored dimensions are applied independently as an inline
@@ -1998,7 +2000,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         return false;
     }
 
-    private ElementStyle[] GetLinkInlineSpanStyles(LinkRun link)
+    internal ElementStyle[] GetLinkInlineSpanStyles(LinkRun link)
     {
         LinkInlineStyleMap map = link.InlineStyleMap
             ?? throw new ArgumentException("The link has no nested inline style map.", nameof(link));
@@ -4002,131 +4004,6 @@ internal sealed partial class InlineContainerBox : BlockBox
         _bufferDirty = false;
     }
 
-    private void ApplyRunStyles(CanvasTextLayout layout, bool applyColors, bool observeCancellation = true)
-    {
-        var containerStyle = GetContainerStyle();
-        string containerFontFamily = SharedCanvasTextFormatCache.NormalizeFontFamilyForCanvas(
-            containerStyle.FontFamily);
-        List<InlineCodePaddingRange>? inlineCodePaddingRanges = null;
-        int cumulative = 0;
-        foreach (var run in _runs)
-        {
-            if (observeCancellation)
-                Context.CancellationToken.ThrowIfCancellationRequested();
-            int len = run.TextLength;
-            if (len == 0) continue;
-            if (run is InlineSpacerRun)
-            {
-                // The placeholder is replaced by a geometry-only inline
-                // object. Do not apply inherited text styles or OpenType
-                // baseline features to it.
-                cumulative += len;
-                continue;
-            }
-            ElementStyle? appliedRunStyle = null;
-            if (ShouldApplyRunTextStyle(run))
-            {
-                ElementStyle runStyle = GetRunStyle(run);
-                appliedRunStyle = runStyle;
-                ApplyTextStyle(
-                    layout,
-                    cumulative,
-                    len,
-                    runStyle,
-                    containerStyle,
-                    containerFontFamily,
-                    applyColors);
-            }
-            if (run is CodeInlineRun)
-            {
-                ElementStyle codeStyle = appliedRunStyle ?? GetRunStyle(run);
-                InlineCodePaddingLayout.QueueInlineCodePaddingRange(
-                    this,
-                    ref inlineCodePaddingRanges, cumulative, len, codeStyle.Padding,
-                    observeCancellation);
-            }
-            if (run is LinkRun { InlineStyleMap: { } inlineStyleMap } styledLink)
-            {
-                // The full link run has already been styled above. Compare
-                // each nested range with that actual base, not the paragraph
-                // style, so a nested value equal to the paragraph but
-                // different from the link still replaces the link formatting.
-                ElementStyle linkStyle = appliedRunStyle ?? GetRunStyle(styledLink);
-                string linkFontFamily = SharedCanvasTextFormatCache.NormalizeFontFamilyForCanvas(
-                    linkStyle.FontFamily);
-                ElementStyle[] spanStyles = GetLinkInlineSpanStyles(styledLink);
-                for (int spanIndex = 0; spanIndex < inlineStyleMap.Count; spanIndex++)
-                {
-                    if (observeCancellation &&
-                        (spanIndex % InlineCodePaddingLayout.InlineCodeGraphemeCancellationCheckInterval) == 0)
-                    {
-                        Context.CancellationToken.ThrowIfCancellationRequested();
-                    }
-
-                    LinkInlineStyleSpan span = inlineStyleMap.GetSpan(spanIndex);
-                    int spanStart = cumulative + span.Start;
-                    ApplyTextStyle(
-                        layout,
-                        spanStart,
-                        span.Length,
-                        spanStyles[spanIndex],
-                        linkStyle,
-                        linkFontFamily,
-                        applyColors);
-                }
-
-                InlineCodePaddingLayout.QueueLinkInlineCodePadding(
-                    this,
-                    ref inlineCodePaddingRanges,
-                    cumulative,
-                    inlineStyleMap,
-                    spanStyles,
-                    observeCancellation);
-            }
-
-            cumulative += len;
-        }
-
-        InlineCodePaddingLayout.ApplyInlineCodePaddingRanges(this, layout, inlineCodePaddingRanges, observeCancellation);
-    }
-
-    private static void ApplyTextStyle(
-        CanvasTextLayout layout,
-        int start,
-        int length,
-        ElementStyle style,
-        ElementStyle containerStyle,
-        string containerFontFamily,
-        bool applyColors)
-    {
-        string fontFamily = SharedCanvasTextFormatCache.NormalizeFontFamilyForCanvas(style.FontFamily);
-        if (!string.Equals(fontFamily, containerFontFamily, StringComparison.Ordinal))
-            layout.SetFontFamily(start, length, fontFamily);
-        if (style.FontWeight.Weight != containerStyle.FontWeight.Weight)
-            layout.SetFontWeight(start, length, style.FontWeight);
-        if (style.FontStyle != containerStyle.FontStyle)
-            layout.SetFontStyle(start, length, style.FontStyle);
-        if (style.FontSize != containerStyle.FontSize)
-            layout.SetFontSize(start, length, style.FontSize);
-        if (applyColors && style.Foreground != containerStyle.Foreground)
-            layout.SetColor(start, length, style.Foreground);
-    }
-
-    private void ApplyForegroundSpans(CanvasTextLayout layout)
-    {
-        if (_foregroundSpans.Count == 0)
-            return;
-
-        EnsureBuffer();
-        foreach (var span in _foregroundSpans)
-        {
-            int start = Math.Clamp(span.Start, 0, _buffer.Length);
-            int length = Math.Clamp(span.Length, 0, _buffer.Length - start);
-            if (length > 0)
-                layout.SetColor(start, length, span.Foreground);
-        }
-    }
-
     private ScriptBaselineGeometry BuildScriptBaselineGeometry(float containerFontSize)
     {
         float safeFontSize = float.IsFinite(containerFontSize) && containerFontSize > 0f
@@ -4253,7 +4130,7 @@ internal sealed partial class InlineContainerBox : BlockBox
             // Selection is painted synchronously by a Win2D Draw callback against
             // an already-committed snapshot. A newer layout may have cancelled the
             // snapshot's build token, but cancellation must never escape Draw.
-            ApplyRunStyles(candidateLayout, applyColors: false, observeCancellation: false);
+            InlineRunStyleApplier.ApplyRunStyles(this, candidateLayout, applyColors: false, observeCancellation: false);
             float selectionLayoutWidth = Math.Max(1f, _lastWidth - horizontalPadding);
             float inlineMetricScale = ApplyContentAwareLineSpacing(
                 candidateLayout,
@@ -5336,7 +5213,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         return metrics.Length > 0 ? metrics[metrics.Length - 1] : default;
     }
 
-    private bool ShouldApplyRunTextStyle(InlineRun run)
+    internal bool ShouldApplyRunTextStyle(InlineRun run)
         => HasRunSpecificStyle(run);
 
     private bool HasRunSpecificStyle(InlineRun run)
