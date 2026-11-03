@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-
 namespace MarkdownRenderer.Accessibility;
 
 internal readonly struct AccessibilityRect

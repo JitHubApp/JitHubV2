@@ -1,5 +1,3 @@
-using MarkdownRenderer.Hosting;
-
 namespace MarkdownRenderer.CodeBlocks;
 
 internal enum CodeBlockHighlightCompletionAction

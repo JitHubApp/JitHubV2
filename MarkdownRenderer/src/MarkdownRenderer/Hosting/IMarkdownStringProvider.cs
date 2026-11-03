@@ -1,7 +1,5 @@
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
-using System.Threading.Tasks;
 using System.Windows.Input;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Extensions;

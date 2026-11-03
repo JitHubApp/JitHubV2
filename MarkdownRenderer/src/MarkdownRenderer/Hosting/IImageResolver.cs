@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Threading;
@@ -7,7 +6,6 @@ using System.Windows.Input;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Images;
-using Windows.Foundation;
 
 namespace MarkdownRenderer.Hosting;
 

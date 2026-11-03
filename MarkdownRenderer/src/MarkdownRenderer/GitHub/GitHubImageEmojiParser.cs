@@ -1,8 +1,6 @@
 using System;
-using Markdig.Extensions.Emoji;
 using Markdig.Helpers;
 using Markdig.Parsers;
-using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 using MarkdownRenderer.Parsing;
 

@@ -1,10 +1,8 @@
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
-using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Images;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;

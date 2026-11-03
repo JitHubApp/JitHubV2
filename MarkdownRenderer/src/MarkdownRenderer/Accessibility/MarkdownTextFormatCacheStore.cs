@@ -1,6 +1,5 @@
 using System;
 using System.Threading;
-using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Accessibility;

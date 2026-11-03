@@ -1,12 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Extensions;
-using Microsoft.UI.Xaml;
 using Windows.Foundation;
 
 namespace MarkdownRenderer.Hosting;

@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Frozen;
 using System.Collections.ObjectModel;
 
 namespace MarkdownRenderer.Theming;
