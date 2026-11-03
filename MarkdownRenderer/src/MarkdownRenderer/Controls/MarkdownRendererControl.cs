@@ -100,6 +100,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private readonly CanvasTilePainter _painter;
     private readonly CanvasEvents _canvasEvents;
     private readonly CanvasInvalidation _canvasInvalidation;
+    private readonly GeometryRecovery _geometryRecovery;
     private readonly VisibleImageReadiness _imageReadiness;
     private readonly DeferredSceneReadiness _deferredScenes;
     private readonly BlockScrollNavigation _blockScroll;
@@ -1217,6 +1218,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _imageRelayout = new ImageRelayout(this, _lifetime, _published, _layoutCommit, _layoutPublisher, _surface, _pointerInput, _imageSubscriptions, _rasterPlacement, _recoveryClock);
         _imageLoadCompletion = new ImageLoadCompletion(this, _lifetime, _published, _layoutCommit, _imageSubscriptions, _imageRelayout);
         _imageSubscriptions.LoadCompleted += _imageLoadCompletion.OnLoadCompleted;
+        _geometryRecovery = new GeometryRecovery(_lifetime, _published, _surface, _pointerInput, _vectorCapacity, _horizontalOverflowDrag, _focusGeometryWork, _overflowScroll, _focusRing, _adorner, _layoutCommit, _imageSubscriptions, _lazyLayout, _imageRelayout, _interactionReset, _dragShield, _contextMenu, _abbreviationTooltip, _cursor, _handles, _automation, _deviceRecovery, _rebuild);
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         Loaded += (_, _) => OnLoadedInternal();
@@ -1445,7 +1447,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         => _localization.Resolve(key, fallback);
 
     bool ISelectionHandlesHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot)
-        => RequestGeometryRecoveryIfRequired(snapshot);
+        => _geometryRecovery.RequestIfRequired(snapshot);
 
     void ISelectionHandlesHost.FocusRendererForPointerInteraction() => _focusEntry.FocusWithoutPromotion();
 
@@ -1531,7 +1533,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         => _pointerInput.DispatchRecognizedGesture(kind, point, device);
 
     bool IPointerInputRouterHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot)
-        => RequestGeometryRecoveryIfRequired(snapshot);
+        => _geometryRecovery.RequestIfRequired(snapshot);
 
     void IPointerInputRouterHost.ResumePendingRebuildAfterPointerInteraction()
         => ResumePendingRebuildAfterPointerInteraction();
@@ -1670,7 +1672,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     void IHorizontalOverflowScrollHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);
 
     bool IHorizontalOverflowScrollHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot)
-        => RequestGeometryRecoveryIfRequired(snapshot);
+        => _geometryRecovery.RequestIfRequired(snapshot);
 
     MarkdownAutomationPeer? IHorizontalOverflowScrollHost.FindAutomationPeer()
         => _automation.FindPeer();
@@ -1709,7 +1711,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         => _automation.GetOrCreatePeer();
 
     bool IFocusGeometryRecoveryHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot)
-        => RequestGeometryRecoveryIfRequired(snapshot);
+        => _geometryRecovery.RequestIfRequired(snapshot);
 
     void IFocusGeometryRecoveryHost.StartRecoveryClock() => _recoveryClock.Start();
 
@@ -1826,7 +1828,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     bool IImageRelayoutHost.DefersToRebuild() => _rebuild.DefersToRebuild();
 
     bool IImageRelayoutHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot) =>
-        RequestGeometryRecoveryIfRequired(snapshot);
+        _geometryRecovery.RequestIfRequired(snapshot);
 
     void IImageRelayoutHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);
 
@@ -1842,7 +1844,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     float IImageLoadCompletionHost.LayoutWidth => (float)Math.Max(50, ActualWidth);
 
     bool IImageLoadCompletionHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot) =>
-        RequestGeometryRecoveryIfRequired(snapshot);
+        _geometryRecovery.RequestIfRequired(snapshot);
 
     void IImageLoadCompletionHost.NotifyImageStatusChanged(Layout.Boxes.ImageBox image) =>
         _automation.FindPeer()?
@@ -1864,7 +1866,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     IMarkdownPerformanceSession? IVectorCapacityRetryHost.PerformanceSession => PerformanceSession;
 
     bool IVectorCapacityRetryHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot) =>
-        RequestGeometryRecoveryIfRequired(snapshot);
+        _geometryRecovery.RequestIfRequired(snapshot);
 
     void IVectorCapacityRetryHost.QueueLazyLayoutForViewport(bool forceCapacityRetry) =>
         _lazyLayout.QueueForViewport(forceCapacityRetry);
@@ -1882,7 +1884,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     bool ILazyLayoutHost.IsScrollViewIntermediate => _scrollViewIntermediate;
 
     bool ILazyLayoutHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot) =>
-        RequestGeometryRecoveryIfRequired(snapshot);
+        _geometryRecovery.RequestIfRequired(snapshot);
 
     void ILazyLayoutHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);
 
@@ -1908,7 +1910,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     bool ILayoutCommitHost.IsScrollViewIntermediate => _scrollViewIntermediate;
 
     bool ILayoutCommitHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot) =>
-        RequestGeometryRecoveryIfRequired(snapshot);
+        _geometryRecovery.RequestIfRequired(snapshot);
 
     void ILayoutCommitHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);
 
@@ -1927,7 +1929,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _blockScroll.TryResumePending(snapshot, snapshotGeneration);
 
     bool IFocusableItemsPublicationHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot) =>
-        RequestGeometryRecoveryIfRequired(snapshot);
+        _geometryRecovery.RequestIfRequired(snapshot);
 
     void IFocusableItemsPublicationHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);
 
@@ -1993,7 +1995,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     bool ICanvasTilePainterHost.IsLoaded => IsLoaded;
 
     bool ICanvasTilePainterHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot) =>
-        RequestGeometryRecoveryIfRequired(snapshot);
+        _geometryRecovery.RequestIfRequired(snapshot);
 
     void ICanvasTilePainterHost.ScheduleVisibleDeferredScenes() => ScheduleVisibleDeferredScenes();
 
@@ -2155,17 +2157,10 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         ReleaseLoadedResources();
     }
 
-    private void ClearPendingFocusGeometryWork()
-    {
-        _focusGeometryWork.Clear();
-        _overflowScroll.ClearPendingRetry();
-        _focusRing.InvalidatePublication();
-    }
-
     private void ReleaseLoadedResources()
     {
         _vectorCapacity.Reset();
-        ClearPendingFocusGeometryWork();
+        _geometryRecovery.ClearPendingFocusGeometryWork();
         _deferredScenes.CancelRefreshAfterPaint();
         _painter.CancelDeferredSceneProbe();
         _contextMenu.Close();
@@ -2785,7 +2780,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// </summary>
     private void ForgetSnapshotScopedWork(bool sameDocument)
     {
-        ClearPendingFocusGeometryWork();
+        _geometryRecovery.ClearPendingFocusGeometryWork();
         _imageSubscriptions.UnsubscribeAll();
         _imageRelayout.ClearForSnapshotReplacement();
         _blockScroll.ClearPending();
@@ -3025,7 +3020,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     private void ScheduleVisibleCodeBlockHighlighting()
     {
-        if (RequestGeometryRecoveryIfRequired(_published.Snapshot))
+        if (_geometryRecovery.RequestIfRequired(_published.Snapshot))
             return;
         ScheduleVisibleDeferredScenes();
         _highlighting.ScheduleVisible();
@@ -3033,7 +3028,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     internal void ScheduleVisibleDeferredScenes()
     {
-        if (RequestGeometryRecoveryIfRequired(_published.Snapshot))
+        if (_geometryRecovery.RequestIfRequired(_published.Snapshot))
             return;
         IMarkdownPerformanceSessionInternal? session =
             PerformanceSession as IMarkdownPerformanceSessionInternal;
@@ -3085,7 +3080,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         {
             if (!_lifetime.IsDisposed && !_lifetime.IsUnloaded)
             {
-                if (RequestGeometryRecoveryIfRequired(_published.Snapshot))
+                if (_geometryRecovery.RequestIfRequired(_published.Snapshot))
                 {
                     // Drain canceled image work so its retirement/active flag
                     // can complete, but do not probe or retry failed geometry.
@@ -3111,7 +3106,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
             if (layoutTicket == _layoutCommit.Ticket)
                 _layoutCommit.ClearPending();
             RelayoutDiagnostics.ReportFailure("layout publication", exception);
-            if (!RequestGeometryRecoveryIfRequired(_published.Snapshot))
+            if (!_geometryRecovery.RequestIfRequired(_published.Snapshot))
                 RequestRebuild(RebuildReason.Full);
             else
                 _focusRefresh.ClearForCurrentSnapshot();
@@ -3158,81 +3153,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         StopRecoveryClock();
     }
 
-    /// <summary>
-    /// A failed live layout is not transient lock contention. Preserve the last
-    /// painted tiles and committed logical selection, but discard geometry-bound
-    /// input before requesting one offside replacement for this snapshot.
-    /// Runs only on the control's UI dispatcher; workers publish scalar state.
-    /// </summary>
-    private bool RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot)
-    {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || snapshot is null ||
-            !ReferenceEquals(snapshot, _published.Snapshot) || !snapshot.GeometryRecoveryRequired)
-        {
-            return false;
-        }
-
-        if (!snapshot.TryClaimGeometryRecoveryRequest())
-            return true;
-
-        // Deferred presses/captured handles must not keep the Full request
-        // waiting for a release that can no longer safely hit-test this tree.
-        TryGeometryRecoveryCleanup(_pointerInput.Reset);
-        TryGeometryRecoveryCleanup(_vectorCapacity.Reset);
-        _horizontalOverflowDrag.Clear();
-        ClearPendingFocusGeometryWork();
-        _adorner.ClearGeometry();
-        // This tuple describes re-publication of this snapshot's geometry, not
-        // an offside replacement candidate. It cannot repair a failed tree.
-        _layoutCommit.DropPending();
-        _imageSubscriptions.ResetBitmapOutputRecovery();
-        TryGeometryRecoveryCleanup(_lazyLayout.Cancel);
-        _imageRelayout.CancelForGeometryRecovery();
-
-        // A disconnected XAML input site can throw while closing a flyout or
-        // hiding a visual. Such cleanup must neither consume the one recovery
-        // request without scheduling it nor leave another capture unreleased.
-        TryGeometryRecoveryCleanup(() => _interactionReset.ResetTransientState(clearSelection: false));
-        TryGeometryRecoveryCleanup(() => _surface.Canvas?.ReleasePointerCaptures());
-        TryGeometryRecoveryCleanup(() => _dragShield.SetActive(false));
-        TryGeometryRecoveryCleanup(_contextMenu.Close);
-        TryGeometryRecoveryCleanup(_abbreviationTooltip.Hide);
-        TryGeometryRecoveryCleanup(() => _cursor.SetShape(null));
-        TryGeometryRecoveryCleanup(_focusRing.Collapse);
-        TryGeometryRecoveryCleanup(() => _handles.SetVisibility(Visibility.Collapsed));
-        TryGeometryRecoveryCleanup(_adorner.ReleaseSurface);
-        TryGeometryRecoveryCleanup(_automation.InvalidateLayout);
-
-        if (snapshot.GeometryRecoveryIsDeviceLost)
-        {
-            // Keep the device-loss backoff even if a detached adorner refuses
-            // its final native property update.
-            if (!TryGeometryRecoveryCleanup(() => _deviceRecovery.HandleDeviceLost(snapshot.GeometryRecoveryFailureHResult)))
-                RequestRebuild(RebuildReason.Full);
-        }
-        else
-        {
-            RequestRebuild(RebuildReason.Full);
-        }
-
-        return true;
-    }
-
-    private static bool TryGeometryRecoveryCleanup(Action cleanup)
-    {
-        try
-        {
-            cleanup();
-            return true;
-        }
-        catch (Exception failure)
-        {
-            Diagnostics.MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] geometry recovery cleanup failed: {failure.Message}");
-            return false;
-        }
-    }
-
     internal void ScrollHorizontalOverflowForAutomation(
         IHorizontalOverflowBox target,
         ScrollAmount amount)
@@ -3276,7 +3196,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     bool ISelectionAdornerHost.HasFocusedLink => _focus.TryGetFocusedLink(out _, out _);
 
     bool ISelectionAdornerHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot snapshot)
-        => RequestGeometryRecoveryIfRequired(snapshot);
+        => _geometryRecovery.RequestIfRequired(snapshot);
 
     void ISelectionAdornerHost.HandleDeviceLost(Exception exception) => _deviceRecovery.HandleDeviceLost(exception);
 
@@ -3305,7 +3225,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private void UpdateSelectionOverlay()
     {
         _adorner.MarkGeometryDirty();
-        if (RequestGeometryRecoveryIfRequired(_published.Snapshot))
+        if (_geometryRecovery.RequestIfRequired(_published.Snapshot))
             return;
         _adorner.Invalidate();
     }
@@ -3393,7 +3313,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     private void OnKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (_published.Snapshot is null || RequestGeometryRecoveryIfRequired(_published.Snapshot)) return;
+        if (_published.Snapshot is null || _geometryRecovery.RequestIfRequired(_published.Snapshot)) return;
         bool ctrl = (Microsoft.UI.Input.InputKeyboardSource
             .GetKeyStateForCurrentThread(VirtualKey.Control) & Windows.UI.Core.CoreVirtualKeyStates.Down)
             == Windows.UI.Core.CoreVirtualKeyStates.Down;
