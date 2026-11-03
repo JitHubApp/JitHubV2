@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text;
 using System.Xml;
 
@@ -287,99 +286,84 @@ internal static class SvgEmbeddedReferenceInspection
             if (reader.NodeType != XmlNodeType.Element)
                 continue;
 
-            string name = reader.LocalName;
-            bool isSvgElement = reader.NamespaceURI.Equals(SvgContentRules.SvgNamespace, StringComparison.Ordinal);
-            if (!sawRoot)
+            readNext = InspectNestedElement(
+                reader,
+                options,
+                resources,
+                ref embeddedBytes,
+                ref embeddedPixels,
+                cancellationToken,
+                embeddedSvgDepth,
+                ref hasText,
+                ref usesCurrentColor,
+                ref usesColorScheme,
+                ref sawRoot,
+                ref svgNesting,
+                ref attributeScratch);
+        }
+
+        if (!sawRoot)
+            throw SvgPreflightFailures.Unsupported("The embedded SVG has no document root.");
+    }
+
+    /// <summary>
+    /// Inspects one nested-SVG element: the root check, the active-content
+    /// policy, nested-SVG depth, text metadata, attributes and style content.
+    /// </summary>
+    /// <returns>
+    /// <see langword="false"/> when the reader already stands on the next node
+    /// because a style element's content was consumed.
+    /// </returns>
+    private static bool InspectNestedElement(
+        XmlReader reader,
+        ResvgMarkdownSvgRendererOptions options,
+        SvgResourceInspectionContext resources,
+        ref long embeddedBytes,
+        ref long embeddedPixels,
+        CancellationToken cancellationToken,
+        int embeddedSvgDepth,
+        ref bool hasText,
+        ref bool usesCurrentColor,
+        ref bool usesColorScheme,
+        ref bool sawRoot,
+        ref int svgNesting,
+        ref char[]? attributeScratch)
+    {
+        string name = reader.LocalName;
+        bool isSvgElement = reader.NamespaceURI.Equals(SvgContentRules.SvgNamespace, StringComparison.Ordinal);
+        if (!sawRoot)
+        {
+            if (!isSvgElement || !name.Equals("svg", StringComparison.OrdinalIgnoreCase))
+                throw SvgPreflightFailures.Unsupported("The embedded document root is not an SVG element.");
+            sawRoot = true;
+        }
+
+        // OpenAsync is a public provider boundary, so its recursive walk
+        // must enforce the same active-content policy as the outer SVG.
+        // ImageBox normally performs an earlier admission pass, but a
+        // caller may invoke the provider directly with nested SVG bytes.
+        if (SvgPreflight.ForbiddenElements.Contains(name, StringComparer.OrdinalIgnoreCase))
+            throw SvgPreflightFailures.Unsupported($"The static SVG subset does not allow <{name}>.");
+
+        if (isSvgElement && name.Equals("svg", StringComparison.OrdinalIgnoreCase))
+        {
+            svgNesting++;
+            if (svgNesting > options.MaxNestedSvgDepth)
+                throw SvgPreflightFailures.Resource("The SVG exceeds the nested-SVG ceiling.");
+        }
+        // The worker's text metadata is local-name based, including foreign
+        // namespace descendants encountered while inspecting nested bytes.
+        hasText |= name.Equals("text", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("textPath", StringComparison.OrdinalIgnoreCase);
+
+        if (reader.HasAttributes)
+        {
+            while (reader.MoveToNextAttribute())
             {
-                if (!isSvgElement || !name.Equals("svg", StringComparison.OrdinalIgnoreCase))
-                    throw SvgPreflightFailures.Unsupported("The embedded document root is not an SVG element.");
-                sawRoot = true;
-            }
-
-            // OpenAsync is a public provider boundary, so its recursive walk
-            // must enforce the same active-content policy as the outer SVG.
-            // ImageBox normally performs an earlier admission pass, but a
-            // caller may invoke the provider directly with nested SVG bytes.
-            if (SvgPreflight.ForbiddenElements.Contains(name, StringComparer.OrdinalIgnoreCase))
-                throw SvgPreflightFailures.Unsupported($"The static SVG subset does not allow <{name}>.");
-
-            if (isSvgElement && name.Equals("svg", StringComparison.OrdinalIgnoreCase))
-            {
-                svgNesting++;
-                if (svgNesting > options.MaxNestedSvgDepth)
-                    throw SvgPreflightFailures.Resource("The SVG exceeds the nested-SVG ceiling.");
-            }
-            // The worker's text metadata is local-name based, including foreign
-            // namespace descendants encountered while inspecting nested bytes.
-            hasText |= name.Equals("text", StringComparison.OrdinalIgnoreCase) ||
-                name.Equals("textPath", StringComparison.OrdinalIgnoreCase);
-
-            if (reader.HasAttributes)
-            {
-                while (reader.MoveToNextAttribute())
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    string attributeName = reader.LocalName;
-                    ReadOnlySpan<char> value = SvgPreflightStructure.ReadAttributeValue(
-                        reader, ref attributeScratch, options.MaxSourceBytes, cancellationToken).Trim();
-                    if (attributeName.Length > 2 &&
-                        attributeName.StartsWith("on", StringComparison.OrdinalIgnoreCase))
-                    {
-                        throw SvgPreflightFailures.Unsupported("SVG event handlers are forbidden.");
-                    }
-
-                    if (isSvgElement && attributeName.Equals("media", StringComparison.OrdinalIgnoreCase))
-                    {
-                        usesColorScheme |= SvgColorSchemeUsage.UsesPrefersColorSchemeMediaCondition(SvgPreflightCss.DecodeCssEscapes(value.ToString()));
-                    }
-                    else if (isSvgElement && SvgColorSchemeUsage.IsCurrentColorPresentationAttribute(attributeName))
-                    {
-                        usesCurrentColor |= SvgPreflightCss.ContainsCssIdentifier(SvgPreflightCss.DecodeCssEscapes(value.ToString()), "currentColor");
-                    }
-
-                    if (attributeName.Equals("href", StringComparison.OrdinalIgnoreCase) ||
-                        attributeName.Equals("src", StringComparison.OrdinalIgnoreCase))
-                    {
-                        InspectElementReference(
-                            name,
-                            attributeName,
-                            value,
-                            options,
-                            resources,
-                            ref embeddedBytes,
-                            ref embeddedPixels,
-                            cancellationToken,
-                            embeddedSvgDepth,
-                            ref hasText,
-                            ref usesCurrentColor,
-                            ref usesColorScheme);
-                    }
-                    if (SvgPreflightCss.MayContainCssResourceOrActiveContent(attributeName, value))
-                    {
-                        SvgPreflightCss.InspectCss(
-                            value.ToString(),
-                            options,
-                            resources,
-                            ref embeddedBytes,
-                            ref embeddedPixels,
-                            cancellationToken,
-                            embeddedSvgDepth,
-                            ref hasText,
-                            ref usesCurrentColor,
-                            ref usesColorScheme,
-                            attributeName.Equals("style", StringComparison.OrdinalIgnoreCase),
-                            isSvgElement);
-                    }
-                }
-                reader.MoveToElement();
-            }
-
-            if (name.Equals("style", StringComparison.OrdinalIgnoreCase) &&
-                !reader.IsEmptyElement)
-            {
-                string css = reader.ReadElementContentAsString();
-                SvgPreflightCss.InspectCss(
-                    css,
+                InspectNestedAttribute(
+                    reader,
+                    name,
+                    isSvgElement,
                     options,
                     resources,
                     ref embeddedBytes,
@@ -389,22 +373,111 @@ internal static class SvgEmbeddedReferenceInspection
                     ref hasText,
                     ref usesCurrentColor,
                     ref usesColorScheme,
-                    trackThemeMetadata: isSvgElement);
-                // ReadElementContentAsString advances to the first node after the
-                // element; process it before asking the reader to advance again.
-                readNext = false;
-                continue;
+                    ref attributeScratch);
             }
-
-            if (reader.IsEmptyElement && isSvgElement &&
-                name.Equals("svg", StringComparison.OrdinalIgnoreCase))
-            {
-                svgNesting--;
-            }
+            reader.MoveToElement();
         }
 
-        if (!sawRoot)
-            throw SvgPreflightFailures.Unsupported("The embedded SVG has no document root.");
+        if (name.Equals("style", StringComparison.OrdinalIgnoreCase) &&
+            !reader.IsEmptyElement)
+        {
+            string css = reader.ReadElementContentAsString();
+            SvgPreflightCss.InspectCss(
+                css,
+                options,
+                resources,
+                ref embeddedBytes,
+                ref embeddedPixels,
+                cancellationToken,
+                embeddedSvgDepth,
+                ref hasText,
+                ref usesCurrentColor,
+                ref usesColorScheme,
+                trackThemeMetadata: isSvgElement);
+            // ReadElementContentAsString advances to the first node after the
+            // element; process it before asking the reader to advance again.
+            return false;
+        }
+
+        if (reader.IsEmptyElement && isSvgElement &&
+            name.Equals("svg", StringComparison.OrdinalIgnoreCase))
+        {
+            svgNesting--;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Inspects the nested-SVG attribute under the reader: event handlers,
+    /// theme metadata, references and CSS resources.
+    /// </summary>
+    private static void InspectNestedAttribute(
+        XmlReader reader,
+        string elementName,
+        bool isSvgElement,
+        ResvgMarkdownSvgRendererOptions options,
+        SvgResourceInspectionContext resources,
+        ref long embeddedBytes,
+        ref long embeddedPixels,
+        CancellationToken cancellationToken,
+        int embeddedSvgDepth,
+        ref bool hasText,
+        ref bool usesCurrentColor,
+        ref bool usesColorScheme,
+        ref char[]? attributeScratch)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        string attributeName = reader.LocalName;
+        ReadOnlySpan<char> value = SvgPreflightStructure.ReadAttributeValue(
+            reader, ref attributeScratch, options.MaxSourceBytes, cancellationToken).Trim();
+        if (attributeName.Length > 2 &&
+            attributeName.StartsWith("on", StringComparison.OrdinalIgnoreCase))
+        {
+            throw SvgPreflightFailures.Unsupported("SVG event handlers are forbidden.");
+        }
+
+        if (isSvgElement && attributeName.Equals("media", StringComparison.OrdinalIgnoreCase))
+        {
+            usesColorScheme |= SvgColorSchemeUsage.UsesPrefersColorSchemeMediaCondition(SvgPreflightCss.DecodeCssEscapes(value.ToString()));
+        }
+        else if (isSvgElement && SvgColorSchemeUsage.IsCurrentColorPresentationAttribute(attributeName))
+        {
+            usesCurrentColor |= SvgPreflightCss.ContainsCssIdentifier(SvgPreflightCss.DecodeCssEscapes(value.ToString()), "currentColor");
+        }
+
+        if (attributeName.Equals("href", StringComparison.OrdinalIgnoreCase) ||
+            attributeName.Equals("src", StringComparison.OrdinalIgnoreCase))
+        {
+            InspectElementReference(
+                elementName,
+                attributeName,
+                value,
+                options,
+                resources,
+                ref embeddedBytes,
+                ref embeddedPixels,
+                cancellationToken,
+                embeddedSvgDepth,
+                ref hasText,
+                ref usesCurrentColor,
+                ref usesColorScheme);
+        }
+        if (SvgPreflightCss.MayContainCssResourceOrActiveContent(attributeName, value))
+        {
+            SvgPreflightCss.InspectCss(
+                value.ToString(),
+                options,
+                resources,
+                ref embeddedBytes,
+                ref embeddedPixels,
+                cancellationToken,
+                embeddedSvgDepth,
+                ref hasText,
+                ref usesCurrentColor,
+                ref usesColorScheme,
+                attributeName.Equals("style", StringComparison.OrdinalIgnoreCase),
+                isSvgElement);
+        }
     }
 
     internal static void InspectElementReference(
