@@ -220,7 +220,7 @@ internal static class SvgEmbeddedReferenceInspection
                 continue;
 
             if (!reader.LocalName.Equals("svg", StringComparison.OrdinalIgnoreCase) ||
-                !reader.NamespaceURI.Equals(SvgPreflight.SvgNamespace, StringComparison.Ordinal))
+                !reader.NamespaceURI.Equals(SvgContentRules.SvgNamespace, StringComparison.Ordinal))
             {
                 return false;
             }
@@ -279,7 +279,7 @@ internal static class SvgEmbeddedReferenceInspection
             }
             if (reader.NodeType == XmlNodeType.EndElement &&
                 reader.LocalName.Equals("svg", StringComparison.OrdinalIgnoreCase) &&
-                reader.NamespaceURI.Equals(SvgPreflight.SvgNamespace, StringComparison.Ordinal))
+                reader.NamespaceURI.Equals(SvgContentRules.SvgNamespace, StringComparison.Ordinal))
             {
                 svgNesting--;
                 continue;
@@ -288,7 +288,7 @@ internal static class SvgEmbeddedReferenceInspection
                 continue;
 
             string name = reader.LocalName;
-            bool isSvgElement = reader.NamespaceURI.Equals(SvgPreflight.SvgNamespace, StringComparison.Ordinal);
+            bool isSvgElement = reader.NamespaceURI.Equals(SvgContentRules.SvgNamespace, StringComparison.Ordinal);
             if (!sawRoot)
             {
                 if (!isSvgElement || !name.Equals("svg", StringComparison.OrdinalIgnoreCase))

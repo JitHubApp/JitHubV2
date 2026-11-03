@@ -52,7 +52,7 @@ internal static class SvgForeignObjectText
             return false;
         }
 
-        XmlElement svgText = document.CreateElement("text", SvgStaticSnapshot.SvgNamespace);
+        XmlElement svgText = document.CreateElement("text", SvgContentRules.SvgNamespace);
         string alignment = style.GetValueOrDefault("text-align", "start").Trim();
         if (alignment.Equals("center", StringComparison.OrdinalIgnoreCase))
         {
@@ -202,7 +202,7 @@ internal static class SvgForeignObjectText
                 return false;
             }
 
-            if (element.NamespaceURI.Equals(SvgStaticSnapshot.SvgNamespace, StringComparison.Ordinal))
+            if (element.NamespaceURI.Equals(SvgContentRules.SvgNamespace, StringComparison.Ordinal))
             {
                 // CSS inside an SVG image's foreignObject is inert once the
                 // entire HTML branch is replaced by native SVG text. Accept
@@ -322,7 +322,7 @@ internal static class SvgForeignObjectText
             if (current is XmlElement element)
             {
                 if ((!ReferenceEquals(element, root) &&
-                        !element.NamespaceURI.Equals(SvgStaticSnapshot.SvgNamespace, StringComparison.Ordinal)) ||
+                        !element.NamespaceURI.Equals(SvgContentRules.SvgNamespace, StringComparison.Ordinal)) ||
                     !IsSafeDiscardedSvgGraphicName(element.LocalName))
                 {
                     return false;

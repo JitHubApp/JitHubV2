@@ -30,8 +30,6 @@ internal static class SvgResourceBudget
     public const double MaxDeclaredFontSize = 4096;
     public static readonly TimeSpan ValidationDeadline = TimeSpan.FromMilliseconds(750);
 
-    private const string SvgNamespace = "http://www.w3.org/2000/svg";
-
     public static SvgResourceBudgetResult Validate(byte[]? bytes, CancellationToken cancellationToken)
         => ValidateCore(bytes, cancellationToken, metadataCollector: null, out _);
 
@@ -343,7 +341,7 @@ internal static class SvgResourceBudget
 
     private static bool IsSvgNamespace(string? namespaceUri) =>
         string.IsNullOrEmpty(namespaceUri) ||
-        string.Equals(namespaceUri, SvgNamespace, StringComparison.Ordinal);
+        string.Equals(namespaceUri, SvgContentRules.SvgNamespace, StringComparison.Ordinal);
 
     private static bool IsActiveContentElement(string localName) =>
         localName.Equals("script", StringComparison.OrdinalIgnoreCase) ||

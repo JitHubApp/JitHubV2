@@ -13,7 +13,7 @@ internal static class SvgAnimationInitialValues
     internal static bool IsAnimationElement(XmlElement element)
     {
         if (!string.IsNullOrEmpty(element.NamespaceURI) &&
-            !element.NamespaceURI.Equals(SvgStaticSnapshot.SvgNamespace, StringComparison.Ordinal))
+            !element.NamespaceURI.Equals(SvgContentRules.SvgNamespace, StringComparison.Ordinal))
         {
             return false;
         }

@@ -13,8 +13,6 @@ namespace MarkdownRenderer.Svg.Resvg.Internal;
 /// </summary>
 internal static class SvgStaticSnapshot
 {
-    internal const string SvgNamespace = "http://www.w3.org/2000/svg";
-
     public static byte[] Create(
         byte[] bytes,
         CancellationToken cancellationToken,
@@ -245,7 +243,7 @@ internal static class SvgStaticSnapshot
     {
         if (foreignObject.ParentNode is not XmlElement parent ||
             (!string.IsNullOrEmpty(parent.NamespaceURI) &&
-                !parent.NamespaceURI.Equals(SvgNamespace, StringComparison.Ordinal)) ||
+                !parent.NamespaceURI.Equals(SvgContentRules.SvgNamespace, StringComparison.Ordinal)) ||
             !parent.LocalName.Equals("switch", StringComparison.OrdinalIgnoreCase))
         {
             return false;
@@ -261,7 +259,7 @@ internal static class SvgStaticSnapshot
             if (ReferenceEquals(sibling, foreignObject) || sibling is not XmlElement element)
                 continue;
             if ((string.IsNullOrEmpty(element.NamespaceURI) ||
-                    element.NamespaceURI.Equals(SvgNamespace, StringComparison.Ordinal)) &&
+                    element.NamespaceURI.Equals(SvgContentRules.SvgNamespace, StringComparison.Ordinal)) &&
                 !element.LocalName.Equals("foreignObject", StringComparison.OrdinalIgnoreCase))
             {
                 hasFallback = true;
@@ -365,7 +363,7 @@ internal static class SvgStaticSnapshot
 
     private static bool IsSvgOrUnqualified(XmlElement element, string localName) =>
         (string.IsNullOrEmpty(element.NamespaceURI) ||
-            element.NamespaceURI.Equals(SvgNamespace, StringComparison.Ordinal)) &&
+            element.NamespaceURI.Equals(SvgContentRules.SvgNamespace, StringComparison.Ordinal)) &&
         element.LocalName.Equals(localName, StringComparison.OrdinalIgnoreCase);
 
     internal static bool MayRequireStaticSnapshot(

@@ -329,7 +329,7 @@ internal static class SvgPreflightCss
             int separator = cursor;
             while (separator < css.Length && char.IsWhiteSpace(css[separator]))
                 separator++;
-            if (separator >= css.Length || css[separator] != ':' || !IsMotionProperty(property))
+            if (separator >= css.Length || css[separator] != ':' || !SvgContentRules.IsMotionProperty(property))
                 continue;
 
             int end = separator + 1;
@@ -370,16 +370,6 @@ internal static class SvgPreflightCss
 
         return false;
     }
-
-    internal static bool IsMotionProperty(string property)
-        => property.Equals("animation", StringComparison.OrdinalIgnoreCase) ||
-            property.StartsWith("animation-", StringComparison.OrdinalIgnoreCase) ||
-            property.Equals("transition", StringComparison.OrdinalIgnoreCase) ||
-            property.StartsWith("transition-", StringComparison.OrdinalIgnoreCase) ||
-            property.Equals("-webkit-animation", StringComparison.OrdinalIgnoreCase) ||
-            property.StartsWith("-webkit-animation-", StringComparison.OrdinalIgnoreCase) ||
-            property.Equals("-webkit-transition", StringComparison.OrdinalIgnoreCase) ||
-            property.StartsWith("-webkit-transition-", StringComparison.OrdinalIgnoreCase);
 
     internal static string DecodeCssEscapes(string value)
     {

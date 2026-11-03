@@ -7,7 +7,6 @@ namespace MarkdownRenderer.Svg.Resvg.Internal;
 
 internal static class SvgPreflight
 {
-    internal const string SvgNamespace = "http://www.w3.org/2000/svg";
     internal static readonly string[] ForbiddenElements =
     [
         "script", "foreignobject", "animate", "animatemotion", "animatetransform",
@@ -250,7 +249,7 @@ internal static class SvgPreflight
 
                     if (reader.NodeType == XmlNodeType.EndElement &&
                         reader.LocalName.Equals("svg", StringComparison.OrdinalIgnoreCase) &&
-                        reader.NamespaceURI.Equals(SvgNamespace, StringComparison.Ordinal))
+                        reader.NamespaceURI.Equals(SvgContentRules.SvgNamespace, StringComparison.Ordinal))
                     {
                         svgNesting--;
                         continue;
@@ -274,7 +273,7 @@ internal static class SvgPreflight
                     if (!sawRoot)
                     {
                         if (!name.Equals("svg", StringComparison.OrdinalIgnoreCase) ||
-                            !reader.NamespaceURI.Equals(SvgNamespace, StringComparison.Ordinal))
+                            !reader.NamespaceURI.Equals(SvgContentRules.SvgNamespace, StringComparison.Ordinal))
                         {
                             throw SvgPreflightFailures.Unsupported("The document root is not an SVG element.");
                         }
@@ -283,7 +282,7 @@ internal static class SvgPreflight
 
                     if (ForbiddenElements.Contains(name, StringComparer.OrdinalIgnoreCase))
                         throw SvgPreflightFailures.Unsupported($"The static SVG subset does not allow <{name}>.");
-                    bool isSvgElement = reader.NamespaceURI.Equals(SvgNamespace, StringComparison.Ordinal);
+                    bool isSvgElement = reader.NamespaceURI.Equals(SvgContentRules.SvgNamespace, StringComparison.Ordinal);
                     if (isSvgElement && name.Equals("svg", StringComparison.OrdinalIgnoreCase))
                     {
                         svgNesting++;
