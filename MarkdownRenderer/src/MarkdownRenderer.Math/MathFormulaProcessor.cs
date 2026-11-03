@@ -233,7 +233,8 @@ internal sealed class MathFormulaProcessor
         CultureInfo localizationCulture,
         MathAccessibilityDescription guaranteedAccessibility)
     {
-        MathFormulaDiagnostic? preflight = ValidateInput(
+        MathFormulaDiagnostic? preflight = MathInputPreflight.ValidateInput(
+            _strings,
             request,
             options,
             cancellationToken,
@@ -369,77 +370,6 @@ internal sealed class MathFormulaProcessor
             Diagnostic(code, stringKey, request.ContentRange, languageTag, cancellationToken),
             guaranteedAccessibility);
 
-    private MathFormulaDiagnostic? ValidateInput(
-        MathFormulaRequest request,
-        MathProcessingOptions options,
-        CancellationToken cancellationToken,
-        string languageTag)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        if (request.TexSource.Length == 0)
-        {
-            return Diagnostic(
-                "MATH100",
-                MathStringKeys.InvalidFormula,
-                request.ContentRange,
-                languageTag,
-                cancellationToken);
-        }
-
-        if (request.TexSource.Length > options.MaximumTexLength)
-        {
-            return Diagnostic(
-                "MATH101",
-                MathStringKeys.SourceTooLong,
-                request.ContentRange,
-                languageTag,
-                cancellationToken);
-        }
-
-        if (MathWorkingMemoryBudget.EstimateSourceBytes(request.TexSource.Length) >
-            options.MaximumWorkingMemoryBytes)
-        {
-            return Diagnostic(
-                "MATH105",
-                MathStringKeys.WorkingMemoryExceeded,
-                request.ContentRange,
-                languageTag,
-                cancellationToken);
-        }
-
-        int depth = 0;
-        for (int i = 0; i < request.TexSource.Length; i++)
-        {
-            if ((i & 0xff) == 0)
-                cancellationToken.ThrowIfCancellationRequested();
-
-            char value = request.TexSource[i];
-            if ((value != '{' && value != '}') || IsEscaped(request.TexSource, i))
-                continue;
-
-            if (value == '{')
-            {
-                depth++;
-                if (depth > options.MaximumNestingDepth)
-                {
-                    return Diagnostic(
-                        "MATH102",
-                        MathStringKeys.NestingTooDeep,
-                        request.ContentRange,
-                        languageTag,
-                        cancellationToken);
-                }
-            }
-            else
-            {
-                depth--;
-            }
-        }
-
-        return null;
-    }
-
     private async ValueTask<MathAccessibilityDescription> FormatAccessibilityAsync(
         MathFormulaRequest request,
         string languageTag,
@@ -500,14 +430,8 @@ internal sealed class MathFormulaProcessor
         string stringKey,
         MathSourceRange range,
         string? languageTag,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        string message = MathStringResolver.Resolve(_strings, stringKey, languageTag);
-        cancellationToken.ThrowIfCancellationRequested();
-        return new MathFormulaDiagnostic(code, message, range);
-    }
-
+        CancellationToken cancellationToken) =>
+        MathFormulaDiagnostics.Create(_strings, code, stringKey, range, languageTag, cancellationToken);
     private static void ObserveFault(Task task)
     {
         if (task.IsCompleted)
@@ -522,13 +446,5 @@ internal sealed class MathFormulaProcessor
             TaskContinuationOptions.ExecuteSynchronously |
                 TaskContinuationOptions.OnlyOnFaulted,
             TaskScheduler.Default);
-    }
-
-    private static bool IsEscaped(string source, int index)
-    {
-        int slashCount = 0;
-        for (int cursor = index - 1; cursor >= 0 && source[cursor] == '\\'; cursor--)
-            slashCount++;
-        return (slashCount & 1) != 0;
     }
 }
