@@ -51,6 +51,15 @@ internal sealed class SvgDocumentOpenOperation
     /// <param name="returnCapacityUnavailable">Whether transient capacity pressure is a result instead of a failure.</param>
     /// <param name="cancellationToken">Cancels the open.</param>
     /// <returns>The opened document, or a capacity-unavailable result.</returns>
+    /// <remarks>
+    /// This stays one method of about 85 lines. Its body is the open's
+    /// ownership sequence (enter, reserve, preflight, worker open), and each
+    /// await keeps its own catch for the failure class only that stage can
+    /// raise. The owners struct is passed by reference to every synchronous
+    /// step, and an async step cannot take it by reference, so splitting an
+    /// await out would move the snapshot reservation and preflight result
+    /// outside the outer finally that releases them.
+    /// </remarks>
     internal async ValueTask<MarkdownSvgAdmissionResult> OpenAsync(
         MarkdownSvgOpenRequest request,
         MarkdownSvgRenderDemand? demand,
