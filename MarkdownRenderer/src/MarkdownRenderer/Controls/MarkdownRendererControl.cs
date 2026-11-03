@@ -130,6 +130,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private readonly AutomationScrolling _automationScrolling;
     private readonly TouchTapSuppressionPolicy _touchTapSuppression = new();
     private readonly InteractionReset _interactionReset;
+    private readonly SelectionChangeHandling _selectionChanges;
     private readonly ViewAttachment _attachment;
 
     private readonly SnapshotExtent _extent;
@@ -471,7 +472,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     public static readonly DependencyProperty IsSelectionEnabledProperty =
         DependencyProperty.Register(nameof(IsSelectionEnabled), typeof(bool),
             typeof(MarkdownRendererControl), new PropertyMetadata(true, static (d, e) =>
-                ((MarkdownRendererControl)d).OnSelectionEnabledChanged((bool)e.NewValue)));
+                ((MarkdownRendererControl)d)._selectionChanges.OnSelectionEnabledChanged((bool)e.NewValue)));
 
     /// <summary>
     /// Gets or sets whether read-only text selection is available to mouse,
@@ -1042,6 +1043,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
             _events, _documentInputs, _automation, _imageLifetime, _imageRelayout, _lazyLayout, _pipeline,
             _touchRestore, _interactionReset, _performanceSession, _environment));
         _focusEvents = new RendererFocusEvents(this, _contextMenu, _document, _focus, _focusEntry, _focusRing);
+        _selectionChanges = new SelectionChangeHandling(this, _cursor, _rebuild, _textAdorner, _automation, _selection, _touchRestore, _touchTapSuppression, _interactionReset);
         _attachment = new ViewAttachment(this, _surface, _lifetime, _published, _cursor, _abbreviationTooltip, _adorner, _deviceRecovery, _selectionDismissal, _dragShield, _handles, _contextMenu, _horizontalOverflowDrag, _pointerInput, _embeds, _windowDestroying, _snapshotRetirements, _rebuild, _painter, _canvasEvents, _geometryRecovery, _recoveryWork, _scrolling, _deferredScenes, _blockScroll, _automation, _imageLifetime, _automationDocumentGenerations, _layoutCommit, _imageRelayout, _vectorCapacity, _lazyLayout, _width, _touchSelection, _touchRestore, _touchTapSuppression, _overflowScroll, _focusRing, _performanceSession, _svgRenderer, _theme, _environment, _imagePlans, _imageSubscriptions, _imageResidency, _imagePrefetch, _highlighting);
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
@@ -1050,7 +1052,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         ActualThemeChanged += (_, _) => _theme.OnThemeChanged();
         // Selection changes update the XAML overlay (not the DirectWrite canvas),
         // so tiles are never invalidated during a drag.
-        _selection.Changed += (_, _) => OnSelectionChanged();
+        _selection.Changed += (_, _) => _selectionChanges.OnSelectionChanged();
         // FlowDirection has no DP-changed callback we can register at the
         // class level (it's defined by FrameworkElement). Listen for live
         // changes via the dependency-property-changed callback API so RTL
@@ -1126,33 +1128,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     internal void ClearSelectionFromCoordinator()
     {
         _interactionReset.ClearSelectionForExternalInteraction();
-    }
-
-    private void OnSelectionChanged()
-    {
-        _touchRestore.OnSelectionChanged();
-
-        if (_selection.IsActive)
-            MarkdownSelectionCoordinator.ClearSelectionsExcept(this);
-
-        _textAdorner.UpdateSelectionOverlay();
-        _automation.QueueSelectionChanged();
-    }
-
-    private void OnSelectionEnabledChanged(bool isEnabled)
-    {
-        if (!isEnabled)
-        {
-            _touchTapSuppression.Reset();
-            _interactionReset.ClearSelectionForExternalInteraction();
-        }
-
-        // TextPattern remains available for document reading, but its
-        // SupportedTextSelection value changes between Single and None.
-        // Recreate the peer-facing semantic snapshot and refresh cursor state.
-        RequestRebuild(RebuildReason.Full);
-        _automation.InvalidateLayout();
-        _cursor.SetShape(null);
     }
 
     /// <summary>
