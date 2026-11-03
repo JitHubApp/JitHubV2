@@ -6,7 +6,7 @@ Set-StrictMode -Version Latest
 
 $script:RunnerPath = Join-Path $PSScriptRoot 'Invoke-MarkdownCorrectnessUiTests.ps1'
 $script:ImageBoxPath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Layout\Boxes\ImageBox.cs'
-$script:LayoutBuilderPath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Layout\LayoutBuilder.cs'
+$script:LayoutBuilderPath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Layout\LayoutBlockBuilder.cs'
 $script:ThemeDefaultStylesPath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Theming\ThemeDefaultStyles.cs'
 $script:ElementStylePath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Theming\ElementStyle.cs'
 $script:ThemeSnapshotPath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Theming\ThemeSnapshot.cs'
@@ -229,7 +229,7 @@ $promotionEnd = if ($promotionStart -ge 0) {
     $layoutBuilderSource.IndexOf('private InlineContainerBox BuildParagraph(', $promotionStart + 1)
 } else { -1 }
 if ($promotionStart -lt 0 -or $promotionEnd -le $promotionStart) {
-    throw 'Could not isolate LayoutBuilder.BuildParagraphOrImage source guard.'
+    throw 'Could not isolate LayoutBlockBuilder.BuildParagraphOrImage source guard.'
 }
 $promotionSource = $layoutBuilderSource.Substring($promotionStart, $promotionEnd - $promotionStart)
 $sampleCreateStart = $sampleWindowSource.IndexOf('private MarkdownRendererControl CreateRenderer(')
