@@ -250,9 +250,9 @@ internal sealed partial class ImageBox
                Volatile.Read(ref _svgTileRenderPlan) is null &&
                Volatile.Read(ref _svgParkingPlan) is null &&
                !_svgUsesTiles &&
-               !_svgHasRenderedTile &&
+               !_svgTileCache.HasRenderedTile &&
                !_svgPressureParked &&
-               !_svgPressureDemandSignatureKnown &&
+               !_svgTileCache.PressureDemandSignatureKnown &&
                _svgFailureReason is null &&
                _svgFailureDescription is null &&
                !Url.StartsWith("data:", StringComparison.OrdinalIgnoreCase) &&
@@ -262,26 +262,8 @@ internal sealed partial class ImageBox
 
     private bool AreSvgPlacementAuxiliaryStatesClear()
     {
-        lock (_svgTileLock)
-        {
-            if (_svgTileCacheTransitionToken is not null ||
-                _svgTiles.Count != 0 ||
-                _svgTilesInFlight.Count != 0 ||
-                _svgTileWorkOwners.Count != 0 ||
-                _svgFallbackTiles is not null ||
-                _svgFallbackIdentityPrefix is not null ||
-                _svgFallbackWidthPixels != 0 ||
-                _svgFallbackHeightPixels != 0 ||
-                _svgFallbackPhysicalViewport is not null ||
-                _svgTileCacheIdentityPrefix is not null ||
-                _svgTileCacheWidthPixels != 0 ||
-                _svgTileCacheHeightPixels != 0 ||
-                _svgTileCachePhysicalViewport is not null ||
-                _svgHasRenderedTile)
-            {
-                return false;
-            }
-        }
+        if (!_svgTileCache.IsClear())
+            return false;
 
         return SvgHostDeferral.IsClear();
     }

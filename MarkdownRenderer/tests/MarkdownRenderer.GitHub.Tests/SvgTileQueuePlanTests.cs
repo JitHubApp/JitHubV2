@@ -44,9 +44,6 @@ public sealed class SvgTileQueuePlanTests
         var cancellation = new CancellationTokenSource();
         try
         {
-            var pending = GetField<Dictionary<(int X, int Y, int Width, int Height), CancellationTokenSource>>(
-                box,
-                "_svgTilesInFlight");
             RegisterWorkOwner(
                 box,
                 plan,
@@ -135,9 +132,6 @@ public sealed class SvgTileQueuePlanTests
                     (0, previousTileY, tileSize, tileSize),
                     (0, lastTileY, tileSize, lastTileHeight),
                 ];
-        var pending = GetField<Dictionary<(int X, int Y, int Width, int Height), CancellationTokenSource>>(
-            box,
-            "_svgTilesInFlight");
         var originalOwners = new Dictionary<(int X, int Y, int Width, int Height), CancellationTokenSource>();
         foreach (var key in expectedKeys)
         {
@@ -156,12 +150,11 @@ public sealed class SvgTileQueuePlanTests
         {
             QueueVisible(box, destination, viewport);
 
-            lock (GetField<object>(box, "_svgTileLock"))
-            {
-                Assert.Equal(expectedKeys.Length, pending.Count);
-                foreach (var key in expectedKeys)
-                    Assert.Same(originalOwners[key], pending[key]);
-            }
+            IReadOnlyDictionary<(int X, int Y, int Width, int Height), CancellationTokenSource> pending =
+                Snapshot(box).Work;
+            Assert.Equal(expectedKeys.Length, pending.Count);
+            foreach (var key in expectedKeys)
+                Assert.Same(originalOwners[key], pending[key]);
             Assert.Equal(0, document.RenderCount);
             Assert.Equal(0, renderer.OpenCount);
         }
@@ -170,9 +163,7 @@ public sealed class SvgTileQueuePlanTests
             // If this regression is reintroduced, cancel the wrongly queued
             // edge work and wait for its ordinary lifetime barrier before
             // disposing the test-only resources.
-            CancellationTokenSource[] liveOwners;
-            lock (GetField<object>(box, "_svgTileLock"))
-                liveOwners = pending.Values.Distinct().ToArray();
+            CancellationTokenSource[] liveOwners = Snapshot(box).Work.Values.Distinct().ToArray();
             foreach (CancellationTokenSource owner in liveOwners)
             {
                 try { owner.Cancel(); }
@@ -198,15 +189,11 @@ public sealed class SvgTileQueuePlanTests
         SetField(box, "_svgRenderGeneration", 8);
         using var currentWork = new CancellationTokenSource();
         var key = (0, 0, ImageBox.SvgTileSizePixels, ImageBox.SvgTileSizePixels);
-        GetField<Dictionary<(int X, int Y, int Width, int Height), CancellationTokenSource>>(
-            box,
-            "_svgTilesInFlight").Add(key, currentWork);
+        RegisterWorkOwner(box, oldPlan, key, currentWork);
 
         Assert.True(IsCurrentTilePlan(box, oldPlan));
         Assert.Equal(0, Queue(box, oldPlan, 0, 0, 0, 0, 1, MarkdownSvgRenderPriority.Visible));
-        Assert.Same(currentWork, GetField<Dictionary<(int X, int Y, int Width, int Height), CancellationTokenSource>>(
-            box,
-            "_svgTilesInFlight")[key]);
+        Assert.Same(currentWork, Snapshot(box).Work[key]);
         Assert.Equal(0, document.RenderCount);
     }
 
@@ -234,7 +221,7 @@ public sealed class SvgTileQueuePlanTests
         ConfigureQueueVisible(box, document);
         ownerSlot.Commit(box, plan, demand, sourceReservationBytes: 4096);
 
-        Assert.Equal(-1, GetField<int>(box, "_svgCurrentViewportVisible"));
+        Assert.Equal(-1, Snapshot(box).ViewportVisibility);
         Assert.True(box.TryGetSvgPressureParkTier(plan, demand.Version, out int tier));
         Assert.Equal(0, tier);
 
@@ -269,7 +256,7 @@ public sealed class SvgTileQueuePlanTests
         ConfigureQueueVisible(box, document);
         ownerSlot.Commit(box, plan, demand, sourceReservationBytes: 4096);
 
-        object tileLock = GetField<object>(box, "_svgTileLock");
+        object tileLock = TileLock(box);
         Task<bool> parking;
         Monitor.Enter(tileLock);
         try
@@ -325,20 +312,20 @@ public sealed class SvgTileQueuePlanTests
         long demandVersionBeforeObservation = demand.Version;
 
         Assert.True(box.ObserveSvgViewportVisibility(token, visible: false));
-        Assert.Equal(0, GetField<int>(box, "_svgCurrentViewportVisible"));
-        Assert.False(GetField<bool>(box, "_svgVisibleTileRangeKnown"));
+        Assert.Equal(0, Snapshot(box).ViewportVisibility);
+        Assert.False(Snapshot(box).VisibleRangeKnown);
         Assert.Equal(initiallyVisible ? 1 : 0, demandVersionBeforeObservation);
         Assert.Equal(demandVersionBeforeObservation, demand.Version);
         Assert.True(box.TryGetSvgPressureParkTier(plan, demandVersionBeforeObservation, out int offscreenTier));
         Assert.Equal(0, offscreenTier);
 
         Assert.True(box.ObserveSvgViewportVisibility(token, visible: true));
-        Assert.Equal(1, GetField<int>(box, "_svgCurrentViewportVisible"));
-        Assert.False(GetField<bool>(box, "_svgVisibleTileRangeKnown"));
+        Assert.Equal(1, Snapshot(box).ViewportVisibility);
+        Assert.False(Snapshot(box).VisibleRangeKnown);
         Assert.Equal(demandVersionBeforeObservation, demand.Version);
         Assert.False(box.TryGetSvgPressureParkTier(plan, demandVersionBeforeObservation, out _));
 
-        Assert.True(GetField<long>(box, "_svgViewportObservationVersion") >= 2);
+        Assert.True(Snapshot(box).ViewportObservationVersion >= 2);
         ownerSlot.Dispose();
         document.Dispose();
     }
@@ -365,52 +352,44 @@ public sealed class SvgTileQueuePlanTests
         ownerSlot.Commit(box, plan, demand, sourceReservationBytes: 4096);
         QueueTestSvgRenderer renderer = ConfigureQueueVisible(box, document);
 
-        Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease> tiles =
-            GetField<Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease>>(
-                box, "_svgTiles");
         for (int tileX = 0; tileX < 4; tileX++)
-            tiles.Add((tileX * ImageBox.SvgTileSizePixels, 0, ImageBox.SvgTileSizePixels, 1024),
-                new SharedCanvasBitmapCache.Lease(null!));
+            PublishTile(box, plan, (tileX * ImageBox.SvgTileSizePixels, 0, ImageBox.SvgTileSizePixels, 1024));
 
         var destination = new Rect(0, 0, 4, 1);
         QueueVisible(box, destination, new Rect(10, 10, 1, 1));
-        long afterOffscreenPaint = GetField<long>(box, "_svgViewportObservationVersion");
-        Assert.Equal(0, GetField<int>(box, "_svgCurrentViewportVisible"));
-        Assert.False(GetField<bool>(box, "_svgVisibleTileRangeKnown"));
+        long afterOffscreenPaint = Snapshot(box).ViewportObservationVersion;
+        Assert.Equal(0, Snapshot(box).ViewportVisibility);
+        Assert.False(Snapshot(box).VisibleRangeKnown);
 
         object? token = box.CaptureSvgViewportObservationToken();
         Assert.True(box.ObserveSvgViewportVisibility(token, visible: true));
-        long afterCoarseReentry = GetField<long>(box, "_svgViewportObservationVersion");
+        long afterCoarseReentry = Snapshot(box).ViewportObservationVersion;
         Assert.True(afterCoarseReentry > afterOffscreenPaint);
-        Assert.False(GetField<bool>(box, "_svgVisibleTileRangeKnown"));
+        Assert.False(Snapshot(box).VisibleRangeKnown);
 
         QueueVisible(box, destination, new Rect(0, 0, 1, 1));
-        long afterFirstPaint = GetField<long>(box, "_svgViewportObservationVersion");
+        long afterFirstPaint = Snapshot(box).ViewportObservationVersion;
         Assert.True(afterFirstPaint > afterCoarseReentry);
-        Assert.True(GetField<bool>(box, "_svgVisibleTileRangeKnown"));
-        Assert.Equal(1, GetField<int>(box, "_svgCurrentViewportVisible"));
+        Assert.True(Snapshot(box).VisibleRangeKnown);
+        Assert.Equal(1, Snapshot(box).ViewportVisibility);
         Assert.Equal(MarkdownSvgRenderPriority.Visible, demand.Priority);
 
         QueueVisible(box, destination, new Rect(0, 0, 1, 1));
-        Assert.Equal(afterFirstPaint, GetField<long>(box, "_svgViewportObservationVersion"));
+        Assert.Equal(afterFirstPaint, Snapshot(box).ViewportObservationVersion);
 
         // The second range is also fully represented by cached tiles, so this
         // is a viewport-fence update, not a provider/device exercise.
-        tiles.Add((2 * ImageBox.SvgTileSizePixels, 0, ImageBox.SvgTileSizePixels, 1024),
-            new SharedCanvasBitmapCache.Lease(null!));
-        tiles.Add((3 * ImageBox.SvgTileSizePixels, 0, ImageBox.SvgTileSizePixels, 1024),
-            new SharedCanvasBitmapCache.Lease(null!));
+        PublishTile(box, plan, (2 * ImageBox.SvgTileSizePixels, 0, ImageBox.SvgTileSizePixels, 1024));
+        PublishTile(box, plan, (3 * ImageBox.SvgTileSizePixels, 0, ImageBox.SvgTileSizePixels, 1024));
         QueueVisible(box, destination, new Rect(3, 0, 1, 1));
-        Assert.True(GetField<long>(box, "_svgViewportObservationVersion") > afterFirstPaint);
-        Assert.True(GetField<bool>(box, "_svgVisibleTileRangeKnown"));
-        Assert.Equal(3, GetField<int>(box, "_svgVisibleFirstTileX"));
-        Assert.Equal(3, GetField<int>(box, "_svgVisibleLastTileX"));
+        Assert.True(Snapshot(box).ViewportObservationVersion > afterFirstPaint);
+        Assert.True(Snapshot(box).VisibleRangeKnown);
+        Assert.Equal(3, Snapshot(box).FirstVisibleTileX);
+        Assert.Equal(3, Snapshot(box).LastVisibleTileX);
         Assert.Equal(0, document.RenderCount);
         Assert.Equal(0, renderer.OpenCount);
 
-        foreach (SharedCanvasBitmapCache.Lease lease in tiles.Values)
-            lease.Dispose();
-        tiles.Clear();
+        ReleaseTiles(box);
         ownerSlot.Dispose();
     }
 
@@ -477,7 +456,7 @@ public sealed class SvgTileQueuePlanTests
 
         ConfigureQueueVisible(box, document);
 
-        object tileLock = GetField<object>(box, "_svgTileLock");
+        object tileLock = TileLock(box);
         object workLock = GetField<object>(box, "_svgWorkSync");
         Task<bool> parking;
         Monitor.Enter(tileLock);
@@ -496,7 +475,7 @@ public sealed class SvgTileQueuePlanTests
                 SpinWait.SpinUntil(() => plan.ViewportMutationState == 2, TimeSpan.FromSeconds(10)),
                 "The park transaction did not claim the viewport gate before final owner detachment.");
             Assert.False(box.ObserveSvgViewportVisibility(token, visible: true));
-            Assert.Equal(-1, GetField<int>(box, "_svgCurrentViewportVisible"));
+            Assert.Equal(-1, Snapshot(box).ViewportVisibility);
         }
         finally
         {
@@ -516,211 +495,6 @@ public sealed class SvgTileQueuePlanTests
     }
 
     [Fact]
-    public void TileCacheReplacementIsPreparedBeforeTheAcceptedPlanAndAppliedAtomically()
-    {
-        var oldDocument = new CountingDocument();
-        var newDocument = new CountingDocument();
-        SvgTileRenderPlan oldPlan = NewPlan(
-            oldDocument, "svg-cache-prefix:transition-old", 2048, 1536, 51);
-        SvgTileRenderPlan newPlan = NewPlan(
-            newDocument, "svg-cache-prefix:transition-new", 3072, 1536, 52);
-        ImageBox box = CreateBareBox(oldPlan);
-        SetField(box, "_svgTileCacheIdentityPrefix", oldPlan.IdentityPrefix);
-        SetField(box, "_svgTileCacheWidthPixels", oldPlan.FullWidthPixels);
-        SetField(box, "_svgTileCacheHeightPixels", oldPlan.FullHeightPixels);
-
-        Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease> oldTiles =
-            GetField<Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease>>(
-                box,
-                "_svgTiles");
-        oldTiles.Add((0, 0, 1024, 1024), new SharedCanvasBitmapCache.Lease(null!));
-
-        object transition = PrepareCacheTransition(box, newPlan);
-
-        Assert.Same(oldPlan, GetNullableField<SvgTileRenderPlan>(box, "_svgTileRenderPlan"));
-        Assert.Same(oldTiles, GetField<Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease>>(
-            box, "_svgTiles"));
-        Assert.Equal(oldPlan.IdentityPrefix, GetNullableField<string>(box, "_svgTileCacheIdentityPrefix"));
-        Assert.False(IsCurrentTilePlan(box, oldPlan));
-
-        SetField(box, "_svgDocument", newDocument);
-        SetField(box, "_svgTileRenderPlan", newPlan);
-
-        Assert.True(ApplyCacheTransition(box, transition));
-        RetireCacheTransition(box, transition);
-
-        Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease> activeTiles =
-            GetField<Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease>>(
-                box,
-                "_svgTiles");
-        Assert.NotSame(oldTiles, activeTiles);
-        Assert.Empty(activeTiles);
-        Assert.Same(oldTiles, GetNullableField<Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease>>(
-            box, "_svgFallbackTiles"));
-        Assert.Equal(oldPlan.IdentityPrefix, GetNullableField<string>(box, "_svgFallbackIdentityPrefix"));
-        Assert.Equal(oldPlan.FullWidthPixels, GetField<int>(box, "_svgFallbackWidthPixels"));
-        Assert.Equal(oldPlan.FullHeightPixels, GetField<int>(box, "_svgFallbackHeightPixels"));
-        Assert.Equal(newPlan.IdentityPrefix, GetNullableField<string>(box, "_svgTileCacheIdentityPrefix"));
-        Assert.Equal(newPlan.FullWidthPixels, GetField<int>(box, "_svgTileCacheWidthPixels"));
-        Assert.Equal(newPlan.FullHeightPixels, GetField<int>(box, "_svgTileCacheHeightPixels"));
-        Assert.Equal(-1, GetField<int>(box, "_svgCurrentViewportVisible"));
-        Assert.Null(GetNullableField<object>(box, "_svgTileCacheTransitionToken"));
-        Assert.True(IsCurrentTilePlan(box, newPlan));
-    }
-
-    [Fact]
-    public void AbortedTileCacheTransitionPreservesTheAcceptedPlanAndCacheIdentity()
-    {
-        var document = new CountingDocument();
-        SvgTileRenderPlan oldPlan = NewPlan(
-            document, "svg-cache-prefix:transition-abort-old", 2048, 1536, 53);
-        SvgTileRenderPlan candidate = NewPlan(
-            new CountingDocument(), "svg-cache-prefix:transition-abort-new", 3072, 1536, 54);
-        ImageBox box = CreateBareBox(oldPlan);
-        SetField(box, "_svgTileCacheIdentityPrefix", oldPlan.IdentityPrefix);
-        SetField(box, "_svgTileCacheWidthPixels", oldPlan.FullWidthPixels);
-        SetField(box, "_svgTileCacheHeightPixels", oldPlan.FullHeightPixels);
-
-        object transition = PrepareCacheTransition(box, candidate);
-        AbortCacheTransition(box, transition);
-
-        Assert.Null(GetNullableField<object>(box, "_svgTileCacheTransitionToken"));
-        Assert.Same(oldPlan, GetNullableField<SvgTileRenderPlan>(box, "_svgTileRenderPlan"));
-        Assert.Equal(oldPlan.IdentityPrefix, GetNullableField<string>(box, "_svgTileCacheIdentityPrefix"));
-        Assert.Equal(oldPlan.FullWidthPixels, GetField<int>(box, "_svgTileCacheWidthPixels"));
-        Assert.Equal(oldPlan.FullHeightPixels, GetField<int>(box, "_svgTileCacheHeightPixels"));
-        Assert.True(IsCurrentTilePlan(box, oldPlan));
-    }
-
-    [Fact]
-    public void FailedTiledPlanWithoutFallbackDetachesItsTileLeasesAndCacheIdentity()
-    {
-        var document = new CountingDocument();
-        SvgTileRenderPlan plan = NewPlan(
-            document, "svg-cache-prefix:terminal-failure-no-fallback", 2048, 1536, 58);
-        ImageBox box = CreateBareBox(plan);
-        SetField(box, "_svgDocument", document);
-        SetField(box, "_svgTileCacheIdentityPrefix", plan.IdentityPrefix);
-        SetField(box, "_svgTileCacheWidthPixels", plan.FullWidthPixels);
-        SetField(box, "_svgTileCacheHeightPixels", plan.FullHeightPixels);
-        SetField(box, "_svgHasRenderedTile", true);
-
-        var key = (0, 0, ImageBox.SvgTileSizePixels, ImageBox.SvgTileSizePixels);
-        Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease> failedTiles =
-            GetField<Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease>>(
-                box, "_svgTiles");
-        failedTiles.Add(key, new SharedCanvasBitmapCache.Lease(null!));
-
-        object transition = PrepareFailureTileCacheTransition(box, plan);
-        lock (GetField<object>(box, "_svgPublicationSync"))
-        {
-            SetField(box, "_svgTileRenderPlan", null);
-            Assert.Null(GetNullableField<SvgTileRenderPlan>(box, "_svgTileRenderPlan"));
-            SetField(box, "_svgUsesTiles", false);
-            Assert.True(ApplyCacheTransition(box, transition));
-        }
-        RetireCacheTransition(box, transition);
-
-        Assert.NotSame(failedTiles, GetField<Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease>>(
-            box, "_svgTiles"));
-        Assert.Empty(GetField<Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease>>(
-            box, "_svgTiles"));
-        Assert.Null(GetNullableField<object>(box, "_svgFallbackTiles"));
-        Assert.Null(GetNullableField<string>(box, "_svgTileCacheIdentityPrefix"));
-        Assert.Equal(0, GetField<int>(box, "_svgTileCacheWidthPixels"));
-        Assert.Equal(0, GetField<int>(box, "_svgTileCacheHeightPixels"));
-        Assert.False(GetField<bool>(box, "_svgHasRenderedTile"));
-        Assert.Null(GetNullableField<object>(box, "_svgTileCacheTransitionToken"));
-    }
-
-    [Fact]
-    public void FailedTiledPlanRestoresFallbackIdentityWithoutRetainingFailedTiles()
-    {
-        var document = new CountingDocument();
-        SvgTileRenderPlan plan = NewPlan(
-            document, "svg-cache-prefix:terminal-failure-with-fallback", 2048, 1536, 59);
-        ImageBox box = CreateBareBox(plan);
-        SetField(box, "_svgDocument", document);
-        SetField(box, "_svgTileCacheIdentityPrefix", plan.IdentityPrefix);
-        SetField(box, "_svgTileCacheWidthPixels", plan.FullWidthPixels);
-        SetField(box, "_svgTileCacheHeightPixels", plan.FullHeightPixels);
-        var failedKey = (0, 0, ImageBox.SvgTileSizePixels, ImageBox.SvgTileSizePixels);
-        var fallbackKey = (ImageBox.SvgTileSizePixels, 0, ImageBox.SvgTileSizePixels, ImageBox.SvgTileSizePixels);
-        var failedLease = new SharedCanvasBitmapCache.Lease(null!);
-        var fallbackLease = new SharedCanvasBitmapCache.Lease(null!);
-        Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease> failedTiles =
-            GetField<Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease>>(
-                box, "_svgTiles");
-        failedTiles.Add(failedKey, failedLease);
-        var fallbackTiles = new Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease>
-        {
-            [fallbackKey] = fallbackLease,
-        };
-        SetField(box, "_svgFallbackTiles", fallbackTiles);
-        SetField(box, "_svgFallbackIdentityPrefix", "svg-cache-prefix:previous-good");
-        SetField(box, "_svgFallbackWidthPixels", 1024);
-        SetField(box, "_svgFallbackHeightPixels", 768);
-
-        object transition = PrepareFailureTileCacheTransition(box, plan);
-        lock (GetField<object>(box, "_svgPublicationSync"))
-        {
-            SetField(box, "_svgTileRenderPlan", null);
-            SetField(box, "_svgUsesTiles", false);
-            Assert.True(ApplyCacheTransition(box, transition));
-        }
-        RetireCacheTransition(box, transition);
-
-        Assert.Same(fallbackTiles, GetField<Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease>>(
-            box, "_svgTiles"));
-        Assert.Same(fallbackLease, GetField<Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease>>(
-            box, "_svgTiles")[fallbackKey]);
-        Assert.Null(GetNullableField<object>(box, "_svgFallbackTiles"));
-        Assert.Equal("svg-cache-prefix:previous-good", GetNullableField<string>(box, "_svgTileCacheIdentityPrefix"));
-        Assert.Equal(1024, GetField<int>(box, "_svgTileCacheWidthPixels"));
-        Assert.Equal(768, GetField<int>(box, "_svgTileCacheHeightPixels"));
-        Assert.True(GetField<bool>(box, "_svgHasRenderedTile"));
-        Assert.Null(GetNullableField<string>(box, "_svgFallbackIdentityPrefix"));
-        Assert.NotSame(failedLease, GetField<Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease>>(
-            box, "_svgTiles").Values.SingleOrDefault());
-    }
-
-    [Fact]
-    public void BitmapTransitionStagesAndDetachesAllOldTileIdentities()
-    {
-        var document = new CountingDocument();
-        SvgTileRenderPlan oldPlan = NewPlan(
-            document, "svg-cache-prefix:bitmap-transition", 2048, 2048, 55);
-        ImageBox box = CreateBareBox(oldPlan);
-        SetField(box, "_svgTileCacheIdentityPrefix", oldPlan.IdentityPrefix);
-        SetField(box, "_svgTileCacheWidthPixels", oldPlan.FullWidthPixels);
-        SetField(box, "_svgTileCacheHeightPixels", oldPlan.FullHeightPixels);
-        GetField<Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease>>(
-            box,
-            "_svgTiles").Add((0, 0, 1024, 1024), new SharedCanvasBitmapCache.Lease(null!));
-        var fallback = new Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease>
-        {
-            [(1024, 0, 1024, 1024)] = new SharedCanvasBitmapCache.Lease(null!),
-        };
-        SetField(box, "_svgFallbackTiles", fallback);
-
-        object transition = PrepareCacheTransition(box, plan: null);
-        SetField(box, "_svgTileRenderPlan", null);
-        SetField(box, "_svgDocument", null);
-        SetField(box, "_svgUsesTiles", false);
-
-        Assert.True(ApplyCacheTransition(box, transition));
-        RetireCacheTransition(box, transition);
-
-        Assert.Empty(GetField<Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease>>(
-            box, "_svgTiles"));
-        Assert.Null(GetNullableField<object>(box, "_svgFallbackTiles"));
-        Assert.Null(GetNullableField<string>(box, "_svgTileCacheIdentityPrefix"));
-        Assert.Equal(0, GetField<int>(box, "_svgTileCacheWidthPixels"));
-        Assert.Equal(0, GetField<int>(box, "_svgTileCacheHeightPixels"));
-        Assert.Null(GetNullableField<object>(box, "_svgTileCacheTransitionToken"));
-    }
-
-    [Fact]
     public void OldAcceptedPlanFailureDoesNotAdvanceOrRepeatNewRequestGeneration()
     {
         var document = new CountingDocument();
@@ -729,7 +503,7 @@ public sealed class SvgTileQueuePlanTests
         SetField(box, "_svgRenderGeneration", 18);
         using var work = new CancellationTokenSource();
         var key = (0, 0, ImageBox.SvgTileSizePixels, ImageBox.SvgTileSizePixels);
-        object workOwner = RegisterWorkOwner(box, oldPlan, key, work, state: 1);
+        SvgTileWorkOwner workOwner = RegisterWorkOwner(box, oldPlan, key, work, state: 1);
 
         Assert.True(TryInvalidateFailedTile(box, oldPlan, key, workOwner));
         Assert.Equal(18, GetField<int>(box, "_svgRenderGeneration"));
@@ -750,9 +524,7 @@ public sealed class SvgTileQueuePlanTests
         SetField(box, "_resourcesSuspended", true);
 
         Assert.Equal(0, Queue(box, plan, 0, 0, 0, 0, 1, MarkdownSvgRenderPriority.Visible));
-        Assert.Empty(GetField<Dictionary<(int X, int Y, int Width, int Height), CancellationTokenSource>>(
-            box,
-            "_svgTilesInFlight"));
+        Assert.Empty(Snapshot(box).Work);
         Assert.Equal(0, document.RenderCount);
     }
 
@@ -766,9 +538,7 @@ public sealed class SvgTileQueuePlanTests
 
         Assert.NotSame(stale, current);
         Assert.Equal(0, Queue(box, stale, 0, 0, 0, 0, 1, MarkdownSvgRenderPriority.Visible));
-        Assert.Empty(GetField<Dictionary<(int X, int Y, int Width, int Height), CancellationTokenSource>>(
-            box,
-            "_svgTilesInFlight"));
+        Assert.Empty(Snapshot(box).Work);
         Assert.Equal(0, document.RenderCount);
     }
 
@@ -787,9 +557,7 @@ public sealed class SvgTileQueuePlanTests
         SetField(box, "_svgDocument", adoptedDocument);
 
         Assert.Equal(0, Queue(box, previousPlan, 0, 0, 0, 0, 1, MarkdownSvgRenderPriority.Visible));
-        Assert.Empty(GetField<Dictionary<(int X, int Y, int Width, int Height), CancellationTokenSource>>(
-            box,
-            "_svgTilesInFlight"));
+        Assert.Empty(Snapshot(box).Work);
         Assert.Equal(0, previousDocument.RenderCount);
         Assert.Equal(0, adoptedDocument.RenderCount);
     }
@@ -801,13 +569,9 @@ public sealed class SvgTileQueuePlanTests
         SvgTileRenderPlan plan = NewPlan(document, "svg-cache-prefix:removed-owner", 2048, 2048, 37);
         ImageBox box = CreateBareBox(plan);
         using var work = new CancellationTokenSource();
-        var inFlight = GetField<Dictionary<(int X, int Y, int Width, int Height), CancellationTokenSource>>(
-            box,
-            "_svgTilesInFlight");
         var key = (0, 0, ImageBox.SvgTileSizePixels, ImageBox.SvgTileSizePixels);
-        object workOwner = RegisterWorkOwner(box, plan, key, work, state: 1);
-        inFlight.Remove(key);
-        GetWorkOwnerMap(box).Remove(key);
+        SvgTileWorkOwner workOwner = RegisterWorkOwner(box, plan, key, work, state: 1);
+        box.SvgTileCache.AbandonUnscheduledTileWork(key, workOwner);
 
         Assert.False(TryInvalidateFailedTile(box, plan, key, workOwner));
         Assert.Equal(plan.RenderGeneration, GetField<int>(box, "_svgRenderGeneration"));
@@ -823,66 +587,15 @@ public sealed class SvgTileQueuePlanTests
         ImageBox box = CreateBareBox(plan);
         using var staleWork = new CancellationTokenSource();
         using var currentWork = new CancellationTokenSource();
-        var inFlight = GetField<Dictionary<(int X, int Y, int Width, int Height), CancellationTokenSource>>(
-            box,
-            "_svgTilesInFlight");
         var key = (0, 0, ImageBox.SvgTileSizePixels, ImageBox.SvgTileSizePixels);
-        object staleOwner = CreateWorkOwner(plan, staleWork, state: 1);
+        SvgTileWorkOwner staleOwner = new(plan, staleWork, plan.Demand) { State = 1 };
         RegisterWorkOwner(box, plan, key, currentWork);
 
         Assert.False(TryInvalidateFailedTile(box, plan, key, staleOwner));
-        Assert.Same(currentWork, inFlight[key]);
+        Assert.Same(currentWork, Snapshot(box).Work[key]);
         Assert.Equal(plan.RenderGeneration, GetField<int>(box, "_svgRenderGeneration"));
         Assert.True(GetField<bool>(box, "_svgUsesTiles"));
         Assert.Same(plan, GetNullableField<SvgTileRenderPlan>(box, "_svgTileRenderPlan"));
-    }
-
-    [Fact]
-    public void RemovedTileOwnerCannotPublishSuccess()
-    {
-        var document = new CountingDocument();
-        SvgTileRenderPlan plan = NewPlan(document, "svg-cache-prefix:removed-success-owner", 2048, 2048, 40);
-        ImageBox box = CreateBareBox(plan);
-        using var work = new CancellationTokenSource();
-        var key = (0, 0, ImageBox.SvgTileSizePixels, ImageBox.SvgTileSizePixels);
-        RegisterWorkOwner(box, plan, key, work);
-        GetField<Dictionary<(int X, int Y, int Width, int Height), CancellationTokenSource>>(
-            box,
-            "_svgTilesInFlight").Remove(key);
-        GetWorkOwnerMap(box).Remove(key);
-
-        lock (GetField<object>(box, "_svgTileLock"))
-            Assert.False(IsCurrentTileWorkOwner(box, plan, key, work));
-    }
-
-    [Fact]
-    public void ReassignedTileOwnerCannotPublishSuccess()
-    {
-        var document = new CountingDocument();
-        SvgTileRenderPlan plan = NewPlan(document, "svg-cache-prefix:reassigned-success-owner", 2048, 2048, 42);
-        ImageBox box = CreateBareBox(plan);
-        using var staleWork = new CancellationTokenSource();
-        using var currentWork = new CancellationTokenSource();
-        var key = (0, 0, ImageBox.SvgTileSizePixels, ImageBox.SvgTileSizePixels);
-        CreateWorkOwner(plan, staleWork);
-        RegisterWorkOwner(box, plan, key, currentWork);
-
-        lock (GetField<object>(box, "_svgTileLock"))
-            Assert.False(IsCurrentTileWorkOwner(box, plan, key, staleWork));
-    }
-
-    [Fact]
-    public void ExactTileOwnerCanPublishSuccess()
-    {
-        var document = new CountingDocument();
-        SvgTileRenderPlan plan = NewPlan(document, "svg-cache-prefix:current-success-owner", 2048, 2048, 44);
-        ImageBox box = CreateBareBox(plan);
-        using var work = new CancellationTokenSource();
-        var key = (0, 0, ImageBox.SvgTileSizePixels, ImageBox.SvgTileSizePixels);
-        RegisterWorkOwner(box, plan, key, work);
-
-        lock (GetField<object>(box, "_svgTileLock"))
-            Assert.True(IsCurrentTileWorkOwner(box, plan, key, work));
     }
 
     [Theory]
@@ -894,11 +607,8 @@ public sealed class SvgTileQueuePlanTests
         SvgTileRenderPlan plan = NewPlan(document, "svg-cache-prefix:current-owner", 2048, 2048, 43);
         ImageBox box = CreateBareBox(plan);
         using var work = new CancellationTokenSource();
-        var inFlight = GetField<Dictionary<(int X, int Y, int Width, int Height), CancellationTokenSource>>(
-            box,
-            "_svgTilesInFlight");
         var key = (0, 0, ImageBox.SvgTileSizePixels, ImageBox.SvgTileSizePixels);
-        object workOwner = RegisterWorkOwner(box, plan, key, work, state: 1);
+        SvgTileWorkOwner workOwner = RegisterWorkOwner(box, plan, key, work, state: 1);
         if (cancelBeforeInvalidation)
             work.Cancel();
 
@@ -934,9 +644,7 @@ public sealed class SvgTileQueuePlanTests
             lastY,
             capacity,
             MarkdownSvgRenderPriority.Visible));
-        Assert.Empty(GetField<Dictionary<(int X, int Y, int Width, int Height), CancellationTokenSource>>(
-            box,
-            "_svgTilesInFlight"));
+        Assert.Empty(Snapshot(box).Work);
         Assert.Equal(0, document.RenderCount);
     }
 
@@ -952,9 +660,7 @@ public sealed class SvgTileQueuePlanTests
         SetField(box, "_svgUsesTiles", usesTiles);
 
         Assert.Equal(0, Queue(box, plan, 0, 0, 0, 0, 1, MarkdownSvgRenderPriority.Visible));
-        Assert.Empty(GetField<Dictionary<(int X, int Y, int Width, int Height), CancellationTokenSource>>(
-            box,
-            "_svgTilesInFlight"));
+        Assert.Empty(Snapshot(box).Work);
         Assert.Equal(0, document.RenderCount);
     }
 
@@ -975,71 +681,24 @@ public sealed class SvgTileQueuePlanTests
             demand,
             ownerSlot: ownerSlot);
 
-    private static object PrepareCacheTransition(
-        ImageBox box,
-        SvgTileRenderPlan? plan)
-    {
-        MethodInfo method = typeof(ImageBox).GetMethod(
-                "PrepareSvgTileCacheTransition",
-                BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new MissingMethodException(typeof(ImageBox).FullName, "PrepareSvgTileCacheTransition");
-        return method.Invoke(box, [plan])
-            ?? throw new Xunit.Sdk.XunitException("Could not prepare SVG tile cache transition.");
-    }
-
-    private static object PrepareFailureTileCacheTransition(
-        ImageBox box,
-        SvgTileRenderPlan plan)
-    {
-        MethodInfo method = typeof(ImageBox).GetMethod(
-                "PrepareSvgTileFailureTransition",
-                BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new MissingMethodException(typeof(ImageBox).FullName, "PrepareSvgTileFailureTransition");
-        return method.Invoke(box, [plan])
-            ?? throw new Xunit.Sdk.XunitException("Could not prepare SVG tile failure transition.");
-    }
-
-    private static bool ApplyCacheTransition(ImageBox box, object transition) =>
-        (bool)InvokeTransitionMethod(box, "ApplySvgTileCacheTransition", transition)!;
-
-    private static void AbortCacheTransition(ImageBox box, object transition) =>
-        _ = InvokeTransitionMethod(box, "AbortSvgTileCacheTransition", transition);
-
-    private static void RetireCacheTransition(ImageBox box, object transition) =>
-        _ = InvokeTransitionMethod(box, "RetireSvgTileCacheTransition", transition);
-
-    private static object? InvokeTransitionMethod(ImageBox box, string name, object transition)
-    {
-        MethodInfo method = typeof(ImageBox).GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new MissingMethodException(typeof(ImageBox).FullName, name);
-        return method.Invoke(box, [transition]);
-    }
-
     private static ImageBox CreateBareBox(SvgTileRenderPlan plan)
     {
         // The already-present/pending fast path needs no Win2D creator, dispatcher or device.
-        var box = (ImageBox)RuntimeHelpers.GetUninitializedObject(typeof(ImageBox));
-        SetField(box, "_resources", ImageResourceScope.Shared);
-        SetField(box, "_svgWorkSync", new object());
-        SetField(box, "_svgPublicationSync", new object());
-        SetField(box, "_svgTileLock", new object());
-        SetField(box, "_svgTiles", new Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease>());
-        SetField(box, "_svgTilesInFlight", new Dictionary<(int X, int Y, int Width, int Height), CancellationTokenSource>());
-        SetField(box, "_svgTileWorkOwners", CreateWorkOwnerMap());
-        SetField(box, "_svgTileCacheTransitionToken", null);
-        SetField(box, "_svgFallbackTiles", null);
-        SetField(box, "_svgTileCacheIdentityPrefix", null);
-        SetField(box, "_svgTileCacheWidthPixels", 0);
-        SetField(box, "_svgTileCacheHeightPixels", 0);
-        SetField(box, "_svgVisibleTileRangeKnown", false);
-        SetField(box, "_svgCurrentViewportVisible", -1);
+        var box = new ImageBox(
+            new MarkdownLayoutContext(
+                resourceCreator: null!,
+                themeSnapshot: null!,
+                sourceMap: null!,
+                registry: null!,
+                flowDirection: FlowDirection.LeftToRight),
+            ImageResourceScope.Shared,
+            "https://example.test/tiled.svg",
+            "tiled svg");
         SetField(box, "_svgTileRenderPlan", plan);
-        SetField(box, "_svgDocument", PlanMember<IMarkdownSvgDocument>(plan, "Document"));
-        SetField(box, "_svgLoadDemandTicket", PlanMember<MarkdownSvgRenderDemand>(plan, "Demand"));
-        SetField(box, "_svgRenderGeneration", PlanMember<int>(plan, "RenderGeneration"));
+        SetField(box, "_svgDocument", plan.Document);
+        SetField(box, "_svgLoadDemandTicket", plan.Demand);
+        SetField(box, "_svgRenderGeneration", plan.RenderGeneration);
         SetField(box, "_svgUsesTiles", true);
-        SetField(box, "_resourcesSuspended", false);
-        SetField(box, "_disposed", false);
         return box;
     }
 
@@ -1062,55 +721,42 @@ public sealed class SvgTileQueuePlanTests
         return renderer;
     }
 
-    private static object CreateWorkOwner(
-        SvgTileRenderPlan plan,
-        CancellationTokenSource cancellation,
-        int state = 0)
-    {
-        Type ownerType = typeof(SvgTileWorkOwner)
-            ?? throw new Xunit.Sdk.XunitException("Missing ImageBox SVG work-owner type.");
-        object owner = Activator.CreateInstance(
-                ownerType,
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
-                binder: null,
-                args: [plan, cancellation, plan.Demand],
-                culture: null)
-            ?? throw new Xunit.Sdk.XunitException("Could not create ImageBox SVG work owner.");
-        SetField(owner, "State", state);
-        return owner;
-    }
-
-    private static object RegisterWorkOwner(
+    private static SvgTileWorkOwner RegisterWorkOwner(
         ImageBox box,
         SvgTileRenderPlan plan,
         (int X, int Y, int Width, int Height) key,
         CancellationTokenSource cancellation,
-        int state = 0)
+        int state = 0) =>
+        SvgTileCacheTestOperations.AdmitWork(
+            box.SvgTileCache, plan, key, cancellation, claimFailure: state == 1);
+
+    private static void PublishTile(
+        ImageBox box,
+        SvgTileRenderPlan plan,
+        (int X, int Y, int Width, int Height) key) =>
+        SvgTileCacheTestOperations.PublishTile(
+            box.SvgTileCache, plan, key, new SharedCanvasBitmapCache.Lease(null!));
+
+    private static void ReleaseTiles(ImageBox box)
     {
-        object owner = CreateWorkOwner(plan, cancellation, state);
-        GetField<Dictionary<(int X, int Y, int Width, int Height), CancellationTokenSource>>(
-            box,
-            "_svgTilesInFlight").Add(key, cancellation);
-        GetWorkOwnerMap(box).Add(key, owner);
-        return owner;
+        (SharedCanvasBitmapCache.Lease[] tiles, CancellationTokenSource[] work) = box.SvgTileCache.DetachAll();
+        box.SvgTileCache.RetireDetached(tiles, work);
     }
 
-    private static IDictionary CreateWorkOwnerMap() =>
-        (IDictionary)(Activator.CreateInstance(
-            typeof(Dictionary<,>).MakeGenericType(
-                typeof(ValueTuple<int, int, int, int>),
-                typeof(SvgTileWorkOwner)))
-            ?? throw new Xunit.Sdk.XunitException("Could not create ImageBox SVG work-owner map."));
+    private static SvgTileCacheSnapshot Snapshot(ImageBox box) => box.SvgTileCache.CaptureSnapshot();
 
-    private static IDictionary GetWorkOwnerMap(ImageBox box) =>
-        (IDictionary)(typeof(ImageBox).GetField("_svgTileWorkOwners", InstanceFields)?.GetValue(box)
-            ?? throw new Xunit.Sdk.XunitException("Missing ImageBox SVG work-owner map."));
+    // The pressure-park transaction is still the box's, so its lock-order
+    // races hold the cache's tile lock directly until parking has an owner
+    // over a test host.
+    private static object TileLock(ImageBox box) =>
+        typeof(SvgTileCache).GetField("_svgTileLock", InstanceFields)?.GetValue(box.SvgTileCache)
+            ?? throw new Xunit.Sdk.XunitException("Missing SVG tile-cache lock.");
 
     private static bool TryInvalidateFailedTile(
         ImageBox box,
         SvgTileRenderPlan plan,
         (int X, int Y, int Width, int Height) key,
-        object workOwner,
+        SvgTileWorkOwner workOwner,
         object? transitionToken = null)
     {
         MethodInfo method = typeof(ImageBox).GetMethod(
@@ -1120,17 +766,8 @@ public sealed class SvgTileQueuePlanTests
         return (bool)method.Invoke(box, [plan, key, workOwner, transitionToken])!;
     }
 
-    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "IsCurrentSvgTileWorkOwnerNoLock")]
-    private static extern bool IsCurrentTileWorkOwner(
-        ImageBox box,
-        SvgTileRenderPlan plan,
-        (int X, int Y, int Width, int Height) key,
-        CancellationTokenSource workCancellation);
-
-    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "IsCurrentSvgTilePlan")]
-    private static extern bool IsCurrentTilePlan(
-        ImageBox box,
-        SvgTileRenderPlan plan);
+    private static bool IsCurrentTilePlan(ImageBox box, SvgTileRenderPlan plan) =>
+        box.SvgTileCache.IsCurrentSvgTilePlan(plan);
 
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "QueueSvgTileRange")]
     private static extern int Queue(

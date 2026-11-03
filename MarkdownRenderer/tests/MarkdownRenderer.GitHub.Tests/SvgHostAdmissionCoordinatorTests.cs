@@ -1205,42 +1205,23 @@ public sealed class SvgHostAdmissionCoordinatorTests
 
     private static ImageBox CreatePressureParkBox(SvgTileRenderPlan plan)
     {
-        ImageBox box = BareBox();
-        SetField(box, "_svgWorkSync", new object());
-        SetField(box, "_svgPublicationSync", new object());
-        SetField(box, "_svgTileLock", new object());
-        SetField(box, "_svgTiles", new Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease>());
-        SetField(box, "_svgTilesInFlight", new Dictionary<(int X, int Y, int Width, int Height), CancellationTokenSource>());
-        SetField(box, "_svgTileWorkOwners", CreatePressureWorkOwnerMap());
-        SetField(box, "_svgTileCacheTransitionToken", null);
-        SetField(box, "_svgFallbackTiles", null);
-        SetField(box, "_svgTileCacheIdentityPrefix", null);
-        SetField(box, "_svgTileCacheWidthPixels", 0);
-        SetField(box, "_svgTileCacheHeightPixels", 0);
-        SetField(box, "_svgVisibleTileRangeKnown", false);
-        SetField(box, "_svgCurrentViewportVisible", -1);
+        var box = new ImageBox(
+            new MarkdownLayoutContext(
+                resourceCreator: null!,
+                themeSnapshot: null!,
+                sourceMap: null!,
+                registry: null!,
+                flowDirection: FlowDirection.LeftToRight),
+            ImageResourceScope.Shared,
+            "https://example.test/pressure-park.svg",
+            "pressure park svg");
         SetField(box, "_svgTileRenderPlan", plan);
         SetField(box, "_svgDocument", plan.Document);
         SetField(box, "_svgLoadDemandTicket", plan.Demand);
         SetField(box, "_svgRenderGeneration", plan.RenderGeneration);
         SetField(box, "_svgUsesTiles", true);
-        SetField(box, "_resourcesSuspended", false);
-        SetField(box, "_disposed", false);
-        SetField(box, "Context", new MarkdownLayoutContext(
-            resourceCreator: null!,
-            themeSnapshot: null!,
-            sourceMap: null!,
-            registry: null!,
-            flowDirection: FlowDirection.LeftToRight));
         return box;
     }
-
-    private static IDictionary CreatePressureWorkOwnerMap() =>
-        (IDictionary)(Activator.CreateInstance(
-            typeof(Dictionary<,>).MakeGenericType(
-                typeof(ValueTuple<int, int, int, int>),
-                typeof(SvgTileWorkOwner)))
-            ?? throw new Xunit.Sdk.XunitException("Could not create ImageBox SVG work-owner map."));
 
     private sealed class ThresholdAdmission(long initialAvailableBytes = 0) : IMarkdownSvgAdmission
     {

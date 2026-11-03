@@ -57,10 +57,10 @@ internal static class SvgFallbackTileRetention
         double fallbackHeight = fallbackViewport?.Height ?? fallbackHeightPixels;
         double currentWidth = currentViewport?.Width ?? currentWidthPixels;
         double currentHeight = currentViewport?.Height ?? currentHeightPixels;
-        double bandLeft = (visibleLeft - destination.Left) / destination.Width * fallbackWidth - ImageBox.SvgTileSizePixels;
-        double bandTop = (visibleTop - destination.Top) / destination.Height * fallbackHeight - ImageBox.SvgTileSizePixels;
-        double bandRight = (visibleRight - destination.Left) / destination.Width * fallbackWidth + ImageBox.SvgTileSizePixels;
-        double bandBottom = (visibleBottom - destination.Top) / destination.Height * fallbackHeight + ImageBox.SvgTileSizePixels;
+        double bandLeft = (visibleLeft - destination.Left) / destination.Width * fallbackWidth - SvgTileCache.SvgTileSizePixels;
+        double bandTop = (visibleTop - destination.Top) / destination.Height * fallbackHeight - SvgTileCache.SvgTileSizePixels;
+        double bandRight = (visibleRight - destination.Left) / destination.Width * fallbackWidth + SvgTileCache.SvgTileSizePixels;
+        double bandBottom = (visibleBottom - destination.Top) / destination.Height * fallbackHeight + SvgTileCache.SvgTileSizePixels;
         if (keyRight < bandLeft || key.X > bandRight ||
             keyBottom < bandTop || key.Y > bandBottom)
         {
@@ -87,10 +87,10 @@ internal static class SvgFallbackTileRetention
             right = (long)Math.Clamp(Math.Ceiling(Math.BitIncrement(Math.Min(keyRight, fallbackWidth) / fallbackWidth * currentWidth)), 1, currentWidthPixels);
             bottom = (long)Math.Clamp(Math.Ceiling(Math.BitIncrement(Math.Min(keyBottom, fallbackHeight) / fallbackHeight * currentHeight)), 1, currentHeightPixels);
         }
-        int firstTileX = (int)(left / ImageBox.SvgTileSizePixels);
-        int firstTileY = (int)(top / ImageBox.SvgTileSizePixels);
-        int lastTileX = (int)((right - 1) / ImageBox.SvgTileSizePixels);
-        int lastTileY = (int)((bottom - 1) / ImageBox.SvgTileSizePixels);
+        int firstTileX = (int)(left / SvgTileCache.SvgTileSizePixels);
+        int firstTileY = (int)(top / SvgTileCache.SvgTileSizePixels);
+        int lastTileX = (int)((right - 1) / SvgTileCache.SvgTileSizePixels);
+        int lastTileY = (int)((bottom - 1) / SvgTileCache.SvgTileSizePixels);
         long requiredTileCount = ((long)lastTileX - firstTileX + 1) * ((long)lastTileY - firstTileY + 1);
         if (requiredTileCount > currentTiles.Count)
             return true;
@@ -100,14 +100,14 @@ internal static class SvgFallbackTileRetention
         // contract, so this geometry check makes no native calls or allocations.
         for (int tileY = firstTileY; tileY <= lastTileY; tileY++)
         {
-            int y = tileY * ImageBox.SvgTileSizePixels;
+            int y = tileY * SvgTileCache.SvgTileSizePixels;
             for (int tileX = firstTileX; tileX <= lastTileX; tileX++)
             {
-                int x = tileX * ImageBox.SvgTileSizePixels;
+                int x = tileX * SvgTileCache.SvgTileSizePixels;
                 SvgTileKey currentKey = (
                     x, y,
-                    Math.Min(ImageBox.SvgTileSizePixels, currentWidthPixels - x),
-                    Math.Min(ImageBox.SvgTileSizePixels, currentHeightPixels - y));
+                    Math.Min(SvgTileCache.SvgTileSizePixels, currentWidthPixels - x),
+                    Math.Min(SvgTileCache.SvgTileSizePixels, currentHeightPixels - y));
                 if (!currentTiles.ContainsKey(currentKey))
                     return true;
             }

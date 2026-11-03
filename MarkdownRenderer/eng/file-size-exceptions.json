@@ -63,7 +63,7 @@
     },
     {
       "path": "src/MarkdownRenderer/Layout/Boxes/ImageBox.cs",
-      "lines": 5685,
+      "lines": 5147,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
@@ -83,7 +83,7 @@
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/ImageBoxSvgPublicationCommitTests.cs",
-      "lines": 1226,
+      "lines": 1206,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
@@ -143,7 +143,7 @@
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/RootLocalInlineImageRelayoutTests.cs",
-      "lines": 1297,
+      "lines": 1296,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
@@ -168,12 +168,7 @@
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/SvgHostAdmissionCoordinatorTests.cs",
-      "lines": 1417,
-      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
-    },
-    {
-      "path": "tests/MarkdownRenderer.GitHub.Tests/SvgTileQueuePlanTests.cs",
-      "lines": 1231,
+      "lines": 1398,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {

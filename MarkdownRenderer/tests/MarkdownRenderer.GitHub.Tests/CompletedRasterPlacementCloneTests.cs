@@ -98,9 +98,7 @@ public sealed class CompletedRasterPlacementCloneTests
         Assert.Equal(0, clonedImageRun.Image.GetWorkState().ActiveWorkCount);
         Assert.Null(GetNullableField<IMarkdownSvgDocument>(clonedImageRun.Image, "_svgDocument"));
         Assert.Null(GetNullableField<WeakReference<byte[]>>(clonedImageRun.Image, "_svgSourceIdentity"));
-        AssertPrivateDictionaryEmpty(clonedImageRun.Image, "_svgTiles");
-        AssertPrivateDictionaryEmpty(clonedImageRun.Image, "_svgTilesInFlight");
-        AssertPrivateDictionaryEmpty(clonedImageRun.Image, "_svgTileWorkOwners");
+        Assert.True(clonedImageRun.Image.SvgTileCache.IsClear());
 
         float measuredHeight = clonedContainer.Measure(320f);
         clonedContainer.Arrange(0f, 0f, 320f);
@@ -378,14 +376,6 @@ public sealed class CompletedRasterPlacementCloneTests
             BindingFlags.Instance | BindingFlags.NonPublic)!;
         object? value = field.GetValue(instance);
         return value is null ? null : Assert.IsType<T>(value);
-    }
-
-    private static void AssertPrivateDictionaryEmpty(object instance, string name)
-    {
-        FieldInfo field = instance.GetType().GetField(
-            name,
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        Assert.Empty(Assert.IsAssignableFrom<IDictionary>(field.GetValue(instance)));
     }
 
     internal sealed class PlacementFixture : IAsyncDisposable

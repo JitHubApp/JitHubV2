@@ -63,8 +63,7 @@ public sealed class RootLocalInlineImageRelayoutTests
         Assert.True(rasterSize.Width > 0 && rasterSize.Height > 0);
         Assert.Null(ReadRawField(image, "_svgDocument"));
         Assert.Null(ReadRawField(image, "_svgTileRenderPlan"));
-        Assert.Empty(Assert.IsAssignableFrom<System.Collections.IDictionary>(
-            ReadRawField(image, "_svgTiles")));
+        Assert.Empty(image.SvgTileCache.CaptureSnapshot().Tiles);
         Assert.True(renderer.FullRenderCount > 0);
         Assert.Equal(0, renderer.TiledRenderCount);
 

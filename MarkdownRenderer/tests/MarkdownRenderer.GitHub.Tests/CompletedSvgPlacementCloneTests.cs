@@ -102,9 +102,7 @@ public sealed class CompletedSvgPlacementCloneTests
         Assert.Null(GetField(privateImage, "_svgDocument"));
         Assert.Null(GetField(privateImage, "_svgTileRenderPlan"));
         Assert.Null(GetField(privateImage, "_svgParkingPlan"));
-        Assert.Empty(Assert.IsAssignableFrom<IDictionary>(GetField(privateImage, "_svgTiles")));
-        Assert.Empty(Assert.IsAssignableFrom<IDictionary>(GetField(privateImage, "_svgTilesInFlight")));
-        Assert.Empty(Assert.IsAssignableFrom<IDictionary>(GetField(privateImage, "_svgTileWorkOwners")));
+        Assert.True(privateImage.SvgTileCache.IsClear());
         Assert.Equal(0, privateImage.GetWorkState().ActiveWorkCount);
 
         await fixture.RetireSourceAsync();
@@ -321,11 +319,39 @@ public sealed class CompletedSvgPlacementCloneTests
     public async Task ExistingSvgFallbackTileStateRejectsFullBitmapClone()
     {
         await using var fixture = await SvgPlacementFixture.CreateReadyAsync(hasText: false);
-        var fallbackField = typeof(ImageBox).GetField("_svgFallbackTiles", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        fallbackField.SetValue(fixture.Image,
-            new Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease>());
+        ImageBox image = fixture.Image;
+        SvgTileCache cache = image.SvgTileCache;
+        SvgTileRenderPlan previous = TestSvgTileCacheHost.Plan("svg-cache-prefix:previous-good", 1024, 1024);
+        SvgTileRenderPlan replacement = TestSvgTileCacheHost.Plan(
+            "svg-cache-prefix:replacement", 1024, 1024, document: previous.Document);
+        object? acceptedPlan = GetField(image, "_svgTileRenderPlan");
+        object? acceptedDocument = GetField(image, "_svgDocument");
+        bool usesTiles = GetField<bool>(image, "_svgUsesTiles");
 
-        AssertCloneRejected(fixture.Image, fixture.CreateTargetContext());
+        // A previous good grid is left behind as the fallback through the
+        // cache's own transitions; the box's full-bitmap state is then
+        // restored so that only the tile cache differs.
+        void Accept(SvgTileRenderPlan? plan) => SetField(image, "_svgTileRenderPlan", plan);
+        SetField(image, "_svgDocument", previous.Document);
+        SetField(image, "_svgUsesTiles", true);
+        SvgTileCacheTestOperations.Adopt(cache, previous, Accept);
+        SvgTileCacheTestOperations.PublishTile(
+            cache, previous, (0, 0, 1024, 1024), new SharedCanvasBitmapCache.Lease(null!));
+        SvgTileCacheTestOperations.Adopt(cache, replacement, Accept);
+        SetField(image, "_svgTileRenderPlan", acceptedPlan);
+        SetField(image, "_svgDocument", acceptedDocument);
+        SetField(image, "_svgUsesTiles", usesTiles);
+        Assert.NotNull(cache.CaptureSnapshot().FallbackTiles);
+
+        try
+        {
+            AssertCloneRejected(image, fixture.CreateTargetContext());
+        }
+        finally
+        {
+            (SharedCanvasBitmapCache.Lease[] tiles, CancellationTokenSource[] work) = cache.DetachAll();
+            cache.RetireDetached(tiles, work);
+        }
     }
 
     [Fact]

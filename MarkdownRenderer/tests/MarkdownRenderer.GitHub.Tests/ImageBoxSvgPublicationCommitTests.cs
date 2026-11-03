@@ -26,27 +26,21 @@ public sealed class ImageBoxSvgPublicationCommitTests
         try
         {
             TrackDisposalsUnderWorkLock(image, document);
+            (int X, int Y, int Width, int Height) key = (0, 0, 128, 128);
+            CommitTiled(image, renderer, document, "previous-good-svg");
+            SvgTileCacheTestOperations.PublishTile(
+                image.SvgTileCache,
+                (SvgTileRenderPlan)Plan(image)!,
+                key,
+                new SharedCanvasBitmapCache.Lease(null!));
             CommitTiled(image, renderer, document, "failure-prepared-cleanup");
             object plan = Plan(image)!;
+            Assert.Equal("previous-good-svg", image.SvgTileCache.CaptureSnapshot().FallbackIdentityPrefix);
             documentUse = AcquireCurrentUse(image, document);
 
-            (int X, int Y, int Width, int Height) key = (0, 0, 128, 128);
-            IDictionary inFlight = (IDictionary)Field<object>(image, "_svgTilesInFlight");
             tileCancellation = new CancellationTokenSource();
-            inFlight.Add(key, tileCancellation);
-            object workOwner = RegisterTileFailureOwner(image, plan, key, tileCancellation);
-            SetField(workOwner, "State", 0);
-
-            SetField(
-                image,
-                "_svgFallbackTiles",
-                new Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease>
-                {
-                    [key] = new SharedCanvasBitmapCache.Lease(null!),
-                });
-            SetField(image, "_svgFallbackIdentityPrefix", "previous-good-svg");
-            SetField(image, "_svgFallbackWidthPixels", 128);
-            SetField(image, "_svgFallbackHeightPixels", 128);
+            object workOwner = SvgTileCacheTestOperations.AdmitWork(
+                image.SvgTileCache, (SvgTileRenderPlan)plan, key, tileCancellation);
 
             InvokePrivate(
                 image,
@@ -310,7 +304,6 @@ public sealed class ImageBoxSvgPublicationCommitTests
         object? oldTileOwner = null;
         object? lateOldTileOwner = null;
         (int X, int Y, int Width, int Height) key = (0, 0, 128, 128);
-        IDictionary inFlight = null!;
 
         try
         {
@@ -321,10 +314,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
             // Starting a candidate advances publication ordering, but must not
             // make the still-accepted plan ineligible to refill visible tiles.
             int candidateGeneration = AdvanceGeneration(image);
-            Assert.True(Assert.IsType<bool>(InvokePrivate(
-                image,
-                "IsCurrentSvgTilePlan",
-                acceptedPlan)));
+            Assert.True(IsCurrentTilePlan(image, acceptedPlan));
 
             candidateUse = AcquireCandidate(image, candidateDocument);
             object metadata = CreateMetadata(
@@ -339,9 +329,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
                 Height(metadata),
                 candidateGeneration);
 
-            inFlight = (IDictionary)Field<object>(image, "_svgTilesInFlight");
             oldTileWork = new CancellationTokenSource();
-            inFlight.Add(key, oldTileWork);
             oldTileOwner = RegisterTileFailureOwner(image, acceptedPlan, key, oldTileWork);
 
             // A terminal failure of the older fallback plan detaches only that
@@ -356,7 +344,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
             Assert.Equal(candidateGeneration, Field<int>(image, "_svgRenderGeneration"));
             Assert.Null(Plan(image));
             Assert.False(Field<bool>(image, "_svgUsesTiles"));
-            RemoveTileFailureOwner(image, key);
+            RemoveTileFailureOwner(image, key, oldTileOwner);
             oldTileWork.Dispose();
             oldTileWork = null;
 
@@ -371,10 +359,16 @@ public sealed class ImageBoxSvgPublicationCommitTests
             Assert.Same(candidateDocument, Field<object>(Plan(image)!, "Document"));
 
             // A delayed callback from the retired plan cannot invalidate or
-            // otherwise disturb the just-committed candidate.
+            // otherwise disturb the just-committed candidate. The commit
+            // detached the retired plan's work, so its owner is no longer mapped.
             lateOldTileWork = new CancellationTokenSource();
-            inFlight.Add(key, lateOldTileWork);
-            lateOldTileOwner = RegisterTileFailureOwner(image, acceptedPlan, key, lateOldTileWork);
+            lateOldTileOwner = new SvgTileWorkOwner(
+                (SvgTileRenderPlan)acceptedPlan,
+                lateOldTileWork,
+                ((SvgTileRenderPlan)acceptedPlan).Demand)
+            {
+                State = 1,
+            };
             Assert.False(Assert.IsType<bool>(InvokePrivate(
                 image,
                 "TryInvalidateFailedSvgTile",
@@ -385,7 +379,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
             Assert.Equal(candidateGeneration, Field<int>(image, "_svgRenderGeneration"));
             Assert.Same(candidateDocument, CurrentDocument(image));
             Assert.Same(candidateDocument, Field<object>(Plan(image)!, "Document"));
-            RemoveTileFailureOwner(image, key);
+            RemoveTileFailureOwner(image, key, lateOldTileOwner);
             lateOldTileWork.Dispose();
             lateOldTileWork = null;
 
@@ -399,12 +393,12 @@ public sealed class ImageBoxSvgPublicationCommitTests
             candidateUse?.Dispose();
             if (oldTileWork is not null)
             {
-                RemoveTileFailureOwner(image, key);
+                RemoveTileFailureOwner(image, key, oldTileOwner);
                 oldTileWork.Dispose();
             }
             if (lateOldTileWork is not null)
             {
-                RemoveTileFailureOwner(image, key);
+                RemoveTileFailureOwner(image, key, lateOldTileOwner);
                 lateOldTileWork.Dispose();
             }
             image.Dispose();
@@ -422,7 +416,6 @@ public sealed class ImageBoxSvgPublicationCommitTests
         CancellationTokenSource? tileWork = null;
         object? tileWorkOwner = null;
         (int X, int Y, int Width, int Height) key = (0, 0, 128, 128);
-        IDictionary inFlight = null!;
 
         try
         {
@@ -443,9 +436,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
                 Height(metadata),
                 candidateGeneration);
 
-            inFlight = (IDictionary)Field<object>(image, "_svgTilesInFlight");
             tileWork = new CancellationTokenSource();
-            inFlight.Add(key, tileWork);
             tileWorkOwner = RegisterTileFailureOwner(image, failedPlan, key, tileWork);
             Assert.True(Assert.IsType<bool>(InvokePrivate(
                 image,
@@ -455,7 +446,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
                 tileWorkOwner,
                 null)));
             Assert.Equal(candidateGeneration, Field<int>(image, "_svgRenderGeneration"));
-            RemoveTileFailureOwner(image, key);
+            RemoveTileFailureOwner(image, key, tileWorkOwner);
             tileWork.Dispose();
             tileWork = null;
 
@@ -482,7 +473,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
             candidateUse?.Dispose();
             if (tileWork is not null)
             {
-                RemoveTileFailureOwner(image, key);
+                RemoveTileFailureOwner(image, key, tileWorkOwner);
                 tileWork.Dispose();
             }
             image.Dispose();
@@ -980,28 +971,17 @@ public sealed class ImageBoxSvgPublicationCommitTests
         ImageBox image,
         object plan,
         (int X, int Y, int Width, int Height) key,
-        CancellationTokenSource cancellation)
-    {
-        Type ownerType = typeof(SvgTileWorkOwner)
-            ?? throw new Xunit.Sdk.XunitException("Missing ImageBox SVG tile work-owner type.");
-        object owner = Activator.CreateInstance(
-                ownerType,
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
-                binder: null,
-                args: [plan, cancellation, Field<MarkdownSvgRenderDemand>(plan, "Demand")],
-                culture: null)
-            ?? throw new Xunit.Sdk.XunitException("Could not create SVG tile work owner.");
-        SetField(owner, "State", 1);
-        ((IDictionary)Field<object>(image, "_svgTileWorkOwners")).Add(key, owner);
-        return owner;
-    }
+        CancellationTokenSource cancellation) =>
+        SvgTileCacheTestOperations.AdmitWork(
+            image.SvgTileCache, (SvgTileRenderPlan)plan, key, cancellation, claimFailure: true);
 
     private static void RemoveTileFailureOwner(
         ImageBox image,
-        (int X, int Y, int Width, int Height) key)
+        (int X, int Y, int Width, int Height) key,
+        object? owner)
     {
-        ((IDictionary)Field<object>(image, "_svgTilesInFlight")).Remove(key);
-        ((IDictionary)Field<object>(image, "_svgTileWorkOwners")).Remove(key);
+        if (owner is SvgTileWorkOwner workOwner)
+            image.SvgTileCache.AbandonUnscheduledTileWork(key, workOwner);
     }
 
     private static (Action Publish, Action? OnDropped) CreateTiledPublication(
@@ -1109,7 +1089,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
         Assert.IsType<int>(InvokePrivate(image, "AdvanceSvgRenderGeneration"));
 
     private static bool IsCurrentTilePlan(ImageBox image, object plan) =>
-        Assert.IsType<bool>(InvokePrivate(image, "IsCurrentSvgTilePlan", plan));
+        image.SvgTileCache.IsCurrentSvgTilePlan((SvgTileRenderPlan)plan);
 
     private static object? CurrentDocument(ImageBox image) => Field<object?>(image, "_svgDocument");
 

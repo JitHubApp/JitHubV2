@@ -316,14 +316,18 @@ public sealed class ImageBoxSvgRendererTests
         const int rows = 4;
         const int tilePixels = 1024;
         const int displayTile = 32;
-        var image = new ImageBox(CreateContext(renderer: null), ImageResourceScope.Shared, string.Empty, string.Empty);
+        var host = new TestSvgTileCacheHost();
         var current = new Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease>();
-        var fallback = new Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease>();
         CanvasDevice device = CanvasDevice.GetSharedDevice();
         Color background = Color.FromArgb(255, 31, 81, 121);
         Color previous = Color.FromArgb(255, 255, 255, 255);
         try
         {
+            // The previous good grid becomes the cache's fallback when a plan
+            // with another identity is accepted over it.
+            SvgTileRenderPlan previousPlan = TestSvgTileCacheHost.Plan(
+                "previous-grid", columns * tilePixels, rows * tilePixels);
+            host.Accept(previousPlan);
             // Deliberately reverse insertion order. Forty replacement tiles
             // exercise the pooled coverage buffer, with holes in every row.
             for (int index = columns * rows - 1; index >= 0; index--)
@@ -331,17 +335,13 @@ public sealed class ImageBoxSvgRendererTests
                 int x = index % columns;
                 int y = index / columns;
                 var key = (x * tilePixels, y * tilePixels, tilePixels, tilePixels);
-                fallback.Add(key, ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(
+                host.PublishTile(previousPlan, key, ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(
                     CanvasBitmap.CreateFromColors(device, [previous], 1, 1)));
                 if ((x + y) % 2 == 0)
                     current.Add(key, ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(
                         CanvasBitmap.CreateFromColors(device, [Color.FromArgb(0, 0, 0, 0)], 1, 1)));
             }
-            void Set(string name, object value) => typeof(ImageBox)
-                .GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(image, value);
-            Set("_svgFallbackTiles", fallback);
-            Set("_svgFallbackWidthPixels", columns * tilePixels);
-            Set("_svgFallbackHeightPixels", rows * tilePixels);
+            host.Accept(TestSvgTileCacheHost.Plan("replacement-grid", columns * tilePixels, rows * tilePixels));
             var destination = new Rect(0, 0, columns * displayTile, rows * displayTile);
             using var target = new CanvasRenderTarget(device,
                 columns * displayTile, rows * displayTile, 96);
@@ -349,7 +349,7 @@ public sealed class ImageBoxSvgRendererTests
             {
                 drawing.Clear(background);
                 SvgTilePainter.PaintLayer(drawing, current, destination, destination,
-                    columns * tilePixels, rows * tilePixels, null, image, useFallbackTiles: true);
+                    columns * tilePixels, rows * tilePixels, null, host.Cache, useFallbackTiles: true);
                 Assert.Equal(CanvasAntialiasing.Antialiased, drawing.Antialiasing);
             }
             Color[] pixels = target.GetPixelColors();
@@ -357,16 +357,16 @@ public sealed class ImageBoxSvgRendererTests
                 for (int x = 0; x < columns * displayTile; x++)
                     Assert.Equal((x / displayTile + y / displayTile) % 2 == 0 ? background : previous,
                         pixels[y * columns * displayTile + x]);
+            Assert.Equal(0, host.GapFillCount);
         }
         finally
         {
             foreach (SharedCanvasBitmapCache.Lease lease in current.Values)
                 lease.Dispose();
-            // The fallback dictionary was transferred to the ImageBox. Its
-            // normal disposal path must release those native bitmap leases.
-            image.Dispose();
-            foreach (SharedCanvasBitmapCache.Lease lease in fallback.Values)
-                lease.Dispose();
+            // The fallback grid is owned by the cache; its detach path
+            // releases those native bitmap leases.
+            host.ReleaseAll();
+            Assert.Empty(host.RetirementFailures);
         }
     }
 
