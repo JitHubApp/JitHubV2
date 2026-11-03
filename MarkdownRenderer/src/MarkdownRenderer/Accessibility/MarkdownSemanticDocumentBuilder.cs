@@ -133,24 +133,7 @@ internal sealed class MarkdownSemanticDocumentBuilder
 
     private MarkdownSemanticNode BuildInline(InlineContainerBox inline)
     {
-        var role = inline.ElementKey == MarkdownElementKeys.CodeBlock
-            ? MarkdownSemanticRole.CodeBlock
-            : IsHeading(inline.ElementKey)
-                ? MarkdownSemanticRole.Heading
-                : MarkdownSemanticRole.Paragraph;
-        var node = new MarkdownSemanticNode(role, inline)
-        {
-            InlineBox = inline,
-            TextStart = _text.Length,
-            HeadingLevel = GetHeadingLevel(inline.ElementKey),
-            CodeLanguage = inline.CodeLanguage,
-            HelpText = inline.ElementKey == MarkdownElementKeys.CodeBlock && !string.IsNullOrWhiteSpace(inline.CodeLanguage)
-                ? inline.Context.ResolveFormattedString(
-                    MarkdownStringKeys.CodeLanguageHelp,
-                    MarkdownLocalizedStrings.CodeLanguageHelpFormat,
-                    inline.CodeLanguage)
-                : null,
-        };
+        MarkdownSemanticNode node = CreateInlineNode(inline);
         RegisterNodeIndexes(node);
 
         MarkdownSemanticNode? flattenedHeading = null;
@@ -193,141 +176,13 @@ internal sealed class MarkdownSemanticDocumentBuilder
                 AppendInlineSemanticBoundary(inline, run);
             }
 
-            int runStart = _text.Length;
-            if (sourceSlice is not null)
-                _text.AppendSlice(sourceSlice.SourceText, sourceSlice.SourceStart, sourceSlice.SliceLength);
-            else
-                _text.Append(accessibleText);
-            int runEnd = _text.Length;
-            _spans.Add(new MarkdownTextSpan(runStart, runEnd, inline, run, null, null, null));
-            int flattenedHeadingLevel = GetHeadingLevel(run.SemanticHeadingKey);
-            bool isFlattenedCodeBlock =
-                inline.ElementKey != MarkdownElementKeys.CodeBlock &&
-                run.ElementKey == MarkdownElementKeys.CodeBlock;
-            if (flattenedHeadingLevel > 0)
-            {
-                if (flattenedHeading is null || flattenedHeading.HeadingLevel != flattenedHeadingLevel)
-                {
-                    flattenedHeading = new MarkdownSemanticNode(MarkdownSemanticRole.Heading, inline)
-                    {
-                        InlineBox = inline,
-                        InlineRun = run,
-                        TextStart = runStart,
-                        TextEnd = runEnd,
-                        HeadingLevel = flattenedHeadingLevel,
-                    };
-                    AddRegisteredChild(node, flattenedHeading);
-                }
-                else
-                {
-                    flattenedHeading.TextEnd = runEnd;
-                }
-            }
-            else
-            {
-                flattenedHeading = null;
-            }
-
-            if (isFlattenedCodeBlock)
-            {
-                if (flattenedCodeBlock is null)
-                {
-                    flattenedCodeBlock = new MarkdownSemanticNode(MarkdownSemanticRole.CodeBlock, inline)
-                    {
-                        InlineBox = inline,
-                        InlineRun = run,
-                        TextStart = runStart,
-                        TextEnd = runEnd,
-                    };
-                    AddRegisteredChild(node, flattenedCodeBlock);
-                }
-                else
-                {
-                    flattenedCodeBlock.TextEnd = runEnd;
-                }
-            }
-            else
-            {
-                flattenedCodeBlock = null;
-            }
+            (int runStart, int runEnd) = AppendInlineRunText(inline, run, sourceSlice, accessibleText);
+            flattenedHeading = TrackFlattenedHeading(node, inline, run, runStart, runEnd, flattenedHeading);
+            flattenedCodeBlock = TrackFlattenedCodeBlock(node, inline, run, runStart, runEnd, flattenedCodeBlock);
 
             MarkdownSemanticNode semanticParent = flattenedCodeBlock ?? flattenedHeading ?? node;
-            if (run is LinkRun link)
-            {
-                AddRegisteredChild(semanticParent, new MarkdownSemanticNode(MarkdownSemanticRole.Link, inline)
-                {
-                    InlineBox = inline,
-                    InlineRun = link,
-                    TextStart = runStart,
-                    TextEnd = runEnd,
-                    HelpText = link.Url,
-                });
-            }
-            else if (run is InlineEmbedRun embedRun)
-            {
-                AddRegisteredChild(semanticParent, new MarkdownSemanticNode(MarkdownSemanticRole.Embed, inline)
-                {
-                    InlineBox = inline,
-                    InlineRun = embedRun,
-                    TextStart = runStart,
-                    TextEnd = runEnd,
-                    AccessibilityName = embedRun.AutomationMetadata?.CurrentName,
-                    AccessibilityDescription = embedRun.AutomationMetadata?.ReadOnlyHelpText,
-                    AutomationId = embedRun.AutomationMetadata?.AutomationId,
-                });
-            }
-            else if (run is InlineImageRun imageRun)
-            {
-                AddRegisteredChild(semanticParent, new MarkdownSemanticNode(MarkdownSemanticRole.Image, inline)
-                {
-                    InlineBox = inline,
-                    ImageBox = imageRun.Image,
-                    InlineRun = imageRun,
-                    TextStart = runStart,
-                    TextEnd = runEnd,
-                    HelpText = imageRun.IsLinked
-                        ? !string.IsNullOrWhiteSpace(imageRun.LinkTitle)
-                            ? imageRun.LinkTitle
-                            : imageRun.LinkUrl
-                        : !string.IsNullOrWhiteSpace(imageRun.Title)
-                            ? imageRun.Title
-                        : imageRun.Url,
-                });
-            }
-            else if (run is InlineVectorSceneRun vectorRun)
-            {
-                AddRegisteredChild(semanticParent, new MarkdownSemanticNode(MarkdownSemanticRole.Math, inline)
-                {
-                    InlineBox = inline,
-                    InlineRun = vectorRun,
-                    TextStart = runStart,
-                    TextEnd = runEnd,
-                    AccessibilityRole = MarkdownAccessibilityRole.Math,
-                    AccessibilityName = vectorRun.AccessibilityName,
-                    AccessibilityDescription = vectorRun.AccessibilityDescription,
-                    HelpText = vectorRun.IsLinked
-                        ? !string.IsNullOrWhiteSpace(vectorRun.LinkTitle)
-                            ? vectorRun.LinkTitle
-                            : vectorRun.LinkUrl
-                        : vectorRun.AccessibilityDescription,
-                    AutomationId = string.Concat(
-                        "MarkdownMath_",
-                        vectorRun.SourceSpan.Start.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                        "_",
-                        vectorRun.SourceSpan.Length.ToString(System.Globalization.CultureInfo.InvariantCulture)),
-                });
-            }
-            else if (run is AbbreviationRun abbreviationRun)
-            {
-                AddRegisteredChild(semanticParent, new MarkdownSemanticNode(MarkdownSemanticRole.Abbreviation, inline)
-                {
-                    InlineBox = inline,
-                    InlineRun = abbreviationRun,
-                    TextStart = runStart,
-                    TextEnd = runEnd,
-                    HelpText = abbreviationRun.Expansion,
-                });
-            }
+            if (CreateInlineRunNode(inline, run, runStart, runEnd) is { } child)
+                AddRegisteredChild(semanticParent, child);
 
             if (atomic &&
                 accessibleLength > 0 &&
@@ -342,6 +197,200 @@ internal sealed class MarkdownSemanticDocumentBuilder
         AppendBlockSeparator();
         return node;
     }
+
+    private MarkdownSemanticNode CreateInlineNode(InlineContainerBox inline)
+    {
+        var role = inline.ElementKey == MarkdownElementKeys.CodeBlock
+            ? MarkdownSemanticRole.CodeBlock
+            : IsHeading(inline.ElementKey)
+                ? MarkdownSemanticRole.Heading
+                : MarkdownSemanticRole.Paragraph;
+        return new MarkdownSemanticNode(role, inline)
+        {
+            InlineBox = inline,
+            TextStart = _text.Length,
+            HeadingLevel = GetHeadingLevel(inline.ElementKey),
+            CodeLanguage = inline.CodeLanguage,
+            HelpText = inline.ElementKey == MarkdownElementKeys.CodeBlock && !string.IsNullOrWhiteSpace(inline.CodeLanguage)
+                ? inline.Context.ResolveFormattedString(
+                    MarkdownStringKeys.CodeLanguageHelp,
+                    MarkdownLocalizedStrings.CodeLanguageHelpFormat,
+                    inline.CodeLanguage)
+                : null,
+        };
+    }
+
+    private (int Start, int End) AppendInlineRunText(
+        InlineContainerBox inline,
+        InlineRun run,
+        SourceSliceTextRun? sourceSlice,
+        string? accessibleText)
+    {
+        int runStart = _text.Length;
+        if (sourceSlice is not null)
+            _text.AppendSlice(sourceSlice.SourceText, sourceSlice.SourceStart, sourceSlice.SliceLength);
+        else
+            _text.Append(accessibleText);
+        int runEnd = _text.Length;
+        _spans.Add(new MarkdownTextSpan(runStart, runEnd, inline, run, null, null, null));
+        return (runStart, runEnd);
+    }
+
+    /// <summary>
+    /// Groups consecutive runs flattened from one heading level into a single
+    /// heading child, and returns the open heading (or null after any other run).
+    /// </summary>
+    private MarkdownSemanticNode? TrackFlattenedHeading(
+        MarkdownSemanticNode node,
+        InlineContainerBox inline,
+        InlineRun run,
+        int runStart,
+        int runEnd,
+        MarkdownSemanticNode? flattenedHeading)
+    {
+        int flattenedHeadingLevel = GetHeadingLevel(run.SemanticHeadingKey);
+        if (flattenedHeadingLevel <= 0)
+            return null;
+
+        if (flattenedHeading is null || flattenedHeading.HeadingLevel != flattenedHeadingLevel)
+        {
+            flattenedHeading = new MarkdownSemanticNode(MarkdownSemanticRole.Heading, inline)
+            {
+                InlineBox = inline,
+                InlineRun = run,
+                TextStart = runStart,
+                TextEnd = runEnd,
+                HeadingLevel = flattenedHeadingLevel,
+            };
+            AddRegisteredChild(node, flattenedHeading);
+        }
+        else
+        {
+            flattenedHeading.TextEnd = runEnd;
+        }
+
+        return flattenedHeading;
+    }
+
+    /// <summary>
+    /// Groups consecutive code-block runs flattened into a non-code inline into
+    /// a single code-block child, and returns it (or null after any other run).
+    /// </summary>
+    private MarkdownSemanticNode? TrackFlattenedCodeBlock(
+        MarkdownSemanticNode node,
+        InlineContainerBox inline,
+        InlineRun run,
+        int runStart,
+        int runEnd,
+        MarkdownSemanticNode? flattenedCodeBlock)
+    {
+        bool isFlattenedCodeBlock =
+            inline.ElementKey != MarkdownElementKeys.CodeBlock &&
+            run.ElementKey == MarkdownElementKeys.CodeBlock;
+        if (!isFlattenedCodeBlock)
+            return null;
+
+        if (flattenedCodeBlock is null)
+        {
+            flattenedCodeBlock = new MarkdownSemanticNode(MarkdownSemanticRole.CodeBlock, inline)
+            {
+                InlineBox = inline,
+                InlineRun = run,
+                TextStart = runStart,
+                TextEnd = runEnd,
+            };
+            AddRegisteredChild(node, flattenedCodeBlock);
+        }
+        else
+        {
+            flattenedCodeBlock.TextEnd = runEnd;
+        }
+
+        return flattenedCodeBlock;
+    }
+
+    /// <summary>The semantic child an interactive or described inline run adds, if any.</summary>
+    private static MarkdownSemanticNode? CreateInlineRunNode(
+        InlineContainerBox inline,
+        InlineRun run,
+        int runStart,
+        int runEnd) => run switch
+    {
+        LinkRun link => new MarkdownSemanticNode(MarkdownSemanticRole.Link, inline)
+        {
+            InlineBox = inline,
+            InlineRun = link,
+            TextStart = runStart,
+            TextEnd = runEnd,
+            HelpText = link.Url,
+        },
+        InlineEmbedRun embedRun => new MarkdownSemanticNode(MarkdownSemanticRole.Embed, inline)
+        {
+            InlineBox = inline,
+            InlineRun = embedRun,
+            TextStart = runStart,
+            TextEnd = runEnd,
+            AccessibilityName = embedRun.AutomationMetadata?.CurrentName,
+            AccessibilityDescription = embedRun.AutomationMetadata?.ReadOnlyHelpText,
+            AutomationId = embedRun.AutomationMetadata?.AutomationId,
+        },
+        InlineImageRun imageRun => CreateInlineImageNode(inline, imageRun, runStart, runEnd),
+        InlineVectorSceneRun vectorRun => CreateInlineMathNode(inline, vectorRun, runStart, runEnd),
+        AbbreviationRun abbreviationRun => new MarkdownSemanticNode(MarkdownSemanticRole.Abbreviation, inline)
+        {
+            InlineBox = inline,
+            InlineRun = abbreviationRun,
+            TextStart = runStart,
+            TextEnd = runEnd,
+            HelpText = abbreviationRun.Expansion,
+        },
+        _ => null,
+    };
+
+    private static MarkdownSemanticNode CreateInlineImageNode(
+        InlineContainerBox inline,
+        InlineImageRun imageRun,
+        int runStart,
+        int runEnd) => new(MarkdownSemanticRole.Image, inline)
+    {
+        InlineBox = inline,
+        ImageBox = imageRun.Image,
+        InlineRun = imageRun,
+        TextStart = runStart,
+        TextEnd = runEnd,
+        HelpText = imageRun.IsLinked
+            ? !string.IsNullOrWhiteSpace(imageRun.LinkTitle)
+                ? imageRun.LinkTitle
+                : imageRun.LinkUrl
+            : !string.IsNullOrWhiteSpace(imageRun.Title)
+                ? imageRun.Title
+            : imageRun.Url,
+    };
+
+    private static MarkdownSemanticNode CreateInlineMathNode(
+        InlineContainerBox inline,
+        InlineVectorSceneRun vectorRun,
+        int runStart,
+        int runEnd) => new(MarkdownSemanticRole.Math, inline)
+    {
+        InlineBox = inline,
+        InlineRun = vectorRun,
+        TextStart = runStart,
+        TextEnd = runEnd,
+        AccessibilityRole = MarkdownAccessibilityRole.Math,
+        AccessibilityName = vectorRun.AccessibilityName,
+        AccessibilityDescription = vectorRun.AccessibilityDescription,
+        HelpText = vectorRun.IsLinked
+            ? !string.IsNullOrWhiteSpace(vectorRun.LinkTitle)
+                ? vectorRun.LinkTitle
+                : vectorRun.LinkUrl
+            : vectorRun.AccessibilityDescription,
+        AutomationId = string.Concat(
+            "MarkdownMath_",
+            vectorRun.SourceSpan.Start.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "_",
+            vectorRun.SourceSpan.Length.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+    };
 
     private static string GetInlineAccessibleText(
         InlineRun run,
