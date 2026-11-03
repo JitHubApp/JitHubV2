@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Document;
@@ -119,47 +120,104 @@ internal sealed class MarkdownParseCoordinator
         // so avoid an otherwise redundant lock before the normal admission
         // lock. This keeps cache-disabled and concurrent miss workloads from
         // paying two serialized gate acquisitions per request.
-        if (_parseCacheBudgetBytes > 0)
+        if (_parseCacheBudgetBytes > 0 &&
+            TryCompleteFromSourceIdentity(
+                sourceSnapshot,
+                deferOffscreenScenes,
+                out Task<MarkdownDocument>? identityResult))
         {
-            lock (_parseGate)
-            {
-                if (_disposeRequested)
-                {
-                    return Task.FromException<MarkdownDocument>(
-                        new ObjectDisposedException(nameof(MarkdownEngine)));
-                }
-
-                if (_completedParses.TryGetBySourceIdentity(
-                        sourceSnapshot,
-                        deferOffscreenScenes,
-                        out var identityCachedDocument))
-                {
-                    return Task.FromResult(identityCachedDocument);
-                }
-            }
+            return identityResult;
         }
 
         MarkdownParseSourceKey sourceKey = CreateSourceKey(sourceSnapshot, deferOffscreenScenes);
-        MarkdownInFlightParse inFlight;
-        bool startParse = false;
+        if (!TryJoinOrAdmit(
+                sourceKey,
+                sourceBytes,
+                out MarkdownInFlightParse? inFlight,
+                out bool startParse,
+                out Task<MarkdownDocument>? immediateResult))
+        {
+            return immediateResult;
+        }
+
+        if (startParse)
+            StartParse(inFlight);
+
+        return AwaitParseAsync(inFlight, cancellationToken);
+    }
+
+    /// <summary>
+    /// Completes the request from the identity shortcut, or with the disposal
+    /// failure, under the gate. Returns false when the keyed path must run.
+    /// </summary>
+    private bool TryCompleteFromSourceIdentity(
+        string sourceSnapshot,
+        bool deferOffscreenScenes,
+        [NotNullWhen(true)] out Task<MarkdownDocument>? result)
+    {
         lock (_parseGate)
         {
             if (_disposeRequested)
             {
-                return Task.FromException<MarkdownDocument>(
+                result = Task.FromException<MarkdownDocument>(
                     new ObjectDisposedException(nameof(MarkdownEngine)));
+                return true;
+            }
+
+            if (_completedParses.TryGetBySourceIdentity(
+                    sourceSnapshot,
+                    deferOffscreenScenes,
+                    out var identityCachedDocument))
+            {
+                result = Task.FromResult(identityCachedDocument);
+                return true;
+            }
+        }
+
+        result = null;
+        return false;
+    }
+
+    /// <summary>
+    /// Under the gate, returns a cached document, joins the current in-flight
+    /// parse for the key, or admits a new one (started now or queued). Returns
+    /// false with <paramref name="immediateResult"/> when the request completes
+    /// without waiting: disposed engine, cache hit, or a full admission limit.
+    /// </summary>
+    private bool TryJoinOrAdmit(
+        MarkdownParseSourceKey sourceKey,
+        long sourceBytes,
+        [NotNullWhen(true)] out MarkdownInFlightParse? joined,
+        out bool startParse,
+        [NotNullWhen(false)] out Task<MarkdownDocument>? immediateResult)
+    {
+        joined = null;
+        startParse = false;
+        immediateResult = null;
+        MarkdownInFlightParse inFlight;
+        lock (_parseGate)
+        {
+            if (_disposeRequested)
+            {
+                immediateResult = Task.FromException<MarkdownDocument>(
+                    new ObjectDisposedException(nameof(MarkdownEngine)));
+                return false;
             }
 
             if (_completedParses.TryGet(sourceKey, out var cachedDocument))
-                return Task.FromResult(cachedDocument);
+            {
+                immediateResult = Task.FromResult(cachedDocument);
+                return false;
+            }
 
             if (!_inFlightParses.TryGetValue(sourceKey, out inFlight!) || inFlight.IsAbandoned)
             {
                 if (_outstandingParseCount >= _parseLimits.MaximumOutstandingParseCount ||
                     _outstandingSourceBytes > _parseLimits.MaximumOutstandingSourceBytes - sourceBytes)
                 {
-                    return Task.FromException<MarkdownDocument>(new InvalidOperationException(
+                    immediateResult = Task.FromException<MarkdownDocument>(new InvalidOperationException(
                         "The markdown parse admission limit is full. Retry after an outstanding parse completes."));
+                    return false;
                 }
 
                 inFlight = new MarkdownInFlightParse(
@@ -186,10 +244,8 @@ internal sealed class MarkdownParseCoordinator
             inFlight.WaiterCount++;
         }
 
-        if (startParse)
-            StartParse(inFlight);
-
-        return AwaitParseAsync(inFlight, cancellationToken);
+        joined = inFlight;
+        return true;
     }
 
     private async Task<MarkdownDocument> AwaitParseAsync(

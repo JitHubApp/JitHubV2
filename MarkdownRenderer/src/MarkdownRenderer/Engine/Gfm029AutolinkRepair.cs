@@ -116,6 +116,28 @@ internal static class Gfm029AutolinkRepair
         if (ranges.Count == 0)
             return;
 
+        List<Inline> replacements = BuildEmailReplacements(literal, source, content, ranges);
+        Inline first = replacements[0];
+        literal.ReplaceBy(first);
+        Inline previous = first;
+        for (int index = 1; index < replacements.Count; index++)
+        {
+            previous.InsertAfter(replacements[index]);
+            previous = replacements[index];
+        }
+    }
+
+    /// <summary>
+    /// Splits an email-bearing literal into literal runs and mailto autolinks
+    /// that keep the original source spans, lines and columns.
+    /// </summary>
+    private static List<Inline> BuildEmailReplacements(
+        LiteralInline literal,
+        string source,
+        string content,
+        List<(int Start, int End)> ranges)
+    {
+        int sourceStart = literal.Span.Start;
         var replacements = new List<Inline>(ranges.Count * 2 + 1);
         int copiedThrough = 0;
         foreach ((int start, int end) in ranges)
@@ -164,14 +186,7 @@ internal static class Gfm029AutolinkRepair
                 literal.Column + copiedThrough));
         }
 
-        Inline first = replacements[0];
-        literal.ReplaceBy(first);
-        Inline previous = first;
-        for (int index = 1; index < replacements.Count; index++)
-        {
-            previous.InsertAfter(replacements[index]);
-            previous = replacements[index];
-        }
+        return replacements;
     }
 
     private static List<(int Start, int End)> FindEmailRanges(string text)
