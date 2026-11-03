@@ -138,76 +138,8 @@ internal sealed class SafeHtmlStyleRoleDemandWalker
                 continue;
             }
 
-            switch (element.Name)
-            {
-                case "h1": _demand.Add(MarkdownStyleRoleDemand.Heading1); break;
-                case "h2": _demand.Add(MarkdownStyleRoleDemand.Heading2); break;
-                case "h3": _demand.Add(MarkdownStyleRoleDemand.Heading3); break;
-                case "h4": _demand.Add(MarkdownStyleRoleDemand.Heading4); break;
-                case "h5": _demand.Add(MarkdownStyleRoleDemand.Heading5); break;
-                case "h6": _demand.Add(MarkdownStyleRoleDemand.Heading6); break;
-                case "a": _demand.Add(MarkdownStyleRoleDemand.Link); break;
-                case "b":
-                case "strong": _demand.Add(MarkdownStyleRoleDemand.Strong); break;
-                case "i":
-                case "em":
-                case "cite":
-                case "var": _demand.Add(MarkdownStyleRoleDemand.Emphasis); break;
-                case "s":
-                case "strike":
-                case "del": _demand.Add(MarkdownStyleRoleDemand.Strikethrough); break;
-                case "sub": _demand.Add(MarkdownStyleRoleDemand.Subscript); break;
-                case "sup": _demand.Add(MarkdownStyleRoleDemand.Superscript); break;
-                case "ins":
-                case "u": _demand.Add(MarkdownStyleRoleDemand.Inserted); break;
-                case "mark": _demand.Add(MarkdownStyleRoleDemand.Marked); break;
-                case "code":
-                case "kbd":
-                case "samp": _demand.Add(MarkdownStyleRoleDemand.CodeInline); break;
-                case "blockquote": _demand.Add(MarkdownStyleRoleDemand.Quote); break;
-                case "ul":
-                case "ol": _demand.Add(MarkdownStyleRoleDemand.ListMarker); break;
-                case "hr": _demand.Add(MarkdownStyleRoleDemand.ThematicBreak); break;
-                case "table": _demand.AddTableDemand(); break;
-                case "pre":
-                    _demand.AddCodeBlockDemand();
-                    // SafeHtml flattens preformatted descendants to text;
-                    // nested inline markup does not acquire its own role.
-                    continue;
-                case "details":
-                    // The disclosure control always reads Body. Its
-                    // summary defaults to Strong unless a nested heading
-                    // supplies the semantic style. The renderer also
-                    // searches the summary for headings/pre blocks even
-                    // below inline wrappers that normal HTML traversal
-                    // prunes, so collect those special reads explicitly.
-                    SafeHtmlElement? summary = FindDirectChild(element, "summary");
-                    MarkdownStyleRoleDemand summaryHeading = FindDescendantHeadingDemand(summary);
-                    _demand.Add(MarkdownStyleRoleDemand.Body |
-                        (summaryHeading == MarkdownStyleRoleDemand.None
-                            ? MarkdownStyleRoleDemand.Strong
-                            : summaryHeading));
-                    if (ContainsDescendantPreformatted(summary))
-                        _demand.AddCodeBlockDemand();
-                    break;
-                case "img":
-                case "picture":
-                case "svg":
-                case "video":
-                case "audio":
-                    _demand.Add(MarkdownStyleRoleDemand.ImageCaption);
-                    // These are lowered to one atomic image run; their
-                    // parsed HTML descendants are metadata/source inputs,
-                    // not independently styled document content.
-                    continue;
-                case "input":
-                    if (element.TryGetAttribute("type", out string inputType) &&
-                        inputType.Equals("checkbox", StringComparison.OrdinalIgnoreCase))
-                    {
-                        _demand.Add(MarkdownStyleRoleDemand.ListMarker);
-                    }
-                    break;
-            }
+            if (!AddElementDemand(element))
+                continue;
 
             // Unknown elements are either rendered literally or unwrapped
             // by SafeHtml. Walking descendants is a safe superset for both
@@ -215,6 +147,86 @@ internal sealed class SafeHtmlStyleRoleDemandWalker
             // unsupported wrapper.
             VisitSafeHtmlNodes(element.Children);
         }
+    }
+
+    /// <summary>
+    /// Records the roles one rendered element reads. Returns false for elements
+    /// whose descendants SafeHtml does not style independently.
+    /// </summary>
+    private bool AddElementDemand(SafeHtmlElement element)
+    {
+        switch (element.Name)
+        {
+            case "h1": _demand.Add(MarkdownStyleRoleDemand.Heading1); break;
+            case "h2": _demand.Add(MarkdownStyleRoleDemand.Heading2); break;
+            case "h3": _demand.Add(MarkdownStyleRoleDemand.Heading3); break;
+            case "h4": _demand.Add(MarkdownStyleRoleDemand.Heading4); break;
+            case "h5": _demand.Add(MarkdownStyleRoleDemand.Heading5); break;
+            case "h6": _demand.Add(MarkdownStyleRoleDemand.Heading6); break;
+            case "a": _demand.Add(MarkdownStyleRoleDemand.Link); break;
+            case "b":
+            case "strong": _demand.Add(MarkdownStyleRoleDemand.Strong); break;
+            case "i":
+            case "em":
+            case "cite":
+            case "var": _demand.Add(MarkdownStyleRoleDemand.Emphasis); break;
+            case "s":
+            case "strike":
+            case "del": _demand.Add(MarkdownStyleRoleDemand.Strikethrough); break;
+            case "sub": _demand.Add(MarkdownStyleRoleDemand.Subscript); break;
+            case "sup": _demand.Add(MarkdownStyleRoleDemand.Superscript); break;
+            case "ins":
+            case "u": _demand.Add(MarkdownStyleRoleDemand.Inserted); break;
+            case "mark": _demand.Add(MarkdownStyleRoleDemand.Marked); break;
+            case "code":
+            case "kbd":
+            case "samp": _demand.Add(MarkdownStyleRoleDemand.CodeInline); break;
+            case "blockquote": _demand.Add(MarkdownStyleRoleDemand.Quote); break;
+            case "ul":
+            case "ol": _demand.Add(MarkdownStyleRoleDemand.ListMarker); break;
+            case "hr": _demand.Add(MarkdownStyleRoleDemand.ThematicBreak); break;
+            case "table": _demand.AddTableDemand(); break;
+            case "pre":
+                _demand.AddCodeBlockDemand();
+                // SafeHtml flattens preformatted descendants to text;
+                // nested inline markup does not acquire its own role.
+                return false;
+            case "details":
+                // The disclosure control always reads Body. Its
+                // summary defaults to Strong unless a nested heading
+                // supplies the semantic style. The renderer also
+                // searches the summary for headings/pre blocks even
+                // below inline wrappers that normal HTML traversal
+                // prunes, so collect those special reads explicitly.
+                SafeHtmlElement? summary = FindDirectChild(element, "summary");
+                MarkdownStyleRoleDemand summaryHeading = FindDescendantHeadingDemand(summary);
+                _demand.Add(MarkdownStyleRoleDemand.Body |
+                    (summaryHeading == MarkdownStyleRoleDemand.None
+                        ? MarkdownStyleRoleDemand.Strong
+                        : summaryHeading));
+                if (ContainsDescendantPreformatted(summary))
+                    _demand.AddCodeBlockDemand();
+                break;
+            case "img":
+            case "picture":
+            case "svg":
+            case "video":
+            case "audio":
+                _demand.Add(MarkdownStyleRoleDemand.ImageCaption);
+                // These are lowered to one atomic image run; their
+                // parsed HTML descendants are metadata/source inputs,
+                // not independently styled document content.
+                return false;
+            case "input":
+                if (element.TryGetAttribute("type", out string inputType) &&
+                    inputType.Equals("checkbox", StringComparison.OrdinalIgnoreCase))
+                {
+                    _demand.Add(MarkdownStyleRoleDemand.ListMarker);
+                }
+                break;
+        }
+
+        return true;
     }
 
     private static SafeHtmlElement? FindDirectChild(SafeHtmlElement parent, string name)
