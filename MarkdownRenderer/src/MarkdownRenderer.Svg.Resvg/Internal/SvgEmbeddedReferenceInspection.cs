@@ -1,4 +1,3 @@
-using System.Text;
 using System.Xml;
 
 namespace MarkdownRenderer.Svg.Resvg.Internal;
@@ -50,40 +49,20 @@ internal static class SvgEmbeddedReferenceInspection
             if (resources.IsRasterValidated(referenceKey))
                 return;
         }
-        ReadOnlySpan<char> payload = value[(comma + 1)..];
         // Small embedded rasters need only signature/dimension/hash inspection
         // here; their actual decode belongs to the worker. Keep those transient
         // bytes on this bounded stack, including when the MIME label is wrong.
         // Nested XML still obtains its own array for the synchronous reader.
         Span<byte> smallPayload = stackalloc byte[512];
-        Span<byte> target = smallPayload;
-        byte[]? ownedPayload = null;
-        scoped ReadOnlySpan<byte> decoded;
-        if (header.Contains(";base64".AsSpan(), StringComparison.OrdinalIgnoreCase))
-        {
-            int length = SvgDataUriDecoder.GetBase64DecodedLength(
-                payload, options.MaxEmbeddedImageBytes, cancellationToken);
-            target = length <= smallPayload.Length
-                ? smallPayload[..length]
-                : (ownedPayload = new byte[length]);
-            SvgDataUriDecoder.DecodeBase64Into(payload, target, cancellationToken);
-            decoded = target;
-        }
-        else
-        {
-            ownedPayload = SvgDataUriDecoder.DecodePercentEncoded(
-                payload, options.MaxEmbeddedImageBytes, cancellationToken);
-            decoded = ownedPayload;
-        }
-        string? mediaType = SniffEmbeddedImageMediaType(decoded);
-        if (mediaType is null)
-        {
-            ownedPayload ??= decoded.ToArray();
-            mediaType = NormalizeEmbeddedImageMediaType(
-                declaredMediaType, ownedPayload, options, cancellationToken);
-        }
-        if (mediaType is null)
-            throw SvgPreflightFailures.Unsupported("The embedded image media type is unsupported.");
+        scoped ReadOnlySpan<byte> decoded = DecodeDataUriPayload(
+            header,
+            value[(comma + 1)..],
+            smallPayload,
+            options,
+            cancellationToken,
+            out byte[]? ownedPayload);
+        string mediaType = ResolveEmbeddedMediaType(
+            decoded, declaredMediaType, ref ownedPayload, options, cancellationToken);
 
         // Keep the complete digest in the per-inspection value-key set. A
         // byte[] digest plus a 64-character hex string per image needlessly
@@ -100,20 +79,7 @@ internal static class SvgEmbeddedReferenceInspection
         }
 
         if (resources.AddResource(identity))
-        {
-            embeddedBytes = checked(embeddedBytes + decoded.Length);
-            if (embeddedBytes > options.MaxEmbeddedImageBytes)
-                throw SvgPreflightFailures.Resource("Embedded images exceed the decoded-byte ceiling.");
-
-            if (!isSvg)
-            {
-                if (!TryReadImageDimensions(decoded, mediaType, out int imageWidth, out int imageHeight))
-                    throw SvgPreflightFailures.Unsupported("An embedded raster image is malformed or has no bounded dimensions.");
-                embeddedPixels = checked(embeddedPixels + checked((long)imageWidth * imageHeight));
-                if (embeddedPixels > options.MaxEmbeddedImagePixels)
-                    throw SvgPreflightFailures.Resource("Embedded images exceed the decoded-pixel ceiling.");
-            }
-        }
+            ChargeNewResource(decoded, mediaType, isSvg, options, ref embeddedBytes, ref embeddedPixels);
 
         if (isSvg && !resources.IsNestedSvgValidatedAtDepth(identity, nestedSvgDepth))
         {
@@ -132,6 +98,85 @@ internal static class SvgEmbeddedReferenceInspection
         }
         if (!isSvg && memoizeRaster)
             resources.RememberRaster(referenceKey);
+    }
+
+    /// <summary>
+    /// Decodes a data URI payload, into <paramref name="smallPayload"/> when a
+    /// base64 payload fits it and into a new array otherwise.
+    /// </summary>
+    /// <returns>The decoded bytes, which may alias <paramref name="smallPayload"/>.</returns>
+    private static ReadOnlySpan<byte> DecodeDataUriPayload(
+        ReadOnlySpan<char> header,
+        ReadOnlySpan<char> payload,
+        Span<byte> smallPayload,
+        ResvgMarkdownSvgRendererOptions options,
+        CancellationToken cancellationToken,
+        out byte[]? ownedPayload)
+    {
+        ownedPayload = null;
+        if (header.Contains(";base64".AsSpan(), StringComparison.OrdinalIgnoreCase))
+        {
+            int length = SvgDataUriDecoder.GetBase64DecodedLength(
+                payload, options.MaxEmbeddedImageBytes, cancellationToken);
+            Span<byte> target = length <= smallPayload.Length
+                ? smallPayload[..length]
+                : (ownedPayload = new byte[length]);
+            SvgDataUriDecoder.DecodeBase64Into(payload, target, cancellationToken);
+            return target;
+        }
+
+        ownedPayload = SvgDataUriDecoder.DecodePercentEncoded(
+            payload, options.MaxEmbeddedImageBytes, cancellationToken);
+        return ownedPayload;
+    }
+
+    /// <summary>
+    /// Identifies the embedded payload by its byte signature, falling back to
+    /// the declared media type only for a payload that is plausibly SVG.
+    /// </summary>
+    private static string ResolveEmbeddedMediaType(
+        ReadOnlySpan<byte> decoded,
+        ReadOnlySpan<char> declaredMediaType,
+        ref byte[]? ownedPayload,
+        ResvgMarkdownSvgRendererOptions options,
+        CancellationToken cancellationToken)
+    {
+        string? mediaType = SniffEmbeddedImageMediaType(decoded);
+        if (mediaType is null)
+        {
+            ownedPayload ??= decoded.ToArray();
+            mediaType = NormalizeEmbeddedImageMediaType(
+                declaredMediaType, ownedPayload, options, cancellationToken);
+        }
+        if (mediaType is null)
+            throw SvgPreflightFailures.Unsupported("The embedded image media type is unsupported.");
+        return mediaType;
+    }
+
+    /// <summary>
+    /// Charges a resource seen for the first time in this inspection against the
+    /// decoded-byte ceiling and, for a raster, the decoded-pixel ceiling.
+    /// </summary>
+    private static void ChargeNewResource(
+        ReadOnlySpan<byte> decoded,
+        string mediaType,
+        bool isSvg,
+        ResvgMarkdownSvgRendererOptions options,
+        ref long embeddedBytes,
+        ref long embeddedPixels)
+    {
+        embeddedBytes = checked(embeddedBytes + decoded.Length);
+        if (embeddedBytes > options.MaxEmbeddedImageBytes)
+            throw SvgPreflightFailures.Resource("Embedded images exceed the decoded-byte ceiling.");
+
+        if (!isSvg)
+        {
+            if (!TryReadImageDimensions(decoded, mediaType, out int imageWidth, out int imageHeight))
+                throw SvgPreflightFailures.Unsupported("An embedded raster image is malformed or has no bounded dimensions.");
+            embeddedPixels = checked(embeddedPixels + checked((long)imageWidth * imageHeight));
+            if (embeddedPixels > options.MaxEmbeddedImagePixels)
+                throw SvgPreflightFailures.Resource("Embedded images exceed the decoded-pixel ceiling.");
+        }
     }
 
     internal static string? NormalizeEmbeddedImageMediaType(
