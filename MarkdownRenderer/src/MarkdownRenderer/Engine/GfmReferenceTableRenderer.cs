@@ -14,18 +14,7 @@ internal sealed class GfmReferenceTableRenderer : HtmlObjectRenderer<Table>
     {
         if (!renderer.EnableHtmlForBlock)
         {
-            bool previousImplicit = renderer.ImplicitParagraph;
-            renderer.ImplicitParagraph = true;
-            foreach (Block rowObject in table)
-            {
-                var row = (TableRow)rowObject;
-                foreach (Block cellObject in row)
-                {
-                    renderer.Write((TableCell)cellObject);
-                    renderer.Write(' ');
-                }
-            }
-            renderer.ImplicitParagraph = previousImplicit;
+            WritePlainText(renderer, table);
             return;
         }
 
@@ -68,26 +57,7 @@ internal sealed class GfmReferenceTableRenderer : HtmlObjectRenderer<Table>
                 if (cell.RowSpan != 1)
                     renderer.Write($" rowspan=\"{cell.RowSpan}\"");
                 if (table.ColumnDefinitions.Count > 0)
-                {
-                    int columnIndex = cell.ColumnIndex < 0 ||
-                        cell.ColumnIndex >= table.ColumnDefinitions.Count
-                            ? index
-                            : cell.ColumnIndex;
-                    columnIndex = Math.Min(columnIndex, table.ColumnDefinitions.Count - 1);
-                    TableColumnAlign? alignment = table.ColumnDefinitions[columnIndex].Alignment;
-                    if (alignment.HasValue)
-                    {
-                        string value = alignment.Value switch
-                        {
-                            TableColumnAlign.Left => "left",
-                            TableColumnAlign.Center => "center",
-                            TableColumnAlign.Right => "right",
-                            _ => string.Empty,
-                        };
-                        if (value.Length > 0)
-                            renderer.Write($" align=\"{value}\"");
-                    }
-                }
+                    WriteAlignment(renderer, table, cell, index);
                 renderer.WriteAttributes(cell);
                 renderer.Write('>');
 
@@ -106,5 +76,43 @@ internal sealed class GfmReferenceTableRenderer : HtmlObjectRenderer<Table>
         else if (headerOpen)
             renderer.WriteLine("</thead>");
         renderer.WriteLine("</table>");
+    }
+
+    private static void WritePlainText(HtmlRenderer renderer, Table table)
+    {
+        bool previousImplicit = renderer.ImplicitParagraph;
+        renderer.ImplicitParagraph = true;
+        foreach (Block rowObject in table)
+        {
+            var row = (TableRow)rowObject;
+            foreach (Block cellObject in row)
+            {
+                renderer.Write((TableCell)cellObject);
+                renderer.Write(' ');
+            }
+        }
+        renderer.ImplicitParagraph = previousImplicit;
+    }
+
+    private static void WriteAlignment(HtmlRenderer renderer, Table table, TableCell cell, int index)
+    {
+        int columnIndex = cell.ColumnIndex < 0 ||
+            cell.ColumnIndex >= table.ColumnDefinitions.Count
+                ? index
+                : cell.ColumnIndex;
+        columnIndex = Math.Min(columnIndex, table.ColumnDefinitions.Count - 1);
+        TableColumnAlign? alignment = table.ColumnDefinitions[columnIndex].Alignment;
+        if (alignment.HasValue)
+        {
+            string value = alignment.Value switch
+            {
+                TableColumnAlign.Left => "left",
+                TableColumnAlign.Center => "center",
+                TableColumnAlign.Right => "right",
+                _ => string.Empty,
+            };
+            if (value.Length > 0)
+                renderer.Write($" align=\"{value}\"");
+        }
     }
 }
