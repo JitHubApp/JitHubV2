@@ -10,6 +10,7 @@ using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Theming;
 using Microsoft.UI.Dispatching;
 
 namespace MarkdownRenderer.Controls.Highlighting;
@@ -86,6 +87,12 @@ internal sealed class CodeBlockHighlighting
     /// Applies cached highlights to the code blocks in the visible band and
     /// starts the provider for the rest.
     /// </summary>
+    /// <remarks>
+    /// Kept over 80 lines because the provider start loop stays with the
+    /// fences that admit it: every start re-checks the generation after the
+    /// previous provider callback, and its closures capture only this batch's
+    /// weak snapshot identity, never the snapshot or its boxes.
+    /// </remarks>
     internal void ScheduleVisible()
     {
         if (!_embeds.HasMeasuredCodeBlocks ||
@@ -115,99 +122,20 @@ internal sealed class CodeBlockHighlighting
         if (dispatcher is null)
             return;
 
-        // Revision is provider code. It may synchronously replace the provider,
-        // unload the control, or retire this generation. Capture all lifetime
-        // state first, then fence immediately after this one callback without
-        // calling Revision a second time.
-        int providerRevision;
-        try
-        {
-            providerRevision = highlighter.Revision;
-        }
-        catch (Exception ex)
-        {
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] Code highlighter revision failed: {ex.Message}");
+        if (!TryReadProviderRevision(highlighter, generation, operationToken, out int providerRevision))
             return;
-        }
 
-        if (!CodeBlockHighlightOperationLifetime.IsCurrentAfterProviderCallback(
-                _host.CodeHighlighter,
-                highlighter,
-                _generation,
-                generation,
-                _lifetime.IsDisposed,
-                _lifetime.IsUnloaded,
-                operationToken))
+        if (!TryCollectVisibleHighlights(
+                snapshot,
+                performanceSession,
+                runOnWorker,
+                variant,
+                providerIdentity,
+                providerRevision,
+                out bool appliedCached,
+                out List<(CodeBlockHighlightCacheKey Key, string CodeText)>? pendingHighlights))
         {
             return;
-        }
-
-        bool appliedCached = false;
-        List<(CodeBlockHighlightCacheKey Key, string CodeText)>? pendingHighlights = null;
-        _viewport.TryGet(out double viewportTop, out double viewportHeight, out _);
-        LazyLayoutBand highlightBand = performanceSession is { } activePerformanceSession
-            ? LazyLayoutBand.FromDirectionalViewport(
-                viewportTop,
-                viewportHeight,
-                activePerformanceSession.Options.LookAheadViewports,
-                _host.LazyScrollVelocityPixelsPerSecond)
-            : LazyLayoutBand.FromViewport(
-                viewportTop,
-                viewportHeight,
-                OverscanPx);
-        // BlockBox instances are mutable and are disposed with their snapshot.
-        // Inspect them only while holding the snapshot's nonblocking read
-        // lease, and copy the immutable provider input before releasing it.
-        if (!snapshot.TryBeginInteraction())
-            return;
-        try
-        {
-            IReadOnlyList<BlockBox> inspectedBlocks;
-            if (!runOnWorker)
-            {
-                // The outer lease remains held while this legacy full measured
-                // list is consumed; its returned BlockBox references do not
-                // escape the protected inspection.
-                inspectedBlocks = snapshot.GetMeasuredTopLevelBlocks();
-            }
-            else if (!snapshot.TryGetMeasuredTopLevelBlocksInBandForSceneProbe(
-                         highlightBand.Top,
-                         highlightBand.Bottom,
-                         out inspectedBlocks))
-            {
-                // Measurement or deferred scene readiness is transient. The
-                // layout/scroll completion path schedules another inspection.
-                return;
-            }
-
-            foreach (var block in CodeBlockHighlightTargets.EnumerateCodeBlocks(inspectedBlocks))
-            {
-                if (!CodeBlockHighlightTargets.IsInBand(snapshot, block, highlightBand.Top, highlightBand.Bottom))
-                    continue;
-
-                if (block.CodeText.Length > 200_000 || block.LineCount > 5_000)
-                    continue;
-
-                var key = CodeBlockHighlightTargets.CreateCacheKey(block, variant, providerIdentity, providerRevision);
-                if (block.HasAppliedSyntaxHighlighting(key))
-                    continue;
-                if (_cache.TryGetValue(key, out var cached))
-                {
-                    appliedCached |= block.ApplySyntaxHighlighting(key, cached.Spans);
-                    continue;
-                }
-
-                if (!_inFlight.Add(key))
-                    continue;
-
-                (pendingHighlights ??= [])
-                    .Add((key, block.CodeText));
-            }
-        }
-        finally
-        {
-            snapshot.EndInteraction();
         }
 
         if (pendingHighlights is not null)
@@ -267,6 +195,134 @@ internal sealed class CodeBlockHighlighting
             _host.InvalidateCanvas();
     }
 
+    /// <summary>
+    /// Reads the provider's revision once. False when it throws or when the
+    /// callback replaced the provider, unloaded the control or retired
+    /// <paramref name="generation"/>.
+    /// </summary>
+    private bool TryReadProviderRevision(
+        ICodeHighlighter highlighter,
+        int generation,
+        CancellationToken operationToken,
+        out int providerRevision)
+    {
+        // Revision is provider code. It may synchronously replace the provider,
+        // unload the control, or retire this generation. Capture all lifetime
+        // state first, then fence immediately after this one callback without
+        // calling Revision a second time.
+        try
+        {
+            providerRevision = highlighter.Revision;
+        }
+        catch (Exception ex)
+        {
+            providerRevision = 0;
+            MarkdownDiagnostics.WriteLine(
+                $"[MarkdownRendererControl] Code highlighter revision failed: {ex.Message}");
+            return false;
+        }
+
+        if (!CodeBlockHighlightOperationLifetime.IsCurrentAfterProviderCallback(
+                _host.CodeHighlighter,
+                highlighter,
+                _generation,
+                generation,
+                _lifetime.IsDisposed,
+                _lifetime.IsUnloaded,
+                operationToken))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Under the snapshot's read lease, applies cached highlights to the code
+    /// blocks in the highlight band and admits the rest as in-flight provider
+    /// requests. False when the lease or the band's measured blocks are not
+    /// available yet.
+    /// </summary>
+    private bool TryCollectVisibleHighlights(
+        LayoutSnapshot snapshot,
+        IMarkdownPerformanceSession? performanceSession,
+        bool runOnWorker,
+        MarkdownThemeVariant variant,
+        int providerIdentity,
+        int providerRevision,
+        out bool appliedCached,
+        out List<(CodeBlockHighlightCacheKey Key, string CodeText)>? pendingHighlights)
+    {
+        appliedCached = false;
+        pendingHighlights = null;
+        _viewport.TryGet(out double viewportTop, out double viewportHeight, out _);
+        LazyLayoutBand highlightBand = performanceSession is { } activePerformanceSession
+            ? LazyLayoutBand.FromDirectionalViewport(
+                viewportTop,
+                viewportHeight,
+                activePerformanceSession.Options.LookAheadViewports,
+                _host.LazyScrollVelocityPixelsPerSecond)
+            : LazyLayoutBand.FromViewport(
+                viewportTop,
+                viewportHeight,
+                OverscanPx);
+        // BlockBox instances are mutable and are disposed with their snapshot.
+        // Inspect them only while holding the snapshot's nonblocking read
+        // lease, and copy the immutable provider input before releasing it.
+        if (!snapshot.TryBeginInteraction())
+            return false;
+        try
+        {
+            IReadOnlyList<BlockBox> inspectedBlocks;
+            if (!runOnWorker)
+            {
+                // The outer lease remains held while this legacy full measured
+                // list is consumed; its returned BlockBox references do not
+                // escape the protected inspection.
+                inspectedBlocks = snapshot.GetMeasuredTopLevelBlocks();
+            }
+            else if (!snapshot.TryGetMeasuredTopLevelBlocksInBandForSceneProbe(
+                         highlightBand.Top,
+                         highlightBand.Bottom,
+                         out inspectedBlocks))
+            {
+                // Measurement or deferred scene readiness is transient. The
+                // layout/scroll completion path schedules another inspection.
+                return false;
+            }
+
+            foreach (var block in CodeBlockHighlightTargets.EnumerateCodeBlocks(inspectedBlocks))
+            {
+                if (!CodeBlockHighlightTargets.IsInBand(snapshot, block, highlightBand.Top, highlightBand.Bottom))
+                    continue;
+
+                if (block.CodeText.Length > 200_000 || block.LineCount > 5_000)
+                    continue;
+
+                var key = CodeBlockHighlightTargets.CreateCacheKey(block, variant, providerIdentity, providerRevision);
+                if (block.HasAppliedSyntaxHighlighting(key))
+                    continue;
+                if (_cache.TryGetValue(key, out var cached))
+                {
+                    appliedCached |= block.ApplySyntaxHighlighting(key, cached.Spans);
+                    continue;
+                }
+
+                if (!_inFlight.Add(key))
+                    continue;
+
+                (pendingHighlights ??= [])
+                    .Add((key, block.CodeText));
+            }
+        }
+        finally
+        {
+            snapshot.EndInteraction();
+        }
+
+        return true;
+    }
+
     private async Task HighlightAsync(
         WeakReference<LayoutSnapshot> snapshotIdentity,
         string codeText,
@@ -312,81 +368,9 @@ internal sealed class CodeBlockHighlighting
                     return;
 
                 publicationQueued = dispatcher.TryEnqueue(() =>
-                {
-                    bool snapshotChanged =
-                        !snapshotIdentity.TryGetTarget(out LayoutSnapshot? callbackSnapshot) ||
-                        callbackSnapshot is null ||
-                        callbackSnapshot.IsRetiringOrDisposed ||
-                        !ReferenceEquals(_published.Snapshot, callbackSnapshot);
-                    bool providerCurrent = false;
-                    if (CodeBlockHighlightOperationLifetime.IsCurrentAfterProviderCallback(
-                            _host.CodeHighlighter,
-                            highlighter,
-                            _generation,
-                            generation,
-                            _lifetime.IsDisposed,
-                            _lifetime.IsUnloaded,
-                            token))
-                    {
-                        try
-                        {
-                            int observedRevision = highlighter.Revision;
-                            providerCurrent = CodeBlockHighlightOperationLifetime.IsCurrentAfterRevisionCallback(
-                                _host.CodeHighlighter,
-                                highlighter,
-                                _generation,
-                                generation,
-                                _lifetime.IsDisposed,
-                                _lifetime.IsUnloaded,
-                                token,
-                                observedRevision,
-                                key.ProviderRevision);
-                        }
-                        catch (Exception ex)
-                        {
-                            MarkdownDiagnostics.WriteLine(
-                                $"[MarkdownRendererControl] Code highlighter revision failed: {ex.Message}");
-                        }
-                    }
-
-                    CodeBlockHighlightCompletionAction completion =
-                        CodeBlockHighlightPublicationFence.DecideCompletion(
-                            snapshotChanged,
-                            _lifetime.IsUnloaded,
-                            workToken.IsCancellationRequested,
-                            sceneSession?.IsDisposed == true,
-                            providerCurrent);
-                    bool retryAfterSnapshotBusy = false;
-                    try
-                    {
-                        if (completion != CodeBlockHighlightCompletionAction.Publish)
-                            return;
-                        _cache.Set(key, result);
-                        if (_cache.TryGetValue(key, out _))
-                        {
-                            // The visible-band scheduler applies the retained
-                            // result to matching blocks without a document scan.
-                            _host.ScheduleVisibleCodeBlockHighlighting();
-                        }
-                        else if (callbackSnapshot is not null &&
-                            ApplyUncachedResult(
-                                callbackSnapshot, key, result,
-                                out retryAfterSnapshotBusy))
-                        {
-                            // Oversized results cannot enter the bounded cache.
-                            // Publish to the current band directly, without
-                            // immediately requeuing the same expensive request.
-                            _host.InvalidateCanvas();
-                        }
-                    }
-                    finally
-                    {
-                        RemoveInFlight(key, generation);
-                        if (completion == CodeBlockHighlightCompletionAction.RetryCurrentSnapshot ||
-                            retryAfterSnapshotBusy)
-                            _host.ScheduleVisibleCodeBlockHighlighting();
-                    }
-                });
+                    PublishResult(
+                        snapshotIdentity, key, result, highlighter, generation,
+                        sceneSession, token, workToken));
             }
             finally
             {
@@ -408,6 +392,112 @@ internal sealed class CodeBlockHighlighting
             if (!publicationQueued)
                 dispatcher.TryEnqueue(() => RemoveInFlight(key, generation));
         }
+    }
+
+    /// <summary>
+    /// On the UI thread, publishes a provider result to the cache, or straight
+    /// to the current band when it is too large to cache, unless the
+    /// snapshot, provider, generation or lifetime it was requested for has
+    /// changed. Always releases the in-flight key.
+    /// </summary>
+    private void PublishResult(
+        WeakReference<LayoutSnapshot> snapshotIdentity,
+        CodeBlockHighlightCacheKey key,
+        CodeBlockHighlightResult result,
+        ICodeHighlighter highlighter,
+        int generation,
+        IMarkdownPerformanceSessionInternal? sceneSession,
+        CancellationToken token,
+        CancellationToken workToken)
+    {
+        bool snapshotChanged =
+            !snapshotIdentity.TryGetTarget(out LayoutSnapshot? callbackSnapshot) ||
+            callbackSnapshot is null ||
+            callbackSnapshot.IsRetiringOrDisposed ||
+            !ReferenceEquals(_published.Snapshot, callbackSnapshot);
+        bool providerCurrent = IsProviderStillCurrent(highlighter, generation, token, key);
+
+        CodeBlockHighlightCompletionAction completion =
+            CodeBlockHighlightPublicationFence.DecideCompletion(
+                snapshotChanged,
+                _lifetime.IsUnloaded,
+                workToken.IsCancellationRequested,
+                sceneSession?.IsDisposed == true,
+                providerCurrent);
+        bool retryAfterSnapshotBusy = false;
+        try
+        {
+            if (completion != CodeBlockHighlightCompletionAction.Publish)
+                return;
+            _cache.Set(key, result);
+            if (_cache.TryGetValue(key, out _))
+            {
+                // The visible-band scheduler applies the retained
+                // result to matching blocks without a document scan.
+                _host.ScheduleVisibleCodeBlockHighlighting();
+            }
+            else if (callbackSnapshot is not null &&
+                ApplyUncachedResult(
+                    callbackSnapshot, key, result,
+                    out retryAfterSnapshotBusy))
+            {
+                // Oversized results cannot enter the bounded cache.
+                // Publish to the current band directly, without
+                // immediately requeuing the same expensive request.
+                _host.InvalidateCanvas();
+            }
+        }
+        finally
+        {
+            RemoveInFlight(key, generation);
+            if (completion == CodeBlockHighlightCompletionAction.RetryCurrentSnapshot ||
+                retryAfterSnapshotBusy)
+                _host.ScheduleVisibleCodeBlockHighlighting();
+        }
+    }
+
+    /// <summary>
+    /// True when the provider that produced a result is still the current
+    /// one for <paramref name="generation"/> and still reports the revision
+    /// <paramref name="key"/> was requested at.
+    /// </summary>
+    private bool IsProviderStillCurrent(
+        ICodeHighlighter highlighter,
+        int generation,
+        CancellationToken token,
+        CodeBlockHighlightCacheKey key)
+    {
+        bool providerCurrent = false;
+        if (CodeBlockHighlightOperationLifetime.IsCurrentAfterProviderCallback(
+                _host.CodeHighlighter,
+                highlighter,
+                _generation,
+                generation,
+                _lifetime.IsDisposed,
+                _lifetime.IsUnloaded,
+                token))
+        {
+            try
+            {
+                int observedRevision = highlighter.Revision;
+                providerCurrent = CodeBlockHighlightOperationLifetime.IsCurrentAfterRevisionCallback(
+                    _host.CodeHighlighter,
+                    highlighter,
+                    _generation,
+                    generation,
+                    _lifetime.IsDisposed,
+                    _lifetime.IsUnloaded,
+                    token,
+                    observedRevision,
+                    key.ProviderRevision);
+            }
+            catch (Exception ex)
+            {
+                MarkdownDiagnostics.WriteLine(
+                    $"[MarkdownRendererControl] Code highlighter revision failed: {ex.Message}");
+            }
+        }
+        return providerCurrent;
     }
 
     private void RemoveInFlight(CodeBlockHighlightCacheKey key, int generation)
