@@ -3,7 +3,6 @@ using System.IO.Pipes;
 using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 using MarkdownRenderer.Images;
 using Microsoft.Win32.SafeHandles;
 
@@ -88,6 +87,8 @@ internal sealed class WindowsWorkerProcess : IAsyncDisposable, IDisposable, IWor
     // pool clears its state machine (request, mapping and execution context)
     // when consumed; source/raster ownership is never pooled here. Callers that
     // need Task semantics must convert once with AsTask before sharing it.
+    // Only the awaits stay in this method; its synchronous steps share one
+    // WorkerExchangeTrace local by reference and allocate nothing.
     [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
     public async ValueTask<WorkerResponse> ExchangeAsync(
         WorkerRequest request,
@@ -102,140 +103,48 @@ internal sealed class WindowsWorkerProcess : IAsyncDisposable, IDisposable, IWor
         long diagnosticSourceBytes = -1,
         long diagnosticTargetPixels = -1)
     {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-        int queued = Interlocked.Increment(ref _queued);
-        if (queued > _queueCapacity)
-        {
-            Interlocked.Decrement(ref _queued);
-            throw new MarkdownSvgException(
-                MarkdownRenderer.Images.MarkdownSvgFailureReason.ResourceLimitExceeded,
-                "The SVG worker queue is full.");
-        }
-
+        EnterExchangeQueue();
         bool entered = false;
+        var trace = new WorkerExchangeTrace(
+            request,
+            diagnosticWorkId,
+            diagnosticDocumentId,
+            diagnosticSourceBytes,
+            diagnosticTargetPixels);
         long transactionQueueStartedAt = SvgWorkerStageTrace.Start(diagnosticWorkId);
         try
         {
             await _transactions.WaitAsync(cancellationToken).ConfigureAwait(false);
             entered = true;
-            SvgWorkerStageTrace.Record(
-                diagnosticWorkId,
-                SvgWorkerStageId.WorkerTransactionQueueWait,
-                InstanceId,
-                request.RequestId,
-                diagnosticDocumentId != 0 ? diagnosticDocumentId : request.DocumentId,
-                transactionQueueStartedAt,
-                sourceBytes: diagnosticSourceBytes >= 0 ? diagnosticSourceBytes : request.SourceLength,
-                targetPixels: diagnosticTargetPixels >= 0
-                    ? diagnosticTargetPixels
-                    : (long)request.TargetWidth * request.TargetHeight);
-            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-            if (HasExited)
-                throw new WorkerProtocolException("The resvg worker exited before the request.");
-
-            int effectiveStageId = request.Operation == WorkerOperation.Render &&
-                diagnosticStageId == (int)SvgWorkerStageId.RenderTransaction
-                ? (int)SvgWorkerStageId.RenderTransaction
-                : diagnosticStageId;
-            long diagnosticTransactionStartedAt = SvgWorkerStageTrace.Start(
-                diagnosticWorkId > 0 && effectiveStageId != 0 ? diagnosticWorkId : 0);
-            long diagnosticWorkerCpuStartedAt = diagnosticTransactionStartedAt != 0 &&
-                request.Operation is WorkerOperation.Open or WorkerOperation.Render
-                    ? GetProcessCpuTicks()
-                    : -1;
-            // Diagnostic capture must not add a process query to every normal
-            // SVG request. The listener is installed before diagnostic rendering.
-            bool captureTimeoutEvidence = WorkerTimeoutEvents.Log.IsEnabled();
-            long workerCpuAtStart = captureTimeoutEvidence
-                ? timeoutEvidenceScope?.WorkerCpuAtStart ?? GetProcessCpuTicks()
-                : -1;
-            WorkerTimeoutEvidenceScope evidenceWindow = WorkerTimeoutEvidenceScope.Resolve(
-                deadline,
-                workerCpuAtStart,
-                timeoutEvidenceScope);
+            BeginTransaction(ref trace, request, diagnosticStageId, deadline, timeoutEvidenceScope, transactionQueueStartedAt);
             using var operation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             operation.CancelAfter(deadline);
-            bool needsMapping = request.Operation is WorkerOperation.Open or WorkerOperation.Render or
-                WorkerOperation.FontCatalog or WorkerOperation.RasterDecode;
-            if (needsMapping != (sharedMemory is not null) || request.MappingHandle != 0)
-                throw new WorkerProtocolException("The SVG exchange has an invalid shared-memory owner.");
+            ValidateSharedMemoryOwner(request, sharedMemory);
             using WorkerMappingLease? mappingLease = sharedMemory?.DuplicateInto(_process,
                 readOnly: request.Operation == WorkerOperation.FontCatalog);
             request = request with { MappingHandle = mappingLease?.ProtocolHandle ?? 0 };
             WorkerProtocol.Encode(request, _requestFrame);
             byte[] requestFrame = _requestFrame;
             byte[] responseFrame = _responseFrame;
-            long requestStarted = captureTimeoutEvidence ? Stopwatch.GetTimestamp() : 0;
-            int transportPhase = 0;
-            int requestWriteMilliseconds = -1;
+            trace.RequestStarted = trace.CaptureTimeoutEvidence ? Stopwatch.GetTimestamp() : 0;
             try
             {
                 long pipeStageStartedAt = SvgWorkerStageTrace.Start(diagnosticWorkId);
                 await _pipe.WriteAsync(requestFrame, operation.Token).ConfigureAwait(false);
-                SvgWorkerStageTrace.Record(
-                    diagnosticWorkId,
-                    SvgWorkerStageId.PipeRequestWrite,
-                    InstanceId,
-                    request.RequestId,
-                    diagnosticDocumentId != 0 ? diagnosticDocumentId : request.DocumentId,
-                    pipeStageStartedAt);
+                trace.RecordPipeStage(SvgWorkerStageId.PipeRequestWrite, InstanceId, request.RequestId, pipeStageStartedAt);
                 pipeStageStartedAt = SvgWorkerStageTrace.Start(diagnosticWorkId);
-                transportPhase = 1;
+                trace.TransportPhase = 1;
                 await _pipe.FlushAsync(operation.Token).ConfigureAwait(false);
-                SvgWorkerStageTrace.Record(
-                    diagnosticWorkId,
-                    SvgWorkerStageId.PipeRequestFlush,
-                    InstanceId,
-                    request.RequestId,
-                    diagnosticDocumentId != 0 ? diagnosticDocumentId : request.DocumentId,
-                    pipeStageStartedAt);
-                if (captureTimeoutEvidence)
-                {
-                    requestWriteMilliseconds = (int)Math.Min(
-                        Stopwatch.GetElapsedTime(requestStarted).TotalMilliseconds,
-                        int.MaxValue);
-                }
-                transportPhase = 2;
+                trace.RecordPipeStage(SvgWorkerStageId.PipeRequestFlush, InstanceId, request.RequestId, pipeStageStartedAt);
+                trace.MarkRequestWritten();
+                trace.TransportPhase = 2;
                 pipeStageStartedAt = SvgWorkerStageTrace.Start(diagnosticWorkId);
                 await _pipe.ReadExactlyAsync(responseFrame, operation.Token).ConfigureAwait(false);
-                SvgWorkerStageTrace.Record(
-                    diagnosticWorkId,
-                    SvgWorkerStageId.PipeResponseRead,
-                    InstanceId,
-                    request.RequestId,
-                    diagnosticDocumentId != 0 ? diagnosticDocumentId : request.DocumentId,
-                    pipeStageStartedAt);
+                trace.RecordPipeStage(SvgWorkerStageId.PipeResponseRead, InstanceId, request.RequestId, pipeStageStartedAt);
             }
             catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
             {
-                long workerCpuAtTimeout = evidenceWindow.WorkerCpuAtStart >= 0
-                    ? GetProcessCpuTicks()
-                    : -1;
-                int workerProcessCpuMilliseconds = evidenceWindow.WorkerCpuAtStart >= 0 &&
-                    workerCpuAtTimeout >= evidenceWindow.WorkerCpuAtStart
-                        ? (int)Math.Min((workerCpuAtTimeout - evidenceWindow.WorkerCpuAtStart) / 10_000, int.MaxValue)
-                        : -1;
-                if (captureTimeoutEvidence)
-                {
-                    WorkerMemorySnapshot memory = GetProcessMemorySnapshot();
-                    WorkerTimeoutEvents.Log.Timeout(
-                        stage: (int)request.Operation,
-                        deadlineMilliseconds: (int)evidenceWindow.TotalDeadline.TotalMilliseconds,
-                        workerProcessCpuMilliseconds,
-                        transportPhase,
-                        requestWriteMilliseconds,
-                        workerExited: HasExited ? 1 : 0,
-                        openProgressPhase: request.Operation == WorkerOperation.Open
-                            ? sharedMemory?.ReadOpenProgressPhase() ?? -1 : -1,
-                        workerWorkingSetKiB: memory.WorkingSetKiB,
-                        workerPrivateCommitKiB: memory.PrivateCommitKiB,
-                        workerPageFaults: memory.PageFaults,
-                        elapsedWallMilliseconds: GetElapsedMilliseconds(evidenceWindow.WallStartedAt),
-                        workerInputSha256: captureTimeoutEvidence
-                            ? Convert.ToHexString(request.ContentHash)
-                            : string.Empty,
-                        workerExecutableSha256: WorkerExecutableSha256 ?? string.Empty);
-                }
+                ReportTransportTimeout(in trace, request, sharedMemory);
                 DisposeForRestart();
                 throw new WorkerDeadlineException("The resvg worker exceeded its request deadline.", exception);
             }
@@ -250,51 +159,8 @@ internal sealed class WindowsWorkerProcess : IAsyncDisposable, IDisposable, IWor
                 throw new WorkerProtocolException("The resvg worker transport failed.", exception);
             }
 
-            WorkerResponse decoded;
-            try
-            {
-                decoded = WorkerProtocol.DecodeResponse(
-                    responseFrame,
-                    request.RequestId,
-                    NonceLow,
-                    NonceHigh,
-                    request.Operation);
-            }
-            catch (Exception exception) when (exception is WorkerProtocolException or OverflowException)
-            {
-                // An untrusted/malformed reply does not acknowledge that the
-                // worker released its view. Retire it before reclaiming the
-                // remote mapping handle or admitting another transaction.
-                DisposeForRestart();
-                throw new WorkerProtocolException("The resvg worker returned an invalid response.", exception);
-            }
-            if (request.Operation == WorkerOperation.Render &&
-                decoded.Status == WorkerStatus.DocumentMissing)
-            {
-                effectiveStageId = (int)SvgWorkerStageId.DocumentMissingProbe;
-            }
-            long diagnosticWorkerCpuTicks = -1;
-            if (diagnosticWorkerCpuStartedAt >= 0 && diagnosticWorkerCpuStartedAt != -1)
-            {
-                long workerCpuAtEnd = GetProcessCpuTicks();
-                if (workerCpuAtEnd >= diagnosticWorkerCpuStartedAt)
-                    diagnosticWorkerCpuTicks = workerCpuAtEnd - diagnosticWorkerCpuStartedAt;
-            }
-            if (diagnosticTransactionStartedAt != 0 && Enum.IsDefined((SvgWorkerStageId)effectiveStageId))
-            {
-                SvgWorkerStageTrace.Record(
-                    diagnosticWorkId,
-                    (SvgWorkerStageId)effectiveStageId,
-                    InstanceId,
-                    request.RequestId,
-                    diagnosticDocumentId != 0 ? diagnosticDocumentId : request.DocumentId,
-                    diagnosticTransactionStartedAt,
-                    diagnosticWorkerCpuTicks,
-                    diagnosticSourceBytes >= 0 ? diagnosticSourceBytes : request.SourceLength,
-                    diagnosticTargetPixels >= 0
-                        ? diagnosticTargetPixels
-                        : (long)request.TargetWidth * request.TargetHeight);
-            }
+            WorkerResponse decoded = DecodeResponse(responseFrame, request);
+            RecordTransaction(ref trace, request, decoded);
             return decoded;
         }
         finally
@@ -309,6 +175,178 @@ internal sealed class WindowsWorkerProcess : IAsyncDisposable, IDisposable, IWor
                 _transactions.Release();
             }
             Interlocked.Decrement(ref _queued);
+        }
+    }
+
+    /// <summary>
+    /// Counts the caller into the bounded exchange queue. On failure the count
+    /// is restored here; on success the exchange's finally releases it.
+    /// </summary>
+    private void EnterExchangeQueue()
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        int queued = Interlocked.Increment(ref _queued);
+        if (queued > _queueCapacity)
+        {
+            Interlocked.Decrement(ref _queued);
+            throw new MarkdownSvgException(
+                MarkdownRenderer.Images.MarkdownSvgFailureReason.ResourceLimitExceeded,
+                "The SVG worker queue is full.");
+        }
+    }
+
+    /// <summary>
+    /// Runs once the transaction gate is held: records the queue wait, checks
+    /// that the worker is still usable, and captures the transaction's trace
+    /// and timeout-evidence starting points.
+    /// </summary>
+    private void BeginTransaction(
+        ref WorkerExchangeTrace trace,
+        WorkerRequest request,
+        int diagnosticStageId,
+        TimeSpan deadline,
+        WorkerTimeoutEvidenceScope? timeoutEvidenceScope,
+        long transactionQueueStartedAt)
+    {
+        SvgWorkerStageTrace.Record(
+            trace.WorkId,
+            SvgWorkerStageId.WorkerTransactionQueueWait,
+            InstanceId,
+            request.RequestId,
+            trace.DocumentId,
+            transactionQueueStartedAt,
+            sourceBytes: trace.SourceBytes,
+            targetPixels: trace.TargetPixels);
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        if (HasExited)
+            throw new WorkerProtocolException("The resvg worker exited before the request.");
+
+        trace.EffectiveStageId = request.Operation == WorkerOperation.Render &&
+            diagnosticStageId == (int)SvgWorkerStageId.RenderTransaction
+            ? (int)SvgWorkerStageId.RenderTransaction
+            : diagnosticStageId;
+        trace.TransactionStartedAt = SvgWorkerStageTrace.Start(
+            trace.WorkId > 0 && trace.EffectiveStageId != 0 ? trace.WorkId : 0);
+        trace.WorkerCpuStartedAt = trace.TransactionStartedAt != 0 &&
+            request.Operation is WorkerOperation.Open or WorkerOperation.Render
+                ? GetProcessCpuTicks()
+                : -1;
+        // Diagnostic capture must not add a process query to every normal
+        // SVG request. The listener is installed before diagnostic rendering.
+        trace.CaptureTimeoutEvidence = WorkerTimeoutEvents.Log.IsEnabled();
+        long workerCpuAtStart = trace.CaptureTimeoutEvidence
+            ? timeoutEvidenceScope?.WorkerCpuAtStart ?? GetProcessCpuTicks()
+            : -1;
+        trace.EvidenceWindow = WorkerTimeoutEvidenceScope.Resolve(
+            deadline,
+            workerCpuAtStart,
+            timeoutEvidenceScope);
+    }
+
+    /// <summary>
+    /// Requires a shared-memory owner exactly for the operations that transfer
+    /// a mapping, and requires the caller not to pre-set a mapping handle.
+    /// </summary>
+    private static void ValidateSharedMemoryOwner(WorkerRequest request, SharedMemoryLease? sharedMemory)
+    {
+        bool needsMapping = request.Operation is WorkerOperation.Open or WorkerOperation.Render or
+            WorkerOperation.FontCatalog or WorkerOperation.RasterDecode;
+        if (needsMapping != (sharedMemory is not null) || request.MappingHandle != 0)
+            throw new WorkerProtocolException("The SVG exchange has an invalid shared-memory owner.");
+    }
+
+    /// <summary>
+    /// Emits timeout evidence for a request that exceeded its own deadline.
+    /// It reads process counters only when an evidence listener is installed.
+    /// </summary>
+    private void ReportTransportTimeout(
+        in WorkerExchangeTrace trace,
+        WorkerRequest request,
+        SharedMemoryLease? sharedMemory)
+    {
+        WorkerTimeoutEvidenceScope evidenceWindow = trace.EvidenceWindow;
+        long workerCpuAtTimeout = evidenceWindow.WorkerCpuAtStart >= 0
+            ? GetProcessCpuTicks()
+            : -1;
+        int workerProcessCpuMilliseconds = evidenceWindow.WorkerCpuAtStart >= 0 &&
+            workerCpuAtTimeout >= evidenceWindow.WorkerCpuAtStart
+                ? (int)Math.Min((workerCpuAtTimeout - evidenceWindow.WorkerCpuAtStart) / 10_000, int.MaxValue)
+                : -1;
+        if (trace.CaptureTimeoutEvidence)
+        {
+            WorkerMemorySnapshot memory = GetProcessMemorySnapshot();
+            WorkerTimeoutEvents.Log.Timeout(
+                stage: (int)request.Operation,
+                deadlineMilliseconds: (int)evidenceWindow.TotalDeadline.TotalMilliseconds,
+                workerProcessCpuMilliseconds,
+                trace.TransportPhase,
+                trace.RequestWriteMilliseconds,
+                workerExited: HasExited ? 1 : 0,
+                openProgressPhase: request.Operation == WorkerOperation.Open
+                    ? sharedMemory?.ReadOpenProgressPhase() ?? -1 : -1,
+                workerWorkingSetKiB: memory.WorkingSetKiB,
+                workerPrivateCommitKiB: memory.PrivateCommitKiB,
+                workerPageFaults: memory.PageFaults,
+                elapsedWallMilliseconds: GetElapsedMilliseconds(evidenceWindow.WallStartedAt),
+                workerInputSha256: trace.CaptureTimeoutEvidence
+                    ? Convert.ToHexString(request.ContentHash)
+                    : string.Empty,
+                workerExecutableSha256: WorkerExecutableSha256 ?? string.Empty);
+        }
+    }
+
+    /// <summary>
+    /// Decodes and authenticates the response frame. A malformed reply retires
+    /// the worker before the caller can reclaim its mapping handle.
+    /// </summary>
+    private WorkerResponse DecodeResponse(byte[] responseFrame, WorkerRequest request)
+    {
+        try
+        {
+            return WorkerProtocol.DecodeResponse(
+                responseFrame,
+                request.RequestId,
+                NonceLow,
+                NonceHigh,
+                request.Operation);
+        }
+        catch (Exception exception) when (exception is WorkerProtocolException or OverflowException)
+        {
+            // An untrusted/malformed reply does not acknowledge that the
+            // worker released its view. Retire it before reclaiming the
+            // remote mapping handle or admitting another transaction.
+            DisposeForRestart();
+            throw new WorkerProtocolException("The resvg worker returned an invalid response.", exception);
+        }
+    }
+
+    /// <summary>Records the whole transaction stage with the worker CPU it consumed.</summary>
+    private void RecordTransaction(ref WorkerExchangeTrace trace, WorkerRequest request, WorkerResponse decoded)
+    {
+        if (request.Operation == WorkerOperation.Render &&
+            decoded.Status == WorkerStatus.DocumentMissing)
+        {
+            trace.EffectiveStageId = (int)SvgWorkerStageId.DocumentMissingProbe;
+        }
+        long diagnosticWorkerCpuTicks = -1;
+        if (trace.WorkerCpuStartedAt >= 0 && trace.WorkerCpuStartedAt != -1)
+        {
+            long workerCpuAtEnd = GetProcessCpuTicks();
+            if (workerCpuAtEnd >= trace.WorkerCpuStartedAt)
+                diagnosticWorkerCpuTicks = workerCpuAtEnd - trace.WorkerCpuStartedAt;
+        }
+        if (trace.TransactionStartedAt != 0 && Enum.IsDefined((SvgWorkerStageId)trace.EffectiveStageId))
+        {
+            SvgWorkerStageTrace.Record(
+                trace.WorkId,
+                (SvgWorkerStageId)trace.EffectiveStageId,
+                InstanceId,
+                request.RequestId,
+                trace.DocumentId,
+                trace.TransactionStartedAt,
+                diagnosticWorkerCpuTicks,
+                trace.SourceBytes,
+                trace.TargetPixels);
         }
     }
 
