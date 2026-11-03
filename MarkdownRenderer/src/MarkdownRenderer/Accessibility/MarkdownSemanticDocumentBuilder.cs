@@ -6,6 +6,7 @@ using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Theming;
+using static MarkdownRenderer.Accessibility.MarkdownSemanticInlineText;
 using static MarkdownRenderer.Accessibility.MarkdownSemanticNodeFactory;
 
 namespace MarkdownRenderer.Accessibility;
@@ -309,62 +310,6 @@ internal sealed class MarkdownSemanticDocumentBuilder
 
         return flattenedCodeBlock;
     }
-
-    private static string GetInlineAccessibleText(
-        InlineRun run,
-        MarkdownLayoutContext context) =>
-        run is InlineImageRun imageRun
-            ? MarkdownImageSemanticPolicy.GetInlineAccessibleName(
-                imageRun.AltText,
-                imageRun.IsLinked,
-                imageRun.LinkTitle,
-                context.ResolveString(
-                    MarkdownStringKeys.ImageName,
-                    MarkdownLocalizedStrings.ImageName)) ?? string.Empty
-            : run.AccessibleText;
-
-    private static bool IsAtomicInline(InlineRun run) =>
-        run is InlineImageRun or InlineEmbedRun or InlineVectorSceneRun or InlineSpacerRun;
-
-    private static bool NeedsSemanticBoundary(char left, char right) =>
-        char.IsLetterOrDigit(left) && char.IsLetterOrDigit(right);
-
-    private static bool TryGetNextInlineFirstCharacter(
-        InlineContainerBox inline,
-        int startIndex,
-        out char firstCharacter)
-    {
-        for (int index = startIndex; index < inline.Runs.Count; index++)
-        {
-            InlineRun run = inline.Runs[index];
-            if (run is SourceSliceTextRun sourceSlice && IsExactSourceSlice(inline, run, sourceSlice))
-            {
-                if (sourceSlice.SliceLength == 0)
-                    continue;
-
-                firstCharacter = sourceSlice.SourceText[sourceSlice.SourceStart];
-                return true;
-            }
-
-            string text = GetInlineAccessibleText(run, inline.Context);
-            if (text.Length > 0)
-            {
-                firstCharacter = text[0];
-                return true;
-            }
-        }
-
-        firstCharacter = default;
-        return false;
-    }
-
-    private static bool IsExactSourceSlice(
-        InlineContainerBox inline,
-        InlineRun run,
-        SourceSliceTextRun sourceSlice) =>
-        ReferenceEquals(sourceSlice.SourceText, inline.Context.SourceMap.SourceText) &&
-        sourceSlice.SourceStart == run.SourceSpan.Start &&
-        sourceSlice.SliceLength == run.SourceSpan.Length;
 
     private void AppendInlineSemanticBoundary(InlineContainerBox inline, InlineRun run)
     {
