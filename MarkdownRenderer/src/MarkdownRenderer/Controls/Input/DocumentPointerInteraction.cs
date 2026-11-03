@@ -1,4 +1,3 @@
-using System;
 using MarkdownRenderer.Controls.Selection;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout;
@@ -59,6 +58,7 @@ internal sealed class DocumentPointerInteraction
     private DocumentPosition? _anchor;
     // The unit (character, word or block) the press selects and drags by.
     private readonly ClickUnitSelection _clickUnits;
+    private readonly TouchSelectionHitTest _touchHitTest;
 
     internal DocumentPointerInteraction(
         IPointerInteractionHost host,
@@ -95,6 +95,7 @@ internal sealed class DocumentPointerInteraction
         _cursor = cursor;
         _abbreviationTooltip = abbreviationTooltip;
         _clickUnits = new ClickUnitSelection(host, published, selection);
+        _touchHitTest = new TouchSelectionHitTest(host);
     }
 
     /// <summary>True while a primary pointer session holds the canvas capture.</summary>
@@ -547,7 +548,7 @@ internal sealed class DocumentPointerInteraction
     {
         if (!_host.IsSelectionEnabled ||
             !_host.IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision) ||
-            !TryHitTestTouchSelection(point, snapshot, capturedContact, out DocumentPosition position))
+            !_touchHitTest.TryHitTestTouchSelection(point, snapshot, capturedContact, out DocumentPosition position))
         {
             return false;
         }
@@ -677,43 +678,10 @@ internal sealed class DocumentPointerInteraction
     private bool IsActiveSessionEvent(PointerInput e)
         => _session.IsActive && _session.PointerId == e.Pointer.PointerId;
 
-    private bool TryHitTestTouchSelection(
-        Point gesturePoint,
-        LayoutSnapshot snapshot,
-        TouchContactGeometry? capturedContact,
-        out DocumentPosition position)
-    {
-        position = default;
-        if (IsSelectableTouchPoint(gesturePoint, snapshot, out position))
-            return true;
-
-        if (capturedContact is not { } contact ||
-            !GestureHitTestBands.IsBoundedGestureContact(gesturePoint, contact))
-            return false;
-
-        double left = contact.X;
-        double top = contact.Y;
-        double right = contact.X + contact.Width;
-        double bottom = contact.Y + contact.Height;
-        Point center = new(contact.CenterX, contact.CenterY);
-        double insetX = Math.Min(4, contact.Width / 4);
-        double insetY = Math.Min(4, contact.Height / 4);
-        return IsSelectableTouchPoint(center, snapshot, out position) ||
-               IsSelectableTouchPoint(new Point(left + insetX, center.Y), snapshot, out position) ||
-               IsSelectableTouchPoint(new Point(right - insetX, center.Y), snapshot, out position) ||
-               IsSelectableTouchPoint(new Point(center.X, top + insetY), snapshot, out position) ||
-               IsSelectableTouchPoint(new Point(center.X, bottom - insetY), snapshot, out position);
-    }
-
     /// <summary>
     /// True when <paramref name="point"/> hits selectable text that is not
     /// under a hosted embed or a code block action.
     /// </summary>
     internal bool IsSelectableTouchPoint(Point point, LayoutSnapshot snapshot, out DocumentPosition position)
-    {
-        position = default;
-        return !_host.IsPointOverEmbed(point) &&
-               !_host.IsPointOverCodeBlockAction(point) &&
-               snapshot.HitTest(point, out position);
-    }
+        => _touchHitTest.IsSelectableTouchPoint(point, snapshot, out position);
 }
