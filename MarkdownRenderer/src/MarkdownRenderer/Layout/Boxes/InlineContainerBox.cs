@@ -337,17 +337,12 @@ internal sealed partial class InlineContainerBox : BlockBox
         float availableWidth,
         out InlineContainerBox? candidate,
         out RasterPlacementSourceFence[]? expectedSources)
-    {
-        ArgumentNullException.ThrowIfNull(targetContext);
-        candidate = null;
-        expectedSources = null;
-        if (!TryGetPrivateRasterPlacementCounts(
-                targetContext, availableWidth, out int runCount, out int imageCount) || imageCount == 0)
-            return false;
-
-        return TryCreatePrivateInlinePlacementCloneCore(
-            targetContext, runCount, imageCount, out candidate, out expectedSources);
-    }
+        => InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
+            this,
+            targetContext,
+            availableWidth,
+            out candidate,
+            out expectedSources);
 
     /// <summary>
     /// Allocation-free preflight for a private inline root clone. This is used
@@ -431,19 +426,15 @@ internal sealed partial class InlineContainerBox : BlockBox
         bool allowUnmeasuredTextOnly = false,
         bool allowIdleImagePlacements = false,
         bool allowCodeForegroundSpans = false)
-    {
-        ArgumentNullException.ThrowIfNull(targetContext);
-        candidate = null;
-        expectedSources = null;
-        if (!TryGetPrivateRasterPlacementCounts(
-                targetContext, availableWidth, out int runCount, out int imageCount, out _,
-                allowUnmeasuredTextOnly, allowIdleImagePlacements, allowCodeForegroundSpans))
-            return false;
-
-        return TryCreatePrivateInlinePlacementCloneCore(
-            targetContext, runCount, imageCount, out candidate, out expectedSources,
-            allowIdleImagePlacements, allowCodeForegroundSpans);
-    }
+        => InlinePrivatePlacementCloner.TryCreatePrivateInlinePlacementClone(
+            this,
+            targetContext,
+            availableWidth,
+            out candidate,
+            out expectedSources,
+            allowUnmeasuredTextOnly,
+            allowIdleImagePlacements,
+            allowCodeForegroundSpans);
 
     /// <summary>
     /// Builds a non-publishable measurement candidate for a completed image
@@ -455,114 +446,18 @@ internal sealed partial class InlineContainerBox : BlockBox
         float availableWidth,
         out InlineContainerBox? candidate,
         out RasterPlacementSourceFence[]? expectedSources)
-    {
-        candidate = null;
-        expectedSources = null;
-        if (!TryGetPrivateRasterPlacementCountsWithMeasuredVectorPlacement(
-                targetContext, availableWidth, out int runCount, out int imageCount, out _))
-            return false;
-
-        return TryCreatePrivateInlinePlacementCloneCore(
-            targetContext, runCount, imageCount, out candidate, out expectedSources,
-            allowMeasuredVectorPlacement: true);
-    }
-
-    private bool TryCreatePrivateInlinePlacementCloneCore(
-        MarkdownLayoutContext targetContext,
-        int runCount,
-        int imageCount,
-        out InlineContainerBox? candidate,
-        out RasterPlacementSourceFence[]? expectedSources,
-        bool allowIdleImagePlacements = false,
-        bool allowCodeForegroundSpans = false,
-        bool allowMeasuredVectorPlacement = false)
-    {
-        candidate = null;
-        expectedSources = null;
-        var copiedRuns = new InlineRun[runCount];
-        var sourceFences = new List<RasterPlacementSourceFence>(imageCount);
-        var unownedImageClones = new List<ImageBox>(imageCount);
-        InlineContainerBox? privateCandidate = null;
-        try
-        {
-            for (int index = 0; index < runCount; index++)
-            {
-                targetContext.CancellationToken.ThrowIfCancellationRequested();
-                InlineRun sourceRun = _runs[index];
-                if (PrivateTextRunPlacement.IsSupported(sourceRun))
-                {
-                    copiedRuns[index] = PrivateTextRunPlacement.Clone(sourceRun) ??
-                        throw new InvalidOperationException("A supported built-in text run omitted its private placement recipe.");
-                }
-                else if (sourceRun is LinkRun linkRun)
-                {
-                    copiedRuns[index] = linkRun.CloneForPrivateRasterPlacement();
-                }
-                else if (allowMeasuredVectorPlacement && sourceRun is InlineVectorSceneRun vectorRun)
-                {
-                    copiedRuns[index] = vectorRun.CloneForMeasuredPlacement();
-                }
-                else if (sourceRun is InlineImageRun imageRun &&
-                         TryCreateImageRunPlacement(imageRun, targetContext, allowIdleImagePlacements,
-                             out InlineImageRun? copiedImageRun,
-                             out RasterPlacementSourceFence sourceFence) && copiedImageRun is not null)
-                {
-                    copiedRuns[index] = copiedImageRun;
-                    unownedImageClones.Add(copiedImageRun.Image);
-                    sourceFences.Add(sourceFence);
-                }
-                else
-                {
-                    Exception? cleanupFailure = DiscardPrivateRasterCloneConstruction(
-                        targetContext, privateCandidate, unownedImageClones);
-                    privateCandidate = null;
-                    unownedImageClones.Clear();
-                    if (cleanupFailure is not null)
-                        throw cleanupFailure;
-                    return false;
-                }
-
-                targetContext.CancellationToken.ThrowIfCancellationRequested();
-            }
-
-            privateCandidate = CreatePrivatePlacementShell(targetContext, allowCodeForegroundSpans);
-            int offset = 0;
-            for (int index = 0; index < copiedRuns.Length; index++)
-            {
-                targetContext.CancellationToken.ThrowIfCancellationRequested();
-                InlineRun copiedRun = copiedRuns[index];
-                privateCandidate.AddPrivatePlacementRun(copiedRun);
-                if (copiedRun is InlineImageRun copiedImage)
-                    unownedImageClones.Remove(copiedImage.Image);
-                privateCandidate.RecordPrivatePlacementRunState(this, index, copiedRun, offset, runCount);
-                offset += copiedRun.TextLength;
-            }
-            targetContext.CancellationToken.ThrowIfCancellationRequested();
-            privateCandidate.SetPrivatePlacementRunTextLength(offset);
-
-            if (unownedImageClones.Count != 0 || sourceFences.Count != imageCount)
-                throw new InvalidOperationException("The private inline candidate did not take ownership of every cloned image.");
-
-            expectedSources = sourceFences.ToArray();
-            candidate = privateCandidate;
-            privateCandidate = null;
-            return true;
-        }
-        catch (Exception constructionFailure)
-        {
-            Exception? cleanupFailure = DiscardPrivateRasterCloneConstruction(
-                targetContext, privateCandidate, unownedImageClones);
-            if (cleanupFailure is not null)
-                TryAttachCleanupFailure(constructionFailure, cleanupFailure);
-            throw;
-        }
-    }
+        => InlinePrivatePlacementCloner.TryCreatePrivateInlinePlacementCloneWithMeasuredVectorPlacement(
+            this,
+            targetContext,
+            availableWidth,
+            out candidate,
+            out expectedSources);
 
     /// <summary>
     /// Creates the unmeasured private placement candidate that copies this
     /// box's container state. The caller adds the copied runs.
     /// </summary>
-    private InlineContainerBox CreatePrivatePlacementShell(
+    internal InlineContainerBox CreatePrivatePlacementShell(
         MarkdownLayoutContext targetContext,
         bool copyCodeForegroundSpans)
         => new(targetContext, this, copyCodeForegroundSpans);
@@ -571,7 +466,7 @@ internal sealed partial class InlineContainerBox : BlockBox
     /// Appends a copied run to this private placement candidate. Once added,
     /// the candidate owns the run's cloned image.
     /// </summary>
-    private void AddPrivatePlacementRun(InlineRun copiedRun)
+    internal void AddPrivatePlacementRun(InlineRun copiedRun)
     {
         // Preflight required the source ordinals to be exact; preserve
         // rather than repair them so malformed identity never passes.
@@ -583,7 +478,7 @@ internal sealed partial class InlineContainerBox : BlockBox
     /// candidate: the source ordinal's alias override and resolved style, and
     /// the image or vector-scene index entry.
     /// </summary>
-    private void RecordPrivatePlacementRunState(
+    internal void RecordPrivatePlacementRunState(
         InlineContainerBox source,
         int index,
         InlineRun copiedRun,
@@ -608,96 +503,8 @@ internal sealed partial class InlineContainerBox : BlockBox
         }
     }
 
-    private void SetPrivatePlacementRunTextLength(int textLength)
+    internal void SetPrivatePlacementRunTextLength(int textLength)
         => _runTextLength = textLength;
-
-    private static bool TryCreateImageRunPlacement(
-        InlineImageRun source,
-        MarkdownLayoutContext targetContext,
-        bool allowIdleImagePlacements,
-        out InlineImageRun? clone,
-        out RasterPlacementSourceFence fence)
-    {
-        fence = default;
-        ImageBox? image;
-        SharedCanvasBitmapCache.Lease? lease;
-        ImageBox.CompletedSvgPlacementMetadataFence? metadata;
-        bool isIdle = false;
-        int idleGeneration = 0;
-        bool created = allowIdleImagePlacements
-            ? source.TryCreatePrivateImagePlacementClone(targetContext, out clone, out image,
-                out lease, out metadata, out isIdle, out idleGeneration)
-            : source.TryCreatePrivateRasterPlacementClone(targetContext, out clone, out image,
-                out lease, out metadata);
-        if (!created || clone is null)
-        {
-            if (clone is not null)
-                targetContext.DiscardConstructionBlock(clone.Image);
-            clone = null;
-            return false;
-        }
-        if (image is null || (isIdle ? lease is not null || metadata is not null : lease is null))
-        {
-            var failure = new InvalidOperationException("A private image clone omitted its source identity fence.");
-            try { targetContext.DiscardConstructionBlock(clone.Image); }
-            catch (Exception cleanupFailure) { TryAttachCleanupFailure(failure, cleanupFailure); }
-            clone = null;
-            throw failure;
-        }
-        fence = new RasterPlacementSourceFence(image, lease, metadata, isIdle, idleGeneration);
-        return true;
-    }
-
-    private static Exception? DiscardPrivateRasterCloneConstruction(
-        MarkdownLayoutContext targetContext,
-        InlineContainerBox? privateCandidate,
-        List<ImageBox> unownedImageClones)
-    {
-        Exception? firstFailure = null;
-        if (privateCandidate is not null)
-        {
-            try
-            {
-                targetContext.DiscardConstructionBlock(privateCandidate);
-            }
-            catch (Exception exception)
-            {
-                firstFailure = exception;
-            }
-        }
-
-        foreach (ImageBox image in unownedImageClones)
-        {
-            try
-            {
-                targetContext.DiscardConstructionBlock(image);
-            }
-            catch (Exception exception)
-            {
-                if (firstFailure is null)
-                    firstFailure = exception;
-                else
-                {
-                    try { firstFailure.Data["MarkdownRenderer.PrivateRasterAdditionalCleanupFailure"] = exception; }
-                    catch { /* Cleanup diagnostics must not mask the primary cleanup failure. */ }
-                }
-            }
-        }
-
-        return firstFailure;
-    }
-
-    private static void TryAttachCleanupFailure(Exception primaryFailure, Exception cleanupFailure)
-    {
-        try
-        {
-            primaryFailure.Data["MarkdownRenderer.PrivateRasterCandidateCleanupFailure"] = cleanupFailure;
-        }
-        catch
-        {
-            // Cleanup diagnostics must not mask the candidate failure.
-        }
-    }
 
     internal static bool ArePrivateRasterPlacementContextsCompatible(
         MarkdownLayoutContext sourceContext,
