@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
+using static MarkdownRenderer.Svg.Resvg.Internal.InstalledFontNativeMethods;
 
 namespace MarkdownRenderer.Svg.Resvg.Internal;
 
@@ -10,7 +11,7 @@ namespace MarkdownRenderer.Svg.Resvg.Internal;
 /// fonts. The worker receives the catalog table separately and borrows each
 /// per-font section until it acknowledges that it has opened the snapshot.
 /// </summary>
-internal sealed partial class InstalledFontCatalogTransfer : IDisposable
+internal sealed class InstalledFontCatalogTransfer : IDisposable
 {
     internal const uint CatalogMagic = 0x544E464D; // "MFNT" in little endian.
     internal const uint CatalogVersion = 1;
@@ -21,21 +22,6 @@ internal sealed partial class InstalledFontCatalogTransfer : IDisposable
     internal const long MaximumMappedViewBytesX86 = 1_342_177_280L;
     internal const long MaximumMappedViewBytesWide = 4L * 1024 * 1024 * 1024;
 
-    private const uint GenericRead = 0x80000000;
-    private const uint FileReadAttributes = 0x00000080;
-    private const uint ShareRead = 0x00000001;
-    private const uint ShareWrite = 0x00000002;
-    private const uint OpenExisting = 3;
-    private const uint FileFlagOpenReparsePoint = 0x00200000;
-    private const uint FileFlagBackupSemantics = 0x02000000;
-    private const uint FileFlagSequentialScan = 0x08000000;
-    private const uint FileAttributeDirectory = 0x00000010;
-    private const uint FileAttributeReparsePoint = 0x00000400;
-    private const uint PageReadOnly = 0x00000002;
-    private const uint FileNameNormalized = 0x00000000;
-    private const uint VolumeNameDos = 0x00000000;
-    private const int ErrorFileNotFound = 2;
-    private const int ErrorPathNotFound = 3;
     private const int FileNameBufferInitialChars = 512;
     private const int FileNameBufferMaximumChars = 32768;
     private const long AllocationGranularity = 64 * 1024;
@@ -244,7 +230,7 @@ internal sealed partial class InstalledFontCatalogTransfer : IDisposable
         var visitedRoots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         long aggregateViewBytes = 0;
         int candidateCount = 0;
-        var fileIdentities = new HashSet<FileIdentity>();
+        var fileIdentities = new HashSet<FontFileIdentity>();
 
         ProcessFontRoot(machineFonts, optional: false);
         visitedRoots.Add(NormalizePath(machineFonts));
@@ -341,7 +327,7 @@ internal sealed partial class InstalledFontCatalogTransfer : IDisposable
 
                     long fileBytes = GetFileLength(fileInformation);
                     ulong fileIndex = ((ulong)fileInformation.FileIndexHigh << 32) | fileInformation.FileIndexLow;
-                    var identity = new FileIdentity(fileInformation.VolumeSerialNumber, fileIndex);
+                    var identity = new FontFileIdentity(fileInformation.VolumeSerialNumber, fileIndex);
                     if (fileIndex != 0 && !fileIdentities.Add(identity))
                         continue;
 
@@ -489,14 +475,6 @@ internal sealed partial class InstalledFontCatalogTransfer : IDisposable
             new Win32Exception(mappingError, path));
     }
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct SecurityAttributes
-    {
-        public uint Length;
-        public nint SecurityDescriptor;
-        public int InheritHandle;
-    }
-
     private static ByHandleFileInformation GetFileInformation(SafeFileHandle file, string path)
     {
         if (GetFileInformationByHandle(file, out ByHandleFileInformation information))
@@ -581,98 +559,4 @@ internal sealed partial class InstalledFontCatalogTransfer : IDisposable
     }
 
     private static string TrimTrailingSeparator(string path) => Path.TrimEndingDirectorySeparator(path);
-
-    private sealed class FontSectionLease(
-        SafeFileMappingHandle section,
-        WorkerMappingLease remoteHandle,
-        ulong byteLength)
-    {
-        internal SafeFileMappingHandle Section { get; } = section;
-        internal WorkerMappingLease RemoteHandle { get; } = remoteHandle;
-        internal ulong ByteLength { get; } = byteLength;
-    }
-
-    private readonly struct FileIdentity : IEquatable<FileIdentity>
-    {
-        private readonly uint _volumeSerial;
-        private readonly ulong _fileIndex;
-
-        internal FileIdentity(uint volumeSerial, ulong fileIndex)
-        {
-            _volumeSerial = volumeSerial;
-            _fileIndex = fileIndex;
-        }
-
-        public bool Equals(FileIdentity other) =>
-            _volumeSerial == other._volumeSerial && _fileIndex == other._fileIndex;
-
-        public override bool Equals(object? obj) => obj is FileIdentity other && Equals(other);
-
-        public override int GetHashCode() => HashCode.Combine(_volumeSerial, _fileIndex);
-    }
-
-    private sealed class SafeFileMappingHandle : SafeHandleZeroOrMinusOneIsInvalid
-    {
-        internal SafeFileMappingHandle(nint value) : base(ownsHandle: true) => SetHandle(value);
-
-        protected override bool ReleaseHandle() => CloseHandle(handle);
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct FileTime
-    {
-        public uint Low;
-        public uint High;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct ByHandleFileInformation
-    {
-        public uint FileAttributes;
-        public FileTime CreationTime;
-        public FileTime LastAccessTime;
-        public FileTime LastWriteTime;
-        public uint VolumeSerialNumber;
-        public uint FileSizeHigh;
-        public uint FileSizeLow;
-        public uint NumberOfLinks;
-        public uint FileIndexHigh;
-        public uint FileIndexLow;
-    }
-
-    [LibraryImport("kernel32.dll", EntryPoint = "CreateFileW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
-    private static partial nint CreateFileW(
-        string fileName,
-        uint desiredAccess,
-        uint shareMode,
-        nint securityAttributes,
-        uint creationDisposition,
-        uint flagsAndAttributes,
-        nint templateFile);
-
-    [LibraryImport("kernel32.dll", EntryPoint = "CreateFileMappingW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
-    private static partial nint CreateFileMappingW(
-        SafeFileHandle file,
-        ref SecurityAttributes attributes,
-        uint protect,
-        uint maximumSizeHigh,
-        uint maximumSizeLow,
-        string? name);
-
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool GetFileInformationByHandle(
-        SafeFileHandle file,
-        out ByHandleFileInformation information);
-
-    [LibraryImport("kernel32.dll", EntryPoint = "GetFinalPathNameByHandleW", SetLastError = true)]
-    private static unsafe partial uint GetFinalPathNameByHandleW(
-        SafeFileHandle file,
-        char* path,
-        uint pathChars,
-        uint flags);
-
-    [LibraryImport("kernel32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool CloseHandle(nint handle);
 }
