@@ -3982,60 +3982,17 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             _svgTileCacheTransitionToken = token;
             try
             {
-                SvgTileRenderPlan? previousPlan = Volatile.Read(ref _svgTileRenderPlan);
-                Dictionary<SvgTileKey, SharedCanvasBitmapCache.Lease> expectedTiles = _svgTiles;
-                Dictionary<SvgTileKey, SharedCanvasBitmapCache.Lease>? expectedFallback = _svgFallbackTiles;
-                string? previousIdentityPrefix = _svgTileCacheIdentityPrefix;
-                int previousWidth = _svgTileCacheWidthPixels;
-                int previousHeight = _svgTileCacheHeightPixels;
-                bool sameIdentity = plan is not null &&
-                    string.Equals(previousIdentityPrefix, plan.IdentityPrefix, StringComparison.Ordinal) &&
-                    previousWidth == plan.FullWidthPixels &&
-                    previousHeight == plan.FullHeightPixels &&
-                    Nullable.Equals(_svgTileCachePhysicalViewport, plan.PhysicalViewport);
-
-                SharedCanvasBitmapCache.Lease[]? retiredTiles = null;
-                SharedCanvasBitmapCache.Lease[]? retiredFallback = null;
-                Dictionary<SvgTileKey, SharedCanvasBitmapCache.Lease>? replacementTiles = null;
-                if (plan is null)
-                {
-                    retiredTiles = expectedTiles.Values.ToArray();
-                    if (expectedFallback is not null)
-                        retiredFallback = expectedFallback.Values.ToArray();
-                    replacementTiles = new Dictionary<SvgTileKey, SharedCanvasBitmapCache.Lease>();
-                }
-                else if (!sameIdentity)
-                {
-                    if (expectedTiles.Count > 0)
-                    {
-                        if (expectedFallback is not null)
-                            retiredFallback = expectedFallback.Values.ToArray();
-                        replacementTiles = new Dictionary<SvgTileKey, SharedCanvasBitmapCache.Lease>();
-                    }
-                    else if (expectedFallback is null)
-                    {
-                        replacementTiles = new Dictionary<SvgTileKey, SharedCanvasBitmapCache.Lease>();
-                    }
-                }
-
-                CancellationTokenSource[] work = _svgTilesInFlight.Count == 0
-                    ? Array.Empty<CancellationTokenSource>()
-                    : _svgTilesInFlight.Values.ToArray();
-                return new SvgTileCacheTransition(
+                return SvgTileCacheTransition.ForPublication(
                     token,
-                    previousPlan,
+                    Volatile.Read(ref _svgTileRenderPlan),
                     plan,
-                    expectedTiles,
-                    expectedFallback,
-                    previousIdentityPrefix,
-                    previousWidth,
-                    previousHeight,
-                    sameIdentity,
-                    replacementTiles,
-                    retiredTiles,
-                    retiredFallback,
-                    work,
-                    previousPhysicalViewport: _svgTileCachePhysicalViewport);
+                    _svgTiles,
+                    _svgFallbackTiles,
+                    _svgTileCacheIdentityPrefix,
+                    _svgTileCacheWidthPixels,
+                    _svgTileCacheHeightPixels,
+                    _svgTileCachePhysicalViewport,
+                    _svgTilesInFlight.Values);
             }
             catch
             {
@@ -4060,47 +4017,20 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             _svgTileCacheTransitionToken = token;
             try
             {
-                Dictionary<SvgTileKey, SharedCanvasBitmapCache.Lease> expectedTiles = _svgTiles;
-                Dictionary<SvgTileKey, SharedCanvasBitmapCache.Lease>? expectedFallback = _svgFallbackTiles;
-                bool restoreFallback = expectedFallback is { Count: > 0 };
-
-                // Build every potentially allocating piece before the work
-                // owner is invalidated. The publication token prevents new
-                // tile admission while this transition is staged.
-                SharedCanvasBitmapCache.Lease[] retiredTiles = expectedTiles.Count == 0
-                    ? Array.Empty<SharedCanvasBitmapCache.Lease>()
-                    : expectedTiles.Values.ToArray();
-                SharedCanvasBitmapCache.Lease[]? retiredFallback = !restoreFallback &&
-                    expectedFallback is { Count: > 0 }
-                    ? expectedFallback.Values.ToArray()
-                    : null;
-                Dictionary<SvgTileKey, SharedCanvasBitmapCache.Lease> replacementTiles = restoreFallback
-                    ? expectedFallback!
-                    : new Dictionary<SvgTileKey, SharedCanvasBitmapCache.Lease>();
-                CancellationTokenSource[] work = _svgTilesInFlight.Count == 0
-                    ? Array.Empty<CancellationTokenSource>()
-                    : _svgTilesInFlight.Values.ToArray();
-
-                return new SvgTileCacheTransition(
+                return SvgTileCacheTransition.ForFailure(
                     token,
                     plan,
-                    nextPlan: null,
-                    expectedTiles,
-                    expectedFallback,
+                    _svgTiles,
+                    _svgFallbackTiles,
                     _svgTileCacheIdentityPrefix,
                     _svgTileCacheWidthPixels,
                     _svgTileCacheHeightPixels,
-                    sameIdentity: false,
-                    replacementTiles,
-                    retiredTiles,
-                    retiredFallback,
-                    work,
-                    restoreFallback,
-                    restoreFallback ? _svgFallbackIdentityPrefix : null,
-                    restoreFallback ? _svgFallbackWidthPixels : 0,
-                    restoreFallback ? _svgFallbackHeightPixels : 0,
-                    previousPhysicalViewport: _svgTileCachePhysicalViewport,
-                    restoredFallbackPhysicalViewport: restoreFallback ? _svgFallbackPhysicalViewport : null);
+                    _svgTileCachePhysicalViewport,
+                    _svgFallbackIdentityPrefix,
+                    _svgFallbackWidthPixels,
+                    _svgFallbackHeightPixels,
+                    _svgFallbackPhysicalViewport,
+                    _svgTilesInFlight.Values);
             }
             catch
             {
