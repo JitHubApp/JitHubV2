@@ -19,8 +19,10 @@ public sealed partial class WorkerTransportFaultTests
         using var pool = new WorkerPool(new ResvgMarkdownSvgRendererOptions());
         var preparation = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         WorkerObjectSecurity.WorkerObjectSecurityContext objectSecurity = fixture.Worker.ObjectSecurity;
-        typeof(WindowsWorkerProcess).GetField("_fontPreparationTask", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .SetValue(fixture.Worker, preparation.Task);
+        object supplier = typeof(WindowsWorkerProcess).GetField("_fontCatalogSupplier", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(fixture.Worker)!;
+        typeof(WorkerFontCatalogSupplier).GetField("_fontPreparationTask", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(supplier, preparation.Task);
         var owners = (WorkerLifetimeRegistry<WindowsWorkerProcess>)typeof(WorkerPool)
             .GetField("_workerLifetimes", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(pool)!;
         using var startup = owners.Reserve();
@@ -370,38 +372,23 @@ public sealed partial class WorkerTransportFaultTests
         return succeeded;
     }
 
-    private static WindowsWorkerProcess CreateWorkerForTest(
+    private static WindowsWorkerProcess CreateConnectedWorker(
         SafeProcessHandle process,
         NamedPipeServerStream pipe)
     {
-        ConstructorInfo constructor = typeof(WindowsWorkerProcess).GetConstructor(
-            BindingFlags.Instance | BindingFlags.NonPublic,
-            binder: null,
-            [
-                typeof(SafeProcessHandle),
-                typeof(NamedPipeServerStream),
-                typeof(ulong),
-                typeof(ulong),
-                typeof(string),
-                typeof(int),
-                typeof(WorkerObjectSecurity.WorkerObjectSecurityContext),
-            ],
-            modifiers: null) ?? throw new InvalidOperationException("The internal worker constructor was not found.");
         using SafeTokenHandle primaryToken =
             WorkerProcessSandbox.OpenCurrentPrimaryTokenForWorker();
         var objectSecurity = WorkerObjectSecurity.CreateForPrimaryToken(primaryToken);
         try
         {
-            return (WindowsWorkerProcess)constructor.Invoke(
-            [
+            return new WindowsWorkerProcess(
                 process,
                 pipe,
                 0x1122_3344_5566_7788ul,
                 0x8877_6655_4433_2211ul,
-                null,
-                4,
-                objectSecurity,
-            ]);
+                workerExecutableSha256: null,
+                queueCapacity: 4,
+                objectSecurity);
         }
         catch
         {
@@ -515,7 +502,7 @@ public sealed partial class WorkerTransportFaultTests
                     PipeTransmissionMode.Byte,
                     PipeOptions.Asynchronous);
                 peer = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-                worker = CreateWorkerForTest(workerProcess, server);
+                worker = CreateConnectedWorker(workerProcess, server);
                 workerProcess = null;
 
                 Task serverConnection = server.WaitForConnectionAsync();

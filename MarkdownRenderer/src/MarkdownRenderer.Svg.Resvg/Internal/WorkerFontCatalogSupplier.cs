@@ -1,11 +1,27 @@
 namespace MarkdownRenderer.Svg.Resvg.Internal;
 
-internal sealed partial class WindowsWorkerProcess
+/// <summary>
+/// Lends one worker the approved installed-font file mappings for the newest
+/// font generation and owns those borrowed handles until the worker either
+/// acknowledges them or is retired.
+/// </summary>
+internal sealed class WorkerFontCatalogSupplier(IWorkerFontCatalogHost host)
 {
+    private readonly IWorkerFontCatalogHost _host = host;
     private readonly object _fontPreparationGate = new();
     private readonly CancellationTokenSource _fontPreparationShutdown = new();
     private Task? _fontPreparationTask;
     private long _fontPreparationGeneration = -1;
+
+    /// <summary>The newest preparation, or null if none has started.</summary>
+    internal Task? Preparation
+    {
+        get
+        {
+            lock (_fontPreparationGate)
+                return _fontPreparationTask;
+        }
+    }
 
     // The task owns only approved installed-font file mappings. Font parsing
     // stays in the worker. Geometry requests never wait for this preparation.
@@ -15,7 +31,7 @@ internal sealed partial class WindowsWorkerProcess
         Task preparation;
         lock (_fontPreparationGate)
         {
-            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+            _host.ThrowIfDisposed();
             if (request.FontGeneration < _fontPreparationGeneration)
                 throw new OperationCanceledException("The SVG font catalog request has been superseded.");
             if (request.FontGeneration != _fontPreparationGeneration)
@@ -53,8 +69,8 @@ internal sealed partial class WindowsWorkerProcess
         try
         {
             transfer = InstalledFontCatalogTransfer.Create(
-                _process,
-                ObjectSecurity,
+                _host.Process,
+                _host.ObjectSecurity,
                 request.FontGeneration,
                 deadline.Token);
             deadline.Token.ThrowIfCancellationRequested();
@@ -67,7 +83,7 @@ internal sealed partial class WindowsWorkerProcess
             {
                 exchangeStarted = true;
                 acknowledged = false;
-                WorkerResponse response = await ExchangeAsync(request, request.Options.RequestDeadline,
+                WorkerResponse response = await _host.ExchangeAsync(request, request.Options.RequestDeadline,
                     deadline.Token, transfer.CatalogMemory).ConfigureAwait(false);
                 ValidateFontCatalogMappingAcknowledgement(response);
                 if (response.ReadyFontGeneration > request.FontGeneration)
@@ -84,11 +100,11 @@ internal sealed partial class WindowsWorkerProcess
                     // merely resending the table would leave its completion
                     // parked forever and this generation permanently busy.
                     acknowledged = false;
-                    WorkerResponse probe = await ExchangeAsync(request with
+                    WorkerResponse probe = await _host.ExchangeAsync(request with
                     {
                         Operation = WorkerOperation.Hello,
                         SourceLength = 0,
-                    }, request.Options.RequestDeadline, deadline.Token).ConfigureAwait(false);
+                    }, request.Options.RequestDeadline, deadline.Token, sharedMemory: null).ConfigureAwait(false);
                     WorkerPool.ValidateFontCatalogProbeResponse(request.FontGeneration, probe);
                     acknowledged = true;
                     await Task.Delay(TimeSpan.FromMilliseconds(50), deadline.Token).ConfigureAwait(false);
@@ -105,7 +121,7 @@ internal sealed partial class WindowsWorkerProcess
             // A partial/invalid reply does not prove the worker finished mapping
             // the borrowed handles. Retire it before the host closes them.
             if (exchangeStarted && !acknowledged)
-                DisposeForRestart();
+                _host.DisposeForRestart();
             if (shutdown.IsCancellationRequested && exception is OperationCanceledException)
                 throw new OperationCanceledException(shutdown);
             throw new WorkerInitializationException("The installed SVG font catalog could not be prepared.", exception);
@@ -129,12 +145,16 @@ internal sealed partial class WindowsWorkerProcess
             throw new WorkerProtocolException("The SVG worker returned a malformed font-catalog acknowledgement.");
     }
 
-    private void RetireFontCatalogPreparation()
+    /// <summary>
+    /// Cancels preparation after the host marked itself disposed, so no later
+    /// preparation can start.
+    /// </summary>
+    internal void Retire()
     {
         Task? preparation;
         lock (_fontPreparationGate)
             preparation = _fontPreparationTask;
-        // _disposed was set before this method; no later preparation can start.
+        // The host was disposed before this method; no later preparation can start.
         _fontPreparationShutdown.Cancel();
         if (preparation is null)
             _fontPreparationShutdown.Dispose();
@@ -144,7 +164,9 @@ internal sealed partial class WindowsWorkerProcess
                 TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
     }
 
-    private async ValueTask DrainFontCatalogPreparationAsync()
+    /// <summary>Waits for the newest preparation's cleanup, ignoring its outcome.</summary>
+    /// <returns>A task that completes once borrowed handles are released.</returns>
+    internal async ValueTask DrainAsync()
     {
         Task? preparation;
         lock (_fontPreparationGate)

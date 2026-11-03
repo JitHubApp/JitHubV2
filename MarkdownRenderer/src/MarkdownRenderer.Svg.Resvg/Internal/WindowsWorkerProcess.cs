@@ -10,7 +10,7 @@ using Microsoft.Win32.SafeHandles;
 
 namespace MarkdownRenderer.Svg.Resvg.Internal;
 
-internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposable
+internal sealed class WindowsWorkerProcess : IAsyncDisposable, IDisposable, IWorkerFontCatalogHost
 {
     private static long s_nextInstanceId;
     private readonly SafeProcessHandle _process;
@@ -24,10 +24,13 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
     private readonly int _queueCapacity;
     private int _queued;
     private readonly WorkerFontCatalogGeneration _fontCatalogGeneration = new();
+    private readonly WorkerFontCatalogSupplier _fontCatalogSupplier;
     private WorkerTerminationWait? _terminationWait;
     private int _disposed;
 
-    private WindowsWorkerProcess(
+    // StartAsync is the production path. This constructor adopts a process
+    // handle and an already-connected pipe whose handshake the caller owns.
+    internal WindowsWorkerProcess(
         SafeProcessHandle process,
         NamedPipeServerStream pipe,
         ulong nonceLow,
@@ -44,6 +47,7 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
         WorkerExecutableSha256 = workerExecutableSha256;
         _queueCapacity = queueCapacity;
         InstanceId = Interlocked.Increment(ref s_nextInstanceId);
+        _fontCatalogSupplier = new WorkerFontCatalogSupplier(this);
     }
 
     public ulong NonceLow { get; }
@@ -504,6 +508,27 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
 
     internal void DisposeForRestart() => DisposeCore(waitForExit: true);
 
+    // The task owns only approved installed-font file mappings. Font parsing
+    // stays in the worker. Geometry requests never wait for this preparation.
+    internal Task EnsureFontCatalogSuppliedAsync(WorkerRequest request, CancellationToken cancellationToken) =>
+        _fontCatalogSupplier.EnsureFontCatalogSuppliedAsync(request, cancellationToken);
+
+    SafeProcessHandle IWorkerFontCatalogHost.Process => _process;
+
+    WorkerObjectSecurity.WorkerObjectSecurityContext IWorkerFontCatalogHost.ObjectSecurity => ObjectSecurity;
+
+    void IWorkerFontCatalogHost.DisposeForRestart() => DisposeForRestart();
+
+    void IWorkerFontCatalogHost.ThrowIfDisposed() =>
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+
+    ValueTask<WorkerResponse> IWorkerFontCatalogHost.ExchangeAsync(
+        WorkerRequest request,
+        TimeSpan deadline,
+        CancellationToken cancellationToken,
+        SharedMemoryLease? sharedMemory) =>
+        ExchangeAsync(request, deadline, cancellationToken, sharedMemory);
+
     private void DisposeCore(bool waitForExit)
     {
         WorkerTerminationWait? terminationWait;
@@ -591,7 +616,7 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
         // can attempt a restart wait or release remote font handles.
         if (retireFontPreparation)
         {
-            try { RetireFontCatalogPreparation(); }
+            try { _fontCatalogSupplier.Retire(); }
             catch (Exception exception) { cleanupFailure ??= exception; }
             ReleaseObjectSecurityWhenFontCatalogDrained();
         }
@@ -628,9 +653,7 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
 
     private void ReleaseObjectSecurityWhenFontCatalogDrained()
     {
-        Task? preparation;
-        lock (_fontPreparationGate)
-            preparation = _fontPreparationTask;
+        Task? preparation = _fontCatalogSupplier.Preparation;
 
         if (preparation is null || preparation.IsCompleted)
         {
@@ -653,7 +676,7 @@ internal sealed partial class WindowsWorkerProcess : IAsyncDisposable, IDisposab
         Exception? failure = null;
         try { Dispose(); }
         catch (Exception exception) { failure = exception; }
-        try { await DrainFontCatalogPreparationAsync().ConfigureAwait(false); }
+        try { await _fontCatalogSupplier.DrainAsync().ConfigureAwait(false); }
         catch (Exception exception)
         {
             failure = failure is null ? exception : new AggregateException(failure, exception);

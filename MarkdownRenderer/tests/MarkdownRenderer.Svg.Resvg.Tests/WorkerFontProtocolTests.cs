@@ -44,7 +44,7 @@ public sealed class WorkerFontProtocolTests
         Assert.Throws<WorkerProtocolException>(() =>
             WorkerProtocol.DecodeResponse(frame, 31, 41, 51, WorkerOperation.Render));
         WorkerResponse response = WorkerProtocol.DecodeResponse(frame, 31, 41, 51, WorkerOperation.FontCatalog);
-        WindowsWorkerProcess.ValidateFontCatalogMappingAcknowledgement(response);
+        WorkerFontCatalogSupplier.ValidateFontCatalogMappingAcknowledgement(response);
 
         frame[64] = 1;
         Assert.Throws<WorkerProtocolException>(() =>
@@ -59,14 +59,14 @@ public sealed class WorkerFontProtocolTests
     public void FontCatalogAcknowledgementRejectsRasterMetadataAndUnsupportedStatuses()
     {
         WorkerResponse response = WorkerProtocol.DecodeResponse(ValidResponse(), 31, 41, 51);
-        WindowsWorkerProcess.ValidateFontCatalogMappingAcknowledgement(response);
+        WorkerFontCatalogSupplier.ValidateFontCatalogMappingAcknowledgement(response);
         Assert.Throws<WorkerProtocolException>(() =>
-            WindowsWorkerProcess.ValidateFontCatalogMappingAcknowledgement(response with { IntrinsicWidth = double.NaN }));
+            WorkerFontCatalogSupplier.ValidateFontCatalogMappingAcknowledgement(response with { IntrinsicWidth = double.NaN }));
         Assert.Throws<WorkerProtocolException>(() =>
-            WindowsWorkerProcess.ValidateFontCatalogMappingAcknowledgement(response with { OutputLength = 1 }));
+            WorkerFontCatalogSupplier.ValidateFontCatalogMappingAcknowledgement(response with { OutputLength = 1 }));
         Assert.Throws<WorkerProtocolException>(() =>
-            WindowsWorkerProcess.ValidateFontCatalogMappingAcknowledgement(response with { Status = WorkerStatus.FontCatalogPending }));
-        WindowsWorkerProcess.ValidateFontCatalogMappingAcknowledgement(response with
+            WorkerFontCatalogSupplier.ValidateFontCatalogMappingAcknowledgement(response with { Status = WorkerStatus.FontCatalogPending }));
+        WorkerFontCatalogSupplier.ValidateFontCatalogMappingAcknowledgement(response with
         {
             Status = WorkerStatus.FontCatalogPending,
             Detail = "font-catalog-busy",
