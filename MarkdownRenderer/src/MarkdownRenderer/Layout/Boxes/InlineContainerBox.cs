@@ -46,7 +46,9 @@ internal sealed partial class InlineContainerBox : BlockBox
     private readonly SingletonMutableList<InlineRun> _runs = new();
     internal SingletonMutableList<InlineRun> RunList => _runs;
     private List<(InlineImageRun Run, int Offset)>? _inlineImageRuns;
+    internal List<(InlineImageRun Run, int Offset)>? InlineImageEntries => _inlineImageRuns;
     private List<(InlineEmbedRun Run, int Offset)>? _inlineEmbedRuns;
+    internal List<(InlineEmbedRun Run, int Offset)>? InlineEmbedEntries => _inlineEmbedRuns;
     private bool _hasAtomicInlineObject;
     private int _runTextLength;
     // Most runs inherit the container aliases. Keep that common case implicit;
@@ -82,10 +84,12 @@ internal sealed partial class InlineContainerBox : BlockBox
     // layout. Paint, selection and geometry consumers only read this array;
     // they never create DirectWrite analyzers or inspect cancellation state.
     private float[]? _inlineImageXHeightByRunIndex;
+    internal float[]? InlineImageXHeightByRunIndex => _inlineImageXHeightByRunIndex;
     // The corresponding final-layout alphabetic baseline for each image run.
     // Geometry reads this directly instead of scanning every line metric for
     // every image (or materializing metrics on the paint path).
     private float[]? _inlineImageLineBaselineByRunIndex;
+    internal float[]? InlineImageLineBaselineByRunIndex => _inlineImageLineBaselineByRunIndex;
     private string _buffer = string.Empty;
     internal string LayoutBuffer => _buffer;
     private bool _bufferDirty;
@@ -1417,7 +1421,7 @@ internal sealed partial class InlineContainerBox : BlockBox
                     _inlineImageRuns is { Count: > 0 })
                 {
                     replacementInlineImageLineBaselines =
-                        BuildInlineImageLineBaselines(TryGetLineMetrics());
+                        InlineObjectGeometry.BuildInlineImageLineBaselines(this, TryGetLineMetrics());
                     publishInlineImageLineBaselines = true;
                 }
                 replacementSceneGeometry = UpdateVectorScenePlacements(candidateLayout);
@@ -1432,7 +1436,7 @@ internal sealed partial class InlineContainerBox : BlockBox
                     _inlineImageLineBaselineByRunIndex.Length != _runs.Count))
             {
                 replacementInlineImageLineBaselines =
-                    BuildInlineImageLineBaselines(TryGetLineMetrics());
+                    InlineObjectGeometry.BuildInlineImageLineBaselines(this, TryGetLineMetrics());
                 publishInlineImageLineBaselines = true;
             }
 
@@ -2592,152 +2596,7 @@ internal sealed partial class InlineContainerBox : BlockBox
     /// overlay canvas.
     /// </summary>
     public IEnumerable<(InlineEmbedRun Run, Rect Rect)> EnumerateEmbedRects()
-    {
-        if (_layout is null || _inlineEmbedRuns is null) yield break;
-        var style = GetContainerStyle();
-        var (baseX, baseY) = GetSnappedOrigin(style);
-
-        foreach (var (emb, offset) in _inlineEmbedRuns)
-        {
-            int len = emb.TextLength;
-            if (len > 0)
-            {
-                var regions = _layout.GetCharacterRegions(offset, len);
-                if (regions is null) continue;
-                foreach (var r in regions)
-                {
-                    var lb = r.LayoutBounds;
-                    double cellY = lb.Y + (lb.Height - emb.DesiredHeight) / 2.0;
-                    if (cellY < lb.Y) cellY = lb.Y;
-                    var rect = new Rect(baseX + lb.X, baseY + cellY,
-                        Math.Min(emb.DesiredWidth, lb.Width), emb.DesiredHeight);
-                    yield return (emb, rect);
-                    break;
-                }
-            }
-        }
-    }
-
-    internal Rect GetInlineImageDocumentRect(
-        CanvasTextLayoutRegion region,
-        InlineImageRun image,
-        float baseX,
-        float baseY)
-    {
-        Rect lineBounds = region.LayoutBounds;
-        double top;
-        if (Context.ThemeSnapshot.MiddleAlignInlineImages &&
-            !image.Image.IsFailedDecorativeImageCollapsed &&
-            TryGetCachedInlineImageXHeightDip(image, out float xHeightDip) &&
-            TryGetCachedInlineImageLineBaseline(image, out float lineBaseline))
-        {
-            // CSS vertical-align: middle aligns the object's center with
-            // x-middle: halfway from the alphabetic baseline to the top of
-            // lowercase x. DirectWrite line metrics are relative to layout top.
-            top = baseY + lineBounds.Y + lineBaseline -
-                (image.DesiredHeight + xHeightDip) / 2d;
-        }
-        else
-        {
-            // Preserve the legacy baseline/centering behavior for default
-            // Markdown, missing font metrics, and zero-size failed decoration.
-            double cellY = lineBounds.Y + (lineBounds.Height - image.DesiredHeight) / 2d;
-            if (cellY < lineBounds.Y)
-                cellY = lineBounds.Y;
-            top = baseY + cellY;
-        }
-
-        return new Rect(
-            baseX + lineBounds.X,
-            top,
-            Math.Min(image.DesiredWidth, lineBounds.Width),
-            image.DesiredHeight);
-    }
-
-    private bool TryGetCachedInlineImageLineBaseline(InlineImageRun image, out float baseline)
-    {
-        baseline = 0f;
-        float[]? baselines = _inlineImageLineBaselineByRunIndex;
-        if (baselines is null)
-            return false;
-
-        int runIndex = image.InlineIndex;
-        if ((uint)runIndex >= (uint)baselines.Length)
-            return false;
-
-        float cached = baselines[runIndex];
-        if (!float.IsFinite(cached) || cached < 0f)
-            return false;
-
-        baseline = cached;
-        return true;
-    }
-
-    private float[] BuildInlineImageLineBaselines(CanvasLineMetrics[]? lineMetrics)
-    {
-        float[] baselinesByRun = new float[_runs.Count];
-        Array.Fill(baselinesByRun, -1f);
-        if (lineMetrics is not { Length: > 0 })
-            return baselinesByRun;
-
-        int lineIndex = 0;
-        int lineStart = 0;
-        int characterOffset = 0;
-        int runIndex = 0;
-        foreach (InlineRun run in _runs)
-        {
-            if ((runIndex & 63) == 0)
-                Context.CancellationToken.ThrowIfCancellationRequested();
-
-            if (run is InlineImageRun && run.TextLength > 0)
-            {
-                while (lineIndex + 1 < lineMetrics.Length)
-                {
-                    int lineEnd = lineStart + lineMetrics[lineIndex].CharacterCount;
-                    if (characterOffset < lineEnd)
-                        break;
-
-                    lineStart = lineEnd;
-                    lineIndex++;
-                }
-
-                CanvasLineMetrics line = lineMetrics[lineIndex];
-                if (line.CharacterCount > 0 &&
-                    float.IsFinite(line.Baseline) && line.Baseline >= 0f)
-                {
-                    baselinesByRun[runIndex] = line.Baseline;
-                }
-            }
-
-            characterOffset += run.TextLength;
-            runIndex++;
-        }
-
-        return baselinesByRun;
-    }
-
-    private bool TryGetCachedInlineImageXHeightDip(InlineImageRun image, out float xHeightDip)
-    {
-        xHeightDip = 0f;
-        float[]? metrics = _inlineImageXHeightByRunIndex;
-        if (!Context.ThemeSnapshot.MiddleAlignInlineImages ||
-            image.Image.IsFailedDecorativeImageCollapsed ||
-            metrics is null)
-        {
-            return false;
-        }
-
-        int runIndex = image.InlineIndex;
-        if ((uint)runIndex >= (uint)metrics.Length)
-            return false;
-
-        float cached = metrics[runIndex];
-        if (!float.IsFinite(cached) || cached <= 0f)
-            return false;
-
-        xHeightDip = cached;
-        return true;
-    }
+        => InlineObjectGeometry.EnumerateEmbedRects(this);
 
     private float ResolveInlineImageXHeightDipForMeasurement(
         InlineImageRun image,
@@ -2857,28 +2716,7 @@ internal sealed partial class InlineContainerBox : BlockBox
     /// so lazy-loading and accessnbnlity see the same geometry as paint.
     /// </summary>
     public IEnumerable<(InlineImageRun Run, Rect Rect)> EnumerateInlineImageRects()
-    {
-        if (_layout is null || _inlineImageRuns is null) yield break;
-        var style = GetContainerStyle();
-        var (baseX, baseY) = GetSnappedOrigin(style);
-
-        foreach (var (image, offset) in _inlineImageRuns)
-        {
-            int len = image.TextLength;
-            if (len > 0)
-            {
-                var regions = _layout.GetCharacterRegions(offset, len);
-                if (regions is null) continue;
-                foreach (var r in regions)
-                {
-                    Rect rect = GetInlineImageDocumentRect(r, image, baseX, baseY);
-                    image.Image.SetInlineBounds(rect);
-                    yield return (image, rect);
-                    break;
-                }
-            }
-        }
-    }
+        => InlineObjectGeometry.EnumerateInlineImageRects(this);
 
     /// <summary>
     /// Returns the run hovered for the given document-coordinate point, or
@@ -3398,7 +3236,7 @@ internal sealed partial class InlineContainerBox : BlockBox
                     }
                     else
                     {
-                        hasXHeight = TryGetCachedInlineImageXHeightDip(image, out xHeightDip);
+                        hasXHeight = InlineObjectGeometry.TryGetCachedInlineImageXHeightDip(this, image, out xHeightDip);
                     }
 
                     if (hasXHeight && xHeightDip > 0f)

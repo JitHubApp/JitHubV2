@@ -26,7 +26,7 @@ internal static class InlineObjectPainter
                 if (regions is null) { cumulative += len; continue; }
                 foreach (var r in regions)
                 {
-                    Rect rect = box.GetInlineImageDocumentRect(r, image, baseX, baseY);
+                    Rect rect = InlineObjectGeometry.GetInlineImageDocumentRect(box, r, image, baseX, baseY);
                     image.Image.SetInlineBounds(rect);
                     image.Image.PaintInline(ds, rect, viewport);
                     break;
@@ -58,7 +58,7 @@ internal static class InlineObjectPainter
                 if (regions is null) { cumulative += len; continue; }
                 foreach (var r in regions)
                 {
-                    Rect rect = box.GetInlineImageDocumentRect(r, image, baseX, baseY);
+                    Rect rect = InlineObjectGeometry.GetInlineImageDocumentRect(box, r, image, baseX, baseY);
                     image.Image.SetInlineBounds(rect);
                     image.Image.PaintInlineSelectionForeground(ds, rect, viewport, selectionForeground);
                     break;
