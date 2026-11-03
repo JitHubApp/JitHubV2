@@ -1447,10 +1447,10 @@ public sealed class SafeHtmlRenderingTests
         string label,
         bool expected)
     {
-        bool simpleFragment = MarkdownRenderer.Html.Renderers.HtmlBlockRenderer
+        bool simpleFragment = MarkdownRenderer.Html.Renderers.HtmlNestedMarkdownSource
             .HasSimpleAsciiReferenceLabels(fragment);
         Assert.Equal(expected,
-            MarkdownRenderer.Html.Renderers.HtmlBlockRenderer.MayUseReferenceLabel(
+            MarkdownRenderer.Html.Renderers.HtmlNestedMarkdownSource.MayUseReferenceLabel(
                 fragment, label, simpleFragment));
     }
 
