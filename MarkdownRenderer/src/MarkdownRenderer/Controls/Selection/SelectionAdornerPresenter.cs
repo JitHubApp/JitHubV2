@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Numerics;
 using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Diagnostics;
@@ -10,7 +9,6 @@ using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;
 using Microsoft.Graphics.Canvas.UI.Composition;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
 using Windows.UI;
 
@@ -24,8 +22,9 @@ namespace MarkdownRenderer.Controls.Selection;
 /// <para>
 /// Selection drags and hover changes repaint only this surface, never the
 /// document's canvas tiles, and never change the overlay's child tree.
-/// Requests are coalesced onto the next rendering frame, where the refresh
-/// runs under the snapshot's paint lease.
+/// <see cref="SelectionAdornerRefreshScheduler"/> coalesces requests onto
+/// the next rendering frame, where the refresh runs under the snapshot's
+/// paint lease.
 /// </para>
 /// <para>
 /// The adorner is an inert placeholder element hosting a composition child
@@ -34,11 +33,10 @@ namespace MarkdownRenderer.Controls.Selection;
 /// why a XAML Image is not used.
 /// </para>
 /// </remarks>
-internal sealed class SelectionAdornerPresenter
+internal sealed class SelectionAdornerPresenter : ISelectionAdornerPainter
 {
     private readonly ISelectionAdornerHost _host;
     private readonly FrameworkElement _renderer;
-    private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime;
     private readonly PublishedLayout _published;
     private readonly MarkdownViewport _viewport;
@@ -50,12 +48,6 @@ internal sealed class SelectionAdornerPresenter
     private List<Rect> _rectScratch = new();
     private List<SelectionBackgroundGeometry> _backgrounds = new();
     private List<SelectionBackgroundGeometry> _backgroundScratch = new();
-
-    private readonly SelectionAdornerRetryState _retryState = new();
-    private bool _retryFrameSubscribed;
-    private EventHandler<object>? _retryFrameHandler;
-    private bool _refreshInProgress;
-    private long _requestVersion;
 
     private bool _geometryDirty = true;
     private bool _visualDirty = true;
@@ -69,6 +61,7 @@ internal sealed class SelectionAdornerPresenter
     private double _paintedRasterizationScale = double.NaN;
 
     private readonly SelectionAdornerCompositionTarget _target;
+    private readonly SelectionAdornerRefreshScheduler _refresh;
 
     public SelectionAdornerPresenter(
         ISelectionAdornerHost host,
@@ -82,13 +75,13 @@ internal sealed class SelectionAdornerPresenter
     {
         _host = host;
         _renderer = renderer;
-        _surface = surface;
         _lifetime = lifetime;
         _published = published;
         _viewport = viewport;
         _selection = selection;
         _hover = hover;
         _target = new SelectionAdornerCompositionTarget(renderer, surface, lifetime, RepaintAfterDeviceReplaced);
+        _refresh = new SelectionAdornerRefreshScheduler(host, renderer, lifetime, published, this);
     }
 
     /// <summary>True once the placeholder element exists.</summary>
@@ -98,7 +91,7 @@ internal sealed class SelectionAdornerPresenter
     public bool IsVisible => _target.IsVisible;
 
     /// <summary>True while a refresh is requested or running.</summary>
-    public bool HasPendingRefresh => _retryState.IsPending || _refreshInProgress;
+    public bool HasPendingRefresh => _refresh.HasPendingRefresh;
 
     /// <summary>The selection rectangles last painted, in document coordinates.</summary>
     public IReadOnlyList<Rect> Rectangles => _rects;
@@ -131,32 +124,12 @@ internal sealed class SelectionAdornerPresenter
     public void MarkVisualDirty() => _visualDirty = true;
 
     /// <summary>Requests a refresh on the next rendering frame.</summary>
-    public void RequestRefresh()
-    {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !_renderer.IsLoaded)
-        {
-            CancelRetry();
-            return;
-        }
-
-        // Device recovery owns its bounded backoff. Keep the geometry/visual
-        // dirty flags intact, but do not race the replacement surface every
-        // Rendering frame while the recovery timer is waiting.
-        if (_host.IsDeviceRecoveryQueued)
-        {
-            CancelRetry();
-            return;
-        }
-
-        _retryState.Request();
-        _requestVersion = unchecked(_requestVersion + 1);
-        ScheduleRetry();
-    }
+    public void RequestRefresh() => _refresh.RequestRefresh();
 
     /// <summary>Marks the adorner for a full repaint without touching its surface.</summary>
     public void InvalidatePresentation()
     {
-        CancelRetry();
+        _refresh.CancelRetry();
         _geometryDirty = true;
         _visualDirty = true;
         _paintedGeneration = -1;
@@ -236,7 +209,11 @@ internal sealed class SelectionAdornerPresenter
         _target.ReleaseForDispose();
     }
 
-    internal SelectionAdornerRefreshOperationResult RefreshUnderPaintLease(
+    long ISelectionAdornerPainter.PaintedLayoutRevision => _paintedLayoutRevision;
+
+    void ISelectionAdornerPainter.MarkGeometryDirty() => MarkGeometryDirty();
+
+    SelectionAdornerRefreshOperationResult ISelectionAdornerPainter.RefreshUnderPaintLease(
         LayoutSnapshot snapshot,
         long generation)
     {
@@ -257,7 +234,7 @@ internal sealed class SelectionAdornerPresenter
         double scale = _target.GetRasterizationScale();
 
         long layoutRevision = snapshot.LayoutRevision;
-        long requestVersion = _requestVersion;
+        long requestVersion = _refresh.RequestVersion;
         bool viewportChanged = generation != _paintedGeneration ||
             layoutRevision != _paintedLayoutRevision ||
             Math.Abs(top - _paintedViewportTop) > 0.01 ||
@@ -349,7 +326,7 @@ internal sealed class SelectionAdornerPresenter
                 return SelectionAdornerRefreshOperationResult.AwaitLifecycle;
             if (surfaceVersion != _target.SurfaceGeneration ||
                 !ReferenceEquals(source, _target.Surface) ||
-                requestVersion != _requestVersion ||
+                requestVersion != _refresh.RequestVersion ||
                 !ReferenceEquals(snapshot, _published.Snapshot) || generation != _published.Generation ||
                 snapshot.LayoutRevision != layoutRevision)
             {
@@ -382,201 +359,6 @@ internal sealed class SelectionAdornerPresenter
         }
 
         return SelectionAdornerRefreshOperationResult.Completed;
-    }
-
-    private void TryRefreshAttempt()
-    {
-        if (_refreshInProgress)
-        {
-            // A synchronous XAML/native callback can re-enter the frame path.
-            // Preserve that new request for the next rendering frame instead
-            // of nesting a second snapshot lease or letting the outer attempt
-            // clear its dirtiness.
-            _retryState.Request();
-            _requestVersion = unchecked(_requestVersion + 1);
-            ScheduleRetry();
-            return;
-        }
-
-        if (_host.IsDeviceRecoveryQueued)
-        {
-            CancelRetry();
-            return;
-        }
-
-        if (!_retryState.TryBeginFrame())
-            return;
-
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !_renderer.IsLoaded)
-        {
-            CancelRetry();
-            return;
-        }
-
-        long requestVersion = _requestVersion;
-        LayoutSnapshot? snapshot = _published.Snapshot;
-        if (snapshot is null)
-        {
-            CompleteRetry();
-            return;
-        }
-
-        if (snapshot.GeometryRecoveryRequired)
-        {
-            _host.RequestGeometryRecoveryIfRequired(snapshot);
-            CancelRetry();
-            return;
-        }
-        if (snapshot.IsRetiringOrDisposed)
-        {
-            CancelRetry();
-            return;
-        }
-
-        long generation = _published.Generation;
-        var operation = new SelectionAdornerRefreshOperation(this, generation);
-        SelectionAdornerRefreshResult result;
-        _refreshInProgress = true;
-        try
-        {
-            result = SelectionAdornerRefreshCoordinator.TryRefresh(snapshot, ref operation);
-        }
-        finally
-        {
-            _refreshInProgress = false;
-        }
-
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !_renderer.IsLoaded)
-        {
-            CancelRetry();
-            return;
-        }
-
-        if (_host.IsDeviceRecoveryQueued)
-        {
-            // The native operation may have discovered device loss and queued
-            // the normal backoff while it held the paint lease. Do not let the
-            // stale revision created by surface release bypass that backoff.
-            CancelRetry();
-            return;
-        }
-
-        if (result != SelectionAdornerRefreshResult.Completed)
-        {
-            if (result == SelectionAdornerRefreshResult.AwaitLifecycle)
-            {
-                // Surface attachment/shutdown failures have no useful
-                // per-frame retry. Keep dirty state and wait for the next
-                // lifecycle/resource request. Restore the dirty state even if
-                // a shutdown exception occurred after the visual commit.
-                _geometryDirty = true;
-                _visualDirty = true;
-                if (requestVersion != _requestVersion)
-                    ScheduleRetry();
-                else
-                    CancelRetry();
-            }
-            else
-            {
-                ScheduleRetry();
-            }
-            return;
-        }
-
-        if (requestVersion != _requestVersion ||
-            !ReferenceEquals(snapshot, _published.Snapshot) || generation != _published.Generation ||
-            snapshot.LayoutRevision != _paintedLayoutRevision)
-        {
-            _geometryDirty = true;
-            _visualDirty = true;
-            _retryState.Request();
-            ScheduleRetry();
-            return;
-        }
-
-        CompleteRetry();
-    }
-
-    private void OnRetryFrame(object? sender, object args)
-    {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !_renderer.IsLoaded)
-        {
-            CancelRetry();
-            return;
-        }
-
-        var performance = MarkdownPerformanceEventSource.Log;
-        bool measure = HasPendingRefresh &&
-            !_host.IsDeviceRecoveryQueued &&
-            performance.IsMeasurementEnabled();
-        // The harness changes this thread-static ID at its Rendering sample;
-        // it labels the interval currently open. Work before that sample uses
-        // the prior ID, while work after it uses the new ID, in either handler
-        // subscription order.
-        long logicalFrameId = measure
-            ? MarkdownPerformanceEventSource.GetLogicalFrameId()
-            : 0;
-        measure = logicalFrameId > 0;
-        if (!measure)
-        {
-            // Keep idle, uncorrelated, and device-recovery callbacks on the
-            // normal path without adding timing/allocation probes to them.
-            TryRefreshAttempt();
-            return;
-        }
-
-        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
-        long started = Stopwatch.GetTimestamp();
-        try
-        {
-            TryRefreshAttempt();
-        }
-        finally
-        {
-            performance.PaintWork(
-                logicalFrameId,
-                Stopwatch.GetTimestamp() - started,
-                Math.Max(0, GC.GetAllocatedBytesForCurrentThread() - allocatedBefore));
-        }
-    }
-
-    private void ScheduleRetry()
-    {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || !_renderer.IsLoaded)
-        {
-            CancelRetry();
-            return;
-        }
-
-        _retryState.Retry();
-        if (_retryFrameSubscribed)
-            return;
-
-        _retryFrameHandler ??= OnRetryFrame;
-        CompositionTarget.Rendering += _retryFrameHandler;
-        _retryFrameSubscribed = true;
-    }
-
-    private void CompleteRetry()
-    {
-        _retryState.Complete();
-        UnsubscribeRetryFrame();
-    }
-
-    private void CancelRetry()
-    {
-        _retryState.Cancel();
-        UnsubscribeRetryFrame();
-    }
-
-    private void UnsubscribeRetryFrame()
-    {
-        if (!_retryFrameSubscribed)
-            return;
-
-        if (_retryFrameHandler is { } handler)
-            CompositionTarget.Rendering -= handler;
-        _retryFrameSubscribed = false;
     }
 
     private static void SnapRectangles(List<Rect> rectangles, double scale)

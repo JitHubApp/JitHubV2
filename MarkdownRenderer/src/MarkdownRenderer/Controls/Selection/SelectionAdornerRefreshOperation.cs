@@ -9,15 +9,15 @@ namespace MarkdownRenderer.Controls.Selection;
 /// </summary>
 internal readonly struct SelectionAdornerRefreshOperation : ISelectionAdornerRefreshOperation
 {
-    private readonly SelectionAdornerPresenter _presenter;
+    private readonly ISelectionAdornerPainter _painter;
     private readonly long _generation;
 
-    internal SelectionAdornerRefreshOperation(SelectionAdornerPresenter presenter, long generation)
+    internal SelectionAdornerRefreshOperation(ISelectionAdornerPainter painter, long generation)
     {
-        _presenter = presenter;
+        _painter = painter;
         _generation = generation;
     }
 
     public SelectionAdornerRefreshOperationResult RefreshUnderPaintLease(LayoutSnapshot snapshot)
-        => _presenter.RefreshUnderPaintLease(snapshot, _generation);
+        => _painter.RefreshUnderPaintLease(snapshot, _generation);
 }
