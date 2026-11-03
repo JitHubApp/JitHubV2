@@ -22,13 +22,14 @@ internal sealed class MarkdownVisibleSceneReadinessProbe(IMarkdownPerformanceSes
     {
         ArgumentNullException.ThrowIfNull(owner);
         ArgumentNullException.ThrowIfNull(expectedSnapshot);
+        var expectation = new DeferredSceneReadinessExpectation(
+            owner,
+            expectedSnapshot,
+            expectedGeneration,
+            expectedLayoutRevision);
         if (expectedGeneration <= 0 ||
             !MarkdownProgressiveScenePlan.IsFiniteNonEmptyRect(viewport) ||
-            !IsDeferredSceneReadinessCurrent(
-                owner,
-                expectedSnapshot,
-                expectedGeneration,
-                expectedLayoutRevision))
+            !expectation.IsCurrent(session))
         {
             return MarkdownVisibleSceneReadiness.NotReady;
         }
@@ -45,92 +46,14 @@ internal sealed class MarkdownVisibleSceneReadinessProbe(IMarkdownPerformanceSes
         {
             if (expectedSnapshot.GeometryRecoveryRequired)
                 return MarkdownVisibleSceneReadiness.Failed;
-            if (expectedSnapshot.IsRetiringOrDisposed ||
-                !IsDeferredSceneReadinessCurrent(
-                    owner,
-                    expectedSnapshot,
-                    expectedGeneration,
-                    expectedLayoutRevision))
-            {
+            if (expectedSnapshot.IsRetiringOrDisposed || !expectation.IsCurrent(session))
                 return MarkdownVisibleSceneReadiness.NotReady;
-            }
             return MarkdownVisibleSceneReadiness.Busy;
         }
 
         try
         {
-            if (expectedSnapshot.GeometryRecoveryRequired)
-                return MarkdownVisibleSceneReadiness.Failed;
-            if (expectedSnapshot.IsRetiringOrDisposed)
-                return MarkdownVisibleSceneReadiness.NotReady;
-            if (!IsDeferredSceneReadinessCurrent(
-                    owner,
-                    expectedSnapshot,
-                    expectedGeneration,
-                    expectedLayoutRevision))
-            {
-                return MarkdownVisibleSceneReadiness.NotReady;
-            }
-
-            LazyLayoutBand visibleBand = LazyLayoutBand.FromViewport(
-                viewport.Top,
-                viewport.Height,
-                overscan: 0);
-            // Failure is a terminal status, not render readiness. Probe under
-            // the same validated lease before the strict measured-band gate.
-            if (expectedSnapshot.HasFailedScenesInBandUnderPaint(visibleBand))
-                return MarkdownVisibleSceneReadiness.Failed;
-            if (!expectedSnapshot.IsBandMeasured(visibleBand) ||
-                !expectedSnapshot.TryGetMeasuredTopLevelBlocksInBandForSceneProbe(
-                    viewport.Top,
-                    viewport.Bottom,
-                    out IReadOnlyList<BlockBox> visibleBlocks,
-                    out IReadOnlyList<int> visibleOrdinals,
-                    out LayoutPlacementGeneration placements,
-                    out IReadOnlyDictionary<int, int> topLevelOrdinalByBlockIndex))
-            {
-                return MarkdownVisibleSceneReadiness.NotReady;
-            }
-
-            bool scanVerified = MarkdownProgressiveScenePlan.TryCollectVisibleDeferredSceneMarkers(
-                visibleBlocks,
-                visibleOrdinals,
-                placements,
-                topLevelOrdinalByBlockIndex,
-                viewport.Top,
-                viewport.Bottom,
-                viewport,
-                expectedSnapshot.VectorSceneResidencyPolicy,
-                out IReadOnlyList<string> visibleMarkerKeys,
-                out bool visibleSceneResourcesReady);
-            if (!scanVerified ||
-                !IsDeferredSceneReadinessCurrent(
-                    owner,
-                    expectedSnapshot,
-                    expectedGeneration,
-                    expectedLayoutRevision))
-            {
-                return MarkdownVisibleSceneReadiness.NotReady;
-            }
-
-            bool pending = MarkdownDeferredSceneReadiness.HasPendingVisiblePlaceholder(
-                // The exact visible marker identities are authoritative here;
-                // keep checking them even if aggregate plan bookkeeping says
-                // no work remains.
-                hasRegisteredWork: true,
-                visibleBandVerified: true,
-                visiblePlaceholderKeys: visibleMarkerKeys,
-                isRegisteredMarker: marker =>
-                    session.IsRegisteredDeferredSceneMarker(owner, marker));
-            return !pending &&
-                visibleSceneResourcesReady &&
-                IsDeferredSceneReadinessCurrent(
-                    owner,
-                    expectedSnapshot,
-                    expectedGeneration,
-                    expectedLayoutRevision)
-                    ? MarkdownVisibleSceneReadiness.Ready
-                    : MarkdownVisibleSceneReadiness.NotReady;
+            return ProbeUnderPaint(expectation, viewport);
         }
         finally
         {
@@ -138,14 +61,67 @@ internal sealed class MarkdownVisibleSceneReadinessProbe(IMarkdownPerformanceSes
         }
     }
 
-    private bool IsDeferredSceneReadinessCurrent(
-        MarkdownRendererControl owner,
-        LayoutSnapshot expectedSnapshot,
-        long expectedGeneration,
-        long expectedLayoutRevision) =>
-        owner.DeferredSceneReadiness.IsSnapshotCurrent(
-            expectedSnapshot,
-            expectedGeneration,
-            expectedLayoutRevision) &&
-        ReferenceEquals(owner.PerformanceSession, session);
+    // Runs while the caller holds the snapshot's paint lease.
+    private MarkdownVisibleSceneReadiness ProbeUnderPaint(
+        DeferredSceneReadinessExpectation expectation,
+        Rect viewport)
+    {
+        LayoutSnapshot snapshot = expectation.Snapshot;
+        if (snapshot.GeometryRecoveryRequired)
+            return MarkdownVisibleSceneReadiness.Failed;
+        if (snapshot.IsRetiringOrDisposed)
+            return MarkdownVisibleSceneReadiness.NotReady;
+        if (!expectation.IsCurrent(session))
+            return MarkdownVisibleSceneReadiness.NotReady;
+
+        LazyLayoutBand visibleBand = LazyLayoutBand.FromViewport(
+            viewport.Top,
+            viewport.Height,
+            overscan: 0);
+        // Failure is a terminal status, not render readiness. Probe under
+        // the same validated lease before the strict measured-band gate.
+        if (snapshot.HasFailedScenesInBandUnderPaint(visibleBand))
+            return MarkdownVisibleSceneReadiness.Failed;
+        if (!snapshot.IsBandMeasured(visibleBand) ||
+            !snapshot.TryGetMeasuredTopLevelBlocksInBandForSceneProbe(
+                viewport.Top,
+                viewport.Bottom,
+                out IReadOnlyList<BlockBox> visibleBlocks,
+                out IReadOnlyList<int> visibleOrdinals,
+                out LayoutPlacementGeneration placements,
+                out IReadOnlyDictionary<int, int> topLevelOrdinalByBlockIndex))
+        {
+            return MarkdownVisibleSceneReadiness.NotReady;
+        }
+
+        bool scanVerified = MarkdownProgressiveScenePlan.TryCollectVisibleDeferredSceneMarkers(
+            visibleBlocks,
+            visibleOrdinals,
+            placements,
+            topLevelOrdinalByBlockIndex,
+            viewport.Top,
+            viewport.Bottom,
+            viewport,
+            snapshot.VectorSceneResidencyPolicy,
+            out IReadOnlyList<string> visibleMarkerKeys,
+            out bool visibleSceneResourcesReady);
+        if (!scanVerified || !expectation.IsCurrent(session))
+            return MarkdownVisibleSceneReadiness.NotReady;
+
+        MarkdownRendererControl owner = expectation.Owner;
+        bool pending = MarkdownDeferredSceneReadiness.HasPendingVisiblePlaceholder(
+            // The exact visible marker identities are authoritative here;
+            // keep checking them even if aggregate plan bookkeeping says
+            // no work remains.
+            hasRegisteredWork: true,
+            visibleBandVerified: true,
+            visiblePlaceholderKeys: visibleMarkerKeys,
+            isRegisteredMarker: marker =>
+                session.IsRegisteredDeferredSceneMarker(owner, marker));
+        return !pending &&
+            visibleSceneResourcesReady &&
+            expectation.IsCurrent(session)
+                ? MarkdownVisibleSceneReadiness.Ready
+                : MarkdownVisibleSceneReadiness.NotReady;
+    }
 }
