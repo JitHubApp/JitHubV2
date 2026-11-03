@@ -102,6 +102,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private readonly CanvasInvalidation _canvasInvalidation;
     private readonly GeometryRecovery _geometryRecovery;
     private readonly InteractiveTextAdorner _textAdorner;
+    private readonly RecoveryClockWork _recoveryWork;
     private readonly VisibleImageReadiness _imageReadiness;
     private readonly DeferredSceneReadiness _deferredScenes;
     private readonly BlockScrollNavigation _blockScroll;
@@ -964,8 +965,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// Internal gate-harness signal used to ensure a warm scroll trace starts
     /// only after queued/background band realization has retired.
     /// </summary>
-    internal bool HasPendingLazyLayoutWork =>
-        _lazyLayout.HasPendingWork || _layoutCommit.Pending is not null;
+    internal bool HasPendingLazyLayoutWork => _recoveryWork.HasPendingLazyLayoutWork;
 
     /// <summary>
     /// Returns a completion task for every renderer-owned resource or work item
@@ -1220,6 +1220,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _imageLoadCompletion = new ImageLoadCompletion(this, _lifetime, _published, _layoutCommit, _imageSubscriptions, _imageRelayout);
         _imageSubscriptions.LoadCompleted += _imageLoadCompletion.OnLoadCompleted;
         _geometryRecovery = new GeometryRecovery(_lifetime, _published, _surface, _pointerInput, _vectorCapacity, _horizontalOverflowDrag, _focusGeometryWork, _overflowScroll, _focusRing, _adorner, _layoutCommit, _imageSubscriptions, _lazyLayout, _imageRelayout, _interactionReset, _dragShield, _contextMenu, _abbreviationTooltip, _cursor, _handles, _automation, _deviceRecovery, _rebuild);
+        _recoveryWork = new RecoveryClockWork(_lifetime, _published, _recoveryClock, _layoutCommit, _layoutPublisher, _lazyLayout, _imageSubscriptions, _imageRelayout, _overflowScroll, _focusGeometryWork, _focusRefresh, _focusableItems, _pointerInput, _geometryRecovery, _rebuild);
         _textAdorner = new InteractiveTextAdorner(_surface, _published, _selection, _touchSelection, _hover, _focus, _adorner, _geometryRecovery);
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
@@ -1756,7 +1757,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     Microsoft.UI.Dispatching.DispatcherQueue? IRecoveryClockHost.DispatcherQueue => DispatcherQueue;
 
-    void IRecoveryClockHost.ProcessRecoveryTick() => ProcessRecoveryTick();
+    void IRecoveryClockHost.ProcessRecoveryTick() => _recoveryWork.ProcessTick();
 
     bool IRasterPlacementHost.HasCompetingLayoutWork =>
         _deviceRecovery.IsQueued || _rebuild.HasPendingOrBuilding || HasPendingLazyLayoutWork;
@@ -1834,7 +1835,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     void IImageRelayoutHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);
 
-    void IImageRelayoutHost.StopRecoveryClock(bool force) => StopRecoveryClock(force);
+    void IImageRelayoutHost.StopRecoveryClock(bool force) => _recoveryWork.Stop(force);
 
     Task IImageRelayoutHost.RetireCancellationTokenSource(CancellationTokenSource? cts, Task? lifetime) =>
         _cancellationRetirement.Retire(cts, lifetime);
@@ -1904,7 +1905,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     void ILazyLayoutHost.InvalidateCanvas() => _canvasInvalidation.Invalidate();
 
-    void ILazyLayoutHost.StopRecoveryClockIfIdle() => StopRecoveryClockIfIdle();
+    void ILazyLayoutHost.StopRecoveryClockIfIdle() => _recoveryWork.StopIfIdle();
 
     Task ILazyLayoutHost.RetireCancellationTokenSource(CancellationTokenSource? cts, Task? lifetime) =>
         _cancellationRetirement.Retire(cts, lifetime);
@@ -2138,7 +2139,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         // before that identity is discarded; a queued Release keeps selection.
         _touchTapSuppression.PrepareForReset();
         _deviceRecovery.Stop();
-        StopRecoveryClock(force: true);
+        _recoveryWork.Stop(force: true);
         DetachPerformanceSessionDisposalNotification();
         _pointerInput.Reset();
         _touchTapSuppression.Reset();
@@ -3068,91 +3069,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
             return;
 
         _imagePlans.Add(image);
-    }
-
-    /// <summary>
-    /// One recovery clock tick: retries every piece of deferred work whose UI
-    /// handoff may have been rejected or withheld, then stops the clock once
-    /// nothing is pending.
-    /// </summary>
-    private void ProcessRecoveryTick()
-    {
-        long layoutTicket = _layoutCommit.Ticket;
-        try
-        {
-            if (!_lifetime.IsDisposed && !_lifetime.IsUnloaded)
-            {
-                if (_geometryRecovery.RequestIfRequired(_published.Snapshot))
-                {
-                    // Drain canceled image work so its retirement/active flag
-                    // can complete, but do not probe or retry failed geometry.
-                    _focusRefresh.ClearForCurrentSnapshot();
-                    _imageRelayout.PublishReadyCompletion();
-                    return;
-                }
-                _imageSubscriptions.ProcessBitmapOutputRecovery();
-                _imageRelayout.ProcessQueued();
-                _imageRelayout.PublishReadyCompletion();
-                _layoutPublisher.PublishPending();
-                _lazyLayout.ProcessQueued();
-                _lazyLayout.TryPublishCompletion();
-                _overflowScroll.ProcessPendingRetry();
-                _focusGeometryWork.Process();
-                _focusableItems.TryPublishPending();
-                _imageRelayout.RecoverFaultedHandoff();
-            }
-        }
-        catch (Exception exception)
-        {
-            // Reentrant newer publications retain their own recovery ticket.
-            if (layoutTicket == _layoutCommit.Ticket)
-                _layoutCommit.ClearPending();
-            RelayoutDiagnostics.ReportFailure("layout publication", exception);
-            if (!_geometryRecovery.RequestIfRequired(_published.Snapshot))
-                RequestRebuild(RebuildReason.Full);
-            else
-                _focusRefresh.ClearForCurrentSnapshot();
-            if (_published.Snapshot is { } failedLayoutSnapshot)
-                _pointerInput.OnLazyLayoutCompletion(failedLayoutSnapshot, succeeded: false);
-        }
-        finally
-        {
-            if (_lifetime.IsDisposed || _lifetime.IsUnloaded)
-                StopRecoveryClock(force: true);
-            else
-                StopRecoveryClockIfIdle();
-        }
-    }
-
-    private void StopRecoveryClock(bool force = false)
-    {
-        if (!force && (_imageSubscriptions.HasPendingBitmapOutputRecovery || HasPendingLazyLayoutWork ||
-            _overflowScroll.HasPendingRetry ||
-            _focusRefresh.Pending.IsPending ||
-            _focusGeometryWork.HasPendingWork))
-            return;
-
-        if (force)
-        {
-            _imageSubscriptions.ResetBitmapOutputRecovery();
-            _focusRefresh.Reset();
-        }
-        _recoveryClock.Stop();
-    }
-
-    private void StopRecoveryClockIfIdle()
-    {
-        if (_imageRelayout.HasPendingWork ||
-            _imageSubscriptions.HasPendingBitmapOutputRecovery ||
-            _overflowScroll.HasPendingRetry ||
-            _focusRefresh.Pending.IsPending ||
-            _focusGeometryWork.HasPendingWork ||
-            HasPendingLazyLayoutWork)
-        {
-            return;
-        }
-
-        StopRecoveryClock();
     }
 
     internal void ScrollHorizontalOverflowForAutomation(
