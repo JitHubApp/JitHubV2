@@ -87,7 +87,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private readonly EmbedRealization _embeds;
     private readonly WindowDestroyingWatch _windowDestroying;
     private readonly RecoveryClock _recoveryClock;
-    private bool _scrollViewIntermediate;
     private MarkdownEngine? _ownedEngine;
 
     private readonly SnapshotRetirementTracker _snapshotRetirements = new(
@@ -104,6 +103,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private readonly InteractiveTextAdorner _textAdorner;
     private readonly RecoveryClockWork _recoveryWork;
     private readonly VisibleWorkScheduler _visibleWork;
+    private readonly ScrollViewTracking _scrolling;
     private readonly VisibleImageReadiness _imageReadiness;
     private readonly DeferredSceneReadiness _deferredScenes;
     private readonly BlockScrollNavigation _blockScroll;
@@ -1224,6 +1224,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _visibleWork = new VisibleWorkScheduler(this, _published, _highlighting, _geometryRecovery);
         _recoveryWork = new RecoveryClockWork(_lifetime, _published, _recoveryClock, _layoutCommit, _layoutPublisher, _lazyLayout, _imageSubscriptions, _imageRelayout, _overflowScroll, _focusGeometryWork, _focusRefresh, _focusableItems, _pointerInput, _geometryRecovery, _rebuild);
         _textAdorner = new InteractiveTextAdorner(_surface, _published, _selection, _touchSelection, _hover, _focus, _adorner, _geometryRecovery);
+        _scrolling = new ScrollViewTracking(_surface, _lifetime, _viewport, _lazyLayout, _adorner, _textAdorner, _embeds, _visibleWork);
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         Loaded += (_, _) => OnLoadedInternal();
@@ -1259,24 +1260,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         KeyDown += OnKeyDown;
 
         if (!_surface.OwnsScrollViewport)
-            EffectiveViewportChanged += OnEffectiveViewportChanged;
+            EffectiveViewportChanged += _scrolling.OnEffectiveViewportChanged;
         Content = _surface.ContentElement;
-    }
-
-    private void OnEffectiveViewportChanged(FrameworkElement sender, EffectiveViewportChangedEventArgs args)
-    {
-        if (_surface.OwnsScrollViewport || _lifetime.IsDisposed)
-            return;
-
-        if (!_viewport.TryAcceptExternal(args.EffectiveViewport, out bool materiallyChanged) ||
-            !materiallyChanged || _lifetime.IsUnloaded)
-            return;
-
-        _lazyLayout.QueueForViewport();
-        _adorner.InvalidateGeometry();
-        _adorner.Invalidate();
-        _embeds.RealizeVisible();
-        _visibleWork.ScheduleCodeBlockHighlighting();
     }
 
     internal bool TryGetViewport(out double top, out double height, out double width)
@@ -1770,7 +1755,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     CancellationToken IRasterPlacementHost.ImageLifetime => _imageLifetimeCts?.Token ?? CancellationToken.None;
 
-    bool IRasterPlacementHost.IsScrollViewIntermediate => _scrollViewIntermediate;
+    bool IRasterPlacementHost.IsScrollViewIntermediate => _scrolling.IsIntermediate;
 
     bool IRasterPlacementHost.MatchesLayoutInputs(MarkdownLayoutContext context) =>
         ReferenceEquals(_published.Theme, context.ThemeSnapshot) &&
@@ -1886,7 +1871,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     CancellationToken ILazyLayoutHost.PipelineToken => _rebuild.Token;
 
-    bool ILazyLayoutHost.IsScrollViewIntermediate => _scrollViewIntermediate;
+    bool ILazyLayoutHost.IsScrollViewIntermediate => _scrolling.IsIntermediate;
 
     bool ILazyLayoutHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot) =>
         _geometryRecovery.RequestIfRequired(snapshot);
@@ -1912,7 +1897,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     Task ILazyLayoutHost.RetireCancellationTokenSource(CancellationTokenSource? cts, Task? lifetime) =>
         _cancellationRetirement.Retire(cts, lifetime);
 
-    bool ILayoutCommitHost.IsScrollViewIntermediate => _scrollViewIntermediate;
+    bool ILayoutCommitHost.IsScrollViewIntermediate => _scrolling.IsIntermediate;
 
     bool ILayoutCommitHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot) =>
         _geometryRecovery.RequestIfRequired(snapshot);
@@ -2199,10 +2184,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _automation.ForgetQueuedSelectionChanged();
         _overflowScroll.ClearAutomationNotifications();
         _highlighting.Retire(restart: false);
-        // Unsubscribe scroll handler so scroll-inertia events after visual-tree
-        // removal don't fire OnScrollViewChanged on a partially-torn-down control.
-        if (_surface.Scroll is not null) _surface.Scroll.ViewChanged -= OnScrollViewChanged;
-        _scrollViewIntermediate = false;
+        _scrolling.Detach();
         // Unsubscribe all in-flight image load handlers before clearing the plan
         // list; otherwise an async load completing after unload fires
         // a completion → RequestRebuild on a torn-down control, causing a
@@ -2277,7 +2259,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         OnUnloaded();
         _adorner.ReleaseForDispose();
         _published.LayoutDevice = null;
-        EffectiveViewportChanged -= OnEffectiveViewportChanged;
+        EffectiveViewportChanged -= _scrolling.OnEffectiveViewportChanged;
         DetachCanvasHandlers();
         _dragShield.Release();
         Content = null;
@@ -2751,7 +2733,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _lazyLayout.Cancel();
         _layoutCommit.ClearPending();
         if (!sameDocument)
-            _scrollViewIntermediate = false;
+            _scrolling.ResetIntermediate();
         snapshot.AssignAutomationDocumentGeneration(
             _automationDocumentGenerations.Publish(automationDocumentIdentity));
         ForgetSnapshotScopedWork(sameDocument);
@@ -2876,7 +2858,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         // Restore scroll anchor: find the anchor block's new Y in the new layout
         // and adjust the scroll offset so the user's read position is unchanged.
         if (publication.ScrollAnchor is { } anchor && _surface.Scroll is { } scroll)
-            anchor.Restore(snapshot, scroll, _scrollViewIntermediate);
+            anchor.Restore(snapshot, scroll, _scrolling.IsIntermediate);
     }
 
     private void ResetOverlaysForReplacement()
@@ -2942,11 +2924,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         if (!realizationPlansReady)
             _layoutPublisher.Defer(scrollAnchor: null);
         timeline.PlanConstructionEnded = Stopwatch.GetTimestamp();
-        if (_surface.Scroll is not null)
-        {
-            _surface.Scroll.ViewChanged -= OnScrollViewChanged;
-            _surface.Scroll.ViewChanged += OnScrollViewChanged;
-        }
+        _scrolling.Attach();
         _embeds.RealizeVisible();
         timeline.EmbedRealizationEnded = Stopwatch.GetTimestamp();
         bool resumedPendingHostedFocus = _focusCommit.ResumePendingLazy(snapshot);
@@ -2963,65 +2941,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <summary>The stage timings of the committed snapshot's pipeline.</summary>
     internal MarkdownPipelineTimingSnapshot GetLastPipelineTimingSnapshot() =>
         _timings.Last;
-
-    private void OnScrollViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
-    {
-        _scrollViewIntermediate = e.IsIntermediate;
-        var performance = MarkdownPerformanceEventSource.Log;
-        bool measure = performance.IsMeasurementEnabled();
-        long started = measure ? Stopwatch.GetTimestamp() : 0;
-        long allocatedBefore = measure ? GC.GetAllocatedBytesForCurrentThread() : 0;
-        long afterLazyLayout = allocatedBefore;
-        long afterAdorner = allocatedBefore;
-        long afterRealization = allocatedBefore;
-        try
-        {
-            _lazyLayout.QueueForViewport();
-            if (measure)
-                afterLazyLayout = GC.GetAllocatedBytesForCurrentThread();
-            // CanvasVirtualControl already requests newly exposed document
-            // tiles. Only viewport-refresh the separate text adorner when it
-            // has visible, pending, or interactive state that can change.
-            // UpdateSelectionAdornerViewport includes the invalidation, so do
-            // not issue a second request for the same scroll callback.
-            if (_textAdorner.ShouldRefreshForScroll())
-                _adorner.InvalidateGeometry();
-            if (measure)
-                afterAdorner = GC.GetAllocatedBytesForCurrentThread();
-            // Run a final realisation pass after intermediate-view bursts settle
-            // so we don't thrash during fling/inertia. ViewChanged with
-            // IsIntermediate=false fires at the end of inertia; we also realise on
-            // intermediate ticks to keep the visual current.
-            _embeds.RealizeVisible();
-            if (measure)
-                afterRealization = GC.GetAllocatedBytesForCurrentThread();
-            _visibleWork.ScheduleCodeBlockHighlighting();
-        }
-        finally
-        {
-            if (measure)
-            {
-                long allocated = Math.Max(
-                    0,
-                    GC.GetAllocatedBytesForCurrentThread() - allocatedBefore);
-                performance.ScrollWork(
-                    MarkdownPerformanceEventSource.GetLogicalFrameId(),
-                    Stopwatch.GetTimestamp() - started,
-                    allocated);
-                performance.ScrollAllocationBreakdown(
-                    MarkdownPerformanceEventSource.GetLogicalFrameId(),
-                    Math.Max(0, afterLazyLayout - allocatedBefore),
-                    Math.Max(0, afterAdorner - afterLazyLayout),
-                    Math.Max(0, afterRealization - afterAdorner),
-                    Math.Max(0, GC.GetAllocatedBytesForCurrentThread() - afterRealization));
-                _embeds.GetCodeBlockActionRealizationCounts(out int realizedActions, out int offscreenActions);
-                performance.CodeActionRealization(
-                    MarkdownPerformanceEventSource.GetLogicalFrameId(),
-                    realizedActions,
-                    offscreenActions);
-            }
-        }
-    }
 
     internal void ScheduleVisibleDeferredScenes() => _visibleWork.ScheduleDeferredScenes();
 
