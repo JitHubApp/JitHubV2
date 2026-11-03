@@ -403,11 +403,10 @@ public sealed class ProgressiveSceneDeferralTests
 
     private static MarkdownProgressiveScenePlan GetRegisteredPlan(MarkdownPerformanceSession session, object owner)
     {
-        // Test-only read of the already-published registration; do not add a
-        // shipping test hook or invoke control/dispatcher APIs for this fixture.
-        var field = typeof(MarkdownPerformanceSession).GetField("_scenePlans",
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-        return Assert.IsType<Dictionary<object, MarkdownProgressiveScenePlan>>(field!.GetValue(session))[owner];
+        // Read the already-published registration; do not invoke
+        // control/dispatcher APIs for this fixture.
+        Assert.True(session.ScenePlans.TryGetPlan(owner, out MarkdownProgressiveScenePlan? plan));
+        return plan;
     }
 
     [Theory]

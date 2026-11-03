@@ -38,11 +38,8 @@ public sealed class MarkdownPerformanceSession :
     private readonly MarkdownSessionImageServices _imageServices;
     private readonly MarkdownDocumentScopeRegistry _documentScopes;
     private readonly bool _memoryPressureSubscribed;
-    private readonly object _scenePlansGate = new();
-    private readonly SnapshotRetirementTracker _scenePlanRetirements = new();
-    private readonly Dictionary<object, MarkdownProgressiveScenePlan> _scenePlans =
-        new(ReferenceEqualityComparer.Instance);
-    private readonly ConditionalWeakTable<object, RetiredDeferredSceneRegistration> _retiredSceneRegistrations = new();
+    private readonly MarkdownDeferredScenePlanRegistry _scenePlans;
+    private readonly MarkdownVisibleSceneReadinessProbe _readinessProbe;
     private readonly object _styleRoleDemandGate = new();
     private readonly ConditionalWeakTable<MarkdownDocument, Task<MarkdownStyleRoleDemandResult>> _styleRoleDemandCache = new();
 
@@ -60,6 +57,8 @@ public sealed class MarkdownPerformanceSession :
             options, _lifetime, _admissions, SourceCache, _fetcher);
         _documentScopes = new MarkdownDocumentScopeRegistry(
             this, this, _lifetime, options.PrefetchDocumentImages);
+        _scenePlans = new MarkdownDeferredScenePlanRegistry(this, _lifetime);
+        _readinessProbe = new MarkdownVisibleSceneReadinessProbe(this);
         try
         {
             Windows.System.MemoryManager.AppMemoryUsageIncreased += OnAppMemoryUsageIncreased;
@@ -90,6 +89,10 @@ public sealed class MarkdownPerformanceSession :
     // The session-wide image source cache. Internal diagnostics/tests sample
     // its retained-entry and capacity counters.
     internal MarkdownImageSourceCache SourceCache { get; }
+
+    // Each control's progressive scene plan. Internal diagnostics/tests look
+    // up the plan registered for an owner.
+    internal MarkdownDeferredScenePlanRegistry ScenePlans => _scenePlans;
 
     // The renderer checks this once per layout request so stopwatch reads and
     // native-layout counting are absent unless a host explicitly enables layout diagnostics.
@@ -739,252 +742,43 @@ public sealed class MarkdownPerformanceSession :
         }
     }
 
-    private async ValueTask PrepareProgressiveSceneDocumentAsync(
+    private ValueTask PrepareProgressiveSceneDocumentAsync(
         MarkdownRenderer.Document.MarkdownDocument document,
         object documentOwner,
-        CancellationToken cancellationToken)
-    {
-        MarkdownProgressiveScenePlan? current;
-        lock (_scenePlansGate)
-        {
-            _scenePlans.TryGetValue(documentOwner, out current);
-            if (current?.IsFor(document) == true)
-                return;
-        }
-
-        MarkdownProgressiveScenePlan? candidate = IsDisposed || cancellationToken.IsCancellationRequested
-            ? null
-            : await MarkdownProgressiveScenePlan.TryCreateAsync(
-                document,
-                this,
-                documentOwner,
-                cancellationToken).ConfigureAwait(false);
-        MarkdownProgressiveScenePlan? retired = null;
-        ScenePlanRetirementReservation? retirementReservation = null;
-        lock (_scenePlansGate)
-        {
-            if (IsDisposed || cancellationToken.IsCancellationRequested)
-            {
-                retired = candidate;
-            }
-            else if (_scenePlans.TryGetValue(documentOwner, out current) && current.IsFor(document))
-            {
-                retired = candidate;
-            }
-            else
-            {
-                if (current is not null)
-                    retired = current;
-                if (candidate is null)
-                    _scenePlans.Remove(documentOwner);
-                else
-                    _scenePlans[documentOwner] = candidate;
-            }
-
-            // Publish the retirement barrier before dropping the registration
-            // lock. DisposeAsync may otherwise detach this plan, run its final
-            // drain, and complete before this thread records the cleanup task.
-            retirementReservation = ReserveScenePlanRetirementNoLock(retired);
-        }
-
-        await StartScenePlanRetirement(
-            retirementReservation,
-            static plan => plan.Retire()).ConfigureAwait(false);
-    }
+        CancellationToken cancellationToken) =>
+        _scenePlans.PrepareAsync(document, documentOwner, cancellationToken);
 
     bool IMarkdownPerformanceSessionInternal.TryGetDeferredSceneResult(
         object documentOwner,
         string marker,
-        out MarkdownContentFragment? result)
-    {
-        MarkdownProgressiveScenePlan? plan;
-        lock (_scenePlansGate)
-            _scenePlans.TryGetValue(documentOwner, out plan);
-        if (plan is not null && plan.TryGetResult(marker, out result))
-            return true;
-        result = null;
-        return false;
-    }
+        out MarkdownContentFragment? result) =>
+        _scenePlans.TryGetResult(documentOwner, marker, out result);
 
     bool IMarkdownPerformanceSessionInternal.TryGetDeferredSceneResult(
         object documentOwner, string marker,
-        out MarkdownContentFragment? result, out object? projectionIdentity)
-    {
-        lock (_scenePlansGate)
-        {
-            if (_scenePlans.TryGetValue(documentOwner, out MarkdownProgressiveScenePlan? plan))
-                return plan.TryGetResult(marker, out result, out projectionIdentity);
-        }
-        result = null;
-        projectionIdentity = null;
-        return false;
-    }
+        out MarkdownContentFragment? result, out object? projectionIdentity) =>
+        _scenePlans.TryGetResult(documentOwner, marker, out result, out projectionIdentity);
 
-    bool IMarkdownPerformanceSessionInternal.HasRegisteredDeferredSceneWork(object documentOwner)
-    {
-        lock (_scenePlansGate)
-        {
-            if (_scenePlans.TryGetValue(documentOwner, out MarkdownProgressiveScenePlan? plan))
-                return plan.HasRegisteredWork;
-            if (_retiredSceneRegistrations.TryGetValue(
-                    documentOwner,
-                    out RetiredDeferredSceneRegistration? retired))
-                return retired.HasRegisteredWork;
-        }
-        return false;
-    }
+    bool IMarkdownPerformanceSessionInternal.HasRegisteredDeferredSceneWork(object documentOwner) =>
+        _scenePlans.HasRegisteredWork(documentOwner);
 
     bool IMarkdownPerformanceSessionInternal.IsRegisteredDeferredSceneMarker(
         object documentOwner,
-        string marker)
-    {
-        lock (_scenePlansGate)
-        {
-            if (_scenePlans.TryGetValue(documentOwner, out MarkdownProgressiveScenePlan? plan))
-                return plan.IsRegisteredMarker(marker);
-            if (_retiredSceneRegistrations.TryGetValue(
-                    documentOwner,
-                    out RetiredDeferredSceneRegistration? retired))
-                return retired.Contains(marker);
-        }
-        return false;
-    }
+        string marker) =>
+        _scenePlans.IsRegisteredMarker(documentOwner, marker);
 
     MarkdownVisibleSceneReadiness IMarkdownPerformanceSessionInternal.GetVisibleDeferredSceneReadiness(
         MarkdownRendererControl owner,
         LayoutSnapshot expectedSnapshot,
         long expectedGeneration,
         long expectedLayoutRevision,
-        Rect viewport)
-    {
-        ArgumentNullException.ThrowIfNull(owner);
-        ArgumentNullException.ThrowIfNull(expectedSnapshot);
-        if (expectedGeneration <= 0 ||
-            !MarkdownProgressiveScenePlan.IsFiniteNonEmptyRect(viewport) ||
-            !IsDeferredSceneReadinessCurrent(
-                owner,
-                expectedSnapshot,
-                expectedGeneration,
-                expectedLayoutRevision))
-        {
-            return MarkdownVisibleSceneReadiness.NotReady;
-        }
-
-        // A failed geometry rollback is not a transient reader collision. The
-        // control replaces this snapshot; reporting Busy here would ask UIA to
-        // keep retrying against geometry that the snapshot has explicitly
-        // stopped exposing.
-        if (expectedSnapshot.GeometryRecoveryRequired)
-            return MarkdownVisibleSceneReadiness.Failed;
-        if (expectedSnapshot.IsRetiringOrDisposed)
-            return MarkdownVisibleSceneReadiness.NotReady;
-        if (!expectedSnapshot.TryBeginPaint())
-        {
-            if (expectedSnapshot.GeometryRecoveryRequired)
-                return MarkdownVisibleSceneReadiness.Failed;
-            if (expectedSnapshot.IsRetiringOrDisposed ||
-                !IsDeferredSceneReadinessCurrent(
-                    owner,
-                    expectedSnapshot,
-                    expectedGeneration,
-                    expectedLayoutRevision))
-            {
-                return MarkdownVisibleSceneReadiness.NotReady;
-            }
-            return MarkdownVisibleSceneReadiness.Busy;
-        }
-
-        try
-        {
-            if (expectedSnapshot.GeometryRecoveryRequired)
-                return MarkdownVisibleSceneReadiness.Failed;
-            if (expectedSnapshot.IsRetiringOrDisposed)
-                return MarkdownVisibleSceneReadiness.NotReady;
-            if (!IsDeferredSceneReadinessCurrent(
-                    owner,
-                    expectedSnapshot,
-                    expectedGeneration,
-                    expectedLayoutRevision))
-            {
-                return MarkdownVisibleSceneReadiness.NotReady;
-            }
-
-            LazyLayoutBand visibleBand = LazyLayoutBand.FromViewport(
-                viewport.Top,
-                viewport.Height,
-                overscan: 0);
-            // Failure is a terminal status, not render readiness. Probe under
-            // the same validated lease before the strict measured-band gate.
-            if (expectedSnapshot.HasFailedScenesInBandUnderPaint(visibleBand))
-                return MarkdownVisibleSceneReadiness.Failed;
-            if (!expectedSnapshot.IsBandMeasured(visibleBand) ||
-                !expectedSnapshot.TryGetMeasuredTopLevelBlocksInBandForSceneProbe(
-                    viewport.Top,
-                    viewport.Bottom,
-                    out IReadOnlyList<BlockBox> visibleBlocks,
-                    out IReadOnlyList<int> visibleOrdinals,
-                    out LayoutPlacementGeneration placements,
-                    out IReadOnlyDictionary<int, int> topLevelOrdinalByBlockIndex))
-            {
-                return MarkdownVisibleSceneReadiness.NotReady;
-            }
-
-            bool scanVerified = MarkdownProgressiveScenePlan.TryCollectVisibleDeferredSceneMarkers(
-                visibleBlocks,
-                visibleOrdinals,
-                placements,
-                topLevelOrdinalByBlockIndex,
-                viewport.Top,
-                viewport.Bottom,
-                viewport,
-                expectedSnapshot.VectorSceneResidencyPolicy,
-                out IReadOnlyList<string> visibleMarkerKeys,
-                out bool visibleSceneResourcesReady);
-            if (!scanVerified ||
-                !IsDeferredSceneReadinessCurrent(
-                    owner,
-                    expectedSnapshot,
-                    expectedGeneration,
-                    expectedLayoutRevision))
-            {
-                return MarkdownVisibleSceneReadiness.NotReady;
-            }
-
-            bool pending = MarkdownDeferredSceneReadiness.HasPendingVisiblePlaceholder(
-                // The exact visible marker identities are authoritative here;
-                // keep checking them even if aggregate plan bookkeeping says
-                // no work remains.
-                hasRegisteredWork: true,
-                visibleBandVerified: true,
-                visiblePlaceholderKeys: visibleMarkerKeys,
-                isRegisteredMarker: marker =>
-                    ((IMarkdownPerformanceSessionInternal)this).IsRegisteredDeferredSceneMarker(owner, marker));
-            return !pending &&
-                visibleSceneResourcesReady &&
-                IsDeferredSceneReadinessCurrent(
-                    owner,
-                    expectedSnapshot,
-                    expectedGeneration,
-                    expectedLayoutRevision)
-                    ? MarkdownVisibleSceneReadiness.Ready
-                    : MarkdownVisibleSceneReadiness.NotReady;
-        }
-        finally
-        {
-            expectedSnapshot.EndPaint();
-        }
-    }
-
-    private bool IsDeferredSceneReadinessCurrent(
-        MarkdownRendererControl owner,
-        LayoutSnapshot expectedSnapshot,
-        long expectedGeneration,
-        long expectedLayoutRevision) =>
-        owner.DeferredSceneReadiness.IsSnapshotCurrent(
+        Rect viewport) =>
+        _readinessProbe.GetReadiness(
+            owner,
             expectedSnapshot,
             expectedGeneration,
-            expectedLayoutRevision) &&
-        ReferenceEquals(owner.PerformanceSession, this);
+            expectedLayoutRevision,
+            viewport);
 
     IMarkdownVectorSceneResidencyPolicy? IMarkdownPerformanceSessionInternal.CreateVectorSceneResidencyPolicy(
         IReadOnlyList<BlockBox> blocks,
@@ -993,8 +787,7 @@ public sealed class MarkdownPerformanceSession :
         ArgumentNullException.ThrowIfNull(blocks);
         MarkdownProgressiveScenePlan? plan = null;
         if (documentOwner is not null)
-            lock (_scenePlansGate)
-                _scenePlans.TryGetValue(documentOwner, out plan);
+            _scenePlans.TryGetPlan(documentOwner, out plan);
         if (!Options.DeferOffscreenScenes || IsDisposed)
             return null;
 
@@ -1013,15 +806,8 @@ public sealed class MarkdownPerformanceSession :
         object documentOwner,
         LayoutSnapshot snapshot,
         LazyLayoutBand band,
-        CancellationToken cancellationToken)
-    {
-        MarkdownProgressiveScenePlan? plan;
-        lock (_scenePlansGate)
-            _scenePlans.TryGetValue(documentOwner, out plan);
-        return plan is not null && !IsDisposed
-            ? Task.Run(() => plan.RebindBandAsync(snapshot, band, cancellationToken), CancellationToken.None)
-            : Task.FromResult(false);
-    }
+        CancellationToken cancellationToken) =>
+        _scenePlans.PrepareBandAsync(documentOwner, snapshot, band, cancellationToken);
 
     IMarkdownImageResidencyPolicy? IMarkdownPerformanceSessionInternal.CreateImageResidencyPolicy(
         Action requestReconcile)
@@ -1040,174 +826,17 @@ public sealed class MarkdownPerformanceSession :
     public IReadOnlyList<MarkdownDiagnostic> GetDeferredSceneDiagnostics(MarkdownDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);
-        MarkdownProgressiveScenePlan[] plans;
-        lock (_scenePlansGate)
-            plans = _scenePlans.Values.Where(plan => plan.IsFor(document)).ToArray();
-        if (plans.Length == 0)
-            return Array.Empty<MarkdownDiagnostic>();
-        if (plans.Length == 1)
-            return plans[0].Diagnostics;
-
-        var diagnostics = new HashSet<MarkdownDiagnostic>();
-        foreach (MarkdownProgressiveScenePlan plan in plans)
-            foreach (MarkdownDiagnostic diagnostic in plan.Diagnostics)
-                diagnostics.Add(diagnostic);
-        if (diagnostics.Count == 0)
-            return Array.Empty<MarkdownDiagnostic>();
-
-        List<MarkdownDiagnostic> ordered = diagnostics.ToList();
-        ordered.Sort(static (left, right) =>
-        {
-            int comparison = left.SourceSpan.Start.CompareTo(right.SourceSpan.Start);
-            return comparison != 0
-                ? comparison
-                : string.CompareOrdinal(left.Code, right.Code);
-        });
-        return Array.AsReadOnly(ordered.ToArray());
+        return _scenePlans.GetDiagnostics(document);
     }
 
-    Task IMarkdownPerformanceSessionInternal.AdvanceDeferredSceneGeneration(object documentOwner)
-    {
-        MarkdownProgressiveScenePlan? plan;
-        ScenePlanRetirementReservation? reservation;
-        lock (_scenePlansGate)
-        {
-            _scenePlans.TryGetValue(documentOwner, out plan);
-            reservation = ReserveScenePlanRetirementNoLock(plan);
-        }
+    Task IMarkdownPerformanceSessionInternal.AdvanceDeferredSceneGeneration(object documentOwner) =>
+        _scenePlans.AdvanceGeneration(documentOwner);
 
-        return StartScenePlanRetirement(
-            reservation,
-            static current => current.AdvanceGeneration());
-    }
+    Task IMarkdownPerformanceSessionInternal.ReleaseDeferredSceneDocument(object documentOwner) =>
+        _scenePlans.Release(documentOwner);
 
-    Task IMarkdownPerformanceSessionInternal.ReleaseDeferredSceneDocument(object documentOwner)
-    {
-        MarkdownProgressiveScenePlan? plan;
-        ScenePlanRetirementReservation? reservation;
-        lock (_scenePlansGate)
-        {
-            _retiredSceneRegistrations.Remove(documentOwner);
-            _scenePlans.Remove(documentOwner, out plan);
-            reservation = ReserveScenePlanRetirementNoLock(plan);
-        }
-        return StartScenePlanRetirement(reservation, static current => current.Retire());
-    }
-
-    bool IMarkdownPerformanceSessionInternal.ScheduleDeferredScenes(object documentOwner)
-    {
-        MarkdownProgressiveScenePlan? plan;
-        lock (_scenePlansGate)
-            _scenePlans.TryGetValue(documentOwner, out plan);
-        return plan is not null && plan.ScheduleVisible(documentOwner);
-    }
-
-    private void ReleaseAllProgressiveScenePlans()
-    {
-        ScenePlanRetirementReservation[] reservations;
-        lock (_scenePlansGate)
-        {
-            var pending = new List<ScenePlanRetirementReservation>(_scenePlans.Count);
-            foreach (KeyValuePair<object, MarkdownProgressiveScenePlan> entry in _scenePlans)
-            {
-                string[] markers = entry.Value.GetRegisteredMarkerSnapshot();
-                if (markers.Length != 0)
-                {
-                    _retiredSceneRegistrations.AddOrUpdate(
-                        entry.Key,
-                        new RetiredDeferredSceneRegistration(markers));
-                }
-
-                ScenePlanRetirementReservation? reservation =
-                    ReserveScenePlanRetirementNoLock(entry.Value);
-                if (reservation is not null)
-                    pending.Add(reservation);
-            }
-            _scenePlans.Clear();
-            reservations = pending.ToArray();
-        }
-
-        foreach (ScenePlanRetirementReservation reservation in reservations)
-            _ = StartScenePlanRetirement(reservation, static plan => plan.Retire());
-    }
-
-    private ScenePlanRetirementReservation? ReserveScenePlanRetirementNoLock(
-        MarkdownProgressiveScenePlan? plan)
-    {
-        if (plan is null)
-            return null;
-
-        var completion = new TaskCompletionSource<bool>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        _scenePlanRetirements.Track(completion.Task);
-        return new ScenePlanRetirementReservation(plan, completion);
-    }
-
-    private static Task StartScenePlanRetirement(
-        ScenePlanRetirementReservation? reservation,
-        Func<MarkdownProgressiveScenePlan, Task> startRetirement)
-    {
-        if (reservation is null)
-            return Task.CompletedTask;
-
-        Task retirement;
-        try
-        {
-            // Plan cancellation/disposal can take locks and invoke callback
-            // completion paths, so never run it while holding _scenePlansGate.
-            retirement = startRetirement(reservation.Plan);
-        }
-        catch (Exception exception)
-        {
-            CompleteScenePlanRetirementFailure(reservation.Completion, exception);
-            return reservation.Completion.Task;
-        }
-
-        _ = CompleteScenePlanRetirementReservationAsync(retirement, reservation.Completion);
-        return reservation.Completion.Task;
-    }
-
-    private static async Task CompleteScenePlanRetirementReservationAsync(
-        Task retirement,
-        TaskCompletionSource<bool> completion)
-    {
-        try
-        {
-            await retirement.ConfigureAwait(false);
-            completion.TrySetResult(true);
-        }
-        catch (Exception exception)
-        {
-            CompleteScenePlanRetirementFailure(completion, exception);
-        }
-    }
-
-    private static void CompleteScenePlanRetirementFailure(
-        TaskCompletionSource<bool> completion,
-        Exception exception)
-    {
-        if (exception is OperationCanceledException canceled)
-            completion.TrySetCanceled(canceled.CancellationToken);
-        else
-            completion.TrySetException(exception);
-    }
-
-    private sealed class ScenePlanRetirementReservation(
-        MarkdownProgressiveScenePlan plan,
-        TaskCompletionSource<bool> completion)
-    {
-        internal MarkdownProgressiveScenePlan Plan { get; } = plan;
-        internal TaskCompletionSource<bool> Completion { get; } = completion;
-    }
-
-    private sealed class RetiredDeferredSceneRegistration(string[] markers)
-    {
-        internal bool HasRegisteredWork => markers.Length != 0;
-
-        internal bool Contains(string marker) =>
-            !string.IsNullOrEmpty(marker) &&
-            Array.BinarySearch(markers, marker, StringComparer.Ordinal) >= 0;
-    }
+    bool IMarkdownPerformanceSessionInternal.ScheduleDeferredScenes(object documentOwner) =>
+        _scenePlans.Schedule(documentOwner);
 
     long IMarkdownPerformanceSessionInternal.BeginRasterPreparation(
         int sourceBytes, int sourceWidth, int sourceHeight) =>
@@ -1368,7 +997,7 @@ public sealed class MarkdownPerformanceSession :
 
         ParseStageDiagnosticRecorder = null;
         IsLayoutDiagnosticCaptureEnabled = false;
-        ReleaseAllProgressiveScenePlans();
+        _scenePlans.ReleaseAll();
         CompletedSceneCache.Dispose();
         _documentScopes.ReleaseAll();
         NotifyDisposedHandlers(disposedHandlers);
@@ -1445,7 +1074,7 @@ public sealed class MarkdownPerformanceSession :
             // Parse/plan creation is included in the work drain above. Drain
             // after it so plans retired by the last in-flight parse are also
             // part of session shutdown, not only plans present at Dispose().
-            await _scenePlanRetirements.DrainAsync().ConfigureAwait(false);
+            await _scenePlans.DrainRetirementsAsync().ConfigureAwait(false);
         }
         catch (Exception exception)
         {
