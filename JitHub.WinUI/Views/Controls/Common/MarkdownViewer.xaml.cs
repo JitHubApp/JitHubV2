@@ -41,71 +41,10 @@ public sealed partial class MarkdownViewer :
     UserControl,
     IMarkdownRendererShutdownParticipant,
     IMarkdownRendererSlotHost<MarkdownRendererControl>,
-    IMarkdownViewerNoticePresenter
+    IMarkdownViewerNoticePresenter,
+    IMarkdownRendererLayoutGateHost
 {
-    private static readonly Uri DefaultBaseUri = new("https://github.com/", UriKind.Absolute);
     private static MarkdownEngine SharedGitHubEngine => JitHubMarkdownRuntime.Engine;
-    private static MarkdownRenderer.Performance.MarkdownPerformanceSession SharedPerformanceSession =>
-        JitHubMarkdownRuntime.GetPerformanceSession(
-            Ioc.Default.GetService<IAccountService>()?.GetUser() ?? 0);
-
-    private static readonly string[] HostSurfaceRoles =
-    [
-        MarkdownElementKeys.Body,
-        MarkdownElementKeys.DefinitionDescription,
-        MarkdownElementKeys.Figure,
-        MarkdownElementKeys.FigureCaption,
-        MarkdownElementKeys.AlertNote,
-        MarkdownElementKeys.AlertTip,
-        MarkdownElementKeys.AlertImportant,
-        MarkdownElementKeys.AlertWarning,
-        MarkdownElementKeys.AlertCaution,
-    ];
-
-    private static readonly string[] StyledRoles =
-    [
-        MarkdownElementKeys.Body,
-        MarkdownElementKeys.Heading1,
-        MarkdownElementKeys.Heading2,
-        MarkdownElementKeys.Heading3,
-        MarkdownElementKeys.Heading4,
-        MarkdownElementKeys.Heading5,
-        MarkdownElementKeys.Heading6,
-        MarkdownElementKeys.Link,
-        MarkdownElementKeys.Strong,
-        MarkdownElementKeys.Emphasis,
-        MarkdownElementKeys.Strikethrough,
-        MarkdownElementKeys.Subscript,
-        MarkdownElementKeys.Superscript,
-        MarkdownElementKeys.Inserted,
-        MarkdownElementKeys.Marked,
-        MarkdownElementKeys.Abbreviation,
-        MarkdownElementKeys.CodeInline,
-        MarkdownElementKeys.CodeBlock,
-        MarkdownElementKeys.CodeBlockHeader,
-        MarkdownElementKeys.CodeBlockLanguage,
-        MarkdownElementKeys.CodeBlockGutter,
-        MarkdownElementKeys.CodeBlockLineNumber,
-        MarkdownElementKeys.Quote,
-        MarkdownElementKeys.ListMarker,
-        MarkdownElementKeys.ThematicBreak,
-        MarkdownElementKeys.ImageCaption,
-        MarkdownElementKeys.DefinitionTerm,
-        MarkdownElementKeys.DefinitionDescription,
-        MarkdownElementKeys.Figure,
-        MarkdownElementKeys.FigureCaption,
-        MarkdownElementKeys.Diagram,
-        MarkdownElementKeys.Math,
-        MarkdownElementKeys.Table,
-        MarkdownElementKeys.TableHeader,
-        MarkdownElementKeys.TableCell,
-        MarkdownElementKeys.AlertNote,
-        MarkdownElementKeys.AlertTip,
-        MarkdownElementKeys.AlertImportant,
-        MarkdownElementKeys.AlertWarning,
-        MarkdownElementKeys.AlertCaution,
-    ];
-
     private static readonly (string Role, string Token, double Fallback)[] ScalableRoleFonts =
     [
         (MarkdownElementKeys.Body, "AppMarkdownBodyFontSize", 16),
@@ -158,13 +97,8 @@ public sealed partial class MarkdownViewer :
     private readonly MarkdownRendererSlot<MarkdownRendererControl> _rendererSlot;
     private bool _isLoaded;
     private bool _shutdownRequested;
+    private readonly MarkdownRendererInitialLayoutGate _layoutGate;
     private bool _rendererCreationQueued;
-    private bool _rendererLoadedSettingsHandlerAttached;
-    private bool _rendererLayoutSettingsHandlerAttached;
-    private bool _rendererInitialLayoutReady;
-    private EventHandler<object>? _rendererLayoutSettingsHandler;
-    private long _rendererLayoutSettingsTicket;
-    private MarkdownRendererControl? _rendererLayoutSettingsTarget;
     private bool _paletteSubscribed;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _lifecycleRuntimeSettingsTimer;
     private int _lifecycleRuntimeSettingsRevision;
@@ -372,6 +306,7 @@ public sealed partial class MarkdownViewer :
             renderers,
             this,
             static retirement => UiTaskGuard.Observe(retirement, "ui-markdown-retirement"));
+        _layoutGate = new MarkdownRendererInitialLayoutGate(this);
 
         _hostObserver = ResolveService<IMarkdownHostObserver>() ?? NoMarkdownHostObserver.Instance;
         var telemetry = new MarkdownViewerTelemetry(ResolveTelemetryService(), () => HostKind);
@@ -737,7 +672,7 @@ public sealed partial class MarkdownViewer :
         {
             if (!RendererHost.Children.Contains(current))
             {
-                EnsureRendererLoadedSettingsHandler(current);
+                _layoutGate.Prepare(current);
                 RendererHost.Children.Add(current);
                 ApplyRendererSettings();
             }
@@ -755,35 +690,9 @@ public sealed partial class MarkdownViewer :
             renderer = new MarkdownDocumentView().UseGitHubReadme(SharedGitHubEngine);
         }
         _rendererSlot.Attach(renderer);
-        renderer.Theme = _theme;
-        // GitHub articles use 16-DIP paragraph spacing, while list paragraphs
-        // collapse into the list-item flow. Keep JitHub's compact list token
-        // without shortening standalone paragraphs.
-        renderer.StyleSheet = new MarkdownStyleSheet(
-            new MarkdownStyleRule[]
-            {
-                new MarkdownStyleRule(
-                    new MarkdownStyleSelector(MarkdownStyleRole.Body, minimumNestingDepth: 1),
-                    new ElementStyleOverride
-                    {
-                        Margin = ResolveThickness("AppMarkdownBodyMargin", new Thickness(0, 0, 0, 8)),
-                    }),
-            });
-        renderer.StringProvider = JitHubMarkdownStringProvider.Instance;
+        MarkdownRendererConfigurator.ApplyDocumentStyle(renderer, _theme);
         ApplyRendererResources();
-        renderer.IsSelectionEnabled = IsSelectionEnabled;
-        renderer.CodeBlockChromeMode = CodeBlockChromeMode.Enhanced;
-        renderer.CodeBlockLineNumberMode = CodeBlockLineNumberMode.AutoMultiline;
-        renderer.IsCodeBlockCopyEnabled = IsCodeBlockCopyEnabled;
-        renderer.ImageResolver = _imageResolver;
-        renderer.SvgRenderer = JitHubMarkdownRuntime.SvgRenderer;
-        renderer.RasterDecoder = JitHubMarkdownRuntime.RasterDecoder;
-        renderer.PerformanceSession = SharedPerformanceSession;
-        MarkdownViewerDocumentPayload? documentPayload = _documentPayload;
-        renderer.ImageBaseUri = GetBaseUri(documentPayload is null ? BaseUrl : documentPayload.BaseUrl);
-        renderer.ImageDocumentPath = documentPayload is null ? DocumentPath : documentPayload.DocumentPath;
-        renderer.ImageDocumentSource = documentPayload is null ? DocumentSource : documentPayload.DocumentSource;
-        renderer.AllowThirdPartyRemoteImages = _feedback.AllowsThirdPartyRemoteImages;
+        MarkdownRendererConfigurator.ApplyInitialSettings(renderer, CreateRendererSettings());
         renderer.LinkClick += OnRendererLinkClick;
         renderer.DisclosureToggled += OnRendererDisclosureToggled;
         renderer.CopyCompleted += OnRendererCopyCompleted;
@@ -796,98 +705,9 @@ public sealed partial class MarkdownViewer :
         _hostObserver.OnHostReady(automationId);
         renderer.HorizontalAlignment = HorizontalAlignment.Stretch;
         renderer.VerticalAlignment = VerticalAlignment.Stretch;
-        EnsureRendererLoadedSettingsHandler(renderer);
+        _layoutGate.Prepare(renderer);
         RendererHost.Children.Add(renderer);
         ApplyRendererSettings();
-    }
-
-    private void EnsureRendererLoadedSettingsHandler(MarkdownRendererControl renderer)
-    {
-        if (renderer.IsLoaded)
-        {
-            EnsureRendererLayoutSettingsHandler(renderer);
-            return;
-        }
-
-        _rendererInitialLayoutReady = false;
-        if (_rendererLoadedSettingsHandlerAttached)
-            return;
-
-        // ApplyRendererSettings can be reached as soon as the child is added,
-        // before its own Loaded event has made the renderer able to accept a
-        // pipeline. Install one handler before attachment so the first Loaded
-        // turn can register for the completed initial layout before assignment.
-        renderer.Loaded += OnRendererLoadedForSettings;
-        _rendererLoadedSettingsHandlerAttached = true;
-    }
-
-    private void OnRendererLoadedForSettings(object? sender, RoutedEventArgs e)
-    {
-        if (sender is not MarkdownRendererControl renderer || !ReferenceEquals(renderer, _rendererSlot.Current))
-            return;
-
-        renderer.Loaded -= OnRendererLoadedForSettings;
-        _rendererLoadedSettingsHandlerAttached = false;
-        if (_shutdownRequested || !_isLoaded)
-            return;
-
-        _rendererInitialLayoutReady = false;
-        EnsureRendererLayoutSettingsHandler(renderer);
-    }
-
-    private void EnsureRendererLayoutSettingsHandler(MarkdownRendererControl renderer)
-    {
-        if (_rendererInitialLayoutReady || _rendererLayoutSettingsHandlerAttached)
-            return;
-
-        long ticket = ++_rendererLayoutSettingsTicket;
-        EventHandler<object> handler = (_, _) => OnRendererLayoutUpdatedForSettings(renderer, ticket);
-        _rendererLayoutSettingsHandler = handler;
-        _rendererLayoutSettingsTarget = renderer;
-        renderer.LayoutUpdated += handler;
-        _rendererLayoutSettingsHandlerAttached = true;
-    }
-
-    private void OnRendererLayoutUpdatedForSettings(MarkdownRendererControl renderer, long ticket)
-    {
-        // WinUI raises LayoutUpdated with a null sender after all SizeChanged
-        // events in a layout sequence, so use the renderer currently owned by
-        // this viewer and validate its measured width directly. Capturing both
-        // renderer and ticket prevents an already-queued old callback from
-        // admitting a replacement renderer.
-        if (ticket != _rendererLayoutSettingsTicket ||
-            !ReferenceEquals(renderer, _rendererLayoutSettingsTarget) ||
-            !ReferenceEquals(renderer, _rendererSlot.Current) ||
-            !_rendererLayoutSettingsHandlerAttached)
-            return;
-
-        if (_shutdownRequested || !_isLoaded)
-        {
-            ClearRendererLayoutSettingsHandler();
-            return;
-        }
-
-        if (!renderer.IsLoaded ||
-            !double.IsFinite(renderer.ActualWidth) || renderer.ActualWidth <= 0 ||
-            !double.IsFinite(renderer.ActualHeight) || renderer.ActualHeight <= 0)
-            return;
-
-        ClearRendererLayoutSettingsHandler();
-        _rendererInitialLayoutReady = true;
-        ApplyRendererSettings();
-    }
-
-    private void ClearRendererLayoutSettingsHandler()
-    {
-        MarkdownRendererControl? renderer = _rendererLayoutSettingsTarget;
-        EventHandler<object>? handler = _rendererLayoutSettingsHandler;
-        _rendererLayoutSettingsTarget = null;
-        _rendererLayoutSettingsHandler = null;
-        _rendererLayoutSettingsHandlerAttached = false;
-        ++_rendererLayoutSettingsTicket;
-
-        if (renderer is not null && handler is not null)
-            renderer.LayoutUpdated -= handler;
     }
 
     IMarkdownUiDispatcher? IMarkdownRendererSlotHost<MarkdownRendererControl>.Dispatcher =>
@@ -895,10 +715,7 @@ public sealed partial class MarkdownViewer :
 
     void IMarkdownRendererSlotHost<MarkdownRendererControl>.DetachRenderer(MarkdownRendererControl renderer)
     {
-        renderer.Loaded -= OnRendererLoadedForSettings;
-        ClearRendererLayoutSettingsHandler();
-        _rendererLoadedSettingsHandlerAttached = false;
-        _rendererInitialLayoutReady = false;
+        _layoutGate.Release(renderer);
         renderer.LinkClick -= OnRendererLinkClick;
         renderer.DisclosureToggled -= OnRendererDisclosureToggled;
         renderer.CopyCompleted -= OnRendererCopyCompleted;
@@ -976,36 +793,38 @@ public sealed partial class MarkdownViewer :
         RenderErrorInfoBar.IsOpen = true;
     }
 
+    MarkdownRendererControl? IMarkdownRendererLayoutGateHost.CurrentRenderer => _rendererSlot.Current;
+
+    bool IMarkdownRendererLayoutGateHost.IsActive => !_shutdownRequested && _isLoaded;
+
+    void IMarkdownRendererLayoutGateHost.OnInitialLayoutReady() => ApplyRendererSettings();
+
     private void UpdateHostLayout()
     {
-        double availableWidth = ActualWidth - ContentPadding.Left - ContentPadding.Right;
-        if (availableWidth <= 0 || double.IsNaN(availableWidth) || double.IsInfinity(availableWidth))
-        {
-            RendererHost.Width = double.NaN;
-            RendererHost.MaxWidth = double.PositiveInfinity;
-            RendererHost.HorizontalAlignment = HorizontalAlignment.Stretch;
-            return;
-        }
-
-        bool hasFiniteMaxWidth = ContentMaxWidth > 0
-            && !double.IsNaN(ContentMaxWidth)
-            && !double.IsInfinity(ContentMaxWidth);
-
-        if (hasFiniteMaxWidth && availableWidth > ContentMaxWidth)
-        {
-            RendererHost.Width = ContentMaxWidth;
-            RendererHost.MaxWidth = ContentMaxWidth;
-            RendererHost.HorizontalAlignment = ContentHorizontalAlignment == HorizontalAlignment.Stretch
-                ? HorizontalAlignment.Center
-                : ContentHorizontalAlignment;
-            return;
-        }
-
-        RendererHost.Width = double.NaN;
-        RendererHost.MaxWidth = hasFiniteMaxWidth ? ContentMaxWidth : double.PositiveInfinity;
-        RendererHost.HorizontalAlignment = HorizontalAlignment.Stretch;
+        MarkdownReadingRegionSize region = MarkdownReadingRegionLayout.Compute(
+            ActualWidth,
+            ContentPadding.Left,
+            ContentPadding.Right,
+            ContentMaxWidth,
+            ContentHorizontalAlignment);
+        RendererHost.Width = region.Width;
+        RendererHost.MaxWidth = region.MaxWidth;
+        RendererHost.HorizontalAlignment = region.HorizontalAlignment;
     }
 
+    private MarkdownRendererSettings CreateRendererSettings()
+    {
+        MarkdownViewerDocumentPayload? documentPayload = _documentPayload;
+        return new MarkdownRendererSettings(
+            IsSelectionEnabled,
+            IsCodeBlockCopyEnabled,
+            IsSyntaxHighlightingEnabled,
+            _imageResolver,
+            MarkdownRendererConfigurator.ResolveImageBaseUri(documentPayload is null ? BaseUrl : documentPayload.BaseUrl),
+            documentPayload is null ? DocumentPath : documentPayload.DocumentPath,
+            documentPayload is null ? DocumentSource : documentPayload.DocumentSource,
+            _feedback.AllowsThirdPartyRemoteImages);
+    }
     private void ApplyRendererSettings()
     {
         if (_rendererSlot.IsDisposalFaulted)
@@ -1017,7 +836,7 @@ public sealed partial class MarkdownViewer :
             return;
         }
 
-        if (!renderer.IsLoaded || !_rendererInitialLayoutReady)
+        if (!renderer.IsLoaded || !_layoutGate.IsReady)
         {
             // A source tick is meaningful only when Markdown assignment can
             // request the pipeline at its measured width. The one-shot
@@ -1027,9 +846,6 @@ public sealed partial class MarkdownViewer :
         }
 
         MarkdownViewerDocumentPayload? documentPayload = _documentPayload;
-        string? documentPath = documentPayload is null ? DocumentPath : documentPayload.DocumentPath;
-        MarkdownDocumentSource? documentSource = documentPayload is null ? DocumentSource : documentPayload.DocumentSource;
-        string? baseUrl = documentPayload is null ? BaseUrl : documentPayload.BaseUrl;
         string markdown = GetEffectiveMarkdown(documentPayload is null ? Text : documentPayload.Markdown);
         bool markdownChanged = !string.Equals(renderer.Markdown, markdown, StringComparison.Ordinal);
         if (markdownChanged)
@@ -1037,59 +853,12 @@ public sealed partial class MarkdownViewer :
             _feedback.OnMarkdownChanged();
         }
 
-        // Apply every renderer setting before assigning Markdown. Several of
-        // these properties request a rebuild and advance the pipeline
-        // generation; assigning the document last keeps one final generation.
-        if (renderer.IsSelectionEnabled != IsSelectionEnabled)
-            renderer.IsSelectionEnabled = IsSelectionEnabled;
-        CodeBlockChromeMode chromeMode = CodeBlockChromeMode.Enhanced;
-        CodeBlockLineNumberMode lineNumberMode = CodeBlockLineNumberMode.AutoMultiline;
-        bool copyEnabled = IsCodeBlockCopyEnabled;
-        if (renderer.CodeBlockChromeMode != chromeMode)
-            renderer.CodeBlockChromeMode = chromeMode;
-        if (renderer.CodeBlockLineNumberMode != lineNumberMode)
-            renderer.CodeBlockLineNumberMode = lineNumberMode;
-        if (renderer.IsCodeBlockCopyEnabled != copyEnabled)
-            renderer.IsCodeBlockCopyEnabled = copyEnabled;
-        Style? copyButtonStyle = TryResolveResource("AppToolbarButtonStyle", out object? copyStyle)
-            ? copyStyle as Style
-            : null;
-        if (!ReferenceEquals(renderer.CodeBlockCopyButtonStyle, copyButtonStyle))
-            renderer.CodeBlockCopyButtonStyle = copyButtonStyle;
-        var codeHighlighter = IsSyntaxHighlightingEnabled
-            ? JitHubMarkdownRuntime.CodeHighlighter
-            : null;
-        if (!ReferenceEquals(renderer.CodeHighlighter, codeHighlighter))
-            renderer.CodeHighlighter = codeHighlighter;
-        if (renderer.IsCodeBlockSyntaxHighlightingEnabled != IsSyntaxHighlightingEnabled)
-            renderer.IsCodeBlockSyntaxHighlightingEnabled = IsSyntaxHighlightingEnabled;
-
-        if (!ReferenceEquals(renderer.ImageResolver, _imageResolver))
-            renderer.ImageResolver = _imageResolver;
-        IMarkdownSvgRenderer svgRenderer = JitHubMarkdownRuntime.SvgRenderer;
-        if (!ReferenceEquals(renderer.SvgRenderer, svgRenderer))
-            renderer.SvgRenderer = svgRenderer;
-        MarkdownRenderer.Performance.MarkdownPerformanceSession performanceSession = SharedPerformanceSession;
-        if (!ReferenceEquals(renderer.PerformanceSession, performanceSession))
-            renderer.PerformanceSession = performanceSession;
-        Uri imageBaseUri = GetBaseUri(baseUrl);
-        if (!Equals(renderer.ImageBaseUri, imageBaseUri))
-            renderer.ImageBaseUri = imageBaseUri;
-        if (!string.Equals(renderer.ImageDocumentPath, documentPath, StringComparison.Ordinal))
-            renderer.ImageDocumentPath = documentPath;
-        if (!Equals(renderer.ImageDocumentSource, documentSource))
-            renderer.ImageDocumentSource = documentSource;
-        bool allowThirdPartyRemoteImages = _feedback.AllowsThirdPartyRemoteImages;
-        if (renderer.AllowThirdPartyRemoteImages != allowThirdPartyRemoteImages)
-            renderer.AllowThirdPartyRemoteImages = allowThirdPartyRemoteImages;
-
-        renderer.Markdown = markdown;
+        MarkdownRendererConfigurator.ApplySettings(renderer, CreateRendererSettings(), markdown);
         AutomationProperties.SetName(renderer, MarkdownHostContract.GetAutomationName(HostKind));
         AutomationProperties.SetAutomationId(
             renderer,
             MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId));
     }
-
     private string GetEffectiveMarkdown(string? sourceMarkdown)
     {
         string markdown = sourceMarkdown ?? string.Empty;
@@ -1285,20 +1054,13 @@ public sealed partial class MarkdownViewer :
     private Uri GetEffectiveBaseUri()
     {
         MarkdownViewerDocumentPayload? documentPayload = _documentPayload;
-        return GetBaseUri(documentPayload is null ? BaseUrl : documentPayload.BaseUrl);
+        return MarkdownRendererConfigurator.ResolveImageBaseUri(documentPayload is null ? BaseUrl : documentPayload.BaseUrl);
     }
 
     private MarkdownDocumentSource? GetEffectiveDocumentSource()
     {
         MarkdownViewerDocumentPayload? documentPayload = _documentPayload;
         return documentPayload is null ? DocumentSource : documentPayload.DocumentSource;
-    }
-
-    private static Uri GetBaseUri(string? baseUrl)
-    {
-        return Uri.TryCreate(baseUrl, UriKind.Absolute, out Uri? baseUri)
-            ? baseUri
-            : DefaultBaseUri;
     }
 
     private void OnRendererLinkClick(object? sender, MarkdownLinkClickEventArgs e) =>
@@ -1317,18 +1079,8 @@ public sealed partial class MarkdownViewer :
         }
 
         ResourceDictionary resources = _rendererSlot.Current.Resources;
-        RemoveLocalRendererResources(resources);
-
-        if (TryResolveHostSurfaceBrush(out SolidColorBrush? hostSurface) && hostSurface is not null)
-        {
-            resources[MarkdownResourceKeys.DocumentSurfaceBrush] = hostSurface;
-            foreach (string role in HostSurfaceRoles)
-            {
-                resources[MarkdownResourceKeys.ForRole(
-                    MarkdownStyleRole.FromElementKey(role),
-                    MarkdownStyleProperty.BackgroundBrush)] = hostSurface;
-            }
-        }
+        MarkdownRendererResources.RemoveLocalOverrides(resources);
+        MarkdownRendererResources.ApplyHostSurface(resources, SurfaceColorToken, HostKind);
 
         if (MarkdownLifecycleAutomationBridge.GetTextScaleFactor() is double requestedScale)
         {
@@ -1338,7 +1090,7 @@ public sealed partial class MarkdownViewer :
                 resources[MarkdownResourceKeys.ForRole(
                     MarkdownStyleRole.FromElementKey(role),
                     MarkdownStyleProperty.FontSize)] =
-                    ResolveDouble(token, fallback) * tokenScale;
+                    MarkdownRendererResources.ResolveDouble(token, fallback) * tokenScale;
             }
         }
 
@@ -1351,52 +1103,6 @@ public sealed partial class MarkdownViewer :
         // environment monitor remains the sole owner of real theme, accent,
         // High Contrast, text scale, language, flow direction, and DPI events.
         _theme.Invalidate();
-    }
-
-    private static void RemoveLocalRendererResources(ResourceDictionary resources)
-    {
-        resources.Remove(MarkdownResourceKeys.DocumentSurfaceBrush);
-        resources.Remove(MarkdownResourceKeys.SelectionBackgroundBrush);
-        resources.Remove(MarkdownResourceKeys.SelectionForegroundBrush);
-        resources.Remove(MarkdownResourceKeys.FocusVisualBrush);
-        resources.Remove(MarkdownResourceKeys.OverflowIndicatorBrush);
-
-        foreach (string roleName in StyledRoles)
-        {
-            MarkdownStyleRole role = MarkdownStyleRole.FromElementKey(roleName);
-            resources.Remove(MarkdownResourceKeys.ForRole(role, MarkdownStyleProperty.ForegroundBrush));
-            resources.Remove(MarkdownResourceKeys.ForRole(role, MarkdownStyleProperty.HoverForegroundBrush));
-            resources.Remove(MarkdownResourceKeys.ForRole(role, MarkdownStyleProperty.FocusForegroundBrush));
-            resources.Remove(MarkdownResourceKeys.ForRole(role, MarkdownStyleProperty.BackgroundBrush));
-            resources.Remove(MarkdownResourceKeys.ForRole(role, MarkdownStyleProperty.AccentBrush));
-            resources.Remove(MarkdownResourceKeys.ForRole(role, MarkdownStyleProperty.BorderBrush));
-            resources.Remove(MarkdownResourceKeys.ForRole(role, MarkdownStyleProperty.FontFamily));
-            resources.Remove(MarkdownResourceKeys.ForRole(role, MarkdownStyleProperty.FontSize));
-        }
-    }
-
-    private bool TryResolveHostSurfaceBrush(out SolidColorBrush? brush)
-    {
-        string token = string.IsNullOrWhiteSpace(SurfaceColorToken)
-            ? MarkdownHostContract.GetSurfaceColorToken(HostKind)
-            : SurfaceColorToken.Trim();
-
-        if (TryResolveResource(token + "Brush", out object? value) &&
-            value is SolidColorBrush resolvedBrush)
-        {
-            brush = resolvedBrush;
-            return true;
-        }
-
-        if (TryResolveResource(token + "Color", out value) &&
-            value is Windows.UI.Color color)
-        {
-            brush = new SolidColorBrush(color);
-            return true;
-        }
-
-        brush = null;
-        return false;
     }
 
     private static double GetLifecycleTokenScaleFactor(double requestedScale)
@@ -1436,7 +1142,7 @@ public sealed partial class MarkdownViewer :
         resources[MarkdownResourceKeys.FocusVisualBrush] = focus;
         resources[MarkdownResourceKeys.OverflowIndicatorBrush] = text;
 
-        foreach (string roleName in StyledRoles)
+        foreach (string roleName in MarkdownRendererResources.StyledRoles)
         {
             resources[MarkdownResourceKeys.ForRole(
                 MarkdownStyleRole.FromElementKey(roleName),
@@ -1485,7 +1191,7 @@ public sealed partial class MarkdownViewer :
                 MarkdownStyleProperty.BorderBrush)] = text;
         }
 
-        if (TryResolveResource("AppHighContrastMonoFontFamily", out object? monoFont))
+        if (MarkdownRendererResources.TryResolveAppResource("AppHighContrastMonoFontFamily", out object? monoFont))
         {
             foreach (string roleName in new[]
             {
@@ -1522,33 +1228,4 @@ public sealed partial class MarkdownViewer :
                 MarkdownStyleProperty.AccentBrush)] = link;
         }
     }
-
-    private static double ResolveDouble(string tokenName, double fallback)
-    {
-        if (TryResolveResource(tokenName, out object? value))
-        {
-            return value switch
-            {
-                double number => number,
-                float number => number,
-                int number => number,
-                _ => fallback,
-            };
-        }
-
-        return fallback;
-    }
-
-    private static Thickness ResolveThickness(string tokenName, Thickness fallback)
-        => TryResolveResource(tokenName, out object? value) && value is Thickness thickness
-            ? thickness
-            : fallback;
-
-    private static bool TryResolveResource(string tokenName, out object? value)
-    {
-        value = null;
-        return Application.Current?.Resources is { } resources &&
-            resources.TryGetValue(tokenName, out value);
-    }
-
 }

@@ -128,10 +128,18 @@ public sealed partial class MarkdownLocalizationContractTests
             "Controls",
             "Common",
             "MarkdownViewer.xaml.cs"));
+        string configurator = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI",
+            "Services",
+            "Markdown",
+            "Hosting",
+            "MarkdownRendererConfigurator.cs"));
 
+        Assert.Contains("MarkdownRendererConfigurator.ApplyDocumentStyle(renderer, _theme);", source, StringComparison.Ordinal);
         Assert.Contains(
             "renderer.StringProvider = JitHubMarkdownStringProvider.Instance;",
-            source,
+            configurator,
             StringComparison.Ordinal);
     }
 

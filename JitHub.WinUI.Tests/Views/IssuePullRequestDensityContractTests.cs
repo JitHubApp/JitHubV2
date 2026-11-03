@@ -216,8 +216,15 @@ public sealed class IssuePullRequestDensityContractTests
             "Controls",
             "Common",
             "MarkdownViewer.xaml.cs"));
+        string rendererResources = File.ReadAllText(SourcePath(
+            "JitHub.WinUI",
+            "Services",
+            "Markdown",
+            "Hosting",
+            "MarkdownRendererResources.cs"));
         Assert.Contains("SurfaceColorTokenProperty", viewerSource, StringComparison.Ordinal);
-        Assert.Contains("SurfaceColorToken.Trim()", viewerSource, StringComparison.Ordinal);
+        Assert.Contains("ApplyHostSurface(resources, SurfaceColorToken, HostKind)", viewerSource, StringComparison.Ordinal);
+        Assert.Contains("surfaceColorToken.Trim()", rendererResources, StringComparison.Ordinal);
     }
 
     [Theory]
