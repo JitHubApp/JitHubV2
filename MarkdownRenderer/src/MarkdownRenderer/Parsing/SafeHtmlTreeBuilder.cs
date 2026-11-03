@@ -87,57 +87,15 @@ internal static class SafeHtmlTreeBuilder
             }
 
             position = endExclusive;
-            if (tag.Kind is SafeHtmlTagKind.Comment or SafeHtmlTagKind.Declaration)
-            {
-                continue;
-            }
-
-            if (tag.Kind == SafeHtmlTagKind.Closing)
-            {
-                PopThroughMatchingElement(
-                    stack,
-                    tag.Name,
-                    source.Substring(tag.SourceStart, tag.SourceLength),
-                    tag.SourceStart);
-                continue;
-            }
-
-            CloseOpenParagraphForBlockStart(stack, tag.Name);
-
-            var element = new SafeHtmlElement(
-                tag.Name,
-                tag.Attributes,
-                tag.SourceStart,
-                tag.SourceLength,
-                source.Substring(tag.SourceStart, tag.SourceLength));
-            stack[^1].Add(element);
-            nodeCount++;
-
-            if (tag.Kind == SafeHtmlTagKind.SelfClosing || SafeHtmlElementCategories.IsVoidElement(tag.Name))
-            {
-                continue;
-            }
-
-            if (SafeHtmlElementCategories.IsRawContentElement(tag.Name))
-            {
-                int trailingStart = position;
-                position = SkipRawContent(
+            if (!ApplyTag(
                     source,
-                    position,
+                    tag,
+                    stack,
+                    ref nodeCount,
+                    ref position,
                     parseLength,
-                    tag.Name,
-                    cancellationToken);
-                element.SetTrailingMarkup(
-                    source.Substring(trailingStart, position - trailingStart),
-                    trailingStart);
-                continue;
-            }
-
-            if (stack.Count - 1 < limits.MaxNestingDepth)
-            {
-                stack.Add(element);
-            }
-            else
+                    limits,
+                    cancellationToken))
             {
                 truncated = true;
             }
@@ -149,6 +107,76 @@ internal static class SafeHtmlTreeBuilder
         }
 
         return new SafeHtmlDocument(root, truncated);
+    }
+
+    /// <summary>
+    /// Applies one tag token to the open-element stack. Returns false only when
+    /// the nesting ceiling kept an element from opening its scope, which marks
+    /// the document truncated.
+    /// </summary>
+    private static bool ApplyTag(
+        string source,
+        in SafeHtmlTag tag,
+        List<SafeHtmlElement> stack,
+        ref int nodeCount,
+        ref int position,
+        int parseLength,
+        SafeHtmlParseLimits limits,
+        CancellationToken cancellationToken)
+    {
+        if (tag.Kind is SafeHtmlTagKind.Comment or SafeHtmlTagKind.Declaration)
+        {
+            return true;
+        }
+
+        if (tag.Kind == SafeHtmlTagKind.Closing)
+        {
+            PopThroughMatchingElement(
+                stack,
+                tag.Name,
+                source.Substring(tag.SourceStart, tag.SourceLength),
+                tag.SourceStart);
+            return true;
+        }
+
+        CloseOpenParagraphForBlockStart(stack, tag.Name);
+
+        var element = new SafeHtmlElement(
+            tag.Name,
+            tag.Attributes,
+            tag.SourceStart,
+            tag.SourceLength,
+            source.Substring(tag.SourceStart, tag.SourceLength));
+        stack[^1].Add(element);
+        nodeCount++;
+
+        if (tag.Kind == SafeHtmlTagKind.SelfClosing || SafeHtmlElementCategories.IsVoidElement(tag.Name))
+        {
+            return true;
+        }
+
+        if (SafeHtmlElementCategories.IsRawContentElement(tag.Name))
+        {
+            int trailingStart = position;
+            position = SkipRawContent(
+                source,
+                position,
+                parseLength,
+                tag.Name,
+                cancellationToken);
+            element.SetTrailingMarkup(
+                source.Substring(trailingStart, position - trailingStart),
+                trailingStart);
+            return true;
+        }
+
+        if (stack.Count - 1 < limits.MaxNestingDepth)
+        {
+            stack.Add(element);
+            return true;
+        }
+
+        return false;
     }
 
     private static void AddText(

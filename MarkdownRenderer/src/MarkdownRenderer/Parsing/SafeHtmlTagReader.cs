@@ -32,20 +32,7 @@ internal static class SafeHtmlTagReader
 
         if (StartsWith(source, start, limit, "<!--"))
         {
-            int close = FindSequence(
-                source,
-                "-->",
-                start + 4,
-                limit,
-                StringComparison.Ordinal,
-                cancellationToken);
-            endExclusive = close < 0 ? limit : close + 3;
-            tag = new SafeHtmlTag(
-                SafeHtmlTagKind.Comment,
-                string.Empty,
-                EmptyTagAttributes,
-                start,
-                endExclusive - start);
+            tag = ReadComment(source, start, limit, cancellationToken, out endExclusive);
             return true;
         }
 
@@ -80,6 +67,54 @@ internal static class SafeHtmlTagReader
             return true;
         }
 
+        return TryReadNamedTag(
+            source,
+            start,
+            cursor,
+            closeIndex,
+            endExclusive,
+            limits,
+            cancellationToken,
+            out tag);
+    }
+
+    private static SafeHtmlTag ReadComment(
+        string source,
+        int start,
+        int limit,
+        CancellationToken cancellationToken,
+        out int endExclusive)
+    {
+        int close = FindSequence(
+            source,
+            "-->",
+            start + 4,
+            limit,
+            StringComparison.Ordinal,
+            cancellationToken);
+        endExclusive = close < 0 ? limit : close + 3;
+        return new SafeHtmlTag(
+            SafeHtmlTagKind.Comment,
+            string.Empty,
+            EmptyTagAttributes,
+            start,
+            endExclusive - start);
+    }
+
+    /// <summary>
+    /// Reads an opening, closing or self-closing tag whose name starts at
+    /// <paramref name="cursor"/> and whose <c>&gt;</c> is at <paramref name="closeIndex"/>.
+    /// </summary>
+    private static bool TryReadNamedTag(
+        string source,
+        int start,
+        int cursor,
+        int closeIndex,
+        int endExclusive,
+        SafeHtmlParseLimits limits,
+        CancellationToken cancellationToken,
+        out SafeHtmlTag tag)
+    {
         bool closing = source[cursor] == '/';
         if (closing)
         {
@@ -96,6 +131,7 @@ internal static class SafeHtmlTagReader
 
         if (cursor == nameStart)
         {
+            tag = default;
             return false;
         }
 
