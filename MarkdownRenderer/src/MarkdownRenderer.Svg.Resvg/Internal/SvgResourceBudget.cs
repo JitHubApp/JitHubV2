@@ -1,8 +1,6 @@
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Security.Cryptography;
-using System.Text;
 using System.Xml;
 using MarkdownRenderer.Images;
 
@@ -16,8 +14,6 @@ namespace MarkdownRenderer.Svg.Resvg.Internal;
 /// </summary>
 internal static class SvgResourceBudget
 {
-    private static ReadOnlySpan<byte> PngSignature => [137, 80, 78, 71, 13, 10, 26, 10];
-
     public const int MaxInputBytes = 8 * 1024 * 1024;
     public const int MaxElements = 100_000;
     public const int MaxDepth = 128;
@@ -57,7 +53,7 @@ internal static class SvgResourceBudget
         if (bytes.Length > MaxInputBytes)
             return SvgResourceBudgetResult.Reject("input-bytes");
 
-        var context = new ValidationContext(Stopwatch.GetTimestamp(), cancellationToken);
+        var context = new SvgResourceBudgetValidationContext(Stopwatch.GetTimestamp(), cancellationToken);
         SvgResourceBudgetResult result = ValidateDocument(bytes, context, nestedDepth: 0, metadataCollector);
         if (result.Accepted && metadataCollector is not null)
         {
@@ -80,7 +76,7 @@ internal static class SvgResourceBudget
 
     private static SvgResourceBudgetResult ValidateDocument(
         byte[] bytes,
-        ValidationContext context,
+        SvgResourceBudgetValidationContext context,
         int nestedDepth,
         MarkdownSvgSourceInfoReader? metadataCollector)
     {
@@ -207,7 +203,7 @@ internal static class SvgResourceBudget
 
                             if (name.Equals("style", StringComparison.OrdinalIgnoreCase))
                             {
-                                SvgResourceBudgetResult styleResult = ValidateCss(value);
+                                SvgResourceBudgetResult styleResult = SvgResourceBudgetCss.ValidateCss(value);
                                 if (!styleResult.Accepted)
                                     return styleResult;
                             }
@@ -222,9 +218,9 @@ internal static class SvgResourceBudget
                                 if (!hrefResult.Accepted)
                                     return hrefResult;
                             }
-                            else if (ContainsCssUrl(value))
+                            else if (SvgResourceBudgetCss.ContainsCssUrl(value))
                             {
-                                SvgResourceBudgetResult urlResult = ValidateCssUrls(value);
+                                SvgResourceBudgetResult urlResult = SvgResourceBudgetCss.ValidateCssUrls(value);
                                 if (!urlResult.Accepted)
                                     return urlResult;
                             }
@@ -254,7 +250,7 @@ internal static class SvgResourceBudget
 
                     if (styleElementDepth >= 0)
                     {
-                        SvgResourceBudgetResult styleResult = ValidateCss(reader.Value);
+                        SvgResourceBudgetResult styleResult = SvgResourceBudgetCss.ValidateCss(reader.Value);
                         if (!styleResult.Accepted)
                             return styleResult;
                     }
@@ -290,7 +286,7 @@ internal static class SvgResourceBudget
     private static SvgResourceBudgetResult ValidateHref(
         string elementName,
         string value,
-        ValidationContext context,
+        SvgResourceBudgetValidationContext context,
         int nestedDepth)
     {
         value = value.Trim();
@@ -311,7 +307,7 @@ internal static class SvgResourceBudget
 
         if (!value.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
             return SvgResourceBudgetResult.Reject("external-image-reference");
-        if (!TryDecodeDataUri(value, out string mediaType, out byte[] payload))
+        if (!SvgResourceBudgetDataUri.TryDecodeDataUri(value, out string mediaType, out byte[] payload))
             return SvgResourceBudgetResult.Reject("invalid-embedded-image");
 
         string hash = Convert.ToHexString(SHA256.HashData(payload));
@@ -332,7 +328,7 @@ internal static class SvgResourceBudget
 
         MarkdownRasterImageInspection raster = MarkdownRasterImageInspection.Inspect(payload);
         if (!raster.IsAccepted || raster.FrameCount != 1 ||
-            !IsSupportedEmbeddedRasterType(mediaType, raster.Format))
+            !SvgResourceBudgetDataUri.IsSupportedEmbeddedRasterType(mediaType, raster.Format))
         {
             return SvgResourceBudgetResult.Reject("embedded-image-format");
         }
@@ -344,470 +340,6 @@ internal static class SvgResourceBudget
             ? SvgResourceBudgetResult.Reject("embedded-image-data")
             : SvgResourceBudgetResult.Success;
     }
-
-    private static SvgResourceBudgetResult ValidateCss(string css)
-    {
-        // Charts such as star-history embed their lettering font as a
-        // data: @font-face. The renderer never loads web fonts; the static
-        // snapshot removes the block and text uses a system fallback font.
-        // Only a self-contained block may be set aside here; any other
-        // @font-face source is an external resource.
-        if (css.IndexOf("@font-face", StringComparison.OrdinalIgnoreCase) >= 0)
-        {
-            if (TryRemoveSelfContainedFontFaces(css, out string withoutFontFaces, out bool externalSource))
-                css = withoutFontFaces;
-            else if (externalSource)
-                return SvgResourceBudgetResult.Reject("external-resource");
-            // A malformed block is left in place and rejected as active content below.
-        }
-
-        if (css.IndexOf("@import", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            css.IndexOf("@font-face", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            css.IndexOf("@keyframes", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            ContainsMotionDeclaration(css))
-        {
-            return SvgResourceBudgetResult.Reject("active-content");
-        }
-
-        return TryRemoveInertNamespaceDeclarations(css, out string inspectable)
-            ? ValidateCssUrls(inspectable)
-            : SvgResourceBudgetResult.Reject("invalid-css-namespace");
-    }
-
-    private static bool ContainsMotionDeclaration(string css)
-    {
-        int cursor = 0;
-        while (cursor < css.Length)
-        {
-            if (char.IsWhiteSpace(css[cursor]))
-            {
-                cursor++;
-                continue;
-            }
-            if (cursor + 1 < css.Length && css[cursor] == '/' && css[cursor + 1] == '*')
-            {
-                int commentEnd = css.IndexOf("*/", cursor + 2, StringComparison.Ordinal);
-                if (commentEnd < 0)
-                    return false;
-                cursor = commentEnd + 2;
-                continue;
-            }
-            if (css[cursor] is '\'' or '"')
-            {
-                SkipCssString(css, ref cursor);
-                continue;
-            }
-
-            int nameStart = cursor;
-            while (cursor < css.Length &&
-                (char.IsAsciiLetterOrDigit(css[cursor]) || css[cursor] is '-' or '_'))
-            {
-                cursor++;
-            }
-            if (cursor == nameStart)
-            {
-                cursor++;
-                continue;
-            }
-
-            string property = css[nameStart..cursor];
-            int separator = cursor;
-            while (separator < css.Length && char.IsWhiteSpace(css[separator]))
-                separator++;
-            if (separator >= css.Length || css[separator] != ':' || !IsMotionProperty(property))
-                continue;
-
-            int end = separator + 1;
-            char quote = '\0';
-            int parentheses = 0;
-            while (end < css.Length)
-            {
-                char current = css[end];
-                if (quote != '\0')
-                {
-                    if (current == '\\' && end + 1 < css.Length)
-                        end += 2;
-                    else
-                    {
-                        if (current == quote)
-                            quote = '\0';
-                        end++;
-                    }
-                    continue;
-                }
-                if (current is '\'' or '"')
-                    quote = current;
-                else if (current == '(')
-                    parentheses++;
-                else if (current == ')' && parentheses > 0)
-                    parentheses--;
-                else if (parentheses == 0 && current == '{')
-                    break;
-                else if (parentheses == 0 && current is (';' or '}'))
-                    return true;
-                end++;
-            }
-
-            if (end >= css.Length)
-                return true;
-            cursor = end + 1;
-        }
-
-        return false;
-    }
-
-    private static bool IsMotionProperty(string property)
-        => property.Equals("animation", StringComparison.OrdinalIgnoreCase) ||
-            property.StartsWith("animation-", StringComparison.OrdinalIgnoreCase) ||
-            property.Equals("transition", StringComparison.OrdinalIgnoreCase) ||
-            property.StartsWith("transition-", StringComparison.OrdinalIgnoreCase) ||
-            property.Equals("-webkit-animation", StringComparison.OrdinalIgnoreCase) ||
-            property.StartsWith("-webkit-animation-", StringComparison.OrdinalIgnoreCase) ||
-            property.Equals("-webkit-transition", StringComparison.OrdinalIgnoreCase) ||
-            property.StartsWith("-webkit-transition-", StringComparison.OrdinalIgnoreCase);
-
-    private static void SkipCssString(string css, ref int cursor)
-    {
-        char quote = css[cursor++];
-        while (cursor < css.Length)
-        {
-            if (css[cursor] == '\\' && cursor + 1 < css.Length)
-            {
-                cursor += 2;
-                continue;
-            }
-            if (css[cursor++] == quote)
-                return;
-        }
-    }
-
-    private static bool TryRemoveInertNamespaceDeclarations(string css, out string inspectable)
-    {
-        char[]? sanitized = null;
-        int cursor = 0;
-        while (cursor < css.Length)
-        {
-            if (cursor + 1 < css.Length && css[cursor] == '/' && css[cursor + 1] == '*')
-            {
-                int commentEnd = css.IndexOf("*/", cursor + 2, StringComparison.Ordinal);
-                if (commentEnd < 0)
-                {
-                    inspectable = string.Empty;
-                    return false;
-                }
-                cursor = commentEnd + 2;
-                continue;
-            }
-            if (css[cursor] is '\'' or '"')
-            {
-                char quote = css[cursor++];
-                while (cursor < css.Length && css[cursor] != quote)
-                    cursor += css[cursor] == '\\' && cursor + 1 < css.Length ? 2 : 1;
-                if (cursor >= css.Length)
-                {
-                    inspectable = string.Empty;
-                    return false;
-                }
-                cursor++;
-                continue;
-            }
-            if (!css.AsSpan(cursor).StartsWith("@namespace", StringComparison.OrdinalIgnoreCase))
-            {
-                cursor++;
-                continue;
-            }
-
-            int start = cursor;
-            cursor += "@namespace".Length;
-            int parentheses = 0;
-            char statementQuote = '\0';
-            bool terminated = false;
-            while (cursor < css.Length)
-            {
-                char current = css[cursor];
-                if (statementQuote != '\0')
-                {
-                    if (current == '\\' && cursor + 1 < css.Length)
-                        cursor += 2;
-                    else
-                    {
-                        if (current == statementQuote)
-                            statementQuote = '\0';
-                        cursor++;
-                    }
-                    continue;
-                }
-                if (current is '\'' or '"')
-                {
-                    statementQuote = current;
-                    cursor++;
-                    continue;
-                }
-                if (current == '(')
-                    parentheses++;
-                else if (current == ')' && parentheses > 0)
-                    parentheses--;
-                else if (current == '{' && parentheses == 0)
-                    break;
-                else if (current == ';' && parentheses == 0)
-                {
-                    cursor++;
-                    terminated = true;
-                    break;
-                }
-                cursor++;
-            }
-            if (!terminated)
-            {
-                inspectable = string.Empty;
-                return false;
-            }
-            sanitized ??= css.ToCharArray();
-            Array.Fill(sanitized, ' ', start, cursor - start);
-        }
-
-        inspectable = sanitized is null ? css : new string(sanitized);
-        return true;
-    }
-
-    /// <summary>
-    /// Removes every <c>@font-face { … }</c> block whose <c>url()</c> sources
-    /// are all <c>data:</c> URLs (or that has none). Returns false when a block
-    /// is unterminated (<paramref name="externalSource"/> false) or references
-    /// anything other than <c>data:</c> (<paramref name="externalSource"/> true).
-    /// </summary>
-    internal static bool TryRemoveSelfContainedFontFaces(string css, out string remaining, out bool externalSource)
-    {
-        externalSource = false;
-        var builder = new System.Text.StringBuilder(css.Length);
-        int cursor = 0;
-        while (true)
-        {
-            int start = css.IndexOf("@font-face", cursor, StringComparison.OrdinalIgnoreCase);
-            if (start < 0)
-            {
-                builder.Append(css, cursor, css.Length - cursor);
-                remaining = builder.ToString();
-                return true;
-            }
-
-            int open = css.IndexOf('{', start);
-            int close = open < 0 ? -1 : css.IndexOf('}', open + 1);
-            if (open < 0 || close < 0 || css.IndexOf('{', open + 1, close - open - 1) >= 0)
-            {
-                remaining = css;
-                return false;
-            }
-
-            string body = css.Substring(open + 1, close - open - 1);
-            int searchFrom = 0;
-            while (true)
-            {
-                int url = body.IndexOf("url(", searchFrom, StringComparison.OrdinalIgnoreCase);
-                if (url < 0)
-                    break;
-                int argumentStart = url + 4;
-                int argumentEnd = body.IndexOf(')', argumentStart);
-                if (argumentEnd < 0)
-                {
-                    remaining = css;
-                    return false;
-                }
-                ReadOnlySpan<char> argument = body.AsSpan(argumentStart, argumentEnd - argumentStart).Trim();
-                if (argument.Length >= 2 &&
-                    ((argument[0] == '\'' && argument[^1] == '\'') || (argument[0] == '"' && argument[^1] == '"')))
-                {
-                    argument = argument[1..^1].Trim();
-                }
-                if (!argument.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
-                {
-                    remaining = css;
-                    externalSource = true;
-                    return false;
-                }
-                searchFrom = argumentEnd + 1;
-            }
-
-            builder.Append(css, cursor, start - cursor);
-            cursor = close + 1;
-        }
-    }
-
-    private static SvgResourceBudgetResult ValidateCssUrls(string value)
-    {
-        int searchFrom = 0;
-        while (true)
-        {
-            int urlIndex = value.IndexOf("url(", searchFrom, StringComparison.OrdinalIgnoreCase);
-            if (urlIndex < 0)
-                return SvgResourceBudgetResult.Success;
-
-            int argumentStart = urlIndex + 4;
-            int close = value.IndexOf(')', argumentStart);
-            if (close < 0)
-                return SvgResourceBudgetResult.Reject("invalid-css-url");
-
-            ReadOnlySpan<char> argument = value.AsSpan(argumentStart, close - argumentStart).Trim();
-            if (argument.Length >= 2 &&
-                ((argument[0] == '\'' && argument[^1] == '\'') ||
-                 (argument[0] == '"' && argument[^1] == '"')))
-            {
-                argument = argument[1..^1].Trim();
-            }
-
-            if (argument.IsEmpty || argument[0] != '#')
-                return SvgResourceBudgetResult.Reject("external-resource");
-
-            searchFrom = close + 1;
-        }
-    }
-
-    private static bool ContainsCssUrl(string value) =>
-        value.IndexOf("url(", StringComparison.OrdinalIgnoreCase) >= 0;
-
-    private static bool TryDecodeDataUri(string value, out string mediaType, out byte[] payload)
-    {
-        mediaType = string.Empty;
-        payload = Array.Empty<byte>();
-        if (!value.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
-            return false;
-
-        int comma = value.IndexOf(',');
-        if (comma <= 5)
-            return false;
-
-        string metadata = value.Substring(5, comma - 5);
-        int semicolon = metadata.IndexOf(';');
-        mediaType = (semicolon >= 0 ? metadata[..semicolon] : metadata).Trim();
-        bool base64 = metadata.EndsWith(";base64", StringComparison.OrdinalIgnoreCase) ||
-            metadata.IndexOf(";base64;", StringComparison.OrdinalIgnoreCase) >= 0;
-        string encoded = value[(comma + 1)..];
-        try
-        {
-            payload = base64 ? Convert.FromBase64String(encoded) : PercentDecode(encoded);
-            if (payload.Length == 0 || payload.Length > MaxInputBytes)
-                return false;
-
-            // Match browser data-URI tolerance without weakening the resource
-            // boundary: a positively identified supported raster payload is
-            // authoritative even when a generator mislabeled it (for example,
-            // a PNG avatar declared as image/gif). This also admits
-            // OpenCollective's `data:false;base64,...` PNG avatars. Arbitrary
-            // bytes and undeclared nested SVG remain rejected.
-            string? detectedRasterType = DetectEmbeddedRasterMediaType(payload);
-            if (detectedRasterType is not null)
-            {
-                mediaType = detectedRasterType;
-                return true;
-            }
-
-            return mediaType.Equals("image/svg+xml", StringComparison.OrdinalIgnoreCase);
-        }
-        catch (Exception ex) when (ex is FormatException or EncoderFallbackException)
-        {
-            payload = Array.Empty<byte>();
-            return false;
-        }
-    }
-
-    private static byte[] PercentDecode(string value)
-    {
-        using MemoryStream output = new(capacity: Math.Min(value.Length, MaxInputBytes));
-        Span<char> chars = stackalloc char[2];
-        Span<byte> utf8 = stackalloc byte[4];
-        for (int index = 0; index < value.Length; index++)
-        {
-            char current = value[index];
-            if (current == '%' && index + 2 < value.Length &&
-                TryHex(value[index + 1], out int high) && TryHex(value[index + 2], out int low))
-            {
-                output.WriteByte((byte)((high << 4) | low));
-                index += 2;
-            }
-            else if (current <= 0x7F)
-            {
-                output.WriteByte((byte)current);
-            }
-            else
-            {
-                chars[0] = current;
-                int charCount = 1;
-                if (char.IsHighSurrogate(current) && index + 1 < value.Length &&
-                    char.IsLowSurrogate(value[index + 1]))
-                {
-                    chars[1] = value[++index];
-                    charCount = 2;
-                }
-
-                int count = Encoding.UTF8.GetBytes(chars[..charCount], utf8);
-                output.Write(utf8[..count]);
-            }
-
-            if (output.Length > MaxInputBytes)
-                throw new FormatException("Decoded data URI exceeds the SVG resource budget.");
-        }
-
-        return output.ToArray();
-    }
-
-    private static bool TryHex(char value, out int digit)
-    {
-        if (value is >= '0' and <= '9')
-        {
-            digit = value - '0';
-            return true;
-        }
-        if (value is >= 'a' and <= 'f')
-        {
-            digit = value - 'a' + 10;
-            return true;
-        }
-        if (value is >= 'A' and <= 'F')
-        {
-            digit = value - 'A' + 10;
-            return true;
-        }
-
-        digit = 0;
-        return false;
-    }
-
-    private static bool IsSupportedEmbeddedMediaType(string value) =>
-        value.Equals("image/png", StringComparison.OrdinalIgnoreCase) ||
-        value.Equals("image/jpeg", StringComparison.OrdinalIgnoreCase) ||
-        value.Equals("image/jpg", StringComparison.OrdinalIgnoreCase) ||
-        value.Equals("image/gif", StringComparison.OrdinalIgnoreCase) ||
-        value.Equals("image/webp", StringComparison.OrdinalIgnoreCase) ||
-        value.Equals("image/svg+xml", StringComparison.OrdinalIgnoreCase);
-
-    private static string? DetectEmbeddedRasterMediaType(ReadOnlySpan<byte> payload)
-    {
-        if (payload.Length >= 8 &&
-            payload[..8].SequenceEqual(PngSignature))
-        {
-            return "image/png";
-        }
-        if (payload.Length >= 3 && payload[0] == 0xff && payload[1] == 0xd8 && payload[2] == 0xff)
-            return "image/jpeg";
-        if (payload.Length >= 6 &&
-            (payload[..6].SequenceEqual("GIF87a"u8) || payload[..6].SequenceEqual("GIF89a"u8)))
-        {
-            return "image/gif";
-        }
-        if (payload.Length >= 12 &&
-            payload[..4].SequenceEqual("RIFF"u8) && payload[8..12].SequenceEqual("WEBP"u8))
-        {
-            return "image/webp";
-        }
-        return null;
-    }
-
-    private static bool IsSupportedEmbeddedRasterType(string mediaType, MarkdownRasterFormat? detectedFormat) =>
-        (mediaType.Equals("image/png", StringComparison.OrdinalIgnoreCase) && detectedFormat == MarkdownRasterFormat.Png) ||
-        ((mediaType.Equals("image/jpeg", StringComparison.OrdinalIgnoreCase) ||
-          mediaType.Equals("image/jpg", StringComparison.OrdinalIgnoreCase)) && detectedFormat == MarkdownRasterFormat.Jpeg) ||
-        (mediaType.Equals("image/gif", StringComparison.OrdinalIgnoreCase) && detectedFormat == MarkdownRasterFormat.Gif) ||
-        (mediaType.Equals("image/webp", StringComparison.OrdinalIgnoreCase) && detectedFormat == MarkdownRasterFormat.WebP);
 
     private static bool IsSvgNamespace(string? namespaceUri) =>
         string.IsNullOrEmpty(namespaceUri) ||
@@ -870,40 +402,5 @@ internal static class SvgResourceBudget
             NumberStyles.Float,
             CultureInfo.InvariantCulture,
             out result);
-    }
-
-    private sealed class ValidationContext
-    {
-        private readonly long _started;
-        private readonly CancellationToken _cancellationToken;
-
-        public ValidationContext(long started, CancellationToken cancellationToken)
-        {
-            _started = started;
-            _cancellationToken = cancellationToken;
-        }
-
-        public int ElementCount { get; set; }
-        public int AttributeCount { get; set; }
-        public int FilterPrimitiveCount { get; set; }
-        public int TextNodeCount { get; set; }
-        public long TextCharacters { get; set; }
-        public long PathCharacters { get; set; }
-        public long TransformCharacters { get; set; }
-        public long EmbeddedCompressedBytes { get; set; }
-        public long DecodedEmbeddedImageBytes { get; set; }
-        public long ComplexityUnits { get; set; }
-        public HashSet<string> SeenEmbeddedResources { get; } = new(StringComparer.Ordinal);
-
-        public void ThrowIfStopped()
-        {
-            _cancellationToken.ThrowIfCancellationRequested();
-            if (Stopwatch.GetElapsedTime(_started) > ValidationDeadline)
-                throw new SvgValidationDeadlineException();
-        }
-    }
-
-    private sealed class SvgValidationDeadlineException : Exception
-    {
     }
 }
