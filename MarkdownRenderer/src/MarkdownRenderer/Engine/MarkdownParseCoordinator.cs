@@ -19,20 +19,14 @@ internal sealed class MarkdownParseCoordinator
 {
     private readonly object _parseGate = new();
     private readonly MarkdownCompletedParseCache _completedParses;
-    private readonly Dictionary<MarkdownParseSourceKey, MarkdownInFlightParse> _inFlightParses =
-        new(MarkdownParseSourceKeyComparer.Instance);
-    private readonly LinkedList<MarkdownInFlightParse> _queuedParses = new();
+    private readonly MarkdownInFlightParseTable _inFlightParses;
     private readonly MarkdownDocumentParser _parser;
     private readonly MarkdownParseLimits _parseLimits;
     private readonly long _parseCacheBudgetBytes;
     private readonly IReadOnlyList<IDisposable> _ownedResources;
     private readonly MarkdownExtensionCallbackLifetime? _extensionCallbackLifetime;
-    private int _activeParseCount;
     private int _pendingCancellationRetirementCount;
-    private int _outstandingParseCount;
-    private long _outstandingSourceBytes;
     private long _sourceKeyHashCount;
-    private long _parseGeneration;
     private bool _disposeRequested;
     private bool _extensionCallbacksRetired;
     private bool _ownedResourcesDisposed;
@@ -48,6 +42,7 @@ internal sealed class MarkdownParseCoordinator
         _parseLimits = parseLimits;
         _parseCacheBudgetBytes = parseCacheBudgetBytes;
         _completedParses = new MarkdownCompletedParseCache(parseCacheBudgetBytes);
+        _inFlightParses = new MarkdownInFlightParseTable(parseLimits);
         _ownedResources = ownedResources;
         _extensionCallbackLifetime = extensionCallbackLifetime;
         _extensionCallbacksRetired = extensionCallbackLifetime is null;
@@ -58,7 +53,7 @@ internal sealed class MarkdownParseCoordinator
         get
         {
             lock (_parseGate)
-                return _activeParseCount;
+                return _inFlightParses.ActiveCount;
         }
     }
 
@@ -76,7 +71,7 @@ internal sealed class MarkdownParseCoordinator
         get
         {
             lock (_parseGate)
-                return _queuedParses.Count;
+                return _inFlightParses.QueuedCount;
         }
     }
 
@@ -85,7 +80,7 @@ internal sealed class MarkdownParseCoordinator
         get
         {
             lock (_parseGate)
-                return _outstandingParseCount;
+                return _inFlightParses.OutstandingCount;
         }
     }
 
@@ -194,7 +189,6 @@ internal sealed class MarkdownParseCoordinator
         joined = null;
         startParse = false;
         immediateResult = null;
-        MarkdownInFlightParse inFlight;
         lock (_parseGate)
         {
             if (_disposeRequested)
@@ -210,41 +204,21 @@ internal sealed class MarkdownParseCoordinator
                 return false;
             }
 
-            if (!_inFlightParses.TryGetValue(sourceKey, out inFlight!) || inFlight.IsAbandoned)
-            {
-                if (_outstandingParseCount >= _parseLimits.MaximumOutstandingParseCount ||
-                    _outstandingSourceBytes > _parseLimits.MaximumOutstandingSourceBytes - sourceBytes)
-                {
-                    immediateResult = Task.FromException<MarkdownDocument>(new InvalidOperationException(
-                        "The markdown parse admission limit is full. Retry after an outstanding parse completes."));
-                    return false;
-                }
-
-                inFlight = new MarkdownInFlightParse(
+            if (!_inFlightParses.TryJoinOrAdmit(
                     sourceKey,
                     sourceBytes,
-                    unchecked(++_parseGeneration));
-                _inFlightParses[sourceKey] = inFlight;
-                _outstandingParseCount++;
-                _outstandingSourceBytes += sourceBytes;
-                TaskFaultObservation.ObserveFault(inFlight.ParseTask);
-
-                if (_activeParseCount < _parseLimits.MaximumConcurrentParseCount)
-                {
-                    inFlight.IsStarted = true;
-                    _activeParseCount++;
-                    startParse = true;
-                }
-                else
-                {
-                    inFlight.QueueNode = _queuedParses.AddLast(inFlight);
-                }
+                    out MarkdownInFlightParse? inFlight,
+                    out startParse))
+            {
+                immediateResult = Task.FromException<MarkdownDocument>(new InvalidOperationException(
+                    "The markdown parse admission limit is full. Retry after an outstanding parse completes."));
+                return false;
             }
 
             inFlight.WaiterCount++;
+            joined = inFlight;
         }
 
-        joined = inFlight;
         return true;
     }
 
@@ -295,10 +269,10 @@ internal sealed class MarkdownParseCoordinator
             inFlight.CancellationToken.ThrowIfCancellationRequested();
             if (_parseCacheBudgetBytes > 0)
             {
-                long minimumWeight = MarkdownDocumentWeightEstimator.EstimateMinimum(document);
-                documentWeight = minimumWeight > _parseCacheBudgetBytes
-                    ? minimumWeight
-                    : MarkdownDocumentWeightEstimator.Estimate(document, inFlight.CancellationToken);
+                documentWeight = MarkdownDocumentWeightEstimator.EstimateForBudget(
+                    document,
+                    _parseCacheBudgetBytes,
+                    inFlight.CancellationToken);
             }
             inFlight.CancellationToken.ThrowIfCancellationRequested();
             publish = true;
@@ -371,24 +345,8 @@ internal sealed class MarkdownParseCoordinator
             if (inFlight.IsAbandoned)
                 return;
 
-            inFlight.IsAbandoned = true;
-            if (_inFlightParses.TryGetValue(inFlight.Key, out var current) &&
-                ReferenceEquals(current, inFlight))
+            if (_inFlightParses.Abandon(inFlight))
             {
-                _inFlightParses.Remove(inFlight.Key);
-            }
-
-            if (!inFlight.IsStarted)
-            {
-                if (inFlight.QueueNode is not null)
-                {
-                    _queuedParses.Remove(inFlight.QueueNode);
-                    inFlight.QueueNode = null;
-                }
-
-                inFlight.IsCompleted = true;
-                _outstandingParseCount--;
-                _outstandingSourceBytes -= inFlight.SourceBytes;
                 queuedCancellationToken = inFlight.CancellationToken;
                 completeQueuedCancellation = true;
             }
@@ -420,16 +378,7 @@ internal sealed class MarkdownParseCoordinator
     {
         lock (_parseGate)
         {
-            bool isCurrent =
-                _inFlightParses.TryGetValue(inFlight.Key, out var current) &&
-                ReferenceEquals(current, inFlight);
-            if (isCurrent)
-                _inFlightParses.Remove(inFlight.Key);
-
-            inFlight.IsCompleted = true;
-            _activeParseCount--;
-            _outstandingParseCount--;
-            _outstandingSourceBytes -= inFlight.SourceBytes;
+            bool isCurrent = _inFlightParses.Complete(inFlight);
             if (document is not null &&
                 isCurrent &&
                 !inFlight.IsAbandoned &&
@@ -442,20 +391,7 @@ internal sealed class MarkdownParseCoordinator
                     inFlight.ParseGeneration);
             }
 
-            while (!_disposeRequested && _queuedParses.First is { } first)
-            {
-                _queuedParses.RemoveFirst();
-                MarkdownInFlightParse next = first.Value;
-                next.QueueNode = null;
-                if (next.IsAbandoned || next.IsCompleted)
-                    continue;
-
-                next.IsStarted = true;
-                _activeParseCount++;
-                return next;
-            }
-
-            return null;
+            return _inFlightParses.StartNextQueued(_disposeRequested);
         }
     }
 
@@ -478,25 +414,7 @@ internal sealed class MarkdownParseCoordinator
             if (extensionCallbackRetirement is null || extensionCallbackRetirement.IsCompleted)
                 _extensionCallbacksRetired = true;
             _completedParses.Clear();
-
-            foreach (MarkdownInFlightParse operation in _inFlightParses.Values)
-            {
-                operation.IsAbandoned = true;
-                if (operation.IsStarted)
-                {
-                    (running ??= new List<MarkdownInFlightParse>()).Add(operation);
-                    continue;
-                }
-
-                operation.IsCompleted = true;
-                operation.QueueNode = null;
-                _outstandingParseCount--;
-                _outstandingSourceBytes -= operation.SourceBytes;
-                (queued ??= new List<MarkdownInFlightParse>()).Add(operation);
-            }
-
-            _inFlightParses.Clear();
-            _queuedParses.Clear();
+            _inFlightParses.AbandonAll(ref running, ref queued);
         }
 
         if (extensionCallbackRetirement is { IsCompleted: false })
@@ -508,27 +426,9 @@ internal sealed class MarkdownParseCoordinator
                 TaskContinuationOptions.ExecuteSynchronously,
                 TaskScheduler.Default);
         }
-        CancelOperations(running, complete: false);
-        CancelOperations(queued, complete: true);
+        MarkdownInFlightParse.CancelAll(running, complete: false);
+        MarkdownInFlightParse.CancelAll(queued, complete: true);
         DisposeOwnedResourcesIfReady();
-    }
-
-    private static void CancelOperations(List<MarkdownInFlightParse>? operations, bool complete)
-    {
-        if (operations is null)
-            return;
-
-        foreach (MarkdownInFlightParse operation in operations)
-        {
-            CancellationToken token = operation.CancellationToken;
-            operation.RequestCancellation();
-
-            if (!complete)
-                continue;
-
-            operation.Completion.TrySetCanceled(token);
-            _ = operation.RetireCancellation();
-        }
     }
 
     private void TrackCancellationRetirement(Task retirement)
@@ -577,7 +477,7 @@ internal sealed class MarkdownParseCoordinator
 
             if (!_disposeRequested ||
                 _ownedResourcesDisposed ||
-                _activeParseCount != 0 ||
+                _inFlightParses.ActiveCount != 0 ||
                 _pendingCancellationRetirementCount != 0 ||
                 !_extensionCallbacksRetired)
                 return;

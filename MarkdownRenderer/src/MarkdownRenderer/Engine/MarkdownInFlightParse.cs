@@ -65,6 +65,29 @@ internal sealed class MarkdownInFlightParse
         }
     }
 
+    /// <summary>
+    /// Requests cancellation of each parse. With <paramref name="complete"/>,
+    /// also completes it as canceled and retires its cancellation source; use
+    /// that only for parses that never started.
+    /// </summary>
+    internal static void CancelAll(List<MarkdownInFlightParse>? operations, bool complete)
+    {
+        if (operations is null)
+            return;
+
+        foreach (MarkdownInFlightParse operation in operations)
+        {
+            CancellationToken token = operation.CancellationToken;
+            operation.RequestCancellation();
+
+            if (!complete)
+                continue;
+
+            operation.Completion.TrySetCanceled(token);
+            _ = operation.RetireCancellation();
+        }
+    }
+
     internal Task RetireCancellation()
     {
         lock (_cancellationGate)

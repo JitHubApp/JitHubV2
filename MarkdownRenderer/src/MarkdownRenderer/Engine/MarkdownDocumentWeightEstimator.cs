@@ -29,13 +29,22 @@ internal static class MarkdownDocumentWeightEstimator
     private const long VectorLinkWeightBytes = 40;
 
     /// <summary>
-    /// The lower bound every estimate starts from: the fixed document cost plus
-    /// the source-proportional syntax cost.
+    /// Estimates a document for a cache with <paramref name="budgetBytes"/>.
+    /// When the fixed and source-proportional cost alone already exceed the
+    /// budget, that lower bound is returned without walking the document.
     /// </summary>
-    internal static long EstimateMinimum(MarkdownDocument document)
-        => AddSaturating(
+    internal static long EstimateForBudget(
+        MarkdownDocument document,
+        long budgetBytes,
+        CancellationToken cancellationToken)
+    {
+        long minimumWeight = AddSaturating(
             BaseDocumentWeightBytes,
             (long)document.Source.Length * Utf16SyntaxWeightPerCharacter);
+        return minimumWeight > budgetBytes
+            ? minimumWeight
+            : Estimate(document, cancellationToken);
+    }
 
     internal static long Estimate(
         MarkdownDocument document,
