@@ -89,19 +89,7 @@ internal static class SvgResourceBudget
         try
         {
             using MemoryStream stream = new(bytes, writable: false);
-            using XmlReader reader = XmlReader.Create(stream, new XmlReaderSettings
-            {
-                Async = false,
-                // Parse only so a DocumentType node can be classified precisely.
-                // The resolver is disabled and entity expansion is bounded; the
-                // document is rejected as soon as the declaration is observed.
-                DtdProcessing = DtdProcessing.Parse,
-                XmlResolver = null,
-                IgnoreComments = true,
-                IgnoreProcessingInstructions = true,
-                MaxCharactersFromEntities = 1,
-                MaxCharactersInDocument = MaxInputBytes,
-            });
+            using XmlReader reader = XmlReader.Create(stream, CreateReaderSettings());
 
             while (reader.Read())
             {
@@ -114,149 +102,15 @@ internal static class SvgResourceBudget
                     return SvgResourceBudgetResult.Reject("dtd-forbidden");
                 }
 
-                if (reader.NodeType == XmlNodeType.Element)
-                {
-                    string elementName = reader.LocalName;
-                    int elementDepth = reader.Depth;
-                    bool isSvgElement = IsSvgNamespace(reader.NamespaceURI);
-                    if (!sawSvgRoot)
-                    {
-                        sawSvgRoot = elementName.Equals("svg", StringComparison.OrdinalIgnoreCase) &&
-                            isSvgElement;
-                        if (!sawSvgRoot)
-                            return SvgResourceBudgetResult.Reject("missing-root");
-                    }
-
-                    metadataCollector?.ObserveElement(
-                        elementDepth,
-                        elementName,
-                        reader.NamespaceURI,
-                        reader.IsEmptyElement);
-
-                    if (++context.ElementCount > MaxElements)
-                        return SvgResourceBudgetResult.Reject("element-count");
-                    if (++context.ComplexityUnits > MaxComplexityUnits)
-                        return SvgResourceBudgetResult.Reject("structural-complexity");
-
-                    if (isSvgElement && IsActiveContentElement(elementName))
-                        return SvgResourceBudgetResult.Reject("active-content");
-
-                    bool isFilterPrimitive = isSvgElement &&
-                        elementName.StartsWith("fe", StringComparison.OrdinalIgnoreCase);
-                    if (isFilterPrimitive)
-                    {
-                        if (!IsSupportedFilterPrimitive(elementName))
-                            return SvgResourceBudgetResult.Reject("unsupported-filter-primitive");
-                        if (++context.FilterPrimitiveCount > MaxFilterPrimitives)
-                            return SvgResourceBudgetResult.Reject("filter-complexity");
-                        context.ComplexityUnits += 8;
-                        if (context.ComplexityUnits > MaxComplexityUnits)
-                            return SvgResourceBudgetResult.Reject("structural-complexity");
-                    }
-
-                    if (isSvgElement && elementName.Equals("style", StringComparison.OrdinalIgnoreCase))
-                        styleElementDepth = reader.IsEmptyElement ? -1 : reader.Depth;
-
-                    if (reader.HasAttributes)
-                    {
-                        while (reader.MoveToNextAttribute())
-                        {
-                            context.ThrowIfStopped();
-                            if (++context.AttributeCount > MaxAttributes)
-                                return SvgResourceBudgetResult.Reject("attribute-count");
-
-                            string name = reader.LocalName;
-                            string value = reader.Value;
-                            metadataCollector?.ObserveAttribute(
-                                elementDepth,
-                                name,
-                                reader.NamespaceURI,
-                                value);
-                            if (name.StartsWith("on", StringComparison.OrdinalIgnoreCase))
-                                return SvgResourceBudgetResult.Reject("event-handler");
-
-                            if (name.Equals("d", StringComparison.OrdinalIgnoreCase) ||
-                                name.Equals("points", StringComparison.OrdinalIgnoreCase))
-                            {
-                                context.PathCharacters += value.Length;
-                                context.ComplexityUnits += (value.Length + 63L) / 64L;
-                                if (context.PathCharacters > MaxPathCharacters ||
-                                    context.ComplexityUnits > MaxComplexityUnits)
-                                {
-                                    return SvgResourceBudgetResult.Reject("path-complexity");
-                                }
-                            }
-                            else if (name.Equals("transform", StringComparison.OrdinalIgnoreCase))
-                            {
-                                context.TransformCharacters += value.Length;
-                                if (context.TransformCharacters > MaxTransformCharacters)
-                                    return SvgResourceBudgetResult.Reject("transform-complexity");
-                            }
-                            else if (name.Equals("font-size", StringComparison.OrdinalIgnoreCase) &&
-                                TryReadLeadingNumber(value, out double fontSize) &&
-                                Math.Abs(fontSize) > MaxDeclaredFontSize)
-                            {
-                                return SvgResourceBudgetResult.Reject("font-size");
-                            }
-
-                            if (name.Equals("style", StringComparison.OrdinalIgnoreCase))
-                            {
-                                SvgResourceBudgetResult styleResult = SvgResourceBudgetCss.ValidateCss(value);
-                                if (!styleResult.Accepted)
-                                    return styleResult;
-                            }
-
-                            if (name.Equals("href", StringComparison.OrdinalIgnoreCase))
-                            {
-                                SvgResourceBudgetResult hrefResult = ValidateHref(
-                                    elementName,
-                                    value,
-                                    context,
-                                    nestedDepth);
-                                if (!hrefResult.Accepted)
-                                    return hrefResult;
-                            }
-                            else if (SvgResourceBudgetCss.ContainsCssUrl(value))
-                            {
-                                SvgResourceBudgetResult urlResult = SvgResourceBudgetCss.ValidateCssUrls(value);
-                                if (!urlResult.Accepted)
-                                    return urlResult;
-                            }
-                        }
-
-                        reader.MoveToElement();
-                    }
-                }
-                else if (reader.NodeType == XmlNodeType.EndElement)
-                {
-                    metadataCollector?.ObserveEndElement(reader.Depth);
-                    if (styleElementDepth == reader.Depth &&
-                        reader.LocalName.Equals("style", StringComparison.OrdinalIgnoreCase))
-                    {
-                        styleElementDepth = -1;
-                    }
-                }
-                else if (reader.NodeType is XmlNodeType.Text or XmlNodeType.CDATA or XmlNodeType.SignificantWhitespace)
-                {
-                    if (++context.TextNodeCount > MaxTextNodes)
-                        return SvgResourceBudgetResult.Reject("text-node-count");
-                    context.TextCharacters += reader.Value.Length;
-                    if (context.TextCharacters > MaxTextCharacters)
-                        return SvgResourceBudgetResult.Reject("text-length");
-
-                    metadataCollector?.ObserveText(reader.Depth, reader.Value.AsSpan());
-
-                    if (styleElementDepth >= 0)
-                    {
-                        SvgResourceBudgetResult styleResult = SvgResourceBudgetCss.ValidateCss(reader.Value);
-                        if (!styleResult.Accepted)
-                            return styleResult;
-                    }
-                }
-                else if (reader.NodeType == XmlNodeType.Whitespace)
-                {
-                    metadataCollector?.ObserveText(reader.Depth, reader.Value.AsSpan());
-                }
+                SvgResourceBudgetResult nodeResult = ValidateNode(
+                    reader,
+                    context,
+                    nestedDepth,
+                    metadataCollector,
+                    ref sawSvgRoot,
+                    ref styleElementDepth);
+                if (!nodeResult.Accepted)
+                    return nodeResult;
             }
         }
         catch (OperationCanceledException)
@@ -279,6 +133,242 @@ internal static class SvgResourceBudget
         return sawSvgRoot
             ? SvgResourceBudgetResult.Success
             : SvgResourceBudgetResult.Reject("missing-root");
+    }
+
+    /// <summary>Creates the reader settings for one validation pass.</summary>
+    private static XmlReaderSettings CreateReaderSettings() => new()
+    {
+        Async = false,
+        // Parse only so a DocumentType node can be classified precisely.
+        // The resolver is disabled and entity expansion is bounded; the
+        // document is rejected as soon as the declaration is observed.
+        DtdProcessing = DtdProcessing.Parse,
+        XmlResolver = null,
+        IgnoreComments = true,
+        IgnoreProcessingInstructions = true,
+        MaxCharactersFromEntities = 1,
+        MaxCharactersInDocument = MaxInputBytes,
+    };
+
+    /// <summary>
+    /// Validates the node under the reader once its depth is in range and it
+    /// is not a document type declaration.
+    /// </summary>
+    private static SvgResourceBudgetResult ValidateNode(
+        XmlReader reader,
+        SvgResourceBudgetValidationContext context,
+        int nestedDepth,
+        MarkdownSvgSourceInfoReader? metadataCollector,
+        ref bool sawSvgRoot,
+        ref int styleElementDepth)
+    {
+        if (reader.NodeType == XmlNodeType.Element)
+        {
+            return ValidateElement(
+                reader,
+                context,
+                nestedDepth,
+                metadataCollector,
+                ref sawSvgRoot,
+                ref styleElementDepth);
+        }
+
+        if (reader.NodeType == XmlNodeType.EndElement)
+        {
+            metadataCollector?.ObserveEndElement(reader.Depth);
+            if (styleElementDepth == reader.Depth &&
+                reader.LocalName.Equals("style", StringComparison.OrdinalIgnoreCase))
+            {
+                styleElementDepth = -1;
+            }
+        }
+        else if (reader.NodeType is XmlNodeType.Text or XmlNodeType.CDATA or XmlNodeType.SignificantWhitespace)
+        {
+            return ValidateText(reader, context, metadataCollector, styleElementDepth);
+        }
+        else if (reader.NodeType == XmlNodeType.Whitespace)
+        {
+            metadataCollector?.ObserveText(reader.Depth, reader.Value.AsSpan());
+        }
+
+        return SvgResourceBudgetResult.Success;
+    }
+
+    /// <summary>
+    /// Validates one element and its attributes: the root check, element and
+    /// complexity counts, active content, filter primitives and style tracking.
+    /// </summary>
+    private static SvgResourceBudgetResult ValidateElement(
+        XmlReader reader,
+        SvgResourceBudgetValidationContext context,
+        int nestedDepth,
+        MarkdownSvgSourceInfoReader? metadataCollector,
+        ref bool sawSvgRoot,
+        ref int styleElementDepth)
+    {
+        string elementName = reader.LocalName;
+        int elementDepth = reader.Depth;
+        bool isSvgElement = IsSvgNamespace(reader.NamespaceURI);
+        if (!sawSvgRoot)
+        {
+            sawSvgRoot = elementName.Equals("svg", StringComparison.OrdinalIgnoreCase) &&
+                isSvgElement;
+            if (!sawSvgRoot)
+                return SvgResourceBudgetResult.Reject("missing-root");
+        }
+
+        metadataCollector?.ObserveElement(
+            elementDepth,
+            elementName,
+            reader.NamespaceURI,
+            reader.IsEmptyElement);
+
+        if (++context.ElementCount > MaxElements)
+            return SvgResourceBudgetResult.Reject("element-count");
+        if (++context.ComplexityUnits > MaxComplexityUnits)
+            return SvgResourceBudgetResult.Reject("structural-complexity");
+
+        if (isSvgElement && IsActiveContentElement(elementName))
+            return SvgResourceBudgetResult.Reject("active-content");
+
+        bool isFilterPrimitive = isSvgElement &&
+            elementName.StartsWith("fe", StringComparison.OrdinalIgnoreCase);
+        if (isFilterPrimitive)
+        {
+            if (!IsSupportedFilterPrimitive(elementName))
+                return SvgResourceBudgetResult.Reject("unsupported-filter-primitive");
+            if (++context.FilterPrimitiveCount > MaxFilterPrimitives)
+                return SvgResourceBudgetResult.Reject("filter-complexity");
+            context.ComplexityUnits += 8;
+            if (context.ComplexityUnits > MaxComplexityUnits)
+                return SvgResourceBudgetResult.Reject("structural-complexity");
+        }
+
+        if (isSvgElement && elementName.Equals("style", StringComparison.OrdinalIgnoreCase))
+            styleElementDepth = reader.IsEmptyElement ? -1 : reader.Depth;
+
+        if (reader.HasAttributes)
+        {
+            while (reader.MoveToNextAttribute())
+            {
+                SvgResourceBudgetResult attributeResult = ValidateAttribute(
+                    reader,
+                    elementName,
+                    elementDepth,
+                    context,
+                    nestedDepth,
+                    metadataCollector);
+                if (!attributeResult.Accepted)
+                    return attributeResult;
+            }
+
+            reader.MoveToElement();
+        }
+
+        return SvgResourceBudgetResult.Success;
+    }
+
+    /// <summary>
+    /// Validates the attribute under the reader: the attribute count, event
+    /// handlers, path, transform and font-size budgets, inline CSS, and
+    /// references.
+    /// </summary>
+    private static SvgResourceBudgetResult ValidateAttribute(
+        XmlReader reader,
+        string elementName,
+        int elementDepth,
+        SvgResourceBudgetValidationContext context,
+        int nestedDepth,
+        MarkdownSvgSourceInfoReader? metadataCollector)
+    {
+        context.ThrowIfStopped();
+        if (++context.AttributeCount > MaxAttributes)
+            return SvgResourceBudgetResult.Reject("attribute-count");
+
+        string name = reader.LocalName;
+        string value = reader.Value;
+        metadataCollector?.ObserveAttribute(
+            elementDepth,
+            name,
+            reader.NamespaceURI,
+            value);
+        if (name.StartsWith("on", StringComparison.OrdinalIgnoreCase))
+            return SvgResourceBudgetResult.Reject("event-handler");
+
+        if (name.Equals("d", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("points", StringComparison.OrdinalIgnoreCase))
+        {
+            context.PathCharacters += value.Length;
+            context.ComplexityUnits += (value.Length + 63L) / 64L;
+            if (context.PathCharacters > MaxPathCharacters ||
+                context.ComplexityUnits > MaxComplexityUnits)
+            {
+                return SvgResourceBudgetResult.Reject("path-complexity");
+            }
+        }
+        else if (name.Equals("transform", StringComparison.OrdinalIgnoreCase))
+        {
+            context.TransformCharacters += value.Length;
+            if (context.TransformCharacters > MaxTransformCharacters)
+                return SvgResourceBudgetResult.Reject("transform-complexity");
+        }
+        else if (name.Equals("font-size", StringComparison.OrdinalIgnoreCase) &&
+            TryReadLeadingNumber(value, out double fontSize) &&
+            Math.Abs(fontSize) > MaxDeclaredFontSize)
+        {
+            return SvgResourceBudgetResult.Reject("font-size");
+        }
+
+        if (name.Equals("style", StringComparison.OrdinalIgnoreCase))
+        {
+            SvgResourceBudgetResult styleResult = SvgResourceBudgetCss.ValidateCss(value);
+            if (!styleResult.Accepted)
+                return styleResult;
+        }
+
+        if (name.Equals("href", StringComparison.OrdinalIgnoreCase))
+        {
+            SvgResourceBudgetResult hrefResult = ValidateHref(
+                elementName,
+                value,
+                context,
+                nestedDepth);
+            if (!hrefResult.Accepted)
+                return hrefResult;
+        }
+        else if (SvgResourceBudgetCss.ContainsCssUrl(value))
+        {
+            SvgResourceBudgetResult urlResult = SvgResourceBudgetCss.ValidateCssUrls(value);
+            if (!urlResult.Accepted)
+                return urlResult;
+        }
+
+        return SvgResourceBudgetResult.Success;
+    }
+
+    /// <summary>Charges one text node and validates it as CSS inside a style element.</summary>
+    private static SvgResourceBudgetResult ValidateText(
+        XmlReader reader,
+        SvgResourceBudgetValidationContext context,
+        MarkdownSvgSourceInfoReader? metadataCollector,
+        int styleElementDepth)
+    {
+        if (++context.TextNodeCount > MaxTextNodes)
+            return SvgResourceBudgetResult.Reject("text-node-count");
+        context.TextCharacters += reader.Value.Length;
+        if (context.TextCharacters > MaxTextCharacters)
+            return SvgResourceBudgetResult.Reject("text-length");
+
+        metadataCollector?.ObserveText(reader.Depth, reader.Value.AsSpan());
+
+        if (styleElementDepth >= 0)
+        {
+            SvgResourceBudgetResult styleResult = SvgResourceBudgetCss.ValidateCss(reader.Value);
+            if (!styleResult.Accepted)
+                return styleResult;
+        }
+
+        return SvgResourceBudgetResult.Success;
     }
 
     private static SvgResourceBudgetResult ValidateHref(
