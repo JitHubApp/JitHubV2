@@ -765,6 +765,10 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// ancestor viewport through EffectiveViewportChanged.
     /// </param>
     /// <param name="diagnostics">The diagnostics this renderer runs with for its lifetime.</param>
+    /// <remarks>
+    /// Longer than 80 lines because it is the composition root: one line per
+    /// owner, in dependency order, then the host adapters are connected.
+    /// </remarks>
     private protected MarkdownRendererControl(bool ownsScrollViewport, MarkdownRendererDiagnosticOptions diagnostics)
     {
         var events = new RendererEvents(this, _lifetime, DispatcherQueue);
