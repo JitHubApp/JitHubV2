@@ -925,30 +925,8 @@ internal sealed class InlineContainerBox : BlockBox
                 // width-change reflow so repeated window resizes don't re-allocate.
                 if (_bufferDirty) BuildBuffer();
                 InvalidateLineMetrics();
-                int vectorCount = 0;
                 if (previousLayout is not null)
-                {
-                    foreach (InlineRun run in _runs)
-                    {
-                        if (run is InlineVectorSceneRun)
-                            vectorCount++;
-                    }
-                }
-
-                if (vectorCount > 0)
-                {
-                    previousScenePlacements = new InlineScenePlacementRollbackState[vectorCount];
-                    int vectorIndex = 0;
-                    foreach (InlineRun run in _runs)
-                    {
-                        if (run is InlineVectorSceneRun vector)
-                        {
-                            previousScenePlacements[vectorIndex++] = new InlineScenePlacementRollbackState(
-                                vector,
-                                vector.LocalBounds);
-                        }
-                    }
-                }
+                    previousScenePlacements = InlineMeasureRollback.CaptureScenePlacements(_runs);
 
                 using var formatLease = CreateTextFormatLease(style, WordWrapping, TextAlignment);
                 NativeResourceRetirementRecord candidateRetirementRecord =
@@ -1020,7 +998,6 @@ internal sealed class InlineContainerBox : BlockBox
         }
         catch (Exception measureFailure)
         {
-            Exception? cleanupFailure = null;
             _layout = previousLayout;
             _layoutRetirementRecord = previousLayoutRetirementRecord;
             _cachedLineMetrics = previousLineMetrics;
@@ -1035,80 +1012,13 @@ internal sealed class InlineContainerBox : BlockBox
             _lastWidth = previousWidth;
             Bounds = previousBounds;
 
-            try
-            {
-                if (changedInlineMeasures is not null)
-                {
-                    foreach (InlineMeasureRollbackState state in changedInlineMeasures)
-                    {
-                        try
-                        {
-                            state.Restore();
-                        }
-                        catch (Exception exception)
-                        {
-                            cleanupFailure = InlineNativeLayoutRetirement.CombineFailures(
-                                "rolling back speculative inline measurements",
-                                cleanupFailure,
-                                exception);
-                        }
-                    }
-                }
-
-                if (previousScenePlacements is not null)
-                {
-                    foreach (InlineScenePlacementRollbackState state in previousScenePlacements)
-                    {
-                        try
-                        {
-                            state.Run.SetLocalBounds(state.LocalBounds);
-                        }
-                        catch (Exception exception)
-                        {
-                            cleanupFailure = InlineNativeLayoutRetirement.CombineFailures(
-                                "rolling back inline scene placements",
-                                cleanupFailure,
-                                exception);
-                        }
-                    }
-                }
-            }
-            finally
-            {
-                // Restore the published state before releasing the unpublished
-                // native candidate. This finally is deliberately around all
-                // rollback/aggregation work: the pre-reserved native owner is
-                // handed off even if collecting a rollback failure runs out of
-                // memory after a native Dispose failure.
-                if (replacementLayout is not null && !ReferenceEquals(replacementLayout, previousLayout))
-                {
-                    Exception? layoutCleanupFailure = InlineNativeLayoutRetirement.RetireNativeLayout(
-                        ref replacementLayout,
-                        replacementLayoutRetirementRecord,
-                        "disposing a failed inline-container measure candidate");
-                    cleanupFailure = InlineNativeLayoutRetirement.CombineFailures(
-                        "rolling back a failed inline-container measure",
-                        cleanupFailure,
-                        layoutCleanupFailure);
-                }
-                else if (replacementLayoutRetirementRecord is not null)
-                {
-                    replacementLayoutRetirementRecord.Publish();
-                }
-            }
-
-            if (cleanupFailure is not null)
-            {
-                try
-                {
-                    measureFailure.Data["MarkdownRenderer.InlineContainerBox.MeasureCleanupFailure"] = cleanupFailure;
-                }
-                catch
-                {
-                    // Failure metadata must not replace the original exception.
-                }
-            }
-
+            InlineMeasureRollback.RollBackSpeculativeMeasure(
+                measureFailure,
+                changedInlineMeasures,
+                previousScenePlacements,
+                replacementLayout,
+                replacementLayoutRetirementRecord,
+                previousLayout);
             throw;
         }
 
@@ -1141,23 +1051,11 @@ internal sealed class InlineContainerBox : BlockBox
             }
             _selection.Detach();
 
-            bool previousLayoutsAlias = ReferenceEquals(previousLayout, previousSelectionLayout);
-            Exception? layoutCleanupFailure = InlineNativeLayoutRetirement.RetireNativeLayout(
-                ref previousLayout,
+            Exception? supersededCleanupFailure = InlineMeasureRollback.RetireSupersededLayouts(
+                previousLayout,
                 previousLayoutRetirementRecord,
-                "retiring a superseded inline layout");
-            Exception? selectionCleanupFailure = previousLayoutsAlias
-                ? ReferenceEquals(previousLayoutRetirementRecord, previousSelectionLayoutRetirementRecord)
-                    ? null
-                    : InlineNativeLayoutRetirement.ReleaseEmptyNativeRecord(previousSelectionLayoutRetirementRecord)
-                : InlineNativeLayoutRetirement.RetireNativeLayout(
-                    ref previousSelectionLayout,
-                    previousSelectionLayoutRetirementRecord,
-                    "retiring a superseded inline selection layout");
-            Exception? supersededCleanupFailure = InlineNativeLayoutRetirement.CombineFailures(
-                "retiring superseded inline layouts",
-                layoutCleanupFailure,
-                selectionCleanupFailure);
+                previousSelectionLayout,
+                previousSelectionLayoutRetirementRecord);
             if (supersededCleanupFailure is not null)
                 Context.RegisterRetirement(Task.FromException(supersededCleanupFailure));
         }
