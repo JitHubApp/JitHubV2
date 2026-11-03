@@ -44,33 +44,7 @@ internal static class DeferredSceneWorkCatalog
                 continue;
             }
 
-            MarkdownSyntaxNode? node = null;
-            Collect(entry.Value.Items, content =>
-            {
-                if (!content.Attributes.TryGetValue(MarkdownContentAttributes.DeferredScene, out string? marker) ||
-                    marker is null ||
-                    !TryReadMarker(marker, syntaxKind, out _) ||
-                    entry.Value.DeferredSceneRenderer is not { } renderer)
-                {
-                    return;
-                }
-
-                MarkdownSyntaxNode blockNode = node ??= MarkdownSyntaxAdapter.CreateBlockNode(block, document.Source);
-                if (!content.SourceSpan.Equals(blockNode.SourceSpan))
-                    return;
-
-                var work = new DeferredSceneWork(
-                    blockNode,
-                    renderer,
-                    entry.Value.DeferredSceneRendererLifetime,
-                    content.Text ?? blockNode.Literal ?? string.Empty,
-                    content.Language,
-                    IsInline: false);
-                // A malformed producer must not cause two visible boxes to
-                // invoke the same callback/result slot. Independent markers
-                // remain distinct even when their SourceSpan values coincide.
-                works.TryAdd(marker, work);
-            });
+            AddBlockWorks(works, document, block, syntaxKind, entry.Value);
         }
 
         foreach (KeyValuePair<Inline, MarkdownContentFragment> entry in document.ExtensionInlineNodeContent)
@@ -82,36 +56,82 @@ internal static class DeferredSceneWorkCatalog
             if (!MarkdownSyntaxAdapter.TryGetInlineKind(inline, out string syntaxKind))
                 continue;
 
-            MarkdownSyntaxNode? node = null;
-            Collect(entry.Value.Items, content =>
-            {
-                if (!content.Attributes.TryGetValue(MarkdownContentAttributes.DeferredScene, out string? marker) ||
-                    marker is null ||
-                    !TryReadMarker(marker, syntaxKind, out _) ||
-                    entry.Value.DeferredSceneRenderer is not { } renderer)
-                {
-                    return;
-                }
-
-                MarkdownSyntaxNode inlineNode = node ??= MarkdownSyntaxAdapter.CreateInlineNode(inline, document.Source);
-                if (!content.SourceSpan.Equals(inlineNode.SourceSpan))
-                    return;
-
-                var work = new DeferredSceneWork(
-                    inlineNode,
-                    renderer,
-                    entry.Value.DeferredSceneRendererLifetime,
-                    content.SemanticText ?? inlineNode.Literal ?? string.Empty,
-                    content.Language,
-                    IsInline: true);
-                works.TryAdd(marker, work);
-            });
+            AddInlineWorks(works, document, inline, syntaxKind, entry.Value);
         }
 
         if (cancellationToken.IsCancellationRequested || works.Count == 0)
             return null;
 
         return new ReadOnlyDictionary<string, DeferredSceneWork>(works);
+    }
+
+    private static void AddBlockWorks(
+        Dictionary<string, DeferredSceneWork> works,
+        RendererDocument document,
+        Block block,
+        string syntaxKind,
+        MarkdownContentFragment fragment)
+    {
+        MarkdownSyntaxNode? node = null;
+        Collect(fragment.Items, content =>
+        {
+            if (!content.Attributes.TryGetValue(MarkdownContentAttributes.DeferredScene, out string? marker) ||
+                marker is null ||
+                !TryReadMarker(marker, syntaxKind, out _) ||
+                fragment.DeferredSceneRenderer is not { } renderer)
+            {
+                return;
+            }
+
+            MarkdownSyntaxNode blockNode = node ??= MarkdownSyntaxAdapter.CreateBlockNode(block, document.Source);
+            if (!content.SourceSpan.Equals(blockNode.SourceSpan))
+                return;
+
+            var work = new DeferredSceneWork(
+                blockNode,
+                renderer,
+                fragment.DeferredSceneRendererLifetime,
+                content.Text ?? blockNode.Literal ?? string.Empty,
+                content.Language,
+                IsInline: false);
+            // A malformed producer must not cause two visible boxes to
+            // invoke the same callback/result slot. Independent markers
+            // remain distinct even when their SourceSpan values coincide.
+            works.TryAdd(marker, work);
+        });
+    }
+
+    private static void AddInlineWorks(
+        Dictionary<string, DeferredSceneWork> works,
+        RendererDocument document,
+        Inline inline,
+        string syntaxKind,
+        MarkdownContentFragment fragment)
+    {
+        MarkdownSyntaxNode? node = null;
+        Collect(fragment.Items, content =>
+        {
+            if (!content.Attributes.TryGetValue(MarkdownContentAttributes.DeferredScene, out string? marker) ||
+                marker is null ||
+                !TryReadMarker(marker, syntaxKind, out _) ||
+                fragment.DeferredSceneRenderer is not { } renderer)
+            {
+                return;
+            }
+
+            MarkdownSyntaxNode inlineNode = node ??= MarkdownSyntaxAdapter.CreateInlineNode(inline, document.Source);
+            if (!content.SourceSpan.Equals(inlineNode.SourceSpan))
+                return;
+
+            var work = new DeferredSceneWork(
+                inlineNode,
+                renderer,
+                fragment.DeferredSceneRendererLifetime,
+                content.SemanticText ?? inlineNode.Literal ?? string.Empty,
+                content.Language,
+                IsInline: true);
+            works.TryAdd(marker, work);
+        });
     }
 
     internal static bool ContainsDeferredSceneFallback(RendererDocument document)
