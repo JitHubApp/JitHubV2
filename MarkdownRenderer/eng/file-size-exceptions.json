@@ -121,12 +121,7 @@
       "lines": 2358,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
-    {
-      "path": "src/MarkdownRenderer/Layout/Boxes/BlockMeasuredPlacementTransfer.cs",
-      "lines": 1008,
-      "reason": "Predates the size rule; split by responsibility in a later structure step."
-    },
-    {
+{
       "path": "src/MarkdownRenderer/Layout/Boxes/CodeBlockBox.cs",
       "lines": 1720,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
