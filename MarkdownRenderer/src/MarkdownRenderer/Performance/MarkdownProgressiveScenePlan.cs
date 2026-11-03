@@ -25,9 +25,6 @@ namespace MarkdownRenderer.Performance;
 /// </summary>
 internal sealed partial class MarkdownProgressiveScenePlan : IScenePublicationTarget, IDisposable
 {
-    private static readonly IComparer<MarkdownDiagnostic> DiagnosticComparer =
-        Comparer<MarkdownDiagnostic>.Create(CompareDiagnostics);
-
     private readonly object _gate = new();
     private readonly object _retirementLifecycleGate = new();
     private readonly RendererDocument _document;
@@ -35,14 +32,9 @@ internal sealed partial class MarkdownProgressiveScenePlan : IScenePublicationTa
     private readonly object _documentOwner;
     private readonly IReadOnlyDictionary<string, DeferredSceneWork> _works;
     private readonly SnapshotRetirementTracker _retirements = new();
-    // Completed metadata is bounded by the immutable source work table and
-    // holds weak graph references only. Strong reuse belongs to the session's
-    // aggregate cache; unconsumed publications are transient layout handoffs.
-    private readonly Dictionary<string, MarkdownCompletedSceneDescriptor> _completed = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, MarkdownDeferredSceneResult> _pendingResults = new(StringComparer.Ordinal);
-    private readonly MarkdownCompletedSceneCache _completedCache;
+    private readonly DeferredSceneResultStore _results;
     private readonly Dictionary<string, ActiveSceneWork> _active = new(StringComparer.Ordinal);
-    private readonly SemaphoreSlim _diagnosticPublicationGate = new(1, 1);
+    private readonly DeferredSceneDiagnostics _diagnosticSet = new();
     private HashSet<string> _visibleMarkers = new(StringComparer.Ordinal);
     private MarkdownRendererControl? _callbackOwner;
     private Func<Action, bool>? _enqueuePublication;
@@ -52,11 +44,7 @@ internal sealed partial class MarkdownProgressiveScenePlan : IScenePublicationTa
     private bool _hasObservedVisiblePlaceholderStatus;
     private bool _visiblePlaceholderStatusPending;
     private CancellationTokenSource _generationCancellation = new();
-    private ImmutableDictionary<string, ImmutableArray<MarkdownDiagnostic>> _diagnosticContributions =
-        ImmutableDictionary<string, ImmutableArray<MarkdownDiagnostic>>.Empty.WithComparers(StringComparer.Ordinal);
-    private ImmutableList<MarkdownDiagnostic> _diagnostics = ImmutableList<MarkdownDiagnostic>.Empty;
     private long _generation;
-    private long _diagnosticsPublicationVersion;
     private bool _disposed;
     private Task? _retirementTask;
 
@@ -70,7 +58,7 @@ internal sealed partial class MarkdownProgressiveScenePlan : IScenePublicationTa
         _session = session;
         _documentOwner = documentOwner;
         _works = works;
-        _completedCache = ((MarkdownPerformanceSession)session).CompletedSceneCache;
+        _results = new DeferredSceneResultStore(((MarkdownPerformanceSession)session).CompletedSceneCache, this);
     }
 
     /// <summary>
@@ -257,43 +245,16 @@ internal sealed partial class MarkdownProgressiveScenePlan : IScenePublicationTa
         projectionIdentity = null;
         lock (_gate)
         {
-            if (!_disposed && TryGetCompletedNoLock(marker, consumeHandoff: true, out MarkdownDeferredSceneResult? completed))
+            if (!_disposed && _results.TryGetCompleted(marker, consumeHandoff: true, out MarkdownDeferredSceneResult? completed))
             {
                 result = completed!.Fragment;
-                projectionIdentity = _completed[marker].ProjectionIdentity;
+                projectionIdentity = _results.GetProjectionIdentity(marker);
                 return true;
             }
         }
 
         result = null;
         return false;
-    }
-
-    private bool TryGetCompletedNoLock(
-        string marker,
-        bool consumeHandoff,
-        out MarkdownDeferredSceneResult? result)
-    {
-        result = null;
-        if (!_completed.TryGetValue(marker, out MarkdownCompletedSceneDescriptor? descriptor))
-            return false;
-        if (_pendingResults.TryGetValue(marker, out result))
-        {
-            if (consumeHandoff)
-            {
-                _completedCache.Retain(this, marker, result, descriptor.EstimatedGraphWeightBytes);
-                _pendingResults.Remove(marker);
-            }
-            return true;
-        }
-        if (_completedCache.TryGetResult(this, marker, out result))
-            return true;
-        if (!descriptor.TryGetOriginal(out result))
-            return false;
-        // UI layout and scheduling may reuse a live immutable result, but must
-        // not reconstruct its content graph. Restoration runs on the worker.
-        _completedCache.Retain(this, marker, result!, descriptor.EstimatedGraphWeightBytes);
-        return true;
     }
 
     private bool TryRestoreOnWorker(
@@ -305,13 +266,13 @@ internal sealed partial class MarkdownProgressiveScenePlan : IScenePublicationTa
         object? metadataLease;
         lock (_gate)
         {
-            if (_disposed || !_completed.TryGetValue(marker, out descriptor))
+            if (_disposed || !_results.TryGetDescriptor(marker, out descriptor))
             {
                 result = null;
                 descriptor = null;
                 return false;
             }
-            _completedCache.TryGetMetadata(this, marker, out metadataLease);
+            _results.TryGetMetadata(marker, out metadataLease);
         }
         bool restored = descriptor.TryRestore(out result, cancellationToken);
         GC.KeepAlive(metadataLease);
@@ -323,7 +284,7 @@ internal sealed partial class MarkdownProgressiveScenePlan : IScenePublicationTa
         get
         {
             lock (_gate)
-                return _diagnostics;
+                return _diagnosticSet.Current;
         }
     }
 
@@ -522,24 +483,7 @@ internal sealed partial class MarkdownProgressiveScenePlan : IScenePublicationTa
                     work.Cancel();
             }
 
-            // A publication can leave the band before a candidate consumes it.
-            // Move that handoff into bounded retention; don't leave forgotten
-            // results pinned for every previously visited viewport.
-            if (_pendingResults.Count > 0)
-            {
-                List<string>? retiredHandoffs = null;
-                foreach ((string marker, MarkdownDeferredSceneResult result) in _pendingResults)
-                {
-                    if (!_visibleMarkers.Contains(marker))
-                    {
-                        _completedCache.Retain(this, marker, result, _completed[marker].EstimatedGraphWeightBytes);
-                        (retiredHandoffs ??= []).Add(marker);
-                    }
-                }
-                if (retiredHandoffs is not null)
-                    foreach (string marker in retiredHandoffs)
-                        _pendingResults.Remove(marker);
-            }
+            _results.RetireHandoffsOutside(_visibleMarkers);
 
             return _visibleMarkers.Count;
         }
@@ -562,7 +506,7 @@ internal sealed partial class MarkdownProgressiveScenePlan : IScenePublicationTa
                 _active.ContainsKey(marker) ||
                 (_hasVisibleBand && !_visibleMarkers.Contains(marker)))
                 return false;
-            if (TryGetCompletedNoLock(marker, consumeHandoff: false, out _))
+            if (_results.TryGetCompleted(marker, consumeHandoff: false, out _))
                 return false;
 
             token = _generationCancellation.Token;
@@ -657,7 +601,7 @@ internal sealed partial class MarkdownProgressiveScenePlan : IScenePublicationTa
             lock (_gate)
             {
                 publicationIsCurrent = IsPublicationCurrentNoLock(marker, activeWork, generationToken);
-                diagnosticsChanged = publicationIsCurrent && !DiagnosticContributionEqualsNoLock(marker, newContribution);
+                diagnosticsChanged = publicationIsCurrent && !_diagnosticSet.ContributionEquals(marker, newContribution);
             }
 
             if (!publicationIsCurrent)
@@ -669,29 +613,22 @@ internal sealed partial class MarkdownProgressiveScenePlan : IScenePublicationTa
             PreparedDiagnosticPublication? diagnosticPublication = null;
             if (diagnosticsChanged)
             {
-                await _diagnosticPublicationGate.WaitAsync(activeWork.Token).ConfigureAwait(false);
+                await _diagnosticSet.WaitPublicationAsync(activeWork.Token).ConfigureAwait(false);
                 diagnosticGateHeld = true;
 
-                ImmutableDictionary<string, ImmutableArray<MarkdownDiagnostic>>? contributions = null;
-                ImmutableList<MarkdownDiagnostic>? currentDiagnostics = null;
-                ImmutableArray<MarkdownDiagnostic> previousContribution = ImmutableArray<MarkdownDiagnostic>.Empty;
-                long publicationVersion = 0;
+                DeferredSceneDiagnosticBasis basis = default;
                 lock (_gate)
                 {
                     publicationIsCurrent = IsPublicationCurrentNoLock(marker, activeWork, generationToken);
                     if (publicationIsCurrent)
                     {
-                        if (DiagnosticContributionEqualsNoLock(marker, newContribution))
+                        if (_diagnosticSet.ContributionEquals(marker, newContribution))
                         {
                             diagnosticsChanged = false;
                         }
                         else
                         {
-                            if (!_diagnosticContributions.TryGetValue(marker, out previousContribution))
-                                previousContribution = ImmutableArray<MarkdownDiagnostic>.Empty;
-                            contributions = _diagnosticContributions;
-                            currentDiagnostics = _diagnostics;
-                            publicationVersion = ++_diagnosticsPublicationVersion;
+                            basis = _diagnosticSet.BeginPublication(marker);
                         }
                     }
                 }
@@ -705,21 +642,21 @@ internal sealed partial class MarkdownProgressiveScenePlan : IScenePublicationTa
                 if (diagnosticsChanged)
                 {
                     ImmutableDictionary<string, ImmutableArray<MarkdownDiagnostic>> updatedContributions = newContribution.IsEmpty
-                        ? contributions!.Remove(marker)
-                        : contributions!.SetItem(marker, newContribution);
-                    ImmutableList<MarkdownDiagnostic> updatedDiagnostics = ReplaceDiagnosticContribution(
-                        currentDiagnostics!,
-                        previousContribution,
+                        ? basis.Contributions.Remove(marker)
+                        : basis.Contributions.SetItem(marker, newContribution);
+                    ImmutableList<MarkdownDiagnostic> updatedDiagnostics = DeferredSceneDiagnostics.ReplaceContribution(
+                        basis.Diagnostics,
+                        basis.PreviousContribution,
                         newContribution);
                     activeWork.Token.ThrowIfCancellationRequested();
                     diagnosticPublication = new PreparedDiagnosticPublication(
-                        publicationVersion,
+                        basis.Version,
                         updatedContributions,
                         updatedDiagnostics);
                 }
                 else
                 {
-                    _diagnosticPublicationGate.Release();
+                    _diagnosticSet.ReleasePublication();
                     diagnosticGateHeld = false;
                 }
             }
@@ -809,7 +746,7 @@ internal sealed partial class MarkdownProgressiveScenePlan : IScenePublicationTa
                     finally
                     {
                         if (diagnosticGateHeld)
-                            _diagnosticPublicationGate.Release();
+                            _diagnosticSet.ReleasePublication();
                     }
                 }
             }
@@ -845,21 +782,12 @@ internal sealed partial class MarkdownProgressiveScenePlan : IScenePublicationTa
                 !generationToken.IsCancellationRequested &&
                 !activeWork.Token.IsCancellationRequested &&
                 !_session.IsDisposed &&
-                (diagnosticPublication is null || diagnosticPublication.Version == _diagnosticsPublicationVersion);
+                (diagnosticPublication is null || _diagnosticSet.IsCurrent(diagnosticPublication));
             if (publish)
             {
                 if (diagnosticPublication is not null)
-                {
-                    _diagnosticContributions = diagnosticPublication.Contributions;
-                    _diagnostics = diagnosticPublication.Diagnostics;
-                }
-                // Transfer the construction-only strong metadata owner to
-                // its separate session-wide byte budget before publishing
-                // the weak descriptor. This does not walk the scene graph.
-                if (descriptor.DetachMetadataOwner() is { } metadata)
-                    _completedCache.RetainMetadata(this, marker, metadata, descriptor.MetadataWeightBytes);
-                _completed[marker] = descriptor;
-                _pendingResults[marker] = result;
+                    _diagnosticSet.Commit(diagnosticPublication);
+                _results.Publish(marker, descriptor, result);
             }
             retry = wasActive && !publish &&
                 (activeWork.Token.IsCancellationRequested || activeWork.Generation != _generation) &&
@@ -884,62 +812,6 @@ internal sealed partial class MarkdownProgressiveScenePlan : IScenePublicationTa
             (!_hasVisibleBand || _visibleMarkers.Contains(marker)) &&
             !generationToken.IsCancellationRequested &&
             !activeWork.Token.IsCancellationRequested;
-
-    private bool DiagnosticContributionEqualsNoLock(
-        string marker,
-        ImmutableArray<MarkdownDiagnostic> contribution)
-    {
-        if (!_diagnosticContributions.TryGetValue(marker, out ImmutableArray<MarkdownDiagnostic> current))
-            return contribution.IsEmpty;
-        if (current.Length != contribution.Length)
-            return false;
-        for (int index = 0; index < current.Length; index++)
-        {
-            if (!EqualityComparer<MarkdownDiagnostic>.Default.Equals(current[index], contribution[index]))
-                return false;
-        }
-        return true;
-    }
-
-    private static ImmutableList<MarkdownDiagnostic> ReplaceDiagnosticContribution(
-        ImmutableList<MarkdownDiagnostic> snapshot,
-        ImmutableArray<MarkdownDiagnostic> previous,
-        ImmutableArray<MarkdownDiagnostic> replacement)
-    {
-        foreach (MarkdownDiagnostic diagnostic in previous)
-        {
-            int index = snapshot.BinarySearch(diagnostic, DiagnosticComparer);
-            if (index >= 0)
-                snapshot = snapshot.RemoveAt(index);
-        }
-
-        foreach (MarkdownDiagnostic diagnostic in replacement)
-        {
-            int index = snapshot.BinarySearch(diagnostic, DiagnosticComparer);
-            if (index < 0)
-                index = ~index;
-            snapshot = snapshot.Insert(index, diagnostic);
-        }
-
-        return snapshot;
-    }
-
-    private static int CompareDiagnostics(MarkdownDiagnostic left, MarkdownDiagnostic right)
-    {
-        int comparison = left.SourceSpan.Start.CompareTo(right.SourceSpan.Start);
-        if (comparison != 0)
-            return comparison;
-        comparison = StringComparer.Ordinal.Compare(left.Code, right.Code);
-        if (comparison != 0)
-            return comparison;
-        comparison = left.SourceSpan.Length.CompareTo(right.SourceSpan.Length);
-        if (comparison != 0)
-            return comparison;
-        comparison = left.Severity.CompareTo(right.Severity);
-        return comparison != 0
-            ? comparison
-            : StringComparer.Ordinal.Compare(left.Message, right.Message);
-    }
 
     private void CompleteWithoutPublication(
         string marker,
@@ -1012,17 +884,12 @@ internal sealed partial class MarkdownProgressiveScenePlan : IScenePublicationTa
                     : _active.Values.Concat(_graphRebinds.Values.Select(static request => request.Work)).ToArray();
                 _active.Clear();
                 _graphRebinds.Clear();
-                _completed.Clear();
-                _pendingResults.Clear();
-                _completedCache.RemoveOwner(this);
+                _results.Clear();
                 _callbackOwner = null;
                 _enqueuePublication = null;
                 _onPublished = null;
                 _onRetryVisibleBand = null;
-                _diagnosticsPublicationVersion++;
-                _diagnosticContributions = ImmutableDictionary<string, ImmutableArray<MarkdownDiagnostic>>.Empty
-                    .WithComparers(StringComparer.Ordinal);
-                _diagnostics = ImmutableList<MarkdownDiagnostic>.Empty;
+                _diagnosticSet.Reset();
             }
 
             foreach (ActiveSceneWork work in activeWorks)
@@ -1056,7 +923,7 @@ internal sealed partial class MarkdownProgressiveScenePlan : IScenePublicationTa
             // No producer can still be waiting for or releasing the gate after
             // the tracked plan drain completes. Late dispatcher callbacks only
             // acknowledge their TCS and never touch this semaphore.
-            _diagnosticPublicationGate.Dispose();
+            _diagnosticSet.Dispose();
         }
         catch (Exception exception)
         {

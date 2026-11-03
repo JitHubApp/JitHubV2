@@ -33,7 +33,7 @@ internal sealed partial class MarkdownProgressiveScenePlan
             box.DeferredSceneBinding is not { SceneOrdinal: 0 } binding ||
             !_works.TryGetValue(binding.Marker, out work) || work.IsInline ||
             box.SourceRange != work.Node.SourceSpan ||
-            !_completed.TryGetValue(binding.Marker, out descriptor) ||
+            !_results.TryGetDescriptor(binding.Marker, out descriptor) ||
             descriptor.SingleSceneProjection is null || binding.ProjectionIdentity is null ||
             !binding.ProjectionIdentity.Equals(descriptor.ProjectionIdentity))
             return false;
@@ -194,7 +194,7 @@ internal sealed partial class MarkdownProgressiveScenePlan
                 token.ThrowIfCancellationRequested();
                 lock (_gate)
                 {
-                    if (TryGetCompletedNoLock(marker, consumeHandoff: false, out result))
+                    if (_results.TryGetCompleted(marker, consumeHandoff: false, out result))
                         descriptor = expected;
                 }
                 if (result is null && !TryRestoreOnWorker(marker, token, out result, out descriptor))
@@ -241,7 +241,7 @@ internal sealed partial class MarkdownProgressiveScenePlan
             }
             MarkdownPerformanceSession.CompleteScenePreparationTiming(sceneLease);
             token.ThrowIfCancellationRequested();
-            await _diagnosticPublicationGate.WaitAsync(token).ConfigureAwait(false);
+            await _diagnosticSet.WaitPublicationAsync(token).ConfigureAwait(false);
             diagnosticGateHeld = true;
             while (!request.Snapshot.TryBeginPaint())
             {
@@ -271,7 +271,7 @@ internal sealed partial class MarkdownProgressiveScenePlan
                     {
                         contribution = [new MarkdownDiagnostic("MDP0002", MarkdownDiagnosticSeverity.Error,
                             "Deferred native content could not be restored without changing its projection.", work.Node.SourceSpan)];
-                        PublishGraphRebindDiagnosticsNoLock(marker, contribution);
+                        _diagnosticSet.Publish(marker, contribution);
                         policy.RecordGraphStatusChange(box);
                         try
                         {
@@ -292,13 +292,10 @@ internal sealed partial class MarkdownProgressiveScenePlan
                             return;
                         replacement = null; // ownership transferred to the box/policy
                         descriptor ??= expected;
-                        if (descriptor.DetachMetadataOwner() is { } metadata)
-                            _completedCache.RetainMetadata(this, marker, metadata, descriptor.MetadataWeightBytes);
-                        _completed[marker] = descriptor;
-                        _completedCache.Retain(this, marker, result!, descriptor.EstimatedGraphWeightBytes);
+                        _results.CommitRebind(marker, descriptor, result!);
                         contribution = descriptor.DiagnosticContribution;
                     }
-                    PublishGraphRebindDiagnosticsNoLock(marker, contribution);
+                    _diagnosticSet.Publish(marker, contribution);
                 }
             }
             finally
@@ -329,7 +326,7 @@ internal sealed partial class MarkdownProgressiveScenePlan
                 finally
                 {
                     if (diagnosticGateHeld)
-                        _diagnosticPublicationGate.Release();
+                        _diagnosticSet.ReleasePublication();
                     _retirements.Track(request.Work.Dispose(request.Work.Task));
                     lock (_gate)
                     {
@@ -339,19 +336,6 @@ internal sealed partial class MarkdownProgressiveScenePlan
                 }
             }
         }
-    }
-
-    private void PublishGraphRebindDiagnosticsNoLock(string marker, ImmutableArray<MarkdownDiagnostic> contribution)
-    {
-        if (DiagnosticContributionEqualsNoLock(marker, contribution))
-            return;
-        _diagnosticContributions.TryGetValue(marker, out ImmutableArray<MarkdownDiagnostic> previous);
-        _diagnostics = ReplaceDiagnosticContribution(_diagnostics,
-            previous.IsDefault ? ImmutableArray<MarkdownDiagnostic>.Empty : previous, contribution);
-        _diagnosticContributions = contribution.IsEmpty
-            ? _diagnosticContributions.Remove(marker)
-            : _diagnosticContributions.SetItem(marker, contribution);
-        _diagnosticsPublicationVersion++;
     }
 
     private sealed class GraphRebindWork(
