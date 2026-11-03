@@ -15,7 +15,7 @@ public sealed class WorkerAdmissionLifetimeTests
         var failure = new ObjectDisposedException("WorkerPool");
 
         ObjectDisposedException thrown = await Assert.ThrowsAsync<ObjectDisposedException>(() =>
-            WorkerPool.AwaitAdmissionAsync(Task.FromException<object>(failure), registration));
+            WorkerAdmissionTasks.AwaitAdmissionAsync(Task.FromException<object>(failure), registration));
 
         Assert.Same(failure, thrown);
         cancellation.Cancel();
@@ -33,7 +33,7 @@ public sealed class WorkerAdmissionLifetimeTests
             () => Interlocked.Increment(ref callbacks));
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            WorkerPool.AwaitAdmissionAsync(Task.FromCanceled<object>(canceled.Token), registration));
+            WorkerAdmissionTasks.AwaitAdmissionAsync(Task.FromCanceled<object>(canceled.Token), registration));
 
         caller.Cancel();
         Assert.Equal(0, Volatile.Read(ref callbacks));
@@ -48,7 +48,7 @@ public sealed class WorkerAdmissionLifetimeTests
             () => Interlocked.Increment(ref callbacks));
         var lease = new object();
 
-        Assert.Same(lease, await WorkerPool.AwaitAdmissionAsync(Task.FromResult(lease), registration));
+        Assert.Same(lease, await WorkerAdmissionTasks.AwaitAdmissionAsync(Task.FromResult(lease), registration));
 
         caller.Cancel();
         Assert.Equal(1, Volatile.Read(ref callbacks));
@@ -66,7 +66,7 @@ public sealed class WorkerAdmissionLifetimeTests
             callbackEntered.Set();
             Assert.True(releaseCallback.Wait(TimeSpan.FromSeconds(5)));
         });
-        Task<object> admission = WorkerPool.AwaitAdmissionAsync(completion.Task, registration);
+        Task<object> admission = WorkerAdmissionTasks.AwaitAdmissionAsync(completion.Task, registration);
         Task cancellation = Task.Run(caller.Cancel);
         try
         {

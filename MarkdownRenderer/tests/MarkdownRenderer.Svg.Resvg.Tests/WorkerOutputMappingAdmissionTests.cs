@@ -15,7 +15,7 @@ public sealed class WorkerOutputMappingAdmissionTests
         bool rendered = false;
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
-            await WorkerPool.WithAdmittedOutputMappingAsync(
+            await WorkerSharedMemoryMapping.WithAdmittedOutputMappingAsync(
                 _ => Task.FromResult(new TestAdmission()),
                 (_, _, _) =>
                 {
@@ -80,7 +80,7 @@ public sealed class WorkerOutputMappingAdmissionTests
         int allocations = 0;
         int admissionCompleted = 0;
 
-        Task<WorkerRenderResult> render = WorkerPool.WithAdmittedOutputMappingAsync(
+        Task<WorkerRenderResult> render = WorkerSharedMemoryMapping.WithAdmittedOutputMappingAsync(
             async cancellationToken =>
             {
                 admissionStarted.TrySetResult();
@@ -120,7 +120,7 @@ public sealed class WorkerOutputMappingAdmissionTests
         var failure = new IOException("simulated render transport failure");
 
         IOException thrown = await Assert.ThrowsAsync<IOException>(async () =>
-            await WorkerPool.WithAdmittedOutputMappingAsync(
+            await WorkerSharedMemoryMapping.WithAdmittedOutputMappingAsync(
                 _ => Task.FromResult(new TestAdmission()),
                 (_, _, _) => Task.FromException<WorkerResponse>(failure),
                 CreateOutputMapping,
@@ -144,7 +144,7 @@ public sealed class WorkerOutputMappingAdmissionTests
     public async Task SuccessfulRenderTransfersOutputMappingToRasterOwner()
     {
         SharedMemoryLease? mapping = null;
-        WorkerRenderResult result = await WorkerPool.WithAdmittedOutputMappingAsync(
+        WorkerRenderResult result = await WorkerSharedMemoryMapping.WithAdmittedOutputMappingAsync(
             _ => Task.FromResult(new TestAdmission()),
             (_, activeMapping, _) =>
             {

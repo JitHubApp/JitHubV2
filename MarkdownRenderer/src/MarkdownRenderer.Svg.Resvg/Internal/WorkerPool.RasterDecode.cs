@@ -27,7 +27,7 @@ internal sealed partial class WorkerPool
                 ).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             contentAdmissionGuard();
-            memory = new SharedMemoryLease(NewSourceMappingName(), request.EncodedBytes,
+            memory = new SharedMemoryLease(WorkerSharedMemoryMapping.NewSourceMappingName(), request.EncodedBytes,
                 geometry.OutputLength, worker.ObjectSecurity);
             cancellationToken.ThrowIfCancellationRequested();
             contentAdmissionGuard();
@@ -50,16 +50,16 @@ internal sealed partial class WorkerPool
                 if (response.Status == WorkerStatus.WorkerFailure)
                     throw new WorkerProtocolException("The isolated raster decoder failed.");
             }
-            catch (Exception exception) when (IsWorkerTransportFailure(exception))
+            catch (Exception exception) when (WorkerResponseValidation.IsWorkerTransportFailure(exception))
             {
-                QuarantineContentBeforeWorkerRelease(null, contentFailureCallback,
+                WorkerResponseValidation.QuarantineContentBeforeWorkerRelease(null, contentFailureCallback,
                     cancellationToken.IsCancellationRequested, false, 0, 0,
                     () => Invalidate(lease.Slot, worker));
                 cancellationToken.ThrowIfCancellationRequested();
                 throw;
             }
             cancellationToken.ThrowIfCancellationRequested();
-            var result = new WorkerRenderResult(Stamp(response, worker), memory);
+            var result = new WorkerRenderResult(WorkerResponseValidation.Stamp(response, worker), memory);
             memory = null;
             return result;
         }

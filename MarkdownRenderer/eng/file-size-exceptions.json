@@ -63,7 +63,7 @@
     },
 {
       "path": "src/MarkdownRenderer.Svg.Resvg/Internal/WorkerPool.cs",
-      "lines": 3262,
+      "lines": 2626,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {

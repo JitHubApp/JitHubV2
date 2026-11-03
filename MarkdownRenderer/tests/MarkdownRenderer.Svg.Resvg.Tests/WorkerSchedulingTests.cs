@@ -124,27 +124,20 @@ public sealed class WorkerSchedulingTests
     [Fact]
     public void PowerQueryFailureClassifierDoesNotHideFatalResourceFaults()
     {
-        MethodInfo classifier = typeof(WorkerPool).GetMethod(
-            "IsRecoverablePowerQueryFailure",
-            BindingFlags.Static | BindingFlags.NonPublic)!;
-
-        Assert.False(Classify(new OutOfMemoryException(), classifier));
-        Assert.False(Classify(new InsufficientMemoryException(), classifier));
-        Assert.False(Classify(new InsufficientExecutionStackException(), classifier));
-        Assert.False(Classify(new StackOverflowException(), classifier));
-        Assert.False(Classify(new AccessViolationException(), classifier));
-        Assert.False(Classify(new SEHException(), classifier));
-        Assert.True(Classify(new InvalidOperationException("recoverable"), classifier));
-        Assert.True(Classify(new AggregateException(
+        Assert.False(WorkerEnergySaver.IsRecoverablePowerQueryFailure(new OutOfMemoryException()));
+        Assert.False(WorkerEnergySaver.IsRecoverablePowerQueryFailure(new InsufficientMemoryException()));
+        Assert.False(WorkerEnergySaver.IsRecoverablePowerQueryFailure(new InsufficientExecutionStackException()));
+        Assert.False(WorkerEnergySaver.IsRecoverablePowerQueryFailure(new StackOverflowException()));
+        Assert.False(WorkerEnergySaver.IsRecoverablePowerQueryFailure(new AccessViolationException()));
+        Assert.False(WorkerEnergySaver.IsRecoverablePowerQueryFailure(new SEHException()));
+        Assert.True(WorkerEnergySaver.IsRecoverablePowerQueryFailure(new InvalidOperationException("recoverable")));
+        Assert.True(WorkerEnergySaver.IsRecoverablePowerQueryFailure(new AggregateException(
             new InvalidOperationException("recoverable"),
-            new PlatformNotSupportedException()), classifier));
-        Assert.False(Classify(new AggregateException(
+            new PlatformNotSupportedException())));
+        Assert.False(WorkerEnergySaver.IsRecoverablePowerQueryFailure(new AggregateException(
             new InvalidOperationException("recoverable"),
-            new AggregateException(new AccessViolationException())), classifier));
+            new AggregateException(new AccessViolationException()))));
     }
-
-    private static bool Classify(Exception exception, MethodInfo classifier) =>
-        (bool)classifier.Invoke(null, [exception])!;
 
     private static async Task<IDisposable> AcquireWorkerLeaseAsync(
         WorkerPool pool,

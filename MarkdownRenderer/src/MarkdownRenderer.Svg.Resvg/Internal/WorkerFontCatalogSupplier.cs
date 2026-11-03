@@ -105,7 +105,7 @@ internal sealed class WorkerFontCatalogSupplier(IWorkerFontCatalogHost host)
                         Operation = WorkerOperation.Hello,
                         SourceLength = 0,
                     }, request.Options.RequestDeadline, deadline.Token, sharedMemory: null).ConfigureAwait(false);
-                    WorkerPool.ValidateFontCatalogProbeResponse(request.FontGeneration, probe);
+                    WorkerResponseValidation.ValidateFontCatalogProbeResponse(request.FontGeneration, probe);
                     acknowledged = true;
                     await Task.Delay(TimeSpan.FromMilliseconds(50), deadline.Token).ConfigureAwait(false);
                     continue;

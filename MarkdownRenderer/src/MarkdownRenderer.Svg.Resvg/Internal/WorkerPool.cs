@@ -37,7 +37,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
     private int _disposed;
 
     public WorkerPool(ResvgMarkdownSvgRendererOptions options)
-        : this(options, TimeProvider.System, QueryEnergySaverOn, null, null, useWorkerSecurityContext: true,
+        : this(options, TimeProvider.System, WorkerEnergySaver.QueryEnergySaverOn, null, null, useWorkerSecurityContext: true,
             new SvgWorkerPolicyTrace())
     {
     }
@@ -72,7 +72,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
         if (!useWorkerSecurityContext && sourceMemoryFactory is null)
             throw new ArgumentNullException(nameof(sourceMemoryFactory));
         _sourceMemoryFactory = sourceMemoryFactory;
-        _outputMemoryFactory = useWorkerSecurityContext ? null : outputMemoryFactory ?? CreateOutputMemory;
+        _outputMemoryFactory = useWorkerSecurityContext ? null : outputMemoryFactory ?? WorkerSharedMemoryMapping.CreateOutputMemory;
         _supportsSecondaryHardware = WorkerSchedulingPolicy.CanUseSecondary(
             RuntimeInformation.ProcessArchitecture,
             Environment.ProcessorCount,
@@ -175,9 +175,9 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
             if (preflight.Info.HasText && requestGeneration != FontGeneration)
                 throw new OperationCanceledException("The SVG font environment changed before the document was attaching.");
             contentAdmissionGuard?.Invoke();
-            WorkerResponse response = await WithSourceMappingAsync(
+            WorkerResponse response = await WorkerSharedMemoryMapping.WithSourceMappingAsync(
                 _sourceMemoryFactory,
-                NewSourceMappingName(),
+                WorkerSharedMemoryMapping.NewSourceMappingName(),
                 preflight.Source,
                 sourceMemory =>
                 {
@@ -206,7 +206,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
             {
                 try
                 {
-                    ValidateTextResponse(response, requestGeneration, FontGeneration, "document open");
+                    WorkerResponseValidation.ValidateTextResponse(response, requestGeneration, FontGeneration, "document open");
                 }
                 catch (OperationCanceledException) when (response.Status == WorkerStatus.Ok)
                 {
@@ -251,7 +251,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
         long targetPixels = (long)renderRequest.TargetWidthPixels * renderRequest.TargetHeightPixels;
         long diagnosticWorkId = SvgWorkerStageTrace.BeginWork();
         long queueStartedAt = SvgWorkerStageTrace.Start(diagnosticWorkId);
-        return WithAdmittedOutputMappingAsync(
+        return WorkerSharedMemoryMapping.WithAdmittedOutputMappingAsync(
             token => AdmitRenderAsync(
                 renderRequest,
                 preflight,
@@ -277,7 +277,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                 , diagnosticWorkId, targetPixels
                 ).AsTask(),
             _outputMemoryFactory,
-            NewOutputMappingName(),
+            WorkerSharedMemoryMapping.NewOutputMappingName(),
             outputLength,
             cancellationToken,
             _outputMemoryFactory is null
@@ -543,7 +543,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                 if (remaining <= TimeSpan.Zero)
                 {
                     if (lastProbeWorker is not null && lastProbeWasInitialCatalog)
-                        RecordFontCatalogWaitDeadline(
+                        WorkerFontCatalogDiagnostics.RecordFontCatalogWaitDeadline(
                             lastProbeWorker,
                             workerCpuAtStart,
                             elapsed.Elapsed,
@@ -584,7 +584,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                         diagnosticTargetPixels: diagnosticTargetPixels
                         ).ConfigureAwait(false);
                 }
-                catch (Exception exception) when (IsWorkerTransportFailure(exception))
+                catch (Exception exception) when (WorkerResponseValidation.IsWorkerTransportFailure(exception))
                 {
                     Invalidate(candidateLease.Slot, worker);
                     bool initialCatalog = worker.ReadyFontGeneration < 0;
@@ -604,11 +604,11 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                     throw new OperationCanceledException("The SVG font environment changed while its catalog probe was active.");
                 try
                 {
-                    ValidateFontCatalogProbeResponse(requestGeneration, response);
+                    WorkerResponseValidation.ValidateFontCatalogProbeResponse(requestGeneration, response);
                 }
                 catch (WorkerProtocolException exception)
                 {
-                    throw InvalidateMalformedFontCatalogProbe(
+                    throw WorkerResponseValidation.InvalidateMalformedFontCatalogProbe(
                         exception,
                         () =>
                         {
@@ -640,7 +640,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                 if (response.Status == WorkerStatus.Ok)
                 {
                     worker.MarkFontCatalogReady(response.ReadyFontGeneration);
-                    RecordFontCatalogInitializationPhases(
+                    WorkerFontCatalogDiagnostics.RecordFontCatalogInitializationPhases(
                         response.Detail,
                         diagnosticWorkId,
                         diagnosticRequestId,
@@ -686,7 +686,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
             if (_disposeCancellation.IsCancellationRequested)
                 throw new ObjectDisposedException(nameof(WorkerPool));
             if (lastProbeWorker is not null && lastProbeWasInitialCatalog)
-                RecordFontCatalogWaitDeadline(
+                WorkerFontCatalogDiagnostics.RecordFontCatalogWaitDeadline(
                     lastProbeWorker,
                     workerCpuAtStart,
                     elapsed.Elapsed,
@@ -725,36 +725,6 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
             return _primary.Worker is { HasExited: false } worker &&
                 worker.ReadyFontGeneration == requestGeneration;
         }
-    }
-
-    private static void RecordFontCatalogWaitDeadline(
-        WindowsWorkerProcess worker,
-        long workerCpuAtStart,
-        TimeSpan elapsed,
-        string initializationPhase)
-    {
-        long workerCpuAtTimeout = workerCpuAtStart >= 0 ? worker.GetProcessCpuTicks() : -1;
-        int workerCpuMilliseconds = workerCpuAtStart >= 0 && workerCpuAtTimeout >= workerCpuAtStart
-            ? (int)Math.Min((workerCpuAtTimeout - workerCpuAtStart) / 10_000, int.MaxValue)
-            : -1;
-        WorkerMemorySnapshot memory = WorkerTimeoutEvents.Log.IsEnabled()
-            ? worker.GetProcessMemorySnapshot()
-            : WorkerMemorySnapshot.Unavailable;
-        WorkerTimeoutEvents.Log.Timeout(
-            (int)WorkerOperation.Hello,
-            (int)WorkerSchedulingPolicy.InitializationDeadline.TotalMilliseconds,
-            workerCpuMilliseconds,
-            transportPhase: -1,
-            requestWriteMilliseconds: -1,
-            workerExited: worker.HasExited ? 1 : 0,
-            openProgressPhase: -1,
-            workerWorkingSetKiB: memory.WorkingSetKiB,
-            workerPrivateCommitKiB: memory.PrivateCommitKiB,
-            workerPageFaults: memory.PageFaults,
-            elapsedWallMilliseconds: (int)Math.Min(elapsed.TotalMilliseconds, int.MaxValue),
-            workerInputSha256: string.Empty,
-            workerExecutableSha256: worker.WorkerExecutableSha256 ?? string.Empty);
-        WorkerTimeoutEvents.Log.FontCatalogDeadlinePhase(initializationPhase);
     }
 
     [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
@@ -831,7 +801,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                     requestGeneration,
                     outputMemory,
                     cancellationToken);
-                ValidateRenderStatus(
+                WorkerResponseValidation.ValidateRenderStatus(
                     response,
                     requiresFontCatalog: preflight.Info.HasText,
                     requestGeneration: requestGeneration,
@@ -839,15 +809,15 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                     operation: "render");
                 cancellationToken.ThrowIfCancellationRequested();
                 if (preflight.Info.HasText)
-                    ValidateTextResponse(response, requestGeneration, FontGeneration, "render");
-                WorkerResponse? attachment = await AttachDocumentIfMissingAsync(
+                    WorkerResponseValidation.ValidateTextResponse(response, requestGeneration, FontGeneration, "render");
+                WorkerResponse? attachment = await WorkerSharedMemoryMapping.AttachDocumentIfMissingAsync(
                     response,
                     () =>
                     {
                         document.ValidateContentAdmission();
-                        return WithSourceMappingAsync(
+                        return WorkerSharedMemoryMapping.WithSourceMappingAsync(
                             _sourceMemoryFactory,
-                            NewSourceMappingName(),
+                            WorkerSharedMemoryMapping.NewSourceMappingName(),
                             preflight.Source,
                             sourceMemory => AttachDocumentAsync(
                                 lease,
@@ -871,9 +841,9 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                             _sourceMemoryFactory is null ? worker.ObjectSecurity : null);
                     }).ConfigureAwait(false);
                 if (attachment is null)
-                    return Stamp(response, worker);
+                    return WorkerResponseValidation.Stamp(response, worker);
                 if (preflight.Info.HasText)
-                    ValidateTextResponse(attachment.Value, requestGeneration, FontGeneration, "document reattachment");
+                    WorkerResponseValidation.ValidateTextResponse(attachment.Value, requestGeneration, FontGeneration, "document reattachment");
                 if (attachment.Value.Status != WorkerStatus.Ok)
                     return attachment.Value;
                 document.PreferWorker(attachment.Value.WorkerInstanceId);
@@ -902,7 +872,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                     requestGeneration,
                     outputMemory,
                     cancellationToken);
-                ValidateRenderStatus(
+                WorkerResponseValidation.ValidateRenderStatus(
                     response,
                     requiresFontCatalog: preflight.Info.HasText,
                     requestGeneration: requestGeneration,
@@ -910,15 +880,15 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                     operation: "render after reattachment");
                 cancellationToken.ThrowIfCancellationRequested();
                 if (preflight.Info.HasText)
-                    ValidateTextResponse(response, requestGeneration, FontGeneration, "render after reattachment");
-                return Stamp(response, worker);
+                    WorkerResponseValidation.ValidateTextResponse(response, requestGeneration, FontGeneration, "render after reattachment");
+                return WorkerResponseValidation.Stamp(response, worker);
             }
-            catch (Exception exception) when (IsWorkerTransportFailure(exception))
+            catch (Exception exception) when (WorkerResponseValidation.IsWorkerTransportFailure(exception))
             {
                 bool callerCanceled = cancellationToken.IsCancellationRequested;
                 long currentGeneration = FontGeneration;
                 bool generationCurrent = !preflight.Info.HasText || requestGeneration == currentGeneration;
-                QuarantineContentBeforeWorkerRelease(
+                WorkerResponseValidation.QuarantineContentBeforeWorkerRelease(
                     document,
                     contentFailureCallback: null,
                     callerCanceled: callerCanceled,
@@ -957,14 +927,14 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
     {
         if (response.Status == WorkerStatus.Ok)
         {
-            ValidateRasterResponse(
+            WorkerResponseValidation.ValidateRasterResponse(
                 response,
                 renderRequest,
                 outputMemory.Memory.Length);
         }
         else if (response.Status == WorkerStatus.WorkerFailure)
         {
-            QuarantineContentBeforeWorkerRelease(
+            WorkerResponseValidation.QuarantineContentBeforeWorkerRelease(
                 document,
                 contentFailureCallback: null,
                 callerCanceled: cancellationToken.IsCancellationRequested,
@@ -972,125 +942,6 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                 requestGeneration: requestGeneration,
                 currentGeneration: FontGeneration,
                 invalidateWorker: () => Invalidate(lease.Slot, worker));
-        }
-    }
-
-    internal static void ValidateRasterResponse(
-        WorkerResponse response,
-        MarkdownSvgRenderRequest renderRequest,
-        int expectedOutputLength)
-    {
-        ArgumentNullException.ThrowIfNull(renderRequest);
-        int width = renderRequest.TileRegion?.Width ?? renderRequest.TargetWidthPixels;
-        int height = renderRequest.TileRegion?.Height ?? renderRequest.TargetHeightPixels;
-        long expectedLength = (long)width * height * 4;
-        long expectedStride = (long)width * 4;
-        if (response.Status != WorkerStatus.Ok ||
-            expectedLength != expectedOutputLength ||
-            response.OutputLength != expectedOutputLength ||
-            response.Width != width ||
-            response.Height != height ||
-            response.Stride != expectedStride ||
-            response.PixelFormat != renderRequest.PixelFormat)
-        {
-            throw new WorkerProtocolException("The resvg worker returned malformed raster metadata.");
-        }
-    }
-
-    internal static void ValidateOpenResponse(WorkerResponse response)
-    {
-        if (response.Status != WorkerStatus.Ok ||
-            !double.IsFinite(response.IntrinsicWidth) || response.IntrinsicWidth <= 0 ||
-            !double.IsFinite(response.IntrinsicHeight) || response.IntrinsicHeight <= 0 ||
-            response.OutputLength != 0 ||
-            response.Width != 0 ||
-            response.Height != 0)
-        {
-            throw new WorkerProtocolException("The resvg worker returned malformed document metadata.");
-        }
-    }
-
-    internal static void ValidateOpenStatus(
-        WorkerResponse response,
-        bool requiresFontCatalog,
-        long requestGeneration,
-        string operation)
-    {
-        if (requiresFontCatalog)
-            ValidateTextResponseMetadata(response, requestGeneration, operation);
-
-        bool statusAllowed = response.Status is
-            WorkerStatus.Ok or
-            WorkerStatus.Unsupported or
-            WorkerStatus.ResourceLimit or
-            WorkerStatus.WorkerFailure;
-        statusAllowed |= requiresFontCatalog &&
-            (response.Status is WorkerStatus.FontCatalogPending or WorkerStatus.FontCatalogFailure);
-        if (!statusAllowed)
-        {
-            throw new WorkerProtocolException($"The worker returned an invalid status for {operation}.");
-        }
-    }
-
-    internal static void ValidateRenderStatus(
-        WorkerResponse response,
-        bool requiresFontCatalog,
-        long requestGeneration,
-        bool documentMissingAllowed,
-        string operation)
-    {
-        if (requiresFontCatalog)
-            ValidateTextResponseMetadata(response, requestGeneration, operation);
-
-        bool statusAllowed = response.Status is WorkerStatus.Ok or
-            WorkerStatus.Unsupported or
-            WorkerStatus.ResourceLimit or
-            WorkerStatus.WorkerFailure;
-        statusAllowed |= requiresFontCatalog &&
-            (response.Status is WorkerStatus.FontCatalogPending or WorkerStatus.FontCatalogFailure);
-        statusAllowed |= documentMissingAllowed && response.Status == WorkerStatus.DocumentMissing;
-        if (statusAllowed)
-        {
-            return;
-        }
-
-        throw new WorkerProtocolException($"The worker returned an invalid status for {operation}.");
-    }
-
-    internal static bool ShouldQuarantineContentFailure(
-        bool callerCanceled,
-        bool requiresFontCatalog,
-        long requestGeneration,
-        long currentGeneration) =>
-        !callerCanceled && (!requiresFontCatalog || requestGeneration == currentGeneration);
-
-    internal static void QuarantineContentBeforeWorkerRelease(
-        WorkerDocumentHandle? document,
-        Action? contentFailureCallback,
-        bool callerCanceled,
-        bool requiresFontCatalog,
-        long requestGeneration,
-        long currentGeneration,
-        Action invalidateWorker)
-    {
-        ArgumentNullException.ThrowIfNull(invalidateWorker);
-        try
-        {
-            if (ShouldQuarantineContentFailure(
-                    callerCanceled,
-                    requiresFontCatalog,
-                    requestGeneration,
-                    currentGeneration))
-            {
-                if (document is not null)
-                    document.QuarantineContent();
-                else
-                    contentFailureCallback?.Invoke();
-            }
-        }
-        finally
-        {
-            invalidateWorker();
         }
     }
 
@@ -1168,7 +1019,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                     ).ConfigureAwait(false);
                 if (response.Status == WorkerStatus.WorkerFailure)
                 {
-                    QuarantineContentBeforeWorkerRelease(
+                    WorkerResponseValidation.QuarantineContentBeforeWorkerRelease(
                         contentDocument,
                         contentFailureCallback,
                         callerCanceled: cancellationToken.IsCancellationRequested,
@@ -1178,10 +1029,10 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                         invalidateWorker: () => Invalidate(lease.Slot, worker));
                 }
                 if (response.Status == WorkerStatus.Ok)
-                    ValidateOpenResponse(response);
+                    WorkerResponseValidation.ValidateOpenResponse(response);
                 try
                 {
-                    ValidateOpenStatus(
+                    WorkerResponseValidation.ValidateOpenStatus(
                         response,
                         requiresFontCatalog: preflight.Info.HasText,
                         requestGeneration: requestGeneration,
@@ -1189,7 +1040,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                     cancellationToken.ThrowIfCancellationRequested();
                     if (preflight.Info.HasText)
                     {
-                        ValidateTextResponse(
+                        WorkerResponseValidation.ValidateTextResponse(
                             response,
                             requestGeneration,
                             FontGeneration,
@@ -1207,14 +1058,14 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                 }
                 if (response.Status == WorkerStatus.Ok)
                     Interlocked.Increment(ref _sourceAttachmentCount);
-                return Stamp(response, worker);
+                return WorkerResponseValidation.Stamp(response, worker);
             }
-            catch (Exception exception) when (IsWorkerTransportFailure(exception))
+            catch (Exception exception) when (WorkerResponseValidation.IsWorkerTransportFailure(exception))
             {
                 bool callerCanceled = cancellationToken.IsCancellationRequested;
                 long currentGeneration = FontGeneration;
                 bool generationCurrent = !preflight.Info.HasText || requestGeneration == currentGeneration;
-                QuarantineContentBeforeWorkerRelease(
+                WorkerResponseValidation.QuarantineContentBeforeWorkerRelease(
                     contentDocument,
                     contentFailureCallback,
                     callerCanceled: callerCanceled,
@@ -1243,7 +1094,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
     }
 
     private Task ForgetDocumentAsync(WindowsWorkerProcess worker, ulong documentId) =>
-        CloseDocumentOrInvalidateAsync(
+        WorkerResponseValidation.CloseDocumentOrInvalidateAsync(
             () => worker.ExchangeAsync(
                 CreateControlRequest(WorkerOperation.CloseDocument, worker, documentId),
                 _options.RequestDeadline,
@@ -1264,131 +1115,6 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
             CancellationToken.None,
             TaskContinuationOptions.ExecuteSynchronously | TaskContinuationOptions.OnlyOnFaulted,
             TaskScheduler.Default);
-    }
-
-    internal static async Task CloseDocumentOrInvalidateAsync(
-        Func<Task<WorkerResponse>> close,
-        Action invalidate)
-    {
-        try
-        {
-            ArgumentNullException.ThrowIfNull(close);
-            ArgumentNullException.ThrowIfNull(invalidate);
-            WorkerResponse response = await close().ConfigureAwait(false);
-            if (response.Status != WorkerStatus.Ok || response.OutputLength != 0)
-                throw new WorkerProtocolException("The resvg worker rejected a document close request.");
-        }
-        catch (MarkdownSvgException exception) when (
-            exception.Reason == MarkdownSvgFailureReason.ResourceLimitExceeded)
-        {
-            // ExchangeAsync rejects a request before touching the worker when
-            // its bounded transaction queue is full. A failed CLOSE at this
-            // point is only a best-effort retirement miss: restarting a healthy
-            // worker would abort unrelated OPEN/RENDER requests. The native
-            // worker bounds document bindings and evicts uncached documents.
-        }
-        catch (Exception exception) when (
-            IsWorkerTransportFailure(exception) ||
-            exception is MarkdownSvgException or OperationCanceledException)
-        {
-            invalidate();
-        }
-        finally
-        {
-            close = null!;
-            invalidate = null!;
-        }
-    }
-
-    private static WorkerResponse Stamp(WorkerResponse response, WindowsWorkerProcess worker) =>
-        response with { WorkerInstanceId = worker.InstanceId };
-
-    internal static void ValidateFontCatalogProbeResponse(
-        long requestGeneration,
-        WorkerResponse response)
-    {
-        if (response.OutputLength != 0)
-            throw new WorkerProtocolException("The resvg worker returned output for font-catalog initialization.");
-        if (response.Status is not (
-                WorkerStatus.Ok or
-                WorkerStatus.FontCatalogPending or
-                WorkerStatus.FontCatalogFailure))
-        {
-            throw new WorkerProtocolException("The resvg worker returned an invalid font-catalog probe status.");
-        }
-
-        WorkerFontCatalogProtocolPolicy.ValidateProbeResponse(requestGeneration, response);
-        if (response.Status == WorkerStatus.Ok && response.ReadyFontGeneration != requestGeneration)
-        {
-            throw new WorkerProtocolException(
-                "The resvg worker confirmed a font generation different from the host target.");
-        }
-    }
-
-    internal static WorkerInitializationException InvalidateMalformedFontCatalogProbe(
-        WorkerProtocolException malformedResponse,
-        Action ensureRequestCurrent,
-        Action invalidateWorker)
-    {
-        ArgumentNullException.ThrowIfNull(malformedResponse);
-        ArgumentNullException.ThrowIfNull(ensureRequestCurrent);
-        ArgumentNullException.ThrowIfNull(invalidateWorker);
-
-        // Cancellation, deadline expiry, and generation rotation outrank the
-        // diagnosis of a completed response. In particular, a stale but
-        // otherwise healthy probe must not evict a reusable worker.
-        ensureRequestCurrent();
-        invalidateWorker();
-        return new WorkerInitializationException(
-            "The resvg worker returned an invalid font-catalog probe response.",
-            malformedResponse);
-    }
-
-    internal static void ValidateTextResponse(
-        WorkerResponse response,
-        long requestGeneration,
-        long currentGeneration,
-        string operation)
-    {
-        if (requestGeneration != currentGeneration)
-            throw new OperationCanceledException($"The SVG font environment changed during {operation}.");
-
-        ValidateTextResponseMetadata(response, requestGeneration, operation);
-
-        if (response.Status == WorkerStatus.FontCatalogPending)
-        {
-            throw new OperationCanceledException(
-                response.Detail.Length == 0
-                    ? $"The resvg worker's font catalog became pending during {operation}."
-                    : $"The resvg worker's font catalog changed during {operation}: {response.Detail}");
-        }
-
-        if (response.Status == WorkerStatus.FontCatalogFailure)
-        {
-            throw new WorkerInitializationException(
-                $"The resvg worker's font catalog failed during {operation}.",
-                new WorkerProtocolException(response.Detail.Length == 0
-                    ? "The font catalog refresh failed."
-                    : response.Detail));
-        }
-
-    }
-
-    private static void ValidateTextResponseMetadata(
-        WorkerResponse response,
-        long requestGeneration,
-        string operation)
-    {
-        if (response.Status == WorkerStatus.Ok && response.ReadyFontGeneration != requestGeneration)
-        {
-            throw new WorkerProtocolException($"The resvg worker used an unexpected font generation during {operation}.");
-        }
-
-        if ((response.Status is WorkerStatus.FontCatalogPending or WorkerStatus.FontCatalogFailure) &&
-            response.ReadyFontGeneration > requestGeneration)
-        {
-            throw new WorkerProtocolException($"The resvg worker published a future font generation during {operation}.");
-        }
     }
 
     public void AdvanceFontGeneration()
@@ -1432,7 +1158,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                 if (response.Status != WorkerStatus.Ok || response.OutputLength != 0)
                     throw new WorkerProtocolException("The resvg worker rejected a cache trim request.");
             }
-            catch (Exception exception) when (IsWorkerTransportFailure(exception))
+            catch (Exception exception) when (WorkerResponseValidation.IsWorkerTransportFailure(exception))
             {
                 Invalidate(worker);
                 if (cancellationToken.IsCancellationRequested)
@@ -1620,10 +1346,10 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                                 pending.CancellationRegistration = cancellationToken.UnsafeRegister(
                                     static state =>
                                     {
-                                        var cancellation = (CancellationState)state!;
+                                        var cancellation = (PendingWorkCancellation)state!;
                                         cancellation.Pool.Cancel(cancellation.Pending);
                                     },
-                                    new CancellationState(this, pending));
+                                    new PendingWorkCancellation(this, pending));
                             }
                         }
                         catch
@@ -1643,7 +1369,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                     continue;
                 }
 
-                admitted = await AwaitAdmissionAsync(
+                admitted = await WorkerAdmissionTasks.AwaitAdmissionAsync(
                     pending.Completion.Task,
                     pending.CancellationRegistration).ConfigureAwait(false);
                 return admitted;
@@ -1802,27 +1528,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
         prior.TrySetResult();
     }
 
-    internal static async Task<TLease> AwaitAdmissionAsync<TLease>(
-        Task<TLease> completion,
-        CancellationTokenRegistration cancellationRegistration)
-    {
-        try
-        {
-            // Successful admission transfers registration ownership to the
-            // active lease, which needs it to preempt canceled worker work.
-            return await completion.ConfigureAwait(false);
-        }
-        catch
-        {
-            // Drained/canceled queue entries never obtain a lease. Detach
-            // their callback from a possibly long-lived caller token outside
-            // the state lock so disposal can wait for an in-flight callback.
-            cancellationRegistration.Dispose();
-            throw;
-        }
-    }
-
-    private void Cancel(PendingWork pending)
+    internal void Cancel(PendingWork pending)
     {
         lock (_stateLock)
         {
@@ -1859,10 +1565,10 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
             pending.CancellationRegistration = cancellationToken.UnsafeRegister(
                 static state =>
                 {
-                    var cancellation = (CancellationState)state!;
+                    var cancellation = (PendingWorkCancellation)state!;
                     cancellation.Pool.Cancel(cancellation.Pending);
                 },
-                new CancellationState(this, pending));
+                new PendingWorkCancellation(this, pending));
         }
         cancellationToken.ThrowIfCancellationRequested();
     }
@@ -2417,7 +2123,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
                     throw new WorkerProtocolException("The secondary worker published a font generation different from the host target.");
                 worker.MarkFontCatalogReady(response.ReadyFontGeneration);
                 slot.Readiness!.MarkFontCatalogReady(response.ReadyFontGeneration);
-                RecordFontCatalogInitializationPhases(response.Detail, 0, 0, 0, worker.InstanceId);
+                WorkerFontCatalogDiagnostics.RecordFontCatalogInitializationPhases(response.Detail, 0, 0, 0, worker.InstanceId);
                 return response.ReadyFontGeneration;
             }
             if (response.Status != WorkerStatus.FontCatalogPending)
@@ -2478,40 +2184,8 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
             {
                 // Cancellation can race with assignment. Drain and dispose a
                 // lease that was granted just before the token was observed.
-                await CancelAndDrainAcquireAsync(acquire, probeCancellation.Cancel).ConfigureAwait(false);
+                await WorkerAdmissionTasks.CancelAndDrainAcquireAsync(acquire, probeCancellation.Cancel).ConfigureAwait(false);
             }
-        }
-    }
-
-    internal static async Task CancelAndDrainAcquireAsync<TLease>(
-        Task<TLease> acquire,
-        Action cancelAcquire)
-        where TLease : class, IDisposable
-    {
-        try
-        {
-            ArgumentNullException.ThrowIfNull(acquire);
-            ArgumentNullException.ThrowIfNull(cancelAcquire);
-            cancelAcquire();
-            try
-            {
-                using TLease abandoned = await acquire.ConfigureAwait(false);
-            }
-            catch (Exception exception) when (
-                exception is OperationCanceledException or
-                ObjectDisposedException or
-                MarkdownSvgException)
-            {
-                // The acquire's original outcome owns its failure semantics.
-                // Observe only cancellation/late-grant cleanup here.
-            }
-        }
-        finally
-        {
-            // A retained completed cleanup Task must not retain the original
-            // admission Task's lease/slot or its cancellation callback owner.
-            acquire = null!;
-            cancelAcquire = null!;
         }
     }
 
@@ -2536,33 +2210,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
         }
     }
 
-    private static void RecordFontCatalogInitializationPhases(
-        string detail,
-        long diagnosticWorkId,
-        ulong diagnosticRequestId,
-        ulong diagnosticDocumentId,
-        long workerInstanceId)
-    {
-        if (diagnosticWorkId <= 0 ||
-            !FontCatalogTimingPayload.TryParse(detail, out FontCatalogPhaseTiming[] phases))
-        {
-            return;
-        }
-
-        foreach (FontCatalogPhaseTiming phase in phases)
-        {
-            SvgWorkerStageTrace.RecordElapsed(
-                diagnosticWorkId,
-                phase.StageId,
-                workerInstanceId,
-                diagnosticRequestId,
-                diagnosticDocumentId,
-                phase.WallStopwatchTicks,
-                phase.WorkerCpuTicks);
-        }
-    }
-
-    private void Release(WorkerSlot slot, PendingWork pending)
+    internal void Release(WorkerSlot slot, PendingWork pending)
     {
         pending.CancellationRegistration.Dispose();
         lock (_stateLock)
@@ -2859,7 +2507,7 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
             queryFailed = false;
             return _isEnergySaverOn();
         }
-        catch (Exception exception) when (IsRecoverablePowerQueryFailure(exception))
+        catch (Exception exception) when (WorkerEnergySaver.IsRecoverablePowerQueryFailure(exception))
         {
             // Power state is an optimization gate, not a prerequisite for
             // rendering. If a recoverable platform/query failure occurs, keep
@@ -2869,33 +2517,6 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
             queryFailed = true;
             return true;
         }
-    }
-
-    private static bool IsRecoverablePowerQueryFailure(Exception exception)
-    {
-        // Do not hide fatal resource/process failures behind the conservative
-        // single-worker fallback. Check aggregate children too because a
-        // platform query wrapper may report a fatal inner exception.
-        if (exception is OutOfMemoryException or InsufficientMemoryException or
-            InsufficientExecutionStackException or StackOverflowException or
-            AccessViolationException or SEHException)
-        {
-            return false;
-        }
-
-        if (exception is AggregateException aggregate)
-        {
-            foreach (Exception innerException in aggregate.InnerExceptions)
-            {
-                if (!IsRecoverablePowerQueryFailure(innerException))
-                    return false;
-            }
-
-            return true;
-        }
-
-        return exception.InnerException is null ||
-            IsRecoverablePowerQueryFailure(exception.InnerException);
     }
 
     private SvgWorkerPolicySnapshot CreateWorkerPolicySnapshot(
@@ -2971,164 +2592,6 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
         _ => 1,
     };
 
-    private static bool QueryEnergySaverOn() =>
-        Windows.System.Power.PowerManager.EnergySaverStatus ==
-        Windows.System.Power.EnergySaverStatus.On;
-
-    private static SharedMemoryLease CreateSourceMemory(string name, SvgSourceBuffer source) =>
-        new(name, source, outputLength: 0);
-
-    internal static async Task<TResult> WithSourceMappingAsync<TResult>(
-        Func<string, SvgSourceBuffer, SharedMemoryLease>? sourceMemoryFactory,
-        string sourceMemoryName,
-        SvgSourceBuffer source,
-        Func<SharedMemoryLease, Task<TResult>> operation,
-        CancellationToken cancellationToken,
-        Action? contentAdmissionGuard = null,
-        WorkerObjectSecurity.WorkerObjectSecurityContext? securityContext = null)
-    {
-        SharedMemoryLease? sourceMemory = null;
-        try
-        {
-            if ((sourceMemoryFactory is null) == (securityContext is null))
-                throw new ArgumentException("Exactly one source mapping factory or worker security context is required.");
-            ArgumentException.ThrowIfNullOrWhiteSpace(sourceMemoryName);
-            ArgumentNullException.ThrowIfNull(source);
-            ArgumentNullException.ThrowIfNull(operation);
-            cancellationToken.ThrowIfCancellationRequested();
-            contentAdmissionGuard?.Invoke();
-
-            sourceMemory = (securityContext is null
-                    ? sourceMemoryFactory!(sourceMemoryName, source)
-                    : new SharedMemoryLease(
-                        sourceMemoryName,
-                        source,
-                        outputLength: 0,
-                        securityContext: securityContext)) ??
-                throw new InvalidOperationException("The SVG source-memory factory returned no mapping.");
-            cancellationToken.ThrowIfCancellationRequested();
-            // Quarantine can be published while the mapping factory runs.
-            // Revalidate before the operation can send an OPEN/reattachment.
-            contentAdmissionGuard?.Invoke();
-            return await operation(sourceMemory).ConfigureAwait(false);
-        }
-        finally
-        {
-            // Clear source-bearing parameters before disposing the mapping so
-            // even disposal faults cannot leave them on a completed Task.
-            SharedMemoryLease? mapping = sourceMemory;
-            sourceMemory = null;
-            source = SvgSourceBuffer.Empty;
-            sourceMemoryFactory = null;
-            operation = null!;
-            contentAdmissionGuard = null;
-            sourceMemoryName = string.Empty;
-            if (mapping is not null)
-                ((IDisposable)mapping).Dispose();
-        }
-    }
-
-    internal static async Task<WorkerRenderResult> WithAdmittedOutputMappingAsync<TAdmission>(
-        Func<CancellationToken, Task<TAdmission>> admitAsync,
-        Func<TAdmission, SharedMemoryLease, CancellationToken, Task<WorkerResponse>> renderAsync,
-        Func<string, int, SharedMemoryLease>? outputMemoryFactory,
-        string outputMemoryName,
-        int outputLength,
-        CancellationToken cancellationToken,
-        Func<TAdmission, WorkerObjectSecurity.WorkerObjectSecurityContext>? securityContextFactory = null)
-        where TAdmission : IDisposable
-    {
-        TAdmission admission = default!;
-        bool hasAdmission = false;
-        SharedMemoryLease? outputMemory = null;
-        try
-        {
-            ArgumentNullException.ThrowIfNull(admitAsync);
-            ArgumentNullException.ThrowIfNull(renderAsync);
-            if ((outputMemoryFactory is null) == (securityContextFactory is null))
-                throw new ArgumentException("Exactly one output mapping factory or worker security-context selector is required.");
-            ArgumentException.ThrowIfNullOrWhiteSpace(outputMemoryName);
-            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(outputLength);
-            cancellationToken.ThrowIfCancellationRequested();
-
-            admission = await admitAsync(cancellationToken).ConfigureAwait(false);
-            hasAdmission = true;
-            cancellationToken.ThrowIfCancellationRequested();
-            outputMemory = (securityContextFactory is null
-                    ? outputMemoryFactory!(outputMemoryName, outputLength)
-                    : new SharedMemoryLease(
-                        outputMemoryName,
-                        outputLength,
-                        securityContext: securityContextFactory(admission))) ??
-                throw new InvalidOperationException("The SVG output-memory factory returned no mapping.");
-            cancellationToken.ThrowIfCancellationRequested();
-            WorkerResponse response = await renderAsync(admission, outputMemory, cancellationToken).ConfigureAwait(false);
-            cancellationToken.ThrowIfCancellationRequested();
-            var result = new WorkerRenderResult(response, outputMemory);
-            outputMemory = null;
-            return result;
-        }
-        finally
-        {
-            try
-            {
-                if (outputMemory is not null)
-                    ((IDisposable)outputMemory).Dispose();
-            }
-            finally
-            {
-                try
-                {
-                    if (hasAdmission)
-                        ((IDisposable)admission).Dispose();
-                }
-                finally
-                {
-                    // Delegates supplied by RenderDocumentAsync close over
-                    // preflight/openRequest and can otherwise keep their
-                    // source arrays alive as long as this completed Task.
-                    outputMemory = null;
-                    admission = default!;
-                    admitAsync = null!;
-                    renderAsync = null!;
-                    outputMemoryFactory = null;
-                    outputMemoryName = string.Empty;
-                }
-            }
-        }
-    }
-
-    internal static async Task<WorkerResponse?> AttachDocumentIfMissingAsync(
-        WorkerResponse response,
-        Func<Task<WorkerResponse>> attach)
-    {
-        try
-        {
-            ArgumentNullException.ThrowIfNull(attach);
-            return response.Status == WorkerStatus.DocumentMissing
-                ? await attach().ConfigureAwait(false)
-                : null;
-        }
-        finally
-        {
-            // The no-reattach path must release the unused source-bearing
-            // closure just as reliably as success, failure, and cancellation.
-            attach = null!;
-        }
-    }
-
-    private static string NewSourceMappingName() =>
-        $"Local\\MarkdownRenderer.Resvg.{Environment.ProcessId}.{Guid.NewGuid():N}";
-
-    private static SharedMemoryLease CreateOutputMemory(string name, int outputLength) =>
-        new(name, outputLength);
-
-    private static string NewOutputMappingName() =>
-        $"Local\\MarkdownRenderer.Resvg.Output.{Environment.ProcessId}.{Guid.NewGuid():N}";
-
-    private static bool IsWorkerTransportFailure(Exception exception) =>
-        exception is WorkerProtocolException or WorkerDeadlineException or IOException or InvalidOperationException;
-
     private ulong NextRequestId() => checked((ulong)Interlocked.Increment(ref _nextRequestId));
 
     private ulong NextDocumentId() => checked((ulong)Interlocked.Increment(ref _nextDocumentId));
@@ -3160,103 +2623,4 @@ internal sealed partial class WorkerPool : IAsyncDisposable, IDisposable
         return options.WorkerExecutablePath ??
             Path.Combine(AppContext.BaseDirectory, WorkerProtocol.WorkerFileName);
     }
-
-    private sealed class WorkerSlot(bool isSecondary)
-    {
-        public bool IsSecondary { get; } = isSecondary;
-        public SemaphoreSlim FontCatalogGate { get; } = new(1, 1);
-        public long PolicyDecisionSequence { get; set; }
-        public SvgWorkerPolicySnapshot PolicySnapshot { get; set; }
-        public SecondaryWorkerReadiness? Readiness { get; } =
-            isSecondary ? new SecondaryWorkerReadiness() : null;
-        public WindowsWorkerProcess? Worker { get; set; }
-        public PendingWork? Active { get; set; }
-        public bool Busy { get; set; }
-        public bool KillCanceledWhenStarted { get; set; }
-        public DateTimeOffset IdleSince { get; set; }
-        public CancellationTokenSource? IdleRetirement { get; set; }
-    }
-
-    private sealed class PendingWork(
-        WorkerOperation operation,
-        MarkdownSvgRenderPriority priority,
-        CancellationToken cancellationToken,
-        bool requiresFontCatalog = false,
-        long preferredWorkerInstanceId = 0,
-        bool isSecondaryFontProbe = false,
-        MarkdownSvgRenderDemand? demandTicket = null)
-    {
-        public WorkerOperation Operation { get; } = operation;
-        private MarkdownSvgRenderPriority _priority = priority;
-        private IDisposable? _promotionRegistration;
-        public MarkdownSvgRenderPriority Priority => _priority;
-        public CancellationToken CancellationToken { get; set; } = cancellationToken;
-        public bool RequiresFontCatalog { get; } = requiresFontCatalog;
-        public long PreferredWorkerInstanceId { get; } = preferredWorkerInstanceId;
-        public bool IsSecondaryFontProbe { get; } = isSecondaryFontProbe;
-        public MarkdownSvgRenderDemand? DemandTicket { get; } = demandTicket;
-        public TaskCompletionSource<WorkerLease> Completion { get; } =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public CancellationTokenRegistration CancellationRegistration { get; set; }
-        public WorkerSlot? ActiveSlot { get; set; }
-        public bool HasDetachedFontWaitReservation { get; set; }
-        public bool IsCanceled { get; set; }
-        public DateTimeOffset? BlockedSince { get; set; }
-        public bool CancellationCheckScheduled { get; set; }
-
-        public void SetPromotionRegistration(IDisposable registration)
-        {
-            if (Interlocked.CompareExchange(ref _promotionRegistration, registration, null) is not null)
-                throw new InvalidOperationException("A queued worker item already has a promotion registration.");
-        }
-
-        public void DisposePromotionRegistration() =>
-            Interlocked.Exchange(ref _promotionRegistration, null)?.Dispose();
-
-        public void SynchronizePriorityFromTicket() => PromoteVisibleFromTicket();
-
-        public bool PromoteVisibleFromTicket()
-        {
-            if (_priority == MarkdownSvgRenderPriority.Visible ||
-                DemandTicket?.Priority != MarkdownSvgRenderPriority.Visible)
-            {
-                return false;
-            }
-            _priority = MarkdownSvgRenderPriority.Visible;
-            return true;
-        }
-    }
-
-    private sealed record CancellationState(WorkerPool Pool, PendingWork Pending);
-
-    private sealed class WorkerLease(
-        WorkerPool owner,
-        WorkerSlot slot,
-        PendingWork pending) : IDisposable
-    {
-        private int _disposed;
-
-        public WorkerSlot Slot { get; } = slot;
-        public PendingWork Pending { get; } = pending;
-
-        public void Dispose()
-        {
-            if (Interlocked.Exchange(ref _disposed, 1) == 0)
-                owner.Release(Slot, Pending);
-        }
-    }
-
-    private sealed class RenderAdmission(
-        WorkerLease lease,
-        WindowsWorkerProcess worker,
-        long requestGeneration) : IDisposable
-    {
-        public WorkerLease Lease { get; } = lease;
-        public WindowsWorkerProcess Worker { get; } = worker;
-        public long RequestGeneration { get; } = requestGeneration;
-
-        public void Dispose() => Lease.Dispose();
-    }
-
-    private sealed record TextWorkerAdmission(WorkerLease Lease, WindowsWorkerProcess Worker);
 }

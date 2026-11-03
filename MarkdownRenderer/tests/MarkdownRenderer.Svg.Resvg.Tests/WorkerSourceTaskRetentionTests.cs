@@ -141,7 +141,7 @@ public sealed class WorkerSourceTaskRetentionTests
         if (outcome == 2)
             cancellation.Cancel();
 
-        Task<int> task = WorkerPool.WithSourceMappingAsync(
+        Task<int> task = WorkerSharedMemoryMapping.WithSourceMappingAsync(
             static (name, bytes) => new SharedMemoryLease(name, bytes, outputLength: 0),
             NewMappingName(),
             SvgSourceBuffer.TakeOwnedArray(sourceBytes),
@@ -179,7 +179,7 @@ public sealed class WorkerSourceTaskRetentionTests
             }
         };
 
-        Task<int> task = WorkerPool.WithSourceMappingAsync(
+        Task<int> task = WorkerSharedMemoryMapping.WithSourceMappingAsync(
             (name, bytes) =>
             {
                 var created = new SharedMemoryLease(name, bytes, outputLength: 0);
@@ -209,7 +209,7 @@ public sealed class WorkerSourceTaskRetentionTests
             return Task.FromException<WorkerResponse>(new InvalidOperationException("render must not run"));
         };
 
-        Task<WorkerRenderResult> task = WorkerPool.WithAdmittedOutputMappingAsync(
+        Task<WorkerRenderResult> task = WorkerSharedMemoryMapping.WithAdmittedOutputMappingAsync(
             admit,
             render,
             static (name, length) => new SharedMemoryLease(name, length),
