@@ -125,8 +125,20 @@ internal static class SvgStaticSnapshot
             out List<XmlElement> foreignObjects,
             out List<XmlElement> styleElements,
             out List<XmlElement> inlineStyleElements);
-        bool changed = false;
+        bool changed = RemoveScripts(scriptElements, cancellationToken);
+        changed |= ReplaceAnimations(animationElements, cancellationToken);
+        changed |= ReplaceForeignObjects(document, foreignObjects, cancellationToken);
+        changed |= SanitizeStyleElements(styleElements, cancellationToken);
+        changed |= SanitizeInlineStyles(inlineStyleElements, cancellationToken);
+        if (!changed)
+            return originalBytes;
 
+        return Serialize(document, cancellationToken, maxOutputBytes);
+    }
+
+    private static bool RemoveScripts(List<XmlElement> scriptElements, CancellationToken cancellationToken)
+    {
+        bool changed = false;
         foreach (XmlElement script in scriptElements)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -140,6 +152,12 @@ internal static class SvgStaticSnapshot
             changed = true;
         }
 
+        return changed;
+    }
+
+    private static bool ReplaceAnimations(List<XmlElement> animationElements, CancellationToken cancellationToken)
+    {
+        bool changed = false;
         foreach (XmlElement animation in animationElements)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -148,6 +166,15 @@ internal static class SvgStaticSnapshot
             changed = true;
         }
 
+        return changed;
+    }
+
+    private static bool ReplaceForeignObjects(
+        XmlDocument document,
+        List<XmlElement> foreignObjects,
+        CancellationToken cancellationToken)
+    {
+        bool changed = false;
         Dictionary<XmlElement, bool>? switchFallbackByParent = null;
         foreach (XmlElement foreignObject in foreignObjects)
         {
@@ -185,6 +212,12 @@ internal static class SvgStaticSnapshot
             }
         }
 
+        return changed;
+    }
+
+    private static bool SanitizeStyleElements(List<XmlElement> styleElements, CancellationToken cancellationToken)
+    {
+        bool changed = false;
         foreach (XmlElement style in styleElements)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -196,6 +229,12 @@ internal static class SvgStaticSnapshot
             }
         }
 
+        return changed;
+    }
+
+    private static bool SanitizeInlineStyles(List<XmlElement> inlineStyleElements, CancellationToken cancellationToken)
+    {
+        bool changed = false;
         foreach (XmlElement element in inlineStyleElements)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -210,9 +249,11 @@ internal static class SvgStaticSnapshot
             changed = true;
         }
 
-        if (!changed)
-            return originalBytes;
+        return changed;
+    }
 
+    private static byte[] Serialize(XmlDocument document, CancellationToken cancellationToken, int maxOutputBytes)
+    {
         using var output = new BoundedSegmentedWriteStream(maxOutputBytes, cancellationToken);
         try
         {
@@ -330,31 +371,58 @@ internal static class SvgStaticSnapshot
                 continue;
             }
 
-            // Leave the leaf and each completed ancestor until reaching a
-            // sibling. Check cancellation on every exit; deep trees can have
-            // little sibling activity while still requiring prompt teardown.
-            while (true)
+            if (!TryAdvanceToNextSibling(
+                ref current,
+                root,
+                ref animationAncestorDepth,
+                ref foreignObjectAncestorDepth,
+                cancellationToken))
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (current is XmlElement exitedElement)
-                {
-                    if (SvgAnimationInitialValues.IsAnimationElement(exitedElement))
-                        animationAncestorDepth--;
-                    if (IsForeignObjectElement(exitedElement))
-                        foreignObjectAncestorDepth--;
-                }
-
-                if (ReferenceEquals(current, root))
-                    return;
-
-                if (current.NextSibling is { } nextSibling)
-                {
-                    current = nextSibling;
-                    break;
-                }
-
-                current = current.ParentNode!;
+                return;
             }
+        }
+    }
+
+    /// <summary>
+    /// Leaves the leaf and each completed ancestor until reaching a sibling,
+    /// unwinding the ancestor counters as each element is exited. Checks
+    /// cancellation on every exit; deep trees can have little sibling activity
+    /// while still requiring prompt teardown.
+    /// </summary>
+    /// <param name="current">The leaf being left; on success, the next sibling to visit.</param>
+    /// <param name="root">The walk's root element.</param>
+    /// <param name="animationAncestorDepth">The open animation-ancestor count.</param>
+    /// <param name="foreignObjectAncestorDepth">The open foreignObject-ancestor count.</param>
+    /// <param name="cancellationToken">Cancels discovery.</param>
+    /// <returns><see langword="false"/> once the root itself has been exited.</returns>
+    private static bool TryAdvanceToNextSibling(
+        ref XmlNode current,
+        XmlNode root,
+        ref int animationAncestorDepth,
+        ref int foreignObjectAncestorDepth,
+        CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (current is XmlElement exitedElement)
+            {
+                if (SvgAnimationInitialValues.IsAnimationElement(exitedElement))
+                    animationAncestorDepth--;
+                if (IsForeignObjectElement(exitedElement))
+                    foreignObjectAncestorDepth--;
+            }
+
+            if (ReferenceEquals(current, root))
+                return false;
+
+            if (current.NextSibling is { } nextSibling)
+            {
+                current = nextSibling;
+                return true;
+            }
+
+            current = current.ParentNode!;
         }
     }
 
