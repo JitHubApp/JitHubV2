@@ -17,7 +17,7 @@ namespace MarkdownRenderer.Layout.Boxes;
 internal sealed partial class TableBox : BlockBox, IHorizontalOverflowBox
 {
     internal const int MaximumPrivateRasterPlacementCells = 256;
-    private const float HorizontalScrollbarHeight = 12f;
+    internal const float HorizontalScrollbarHeight = 12f;
     private const float MinimumScrollbarThumbWidth = 24f;
     private const float MinimumColumnWidth = 48f;
     private const float MaximumPreferredColumnWidth = 720f;
@@ -52,6 +52,7 @@ internal sealed partial class TableBox : BlockBox, IHorizontalOverflowBox
     private readonly InlineContainerBox[][] _bodyCells;    // [row][col]
     internal InlineContainerBox[][] BodyCells => _bodyCells;
     private readonly CellAlignment[] _columnAlignments;
+    internal CellAlignment[] ColumnAlignments => _columnAlignments;
     private readonly int _colCount;
 
     private float[]? _colWidths;
@@ -66,9 +67,13 @@ internal sealed partial class TableBox : BlockBox, IHorizontalOverflowBox
     internal float ViewportWidth => _viewportWidth;
     private double _horizontalOffset;
     private float _arrangedX;
+    internal float ArrangedX => _arrangedX;
     private float _arrangedY;
+    internal float ArrangedY => _arrangedY;
     private float _arrangedWidth;
+    internal float ArrangedWidth => _arrangedWidth;
     private bool _hasArrangement;
+    internal bool HasArrangement => _hasArrangement;
 
     public TableBox(
         MarkdownLayoutContext context,
@@ -360,7 +365,7 @@ internal sealed partial class TableBox : BlockBox, IHorizontalOverflowBox
     /// <summary>
     /// No-throw exchange of this source table's measured column, row, scroll
     /// and arrangement state with its private measured candidate. Called by
-    /// <see cref="MeasuredPlacementTransfer.SwapPlacementNoThrow"/> after the
+    /// <see cref="TableMeasuredPlacementTransfer.SwapPlacementNoThrow"/> after the
     /// cell transfers have swapped, once every fence has succeeded.
     /// </summary>
     /// <param name="prepared">The private measured candidate table.</param>

@@ -101,7 +101,7 @@ internal sealed partial class LayoutSnapshot
             ChangedBlockMeasure[] changed;
             ImageBox.MeasuredPlacementTransfer[] transfers;
             InlineMeasuredPlacementTransfer?[] inlineTransfers;
-            TableBox.MeasuredPlacementTransfer?[] tableTransfers;
+            TableMeasuredPlacementTransfer?[] tableTransfers;
             BlockMeasuredPlacementTransfer?[] containerTransfers;
             var allInlineTransfers = new List<InlineMeasuredPlacementTransfer>();
             float contentWidth;
@@ -147,7 +147,7 @@ internal sealed partial class LayoutSnapshot
                 sourceRoots = new BlockBox[count];
                 changed = new ChangedBlockMeasure[count];
                 inlineTransfers = new InlineMeasuredPlacementTransfer?[count];
-                tableTransfers = new TableBox.MeasuredPlacementTransfer?[count];
+                tableTransfers = new TableMeasuredPlacementTransfer?[count];
                 containerTransfers = new BlockMeasuredPlacementTransfer?[count];
                 contentWidth = GetContentWidthNoLock();
                 contentX = (float)_documentPadding.Left;
@@ -559,7 +559,7 @@ internal sealed partial class LayoutSnapshot
                 }
                 // Validate every native/run owner before mutating any image.
                 // The following swaps never install clone semantic identities.
-                foreach (TableBox.MeasuredPlacementTransfer? tableTransfer in tableTransfers)
+                foreach (TableMeasuredPlacementTransfer? tableTransfer in tableTransfers)
                     if (tableTransfer is not null && !tableTransfer.IsCurrentAndPrepared())
                         return PreparedImageRelayoutResult.Retry;
                 foreach (BlockMeasuredPlacementTransfer? containerTransfer in containerTransfers)
@@ -591,7 +591,7 @@ internal sealed partial class LayoutSnapshot
                     placementsAdopted = true;
                     foreach (InlineMeasuredPlacementTransfer? inlineTransfer in inlineTransfers)
                         inlineTransfer?.SwapPlacementNoThrow();
-                    foreach (TableBox.MeasuredPlacementTransfer? tableTransfer in tableTransfers)
+                    foreach (TableMeasuredPlacementTransfer? tableTransfer in tableTransfers)
                         tableTransfer?.SwapPlacementNoThrow();
                     foreach (BlockMeasuredPlacementTransfer? containerTransfer in containerTransfers)
                         containerTransfer?.SwapPlacementNoThrow();
