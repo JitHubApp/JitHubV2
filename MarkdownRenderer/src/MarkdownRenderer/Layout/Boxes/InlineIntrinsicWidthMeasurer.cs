@@ -54,19 +54,7 @@ internal static class InlineIntrinsicWidthMeasurer
             InlineRunStyleApplier.ApplyRunStyles(box, layout, applyColors: false);
             InlineAtomicObjectLayout.ApplyEmbedSpacing(box, layout, maxInlineWidth: measurementWidth);
 
-            var layoutBounds = layout.LayoutBounds;
-            var drawBounds = layout.DrawBounds;
-            float preferredContent = (float)Math.Max(
-                Math.Max(layoutBounds.Width, drawBounds.Width),
-                1d);
-            preferredContent = Math.Min(preferredContent, measurementWidth);
-
-            float minimumContent = MeasureWidestUnbreakableSegment(box, layout, style.FontSize);
-            minimumContent = Math.Clamp(minimumContent, 1f, preferredContent);
-            box.ThrowIfCancellationRequested();
-            result = new IntrinsicWidthMetrics(
-                minimumContent + horizontalPadding,
-                preferredContent + horizontalPadding);
+            result = ReadIntrinsicWidths(box, layout, style.FontSize, measurementWidth, horizontalPadding);
         }
         catch (Exception exception)
         {
@@ -81,22 +69,7 @@ internal static class InlineIntrinsicWidthMeasurer
             try
             {
                 if (candidateMeasures is not null)
-                {
-                    foreach (InlineMeasureRollbackState state in candidateMeasures)
-                    {
-                        try
-                        {
-                            state.Restore();
-                        }
-                        catch (Exception exception)
-                        {
-                            failure = InlineNativeLayoutRetirement.CombineFailures(
-                                "restoring speculative inline measurements",
-                                failure,
-                                exception);
-                        }
-                    }
-                }
+                    RestoreSpeculativeMeasures(candidateMeasures, ref failure);
             }
             finally
             {
@@ -117,6 +90,52 @@ internal static class InlineIntrinsicWidthMeasurer
         if (failure is not null)
             ExceptionDispatchInfo.Capture(failure).Throw();
         return result;
+    }
+
+    // Reads the no-wrap layout's preferred width and the widest unbreakable
+    // segment, then observes cancellation before publishing either.
+    private static IntrinsicWidthMetrics ReadIntrinsicWidths(
+        InlineContainerBox box,
+        CanvasTextLayout layout,
+        float fontSize,
+        float measurementWidth,
+        float horizontalPadding)
+    {
+        var layoutBounds = layout.LayoutBounds;
+        var drawBounds = layout.DrawBounds;
+        float preferredContent = (float)Math.Max(
+            Math.Max(layoutBounds.Width, drawBounds.Width),
+            1d);
+        preferredContent = Math.Min(preferredContent, measurementWidth);
+
+        float minimumContent = MeasureWidestUnbreakableSegment(box, layout, fontSize);
+        minimumContent = Math.Clamp(minimumContent, 1f, preferredContent);
+        box.ThrowIfCancellationRequested();
+        return new IntrinsicWidthMetrics(
+            minimumContent + horizontalPadding,
+            preferredContent + horizontalPadding);
+    }
+
+    // Restores every speculative atomic measurement, folding each failure
+    // into the aggregate so one failure never skips the rest.
+    private static void RestoreSpeculativeMeasures(
+        List<InlineMeasureRollbackState> candidateMeasures,
+        ref Exception? failure)
+    {
+        foreach (InlineMeasureRollbackState state in candidateMeasures)
+        {
+            try
+            {
+                state.Restore();
+            }
+            catch (Exception exception)
+            {
+                failure = InlineNativeLayoutRetirement.CombineFailures(
+                    "restoring speculative inline measurements",
+                    failure,
+                    exception);
+            }
+        }
     }
 
     private static float MeasureWidestUnbreakableSegment(InlineContainerBox box, CanvasTextLayout layout, float fallbackFontSize)
