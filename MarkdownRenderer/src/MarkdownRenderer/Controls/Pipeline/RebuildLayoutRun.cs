@@ -35,22 +35,8 @@ internal static class RebuildLayoutRun
         Action<long>? workerCompleted,
         CancellationToken ct)
     {
-        // Custom block embed measurement remains on the background build path.
-        // Subsequent lazy-band extension is also dispatched to a background
-        // worker, so IMarkdownEmbedFactory.MeasureHeight and text reflow never
-        // run from viewport or paint callbacks.
-        bool visibleFirstVectorAdmissionRequested = performanceSession is
-            { IsDisposed: false, Options.DeferOffscreenScenes: true };
-        bool useLazyLayout = visibleFirstVectorAdmissionRequested || MarkdownLazyLayoutPolicy.ShouldUse(
-            parsed.Document.Count,
-            parsed.SourceText.Length,
-            hasCustomBlockEmbedMeasurement);
-        double initialLazyOverscan = performanceSession is null
-            ? MarkdownLazyLayoutPolicy.OverscanPx
-            : Math.Clamp(
-                viewportHeight * performanceSession.Options.LookAheadViewports,
-                0,
-                6000);
+        bool useLazyLayout = ShouldUseLazyLayout(parsed, hasCustomBlockEmbedMeasurement, performanceSession);
+        double initialLazyOverscan = GetInitialLazyOverscan(viewportHeight, performanceSession);
         long layoutStarted = Stopwatch.GetTimestamp();
         Func<CancellationToken, (LayoutSnapshot? Snapshot, double CpuMilliseconds, long Started, long Ended)> layoutWork =
             layoutToken =>
@@ -107,6 +93,33 @@ internal static class RebuildLayoutRun
             workerEnded,
             Stopwatch.GetTimestamp());
     }
+
+    private static bool ShouldUseLazyLayout(
+        ParsedMarkdown parsed,
+        bool hasCustomBlockEmbedMeasurement,
+        IMarkdownPerformanceSessionInternal? performanceSession)
+    {
+        // Custom block embed measurement remains on the background build path.
+        // Subsequent lazy-band extension is also dispatched to a background
+        // worker, so IMarkdownEmbedFactory.MeasureHeight and text reflow never
+        // run from viewport or paint callbacks.
+        bool visibleFirstVectorAdmissionRequested = performanceSession is
+            { IsDisposed: false, Options.DeferOffscreenScenes: true };
+        return visibleFirstVectorAdmissionRequested || MarkdownLazyLayoutPolicy.ShouldUse(
+            parsed.Document.Count,
+            parsed.SourceText.Length,
+            hasCustomBlockEmbedMeasurement);
+    }
+
+    private static double GetInitialLazyOverscan(
+        double viewportHeight,
+        IMarkdownPerformanceSessionInternal? performanceSession) =>
+        performanceSession is null
+            ? MarkdownLazyLayoutPolicy.OverscanPx
+            : Math.Clamp(
+                viewportHeight * performanceSession.Options.LookAheadViewports,
+                0,
+                6000);
 
     private static LayoutSnapshot? BuildOrNullOnCancellation(
         LayoutBuilder builder,
