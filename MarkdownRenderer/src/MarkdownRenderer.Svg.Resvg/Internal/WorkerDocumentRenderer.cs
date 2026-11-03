@@ -181,10 +181,9 @@ internal sealed class WorkerDocumentRenderer(
         SharedMemoryLease outputMemory,
         ulong requestId,
         long requestGeneration,
-        CancellationToken cancellationToken
-        , long diagnosticWorkId,
-        long targetPixels
-        )
+        CancellationToken cancellationToken,
+        long diagnosticWorkId,
+        long targetPixels)
     {
         var render = new WorkerRenderInputs(
             lease,
@@ -222,13 +221,8 @@ internal sealed class WorkerDocumentRenderer(
                     CreateDocumentReattachment(render)).ConfigureAwait(false);
                 if (attachment is null)
                     return WorkerResponseValidation.Stamp(response, worker);
-                if (preflight.Info.HasText)
-                    WorkerResponseValidation.ValidateTextResponse(attachment.Value, requestGeneration, _requests.FontGeneration, "document reattachment");
-                if (attachment.Value.Status != WorkerStatus.Ok)
+                if (!TryAcceptReattachment(in render, attachment.Value))
                     return attachment.Value;
-                document.PreferWorker(attachment.Value.WorkerInstanceId);
-                cancellationToken.ThrowIfCancellationRequested();
-                document.ValidateContentAdmission();
 
                 request = request with { RequestId = _requests.NextRequestId() };
                 response = await ExchangeRender(in render, request).ConfigureAwait(false);
@@ -255,6 +249,27 @@ internal sealed class WorkerDocumentRenderer(
             renderRequest = null!;
             outputMemory = null!;
         }
+    }
+
+    /// <summary>
+    /// Checks a missing-document reattachment before the render is retried:
+    /// its font generation for text, its status, then the caller's
+    /// cancellation and content admission. Prefers the worker that now holds
+    /// the document.
+    /// </summary>
+    /// <param name="render">The admitted render's inputs.</param>
+    /// <param name="attachment">The reattachment response.</param>
+    /// <returns><see langword="false"/> when the reattachment failed and its response is the result.</returns>
+    private bool TryAcceptReattachment(in WorkerRenderInputs render, WorkerResponse attachment)
+    {
+        if (render.Preflight.Info.HasText)
+            WorkerResponseValidation.ValidateTextResponse(attachment, render.RequestGeneration, _requests.FontGeneration, "document reattachment");
+        if (attachment.Status != WorkerStatus.Ok)
+            return false;
+        render.Document.PreferWorker(attachment.WorkerInstanceId);
+        render.CancellationToken.ThrowIfCancellationRequested();
+        render.Document.ValidateContentAdmission();
+        return true;
     }
 
     /// <summary>Builds the render transaction for the leased worker.</summary>
