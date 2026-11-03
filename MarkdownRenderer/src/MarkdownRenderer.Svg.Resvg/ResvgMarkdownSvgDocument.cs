@@ -104,27 +104,8 @@ internal sealed class ResvgMarkdownSvgDocument : IMarkdownSvgDocument, IMarkdown
         {
             ArgumentNullException.ThrowIfNull(request);
             (int width, int height) = ValidateRenderRequest(request);
-            int outputLength;
-            try
-            {
-                outputLength = checked(checked(width * height) * 4);
-            }
-            catch (OverflowException exception)
-            {
-                throw new MarkdownSvgException(MarkdownSvgFailureReason.ResourceLimitExceeded, "The requested SVG raster dimensions overflow.", exception);
-            }
-            if (outputLength > _options.MaxOutputRasterBytes)
-                throw new MarkdownSvgException(MarkdownSvgFailureReason.ResourceLimitExceeded, "The requested SVG raster exceeds the output ceiling; request bounded tiles.");
-
-            try
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                lifetime.Token.ThrowIfCancellationRequested();
-            }
-            catch (OperationCanceledException exception)
-            {
-                throw new MarkdownSvgException(MarkdownSvgFailureReason.Canceled, innerException: exception);
-            }
+            int outputLength = GetOutputLength(width, height);
+            ThrowIfRenderCanceled(cancellationToken, lifetime.Token);
 
             // This is deliberately before source snapshot access and worker
             // dispatch. Repeated renders from any retained handle observe the
@@ -145,61 +126,17 @@ internal sealed class ResvgMarkdownSvgDocument : IMarkdownSvgDocument, IMarkdown
                     linked.Token,
                     demand).ConfigureAwait(false);
             }
-            catch (OperationCanceledException exception)
+            catch (Exception exception) when (TryClassifyWorkerRenderFailure(
+                exception,
+                out MarkdownSvgFailureReason reason,
+                out bool quarantineContent))
             {
-                throw new MarkdownSvgException(MarkdownSvgFailureReason.Canceled, innerException: exception);
-            }
-            catch (ObjectDisposedException exception)
-            {
-                throw new MarkdownSvgException(MarkdownSvgFailureReason.Canceled, innerException: exception);
-            }
-            catch (WorkerInitializationDeadlineException exception)
-            {
-                // A secondary worker can be created lazily for this render.
-                // Its cold-start state says nothing about the SVG content.
-                throw new MarkdownSvgException(MarkdownSvgFailureReason.Timeout, innerException: exception);
-            }
-            catch (WorkerInitializationException exception)
-            {
-                throw new MarkdownSvgException(MarkdownSvgFailureReason.WorkerFailure, innerException: exception);
-            }
-            catch (WorkerDeadlineException exception)
-            {
-                _renderer.Quarantine.QuarantineWorkerFailure(_identity);
-                throw new MarkdownSvgException(MarkdownSvgFailureReason.Timeout, innerException: exception);
-            }
-            catch (MarkdownSvgException)
-            {
-                throw;
-            }
-            catch (Exception exception) when (exception is WorkerProtocolException or IOException or InvalidOperationException)
-            {
-                _renderer.Quarantine.QuarantineWorkerFailure(_identity);
-                throw new MarkdownSvgException(MarkdownSvgFailureReason.WorkerFailure, innerException: exception);
+                if (quarantineContent)
+                    _renderer.Quarantine.QuarantineWorkerFailure(_identity);
+                throw new MarkdownSvgException(reason, innerException: exception);
             }
 
-            using (workerResult)
-            {
-                WorkerResponse response = workerResult.Response;
-                _renderer.Quarantine.ThrowForRejectedResponse(response, _identity);
-                if (response.OutputLength != outputLength || response.Width != width || response.Height != height ||
-                    response.Stride != checked(width * 4) || response.PixelFormat != request.PixelFormat)
-                {
-                    _renderer.Quarantine.QuarantineWorkerFailure(_identity, response.WorkerInstanceId);
-                    throw new MarkdownSvgException(MarkdownSvgFailureReason.WorkerFailure, "The SVG worker returned malformed raster metadata.");
-                }
-
-                SharedMemoryLease memory = workerResult.TransferOutputMemory();
-                try
-                {
-                    return new MarkdownSvgRaster(memory, outputLength, width, height, response.Stride, response.PixelFormat);
-                }
-                catch
-                {
-                    ((IDisposable)memory).Dispose();
-                    throw;
-                }
-            }
+            return CreateRaster(workerResult, request, width, height, outputLength);
         }
         finally
         {
@@ -213,6 +150,124 @@ internal sealed class ResvgMarkdownSvgDocument : IMarkdownSvgDocument, IMarkdown
     }
 
     public void Dispose() => _lifetime.Dispose();
+
+    private int GetOutputLength(int width, int height)
+    {
+        int outputLength;
+        try
+        {
+            outputLength = checked(checked(width * height) * 4);
+        }
+        catch (OverflowException exception)
+        {
+            throw new MarkdownSvgException(MarkdownSvgFailureReason.ResourceLimitExceeded, "The requested SVG raster dimensions overflow.", exception);
+        }
+        if (outputLength > _options.MaxOutputRasterBytes)
+            throw new MarkdownSvgException(MarkdownSvgFailureReason.ResourceLimitExceeded, "The requested SVG raster exceeds the output ceiling; request bounded tiles.");
+        return outputLength;
+    }
+
+    private static void ThrowIfRenderCanceled(CancellationToken cancellationToken, CancellationToken lifetimeToken)
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            lifetimeToken.ThrowIfCancellationRequested();
+        }
+        catch (OperationCanceledException exception)
+        {
+            throw new MarkdownSvgException(MarkdownSvgFailureReason.Canceled, innerException: exception);
+        }
+    }
+
+    /// <summary>
+    /// Maps a worker render failure onto its host-visible reason, testing the
+    /// failure types in the order the render catches them. A
+    /// <see cref="MarkdownSvgException"/> and any unlisted failure are not
+    /// mapped and propagate unchanged.
+    /// </summary>
+    /// <param name="exception">The failure from the worker render.</param>
+    /// <param name="reason">The host-visible failure reason.</param>
+    /// <param name="quarantineContent">Whether the failure is evidence against the SVG's content hash.</param>
+    /// <returns>Whether the failure maps to a new <see cref="MarkdownSvgException"/>.</returns>
+    private static bool TryClassifyWorkerRenderFailure(
+        Exception exception,
+        out MarkdownSvgFailureReason reason,
+        out bool quarantineContent)
+    {
+        quarantineContent = false;
+        switch (exception)
+        {
+            case OperationCanceledException:
+            case ObjectDisposedException:
+                reason = MarkdownSvgFailureReason.Canceled;
+                return true;
+            case WorkerInitializationDeadlineException:
+                // A secondary worker can be created lazily for this render.
+                // Its cold-start state says nothing about the SVG content.
+                reason = MarkdownSvgFailureReason.Timeout;
+                return true;
+            case WorkerInitializationException:
+                reason = MarkdownSvgFailureReason.WorkerFailure;
+                return true;
+            case WorkerDeadlineException:
+                reason = MarkdownSvgFailureReason.Timeout;
+                quarantineContent = true;
+                return true;
+            case MarkdownSvgException:
+                reason = default;
+                return false;
+            case WorkerProtocolException or IOException or InvalidOperationException:
+                reason = MarkdownSvgFailureReason.WorkerFailure;
+                quarantineContent = true;
+                return true;
+            default:
+                reason = default;
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// Validates the worker's raster metadata against the request and
+    /// transfers the output mapping into the returned raster. The worker
+    /// result is disposed either way.
+    /// </summary>
+    /// <param name="workerResult">The worker's render result.</param>
+    /// <param name="request">The render request.</param>
+    /// <param name="width">The validated raster width.</param>
+    /// <param name="height">The validated raster height.</param>
+    /// <param name="outputLength">The expected output length.</param>
+    /// <returns>The raster that owns the output mapping.</returns>
+    private MarkdownSvgRaster CreateRaster(
+        WorkerRenderResult workerResult,
+        MarkdownSvgRenderRequest request,
+        int width,
+        int height,
+        int outputLength)
+    {
+        using (workerResult)
+        {
+            WorkerResponse response = workerResult.Response;
+            _renderer.Quarantine.ThrowForRejectedResponse(response, _identity);
+            if (response.OutputLength != outputLength || response.Width != width || response.Height != height ||
+                response.Stride != checked(width * 4) || response.PixelFormat != request.PixelFormat)
+            {
+                _renderer.Quarantine.QuarantineWorkerFailure(_identity, response.WorkerInstanceId);
+                throw new MarkdownSvgException(MarkdownSvgFailureReason.WorkerFailure, "The SVG worker returned malformed raster metadata.");
+            }
+
+            SharedMemoryLease memory = workerResult.TransferOutputMemory();
+            try
+            {
+                return new MarkdownSvgRaster(memory, outputLength, width, height, response.Stride, response.PixelFormat);
+            }
+            catch
+            {
+                ((IDisposable)memory).Dispose();
+                throw;
+            }
+        }
+    }
 
     private SvgDocumentLifetime.RenderLease EnterRender()
     {
