@@ -149,6 +149,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private readonly KeyboardFocusNavigator _navigator;
     private readonly PendingFocusGeometryWork _focusGeometryWork;
     private readonly RendererFocusEntry _focusEntry;
+    private readonly RendererFocusEvents _focusEvents;
     // A deferred focus-plan refresh is value-only: it never keeps a snapshot,
     // box, or native resource alive while a geometry lease is busy.
     private readonly FocusableItemsRefreshRequest _focusRefresh;
@@ -1040,6 +1041,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _pipelineHosts.Connect(new PipelineHosts.Parts(
             _events, _documentInputs, _automation, _imageLifetime, _imageRelayout, _lazyLayout, _pipeline,
             _touchRestore, _interactionReset, _performanceSession, _environment));
+        _focusEvents = new RendererFocusEvents(this, _contextMenu, _document, _focus, _focusEntry, _focusRing);
         _attachment = new ViewAttachment(this, _surface, _lifetime, _published, _cursor, _abbreviationTooltip, _adorner, _deviceRecovery, _selectionDismissal, _dragShield, _handles, _contextMenu, _horizontalOverflowDrag, _pointerInput, _embeds, _windowDestroying, _snapshotRetirements, _rebuild, _painter, _canvasEvents, _geometryRecovery, _recoveryWork, _scrolling, _deferredScenes, _blockScroll, _automation, _imageLifetime, _automationDocumentGenerations, _layoutCommit, _imageRelayout, _vectorCapacity, _lazyLayout, _width, _touchSelection, _touchRestore, _touchTapSuppression, _overflowScroll, _focusRing, _performanceSession, _svgRenderer, _theme, _environment, _imagePlans, _imageSubscriptions, _imageResidency, _imagePrefetch, _highlighting);
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
@@ -1073,9 +1075,9 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private void BuildVisualTree()
     {
         _canvasEvents.EnsureCanvas();
-        GettingFocus += OnGettingFocus;
-        GotFocus += OnGotFocus;
-        LosingFocus += OnLosingFocus;
+        GettingFocus += _focusEvents.OnGettingFocus;
+        GotFocus += _focusEvents.OnGotFocus;
+        LosingFocus += _focusEvents.OnLosingFocus;
         KeyDown += _keyboard.OnKeyDown;
 
         if (!_surface.OwnsScrollViewport)
@@ -1085,33 +1087,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     internal bool TryGetViewport(out double top, out double height, out double width)
         => _viewport.TryGet(out top, out height, out width);
-
-    private void OnGettingFocus(UIElement sender, GettingFocusEventArgs e)
-    {
-        if (ReferenceEquals(e.NewFocusedElement, this))
-            _focusEntry.NoteGettingFocus(e.InputDevice, e.Direction);
-    }
-
-    private void OnGotFocus(object sender, RoutedEventArgs e)
-    {
-        if (ReferenceEquals(e.OriginalSource, this))
-            _focusEntry.OnGotFocus(FocusState);
-    }
-
-    private void OnLosingFocus(UIElement sender, LosingFocusEventArgs e)
-    {
-        _focusEntry.OnLosingFocus();
-
-        if (e.NewFocusedElement is DependencyObject next && IsElementWithinRenderer(next))
-            return;
-
-        _focus.ClearFocus();
-        _focusRing.Update();
-        if (!_contextMenu.IsOpen)
-        {
-            _document.ForgetDragAnchor();
-        }
-    }
 
     private void OnHostedElementFactoryChanged()
     {
@@ -1135,9 +1110,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _highlighting.ClearCache();
         RequestRebuild(RebuildReason.Full);
     }
-
-    private bool IsElementWithinRenderer(DependencyObject element)
-        => VisualTreeAncestry.IsWithin(element, this);
 
     /// <summary>
     /// Copies the active selection to the clipboard.
@@ -1268,9 +1240,9 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     {
         _canvasEvents.DetachRenderHandlers();
         _canvasEvents.DetachInputHandlers();
-        GettingFocus -= OnGettingFocus;
-        GotFocus -= OnGotFocus;
-        LosingFocus -= OnLosingFocus;
+        GettingFocus -= _focusEvents.OnGettingFocus;
+        GotFocus -= _focusEvents.OnGotFocus;
+        LosingFocus -= _focusEvents.OnLosingFocus;
         KeyDown -= _keyboard.OnKeyDown;
         _handles.DetachHandlers();
     }
