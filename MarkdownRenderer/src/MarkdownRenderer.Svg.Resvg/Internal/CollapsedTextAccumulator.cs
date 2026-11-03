@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Linq;
 using System.Text;
 
@@ -9,7 +8,7 @@ internal sealed class CollapsedTextAccumulator(CancellationToken cancellationTok
     private const int MaximumLength = 16_384;
     private readonly StringBuilder _builder = new(capacity: 256);
     private bool _pendingSpace;
-    private int _charactersUntilCancellationCheck = SvgStaticStyleSheet.CssCancellationCheckInterval;
+    private int _charactersUntilCancellationCheck = SvgCssScanner.CssCancellationCheckInterval;
 
     internal bool IsTooLong { get; private set; }
 
@@ -63,7 +62,7 @@ internal sealed class CollapsedTextAccumulator(CancellationToken cancellationTok
         if (--_charactersUntilCancellationCheck == 0)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            _charactersUntilCancellationCheck = SvgStaticStyleSheet.CssCancellationCheckInterval;
+            _charactersUntilCancellationCheck = SvgCssScanner.CssCancellationCheckInterval;
         }
     }
 }

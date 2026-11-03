@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text;
 using System.Xml;
 
 namespace MarkdownRenderer.Svg.Resvg.Internal;
@@ -37,12 +36,12 @@ internal static class SvgViewportExtent
         extent = double.NaN;
         Range requestedToken = default;
         int tokenCount = 0;
-        int charactersUntilCancellationCheck = SvgStaticStyleSheet.CssCancellationCheckInterval;
+        int charactersUntilCancellationCheck = SvgCssScanner.CssCancellationCheckInterval;
         int tokenStart = 0;
         for (int cursor = 0; cursor <= viewBox.Length; cursor++)
         {
             if (cursor < viewBox.Length)
-                SvgStaticStyleSheet.CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
+                SvgCssScanner.CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
 
             if (cursor < viewBox.Length && viewBox[cursor] is not (' ' or ','))
                 continue;
@@ -51,12 +50,12 @@ internal static class SvgViewportExtent
             int trimmedEnd = cursor;
             while (trimmedStart < trimmedEnd && char.IsWhiteSpace(viewBox[trimmedStart]))
             {
-                SvgStaticStyleSheet.CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
+                SvgCssScanner.CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
                 trimmedStart++;
             }
             while (trimmedEnd > trimmedStart && char.IsWhiteSpace(viewBox[trimmedEnd - 1]))
             {
-                SvgStaticStyleSheet.CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
+                SvgCssScanner.CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
                 trimmedEnd--;
             }
 

@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text;
 using System.Xml;
 
 namespace MarkdownRenderer.Svg.Resvg.Internal;
@@ -79,7 +78,7 @@ internal static class SvgHtmlTextStyleRules
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        int charactersUntilCancellationCheck = SvgStaticStyleSheet.CssCancellationCheckInterval;
+        int charactersUntilCancellationCheck = SvgCssScanner.CssCancellationCheckInterval;
         foreach (XmlAttribute attribute in element.Attributes)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -140,7 +139,7 @@ internal static class SvgHtmlTextStyleRules
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        int charactersUntilCancellationCheck = SvgStaticStyleSheet.CssCancellationCheckInterval;
+        int charactersUntilCancellationCheck = SvgCssScanner.CssCancellationCheckInterval;
         return IsSafeDiscardedHtmlTextStyle(value, cancellationToken, ref charactersUntilCancellationCheck);
     }
 
@@ -165,7 +164,7 @@ internal static class SvgHtmlTextStyleRules
             int separator = -1;
             while (declarationEnd < value.Length && value[declarationEnd] != ';')
             {
-                SvgStaticStyleSheet.CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
+                SvgCssScanner.CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
                 if (separator < 0 && value[declarationEnd] == ':')
                     separator = declarationEnd;
                 declarationEnd++;
@@ -218,7 +217,7 @@ internal static class SvgHtmlTextStyleRules
         Span<int> valueLengths = stackalloc int[8];
         uint foundProperties = 0;
         bool hasUnsupportedProperty = false;
-        int charactersUntilCancellationCheck = SvgStaticStyleSheet.CssCancellationCheckInterval;
+        int charactersUntilCancellationCheck = SvgCssScanner.CssCancellationCheckInterval;
         ReadOnlySpan<char> source = value.AsSpan();
         int declarationStart = 0;
         while (declarationStart <= source.Length)
@@ -228,7 +227,7 @@ internal static class SvgHtmlTextStyleRules
             int separator = -1;
             while (declarationEnd < source.Length && source[declarationEnd] != ';')
             {
-                SvgStaticStyleSheet.CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
+                SvgCssScanner.CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
                 if (separator < 0 && source[declarationEnd] == ':')
                     separator = declarationEnd;
                 declarationEnd++;
@@ -301,12 +300,12 @@ internal static class SvgHtmlTextStyleRules
     {
         while (start < end && char.IsWhiteSpace(value[start]))
         {
-            SvgStaticStyleSheet.CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
+            SvgCssScanner.CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
             start++;
         }
         while (end > start && char.IsWhiteSpace(value[end - 1]))
         {
-            SvgStaticStyleSheet.CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
+            SvgCssScanner.CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
             end--;
         }
     }
@@ -318,7 +317,7 @@ internal static class SvgHtmlTextStyleRules
     {
         for (int index = 0; index < value.Length; index++)
         {
-            SvgStaticStyleSheet.CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
+            SvgCssScanner.CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
             if (value[index] is '{' or '}' or '@')
                 return true;
         }

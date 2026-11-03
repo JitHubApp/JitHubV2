@@ -478,10 +478,10 @@ internal static class SvgForeignObjectText
         if (string.IsNullOrEmpty(value))
             return;
 
-        for (int offset = 0; offset < value.Length; offset += SvgStaticStyleSheet.CssCancellationCheckInterval)
+        for (int offset = 0; offset < value.Length; offset += SvgCssScanner.CssCancellationCheckInterval)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            int count = Math.Min(SvgStaticStyleSheet.CssCancellationCheckInterval, value.Length - offset);
+            int count = Math.Min(SvgCssScanner.CssCancellationCheckInterval, value.Length - offset);
             builder.Append(value, offset, count);
         }
     }

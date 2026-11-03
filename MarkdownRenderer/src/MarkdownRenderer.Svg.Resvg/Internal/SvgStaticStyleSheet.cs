@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Xml;
@@ -11,8 +10,6 @@ namespace MarkdownRenderer.Svg.Resvg.Internal;
 /// </summary>
 internal static class SvgStaticStyleSheet
 {
-    internal const int CssCancellationCheckInterval = 4096;
-
     internal static readonly string[] CssBlockDirectives = ["@font-face", "@keyframes", "@-webkit-keyframes"];
 
     internal static bool TryCreateStaticStyleSheet(
@@ -24,7 +21,7 @@ internal static class SvgStaticStyleSheet
         cancellationToken.ThrowIfCancellationRequested();
 
         List<(int Start, int Length)>? removals = null;
-        int charactersUntilCancellationCheck = CssCancellationCheckInterval;
+        int charactersUntilCancellationCheck = SvgCssScanner.CssCancellationCheckInterval;
         if (!TryFindImportRemovals(css, ref removals, ref charactersUntilCancellationCheck, cancellationToken) ||
             !TryFindBlockDirectiveRemovals(css, ref removals, ref charactersUntilCancellationCheck, cancellationToken) ||
             !TryFindMotionDeclarations(css, ref removals, ref charactersUntilCancellationCheck, cancellationToken))
@@ -53,7 +50,7 @@ internal static class SvgStaticStyleSheet
         CancellationToken cancellationToken)
     {
         int importCursor = 0;
-        while (TryFindCssToken(
+        while (SvgCssScanner.TryFindCssToken(
             css,
             "@import",
             importCursor,
@@ -62,7 +59,7 @@ internal static class SvgStaticStyleSheet
             out int importStart))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!TryFindCssStatementEnd(
+            if (!SvgCssScanner.TryFindCssStatementEnd(
                 css,
                 importStart + "@import".Length,
                 ref charactersUntilCancellationCheck,
@@ -89,7 +86,7 @@ internal static class SvgStaticStyleSheet
         {
             cancellationToken.ThrowIfCancellationRequested();
             int cursor = 0;
-            while (TryFindCssToken(
+            while (SvgCssScanner.TryFindCssToken(
                 css,
                 directive,
                 cursor,
@@ -101,11 +98,11 @@ internal static class SvgStaticStyleSheet
                 int openingBrace = start + directive.Length;
                 while (openingBrace < css.Length && css[openingBrace] != '{')
                 {
-                    CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
+                    SvgCssScanner.CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
                     openingBrace++;
                 }
                 if (openingBrace >= css.Length ||
-                    !TryFindCssBlockEnd(
+                    !SvgCssScanner.TryFindCssBlockEnd(
                         css,
                         openingBrace,
                         ref charactersUntilCancellationCheck,
@@ -140,10 +137,10 @@ internal static class SvgStaticStyleSheet
             (Css: css, Removals: removals, CancellationToken: cancellationToken),
             static (destination, state) =>
             {
-                int charactersUntilCheck = CssCancellationCheckInterval;
+                int charactersUntilCheck = SvgCssScanner.CssCancellationCheckInterval;
                 for (int index = 0; index < state.Css.Length; index++)
                 {
-                    CheckCssCancellation(ref charactersUntilCheck, state.CancellationToken);
+                    SvgCssScanner.CheckCssCancellation(ref charactersUntilCheck, state.CancellationToken);
                     destination[index] = state.Css[index];
                 }
 
@@ -153,7 +150,7 @@ internal static class SvgStaticStyleSheet
                     int end = checked(start + length);
                     for (int index = start; index < end; index++)
                     {
-                        CheckCssCancellation(ref charactersUntilCheck, state.CancellationToken);
+                        SvgCssScanner.CheckCssCancellation(ref charactersUntilCheck, state.CancellationToken);
                         destination[index] = ' ';
                     }
                 }
@@ -169,70 +166,6 @@ internal static class SvgStaticStyleSheet
         (removals ??= new List<(int Start, int Length)>()).Add((start, length));
     }
 
-    internal static bool TryFindCssStatementEnd(
-        string css,
-        int start,
-        ref int charactersUntilCancellationCheck,
-        CancellationToken cancellationToken,
-        out int end)
-    {
-        char quote = '\0';
-        bool comment = false;
-        int parentheses = 0;
-        for (int cursor = start; cursor < css.Length; cursor++)
-        {
-            CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
-            char current = css[cursor];
-            if (comment)
-            {
-                if (current == '*' && cursor + 1 < css.Length && css[cursor + 1] == '/')
-                {
-                    comment = false;
-                    CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
-                    cursor++;
-                }
-                continue;
-            }
-            if (quote != '\0')
-            {
-                if (current == '\\' && cursor + 1 < css.Length)
-                {
-                    CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
-                    cursor++;
-                }
-                else if (current == quote)
-                    quote = '\0';
-                continue;
-            }
-            if (current == '/' && cursor + 1 < css.Length && css[cursor + 1] == '*')
-            {
-                comment = true;
-                CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
-                cursor++;
-                continue;
-            }
-            if (current is '\'' or '"')
-                quote = current;
-            else if (current == '(')
-                parentheses++;
-            else if (current == ')' && parentheses > 0)
-                parentheses--;
-            else if (current == ';' && parentheses == 0)
-            {
-                end = cursor + 1;
-                return true;
-            }
-            else if (current == '{' && parentheses == 0)
-            {
-                end = -1;
-                return false;
-            }
-        }
-
-        end = -1;
-        return false;
-    }
-
     internal static bool TryFindMotionDeclarations(
         string css,
         ref List<(int Start, int Length)>? removals,
@@ -243,14 +176,14 @@ internal static class SvgStaticStyleSheet
         while (cursor < css.Length)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (TrySkipCssTrivia(css, ref cursor, ref charactersUntilCancellationCheck, cancellationToken))
+            if (SvgCssScanner.TrySkipCssTrivia(css, ref cursor, ref charactersUntilCancellationCheck, cancellationToken))
                 continue;
 
             int nameStart = cursor;
             while (cursor < css.Length &&
                 (char.IsAsciiLetter(css[cursor]) || css[cursor] is '-' or '_'))
             {
-                CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
+                SvgCssScanner.CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
                 cursor++;
             }
             if (cursor == nameStart)
@@ -263,7 +196,7 @@ internal static class SvgStaticStyleSheet
             int separator = cursor;
             while (separator < css.Length && char.IsWhiteSpace(css[separator]))
             {
-                CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
+                SvgCssScanner.CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
                 separator++;
             }
             if (separator >= css.Length || css[separator] != ':')
@@ -272,7 +205,7 @@ internal static class SvgStaticStyleSheet
             bool isMotion = IsMotionProperty(property);
             if (!isMotion)
             {
-                CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
+                SvgCssScanner.CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
                 cursor = separator + 1;
                 continue;
             }
@@ -289,7 +222,7 @@ internal static class SvgStaticStyleSheet
             }
             if (encounteredNestedRule)
             {
-                CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
+                SvgCssScanner.CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
                 cursor = end + 1;
                 continue;
             }
@@ -328,13 +261,13 @@ internal static class SvgStaticStyleSheet
         encounteredNestedRule = false;
         while (end < css.Length)
         {
-            CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
+            SvgCssScanner.CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
             char current = css[end];
             if (quote != '\0')
             {
                 if (current == '\\' && end + 1 < css.Length)
                 {
-                    CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
+                    SvgCssScanner.CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
                     end += 2;
                 }
                 else
@@ -372,190 +305,4 @@ internal static class SvgStaticStyleSheet
         property.Equals("transition", StringComparison.OrdinalIgnoreCase) ||
         property.StartsWith("transition-", StringComparison.OrdinalIgnoreCase);
 
-    internal static void CheckCssCancellation(
-        ref int charactersUntilCancellationCheck,
-        CancellationToken cancellationToken)
-    {
-        if (--charactersUntilCancellationCheck <= 0)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            charactersUntilCancellationCheck = CssCancellationCheckInterval;
-        }
-    }
-
-    internal static bool TrySkipCssTrivia(
-        string css,
-        ref int cursor,
-        ref int charactersUntilCancellationCheck,
-        CancellationToken cancellationToken)
-    {
-        if (char.IsWhiteSpace(css[cursor]))
-        {
-            CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
-            cursor++;
-            return true;
-        }
-        if (cursor + 1 < css.Length && css[cursor] == '/' && css[cursor + 1] == '*')
-        {
-            CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
-            CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
-            cursor += 2;
-            while (cursor < css.Length)
-            {
-                CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
-                if (css[cursor] == '*' && cursor + 1 < css.Length && css[cursor + 1] == '/')
-                {
-                    CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
-                    CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
-                    cursor += 2;
-                    break;
-                }
-                cursor++;
-            }
-            return true;
-        }
-        if (css[cursor] is '\'' or '"')
-        {
-            CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
-            char quote = css[cursor++];
-            while (cursor < css.Length && css[cursor] != quote)
-            {
-                CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
-                if (css[cursor] == '\\' && cursor + 1 < css.Length)
-                {
-                    CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
-                    cursor += 2;
-                }
-                else
-                {
-                    cursor++;
-                }
-            }
-            if (cursor < css.Length)
-            {
-                CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
-                cursor++;
-            }
-            return true;
-        }
-        return false;
-    }
-
-    internal static bool TryFindCssToken(
-        string css,
-        string token,
-        int start,
-        ref int charactersUntilCancellationCheck,
-        CancellationToken cancellationToken,
-        out int index)
-    {
-        char quote = '\0';
-        bool comment = false;
-        for (int cursor = Math.Max(0, start); cursor < css.Length; cursor++)
-        {
-            CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
-            char current = css[cursor];
-            if (comment)
-            {
-                if (current == '*' && cursor + 1 < css.Length && css[cursor + 1] == '/')
-                {
-                    comment = false;
-                    CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
-                    cursor++;
-                }
-                continue;
-            }
-            if (quote != '\0')
-            {
-                if (current == '\\' && cursor + 1 < css.Length)
-                {
-                    CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
-                    cursor++;
-                }
-                else if (current == quote)
-                    quote = '\0';
-                continue;
-            }
-            if (current == '/' && cursor + 1 < css.Length && css[cursor + 1] == '*')
-            {
-                comment = true;
-                CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
-                cursor++;
-                continue;
-            }
-            if (current is '\'' or '"')
-            {
-                quote = current;
-                continue;
-            }
-            if (css.AsSpan(cursor).StartsWith(token, StringComparison.OrdinalIgnoreCase))
-            {
-                index = cursor;
-                return true;
-            }
-        }
-
-        index = -1;
-        return false;
-    }
-
-    internal static bool TryFindCssBlockEnd(
-        string css,
-        int openingBrace,
-        ref int charactersUntilCancellationCheck,
-        CancellationToken cancellationToken,
-        out int end)
-    {
-        int depth = 0;
-        char quote = '\0';
-        bool comment = false;
-        for (int cursor = openingBrace; cursor < css.Length; cursor++)
-        {
-            CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
-            char current = css[cursor];
-            if (comment)
-            {
-                if (current == '*' && cursor + 1 < css.Length && css[cursor + 1] == '/')
-                {
-                    comment = false;
-                    CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
-                    cursor++;
-                }
-                continue;
-            }
-            if (quote != '\0')
-            {
-                if (current == '\\' && cursor + 1 < css.Length)
-                {
-                    CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
-                    cursor++;
-                }
-                else if (current == quote)
-                    quote = '\0';
-                continue;
-            }
-            if (current == '/' && cursor + 1 < css.Length && css[cursor + 1] == '*')
-            {
-                comment = true;
-                CheckCssCancellation(ref charactersUntilCancellationCheck, cancellationToken);
-                cursor++;
-                continue;
-            }
-            if (current is '\'' or '"')
-            {
-                quote = current;
-                continue;
-            }
-            if (current == '{')
-                depth++;
-            else if (current == '}' && --depth == 0)
-            {
-                end = cursor;
-                return true;
-            }
-        }
-
-        end = -1;
-        return false;
-    }
 }
