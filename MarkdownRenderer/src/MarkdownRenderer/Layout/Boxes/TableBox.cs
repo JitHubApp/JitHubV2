@@ -14,7 +14,7 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// Renders a GFM pipe table. Each cell is an <see cref="InlineContainerBox"/>
 /// so hit-testing, selection, and source-accurate copy all work out of the box.
 /// </summary>
-internal sealed partial class TableBox : BlockBox, IHorizontalOverflowBox
+internal sealed class TableBox : BlockBox, IHorizontalOverflowBox
 {
     internal const int MaximumPrivateRasterPlacementCells = 256;
     internal const float HorizontalScrollbarHeight = 12f;
@@ -363,6 +363,37 @@ internal sealed partial class TableBox : BlockBox, IHorizontalOverflowBox
         => TableHitTesting.HitTest(this, point, out position);
 
     /// <summary>
+    /// Captures a stable source table and a freshly cloned private table before
+    /// any candidate measurement or arrangement. Cell placement transfers are
+    /// captured in row-major order at the exact source column widths; the
+    /// prepared widths may change when its private table is measured.
+    /// </summary>
+    internal bool TryCaptureMeasuredPlacementTransfer(
+        TableBox prepared,
+        float expectedRootWidth,
+        out TableMeasuredPlacementTransfer? transfer)
+        => TableMeasuredPlacementCapture.TryCaptureMeasuredPlacementTransfer(
+            this,
+            prepared,
+            expectedRootWidth,
+            out transfer);
+
+    /// <summary>
+    /// Root-local image-completion transfer for a private candidate table.
+    /// Candidate vectors are measurement-only and their geometry is remapped
+    /// to stable source runs; no candidate table or run is published.
+    /// </summary>
+    internal bool TryCaptureMeasuredPlacementTransferWithMeasuredVectorPlacement(
+        TableBox prepared,
+        float expectedRootWidth,
+        out TableMeasuredPlacementTransfer? transfer)
+        => TableMeasuredPlacementCapture.TryCaptureMeasuredPlacementTransferWithMeasuredVectorPlacement(
+            this,
+            prepared,
+            expectedRootWidth,
+            out transfer);
+
+    /// <summary>
     /// No-throw exchange of this source table's measured column, row, scroll
     /// and arrangement state with its private measured candidate. Called by
     /// <see cref="TableMeasuredPlacementTransfer.SwapPlacementNoThrow"/> after the
@@ -399,7 +430,7 @@ internal sealed partial class TableBox : BlockBox, IHorizontalOverflowBox
     internal ElementStyle GetBodyStyle()
         => _context.ThemeSnapshot.GetStyle(MarkdownElementKeys.TableCell);
 
-    private static Thickness EffectiveCellPadding(ElementStyle style)
+    internal static Thickness EffectiveCellPadding(ElementStyle style)
         => IsZero(style.Padding) ? new Thickness(12, 9, 12, 9) : style.Padding;
 
     private static bool IsZero(Thickness thickness)
