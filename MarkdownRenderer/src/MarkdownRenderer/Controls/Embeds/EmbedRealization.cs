@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
@@ -26,16 +25,14 @@ internal sealed class EmbedRealization
     private readonly MarkdownViewLifetime _lifetime;
     private readonly PublishedLayout _published;
     private readonly MarkdownViewport _viewport;
-    private readonly DispatcherQueue _dispatcher;
     private readonly EmbedPlanServices _services;
 
     private readonly HostedElementRealization _hostedElements;
     private readonly CodeBlockActionRealization _codeBlockActions;
+    private readonly VisibleRealizationContinuation _continuation;
     private bool _derealizingAllEmbeds;
     private bool _realizingVisibleEmbeds;
     private bool _realizeVisibleEmbedsRequested;
-    private bool _realizeVisibleEmbedsContinuationQueued;
-    private long _realizeVisibleEmbedsContinuationTicket;
     private long _realizationPassEpoch;
 
     internal EmbedRealization(
@@ -52,12 +49,12 @@ internal sealed class EmbedRealization
         _lifetime = lifetime;
         _published = published;
         _viewport = viewport;
-        _dispatcher = dispatcher;
         _services = new EmbedPlanServices(this, host, copyButtonHost, surface, lifetime, viewport);
         Context = new EmbedPlanContext(_services, surface, lifetime, published, dispatcher, hostedKeyDown);
         _hostedElements = new HostedElementRealization(this, host, Context, HitTargets);
         _codeBlockActions = new CodeBlockActionRealization(
             this, host, Context, HitTargets, _services.CopyButtons, viewport);
+        _continuation = new VisibleRealizationContinuation(this, lifetime, dispatcher);
     }
 
     /// <summary>The context every plan realizes, places and releases its element with.</summary>
@@ -105,8 +102,7 @@ internal sealed class EmbedRealization
         _derealizingAllEmbeds = true;
         _realizationPassEpoch++;
         _realizeVisibleEmbedsRequested = false;
-        _realizeVisibleEmbedsContinuationQueued = false;
-        _realizeVisibleEmbedsContinuationTicket++;
+        _continuation.Cancel();
         // Native callbacks can synchronously unload or replace the document.
         // Keep this teardown's ownership detached from the mutable plan lists;
         // nested cleanup is rejected above and each plan retires its element
@@ -411,7 +407,22 @@ internal sealed class EmbedRealization
         }
 
         if (queueContinuation)
-            QueueVisibleRealizationContinuation();
+            _continuation.Queue();
+    }
+
+    /// <summary>
+    /// Runs the visible realization that <see cref="VisibleRealizationContinuation"/>
+    /// queued, or drops the pending request when the control is shutting down.
+    /// </summary>
+    internal void ContinueQueuedRealization()
+    {
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _derealizingAllEmbeds)
+        {
+            _realizeVisibleEmbedsRequested = false;
+            return;
+        }
+
+        RealizeVisible();
     }
 
     /// <summary>
@@ -456,56 +467,6 @@ internal sealed class EmbedRealization
         int position = ordinals.BinarySearch(ordinal);
         if (position < 0)
             ordinals.Insert(~position, ordinal);
-    }
-
-    private void QueueVisibleRealizationContinuation()
-    {
-        if (_realizeVisibleEmbedsContinuationQueued ||
-            _lifetime.IsDisposed || _lifetime.IsUnloaded || _derealizingAllEmbeds)
-            return;
-
-        var dispatcher = _dispatcher;
-        if (dispatcher is null)
-            return;
-
-        long ticket = ++_realizeVisibleEmbedsContinuationTicket;
-        if (ticket == 0)
-            ticket = ++_realizeVisibleEmbedsContinuationTicket;
-        var receiver = new WeakReference<EmbedRealization>(this);
-        try
-        {
-            if (dispatcher.TryEnqueue(
-                    DispatcherQueuePriority.Low,
-                    () =>
-                    {
-                        if (receiver.TryGetTarget(out var realization))
-                            realization.ProcessQueuedVisibleRealizationContinuation(ticket);
-                    }))
-            {
-                _realizeVisibleEmbedsContinuationQueued = true;
-            }
-        }
-        catch (Exception exception)
-        {
-            MarkdownDiagnostics.WriteLine(
-                $"[MarkdownRendererControl] visible realization continuation dispatch failed: {exception.GetType().Name} " +
-                $"(0x{exception.HResult:X8}).");
-        }
-    }
-
-    private void ProcessQueuedVisibleRealizationContinuation(long ticket)
-    {
-        if (ticket != _realizeVisibleEmbedsContinuationTicket)
-            return;
-
-        _realizeVisibleEmbedsContinuationQueued = false;
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _derealizingAllEmbeds)
-        {
-            _realizeVisibleEmbedsRequested = false;
-            return;
-        }
-
-        RealizeVisible();
     }
 
     /// <summary>
