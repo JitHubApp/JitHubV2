@@ -405,25 +405,7 @@ internal sealed class WorkerScheduler :
         _queue.PromoteVisibleWhere(static pending => pending.PromoteVisibleFromTicket());
         _detachedFontWaits.PromoteFromTickets();
 
-        // A worker that exited while idle is no longer an eligible secondary.
-        // Remove it before evaluating the normal two-visible-render gate so a
-        // replacement can never be started merely because a slot was retained.
-        if (_secondary is { Busy: false } staleSecondary &&
-            staleSecondary.Readiness!.HasFailed &&
-            _queue.Count == 0)
-        {
-            SecondaryIdleRetirement.CancelLocked(staleSecondary);
-            _secondary = null;
-        }
-        else if (_secondary is { Busy: false } unavailableSecondary &&
-                 (unavailableSecondary.Worker is null || unavailableSecondary.Worker.HasExited) &&
-                 !unavailableSecondary.Readiness!.IsWarming &&
-                 !unavailableSecondary.Readiness.HasFailed)
-        {
-            SecondaryIdleRetirement.CancelLocked(unavailableSecondary);
-            unavailableSecondary.Readiness.FailWarmup();
-            _secondary = null;
-        }
+        DropUnavailableSecondaryLocked();
 
         bool progressed;
         do
@@ -452,97 +434,142 @@ internal sealed class WorkerScheduler :
                 progressed = true;
             }
 
-            if (_secondary is { } secondary &&
-                secondary.Worker is { HasExited: false } secondaryWorker &&
-                WorkerSchedulingPolicy.CanDispatchSecondary(
-                    canUseSecondary,
-                    secondary.Readiness!.CanDispatch(requiresFontCatalog: false),
-                    secondary.Busy))
-            {
-                if (_queue.TryDequeueSecondaryFontProbe(secondaryWorker.InstanceId, out PendingWork? fontProbe))
-                {
-                    AssignLocked(secondary, fontProbe!);
-                    progressed = true;
-                }
-                // The secondary can help with text only after its own catalog
-                // is ready. Until then, it may still consume visible non-text
-                // renders without making text wait behind cold initialization.
-                bool secondaryFontsReady = WorkerFontCatalogGeneration.IsReadyFor(
-                        secondaryWorker.ReadyFontGeneration,
-                        _requests.FontGeneration) &&
-                    WorkerFontCatalogGeneration.IsReadyFor(
-                        secondary.Readiness.FontCatalogReadyGeneration,
-                        _requests.FontGeneration);
-                if (secondary.Busy)
-                {
-                    // The font probe just assigned the slot. It is one short
-                    // control exchange; leave the renderer queue untouched.
-                }
-                else if (secondaryFontsReady)
-                {
-                    if (_queue.TryDequeueSecondary(
-                            secondaryWorker.InstanceId,
-                            fontCatalogReady: true,
-                            out PendingWork? secondaryWork))
-                    {
-                        AssignLocked(secondary, secondaryWork!);
-                        progressed = true;
-                    }
-                }
-                else if (_queue.TryDequeueSecondary(
-                             secondaryWorker.InstanceId,
-                             fontCatalogReady: false,
-                             out PendingWork? nonTextWork))
-                {
-                    AssignLocked(secondary, nonTextWork!);
-                    progressed = true;
-                }
-                else if (WorkerSchedulingPolicy.ShouldWarmSecondaryFontCatalog(
-                             _primary.Worker?.ReadyFontGeneration ?? -1,
-                             secondaryWorker.ReadyFontGeneration,
-                             _requests.FontGeneration,
-                             WorkerFontWaitAdmissionPolicy.CountVisibleDemand(
-                                 _queue.VisibleTextRenderCount,
-                                 _detachedFontWaits.VisibleTextRenderCount)))
-                {
-                    BeginSecondaryWarmupLocked(secondary);
-                    progressed = secondary.Busy;
-                }
-            }
-
-            bool shouldStartSecondary = WorkerSchedulingPolicy.ShouldStartSecondary(
-                    canUseSecondary,
-                    _primary.Busy,
-                    _secondary is not null,
-                    WorkerFontWaitAdmissionPolicy.CountVisibleDemand(
-                        _queue.VisibleRenderCount,
-                        _detachedFontWaits.VisibleRenderCount));
-            long decisionSequence = _policyRecorder.RecordEvaluated(
-                _secondary,
-                _queue.VisibleOpenCount,
-                _queue.VisibleRenderCount,
-                energySaverOn,
-                energySaverQueryFailed,
-                canUseSecondary,
-                shouldStartSecondary,
-                out SvgWorkerPolicySnapshot policySnapshot);
-            if (shouldStartSecondary)
-            {
-                var newSecondary = new WorkerSlot(isSecondary: true);
-                newSecondary.PolicyDecisionSequence = decisionSequence;
-                newSecondary.PolicySnapshot = policySnapshot with
-                {
-                    DecisionSequence = decisionSequence,
-                };
-                _secondary = newSecondary;
-                RecordWorkerPolicyPhaseLocked(newSecondary, SvgWorkerPolicyPhase.StartRequested);
-                BeginSecondaryWarmupLocked(_secondary);
-                progressed = _secondary.Busy;
-            }
+            DispatchSecondaryLocked(canUseSecondary, ref progressed);
+            StartSecondaryIfNeededLocked(energySaverOn, energySaverQueryFailed, canUseSecondary, ref progressed);
         }
         while (progressed);
 
         EvaluateCanceledBlockingLocked();
+    }
+
+    // A worker that exited while idle is no longer an eligible secondary.
+    // Remove it before evaluating the normal two-visible-render gate so a
+    // replacement can never be started merely because a slot was retained.
+    private void DropUnavailableSecondaryLocked()
+    {
+        if (_secondary is { Busy: false } staleSecondary &&
+            staleSecondary.Readiness!.HasFailed &&
+            _queue.Count == 0)
+        {
+            SecondaryIdleRetirement.CancelLocked(staleSecondary);
+            _secondary = null;
+        }
+        else if (_secondary is { Busy: false } unavailableSecondary &&
+                 (unavailableSecondary.Worker is null || unavailableSecondary.Worker.HasExited) &&
+                 !unavailableSecondary.Readiness!.IsWarming &&
+                 !unavailableSecondary.Readiness.HasFailed)
+        {
+            SecondaryIdleRetirement.CancelLocked(unavailableSecondary);
+            unavailableSecondary.Readiness.FailWarmup();
+            _secondary = null;
+        }
+    }
+
+    // Gives a live, dispatchable secondary its font probe, then text work when
+    // its catalog is current, or non-text work, or else warms its catalog when
+    // visible text demand calls for it. Warming sets progress to whether the
+    // slot became busy, exactly as an assigned dispatch would.
+    private void DispatchSecondaryLocked(bool canUseSecondary, ref bool progressed)
+    {
+        if (_secondary is not { } secondary ||
+            secondary.Worker is not { HasExited: false } secondaryWorker ||
+            !WorkerSchedulingPolicy.CanDispatchSecondary(
+                canUseSecondary,
+                secondary.Readiness!.CanDispatch(requiresFontCatalog: false),
+                secondary.Busy))
+        {
+            return;
+        }
+
+        if (_queue.TryDequeueSecondaryFontProbe(secondaryWorker.InstanceId, out PendingWork? fontProbe))
+        {
+            AssignLocked(secondary, fontProbe!);
+            progressed = true;
+        }
+        // The secondary can help with text only after its own catalog
+        // is ready. Until then, it may still consume visible non-text
+        // renders without making text wait behind cold initialization.
+        bool secondaryFontsReady = WorkerFontCatalogGeneration.IsReadyFor(
+                secondaryWorker.ReadyFontGeneration,
+                _requests.FontGeneration) &&
+            WorkerFontCatalogGeneration.IsReadyFor(
+                secondary.Readiness.FontCatalogReadyGeneration,
+                _requests.FontGeneration);
+        if (secondary.Busy)
+        {
+            // The font probe just assigned the slot. It is one short
+            // control exchange; leave the renderer queue untouched.
+        }
+        else if (secondaryFontsReady)
+        {
+            if (_queue.TryDequeueSecondary(
+                    secondaryWorker.InstanceId,
+                    fontCatalogReady: true,
+                    out PendingWork? secondaryWork))
+            {
+                AssignLocked(secondary, secondaryWork!);
+                progressed = true;
+            }
+        }
+        else if (_queue.TryDequeueSecondary(
+                     secondaryWorker.InstanceId,
+                     fontCatalogReady: false,
+                     out PendingWork? nonTextWork))
+        {
+            AssignLocked(secondary, nonTextWork!);
+            progressed = true;
+        }
+        else if (WorkerSchedulingPolicy.ShouldWarmSecondaryFontCatalog(
+                     _primary.Worker?.ReadyFontGeneration ?? -1,
+                     secondaryWorker.ReadyFontGeneration,
+                     _requests.FontGeneration,
+                     WorkerFontWaitAdmissionPolicy.CountVisibleDemand(
+                         _queue.VisibleTextRenderCount,
+                         _detachedFontWaits.VisibleTextRenderCount)))
+        {
+            BeginSecondaryWarmupLocked(secondary);
+            progressed = secondary.Busy;
+        }
+    }
+
+    // Records this pass's policy decision and, when visible demand warrants a
+    // secondary that does not exist yet, creates and warms it. Starting sets
+    // progress to whether the new slot became busy.
+    private void StartSecondaryIfNeededLocked(
+        bool energySaverOn,
+        bool energySaverQueryFailed,
+        bool canUseSecondary,
+        ref bool progressed)
+    {
+        bool shouldStartSecondary = WorkerSchedulingPolicy.ShouldStartSecondary(
+                canUseSecondary,
+                _primary.Busy,
+                _secondary is not null,
+                WorkerFontWaitAdmissionPolicy.CountVisibleDemand(
+                    _queue.VisibleRenderCount,
+                    _detachedFontWaits.VisibleRenderCount));
+        long decisionSequence = _policyRecorder.RecordEvaluated(
+            _secondary,
+            _queue.VisibleOpenCount,
+            _queue.VisibleRenderCount,
+            energySaverOn,
+            energySaverQueryFailed,
+            canUseSecondary,
+            shouldStartSecondary,
+            out SvgWorkerPolicySnapshot policySnapshot);
+        if (shouldStartSecondary)
+        {
+            var newSecondary = new WorkerSlot(isSecondary: true);
+            newSecondary.PolicyDecisionSequence = decisionSequence;
+            newSecondary.PolicySnapshot = policySnapshot with
+            {
+                DecisionSequence = decisionSequence,
+            };
+            _secondary = newSecondary;
+            RecordWorkerPolicyPhaseLocked(newSecondary, SvgWorkerPolicyPhase.StartRequested);
+            BeginSecondaryWarmupLocked(_secondary);
+            progressed = _secondary.Busy;
+        }
     }
 
     private bool TryAssignOldestSecondaryAffinityLocked(bool machineEligible)
