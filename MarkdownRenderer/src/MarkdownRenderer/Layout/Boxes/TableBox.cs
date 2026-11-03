@@ -158,6 +158,19 @@ internal sealed partial class TableBox : BlockBox, IHorizontalOverflowBox
             return false;
 
         targetContext.CancellationToken.ThrowIfCancellationRequested();
+        clone = CreatePrivatePlacementShell(targetContext, header, body);
+        return true;
+    }
+
+    /// <summary>
+    /// Creates the unmeasured private placement table around already cloned
+    /// cell rows, carrying this table's identity, scroll offset and margins.
+    /// </summary>
+    private TableBox CreatePrivatePlacementShell(
+        MarkdownLayoutContext targetContext,
+        InlineContainerBox[][] header,
+        InlineContainerBox[][] body)
+    {
         var candidate = new TableBox(targetContext, header, body, _columnAlignments)
         {
             BlockIndex = BlockIndex,
@@ -165,8 +178,7 @@ internal sealed partial class TableBox : BlockBox, IHorizontalOverflowBox
             _horizontalOffset = _horizontalOffset,
         };
         candidate.CopyPlacementMarginsFrom(this);
-        clone = candidate;
-        return true;
+        return candidate;
     }
 
     private bool TryGetPrivatePlacementCellCount(out int cellCount)

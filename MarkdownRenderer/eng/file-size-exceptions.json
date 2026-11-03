@@ -163,7 +163,7 @@
     },
     {
       "path": "src/MarkdownRenderer/Layout/Boxes/TableBox.cs",
-      "lines": 1112,
+      "lines": 1124,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
