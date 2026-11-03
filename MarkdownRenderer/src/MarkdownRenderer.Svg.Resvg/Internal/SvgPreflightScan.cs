@@ -3,7 +3,8 @@ namespace MarkdownRenderer.Svg.Resvg.Internal;
 /// <summary>
 /// The running totals and metadata that one preflight pass over an SVG
 /// accumulates. It is a mutable value passed by reference between the scan
-/// steps so no step allocates or captures it.
+/// steps, and into CSS and embedded-reference inspection, so every nested
+/// resource charges the same totals and no step allocates or captures it.
 /// </summary>
 internal struct SvgPreflightScan
 {

@@ -14,13 +14,9 @@ internal static class SvgEmbeddedReferenceInspection
         ReadOnlySpan<char> value,
         ResvgMarkdownSvgRendererOptions options,
         SvgResourceInspectionContext resources,
-        ref long embeddedBytes,
-        ref long embeddedPixels,
+        ref SvgPreflightScan scan,
         CancellationToken cancellationToken,
-        int embeddedSvgDepth,
-        ref bool hasText,
-        ref bool usesCurrentColor,
-        ref bool usesColorScheme)
+        int embeddedSvgDepth)
     {
         if (value.IsEmpty || value[0] == '#')
             return;
@@ -79,7 +75,7 @@ internal static class SvgEmbeddedReferenceInspection
         }
 
         if (resources.AddResource(identity))
-            ChargeNewResource(decoded, mediaType, isSvg, options, ref embeddedBytes, ref embeddedPixels);
+            ChargeNewResource(decoded, mediaType, isSvg, options, ref scan.EmbeddedBytes, ref scan.EmbeddedPixels);
 
         if (isSvg && !resources.IsNestedSvgValidatedAtDepth(identity, nestedSvgDepth))
         {
@@ -87,13 +83,9 @@ internal static class SvgEmbeddedReferenceInspection
                 ownedPayload!,
                 options,
                 resources,
-                ref embeddedBytes,
-                ref embeddedPixels,
+                ref scan,
                 cancellationToken,
-                nestedSvgDepth,
-                ref hasText,
-                ref usesCurrentColor,
-                ref usesColorScheme);
+                nestedSvgDepth);
             resources.MarkNestedSvgValidated(identity, nestedSvgDepth);
         }
         if (!isSvg && memoizeRaster)
@@ -282,13 +274,9 @@ internal static class SvgEmbeddedReferenceInspection
         byte[] source,
         ResvgMarkdownSvgRendererOptions options,
         SvgResourceInspectionContext resources,
-        ref long embeddedBytes,
-        ref long embeddedPixels,
+        ref SvgPreflightScan scan,
         CancellationToken cancellationToken,
-        int embeddedSvgDepth,
-        ref bool hasText,
-        ref bool usesCurrentColor,
-        ref bool usesColorScheme)
+        int embeddedSvgDepth)
     {
         // The data URI was already decoded and charged by InspectReference. Read
         // that same byte[] directly so nested metadata inspection adds no source
@@ -335,13 +323,9 @@ internal static class SvgEmbeddedReferenceInspection
                 reader,
                 options,
                 resources,
-                ref embeddedBytes,
-                ref embeddedPixels,
+                ref scan,
                 cancellationToken,
                 embeddedSvgDepth,
-                ref hasText,
-                ref usesCurrentColor,
-                ref usesColorScheme,
                 ref sawRoot,
                 ref svgNesting,
                 ref attributeScratch);
@@ -363,13 +347,9 @@ internal static class SvgEmbeddedReferenceInspection
         XmlReader reader,
         ResvgMarkdownSvgRendererOptions options,
         SvgResourceInspectionContext resources,
-        ref long embeddedBytes,
-        ref long embeddedPixels,
+        ref SvgPreflightScan scan,
         CancellationToken cancellationToken,
         int embeddedSvgDepth,
-        ref bool hasText,
-        ref bool usesCurrentColor,
-        ref bool usesColorScheme,
         ref bool sawRoot,
         ref int svgNesting,
         ref char[]? attributeScratch)
@@ -398,7 +378,7 @@ internal static class SvgEmbeddedReferenceInspection
         }
         // The worker's text metadata is local-name based, including foreign
         // namespace descendants encountered while inspecting nested bytes.
-        hasText |= name.Equals("text", StringComparison.OrdinalIgnoreCase) ||
+        scan.HasText |= name.Equals("text", StringComparison.OrdinalIgnoreCase) ||
             name.Equals("textPath", StringComparison.OrdinalIgnoreCase);
 
         if (reader.HasAttributes)
@@ -411,13 +391,9 @@ internal static class SvgEmbeddedReferenceInspection
                     isSvgElement,
                     options,
                     resources,
-                    ref embeddedBytes,
-                    ref embeddedPixels,
+                    ref scan,
                     cancellationToken,
                     embeddedSvgDepth,
-                    ref hasText,
-                    ref usesCurrentColor,
-                    ref usesColorScheme,
                     ref attributeScratch);
             }
             reader.MoveToElement();
@@ -431,13 +407,9 @@ internal static class SvgEmbeddedReferenceInspection
                 css,
                 options,
                 resources,
-                ref embeddedBytes,
-                ref embeddedPixels,
+                ref scan,
                 cancellationToken,
                 embeddedSvgDepth,
-                ref hasText,
-                ref usesCurrentColor,
-                ref usesColorScheme,
                 trackThemeMetadata: isSvgElement);
             // ReadElementContentAsString advances to the first node after the
             // element; process it before asking the reader to advance again.
@@ -462,13 +434,9 @@ internal static class SvgEmbeddedReferenceInspection
         bool isSvgElement,
         ResvgMarkdownSvgRendererOptions options,
         SvgResourceInspectionContext resources,
-        ref long embeddedBytes,
-        ref long embeddedPixels,
+        ref SvgPreflightScan scan,
         CancellationToken cancellationToken,
         int embeddedSvgDepth,
-        ref bool hasText,
-        ref bool usesCurrentColor,
-        ref bool usesColorScheme,
         ref char[]? attributeScratch)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -483,11 +451,11 @@ internal static class SvgEmbeddedReferenceInspection
 
         if (isSvgElement && attributeName.Equals("media", StringComparison.OrdinalIgnoreCase))
         {
-            usesColorScheme |= SvgColorSchemeUsage.UsesPrefersColorSchemeMediaCondition(SvgPreflightCss.DecodeCssEscapes(value.ToString()));
+            scan.UsesColorScheme |= SvgColorSchemeUsage.UsesPrefersColorSchemeMediaCondition(SvgPreflightCss.DecodeCssEscapes(value.ToString()));
         }
         else if (isSvgElement && SvgColorSchemeUsage.IsCurrentColorPresentationAttribute(attributeName))
         {
-            usesCurrentColor |= SvgPreflightCss.ContainsCssIdentifier(SvgPreflightCss.DecodeCssEscapes(value.ToString()), "currentColor");
+            scan.UsesCurrentColor |= SvgPreflightCss.ContainsCssIdentifier(SvgPreflightCss.DecodeCssEscapes(value.ToString()), "currentColor");
         }
 
         if (attributeName.Equals("href", StringComparison.OrdinalIgnoreCase) ||
@@ -499,13 +467,9 @@ internal static class SvgEmbeddedReferenceInspection
                 value,
                 options,
                 resources,
-                ref embeddedBytes,
-                ref embeddedPixels,
+                ref scan,
                 cancellationToken,
-                embeddedSvgDepth,
-                ref hasText,
-                ref usesCurrentColor,
-                ref usesColorScheme);
+                embeddedSvgDepth);
         }
         if (SvgPreflightCss.MayContainCssResourceOrActiveContent(attributeName, value))
         {
@@ -513,13 +477,9 @@ internal static class SvgEmbeddedReferenceInspection
                 value.ToString(),
                 options,
                 resources,
-                ref embeddedBytes,
-                ref embeddedPixels,
+                ref scan,
                 cancellationToken,
                 embeddedSvgDepth,
-                ref hasText,
-                ref usesCurrentColor,
-                ref usesColorScheme,
                 attributeName.Equals("style", StringComparison.OrdinalIgnoreCase),
                 isSvgElement);
         }
@@ -531,13 +491,9 @@ internal static class SvgEmbeddedReferenceInspection
         ReadOnlySpan<char> value,
         ResvgMarkdownSvgRendererOptions options,
         SvgResourceInspectionContext resources,
-        ref long embeddedBytes,
-        ref long embeddedPixels,
+        ref SvgPreflightScan scan,
         CancellationToken cancellationToken,
-        int embeddedSvgDepth,
-        ref bool hasText,
-        ref bool usesCurrentColor,
-        ref bool usesColorScheme)
+        int embeddedSvgDepth)
     {
         // An SVG rendered as an image has no navigation surface. Keep authored
         // hyperlinks for fidelity, but do not treat their inert destinations as
@@ -561,13 +517,9 @@ internal static class SvgEmbeddedReferenceInspection
             value,
             options,
             resources,
-            ref embeddedBytes,
-            ref embeddedPixels,
+            ref scan,
             cancellationToken,
-            embeddedSvgDepth,
-            ref hasText,
-            ref usesCurrentColor,
-            ref usesColorScheme);
+            embeddedSvgDepth);
     }
 
     internal static bool TryReadImageDimensions(ReadOnlySpan<byte> data, string mediaType, out int width, out int height)

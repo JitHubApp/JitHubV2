@@ -492,13 +492,9 @@ internal static class SvgPreflight
                 css,
                 options,
                 resources,
-                ref scan.EmbeddedBytes,
-                ref scan.EmbeddedPixels,
+                ref scan,
                 cancellationToken,
                 OuterSvgDepth,
-                ref scan.HasText,
-                ref scan.UsesCurrentColor,
-                ref scan.UsesColorScheme,
                 trackThemeMetadata: isSvgElement);
             // ReadElementContentAsString leaves the reader on the
             // next node. Process that node before asking the reader to
@@ -612,13 +608,9 @@ internal static class SvgPreflight
                 value,
                 options,
                 resources,
-                ref scan.EmbeddedBytes,
-                ref scan.EmbeddedPixels,
+                ref scan,
                 cancellationToken,
-                OuterSvgDepth,
-                ref scan.HasText,
-                ref scan.UsesCurrentColor,
-                ref scan.UsesColorScheme);
+                OuterSvgDepth);
         }
         // Only CSS-bearing values use CSS quoting rules. Treating
         // arbitrary metadata (for example an aria-label containing
@@ -632,13 +624,9 @@ internal static class SvgPreflight
                 value.ToString(),
                 options,
                 resources,
-                ref scan.EmbeddedBytes,
-                ref scan.EmbeddedPixels,
+                ref scan,
                 cancellationToken,
                 OuterSvgDepth,
-                ref scan.HasText,
-                ref scan.UsesCurrentColor,
-                ref scan.UsesColorScheme,
                 attributeName.Equals("style", StringComparison.OrdinalIgnoreCase),
                 isSvgElement);
         }

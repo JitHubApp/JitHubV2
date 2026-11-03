@@ -1,6 +1,4 @@
-using System.Security.Cryptography;
 using System.Text;
-using MarkdownRenderer.Images;
 
 namespace MarkdownRenderer.Svg.Resvg.Internal;
 
@@ -207,21 +205,17 @@ internal static class SvgPreflightCss
         string css,
         ResvgMarkdownSvgRendererOptions options,
         SvgResourceInspectionContext resources,
-        ref long embeddedBytes,
-        ref long embeddedPixels,
+        ref SvgPreflightScan scan,
         CancellationToken cancellationToken,
         int embeddedSvgDepth,
-        ref bool hasText,
-        ref bool usesCurrentColor,
-        ref bool usesColorScheme,
         bool isDeclarationList = false,
         bool trackThemeMetadata = true)
     {
         string normalized = DecodeCssEscapes(css);
         if (trackThemeMetadata)
         {
-            usesCurrentColor |= SvgColorSchemeUsage.UsesCurrentColorInCss(normalized, isDeclarationList);
-            usesColorScheme |= SvgColorSchemeUsage.UsesPrefersColorSchemeInCss(normalized);
+            scan.UsesCurrentColor |= SvgColorSchemeUsage.UsesCurrentColorInCss(normalized, isDeclarationList);
+            scan.UsesColorScheme |= SvgColorSchemeUsage.UsesPrefersColorSchemeInCss(normalized);
         }
         if (normalized.Contains("@import", StringComparison.OrdinalIgnoreCase) ||
             normalized.Contains("@font-face", StringComparison.OrdinalIgnoreCase) ||
@@ -290,13 +284,9 @@ internal static class SvgPreflightCss
                 target,
                 options,
                 resources,
-                ref embeddedBytes,
-                ref embeddedPixels,
+                ref scan,
                 cancellationToken,
-                embeddedSvgDepth,
-                ref hasText,
-                ref usesCurrentColor,
-                ref usesColorScheme);
+                embeddedSvgDepth);
         }
     }
 
