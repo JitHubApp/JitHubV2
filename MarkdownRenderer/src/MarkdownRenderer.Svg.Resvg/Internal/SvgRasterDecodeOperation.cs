@@ -53,25 +53,7 @@ internal sealed class SvgRasterDecodeOperation(
             using WorkerRenderResult decoded = await _workers.DecodeRasterAsync(request, geometry, hash,
                 CheckQuarantine, () => _quarantine.Add(identity), cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
-            if (decoded.Response.Status != WorkerStatus.Ok)
-                throw new MarkdownRasterException(decoded.Response.Status switch
-                {
-                    WorkerStatus.Unsupported => MarkdownRasterFailureReason.UnsupportedContent,
-                    WorkerStatus.ResourceLimit => MarkdownRasterFailureReason.ResourceLimitExceeded,
-                    _ => MarkdownRasterFailureReason.WorkerFailure,
-                });
-            SharedMemoryLease? memory = decoded.TransferOutputMemory();
-            try
-            {
-                var raster = new MarkdownRaster(memory, request.TargetWidthPixels, request.TargetHeightPixels,
-                    checked(request.TargetWidthPixels * 4), request.PixelFormat);
-                memory = null;
-                return raster;
-            }
-            finally
-            {
-                ((IDisposable?)memory)?.Dispose();
-            }
+            return CreateRaster(decoded, request);
         }
         catch (OperationCanceledException exception)
         {
@@ -87,14 +69,7 @@ internal sealed class SvgRasterDecodeOperation(
         }
         catch (MarkdownSvgException exception)
         {
-            throw new MarkdownRasterException(exception.Reason switch
-            {
-                MarkdownSvgFailureReason.ArchitectureMismatch => MarkdownRasterFailureReason.ArchitectureMismatch,
-                MarkdownSvgFailureReason.Canceled => MarkdownRasterFailureReason.Canceled,
-                MarkdownSvgFailureReason.Timeout => MarkdownRasterFailureReason.Timeout,
-                MarkdownSvgFailureReason.ResourceLimitExceeded => MarkdownRasterFailureReason.ResourceLimitExceeded,
-                _ => MarkdownRasterFailureReason.WorkerFailure,
-            }, innerException: exception);
+            throw new MarkdownRasterException(ToRasterFailure(exception.Reason), innerException: exception);
         }
         catch (Exception exception) when (exception is WorkerProtocolException or WorkerInitializationException or IOException or InvalidOperationException or
             System.ComponentModel.Win32Exception)
@@ -108,4 +83,43 @@ internal sealed class SvgRasterDecodeOperation(
             request = null!;
         }
     }
+
+    /// <summary>
+    /// Maps a non-success decode status to its failure, or transfers the
+    /// output mapping into the returned raster.
+    /// </summary>
+    /// <param name="decoded">The worker's decode result.</param>
+    /// <param name="request">The decode request.</param>
+    /// <returns>The raster that owns the output mapping.</returns>
+    private static MarkdownRaster CreateRaster(WorkerRenderResult decoded, MarkdownRasterDecodeRequest request)
+    {
+        if (decoded.Response.Status != WorkerStatus.Ok)
+            throw new MarkdownRasterException(decoded.Response.Status switch
+            {
+                WorkerStatus.Unsupported => MarkdownRasterFailureReason.UnsupportedContent,
+                WorkerStatus.ResourceLimit => MarkdownRasterFailureReason.ResourceLimitExceeded,
+                _ => MarkdownRasterFailureReason.WorkerFailure,
+            });
+        SharedMemoryLease? memory = decoded.TransferOutputMemory();
+        try
+        {
+            var raster = new MarkdownRaster(memory, request.TargetWidthPixels, request.TargetHeightPixels,
+                checked(request.TargetWidthPixels * 4), request.PixelFormat);
+            memory = null;
+            return raster;
+        }
+        finally
+        {
+            ((IDisposable?)memory)?.Dispose();
+        }
+    }
+
+    private static MarkdownRasterFailureReason ToRasterFailure(MarkdownSvgFailureReason reason) => reason switch
+    {
+        MarkdownSvgFailureReason.ArchitectureMismatch => MarkdownRasterFailureReason.ArchitectureMismatch,
+        MarkdownSvgFailureReason.Canceled => MarkdownRasterFailureReason.Canceled,
+        MarkdownSvgFailureReason.Timeout => MarkdownRasterFailureReason.Timeout,
+        MarkdownSvgFailureReason.ResourceLimitExceeded => MarkdownRasterFailureReason.ResourceLimitExceeded,
+        _ => MarkdownRasterFailureReason.WorkerFailure,
+    };
 }
