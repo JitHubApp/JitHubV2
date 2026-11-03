@@ -11,7 +11,7 @@ public sealed class SvgTilePublicationOwnershipTests
     [Fact]
     public void DroppedOrFailedPublicationReleasesAnUntransferredLeaseOnlyOnce()
     {
-        ImageBox.SvgTilePublicationOwnership ownership = default;
+        SvgTilePublicationOwnership ownership = default;
         int leaseDisposeCount = 0;
 
         void ReleaseIfUntransferred()
@@ -31,7 +31,7 @@ public sealed class SvgTilePublicationOwnershipTests
     [Fact]
     public void DroppedCleanupCannotReleaseALeaseAfterDictionaryTransfer()
     {
-        ImageBox.SvgTilePublicationOwnership ownership = default;
+        SvgTilePublicationOwnership ownership = default;
         int leaseDisposeCount = 0;
 
         Assert.True(ownership.TryTransfer());

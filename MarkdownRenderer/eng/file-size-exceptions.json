@@ -68,7 +68,7 @@
     },
     {
       "path": "src/MarkdownRenderer/Layout/Boxes/ImageBox.cs",
-      "lines": 9331,
+      "lines": 9112,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
@@ -83,12 +83,12 @@
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/ImageBoxSourceLeaseTests.cs",
-      "lines": 1400,
+      "lines": 1396,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/ImageBoxSvgPublicationCommitTests.cs",
-      "lines": 1230,
+      "lines": 1228,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {

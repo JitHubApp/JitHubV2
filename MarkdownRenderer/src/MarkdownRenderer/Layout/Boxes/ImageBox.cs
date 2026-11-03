@@ -58,81 +58,11 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     // drained. Carry only weak source identity and scalar/display metadata into
     // that callback; never capture the resolver/provider byte array or a cache
     // entry that owns it.
-    private sealed class SvgPublicationMetadata(
-        WeakReference<byte[]> SourceIdentity,
-        long SourceByteLength,
-        IMarkdownSvgRenderer Renderer,
-        long RendererIdentity,
-        long ProviderCacheGeneration,
-        int RenderGeneration,
-        bool MetadataWasKnown,
-        string ResolvedCacheKey,
-        string SvgFailureCacheKey,
-        Size Intrinsic,
-        string? Title,
-        string? Description,
-        string ContentHash,
-        string SecurityPartitionHash,
-        MarkdownSvgDocumentInfo Info,
-        int TargetWidthPixels,
-        int TargetHeightPixels,
-        string BitmapIdentity,
-        long WorkId,
-        long PublishRequestedAt,
-        long TargetPixels,
-        MarkdownSvgRenderDemand? Demand = null,
-        IMarkdownSvgAdmission? HostAdmission = null,
-        long SourceReservationBytes = 0,
-        SvgHostOwnerSlot? OwnerSlot = null,
-        MarkdownSvgPhysicalViewport? PhysicalViewport = null)
-    {
-        internal readonly WeakReference<byte[]> SourceIdentity = SourceIdentity;
-        internal readonly long SourceByteLength = SourceByteLength;
-        internal readonly IMarkdownSvgRenderer Renderer = Renderer;
-        internal readonly long RendererIdentity = RendererIdentity;
-        internal readonly long ProviderCacheGeneration = ProviderCacheGeneration;
-        internal readonly int RenderGeneration = RenderGeneration;
-        internal readonly bool MetadataWasKnown = MetadataWasKnown;
-        internal readonly string ResolvedCacheKey = ResolvedCacheKey;
-        internal readonly string SvgFailureCacheKey = SvgFailureCacheKey;
-        internal readonly Size Intrinsic = Intrinsic;
-        internal readonly string? Title = Title;
-        internal readonly string? Description = Description;
-        internal readonly string ContentHash = ContentHash;
-        internal readonly string SecurityPartitionHash = SecurityPartitionHash;
-        internal readonly MarkdownSvgDocumentInfo Info = Info;
-        internal readonly int TargetWidthPixels = TargetWidthPixels;
-        internal readonly int TargetHeightPixels = TargetHeightPixels;
-        internal readonly string BitmapIdentity = BitmapIdentity;
-        internal readonly long WorkId = WorkId;
-        internal readonly long PublishRequestedAt = PublishRequestedAt;
-        internal readonly long TargetPixels = TargetPixels;
-        internal readonly MarkdownSvgRenderDemand? Demand = Demand;
-        internal readonly IMarkdownSvgAdmission? HostAdmission = HostAdmission;
-        internal readonly long SourceReservationBytes = SourceReservationBytes;
-        internal readonly SvgHostOwnerSlot? OwnerSlot = OwnerSlot;
-        internal readonly MarkdownSvgPhysicalViewport? PhysicalViewport = PhysicalViewport;
-    }
-
     private readonly struct SvgOpenStageResult(
         SvgOpenedRenderWork? Work, SvgHostCapacityDeferral? Deferral)
     {
         public SvgOpenedRenderWork? Work { get; init; } = Work;
         public SvgHostCapacityDeferral? Deferral { get; init; } = Deferral;
-    }
-
-    internal struct SvgOpenedRenderOwnership
-    {
-        private int _state; // 0 pending, 1 consumed, 2 retired
-
-        internal bool TryConsume() =>
-            Interlocked.CompareExchange(ref _state, 1, 0) == 0;
-
-        internal bool TryDisposePending() =>
-            Interlocked.CompareExchange(ref _state, 2, 0) == 0;
-
-        internal bool TryCompleteConsumed() =>
-            Interlocked.CompareExchange(ref _state, 2, 1) == 1;
     }
 
     /// <summary>
@@ -224,44 +154,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 _imageWork.Dispose();
             }
         }
-    }
-
-    private readonly struct SvgHostCapacityDeferral(
-        IMarkdownSvgAdmission Admission,
-        MarkdownSvgRenderDemand Demand,
-        int LoadGeneration,
-        long CapacityVersion,
-        long RequiredSourceReservationBytes,
-        bool RequiresOwnerSlot,
-        long OwnerVersionAtDenial,
-        long DemandVersionAtDenial,
-        long VisualDemandEpochAtDenial)
-    {
-        internal IMarkdownSvgAdmission Admission { get; } = Admission;
-        internal MarkdownSvgRenderDemand Demand { get; } = Demand;
-        internal int LoadGeneration { get; } = LoadGeneration;
-        internal long CapacityVersion { get; } = CapacityVersion;
-        internal long RequiredSourceReservationBytes { get; } = RequiredSourceReservationBytes;
-        internal bool RequiresOwnerSlot { get; } = RequiresOwnerSlot;
-        internal long OwnerVersionAtDenial { get; } = OwnerVersionAtDenial;
-        internal long DemandVersionAtDenial { get; } = DemandVersionAtDenial;
-        internal long VisualDemandEpochAtDenial { get; } = VisualDemandEpochAtDenial;
-    }
-
-    /// <summary>
-    /// Coordinates ownership between accepted publication and its rejection or
-    /// exception cleanup callback. Once transferred, only the image or tile
-    /// dictionary owner may release the lease.
-    /// </summary>
-    internal struct SvgTilePublicationOwnership
-    {
-        private int _state;
-
-        internal bool TryTransfer() =>
-            Interlocked.CompareExchange(ref _state, 1, 0) == 0;
-
-        internal bool TryReleaseUntransferred() =>
-            Interlocked.CompareExchange(ref _state, 2, 0) == 0;
     }
 
     private sealed class ImageWorkLease : IDisposable
@@ -450,20 +342,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     private const int SvgHostDeferredWaiting = 1;
     private const int SvgHostDeferredRetryQueued = 2;
 
-    private sealed class SvgTileWorkOwner(
-        SvgTileRenderPlan plan,
-        CancellationTokenSource cancellation,
-        MarkdownSvgRenderDemand demand)
-    {
-        internal readonly SvgTileRenderPlan Plan = plan;
-        internal readonly CancellationTokenSource Cancellation = cancellation;
-        internal readonly MarkdownSvgRenderDemand Demand = demand;
-        // 0=active, 1=terminal failure claimed, 2=retired/reassigned,
-        // 3=terminal failure map invalidation in progress.
-        // The transition is coordinated while holding _svgTileLock.
-        internal int State;
-    }
-
     private readonly struct SvgDeferredLoadWork(
         ImageBox owner,
         MarkdownSvgRenderDemand demand,
@@ -474,95 +352,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         internal readonly MarkdownSvgRenderDemand Demand = demand;
         internal readonly int LoadGeneration = loadGeneration;
         internal readonly object? DenialIdentity = denialIdentity;
-    }
-
-    internal sealed class SvgTileRenderPlan(
-        IMarkdownSvgDocument document,
-        string identityPrefix,
-        int fullWidthPixels,
-        int fullHeightPixels,
-        int renderGeneration,
-        MarkdownSvgRenderDemand? demand = null,
-        IMarkdownSvgAdmission? hostAdmission = null,
-        long sourceReservationBytes = 0,
-        SvgHostOwnerSlot? ownerSlot = null,
-        MarkdownSvgPhysicalViewport? physicalViewport = null)
-    {
-        // Serializes the short viewport-state mutation with the final owner
-        // detach in pressure parking. It is per-plan so a late release from an
-        // obsolete operation cannot reopen a replacement plan's gate.
-        private int _viewportMutationState;
-
-        internal readonly IMarkdownSvgDocument Document = document;
-        internal readonly string IdentityPrefix = identityPrefix;
-        internal readonly int FullWidthPixels = fullWidthPixels;
-        internal readonly int FullHeightPixels = fullHeightPixels;
-        internal readonly MarkdownSvgPhysicalViewport PhysicalViewport = physicalViewport ??
-            new MarkdownSvgPhysicalViewport(fullWidthPixels, fullHeightPixels);
-        internal readonly int RenderGeneration = renderGeneration;
-        internal readonly MarkdownSvgRenderDemand Demand = demand ??
-            new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Visible);
-        internal readonly IMarkdownSvgAdmission? HostAdmission = hostAdmission;
-        internal readonly object? AdmissionDomain = ownerSlot?.AdmissionDomain;
-        internal readonly long SourceReservationBytes = sourceReservationBytes;
-        internal readonly SvgHostOwnerSlot? OwnerSlot = ownerSlot;
-
-        // 0=open, 1=viewport mutation in progress, 2=parking commit claimed.
-        internal bool TryBeginViewportMutation() =>
-            Interlocked.CompareExchange(ref _viewportMutationState, 1, 0) == 0;
-
-        internal void EndViewportMutation() =>
-            Interlocked.CompareExchange(ref _viewportMutationState, 0, 1);
-
-        internal bool TryClaimViewportParking() =>
-            Interlocked.CompareExchange(ref _viewportMutationState, 2, 0) == 0;
-
-        internal void EndViewportParking() =>
-            Interlocked.CompareExchange(ref _viewportMutationState, 0, 2);
-
-        internal int ViewportMutationState => Volatile.Read(ref _viewportMutationState);
-    }
-
-    private sealed class SvgTileCacheTransition(
-        object token,
-        SvgTileRenderPlan? previousPlan,
-        SvgTileRenderPlan? nextPlan,
-        Dictionary<SvgTileKey, SharedCanvasBitmapCache.Lease> expectedTiles,
-        Dictionary<SvgTileKey, SharedCanvasBitmapCache.Lease>? expectedFallbackTiles,
-        string? previousIdentityPrefix,
-        int previousWidthPixels,
-        int previousHeightPixels,
-        bool sameIdentity,
-        Dictionary<SvgTileKey, SharedCanvasBitmapCache.Lease>? replacementTiles,
-        SharedCanvasBitmapCache.Lease[]? retiredTiles,
-        SharedCanvasBitmapCache.Lease[]? retiredFallbackTiles,
-        CancellationTokenSource[] work,
-        bool restoreFallback = false,
-        string? restoredFallbackIdentityPrefix = null,
-        int restoredFallbackWidthPixels = 0,
-        int restoredFallbackHeightPixels = 0,
-        MarkdownSvgPhysicalViewport? previousPhysicalViewport = null,
-        MarkdownSvgPhysicalViewport? restoredFallbackPhysicalViewport = null)
-    {
-        internal readonly object Token = token;
-        internal readonly SvgTileRenderPlan? PreviousPlan = previousPlan;
-        internal readonly SvgTileRenderPlan? NextPlan = nextPlan;
-        internal readonly Dictionary<SvgTileKey, SharedCanvasBitmapCache.Lease> ExpectedTiles = expectedTiles;
-        internal readonly Dictionary<SvgTileKey, SharedCanvasBitmapCache.Lease>? ExpectedFallbackTiles = expectedFallbackTiles;
-        internal readonly string? PreviousIdentityPrefix = previousIdentityPrefix;
-        internal readonly int PreviousWidthPixels = previousWidthPixels;
-        internal readonly int PreviousHeightPixels = previousHeightPixels;
-        internal readonly bool SameIdentity = sameIdentity;
-        internal readonly Dictionary<SvgTileKey, SharedCanvasBitmapCache.Lease>? ReplacementTiles = replacementTiles;
-        internal readonly SharedCanvasBitmapCache.Lease[]? RetiredTiles = retiredTiles;
-        internal readonly SharedCanvasBitmapCache.Lease[]? RetiredFallbackTiles = retiredFallbackTiles;
-        internal readonly CancellationTokenSource[] Work = work;
-        internal readonly bool RestoreFallback = restoreFallback;
-        internal readonly string? RestoredFallbackIdentityPrefix = restoredFallbackIdentityPrefix;
-        internal readonly int RestoredFallbackWidthPixels = restoredFallbackWidthPixels;
-        internal readonly int RestoredFallbackHeightPixels = restoredFallbackHeightPixels;
-        internal readonly MarkdownSvgPhysicalViewport? PreviousPhysicalViewport = previousPhysicalViewport;
-        internal readonly MarkdownSvgPhysicalViewport? RestoredFallbackPhysicalViewport = restoredFallbackPhysicalViewport;
     }
     private CanvasTextLayout? _placeholder;
     private CanvasTextLayout? _caption;
@@ -2067,14 +1856,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         NativeResourceRetirementRecord? rightRecord) =>
         (leftLayout is null || rightLayout is null || !ReferenceEquals(leftLayout, rightLayout)) &&
         (leftRecord is null || rightRecord is null || !ReferenceEquals(leftRecord, rightRecord));
-
-    private readonly struct NativeRetirementFailurePair(
-        Exception? DisposalFailure,
-        Exception? PublicationFailure)
-    {
-        public Exception? DisposalFailure { get; init; } = DisposalFailure;
-        public Exception? PublicationFailure { get; init; } = PublicationFailure;
-    }
 
     private static NativeRetirementFailurePair RetireTerminalNativeLayout(
         CanvasTextLayout? layout,

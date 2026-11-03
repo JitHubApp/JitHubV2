@@ -983,7 +983,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
         (int X, int Y, int Width, int Height) key,
         CancellationTokenSource cancellation)
     {
-        Type ownerType = typeof(ImageBox).GetNestedType("SvgTileWorkOwner", BindingFlags.NonPublic)
+        Type ownerType = typeof(SvgTileWorkOwner)
             ?? throw new Xunit.Sdk.XunitException("Missing ImageBox SVG tile work-owner type.");
         object owner = Activator.CreateInstance(
                 ownerType,
@@ -1100,9 +1100,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
         int height,
         int generation)
     {
-        Type type = typeof(ImageBox).GetNestedType(
-            "SvgTileRenderPlan",
-            BindingFlags.Public | BindingFlags.NonPublic)!;
+        Type type = typeof(SvgTileRenderPlan);
         ConstructorInfo constructor = type.GetConstructors(
                 BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
             .Single();

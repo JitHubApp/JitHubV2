@@ -290,7 +290,7 @@ public sealed class SvgFallbackTileResidencyTests
     {
         var document = new NonRenderingSvgDocument();
         var renderer = new NonOpeningSvgRenderer();
-        var plan = new ImageBox.SvgTileRenderPlan(
+        var plan = new SvgTileRenderPlan(
             document,
             "svg-cache-prefix:fallback-pruning-integration",
             fullWidthPixels: 4096,
@@ -371,7 +371,7 @@ public sealed class SvgFallbackTileResidencyTests
             currentTiles);
 
     private static ImageBox CreateBareBox(
-        ImageBox.SvgTileRenderPlan plan,
+        SvgTileRenderPlan plan,
         IMarkdownSvgRenderer renderer)
     {
         // Current-generation keys are already cached/pending in these tests;
@@ -385,7 +385,7 @@ public sealed class SvgFallbackTileResidencyTests
         SetField(box, "_svgTileWorkOwners", Activator.CreateInstance(
             typeof(Dictionary<,>).MakeGenericType(
                 typeof(ValueTuple<int, int, int, int>),
-                typeof(ImageBox).GetNestedType("SvgTileWorkOwner", BindingFlags.NonPublic)!))!);
+                typeof(SvgTileWorkOwner)))!);
         SetField(box, "_svgTileCacheTransitionToken", null);
         SetField(box, "_svgFallbackTiles", null);
         SetField(box, "_svgTileCacheIdentityPrefix", null);

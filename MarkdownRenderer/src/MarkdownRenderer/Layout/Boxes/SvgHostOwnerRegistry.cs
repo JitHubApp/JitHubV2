@@ -57,7 +57,7 @@ internal sealed class SvgHostOwnerRegistry
 
     internal SvgHostOwnerEntry Commit(
         ImageBox owner,
-        ImageBox.SvgTileRenderPlan plan,
+        SvgTileRenderPlan plan,
         MarkdownSvgRenderDemand demand,
         SvgHostOwnerSlot slot,
         long sourceReservationBytes)
@@ -165,12 +165,12 @@ internal sealed class SvgHostOwnerRegistry
         }
 
         var candidates = new List<(SvgHostOwnerEntry Entry, ImageBox Owner,
-            ImageBox.SvgTileRenderPlan Plan, long DemandVersion, int Tier, long LastUse)>();
+            SvgTileRenderPlan Plan, long DemandVersion, int Tier, long LastUse)>();
         foreach ((SvgHostOwnerEntry entry, long lastUse) in owners)
         {
             long demandVersion = entry.Demand.Version;
             if (!entry.Owner.TryGetTarget(out ImageBox? owner) ||
-                !entry.Plan.TryGetTarget(out ImageBox.SvgTileRenderPlan? plan) ||
+                !entry.Plan.TryGetTarget(out SvgTileRenderPlan? plan) ||
                 !owner.TryGetSvgPressureParkTier(plan, demandVersion, out int tier))
             {
                 continue;
@@ -186,7 +186,7 @@ internal sealed class SvgHostOwnerRegistry
         long scheduledBytes = 0;
         int victims = 0;
         int maximumParkTier = requesterPriority == MarkdownSvgRenderPriority.Overscan ? 0 : 1;
-        foreach ((SvgHostOwnerEntry entry, ImageBox owner, ImageBox.SvgTileRenderPlan plan,
+        foreach ((SvgHostOwnerEntry entry, ImageBox owner, SvgTileRenderPlan plan,
             long demandVersion, _, _) in candidates)
         {
             if (victims >= maximumVictims ||

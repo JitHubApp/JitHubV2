@@ -41,7 +41,7 @@ public sealed class ImagePublicationCarrierContractTests
     [Fact]
     public void PendingRenderDisposalPreventsConsumptionAndRetiresOnce()
     {
-        ImageBox.SvgOpenedRenderOwnership ownership = default;
+        SvgOpenedRenderOwnership ownership = default;
         Assert.False(ownership.TryCompleteConsumed());
         Assert.True(ownership.TryDisposePending());
         Assert.False(ownership.TryDisposePending());
@@ -52,7 +52,7 @@ public sealed class ImagePublicationCarrierContractTests
     [Fact]
     public void ConsumedRenderCannotBeDisposedBeforeActualCompletion()
     {
-        ImageBox.SvgOpenedRenderOwnership ownership = default;
+        SvgOpenedRenderOwnership ownership = default;
         Assert.True(ownership.TryConsume());
         Assert.False(ownership.TryConsume());
         Assert.False(ownership.TryDisposePending());

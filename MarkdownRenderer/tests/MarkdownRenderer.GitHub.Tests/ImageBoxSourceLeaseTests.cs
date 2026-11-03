@@ -172,9 +172,7 @@ public sealed class ImageBoxSourceLeaseTests
     [Fact]
     public void QueuedSvgPublicationUsesWeakSourceMetadataCarrier()
     {
-        Type metadata = typeof(ImageBox).GetNestedType(
-            "SvgPublicationMetadata",
-            BindingFlags.NonPublic)!;
+        Type metadata = typeof(SvgPublicationMetadata);
         FieldInfo[] fields = metadata.GetFields(
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         Assert.Contains(fields, field => field.FieldType == typeof(WeakReference<byte[]>));
@@ -204,9 +202,7 @@ public sealed class ImageBoxSourceLeaseTests
         Assert.DoesNotContain(bitmapPublication.GetParameters(), parameter =>
             typeof(IMarkdownSvgDocument).IsAssignableFrom(parameter.ParameterType));
 
-        Type metadataType = typeof(ImageBox).GetNestedType(
-            "SvgPublicationMetadata",
-            BindingFlags.NonPublic)!;
+        Type metadataType = typeof(SvgPublicationMetadata);
         Type bitmapLeaseType = Assert.Single(bitmapPublication.GetParameters(), parameter =>
             parameter.ParameterType.Name == "Lease").ParameterType;
         Type[] bitmapPublicationClosures = typeof(ImageBox)

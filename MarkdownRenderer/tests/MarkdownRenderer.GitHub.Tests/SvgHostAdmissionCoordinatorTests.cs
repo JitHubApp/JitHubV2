@@ -88,7 +88,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
                 Reserve(domain, new object(), out _));
         ImageBox owner = BareBox();
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
-        var plan = new ImageBox.SvgTileRenderPlan(
+        var plan = new SvgTileRenderPlan(
             new RegistryDocument(), "registry-race", 2048, 2048, 1,
             demand, sourceReservationBytes: 128, ownerSlot: slot);
         object domainGate = Field<object>(domain.Owners, "_gate");
@@ -171,7 +171,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
         retired.Dispose();
         ImageBox owner = BareBox();
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Visible);
-        var plan = new ImageBox.SvgTileRenderPlan(new RegistryDocument(), "retired", 2048, 2048, 1);
+        var plan = new SvgTileRenderPlan(new RegistryDocument(), "retired", 2048, 2048, 1);
         Assert.Throws<InvalidOperationException>(() => retired.Commit(owner, plan, demand, 128));
         retired.Dispose();
         Assert.Equal(1, ReservedCount(domain));
@@ -189,7 +189,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
             Assert.IsType<SvgHostOwnerSlot>(Reserve(domain, identity, out _)))
         {
             ImageBox owner = BareBox();
-            var plan = new ImageBox.SvgTileRenderPlan(new RegistryDocument(), "warm-release", 2048, 2048, 1);
+            var plan = new SvgTileRenderPlan(new RegistryDocument(), "warm-release", 2048, 2048, 1);
             warm.Commit(owner, plan, demand, 64);
             warm.Dispose();
             GC.KeepAlive(owner);
@@ -198,7 +198,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
 
         var slots = new SvgHostOwnerSlot[512];
         var owners = new ImageBox[256];
-        var plans = new ImageBox.SvgTileRenderPlan[256];
+        var plans = new SvgTileRenderPlan[256];
         try
         {
             for (int i = 0; i < slots.Length; i++)
@@ -207,7 +207,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
                 if (i < owners.Length)
                 {
                     owners[i] = BareBox();
-                    plans[i] = new ImageBox.SvgTileRenderPlan(new RegistryDocument(), "release", 2048, 2048, 1);
+                    plans[i] = new SvgTileRenderPlan(new RegistryDocument(), "release", 2048, 2048, 1);
                     slots[i].Commit(owners[i], plans[i], demand, 64);
                 }
             }
@@ -236,7 +236,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
             Assert.IsType<SvgHostOwnerSlot>(Reserve(domain, new object(), out _));
         ImageBox owner = BareBox();
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
-        var plan = new ImageBox.SvgTileRenderPlan(new RegistryDocument(), "recency", 2048, 2048, 1);
+        var plan = new SvgTileRenderPlan(new RegistryDocument(), "recency", 2048, 2048, 1);
         var older = new SvgHostOwnerEntry(owner, plan, demand, 64, slot, 10);
         var newer = new SvgHostOwnerEntry(owner, plan, demand, 64, slot, 20);
         long capturedOlder = older.LastUse;
@@ -763,7 +763,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
         var domain = new SvgHostAdmissionDomain();
         var admission = new ThresholdAdmission();
         var owners = new ImageBox[ownerCount];
-        var plans = new ImageBox.SvgTileRenderPlan[ownerCount];
+        var plans = new SvgTileRenderPlan[ownerCount];
         var documents = new PressureDocument[ownerCount];
         var ownerSlots = new SvgHostOwnerSlot[ownerCount];
         var ownerDemand = new MarkdownSvgRenderDemand[ownerCount];
@@ -779,7 +779,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
                 ownerDemand[i] = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
                 ownerSlots[i] = Assert.IsType<SvgHostOwnerSlot>(
                     domain.Owners.TryReserveOwnerSlot(admission.AdmissionDomain, out _));
-                plans[i] = new ImageBox.SvgTileRenderPlan(
+                plans[i] = new SvgTileRenderPlan(
                     documents[i], $"pressure-owner-{i}", 2048, 2048, i + 1,
                     ownerDemand[i], sourceReservationBytes: ownerWeight, ownerSlot: ownerSlots[i]);
                 owners[i] = CreatePressureParkBox(plans[i]);
@@ -894,7 +894,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
         var reservedSlots = new List<SvgHostOwnerSlot>(existingReservationCount + 1);
         var ownerSlots = new List<SvgHostOwnerSlot>(eligibleOwnerCount);
         var owners = new List<ImageBox>(eligibleOwnerCount);
-        var plans = new List<ImageBox.SvgTileRenderPlan>(eligibleOwnerCount);
+        var plans = new List<SvgTileRenderPlan>(eligibleOwnerCount);
         var documents = new List<PressureDocument>(eligibleOwnerCount);
         var demands = new List<MarkdownSvgRenderDemand>(eligibleOwnerCount);
         try
@@ -912,7 +912,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
                 ownerSlots.Add(slot);
                 var document = new PressureDocument();
                 var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
-                var plan = new ImageBox.SvgTileRenderPlan(
+                var plan = new SvgTileRenderPlan(
                     document, $"single-owner-slot-victim-{i}", 2048, 2048, i + 1,
                     demand, sourceReservationBytes: 100, ownerSlot: slot);
                 ImageBox owner = CreatePressureParkBox(plan);
@@ -1207,7 +1207,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
         }
     }
 
-    private static ImageBox CreatePressureParkBox(ImageBox.SvgTileRenderPlan plan)
+    private static ImageBox CreatePressureParkBox(SvgTileRenderPlan plan)
     {
         ImageBox box = BareBox();
         SetField(box, "_svgWorkSync", new object());
@@ -1243,7 +1243,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
         (IDictionary)(Activator.CreateInstance(
             typeof(Dictionary<,>).MakeGenericType(
                 typeof(ValueTuple<int, int, int, int>),
-                typeof(ImageBox).GetNestedType("SvgTileWorkOwner", BindingFlags.NonPublic)!))
+                typeof(SvgTileWorkOwner)))
             ?? throw new Xunit.Sdk.XunitException("Could not create ImageBox SVG work-owner map."));
 
     private sealed class ThresholdAdmission(long initialAvailableBytes = 0) : IMarkdownSvgAdmission
@@ -1358,7 +1358,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
     {
         ImageBox owner = BareBox();
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
-        var plan = new ImageBox.SvgTileRenderPlan(new RegistryDocument(), "weak", 2048, 2048, 1);
+        var plan = new SvgTileRenderPlan(new RegistryDocument(), "weak", 2048, 2048, 1);
         slot.Commit(owner, plan, demand, 64);
         return collectPlan ? (new WeakReference(plan), owner) : (new WeakReference(owner), plan);
     }

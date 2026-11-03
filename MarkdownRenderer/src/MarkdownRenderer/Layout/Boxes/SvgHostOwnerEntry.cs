@@ -9,14 +9,14 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// </summary>
 internal sealed class SvgHostOwnerEntry(
     ImageBox owner,
-    ImageBox.SvgTileRenderPlan plan,
+    SvgTileRenderPlan plan,
     MarkdownSvgRenderDemand demand,
     long sourceReservationBytes,
     SvgHostOwnerSlot slot,
     long lastUse)
 {
     internal readonly WeakReference<ImageBox> Owner = new(owner);
-    internal readonly WeakReference<ImageBox.SvgTileRenderPlan> Plan = new(plan);
+    internal readonly WeakReference<SvgTileRenderPlan> Plan = new(plan);
     internal readonly MarkdownSvgRenderDemand Demand = demand;
     internal readonly long SourceReservationBytes = sourceReservationBytes;
     internal readonly WeakReference<SvgHostOwnerSlot> Slot = new(slot);

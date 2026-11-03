@@ -70,5 +70,5 @@ internal sealed class SvgHostAdmissionCoordinator
     internal long GetOwnerVersion(object admissionDomain) =>
         _domains.GetValue(admissionDomain, static _ => new SvgHostAdmissionDomain()).Owners.GetOwnerVersion();
 
-    internal static void Touch(ImageBox.SvgTileRenderPlan plan) => plan.OwnerSlot?.Touch();
+    internal static void Touch(SvgTileRenderPlan plan) => plan.OwnerSlot?.Touch();
 }

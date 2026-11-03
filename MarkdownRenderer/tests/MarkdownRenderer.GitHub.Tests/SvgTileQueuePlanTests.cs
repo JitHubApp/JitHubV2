@@ -26,7 +26,7 @@ public sealed class SvgTileQueuePlanTests
         const int height = 2051;
         const int generation = 41;
 
-        ImageBox.SvgTileRenderPlan plan = NewPlan(document, identity, width, height, generation);
+        SvgTileRenderPlan plan = NewPlan(document, identity, width, height, generation);
 
         AssertPlanMember(plan, "Document", document);
         AssertPlanMember(plan, "IdentityPrefix", identity);
@@ -39,7 +39,7 @@ public sealed class SvgTileQueuePlanTests
     public void WarmPendingTileIsAZeroAllocationNoOpAndDoesNotCallProvider()
     {
         var document = new CountingDocument();
-        ImageBox.SvgTileRenderPlan plan = NewPlan(document, "svg-cache-prefix:warm", 2048, 2048, 12);
+        SvgTileRenderPlan plan = NewPlan(document, "svg-cache-prefix:warm", 2048, 2048, 12);
         ImageBox box = CreateBareBox(plan);
         var cancellation = new CancellationTokenSource();
         try
@@ -87,7 +87,7 @@ public sealed class SvgTileQueuePlanTests
         int width = horizontal ? edge : tileSize;
         int height = horizontal ? tileSize : edge;
         var document = new CountingDocument();
-        ImageBox.SvgTileRenderPlan plan = NewPlan(
+        SvgTileRenderPlan plan = NewPlan(
             document,
             "svg-cache-prefix:maximum-dimensions",
             width,
@@ -193,7 +193,7 @@ public sealed class SvgTileQueuePlanTests
     public void AcceptedPlanRemainsEligibleWhileAReplacementGenerationIsPending()
     {
         var document = new CountingDocument();
-        ImageBox.SvgTileRenderPlan oldPlan = NewPlan(document, "svg-cache-prefix:old-generation", 2048, 2048, 7);
+        SvgTileRenderPlan oldPlan = NewPlan(document, "svg-cache-prefix:old-generation", 2048, 2048, 7);
         ImageBox box = CreateBareBox(oldPlan);
         SetField(box, "_svgRenderGeneration", 8);
         using var currentWork = new CancellationTokenSource();
@@ -221,7 +221,7 @@ public sealed class SvgTileQueuePlanTests
         SvgHostOwnerSlot ownerSlot = domain.Owners.TryReserveOwnerSlot(
             new object(),
             out _) ?? throw new Xunit.Sdk.XunitException("Could not reserve test owner slot.");
-        ImageBox.SvgTileRenderPlan plan = NewPlan(
+        SvgTileRenderPlan plan = NewPlan(
             document,
             "svg-cache-prefix:never-painted-overscan",
             2048,
@@ -239,9 +239,9 @@ public sealed class SvgTileQueuePlanTests
         Assert.Equal(0, tier);
 
         Assert.True(box.TryParkSvgDocument(plan, demand.Version, maximumTier));
-        Assert.Null(GetNullableField<ImageBox.SvgTileRenderPlan>(box, "_svgTileRenderPlan"));
+        Assert.Null(GetNullableField<SvgTileRenderPlan>(box, "_svgTileRenderPlan"));
         Assert.Null(GetNullableField<IMarkdownSvgDocument>(box, "_svgDocument"));
-        Assert.Null(GetNullableField<ImageBox.SvgTileRenderPlan>(box, "_svgParkingPlan"));
+        Assert.Null(GetNullableField<SvgTileRenderPlan>(box, "_svgParkingPlan"));
         Assert.True(GetField<bool>(box, "_svgPressureParked"));
         await document.Disposed.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Equal(1, document.DisposeCount);
@@ -256,7 +256,7 @@ public sealed class SvgTileQueuePlanTests
         SvgHostOwnerSlot ownerSlot = domain.Owners.TryReserveOwnerSlot(
             new object(),
             out _) ?? throw new Xunit.Sdk.XunitException("Could not reserve test owner slot.");
-        ImageBox.SvgTileRenderPlan plan = NewPlan(
+        SvgTileRenderPlan plan = NewPlan(
             document,
             "svg-cache-prefix:promotion-before-park",
             2048,
@@ -277,7 +277,7 @@ public sealed class SvgTileQueuePlanTests
             parking = Task.Run(() => box.TryParkSvgDocument(plan, demandVersion: 0, maximumTier: 0));
             Assert.True(
                 SpinWait.SpinUntil(
-                    () => ReferenceEquals(GetNullableField<ImageBox.SvgTileRenderPlan>(box, "_svgParkingPlan"), plan),
+                    () => ReferenceEquals(GetNullableField<SvgTileRenderPlan>(box, "_svgParkingPlan"), plan),
                     TimeSpan.FromSeconds(10)),
                 "The parking transaction did not publish its marker before waiting on the tile lock.");
             Assert.True(demand.PromoteVisible());
@@ -288,9 +288,9 @@ public sealed class SvgTileQueuePlanTests
         }
 
         Assert.False(await parking.WaitAsync(TimeSpan.FromSeconds(10)));
-        Assert.Same(plan, GetNullableField<ImageBox.SvgTileRenderPlan>(box, "_svgTileRenderPlan"));
+        Assert.Same(plan, GetNullableField<SvgTileRenderPlan>(box, "_svgTileRenderPlan"));
         Assert.Same(document, GetNullableField<IMarkdownSvgDocument>(box, "_svgDocument"));
-        Assert.Null(GetNullableField<ImageBox.SvgTileRenderPlan>(box, "_svgParkingPlan"));
+        Assert.Null(GetNullableField<SvgTileRenderPlan>(box, "_svgParkingPlan"));
         Assert.False(GetField<bool>(box, "_svgPressureParked"));
         Assert.Equal(0, document.DisposeCount);
         ownerSlot.Dispose();
@@ -309,7 +309,7 @@ public sealed class SvgTileQueuePlanTests
         SvgHostOwnerSlot ownerSlot = domain.Owners.TryReserveOwnerSlot(
             new object(),
             out _) ?? throw new Xunit.Sdk.XunitException("Could not reserve test owner slot.");
-        ImageBox.SvgTileRenderPlan plan = NewPlan(
+        SvgTileRenderPlan plan = NewPlan(
             document,
             "svg-cache-prefix:viewport-observation",
             2048,
@@ -352,7 +352,7 @@ public sealed class SvgTileQueuePlanTests
         SvgHostOwnerSlot ownerSlot = domain.Owners.TryReserveOwnerSlot(
             new object(),
             out _) ?? throw new Xunit.Sdk.XunitException("Could not reserve test owner slot.");
-        ImageBox.SvgTileRenderPlan plan = NewPlan(
+        SvgTileRenderPlan plan = NewPlan(
             document,
             "svg-cache-prefix:painted-viewport-range",
             4096,
@@ -423,7 +423,7 @@ public sealed class SvgTileQueuePlanTests
         SvgHostOwnerSlot ownerSlot = domain.Owners.TryReserveOwnerSlot(
             new object(),
             out _) ?? throw new Xunit.Sdk.XunitException("Could not reserve test owner slot.");
-        ImageBox.SvgTileRenderPlan plan = NewPlan(
+        SvgTileRenderPlan plan = NewPlan(
             document,
             "svg-cache-prefix:observer-owns-claim",
             2048,
@@ -439,9 +439,9 @@ public sealed class SvgTileQueuePlanTests
         try
         {
             Assert.False(box.TryParkSvgDocument(plan, demand.Version, maximumTier: 0));
-            Assert.Same(plan, GetNullableField<ImageBox.SvgTileRenderPlan>(box, "_svgTileRenderPlan"));
+            Assert.Same(plan, GetNullableField<SvgTileRenderPlan>(box, "_svgTileRenderPlan"));
             Assert.Same(document, GetNullableField<IMarkdownSvgDocument>(box, "_svgDocument"));
-            Assert.Null(GetNullableField<ImageBox.SvgTileRenderPlan>(box, "_svgParkingPlan"));
+            Assert.Null(GetNullableField<SvgTileRenderPlan>(box, "_svgParkingPlan"));
             Assert.False(GetField<bool>(box, "_svgPressureParked"));
         }
         finally
@@ -462,7 +462,7 @@ public sealed class SvgTileQueuePlanTests
         SvgHostOwnerSlot ownerSlot = domain.Owners.TryReserveOwnerSlot(
             new object(),
             out _) ?? throw new Xunit.Sdk.XunitException("Could not reserve test owner slot.");
-        ImageBox.SvgTileRenderPlan plan = NewPlan(
+        SvgTileRenderPlan plan = NewPlan(
             document,
             "svg-cache-prefix:parking-owns-claim",
             2048,
@@ -486,7 +486,7 @@ public sealed class SvgTileQueuePlanTests
             parking = Task.Run(() => box.TryParkSvgDocument(plan, demand.Version, maximumTier: 0));
             Assert.True(
                 SpinWait.SpinUntil(
-                    () => ReferenceEquals(GetNullableField<ImageBox.SvgTileRenderPlan>(box, "_svgParkingPlan"), plan),
+                    () => ReferenceEquals(GetNullableField<SvgTileRenderPlan>(box, "_svgParkingPlan"), plan),
                     TimeSpan.FromSeconds(10)),
                 "The parking marker was not published before the tile-lock wait.");
 
@@ -507,7 +507,7 @@ public sealed class SvgTileQueuePlanTests
         }
 
         Assert.True(await parking.WaitAsync(TimeSpan.FromSeconds(10)));
-        Assert.Null(GetNullableField<ImageBox.SvgTileRenderPlan>(box, "_svgTileRenderPlan"));
+        Assert.Null(GetNullableField<SvgTileRenderPlan>(box, "_svgTileRenderPlan"));
         Assert.Null(GetNullableField<IMarkdownSvgDocument>(box, "_svgDocument"));
         Assert.True(GetField<bool>(box, "_svgPressureParked"));
         Assert.Equal(2, plan.ViewportMutationState);
@@ -520,9 +520,9 @@ public sealed class SvgTileQueuePlanTests
     {
         var oldDocument = new CountingDocument();
         var newDocument = new CountingDocument();
-        ImageBox.SvgTileRenderPlan oldPlan = NewPlan(
+        SvgTileRenderPlan oldPlan = NewPlan(
             oldDocument, "svg-cache-prefix:transition-old", 2048, 1536, 51);
-        ImageBox.SvgTileRenderPlan newPlan = NewPlan(
+        SvgTileRenderPlan newPlan = NewPlan(
             newDocument, "svg-cache-prefix:transition-new", 3072, 1536, 52);
         ImageBox box = CreateBareBox(oldPlan);
         SetField(box, "_svgTileCacheIdentityPrefix", oldPlan.IdentityPrefix);
@@ -537,7 +537,7 @@ public sealed class SvgTileQueuePlanTests
 
         object transition = PrepareCacheTransition(box, newPlan);
 
-        Assert.Same(oldPlan, GetNullableField<ImageBox.SvgTileRenderPlan>(box, "_svgTileRenderPlan"));
+        Assert.Same(oldPlan, GetNullableField<SvgTileRenderPlan>(box, "_svgTileRenderPlan"));
         Assert.Same(oldTiles, GetField<Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease>>(
             box, "_svgTiles"));
         Assert.Equal(oldPlan.IdentityPrefix, GetNullableField<string>(box, "_svgTileCacheIdentityPrefix"));
@@ -572,9 +572,9 @@ public sealed class SvgTileQueuePlanTests
     public void AbortedTileCacheTransitionPreservesTheAcceptedPlanAndCacheIdentity()
     {
         var document = new CountingDocument();
-        ImageBox.SvgTileRenderPlan oldPlan = NewPlan(
+        SvgTileRenderPlan oldPlan = NewPlan(
             document, "svg-cache-prefix:transition-abort-old", 2048, 1536, 53);
-        ImageBox.SvgTileRenderPlan candidate = NewPlan(
+        SvgTileRenderPlan candidate = NewPlan(
             new CountingDocument(), "svg-cache-prefix:transition-abort-new", 3072, 1536, 54);
         ImageBox box = CreateBareBox(oldPlan);
         SetField(box, "_svgTileCacheIdentityPrefix", oldPlan.IdentityPrefix);
@@ -585,7 +585,7 @@ public sealed class SvgTileQueuePlanTests
         AbortCacheTransition(box, transition);
 
         Assert.Null(GetNullableField<object>(box, "_svgTileCacheTransitionToken"));
-        Assert.Same(oldPlan, GetNullableField<ImageBox.SvgTileRenderPlan>(box, "_svgTileRenderPlan"));
+        Assert.Same(oldPlan, GetNullableField<SvgTileRenderPlan>(box, "_svgTileRenderPlan"));
         Assert.Equal(oldPlan.IdentityPrefix, GetNullableField<string>(box, "_svgTileCacheIdentityPrefix"));
         Assert.Equal(oldPlan.FullWidthPixels, GetField<int>(box, "_svgTileCacheWidthPixels"));
         Assert.Equal(oldPlan.FullHeightPixels, GetField<int>(box, "_svgTileCacheHeightPixels"));
@@ -596,7 +596,7 @@ public sealed class SvgTileQueuePlanTests
     public void FailedTiledPlanWithoutFallbackDetachesItsTileLeasesAndCacheIdentity()
     {
         var document = new CountingDocument();
-        ImageBox.SvgTileRenderPlan plan = NewPlan(
+        SvgTileRenderPlan plan = NewPlan(
             document, "svg-cache-prefix:terminal-failure-no-fallback", 2048, 1536, 58);
         ImageBox box = CreateBareBox(plan);
         SetField(box, "_svgDocument", document);
@@ -615,7 +615,7 @@ public sealed class SvgTileQueuePlanTests
         lock (GetField<object>(box, "_svgPublicationSync"))
         {
             SetField(box, "_svgTileRenderPlan", null);
-            Assert.Null(GetNullableField<ImageBox.SvgTileRenderPlan>(box, "_svgTileRenderPlan"));
+            Assert.Null(GetNullableField<SvgTileRenderPlan>(box, "_svgTileRenderPlan"));
             SetField(box, "_svgUsesTiles", false);
             Assert.True(ApplyCacheTransition(box, transition));
         }
@@ -637,7 +637,7 @@ public sealed class SvgTileQueuePlanTests
     public void FailedTiledPlanRestoresFallbackIdentityWithoutRetainingFailedTiles()
     {
         var document = new CountingDocument();
-        ImageBox.SvgTileRenderPlan plan = NewPlan(
+        SvgTileRenderPlan plan = NewPlan(
             document, "svg-cache-prefix:terminal-failure-with-fallback", 2048, 1536, 59);
         ImageBox box = CreateBareBox(plan);
         SetField(box, "_svgDocument", document);
@@ -688,7 +688,7 @@ public sealed class SvgTileQueuePlanTests
     public void BitmapTransitionStagesAndDetachesAllOldTileIdentities()
     {
         var document = new CountingDocument();
-        ImageBox.SvgTileRenderPlan oldPlan = NewPlan(
+        SvgTileRenderPlan oldPlan = NewPlan(
             document, "svg-cache-prefix:bitmap-transition", 2048, 2048, 55);
         ImageBox box = CreateBareBox(oldPlan);
         SetField(box, "_svgTileCacheIdentityPrefix", oldPlan.IdentityPrefix);
@@ -724,7 +724,7 @@ public sealed class SvgTileQueuePlanTests
     public void OldAcceptedPlanFailureDoesNotAdvanceOrRepeatNewRequestGeneration()
     {
         var document = new CountingDocument();
-        ImageBox.SvgTileRenderPlan oldPlan = NewPlan(document, "svg-cache-prefix:old-failure", 2048, 2048, 17);
+        SvgTileRenderPlan oldPlan = NewPlan(document, "svg-cache-prefix:old-failure", 2048, 2048, 17);
         ImageBox box = CreateBareBox(oldPlan);
         SetField(box, "_svgRenderGeneration", 18);
         using var work = new CancellationTokenSource();
@@ -734,7 +734,7 @@ public sealed class SvgTileQueuePlanTests
         Assert.True(TryInvalidateFailedTile(box, oldPlan, key, workOwner));
         Assert.Equal(18, GetField<int>(box, "_svgRenderGeneration"));
         Assert.False(GetField<bool>(box, "_svgUsesTiles"));
-        Assert.Null(GetNullableField<ImageBox.SvgTileRenderPlan>(box, "_svgTileRenderPlan"));
+        Assert.Null(GetNullableField<SvgTileRenderPlan>(box, "_svgTileRenderPlan"));
 
         Assert.False(TryInvalidateFailedTile(box, oldPlan, key, workOwner));
         Assert.Equal(18, GetField<int>(box, "_svgRenderGeneration"));
@@ -745,7 +745,7 @@ public sealed class SvgTileQueuePlanTests
     public void SuspendedResidencyRejectsTileQueueWithoutAdmittingWork()
     {
         var document = new CountingDocument();
-        ImageBox.SvgTileRenderPlan plan = NewPlan(document, "svg-cache-prefix:suspended", 2048, 2048, 13);
+        SvgTileRenderPlan plan = NewPlan(document, "svg-cache-prefix:suspended", 2048, 2048, 13);
         ImageBox box = CreateBareBox(plan);
         SetField(box, "_resourcesSuspended", true);
 
@@ -760,8 +760,8 @@ public sealed class SvgTileQueuePlanTests
     public void ReplacedPlanIdentityCannotQueueEvenWhenItsDescriptorValuesMatch()
     {
         var document = new CountingDocument();
-        ImageBox.SvgTileRenderPlan stale = NewPlan(document, "svg-cache-prefix:same-values", 2048, 2048, 19);
-        ImageBox.SvgTileRenderPlan current = NewPlan(document, "svg-cache-prefix:same-values", 2048, 2048, 19);
+        SvgTileRenderPlan stale = NewPlan(document, "svg-cache-prefix:same-values", 2048, 2048, 19);
+        SvgTileRenderPlan current = NewPlan(document, "svg-cache-prefix:same-values", 2048, 2048, 19);
         ImageBox box = CreateBareBox(current);
 
         Assert.NotSame(stale, current);
@@ -777,7 +777,7 @@ public sealed class SvgTileQueuePlanTests
     {
         var previousDocument = new CountingDocument();
         var adoptedDocument = new CountingDocument();
-        ImageBox.SvgTileRenderPlan previousPlan = NewPlan(
+        SvgTileRenderPlan previousPlan = NewPlan(
             previousDocument,
             "svg-cache-prefix:previous-document",
             2048,
@@ -798,7 +798,7 @@ public sealed class SvgTileQueuePlanTests
     public void RemovedTileOwnerCannotInvalidateTheCurrentImage()
     {
         var document = new CountingDocument();
-        ImageBox.SvgTileRenderPlan plan = NewPlan(document, "svg-cache-prefix:removed-owner", 2048, 2048, 37);
+        SvgTileRenderPlan plan = NewPlan(document, "svg-cache-prefix:removed-owner", 2048, 2048, 37);
         ImageBox box = CreateBareBox(plan);
         using var work = new CancellationTokenSource();
         var inFlight = GetField<Dictionary<(int X, int Y, int Width, int Height), CancellationTokenSource>>(
@@ -812,14 +812,14 @@ public sealed class SvgTileQueuePlanTests
         Assert.False(TryInvalidateFailedTile(box, plan, key, workOwner));
         Assert.Equal(plan.RenderGeneration, GetField<int>(box, "_svgRenderGeneration"));
         Assert.True(GetField<bool>(box, "_svgUsesTiles"));
-        Assert.Same(plan, GetNullableField<ImageBox.SvgTileRenderPlan>(box, "_svgTileRenderPlan"));
+        Assert.Same(plan, GetNullableField<SvgTileRenderPlan>(box, "_svgTileRenderPlan"));
     }
 
     [Fact]
     public void ReplacedTileOwnerCannotInvalidateTheCurrentImage()
     {
         var document = new CountingDocument();
-        ImageBox.SvgTileRenderPlan plan = NewPlan(document, "svg-cache-prefix:replaced-owner", 2048, 2048, 39);
+        SvgTileRenderPlan plan = NewPlan(document, "svg-cache-prefix:replaced-owner", 2048, 2048, 39);
         ImageBox box = CreateBareBox(plan);
         using var staleWork = new CancellationTokenSource();
         using var currentWork = new CancellationTokenSource();
@@ -834,14 +834,14 @@ public sealed class SvgTileQueuePlanTests
         Assert.Same(currentWork, inFlight[key]);
         Assert.Equal(plan.RenderGeneration, GetField<int>(box, "_svgRenderGeneration"));
         Assert.True(GetField<bool>(box, "_svgUsesTiles"));
-        Assert.Same(plan, GetNullableField<ImageBox.SvgTileRenderPlan>(box, "_svgTileRenderPlan"));
+        Assert.Same(plan, GetNullableField<SvgTileRenderPlan>(box, "_svgTileRenderPlan"));
     }
 
     [Fact]
     public void RemovedTileOwnerCannotPublishSuccess()
     {
         var document = new CountingDocument();
-        ImageBox.SvgTileRenderPlan plan = NewPlan(document, "svg-cache-prefix:removed-success-owner", 2048, 2048, 40);
+        SvgTileRenderPlan plan = NewPlan(document, "svg-cache-prefix:removed-success-owner", 2048, 2048, 40);
         ImageBox box = CreateBareBox(plan);
         using var work = new CancellationTokenSource();
         var key = (0, 0, ImageBox.SvgTileSizePixels, ImageBox.SvgTileSizePixels);
@@ -859,7 +859,7 @@ public sealed class SvgTileQueuePlanTests
     public void ReassignedTileOwnerCannotPublishSuccess()
     {
         var document = new CountingDocument();
-        ImageBox.SvgTileRenderPlan plan = NewPlan(document, "svg-cache-prefix:reassigned-success-owner", 2048, 2048, 42);
+        SvgTileRenderPlan plan = NewPlan(document, "svg-cache-prefix:reassigned-success-owner", 2048, 2048, 42);
         ImageBox box = CreateBareBox(plan);
         using var staleWork = new CancellationTokenSource();
         using var currentWork = new CancellationTokenSource();
@@ -875,7 +875,7 @@ public sealed class SvgTileQueuePlanTests
     public void ExactTileOwnerCanPublishSuccess()
     {
         var document = new CountingDocument();
-        ImageBox.SvgTileRenderPlan plan = NewPlan(document, "svg-cache-prefix:current-success-owner", 2048, 2048, 44);
+        SvgTileRenderPlan plan = NewPlan(document, "svg-cache-prefix:current-success-owner", 2048, 2048, 44);
         ImageBox box = CreateBareBox(plan);
         using var work = new CancellationTokenSource();
         var key = (0, 0, ImageBox.SvgTileSizePixels, ImageBox.SvgTileSizePixels);
@@ -891,7 +891,7 @@ public sealed class SvgTileQueuePlanTests
     public void ExactCurrentTileOwnerCanInvalidateEvenIfItsTokenWasCanceled(bool cancelBeforeInvalidation)
     {
         var document = new CountingDocument();
-        ImageBox.SvgTileRenderPlan plan = NewPlan(document, "svg-cache-prefix:current-owner", 2048, 2048, 43);
+        SvgTileRenderPlan plan = NewPlan(document, "svg-cache-prefix:current-owner", 2048, 2048, 43);
         ImageBox box = CreateBareBox(plan);
         using var work = new CancellationTokenSource();
         var inFlight = GetField<Dictionary<(int X, int Y, int Width, int Height), CancellationTokenSource>>(
@@ -905,7 +905,7 @@ public sealed class SvgTileQueuePlanTests
         Assert.True(TryInvalidateFailedTile(box, plan, key, workOwner));
         Assert.Equal(plan.RenderGeneration + 1, GetField<int>(box, "_svgRenderGeneration"));
         Assert.False(GetField<bool>(box, "_svgUsesTiles"));
-        Assert.Null(GetNullableField<ImageBox.SvgTileRenderPlan>(box, "_svgTileRenderPlan"));
+        Assert.Null(GetNullableField<SvgTileRenderPlan>(box, "_svgTileRenderPlan"));
     }
 
     [Theory]
@@ -922,7 +922,7 @@ public sealed class SvgTileQueuePlanTests
         int capacity)
     {
         var document = new CountingDocument();
-        ImageBox.SvgTileRenderPlan plan = NewPlan(document, "svg-cache-prefix:range", 2048, 2048, 29);
+        SvgTileRenderPlan plan = NewPlan(document, "svg-cache-prefix:range", 2048, 2048, 29);
         ImageBox box = CreateBareBox(plan);
 
         Assert.Equal(0, Queue(
@@ -946,7 +946,7 @@ public sealed class SvgTileQueuePlanTests
     public void DisposedOrNonTiledBoxCannotQueue(bool disposed, bool usesTiles)
     {
         var document = new CountingDocument();
-        ImageBox.SvgTileRenderPlan plan = NewPlan(document, "svg-cache-prefix:inactive", 2048, 2048, 31);
+        SvgTileRenderPlan plan = NewPlan(document, "svg-cache-prefix:inactive", 2048, 2048, 31);
         ImageBox box = CreateBareBox(plan);
         SetField(box, "_disposed", disposed);
         SetField(box, "_svgUsesTiles", usesTiles);
@@ -958,7 +958,7 @@ public sealed class SvgTileQueuePlanTests
         Assert.Equal(0, document.RenderCount);
     }
 
-    private static ImageBox.SvgTileRenderPlan NewPlan(
+    private static SvgTileRenderPlan NewPlan(
         IMarkdownSvgDocument document,
         string identityPrefix,
         int fullWidthPixels,
@@ -977,7 +977,7 @@ public sealed class SvgTileQueuePlanTests
 
     private static object PrepareCacheTransition(
         ImageBox box,
-        ImageBox.SvgTileRenderPlan? plan)
+        SvgTileRenderPlan? plan)
     {
         MethodInfo method = typeof(ImageBox).GetMethod(
                 "PrepareSvgTileCacheTransition",
@@ -989,7 +989,7 @@ public sealed class SvgTileQueuePlanTests
 
     private static object PrepareFailureTileCacheTransition(
         ImageBox box,
-        ImageBox.SvgTileRenderPlan plan)
+        SvgTileRenderPlan plan)
     {
         MethodInfo method = typeof(ImageBox).GetMethod(
                 "PrepareSvgTileFailureTransition",
@@ -1015,7 +1015,7 @@ public sealed class SvgTileQueuePlanTests
         return method.Invoke(box, [transition]);
     }
 
-    private static ImageBox CreateBareBox(ImageBox.SvgTileRenderPlan plan)
+    private static ImageBox CreateBareBox(SvgTileRenderPlan plan)
     {
         // Queue's already-present/pending fast path must not require a Win2D
         // resource creator, XAML dispatcher, or native device.
@@ -1063,11 +1063,11 @@ public sealed class SvgTileQueuePlanTests
     }
 
     private static object CreateWorkOwner(
-        ImageBox.SvgTileRenderPlan plan,
+        SvgTileRenderPlan plan,
         CancellationTokenSource cancellation,
         int state = 0)
     {
-        Type ownerType = typeof(ImageBox).GetNestedType("SvgTileWorkOwner", BindingFlags.NonPublic)
+        Type ownerType = typeof(SvgTileWorkOwner)
             ?? throw new Xunit.Sdk.XunitException("Missing ImageBox SVG work-owner type.");
         object owner = Activator.CreateInstance(
                 ownerType,
@@ -1082,7 +1082,7 @@ public sealed class SvgTileQueuePlanTests
 
     private static object RegisterWorkOwner(
         ImageBox box,
-        ImageBox.SvgTileRenderPlan plan,
+        SvgTileRenderPlan plan,
         (int X, int Y, int Width, int Height) key,
         CancellationTokenSource cancellation,
         int state = 0)
@@ -1099,7 +1099,7 @@ public sealed class SvgTileQueuePlanTests
         (IDictionary)(Activator.CreateInstance(
             typeof(Dictionary<,>).MakeGenericType(
                 typeof(ValueTuple<int, int, int, int>),
-                typeof(ImageBox).GetNestedType("SvgTileWorkOwner", BindingFlags.NonPublic)!))
+                typeof(SvgTileWorkOwner)))
             ?? throw new Xunit.Sdk.XunitException("Could not create ImageBox SVG work-owner map."));
 
     private static IDictionary GetWorkOwnerMap(ImageBox box) =>
@@ -1108,7 +1108,7 @@ public sealed class SvgTileQueuePlanTests
 
     private static bool TryInvalidateFailedTile(
         ImageBox box,
-        ImageBox.SvgTileRenderPlan plan,
+        SvgTileRenderPlan plan,
         (int X, int Y, int Width, int Height) key,
         object workOwner,
         object? transitionToken = null)
@@ -1123,19 +1123,19 @@ public sealed class SvgTileQueuePlanTests
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "IsCurrentSvgTileWorkOwnerNoLock")]
     private static extern bool IsCurrentTileWorkOwner(
         ImageBox box,
-        ImageBox.SvgTileRenderPlan plan,
+        SvgTileRenderPlan plan,
         (int X, int Y, int Width, int Height) key,
         CancellationTokenSource workCancellation);
 
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "IsCurrentSvgTilePlan")]
     private static extern bool IsCurrentTilePlan(
         ImageBox box,
-        ImageBox.SvgTileRenderPlan plan);
+        SvgTileRenderPlan plan);
 
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "QueueSvgTileRange")]
     private static extern int Queue(
         ImageBox box,
-        ImageBox.SvgTileRenderPlan plan,
+        SvgTileRenderPlan plan,
         int firstTileX,
         int firstTileY,
         int lastTileX,
@@ -1149,18 +1149,18 @@ public sealed class SvgTileQueuePlanTests
     private static long GetRendererIdentity(IMarkdownSvgRenderer renderer) =>
         ImageResourceScope.Shared.ProviderIdentities.GetSvgRendererIdentity(renderer);
 
-    private static void AssertPlanMember<T>(ImageBox.SvgTileRenderPlan plan, string memberName, T expected)
+    private static void AssertPlanMember<T>(SvgTileRenderPlan plan, string memberName, T expected)
     {
         FieldInfo field = FindPlanField(memberName);
         Assert.True(field.IsInitOnly, $"Plan member '{memberName}' must be readonly.");
         Assert.Equal(expected, (T)field.GetValue(plan)!);
     }
 
-    private static T PlanMember<T>(ImageBox.SvgTileRenderPlan plan, string memberName)
+    private static T PlanMember<T>(SvgTileRenderPlan plan, string memberName)
         => (T)FindPlanField(memberName).GetValue(plan)!;
 
     private static FieldInfo FindPlanField(string memberName)
-        => typeof(ImageBox.SvgTileRenderPlan)
+        => typeof(SvgTileRenderPlan)
             .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
             .SingleOrDefault(candidate =>
                 candidate.Name.TrimStart('_').Equals(memberName, StringComparison.OrdinalIgnoreCase) ||

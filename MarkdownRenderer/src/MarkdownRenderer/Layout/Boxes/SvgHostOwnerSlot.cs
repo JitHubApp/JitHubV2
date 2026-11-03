@@ -24,7 +24,7 @@ internal sealed class SvgHostOwnerSlot : IDisposable
 
     internal void Commit(
         ImageBox owner,
-        ImageBox.SvgTileRenderPlan plan,
+        SvgTileRenderPlan plan,
         MarkdownSvgRenderDemand demand,
         long sourceReservationBytes)
     {
