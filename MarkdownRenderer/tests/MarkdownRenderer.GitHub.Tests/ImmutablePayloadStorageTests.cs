@@ -88,7 +88,7 @@ public sealed class ImmutablePayloadStorageTests
         AssertReadonly(typeof(MarkdownLayoutRetirementFailureSummary),
             "ExceptionType HResultCode OmittedFailureCount");
         AssertReadonly(Nested(typeof(Gfm029Compatibility), "PreparedSource"), "Text HasChanges _insertions _maskedSeparators");
-        AssertReadonly(Nested(typeof(Gfm029Compatibility), "LineInfo"), "Start Length");
+        AssertReadonly(typeof(Gfm029SourceLine), "Start Length");
         AssertReadonly(typeof(MarkdownRebuildDispatchState), "Ticket Priority");
         AssertReadonly(typeof(MarkdownTargetCommand), "Kind SourceRange Target Language");
         AssertReadonly(typeof(MarkdownLinkActivationDecision), "InputKind Result");
@@ -566,9 +566,9 @@ public sealed class ImmutablePayloadStorageTests
         Assert.Equal(true, Field(Construct(preparedSourceType,
             ["masked source", Array.Empty<int>(), maskedSeparators]), "HasChanges"));
 
-        object lineInfo = Construct(Nested(typeof(Gfm029Compatibility), "LineInfo"), [27, 14]);
-        Assert.Equal(27, Field(lineInfo, "Start"));
-        Assert.Equal(14, Field(lineInfo, "Length"));
+        var lineInfo = new Gfm029SourceLine(27, 14);
+        Assert.Equal(27, lineInfo.Start);
+        Assert.Equal(14, lineInfo.Length);
 
         object dispatchState = Construct(typeof(MarkdownRebuildDispatchState),
             [91L, MarkdownRebuildDispatchPriority.Normal]);
