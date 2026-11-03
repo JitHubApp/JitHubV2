@@ -108,13 +108,8 @@ internal sealed class DeferredSceneGraphRebinder
         GraphRebindCandidate[] pending;
         long revision;
         MarkdownVectorSceneResidencyPolicy policy;
-        while (!snapshot.TryBeginPaint())
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (snapshot.GeometryRecoveryRequired || snapshot.IsRetiringOrDisposed)
-                return false;
-            await Task.Delay(4, cancellationToken).ConfigureAwait(false);
-        }
+        if (!await TryBeginPaintLeaseAsync(snapshot, cancellationToken).ConfigureAwait(false))
+            return false;
         try
         {
             if (snapshot.GeometryRecoveryRequired)
@@ -150,13 +145,8 @@ internal sealed class DeferredSceneGraphRebinder
         // True means at least all copied pending owners reached an attached or
         // terminal state. A retired/ineligible/stale producer is not progress;
         // the caller must not spin EnsureMeasuredBand on the same graph miss.
-        while (!snapshot.TryBeginPaint())
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (snapshot.GeometryRecoveryRequired || snapshot.IsRetiringOrDisposed)
-                return false;
-            await Task.Delay(4, cancellationToken).ConfigureAwait(false);
-        }
+        if (!await TryBeginPaintLeaseAsync(snapshot, cancellationToken).ConfigureAwait(false))
+            return false;
         try
         {
             if (snapshot.GeometryRecoveryRequired)
@@ -235,126 +225,19 @@ internal sealed class DeferredSceneGraphRebinder
         VectorSceneBox box, string marker, DeferredSceneWork work,
         MarkdownCompletedSceneDescriptor expected, GraphRebindWork request)
     {
-        IMarkdownScenePreparationLease? sceneLease = null;
-        VectorSceneDrawing? replacement = null;
-        bool diagnosticGateHeld = false;
+        var attempt = new RebindAttempt(request.Work.Token);
         try
         {
-            CancellationToken token = request.Work.Token;
-            MarkdownDeferredSceneResult? result = null;
-            MarkdownCompletedSceneDescriptor? descriptor = null;
-            long estimate = 0;
-            bool failed = false;
+            await PrepareReplacementAsync(attempt, marker, work, expected, request).ConfigureAwait(false);
+            MarkdownPerformanceSession.CompleteScenePreparationTiming(attempt.SceneLease);
+            attempt.Token.ThrowIfCancellationRequested();
+            await _diagnosticSet.WaitPublicationAsync(attempt.Token).ConfigureAwait(false);
+            attempt.DiagnosticGateHeld = true;
+            if (!await TryBeginPaintLeaseAsync(request.Snapshot, attempt.Token).ConfigureAwait(false))
+                return;
             try
             {
-                sceneLease = await _session.EnterScenePreparationAsync(_documentOwner, token).ConfigureAwait(false);
-                token = sceneLease.CancellationToken;
-                token.ThrowIfCancellationRequested();
-                lock (_gate)
-                {
-                    if (_results.TryGetCompleted(marker, consumeHandoff: false, out result))
-                        descriptor = expected;
-                }
-                if (result is null && !_host.TryRestoreOnWorker(marker, token, out result, out descriptor))
-                {
-                    result = await work.RenderAsync(token).ConfigureAwait(false);
-                    descriptor = MarkdownCompletedSceneDescriptor.Create(result, token);
-                }
-                token.ThrowIfCancellationRequested();
-                // A custom provider may be nondeterministic. Never replace the
-                // retained UIA/selection/geometry projection with changed data.
-                if (descriptor?.SingleSceneProjection != expected.SingleSceneProjection ||
-                    result?.Fragment.Items.Count != 1 || result.Fragment.Items[0].VectorScene is not { } scene)
-                    throw new InvalidOperationException("The refilled scene changed its immutable projection.");
-                // Own the drawing before a native factory can fail after a
-                // partial prefix. The outer finally retires that prefix even
-                // when preparation's first cleanup attempt also fails.
-                replacement = request.Preparation.Create(scene, token, deferNativeResources: true);
-                // Capacity denial is a typed readable fallback, not a provider
-                // failure and never an MDP0002 diagnostic. The incoming band
-                // has already released outgoing pins; a later refund can wake
-                // another attempt through the current viewport reconciliation.
-                replacement.TryPrepareNativeResources(token, out _);
-                // This command walk runs before taking the snapshot swap lease.
-                estimate = request.Policy.GetPreparedResourceEstimateForRebind(scene, token);
-                token.ThrowIfCancellationRequested();
-            }
-            catch (OperationCanceledException) when (token.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Exception)
-            {
-                failed = true;
-            }
-            if (!failed && replacement is { IsPrepared: false })
-            {
-                // Native descriptor faults are not capacity denial or provider
-                // projection failures. Prewarm off both commit gates and let a
-                // real descriptor/device fault reach the owning control's
-                // existing recovery path without publishing MDP0002.
-                if (!request.Preparation.PrepareCapacityFallback(token))
-                    throw new InvalidOperationException("A denied replacement requires bounded fallback resources.");
-                token.ThrowIfCancellationRequested();
-            }
-            MarkdownPerformanceSession.CompleteScenePreparationTiming(sceneLease);
-            token.ThrowIfCancellationRequested();
-            await _diagnosticSet.WaitPublicationAsync(token).ConfigureAwait(false);
-            diagnosticGateHeld = true;
-            while (!request.Snapshot.TryBeginPaint())
-            {
-                token.ThrowIfCancellationRequested();
-                if (request.Snapshot.GeometryRecoveryRequired || request.Snapshot.IsRetiringOrDisposed)
-                    return;
-                await Task.Delay(4, token).ConfigureAwait(false);
-            }
-            try
-            {
-                if (request.Snapshot.GeometryRecoveryRequired)
-                    return;
-                MarkdownVectorSceneResidencyPolicy? policy = request.Snapshot.VectorSceneResidencyPolicy
-                    as MarkdownVectorSceneResidencyPolicy;
-                if (!ReferenceEquals(policy, request.Policy) || request.Snapshot.LayoutRevision != request.Revision ||
-                    !policy.CanCommitGraphRebind(box, request.Band) || !box.IsGraphDetached)
-                    return;
-                lock (_gate)
-                {
-                    if (_host.IsDisposedNoLock || _session.IsDisposed || request.Work.Generation != _host.GenerationNoLock ||
-                        token.IsCancellationRequested || request.Work.Token.IsCancellationRequested ||
-                        !_graphRebinds.TryGetValue(box, out GraphRebindWork? current) ||
-                        !ReferenceEquals(current, request))
-                        return;
-                    ImmutableArray<MarkdownDiagnostic> contribution;
-                    if (failed)
-                    {
-                        contribution = [new MarkdownDiagnostic("MDP0002", MarkdownDiagnosticSeverity.Error,
-                            "Deferred native content could not be restored without changing its projection.", work.Node.SourceSpan)];
-                        _diagnosticSet.Publish(marker, contribution);
-                        policy.RecordGraphStatusChange(box);
-                        try
-                        {
-                            box.PrepareDetachedFallback(token, MarkdownDetachedSceneFallback.CreateFailed,
-                                replaceExisting: true);
-                        }
-                        finally
-                        {
-                            // Null/failed/canceled native fallback construction
-                            // keeps the last readable source layout and the
-                            // already-published typed diagnostic intact.
-                            box.MarkGraphRebindFailed();
-                        }
-                    }
-                    else
-                    {
-                        if (!policy.AdoptGraphRebind(box, request.Band, replacement!, estimate))
-                            return;
-                        replacement = null; // ownership transferred to the box/policy
-                        descriptor ??= expected;
-                        _results.CommitRebind(marker, descriptor, result!);
-                        contribution = descriptor.DiagnosticContribution;
-                    }
-                    _diagnosticSet.Publish(marker, contribution);
-                }
+                CommitUnderPaintLease(box, marker, work, expected, request, attempt);
             }
             finally
             {
@@ -362,7 +245,7 @@ internal sealed class DeferredSceneGraphRebinder
             }
         }
         catch (OperationCanceledException) when (request.Work.Token.IsCancellationRequested ||
-            sceneLease?.CancellationToken.IsCancellationRequested == true)
+            attempt.SceneLease?.CancellationToken.IsCancellationRequested == true)
         {
             // Actual-use retirement waits for the producer and its cleanup,
             // not for a canceled caller result. Preserve cancellation for the
@@ -371,28 +254,196 @@ internal sealed class DeferredSceneGraphRebinder
         }
         finally
         {
-            try
+            FinishRebind(box, request, attempt);
+        }
+    }
+
+    /// <summary>
+    /// Enters scene admission, restores or re-renders the scene, and prepares
+    /// its replacement drawing off every commit gate. A provider failure or a
+    /// changed projection marks the attempt failed; cancellation propagates.
+    /// </summary>
+    private async Task PrepareReplacementAsync(
+        RebindAttempt attempt, string marker, DeferredSceneWork work,
+        MarkdownCompletedSceneDescriptor expected, GraphRebindWork request)
+    {
+        MarkdownDeferredSceneResult? result = null;
+        MarkdownCompletedSceneDescriptor? descriptor = null;
+        try
+        {
+            attempt.SceneLease = await _session.EnterScenePreparationAsync(_documentOwner, attempt.Token).ConfigureAwait(false);
+            attempt.Token = attempt.SceneLease.CancellationToken;
+            CancellationToken token = attempt.Token;
+            token.ThrowIfCancellationRequested();
+            lock (_gate)
             {
-                replacement?.Dispose();
+                if (_results.TryGetCompleted(marker, consumeHandoff: false, out result))
+                    descriptor = expected;
             }
-            finally
+            if (result is null && !_host.TryRestoreOnWorker(marker, token, out result, out descriptor))
             {
+                result = await work.RenderAsync(token).ConfigureAwait(false);
+                descriptor = MarkdownCompletedSceneDescriptor.Create(result, token);
+            }
+            token.ThrowIfCancellationRequested();
+            // A custom provider may be nondeterministic. Never replace the
+            // retained UIA/selection/geometry projection with changed data.
+            if (descriptor?.SingleSceneProjection != expected.SingleSceneProjection ||
+                result?.Fragment.Items.Count != 1 || result.Fragment.Items[0].VectorScene is not { } scene)
+                throw new InvalidOperationException("The refilled scene changed its immutable projection.");
+            // Own the drawing before a native factory can fail after a
+            // partial prefix. The outer finally retires that prefix even
+            // when preparation's first cleanup attempt also fails.
+            attempt.Replacement = request.Preparation.Create(scene, token, deferNativeResources: true);
+            // Capacity denial is a typed readable fallback, not a provider
+            // failure and never an MDP0002 diagnostic. The incoming band
+            // has already released outgoing pins; a later refund can wake
+            // another attempt through the current viewport reconciliation.
+            attempt.Replacement.TryPrepareNativeResources(token, out _);
+            // This command walk runs before taking the snapshot swap lease.
+            attempt.Estimate = request.Policy.GetPreparedResourceEstimateForRebind(scene, token);
+            token.ThrowIfCancellationRequested();
+            attempt.Result = result;
+            attempt.Descriptor = descriptor;
+        }
+        catch (OperationCanceledException) when (attempt.Token.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            attempt.Failed = true;
+        }
+        if (!attempt.Failed && attempt.Replacement is { IsPrepared: false })
+        {
+            // Native descriptor faults are not capacity denial or provider
+            // projection failures. Prewarm off both commit gates and let a
+            // real descriptor/device fault reach the owning control's
+            // existing recovery path without publishing MDP0002.
+            if (!request.Preparation.PrepareCapacityFallback(attempt.Token))
+                throw new InvalidOperationException("A denied replacement requires bounded fallback resources.");
+            attempt.Token.ThrowIfCancellationRequested();
+        }
+    }
+
+    /// <summary>
+    /// Under the snapshot paint lease and the plan gate, adopts the prepared
+    /// replacement, or on failure publishes MDP0002 and the readable fallback,
+    /// when the request still owns the box in the current generation.
+    /// </summary>
+    private void CommitUnderPaintLease(
+        VectorSceneBox box, string marker, DeferredSceneWork work,
+        MarkdownCompletedSceneDescriptor expected, GraphRebindWork request, RebindAttempt attempt)
+    {
+        CancellationToken token = attempt.Token;
+        if (request.Snapshot.GeometryRecoveryRequired)
+            return;
+        MarkdownVectorSceneResidencyPolicy? policy = request.Snapshot.VectorSceneResidencyPolicy
+            as MarkdownVectorSceneResidencyPolicy;
+        if (!ReferenceEquals(policy, request.Policy) || request.Snapshot.LayoutRevision != request.Revision ||
+            !policy.CanCommitGraphRebind(box, request.Band) || !box.IsGraphDetached)
+            return;
+        lock (_gate)
+        {
+            if (_host.IsDisposedNoLock || _session.IsDisposed || request.Work.Generation != _host.GenerationNoLock ||
+                token.IsCancellationRequested || request.Work.Token.IsCancellationRequested ||
+                !_graphRebinds.TryGetValue(box, out GraphRebindWork? current) ||
+                !ReferenceEquals(current, request))
+                return;
+            ImmutableArray<MarkdownDiagnostic> contribution;
+            if (attempt.Failed)
+            {
+                contribution = [new MarkdownDiagnostic("MDP0002", MarkdownDiagnosticSeverity.Error,
+                    "Deferred native content could not be restored without changing its projection.", work.Node.SourceSpan)];
+                _diagnosticSet.Publish(marker, contribution);
+                policy.RecordGraphStatusChange(box);
                 try
                 {
-                    sceneLease?.Dispose();
+                    box.PrepareDetachedFallback(token, MarkdownDetachedSceneFallback.CreateFailed,
+                        replaceExisting: true);
                 }
                 finally
                 {
-                    if (diagnosticGateHeld)
-                        _diagnosticSet.ReleasePublication();
-                    _retirements.Track(request.Work.Dispose(request.Work.Task));
-                    lock (_gate)
-                    {
-                        if (_graphRebinds.TryGetValue(box, out GraphRebindWork? current) && ReferenceEquals(current, request))
-                            _graphRebinds.Remove(box);
-                    }
+                    // Null/failed/canceled native fallback construction
+                    // keeps the last readable source layout and the
+                    // already-published typed diagnostic intact.
+                    box.MarkGraphRebindFailed();
+                }
+            }
+            else
+            {
+                if (!policy.AdoptGraphRebind(box, request.Band, attempt.Replacement!, attempt.Estimate))
+                    return;
+                attempt.Replacement = null; // ownership transferred to the box/policy
+                MarkdownCompletedSceneDescriptor descriptor = attempt.Descriptor ?? expected;
+                _results.CommitRebind(marker, descriptor, attempt.Result!);
+                contribution = descriptor.DiagnosticContribution;
+            }
+            _diagnosticSet.Publish(marker, contribution);
+        }
+    }
+
+    /// <summary>
+    /// Releases an attempt's unadopted drawing, admission lease and diagnostics
+    /// semaphore, retires its producer and drops its registration, each even
+    /// when an earlier step throws.
+    /// </summary>
+    private void FinishRebind(VectorSceneBox box, GraphRebindWork request, RebindAttempt attempt)
+    {
+        try
+        {
+            attempt.Replacement?.Dispose();
+        }
+        finally
+        {
+            try
+            {
+                attempt.SceneLease?.Dispose();
+            }
+            finally
+            {
+                if (attempt.DiagnosticGateHeld)
+                    _diagnosticSet.ReleasePublication();
+                _retirements.Track(request.Work.Dispose(request.Work.Task));
+                lock (_gate)
+                {
+                    if (_graphRebinds.TryGetValue(box, out GraphRebindWork? current) && ReferenceEquals(current, request))
+                        _graphRebinds.Remove(box);
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Takes the snapshot's short read/swap lease, polling while it is being
+    /// measured. Returns false when the snapshot needs geometry recovery or is
+    /// retiring, so no producer waits on a lease it can never get.
+    /// </summary>
+    private static async Task<bool> TryBeginPaintLeaseAsync(LayoutSnapshot snapshot, CancellationToken cancellationToken)
+    {
+        while (!snapshot.TryBeginPaint())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (snapshot.GeometryRecoveryRequired || snapshot.IsRetiringOrDisposed)
+                return false;
+            await Task.Delay(4, cancellationToken).ConfigureAwait(false);
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// One rebind producer's state: the current cancellation token (the
+    /// admission lease's once entered), what it acquired, and what it prepared.
+    /// </summary>
+    private sealed class RebindAttempt(CancellationToken token)
+    {
+        internal CancellationToken Token = token;
+        internal IMarkdownScenePreparationLease? SceneLease;
+        internal VectorSceneDrawing? Replacement;
+        internal MarkdownDeferredSceneResult? Result;
+        internal MarkdownCompletedSceneDescriptor? Descriptor;
+        internal long Estimate;
+        internal bool Failed;
+        internal bool DiagnosticGateHeld;
     }
 }
