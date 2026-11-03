@@ -1,4 +1,3 @@
-using Microsoft.Win32.SafeHandles;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -6,28 +5,6 @@ using System.Runtime.InteropServices;
 [assembly: DefaultDllImportSearchPaths(DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.SafeDirectories)]
 
 namespace MarkdownRenderer.Mermaid;
-
-public enum MermaidNativeRuntimeStatus
-{
-    Available,
-    NotInstalled,
-    IncompatibleArchitecture,
-    MissingExport,
-    IncompatibleAbi,
-    LoadFailure,
-}
-
-/// <summary>A version of the fixed-width C ABI used to exchange MMIR buffers.</summary>
-public readonly record struct MermaidNativeAbiVersion(ushort Major, ushort Minor);
-
-/// <summary>Read-only availability information for the optional native Mermaid engine.</summary>
-public sealed record MermaidNativeRuntimeInfo(
-    MermaidNativeRuntimeStatus Status,
-    MermaidNativeAbiVersion AbiVersion,
-    string Message)
-{
-    public bool IsAvailable => Status == MermaidNativeRuntimeStatus.Available;
-}
 
 /// <summary>Safely probes the optional native engine without executing parser or layout work.</summary>
 public static class MermaidNativeRuntime
@@ -158,77 +135,6 @@ public static class MermaidNativeRuntime
             return true;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
-        {
-            return false;
-        }
-    }
-}
-
-internal sealed class MermaidEngineHandle : SafeHandleZeroOrMinusOneIsInvalid
-{
-    internal MermaidEngineHandle(nint value)
-        : base(ownsHandle: true) => SetHandle(value);
-
-    protected override bool ReleaseHandle()
-    {
-        try
-        {
-            return NativeMethods.EngineRelease(handle) == NativeStatus.Success;
-        }
-        catch (Exception exception) when (exception is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
-        {
-            return false;
-        }
-    }
-}
-
-internal sealed class MermaidCancellationHandle : SafeHandleZeroOrMinusOneIsInvalid
-{
-    internal MermaidCancellationHandle(nint value)
-        : base(ownsHandle: true) => SetHandle(value);
-
-    internal void Request()
-    {
-        if (IsInvalid || IsClosed)
-        {
-            return;
-        }
-
-        try
-        {
-            _ = NativeMethods.CancellationRequest(handle);
-        }
-        catch (Exception exception) when (exception is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
-        {
-            // Cancellation is best-effort during native teardown. No exception crosses the callback boundary.
-        }
-    }
-
-    protected override bool ReleaseHandle()
-    {
-        try
-        {
-            return NativeMethods.CancellationRelease(handle) == NativeStatus.Success;
-        }
-        catch (Exception exception) when (exception is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
-        {
-            return false;
-        }
-    }
-}
-
-internal sealed class MermaidBufferHandle : SafeHandleZeroOrMinusOneIsInvalid
-{
-    internal MermaidBufferHandle(nint value)
-        : base(ownsHandle: true) => SetHandle(value);
-
-    protected override bool ReleaseHandle()
-    {
-        try
-        {
-            return NativeMethods.BufferRelease(handle) == NativeStatus.Success;
-        }
-        catch (Exception exception) when (exception is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
         {
             return false;
         }

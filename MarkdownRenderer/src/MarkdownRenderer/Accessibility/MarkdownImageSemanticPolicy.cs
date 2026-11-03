@@ -1,12 +1,5 @@
 namespace MarkdownRenderer.Accessibility;
 
-internal enum MarkdownImageAccessibilityState
-{
-    Loading,
-    Loaded,
-    Error,
-}
-
 /// <summary>Pure policy for projecting image alt/link metadata into UIA text.</summary>
 internal static class MarkdownImageSemanticPolicy
 {

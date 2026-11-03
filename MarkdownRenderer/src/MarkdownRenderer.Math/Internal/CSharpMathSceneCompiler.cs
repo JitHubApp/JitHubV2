@@ -83,14 +83,3 @@ internal static class CSharpMathSceneCompiler
         public override ICanvas WrapCanvas(RecordingMathCanvas canvas) => canvas;
     }
 }
-
-internal sealed class MathSceneDimensionException : Exception
-{
-    internal MathSceneDimensionException(string dimension)
-        : base($"The formula exceeded its {dimension} budget.")
-    {
-        Dimension = dimension;
-    }
-
-    internal string Dimension { get; }
-}

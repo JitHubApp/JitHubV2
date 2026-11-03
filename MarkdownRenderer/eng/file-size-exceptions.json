@@ -58,7 +58,7 @@
     },
     {
       "path": "src/MarkdownRenderer.Mermaid/MermaidSceneDecoder.cs",
-      "lines": 1076,
+      "lines": 1028,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
 {

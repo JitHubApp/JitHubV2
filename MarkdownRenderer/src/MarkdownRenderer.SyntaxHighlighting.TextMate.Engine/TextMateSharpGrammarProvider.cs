@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
-using MarkdownRenderer.SyntaxHighlighting.TextMate;
 using TextMateSharp.Grammars;
 using TextMateSharp.Registry;
 
@@ -386,13 +385,4 @@ public sealed class TextMateSharpGrammarProvider : ITextMateGrammarProvider, IDi
     }
 
     private sealed record ThemeState(IRegistryOptions Options, Registry Registry);
-}
-
-internal enum TextMateProviderCheckpoint
-{
-    BeforeGrammarLoad,
-    AfterGrammarLoad,
-    BeforeLineTokenization,
-    AfterLineTokenizationSlice,
-    AfterLineTokenization,
 }

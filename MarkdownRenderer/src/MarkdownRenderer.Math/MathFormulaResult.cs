@@ -1,42 +1,5 @@
 namespace MarkdownRenderer.Math;
 
-/// <summary>Identifies the outcome of bounded native formula processing.</summary>
-internal enum MathFormulaResultKind
-{
-    /// <summary>The formula produced a usable vector scene.</summary>
-    Accepted,
-    /// <summary>The source is not valid supported TeX.</summary>
-    InvalidSource,
-    /// <summary>The source or generated scene exceeded a configured limit.</summary>
-    Unsupported,
-    /// <summary>An unexpected processing failure occurred.</summary>
-    Failed,
-}
-
-/// <summary>A stable localized diagnostic over an atomic UTF-16 source range.</summary>
-internal sealed class MathFormulaDiagnostic
-{
-    /// <summary>Creates a formula diagnostic.</summary>
-    public MathFormulaDiagnostic(string code, string message, MathSourceRange sourceRange)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(code);
-        ArgumentException.ThrowIfNullOrWhiteSpace(message);
-
-        Code = code;
-        Message = message;
-        SourceRange = sourceRange;
-    }
-
-    /// <summary>Gets the stable diagnostic code.</summary>
-    public string Code { get; }
-
-    /// <summary>Gets the localized diagnostic message.</summary>
-    public string Message { get; }
-
-    /// <summary>Gets the half-open UTF-16 range covered by the diagnostic.</summary>
-    public MathSourceRange SourceRange { get; }
-}
-
 /// <summary>
 /// Parser- and painter-independent outcome for a formula. Non-accepted outcomes always
 /// preserve the exact delimited source for a code-styled fallback.

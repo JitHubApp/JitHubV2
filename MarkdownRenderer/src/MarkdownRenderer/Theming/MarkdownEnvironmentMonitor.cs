@@ -12,14 +12,6 @@ using MarkdownRenderer.Diagnostics;
 
 namespace MarkdownRenderer.Theming;
 
-/// <summary>Receives shared window-environment changes without being rooted by the monitor.</summary>
-internal interface IMarkdownEnvironmentListener
-{
-    void OnMarkdownEnvironmentChanged(
-        in MarkdownEnvironmentSnapshot snapshot,
-        MarkdownEnvironmentChange changes);
-}
-
 /// <summary>
 /// One native environment observer per <see cref="XamlRoot"/>. Controls hold a
 /// lightweight lease; the monitor holds only weak references back to controls.

@@ -17,7 +17,7 @@ public sealed partial class MarkdownLocalizationContractTests
             "src",
             "MarkdownRenderer",
             "Hosting",
-            "MarkdownHostServices.cs"));
+            "MarkdownStringKeys.cs"));
         string provider = File.ReadAllText(Path.Combine(
             root,
             "JitHub.WinUI",
@@ -45,7 +45,7 @@ public sealed partial class MarkdownLocalizationContractTests
             "src",
             "MarkdownRenderer",
             "Hosting",
-            "MarkdownHostServices.cs"));
+            "MarkdownStringKeys.cs"));
         string[] resourceKeys = StableStringKeyPattern()
             .Matches(contracts)
             .Cast<Match>()
@@ -68,7 +68,7 @@ public sealed partial class MarkdownLocalizationContractTests
             "src",
             "MarkdownRenderer",
             "Hosting",
-            "MarkdownHostServices.cs"));
+            "MarkdownStringKeys.cs"));
         string[] expectedKeys = StableStringKeyPattern()
             .Matches(contracts)
             .Cast<Match>()
