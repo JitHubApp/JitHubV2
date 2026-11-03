@@ -139,6 +139,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private readonly RendererLocalization _localization;
     private readonly AutomationScrolling _automationScrolling;
     private readonly TouchTapSuppressionPolicy _touchTapSuppression = new();
+    private readonly InteractionReset _interactionReset;
 
     private string? _committedImageDocumentId;
     private MarkdownEnvironmentMonitor.Subscription? _environmentSubscription;
@@ -1190,6 +1191,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _focus = new KeyboardFocusModel(_lifetime, _published);
         _focusGeometry = new FocusGeometryReader(_lifetime, _published);
         _focusRing = new FocusRingPresenter(this, _focus, _focusGeometry, _surface, _lifetime, _published, DispatcherQueue);
+        _interactionReset = new InteractionReset(_surface, _selection, _touchSelection, _touchRestore, _touchTapSuppression, _pointerInput, _document, _handles, _autoScroll, _dragShield, _contextMenu, _adorner, _hover, _abbreviationTooltip, _cursor, _focus, _focusRing);
         _rasterPlacement = new RasterPlacementPublisher(this, _lifetime, _published, _layoutCommit, _surface, _pointerInput, _imageSubscriptions, _imagePlans, _imageResidency, _embeds, _focus, _focusRing, _hostedFocusPlan, _snapshotRetirements);
         _focusRefresh = new FocusableItemsRefreshRequest(_published);
         _focusableItems = new FocusableItemsPublication(this, _lifetime, _published, _focusRefresh, _focus, _recoveryClock);
@@ -1302,7 +1304,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     private void OnMarkdownChanged()
     {
-        ResetInputForDocumentReplacement();
+        _interactionReset.ResetInputForDocumentReplacement();
         // Document has documented precedence over Markdown. A source change
         // invalidates only the document that this control published itself;
         // it must never clear a host-supplied/bound document based on DP
@@ -1325,26 +1327,12 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         if (_isUpdatingDocumentProperty)
             return;
 
-        ResetInputForDocumentReplacement();
+        _interactionReset.ResetInputForDocumentReplacement();
         _hasExplicitDocument = e.NewValue is MarkdownRenderer.Document.MarkdownDocument;
         _disclosureStates.Clear();
         _embeds.ClearHostedElementFallbacks();
         _highlighting.ClearCache();
         RequestRebuild(RebuildReason.Full);
-    }
-
-    private void ResetInputForDocumentReplacement()
-    {
-        // Prevent a queued terminal from applying old-document cancellation
-        // semantics while its input queue is being discarded. The committed
-        // document selection remains governed by the normal rebuild commit;
-        // only touch ownership, handles, flyouts, and pending input are reset.
-        _touchRestore.Cancel();
-        _touchTapSuppression.Reset();
-        _pointerInput.Reset();
-        ResetTransientInteractionState(clearSelection: false);
-        _touchTapSuppression.RequireAcceptedContactForRecognizedGesture();
-        _handles.Update();
     }
 
     private void OnEngineChanged(DependencyPropertyChangedEventArgs e)
@@ -1432,7 +1420,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     bool ISelectionDismissalHost.IsPointOverEmbed(Point canvasPoint) => _embeds.HitTargets.IsPointOverEmbed(canvasPoint);
 
-    void ISelectionDismissalHost.ClearSelectionForExternalInteraction() => ClearSelectionForExternalInteraction();
+    void ISelectionDismissalHost.ClearSelectionForExternalInteraction() => _interactionReset.ClearSelectionForExternalInteraction();
 
     /// <summary>
     /// Copies the active selection to the clipboard.
@@ -1528,7 +1516,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     void IPointerInteractionHost.UpdateSelectionOverlay() => UpdateSelectionOverlay();
 
-    void IPointerInteractionHost.ClearSelectionForExternalInteraction() => ClearSelectionForExternalInteraction();
+    void IPointerInteractionHost.ClearSelectionForExternalInteraction() => _interactionReset.ClearSelectionForExternalInteraction();
 
     void IPointerInteractionHost.ResumePendingRebuildAfterPointerInteraction()
         => ResumePendingRebuildAfterPointerInteraction();
@@ -1549,7 +1537,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         => ResumePendingRebuildAfterPointerInteraction();
 
     void IPointerInputRouterHost.ClearSelectionForExternalInteraction(bool resetClickTracking, bool resetDeferredPointerInput)
-        => ClearSelectionForExternalInteraction(resetClickTracking, resetDeferredPointerInput);
+        => _interactionReset.ClearSelectionForExternalInteraction(resetClickTracking, resetDeferredPointerInput);
 
     bool IPointerInputRouterHost.ActivateLinkIntent(
         LinkActivationIntent intent,
@@ -1971,7 +1959,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     void IRebuildSchedulerHost.ResetInteractionForRebuild()
     {
         _touchRestore.Capture();
-        ResetTransientInteractionState(clearSelection: false);
+        _interactionReset.ResetTransientState(clearSelection: false);
     }
 
     void IRebuildSchedulerHost.DiscardTouchSelectionRestore() => _touchRestore.Cancel();
@@ -2053,36 +2041,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     internal void ClearSelectionFromCoordinator()
     {
-        ClearSelectionForExternalInteraction();
-    }
-
-    private void ClearSelectionForExternalInteraction(
-        bool resetClickTracking = true,
-        bool resetDeferredPointerInput = true)
-    {
-        _touchRestore.Cancel();
-        _touchTapSuppression.Reset();
-        _contextMenu.Close();
-        if (resetDeferredPointerInput)
-            _pointerInput.Reset();
-        _document.ResetSession();
-        _handles.ResetDrag();
-        _touchSelection.Reset();
-        _document.ForgetDragAnchor();
-        _dragShield.SetActive(false);
-        if (resetClickTracking)
-        {
-            _document.ResetClickTracking();
-        }
-
-        if (_selection.IsActive || !_selection.Range.IsEmpty)
-            _selection.Clear();
-
-        if (_focus.FocusedIndex >= 0)
-        {
-            _focus.ClearFocus();
-            _focusRing.Update();
-        }
+        _interactionReset.ClearSelectionForExternalInteraction();
     }
 
     private void OnSelectionChanged()
@@ -2101,7 +2060,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         if (!isEnabled)
         {
             _touchTapSuppression.Reset();
-            ClearSelectionForExternalInteraction();
+            _interactionReset.ClearSelectionForExternalInteraction();
         }
 
         // TextPattern remains available for document reading, but its
@@ -2493,32 +2452,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         Task retirement = OwnedResourceRetirement.DisposeAfterPropagating(engine, lifetime);
         _snapshotRetirements.Track(retirement);
         return retirement;
-    }
-
-    private void ResetTransientInteractionState(bool clearSelection)
-    {
-        // Clear logical capture ownership before touching XAML. A disconnected
-        // input site must not keep a replacement blocked by a stale gesture.
-        _touchTapSuppression.Reset();
-        _handles.ResetDrag();
-        _touchSelection.Reset();
-        _document.Reset();
-        _autoScroll.Reset();
-        _hover.Clear();
-        _abbreviationTooltip.ForgetTarget();
-        _contextMenu.Close();
-        _dragShield.SetActive(false);
-        _abbreviationTooltip.Hide();
-
-        _cursor.SetShape(null);
-
-        try { _surface.Canvas?.ReleasePointerCaptures(); } catch { }
-
-        if (!clearSelection)
-            return;
-
-        _selection.Clear();
-        _adorner.InvalidateGeometry();
     }
 
     private async Task RebuildAsync(
@@ -3259,7 +3192,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         // A disconnected XAML input site can throw while closing a flyout or
         // hiding a visual. Such cleanup must neither consume the one recovery
         // request without scheduling it nor leave another capture unreleased.
-        TryGeometryRecoveryCleanup(() => ResetTransientInteractionState(clearSelection: false));
+        TryGeometryRecoveryCleanup(() => _interactionReset.ResetTransientState(clearSelection: false));
         TryGeometryRecoveryCleanup(() => _surface.Canvas?.ReleasePointerCaptures());
         TryGeometryRecoveryCleanup(() => _dragShield.SetActive(false));
         TryGeometryRecoveryCleanup(_contextMenu.Close);
