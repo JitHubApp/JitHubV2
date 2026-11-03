@@ -87,6 +87,57 @@ internal static class MermaidSceneDecoder
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        MermaidSceneDecodeResult? failure = TryReadHeader(
+            buffer,
+            budgets,
+            out ushort major,
+            out ushort minor,
+            out int totalSize,
+            out int directoryOffset,
+            out int sectionCount);
+        if (failure is not null)
+        {
+            return failure;
+        }
+
+        failure = TryReadSectionDirectory(
+            buffer,
+            totalSize,
+            directoryOffset,
+            sectionCount,
+            cancellationToken,
+            out Section[] sections);
+        if (failure is not null)
+        {
+            return failure;
+        }
+
+        return DecodeSections(
+            buffer,
+            source,
+            sourceByteLength,
+            budgets,
+            major,
+            minor,
+            directoryOffset,
+            sections,
+            cancellationToken);
+    }
+
+    private static MermaidSceneDecodeResult? TryReadHeader(
+        ReadOnlySpan<byte> buffer,
+        MermaidRenderBudgets budgets,
+        out ushort major,
+        out ushort minor,
+        out int totalSize,
+        out int directoryOffset,
+        out int sectionCount)
+    {
+        major = 0;
+        minor = 0;
+        totalSize = 0;
+        directoryOffset = 0;
+        sectionCount = 0;
         if (buffer.Length < HeaderSize)
         {
             return Failure(MermaidSceneDecodeStatus.BufferTooSmall, buffer.Length, "The MMIR header is incomplete.");
@@ -97,17 +148,17 @@ internal static class MermaidSceneDecoder
             return Failure(MermaidSceneDecodeStatus.BadMagic, 0, "The MMIR magic value is invalid.");
         }
 
-        ushort major = ReadUInt16(buffer, 4);
-        ushort minor = ReadUInt16(buffer, 6);
+        major = ReadUInt16(buffer, 4);
+        minor = ReadUInt16(buffer, 6);
         if (major != SupportedMajor || minor > SupportedMinor)
         {
             return Failure(MermaidSceneDecodeStatus.UnsupportedVersion, 4, $"MMIR {major}.{minor} is not supported.");
         }
 
         if (!TryUIntToInt(ReadUInt32(buffer, 8), out int headerSize) || headerSize != HeaderSize ||
-            !TryUIntToInt(ReadUInt32(buffer, 12), out int totalSize) ||
-            !TryUIntToInt(ReadUInt32(buffer, 16), out int directoryOffset) ||
-            !TryUIntToInt(ReadUInt32(buffer, 20), out int sectionCount))
+            !TryUIntToInt(ReadUInt32(buffer, 12), out totalSize) ||
+            !TryUIntToInt(ReadUInt32(buffer, 16), out directoryOffset) ||
+            !TryUIntToInt(ReadUInt32(buffer, 20), out sectionCount))
         {
             return Failure(MermaidSceneDecodeStatus.InvalidHeader, 8, "One or more MMIR header fields are invalid.");
         }
@@ -132,6 +183,18 @@ internal static class MermaidSceneDecoder
             return Failure(MermaidSceneDecodeStatus.InvalidDirectory, 16, "The MMIR section directory is invalid.");
         }
 
+        return null;
+    }
+
+    private static MermaidSceneDecodeResult? TryReadSectionDirectory(
+        ReadOnlySpan<byte> buffer,
+        int totalSize,
+        int directoryOffset,
+        int sectionCount,
+        CancellationToken cancellationToken,
+        out Section[] sections)
+    {
+        sections = [];
         int directoryLength = checked(sectionCount * SectionDescriptorSize);
         if (!IsRangeInBounds(directoryOffset, directoryLength, totalSize))
         {
@@ -139,7 +202,7 @@ internal static class MermaidSceneDecoder
         }
 
         int payloadFloor = checked(directoryOffset + directoryLength);
-        var sections = new Section[sectionCount];
+        var directory = new Section[sectionCount];
         var sectionKinds = new HashSet<uint>();
 
         for (int i = 0; i < sectionCount; i++)
@@ -175,12 +238,12 @@ internal static class MermaidSceneDecoder
                 return Failure(MermaidSceneDecodeStatus.InvalidDirectory, descriptorOffset + 12, "A section count, stride, or byte length is inconsistent.");
             }
 
-            sections[i] = new Section((SectionKind)rawKind, offset, length, count, stride);
+            directory[i] = new Section((SectionKind)rawKind, offset, length, count, stride);
         }
 
-        Array.Sort(sections, static (left, right) => left.Offset.CompareTo(right.Offset));
+        Array.Sort(directory, static (left, right) => left.Offset.CompareTo(right.Offset));
         int previousEnd = payloadFloor;
-        foreach (Section section in sections)
+        foreach (Section section in directory)
         {
             if (section.Length > 0 && section.Offset < previousEnd)
             {
@@ -193,6 +256,21 @@ internal static class MermaidSceneDecoder
             }
         }
 
+        sections = directory;
+        return null;
+    }
+
+    private static MermaidSceneDecodeResult DecodeSections(
+        ReadOnlySpan<byte> buffer,
+        string source,
+        int sourceByteLength,
+        MermaidRenderBudgets budgets,
+        ushort major,
+        ushort minor,
+        int directoryOffset,
+        Section[] sections,
+        CancellationToken cancellationToken)
+    {
         if (!TryGetSection(sections, SectionKind.Viewport, out Section viewportSection) ||
             !TryGetSection(sections, SectionKind.Strings, out Section stringsSection) ||
             !TryGetSection(sections, SectionKind.DrawCommands, out Section commandsSection))
