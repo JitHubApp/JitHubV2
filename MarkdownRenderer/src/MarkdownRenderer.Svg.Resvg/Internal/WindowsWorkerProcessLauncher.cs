@@ -8,10 +8,10 @@ namespace MarkdownRenderer.Svg.Resvg.Internal;
 
 /// <summary>Starts the packaged resvg worker executable.</summary>
 /// <remarks>
-/// The startup method stays one long method on purpose: its single
-/// try/finally owns the pipe, the process handle and the object security
-/// until the worker adopts them, and its diagnostic identity read must
-/// stay open across process creation.
+/// The startup method keeps the single try/finally that owns the pipe, the
+/// process handle and the object security until the worker adopts them; its
+/// steps create, read or report but never keep those handles. The diagnostic
+/// identity read stays open across process creation.
 /// </remarks>
 internal sealed class WindowsWorkerProcessLauncher(
     string workerPath,
@@ -41,10 +41,7 @@ internal sealed class WindowsWorkerProcessLauncher(
         if (!File.Exists(executablePath))
             throw new FileNotFoundException("The architecture-specific resvg worker is missing.", executablePath);
 
-        byte[] nonceBytes = RandomNumberGenerator.GetBytes(16);
-        ulong nonceLow = BitConverter.ToUInt64(nonceBytes, 0);
-        ulong nonceHigh = BitConverter.ToUInt64(nonceBytes, 8);
-        string nonce = $"{nonceHigh:x16}{nonceLow:x16}";
+        (ulong nonceLow, ulong nonceHigh, string nonce) = CreateNonce();
         string pipeName = $"MarkdownRenderer.Resvg.{Environment.ProcessId}.{nonce}";
         using SafeTokenHandle sourceToken = WorkerProcessSandbox.OpenCurrentPrimaryTokenForWorker();
         WorkerObjectSecurity.WorkerObjectSecurityContext? objectSecurity =
@@ -56,21 +53,7 @@ internal sealed class WindowsWorkerProcessLauncher(
         long processStartedTimestamp = 0;
         try
         {
-            var pipeSecurity = new PipeSecurity();
-            pipeSecurity.SetSecurityDescriptorSddlForm(
-                objectSecurity.RestrictedDaclSddl,
-                AccessControlSections.Access);
-            pipe = NamedPipeServerStreamAcl.Create(
-                pipeName,
-                PipeDirection.InOut,
-                1,
-                PipeTransmissionMode.Byte,
-                PipeOptions.Asynchronous | PipeOptions.WriteThrough,
-                WorkerProtocol.ResponseSize,
-                WorkerProtocol.RequestSize,
-                pipeSecurity,
-                HandleInheritability.None,
-                (PipeAccessRights)0);
+            pipe = CreateRestrictedPipe(pipeName, objectSecurity);
 
             // Keep the newly created pipe inside the same ownership scope as
             // startup so a label failure cannot leak its server handle.
@@ -83,29 +66,8 @@ internal sealed class WindowsWorkerProcessLauncher(
                 // cannot silently refer to a replacement file at the same path.
                 if (WorkerTimeoutEvents.Log.IsEnabled())
                 {
-                    try
-                    {
-                        identityFile = new FileStream(
-                            executablePath,
-                            FileMode.Open,
-                            FileAccess.Read,
-                            FileShare.Read,
-                            bufferSize: 64 * 1024,
-                            FileOptions.Asynchronous | FileOptions.SequentialScan);
-                        byte[] digest = await SHA256.HashDataAsync(identityFile, cancellationToken)
-                            .ConfigureAwait(false);
-                        workerExecutableSha256 = Convert.ToHexString(digest);
-                    }
-                    catch (IOException)
-                    {
-                        identityFile?.Dispose();
-                        identityFile = null;
-                    }
-                    catch (UnauthorizedAccessException)
-                    {
-                        identityFile?.Dispose();
-                        identityFile = null;
-                    }
+                    (identityFile, workerExecutableSha256) =
+                        await OpenExecutableIdentityAsync(executablePath, cancellationToken).ConfigureAwait(false);
                 }
 
                 processStartedTimestamp = Stopwatch.GetTimestamp();
@@ -134,23 +96,7 @@ internal sealed class WindowsWorkerProcessLauncher(
             }
             catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
             {
-                WorkerTimeoutEvents.Log.Timeout(
-                    stage: 0,
-                    deadlineMilliseconds: (int)WorkerSchedulingPolicy.InitializationDeadline.TotalMilliseconds,
-                    workerProcessCpuMilliseconds: -1,
-                    transportPhase: -1,
-                    requestWriteMilliseconds: -1,
-                    workerExited: -1,
-                    openProgressPhase: -1,
-                    workerWorkingSetKiB: -1,
-                    workerPrivateCommitKiB: -1,
-                    workerPageFaults: -1,
-                    elapsedWallMilliseconds: WindowsWorkerProcess.GetElapsedMilliseconds(processStartedTimestamp),
-                    workerInputSha256: string.Empty,
-                    workerExecutableSha256: workerExecutableSha256 ?? string.Empty);
-                throw new WorkerInitializationDeadlineException(
-                    "The resvg worker did not complete startup before its initialization deadline.",
-                    exception);
+                throw ReportInitializationDeadline(processStartedTimestamp, workerExecutableSha256, exception);
             }
 
             var worker = new WindowsWorkerProcess(
@@ -169,13 +115,129 @@ internal sealed class WindowsWorkerProcessLauncher(
         finally
         {
             if (process is not null)
-            {
-                _ = WorkerNativeMethods.TerminateProcess(process, WorkerProcessSandbox.WorkerTerminationExitCode);
-                _ = WorkerNativeMethods.WaitForSingleObject(process, WorkerProcessSandbox.WorkerTerminationWaitMilliseconds);
-                process.Dispose();
-            }
+                TerminateUnadoptedProcess(process);
             pipe?.Dispose();
             objectSecurity?.Dispose();
         }
+    }
+
+    /// <summary>Draws the per-worker nonce that names the pipe and authenticates the worker.</summary>
+    /// <returns>The nonce halves and their hexadecimal form.</returns>
+    private static (ulong Low, ulong High, string Text) CreateNonce()
+    {
+        byte[] nonceBytes = RandomNumberGenerator.GetBytes(16);
+        ulong nonceLow = BitConverter.ToUInt64(nonceBytes, 0);
+        ulong nonceHigh = BitConverter.ToUInt64(nonceBytes, 8);
+        return (nonceLow, nonceHigh, $"{nonceHigh:x16}{nonceLow:x16}");
+    }
+
+    /// <summary>
+    /// Creates the single-instance server pipe with the worker's restricted
+    /// DACL. The caller owns the returned pipe as soon as it returns.
+    /// </summary>
+    /// <param name="pipeName">The nonce-qualified pipe name.</param>
+    /// <param name="objectSecurity">The worker's object security context.</param>
+    /// <returns>The unconnected server pipe.</returns>
+    private static NamedPipeServerStream CreateRestrictedPipe(
+        string pipeName,
+        WorkerObjectSecurity.WorkerObjectSecurityContext objectSecurity)
+    {
+        var pipeSecurity = new PipeSecurity();
+        pipeSecurity.SetSecurityDescriptorSddlForm(
+            objectSecurity.RestrictedDaclSddl,
+            AccessControlSections.Access);
+        return NamedPipeServerStreamAcl.Create(
+            pipeName,
+            PipeDirection.InOut,
+            1,
+            PipeTransmissionMode.Byte,
+            PipeOptions.Asynchronous | PipeOptions.WriteThrough,
+            WorkerProtocol.ResponseSize,
+            WorkerProtocol.RequestSize,
+            pipeSecurity,
+            HandleInheritability.None,
+            (PipeAccessRights)0);
+    }
+
+    /// <summary>
+    /// Opens the worker executable for reading and hashes it for diagnostics.
+    /// An unreadable file yields no identity; any other failure, including
+    /// cancellation, disposes the handle and propagates.
+    /// </summary>
+    /// <param name="executablePath">The packaged worker executable.</param>
+    /// <param name="cancellationToken">Cancels startup.</param>
+    /// <returns>The still-open read handle and its SHA-256, or neither.</returns>
+    private static async ValueTask<(FileStream? File, string? Sha256)> OpenExecutableIdentityAsync(
+        string executablePath,
+        CancellationToken cancellationToken)
+    {
+        FileStream? identityFile = null;
+        bool returned = false;
+        try
+        {
+            identityFile = new FileStream(
+                executablePath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                bufferSize: 64 * 1024,
+                FileOptions.Asynchronous | FileOptions.SequentialScan);
+            byte[] digest = await SHA256.HashDataAsync(identityFile, cancellationToken)
+                .ConfigureAwait(false);
+            string sha256 = Convert.ToHexString(digest);
+            returned = true;
+            return (identityFile, sha256);
+        }
+        catch (IOException)
+        {
+            return (null, null);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return (null, null);
+        }
+        finally
+        {
+            if (!returned)
+                identityFile?.Dispose();
+        }
+    }
+
+    /// <summary>Records the startup timeout and creates the deadline failure.</summary>
+    /// <param name="processStartedTimestamp">When process creation began.</param>
+    /// <param name="workerExecutableSha256">The diagnostic executable digest, if read.</param>
+    /// <param name="exception">The startup cancellation.</param>
+    /// <returns>The exception the caller throws.</returns>
+    private static WorkerInitializationDeadlineException ReportInitializationDeadline(
+        long processStartedTimestamp,
+        string? workerExecutableSha256,
+        OperationCanceledException exception)
+    {
+        WorkerTimeoutEvents.Log.Timeout(
+            stage: 0,
+            deadlineMilliseconds: (int)WorkerSchedulingPolicy.InitializationDeadline.TotalMilliseconds,
+            workerProcessCpuMilliseconds: -1,
+            transportPhase: -1,
+            requestWriteMilliseconds: -1,
+            workerExited: -1,
+            openProgressPhase: -1,
+            workerWorkingSetKiB: -1,
+            workerPrivateCommitKiB: -1,
+            workerPageFaults: -1,
+            elapsedWallMilliseconds: WindowsWorkerProcess.GetElapsedMilliseconds(processStartedTimestamp),
+            workerInputSha256: string.Empty,
+            workerExecutableSha256: workerExecutableSha256 ?? string.Empty);
+        return new WorkerInitializationDeadlineException(
+            "The resvg worker did not complete startup before its initialization deadline.",
+            exception);
+    }
+
+    /// <summary>Terminates and releases a worker that startup did not hand over.</summary>
+    /// <param name="process">The unadopted worker process.</param>
+    private static void TerminateUnadoptedProcess(SafeProcessHandle process)
+    {
+        _ = WorkerNativeMethods.TerminateProcess(process, WorkerProcessSandbox.WorkerTerminationExitCode);
+        _ = WorkerNativeMethods.WaitForSingleObject(process, WorkerProcessSandbox.WorkerTerminationWaitMilliseconds);
+        process.Dispose();
     }
 }
