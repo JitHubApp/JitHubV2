@@ -161,12 +161,7 @@
       "lines": 1415,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
-    {
-      "path": "src/MarkdownRenderer/Layout/Boxes/TableBox.cs",
-      "lines": 1124,
-      "reason": "Predates the size rule; split by responsibility in a later structure step."
-    },
-    {
+{
       "path": "src/MarkdownRenderer/Layout/Boxes/TableBox.MeasuredPlacementTransfer.cs",
       "lines": 1032,
       "reason": "Predates the size rule; split by responsibility in a later structure step."

@@ -585,8 +585,8 @@ internal sealed partial class TableBox
             SafeHtmlInlineFlowScopeId is not null ||
             prepared.SafeHtmlInlineFlowScopeId != SafeHtmlInlineFlowScopeId ||
             prepared.BlockIndex != BlockIndex ||
-            !HasCompatiblePlacementContext(_context, prepared._context) ||
-            !TryGetPrivatePlacementCellCount(out int cellCount) ||
+            !TablePrivatePlacementCloner.HasCompatiblePlacementContext(_context, prepared._context) ||
+            !TablePrivatePlacementCloner.TryGetPrivatePlacementCellCount(this, out int cellCount) ||
             cellCount <= 0 || cellCount > MaximumPrivateRasterPlacementCells ||
             RowCount <= 0 || RowCount > MaximumPrivateRasterPlacementCells ||
             _colCount <= 0 || _colCount > MaximumPrivateRasterPlacementCells)
