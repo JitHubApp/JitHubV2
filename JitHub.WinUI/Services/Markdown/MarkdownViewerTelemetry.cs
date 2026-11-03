@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using JitHub.WinUI.Views.Controls.Common;
 
 namespace JitHub.Services.Markdown;
 

@@ -1,10 +1,10 @@
 using System;
 using JitHub.Models.GitHub;
 using JitHub.Models.NavArgs;
-using JitHub.WinUI.ViewModels.Pages;
+using JitHub.Services.Markdown;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace JitHub.Services.Markdown.Hosting;
+namespace JitHub.WinUI.ViewModels.Pages;
 
 /// <summary>
 /// Opens supported GitHub links (users, repositories, issues and pull

@@ -1,4 +1,3 @@
-using JitHub.WinUI.Views.Controls.Common;
 using MarkdownRenderer;
 using MarkdownRenderer.Theming;
 using Microsoft.UI.Xaml;

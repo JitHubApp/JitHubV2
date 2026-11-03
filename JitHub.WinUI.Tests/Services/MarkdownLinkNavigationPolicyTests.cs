@@ -176,9 +176,8 @@ public sealed class MarkdownLinkNavigationPolicyTests
         string navigator = File.ReadAllText(Path.Combine(
             root,
             "JitHub.WinUI",
-            "Services",
-            "Markdown",
-            "Hosting",
+            "ViewModels",
+            "Pages",
             "ShellMarkdownRouteNavigator.cs"));
         string shell = File.ReadAllText(Path.Combine(
             root,

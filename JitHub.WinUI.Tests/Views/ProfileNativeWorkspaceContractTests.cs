@@ -270,9 +270,8 @@ public sealed class ProfileNativeWorkspaceContractTests
         string navigator = File.ReadAllText(Path.Combine(
             root,
             "JitHub.WinUI",
-            "Services",
-            "Markdown",
-            "Hosting",
+            "ViewModels",
+            "Pages",
             "ShellMarkdownRouteNavigator.cs"));
         string activator = File.ReadAllText(Path.Combine(
             root,

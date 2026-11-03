@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using JitHub.WinUI.Helpers;
-using JitHub.WinUI.Views.Controls.Common;
 using MarkdownRenderer.Images;
 
 namespace JitHub.Services.Markdown;
