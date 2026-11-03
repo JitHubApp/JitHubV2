@@ -172,25 +172,7 @@ internal static class InlineAtomicObjectLayout
         // when the content-aware format has no absolute line spacing. Use the
         // ordinary CSS line spacing while every inline object fits within it;
         // only taller objects need the proportional, content-aware path below.
-        bool hasOversizedInline = false;
-        foreach (InlineRun run in box.RunList)
-        {
-            float height = run switch
-            {
-                InlineEmbedRun embed => embed.DesiredHeight,
-                InlineImageRun image => image.DesiredHeight,
-                InlineVectorSceneRun vector => vector.DesiredHeight,
-                InlineSpacerRun spacer => GetFittedSpacerHeight(spacer, maxInlineWidth),
-                _ => 0f,
-            };
-            if (height > requestedHeight)
-            {
-                hasOversizedInline = true;
-                break;
-            }
-        }
-
-        if (!hasOversizedInline)
+        if (!HasInlineObjectTallerThan(box, requestedHeight, maxInlineWidth))
         {
             layout.LineSpacing = requestedHeight;
             layout.LineSpacingBaseline = requestedHeight * 0.8f;
@@ -232,19 +214,32 @@ internal static class InlineAtomicObjectLayout
         return scale;
     }
 
+    private static bool HasInlineObjectTallerThan(InlineContainerBox box, float requestedHeight, float maxInlineWidth)
+    {
+        foreach (InlineRun run in box.RunList)
+        {
+            if (GetAtomicInlineHeight(run, maxInlineWidth) > requestedHeight)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static float GetAtomicInlineHeight(InlineRun run, float maxInlineWidth)
+        => run switch
+        {
+            InlineEmbedRun embed => embed.DesiredHeight,
+            InlineImageRun image => image.DesiredHeight,
+            InlineVectorSceneRun vector => vector.DesiredHeight,
+            InlineSpacerRun spacer => GetFittedSpacerHeight(spacer, maxInlineWidth),
+            _ => 0f,
+        };
+
     private static bool CanInverseScaleInlineMetrics(InlineContainerBox box, float scale, float maxInlineWidth)
     {
         foreach (InlineRun run in box.RunList)
         {
-            float height = run switch
-            {
-                InlineEmbedRun embed => embed.DesiredHeight,
-                InlineImageRun image => image.DesiredHeight,
-                InlineVectorSceneRun vector => vector.DesiredHeight,
-                InlineSpacerRun spacer => GetFittedSpacerHeight(spacer, maxInlineWidth),
-                _ => 0f,
-            };
-
+            float height = GetAtomicInlineHeight(run, maxInlineWidth);
             if (height > 0f)
             {
                 float inverseHeight = height / scale;
