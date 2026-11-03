@@ -28,7 +28,7 @@ public sealed class ImageBaseUriIntegrationTests
                 "<title>Local icon</title><rect width='12' height='8' fill='#336699'/></svg>");
 
             var image = new ImageBox(
-                CreateContext(new Uri(Path.Combine(root, "readme.md"))),
+                CreateContext(new Uri(Path.Combine(root, "readme.md"))), ImageResourceScope.Shared,
                 "assets/icon.svg",
                 "local icon");
             try
@@ -68,7 +68,7 @@ public sealed class ImageBaseUriIntegrationTests
                 CreateSvg("Second document"));
 
             var first = new ImageBox(
-                CreateContext(new Uri(Path.Combine(firstRoot, "readme.md"))),
+                CreateContext(new Uri(Path.Combine(firstRoot, "readme.md"))), ImageResourceScope.Shared,
                 "assets/icon.svg",
                 "first");
             try
@@ -82,7 +82,7 @@ public sealed class ImageBaseUriIntegrationTests
             }
 
             var second = new ImageBox(
-                CreateContext(new Uri(Path.Combine(secondRoot, "readme.md"))),
+                CreateContext(new Uri(Path.Combine(secondRoot, "readme.md"))), ImageResourceScope.Shared,
                 "assets/icon.svg",
                 "second");
             try

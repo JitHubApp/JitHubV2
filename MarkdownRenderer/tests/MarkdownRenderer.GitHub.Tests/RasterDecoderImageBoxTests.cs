@@ -347,7 +347,7 @@ public sealed class RasterDecoderImageBoxTests : IAsyncLifetime
         byte[] replacementBytes = DisplaySizedRasterDecodeTests.CreatePng(71, 37);
         string replacementSource = "data:image/png;base64," + Convert.ToBase64String(replacementBytes);
         var warmImage = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver: null!, session: null, scale: 1),
+            DisplaySizedRasterDecodeTests.CreateContext(resolver: null!, session: null, scale: 1), ImageResourceScope.Shared,
             replacementSource,
             "Current document local image");
         try
@@ -395,7 +395,7 @@ public sealed class RasterDecoderImageBoxTests : IAsyncLifetime
             // local source (a warm device-cache lease), not a network fixture.
             oldImage.Dispose();
             currentImage = new ImageBox(
-                DisplaySizedRasterDecodeTests.CreateContext(resolver: null!, session: null, scale: 1),
+                DisplaySizedRasterDecodeTests.CreateContext(resolver: null!, session: null, scale: 1), ImageResourceScope.Shared,
                 replacementSource,
                 "Current document local image");
             currentImage.Measure(71);
@@ -446,7 +446,7 @@ public sealed class RasterDecoderImageBoxTests : IAsyncLifetime
         var resolver = new RasterResolver(source, cacheKey ?? $"raster-provider-{Guid.NewGuid():N}");
         MarkdownLayoutContext context = DisplaySizedRasterDecodeTests.CreateContext(
             resolver, session, scale, imageUnavailable: imageUnavailable, rasterDecoder: decoder);
-        return new ImageBox(context, "https://images.example/asset", string.Empty);
+        return new ImageBox(context, ImageResourceScope.Shared, "https://images.example/asset", string.Empty);
     }
 
     private static byte[] CreateWebP(int width, int height)

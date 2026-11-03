@@ -29,7 +29,7 @@ public sealed class CompletedImageCarryTests
     [Fact]
     public void FreshBoxWithoutACarriedResultLoadsWithAPlaceholderSize()
     {
-        var image = new ImageBox(CreateContext(carry: null), PhotoUrl, "Photo");
+        var image = new ImageBox(CreateContext(carry: null), ImageResourceScope.Shared, PhotoUrl, "Photo");
 
         Assert.Equal(MarkdownImageAccessibilityState.Loading, image.AccessibilityState);
         Assert.True(image.IsAwaitingVisiblePixelsForAutomation);
@@ -43,7 +43,7 @@ public sealed class CompletedImageCarryTests
     public void CarriedRasterResultKeepsItsStateAndSizeButStillAwaitsPixels()
     {
         var carried = new CompletedImageCarry(PhotoUrl, IsSvg: false, new Size(320, 180), null, null);
-        var image = new ImageBox(CreateContext(Carry(carried)), PhotoUrl, "Photo");
+        var image = new ImageBox(CreateContext(Carry(carried)), ImageResourceScope.Shared, PhotoUrl, "Photo");
 
         Assert.Equal(MarkdownImageAccessibilityState.Loaded, image.AccessibilityState);
         Assert.True(image.IsAwaitingVisiblePixelsForAutomation,
@@ -61,7 +61,7 @@ public sealed class CompletedImageCarryTests
     public void CarriedSvgResultKeepsItsBlockSizeTitleAndDescription()
     {
         var carried = new CompletedImageCarry(BadgeUrl, IsSvg: true, new Size(90, 20), "Build passing", "CI status");
-        var image = new ImageBox(CreateContext(Carry(carried)), BadgeUrl, string.Empty);
+        var image = new ImageBox(CreateContext(Carry(carried)), ImageResourceScope.Shared, BadgeUrl, string.Empty);
 
         float height = image.Measure(600);
         Assert.Equal(90, image.AutomationRenderDestination.Width, 3);
@@ -76,7 +76,7 @@ public sealed class CompletedImageCarryTests
     public void UnpresentedBoxForwardsItsCarriedResultToTheNextRebuild()
     {
         var carried = new CompletedImageCarry(PhotoUrl, IsSvg: false, new Size(320, 180), null, null);
-        var image = new ImageBox(CreateContext(Carry(carried)), PhotoUrl, "Photo");
+        var image = new ImageBox(CreateContext(Carry(carried)), ImageResourceScope.Shared, PhotoUrl, "Photo");
 
         Assert.True(image.TryCaptureCompletedCarry(out CompletedImageCarry? forwarded));
         Assert.Same(carried, forwarded);
@@ -86,11 +86,11 @@ public sealed class CompletedImageCarryTests
     public void CarriedResultIsIgnoredForAnotherUrlOrAnUnusableSize()
     {
         var other = new CompletedImageCarry(BadgeUrl, IsSvg: true, new Size(90, 20), null, null);
-        var otherUrlImage = new ImageBox(CreateContext(Carry(other)), PhotoUrl, "Photo");
+        var otherUrlImage = new ImageBox(CreateContext(Carry(other)), ImageResourceScope.Shared, PhotoUrl, "Photo");
         Assert.Equal(MarkdownImageAccessibilityState.Loading, otherUrlImage.AccessibilityState);
 
         var empty = new CompletedImageCarry(PhotoUrl, IsSvg: false, new Size(0, 180), null, null);
-        var emptySizeImage = new ImageBox(CreateContext(Carry(empty)), PhotoUrl, "Photo");
+        var emptySizeImage = new ImageBox(CreateContext(Carry(empty)), ImageResourceScope.Shared, PhotoUrl, "Photo");
         Assert.Equal(MarkdownImageAccessibilityState.Loading, emptySizeImage.AccessibilityState);
     }
 
@@ -106,7 +106,7 @@ public sealed class CompletedImageCarryTests
             new Size(119.46, 20),
             MarkdownSvgFailureReason.UnsupportedContent,
             "Animated SVG content is not supported.");
-        var image = new ImageBox(CreateContext(Carry(failed)), BadgeUrl, "User base");
+        var image = new ImageBox(CreateContext(Carry(failed)), ImageResourceScope.Shared, BadgeUrl, "User base");
 
         Assert.Equal(MarkdownImageAccessibilityState.Error, image.AccessibilityState);
         Assert.False(image.IsAwaitingVisiblePixelsForAutomation, "A failed image never waits for pixels.");

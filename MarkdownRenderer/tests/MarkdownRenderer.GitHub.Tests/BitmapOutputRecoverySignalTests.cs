@@ -81,7 +81,7 @@ public sealed class BitmapOutputRecoverySignalTests
             GC.KeepAlive(waiterOwners);
 
             image = new ImageBox(
-                DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1),
+                DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
                 "https://images.example/waiter-overflow.png",
                 "waiter overflow");
             var signal = new TaskCompletionSource<LoadCompletedEventArgs>(

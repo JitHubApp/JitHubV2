@@ -112,7 +112,7 @@ public sealed class ImageNativeDurableRetirementTests
         using var harness = new Harness();
         var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new LayoutDisposalProbe();
-        var image = new ImageBox(harness.CreateContext(), string.Empty, "inline failure", retirement, disposer.Dispose);
+        var image = new ImageBox(harness.CreateContext(), ImageResourceScope.Shared, string.Empty, "inline failure", retirement, disposer.Dispose);
 
         _ = image.MeasureInline(180f, 22f);
         CanvasTextLayout original = Assert.IsType<CanvasTextLayout>(image.PlaceholderLayoutForTests);
@@ -161,7 +161,7 @@ public sealed class ImageNativeDurableRetirementTests
         var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new LayoutDisposalProbe();
         ImageBox source = new(
-            fixture.SourceContext,
+            fixture.SourceContext, ImageResourceScope.Shared,
             fixture.RasterSource,
             "Placement custody",
             retirement,
@@ -295,7 +295,7 @@ public sealed class ImageNativeDurableRetirementTests
         var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new LayoutDisposalProbe();
         ImageBox source = new(
-            fixture.SourceContext,
+            fixture.SourceContext, ImageResourceScope.Shared,
             fixture.RasterSource,
             "Record alias",
             retirement,
@@ -377,7 +377,7 @@ public sealed class ImageNativeDurableRetirementTests
         MarkdownLayoutContext context = harness.CreateContext();
         int optionsCalls = 0;
         var image = new ImageBox(
-            context,
+            context, ImageResourceScope.Shared,
             string.Empty,
             "caption failure",
             retirement,
@@ -416,7 +416,7 @@ public sealed class ImageNativeDurableRetirementTests
         LayoutDisposalProbe disposer)
     {
         MarkdownLayoutContext context = harness.CreateContext();
-        var image = new ImageBox(context, string.Empty, "terminal failure", retirement, disposer.Dispose);
+        var image = new ImageBox(context, ImageResourceScope.Shared, string.Empty, "terminal failure", retirement, disposer.Dispose);
         _ = image.Measure(Width);
         Assert.NotNull(image.PlaceholderLayoutForTests);
         Assert.NotNull(image.CaptionLayoutForTests);
@@ -437,7 +437,7 @@ public sealed class ImageNativeDurableRetirementTests
         LayoutDisposalProbe disposer)
     {
         MarkdownLayoutContext context = harness.CreateContext();
-        var image = new ImageBox(context, string.Empty, "disposed checkpoint", retirement, disposer.Dispose);
+        var image = new ImageBox(context, ImageResourceScope.Shared, string.Empty, "disposed checkpoint", retirement, disposer.Dispose);
         _ = image.MeasureInline(180f, 22f);
         CanvasTextLayout original = Assert.IsType<CanvasTextLayout>(image.PlaceholderLayoutForTests);
         ImageBox.InlineMeasureCheckpoint checkpoint = image.BeginInlineCheckpoint();

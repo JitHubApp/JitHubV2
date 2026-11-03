@@ -39,7 +39,7 @@ public sealed class ImageBoxSourceLeaseTests
                 new MarkdownImageResolveContext(null));
         var renderer = new GatedSvgRenderer(blockDocumentDispose: true);
         var image = new ImageBox(
-            CreateContext(renderer, session, documentScope),
+            CreateContext(renderer, session, documentScope), ImageResourceScope.Shared,
             sourceUrl,
             "Evicted SVG source");
 
@@ -137,7 +137,7 @@ public sealed class ImageBoxSourceLeaseTests
         byte[] source = CreateSvgBytes("partition-bound-metadata");
         var session = CreateSession(source.Length + 128L);
         var image = new ImageBox(
-            CreateContext(new GatedSvgRenderer(), session),
+            CreateContext(new GatedSvgRenderer(), session), ImageResourceScope.Shared,
             "https://example.test/partition.svg",
             "Partitioned SVG");
 
@@ -237,7 +237,7 @@ public sealed class ImageBoxSourceLeaseTests
             ((IMarkdownPerformanceSessionInternal)session).OpenDocument(resolver, resolveContext);
         var renderer = new GatedSvgRenderer();
         var image = new ImageBox(
-            CreateContext(renderer, session, documentScope),
+            CreateContext(renderer, session, documentScope), ImageResourceScope.Shared,
             "https://example.test/leased.svg",
             "Leased SVG");
 
@@ -302,7 +302,7 @@ public sealed class ImageBoxSourceLeaseTests
                 new LeasedSvgResolver(MakeSource, sourceTemplate.Length), new MarkdownImageResolveContext(null));
         IMarkdownImageResolver resolver = scope ?? (IMarkdownImageResolver)new GeneratedSvgResolver(MakeSource);
         var renderer = new GatedSvgRenderer(blockRender: true, distinctPreparation: true);
-        var image = new ImageBox(CreateContext(renderer, session, resolver),
+        var image = new ImageBox(CreateContext(renderer, session, resolver), ImageResourceScope.Shared,
             $"https://example.test/{Guid.NewGuid():N}.svg", "Source release before render");
         Exception? primaryFailure = null;
         try
@@ -382,7 +382,7 @@ public sealed class ImageBoxSourceLeaseTests
         long sourceLength = dataUri ? template.Length : new FileInfo(new Uri(source).LocalPath).Length;
         var session = CreateSession(sourceLength + 128L);
         var renderer = new GatedSvgRenderer(blockRender: true, distinctPreparation: true);
-        var image = new ImageBox(CreateContext(renderer, session), source, "Built-in source release");
+        var image = new ImageBox(CreateContext(renderer, session), ImageResourceScope.Shared, source, "Built-in source release");
         Exception? primaryFailure = null;
         try
         {
@@ -437,7 +437,7 @@ public sealed class ImageBoxSourceLeaseTests
         var session = CreateSession(sourceBytes.Length + 128L);
         var renderer = new GatedSvgRenderer();
         var image = new ImageBox(
-            CreateContext(renderer, session),
+            CreateContext(renderer, session), ImageResourceScope.Shared,
             dataUri,
             "Data URI SVG");
 
@@ -485,7 +485,7 @@ public sealed class ImageBoxSourceLeaseTests
         var session = CreateSession(System.Math.Max(8, sourceBytes.Length / 2));
         var renderer = new GatedSvgRenderer();
         var image = new ImageBox(
-            CreateContext(renderer, session),
+            CreateContext(renderer, session), ImageResourceScope.Shared,
             new Uri(path).AbsoluteUri,
             "Oversized local SVG");
 
@@ -524,7 +524,7 @@ public sealed class ImageBoxSourceLeaseTests
     {
         var renderer = new GatedSvgRenderer();
         renderer.ReleaseFirstOpen.TrySetResult();
-        var image = new ImageBox(CreateContext(renderer, session: null),
+        var image = new ImageBox(CreateContext(renderer, session: null), ImageResourceScope.Shared,
             $"https://example.test/pending-{Guid.NewGuid():N}.svg", "Pending SVG");
         IDisposable? openedWork = null;
         Exception? primaryFailure = null;
@@ -583,11 +583,11 @@ public sealed class ImageBoxSourceLeaseTests
             ((IMarkdownPerformanceSessionInternal)session).OpenDocument(resolver, resolveContext);
         var renderer = new GatedSvgRenderer();
         var first = new ImageBox(
-            CreateContext(renderer, session, documentScope),
+            CreateContext(renderer, session, documentScope), ImageResourceScope.Shared,
             "https://example.test/first.svg",
             "First SVG");
         var second = new ImageBox(
-            CreateContext(renderer, session, documentScope),
+            CreateContext(renderer, session, documentScope), ImageResourceScope.Shared,
             "https://example.test/second.svg",
             "Second SVG");
 

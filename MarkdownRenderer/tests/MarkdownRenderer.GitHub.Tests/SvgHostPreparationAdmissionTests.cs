@@ -469,7 +469,7 @@ public sealed class SvgHostPreparationAdmissionTests
         };
 
         return new ImageBox(
-            context,
+            context, ImageResourceScope.Shared,
             $"https://example.test/svg-preparation/{Guid.NewGuid():N}.svg",
             alt: "SVG preparation admission test");
     }

@@ -209,7 +209,7 @@ public sealed class ProcessRasterDecodeIntegrationTests
         SemaphoreSlim keyedGate = ImageResourceScope.Shared.BitmapCache.GetDecodeGate(
             context.ResourceCreator.Device, BoundedSourceSizedCacheKey(key));
         await keyedGate.WaitAsync();
-        var image = new ImageBox(context, "https://images.example/keyed-cancel.png", string.Empty);
+        var image = new ImageBox(context, ImageResourceScope.Shared, "https://images.example/keyed-cancel.png", string.Empty);
         int publications = 0;
         image.LoadCompleted += (_, _) => Interlocked.Increment(ref publications);
         try
@@ -283,7 +283,7 @@ public sealed class ProcessRasterDecodeIntegrationTests
     private static ImageBox CreateImage(IMarkdownImageResolver source,
         MarkdownPerformanceSession? session, bool hasDocumentOwner = true)
     {
-        var image = new ImageBox(CreateContext(source, session, 1, hasDocumentOwner),
+        var image = new ImageBox(CreateContext(source, session, 1, hasDocumentOwner), ImageResourceScope.Shared,
             "https://images.example/process-admission.png", string.Empty);
         image.Measure(64);
         return image;

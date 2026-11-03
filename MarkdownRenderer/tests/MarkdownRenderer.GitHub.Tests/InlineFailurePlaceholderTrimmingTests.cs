@@ -33,7 +33,7 @@ public sealed class InlineFailurePlaceholderTrimmingTests
         try
         {
             var image = new ImageBox(
-                CreateContext(device),
+                CreateContext(device), ImageResourceScope.Shared,
                 string.Empty,
                 "Script-bearing SVG fixture whose alternative text is longer than a narrow table cell");
             try

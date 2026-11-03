@@ -242,7 +242,7 @@ public sealed class RasterImageBoxWarpIntegrationTests(ITestOutputHelper output)
             RasterizationScale = 1,
             ImageCancellationToken = CancellationToken.None,
         };
-        return new ImageBox(context, ImageSource, "orientation-six WARP image");
+        return new ImageBox(context, ImageResourceScope.Shared, ImageSource, "orientation-six WARP image");
     }
 
     private static async Task LoadAndAssertGeometryAsync(ImageBox image)

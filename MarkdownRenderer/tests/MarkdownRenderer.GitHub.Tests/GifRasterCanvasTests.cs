@@ -21,7 +21,7 @@ public sealed class GifRasterCanvasTests
             $"gif-offset-{Guid.NewGuid():N}");
         using var session = ProgressiveSession();
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1),
+            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
             "https://images.example/offset.gif",
             string.Empty);
 
@@ -72,7 +72,7 @@ public sealed class GifRasterCanvasTests
             $"gif-transparent-{Guid.NewGuid():N}");
         using var session = ProgressiveSession();
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1),
+            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
             "https://images.example/transparent-offset.gif",
             string.Empty);
 
@@ -100,7 +100,7 @@ public sealed class GifRasterCanvasTests
             CreateGif(4, 4, left: 1, top: 1, frameWidth: 2, frameHeight: 3),
             $"gif-source-sized-{rasterizationScale}-{Guid.NewGuid():N}");
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session: null, rasterizationScale),
+            DisplaySizedRasterDecodeTests.CreateContext(resolver, session: null, rasterizationScale), ImageResourceScope.Shared,
             "https://images.example/source-sized.gif",
             string.Empty);
 
@@ -141,7 +141,7 @@ public sealed class GifRasterCanvasTests
             $"gif-dpi-{rasterizationScale}-{Guid.NewGuid():N}");
         using var session = ProgressiveSession();
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, rasterizationScale),
+            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, rasterizationScale), ImageResourceScope.Shared,
             "https://images.example/dpi.gif",
             string.Empty);
 
@@ -171,7 +171,7 @@ public sealed class GifRasterCanvasTests
             $"gif-fractional-cap-{Guid.NewGuid():N}");
         using var session = ProgressiveSession(maximumPixels: 1);
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1),
+            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
             "https://images.example/fractional.gif",
             string.Empty);
 
@@ -208,7 +208,7 @@ public sealed class GifRasterCanvasTests
             maximumPixels: 1,
             displaySizedDecode: displaySizedDecode);
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1),
+            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
             "https://images.example/outside-canvas.gif",
             string.Empty);
 
@@ -247,7 +247,7 @@ public sealed class GifRasterCanvasTests
 
         var image = new ImageBox(
             DisplaySizedRasterDecodeTests.CreateContext(
-                new GifResolver(bytes, $"gif-overhang-{Guid.NewGuid():N}"), session: null, scale: 1),
+                new GifResolver(bytes, $"gif-overhang-{Guid.NewGuid():N}"), session: null, scale: 1), ImageResourceScope.Shared,
             "https://images.example/overhang.gif",
             string.Empty);
         try
@@ -316,7 +316,7 @@ public sealed class GifRasterCanvasTests
         MarkdownPerformanceSession session,
         double scale,
         string name) => new(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale),
+            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale), ImageResourceScope.Shared,
             $"https://images.example/{name}",
             string.Empty);
 

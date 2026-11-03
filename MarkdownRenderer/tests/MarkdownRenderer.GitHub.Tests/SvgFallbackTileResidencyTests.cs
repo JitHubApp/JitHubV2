@@ -377,6 +377,7 @@ public sealed class SvgFallbackTileResidencyTests
         // Current-generation keys are already cached/pending in these tests;
         // no native resource creator, SVG provider, or dispatcher is accessed.
         var box = (ImageBox)RuntimeHelpers.GetUninitializedObject(typeof(ImageBox));
+        SetField(box, "_resources", ImageResourceScope.Shared);
         SetField(box, "_svgWorkSync", new object());
         SetField(box, "_svgPublicationSync", new object());
         SetField(box, "_svgTileLock", new object());

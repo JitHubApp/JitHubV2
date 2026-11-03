@@ -147,7 +147,7 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
                         MaxRasterOutputPixels = RasterPixelLimit,
                     });
                 var context = CreateContext(device, resolver, session);
-                var image = new ImageBox(context, $"https://images.example/{fixture.Name}.gif", fixture.Name);
+                var image = new ImageBox(context, ImageResourceScope.Shared, $"https://images.example/{fixture.Name}.gif", fixture.Name);
                 try
                 {
                     float availableWidth = fixture.CanvasWidth;
@@ -230,7 +230,7 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
         using var session = new MarkdownPerformanceSession(
             MarkdownPerformanceOptions.Progressive with { MaxRasterOutputPixels = RasterPixelLimit });
         var image = new ImageBox(
-            CreateContext(device, resolver, session, rasterizationScale),
+            CreateContext(device, resolver, session, rasterizationScale), ImageResourceScope.Shared,
             "https://images.example/dpi-offset.gif",
             "offset frame");
         try
@@ -269,7 +269,7 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
         var onePixelResolver = new GifResolver(
             fixture.Bytes, $"owned-gif-fractional-cap-{Guid.NewGuid():N}");
         var onePixel = new ImageBox(
-            CreateContext(device, onePixelResolver, onePixelSession),
+            CreateContext(device, onePixelResolver, onePixelSession), ImageResourceScope.Shared,
             "https://images.example/fractional-cap.gif",
             "fractional frame");
         try
@@ -362,7 +362,7 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
         var resolver = new GifResolver(
             profiledFixture.Bytes, $"owned-gif-icc-{Guid.NewGuid():N}");
         var image = new ImageBox(
-            CreateContext(device, resolver, session),
+            CreateContext(device, resolver, session), ImageResourceScope.Shared,
             "https://images.example/profiled.gif",
             "profiled GIF");
         try

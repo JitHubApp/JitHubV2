@@ -130,14 +130,14 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             {
                 try
                 {
-                    Resources.SvgOpenAdmissions.Release(ref _openAdmissionEntry);
+                    owner._resources.SvgOpenAdmissions.Release(ref _openAdmissionEntry);
                 }
                 catch (Exception exception)
                 {
                     owner.RecordImageRetirementFailure(exception);
                 }
                 if (_providerAdmissionHeld)
-                    owner.TryImageCleanup(() => Resources.SvgProviderAdmission.Release());
+                    owner.TryImageCleanup(() => owner._resources.SvgProviderAdmission.Release());
                 if (document is not null)
                     owner.RetireUncommittedSvgDocument(document);
                 if (documentUse is not null)
@@ -176,12 +176,11 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     private static readonly TimeSpan ImageResolverTimeout = TimeSpan.FromSeconds(45);
 
     internal readonly MarkdownLayoutContext Context;
-    private static ImageResourceScope Resources => ImageResourceScope.Shared;
+    // Caches, budgets and gates shared with the scope's boxes; clones keep their source's.
+    private readonly ImageResourceScope _resources;
 
-    /// <summary>This box's deferred bitmap-output request and its source-free retry.</summary>
+    // The bitmap-output owners this box composes, bound to its scope.
     internal ImageBitmapOutputDeferral OutputDeferral { get; }
-
-    /// <summary>Admits this box's bitmap outputs against the scope's governor.</summary>
     internal ImageBitmapOutputAdmission OutputAdmission { get; }
     internal readonly string Url;
     public readonly string Alt;
@@ -362,28 +361,28 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     internal float MinimumParagraphLineHeight { get; set; }
 
     public ImageBox(
-        MarkdownLayoutContext context,
+        MarkdownLayoutContext context, ImageResourceScope resources,
         string url,
         string alt,
         SafeHtmlLength? requestedWidth = null,
         SafeHtmlLength? requestedHeight = null)
-        : this(context, url, alt, requestedWidth, requestedHeight, NativeResourceRetirement.Shared, null, null)
+        : this(context, resources, url, alt, requestedWidth, requestedHeight, NativeResourceRetirement.Shared, null, null)
     {
     }
 
     internal ImageBox(
-        MarkdownLayoutContext context,
+        MarkdownLayoutContext context, ImageResourceScope resources,
         string url,
         string alt,
         NativeResourceRetirement nativeRetirement,
         Action<IDisposable>? nativeDisposer = null,
         Action<CanvasTextLayout>? nativeLayoutOptionsSetter = null)
-        : this(context, url, alt, null, null, nativeRetirement, nativeDisposer, nativeLayoutOptionsSetter)
+        : this(context, resources, url, alt, null, null, nativeRetirement, nativeDisposer, nativeLayoutOptionsSetter)
     {
     }
 
     internal ImageBox(
-        MarkdownLayoutContext context,
+        MarkdownLayoutContext context, ImageResourceScope resources,
         string url,
         string alt,
         SafeHtmlLength? requestedWidth,
@@ -398,6 +397,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             !nativeRetirement.AllowsTestDisposer)
             throw new ArgumentException("Native fault plans require an isolated retirement owner.", nameof(nativeRetirement));
         Context = context;
+        _resources = resources ?? throw new ArgumentNullException(nameof(resources));
         _nativeRetirement = nativeRetirement;
         _nativeDisposer = nativeDisposer;
         _nativeLayoutOptionsSetter = nativeLayoutOptionsSetter;
@@ -407,8 +407,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         _requestedHeight = requestedHeight;
         _imageLifetimeCancellation = CancellationTokenSource.CreateLinkedTokenSource(
             Context.ImageCancellationToken);
-        OutputDeferral = new ImageBitmapOutputDeferral(this, Context, Resources, _imageLifetimeCancellation);
-        OutputAdmission = new ImageBitmapOutputAdmission(this, Context, Resources, OutputDeferral);
+        (OutputDeferral, OutputAdmission) = _resources.CreateBitmapOutput(this, Context, _imageLifetimeCancellation);
         _builtInSource = MarkdownBuiltInImageSourcePolicy.TryResolve(
             Url,
             Context.ImageBaseUri,
@@ -442,7 +441,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         }
         _activeCacheKey = _preResolutionCacheKey;
 
-        if (_preResolutionCacheKey is { } cacheKey && Resources.Failures.HasFailedUrl(cacheKey))
+        if (_preResolutionCacheKey is { } cacheKey && _resources.Failures.HasFailedUrl(cacheKey))
         {
             // Preserve transport/bitmap failure state across rebuilds. SVG
             // provider failures use a separate renderer-and-generation-scoped
@@ -489,7 +488,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             return;
         }
 
-        if (_preResolutionCacheKey is { } svgCacheKey && Resources.SvgSources.TryGetValue(svgCacheKey, out _))
+        if (_preResolutionCacheKey is { } svgCacheKey && _resources.SvgSources.TryGetValue(svgCacheKey, out _))
             _isSvg = true;
 
         if (!_isSvg)
@@ -499,7 +498,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         // with the current theme color + device pixel scale, materialize it
         // synchronously so the very first paint shows the image — no async
         // pass through ProcessCachedSvgAsync, no placeholder flash.
-        if (_preResolutionCacheKey is { } cachedSvgKey && Resources.SvgSources.TryGetValue(cachedSvgKey, out var entry))
+        if (_preResolutionCacheKey is { } cachedSvgKey && _resources.SvgSources.TryGetValue(cachedSvgKey, out var entry))
         {
             bool compatible = IsSvgCacheEntryCurrent(entry);
             if (compatible)
@@ -520,7 +519,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             // fallback and swaps it only after the new lease is ready.
             if (compatible &&
                 entry.LastBitmapIdentity is { } previousIdentity &&
-                Resources.BitmapCache.TryAcquire(
+                _resources.BitmapCache.TryAcquire(
                     Context.ResourceCreator.Device,
                     previousIdentity,
                     out SharedCanvasBitmapCache.Lease? previousLease) &&
@@ -1089,6 +1088,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     private ImageBox(MarkdownLayoutContext context, ImageBox source)
     {
         Context = context;
+        _resources = source._resources;
         _nativeRetirement = source._nativeRetirement;
         _nativeDisposer = source._nativeDisposer;
         _nativeLayoutOptionsSetter = source._nativeLayoutOptionsSetter;
@@ -1098,8 +1098,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         _requestedHeight = source._requestedHeight;
         _imageLifetimeCancellation = CancellationTokenSource.CreateLinkedTokenSource(
             context.ImageCancellationToken);
-        OutputDeferral = new ImageBitmapOutputDeferral(this, Context, Resources, _imageLifetimeCancellation);
-        OutputAdmission = new ImageBitmapOutputAdmission(this, Context, Resources, OutputDeferral);
+        (OutputDeferral, OutputAdmission) = _resources.CreateBitmapOutput(this, Context, _imageLifetimeCancellation);
         try
         {
             // These are immutable request descriptors, not resource state.
@@ -1147,6 +1146,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         CompletedSvgPlacementMetadataFence? svgMetadataFence = null)
     {
         Context = context;
+        _resources = source._resources;
         _nativeRetirement = source._nativeRetirement;
         _nativeDisposer = source._nativeDisposer;
         _nativeLayoutOptionsSetter = source._nativeLayoutOptionsSetter;
@@ -1156,8 +1156,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         _requestedHeight = source._requestedHeight;
         _imageLifetimeCancellation = CancellationTokenSource.CreateLinkedTokenSource(
             context.ImageCancellationToken);
-        OutputDeferral = new ImageBitmapOutputDeferral(this, Context, Resources, _imageLifetimeCancellation);
-        OutputAdmission = new ImageBitmapOutputAdmission(this, Context, Resources, OutputDeferral);
+        (OutputDeferral, OutputAdmission) = _resources.CreateBitmapOutput(this, Context, _imageLifetimeCancellation);
         try
         {
             _builtInSource = source._builtInSource;
@@ -2172,7 +2171,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         SvgHostPendingWaiter? waiter = null;
         try
         {
-            waiter = Resources.SvgHostAdmission.Defer(
+            waiter = _resources.SvgHostAdmission.Defer(
                 this,
                 deferral.Admission,
                 deferral.Demand,
@@ -2274,7 +2273,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         {
             capacityVersion = requiresOwnerSlot ? 0 : admission.CapacityVersion;
             ownerVersion = requiresOwnerSlot
-                ? Resources.SvgHostAdmission.GetOwnerVersion(admission.AdmissionDomain)
+                ? _resources.SvgHostAdmission.GetOwnerVersion(admission.AdmissionDomain)
                 : 0;
         }
         catch (Exception exception)
@@ -3725,7 +3724,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             // account boundary; an unkeyed asset remains local to this box.
             string cacheKey = MarkdownImageCacheIdentityPolicy.GetResolvedAssetKey(asset);
             _activeCacheKey = cacheKey;
-            if (cacheKey.Length > 0 && Resources.Failures.HasFailedUrl(cacheKey))
+            if (cacheKey.Length > 0 && _resources.Failures.HasFailedUrl(cacheKey))
             {
                 PublishFailure(cacheKey: string.Empty);
                 return;
@@ -3832,7 +3831,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     private bool TryLoadFallbackFromProcessCache(
         string cacheKey, BitmapOutputWorkContext? expectedWork = null)
     {
-        if (Resources.Failures.HasFailedUrl(cacheKey))
+        if (_resources.Failures.HasFailedUrl(cacheKey))
         {
             PublishFailure(cacheKey: string.Empty);
             return true;
@@ -3843,7 +3842,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             return true;
         }
 
-        if (!Resources.SvgSources.TryGetValue(cacheKey, out SvgCacheEntry? entry))
+        if (!_resources.SvgSources.TryGetValue(cacheKey, out SvgCacheEntry? entry))
         {
             return false;
         }
@@ -3985,7 +3984,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             (gifFrame.Left != 0 || gifFrame.Top != 0 ||
              gifFrame.Width != budget.Width || gifFrame.Height != budget.Height);
         IMarkdownRasterDecoder? rasterDecoder = Context.RasterDecoder;
-        long rasterDecoderIdentity = rasterDecoder is null ? 0 : Resources.ProviderIdentities.GetRasterDecoderIdentity(rasterDecoder);
+        long rasterDecoderIdentity = rasterDecoder is null ? 0 : _resources.ProviderIdentities.GetRasterDecoderIdentity(rasterDecoder);
         bool rasterProviderSupportsFormat = false;
         MarkdownRasterFormat rasterFormat = default;
         bool hasStaticProviderFormat = budget.FrameCount == 1 && budget.FirstFrame is null &&
@@ -4020,7 +4019,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             rasterOptions?.MaxRasterOutputPixels ?? RasterImageResourceBudget.MaxPixelsPerFrame);
         if (boundedBitmapOutput)
             maximumOutputPixels = Math.Min(maximumOutputPixels,
-                Resources.BitmapOutput.MaximumSingleOutputBytes / (composeGifCanvas ? 8 : 4));
+                _resources.BitmapOutput.MaximumSingleOutputBytes / (composeGifCanvas ? 8 : 4));
         var sizingRequest = new RasterImageSizingRequest(
             sizingPolicyApplies ? _availableWidth - Margin.Left - Margin.Right : budget.Width,
             sizingPolicyApplies ? Context.RasterizationScale : 1d,
@@ -4068,7 +4067,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         if (nativeGifDecode)
             rasterSize = (nativeGifPlan.OutputWidth, nativeGifPlan.OutputHeight);
         long rasterDecodeFailureIdentity = portableRasterDecode ? rasterDecoderIdentity : 0;
-        if (Resources.Failures.HasFailedRasterDecode(cacheKey, failureFormatKey, rasterDecodeFailureIdentity))
+        if (_resources.Failures.HasFailedRasterDecode(cacheKey, failureFormatKey, rasterDecodeFailureIdentity))
         {
             PublishFailure(cacheKey: string.Empty, cachePermanently: false);
             return;
@@ -4087,7 +4086,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         if (portableRasterDecode && rasterSourceIdentity.Length > 0 && rasterDecoder is not null)
         {
             rasterSourceIdentity += "\u001Fraster-decoder-v1:" +
-                Resources.ProviderIdentities.GetRasterDecoderIdentity(rasterDecoder).ToString(CultureInfo.InvariantCulture);
+                _resources.ProviderIdentities.GetRasterDecoderIdentity(rasterDecoder).ToString(CultureInfo.InvariantCulture);
         }
         string cacheFamily = transformedDecode && cacheKey.Length > 0
             ? sizingRequest.GetCacheFamily(rasterSourceIdentity, displaySized) : cacheKey;
@@ -4138,7 +4137,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                     rasterOptions?.UseCachedRasterPreview == true &&
                     cacheKey.Length > 0 &&
                     (long)rasterSize.Width * rasterSize.Height >= 65_536 &&
-                    Resources.BitmapCache.TryAcquireBestRasterPreview(
+                    _resources.BitmapCache.TryAcquireBestRasterPreview(
                         device,
                         cacheFamily,
                         sizingRequest,
@@ -4172,7 +4171,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
                 if (!string.IsNullOrEmpty(bitmapCacheKey))
                 {
-                    decodeGate = Resources.BitmapCache.GetDecodeGate(device, bitmapCacheKey);
+                    decodeGate = _resources.BitmapCache.GetDecodeGate(device, bitmapCacheKey);
                     await decodeGate.WaitAsync(decodeToken).ConfigureAwait(false);
                     decodeGateHeld = true;
 
@@ -4229,7 +4228,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                                 bytes.Length +
                                 checked(sourcePixels * 4) +
                                 checked(outputPixels * (composeGifCanvas ? 12 : 8)));
-                    processDecodeSlot = await Resources.Preparation.EnterAsync(
+                    processDecodeSlot = await _resources.Preparation.EnterAsync(
                         Context.EffectiveImagePreparationOwner ?? Context,
                         processAdmissionWeight,
                         exclusive: sessionPixelCapApplies || budget.CanRenderStaticPreview,
@@ -4325,7 +4324,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                                 out bitmapReservation, expectedWork: bitmapOutputWork))
                             return;
                         IDisposable nativeCredit = processDecodeSlot!;
-                        var nativeOptions = new RasterNativeWicDecodeOptions(Resources.NativeWic);
+                        var nativeOptions = new RasterNativeWicDecodeOptions(_resources.NativeWic);
                         Task<RasterDecodedPixelLease> nativeTask = Task.Run(
                             () => RasterNativeWicDecoder.Decode(
                                         bytes, nativePlan, nativeCredit, nativeOptions, decodeToken),
@@ -4365,7 +4364,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                         try
                         {
                             IDisposable nativeCredit = processDecodeSlot!;
-                            var nativeOptions = new RasterNativeWicDecodeOptions(Resources.NativeWic);
+                            var nativeOptions = new RasterNativeWicDecodeOptions(_resources.NativeWic);
                             Task<RasterDecodedPixelLease> nativeTask = Task.Run(
                                 () => RasterNativeWicDecoder.DecodeGifFirstFrame(
                                     bytes, nativeGifPlan, nativeCredit, nativeOptions, decodeToken),
@@ -4554,7 +4553,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                     if (!string.IsNullOrEmpty(bitmapCacheKey))
                     {
                         stageStarted = rasterPreparationId != 0 ? Stopwatch.GetTimestamp() : 0;
-                        bitmapLease = Resources.BitmapCache.StoreAndAcquire(
+                        bitmapLease = _resources.BitmapCache.StoreAndAcquire(
                             device, bitmapCacheKey, ownedBitmap,
                             transformedDecode ? intrinsicSize : ownedBitmap.Size,
                             bitmapReservation: bitmapReservation);
@@ -4568,7 +4567,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                         // Unkeyed payloads acquire lifetime accounting on the
                         // preparation worker too. Publication only swaps the
                         // completed lease, without querying native dimensions.
-                        bitmapLease = Resources.BitmapCache.CreateUncachedLease(
+                        bitmapLease = _resources.BitmapCache.CreateUncachedLease(
                             ownedBitmap, checked((int)outputSize.Width), checked((int)outputSize.Height),
                             transformedDecode ? intrinsicSize : ownedBitmap.Size,
                             bitmapReservation: bitmapReservation);
@@ -4657,7 +4656,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 _loadFailed = true;
                 _failureCarryable = cacheRasterDecodeFailure;
                 if (cacheRasterDecodeFailure)
-                    Resources.Failures.RememberFailedRasterDecode(cacheKey, failureFormatKey, rasterDecodeFailureIdentity);
+                    _resources.Failures.RememberFailedRasterDecode(cacheKey, failureFormatKey, rasterDecodeFailureIdentity);
             }
             else if (deviceLost)
             {
@@ -4878,7 +4877,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 _loadFailed = true;
                 _failureCarryable = true;
                 string cacheKey = _activeCacheKey ?? Url;
-                Resources.Failures.RememberFailedUrl(cacheKey);
+                _resources.Failures.RememberFailedUrl(cacheKey);
                 RaiseLoadCompleted(layoutInvalidated: true);
             });
             return;
@@ -5056,7 +5055,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         string currentSecurityPartitionHash = SvgSourcePreflight.HashSecurityPartition(effectiveSecurityPartitionKey);
         bool metadataWasKnown = IsKnownSvgSource(rawBytes, currentSecurityPartitionHash);
         long providerCacheGeneration = 0;
-        long rendererIdentity = Resources.ProviderIdentities.GetSvgRendererIdentity(renderer);
+        long rendererIdentity = _resources.ProviderIdentities.GetSvgRendererIdentity(renderer);
         string svgFailureCacheKey = string.Empty;
 
         try
@@ -5083,7 +5082,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                                 preparationToken)
                             .ConfigureAwait(false);
                     using IDisposable processPreparationSlot =
-                        await Resources.Preparation.EnterAsync(
+                        await _resources.Preparation.EnterAsync(
                                 Context.EffectiveImagePreparationOwner ?? Context,
                                 rawBytes.LongLength * 3,
                                 exclusive: false,
@@ -5211,7 +5210,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 preflight.SecurityPartitionHash,
                 rendererIdentity,
                 providerCacheGeneration);
-            if (Resources.Failures.TryGetSvgFailure(
+            if (_resources.Failures.TryGetSvgFailure(
                     svgFailureCacheKey,
                     out SvgFailure cachedFailure))
             {
@@ -5278,7 +5277,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                     svgWorkId,
                     MarkdownSvgWorkStage.HostAdmissionWait,
                     svgSourceBytes);
-                openAdmissionEntry = await Resources.SvgOpenAdmissions
+                openAdmissionEntry = await _resources.SvgOpenAdmissions
                     .AcquireAsync(contentCacheKey, cancellationToken)
                     .ConfigureAwait(false);
 
@@ -5295,7 +5294,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 if (OutputDeferral.IsBitmapOutputDeferred)
                     return default;
 
-                await Resources.SvgProviderAdmission.WaitAsync(cancellationToken).ConfigureAwait(false);
+                await _resources.SvgProviderAdmission.WaitAsync(cancellationToken).ConfigureAwait(false);
                 providerAdmissionHeld = true;
             }
 
@@ -5449,8 +5448,8 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             // built-in URI alias. Only authorized built-in reads may publish
             // entries consumed by pre-resolution and NotHandled fallback.
             if (!string.IsNullOrEmpty(builtInSourceAliasKey))
-                Resources.SvgSources.Set(builtInSourceAliasKey, sourceEntry);
-            Resources.SvgSources.Set(contentCacheKey, sourceEntry);
+                _resources.SvgSources.Set(builtInSourceAliasKey, sourceEntry);
+            _resources.SvgSources.Set(contentCacheKey, sourceEntry);
 
             SvgRasterPlan rasterPlan = PickRasterDimensions(intrinsic);
             int targetWidth = rasterPlan.Width;
@@ -5486,7 +5485,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             {
                 if (hostAdmission is not null)
                 {
-                    ownerSlot = Resources.SvgHostAdmission.TryReserveOwnerSlot(
+                    ownerSlot = _resources.SvgHostAdmission.TryReserveOwnerSlot(
                         admissionDomain!,
                         demand,
                         out long ownerVersionAtDenial);
@@ -5570,14 +5569,14 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 TryImageCleanup(hostPreparationLease.Dispose);
             try
             {
-                Resources.SvgOpenAdmissions.Release(ref openAdmissionEntry);
+                _resources.SvgOpenAdmissions.Release(ref openAdmissionEntry);
             }
             catch (Exception exception)
             {
                 RecordImageRetirementFailure(exception);
             }
             if (providerAdmissionHeld)
-                TryImageCleanup(() => Resources.SvgProviderAdmission.Release());
+                TryImageCleanup(() => _resources.SvgProviderAdmission.Release());
             if (openedDocument is not null)
                 RetireUncommittedSvgDocument(openedDocument);
             if (openedDocumentUse is not null)
@@ -5694,7 +5693,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                         MarkdownSvgWorkStage.BitmapCacheWait,
                         svgSourceBytes,
                         targetPixels);
-                    renderGate = Resources.BitmapCache.GetDecodeGate(device, bitmapIdentity);
+                    renderGate = _resources.BitmapCache.GetDecodeGate(device, bitmapIdentity);
                     await renderGate.WaitAsync(cancellationToken).ConfigureAwait(false);
                     renderGateHeld = true;
                 }
@@ -5758,7 +5757,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                                     MarkdownSvgWorkStage.BitmapCacheStore,
                                     svgSourceBytes,
                                     targetPixels);
-                                bitmapLease = Resources.BitmapCache.StoreSvgAndAcquire(
+                                bitmapLease = _resources.BitmapCache.StoreSvgAndAcquire(
                                     device,
                                     bitmapIdentity,
                                     ownedBitmap,
@@ -5792,7 +5791,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                     MarkdownSvgFailureReason.WorkerFailure,
                     "The SVG bitmap cache did not return a lease.");
 
-            Resources.SvgSources.RecordLastBitmap(
+            _resources.SvgSources.RecordLastBitmap(
                 work.BuiltInSourceAliasKey,
                 contentCacheKey,
                 bitmapIdentity,
@@ -6560,7 +6559,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 plan.Document is IMarkdownSvgPrioritizedDocument;
             if (!providerOwnsAdmission)
             {
-                await Resources.SvgProviderAdmission.WaitAsync(admissionCancellation.Token).ConfigureAwait(false);
+                await _resources.SvgProviderAdmission.WaitAsync(admissionCancellation.Token).ConfigureAwait(false);
                 providerAdmissionHeld = true;
             }
             CancellationToken cancellationToken = admissionCancellation.Token;
@@ -6575,7 +6574,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             {
                 if (OutputDeferral.IsBitmapOutputDeferred)
                     return;
-                renderGate = Resources.BitmapCache.GetDecodeGate(device, identity);
+                renderGate = _resources.BitmapCache.GetDecodeGate(device, identity);
                 await renderGate.WaitAsync(cancellationToken).ConfigureAwait(false);
                 renderGateHeld = true;
 
@@ -6631,7 +6630,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                                 MarkdownSvgWorkStage.BitmapCacheStore,
                                 svgSourceBytes,
                                 targetPixels);
-                            bitmapLease = Resources.BitmapCache.StoreSvgAndAcquire(
+                            bitmapLease = _resources.BitmapCache.StoreSvgAndAcquire(
                                 device,
                                 identity,
                                 ownedBitmap,
@@ -6786,7 +6785,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
                 if (renderGateHeld)
                     TryImageCleanup(() => renderGate!.Release());
                 if (providerAdmissionHeld)
-                    TryImageCleanup(() => Resources.SvgProviderAdmission.Release());
+                    TryImageCleanup(() => _resources.SvgProviderAdmission.Release());
                 TryImageCleanup(() => CompleteSvgTileWork(key, workCancellation));
             }
             finally
@@ -7416,7 +7415,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             IMarkdownSvgRenderer? renderer = Context.SvgRenderer;
             if (renderer is null)
                 return false;
-            long rendererIdentity = Resources.ProviderIdentities.GetSvgRendererIdentity(renderer);
+            long rendererIdentity = _resources.ProviderIdentities.GetSvgRendererIdentity(renderer);
             long providerCacheGeneration = renderer.CacheGeneration;
             if ((sourceEntry?.RendererIdentity ?? _svgRendererIdentity) != rendererIdentity ||
                 (info.HasText &&
@@ -7528,7 +7527,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         int renderGeneration,
         BitmapOutputWorkContext bitmapOutputWork)
     {
-        if (!Resources.SvgSources.TryGetValue(contentCacheKey, out SvgCacheEntry? entry) ||
+        if (!_resources.SvgSources.TryGetValue(contentCacheKey, out SvgCacheEntry? entry) ||
             !IsSvgCacheEntryCurrent(entry))
         {
             return false;
@@ -7541,7 +7540,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             return false;
 
         if (!string.IsNullOrEmpty(builtInSourceAliasKey))
-            Resources.SvgSources.Set(builtInSourceAliasKey, entry);
+            _resources.SvgSources.Set(builtInSourceAliasKey, entry);
         return true;
     }
 
@@ -7671,8 +7670,8 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
 
                 if (!string.IsNullOrEmpty(metadata.ResolvedCacheKey))
                 {
-                    Resources.Failures.ForgetSvgFailure(metadata.SvgFailureCacheKey);
-                    Resources.Failures.ForgetFailedUrl(metadata.ResolvedCacheKey);
+                    _resources.Failures.ForgetSvgFailure(metadata.SvgFailureCacheKey);
+                    _resources.Failures.ForgetFailedUrl(metadata.ResolvedCacheKey);
                 }
                 transferred = ownership.TryTransfer();
                 if (!transferred)
@@ -8205,7 +8204,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             if (_loadFailed && cachePermanently &&
                 failureCacheKey.Length is > 0 and <= ImageFailureCache.MaxKeyLength)
             {
-                Resources.Failures.RememberSvgFailure(
+                _resources.Failures.RememberSvgFailure(
                     failureCacheKey, reason, SvgSourcePreflight.TrimMetadata(description));
             }
 
@@ -8305,7 +8304,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             width,
             height,
             outputBytes > (Context.PerformanceSession?.Options.ReleaseOffscreenImageResources != true ? MaxSvgOutputRasterBytes :
-                Math.Min(MaxSvgOutputRasterBytes, Resources.BitmapOutput.MaximumSingleOutputBytes)) ||
+                Math.Min(MaxSvgOutputRasterBytes, _resources.BitmapOutput.MaximumSingleOutputBytes)) ||
                 width > MaxUntiledSvgDimensionPixels ||
                 height > MaxUntiledSvgDimensionPixels ||
                 width > Context.ResourceCreator.Device.MaximumBitmapSizeInPixels ||
@@ -8380,7 +8379,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         try
         {
             return Context.SvgRenderer is { } renderer &&
-                   entry.RendererIdentity == Resources.ProviderIdentities.GetSvgRendererIdentity(renderer) &&
+                   entry.RendererIdentity == _resources.ProviderIdentities.GetSvgRendererIdentity(renderer) &&
                    (!entry.Info.HasText ||
                     entry.ProviderCacheGeneration == renderer.CacheGeneration);
         }
@@ -8395,7 +8394,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         try
         {
             return Context.SvgRenderer is { } renderer &&
-                   Resources.ProviderIdentities.GetSvgRendererIdentity(renderer) == _svgRendererIdentity &&
+                   _resources.ProviderIdentities.GetSvgRendererIdentity(renderer) == _svgRendererIdentity &&
                    (_svgInfo?.HasText != true ||
                     renderer.CacheGeneration == _svgProviderCacheGeneration);
         }
@@ -8539,7 +8538,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
             _failureCarryable = cachePermanently;
             if (cachePermanently && !string.IsNullOrEmpty(cacheKey))
             {
-                Resources.Failures.RememberFailedUrl(cacheKey);
+                _resources.Failures.RememberFailedUrl(cacheKey);
             }
 
             // Block images and explicitly-sized inline images preserve their geometry. A

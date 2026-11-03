@@ -33,7 +33,7 @@ public sealed class BitmapOutputDeferralTests
             "bitmap-output-raster-" + Guid.NewGuid().ToString("N"),
             "image/png");
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1),
+            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
             "https://images.example/admission-raster.png",
             "admitted raster");
         var completed = new TaskCompletionSource<LoadCompletedEventArgs>(
@@ -114,7 +114,7 @@ public sealed class BitmapOutputDeferralTests
                     $"bitmap-output-storm-{index}-{Guid.NewGuid():N}",
                     "image/png");
                 var image = new ImageBox(
-                    DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1),
+                    DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
                     $"https://images.example/storm/{index}.png",
                     $"storm image {index}");
                 var item = new RasterStormItem(image, resolver);
@@ -243,7 +243,7 @@ public sealed class BitmapOutputDeferralTests
             "svg-content:" + Guid.NewGuid().ToString("N"),
             "image/svg+xml");
         var image = new ImageBox(
-            CreateSvgContext(resolver, renderer, session, rasterizationScale: 1),
+            CreateSvgContext(resolver, renderer, session, rasterizationScale: 1), ImageResourceScope.Shared,
             "https://images.example/admission-full.svg",
             "full SVG");
         var completed = new TaskCompletionSource<LoadCompletedEventArgs>(
@@ -303,7 +303,7 @@ public sealed class BitmapOutputDeferralTests
             "svg-content:" + Guid.NewGuid().ToString("N"),
             "image/svg+xml");
         var image = new ImageBox(
-            CreateSvgContext(resolver, renderer, session, rasterizationScale: 4),
+            CreateSvgContext(resolver, renderer, session, rasterizationScale: 4), ImageResourceScope.Shared,
             "https://images.example/admission-tiled.svg",
             "tiled SVG");
 
@@ -387,7 +387,7 @@ public sealed class BitmapOutputDeferralTests
             "bitmap-output-cancel-" + Guid.NewGuid().ToString("N"),
             "image/png");
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1),
+            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
             "https://images.example/admission-cancel.png",
             "cancel waiter");
 
@@ -435,7 +435,7 @@ public sealed class BitmapOutputDeferralTests
             "bitmap-output-legacy-" + Guid.NewGuid().ToString("N"),
             "image/png");
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1),
+            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
             "https://images.example/admission-legacy.png",
             "legacy policy");
 
@@ -488,7 +488,7 @@ public sealed class BitmapOutputDeferralTests
             cacheKey,
             "image/png");
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1),
+            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
             "https://images.example/oversized-legacy-cache.png",
             "oversized cached legacy bitmap");
         SharedCanvasBitmapCache.Lease? survivor = null;

@@ -292,6 +292,7 @@ public sealed class SvgHostRetryReadinessTests
     private static (ImageBox, MarkdownSvgRenderDemand, object) CreateWaiting()
     {
         var owner = (ImageBox)RuntimeHelpers.GetUninitializedObject(typeof(ImageBox));
+        Set(owner, "_resources", ImageResourceScope.Shared);
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         object waiterIdentity = new();
         object denialIdentity = new();

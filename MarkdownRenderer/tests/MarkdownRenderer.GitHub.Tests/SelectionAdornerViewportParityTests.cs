@@ -534,7 +534,7 @@ public sealed class SelectionAdornerViewportParityTests
         using var device = new CanvasDevice(forceSoftwareRenderer: true);
         Assert.True(device.ForceSoftwareRenderer);
         MarkdownLayoutContext context = CreateEndpointContext(device);
-        var image = new ImageBox(context, string.Empty, "offscreen image") { BlockIndex = 1 };
+        var image = new ImageBox(context, ImageResourceScope.Shared, string.Empty, "offscreen image") { BlockIndex = 1 };
         image.Measure(176);
         image.Arrange(0, 0, 176);
         Assert.True(image.Bounds.Height > 0);

@@ -670,7 +670,7 @@ public sealed class LayoutSnapshotIndexConstructionTests
 
         var secondRoot = new StackBox { BlockIndex = 100 };
         secondRoot.Add(sharedInlineImageRun.Image);
-        var decorativeImage = new ImageBox(context, "https://example.test/decorative.png", string.Empty)
+        var decorativeImage = new ImageBox(context, ImageResourceScope.Shared, "https://example.test/decorative.png", string.Empty)
         {
             BlockIndex = 220,
         };

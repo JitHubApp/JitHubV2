@@ -23,7 +23,7 @@ public sealed class SvgHostDeferredSourceRetentionTests
         var resolver = new GeneratedSvgResolver();
         var renderer = new CapacityDeniedRenderer(admission);
         var image = new ImageBox(
-            CreateContext(renderer, resolver),
+            CreateContext(renderer, resolver), ImageResourceScope.Shared,
             "https://example.test/oversized-source.svg",
             alt: string.Empty);
 

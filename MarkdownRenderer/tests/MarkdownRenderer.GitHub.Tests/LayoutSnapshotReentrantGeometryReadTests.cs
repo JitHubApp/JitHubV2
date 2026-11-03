@@ -41,8 +41,8 @@ public sealed class LayoutSnapshotReentrantGeometryReadTests
             RasterizationScale = 1,
         };
 
-        var first = new ImageBox(context, resolver.FirstUrl, "First completed image") { BlockIndex = 701 };
-        var second = new ImageBox(context, resolver.SecondUrl, "Second completed image") { BlockIndex = 702 };
+        var first = new ImageBox(context, ImageResourceScope.Shared, resolver.FirstUrl, "First completed image") { BlockIndex = 701 };
+        var second = new ImageBox(context, ImageResourceScope.Shared, resolver.SecondUrl, "Second completed image") { BlockIndex = 702 };
         var suffix = new ReentrantFailureBlock { BlockIndex = 703 };
         LayoutSnapshot? snapshot = null;
         MarkdownLayoutContext? constructionContext = null;

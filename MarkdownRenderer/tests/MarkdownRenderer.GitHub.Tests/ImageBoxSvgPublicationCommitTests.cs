@@ -909,7 +909,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
     }
 
     private static ImageBox CreateImage(TestSvgRenderer renderer) => new(
-        CreateContext(renderer),
+        CreateContext(renderer), ImageResourceScope.Shared,
         "data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%3E%3C%2Fsvg%3E",
         "Publication commit test");
 

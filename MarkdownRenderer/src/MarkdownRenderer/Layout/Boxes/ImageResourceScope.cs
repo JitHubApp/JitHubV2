@@ -85,6 +85,27 @@ internal sealed class ImageResourceScope
         maximumTrackedKeys: 256,
         overflowStripeCount: 128);
 
+    /// <summary>
+    /// Creates one image box's bitmap-output owners, bound to this scope's
+    /// governor and bitmap cache.
+    /// </summary>
+    internal (ImageBitmapOutputDeferral Deferral, ImageBitmapOutputAdmission Admission) CreateBitmapOutput(
+        IImageBitmapOutputHost host,
+        MarkdownLayoutContext context,
+        CancellationTokenSource imageLifetime)
+    {
+        var deferral = new ImageBitmapOutputDeferral(host, context, this, imageLifetime);
+        return (deferral, new ImageBitmapOutputAdmission(host, context, this, deferral));
+    }
+
+    /// <summary>
+    /// Serializes measured-placement swaps between image boxes of this scope.
+    /// Image work and native construction remain outside this gate; it
+    /// prevents overlapping batches from acquiring disjoint image pairs in
+    /// opposite orders. A batch only swaps boxes of one scope.
+    /// </summary>
+    internal object MeasuredPlacementTransferSync { get; } = new();
+
     /// <summary>Coordinates host-side admission of tiled SVG source snapshots.</summary>
     internal SvgHostAdmissionCoordinator SvgHostAdmission { get; } = new();
 

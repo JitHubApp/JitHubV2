@@ -30,7 +30,7 @@ internal sealed class InlineImageRun : InlineRun
         Title = title;
         LinkUrl = linkUrl;
         LinkTitle = linkTitle;
-        Image = new Boxes.ImageBox(context, Url, AltText, requestedWidth, requestedHeight)
+        Image = new Boxes.ImageBox(context, Boxes.ImageResourceScope.Shared, Url, AltText, requestedWidth, requestedHeight)
         {
             Margin = default
         };

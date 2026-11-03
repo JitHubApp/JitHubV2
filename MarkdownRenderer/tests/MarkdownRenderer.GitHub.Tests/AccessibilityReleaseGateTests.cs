@@ -112,11 +112,11 @@ public sealed class AccessibilityReleaseGateTests
     public void EmptyAltBlockImageIsExcludedButMeaningfulFailureRemainsSemantic()
     {
         MarkdownLayoutContext context = CreateContext("fr-FR");
-        var decorative = new ImageBox(context, string.Empty, string.Empty)
+        var decorative = new ImageBox(context, ImageResourceScope.Shared, string.Empty, string.Empty)
         {
             BlockIndex = context.NextBlockIndex(),
         };
-        var meaningful = new ImageBox(context, string.Empty, "Build status")
+        var meaningful = new ImageBox(context, ImageResourceScope.Shared, string.Empty, "Build status")
         {
             BlockIndex = context.NextBlockIndex(),
         };

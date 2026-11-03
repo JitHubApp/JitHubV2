@@ -703,7 +703,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
 
     private static ImageBox CreateStandaloneImage(CompletedRasterPlacementCloneTests.PlacementFixture fixture)
     {
-        var image = new ImageBox(fixture.SourceContext, fixture.RasterSource, "Standalone test image")
+        var image = new ImageBox(fixture.SourceContext, ImageResourceScope.Shared, fixture.RasterSource, "Standalone test image")
         {
             BlockIndex = fixture.Source.BlockIndex,
         };
@@ -786,7 +786,7 @@ public sealed class ImageBoxMeasuredSvgPlacementTransferTests
         var renderer = new TransferSvgRenderer(hasText: true);
         var resolver = new TransferSvgResolver(System.Text.Encoding.UTF8.GetBytes(SvgMarkup));
         MarkdownLayoutContext sourceContext = CreateSvgContext(renderer, resolver);
-        var source = new ImageBox(sourceContext, resolver.Url, "Text SVG");
+        var source = new ImageBox(sourceContext, ImageResourceScope.Shared, resolver.Url, "Text SVG");
         MarkdownLayoutContext targetContext = sourceContext.CreateRasterPlacementContext(
             CancellationToken.None,
             sourceContext.ImagePreparationOwner!,
@@ -870,7 +870,7 @@ public sealed class ImageBoxMeasuredSvgPlacementTransferTests
         var renderer = new TransferSvgRenderer(hasText: true);
         var resolver = new TransferSvgResolver(System.Text.Encoding.UTF8.GetBytes(SvgMarkup));
         MarkdownLayoutContext sourceContext = CreateSvgContext(renderer, resolver);
-        var source = new ImageBox(sourceContext, resolver.Url, "Text SVG");
+        var source = new ImageBox(sourceContext, ImageResourceScope.Shared, resolver.Url, "Text SVG");
         MarkdownLayoutContext targetContext = sourceContext.CreateRasterPlacementContext(
             CancellationToken.None,
             sourceContext.ImagePreparationOwner!,

@@ -69,7 +69,7 @@ public sealed class ImageBitmapOutputSizingTests
                 MaxRasterOutputPixels = sourcePixels,
             });
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1),
+            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
             "https://images.example/bounded-without-display-size.png",
             string.Empty);
 
@@ -110,7 +110,7 @@ public sealed class ImageBitmapOutputSizingTests
         using var session = new MarkdownPerformanceSession(
             MarkdownPerformanceOptions.Progressive with { UseDisplaySizedRasterDecode = false });
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1),
+            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
             "https://images.example/partial-output.gif",
             string.Empty);
         using var admissionTrace = new RasterAdmissionTrace(admission);
@@ -157,7 +157,7 @@ public sealed class ImageBitmapOutputSizingTests
                 MaxRasterOutputPixels = sourcePixels,
             });
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1),
+            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
             "https://images.example/legacy-source-sized.png",
             string.Empty);
 
@@ -188,7 +188,7 @@ public sealed class ImageBitmapOutputSizingTests
             IntrinsicAspectRatio: 5));
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
         var image = new ImageBox(
-            CreateSvgContext(renderer, session, rasterizationScale: 4),
+            CreateSvgContext(renderer, session, rasterizationScale: 4), ImageResourceScope.Shared,
             CreateSvgDataUri(Guid.NewGuid().ToString("N")),
             "large diagram");
 

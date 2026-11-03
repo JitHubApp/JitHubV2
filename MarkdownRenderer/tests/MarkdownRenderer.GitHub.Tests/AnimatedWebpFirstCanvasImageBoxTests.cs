@@ -63,7 +63,7 @@ public sealed class AnimatedWebpFirstCanvasImageBoxTests(ITestOutputHelper outpu
                         MaxRasterOutputPixels = 16,
                     });
                 MarkdownLayoutContext context = CreateContext(device, resolver, session, provider);
-                var image = new ImageBox(context, "https://images.example/partial-animation.webp", "frame one");
+                var image = new ImageBox(context, ImageResourceScope.Shared, "https://images.example/partial-animation.webp", "frame one");
 
                 try
                 {

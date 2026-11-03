@@ -1017,9 +1017,9 @@ public sealed class SvgTileQueuePlanTests
 
     private static ImageBox CreateBareBox(SvgTileRenderPlan plan)
     {
-        // Queue's already-present/pending fast path must not require a Win2D
-        // resource creator, XAML dispatcher, or native device.
+        // The already-present/pending fast path needs no Win2D creator, dispatcher or device.
         var box = (ImageBox)RuntimeHelpers.GetUninitializedObject(typeof(ImageBox));
+        SetField(box, "_resources", ImageResourceScope.Shared);
         SetField(box, "_svgWorkSync", new object());
         SetField(box, "_svgPublicationSync", new object());
         SetField(box, "_svgTileLock", new object());

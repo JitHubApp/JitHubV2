@@ -41,7 +41,7 @@ public sealed class ImageBoxResidencyTests
             resolver,
             new MarkdownImageResolveContext(BaseUri: null));
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(documentScope, session, scale: 1),
+            DisplaySizedRasterDecodeTests.CreateContext(documentScope, session, scale: 1), ImageResourceScope.Shared,
             "https://images.example/residency.png",
             "A retained image description");
 
@@ -99,7 +99,7 @@ public sealed class ImageBoxResidencyTests
             });
         var resolver = new LateResolver();
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1),
+            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
             "https://images.example/late.png",
             "Late image");
         int publications = 0;
@@ -142,7 +142,7 @@ public sealed class ImageBoxResidencyTests
             });
         var image = new ImageBox(
             DisplaySizedRasterDecodeTests.CreateContext(
-                new UnusedResolver(), session, scale: 1),
+                new UnusedResolver(), session, scale: 1), ImageResourceScope.Shared,
             "https://images.example/queued.png",
             "Queued image");
         var queued = new TaskCompletionSource<Action>(
@@ -187,7 +187,7 @@ public sealed class ImageBoxResidencyTests
         using var session = CreateResidencySession();
         var renderer = new ResidencySvgRenderer(blockDispose: true);
         var image = new ImageBox(
-            CreateContext(null, session, renderer),
+            CreateContext(null, session, renderer), ImageResourceScope.Shared,
             CreateSvgDataUri("blocked-dispose-" + Guid.NewGuid().ToString("N")),
             "SVG alternative text");
 
@@ -258,7 +258,7 @@ public sealed class ImageBoxResidencyTests
     {
         var renderer = new ResidencySvgRenderer();
         var image = new ImageBox(
-            CreateContext(null, session: null, renderer),
+            CreateContext(null, session: null, renderer), ImageResourceScope.Shared,
             CreateSvgDataUri("legacy-retirement-" + Guid.NewGuid().ToString("N")),
             "Legacy SVG");
 
@@ -292,7 +292,7 @@ public sealed class ImageBoxResidencyTests
                 IntrinsicAspectRatio: 5,
                 Description: "Large provider document"));
         var image = new ImageBox(
-            CreateContext(null, session, renderer),
+            CreateContext(null, session, renderer), ImageResourceScope.Shared,
             CreateSvgDataUri("tiled-retirement-" + Guid.NewGuid().ToString("N")),
             "Tiled SVG");
 
@@ -405,7 +405,7 @@ public sealed class ImageBoxResidencyTests
     {
         var renderer = new ResidencySvgRenderer(throwOnDispose: true);
         var image = new ImageBox(
-            CreateContext(null, session: null, renderer),
+            CreateContext(null, session: null, renderer), ImageResourceScope.Shared,
             CreateSvgDataUri("dispose-failure-" + Guid.NewGuid().ToString("N")),
             "SVG with provider cleanup failure");
 
@@ -446,7 +446,7 @@ public sealed class ImageBoxResidencyTests
         using var session = CreateResidencySession();
         var renderer = new ResidencySvgRenderer(blockRender: true);
         var image = new ImageBox(
-            CreateContext(null, session, renderer),
+            CreateContext(null, session, renderer), ImageResourceScope.Shared,
             CreateSvgDataUri("late-render-" + Guid.NewGuid().ToString("N")),
             "Late SVG");
         int publications = 0;
@@ -508,7 +508,7 @@ public sealed class ImageBoxResidencyTests
     public async Task RetiredSvgDocumentDrainsItsOwnUseWhileUnrelatedDocumentRemainsActive()
     {
         var image = new ImageBox(
-            CreateContext(null, session: null),
+            CreateContext(null, session: null), ImageResourceScope.Shared,
             CreateSvgDataUri("per-document-use-" + Guid.NewGuid().ToString("N")),
             "Per-document SVG lifetime");
         var oldDocument = new ResidencySvgDocument(blockRender: false, blockDispose: false);
@@ -573,7 +573,7 @@ public sealed class ImageBoxResidencyTests
             DisplaySizedRasterDecodeTests.CreatePng(32, 16),
             $"legacy-residency-{Guid.NewGuid():N}");
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1),
+            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
             "https://images.example/legacy.png",
             "Legacy image");
 
@@ -600,7 +600,7 @@ public sealed class ImageBoxResidencyTests
         byte[] bytes = DisplaySizedRasterDecodeTests.CreatePng(83, 27);
         string source = "data:image/png," +
             string.Concat(Array.ConvertAll(bytes, value => $"%{value:X2}"));
-        var image = new ImageBox(CreateContext(null, session: null), source, "Percent-encoded PNG");
+        var image = new ImageBox(CreateContext(null, session: null), ImageResourceScope.Shared, source, "Percent-encoded PNG");
         try
         {
             image.Measure(100);
@@ -623,7 +623,7 @@ public sealed class ImageBoxResidencyTests
         string source = "data:image/png;base64," + Convert.ToBase64String(bytes);
         // Use one resource creator for both halves of this device-cache test.
         CanvasDevice device = CanvasDevice.GetSharedDevice();
-        var warm = new ImageBox(CreateContext(null, session: null, device: device), source, "Warm cache image");
+        var warm = new ImageBox(CreateContext(null, session: null, device: device), ImageResourceScope.Shared, source, "Warm cache image");
         try
         {
             warm.Measure(80);
@@ -644,7 +644,7 @@ public sealed class ImageBoxResidencyTests
         // This tests synchronous release of an eligible source-sized warm
         // lease. Display-sized consumers intentionally defer until measured.
         using var session = CreateResidencySession(displaySized: false);
-        var image = new ImageBox(CreateContext(null, session, device: device), source, "Warm cache image");
+        var image = new ImageBox(CreateContext(null, session, device: device), ImageResourceScope.Shared, source, "Warm cache image");
         int drainEvents = 0;
         image.ResidencyWorkDrained += (_, _) => Interlocked.Increment(ref drainEvents);
         try

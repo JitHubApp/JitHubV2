@@ -22,7 +22,7 @@ public sealed class ImageBoxAtomicSelectionEndpointTests
     {
         MarkdownLayoutContext context = CreateContext();
         var image = new ImageBox(
-            context,
+            context, ImageResourceScope.Shared,
             string.Empty,
             "final image",
             new SafeHtmlLength(80, IsPercent: false),

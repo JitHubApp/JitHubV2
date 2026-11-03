@@ -13,11 +13,6 @@ internal sealed partial class ImageBox
 {
     internal const int MaximumMeasuredPlacementTransferBatchCount = 32;
 
-    // Only placement swaps are serialized here. Image work and native
-    // construction remain outside this gate; it prevents overlapping batches
-    // from acquiring disjoint image pairs in opposite orders.
-    private static readonly object s_measuredPlacementTransferSync = new();
-
     internal readonly struct NativeLayoutPlacementFence(
         CanvasTextLayout? Placeholder,
         NativeResourceRetirementRecord? PlaceholderRetirementRecord,
@@ -254,6 +249,7 @@ internal sealed partial class ImageBox
         // metadata requirement, and live output waiter before taking pair locks.
         // The quadratic identity check is bounded to at most 32 entries and
         // avoids temporary HashSet allocations in this commit path.
+        ImageResourceScope? batchResources = transfers[0].Source?._resources;
         for (int index = 0; index < transfers.Length; index++)
         {
             MeasuredPlacementTransfer transfer = transfers[index];
@@ -264,6 +260,8 @@ internal sealed partial class ImageBox
             float preparedExpectedWidth = ResolveExpectedPreparedAvailableWidth(transfer, pairExpectedWidth);
             if (source is null || prepared is null || expectedLease is null ||
                 ReferenceEquals(source, prepared) ||
+                !ReferenceEquals(source._resources, batchResources) ||
+                !ReferenceEquals(prepared._resources, batchResources) ||
                 !float.IsFinite(pairExpectedWidth) || pairExpectedWidth <= 0f ||
                 !float.IsFinite(preparedExpectedWidth) || preparedExpectedWidth <= 0f ||
                 (!transfer.ExpectedInlineLayout && preparedExpectedWidth != pairExpectedWidth) ||
@@ -300,10 +298,10 @@ internal sealed partial class ImageBox
             }
         }
 
-        lock (s_measuredPlacementTransferSync)
+        lock (batchResources!.MeasuredPlacementTransferSync)
         {
             // Every batch uses the same source→prepared ordering within a pair,
-            // and the static gate serializes overlapping pair sequences.
+            // and the scope's gate serializes overlapping pair sequences.
             return TryAcquireSvgTransferLocks(
                 transfers, 0, currentProviderCacheGeneration, expectedAvailableWidth);
         }

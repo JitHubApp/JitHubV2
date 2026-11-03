@@ -64,7 +64,7 @@ public sealed class CompactSemanticSpanTests
         {
             BlockIndex = context.NextBlockIndex(),
         };
-        var image = new ImageBox(context, string.Empty, "image alt")
+        var image = new ImageBox(context, ImageResourceScope.Shared, string.Empty, "image alt")
         {
             BlockIndex = context.NextBlockIndex(),
         };
