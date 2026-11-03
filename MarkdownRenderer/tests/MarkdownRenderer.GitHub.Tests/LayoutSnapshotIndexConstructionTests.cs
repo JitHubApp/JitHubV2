@@ -44,44 +44,35 @@ public sealed class LayoutSnapshotIndexConstructionTests
             generatedBlockIndexUpperBound: generatedBlockIndexUpperBound);
 
         LegacyIndexes expected = LegacyIndexes.Build(fixture.Roots);
-        AssertDictionaryEquals(expected.BlockOrdinals, ReadField<Dictionary<BlockBox, int>>(snapshot, "_blockOrdinals"));
+        AssertDictionaryEquals(expected.BlockOrdinals, ReadField<Dictionary<BlockBox, int>>(snapshot.Geometry.BlockOrdinals));
         AssertDictionaryEquals(
             expected.TopLevelOrdinalByBlockIndex,
-            ReadAssignableField<IReadOnlyDictionary<int, int>>(snapshot, "_topLevelOrdinalByBlockIndex"));
+            ReadAssignableField<IReadOnlyDictionary<int, int>>(snapshot.Geometry.TopLevelOrdinalByBlockIndex));
         AssertDictionaryEquals(
             expected.ImageTopLevelOrdinalByIdentity,
-            ReadField<Dictionary<ImageBox, int>>(snapshot, "_imageTopLevelOrdinalByIdentity"));
+            ReadField<Dictionary<ImageBox, int>>(snapshot.ImageTopLevelOrdinals));
         AssertReferenceSetEquals(
             expected.HorizontalOverflowBoxes,
-            ReadField<HashSet<IHorizontalOverflowBox>>(snapshot, "_horizontalOverflowBoxes"));
+            ReadField<HashSet<IHorizontalOverflowBox>>(snapshot.HorizontalOverflow.Boxes));
         AssertDictionaryEquals(
             expected.HorizontalOverflowByBlockIndex,
-            ReadField<Dictionary<int, IHorizontalOverflowBox>>(snapshot, "_horizontalOverflowByBlockIndex"));
-        object focusPlanValue = typeof(LayoutSnapshot).GetField(
-            "_focusablePlan",
-            BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(snapshot)!;
+            ReadField<Dictionary<int, IHorizontalOverflowBox>>(snapshot.HorizontalOverflow.ByBlockIndex));
+        object focusPlanValue = snapshot.Focusables.Entries;
         AssertFocusablePlanEquals(expected.FocusablePlan, Assert.IsAssignableFrom<Array>(focusPlanValue));
 
         // Shared image identity is stable within one root but deliberately
         // becomes ambiguous when the same image is encountered under another
         // top-level root. Duplicate block indexes remain first-wins for root
         // ownership and last-wins for the horizontal-overflow alias map.
-        IReadOnlyDictionary<int, int> topOrdinals = ReadAssignableField<IReadOnlyDictionary<int, int>>(
-            snapshot,
-            "_topLevelOrdinalByBlockIndex");
+        IReadOnlyDictionary<int, int> topOrdinals = ReadAssignableField<IReadOnlyDictionary<int, int>>(snapshot.Geometry.TopLevelOrdinalByBlockIndex);
         Assert.Equal(0, topOrdinals[fixture.DuplicateTopLevelBlockIndex]);
-        Dictionary<ImageBox, int> imageOrdinals = ReadField<Dictionary<ImageBox, int>>(
-            snapshot,
-            "_imageTopLevelOrdinalByIdentity");
+        Dictionary<ImageBox, int> imageOrdinals = ReadField<Dictionary<ImageBox, int>>(snapshot.ImageTopLevelOrdinals);
         Assert.Equal(-1, imageOrdinals[fixture.SharedImage]);
         Assert.Equal(0, imageOrdinals[fixture.SameRootImage]);
         Assert.Equal(0, imageOrdinals[fixture.CodeChunkImage]);
         Assert.Equal(0, imageOrdinals[fixture.TableCellImage]);
         Assert.Equal(2, imageOrdinals[fixture.DecorativeImage]);
-        Dictionary<int, IHorizontalOverflowBox> horizontalByIndex = ReadField<Dictionary<int, IHorizontalOverflowBox>>(
-            snapshot,
-            "_horizontalOverflowByBlockIndex");
+        Dictionary<int, IHorizontalOverflowBox> horizontalByIndex = ReadField<Dictionary<int, IHorizontalOverflowBox>>(snapshot.HorizontalOverflow.ByBlockIndex);
         Assert.Same(fixture.OuterOverflowOwner, horizontalByIndex[fixture.NestedOverflowDescendantBlockIndex]);
         Assert.Same(fixture.Table, horizontalByIndex[fixture.TableCellBlockIndex]);
         Assert.Same(fixture.LastDuplicateOverflowOwner, horizontalByIndex[fixture.DuplicateOverflowBlockIndex]);
@@ -122,11 +113,7 @@ public sealed class LayoutSnapshotIndexConstructionTests
 
         // Dynamic overflow entries are resolved at collection time; the
         // constructor must not allocate and then discard a fixed item array.
-        FieldInfo fixedItemsField = typeof(LayoutSnapshot).GetField(
-            "_fixedFocusableItems",
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Snapshot fixed-focus field was not found.");
-        Assert.Null(fixedItemsField.GetValue(snapshot));
+        Assert.Null(snapshot.Focusables.FixedItems);
     }
 
     [Theory]
@@ -236,7 +223,7 @@ public sealed class LayoutSnapshotIndexConstructionTests
         {
             Assert.Equal(blockCount, snapshot.GetLayoutPlanCandidatesUnderPaint().Length);
 
-            bool[] measuredMask = ReadField<bool[]>(snapshot, "_measuredTopLevelBlocks");
+            bool[] measuredMask = ReadField<bool[]>(snapshot.Geometry.MeasuredTopLevelBlocks);
             var expectedOrdinals = new List<int>();
             for (int ordinal = 0; ordinal < measuredMask.Length; ordinal++)
             {
@@ -248,13 +235,9 @@ public sealed class LayoutSnapshotIndexConstructionTests
             Assert.Contains(secondMeasuredOrdinal, expectedOrdinals);
             Assert.Contains(thirdMeasuredOrdinal, expectedOrdinals);
 
-            List<int> finalizedOrdinals = ReadField<List<int>>(
-                snapshot,
-                "_measuredLayoutPlanRootOrdinals");
+            List<int> finalizedOrdinals = ReadField<List<int>>(snapshot.PlanCandidates.MeasuredRootOrdinals);
             Assert.Equal(expectedOrdinals, finalizedOrdinals);
-            Assert.True(ReadField<bool>(
-                snapshot,
-                "_measuredLayoutPlanRootOrdinalsAreSorted"));
+            Assert.True(ReadField<bool>(snapshot.PlanCandidates.MeasuredRootOrdinalsAreSorted));
             int[] ordinalsBeforeEnumeration = finalizedOrdinals.ToArray();
 
             var candidates = snapshot.GetMeasuredLayoutPlanCandidatesUnderPaint();
@@ -268,12 +251,9 @@ public sealed class LayoutSnapshotIndexConstructionTests
                 Assert.Equal(expectedOrdinals[index], actual[index].TopLevelOrdinal);
                 Assert.Same(roots[expectedOrdinals[index]], actual[index].Box);
             }
-            Assert.Same(finalizedOrdinals, ReadField<List<int>>(
-                snapshot, "_measuredLayoutPlanRootOrdinals"));
+            Assert.Same(finalizedOrdinals, ReadField<List<int>>(snapshot.PlanCandidates.MeasuredRootOrdinals));
             Assert.Equal(ordinalsBeforeEnumeration, finalizedOrdinals);
-            Assert.True(ReadField<bool>(
-                snapshot,
-                "_measuredLayoutPlanRootOrdinalsAreSorted"));
+            Assert.True(ReadField<bool>(snapshot.PlanCandidates.MeasuredRootOrdinalsAreSorted));
             Assert.True(snapshot.TryGetMeasuredBlockByOrdinalUnderPaint(
                 secondMeasuredOrdinal,
                 out BlockBox secondMeasuredRoot));
@@ -319,13 +299,12 @@ public sealed class LayoutSnapshotIndexConstructionTests
             overscan: 0,
             cancellationToken: CancellationToken.None);
 
-        List<int> priorOrdinals = ReadField<List<int>>(
-            snapshot, "_measuredLayoutPlanRootOrdinals");
+        List<int> priorOrdinals = ReadField<List<int>>(snapshot.PlanCandidates.MeasuredRootOrdinals);
         int[] priorOrdinalValues = priorOrdinals.ToArray();
         Assert.Contains(initiallyMeasuredOrdinal, priorOrdinalValues);
         Assert.Equal(priorOrdinalValues.Order(), priorOrdinalValues);
-        Assert.True(ReadField<bool>(snapshot, "_measuredLayoutPlanRootOrdinalsAreSorted"));
-        bool[] priorMeasuredMask = ReadField<bool[]>(snapshot, "_measuredTopLevelBlocks");
+        Assert.True(ReadField<bool>(snapshot.PlanCandidates.MeasuredRootOrdinalsAreSorted));
+        bool[] priorMeasuredMask = ReadField<bool[]>(snapshot.Geometry.MeasuredTopLevelBlocks);
         bool[] priorMask = priorMeasuredMask.ToArray();
         int priorMeasuredCount = snapshot.MeasuredTopLevelBlockCount;
         Size priorSize = snapshot.Size;
@@ -344,12 +323,11 @@ public sealed class LayoutSnapshotIndexConstructionTests
         Assert.Equal(priorSize, snapshot.Size);
         Assert.Equal(priorRevision, snapshot.LayoutRevision);
         Assert.Same(priorPlacements, snapshot.PublishedPlacementGeneration);
-        Assert.Same(priorMeasuredMask, ReadField<bool[]>(snapshot, "_measuredTopLevelBlocks"));
+        Assert.Same(priorMeasuredMask, ReadField<bool[]>(snapshot.Geometry.MeasuredTopLevelBlocks));
         Assert.Equal(priorMask, priorMeasuredMask);
-        Assert.Same(priorOrdinals, ReadField<List<int>>(
-            snapshot, "_measuredLayoutPlanRootOrdinals"));
+        Assert.Same(priorOrdinals, ReadField<List<int>>(snapshot.PlanCandidates.MeasuredRootOrdinals));
         Assert.Equal(priorOrdinalValues, priorOrdinals);
-        Assert.True(ReadField<bool>(snapshot, "_measuredLayoutPlanRootOrdinalsAreSorted"));
+        Assert.True(ReadField<bool>(snapshot.PlanCandidates.MeasuredRootOrdinalsAreSorted));
         Assert.False(priorMeasuredMask[canceledOrdinal]);
     }
 
@@ -377,23 +355,19 @@ public sealed class LayoutSnapshotIndexConstructionTests
             viewportHeight: 0.5d,
             overscan: 0,
             cancellationToken: CancellationToken.None);
-        Assert.Equal(1, ReadField<int>(snapshot, "_measuredTopLevelBlockCount"));
-        Assert.Equal(new[] { 0 }, ReadField<List<int>>(
-            snapshot,
-            "_measuredLayoutPlanRootOrdinals"));
+        Assert.Equal(1, ReadField<int>(snapshot.Geometry.MeasuredTopLevelBlockCount));
+        Assert.Equal(new[] { 0 }, ReadField<List<int>>(snapshot.PlanCandidates.MeasuredRootOrdinals));
 
         InvalidOperationException failure = Assert.Throws<InvalidOperationException>(() =>
             snapshot.EnsureMeasuredBand(
                 new LazyLayoutBand(roots[1].Bounds.Top + 0.125d, roots[1].Bounds.Top + 0.5d),
                 CancellationToken.None));
         Assert.Equal(ThrowingVectorResidencyPolicy.FailureMessage, failure.Message);
-        Assert.Equal(1, ReadField<int>(snapshot, "_measuredTopLevelBlockCount"));
-        bool[] measuredMask = ReadField<bool[]>(snapshot, "_measuredTopLevelBlocks");
+        Assert.Equal(1, ReadField<int>(snapshot.Geometry.MeasuredTopLevelBlockCount));
+        bool[] measuredMask = ReadField<bool[]>(snapshot.Geometry.MeasuredTopLevelBlocks);
         Assert.True(measuredMask[0]);
         Assert.False(measuredMask[1]);
-        Assert.Equal(new[] { 0 }, ReadField<List<int>>(
-            snapshot,
-            "_measuredLayoutPlanRootOrdinals"));
+        Assert.Equal(new[] { 0 }, ReadField<List<int>>(snapshot.PlanCandidates.MeasuredRootOrdinals));
     }
 
     [Theory]
@@ -426,7 +400,7 @@ public sealed class LayoutSnapshotIndexConstructionTests
 
         LegacyIndexes expected = LegacyIndexes.Build(new BlockBox[] { root });
         Assert.All(expected.FocusablePlan, entry => Assert.Null(entry.Overflow));
-        FocusableItem[] actual = ReadField<FocusableItem[]>(snapshot, "_fixedFocusableItems");
+        FocusableItem[] actual = ReadField<FocusableItem[]>(snapshot.Focusables.FixedItems);
         Assert.Equal(expected.FocusablePlan.Count, actual.Length);
         for (int index = 0; index < actual.Length; index++)
             Assert.Equal(expected.FocusablePlan[index].Item, actual[index]);
@@ -834,24 +808,12 @@ public sealed class LayoutSnapshotIndexConstructionTests
         };
     }
 
-    private static T ReadField<T>(LayoutSnapshot snapshot, string name)
-    {
-        FieldInfo field = typeof(LayoutSnapshot).GetField(
-            name,
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException($"Snapshot index field '{name}' was not found.");
-        return Assert.IsType<T>(field.GetValue(snapshot));
-    }
+    private static T ReadField<T>(object? value)
+        => Assert.IsType<T>(value);
 
-    private static T ReadAssignableField<T>(LayoutSnapshot snapshot, string name)
+    private static T ReadAssignableField<T>(object? value)
         where T : class
-    {
-        FieldInfo field = typeof(LayoutSnapshot).GetField(
-            name,
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException($"Snapshot index field '{name}' was not found.");
-        return Assert.IsAssignableFrom<T>(field.GetValue(snapshot));
-    }
+        => Assert.IsAssignableFrom<T>(value);
 
     private static void AssertDictionaryEquals<TKey, TValue>(
         Dictionary<TKey, TValue> expected,

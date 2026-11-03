@@ -70,7 +70,7 @@ public sealed class RootLocalInlineImageRelayoutTests
 
         fallback.Snapshot.RelayoutChangedBlocks(
             [fallbackInline.BlockIndex], LayoutWidth, CancellationToken.None);
-        object layoutLock = ReadField<object>(optimized.Snapshot, "_layoutLock");
+        object layoutLock = optimized.Snapshot.Geometry.Gate;
         object imageLock = ReadField<object>(image, "_svgWorkSync");
         int providerReadsUnderSourceGate = 0;
         renderer.GenerationReadHook = () =>

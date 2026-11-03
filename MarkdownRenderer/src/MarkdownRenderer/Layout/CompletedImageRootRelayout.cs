@@ -1,22 +1,48 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using Microsoft.Graphics.Canvas.Text;
+using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Theming;
-using Microsoft.Graphics.Canvas.Text;
 
 namespace MarkdownRenderer.Layout;
 
-internal sealed partial class LayoutSnapshot
+/// <summary>
+/// Root-local relayout for completed images: measures a bounded batch of
+/// image-owning roots outside the source gate, then transfers their placements
+/// atomically with a prebuilt placement generation. Pointer input arriving
+/// after dispatch invalidates the batch through the pointer-input epoch.
+/// </summary>
+internal sealed class CompletedImageRootRelayout
 {
-    // Bounds private native preparation independently of total document size.
-    // This does not raise the separate whole-tree COW envelope.
-    internal const int MaximumPreparedImageRoots = ImageBox.MaximumMeasuredPlacementTransferBatchCount;
+    private readonly LayoutSnapshotGeometry _geometry;
+    private readonly GeometryRecoveryLatch _recovery;
+    private readonly SnapshotRetirement _retirement;
+    private readonly ChangedBlockRelayout _relayout;
+    private readonly MarkdownSourceMap _sourceMap;
+
     // Captured on the UI dispatcher before work is queued. A contact that starts
     // during private measurement must finish against its original geometry;
     // rejecting its old epoch is a retry, never permission for live Measure.
     private long _pointerInputEpoch;
+
+    internal CompletedImageRootRelayout(
+        LayoutSnapshotGeometry geometry,
+        GeometryRecoveryLatch recovery,
+        SnapshotRetirement retirement,
+        ChangedBlockRelayout relayout,
+        MarkdownSourceMap sourceMap)
+    {
+        _geometry = geometry;
+        _recovery = recovery;
+        _retirement = retirement;
+        _relayout = relayout;
+        _sourceMap = sourceMap;
+    }
+
     internal long PointerInputEpoch => Interlocked.Read(ref _pointerInputEpoch);
+
     internal void NotifyPointerInput() => Interlocked.Increment(ref _pointerInputEpoch);
 
     // Sessionless/unsupported roots retain live reflow, but an input delivered
@@ -28,13 +54,13 @@ internal sealed partial class LayoutSnapshot
         IReadOnlyCollection<int> changedBlockIndices, float availableWidth,
         CancellationToken cancellationToken, long expectedPointerInputEpoch)
     {
-        lock (_layoutLock)
+        lock (_geometry.Gate)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (IsRetiringOrDisposed || GeometryRecoveryRequired ||
+            if (_retirement.IsRetiringOrDisposed || _recovery.IsRequired ||
                 PointerInputEpoch != expectedPointerInputEpoch)
                 return false;
-            RelayoutChangedBlocks(changedBlockIndices, availableWidth, cancellationToken);
+            _relayout.RelayoutChangedBlocks(changedBlockIndices, availableWidth, cancellationToken);
             return true;
         }
     }
@@ -85,7 +111,7 @@ internal sealed partial class LayoutSnapshot
         ArgumentNullException.ThrowIfNull(changedBlockIndices);
         constructionContext = null;
         int count = changedBlockIndices.Count;
-        if (count <= 0 || count > MaximumPreparedImageRoots || !float.IsFinite(availableWidth))
+        if (count <= 0 || count > LayoutSnapshot.MaximumPreparedImageRoots || !float.IsFinite(availableWidth))
             return PreparedImageRelayoutResult.Unavailable;
 
         var prepared = new BlockBox?[count];
@@ -107,13 +133,13 @@ internal sealed partial class LayoutSnapshot
             long pointerEpoch;
             int measuredCount;
             LayoutPlacementGeneration sourcePlacements;
-            lock (_layoutLock)
+            lock (_geometry.Gate)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 pointerEpoch = expectedPointerInputEpoch ?? PointerInputEpoch;
-                if (IsRetiringOrDisposed || GeometryRecoveryRequired ||
+                if (_retirement.IsRetiringOrDisposed || _recovery.IsRequired ||
                     PointerInputEpoch != pointerEpoch ||
-                    availableWidth != _availableWidth || _layoutRevision == long.MaxValue)
+                    availableWidth != _geometry.AvailableWidth || _geometry.LayoutRevision == long.MaxValue)
                     return PreparedImageRelayoutResult.Retry;
                 var ordinals = new int[count];
                 var changedIdentities = new HashSet<int>(count);
@@ -121,13 +147,13 @@ internal sealed partial class LayoutSnapshot
                 foreach (int blockIndex in changedBlockIndices)
                 {
                     if (next >= count || !changedIdentities.Add(blockIndex) ||
-                        !_topLevelOrdinalByBlockIndex.TryGetValue(blockIndex, out int ordinal))
+                        !_geometry.TopLevelOrdinalByBlockIndex.TryGetValue(blockIndex, out int ordinal))
                         return PreparedImageRelayoutResult.Unavailable;
                     ordinals[next++] = ordinal;
                 }
-                if (next != count || GeometryRecoveryRequired || _paintOnlyGeometryTainted)
+                if (next != count || _recovery.IsRequired || _geometry.PaintOnlyGeometryTainted)
                     return PreparedImageRelayoutResult.Unavailable;
-                CommittedMetadata committedSource = Volatile.Read(ref _committedMetadata);
+                LayoutSnapshotCommittedMetadata committedSource = _geometry.ReadPublishedMetadata();
                 sourcePlacements = committedSource.Placements;
                 measuredCount = committedSource.MeasuredCount;
                 Array.Sort(ordinals);
@@ -146,8 +172,8 @@ internal sealed partial class LayoutSnapshot
                 inlineTransfers = new InlineMeasuredPlacementTransfer?[count];
                 tableTransfers = new TableMeasuredPlacementTransfer?[count];
                 containerTransfers = new BlockMeasuredPlacementTransfer?[count];
-                contentWidth = GetContentWidthNoLock();
-                contentX = (float)_documentPadding.Left;
+                contentWidth = _geometry.GetContentWidthNoLock();
+                contentX = (float)_geometry.DocumentPadding.Left;
                 // Both descriptor capture and native preparation stay bounded
                 // by changed content, not the complete document/sibling tree.
                 int textLength = 0;
@@ -167,24 +193,24 @@ internal sealed partial class LayoutSnapshot
                 for (int index = 0; index < count; index++)
                 {
                     int ordinal = ordinals[index];
-                    if (ordinal < 0 || ordinal >= Blocks.Count || !IsTopLevelMeasuredNoLock(ordinal))
+                    if (ordinal < 0 || ordinal >= _geometry.Blocks.Count || !_geometry.IsTopLevelMeasuredNoLock(ordinal))
                         return PreparedImageRelayoutResult.Unavailable;
-                    BlockBox root = Blocks[ordinal];
+                    BlockBox root = _geometry.Blocks[ordinal];
                     MarkdownLayoutContext? rootContext = GetPreparedImageRootContext(root);
                     if (root.IsDirty || rootContext is null ||
                         rootContext.PerformanceSession is not { IsDisposed: false } ||
                         rootContext.ImagePreparationOwner is null ||
-                        !ReferenceEquals(SourceMap, rootContext.SourceMap) ||
+                        !ReferenceEquals(_sourceMap, rootContext.SourceMap) ||
                         (sourceContext is not null && !ReferenceEquals(sourceContext, rootContext)) ||
-                        !HasCoherentCommittedPlacementNoLock(ordinal, root.Bounds, contentX, contentWidth))
+                        !_geometry.HasCoherentCommittedPlacementNoLock(ordinal, root.Bounds, contentX, contentWidth))
                         return PreparedImageRelayoutResult.Unavailable;
                     sourceContext ??= rootContext;
                     sourceRoots[index] = root;
                     changed[index] = new ChangedBlockMeasure(ordinal, true, root.Bounds, root.Margin,
-                        ordinal > 0 && StackBox.SharesSafeHtmlInlineFlow(Blocks[ordinal - 1], root),
-                        ordinal < Blocks.Count - 1 && StackBox.SharesSafeHtmlInlineFlow(root, Blocks[ordinal + 1]));
+                        ordinal > 0 && StackBox.SharesSafeHtmlInlineFlow(_geometry.Blocks[ordinal - 1], root),
+                        ordinal < _geometry.Blocks.Count - 1 && StackBox.SharesSafeHtmlInlineFlow(root, _geometry.Blocks[ordinal + 1]));
                 }
-                revision = _layoutRevision;
+                revision = _geometry.LayoutRevision;
                 context = sourceContext!.CreateRasterPlacementContext(
                     sourceContext.ImageCancellationToken, sourceContext.ImagePreparationOwner!,
                     retirementSink: null, imageUnavailable: null);
@@ -194,7 +220,7 @@ internal sealed partial class LayoutSnapshot
                     switch (sourceRoots[index])
                     {
                         case ImageBox image:
-                            if (image.Alt.Length > MaximumPrivateRasterPlacementTextLength - textLength ||
+                            if (image.Alt.Length > LayoutSnapshot.MaximumPrivateRasterPlacementTextLength - textLength ||
                                 ++imageCount > ImageBox.MaximumMeasuredPlacementTransferBatchCount ||
                                 !imageIdentities.Add(image) ||
                                 !image.TryClassifyPrivateImagePlacement(context, false, out _, out _))
@@ -209,7 +235,7 @@ internal sealed partial class LayoutSnapshot
                                 rootRuns > InlineContainerBox.MaximumPrivateRasterPlacementRuns - runCount ||
                                 rootImages > ImageBox.MaximumMeasuredPlacementTransferBatchCount - imageCount ||
                                 inline.PrivateRasterPlacementTextLength >
-                                    MaximumPrivateRasterPlacementTextLength - textLength ||
+                                    LayoutSnapshot.MaximumPrivateRasterPlacementTextLength - textLength ||
                                 !PrivateRasterPlacementTree.TryAccumulateStyleKeyCopyEntries(
                                     ref styleKeyCopyEntries, rootStyleKeys))
                                 return PreparedImageRelayoutResult.Unavailable;
@@ -231,7 +257,7 @@ internal sealed partial class LayoutSnapshot
                                 tableCounts.NodeCount - 1 > PrivateRasterPlacementTree.MaximumNodes - nodeCount ||
                                 tableCounts.RunCount > InlineContainerBox.MaximumPrivateRasterPlacementRuns - runCount ||
                                 tableCounts.ImageCount > ImageBox.MaximumMeasuredPlacementTransferBatchCount - imageCount ||
-                                tableCounts.TextLength > MaximumPrivateRasterPlacementTextLength - textLength ||
+                                tableCounts.TextLength > LayoutSnapshot.MaximumPrivateRasterPlacementTextLength - textLength ||
                                 !PrivateRasterPlacementTree.TryAccumulateStyleKeyCopyEntries(
                                     ref styleKeyCopyEntries, tableCounts.StyleKeyCopyEntries))
                                 return PreparedImageRelayoutResult.Unavailable;
@@ -256,7 +282,7 @@ internal sealed partial class LayoutSnapshot
                                 containerCounts.NodeCount - 1 > PrivateRasterPlacementTree.MaximumNodes - nodeCount ||
                                 containerCounts.RunCount > InlineContainerBox.MaximumPrivateRasterPlacementRuns - runCount ||
                                 containerCounts.ImageCount > ImageBox.MaximumMeasuredPlacementTransferBatchCount - imageCount ||
-                                containerCounts.TextLength > MaximumPrivateRasterPlacementTextLength - textLength ||
+                                containerCounts.TextLength > LayoutSnapshot.MaximumPrivateRasterPlacementTextLength - textLength ||
                                 !PrivateRasterPlacementTree.TryAccumulateStyleKeyCopyEntries(
                                     ref styleKeyCopyEntries, containerCounts.StyleKeyCopyEntries))
                                 return PreparedImageRelayoutResult.Unavailable;
@@ -399,10 +425,10 @@ internal sealed partial class LayoutSnapshot
             // LayoutPlacementGeneration.Create; unchanged roots contribute
             // their current (possibly estimated) height without being arranged.
             long nextRevision = revision + 1;
-            var placementInputs = new LayoutPlacementInput[Blocks.Count];
+            var placementInputs = new LayoutPlacementInput[_geometry.Blocks.Count];
             int changedInputIndex = 0;
-            float flowY = (float)_documentPadding.Top;
-            for (int ordinal = 0; ordinal < Blocks.Count; ordinal++)
+            float flowY = (float)_geometry.DocumentPadding.Top;
+            for (int ordinal = 0; ordinal < _geometry.Blocks.Count; ordinal++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 LayoutRootPlacement current = sourcePlacements.GetPlacement(ordinal);
@@ -462,8 +488,8 @@ internal sealed partial class LayoutSnapshot
                 }
 
                 flowY += height;
-                if (ordinal < Blocks.Count - 1 && !sharesFlowWithNext)
-                    flowY += _blockSpacing;
+                if (ordinal < _geometry.Blocks.Count - 1 && !sharesFlowWithNext)
+                    flowY += _geometry.BlockSpacing;
                 if (!float.IsFinite(flowY))
                     return PreparedImageRelayoutResult.Retry;
             }
@@ -475,15 +501,15 @@ internal sealed partial class LayoutSnapshot
             // are repositioned by the successor generation without suffix Arrange.
             LayoutPlacementGeneration candidatePlacements = LayoutPlacementGeneration.Create(
                 placementInputs,
-                (float)_documentPadding.Top,
-                _blockSpacing,
-                (float)_documentPadding.Bottom,
+                (float)_geometry.DocumentPadding.Top,
+                _geometry.BlockSpacing,
+                (float)_geometry.DocumentPadding.Bottom,
                 availableWidth,
                 nextRevision);
-            float[]? candidateContinuations = _lazyLayoutEnabled
+            float[]? candidateContinuations = _geometry.LazyLayoutEnabled
                 ? candidatePlacements.CopyContinuations()
                 : null;
-            CommittedMetadata candidateMetadata = new(
+            LayoutSnapshotCommittedMetadata candidateMetadata = new(
                 candidatePlacements.Size,
                 nextRevision,
                 measuredCount,
@@ -534,24 +560,24 @@ internal sealed partial class LayoutSnapshot
             beforeCommitOutsideGateForTests?.Invoke();
             cancellationToken.ThrowIfCancellationRequested();
 
-            lock (_layoutLock)
+            lock (_geometry.Gate)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (IsRetiringOrDisposed || GeometryRecoveryRequired ||
+                if (_retirement.IsRetiringOrDisposed || _recovery.IsRequired ||
                     PointerInputEpoch != pointerEpoch ||
-                    _layoutRevision != revision || _paintOnlyGeometryTainted ||
-                    _availableWidth != availableWidth)
+                    _geometry.LayoutRevision != revision || _geometry.PaintOnlyGeometryTainted ||
+                    _geometry.AvailableWidth != availableWidth)
                     return PreparedImageRelayoutResult.Retry;
 
                 for (int index = 0; index < count; index++)
                 {
                     ChangedBlockMeasure state = changed[index];
                     BlockBox source = sourceRoots[index];
-                    if (!ReferenceEquals(Blocks[state.Ordinal], source) || source.IsDirty ||
-                        !IsTopLevelMeasuredNoLock(state.Ordinal) ||
+                    if (!ReferenceEquals(_geometry.Blocks[state.Ordinal], source) || source.IsDirty ||
+                        !_geometry.IsTopLevelMeasuredNoLock(state.Ordinal) ||
                         !source.Bounds.Equals(state.PreviousBounds) ||
                         !source.Margin.Equals(state.PreviousMargin) ||
-                        !HasCoherentCommittedPlacementNoLock(state.Ordinal, source.Bounds, contentX, contentWidth))
+                        !_geometry.HasCoherentCommittedPlacementNoLock(state.Ordinal, source.Bounds, contentX, contentWidth))
                         return PreparedImageRelayoutResult.Retry;
                 }
                 // Validate every native/run owner before mutating any image.
@@ -592,7 +618,7 @@ internal sealed partial class LayoutSnapshot
                         tableTransfer?.SwapPlacementNoThrow();
                     foreach (BlockMeasuredPlacementTransfer? containerTransfer in containerTransfers)
                         containerTransfer?.SwapPlacementNoThrow();
-                    _paintOnlyGeometryTainted = true;
+                    _geometry.PaintOnlyGeometryTainted = true;
                     for (int index = 0; index < count; index++)
                     {
                         ChangedBlockMeasure state = changed[index];
@@ -603,23 +629,23 @@ internal sealed partial class LayoutSnapshot
                             state.Height);
                     }
                     foreach (ChangedBlockMeasure state in changed)
-                        _sharedLayoutMetrics?.RecordHeight(state.Ordinal, state.Height);
-                    _size = candidatePlacements.Size;
+                        _geometry.SharedLayoutMetrics?.RecordHeight(state.Ordinal, state.Height);
+                    _geometry.Size = candidatePlacements.Size;
                     if (candidateContinuations is not null)
                     {
-                        _lazyReflowContinuations = candidateContinuations;
-                        _lazyReflowContinuationWidth = _availableWidth;
-                        _lazyReflowContinuationRevision = nextRevision;
+                        _geometry.LazyReflowContinuations = candidateContinuations;
+                        _geometry.LazyReflowContinuationWidth = _geometry.AvailableWidth;
+                        _geometry.LazyReflowContinuationRevision = nextRevision;
                     }
-                    _layoutRevision = nextRevision;
-                    PublishCommittedMetadataNoLock(candidateMetadata);
-                    _paintOnlyGeometryTainted = false;
+                    _geometry.LayoutRevision = nextRevision;
+                    _geometry.PublishCommittedMetadataNoLock(candidateMetadata);
+                    _geometry.PaintOnlyGeometryTainted = false;
                     return PreparedImageRelayoutResult.Committed;
                 }
                 catch (Exception failure)
                 {
                     if (placementsAdopted)
-                        MarkGeometryRecoveryRequiredNoLock(failure);
+                        _recovery.MarkGeometryRecoveryRequiredNoLock(failure);
                     throw;
                 }
             }

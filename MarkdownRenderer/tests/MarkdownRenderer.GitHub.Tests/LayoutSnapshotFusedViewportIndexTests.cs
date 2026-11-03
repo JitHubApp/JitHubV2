@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Threading;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout;
@@ -131,17 +130,17 @@ public sealed class LayoutSnapshotFusedViewportIndexTests
             .ToArray();
         Size oldSize = snapshot.Size;
         long oldRevision = snapshot.LayoutRevision;
-        object oldMetadata = ReadPrivateField(snapshot, "_committedMetadata");
+        object oldMetadata = snapshot.Geometry.CommittedMetadata;
 
         blocks[3].SetHeight(45.25f);
         blocks[21].ThrowAfterArrange = true;
         Assert.Throws<InvalidOperationException>(() => snapshot.RelayoutChangedBlocks(
             [blocks[3].BlockIndex], Width, CancellationToken.None));
 
-        Assert.True(ReadPrivateField<bool>(snapshot, "_paintOnlyGeometryTainted"));
+        Assert.True(snapshot.Geometry.PaintOnlyGeometryTainted);
         Assert.Equal(oldSize, snapshot.Size);
         Assert.Equal(oldRevision, snapshot.LayoutRevision);
-        Assert.Same(oldMetadata, ReadPrivateField(snapshot, "_committedMetadata"));
+        Assert.Same(oldMetadata, snapshot.Geometry.CommittedMetadata);
         Assert.Same(index, GetViewportIndex(snapshot));
         Assert.Equal(committedSlots, CaptureSlots(index));
         for (int queryIndex = 0; queryIndex < exactBoundaryQueries.Length; queryIndex++)
@@ -244,16 +243,6 @@ public sealed class LayoutSnapshotFusedViewportIndexTests
 
     private static LayoutPlacementGeneration GetViewportIndex(LayoutSnapshot snapshot)
         => snapshot.PublishedPlacementGeneration;
-
-    private static object ReadPrivateField(object instance, string name)
-    {
-        FieldInfo field = instance.GetType().GetField(
-            name, BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return field.GetValue(instance)!;
-    }
-
-    private static T ReadPrivateField<T>(object instance, string name)
-        => (T)ReadPrivateField(instance, name);
 
     private readonly record struct IndexSlot(int Ordinal, double Top, double Bottom);
 

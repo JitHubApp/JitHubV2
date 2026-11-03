@@ -167,19 +167,13 @@ public sealed class MultiRootRasterLayoutCandidateTests
             Assert.Equal(source.TopLevelBlockCount, replacement.TopLevelBlockCount);
             Assert.Equal(sourceMeasuredCount, replacement.MeasuredTopLevelBlockCount);
             Assert.Equal(
-                GetField<int>(source, "_generatedBlockIndexUpperBound"),
-                GetField<int>(replacement, "_generatedBlockIndexUpperBound"));
-            IReadOnlyDictionary<int, int> sourceOrdinalIndex = GetAssignableField<IReadOnlyDictionary<int, int>>(
-                source,
-                "_topLevelOrdinalByBlockIndex");
-            IReadOnlyDictionary<int, int> replacementOrdinalIndex = GetAssignableField<IReadOnlyDictionary<int, int>>(
-                replacement,
-                "_topLevelOrdinalByBlockIndex");
+                source.GeneratedBlockIndexUpperBound,
+                replacement.GeneratedBlockIndexUpperBound);
+            IReadOnlyDictionary<int, int> sourceOrdinalIndex = source.Geometry.TopLevelOrdinalByBlockIndex;
+            IReadOnlyDictionary<int, int> replacementOrdinalIndex = replacement.Geometry.TopLevelOrdinalByBlockIndex;
             Assert.Equal(
-                GetField<int>(GetAssignableField<BlockOrdinalIndex>(source, "_topLevelOrdinalByBlockIndex"),
-                    "_denseGeneratedUpperBound"),
-                GetField<int>(GetAssignableField<BlockOrdinalIndex>(replacement, "_topLevelOrdinalByBlockIndex"),
-                    "_denseGeneratedUpperBound"));
+                GetField<int>(Assert.IsType<BlockOrdinalIndex>(sourceOrdinalIndex), "_denseGeneratedUpperBound"),
+                GetField<int>(Assert.IsType<BlockOrdinalIndex>(replacementOrdinalIndex), "_denseGeneratedUpperBound"));
             Assert.Equal(
                 sourceOrdinalIndex.OrderBy(static pair => pair.Key),
                 replacementOrdinalIndex.OrderBy(static pair => pair.Key));
@@ -999,14 +993,6 @@ public sealed class MultiRootRasterLayoutCandidateTests
     {
         FieldInfo field = instance.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!;
         return Assert.IsType<T>(field.GetValue(instance));
-    }
-
-    private static T GetAssignableField<T>(object instance, string name)
-        where T : class
-    {
-        FieldInfo field = instance.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException($"Field '{name}' was not found.");
-        return Assert.IsAssignableFrom<T>(field.GetValue(instance));
     }
 
     private enum RunKind

@@ -5,7 +5,6 @@ using MarkdownRenderer.Controls.Focus;
 using MarkdownRenderer.Controls.Images;
 using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
 using Windows.Foundation;
 
 namespace MarkdownRenderer.Controls.Pipeline;
@@ -234,7 +233,7 @@ internal sealed class LayoutCommitPublisher
                     _embeds.ClearHitTargets();
                     _embeds.ClearPlans();
 
-                    LayoutSnapshot.LayoutPlanCandidateEnumerator planCandidates =
+                    LayoutPlanCandidateEnumerator planCandidates =
                         snapshot.GetMeasuredLayoutPlanCandidatesUnderPaint();
                     int candidateRootOrdinal = -1;
                     BlockBox? candidateRoot = null;

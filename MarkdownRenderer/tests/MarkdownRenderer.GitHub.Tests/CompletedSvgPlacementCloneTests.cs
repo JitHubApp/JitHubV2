@@ -41,7 +41,7 @@ public sealed class CompletedSvgPlacementCloneTests
         string? sourceTitle = sourceImage.SvgTitle;
         string? sourceDescription = sourceImage.SvgDesc;
         string semanticText = sourceSnapshot.SemanticDocument.Text;
-        var layoutLock = GetField<object>(sourceSnapshot, "_layoutLock");
+        var layoutLock = sourceSnapshot.Geometry.Gate;
         var imageLock = GetField<object>(sourceImage, "_svgWorkSync");
         fixture.Renderer.GenerationReadHook = () =>
         {
@@ -171,9 +171,7 @@ public sealed class CompletedSvgPlacementCloneTests
             }
 
             Assert.Equal(allCandidates.Length, measuredCount);
-            Assert.Equal(new[] { 0 }, GetField<List<int>>(
-                clonedSnapshot,
-                "_measuredLayoutPlanRootOrdinals"));
+            Assert.Equal(new[] { 0 }, clonedSnapshot.PlanCandidates.MeasuredRootOrdinals);
         }
         finally
         {
@@ -186,7 +184,7 @@ public sealed class CompletedSvgPlacementCloneTests
     {
         await using var fixture = await SvgPlacementFixture.CreateReadyAsync(hasText: true);
         LayoutSnapshot snapshot = Assert.IsType<LayoutSnapshot>(fixture.Snapshot);
-        object layoutLock = GetField<object>(snapshot, "_layoutLock");
+        object layoutLock = snapshot.Geometry.Gate;
         object imageLock = GetField<object>(fixture.Image, "_svgWorkSync");
         fixture.Renderer.GenerationReadHook = () =>
         {
@@ -274,7 +272,7 @@ public sealed class CompletedSvgPlacementCloneTests
                 fixture.ImagePreparationOwner, null, null,
                 out MarkdownLayoutContext? candidateContext));
         fixture.SetCandidate(candidate, Assert.IsType<MarkdownLayoutContext>(candidateContext));
-        object layoutLock = GetField<object>(snapshot, "_layoutLock");
+        object layoutLock = snapshot.Geometry.Gate;
         object imageLock = GetField<object>(fixture.Image, "_svgWorkSync");
         fixture.Renderer.GenerationReadHook = () =>
         {

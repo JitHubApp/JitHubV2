@@ -1506,10 +1506,7 @@ public sealed class RootLocalContainerImageRelayoutTests
 
     private static void AssertSourceLayoutLockReleased(LayoutSnapshot snapshot)
     {
-        FieldInfo gateField = typeof(LayoutSnapshot).GetField("_layoutLock",
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Missing LayoutSnapshot source layout gate.");
-        object gate = Assert.IsAssignableFrom<object>(gateField.GetValue(snapshot));
+        object gate = snapshot.Geometry.Gate;
         Assert.False(System.Threading.Monitor.IsEntered(gate),
             "Native candidate measurement/provider access must run outside the source layout lock.");
         Assert.True(System.Threading.Monitor.TryEnter(gate));

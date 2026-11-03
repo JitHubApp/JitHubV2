@@ -604,12 +604,7 @@ public sealed class LayoutSnapshotLazyReflowTests
         => snapshot.PublishedPlacementGeneration;
 
     private static bool[] GetMeasuredMask(LayoutSnapshot snapshot)
-    {
-        FieldInfo field = typeof(LayoutSnapshot).GetField(
-            "_measuredTopLevelBlocks",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return Assert.IsType<bool[]>(field.GetValue(snapshot));
-    }
+        => Assert.IsType<bool[]>(snapshot.Geometry.MeasuredTopLevelBlocks);
 
     private static void AssertGeometryRecoveryReadGate(LayoutSnapshot snapshot, double top, double bottom)
     {

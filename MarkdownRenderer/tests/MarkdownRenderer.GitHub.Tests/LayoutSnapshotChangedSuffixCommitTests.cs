@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Threading;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout;
@@ -110,7 +109,7 @@ public sealed class LayoutSnapshotChangedSuffixCommitTests
         Rect trailingBounds = trailing.Bounds;
         Size oldSize = snapshot.Size;
         long oldRevision = snapshot.LayoutRevision;
-        object oldMetadata = ReadPrivateField(snapshot, "_committedMetadata");
+        object oldMetadata = snapshot.Geometry.CommittedMetadata;
         LayoutPlacementGeneration oldIndex = snapshot.PublishedPlacementGeneration;
         (double Top, double Bottom)[] oldIndexBounds = Enumerable.Range(0, oldIndex.Count)
             .Select(oldIndex.GetIndexedBounds)
@@ -127,7 +126,7 @@ public sealed class LayoutSnapshotChangedSuffixCommitTests
         Assert.Equal(trailingBounds, trailing.Bounds);
         Assert.Equal(oldSize, snapshot.Size);
         Assert.Equal(oldRevision, snapshot.LayoutRevision);
-        Assert.Same(oldMetadata, ReadPrivateField(snapshot, "_committedMetadata"));
+        Assert.Same(oldMetadata, snapshot.Geometry.CommittedMetadata);
         Assert.True(snapshot.GeometryRecoveryRequired);
         Assert.True(snapshot.TryClaimGeometryRecoveryRequest());
         Assert.False(snapshot.TryClaimGeometryRecoveryRequest());
@@ -159,7 +158,7 @@ public sealed class LayoutSnapshotChangedSuffixCommitTests
         using LayoutSnapshot snapshot = CreateSnapshot([first, changed, trailing]);
         Size oldSize = snapshot.Size;
         long oldRevision = snapshot.LayoutRevision;
-        object oldMetadata = ReadPrivateField(snapshot, "_committedMetadata");
+        object oldMetadata = snapshot.Geometry.CommittedMetadata;
         changed.SetHeight(55);
         trailing.ThrowAfterArrange = true;
 
@@ -168,8 +167,8 @@ public sealed class LayoutSnapshotChangedSuffixCommitTests
 
         Assert.Equal(oldSize, snapshot.Size);
         Assert.Equal(oldRevision, snapshot.LayoutRevision);
-        Assert.Same(oldMetadata, ReadPrivateField(snapshot, "_committedMetadata"));
-        Assert.True(ReadPrivateField<bool>(snapshot, "_paintOnlyGeometryTainted"));
+        Assert.Same(oldMetadata, snapshot.Geometry.CommittedMetadata);
+        Assert.True(snapshot.Geometry.PaintOnlyGeometryTainted);
     }
 
     private static LayoutSnapshot CreateSnapshot(MeasuredBlock[] blocks)
@@ -237,13 +236,6 @@ public sealed class LayoutSnapshotChangedSuffixCommitTests
             snapshot.EndInteraction();
         }
     }
-
-    private static object ReadPrivateField(object instance, string name)
-        => instance.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(instance)!;
-
-    private static T ReadPrivateField<T>(object instance, string name)
-        => (T)ReadPrivateField(instance, name);
 
     private sealed class MeasuredBlock(float height) : BlockBox
     {

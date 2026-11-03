@@ -102,11 +102,6 @@
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
-      "path": "src/MarkdownRenderer/Layout/LayoutSnapshot.cs",
-      "lines": 3635,
-      "reason": "Predates the size rule; split by responsibility in a later structure step."
-    },
-    {
       "path": "src/MarkdownRenderer/Layout/VectorSceneDrawing.cs",
       "lines": 1478,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
@@ -143,7 +138,7 @@
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/LayoutSnapshotIndexConstructionTests.cs",
-      "lines": 1234,
+      "lines": 1196,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
@@ -158,7 +153,7 @@
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/MultiRootRasterLayoutCandidateTests.cs",
-      "lines": 1170,
+      "lines": 1156,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {

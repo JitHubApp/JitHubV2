@@ -415,20 +415,12 @@ public sealed class LayoutGeometryRecoveryTests
 
     private static void AssertRecoveryStateUsesOnlyScalarFields()
     {
-        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
-        FieldInfo? required = typeof(LayoutSnapshot).GetField("_geometryRecoveryRequired", flags);
-        FieldInfo? claimed = typeof(LayoutSnapshot).GetField("_geometryRecoveryRequestClaimed", flags);
-        FieldInfo? deviceLost = typeof(LayoutSnapshot).GetField("_geometryRecoveryIsDeviceLost", flags);
-        FieldInfo? hresult = typeof(LayoutSnapshot).GetField("_geometryRecoveryFailureHResult", flags);
-
-        Assert.NotNull(required);
-        Assert.NotNull(claimed);
-        Assert.NotNull(deviceLost);
-        Assert.NotNull(hresult);
-        Assert.Equal(typeof(int), required!.FieldType);
-        Assert.Equal(typeof(int), claimed!.FieldType);
-        Assert.Equal(typeof(int), deviceLost!.FieldType);
-        Assert.Equal(typeof(int), hresult!.FieldType);
+        // The latch must never retain an exception graph: every piece of its
+        // storage is a lock-free scalar.
+        FieldInfo[] fields = typeof(GeometryRecoveryLatch).GetFields(
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        Assert.Equal(4, fields.Length);
+        Assert.All(fields, field => Assert.Equal(typeof(int), field.FieldType));
     }
 
     private static Fixture CreateFixture()

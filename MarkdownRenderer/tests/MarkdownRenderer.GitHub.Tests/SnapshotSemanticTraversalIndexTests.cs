@@ -32,9 +32,7 @@ public sealed class SnapshotSemanticTraversalIndexTests
             fixture.Context.SourceMap,
             width: 360,
             height: 640);
-        Dictionary<ImageBox, int> imageOwners = ReadField<Dictionary<ImageBox, int>>(
-            snapshot,
-            "_imageTopLevelOrdinalByIdentity");
+        Dictionary<ImageBox, int> imageOwners = ReadField<Dictionary<ImageBox, int>>(snapshot.ImageTopLevelOrdinals);
         Assert.Equal(0, imageOwners[fixture.InlineDecorativeImage.Image]);
         Assert.Equal(1, imageOwners[fixture.StandaloneDecorativeImage]);
         SnapshotIndexState before = SnapshotIndexState.Capture(snapshot);
@@ -69,20 +67,14 @@ public sealed class SnapshotSemanticTraversalIndexTests
         var roots = new BlockBox[] { overflowOwner };
         using LayoutSnapshot snapshot = new(roots, context.SourceMap, width: 360, height: 640);
 
-        IReadOnlyDictionary<int, int> topLevel = ReadAssignableField<IReadOnlyDictionary<int, int>>(
-            snapshot,
-            "_topLevelOrdinalByBlockIndex");
+        IReadOnlyDictionary<int, int> topLevel = ReadAssignableField<IReadOnlyDictionary<int, int>>(snapshot.Geometry.TopLevelOrdinalByBlockIndex);
         Assert.Equal(0, topLevel[overflowOwner.BlockIndex]);
         Assert.Equal(0, topLevel[unknown.BlockIndex]);
 
-        HashSet<IHorizontalOverflowBox> overflowBoxes = ReadField<HashSet<IHorizontalOverflowBox>>(
-            snapshot,
-            "_horizontalOverflowBoxes");
+        HashSet<IHorizontalOverflowBox> overflowBoxes = ReadField<HashSet<IHorizontalOverflowBox>>(snapshot.HorizontalOverflow.Boxes);
         Assert.Contains(overflowOwner, overflowBoxes);
         Assert.Contains(unknown, overflowBoxes);
-        Dictionary<int, IHorizontalOverflowBox> overflowByBlock = ReadField<Dictionary<int, IHorizontalOverflowBox>>(
-            snapshot,
-            "_horizontalOverflowByBlockIndex");
+        Dictionary<int, IHorizontalOverflowBox> overflowByBlock = ReadField<Dictionary<int, IHorizontalOverflowBox>>(snapshot.HorizontalOverflow.ByBlockIndex);
         Assert.Same(unknown, overflowByBlock[unknown.BlockIndex]);
 
         FocusPlanEntrySnapshot[] focusPlan = SnapshotIndexState.CaptureFocusablePlan(snapshot);
@@ -210,14 +202,8 @@ public sealed class SnapshotSemanticTraversalIndexTests
         fixture.StandaloneDecorativeImage.IsDirty,
     ];
 
-    private static T ReadField<T>(LayoutSnapshot snapshot, string name)
-    {
-        FieldInfo field = typeof(LayoutSnapshot).GetField(
-            name,
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException($"Snapshot index field '{name}' was not found.");
-        return Assert.IsAssignableFrom<T>(field.GetValue(snapshot));
-    }
+    private static T ReadField<T>(object? value)
+        => Assert.IsAssignableFrom<T>(value);
 
     private sealed record TestFixture(
         MarkdownLayoutContext Context,
@@ -246,21 +232,13 @@ public sealed class SnapshotSemanticTraversalIndexTests
     {
         internal static SnapshotIndexState Capture(LayoutSnapshot snapshot)
         {
-            Dictionary<BlockBox, int> blockOrdinals = ReadField<Dictionary<BlockBox, int>>(snapshot, "_blockOrdinals");
-            IReadOnlyDictionary<int, int> topLevel = ReadAssignableField<IReadOnlyDictionary<int, int>>(
-                snapshot,
-                "_topLevelOrdinalByBlockIndex");
-            Dictionary<ImageBox, int> imageOrdinals = ReadField<Dictionary<ImageBox, int>>(
-                snapshot,
-                "_imageTopLevelOrdinalByIdentity");
-            HashSet<IHorizontalOverflowBox> overflowBoxes = ReadField<HashSet<IHorizontalOverflowBox>>(
-                snapshot,
-                "_horizontalOverflowBoxes");
-            Dictionary<int, IHorizontalOverflowBox> overflowByBlock = ReadField<Dictionary<int, IHorizontalOverflowBox>>(
-                snapshot,
-                "_horizontalOverflowByBlockIndex");
-            Array focusPlan = ReadField<Array>(snapshot, "_focusablePlan");
-            FocusableItem[]? fixedFocusable = ReadOptionalField<FocusableItem[]>(snapshot, "_fixedFocusableItems");
+            Dictionary<BlockBox, int> blockOrdinals = ReadField<Dictionary<BlockBox, int>>(snapshot.Geometry.BlockOrdinals);
+            IReadOnlyDictionary<int, int> topLevel = ReadAssignableField<IReadOnlyDictionary<int, int>>(snapshot.Geometry.TopLevelOrdinalByBlockIndex);
+            Dictionary<ImageBox, int> imageOrdinals = ReadField<Dictionary<ImageBox, int>>(snapshot.ImageTopLevelOrdinals);
+            HashSet<IHorizontalOverflowBox> overflowBoxes = ReadField<HashSet<IHorizontalOverflowBox>>(snapshot.HorizontalOverflow.Boxes);
+            Dictionary<int, IHorizontalOverflowBox> overflowByBlock = ReadField<Dictionary<int, IHorizontalOverflowBox>>(snapshot.HorizontalOverflow.ByBlockIndex);
+            Array focusPlan = ReadField<Array>(snapshot.Focusables.Entries);
+            FocusableItem[]? fixedFocusable = snapshot.Focusables.FixedItems;
 
             return new SnapshotIndexState(
                 blockOrdinals,
@@ -281,35 +259,27 @@ public sealed class SnapshotSemanticTraversalIndexTests
 
         internal void AssertUnchanged(LayoutSnapshot snapshot)
         {
-            Assert.Same(BlockOrdinals, ReadField<Dictionary<BlockBox, int>>(snapshot, "_blockOrdinals"));
+            Assert.Same(BlockOrdinals, ReadField<Dictionary<BlockBox, int>>(snapshot.Geometry.BlockOrdinals));
             AssertDictionaryContents(BlockOrdinalContents, BlockOrdinals);
-            Assert.Same(TopLevelOrdinalByBlockIndex, ReadAssignableField<IReadOnlyDictionary<int, int>>(
-                snapshot,
-                "_topLevelOrdinalByBlockIndex"));
+            Assert.Same(TopLevelOrdinalByBlockIndex, ReadAssignableField<IReadOnlyDictionary<int, int>>(snapshot.Geometry.TopLevelOrdinalByBlockIndex));
             AssertDictionaryContents(TopLevelOrdinalContents, TopLevelOrdinalByBlockIndex);
-            Assert.Same(ImageTopLevelOrdinalByIdentity, ReadField<Dictionary<ImageBox, int>>(
-                snapshot,
-                "_imageTopLevelOrdinalByIdentity"));
+            Assert.Same(ImageTopLevelOrdinalByIdentity, ReadField<Dictionary<ImageBox, int>>(snapshot.ImageTopLevelOrdinals));
             AssertDictionaryContents(ImageOrdinalContents, ImageTopLevelOrdinalByIdentity);
-            Assert.Same(HorizontalOverflowBoxes, ReadField<HashSet<IHorizontalOverflowBox>>(
-                snapshot,
-                "_horizontalOverflowBoxes"));
+            Assert.Same(HorizontalOverflowBoxes, ReadField<HashSet<IHorizontalOverflowBox>>(snapshot.HorizontalOverflow.Boxes));
             AssertReferenceSetContents(HorizontalOverflowContents, HorizontalOverflowBoxes);
-            Assert.Same(HorizontalOverflowByBlockIndex, ReadField<Dictionary<int, IHorizontalOverflowBox>>(
-                snapshot,
-                "_horizontalOverflowByBlockIndex"));
+            Assert.Same(HorizontalOverflowByBlockIndex, ReadField<Dictionary<int, IHorizontalOverflowBox>>(snapshot.HorizontalOverflow.ByBlockIndex));
             AssertDictionaryContents(HorizontalOverflowContentsByBlock, HorizontalOverflowByBlockIndex);
-            Assert.Same(FocusablePlan, ReadField<Array>(snapshot, "_focusablePlan"));
+            Assert.Same(FocusablePlan, ReadField<Array>(snapshot.Focusables.Entries));
             Assert.Equal(FocusablePlanContents, CaptureFocusablePlan(snapshot));
 
-            FocusableItem[]? actualFixedFocusable = ReadOptionalField<FocusableItem[]>(snapshot, "_fixedFocusableItems");
+            FocusableItem[]? actualFixedFocusable = snapshot.Focusables.FixedItems;
             Assert.Same(FixedFocusableItems, actualFixedFocusable);
             Assert.Equal(FixedFocusableContents, actualFixedFocusable);
         }
 
         internal static FocusPlanEntrySnapshot[] CaptureFocusablePlan(LayoutSnapshot snapshot)
         {
-            Array focusPlan = ReadField<Array>(snapshot, "_focusablePlan");
+            Array focusPlan = ReadField<Array>(snapshot.Focusables.Entries);
             var result = new FocusPlanEntrySnapshot[focusPlan.Length];
             for (int index = 0; index < focusPlan.Length; index++)
             {
@@ -352,25 +322,9 @@ public sealed class SnapshotSemanticTraversalIndexTests
         FocusableItem Item,
         IHorizontalOverflowBox? Overflow);
 
-    private static T? ReadOptionalField<T>(LayoutSnapshot snapshot, string name)
+    private static T ReadAssignableField<T>(object? value)
         where T : class
-    {
-        FieldInfo field = typeof(LayoutSnapshot).GetField(
-            name,
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException($"Snapshot index field '{name}' was not found.");
-        return field.GetValue(snapshot) as T;
-    }
-
-    private static T ReadAssignableField<T>(LayoutSnapshot snapshot, string name)
-        where T : class
-    {
-        FieldInfo field = typeof(LayoutSnapshot).GetField(
-            name,
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException($"Snapshot index field '{name}' was not found.");
-        return Assert.IsAssignableFrom<T>(field.GetValue(snapshot));
-    }
+        => Assert.IsAssignableFrom<T>(value);
 
     private sealed class TestOverflowStackBox : StackBox, IHorizontalOverflowBox
     {

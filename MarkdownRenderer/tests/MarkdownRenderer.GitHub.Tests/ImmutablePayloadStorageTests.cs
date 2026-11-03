@@ -121,12 +121,12 @@ public sealed class ImmutablePayloadStorageTests
         AssertReadonly(Nested(typeof(HostedElementRealizationGate<>), "Operation"), "CancellationToken");
         AssertReadonly(Nested(typeof(SnapshotRetirementTracker), "FailureBucket"), "Details");
         AssertReadonly(typeof(TextElementBoundaryIndex), "TextLength");
-        AssertReadonly(Nested(typeof(LayoutSnapshot), "CommittedMetadata"), "Revision MeasuredCount");
-        PropertyInfo committedSize = Nested(typeof(LayoutSnapshot), "CommittedMetadata")
+        AssertReadonly(typeof(LayoutSnapshotCommittedMetadata), "Revision MeasuredCount");
+        PropertyInfo committedSize = typeof(LayoutSnapshotCommittedMetadata)
             .GetProperty("Size", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!;
         Assert.NotNull(committedSize);
         Assert.Null(committedSize.SetMethod);
-        AssertReadonly(Nested(typeof(LayoutSnapshot), "FocusablePlanEntry"), "Item HorizontalOverflow");
+        AssertReadonly(typeof(FocusablePlanEntry), "Item HorizontalOverflow");
         AssertReadonly(typeof(LazyLayoutCommit), "Changed MeasuredBlocks OldHeight NewHeight LayoutRevision");
         AssertReadonly(typeof(SnapshotScrollAnchor), "BlockIndex OffsetFromTop Height");
         AssertReadonly(typeof(CodeBlockBox),
@@ -464,7 +464,7 @@ public sealed class ImmutablePayloadStorageTests
         Assert.Equal(12.5, anchor.OffsetFromTop);
         Assert.Equal(200, anchor.Height);
 
-        object metadata = Construct(Nested(typeof(LayoutSnapshot), "CommittedMetadata"),
+        object metadata = Construct(typeof(LayoutSnapshotCommittedMetadata),
             [new Size(640, 480), 37L, 21]);
         Assert.Equal(new Size(640, 480), metadata.GetType()
             .GetProperty("Size", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!
@@ -484,7 +484,7 @@ public sealed class ImmutablePayloadStorageTests
     [Fact]
     public void CommittedMetadataSizeCanOnlyBeCompletedOnceBeforePublication()
     {
-        Type type = Nested(typeof(LayoutSnapshot), "CommittedMetadata");
+        Type type = typeof(LayoutSnapshotCommittedMetadata);
         const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         PropertyInfo sizeProperty = type.GetProperty("Size", flags)!;
         MethodInfo completeSize = type.GetMethod("CompleteSizeBeforePublish", flags)!;
