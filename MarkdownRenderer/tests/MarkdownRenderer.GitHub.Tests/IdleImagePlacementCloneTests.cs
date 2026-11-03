@@ -54,7 +54,8 @@ public sealed class IdleImagePlacementCloneTests
             Assert.True(SharedCanvasBitmapCache.TryAcquire(seed.Device, builtIn.CacheKey, out cacheProbe));
             int cacheReferencesBefore = GetEntryReferenceCount(cacheProbe!);
 
-            Assert.False(fixture.Source.TryCreatePrivateRasterImageCandidates(
+            Assert.False(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
+                fixture.Source,
                 targetContext, 320f, out InlineContainerBox? completedOnlyCandidate, out _));
             Assert.Null(completedOnlyCandidate);
 

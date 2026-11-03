@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Threading;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Layout;
@@ -100,14 +99,14 @@ public sealed class VectorSceneStateTests
             Assert.Null(GetVectorState(box));
             box.Add(vector);
 
-            object state = GetVectorState(box)
+            InlineVectorSceneState state = GetVectorState(box)
                 ?? throw new InvalidOperationException("Adding an inline vector did not create its state holder.");
-            Assert.Equal(1, ReadField<int>(state, "VectorSceneRunCount"));
-            Assert.True(ReadField<bool>(state, "HasDeferredSceneMarker"));
-            Assert.Equal(0L, ReadField<long>(state, "SceneGeometryGeneration"));
-            Assert.Equal(0L, ReadField<long>(state, "PendingSceneGeometryGeneration"));
-            Assert.Equal(0, ReadField<int>(state, "SceneCharacterRegionQueryCount"));
-            Assert.Empty(ReadField<InlineSceneGeometry[]>(state, "PendingSceneGeometry"));
+            Assert.Equal(1, state.VectorSceneRunCount);
+            Assert.True(state.HasDeferredSceneMarker);
+            Assert.Equal(0L, state.SceneGeometryGeneration);
+            Assert.Equal(0L, state.PendingSceneGeometryGeneration);
+            Assert.Equal(0, state.SceneCharacterRegionQueryCount);
+            Assert.Empty(state.PendingSceneGeometry);
 
             InlineImageRun detachedImage = Assert.Single(box.DetachInlineImagesForTransfer());
             Assert.Same(image, detachedImage);
@@ -117,7 +116,7 @@ public sealed class VectorSceneStateTests
             Assert.True(box.HasDeferredSceneMarker);
             Assert.Equal(0, box.SceneGeometryGeneration);
             Assert.Equal(0, box.SceneCharacterRegionQueryCount);
-            Assert.Empty(ReadField<InlineSceneGeometry[]>(state, "PendingSceneGeometry"));
+            Assert.Empty(state.PendingSceneGeometry);
 
             _ = box.Measure(320f);
             Assert.True(box.SceneGeometryGeneration > 0);
@@ -130,8 +129,8 @@ public sealed class VectorSceneStateTests
 
             box.ReleasePendingSceneGeometry(generation);
             Assert.Same(state, GetVectorState(box));
-            Assert.Empty(ReadField<InlineSceneGeometry[]>(state, "PendingSceneGeometry"));
-            Assert.Equal(0L, ReadField<long>(state, "PendingSceneGeometryGeneration"));
+            Assert.Empty(state.PendingSceneGeometry);
+            Assert.Equal(0L, state.PendingSceneGeometryGeneration);
             Assert.True(box.SceneCharacterRegionQueryCount > 0);
             Assert.False(box.TryGetCurrentSceneGeometry(
                 out _, out InlineSceneGeometry[] releasedGeometry));
@@ -154,19 +153,6 @@ public sealed class VectorSceneStateTests
         }
     }
 
-    private static object? GetVectorState(InlineContainerBox box)
-    {
-        FieldInfo field = typeof(InlineContainerBox).GetField(
-            "_vectorSceneState", BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("InlineContainerBox vector-state field was not found.");
-        return field.GetValue(box);
-    }
-
-    private static T ReadField<T>(object state, string name)
-    {
-        FieldInfo field = state.GetType().GetField(
-            name, BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException($"Vector scene state field '{name}' was not found.");
-        return Assert.IsType<T>(field.GetValue(state));
-    }
+    private static InlineVectorSceneState? GetVectorState(InlineContainerBox box)
+        => box.VectorSceneStateHolder;
 }

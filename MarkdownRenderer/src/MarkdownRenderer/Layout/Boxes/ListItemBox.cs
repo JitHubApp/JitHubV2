@@ -12,7 +12,7 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// Lays out a list item as two side-by-side columns: a fixed-width marker gutter
 /// on the left (bullet or number) and a variable-width content area on the right.
 /// </summary>
-internal sealed partial class ListItemBox : BlockBox
+internal sealed class ListItemBox : BlockBox
 {
     public readonly InlineContainerBox Marker;
     public readonly StackBox Content;
@@ -123,5 +123,60 @@ internal sealed partial class ListItemBox : BlockBox
         cleanup.TryCollectRetirementTasks(Marker, pendingTasks);
         cleanup.TryCollectRetirementTasks(Content, pendingTasks);
         cleanup.ThrowIfAny("collecting list-item retirement tasks");
+    }
+
+    /// <summary>Validates the exact measured list-column geometry without allocation.</summary>
+    internal bool HasCoherentMeasuredPlacement()
+    {
+        Rect bounds = Bounds;
+        float width = (float)bounds.Width;
+        Thickness margin = Margin;
+        if (!double.IsFinite(bounds.X) || !double.IsFinite(bounds.Y) ||
+            !double.IsFinite(bounds.Width) || bounds.Width <= 0 ||
+            !double.IsFinite(bounds.Height) || bounds.Height < 0 ||
+            !float.IsFinite(width) || width <= 0 ||
+            !float.IsFinite(_markerWidth) || _markerWidth < 0 ||
+            !double.IsFinite(margin.Left) || !double.IsFinite(margin.Top) ||
+            !double.IsFinite(margin.Right) || !double.IsFinite(margin.Bottom) ||
+            FlowDirection is not (FlowDirection.LeftToRight or FlowDirection.RightToLeft))
+        {
+            return false;
+        }
+
+        float contentWidth = Math.Max(1f, width - _markerWidth - (float)(margin.Left + margin.Right));
+        bool rtl = FlowDirection == FlowDirection.RightToLeft;
+        float markerX = (float)bounds.X + (rtl ? contentWidth : 0f) + (float)margin.Left;
+        float contentX = (float)bounds.X + (rtl ? 0f : _markerWidth) + (float)margin.Left;
+        float contentY = (float)bounds.Y + (float)margin.Top;
+        Rect markerBounds = Marker.Bounds;
+        Rect contentBounds = Content.Bounds;
+        float markerHeight = (float)markerBounds.Height;
+        float contentHeight = (float)contentBounds.Height;
+        if (!float.IsFinite(contentWidth) || contentWidth <= 0 ||
+            !float.IsFinite(markerX) || !float.IsFinite(contentX) || !float.IsFinite(contentY) ||
+            !double.IsFinite(markerBounds.X) || markerBounds.X != markerX ||
+            !double.IsFinite(markerBounds.Y) || markerBounds.Y != contentY ||
+            !double.IsFinite(markerBounds.Width) || markerBounds.Width != _markerWidth ||
+            !double.IsFinite(markerBounds.Height) || markerBounds.Height < 0 ||
+            !float.IsFinite(markerHeight) || (double)markerHeight != markerBounds.Height ||
+            !double.IsFinite(contentBounds.X) || contentBounds.X != contentX ||
+            !double.IsFinite(contentBounds.Y) || contentBounds.Y != contentY ||
+            !double.IsFinite(contentBounds.Width) || contentBounds.Width != contentWidth ||
+            !double.IsFinite(contentBounds.Height) || contentBounds.Height < 0 ||
+            !float.IsFinite(contentHeight) || (double)contentHeight != contentBounds.Height)
+        {
+            return false;
+        }
+
+        float expectedHeight = Math.Max(markerHeight, contentHeight) +
+            (float)(margin.Top + margin.Bottom);
+        return float.IsFinite(expectedHeight) && bounds.Height == expectedHeight &&
+               Content.HasCoherentMeasuredPlacement();
+    }
+
+    internal void SwapMeasuredPlacementNoThrow(ListItemBox prepared)
+    {
+        (Bounds, prepared.Bounds) = (prepared.Bounds, Bounds);
+        (IsDirty, prepared.IsDirty) = (prepared.IsDirty, IsDirty);
     }
 }

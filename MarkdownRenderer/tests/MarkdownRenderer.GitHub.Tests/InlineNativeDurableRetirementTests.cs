@@ -47,20 +47,20 @@ public sealed class InlineNativeDurableRetirementTests
         InlineContainerBox box = CreateTextRoot(context, retirement, disposer);
         BuildSelection(box, harness.Device, 0, 12);
 
-        CanvasTextLayout originalLayout = Field<CanvasTextLayout>(box, "_layout");
-        NativeResourceRetirementRecord originalRecord = Field<NativeResourceRetirementRecord>(box, "_layoutRetirementRecord");
-        CanvasTextLayout originalSelection = Field<CanvasTextLayout>(box, "_selectionLayout");
-        NativeResourceRetirementRecord originalSelectionRecord = Field<NativeResourceRetirementRecord>(box, "_selectionLayoutRetirementRecord");
+        CanvasTextLayout originalLayout = Required(box.TextLayout);
+        NativeResourceRetirementRecord originalRecord = Required(box.TextLayoutRetirementRecord);
+        CanvasTextLayout originalSelection = Required(box.SelectionLayout);
+        NativeResourceRetirementRecord originalSelectionRecord = Required(box.SelectionLayoutRetirementRecord);
         Rect originalBounds = box.Bounds;
 
         disposer.FailNextDisposal();
         harness.Creator.CancelOnNextDeviceAccess = cancellation.Cancel;
 
         OperationCanceledException failure = Assert.ThrowsAny<OperationCanceledException>(() => box.Measure(Width - 73f));
-        Assert.Same(originalLayout, Field<CanvasTextLayout>(box, "_layout"));
-        Assert.Same(originalRecord, Field<NativeResourceRetirementRecord>(box, "_layoutRetirementRecord"));
-        Assert.Same(originalSelection, Field<CanvasTextLayout>(box, "_selectionLayout"));
-        Assert.Same(originalSelectionRecord, Field<NativeResourceRetirementRecord>(box, "_selectionLayoutRetirementRecord"));
+        Assert.Same(originalLayout, Required(box.TextLayout));
+        Assert.Same(originalRecord, Required(box.TextLayoutRetirementRecord));
+        Assert.Same(originalSelection, Required(box.SelectionLayout));
+        Assert.Same(originalSelectionRecord, Required(box.SelectionLayoutRetirementRecord));
         Assert.Equal(originalBounds, box.Bounds);
         Assert.NotNull(failure.Data["MarkdownRenderer.InlineContainerBox.MeasureCleanupFailure"]);
         Assert.Equal(1, retirement.PendingRecordCount);
@@ -87,20 +87,20 @@ public sealed class InlineNativeDurableRetirementTests
         InlineContainerBox box = CreateTextRoot(context, retirement, disposer);
         BuildSelection(box, harness.Device, 0, 12);
 
-        CanvasTextLayout oldLayout = Field<CanvasTextLayout>(box, "_layout");
-        NativeResourceRetirementRecord oldLayoutRecord = Field<NativeResourceRetirementRecord>(box, "_layoutRetirementRecord");
-        CanvasTextLayout oldSelection = Field<CanvasTextLayout>(box, "_selectionLayout");
-        NativeResourceRetirementRecord oldSelectionRecord = Field<NativeResourceRetirementRecord>(box, "_selectionLayoutRetirementRecord");
+        CanvasTextLayout oldLayout = Required(box.TextLayout);
+        NativeResourceRetirementRecord oldLayoutRecord = Required(box.TextLayoutRetirementRecord);
+        CanvasTextLayout oldSelection = Required(box.SelectionLayout);
+        NativeResourceRetirementRecord oldSelectionRecord = Required(box.SelectionLayoutRetirementRecord);
         disposer.FailFor(oldLayout, oldSelection);
 
         _ = box.Measure(Width - 89f);
 
-        CanvasTextLayout newLayout = Field<CanvasTextLayout>(box, "_layout");
-        NativeResourceRetirementRecord newLayoutRecord = Field<NativeResourceRetirementRecord>(box, "_layoutRetirementRecord");
+        CanvasTextLayout newLayout = Required(box.TextLayout);
+        NativeResourceRetirementRecord newLayoutRecord = Required(box.TextLayoutRetirementRecord);
         Assert.NotSame(oldLayout, newLayout);
         Assert.NotSame(oldLayoutRecord, newLayoutRecord);
-        Assert.Null(NullableField(box, "_selectionLayout"));
-        Assert.Null(NullableField(box, "_selectionLayoutRetirementRecord"));
+        Assert.Null(box.SelectionLayout);
+        Assert.Null(box.SelectionLayoutRetirementRecord);
         Assert.Equal(2, retirement.PendingRecordCount);
         Assert.Equal(2, retirement.PendingResourceCount);
         Assert.Equal(2, disposer.FailedDisposalCount);
@@ -169,16 +169,16 @@ public sealed class InlineNativeDurableRetirementTests
         float oldDesiredHeight = sceneRun.DesiredHeight;
         float oldBaseline = sceneRun.DesiredBaseline;
         Rect oldLocalBounds = sceneRun.LocalBounds;
-        CanvasTextLayout publishedLayout = Field<CanvasTextLayout>(box, "_layout");
-        NativeResourceRetirementRecord publishedRecord = Field<NativeResourceRetirementRecord>(box, "_layoutRetirementRecord");
+        CanvasTextLayout publishedLayout = Required(box.TextLayout);
+        NativeResourceRetirementRecord publishedRecord = Required(box.TextLayoutRetirementRecord);
 
         disposer.FailNextDisposal();
         InvalidOperationException cleanupFailure = Assert.Throws<InvalidOperationException>(
             () => box.MeasureIntrinsicWidths());
 
         Assert.Equal("Injected native text-layout disposal failure.", cleanupFailure.Message);
-        Assert.Same(publishedLayout, Field<CanvasTextLayout>(box, "_layout"));
-        Assert.Same(publishedRecord, Field<NativeResourceRetirementRecord>(box, "_layoutRetirementRecord"));
+        Assert.Same(publishedLayout, Required(box.TextLayout));
+        Assert.Same(publishedRecord, Required(box.TextLayoutRetirementRecord));
         Assert.Equal(oldDesiredWidth, sceneRun.DesiredWidth);
         Assert.Equal(oldDesiredHeight, sceneRun.DesiredHeight);
         Assert.Equal(oldBaseline, sceneRun.DesiredBaseline);
@@ -203,16 +203,16 @@ public sealed class InlineNativeDurableRetirementTests
         Color originalColor = Color.FromArgb(0xFF, 0x24, 0x68, 0xA0);
         Color replacementColor = Color.FromArgb(0xFF, 0xA0, 0x42, 0x18);
         BuildSelection(box, harness.Device, 0, 9, originalColor);
-        CanvasTextLayout oldSelection = Field<CanvasTextLayout>(box, "_selectionLayout");
-        NativeResourceRetirementRecord oldRecord = Field<NativeResourceRetirementRecord>(box, "_selectionLayoutRetirementRecord");
+        CanvasTextLayout oldSelection = Required(box.SelectionLayout);
+        NativeResourceRetirementRecord oldRecord = Required(box.SelectionLayoutRetirementRecord);
 
         harness.Creator.ThrowOnNextDeviceAccess = new InvalidOperationException("Injected selection candidate factory failure.");
         InvalidOperationException failure = Assert.Throws<InvalidOperationException>(
             () => BuildSelection(box, harness.Device, 10, 8, replacementColor));
 
         Assert.Equal("Injected selection candidate factory failure.", failure.Message);
-        Assert.Same(oldSelection, Field<CanvasTextLayout>(box, "_selectionLayout"));
-        Assert.Same(oldRecord, Field<NativeResourceRetirementRecord>(box, "_selectionLayoutRetirementRecord"));
+        Assert.Same(oldSelection, Required(box.SelectionLayout));
+        Assert.Same(oldRecord, Required(box.SelectionLayoutRetirementRecord));
         Assert.Equal(0, retirement.PendingRecordCount);
         Assert.Equal(0, retirement.PendingResourceCount);
         box.Dispose();
@@ -258,8 +258,8 @@ public sealed class InlineNativeDurableRetirementTests
         InlineContainerBox box = CreateTextRoot(context, retirement, disposer);
         TextRun run = Assert.IsType<TextRun>(Assert.Single(box.Runs));
         BuildSelection(box, harness.Device, 0, 12);
-        CanvasTextLayout primary = Field<CanvasTextLayout>(box, "_layout");
-        CanvasTextLayout selection = Field<CanvasTextLayout>(box, "_selectionLayout");
+        CanvasTextLayout primary = Required(box.TextLayout);
+        CanvasTextLayout selection = Required(box.SelectionLayout);
         disposer.FailFor(primary, selection);
 
         var evidence = new TerminalEvidence(
@@ -286,7 +286,7 @@ public sealed class InlineNativeDurableRetirementTests
             out InlineContainerBox? prepared,
             out _));
         InlineContainerBox candidate = Assert.IsType<InlineContainerBox>(prepared);
-        Assert.True(source.TryCaptureContainerLeafMeasuredPlacementTransfer(candidate, Width, out var transfer));
+        Assert.True(InlineMeasuredPlacementCapture.TryCaptureContainerLeafMeasuredPlacementTransfer(source, candidate, Width, out var transfer));
         Assert.NotNull(transfer);
 
         // Capture is intentionally before candidate Measure/Arrange: the
@@ -295,24 +295,24 @@ public sealed class InlineNativeDurableRetirementTests
         _ = candidate.Measure(Width);
         candidate.Arrange(0, 0, Width);
 
-        CanvasTextLayout sourcePrimary = Field<CanvasTextLayout>(source, "_layout");
-        NativeResourceRetirementRecord sourcePrimaryRecord = Field<NativeResourceRetirementRecord>(source, "_layoutRetirementRecord");
-        CanvasTextLayout sourceSelection = Field<CanvasTextLayout>(source, "_selectionLayout");
-        NativeResourceRetirementRecord sourceSelectionRecord = Field<NativeResourceRetirementRecord>(source, "_selectionLayoutRetirementRecord");
-        CanvasTextLayout preparedPrimary = Field<CanvasTextLayout>(candidate, "_layout");
-        NativeResourceRetirementRecord preparedPrimaryRecord = Field<NativeResourceRetirementRecord>(candidate, "_layoutRetirementRecord");
+        CanvasTextLayout sourcePrimary = Required(source.TextLayout);
+        NativeResourceRetirementRecord sourcePrimaryRecord = Required(source.TextLayoutRetirementRecord);
+        CanvasTextLayout sourceSelection = Required(source.SelectionLayout);
+        NativeResourceRetirementRecord sourceSelectionRecord = Required(source.SelectionLayoutRetirementRecord);
+        CanvasTextLayout preparedPrimary = Required(candidate.TextLayout);
+        NativeResourceRetirementRecord preparedPrimaryRecord = Required(candidate.TextLayoutRetirementRecord);
 
         Assert.True(transfer!.IsCurrentAndPrepared());
         transfer.SwapPlacementNoThrow();
 
-        Assert.Same(preparedPrimary, Field<CanvasTextLayout>(source, "_layout"));
-        Assert.Same(preparedPrimaryRecord, Field<NativeResourceRetirementRecord>(source, "_layoutRetirementRecord"));
-        Assert.Same(sourcePrimary, Field<CanvasTextLayout>(candidate, "_layout"));
-        Assert.Same(sourcePrimaryRecord, Field<NativeResourceRetirementRecord>(candidate, "_layoutRetirementRecord"));
-        Assert.Same(sourceSelection, Field<CanvasTextLayout>(candidate, "_selectionLayout"));
-        Assert.Same(sourceSelectionRecord, Field<NativeResourceRetirementRecord>(candidate, "_selectionLayoutRetirementRecord"));
-        Assert.Null(NullableField(source, "_selectionLayout"));
-        Assert.Null(NullableField(source, "_selectionLayoutRetirementRecord"));
+        Assert.Same(preparedPrimary, Required(source.TextLayout));
+        Assert.Same(preparedPrimaryRecord, Required(source.TextLayoutRetirementRecord));
+        Assert.Same(sourcePrimary, Required(candidate.TextLayout));
+        Assert.Same(sourcePrimaryRecord, Required(candidate.TextLayoutRetirementRecord));
+        Assert.Same(sourceSelection, Required(candidate.SelectionLayout));
+        Assert.Same(sourceSelectionRecord, Required(candidate.SelectionLayoutRetirementRecord));
+        Assert.Null(source.SelectionLayout);
+        Assert.Null(source.SelectionLayoutRetirementRecord);
 
         disposer.FailFor(sourcePrimary, sourceSelection);
         Assert.ThrowsAny<Exception>(candidate.Dispose);
@@ -371,13 +371,9 @@ public sealed class InlineNativeDurableRetirementTests
             new Rect(0, 0, Width, System.Math.Max(64, box.Bounds.Height)));
     }
 
-    private static T Field<T>(object instance, string name)
+    private static T Required<T>(T? value, [CallerArgumentExpression(nameof(value))] string? name = null)
         where T : class =>
-        (T)(typeof(InlineContainerBox).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(instance)
-            ?? throw new InvalidOperationException($"Expected {name} to contain a {typeof(T).Name}."));
-
-    private static object? NullableField(object instance, string name) =>
-        typeof(InlineContainerBox).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(instance);
+        value ?? throw new InvalidOperationException($"Expected {name} to contain a {typeof(T).Name}.");
 
     private static void AssertCollected<T>(WeakReference<T> reference)
         where T : class => Assert.False(IsAlive(reference), "A retired inline object remained strongly rooted.");

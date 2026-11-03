@@ -1318,9 +1318,6 @@ public sealed class RootLocalContainerImageRelayoutTests
     private static (int RootBlockIndex, int BlockIndex, float X, float Y)[] CaptureFinalTextOrigins(
         LayoutSnapshot snapshot)
     {
-        MethodInfo getStyle = typeof(InlineContainerBox).GetMethod(
-            "GetContainerStyle", BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Inline style resolver is unavailable.");
         MethodInfo getOrigin = typeof(InlineContainerBox).GetMethods(
                 BindingFlags.Instance | BindingFlags.NonPublic)
             .Single(method => method.Name == "GetSnappedOrigin" && method.GetParameters().Length == 3);
@@ -1334,7 +1331,7 @@ public sealed class RootLocalContainerImageRelayoutTests
                     snapshot.EnterPlacementTransformScopeForTopLevelBlockUnderPaint(root);
                 foreach (InlineContainerBox inline in EnumerateBoxes([root]).OfType<InlineContainerBox>())
                 {
-                    object style = getStyle.Invoke(inline, null)
+                    object style = inline.GetContainerStyle()
                         ?? throw new InvalidOperationException("Inline style resolver returned null.");
                     object?[] arguments = [style, 0f, 0f];
                     _ = getOrigin.Invoke(inline, arguments);
@@ -1353,9 +1350,6 @@ public sealed class RootLocalContainerImageRelayoutTests
     private static (int RootBlockIndex, int BlockIndex, string Metrics)[] CaptureCanvasTextLayoutMetrics(
         LayoutSnapshot snapshot)
     {
-        FieldInfo layoutField = typeof(InlineContainerBox).GetField("_layout",
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Inline text layout field is unavailable.");
         var result = new List<(int RootBlockIndex, int BlockIndex, string Metrics)>();
         Assert.True(snapshot.TryBeginInteraction());
         try
@@ -1366,7 +1360,7 @@ public sealed class RootLocalContainerImageRelayoutTests
                     snapshot.EnterPlacementTransformScopeForTopLevelBlockUnderPaint(root);
                 foreach (InlineContainerBox inline in EnumerateBoxes([root]).OfType<InlineContainerBox>())
                 {
-                    object? layout = layoutField.GetValue(inline);
+                    object? layout = inline.TextLayout;
                     if (layout is null)
                     {
                         result.Add((root.BlockIndex, inline.BlockIndex, "<no-layout>"));
@@ -1409,12 +1403,6 @@ public sealed class RootLocalContainerImageRelayoutTests
     private static (int RootBlockIndex, int BlockIndex, string Buffer, string Regions)[] CaptureTextLayoutRegions(
         LayoutSnapshot snapshot)
     {
-        FieldInfo layoutField = typeof(InlineContainerBox).GetField("_layout",
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Inline text layout field is unavailable.");
-        FieldInfo bufferField = typeof(InlineContainerBox).GetField("_buffer",
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Inline text buffer field is unavailable.");
         var result = new List<(int RootBlockIndex, int BlockIndex, string Buffer, string Regions)>();
         Assert.True(snapshot.TryBeginInteraction());
         try
@@ -1425,8 +1413,8 @@ public sealed class RootLocalContainerImageRelayoutTests
                     snapshot.EnterPlacementTransformScopeForTopLevelBlockUnderPaint(root);
                 foreach (InlineContainerBox inline in EnumerateBoxes([root]).OfType<InlineContainerBox>())
                 {
-                    object? layout = layoutField.GetValue(inline);
-                    string buffer = Assert.IsType<string>(bufferField.GetValue(inline));
+                    object? layout = inline.TextLayout;
+                    string buffer = Assert.IsType<string>(inline.LayoutBuffer);
                     if (layout is null || buffer.Length == 0)
                     {
                         result.Add((root.BlockIndex, inline.BlockIndex, buffer,
@@ -1483,12 +1471,6 @@ public sealed class RootLocalContainerImageRelayoutTests
 
     private static string CaptureInlinePaintDetails(LayoutSnapshot snapshot, BlockBox root)
     {
-        FieldInfo bufferField = typeof(InlineContainerBox).GetField("_buffer",
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Inline text buffer field is unavailable.");
-        MethodInfo getStyle = typeof(InlineContainerBox).GetMethod("GetContainerStyle",
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Inline style resolver is unavailable.");
         MethodInfo getOrigin = typeof(InlineContainerBox).GetMethods(
                 BindingFlags.Instance | BindingFlags.NonPublic)
             .Single(method => method.Name == "GetSnappedOrigin" && method.GetParameters().Length == 3);
@@ -1503,13 +1485,13 @@ public sealed class RootLocalContainerImageRelayoutTests
                 $"ImageBox#{image.BlockIndex} logical={LayoutPlacementTestGeometry.ToLogical(snapshot, image)}"));
             string inlines = string.Join("; ", EnumerateBoxes([root]).OfType<InlineContainerBox>().Select(inline =>
             {
-                object style = getStyle.Invoke(inline, null)
+                object style = inline.GetContainerStyle()
                     ?? throw new InvalidOperationException("Inline style resolver returned null.");
                 object?[] arguments = [style, 0f, 0f];
                 _ = getOrigin.Invoke(inline, arguments);
                 float originX = Assert.IsType<float>(arguments[1]);
                 float originY = Assert.IsType<float>(arguments[2]);
-                string text = Assert.IsType<string>(bufferField.GetValue(inline));
+                string text = Assert.IsType<string>(inline.LayoutBuffer);
                 object? foreground = style.GetType().GetProperty("Foreground")?.GetValue(style);
                 return $"block={inline.BlockIndex}, bounds={inline.Bounds}, origin=({originX:R},{originY:R}), " +
                     $"foreground={foreground}, text=\"{text}\"";

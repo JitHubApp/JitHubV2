@@ -243,15 +243,12 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
         long? buildCount = TryGetCacheBuildCount(fixture.Box);
 
         InlineContainerBox missingChunk = fixture.Box.Chunks[1];
-        FieldInfo metricsField = GetRequiredPrivateField(typeof(InlineContainerBox), "_cachedLineMetrics");
-        FieldInfo metricsReadField = GetRequiredPrivateField(typeof(InlineContainerBox), "_lineMetricsRead");
-        object? savedMetrics = metricsField.GetValue(missingChunk);
-        object? savedReadState = metricsReadField.GetValue(missingChunk);
+        CanvasLineMetrics[]? savedMetrics = missingChunk.CachedLineMetrics;
+        bool savedReadState = missingChunk.HasReadLineMetrics;
         Assert.IsType<CanvasLineMetrics[]>(savedMetrics);
         try
         {
-            metricsField.SetValue(missingChunk, null);
-            metricsReadField.SetValue(missingChunk, true);
+            SetLineMetricsCache(missingChunk, null, read: true);
             fixture.Box.Arrange(9.125f, 1_024.375f, 400);
 
             Assert.Equal(0, fixture.Box.IndexedVisualLineCount);
@@ -259,8 +256,7 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
             Assert.Empty(GetArray(fixture.Box, "_visualLineBottomEdges"));
             Assert.Equal(buildCount, TryGetCacheBuildCount(fixture.Box));
 
-            metricsField.SetValue(missingChunk, savedMetrics);
-            metricsReadField.SetValue(missingChunk, savedReadState);
+            SetLineMetricsCache(missingChunk, savedMetrics, savedReadState);
             fixture.Box.Arrange(9.125f, 1_024.375f, 400);
             oracle.Box.Arrange(9.125f, 1_024.375f, 400);
 
@@ -272,8 +268,7 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
         }
         finally
         {
-            metricsField.SetValue(missingChunk, savedMetrics);
-            metricsReadField.SetValue(missingChunk, savedReadState);
+            SetLineMetricsCache(missingChunk, savedMetrics, savedReadState);
         }
     }
 
@@ -292,38 +287,36 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
         AssertNativeMetricsAvailable(fixture.Box);
         AssertMatchesIndependentLegacyOracle(fixture.Box, oracle.Box, 7.25f, 8_192.375f, 400);
         InlineContainerBox chunk = fixture.Box.Chunks[0];
-        FieldInfo metricsField = GetRequiredPrivateField(typeof(InlineContainerBox), "_cachedLineMetrics");
-        FieldInfo readField = GetRequiredPrivateField(typeof(InlineContainerBox), "_lineMetricsRead");
-        object? savedMetrics = metricsField.GetValue(chunk);
-        object? savedReadState = readField.GetValue(chunk);
+        CanvasLineMetrics[]? savedMetrics = chunk.CachedLineMetrics;
+        bool savedReadState = chunk.HasReadLineMetrics;
         CanvasLineMetrics[] validMetrics = Assert.IsType<CanvasLineMetrics[]>(savedMetrics);
         long? originalBuildCount = TryGetCacheBuildCount(fixture.Box);
 
         try
         {
-            SetCachedMetrics(chunk, metricsField, readField, Array.Empty<CanvasLineMetrics>());
+            SetCachedMetrics(chunk, Array.Empty<CanvasLineMetrics>());
             fixture.Box.Arrange(7.25f, 8_192.375f, 400);
             AssertVisualLineFallbackIsComplete(fixture.Box);
             Assert.Equal(originalBuildCount, TryGetCacheBuildCount(fixture.Box));
-            RestoreAndAssertRecovery(fixture.Box, oracle.Box, chunk, metricsField, readField,
+            RestoreAndAssertRecovery(fixture.Box, oracle.Box, chunk,
                 validMetrics, savedReadState, 7.25f, 8_192.375f, 400);
 
             CanvasLineMetrics[] nonfiniteMetrics = validMetrics.ToArray();
             nonfiniteMetrics[0] = WithMetricValue(nonfiniteMetrics[0], "Height", float.NaN);
-            SetCachedMetrics(chunk, metricsField, readField, nonfiniteMetrics);
+            SetCachedMetrics(chunk, nonfiniteMetrics);
             fixture.Box.Arrange(7.25f, 8_192.375f, 400);
             AssertVisualLineFallbackIsComplete(fixture.Box);
-            RestoreAndAssertRecovery(fixture.Box, oracle.Box, chunk, metricsField, readField,
+            RestoreAndAssertRecovery(fixture.Box, oracle.Box, chunk,
                 validMetrics, savedReadState, 7.25f, 8_192.375f, 400);
 
             Assert.True(validMetrics.Length > 1);
             CanvasLineMetrics[] overflowingMetrics = validMetrics.ToArray();
             overflowingMetrics[0] = WithMetricValue(
                 overflowingMetrics[0], "CharacterCount", int.MaxValue);
-            SetCachedMetrics(chunk, metricsField, readField, overflowingMetrics);
+            SetCachedMetrics(chunk, overflowingMetrics);
             fixture.Box.Arrange(7.25f, 8_192.375f, 400);
             AssertVisualLineFallbackIsComplete(fixture.Box);
-            RestoreAndAssertRecovery(fixture.Box, oracle.Box, chunk, metricsField, readField,
+            RestoreAndAssertRecovery(fixture.Box, oracle.Box, chunk,
                 validMetrics, savedReadState, 7.25f, 8_192.375f, 400);
 
             fixture.Box.Arrange(7.25f, float.NaN, 400);
@@ -335,8 +328,7 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
         }
         finally
         {
-            metricsField.SetValue(chunk, savedMetrics);
-            readField.SetValue(chunk, savedReadState);
+            SetLineMetricsCache(chunk, savedMetrics, savedReadState);
         }
 
         fixture.Box.Dispose();
@@ -742,10 +734,9 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
 
     private static object?[] CaptureChunkNativeLayouts(CodeBlockBox box)
     {
-        FieldInfo layoutField = GetRequiredPrivateField(typeof(InlineContainerBox), "_layout");
         var result = new object?[box.Chunks.Count];
         for (int index = 0; index < result.Length; index++)
-            result[index] = layoutField.GetValue(box.Chunks[index]);
+            result[index] = box.Chunks[index].TextLayout;
         Assert.All(result, item => Assert.NotNull(item));
         return result;
     }
@@ -753,19 +744,25 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
     private static void AssertSameChunkNativeLayouts(CodeBlockBox box, object?[] expected)
     {
         Assert.Equal(box.Chunks.Count, expected.Length);
-        FieldInfo layoutField = GetRequiredPrivateField(typeof(InlineContainerBox), "_layout");
         for (int index = 0; index < expected.Length; index++)
-            Assert.Same(expected[index], layoutField.GetValue(box.Chunks[index]));
+            Assert.Same(expected[index], box.Chunks[index].TextLayout);
     }
 
-    private static void SetCachedMetrics(
-        InlineContainerBox chunk,
-        FieldInfo metricsField,
-        FieldInfo readField,
-        CanvasLineMetrics[]? metrics)
+    private static void SetCachedMetrics(InlineContainerBox chunk, CanvasLineMetrics[]? metrics)
+        => SetLineMetricsCache(chunk, metrics, read: true);
+
+    // Fault injection: no product path yields malformed DirectWrite line
+    // metrics, so crafted ones are written into the chunk's owned text-layout
+    // state. The struct is read as a boxed copy and written back whole.
+    private static void SetLineMetricsCache(InlineContainerBox chunk, CanvasLineMetrics[]? metrics, bool read)
     {
-        metricsField.SetValue(chunk, metrics);
-        readField.SetValue(chunk, true);
+        FieldInfo stateField = GetRequiredPrivateField(typeof(InlineContainerBox), "_textLayout");
+        object state = stateField.GetValue(chunk)!;
+        GetRequiredPrivateField(typeof(InlineTextLayoutState), "_cachedLineMetrics").SetValue(state, metrics);
+        GetRequiredPrivateField(typeof(InlineTextLayoutState), "_lineMetricsRead").SetValue(state, read);
+        stateField.SetValue(chunk, state);
+        Assert.Same(metrics, chunk.CachedLineMetrics);
+        Assert.Equal(read, chunk.HasReadLineMetrics);
     }
 
     private static CanvasLineMetrics WithMetricValue<T>(CanvasLineMetrics metric, string propertyName, T value)
@@ -786,16 +783,13 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
         CodeBlockBox subject,
         CodeBlockBox oracle,
         InlineContainerBox mutatedChunk,
-        FieldInfo metricsField,
-        FieldInfo readField,
         CanvasLineMetrics[] validMetrics,
-        object? originalReadState,
+        bool originalReadState,
         float x,
         float y,
         float width)
     {
-        metricsField.SetValue(mutatedChunk, validMetrics);
-        readField.SetValue(mutatedChunk, originalReadState);
+        SetLineMetricsCache(mutatedChunk, validMetrics, originalReadState);
         subject.Arrange(x, y, width);
         AssertMatchesIndependentLegacyOracle(subject, oracle, x, y, width);
     }

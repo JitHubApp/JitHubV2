@@ -723,7 +723,7 @@ public sealed class RootLocalTableVectorImageRelayoutTests
         Assert.Single(cells, cell => cell.Runs.Any(run => ReferenceEquals(run, vector)));
 
     private static CanvasTextLayout GetInlineLayout(InlineContainerBox inline) =>
-        Assert.IsType<CanvasTextLayout>(GetRawField(inline, "_layout"));
+        Assert.IsType<CanvasTextLayout>(inline.TextLayout);
 
     private static SharedCanvasBitmapCache.Lease GetBitmapLease(ImageBox image) =>
         Assert.IsType<SharedCanvasBitmapCache.Lease>(GetRawField(image, "_bitmapLease"));

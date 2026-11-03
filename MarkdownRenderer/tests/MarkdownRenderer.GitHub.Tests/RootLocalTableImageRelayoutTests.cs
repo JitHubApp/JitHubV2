@@ -56,7 +56,7 @@ public sealed class RootLocalTableImageRelayoutTests
                 Assert.NotNull(clone);
                 try
                 {
-                    Assert.True(cell.TryCaptureTableCellMeasuredPlacementTransfer(clone, width, out var transfer),
+                    Assert.True(InlineMeasuredPlacementCapture.TryCaptureTableCellMeasuredPlacementTransfer(cell, clone, width, out var transfer),
                         "Capture: " + state);
                     Assert.NotNull(transfer);
                     _ = clone.Measure(width);
@@ -1743,12 +1743,7 @@ public sealed class RootLocalTableImageRelayoutTests
         run.StyleAliases.Contains(key, StringComparer.Ordinal);
 
     private static CanvasTextLayout GetInlineLayout(InlineContainerBox inline)
-    {
-        FieldInfo field = typeof(InlineContainerBox).GetField("_layout",
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Missing inline native-layout field.");
-        return Assert.IsType<CanvasTextLayout>(field.GetValue(inline));
-    }
+        => Assert.IsType<CanvasTextLayout>(inline.TextLayout);
 
     private static SharedCanvasBitmapCache.Lease GetBitmapLease(ImageBox image)
     {

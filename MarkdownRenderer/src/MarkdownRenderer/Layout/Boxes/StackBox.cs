@@ -12,7 +12,7 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// Stacks child blocks vertically with optional left indent &amp; accent bar (used
 /// for blockquotes &amp; list items).
 /// </summary>
-internal partial class StackBox : BlockBox
+internal class StackBox : BlockBox
 {
     private readonly SingletonMutableList<BlockBox> _children = new();
     private double[] _childBottomEdges = Array.Empty<double>();
@@ -349,4 +349,92 @@ internal partial class StackBox : BlockBox
         => Math.Max(
             0,
             Bounds.Height - Margin.Top - Margin.Bottom - _trailingChildMarginOutsideChrome);
+
+    internal double[] PrivateRasterPlacementChildBottomEdges => _childBottomEdges;
+
+    /// <summary>
+    /// Verifies the exact float placement emitted by Measure followed by the
+    /// idempotent Arrange contract. This is intentionally scalar/array-only
+    /// and suitable for the final layout gate.
+    /// </summary>
+    internal bool HasCoherentMeasuredPlacement()
+    {
+        Rect bounds = Bounds;
+        float availableWidth = (float)bounds.Width;
+        if (!IsPrivateRasterPlacementCloneEligible ||
+            !double.IsFinite(bounds.X) || !double.IsFinite(bounds.Y) ||
+            !double.IsFinite(bounds.Width) || bounds.Width <= 0 ||
+            !double.IsFinite(bounds.Height) || bounds.Height < 0 ||
+            !float.IsFinite(availableWidth) || availableWidth <= 0 ||
+            !IsValidPlacementThickness(ContentPadding) ||
+            !IsValidPlacementThickness(Margin) ||
+            !float.IsFinite(InterChildSpacing) || InterChildSpacing < 0 ||
+            CollapsePositiveAdjacentMargins ||
+            FlowDirection is not (FlowDirection.LeftToRight or FlowDirection.RightToLeft))
+        {
+            return false;
+        }
+
+        float accentInset = GetAccentBarContentInset();
+        float innerWidth = availableWidth - (float)(ContentPadding.Left + ContentPadding.Right) -
+            (float)(Margin.Left + Margin.Right) - accentInset;
+        if (!float.IsFinite(accentInset) || accentInset < 0 ||
+            !float.IsFinite(innerWidth) || innerWidth <= 0)
+        {
+            return false;
+        }
+
+        float localY = (float)(Margin.Top + ContentPadding.Top);
+        float childStartX = FlowDirection == FlowDirection.RightToLeft
+            ? (float)(Margin.Left + ContentPadding.Right)
+            : (float)(Margin.Left + ContentPadding.Left + accentInset);
+        float deltaX = (float)bounds.X;
+        float deltaY = (float)bounds.Y;
+        if (!float.IsFinite(localY) || !float.IsFinite(childStartX) ||
+            _childBottomEdges.Length != _children.Count)
+        {
+            return false;
+        }
+
+        for (int index = 0; index < _children.Count; index++)
+        {
+            if (index > 0)
+                localY += InterChildSpacing;
+
+            BlockBox child = _children[index];
+            Rect childBounds = child.Bounds;
+            float childHeight = (float)childBounds.Height;
+            float expectedX = childStartX + deltaX;
+            float expectedY = localY + deltaY;
+            if (!float.IsFinite(localY) || !double.IsFinite(childBounds.X) ||
+                !double.IsFinite(childBounds.Y) || !double.IsFinite(childBounds.Width) ||
+                childBounds.Width != innerWidth || !double.IsFinite(childBounds.Height) ||
+                childBounds.Height < 0 || !float.IsFinite(childHeight) ||
+                (double)childHeight != childBounds.Height ||
+                !float.IsFinite(expectedX) || !float.IsFinite(expectedY) ||
+                childBounds.X != expectedX || childBounds.Y != expectedY ||
+                !double.IsFinite(childBounds.Bottom) ||
+                !double.IsFinite(_childBottomEdges[index]) ||
+                _childBottomEdges[index] != childBounds.Bottom)
+            {
+                return false;
+            }
+
+            localY += childHeight;
+        }
+
+        localY += (float)(ContentPadding.Bottom + Margin.Bottom);
+        return float.IsFinite(localY) && bounds.Height == localY;
+    }
+
+    private static bool IsValidPlacementThickness(Thickness value) =>
+        double.IsFinite(value.Left) && double.IsFinite(value.Top) &&
+        double.IsFinite(value.Right) && double.IsFinite(value.Bottom);
+
+    internal void SwapMeasuredPlacementNoThrow(StackBox prepared)
+    {
+        (Bounds, prepared.Bounds) = (prepared.Bounds, Bounds);
+        (_childBottomEdges, prepared._childBottomEdges) = (prepared._childBottomEdges, _childBottomEdges);
+        (IsDirty, prepared.IsDirty) = (prepared.IsDirty, IsDirty);
+    }
 }

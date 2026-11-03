@@ -1,4 +1,3 @@
-using System.Reflection;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
@@ -384,16 +383,11 @@ public sealed class SparseEffectiveRunAliasTests
             var before = new string[]?[beforeSlots.Count];
             for (int index = 0; index < before.Length; index++)
                 before[index] = beforeSlots[index];
-            MethodInfo append = typeof(InlineContainerBox).GetMethod(
-                "AppendEffectiveRunAliasOverride",
-                BindingFlags.Instance | BindingFlags.NonPublic)!;
 
-            TargetInvocationException nonLast = Assert.Throws<TargetInvocationException>(
-                () => append.Invoke(source, new object?[] { 0, new[] { "invalid" } }));
-            Assert.IsType<InvalidOperationException>(nonLast.InnerException);
-            TargetInvocationException outOfRange = Assert.Throws<TargetInvocationException>(
-                () => append.Invoke(source, new object?[] { source.Runs.Count, new[] { "invalid" } }));
-            Assert.IsType<InvalidOperationException>(outOfRange.InnerException);
+            Assert.Throws<InvalidOperationException>(
+                () => source.AppendEffectiveRunAliasOverride(0, new[] { "invalid" }));
+            Assert.Throws<InvalidOperationException>(
+                () => source.AppendEffectiveRunAliasOverride(source.Runs.Count, new[] { "invalid" }));
 
             IReadOnlyList<string[]?> after = GetOverrideSlots(source)!;
             Assert.Equal(before.Length, after.Count);
@@ -426,28 +420,14 @@ public sealed class SparseEffectiveRunAliasTests
         return box;
     }
 
-    private static object? GetOverrideStore(InlineContainerBox box)
-        => GetOverrideField().GetValue(box);
-
     private static IReadOnlyList<string[]?>? GetOverrideSlots(InlineContainerBox box)
-        => GetOverrideStore(box) is { } value
-            ? Assert.IsAssignableFrom<IReadOnlyList<string[]?>>(value)
-            : null;
+        => box.EffectiveRunAliasOverrides;
 
     private static string[] GetContainerAliases(InlineContainerBox box)
-        => Assert.IsType<string[]>(GetContainerAliasField().GetValue(box));
+        => Assert.IsType<string[]>(box.StyleAliasKeys);
 
     private static string[] GetEffectiveAliases(InlineContainerBox box, int index)
-        => Assert.IsType<string[]>(GetEffectiveAliasGetter().Invoke(box, new object[] { index }));
-
-    private static FieldInfo GetOverrideField()
-        => typeof(InlineContainerBox).GetField("_effectiveRunAliasOverrides", BindingFlags.Instance | BindingFlags.NonPublic)!;
-
-    private static FieldInfo GetContainerAliasField()
-        => typeof(InlineContainerBox).GetField("_styleAliasKeys", BindingFlags.Instance | BindingFlags.NonPublic)!;
-
-    private static MethodInfo GetEffectiveAliasGetter()
-        => typeof(InlineContainerBox).GetMethod("GetEffectiveRunAliases", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        => box.GetEffectiveRunAliases(index);
 
     private static async Task RetireAsync(MarkdownLayoutContext context, BlockBox? box)
     {

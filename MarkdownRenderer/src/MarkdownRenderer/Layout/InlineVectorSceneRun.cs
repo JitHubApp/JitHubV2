@@ -33,6 +33,8 @@ internal sealed class InlineVectorSceneRun : InlineRun, IDisposable
     private bool _disposed;
     private readonly bool _isMeasuredPlacementOnly;
 
+    // Kept whole: construction registers ownership before native preparation
+    // and disposes a partial drawing on failure; that order must stay visible.
     internal InlineVectorSceneRun(
         MarkdownLayoutContext context,
         MarkdownVectorScene scene,

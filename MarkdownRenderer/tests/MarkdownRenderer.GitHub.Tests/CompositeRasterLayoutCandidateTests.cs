@@ -174,7 +174,7 @@ public sealed class CompositeRasterLayoutCandidateTests
         InlineContainerBox[] sourceCells = sourceTable.GetCellBoxes().ToArray();
         Rect sourceTableBounds = sourceTable.Bounds;
         Rect[] sourceCellBounds = sourceCells.Select(static cell => cell.Bounds).ToArray();
-        CanvasTextLayout sourceTextLayout = GetField<CanvasTextLayout>(fixture.Source, "_layout");
+        CanvasTextLayout sourceTextLayout = fixture.Source.TextLayout!;
         CanvasBitmap sourceBitmap = Assert.IsType<CanvasBitmap>(fixture.ImageRun.Image.Bitmap);
         Point sourceHitPoint = Center(sourceCells[0].Bounds);
         bool hadHit = sourceTable.HitTest(sourceHitPoint, out DocumentPosition sourcePosition);
@@ -254,7 +254,7 @@ public sealed class CompositeRasterLayoutCandidateTests
             Assert.Equal(sourceTableBounds, sourceTable.Bounds);
             for (int index = 0; index < sourceCells.Length; index++)
                 Assert.Equal(sourceCellBounds[index], sourceCells[index].Bounds);
-            Assert.Same(sourceTextLayout, GetField<CanvasTextLayout>(fixture.Source, "_layout"));
+            Assert.Same(sourceTextLayout, fixture.Source.TextLayout!);
             Assert.Same(sourceBitmap, fixture.ImageRun.Image.Bitmap);
             Assert.True(sourceTable.HitTest(sourceHitPoint, out DocumentPosition sourcePositionAfter));
             Assert.Equal(sourcePosition, sourcePositionAfter);

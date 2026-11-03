@@ -13,22 +13,18 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class LazyInlineRunStyleCacheTests
 {
-    private static readonly FieldInfo Cache = typeof(InlineContainerBox).GetField(
-        "_resolvedRunStyles", BindingFlags.Instance | BindingFlags.NonPublic)!;
-    private static readonly MethodInfo Resolve = typeof(InlineContainerBox).GetMethod(
-        "GetRunStyle", BindingFlags.Instance | BindingFlags.NonPublic)!;
 
     [Fact]
     public void OffscreenRunsRetainOrdinalsAndSourceMappingsWithoutStyleSlots()
     {
         InlineContainerBox box = CreateBox();
-        Assert.Null(Cache.GetValue(box));
+        Assert.Null(box.ResolvedRunStyles);
         Assert.Equal(new[] { 0, 1, 2 }, box.Runs.Select(run => run.InlineIndex));
         Assert.Equal("first", box.Context.SourceMap.Slice(new DocumentRange(
             new DocumentPosition(1, 0, 0), new DocumentPosition(1, 0, 5))));
         using LayoutSnapshot snapshot = new(new BlockBox[] { box }, box.Context.SourceMap, 320, 480);
         Assert.Contains("first", snapshot.SemanticDocument.Text, StringComparison.Ordinal);
-        Assert.Null(Cache.GetValue(box));
+        Assert.Null(box.ResolvedRunStyles);
     }
 
     [Fact]
@@ -38,7 +34,7 @@ public sealed class LazyInlineRunStyleCacheTests
         try
         {
             ElementStyle resolved = ResolveStyle(box, box.Runs[1]);
-            List<ElementStyle?> cache = Assert.IsType<List<ElementStyle?>>(Cache.GetValue(box));
+            List<ElementStyle?> cache = Assert.IsType<List<ElementStyle?>>(box.ResolvedRunStyles);
             Assert.Equal(3, cache.Count);
             Assert.Equal(3, cache.Capacity);
             Assert.Null(cache[0]);
@@ -47,7 +43,7 @@ public sealed class LazyInlineRunStyleCacheTests
             Assert.Same(resolved, ResolveStyle(box, box.Runs[1]));
 
             box.Add(new TextRun("fourth"));
-            Assert.Same(cache, Cache.GetValue(box));
+            Assert.Same(cache, box.ResolvedRunStyles);
             Assert.Equal(4, cache.Count);
             Assert.Same(resolved, cache[1]);
             Assert.Null(cache[3]);
@@ -71,8 +67,8 @@ public sealed class LazyInlineRunStyleCacheTests
             InlineContainerBox clone = Assert.IsType<InlineContainerBox>(candidate);
             if (resolveSource)
             {
-                List<ElementStyle?> sourceCache = Assert.IsType<List<ElementStyle?>>(Cache.GetValue(source));
-                List<ElementStyle?> cloneCache = Assert.IsType<List<ElementStyle?>>(Cache.GetValue(clone));
+                List<ElementStyle?> sourceCache = Assert.IsType<List<ElementStyle?>>(source.ResolvedRunStyles);
+                List<ElementStyle?> cloneCache = Assert.IsType<List<ElementStyle?>>(clone.ResolvedRunStyles);
                 Assert.NotSame(sourceCache, cloneCache);
                 Assert.Equal(sourceCache.Count, cloneCache.Count);
                 Assert.Same(resolved, cloneCache[1]);
@@ -80,10 +76,10 @@ public sealed class LazyInlineRunStyleCacheTests
             }
             else
             {
-                Assert.Null(Cache.GetValue(source));
-                Assert.Null(Cache.GetValue(clone));
+                Assert.Null(source.ResolvedRunStyles);
+                Assert.Null(clone.ResolvedRunStyles);
                 Assert.NotNull(ResolveStyle(clone, clone.Runs[1]));
-                Assert.Null(Cache.GetValue(source));
+                Assert.Null(source.ResolvedRunStyles);
             }
             Assert.NotSame(source.Runs[1], clone.Runs[1]);
             Assert.Equal(source.Runs.Select(run => run.InlineIndex), clone.Runs.Select(run => run.InlineIndex));
@@ -99,21 +95,21 @@ public sealed class LazyInlineRunStyleCacheTests
         try
         {
             _ = ResolveStyle(source, source.Runs[1]);
-            List<ElementStyle?> sourceCache = Assert.IsType<List<ElementStyle?>>(Cache.GetValue(source));
+            List<ElementStyle?> sourceCache = Assert.IsType<List<ElementStyle?>>(source.ResolvedRunStyles);
             Assert.Equal(source.Runs.Count, sourceCache.Count);
             sourceCache.RemoveAt(sourceCache.Count - 1);
 
             Assert.False(source.TryCreatePrivateInlinePlacementClone(
                 source.Context, 320, out candidate, out _, allowUnmeasuredTextOnly: true));
             Assert.Null(candidate);
-            Assert.Same(sourceCache, Cache.GetValue(source));
+            Assert.Same(sourceCache, source.ResolvedRunStyles);
             Assert.Equal(source.Runs.Count - 1, sourceCache.Count);
         }
         finally { candidate?.Dispose(); source.Dispose(); }
     }
 
     private static ElementStyle ResolveStyle(InlineContainerBox box, InlineRun run) =>
-        Assert.IsType<ElementStyle>(Resolve.Invoke(box, new object[] { run }));
+        Assert.IsType<ElementStyle>(box.GetRunStyle(run));
 
     private static InlineContainerBox CreateBox()
     {

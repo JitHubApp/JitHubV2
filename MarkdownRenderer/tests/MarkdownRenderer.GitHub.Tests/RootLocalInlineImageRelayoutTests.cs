@@ -1040,12 +1040,7 @@ public sealed class RootLocalInlineImageRelayoutTests
     }
 
     private static CanvasTextLayout GetInlineLayout(InlineContainerBox inline)
-    {
-        FieldInfo field = typeof(InlineContainerBox).GetField("_layout",
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Missing inline native-layout field.");
-        return Assert.IsType<CanvasTextLayout>(field.GetValue(inline));
-    }
+        => Assert.IsType<CanvasTextLayout>(inline.TextLayout);
 
     private static SharedCanvasBitmapCache.Lease GetBitmapLease(ImageBox image)
     {

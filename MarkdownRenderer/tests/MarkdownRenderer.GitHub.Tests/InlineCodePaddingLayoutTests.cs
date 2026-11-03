@@ -26,27 +26,6 @@ public sealed class InlineCodePaddingLayoutTests
     private static readonly Color CodeSurface = Color.FromArgb(255, 230, 20, 110);
     private static readonly Color TextColor = Color.FromArgb(255, 20, 30, 40);
     private static readonly Color SelectionColor = Color.FromArgb(255, 180, 190, 200);
-    private static readonly FieldInfo LayoutField = typeof(InlineContainerBox).GetField(
-        "_layout",
-        BindingFlags.Instance | BindingFlags.NonPublic)!;
-    private static readonly FieldInfo BufferField = typeof(InlineContainerBox).GetField(
-        "_buffer",
-        BindingFlags.Instance | BindingFlags.NonPublic)!;
-    private static readonly MethodInfo EnsureSelectionLayoutMethod = typeof(InlineContainerBox).GetMethod(
-        "EnsureSelectionLayout",
-        BindingFlags.Instance | BindingFlags.NonPublic)!;
-    private static readonly MethodInfo ApplyInlineCodePaddingRangesMethod = typeof(InlineContainerBox).GetMethod(
-        "ApplyInlineCodePaddingRanges",
-        BindingFlags.Instance | BindingFlags.NonPublic)!;
-    private static readonly Type InlineCodePaddingRangeType = typeof(InlineContainerBox).GetNestedType(
-        "InlineCodePaddingRange",
-        BindingFlags.NonPublic)!;
-    private static readonly MethodInfo FindLastTextElementStartMethod = typeof(InlineContainerBox).GetMethod(
-        "FindLastTextElementStart",
-        BindingFlags.Static | BindingFlags.NonPublic,
-        binder: null,
-        types: [typeof(string), typeof(int), typeof(int), typeof(CancellationToken)],
-        modifiers: null)!;
 
     private readonly ITestOutputHelper _output;
 
@@ -180,10 +159,8 @@ public sealed class InlineCodePaddingLayoutTests
         Rect selectedCode = UnionRects(padded.GetSelectionRects(selectionRange));
         Assert.Equal(paddedCode.Left, selectedCode.Left, precision: 3);
         Assert.Equal(paddedCode.Right, selectedCode.Right, precision: 3);
-        CanvasTextLayout selectionLayout = Assert.IsType<CanvasTextLayout>(
-            EnsureSelectionLayoutMethod.Invoke(
-                padded,
-                [SelectionColor, CreateTheme(padding).GetStyle(MarkdownElementKeys.Body)]));
+        CanvasTextLayout selectionLayout = padded.EnsureSelectionLayout(
+            SelectionColor, CreateTheme(padding).GetStyle(MarkdownElementKeys.Body));
         Rect selectedLayoutCode = Union(selectionLayout.GetCharacterRegions(codeStart, code.Length));
         Assert.Equal(paddedCode.Left, selectedLayoutCode.Left, precision: 3);
         Assert.Equal(paddedCode.Right, selectedLayoutCode.Right, precision: 3);
@@ -423,11 +400,10 @@ public sealed class InlineCodePaddingLayoutTests
         box.Context.SetCancellationToken(cancellation.Token);
         cancellation.Cancel();
 
-        IList ranges = CreatePaddingRanges(0, code.Length, (float)padding.Left, (float)padding.Right);
-        TargetInvocationException exception = Assert.Throws<TargetInvocationException>(() =>
-            ApplyInlineCodePaddingRangesMethod.Invoke(
-                box, [Layout(box), ranges, true]));
-        Assert.IsAssignableFrom<OperationCanceledException>(exception.InnerException);
+        List<InlineCodePaddingRange> ranges = CreatePaddingRanges(0, code.Length, (float)padding.Left, (float)padding.Right);
+        Assert.ThrowsAny<OperationCanceledException>(() =>
+            InlineCodePaddingLayout.ApplyInlineCodePaddingRanges(
+                box, Layout(box), ranges, observeCancellation: true));
     }
 
     [Fact]
@@ -435,10 +411,9 @@ public sealed class InlineCodePaddingLayoutTests
     {
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
-        TargetInvocationException exception = Assert.Throws<TargetInvocationException>(() =>
-            FindLastTextElementStartMethod.Invoke(
-                null, ["a\u0301", 0, 2, cancellation.Token]));
-        Assert.IsAssignableFrom<OperationCanceledException>(exception.InnerException);
+        Assert.ThrowsAny<OperationCanceledException>(() =>
+            InlineCodePaddingLayout.FindLastTextElementStart(
+                "a\u0301", 0, 2, cancellation.Token));
     }
 
     [Fact]
@@ -453,11 +428,8 @@ public sealed class InlineCodePaddingLayoutTests
         box.Context.SetCancellationToken(cancellation.Token);
         cancellation.Cancel();
 
-        CanvasTextLayout selectionLayout = Assert.IsType<CanvasTextLayout>(
-            EnsureSelectionLayoutMethod.Invoke(
-                box,
-                [SelectionColor, CreateTheme(new Thickness(3, 0, 9, 0))
-                    .GetStyle(MarkdownElementKeys.Body)]));
+        CanvasTextLayout selectionLayout = box.EnsureSelectionLayout(
+            SelectionColor, CreateTheme(new Thickness(3, 0, 9, 0)).GetStyle(MarkdownElementKeys.Body));
         Assert.NotNull(selectionLayout);
     }
 
@@ -1000,10 +972,10 @@ public sealed class InlineCodePaddingLayoutTests
     }
 
     private static CanvasTextLayout Layout(InlineContainerBox box)
-        => Assert.IsType<CanvasTextLayout>(LayoutField.GetValue(box));
+        => Assert.IsType<CanvasTextLayout>(box.TextLayout);
 
     private static string Buffer(InlineContainerBox box)
-        => Assert.IsType<string>(BufferField.GetValue(box));
+        => Assert.IsType<string>(box.LayoutBuffer);
 
     private static Rect Union(CanvasTextLayoutRegion[] regions)
     {
@@ -1088,18 +1060,9 @@ public sealed class InlineCodePaddingLayoutTests
         return new Rect(left, top, right - left, bottom - top);
     }
 
-    private static IList CreatePaddingRanges(int start, int length, float leftPadding, float rightPadding)
-    {
-        Type listType = typeof(List<>).MakeGenericType(InlineCodePaddingRangeType);
-        var ranges = (IList)Activator.CreateInstance(listType)!;
-        ConstructorInfo constructor = InlineCodePaddingRangeType.GetConstructor(
-            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
-            binder: null,
-            types: [typeof(int), typeof(int), typeof(float), typeof(float)],
-            modifiers: null)!;
-        ranges.Add(constructor.Invoke([start, length, leftPadding, rightPadding]));
-        return ranges;
-    }
+    private static List<InlineCodePaddingRange> CreatePaddingRanges(
+        int start, int length, float leftPadding, float rightPadding)
+        => [new InlineCodePaddingRange(start, length, leftPadding, rightPadding)];
 
     private static int LastTextElementStart(string text)
     {

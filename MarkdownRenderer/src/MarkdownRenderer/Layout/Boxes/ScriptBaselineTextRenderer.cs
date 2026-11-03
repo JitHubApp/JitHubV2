@@ -172,64 +172,11 @@ internal sealed partial class ScriptBaselineTextRenderer : ICanvasTextRenderer, 
         if (characterCount < 2 || characterIndex > int.MaxValue - characterCount)
             return false;
 
-        int rangeEnd = characterIndex + characterCount;
-        float firstOffset = _geometry.GetOffsetAtCharacter(characterIndex);
-        int cursor = characterIndex;
-        bool hasDifferentCharacterOffset = false;
-        while (cursor < rangeEnd)
-        {
-            int segmentEnd = _geometry.GetSegmentEnd(cursor, rangeEnd, out float segmentOffset);
-            if (segmentEnd <= cursor)
-                return false;
-            if (segmentOffset != firstOffset)
-            {
-                hasDifferentCharacterOffset = true;
-                break;
-            }
-
-            cursor = segmentEnd;
-        }
-
-        if (!hasDifferentCharacterOffset)
+        if (!HasMixedCharacterOffsets(characterIndex, characterIndex + characterCount))
             return false;
 
-        // DirectWrite's cluster map is UTF-16-character to glyph-index. Use
-        // the first character in each cluster so combining marks and emoji
-        // sequences stay with their shaped base glyph. A glyph with no direct
-        // cluster entry inherits the preceding visual cluster's baseline.
-        int[] firstCharacterByGlyph = new int[glyphs.Length];
-        Array.Fill(firstCharacterByGlyph, -1);
-        for (int characterOffset = 0; characterOffset < characterCount; characterOffset++)
-        {
-            int glyphIndex = clusterMapIndices[characterOffset];
-            if ((uint)glyphIndex >= (uint)glyphs.Length ||
-                firstCharacterByGlyph[glyphIndex] >= 0)
-            {
-                continue;
-            }
-
-            firstCharacterByGlyph[glyphIndex] = characterOffset;
-        }
-
-        int precedingCharacterOffset = 0;
-        bool hasDifferentGlyphOffset = false;
-        float firstGlyphOffset = 0f;
-        for (int glyphIndex = 0; glyphIndex < glyphs.Length; glyphIndex++)
-        {
-            if (firstCharacterByGlyph[glyphIndex] >= 0)
-                precedingCharacterOffset = firstCharacterByGlyph[glyphIndex];
-            else
-                firstCharacterByGlyph[glyphIndex] = precedingCharacterOffset;
-
-            float glyphOffset = _geometry.GetOffsetAtCharacter(
-                characterIndex + firstCharacterByGlyph[glyphIndex]);
-            if (glyphIndex == 0)
-                firstGlyphOffset = glyphOffset;
-            else if (glyphOffset != firstGlyphOffset)
-                hasDifferentGlyphOffset = true;
-        }
-
-        if (!hasDifferentGlyphOffset)
+        int[] firstCharacterByGlyph = MapGlyphsToFirstCharacter(clusterMapIndices, characterCount, glyphs.Length);
+        if (!HasMixedGlyphOffsets(firstCharacterByGlyph, characterIndex))
             return false;
 
         var copy = (CanvasGlyph[])glyphs.Clone();
@@ -245,6 +192,74 @@ internal sealed partial class ScriptBaselineTextRenderer : ICanvasTextRenderer, 
 
         adjustedGlyphs = copy;
         return true;
+    }
+
+    // True when the script baseline offset changes anywhere in the range;
+    // false when it is uniform or a segment does not advance.
+    private bool HasMixedCharacterOffsets(int characterIndex, int rangeEnd)
+    {
+        float firstOffset = _geometry.GetOffsetAtCharacter(characterIndex);
+        int cursor = characterIndex;
+        while (cursor < rangeEnd)
+        {
+            int segmentEnd = _geometry.GetSegmentEnd(cursor, rangeEnd, out float segmentOffset);
+            if (segmentEnd <= cursor)
+                return false;
+            if (segmentOffset != firstOffset)
+                return true;
+
+            cursor = segmentEnd;
+        }
+
+        return false;
+    }
+
+    // DirectWrite's cluster map is UTF-16-character to glyph-index. Use
+    // the first character in each cluster so combining marks and emoji
+    // sequences stay with their shaped base glyph. Glyphs with no direct
+    // cluster entry are left at -1 for HasMixedGlyphOffsets to fill.
+    private static int[] MapGlyphsToFirstCharacter(int[] clusterMapIndices, int characterCount, int glyphCount)
+    {
+        int[] firstCharacterByGlyph = new int[glyphCount];
+        Array.Fill(firstCharacterByGlyph, -1);
+        for (int characterOffset = 0; characterOffset < characterCount; characterOffset++)
+        {
+            int glyphIndex = clusterMapIndices[characterOffset];
+            if ((uint)glyphIndex >= (uint)glyphCount ||
+                firstCharacterByGlyph[glyphIndex] >= 0)
+            {
+                continue;
+            }
+
+            firstCharacterByGlyph[glyphIndex] = characterOffset;
+        }
+
+        return firstCharacterByGlyph;
+    }
+
+    // A glyph with no direct cluster entry inherits the preceding visual
+    // cluster's character; returns whether the glyphs' offsets differ.
+    private bool HasMixedGlyphOffsets(int[] firstCharacterByGlyph, int characterIndex)
+    {
+        int precedingCharacterOffset = 0;
+        bool hasDifferentGlyphOffset = false;
+        float firstGlyphOffset = 0f;
+        for (int glyphIndex = 0; glyphIndex < firstCharacterByGlyph.Length; glyphIndex++)
+        {
+            if (firstCharacterByGlyph[glyphIndex] >= 0)
+                precedingCharacterOffset = firstCharacterByGlyph[glyphIndex];
+            else
+                firstCharacterByGlyph[glyphIndex] = precedingCharacterOffset;
+
+            float glyphOffset = _geometry.GetOffsetAtCharacter(
+                characterIndex + firstCharacterByGlyph[glyphIndex]);
+            if (glyphIndex == 0)
+                firstGlyphOffset = glyphOffset;
+            else if (glyphOffset != firstGlyphOffset)
+                hasDifferentGlyphOffset = true;
+        }
+
+        return hasDifferentGlyphOffset;
     }
 
     public void DrawStrikethrough(

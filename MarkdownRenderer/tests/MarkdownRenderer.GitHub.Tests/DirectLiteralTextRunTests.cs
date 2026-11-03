@@ -75,7 +75,7 @@ public sealed class DirectLiteralTextRunTests
         SourceSliceTextRun[] directSlices = runs.OfType<SourceSliceTextRun>().ToArray();
 
         Assert.NotEmpty(directSlices);
-        Assert.All(directSlices, static slice => Assert.Equal(string.Empty, ReadTextCache(slice)));
+        Assert.All(directSlices, static slice => Assert.False(slice.HasMaterializedText));
         foreach (SourceSliceTextRun slice in directSlices)
         {
             Assert.Same(source, slice.SourceText);
@@ -163,12 +163,12 @@ public sealed class DirectLiteralTextRunTests
         Assert.True(PrivateTextRunPlacement.IsSupported(run));
         Assert.Equal(4, run.TextLength);
         Assert.Equal(4, run.LayoutTextLength);
-        Assert.Equal(string.Empty, ReadTextCache(run));
+        Assert.False(run.HasMaterializedText);
 
         var layout = new StringBuilder();
         run.AppendLayoutTextTo(layout);
         Assert.Equal("A\uD83D\uDE00B", layout.ToString());
-        Assert.Equal(string.Empty, ReadTextCache(run));
+        Assert.False(run.HasMaterializedText);
 
         var clone = Assert.IsType<SourceSliceTextRun>(PrivateTextRunPlacement.Clone(run));
         Assert.NotSame(run, clone);
@@ -180,7 +180,7 @@ public sealed class DirectLiteralTextRunTests
         Assert.Equal(run.StyleAliases, clone.StyleAliases);
         Assert.Equal(run.StyleModifierKeys, clone.StyleModifierKeys);
         Assert.Equal(run.SemanticHeadingKey, clone.SemanticHeadingKey);
-        Assert.Equal(string.Empty, ReadTextCache(clone));
+        Assert.False(clone.HasMaterializedText);
 
         var results = new string[64];
         Parallel.For(0, results.Length, index => results[index] = clone.Text);
@@ -371,8 +371,8 @@ public sealed class DirectLiteralTextRunTests
         using var snapshot = new LayoutSnapshot(new BlockBox[] { paragraph }, context.SourceMap, 120f, 20f);
 
         Assert.Equal("A I B", snapshot.SemanticDocument.Text);
-        Assert.Equal(string.Empty, ReadTextCache(left));
-        Assert.Equal(string.Empty, ReadTextCache(right));
+        Assert.False(left.HasMaterializedText);
+        Assert.False(right.HasMaterializedText);
     }
 
     private static BuildFixture Build(
@@ -571,11 +571,6 @@ public sealed class DirectLiteralTextRunTests
         bool Mapped,
         SourceSpan SourceSpan,
         string SourceSlice);
-
-    private static string ReadTextCache(SourceSliceTextRun run)
-        => Assert.IsType<string>(typeof(TextRun)
-            .GetField("_text", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(run));
 
     private sealed class CustomTextRun(string text) : TextRun(text)
     {

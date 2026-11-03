@@ -1,4 +1,3 @@
-using System.Reflection;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Images;
@@ -83,7 +82,8 @@ public sealed class SourceSliceMeasuredPlacementTransferTests
 
             candidateContext = CreateContext(device, theme, sourceMap, registry, documentOwner, preparationOwner, disclosures);
             Assert.True(InlineContainerBox.ArePrivateRasterPlacementContextsCompatible(sourceContext, candidateContext));
-            Assert.True(source.TryCreatePrivateRasterImageCandidates(
+            Assert.True(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
+                source,
                 candidateContext,
                 320f,
                 out candidate,
@@ -95,10 +95,11 @@ public sealed class SourceSliceMeasuredPlacementTransferTests
             AssertUnmaterialized(left, right);
             AssertUnmaterialized(candidateSlices);
 
-            Assert.True(source.TryCaptureMeasuredPlacementTransfer(
+            Assert.True(InlineMeasuredPlacementCapture.TryCaptureMeasuredPlacementTransfer(
+                source,
                 candidate,
                 320f,
-                out InlineContainerBox.MeasuredPlacementTransfer? transfer));
+                out InlineMeasuredPlacementTransfer? transfer));
             Assert.NotNull(transfer);
             AssertUnmaterialized(left, right);
             AssertUnmaterialized(candidateSlices);
@@ -233,9 +234,7 @@ public sealed class SourceSliceMeasuredPlacementTransferTests
 
     private static void AssertUnmaterialized(params SourceSliceTextRun[] runs)
     {
-        FieldInfo cache = typeof(TextRun).GetField("_text", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        Assert.NotNull(cache);
         foreach (SourceSliceTextRun run in runs)
-            Assert.Equal(string.Empty, cache.GetValue(run));
+            Assert.False(run.HasMaterializedText);
     }
 }

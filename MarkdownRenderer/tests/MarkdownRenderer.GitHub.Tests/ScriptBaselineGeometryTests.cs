@@ -26,14 +26,6 @@ public sealed partial class ScriptBaselineGeometryTests
 {
     private const float AvailableWidth = 124f;
     private const float BodyFontSize = 16f;
-    private static readonly FieldInfo LayoutField = typeof(InlineContainerBox).GetField(
-        "_layout",
-        BindingFlags.Instance | BindingFlags.NonPublic)
-        ?? throw new InvalidOperationException("Could not find InlineContainerBox._layout.");
-    private static readonly FieldInfo ScriptGeometryField = typeof(InlineContainerBox).GetField(
-        "_scriptBaselineGeometry",
-        BindingFlags.Instance | BindingFlags.NonPublic)
-        ?? throw new InvalidOperationException("Could not find InlineContainerBox._scriptBaselineGeometry.");
 
     [Fact]
     public void GeometryUsesSortedHalfOpenRangesAndLeavesGapsAtTheBaseLine()
@@ -128,7 +120,7 @@ public sealed partial class ScriptBaselineGeometryTests
         InlineRun subscript = Assert.Single(
             box.Runs,
             run => run.ElementKey == MarkdownElementKeys.Subscript);
-        CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(LayoutField.GetValue(box));
+        CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(box.TextLayout);
         Assert.Equal(11f, layout.GetFontSize(GetBufferStart(box, superscript)));
         Assert.Equal(11f, layout.GetFontSize(GetBufferStart(box, subscript)));
 
@@ -173,7 +165,7 @@ public sealed partial class ScriptBaselineGeometryTests
         InlineRun subscript = Assert.Single(
             box.Runs,
             run => run.ElementKey == MarkdownElementKeys.Subscript);
-        CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(LayoutField.GetValue(box));
+        CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(box.TextLayout);
         int superscriptStart = GetBufferStart(box, superscript);
         int subscriptStart = GetBufferStart(box, subscript);
 
@@ -227,7 +219,7 @@ public sealed partial class ScriptBaselineGeometryTests
             run => run.ElementKey == MarkdownElementKeys.Subscript);
         InlineRun italic = Assert.Single(box.Runs, run => run is EmphasisRun);
 
-        CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(LayoutField.GetValue(box));
+        CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(box.TextLayout);
         int superscriptStart = GetBufferStart(box, superscript);
         int subscriptStart = GetBufferStart(box, subscript);
         Assert.True(layout.GetCharacterRegions(superscriptStart, superscript.TextLength)!.Length > 1);
@@ -327,7 +319,7 @@ public sealed partial class ScriptBaselineGeometryTests
         InlineRun script = Assert.Single(
             box.Runs,
             run => run.ElementKey == MarkdownElementKeys.Superscript);
-        CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(LayoutField.GetValue(box));
+        CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(box.TextLayout);
         float topInset = BodyFontSize * 0.30f;
         int sourceEmojiIndex = string.Concat(box.Runs.Select(run => run.Text))
             .IndexOf("😀", StringComparison.Ordinal);
@@ -368,7 +360,7 @@ public sealed partial class ScriptBaselineGeometryTests
         InlineContainerBox box = Assert.Single(snapshot.Blocks.OfType<InlineContainerBox>());
         InlineRun script = Assert.Single(box.Runs, run => run.ElementKey == MarkdownElementKeys.Superscript);
         InlineRun normal = Assert.Single(box.Runs, run => run.Text.Contains("normal", StringComparison.Ordinal));
-        CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(LayoutField.GetValue(box));
+        CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(box.TextLayout);
         int emojiIndex = GetBufferStart(box, script);
         float topInset = BodyFontSize * 0.30f;
         Rect emojiRegion = ExpectedRegionRect(
@@ -403,7 +395,7 @@ public sealed partial class ScriptBaselineGeometryTests
         InlineRun script = Assert.Single(
             box.Runs,
             run => run.ElementKey == MarkdownElementKeys.Superscript);
-        CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(LayoutField.GetValue(box));
+        CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(box.TextLayout);
         string shapedText = string.Concat(box.Runs.Select(run => run.Text));
         const string expectedScriptText = "normal 😀 phrase";
         Assert.Equal(expectedScriptText, script.Text);
@@ -656,8 +648,8 @@ public sealed partial class ScriptBaselineGeometryTests
         float width,
         bool forceLegacyColorSupport)
     {
-        CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(LayoutField.GetValue(box));
-        ScriptBaselineGeometry geometry = Assert.IsType<ScriptBaselineGeometry>(ScriptGeometryField.GetValue(box));
+        CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(box.TextLayout);
+        ScriptBaselineGeometry geometry = Assert.IsType<ScriptBaselineGeometry>(box.ScriptBaselineGeometry);
         float height = NumericMath.Max(128f, (float)box.Bounds.Bottom + 16f);
         using var target = new CanvasRenderTarget(device, width, height, 96f);
         using var foreground = new CanvasSolidColorBrush(device, Color.FromArgb(255, 12, 18, 24));
@@ -722,7 +714,7 @@ public sealed partial class ScriptBaselineGeometryTests
             AvailableWidth);
         InlineContainerBox box = Assert.Single(snapshot.Blocks.OfType<InlineContainerBox>());
         InlineRun script = Assert.Single(box.Runs, run => run.ElementKey == role);
-        CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(LayoutField.GetValue(box));
+        CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(box.TextLayout);
         int start = GetBufferStart(box, script);
         CanvasTextLayoutRegion[] nativeRegions = layout.GetCharacterRegions(start, script.TextLength)!;
         Assert.True(nativeRegions.Length > 1);
@@ -779,7 +771,7 @@ public sealed partial class ScriptBaselineGeometryTests
             nested.ScriptStyleAncestryKeys);
         Assert.Contains("nested script phrase", string.Concat(box.Runs.Select(run => run.Text)));
 
-        CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(LayoutField.GetValue(box));
+        CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(box.TextLayout);
         AssertRangeGeometry(
             box,
             layout,

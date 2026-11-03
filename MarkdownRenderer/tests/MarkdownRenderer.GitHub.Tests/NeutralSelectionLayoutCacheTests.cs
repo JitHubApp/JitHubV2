@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Reflection;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using MarkdownRenderer.Document;
@@ -27,9 +26,6 @@ public sealed class NeutralSelectionLayoutCacheTests(ITestOutputHelper output)
         "Mixed direction text includes Hebrew שלום beside Latin words and more content for raster parity.";
     private static readonly Color SelectionColor = Color.FromArgb(0xFF, 0x28, 0x64, 0x9A);
     private static readonly Color AlternateSelectionColor = Color.FromArgb(0xFF, 0xA1, 0x4C, 0x20);
-    private static readonly FieldInfo SelectionLayoutField =
-        typeof(InlineContainerBox).GetField("_selectionLayout", BindingFlags.Instance | BindingFlags.NonPublic)
-        ?? throw new InvalidOperationException("Could not find InlineContainerBox._selectionLayout.");
 
     [Fact]
     public void SelectionRangeChangesReuseNativeLayoutAndRetirementRecord()
@@ -68,10 +64,11 @@ public sealed class NeutralSelectionLayoutCacheTests(ITestOutputHelper output)
             out InlineContainerBox? prepared,
             out _));
         InlineContainerBox candidate = harness.Own(Assert.IsType<InlineContainerBox>(prepared));
-        Assert.True(source.TryCaptureContainerLeafMeasuredPlacementTransfer(
+        Assert.True(InlineMeasuredPlacementCapture.TryCaptureContainerLeafMeasuredPlacementTransfer(
+            source,
             candidate,
             Width,
-            out InlineContainerBox.MeasuredPlacementTransfer? transfer));
+            out InlineMeasuredPlacementTransfer? transfer));
         Assert.NotNull(transfer);
 
         _ = candidate.Measure(Width);
@@ -106,8 +103,8 @@ public sealed class NeutralSelectionLayoutCacheTests(ITestOutputHelper output)
         box.Arrange(0, 0, Width);
 
         Assert.NotSame(initialPrimary, PrimaryLayout(box));
-        Assert.Null(NullableField(box, "_selectionLayout"));
-        Assert.Null(NullableField(box, "_selectionLayoutRetirementRecord"));
+        Assert.Null(box.SelectionLayout);
+        Assert.Null(box.SelectionLayoutRetirementRecord);
         PaintSelection(box, harness.Device, FindRange(box, "endpoint"), SelectionColor);
         CanvasTextLayout textReflowSelection = SelectionLayout(box);
         NativeResourceRetirementRecord textReflowRecord = SelectionRetirementRecord(box);
@@ -119,8 +116,8 @@ public sealed class NeutralSelectionLayoutCacheTests(ITestOutputHelper output)
         box.Arrange(0, 0, Width - 48f);
 
         Assert.NotSame(textReflowPrimary, PrimaryLayout(box));
-        Assert.Null(NullableField(box, "_selectionLayout"));
-        Assert.Null(NullableField(box, "_selectionLayoutRetirementRecord"));
+        Assert.Null(box.SelectionLayout);
+        Assert.Null(box.SelectionLayoutRetirementRecord);
         PaintSelection(box, harness.Device, FindRange(box, "wrapped"), SelectionColor);
         Assert.NotSame(textReflowSelection, SelectionLayout(box));
         Assert.NotSame(textReflowRecord, SelectionRetirementRecord(box));
@@ -255,7 +252,7 @@ public sealed class NeutralSelectionLayoutCacheTests(ITestOutputHelper output)
             drawing.Clear(Color.FromArgb(0, 0, 0, 0));
             DocumentRange range = (index & 1) == 0 ? secondRange : firstRange;
             box.PaintSelectionForeground(drawing, range, SelectionColor, Viewport(box));
-            CanvasTextLayout currentLayout = GetSelectionLayout(SelectionLayoutField, box);
+            CanvasTextLayout currentLayout = GetSelectionLayout(box);
             if (!ReferenceEquals(previousLayout, currentLayout))
             {
                 nativeLayoutReplacements++;
@@ -359,25 +356,21 @@ public sealed class NeutralSelectionLayoutCacheTests(ITestOutputHelper output)
         => new(0, 0, Width, System.Math.Max(64f, box.Bounds.Height));
 
     private static CanvasTextLayout PrimaryLayout(InlineContainerBox box)
-        => Field<CanvasTextLayout>(box, "_layout");
+        => box.TextLayout
+            ?? throw new InvalidOperationException("Expected _layout to contain a CanvasTextLayout.");
 
     private static CanvasTextLayout SelectionLayout(InlineContainerBox box)
-        => Field<CanvasTextLayout>(box, "_selectionLayout");
+        => box.SelectionLayout
+            ?? throw new InvalidOperationException("Expected _selectionLayout to contain a CanvasTextLayout.");
 
     private static NativeResourceRetirementRecord SelectionRetirementRecord(InlineContainerBox box)
-        => Field<NativeResourceRetirementRecord>(box, "_selectionLayoutRetirementRecord");
+        => box.SelectionLayoutRetirementRecord
+            ?? throw new InvalidOperationException(
+                "Expected _selectionLayoutRetirementRecord to contain a NativeResourceRetirementRecord.");
 
-    private static T Field<T>(object instance, string name)
-        where T : class =>
-        (T)(NullableField(instance, name)
-            ?? throw new InvalidOperationException($"Expected {name} to contain a {typeof(T).Name}."));
-
-    private static CanvasTextLayout GetSelectionLayout(FieldInfo field, InlineContainerBox box)
-        => (CanvasTextLayout)(field.GetValue(box)
-            ?? throw new InvalidOperationException("Expected the neutral selection layout to remain cached."));
-
-    private static object? NullableField(object instance, string name)
-        => typeof(InlineContainerBox).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(instance);
+    private static CanvasTextLayout GetSelectionLayout(InlineContainerBox box)
+        => box.SelectionLayout
+            ?? throw new InvalidOperationException("Expected the neutral selection layout to remain cached.");
 
     private static void AssertRectArraysNearlyEqual(IReadOnlyList<Rect> expected, IReadOnlyList<Rect> actual)
     {

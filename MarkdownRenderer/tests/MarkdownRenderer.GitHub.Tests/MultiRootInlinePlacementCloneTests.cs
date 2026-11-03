@@ -39,12 +39,12 @@ public sealed class MultiRootInlinePlacementCloneTests
         textOnly.SetCandidate(textContext, textCandidate);
         InlineContainerBox textClone = Assert.IsType<InlineContainerBox>(textCandidate);
         Assert.Empty(textSources!);
-        Assert.False(GetField<bool>(textClone, "_hasAtomicInlineObject"));
+        Assert.False(textClone.HasAtomicInlineObject);
         float textHeight = textClone.Measure(240f);
         textClone.Arrange(0f, 0f, 240f);
         Assert.True(float.IsFinite(textHeight));
         Assert.True(textHeight > 0f);
-        Assert.False(GetField<bool>(textClone, "_hasAtomicInlineObject"));
+        Assert.False(textClone.HasAtomicInlineObject);
 
         await using var rasterOnly = new InlinePlacementFixture(InlinePlacementKind.RasterOnly);
         MarkdownLayoutContext rasterContext = rasterOnly.CreateCandidateContext();
@@ -81,7 +81,7 @@ public sealed class MultiRootInlinePlacementCloneTests
         MarkdownLayoutContext candidateContext = fixture.CreateCandidateContext();
         InlineRun[] sourceRuns = fixture.Source.Runs.ToArray();
         Rect sourceBounds = fixture.Source.Bounds;
-        CanvasTextLayout sourceLayout = GetField<CanvasTextLayout>(fixture.Source, "_layout");
+        CanvasTextLayout sourceLayout = fixture.Source.TextLayout!;
 
         Assert.True(fixture.Source.TryCreatePrivateInlinePlacementClone(
             candidateContext,
@@ -119,14 +119,14 @@ public sealed class MultiRootInlinePlacementCloneTests
         Assert.Equal(sourceLink.IsExpanded, clonedLink.IsExpanded);
         Assert.Equal(sourceLink.IsSuperscript, clonedLink.IsSuperscript);
         Assert.Equal(sourceBounds, fixture.Source.Bounds);
-        Assert.Same(sourceLayout, GetField<CanvasTextLayout>(fixture.Source, "_layout"));
+        Assert.Same(sourceLayout, fixture.Source.TextLayout!);
 
         float measuredHeight = clone.Measure(240f);
         clone.Arrange(0f, 0f, 240f);
         Assert.True(float.IsFinite(measuredHeight));
         Assert.True(measuredHeight > 0);
         Assert.True(clone.HasMeasuredLayout);
-        Assert.Same(sourceLayout, GetField<CanvasTextLayout>(fixture.Source, "_layout"));
+        Assert.Same(sourceLayout, fixture.Source.TextLayout!);
     }
 
     [Fact]
@@ -212,7 +212,7 @@ public sealed class MultiRootInlinePlacementCloneTests
         await using var fixture = new InlinePlacementFixture(InlinePlacementKind.CodeAndRaster);
         MarkdownLayoutContext context = fixture.CreateCandidateContext();
         Rect sourceBounds = fixture.Source.Bounds;
-        CanvasTextLayout sourceLayout = GetField<CanvasTextLayout>(fixture.Source, "_layout");
+        CanvasTextLayout sourceLayout = fixture.Source.TextLayout!;
         Assert.True(fixture.Source.TryCreatePrivateInlinePlacementClone(
             context, 320f, out InlineContainerBox? candidate, out RasterPlacementSourceFence[]? sources));
         fixture.SetCandidate(context, candidate);
@@ -227,8 +227,8 @@ public sealed class MultiRootInlinePlacementCloneTests
         _ = clone.Measure(320f);
         clone.Arrange(0f, 0f, 320f);
         Assert.Equal(sourceBounds, clone.Bounds);
-        Assert.NotSame(sourceLayout, GetField<CanvasTextLayout>(clone, "_layout"));
-        Assert.Same(sourceLayout, GetField<CanvasTextLayout>(fixture.Source, "_layout"));
+        Assert.NotSame(sourceLayout, clone.TextLayout!);
+        Assert.Same(sourceLayout, fixture.Source.TextLayout!);
         Assert.Equal(sourceBounds, fixture.Source.Bounds);
         Assert.Equal(fixture.Source.EnumerateInlineImageRects().Single().Rect,
             clone.EnumerateInlineImageRects().Single().Rect);
