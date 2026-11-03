@@ -42,11 +42,11 @@ public sealed class SvgStaticSnapshotBudgetTests
         {
             byte[] source = Encoding.ASCII.GetBytes(new string('x', 4095) + marker);
             Assert.True(
-                SvgStaticSnapshot.MayRequireStaticSnapshot(source, CancellationToken.None),
+                SvgStaticSnapshotPrescan.MayRequireStaticSnapshot(source, CancellationToken.None),
                 $"Expected marker '{marker}' to be found across the scan checkpoint.");
         }
 
-        Assert.False(SvgStaticSnapshot.MayRequireStaticSnapshot(
+        Assert.False(SvgStaticSnapshotPrescan.MayRequireStaticSnapshot(
             Encoding.ASCII.GetBytes(new string('x', 8192)),
             CancellationToken.None));
     }
@@ -58,9 +58,9 @@ public sealed class SvgStaticSnapshotBudgetTests
         cancellation.Cancel();
 
         Assert.Throws<OperationCanceledException>(() =>
-            SvgStaticSnapshot.MayRequireStaticSnapshot(new byte[8192], cancellation.Token));
+            SvgStaticSnapshotPrescan.MayRequireStaticSnapshot(new byte[8192], cancellation.Token));
         Assert.Throws<OperationCanceledException>(() =>
-            SvgStaticSnapshot.MayRequireStaticSnapshot(ReadOnlySpan<byte>.Empty, cancellation.Token));
+            SvgStaticSnapshotPrescan.MayRequireStaticSnapshot(ReadOnlySpan<byte>.Empty, cancellation.Token));
     }
 
     [Fact]
