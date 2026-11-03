@@ -156,9 +156,7 @@ public sealed class WorkerSchedulingTests
 
         for (int attempt = 0; attempt < 4; attempt++)
         {
-            WindowsWorkerProcess worker = await WindowsWorkerProcess.StartAsync(
-                executable,
-                options,
+            WindowsWorkerProcess worker = await new WindowsWorkerProcessLauncher(executable, options).StartAsync(
                 job,
                 CancellationToken.None);
             Assert.False(worker.HasExited);
@@ -186,9 +184,7 @@ public sealed class WorkerSchedulingTests
         await using var executableStream = File.OpenRead(executable);
         string expectedHash = Convert.ToHexString(await SHA256.HashDataAsync(executableStream));
 
-        WindowsWorkerProcess worker = await WindowsWorkerProcess.StartAsync(
-            executable,
-            options,
+        WindowsWorkerProcess worker = await new WindowsWorkerProcessLauncher(executable, options).StartAsync(
             job,
             CancellationToken.None);
         try
