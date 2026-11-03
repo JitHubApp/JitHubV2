@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Controls.Focus;
@@ -22,7 +21,8 @@ namespace MarkdownRenderer.Controls.LazyLayout;
 /// <remarks>
 /// Kept as one type because request admission, dispatch, cancellation and
 /// completion all read and write the same pending/active band state; the
-/// worker side lives in <see cref="LazyLayoutWork"/>.
+/// viewport band policy lives in <see cref="LazyLayoutViewportRequests"/> and
+/// the worker side in <see cref="LazyLayoutWork"/>.
 /// </remarks>
 internal sealed class LazyLayoutRealization
 {
@@ -32,13 +32,13 @@ internal sealed class LazyLayoutRealization
     private readonly LayoutCommitState _layoutCommit;
     private readonly LayoutCommitPublisher _layoutPublisher;
     private readonly MarkdownViewSurface _surface;
-    private readonly MarkdownViewport _viewport;
     private readonly RecoveryClock _recoveryClock;
     private readonly VectorCapacityRetry _vectorCapacity;
     private readonly PointerInputRouter _pointerInput;
     private readonly KeyboardFocusModel _focus;
     private readonly FocusedItemCommit _focusCommit;
     private readonly WeakSnapshotPublicationDrainFence<LayoutSnapshot> _publicationHandoff = new();
+    private readonly LazyLayoutViewportRequests _viewportRequests;
 
     private CancellationTokenSource? _cts;
     private Task? _task;
@@ -56,9 +56,6 @@ internal sealed class LazyLayoutRealization
     private bool _pendingPreserveScrollAnchor;
     private long _generation;
     private long _dispatchTicket;
-    private double _lastViewportTop;
-    private long _lastViewportTimestamp;
-    private double _scrollVelocity;
 
     internal LazyLayoutRealization(
         ILazyLayoutHost host,
@@ -80,12 +77,13 @@ internal sealed class LazyLayoutRealization
         _layoutCommit = layoutCommit;
         _layoutPublisher = layoutPublisher;
         _surface = surface;
-        _viewport = viewport;
         _recoveryClock = recoveryClock;
         _vectorCapacity = vectorCapacity;
         _pointerInput = pointerInput;
         _focus = focus;
         _focusCommit = focusCommit;
+        _viewportRequests = new LazyLayoutViewportRequests(
+            this, host, published, surface, viewport, vectorCapacity);
     }
 
     /// <summary>True while a request is pending or dispatched, a completion is staged, or a worker runs.</summary>
@@ -99,14 +97,10 @@ internal sealed class LazyLayoutRealization
     /// The latest viewport scroll velocity, in DIPs per second. Measured only
     /// while a performance session is attached.
     /// </summary>
-    internal double ScrollVelocity => _scrollVelocity;
+    internal double ScrollVelocity => _viewportRequests.ScrollVelocity;
 
     /// <summary>Forgets the scroll velocity, so the next viewport sample starts fresh.</summary>
-    internal void ResetScrollVelocity()
-    {
-        _lastViewportTimestamp = 0;
-        _scrollVelocity = 0;
-    }
+    internal void ResetScrollVelocity() => _viewportRequests.ResetScrollVelocity();
 
     /// <summary>True when active or pending work for <paramref name="snapshot"/> covers <paramref name="band"/>.</summary>
     internal bool IsBandCovered(LayoutSnapshot snapshot, LazyLayoutBand band)
@@ -133,124 +127,11 @@ internal sealed class LazyLayoutRealization
     /// in the scroll direction when a performance session opted in, unless
     /// that band is already settled.
     /// </summary>
-    internal void QueueForViewport(bool forceCapacityRetry = false)
-    {
-        var snapshot = _published.Snapshot;
-        if (_host.RequestGeometryRecoveryIfRequired(snapshot) || snapshot is null)
-            return;
-
-        _viewport.TryGet(out double viewportTop, out double viewportHeight, out _);
-        LazyLayoutBand visibleVectorBand = LazyLayoutBand.FromVisibleViewport(
-            viewportTop, viewportHeight);
-        LazyLayoutBand band;
-        if (_host.PerformanceSession is { } performanceSession)
-        {
-            long now = Stopwatch.GetTimestamp();
-            if (_lastViewportTimestamp > 0)
-            {
-                double elapsedSeconds = (now - _lastViewportTimestamp) /
-                    (double)Stopwatch.Frequency;
-                if (elapsedSeconds is > 0.002 and < 1)
-                {
-                    _scrollVelocity =
-                        (viewportTop - _lastViewportTop) / elapsedSeconds;
-                }
-            }
-            _lastViewportTop = viewportTop;
-            _lastViewportTimestamp = now;
-            band = LazyLayoutBand.FromDirectionalViewport(
-                viewportTop,
-                viewportHeight,
-                performanceSession.Options.LookAheadViewports,
-                _scrollVelocity);
-        }
-        else
-        {
-            band = LazyLayoutBand.FromViewport(
-                viewportTop, viewportHeight, MarkdownLazyLayoutPolicy.OverscanPx);
-        }
-
-        // Directional look-ahead and image realization can be broader than the
-        // viewport. Keep vector admission tied to the actual viewport rather
-        // than letting an unchanged prefetch union absorb a changed viewport.
-        band = LazyLayoutBand.Union(band, visibleVectorBand);
-
-        bool capacityAdmissionEnabled = _vectorCapacity.IsAdmissionEnabled;
-        bool capacityDeferred = capacityAdmissionEnabled && snapshot.HasCapacityDeferredScenes;
-        if (!snapshot.IsLazyLayoutEnabled && !capacityDeferred)
-            return;
-
-        if (capacityAdmissionEnabled)
-        {
-            _vectorCapacity.Synchronize(snapshot);
-            forceCapacityRetry |= _vectorCapacity.ConsumePendingWake(snapshot);
-        }
-
-        bool capacityRetryDue = capacityDeferred && _vectorCapacity.IsRetryDue(
-            snapshot, visibleVectorBand, forceCapacityRetry);
-        if (capacityDeferred && !capacityRetryDue &&
-            snapshot.IsRealizationBandMeasured(band))
-        {
-            return;
-        }
-
-        if (snapshot.IsBandWorkSettled(band, visibleVectorBand) && !capacityRetryDue)
-            return;
-
-        QueueForBand(
-            snapshot,
-            band,
-            visibleVectorBand,
-            preserveScrollAnchor: _surface.Scroll is not null);
-    }
+    internal void QueueForViewport(bool forceCapacityRetry = false) =>
+        _viewportRequests.QueueForViewport(forceCapacityRetry);
 
     /// <summary>Queues measurement of the band a paint request reached.</summary>
-    internal void QueueForPaintRegion(Rect region)
-    {
-        var snapshot = _published.Snapshot;
-        if (_host.RequestGeometryRecoveryIfRequired(snapshot) || snapshot is null)
-            return;
-
-        _viewport.TryGet(out double viewportTop, out double viewportHeight, out _);
-        LazyLayoutBand visibleVectorBand = LazyLayoutBand.FromVisibleViewport(
-            viewportTop, viewportHeight);
-
-        var band = _host.PerformanceSession is { } performanceSession
-            ? LazyLayoutBand.FromDirectionalViewport(
-                region.Top,
-                region.Height,
-                performanceSession.Options.LookAheadViewports,
-                _scrollVelocity)
-            : LazyLayoutBand.FromViewport(region.Top, region.Height, MarkdownLazyLayoutPolicy.OverscanPx);
-        band = LazyLayoutBand.Union(band, visibleVectorBand);
-        bool capacityAdmissionEnabled = _vectorCapacity.IsAdmissionEnabled;
-        bool capacityDeferred = capacityAdmissionEnabled && snapshot.HasCapacityDeferredScenes;
-        if (!snapshot.IsLazyLayoutEnabled && !capacityDeferred)
-            return;
-        bool forceCapacityRetry = false;
-        if (capacityAdmissionEnabled)
-        {
-            _vectorCapacity.Synchronize(snapshot);
-            bool wake = _vectorCapacity.ConsumePendingWake(snapshot);
-            if (capacityDeferred && wake)
-                forceCapacityRetry = true;
-            if (capacityDeferred && !wake &&
-                !_vectorCapacity.IsRetryDue(snapshot, visibleVectorBand, forceCapacityRetry) &&
-                snapshot.IsRealizationBandMeasured(band))
-            {
-                return;
-            }
-        }
-        if (snapshot.IsBandWorkSettled(band, visibleVectorBand) &&
-            !(capacityDeferred && _vectorCapacity.IsRetryDue(snapshot, visibleVectorBand, forceCapacityRetry)))
-            return;
-
-        QueueForBand(
-            snapshot,
-            band,
-            visibleVectorBand,
-            preserveScrollAnchor: _surface.Scroll is not null);
-    }
+    internal void QueueForPaintRegion(Rect region) => _viewportRequests.QueueForPaintRegion(region);
 
     /// <summary>
     /// Requests measurement of <paramref name="band"/> in
