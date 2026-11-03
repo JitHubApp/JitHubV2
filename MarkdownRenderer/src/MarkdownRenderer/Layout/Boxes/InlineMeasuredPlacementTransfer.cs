@@ -74,7 +74,7 @@ internal sealed class InlineMeasuredPlacementTransfer
     private long _preparedSceneGeometryGeneration;
     private long _preparedPendingSceneGeometryGeneration;
     private bool _preparedVectorGeometryReady;
-    private readonly InlineContainerBox.RunState[] _runs;
+    private readonly InlineMeasuredRunState[] _runs;
     private readonly IReadOnlyList<string> _containerContextKeys;
     private readonly IReadOnlyList<string> _containerAliasKeys;
     private readonly IReadOnlyList<string>[] _effectiveRunAliases;
@@ -85,7 +85,7 @@ internal sealed class InlineMeasuredPlacementTransfer
         InlineContainerBox source,
         InlineContainerBox prepared,
         float expectedAvailableWidth,
-        InlineContainerBox.RunState[] runs,
+        InlineMeasuredRunState[] runs,
         IReadOnlyList<string> containerContextKeys,
         IReadOnlyList<string> containerAliasKeys,
         IReadOnlyList<string>[] effectiveRunAliases,
@@ -101,7 +101,7 @@ internal sealed class InlineMeasuredPlacementTransfer
         _isContainerLeafTransfer = isContainerLeafTransfer;
         _allowMeasuredVectorPlacement = allowMeasuredVectorPlacement;
         int vectorRunCount = 0;
-        foreach (InlineContainerBox.RunState run in runs)
+        foreach (InlineMeasuredRunState run in runs)
             if (run.SourceVectorRun is not null)
                 vectorRunCount++;
         _vectorRunCount = vectorRunCount;
@@ -165,7 +165,7 @@ internal sealed class InlineMeasuredPlacementTransfer
             return MatchesPreparedVectorGeometry();
 
         int vectorCount = 0;
-        foreach (InlineContainerBox.RunState run in _runs)
+        foreach (InlineMeasuredRunState run in _runs)
             if (run.SourceVectorRun is not null)
                 vectorCount++;
 
@@ -182,7 +182,7 @@ internal sealed class InlineMeasuredPlacementTransfer
         InlineSceneGeometry[] candidateGeometry = prepared.PendingSceneGeometry;
         InlineSceneGeometry[] remappedGeometry = Array.Empty<InlineSceneGeometry>();
         int placementOrdinal = 0;
-        foreach (InlineContainerBox.RunState run in _runs)
+        foreach (InlineMeasuredRunState run in _runs)
         {
             if (run.SourceVectorRun is not { } sourceVector ||
                 run.PreparedVectorRun is not { } preparedVector)
@@ -212,7 +212,7 @@ internal sealed class InlineMeasuredPlacementTransfer
 
             remappedGeometry = new InlineSceneGeometry[vectorCount];
             int geometryOrdinal = 0;
-            foreach (InlineContainerBox.RunState run in _runs)
+            foreach (InlineMeasuredRunState run in _runs)
             {
                 if (run.SourceVectorRun is not { } sourceVector)
                     continue;
@@ -266,7 +266,7 @@ internal sealed class InlineMeasuredPlacementTransfer
         }
 
         int vectorCount = 0;
-        foreach (InlineContainerBox.RunState run in _runs)
+        foreach (InlineMeasuredRunState run in _runs)
             if (run.SourceVectorRun is not null)
                 vectorCount++;
 
@@ -285,7 +285,7 @@ internal sealed class InlineMeasuredPlacementTransfer
             }
 
             int geometryOrdinal = 0;
-            foreach (InlineContainerBox.RunState run in _runs)
+            foreach (InlineMeasuredRunState run in _runs)
             {
                 if (run.SourceVectorRun is not { } sourceVector ||
                     run.PreparedVectorRun is not { } preparedVector)
@@ -438,7 +438,7 @@ internal sealed class InlineMeasuredPlacementTransfer
         // target placement separately. This is scalar-only locked state:
         // ownership, provider, and cancellation fences are repeated by the
         // ImageBox batch.
-        foreach (InlineContainerBox.RunState run in _runs)
+        foreach (InlineMeasuredRunState run in _runs)
         {
             if (!run.MatchesSourceImageState() ||
                 !run.MatchesPreparedImageState(_isTableCellTransfer) ||
@@ -574,7 +574,7 @@ internal sealed class InlineMeasuredPlacementTransfer
             _allowMeasuredVectorPlacement && _vectorRunCount > 0,
             _preparedVectorGeometryForSource);
 
-        foreach (InlineContainerBox.RunState run in _runs)
+        foreach (InlineMeasuredRunState run in _runs)
         {
             if (run.SourceImageRun is not { } sourceImageRun ||
                 run.PreparedImageRun is not { } preparedImageRun)
@@ -590,7 +590,7 @@ internal sealed class InlineMeasuredPlacementTransfer
             preparedImageRun.RestoreMeasuredSize(sourceWidth, sourceHeight);
         }
 
-        foreach (InlineContainerBox.RunState run in _runs)
+        foreach (InlineMeasuredRunState run in _runs)
         {
             if (run.SourceVectorRun is not { } sourceVector ||
                 run.PreparedVectorRun is not { } preparedVector)
