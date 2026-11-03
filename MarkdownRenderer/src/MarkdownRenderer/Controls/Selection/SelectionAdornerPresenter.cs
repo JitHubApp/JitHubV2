@@ -213,6 +213,13 @@ internal sealed class SelectionAdornerPresenter : ISelectionAdornerPainter
 
     void ISelectionAdornerPainter.MarkGeometryDirty() => MarkGeometryDirty();
 
+    /// <remarks>
+    /// One paint transaction: currency checks, geometry staging, the guarded
+    /// drawing session, then the post-draw currency checks that decide
+    /// whether staged geometry may be committed. It stays whole so the
+    /// device-loss and shutdown guards cover exactly that span, and so no
+    /// state is committed between a check and the work it guards.
+    /// </remarks>
     SelectionAdornerRefreshOperationResult ISelectionAdornerPainter.RefreshUnderPaintLease(
         LayoutSnapshot snapshot,
         long generation)
