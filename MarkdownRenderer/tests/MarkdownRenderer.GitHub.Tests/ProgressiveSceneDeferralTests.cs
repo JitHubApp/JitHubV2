@@ -418,10 +418,7 @@ public sealed class ProgressiveSceneDeferralTests
         using MarkdownEngine engine = new MarkdownEngineBuilder().Build();
         MarkdownDocument document = await engine.ParseAsync("ordinary text");
         LayoutBuilder builder = CreateLayoutBuilder(document, FlowDirection.LeftToRight);
-        const System.Reflection.BindingFlags flags =
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
-        MarkdownLayoutContext context = Assert.IsType<MarkdownLayoutContext>(
-            typeof(LayoutBuilder).GetField("_context", flags)!.GetValue(builder));
+        MarkdownLayoutContext context = builder.Context;
         using MarkdownLayoutConstructionScope ownership = context.BeginConstructionScope();
         var fragment = new MarkdownContentBuilder();
         AddScene(new Dictionary<string, string> { [MarkerAttribute] = nestedMarker });
@@ -432,12 +429,11 @@ public sealed class ProgressiveSceneDeferralTests
             materializedFragment.Items[1], CancellationToken.None);
         object previousProjectionIdentity = MarkdownSceneProjectionSignature.Create(
             materializedFragment.Items[2], CancellationToken.None);
-        FieldInfo projectionIdentityField = typeof(LayoutBuilder).GetField(
-            "_materializedSceneProjectionIdentity", flags)!;
-        projectionIdentityField.SetValue(builder, previousProjectionIdentity);
+        MaterializedSceneScope sceneScope = builder.MaterializedScenes;
+        sceneScope.ProjectionIdentity = previousProjectionIdentity;
         var runs = new List<InlineRun>();
-        typeof(LayoutBuilder).GetMethod("AppendMaterializedSceneInline", flags)!.Invoke(
-            builder, new object[] { "outer|ready", materializedFragment, projectionIdentity, runs });
+        builder.DeclarativeInlines.AppendMaterializedSceneInline(
+            "outer|ready", materializedFragment, projectionIdentity, runs);
 
         InlineVectorSceneRun[] scenes = runs.OfType<InlineVectorSceneRun>().ToArray();
         Assert.Equal(3, scenes.Length);
@@ -452,9 +448,9 @@ public sealed class ProgressiveSceneDeferralTests
             Assert.Equal(index - 1, binding.SceneOrdinal);
             Assert.Same(projectionIdentity, binding.ProjectionIdentity);
         }
-        Assert.Null(typeof(LayoutBuilder).GetField("_materializedSceneMarker", flags)!.GetValue(builder));
-        Assert.Equal(0, typeof(LayoutBuilder).GetField("_materializedSceneOrdinal", flags)!.GetValue(builder));
-        Assert.Same(previousProjectionIdentity, projectionIdentityField.GetValue(builder));
+        Assert.Null(sceneScope.Marker);
+        Assert.Equal(0, sceneScope.Ordinal);
+        Assert.Same(previousProjectionIdentity, sceneScope.ProjectionIdentity);
 
         void AddScene(IReadOnlyDictionary<string, string>? attributes) =>
             fragment.AddVectorScene(new MarkdownVectorScene(20, 20, 10,
@@ -471,15 +467,11 @@ public sealed class ProgressiveSceneDeferralTests
         using MarkdownEngine engine = new MarkdownEngineBuilder().Build();
         MarkdownDocument document = await engine.ParseAsync("ordinary text");
         LayoutBuilder builder = CreateLayoutBuilder(document, FlowDirection.LeftToRight);
-        const System.Reflection.BindingFlags flags =
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
-        MarkdownLayoutContext context = Assert.IsType<MarkdownLayoutContext>(
-            typeof(LayoutBuilder).GetField("_context", flags)!.GetValue(builder));
-        FieldInfo projectionIdentityField = typeof(LayoutBuilder).GetField(
-            "_materializedSceneProjectionIdentity", flags)!;
+        MarkdownLayoutContext context = builder.Context;
+        MaterializedSceneScope sceneScope = builder.MaterializedScenes;
         object previousProjectionIdentity = CreateProjectionIdentity();
         object suppliedProjectionIdentity = CreateProjectionIdentity();
-        projectionIdentityField.SetValue(builder, previousProjectionIdentity);
+        sceneScope.ProjectionIdentity = previousProjectionIdentity;
         var fragment = new MarkdownContentBuilder();
         using var cancellation = new CancellationTokenSource();
         if (canceled)
@@ -492,23 +484,22 @@ public sealed class ProgressiveSceneDeferralTests
             context.SetCancellationToken(cancellation.Token);
         }
 
-        var materialize = typeof(LayoutBuilder).GetMethod("TryBuildMaterializedSceneBlock", flags)!;
+        DeclarativeBlockBuilder declarativeBlocks = builder.DeclarativeBlocks;
         MarkdownContentFragment materializedFragment = fragment.Build();
         if (canceled)
         {
-            var exception = Assert.Throws<System.Reflection.TargetInvocationException>(() =>
-                materialize.Invoke(builder, new object[] { "test|canceled", materializedFragment, suppliedProjectionIdentity }));
-            Assert.IsType<OperationCanceledException>(exception.InnerException);
+            Assert.Throws<OperationCanceledException>(() => declarativeBlocks.TryBuildMaterializedSceneBlock(
+                "test|canceled", materializedFragment, suppliedProjectionIdentity));
         }
         else
         {
-            Assert.Null(materialize.Invoke(builder, new object[] { "test|empty", materializedFragment, suppliedProjectionIdentity }));
+            Assert.Null(declarativeBlocks.TryBuildMaterializedSceneBlock(
+                "test|empty", materializedFragment, suppliedProjectionIdentity));
         }
-        Assert.Null(typeof(LayoutBuilder).GetField("_materializedSceneMarker", flags)!.GetValue(builder));
-        Assert.Equal(0, Assert.IsType<int>(typeof(LayoutBuilder)
-            .GetField("_materializedSceneOrdinal", flags)!.GetValue(builder)));
-        Assert.Same(previousProjectionIdentity, projectionIdentityField.GetValue(builder));
-        projectionIdentityField.SetValue(builder, null);
+        Assert.Null(sceneScope.Marker);
+        Assert.Equal(0, sceneScope.Ordinal);
+        Assert.Same(previousProjectionIdentity, sceneScope.ProjectionIdentity);
+        sceneScope.ProjectionIdentity = null;
         context.SetCancellationToken(CancellationToken.None);
         using LayoutSnapshot ordinary = builder.Build(document.ParsedDocument!, availableWidth: 640);
         Assert.Empty(EnumerateBlockScenes(ordinary.Blocks));
