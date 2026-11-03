@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.Graphics.Canvas;
-using Microsoft.Graphics.Canvas.Geometry;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using Windows.UI;
@@ -56,10 +55,15 @@ internal sealed partial class TableBox : BlockBox, IHorizontalOverflowBox
     private readonly int _colCount;
 
     private float[]? _colWidths;
+    internal float[]? ColumnWidths => _colWidths;
     private float[]? _rowHeights;  // header rows first, then body rows
+    internal float[]? RowHeights => _rowHeights;
     private double[] _rowBottomEdges = Array.Empty<double>();
+    internal double[] RowBottomEdges => _rowBottomEdges;
     private float _contentWidth;
+    internal float ContentWidth => _contentWidth;
     private float _viewportWidth;
+    internal float ViewportWidth => _viewportWidth;
     private double _horizontalOffset;
     private float _arrangedX;
     private float _arrangedY;
@@ -341,205 +345,14 @@ internal sealed partial class TableBox : BlockBox, IHorizontalOverflowBox
     }
 
     public override void Paint(CanvasDrawingSession ds, Rect viewport)
-    {
-        if (_colWidths is null || _rowHeights is null) return;
-
-        var tableStyle = GetTableStyle();
-        var headerStyle = GetHeaderStyle();
-        var bodyStyle = GetBodyStyle();
-        var bodyBgColor = bodyStyle.Background ?? tableStyle.Background ?? _context.ThemeSnapshot.SurfaceColor;
-        var headerBgColor = headerStyle.Background ?? bodyBgColor;
-        var borderColor = tableStyle.BorderBrush
-            ?? bodyStyle.BorderBrush
-            ?? headerStyle.BorderBrush
-            ?? WithAlpha(bodyStyle.Foreground, _context.ThemeSnapshot.IsHighContrast ? (byte)0xFF : (byte)0x30);
-        float borderThickness = tableStyle.BorderThickness > 0 ? tableStyle.BorderThickness : 1f;
-        float radius = Math.Max(0, tableStyle.CornerRadius);
-
-        float viewportX = (float)(Bounds.X + Margin.Left);
-        float innerWidth = Math.Max(0, _viewportWidth);
-        bool rtl = _context.FlowDirection == FlowDirection.RightToLeft;
-        float contentX = rtl
-            ? viewportX + innerWidth - _contentWidth + (float)_horizontalOffset
-            : viewportX - (float)_horizontalOffset;
-        float headerStartY = (float)(Bounds.Y + Margin.Top);
-        float tableH = Sum(_rowHeights);
-        var viewportRect = new Rect(viewportX, headerStartY, innerWidth, tableH);
-        var contentRect = new Rect(contentX, headerStartY, _contentWidth, tableH);
-
-        float headerTotalH = 0;
-        for (int i = 0; i < _headerCells.Length; i++) headerTotalH += _rowHeights[i];
-
-        NativePaintSessionResources.LayerLease viewportLayer =
-            NativePaintSessionResources.CreateLayer(ds, 1.0f, viewportRect);
-        try
-        {
-            if (radius > 0)
-            {
-                NativePaintSessionResources.AuxiliaryLease clipOwner =
-                    NativePaintSessionResources.ReserveAuxiliary(ds);
-                CanvasGeometry clip;
-                try
-                {
-                    clip = CanvasGeometry.CreateRoundedRectangle(_context.ResourceCreator, viewportRect, radius, radius);
-                    clipOwner.Attach(clip);
-                }
-                catch
-                {
-                    clipOwner.CancelFactory();
-                    throw;
-                }
-
-                NativePaintSessionResources.LayerLease roundedLayer =
-                    NativePaintSessionResources.CreateLayer(ds, 1.0f, clip, clipOwner);
-                try
-                {
-                    PaintTableContent(ds, viewport, contentRect, bodyBgColor, headerBgColor, borderColor, headerTotalH, tableH);
-                }
-                catch (Exception primary)
-                {
-                    roundedLayer.ClosePreservingPrimary(primary);
-                    throw;
-                }
-                roundedLayer.Close();
-            }
-            else
-            {
-                PaintTableContent(ds, viewport, contentRect, bodyBgColor, headerBgColor, borderColor, headerTotalH, tableH);
-            }
-        }
-        catch (Exception primary)
-        {
-            viewportLayer.ClosePreservingPrimary(primary);
-            throw;
-        }
-        viewportLayer.Close();
-
-        if (borderThickness > 0)
-        {
-            float inset = borderThickness / 2f;
-            ds.DrawRoundedRectangle(
-                new Rect(
-                    viewportRect.X + inset,
-                    viewportRect.Y + inset,
-                    Math.Max(0, viewportRect.Width - borderThickness),
-                    Math.Max(0, viewportRect.Height - borderThickness)),
-                radius,
-                radius,
-                borderColor,
-                borderThickness);
-        }
-
-        PaintHorizontalScrollbar(ds, borderColor);
-    }
-
-    private void PaintTableContent(
-        CanvasDrawingSession ds,
-        Rect viewport,
-        Rect contentRect,
-        Color bodyBgColor,
-        Color headerBgColor,
-        Color borderColor,
-        float headerTotalH,
-        float tableH)
-    {
-        PaintTableSurfaces(ds, viewport, contentRect, bodyBgColor, headerBgColor, headerTotalH);
-
-        int firstVisibleRow = FindFirstVisibleRow(viewport.Top);
-        for (int row = firstVisibleRow; row < RowCount; row++)
-        {
-            if (GetRowTop(row) > viewport.Bottom)
-                break;
-            foreach (InlineContainerBox cell in GetRowCells(row))
-                cell.Paint(ds, viewport);
-        }
-
-        float sepY = (float)contentRect.Y + headerTotalH;
-        if (_headerCells.Length > 0 && sepY >= viewport.Top && sepY <= viewport.Bottom)
-        {
-            var sep = _context.ThemeSnapshot.IsHighContrast ? borderColor : WithAlpha(borderColor, 0xC0);
-            ds.DrawLine((float)contentRect.Left, sepY, (float)contentRect.Right, sepY, sep, 1f);
-        }
-
-        int firstBodyRow = Math.Max(_headerCells.Length, firstVisibleRow);
-        for (int logicalRow = firstBodyRow; logicalRow < RowCount; logicalRow++)
-        {
-            float rowY = (float)_rowBottomEdges[logicalRow];
-            if (rowY > viewport.Bottom)
-                break;
-            if (rowY < viewport.Top)
-                continue;
-            var rowSep = _context.ThemeSnapshot.IsHighContrast ? borderColor : WithAlpha(borderColor, 0x70);
-            ds.DrawLine((float)contentRect.Left, rowY, (float)contentRect.Right, rowY, rowSep, 0.5f);
-        }
-
-        var colSep = _context.ThemeSnapshot.IsHighContrast ? borderColor : WithAlpha(borderColor, 0x40);
-        float colSepX = (float)contentRect.Left;
-        bool rtl = _context.FlowDirection == FlowDirection.RightToLeft;
-        for (int visualColumn = 0; visualColumn < _colCount - 1; visualColumn++)
-        {
-            int logicalColumn = rtl ? _colCount - 1 - visualColumn : visualColumn;
-            colSepX += GetColumnWidth(logicalColumn);
-            ds.DrawLine(colSepX, (float)contentRect.Top, colSepX, (float)contentRect.Top + tableH, colSep, 0.5f);
-        }
-    }
-
-    private void PaintTableSurfaces(
-        CanvasDrawingSession ds,
-        Rect viewport,
-        Rect tableRect,
-        Color bodyBgColor,
-        Color headerBgColor,
-        float headerTotalH)
-    {
-        ds.FillRectangle(tableRect, bodyBgColor);
-
-        if (_headerCells.Length > 0 && headerTotalH > 0)
-            ds.FillRectangle(new Rect(tableRect.X, tableRect.Y, tableRect.Width, headerTotalH), headerBgColor);
-
-        if (_context.ThemeSnapshot.IsHighContrast)
-            return;
-
-        var stripe = WithAlpha(GetBodyStyle().Foreground, 0x08);
-        int firstVisibleRow = Math.Max(_headerCells.Length, FindFirstVisibleRow(viewport.Top));
-        for (int logicalRow = firstVisibleRow; logicalRow < RowCount; logicalRow++)
-        {
-            float rowY = (float)GetRowTop(logicalRow);
-            if (rowY > viewport.Bottom)
-                break;
-            float rowH = _rowHeights![logicalRow];
-            int bodyRow = logicalRow - _headerCells.Length;
-            if (bodyRow % 2 == 1)
-                ds.FillRectangle(new Rect(tableRect.X, rowY, tableRect.Width, rowH), stripe);
-        }
-    }
+        => TablePainter.Paint(this, ds, viewport);
 
     public override void PaintSelectionForeground(
         CanvasDrawingSession ds,
         DocumentRange range,
         Color color,
         Rect viewport)
-    {
-        NativePaintSessionResources.LayerLease clip =
-            NativePaintSessionResources.CreateLayer(ds, 1.0f, HorizontalViewportBounds);
-        try
-        {
-            int firstVisibleRow = FindFirstVisibleRow(viewport.Top);
-            for (int row = firstVisibleRow; row < RowCount; row++)
-            {
-                if (GetRowTop(row) > viewport.Bottom)
-                    break;
-                foreach (InlineContainerBox cell in GetRowCells(row))
-                    cell.PaintSelectionForeground(ds, range, color, viewport);
-            }
-        }
-        catch (Exception primary)
-        {
-            clip.ClosePreservingPrimary(primary);
-            throw;
-        }
-        clip.Close();
-    }
+        => TablePainter.PaintSelectionForeground(this, ds, range, color, viewport);
 
     public override bool HitTest(Point point, out DocumentPosition position)
     {
@@ -639,13 +452,13 @@ internal sealed partial class TableBox : BlockBox, IHorizontalOverflowBox
     internal override void ThrowIfCancellationRequested()
         => _context.CancellationToken.ThrowIfCancellationRequested();
 
-    private ElementStyle GetTableStyle()
+    internal ElementStyle GetTableStyle()
         => _context.ThemeSnapshot.GetStyle(MarkdownElementKeys.Table);
 
-    private ElementStyle GetHeaderStyle()
+    internal ElementStyle GetHeaderStyle()
         => _context.ThemeSnapshot.GetStyle(MarkdownElementKeys.TableHeader);
 
-    private ElementStyle GetBodyStyle()
+    internal ElementStyle GetBodyStyle()
         => _context.ThemeSnapshot.GetStyle(MarkdownElementKeys.TableCell);
 
     private static Thickness EffectiveCellPadding(ElementStyle style)
@@ -656,9 +469,6 @@ internal sealed partial class TableBox : BlockBox, IHorizontalOverflowBox
            thickness.Top == 0 &&
            thickness.Right == 0 &&
            thickness.Bottom == 0;
-
-    private static Color WithAlpha(Color color, byte alpha)
-        => Color.FromArgb(alpha, color.R, color.G, color.B);
 
     private CellAlignment GetColumnAlignment(int column)
         => column >= 0 && column < _columnAlignments.Length
@@ -703,7 +513,7 @@ internal sealed partial class TableBox : BlockBox, IHorizontalOverflowBox
         return true;
     }
 
-    private int FindFirstVisibleRow(double viewportTop)
+    internal int FindFirstVisibleRow(double viewportTop)
         => VerticalViewportIndex.FindFirstIntersecting(_rowBottomEdges, viewportTop);
 
     internal (int First, int EndExclusive) GetVisibleRowRange(
@@ -729,12 +539,12 @@ internal sealed partial class TableBox : BlockBox, IHorizontalOverflowBox
         }
     }
 
-    private double GetRowTop(int logicalRow)
+    internal double GetRowTop(int logicalRow)
         => logicalRow <= 0
             ? _arrangedY + Margin.Top
             : _rowBottomEdges[logicalRow - 1];
 
-    private InlineContainerBox[] GetRowCells(int logicalRow)
+    internal InlineContainerBox[] GetRowCells(int logicalRow)
         => logicalRow < _headerCells.Length
             ? _headerCells[logicalRow]
             : _bodyCells[logicalRow - _headerCells.Length];
@@ -824,7 +634,7 @@ internal sealed partial class TableBox : BlockBox, IHorizontalOverflowBox
         return result;
     }
 
-    private float GetColumnWidth(int column)
+    internal float GetColumnWidth(int column)
         => _colWidths is not null && column >= 0 && column < _colWidths.Length
             ? _colWidths[column]
             : 1f;
@@ -845,17 +655,7 @@ internal sealed partial class TableBox : BlockBox, IHorizontalOverflowBox
         return start;
     }
 
-    private void PaintHorizontalScrollbar(CanvasDrawingSession ds, Color foreground)
-    {
-        HorizontalOverflowVisual.Paint(
-            ds,
-            HorizontalScrollTrackBounds,
-            HorizontalScrollThumbBounds,
-            _context.ThemeSnapshot,
-            foreground);
-    }
-
-    private static float Sum(float[] values)
+    internal static float Sum(float[] values)
     {
         float sum = 0;
         for (int i = 0; i < values.Length; i++)
