@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Boxes;
 using Windows.Foundation;
 
 namespace MarkdownRenderer.Controls.Embeds;
@@ -64,8 +66,58 @@ internal sealed class HostedElementRealization
 
     internal bool Contains(EmbedPlan plan) => _embedPlans.Contains(plan);
 
-    /// <summary>Appends a plan found by plan collection, in document order.</summary>
-    internal void Add(EmbedPlan plan) => _embedPlans.Add(plan);
+    /// <summary>Collects the plan of a block embed, in document order.</summary>
+    internal void Collect(LayoutSnapshot snapshot, BlockBox topLevelRoot, EmbedBox eb)
+    {
+        double left = eb.Bounds.X + eb.Margin.Left;
+        double top  = eb.Bounds.Y + eb.Margin.Top;
+        double w = eb.Bounds.Width  - eb.Margin.Left - eb.Margin.Right;
+        double h = eb.Bounds.Height - eb.Margin.Top  - eb.Margin.Bottom;
+        Rect physicalBounds = new(left, top, w, h);
+        _embedPlans.Add(new BlockEmbedPlan
+        {
+            Box = eb,
+            FocusIdentity = new FocusableItem(
+                eb.BlockIndex, 0, FocusableItemKind.BlockEmbed),
+            Rect = snapshot.ToLogicalRectForTopLevelBlockUnderPaint(topLevelRoot, physicalBounds),
+        });
+    }
+
+    /// <summary>Collects the plan of a declarative hosted element, in document order.</summary>
+    internal void Collect(
+        LayoutSnapshot snapshot,
+        BlockBox topLevelRoot,
+        DeclarativeHostedElementBox hosted,
+        IMarkdownHostedElementFactory factory)
+    {
+        double left = hosted.Bounds.X + hosted.Margin.Left;
+        double top = hosted.Bounds.Y + hosted.Margin.Top;
+        double width = hosted.Bounds.Width - hosted.Margin.Left - hosted.Margin.Right;
+        double height = hosted.Bounds.Height - hosted.Margin.Top - hosted.Margin.Bottom;
+        _embedPlans.Add(new DeclarativeHostedElementPlan
+        {
+            Box = hosted,
+            Factory = factory,
+            FocusIdentity = new FocusableItem(
+                hosted.BlockIndex, 0, FocusableItemKind.DeclarativeHostedElement),
+            Rect = snapshot.ToLogicalRectForTopLevelBlockUnderPaint(
+                topLevelRoot, new Rect(left, top, Math.Max(0, width), Math.Max(0, height))),
+        });
+    }
+
+    /// <summary>Collects the plans of the inline embeds of <paramref name="icb"/>, in document order.</summary>
+    internal void CollectInline(LayoutSnapshot snapshot, BlockBox topLevelRoot, InlineContainerBox icb)
+    {
+        foreach (var (run, rect) in icb.EnumerateEmbedRects())
+            _embedPlans.Add(new InlineEmbedPlan
+            {
+                Icb = icb,
+                Run = run,
+                FocusIdentity = new FocusableItem(
+                    icb.BlockIndex, run.InlineIndex, FocusableItemKind.InlineEmbed),
+                Rect = snapshot.ToLogicalRectForTopLevelBlockUnderPaint(topLevelRoot, rect),
+            });
+    }
 
     /// <summary>Indexes the collected plans by vertical extent.</summary>
     internal void CommitIndex() => _embedPlanIndex = BuildPlanIndex(_embedPlans);

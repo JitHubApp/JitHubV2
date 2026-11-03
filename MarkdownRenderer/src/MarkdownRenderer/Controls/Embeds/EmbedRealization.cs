@@ -163,9 +163,9 @@ internal sealed class EmbedRealization
     /// paint lease, inside <paramref name="topLevelRoot"/>'s placement scope.
     /// </summary>
     /// <remarks>
-    /// One walk with one branch per box kind. The branches share the walk's
-    /// order and placement scope, which decide plan ordinals, so they stay
-    /// together.
+    /// One walk with one branch per box kind; each plan owner builds its own
+    /// plans. The branches share the walk's order and placement scope, which
+    /// decide plan ordinals, so the walk stays in one method.
     /// </remarks>
     internal void CollectPlans(
         LayoutSnapshot snapshot,
@@ -176,35 +176,12 @@ internal sealed class EmbedRealization
         {
             case EmbedBox eb:
             {
-                double left = eb.Bounds.X + eb.Margin.Left;
-                double top  = eb.Bounds.Y + eb.Margin.Top;
-                double w = eb.Bounds.Width  - eb.Margin.Left - eb.Margin.Right;
-                double h = eb.Bounds.Height - eb.Margin.Top  - eb.Margin.Bottom;
-                Rect physicalBounds = new(left, top, w, h);
-                _hostedElements.Add(new BlockEmbedPlan
-                {
-                    Box = eb,
-                    FocusIdentity = new FocusableItem(
-                        eb.BlockIndex, 0, FocusableItemKind.BlockEmbed),
-                    Rect = snapshot.ToLogicalRectForTopLevelBlockUnderPaint(topLevelRoot, physicalBounds),
-                });
+                _hostedElements.Collect(snapshot, topLevelRoot, eb);
                 break;
             }
             case DeclarativeHostedElementBox hosted when _host.HostedElementFactory is { } factory:
             {
-                double left = hosted.Bounds.X + hosted.Margin.Left;
-                double top = hosted.Bounds.Y + hosted.Margin.Top;
-                double width = hosted.Bounds.Width - hosted.Margin.Left - hosted.Margin.Right;
-                double height = hosted.Bounds.Height - hosted.Margin.Top - hosted.Margin.Bottom;
-                _hostedElements.Add(new DeclarativeHostedElementPlan
-                {
-                    Box = hosted,
-                    Factory = factory,
-                    FocusIdentity = new FocusableItem(
-                        hosted.BlockIndex, 0, FocusableItemKind.DeclarativeHostedElement),
-                    Rect = snapshot.ToLogicalRectForTopLevelBlockUnderPaint(
-                        topLevelRoot, new Rect(left, top, Math.Max(0, width), Math.Max(0, height))),
-                });
+                _hostedElements.Collect(snapshot, topLevelRoot, hosted, factory);
                 break;
             }
             case ImageBox ib:
@@ -242,17 +219,7 @@ internal sealed class EmbedRealization
                     }
                 }
                 if (icb.HasInlineEmbeds)
-                {
-                    foreach (var (run, rect) in icb.EnumerateEmbedRects())
-                        _hostedElements.Add(new InlineEmbedPlan
-                        {
-                            Icb = icb,
-                            Run = run,
-                            FocusIdentity = new FocusableItem(
-                                icb.BlockIndex, run.InlineIndex, FocusableItemKind.InlineEmbed),
-                            Rect = snapshot.ToLogicalRectForTopLevelBlockUnderPaint(topLevelRoot, rect),
-                        });
-                }
+                    _hostedElements.CollectInline(snapshot, topLevelRoot, icb);
                 // Force enumeration so each ImageBox receives its document
                 // bounds. Images were already added above, independently of
                 // whether this geometry query succeeds.
