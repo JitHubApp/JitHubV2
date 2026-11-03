@@ -46,8 +46,7 @@ namespace MarkdownRenderer.Controls;
 /// <see cref="Canvas"/> overlay for hosted WinUI embeds.
 /// </summary>
 public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsyncDisposable,
-    IMarkdownPerformanceLegacyParser, IImageSubscriptionsHost, IImageResidencyHost, ICanvasDeviceRecoveryHost,
-    IRecoveryClockHost, IRasterPlacementHost, IImageRelayoutHost, IImageLoadCompletionHost, IVectorCapacityRetryHost,
+    IMarkdownPerformanceLegacyParser, ICanvasDeviceRecoveryHost, IRecoveryClockHost, IVectorCapacityRetryHost,
     ILazyLayoutHost, ILayoutCommitHost, IFocusableItemsPublicationHost, IRebuildSchedulerHost,
     IRebuildLayoutSetupHost, ICanvasTilePainterHost, IDeferredSceneReadinessHost, ILinkActivationHost,
     IRendererLocalizationHost, IRendererEventSink
@@ -55,6 +54,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewLifetime _lifetime = new();
     private readonly RendererEvents _events;
+    private readonly ImageHosts _imageHosts;
     private readonly FocusHosts _focusHosts;
     private readonly EmbedHosts _embedHosts;
     private readonly PointerHosts _pointerHosts;
@@ -927,6 +927,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private protected MarkdownRendererControl(bool ownsScrollViewport)
     {
         _events = new RendererEvents(this, _lifetime, DispatcherQueue);
+        _imageHosts = new ImageHosts(this);
         _focusHosts = new FocusHosts(this);
         _embedHosts = new EmbedHosts(this);
         _pointerHosts = new PointerHosts(this);
@@ -960,14 +961,14 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _canvasPointerEvents = new CanvasPointerEvents(_surface, _pointerInput);
         _embeds = new EmbedRealization(_embedHosts, _embedHosts, _surface, _lifetime, _published, _viewport, DispatcherQueue, OnHostedEmbedKeyDown);
         _imagePlans = new ImagePlanSet(_lifetime, _published);
-        _imageSubscriptions = new ImageSubscriptions(this, _lifetime, _published, _imagePlans);
-        _imageResidency = new ImageResidency(this, _lifetime, _published, _imagePlans, _embeds);
+        _imageSubscriptions = new ImageSubscriptions(_imageHosts, _lifetime, _published, _imagePlans);
+        _imageResidency = new ImageResidency(_imageHosts, _lifetime, _published, _imagePlans, _embeds);
         _highlighting = new CodeBlockHighlighting(_embedHosts, _lifetime, _published, _viewport, _embeds);
         _focus = new KeyboardFocusModel(_lifetime, _published);
         _focusGeometry = new FocusGeometryReader(_lifetime, _published);
         _focusRing = new FocusRingPresenter(_focusHosts, _focus, _focusGeometry, _surface, _lifetime, _published, DispatcherQueue);
         _interactionReset = new InteractionReset(_surface, _selection, _touchSelection, _touchRestore, _touchTapSuppression, _pointerInput, _document, _handles, _autoScroll, _dragShield, _contextMenu, _adorner, _hover, _abbreviationTooltip, _cursor, _focus, _focusRing);
-        _rasterPlacement = new RasterPlacementPublisher(this, _lifetime, _published, _layoutCommit, _surface, _pointerInput, _imageSubscriptions, _imagePlans, _imageResidency, _embeds, _focus, _focusRing, _hostedFocusPlan, _snapshotRetirements);
+        _rasterPlacement = new RasterPlacementPublisher(_imageHosts, _lifetime, _published, _layoutCommit, _surface, _pointerInput, _imageSubscriptions, _imagePlans, _imageResidency, _embeds, _focus, _focusRing, _hostedFocusPlan, _snapshotRetirements);
         _focusRefresh = new FocusableItemsRefreshRequest(_published);
         _focusableItems = new FocusableItemsPublication(this, _lifetime, _published, _focusRefresh, _focus, _recoveryClock);
         _layoutSetup = new RebuildLayoutSetup(this, _snapshotRetirements, _imagePrefetch, _completedImageCarry, _imagePlans, _embeds, _focusableItems, _imagePreparationOwnerToken);
@@ -989,8 +990,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _imageReadiness = new VisibleImageReadiness(_published, _imagePlans, _viewport);
         _painter = new CanvasTilePainter(this, _lifetime, _published, _surface, _lazyLayout, _deviceRecovery, _rebuild, _deferredScenes);
         _canvasEvents = new CanvasEvents(_lifetime, _surface, _canvasPointerEvents, _painter, _rebuild);
-        _imageRelayout = new ImageRelayout(this, _lifetime, _published, _layoutCommit, _layoutPublisher, _surface, _pointerInput, _imageSubscriptions, _rasterPlacement, _recoveryClock);
-        _imageLoadCompletion = new ImageLoadCompletion(this, _lifetime, _published, _layoutCommit, _imageSubscriptions, _imageRelayout);
+        _imageRelayout = new ImageRelayout(_imageHosts, _lifetime, _published, _layoutCommit, _layoutPublisher, _surface, _pointerInput, _imageSubscriptions, _rasterPlacement, _recoveryClock);
+        _imageLoadCompletion = new ImageLoadCompletion(_imageHosts, _lifetime, _published, _layoutCommit, _imageSubscriptions, _imageRelayout);
         _imageSubscriptions.LoadCompleted += _imageLoadCompletion.OnLoadCompleted;
         _geometryRecovery = new GeometryRecovery(_lifetime, _published, _surface, _pointerInput, _vectorCapacity, _horizontalOverflowDrag, _focusGeometryWork, _overflowScroll, _focusRing, _adorner, _layoutCommit, _imageSubscriptions, _lazyLayout, _imageRelayout, _interactionReset, _dragShield, _contextMenu, _abbreviationTooltip, _cursor, _handles, _automation, _deviceRecovery, _rebuild);
         _visibleWork = new VisibleWorkScheduler(this, _published, _highlighting, _geometryRecovery);
@@ -1026,6 +1027,11 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _focusHosts.Connect(new FocusHosts.Parts(
             _surface, _published, _viewport, _recoveryClock, _rebuild, _geometryRecovery, _textAdorner, _links,
             _automation, _layoutCommit, _lazyLayout, _focusGeometryWork, _focusRing));
+        _imageHosts.Connect(new ImageHosts.Parts(
+            _events, _hover, _cursor, _abbreviationTooltip, _adorner, _deviceRecovery, _recoveryClock,
+            _snapshotRetirements, _cancellationRetirement, _rebuild, _canvasInvalidation, _geometryRecovery,
+            _textAdorner, _recoveryWork, _visibleWork, _scrolling, _automation, _imageLifetime, _layoutCommit,
+            _imagePreparationOwnerToken, _inputCapture, _extent));
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         Loaded += (_, _) => OnLoadedInternal();
@@ -1136,16 +1142,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     public bool CopySelectionAsMarkdown()
         => _selectionCommands.CopyAsMarkdown();
 
-    void IImageSubscriptionsHost.StartRecoveryClock() => _recoveryClock.Start();
-
-    Microsoft.UI.Dispatching.DispatcherQueue? IImageResidencyHost.DispatcherQueue => DispatcherQueue;
-
-    IMarkdownPerformanceSession? IImageResidencyHost.PerformanceSession => PerformanceSession;
-
-    long IImageResidencyHost.AppliedLazyLayoutRevision => _layoutCommit.AppliedRevision;
-
-    void IImageResidencyHost.InvalidateCanvas() => _canvasInvalidation.Invalidate();
-
     void ICanvasDeviceRecoveryHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);
 
     void ICanvasDeviceRecoveryHost.InvalidateCanvas() => _canvasInvalidation.Invalidate();
@@ -1153,91 +1149,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     Microsoft.UI.Dispatching.DispatcherQueue? IRecoveryClockHost.DispatcherQueue => DispatcherQueue;
 
     void IRecoveryClockHost.ProcessRecoveryTick() => _recoveryWork.ProcessTick();
-
-    bool IRasterPlacementHost.HasCompetingLayoutWork =>
-        _deviceRecovery.IsQueued || _rebuild.HasPendingOrBuilding || HasPendingLazyLayoutWork;
-
-    float IRasterPlacementHost.LayoutWidth => (float)Math.Max(50, ActualWidth);
-
-    object IRasterPlacementHost.ImagePreparationOwner => _imagePreparationOwnerToken;
-
-    CancellationToken IRasterPlacementHost.ImageLifetime => _imageLifetime.Token;
-
-    bool IRasterPlacementHost.IsScrollViewIntermediate => _scrolling.IsIntermediate;
-
-    bool IRasterPlacementHost.MatchesLayoutInputs(MarkdownLayoutContext context) =>
-        _inputCapture.MatchesLayoutInputs(context);
-
-    void IRasterPlacementHost.RetireSnapshot(LayoutSnapshot snapshot) => _snapshotRetirements.Retire(snapshot);
-
-    void IRasterPlacementHost.ForgetHoverTarget()
-    {
-        _hover.Clear();
-        _abbreviationTooltip.ForgetTarget();
-    }
-
-    void IRasterPlacementHost.ScheduleVisibleCodeBlockHighlighting() => _visibleWork.ScheduleCodeBlockHighlighting();
-
-    void IRasterPlacementHost.NotifyAutomationSnapshotChanged() => _automation.NotifySnapshotChanged();
-
-    void IRasterPlacementHost.HideAbbreviationTooltip() => _abbreviationTooltip.Hide();
-
-    void IRasterPlacementHost.ResetCursor() => _cursor.SetShape(null);
-
-    void IRasterPlacementHost.ApplySnapshotSize(Size size) => _extent.Apply(size);
-
-    void IRasterPlacementHost.RefreshInteractiveTextAdornerAfterLayoutChange() =>
-        _textAdorner.RefreshAfterLayoutChange();
-
-    void IRasterPlacementHost.InvalidateAutomationLayout() => _automation.InvalidateLayout();
-
-    void IRasterPlacementHost.InvalidateCanvas() => _canvasInvalidation.Invalidate();
-
-    void IRasterPlacementHost.RaiseImageUnavailable(
-        string url, MarkdownImageUnavailableReason reason, MarkdownSvgFailureReason? svgReason) =>
-        _events.RaiseImageUnavailable(url, reason, svgReason);
-
-    Microsoft.UI.Dispatching.DispatcherQueue? IImageRelayoutHost.DispatcherQueue => DispatcherQueue;
-
-    IMarkdownPerformanceSession? IImageRelayoutHost.PerformanceSession => PerformanceSession;
-
-    float IImageRelayoutHost.LayoutWidth => (float)Math.Max(50, ActualWidth);
-
-    bool IImageRelayoutHost.DefersToRebuild() => _rebuild.DefersToRebuild();
-
-    bool IImageRelayoutHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot) =>
-        _geometryRecovery.RequestIfRequired(snapshot);
-
-    void IImageRelayoutHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);
-
-    void IImageRelayoutHost.StopRecoveryClock(bool force) => _recoveryWork.Stop(force);
-
-    Task IImageRelayoutHost.RetireCancellationTokenSource(CancellationTokenSource? cts, Task? lifetime) =>
-        _cancellationRetirement.Retire(cts, lifetime);
-
-    Microsoft.UI.Dispatching.DispatcherQueue? IImageLoadCompletionHost.DispatcherQueue => DispatcherQueue;
-
-    IMarkdownPerformanceSession? IImageLoadCompletionHost.PerformanceSession => PerformanceSession;
-
-    float IImageLoadCompletionHost.LayoutWidth => (float)Math.Max(50, ActualWidth);
-
-    bool IImageLoadCompletionHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot) =>
-        _geometryRecovery.RequestIfRequired(snapshot);
-
-    void IImageLoadCompletionHost.NotifyImageStatusChanged(Layout.Boxes.ImageBox image) =>
-        _automation.FindPeer()?
-            .NotifyImageStatusChanged(image);
-
-    void IImageLoadCompletionHost.RequestFullRebuild() => RequestRebuild(RebuildReason.Full);
-
-    void IImageLoadCompletionHost.RecordRejectedCrossThreadFullRebuild() =>
-        _rebuild.RecordRejectedCrossThread(RebuildReason.Full);
-
-    void IImageLoadCompletionHost.InvalidatePaint()
-    {
-        _canvasInvalidation.Invalidate();
-        _adorner.Invalidate();
-    }
 
     Microsoft.UI.Dispatching.DispatcherQueue? IVectorCapacityRetryHost.DispatcherQueue => DispatcherQueue;
 
