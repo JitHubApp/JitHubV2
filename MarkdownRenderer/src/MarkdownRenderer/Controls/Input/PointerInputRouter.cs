@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using MarkdownRenderer.Controls.Selection;
 using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Layout;
@@ -30,6 +29,10 @@ namespace MarkdownRenderer.Controls.Input;
 /// the immediate path are one ordered state machine. Every exit path must end
 /// the lease, the draining flag and the queue in the same order, so the drain
 /// and dispatch methods stay whole rather than being split across files.
+/// Everything outside that state machine already has its own owner:
+/// <see cref="DeferredGestureAdmission"/>, <see cref="RecognizedGestureAttribution"/>,
+/// <see cref="PointerInputDispatcher"/>, <see cref="DroppedTouchTerminalRetirement"/>,
+/// <see cref="PointerPostInteraction"/> and <see cref="DeferredPointerCaptures"/>.
 /// </para>
 /// </remarks>
 internal sealed class PointerInputRouter
@@ -53,7 +56,7 @@ internal sealed class PointerInputRouter
     private readonly PointerInputDispatcher _dispatcher;
     private readonly DroppedTouchTerminalRetirement _droppedTerminals;
     private readonly PointerPostInteraction _postInteraction;
-    private readonly Dictionary<uint, (UIElement Target, Pointer Pointer)> _deferredCaptures = new();
+    private readonly DeferredPointerCaptures _deferredCaptures;
 
     private DeferredInputQueue<PointerInput>? _deferred;
     private LayoutSnapshot? _deferredSnapshot;
@@ -99,6 +102,7 @@ internal sealed class PointerInputRouter
         _dispatcher = new PointerInputDispatcher(_attribution, touchTapSuppression, document, horizontalOverflowDrag, handles, touchGestures);
         _droppedTerminals = new DroppedTouchTerminalRetirement(host, selection, touchSelection, touchTapSuppression, handles, contextMenu);
         _postInteraction = new PointerPostInteraction(host, surface, lifetime, published, adorner);
+        _deferredCaptures = new DeferredPointerCaptures(document, horizontalOverflowDrag, handles);
     }
 
     /// <summary>
@@ -125,7 +129,7 @@ internal sealed class PointerInputRouter
     /// </summary>
     internal bool HasDeferredInputFor(uint pointerId)
     {
-        if (_deferredCaptures.ContainsKey(pointerId))
+        if (_deferredCaptures.Contains(pointerId))
             return true;
         if (_deferred is not { Count: > 0 } queue)
             return false;
@@ -410,16 +414,7 @@ internal sealed class PointerInputRouter
                 try { timer.Stop(); } catch (Exception) { }
                 try { timer.Tick -= OnRetryTimer; } catch (Exception) { }
             }
-            foreach (var capture in _deferredCaptures.Values)
-            {
-                try { capture.Target.ReleasePointerCapture(capture.Pointer); }
-                catch (Exception)
-                {
-                    // A native input site may already be closed. Still release
-                    // every other capture and clear the geometry-bound queue.
-                }
-            }
-            _deferredCaptures.Clear();
+            _deferredCaptures.ReleaseAll();
         }
         finally { _resetting = false; }
     }
@@ -472,10 +467,10 @@ internal sealed class PointerInputRouter
             if (PointerInputClassification.CapturePointerForInput(target, input))
             {
                 input.CapturedBeforeDeferral = true;
-                _deferredCaptures[input.Pointer.PointerId] = (target, input.Pointer);
+                _deferredCaptures.Record(input.Pointer.PointerId, target, input.Pointer);
             }
         }
-        input.CapturedBeforeDeferral |= _deferredCaptures.ContainsKey(input.Pointer.PointerId);
+        input.CapturedBeforeDeferral |= _deferredCaptures.Contains(input.Pointer.PointerId);
         bool hasSnapshotPointerOwner = input.CapturedBeforeDeferral ||
             _document.IsSessionPointer(input.Pointer.PointerId) ||
             (_horizontalOverflowDrag.PointerId == input.Pointer.PointerId && _horizontalOverflowDrag.PointerId != 0) ||
@@ -833,19 +828,7 @@ internal sealed class PointerInputRouter
         sender.Stop();
         _deferredSnapshot = null;
         _deferred?.Clear();
-        // A successfully started live gesture now owns its capture. Release
-        // speculative captures only for misses or gestures already ended.
-        var captures = new List<(UIElement Target, Pointer Pointer)>(_deferredCaptures.Values);
-        _deferredCaptures.Clear();
-        foreach (var capture in captures)
-        {
-            uint id = capture.Pointer.PointerId;
-            if (_document.IsSessionPointer(id) ||
-                (_horizontalOverflowDrag.IsCaptured && _horizontalOverflowDrag.PointerId == id) ||
-                _handles.DragPointerId == id)
-                continue;
-            capture.Target.ReleasePointerCapture(capture.Pointer);
-        }
+        _deferredCaptures.ReleaseUnowned();
         _host.ResumePendingRebuildAfterPointerInteraction();
     }
 
