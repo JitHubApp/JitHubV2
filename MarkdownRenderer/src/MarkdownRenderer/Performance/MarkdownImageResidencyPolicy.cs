@@ -32,6 +32,17 @@ internal sealed class MarkdownImageResidencyPolicy : IMarkdownImageResidencyPoli
         _residencyWorkDrainedHandler = OnResidencyWorkDrained;
     }
 
+    /// <summary>
+    /// The largest backing capacity of the policy's tracking sets and scratch
+    /// lists. A plan rebuild may briefly track every image; afterwards this
+    /// shows whether compaction returned storage to the band's size.
+    /// </summary>
+    internal int RetainedTrackingCapacity => System.Math.Max(
+        System.Math.Max(
+            System.Math.Max(_active.EnsureCapacity(0), _pending.EnsureCapacity(0)),
+            System.Math.Max(_subscribed.EnsureCapacity(0), _requested.EnsureCapacity(0))),
+        System.Math.Max(_retireScratch.Capacity, _pendingScratch.Capacity));
+
     /// <remarks>
     /// Callers serialize Reconcile, Reset, and Dispose with the owning snapshot
     /// read lease. The asynchronous drain callback only requests a dispatcher
