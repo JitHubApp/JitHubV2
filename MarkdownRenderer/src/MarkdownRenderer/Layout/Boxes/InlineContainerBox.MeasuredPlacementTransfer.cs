@@ -569,52 +569,13 @@ internal sealed partial class InlineContainerBox
         /// </summary>
         internal void SwapPlacementNoThrow()
         {
-            InlineContainerBox source = _source;
-            InlineContainerBox prepared = _prepared;
-
-            (source._layout, prepared._layout) = (prepared._layout, source._layout);
-            (source._layoutRetirementRecord, prepared._layoutRetirementRecord) =
-                (prepared._layoutRetirementRecord, source._layoutRetirementRecord);
-            (source._scriptBaselineGeometry, prepared._scriptBaselineGeometry) =
-                (prepared._scriptBaselineGeometry, source._scriptBaselineGeometry);
-            (source._cachedLineMetrics, prepared._cachedLineMetrics) =
-                (prepared._cachedLineMetrics, source._cachedLineMetrics);
-            (source._lineMetricsRead, prepared._lineMetricsRead) =
-                (prepared._lineMetricsRead, source._lineMetricsRead);
-            (source._selectionLayout, prepared._selectionLayout) =
-                (prepared._selectionLayout, source._selectionLayout);
-            (source._selectionLayoutRetirementRecord, prepared._selectionLayoutRetirementRecord) =
-                (prepared._selectionLayoutRetirementRecord, source._selectionLayoutRetirementRecord);
-            (source._selectionLayoutColor, prepared._selectionLayoutColor) =
-                (prepared._selectionLayoutColor, source._selectionLayoutColor);
-            (source._selectionLayoutWidth, prepared._selectionLayoutWidth) =
-                (prepared._selectionLayoutWidth, source._selectionLayoutWidth);
-            (source._lastWidth, prepared._lastWidth) = (prepared._lastWidth, source._lastWidth);
-            (source.Bounds, prepared.Bounds) = (prepared.Bounds, source.Bounds);
-
-            // Scene generation belongs to the stable source box, not the
-            // temporary clone. Candidate progressive geometry is remapped to
-            // source-run identities before the final gate; adopt that bounded
-            // array only for the stable source and keep the candidate's prior
-            // pending array from becoming another source owner.
-            if (prepared._vectorSceneState is not null)
-            {
-                prepared._sceneGeometryGeneration = _sourceSceneGeneration;
-                prepared._pendingSceneGeometryGeneration = _sourcePendingSceneGeneration;
-                prepared._pendingSceneGeometry = _sourcePendingSceneGeometry;
-            }
-            if (source._vectorSceneState is not null)
-            {
-                long nextSceneGeneration = unchecked(_sourceSceneGeneration + 1);
-                source._sceneGeometryGeneration = nextSceneGeneration == 0 ? 1 : nextSceneGeneration;
-                source._pendingSceneGeometryGeneration = source._usesProgressiveNativeSceneResidency
-                    ? source._sceneGeometryGeneration
-                    : 0;
-                source._pendingSceneGeometry = _allowMeasuredVectorPlacement && _vectorRunCount > 0 &&
-                    source._usesProgressiveNativeSceneResidency
-                    ? _preparedVectorGeometryForSource!
-                    : Array.Empty<InlineSceneGeometry>();
-            }
+            _source.SwapMeasuredPlacementStateNoThrow(
+                _prepared,
+                _sourceSceneGeneration,
+                _sourcePendingSceneGeneration,
+                _sourcePendingSceneGeometry,
+                _allowMeasuredVectorPlacement && _vectorRunCount > 0,
+                _preparedVectorGeometryForSource);
 
             foreach (RunState run in _runs)
             {

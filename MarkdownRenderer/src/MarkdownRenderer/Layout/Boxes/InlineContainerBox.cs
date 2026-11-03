@@ -1112,6 +1112,74 @@ internal sealed partial class InlineContainerBox : BlockBox
     internal IntrinsicWidthMetrics MeasureIntrinsicWidths(float maximumPreferredWidth = 65_536f)
         => InlineIntrinsicWidthMeasurer.MeasureIntrinsicWidths(this, maximumPreferredWidth);
 
+    /// <summary>
+    /// No-throw exchange of this source box's measured native-layout state
+    /// with its private measured candidate. Scene generations stay with this
+    /// stable source box. Called by
+    /// <see cref="MeasuredPlacementTransfer.SwapPlacementNoThrow"/> only after
+    /// every transfer fence has succeeded under the snapshot gate.
+    /// </summary>
+    /// <param name="prepared">The private measured candidate.</param>
+    /// <param name="sourceSceneGeneration">This box's captured scene generation.</param>
+    /// <param name="sourcePendingSceneGeneration">This box's captured pending scene generation.</param>
+    /// <param name="sourcePendingSceneGeometry">This box's captured pending scene geometry.</param>
+    /// <param name="adoptPreparedGeometry">Whether the transfer carries remapped vector geometry.</param>
+    /// <param name="preparedGeometryForSource">The candidate geometry remapped to this box's runs.</param>
+    internal void SwapMeasuredPlacementStateNoThrow(
+        InlineContainerBox prepared,
+        long sourceSceneGeneration,
+        long sourcePendingSceneGeneration,
+        InlineSceneGeometry[] sourcePendingSceneGeometry,
+        bool adoptPreparedGeometry,
+        InlineSceneGeometry[]? preparedGeometryForSource)
+    {
+        InlineContainerBox source = this;
+
+        (source._layout, prepared._layout) = (prepared._layout, source._layout);
+        (source._layoutRetirementRecord, prepared._layoutRetirementRecord) =
+            (prepared._layoutRetirementRecord, source._layoutRetirementRecord);
+        (source._scriptBaselineGeometry, prepared._scriptBaselineGeometry) =
+            (prepared._scriptBaselineGeometry, source._scriptBaselineGeometry);
+        (source._cachedLineMetrics, prepared._cachedLineMetrics) =
+            (prepared._cachedLineMetrics, source._cachedLineMetrics);
+        (source._lineMetricsRead, prepared._lineMetricsRead) =
+            (prepared._lineMetricsRead, source._lineMetricsRead);
+        (source._selectionLayout, prepared._selectionLayout) =
+            (prepared._selectionLayout, source._selectionLayout);
+        (source._selectionLayoutRetirementRecord, prepared._selectionLayoutRetirementRecord) =
+            (prepared._selectionLayoutRetirementRecord, source._selectionLayoutRetirementRecord);
+        (source._selectionLayoutColor, prepared._selectionLayoutColor) =
+            (prepared._selectionLayoutColor, source._selectionLayoutColor);
+        (source._selectionLayoutWidth, prepared._selectionLayoutWidth) =
+            (prepared._selectionLayoutWidth, source._selectionLayoutWidth);
+        (source._lastWidth, prepared._lastWidth) = (prepared._lastWidth, source._lastWidth);
+        (source.Bounds, prepared.Bounds) = (prepared.Bounds, source.Bounds);
+
+        // Scene generation belongs to the stable source box, not the
+        // temporary clone. Candidate progressive geometry is remapped to
+        // source-run identities before the final gate; adopt that bounded
+        // array only for the stable source and keep the candidate's prior
+        // pending array from becoming another source owner.
+        if (prepared._vectorSceneState is not null)
+        {
+            prepared._sceneGeometryGeneration = sourceSceneGeneration;
+            prepared._pendingSceneGeometryGeneration = sourcePendingSceneGeneration;
+            prepared._pendingSceneGeometry = sourcePendingSceneGeometry;
+        }
+        if (source._vectorSceneState is not null)
+        {
+            long nextSceneGeneration = unchecked(sourceSceneGeneration + 1);
+            source._sceneGeometryGeneration = nextSceneGeneration == 0 ? 1 : nextSceneGeneration;
+            source._pendingSceneGeometryGeneration = source._usesProgressiveNativeSceneResidency
+                ? source._sceneGeometryGeneration
+                : 0;
+            source._pendingSceneGeometry = adoptPreparedGeometry &&
+                source._usesProgressiveNativeSceneResidency
+                ? preparedGeometryForSource!
+                : Array.Empty<InlineSceneGeometry>();
+        }
+    }
+
     internal SharedCanvasTextFormatCache.Lease CreateTextFormatLease(
         ElementStyle style,
         CanvasWordWrapping wordWrapping,
