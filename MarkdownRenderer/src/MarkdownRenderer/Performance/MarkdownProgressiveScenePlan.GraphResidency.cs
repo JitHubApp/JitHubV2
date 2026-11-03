@@ -7,6 +7,7 @@ using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Performance.ProgressiveScenes;
 
 namespace MarkdownRenderer.Performance;
 
@@ -198,7 +199,7 @@ internal sealed partial class MarkdownProgressiveScenePlan
                 }
                 if (result is null && !TryRestoreOnWorker(marker, token, out result, out descriptor))
                 {
-                    result = await RenderAsync(work, token).ConfigureAwait(false);
+                    result = await work.RenderAsync(token).ConfigureAwait(false);
                     descriptor = MarkdownCompletedSceneDescriptor.Create(result, token);
                 }
                 token.ThrowIfCancellationRequested();
