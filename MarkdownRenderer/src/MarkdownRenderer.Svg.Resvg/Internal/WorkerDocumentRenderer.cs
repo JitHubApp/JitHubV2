@@ -184,6 +184,18 @@ internal sealed class WorkerDocumentRenderer(
         long targetPixels
         )
     {
+        var render = new WorkerRenderInputs(
+            lease,
+            worker,
+            document,
+            preflight,
+            openRequest,
+            renderRequest,
+            outputMemory,
+            requestGeneration,
+            diagnosticWorkId,
+            targetPixels,
+            cancellationToken);
         try
         {
             using WorkerDocumentStateGate.Lease documentStateLease =
@@ -193,27 +205,7 @@ internal sealed class WorkerDocumentRenderer(
 
             if (preflight.Info.HasText && requestGeneration != _requests.FontGeneration)
                 throw new OperationCanceledException("The SVG font environment changed before rendering.");
-            WorkerRequest request = new(
-                WorkerOperation.Render,
-                requestId,
-                worker.NonceLow,
-                worker.NonceHigh,
-                0,
-                preflight.Hash,
-                0,
-                outputMemory.Memory.Length,
-                renderRequest.TargetWidthPixels,
-                renderRequest.TargetHeightPixels,
-                renderRequest.TileRegion,
-                WorkerRequestFactory.NormalizeLocale(openRequest.Locale),
-                openRequest.ColorScheme,
-                openRequest.SemanticColor,
-                renderRequest.PixelFormat,
-                requestGeneration,
-                _requests.PerWorkerParsedResourceCacheBytes,
-                document.DocumentId,
-                _options,
-                renderRequest.PhysicalViewport);
+            WorkerRequest request = CreateRenderRequest(in render, requestId);
             try
             {
                 // A document can be opened on one worker and rendered on the other.
@@ -221,66 +213,11 @@ internal sealed class WorkerDocumentRenderer(
                 // the raster operation are separate bounded worker transactions.
                 // Charging all three to one shared stopwatch makes an otherwise
                 // valid SVG fail nondeterministically during visible image bursts.
-                WorkerResponse response = await worker.ExchangeAsync(
-                    request,
-                    _options.RequestDeadline,
-                    CancellationToken.None,
-                    outputMemory
-                    ,
-                    diagnosticWorkId: diagnosticWorkId,
-                    diagnosticStageId: (int)SvgWorkerStageId.RenderTransaction,
-                    diagnosticSourceBytes: preflight.Source.Length,
-                    diagnosticTargetPixels: targetPixels
-                    ).ConfigureAwait(false);
-                ValidateRenderResponseBeforeCancellation(
-                    response,
-                    worker,
-                    lease,
-                    document,
-                    preflight,
-                    renderRequest,
-                    requestGeneration,
-                    outputMemory,
-                    cancellationToken);
-                WorkerResponseValidation.ValidateRenderStatus(
-                    response,
-                    requiresFontCatalog: preflight.Info.HasText,
-                    requestGeneration: requestGeneration,
-                    documentMissingAllowed: true,
-                    operation: "render");
-                cancellationToken.ThrowIfCancellationRequested();
-                if (preflight.Info.HasText)
-                    WorkerResponseValidation.ValidateTextResponse(response, requestGeneration, _requests.FontGeneration, "render");
+                WorkerResponse response = await ExchangeRender(in render, request).ConfigureAwait(false);
+                ValidateRenderResponse(in render, response, documentMissingAllowed: true, operation: "render");
                 WorkerResponse? attachment = await WorkerSharedMemoryMapping.AttachDocumentIfMissingAsync(
                     response,
-                    () =>
-                    {
-                        document.ValidateContentAdmission();
-                        return WorkerSharedMemoryMapping.WithSourceMappingAsync(
-                            _sourceMemoryFactory,
-                            WorkerSharedMemoryMapping.NewSourceMappingName(),
-                            preflight.Source,
-                            sourceMemory => _bindings.AttachDocumentAsync(
-                                lease,
-                                worker,
-                                document.DocumentId,
-                                preflight,
-                                openRequest,
-                                sourceMemory,
-                                _options.RequestDeadline,
-                                cancellationToken,
-                                _requests.NextRequestId(),
-                                requestGeneration,
-                                null,
-                                document
-                                ,
-                                diagnosticWorkId,
-                                (int)SvgWorkerStageId.DocumentMissingAttach
-                                ).AsTask(),
-                            cancellationToken,
-                            document.ValidateContentAdmission,
-                            _sourceMemoryFactory is null ? worker.ObjectSecurity : null);
-                    }).ConfigureAwait(false);
+                    CreateDocumentReattachment(render)).ConfigureAwait(false);
                 if (attachment is null)
                     return WorkerResponseValidation.Stamp(response, worker);
                 if (preflight.Info.HasText)
@@ -292,55 +229,17 @@ internal sealed class WorkerDocumentRenderer(
                 document.ValidateContentAdmission();
 
                 request = request with { RequestId = _requests.NextRequestId() };
-                response = await worker.ExchangeAsync(
-                    request,
-                    _options.RequestDeadline,
-                    CancellationToken.None,
-                    outputMemory
-                    ,
-                    diagnosticWorkId: diagnosticWorkId,
-                    diagnosticStageId: (int)SvgWorkerStageId.RenderTransaction,
-                    diagnosticSourceBytes: preflight.Source.Length,
-                    diagnosticTargetPixels: targetPixels
-                    ).ConfigureAwait(false);
-                ValidateRenderResponseBeforeCancellation(
+                response = await ExchangeRender(in render, request).ConfigureAwait(false);
+                ValidateRenderResponse(
+                    in render,
                     response,
-                    worker,
-                    lease,
-                    document,
-                    preflight,
-                    renderRequest,
-                    requestGeneration,
-                    outputMemory,
-                    cancellationToken);
-                WorkerResponseValidation.ValidateRenderStatus(
-                    response,
-                    requiresFontCatalog: preflight.Info.HasText,
-                    requestGeneration: requestGeneration,
                     documentMissingAllowed: false,
                     operation: "render after reattachment");
-                cancellationToken.ThrowIfCancellationRequested();
-                if (preflight.Info.HasText)
-                    WorkerResponseValidation.ValidateTextResponse(response, requestGeneration, _requests.FontGeneration, "render after reattachment");
                 return WorkerResponseValidation.Stamp(response, worker);
             }
             catch (Exception exception) when (WorkerResponseValidation.IsWorkerTransportFailure(exception))
             {
-                bool callerCanceled = cancellationToken.IsCancellationRequested;
-                long currentGeneration = _requests.FontGeneration;
-                bool generationCurrent = !preflight.Info.HasText || requestGeneration == currentGeneration;
-                WorkerResponseValidation.QuarantineContentBeforeWorkerRelease(
-                    document,
-                    contentFailureCallback: null,
-                    callerCanceled: callerCanceled,
-                    requiresFontCatalog: preflight.Info.HasText,
-                    requestGeneration: requestGeneration,
-                    currentGeneration: currentGeneration,
-                    invalidateWorker: () => _scheduler.Invalidate(lease.Slot, worker));
-                if (callerCanceled)
-                    throw new OperationCanceledException(cancellationToken);
-                if (preflight.Info.HasText && !generationCurrent)
-                    throw new OperationCanceledException("The SVG worker was intentionally rotated after a font change.");
+                ThrowIfTransportFailureIsCancellation(in render);
                 throw;
             }
         }
@@ -348,11 +247,145 @@ internal sealed class WorkerDocumentRenderer(
         {
             // The worker transaction and any missing-document reattach have
             // drained before these borrowed source inputs are cleared.
+            render = default;
             preflight = null!;
             openRequest = null!;
             renderRequest = null!;
             outputMemory = null!;
         }
+    }
+
+    /// <summary>Builds the render transaction for the leased worker.</summary>
+    private WorkerRequest CreateRenderRequest(in WorkerRenderInputs render, ulong requestId) =>
+        new(
+            WorkerOperation.Render,
+            requestId,
+            render.Worker.NonceLow,
+            render.Worker.NonceHigh,
+            0,
+            render.Preflight.Hash,
+            0,
+            render.OutputMemory.Memory.Length,
+            render.RenderRequest.TargetWidthPixels,
+            render.RenderRequest.TargetHeightPixels,
+            render.RenderRequest.TileRegion,
+            WorkerRequestFactory.NormalizeLocale(render.OpenRequest.Locale),
+            render.OpenRequest.ColorScheme,
+            render.OpenRequest.SemanticColor,
+            render.RenderRequest.PixelFormat,
+            render.RequestGeneration,
+            _requests.PerWorkerParsedResourceCacheBytes,
+            render.Document.DocumentId,
+            _options,
+            render.RenderRequest.PhysicalViewport);
+
+    /// <summary>
+    /// Sends one render transaction under its own request deadline. Caller
+    /// cancellation is observed between transactions, never inside one.
+    /// </summary>
+    private ValueTask<WorkerResponse> ExchangeRender(in WorkerRenderInputs render, WorkerRequest request) =>
+        render.Worker.ExchangeAsync(
+            request,
+            _options.RequestDeadline,
+            CancellationToken.None,
+            render.OutputMemory
+            ,
+            diagnosticWorkId: render.DiagnosticWorkId,
+            diagnosticStageId: (int)SvgWorkerStageId.RenderTransaction,
+            diagnosticSourceBytes: render.Preflight.Source.Length,
+            diagnosticTargetPixels: render.TargetPixels
+            );
+
+    /// <summary>
+    /// Validates a render response in order: raster shape or content
+    /// quarantine, then status, then caller cancellation, then font generation.
+    /// </summary>
+    private void ValidateRenderResponse(
+        in WorkerRenderInputs render,
+        WorkerResponse response,
+        bool documentMissingAllowed,
+        string operation)
+    {
+        ValidateRenderResponseBeforeCancellation(
+            response,
+            render.Worker,
+            render.Lease,
+            render.Document,
+            render.Preflight,
+            render.RenderRequest,
+            render.RequestGeneration,
+            render.OutputMemory,
+            render.CancellationToken);
+        WorkerResponseValidation.ValidateRenderStatus(
+            response,
+            requiresFontCatalog: render.Preflight.Info.HasText,
+            requestGeneration: render.RequestGeneration,
+            documentMissingAllowed: documentMissingAllowed,
+            operation: operation);
+        render.CancellationToken.ThrowIfCancellationRequested();
+        if (render.Preflight.Info.HasText)
+            WorkerResponseValidation.ValidateTextResponse(response, render.RequestGeneration, _requests.FontGeneration, operation);
+    }
+
+    /// <summary>
+    /// Creates the reattachment that maps the preflight source again and
+    /// attaches it to the worker when the render reports the document missing.
+    /// The returned callback holds its own copy of the inputs.
+    /// </summary>
+    private Func<Task<WorkerResponse>> CreateDocumentReattachment(WorkerRenderInputs render) =>
+        () =>
+        {
+            render.Document.ValidateContentAdmission();
+            return WorkerSharedMemoryMapping.WithSourceMappingAsync(
+                _sourceMemoryFactory,
+                WorkerSharedMemoryMapping.NewSourceMappingName(),
+                render.Preflight.Source,
+                sourceMemory => _bindings.AttachDocumentAsync(
+                    render.Lease,
+                    render.Worker,
+                    render.Document.DocumentId,
+                    render.Preflight,
+                    render.OpenRequest,
+                    sourceMemory,
+                    _options.RequestDeadline,
+                    render.CancellationToken,
+                    _requests.NextRequestId(),
+                    render.RequestGeneration,
+                    null,
+                    render.Document
+                    ,
+                    render.DiagnosticWorkId,
+                    (int)SvgWorkerStageId.DocumentMissingAttach
+                    ).AsTask(),
+                render.CancellationToken,
+                render.Document.ValidateContentAdmission,
+                _sourceMemoryFactory is null ? render.Worker.ObjectSecurity : null);
+        };
+
+    /// <summary>
+    /// Quarantines content and releases the worker after a render transport
+    /// failure, then turns caller cancellation or an intentional font rotation
+    /// into cancellation. Otherwise returns so the caller rethrows the failure.
+    /// </summary>
+    private void ThrowIfTransportFailureIsCancellation(in WorkerRenderInputs render)
+    {
+        WorkerLease lease = render.Lease;
+        WindowsWorkerProcess worker = render.Worker;
+        bool callerCanceled = render.CancellationToken.IsCancellationRequested;
+        long currentGeneration = _requests.FontGeneration;
+        bool generationCurrent = !render.Preflight.Info.HasText || render.RequestGeneration == currentGeneration;
+        WorkerResponseValidation.QuarantineContentBeforeWorkerRelease(
+            render.Document,
+            contentFailureCallback: null,
+            callerCanceled: callerCanceled,
+            requiresFontCatalog: render.Preflight.Info.HasText,
+            requestGeneration: render.RequestGeneration,
+            currentGeneration: currentGeneration,
+            invalidateWorker: () => _scheduler.Invalidate(lease.Slot, worker));
+        if (callerCanceled)
+            throw new OperationCanceledException(render.CancellationToken);
+        if (render.Preflight.Info.HasText && !generationCurrent)
+            throw new OperationCanceledException("The SVG worker was intentionally rotated after a font change.");
     }
 
     private void ValidateRenderResponseBeforeCancellation(
