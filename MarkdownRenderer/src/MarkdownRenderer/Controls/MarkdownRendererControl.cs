@@ -50,7 +50,7 @@ namespace MarkdownRenderer.Controls;
 /// Hosts a <see cref="CanvasVirtualControl"/> for paint and a sibling
 /// <see cref="Canvas"/> overlay for hosted WinUI embeds.
 /// </summary>
-public abstract partial class MarkdownRendererControl : UserControl, IDisposable, IAsyncDisposable, IMarkdownEnvironmentListener,
+public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsyncDisposable, IMarkdownEnvironmentListener,
     IMarkdownPerformanceLegacyParser, ISelectionAdornerHost, ISelectionCommandsHost, ISelectionDismissalHost,
     ISelectionHandlesHost, ISelectionContextMenuHost, IPointerInputSink, IPointerInteractionHost,
     IHorizontalOverflowPointerHost, IPointerInputRouterHost, IDeferredGestureLayoutHost, IEmbedRealizationHost,
@@ -1278,13 +1278,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         }
     }
 
-    /// <summary>
-    /// The raw markdown source the renderer was last given. Useful for
-    /// assistive technologies that want a flat textual representation when
-    /// structural traversal isn't available.
-    /// </summary>
-    internal string CurrentMarkdownSource => Markdown ?? string.Empty;
-
     internal DocumentRange CurrentSelectionRange => _selection.Range;
 
     internal void SelectAutomationRange(DocumentRange range)
@@ -1307,11 +1300,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         rect = new Windows.Foundation.Rect(0, top, width, height);
         return hasViewport;
     }
-
-    internal long AutomationPipelineGeneration => _rebuild.Generation;
-
-    internal CancellationToken GetAutomationPipelineCancellationToken(long generation) =>
-        _rebuild.GetActiveToken(generation);
 
     /// <summary>
     /// Initializes a renderer with either an owned scroll viewport or an
@@ -3336,15 +3324,6 @@ public abstract partial class MarkdownRendererControl : UserControl, IDisposable
         _surface.Overlay.Width = _surface.Canvas.Width;
         _surface.Overlay.Height = _surface.Canvas.Height;
         _dragShield.SetActive(_document.IsDragSelecting);
-    }
-
-    private static (int BlockIndex, double OffsetFromTop)? CaptureScrollAnchor(LayoutSnapshot snapshot, double verticalOffset)
-    {
-        if (verticalOffset <= 0 ||
-            !snapshot.TryCaptureScrollAnchor(verticalOffset, out SnapshotScrollAnchor anchor) ||
-            anchor.BlockIndex is not { } blockIndex)
-            return null;
-        return (blockIndex, anchor.OffsetFromTop);
     }
 
     private void AddImagePlan(Layout.Boxes.ImageBox image)
