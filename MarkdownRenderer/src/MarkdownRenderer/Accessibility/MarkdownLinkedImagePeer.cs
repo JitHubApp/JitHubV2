@@ -13,6 +13,7 @@ namespace MarkdownRenderer.Accessibility;
 /// hyperlink. The alt text remains its accessible name and invocation follows
 /// the same link pipeline as pointer and keyboard activation.
 /// </summary>
+/// <remarks><c>partial</c> is required by the CsWinRT AOT generator (CsWinRT1028), which emits the WinRT vtable for this peer's provider interfaces.</remarks>
 internal sealed partial class MarkdownLinkedImagePeer : FrameworkElementAutomationPeer, IInvokeProvider
 {
     private readonly MarkdownRendererControl _owner;

@@ -16,6 +16,7 @@ namespace MarkdownRenderer.Accessibility;
 /// but reporting the parent block is strictly better than reporting the
 /// whole renderer for spatial navigation).
 /// </summary>
+/// <remarks><c>partial</c> is required by the CsWinRT AOT generator (CsWinRT1028), which emits the WinRT vtable for this peer's provider interfaces.</remarks>
 internal sealed partial class MarkdownLinkPeer : FrameworkElementAutomationPeer, IInvokeProvider, IExpandCollapseProvider
 {
     private readonly MarkdownRendererControl _owner;

@@ -12,6 +12,7 @@ namespace MarkdownRenderer.Accessibility;
 /// Stable copy-command peer for a code block. It remains in the semantic tree
 /// when the viewport-owned XAML button is unrealized.
 /// </summary>
+/// <remarks><c>partial</c> is required by the CsWinRT AOT generator (CsWinRT1028), which emits the WinRT vtable for this peer's provider interfaces.</remarks>
 internal sealed partial class MarkdownCodeBlockCopyPeer : FrameworkElementAutomationPeer, IInvokeProvider
 {
     private readonly MarkdownRendererControl _owner;
