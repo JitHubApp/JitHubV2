@@ -90,21 +90,11 @@ internal sealed partial class InlineContainerBox : BlockBox
     internal bool IsBufferDirty => _bufferDirty;
     private float _lastWidth;
 
-    private sealed class VectorSceneState
-    {
-        internal InlineSceneGeometry[] PendingSceneGeometry = Array.Empty<InlineSceneGeometry>();
-        internal long SceneGeometryGeneration;
-        internal long PendingSceneGeometryGeneration;
-        internal int SceneCharacterRegionQueryCount;
-        internal int VectorSceneRunCount;
-        internal bool HasDeferredSceneMarker;
-    }
-
     // Text-only inline boxes are the common case. Keep their vector-specific
     // counters and geometry in no per-box holder until a vector run is added.
     // This state is mutable and strictly box-owned; private placement clones
     // create their own holder rather than sharing it with the source box.
-    private VectorSceneState? _vectorSceneState;
+    private InlineVectorSceneState? _vectorSceneState;
     private InlineSceneGeometry[] _pendingSceneGeometry
     {
         get => _vectorSceneState?.PendingSceneGeometry ?? Array.Empty<InlineSceneGeometry>();
@@ -179,18 +169,6 @@ internal sealed partial class InlineContainerBox : BlockBox
     internal NativeResourceRetirement NativeRetirement => _nativeRetirement;
     private readonly Action<IDisposable>? _nativeDisposer;
     internal Action<IDisposable>? NativeDisposer => _nativeDisposer;
-
-    private readonly struct InlineScenePlacementRollbackState
-    {
-        internal InlineScenePlacementRollbackState(InlineVectorSceneRun run, Rect localBounds)
-        {
-            Run = run;
-            LocalBounds = localBounds;
-        }
-
-        internal readonly InlineVectorSceneRun Run;
-        internal readonly Rect LocalBounds;
-    }
 
     /// <summary>
     /// Run currently being hovered by the pointer.  Retained for hit-test /
@@ -500,7 +478,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         }
         else if (copiedRun is InlineVectorSceneRun)
         {
-            VectorSceneState vectorState = _vectorSceneState ??= new VectorSceneState();
+            InlineVectorSceneState vectorState = _vectorSceneState ??= new InlineVectorSceneState();
             vectorState.VectorSceneRunCount++;
         }
     }
@@ -545,8 +523,8 @@ internal sealed partial class InlineContainerBox : BlockBox
     {
         System.Diagnostics.Debug.Assert(BlockIndex != 0,
             "BlockIndex must be assigned before calling Add(); source-map entries will be registered under block 0 otherwise.");
-        VectorSceneState? vectorStateForAddedRun = run is InlineVectorSceneRun
-            ? _vectorSceneState ?? new VectorSceneState()
+        InlineVectorSceneState? vectorStateForAddedRun = run is InlineVectorSceneRun
+            ? _vectorSceneState ?? new InlineVectorSceneState()
             : null;
         run.InlineIndex = _runs.Count;
         int runOffset = _runTextLength;
@@ -570,7 +548,7 @@ internal sealed partial class InlineContainerBox : BlockBox
         _inlineImageLineBaselineByRunIndex = null;
         if (run is InlineVectorSceneRun vectorScene)
         {
-            VectorSceneState vectorState = vectorStateForAddedRun!;
+            InlineVectorSceneState vectorState = vectorStateForAddedRun!;
             _vectorSceneState = vectorState;
             vectorState.VectorSceneRunCount++;
             vectorState.HasDeferredSceneMarker |= vectorScene.DeferredSceneMarker is not null;
@@ -700,7 +678,7 @@ internal sealed partial class InlineContainerBox : BlockBox
             else if (run is InlineVectorSceneRun vectorScene)
             {
                 _hasAtomicInlineObject = true;
-                _vectorSceneState ??= new VectorSceneState();
+                _vectorSceneState ??= new InlineVectorSceneState();
                 _vectorSceneRunCount++;
                 _hasDeferredSceneMarker |= vectorScene.DeferredSceneMarker is not null;
             }
