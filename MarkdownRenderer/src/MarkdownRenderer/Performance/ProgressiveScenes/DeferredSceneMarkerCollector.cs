@@ -139,47 +139,83 @@ internal static class DeferredSceneMarkerCollector
                     markerKeys,
                     ref visibleSceneResourcesReady);
             case TableBox table:
-                foreach (InlineContainerBox cell in table.GetCellBoxesInVerticalBand(viewportTop, viewportBottom))
-                {
-                    if (!TryCollect(
-                            cell,
-                            viewportTop,
-                            viewportBottom,
-                            viewport,
-                            residencyPolicy,
-                            markerKeys,
-                            ref visibleSceneResourcesReady))
-                    {
-                        return false;
-                    }
-                }
-                return true;
+                return TryCollectTableCells(
+                    table,
+                    viewportTop,
+                    viewportBottom,
+                    viewport,
+                    residencyPolicy,
+                    markerKeys,
+                    ref visibleSceneResourcesReady);
             case StackBox stack:
-            {
-                IReadOnlyList<BlockBox> children = stack.Children;
-                int first = FindFirstStackChildIntersecting(children, viewportTop);
-                for (int index = first; index < children.Count; index++)
-                {
-                    BlockBox child = children[index];
-                    if (child.Bounds.Top > viewportBottom)
-                        break;
-                    if (!TryCollect(
-                            child,
-                            viewportTop,
-                            viewportBottom,
-                            viewport,
-                            residencyPolicy,
-                            markerKeys,
-                            ref visibleSceneResourcesReady))
-                    {
-                        return false;
-                    }
-                }
-                return true;
-            }
+                return TryCollectStackChildren(
+                    stack,
+                    viewportTop,
+                    viewportBottom,
+                    viewport,
+                    residencyPolicy,
+                    markerKeys,
+                    ref visibleSceneResourcesReady);
             default:
                 return true;
         }
+    }
+
+    private static bool TryCollectTableCells(
+        TableBox table,
+        double viewportTop,
+        double viewportBottom,
+        Rect? viewport,
+        IMarkdownVectorSceneResidencyPolicy? residencyPolicy,
+        List<string> markerKeys,
+        ref bool visibleSceneResourcesReady)
+    {
+        foreach (InlineContainerBox cell in table.GetCellBoxesInVerticalBand(viewportTop, viewportBottom))
+        {
+            if (!TryCollect(
+                    cell,
+                    viewportTop,
+                    viewportBottom,
+                    viewport,
+                    residencyPolicy,
+                    markerKeys,
+                    ref visibleSceneResourcesReady))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static bool TryCollectStackChildren(
+        StackBox stack,
+        double viewportTop,
+        double viewportBottom,
+        Rect? viewport,
+        IMarkdownVectorSceneResidencyPolicy? residencyPolicy,
+        List<string> markerKeys,
+        ref bool visibleSceneResourcesReady)
+    {
+        IReadOnlyList<BlockBox> children = stack.Children;
+        int first = FindFirstStackChildIntersecting(children, viewportTop);
+        for (int index = first; index < children.Count; index++)
+        {
+            BlockBox child = children[index];
+            if (child.Bounds.Top > viewportBottom)
+                break;
+            if (!TryCollect(
+                    child,
+                    viewportTop,
+                    viewportBottom,
+                    viewport,
+                    residencyPolicy,
+                    markerKeys,
+                    ref visibleSceneResourcesReady))
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static int FindFirstStackChildIntersecting(
