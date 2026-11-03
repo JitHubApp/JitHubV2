@@ -73,7 +73,7 @@
     },
     {
       "path": "src/MarkdownRenderer/Layout/Boxes/RasterNativeWicDecoder.cs",
-      "lines": 1148,
+      "lines": 1102,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {

@@ -7,52 +7,6 @@ using System.Runtime.InteropServices.Marshalling;
 namespace MarkdownRenderer.Layout.Boxes;
 
 /// <summary>
-/// A bounded premultiplied CPU raster whose process-decode credit remains
-/// owned until the caller finishes GPU upload. The backing array is internal
-/// and must not be retained after disposal.
-/// </summary>
-internal sealed class RasterDecodedPixelLease : IDisposable
-{
-    private byte[]? _pixels;
-    private IDisposable? _processDecodeCredit;
-
-    internal RasterDecodedPixelLease(int width, int height, byte[] pixels, IDisposable processDecodeCredit)
-    {
-        Width = width;
-        Height = height;
-        _pixels = pixels;
-        _processDecodeCredit = processDecodeCredit;
-    }
-
-    internal int Width { get; }
-    internal int Height { get; }
-    internal byte[] Pixels => Volatile.Read(ref _pixels)
-        ?? throw new ObjectDisposedException(nameof(RasterDecodedPixelLease));
-
-    public void Dispose()
-    {
-        byte[]? pixels = Interlocked.Exchange(ref _pixels, null);
-        if (pixels is not null)
-            Array.Clear(pixels);
-        Interlocked.Exchange(ref _processDecodeCredit, null)?.Dispose();
-    }
-}
-
-internal readonly record struct RasterNativeWicDiagnosticSnapshot(long NativeStarted, long PixelLeaseCompleted);
-
-internal static class RasterNativeWicDiagnostics
-{
-    private static long s_nativeStarted;
-    private static long s_pixelLeaseCompleted;
-
-    internal static RasterNativeWicDiagnosticSnapshot GetSnapshot() =>
-        new(Interlocked.Read(ref s_nativeStarted), Interlocked.Read(ref s_pixelLeaseCompleted));
-
-    internal static void RecordNativeStarted() => Interlocked.Increment(ref s_nativeStarted);
-    internal static void RecordPixelLeaseCompleted() => Interlocked.Increment(ref s_pixelLeaseCompleted);
-}
-
-/// <summary>
 /// Synchronous MTA WIC path for a source whose host budget and geometry have
 /// already been validated. Call only from a non-cancelable Task.Run delegate;
 /// cancellation is checked cooperatively between native calls and while

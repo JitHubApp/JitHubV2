@@ -4,11 +4,6 @@ using System.Threading;
 
 namespace MarkdownRenderer.Layout.Boxes;
 
-internal interface IBitmapOutputWaiter
-{
-    void OnBitmapOutputCapacityAvailable(long capacityVersion);
-}
-
 /// <summary>
 /// Process-wide admission for renderer-owned bitmap outputs. The ledger is
 /// acquired before native bitmap construction and remains charged until the
