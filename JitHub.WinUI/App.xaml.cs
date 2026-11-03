@@ -657,6 +657,13 @@ public partial class App : Application
 
     internal MainWindow CurrentMainWindow => GetOrCreateMainWindow();
 
+    /// <summary>
+    /// Gets the app-scoped ledger of Markdown renderers that borrow the shared
+    /// Markdown providers. It outlives the service provider so the window close
+    /// path can drain every renderer before those providers shut down.
+    /// </summary>
+    internal MarkdownRendererLifetimeRegistry MarkdownRenderers { get; } = new();
+
     private static string FormatActivationError(Exception ex)
     {
         return UserFacingError.For(ex, UserFacingErrorKind.Activation, "activation");

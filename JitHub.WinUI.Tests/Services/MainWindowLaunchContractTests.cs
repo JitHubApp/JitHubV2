@@ -85,7 +85,6 @@ public sealed class MainWindowLaunchContractTests
         string root = FindRepositoryRoot();
         string mainWindow = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "MainWindow.xaml.cs"));
         string shellPage = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "Views", "Pages", "ShellPage.xaml.cs"));
-        string markdownViewer = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "Views", "Controls", "Common", "MarkdownViewer.xaml.cs"));
         string disposalCommit = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "Services", "Markdown", "MarkdownRendererDisposalCommit.cs"));
         int closeFlowStart = mainWindow.IndexOf("private async Task DrainDiagnosticsAndCloseAsync()", StringComparison.Ordinal);
         int shutdownStart = mainWindow.IndexOf(
@@ -113,11 +112,11 @@ public sealed class MainWindowLaunchContractTests
         Assert.Contains("await unloaded.Task.WaitAsync(timeout)", shellPage, StringComparison.Ordinal);
 
         int rendererWait = shutdownPath.IndexOf(
-            "MarkdownViewer.WaitForRendererDisposalAsync(",
+            "markdownRenderers.WaitForRendererDisposalAsync(",
             StringComparison.Ordinal);
         Assert.True(rendererWait >= 0);
         int forcedDisposal = shutdownPath.IndexOf(
-            "MarkdownViewer.PrepareAllForApplicationShutdown()",
+            "markdownRenderers.PrepareAllForApplicationShutdown()",
             rendererWait,
             StringComparison.Ordinal);
         int drainCall = closeFlow.IndexOf("await UnloadPageContentBeforeMarkdownShutdownAsync()", StringComparison.Ordinal);
@@ -128,19 +127,9 @@ public sealed class MainWindowLaunchContractTests
         Assert.True(drainCall >= 0 && providerRetirement > drainCall);
         Assert.Contains("if (_markdownRendererDisposalConfirmed)", closeFlow, StringComparison.Ordinal);
         Assert.True(shutdownPath.LastIndexOf("await DrainMarkdownViewersBeforeProviderShutdownAsync()", StringComparison.Ordinal) > outerFrameDetach);
-        Assert.Contains("WeakReference<MarkdownViewer>", markdownViewer, StringComparison.Ordinal);
-        Assert.Contains("WaitAsync(timeout)", markdownViewer, StringComparison.Ordinal);
-        Assert.Contains("viewer.PrepareForApplicationShutdown()", markdownViewer, StringComparison.Ordinal);
-        Assert.Contains("resourceRelease = renderer.DisposeAsync().AsTask()", markdownViewer, StringComparison.Ordinal);
-        Assert.Contains("disposalCompletedSuccessfully: () => resourceRelease is not null", markdownViewer, StringComparison.Ordinal);
-        Assert.Contains("retirementBegan: () => _renderer = null", markdownViewer, StringComparison.Ordinal);
-        Assert.Contains("drainRetiredResources: () => resourceRelease ??", markdownViewer, StringComparison.Ordinal);
-        Assert.Contains("Microsoft.UI.Dispatching.DispatcherQueue? retirementDispatcher = DispatcherQueue", markdownViewer, StringComparison.Ordinal);
-        Assert.Contains("ReleaseRendererTrackingOnDispatcherAsync(renderer, retirementDispatcher)", markdownViewer, StringComparison.Ordinal);
-        Assert.Contains("UiTaskGuard.Observe(", markdownViewer, StringComparison.Ordinal);
-        Assert.Contains("ObserveRendererRetirementAsync(renderer, retirementCompletion, retirementDispatcher)", markdownViewer, StringComparison.Ordinal);
-        Assert.Contains("if (_rendererRetirementPending is not null)", markdownViewer, StringComparison.Ordinal);
-        Assert.Contains("_rendererRetirementPending = null;", markdownViewer, StringComparison.Ordinal);
+        Assert.Contains("_markdownRendererDisposalConfirmed = markdownRenderers.ActiveRendererCount == 0;", shutdownPath, StringComparison.Ordinal);
+        // Renderer retirement ordering is covered behaviorally by
+        // MarkdownRendererSlotTests and MarkdownRendererLifetimeRegistryTests.
         Assert.True(
             disposalCommit.IndexOf("detachAndDispose();", StringComparison.Ordinal)
                 < disposalCommit.IndexOf("disposalCompletedSuccessfully()", StringComparison.Ordinal));
@@ -150,7 +139,6 @@ public sealed class MainWindowLaunchContractTests
         Assert.True(
             disposalCommit.IndexOf("await drain.ConfigureAwait(false)", StringComparison.Ordinal)
                 < disposalCommit.IndexOf("await release.ConfigureAwait(false)", StringComparison.Ordinal));
-        Assert.Contains("dispatcher.TryEnqueue", markdownViewer, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -325,16 +313,21 @@ public sealed class MainWindowLaunchContractTests
         string source = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(), "JitHub.WinUI", "Views", "Controls", "Common", "MarkdownViewer.xaml.cs"))
             .Replace("\r\n", "\n", StringComparison.Ordinal);
-        int failureLatch = source.IndexOf("_rendererDisposalFaulted = true;", StringComparison.Ordinal);
-        int failureReport = source.IndexOf("ShowRendererDisposalFailure();", failureLatch, StringComparison.Ordinal);
+        // The slot latches the fault before it reports teardown failure; that
+        // ordering is covered by MarkdownRendererSlotTests. This pins the
+        // viewer's wiring of the latch to the reattach path and the notice.
+        int failureReport = source.IndexOf(
+            "void IMarkdownRendererSlotHost<MarkdownRendererControl>.OnRendererTeardownFaulted(",
+            StringComparison.Ordinal);
+        int showFailure = source.IndexOf("ShowRendererDisposalFailure();", failureReport, StringComparison.Ordinal);
         int ensureRenderer = source.IndexOf("private void EnsureRenderer()", StringComparison.Ordinal);
-        int rejectFailedRenderer = source.IndexOf("if (_rendererDisposalFaulted)", ensureRenderer, StringComparison.Ordinal);
-        int reattachRenderer = source.IndexOf("RendererHost.Children.Add(_renderer);", ensureRenderer, StringComparison.Ordinal);
+        int rejectFailedRenderer = source.IndexOf("if (_rendererSlot.IsDisposalFaulted)", ensureRenderer, StringComparison.Ordinal);
+        int reattachRenderer = source.IndexOf("RendererHost.Children.Add(current);", ensureRenderer, StringComparison.Ordinal);
 
-        Assert.True(failureLatch >= 0 && failureReport > failureLatch);
+        Assert.True(failureReport >= 0 && showFailure > failureReport);
         Assert.True(ensureRenderer >= 0 && rejectFailedRenderer > ensureRenderer && reattachRenderer > rejectFailedRenderer);
         Assert.Contains("RetryRenderButton.Visibility = Visibility.Collapsed;", source, StringComparison.Ordinal);
-        Assert.Contains("if (!_rendererDisposalFaulted && RenderErrorInfoBar is not null)", source, StringComparison.Ordinal);
+        Assert.Contains("if (!_rendererSlot.IsDisposalFaulted && RenderErrorInfoBar is not null)", source, StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()

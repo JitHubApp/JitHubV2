@@ -201,8 +201,8 @@ public sealed class MarkdownHostContractTests
         Assert.Contains("new MarkdownStyleSelector(MarkdownStyleRole.Body, minimumNestingDepth: 1)", source, StringComparison.Ordinal);
         Assert.Contains("Margin = ResolveThickness(\"AppMarkdownBodyMargin\"", source, StringComparison.Ordinal);
         Assert.DoesNotContain("_theme.Overrides", source, StringComparison.Ordinal);
-        Assert.Contains("_renderer.RenderCompleted += OnRendererRenderCompleted", source, StringComparison.Ordinal);
-        Assert.Contains("_renderer.RenderFailed += OnRendererRenderFailed", source, StringComparison.Ordinal);
+        Assert.Contains("renderer.RenderCompleted += OnRendererRenderCompleted", source, StringComparison.Ordinal);
+        Assert.Contains("renderer.RenderFailed += OnRendererRenderFailed", source, StringComparison.Ordinal);
         Assert.Contains("MarkdownLifecycleAutomationBridge.RecordRenderFailure", source, StringComparison.Ordinal);
         Assert.Contains("\"markdown.error\"", source, StringComparison.Ordinal);
         Assert.Contains("TelemetryTaxonomy.Actions.Retry", source, StringComparison.Ordinal);
@@ -289,7 +289,7 @@ public sealed class MarkdownHostContractTests
         Assert.Contains("IExpandCollapseProvider", peer, StringComparison.Ordinal);
         Assert.Contains("PatternInterface.ExpandCollapse", peer, StringComparison.Ordinal);
         Assert.Contains("AutomationControlType.Button", peer, StringComparison.Ordinal);
-        Assert.Contains("_renderer.DisclosureToggled += OnRendererDisclosureToggled", viewer, StringComparison.Ordinal);
+        Assert.Contains("renderer.DisclosureToggled += OnRendererDisclosureToggled", viewer, StringComparison.Ordinal);
         Assert.Contains("TelemetryTaxonomy.Actions.ToggleDetails", viewer, StringComparison.Ordinal);
         Assert.Contains("TelemetryTaxonomy.Results.Expanded", viewer, StringComparison.Ordinal);
         Assert.Contains("TelemetryTaxonomy.Results.Collapsed", viewer, StringComparison.Ordinal);
@@ -360,7 +360,7 @@ public sealed class MarkdownHostContractTests
             root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Embeds", "CodeBlockClipboard.cs"));
         Assert.Contains("MarkdownCopyKind.CodeBlock", codeBlockClipboard, StringComparison.Ordinal);
         Assert.Contains("_host.RaiseCopyCompleted(MarkdownCopyKind.Selection", selectionCommands, StringComparison.Ordinal);
-        Assert.Contains("_renderer.CopyCompleted += OnRendererCopyCompleted", viewer, StringComparison.Ordinal);
+        Assert.Contains("renderer.CopyCompleted += OnRendererCopyCompleted", viewer, StringComparison.Ordinal);
         Assert.Contains("AppToolbarButtonStyle", viewer, StringComparison.Ordinal);
         Assert.Contains("TelemetryTaxonomy.Actions.CopyCode", viewer, StringComparison.Ordinal);
         Assert.Contains("TelemetryTaxonomy.Actions.CopySelection", viewer, StringComparison.Ordinal);
@@ -379,7 +379,7 @@ public sealed class MarkdownHostContractTests
 
         Assert.Contains("MarkdownRemoteContentConsent", source, StringComparison.Ordinal);
         Assert.Contains("DocumentSourceProperty", source, StringComparison.Ordinal);
-        Assert.Contains("_renderer.ImageDocumentSource = documentSource", source, StringComparison.Ordinal);
+        Assert.Contains("renderer.ImageDocumentSource = documentSource", source, StringComparison.Ordinal);
         Assert.Contains("_remoteContentConsent.Grant()", source, StringComparison.Ordinal);
         Assert.Contains("AllowThirdPartyRemoteImagesByDefaultProperty", source, StringComparison.Ordinal);
         Assert.Contains("new PropertyMetadata(true, OnRendererPropertyChanged)", source, StringComparison.Ordinal);
@@ -389,7 +389,7 @@ public sealed class MarkdownHostContractTests
             StringComparison.Ordinal);
         Assert.Contains("AllowThirdPartyRemoteImagesByDefault = false", source, StringComparison.Ordinal);
         Assert.Contains(
-            "_renderer.AllowThirdPartyRemoteImages = ShouldAllowThirdPartyRemoteImages();",
+            "renderer.AllowThirdPartyRemoteImages = ShouldAllowThirdPartyRemoteImages();",
             source,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -446,10 +446,10 @@ public sealed class MarkdownHostContractTests
         Assert.Contains("ownsProvider: true", runtime, StringComparison.Ordinal);
         Assert.Contains("JitHubMarkdownRuntime.CodeHighlighter", viewer, StringComparison.Ordinal);
         Assert.Contains("JitHubMarkdownRuntime.SvgRenderer", viewer, StringComparison.Ordinal);
-        Assert.Contains("_renderer.RasterDecoder = JitHubMarkdownRuntime.RasterDecoder;", viewer, StringComparison.Ordinal);
+        Assert.Contains("renderer.RasterDecoder = JitHubMarkdownRuntime.RasterDecoder;", viewer, StringComparison.Ordinal);
         Assert.Contains("internal static IMarkdownRasterDecoder RasterDecoder", runtime, StringComparison.Ordinal);
-        Assert.Contains("_renderer.ImageResolver = _imageResolver", viewer, StringComparison.Ordinal);
-        Assert.Contains("_renderer.AllowThirdPartyRemoteImages = ShouldAllowThirdPartyRemoteImages()", viewer, StringComparison.Ordinal);
+        Assert.Contains("renderer.ImageResolver = _imageResolver", viewer, StringComparison.Ordinal);
+        Assert.Contains("renderer.AllowThirdPartyRemoteImages = ShouldAllowThirdPartyRemoteImages()", viewer, StringComparison.Ordinal);
         Assert.Contains("new ResvgMarkdownSvgRenderer()", runtime, StringComparison.Ordinal);
         Assert.Contains("DeferredFrameAction.Schedule", shell, StringComparison.Ordinal);
         Assert.Contains("WarmUpSvgRendererAsync", shell, StringComparison.Ordinal);
@@ -771,7 +771,7 @@ public sealed class MarkdownHostContractTests
         Assert.Contains("new PropertyMetadata(false, OnViewportOwnershipChanged)", source, StringComparison.Ordinal);
         Assert.Contains("ResetOwnedViewportForNewDocument();", source, StringComparison.Ordinal);
         Assert.Contains("oldSource?.DocumentId, newSource?.DocumentId", source, StringComparison.Ordinal);
-        Assert.Contains("if (!OwnsScrollViewport || _renderer is null)", source, StringComparison.Ordinal);
+        Assert.Contains("if (!OwnsScrollViewport || _rendererSlot.Current is null)", source, StringComparison.Ordinal);
         Assert.Contains("viewport.ChangeView(null, 0, null, disableAnimation: true)", source, StringComparison.Ordinal);
         Assert.DoesNotContain(viewer.Descendants(), element => element.Name.LocalName == "ScrollViewer");
         Assert.DoesNotContain("DesiredSize", source, StringComparison.Ordinal);

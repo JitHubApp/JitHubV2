@@ -130,7 +130,7 @@ public sealed partial class MarkdownLocalizationContractTests
             "MarkdownViewer.xaml.cs"));
 
         Assert.Contains(
-            "_renderer.StringProvider = JitHubMarkdownStringProvider.Instance;",
+            "renderer.StringProvider = JitHubMarkdownStringProvider.Instance;",
             source,
             StringComparison.Ordinal);
     }

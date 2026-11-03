@@ -871,17 +871,18 @@ public sealed partial class MainWindow : Window
 
     private async Task DrainMarkdownViewersBeforeProviderShutdownAsync()
     {
-        await MarkdownViewer.WaitForRendererDisposalAsync(TimeSpan.FromSeconds(2));
+        MarkdownRendererLifetimeRegistry markdownRenderers = ((App)Application.Current).MarkdownRenderers;
+        await markdownRenderers.WaitForRendererDisposalAsync(TimeSpan.FromSeconds(2));
         try
         {
-            MarkdownViewer.PrepareAllForApplicationShutdown();
+            markdownRenderers.PrepareAllForApplicationShutdown();
         }
         catch (Exception exception)
         {
             App.LogHandledException(exception, "markdown-renderer-shutdown");
         }
 
-        _markdownRendererDisposalConfirmed = MarkdownViewer.GetActiveRendererCountForShutdown() == 0;
+        _markdownRendererDisposalConfirmed = markdownRenderers.ActiveRendererCount == 0;
     }
 
     private async Task DismissActiveContentDialogBeforeCloseAsync()

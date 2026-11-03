@@ -12,6 +12,7 @@ using JitHub.Models.NavArgs;
 using JitHub.Services;
 using JitHub.Services.CodeViewer;
 using JitHub.Services.Markdown;
+using JitHub.Services.Markdown.Hosting;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.ViewModels.CodeViewer;
 using JitHub.WinUI.ViewModels.Pages;
@@ -36,15 +37,11 @@ using Windows.UI.ViewManagement;
 namespace JitHub.WinUI.Views.Controls.Common;
 
 [WinRT.GeneratedBindableCustomProperty]
-public sealed partial class MarkdownViewer : UserControl
+public sealed partial class MarkdownViewer :
+    UserControl,
+    IMarkdownRendererShutdownParticipant,
+    IMarkdownRendererSlotHost<MarkdownRendererControl>
 {
-    private static readonly object ShutdownRegistryGate = new();
-    private static readonly List<WeakReference<MarkdownViewer>> ShutdownRegistry = [];
-    private static TaskCompletionSource _rendererDisposalCompleted = CreateCompletedSource();
-    private static int _activeRendererCount;
-    private static int _registrationsSincePrune;
-    private static bool _applicationShutdownRequested;
-
     private static readonly Uri DefaultBaseUri = new("https://github.com/", UriKind.Absolute);
     private static MarkdownEngine SharedGitHubEngine => JitHubMarkdownRuntime.Engine;
     private static MarkdownRenderer.Performance.MarkdownPerformanceSession SharedPerformanceSession =>
@@ -158,9 +155,7 @@ public sealed partial class MarkdownViewer : UserControl
     private readonly HashSet<MarkdownImageUnavailableReason> _reportedImageUnavailableReasons = [];
     private bool _remoteImageNoticeDismissed;
     private MarkdownViewerDocumentPayload? _documentPayload;
-    private MarkdownRendererControl? _renderer;
-    private bool _rendererDisposalFaulted;
-    private MarkdownRendererControl? _rendererRetirementPending;
+    private readonly MarkdownRendererSlot<MarkdownRendererControl> _rendererSlot;
     private bool _isLoaded;
     private bool _shutdownRequested;
     private bool _rendererCreationQueued;
@@ -373,22 +368,12 @@ public sealed partial class MarkdownViewer : UserControl
     public MarkdownViewer()
     {
         InitializeComponent();
-        lock (ShutdownRegistryGate)
-        {
-            _shutdownRequested = _applicationShutdownRequested;
-            if (++_registrationsSincePrune >= 64)
-            {
-                for (int index = ShutdownRegistry.Count - 1; index >= 0; index--)
-                {
-                    if (!ShutdownRegistry[index].TryGetTarget(out _))
-                        ShutdownRegistry.RemoveAt(index);
-                }
-
-                _registrationsSincePrune = 0;
-            }
-
-            ShutdownRegistry.Add(new WeakReference<MarkdownViewer>(this));
-        }
+        MarkdownRendererLifetimeRegistry renderers = ((global::JitHub.WinUI.App)Application.Current).MarkdownRenderers;
+        _shutdownRequested = renderers.Register(this);
+        _rendererSlot = new MarkdownRendererSlot<MarkdownRendererControl>(
+            renderers,
+            this,
+            static retirement => UiTaskGuard.Observe(retirement, "ui-markdown-retirement"));
 
         // The production app defaults to trusted HTTPS image loading. Lifecycle
         // automation opts into the configurable privacy mode so that the prompt,
@@ -420,7 +405,7 @@ public sealed partial class MarkdownViewer : UserControl
             _isLoaded = false;
             UnsubscribeRuntimeSettings();
             _rendererCreationQueued = false;
-            TryDisposeRendererFromLifecycle();
+            _rendererSlot.TryRetireFromLifecycle();
         };
         DataContextChanged += (_, _) =>
         {
@@ -431,107 +416,7 @@ public sealed partial class MarkdownViewer : UserControl
         };
     }
 
-    internal static async Task<bool> WaitForRendererDisposalAsync(TimeSpan timeout)
-    {
-        Task waitForDisposal;
-        lock (ShutdownRegistryGate)
-        {
-            if (_activeRendererCount == 0)
-                return true;
-
-            waitForDisposal = _rendererDisposalCompleted.Task;
-        }
-
-        try
-        {
-            await waitForDisposal.WaitAsync(timeout);
-            return true;
-        }
-        catch (TimeoutException)
-        {
-            return false;
-        }
-    }
-
-    internal static int PrepareAllForApplicationShutdown()
-    {
-        List<MarkdownViewer> viewers = [];
-        lock (ShutdownRegistryGate)
-        {
-            _applicationShutdownRequested = true;
-            for (int index = ShutdownRegistry.Count - 1; index >= 0; index--)
-            {
-                if (ShutdownRegistry[index].TryGetTarget(out MarkdownViewer? viewer))
-                    viewers.Add(viewer);
-                else
-                    ShutdownRegistry.RemoveAt(index);
-            }
-        }
-
-        int rendererCountBefore = GetActiveRendererCount();
-        List<Exception>? failures = null;
-        foreach (MarkdownViewer viewer in viewers)
-        {
-            try
-            {
-                viewer.PrepareForApplicationShutdown();
-            }
-            catch (Exception exception)
-            {
-                (failures ??= []).Add(exception);
-            }
-        }
-
-        if (failures is { Count: > 0 })
-        {
-            throw new AggregateException(
-                "One or more Markdown viewers could not release their renderer during application shutdown.",
-                failures);
-        }
-
-        return Math.Max(0, rendererCountBefore - GetActiveRendererCount());
-    }
-
-    private static TaskCompletionSource CreateCompletedSource()
-    {
-        var source = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        source.SetResult();
-        return source;
-    }
-
-    private static int GetActiveRendererCount()
-    {
-        lock (ShutdownRegistryGate)
-            return _activeRendererCount;
-    }
-
-    internal static int GetActiveRendererCountForShutdown() => GetActiveRendererCount();
-
-    private static void RecordRendererCreated()
-    {
-        lock (ShutdownRegistryGate)
-        {
-            if (_activeRendererCount == 0)
-                _rendererDisposalCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-
-            _activeRendererCount++;
-        }
-    }
-
-    private static void RecordRendererDisposed()
-    {
-        lock (ShutdownRegistryGate)
-        {
-            if (_activeRendererCount == 0)
-                return;
-
-            _activeRendererCount--;
-            if (_activeRendererCount == 0)
-                _rendererDisposalCompleted.TrySetResult();
-        }
-    }
-
-    private void PrepareForApplicationShutdown()
+    void IMarkdownRendererShutdownParticipant.PrepareForApplicationShutdown()
     {
         _shutdownRequested = true;
         _rendererCreationQueued = false;
@@ -541,7 +426,7 @@ public sealed partial class MarkdownViewer : UserControl
         // even when that event is still queued.
         _isLoaded = false;
 
-        DisposeRenderer();
+        _rendererSlot.Retire();
     }
 
     private static IMarkdownImageResolver ResolveImageResolver()
@@ -559,12 +444,12 @@ public sealed partial class MarkdownViewer : UserControl
 
     private static void OnViewportOwnershipChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        if (d is not MarkdownViewer viewer || viewer._renderer is null)
+        if (d is not MarkdownViewer viewer || viewer._rendererSlot.Current is null)
         {
             return;
         }
 
-        if (!viewer.TryDisposeRendererFromLifecycle())
+        if (!viewer._rendererSlot.TryRetireFromLifecycle())
             return;
 
         viewer.QueueRendererCreation();
@@ -773,7 +658,7 @@ public sealed partial class MarkdownViewer : UserControl
         {
             RemoteImageInfoBar.IsOpen = false;
         }
-        if (!_rendererDisposalFaulted && RenderErrorInfoBar is not null)
+        if (!_rendererSlot.IsDisposalFaulted && RenderErrorInfoBar is not null)
         {
             RenderErrorInfoBar.IsOpen = false;
         }
@@ -785,10 +670,10 @@ public sealed partial class MarkdownViewer : UserControl
         // README preview must start at its own top; preserving a prior repo's
         // anchor would also make lazy layout and image-readiness target the
         // wrong first viewport. Do not move an ancestor/page-owned scroller.
-        if (!OwnsScrollViewport || _renderer is null)
+        if (!OwnsScrollViewport || _rendererSlot.Current is null)
             return;
 
-        ScrollViewer? viewport = FindDescendantVerticalScrollViewer(_renderer);
+        ScrollViewer? viewport = FindDescendantVerticalScrollViewer(_rendererSlot.Current);
         if (viewport is { VerticalOffset: > 0.5 })
             viewport.ChangeView(null, 0, null, disableAnimation: true);
     }
@@ -804,7 +689,7 @@ public sealed partial class MarkdownViewer : UserControl
         {
             RemoteImageInfoBar.IsOpen = false;
         }
-        if (!_rendererDisposalFaulted && RenderErrorInfoBar is not null)
+        if (!_rendererSlot.IsDisposalFaulted && RenderErrorInfoBar is not null)
         {
             RenderErrorInfoBar.IsOpen = false;
         }
@@ -813,8 +698,8 @@ public sealed partial class MarkdownViewer : UserControl
     private void QueueRendererCreation()
     {
         if (_shutdownRequested ||
-            _renderer is not null ||
-            _rendererRetirementPending is not null ||
+            _rendererSlot.Current is not null ||
+            _rendererSlot.IsRetirementPending ||
             _rendererCreationQueued ||
             !_isLoaded)
         {
@@ -847,7 +732,7 @@ public sealed partial class MarkdownViewer : UserControl
 
         // A failed teardown can latch the underlying control's disposed state
         // before it has released every resource. Never reattach that instance.
-        if (_rendererDisposalFaulted)
+        if (_rendererSlot.IsDisposalFaulted)
         {
             ShowRendererDisposalFailure();
             return;
@@ -856,35 +741,36 @@ public sealed partial class MarkdownViewer : UserControl
         // The old control is already disposed, but its published snapshot may
         // still be releasing device resources on the pool. Do not reattach it
         // if this viewer is loaded again before that retirement completes.
-        if (_rendererRetirementPending is not null)
+        if (_rendererSlot.IsRetirementPending)
             return;
 
-        if (_renderer is not null)
+        if (_rendererSlot.Current is { } current)
         {
-            if (!RendererHost.Children.Contains(_renderer))
+            if (!RendererHost.Children.Contains(current))
             {
-                EnsureRendererLoadedSettingsHandler(_renderer);
-                RendererHost.Children.Add(_renderer);
+                EnsureRendererLoadedSettingsHandler(current);
+                RendererHost.Children.Add(current);
                 ApplyRendererSettings();
             }
 
             return;
         }
 
+        MarkdownRendererControl renderer;
         if (OwnsScrollViewport)
         {
-            _renderer = new MarkdownScrollView().UseGitHubReadme(SharedGitHubEngine);
+            renderer = new MarkdownScrollView().UseGitHubReadme(SharedGitHubEngine);
         }
         else
         {
-            _renderer = new MarkdownDocumentView().UseGitHubReadme(SharedGitHubEngine);
+            renderer = new MarkdownDocumentView().UseGitHubReadme(SharedGitHubEngine);
         }
-        RecordRendererCreated();
-        _renderer.Theme = _theme;
+        _rendererSlot.Attach(renderer);
+        renderer.Theme = _theme;
         // GitHub articles use 16-DIP paragraph spacing, while list paragraphs
         // collapse into the list-item flow. Keep JitHub's compact list token
         // without shortening standalone paragraphs.
-        _renderer.StyleSheet = new MarkdownStyleSheet(
+        renderer.StyleSheet = new MarkdownStyleSheet(
             new MarkdownStyleRule[]
             {
                 new MarkdownStyleRule(
@@ -894,35 +780,35 @@ public sealed partial class MarkdownViewer : UserControl
                         Margin = ResolveThickness("AppMarkdownBodyMargin", new Thickness(0, 0, 0, 8)),
                     }),
             });
-        _renderer.StringProvider = JitHubMarkdownStringProvider.Instance;
+        renderer.StringProvider = JitHubMarkdownStringProvider.Instance;
         ApplyRendererResources();
-        _renderer.IsSelectionEnabled = IsSelectionEnabled;
-        _renderer.CodeBlockChromeMode = CodeBlockChromeMode.Enhanced;
-        _renderer.CodeBlockLineNumberMode = CodeBlockLineNumberMode.AutoMultiline;
-        _renderer.IsCodeBlockCopyEnabled = IsCodeBlockCopyEnabled;
-        _renderer.ImageResolver = _imageResolver;
-        _renderer.SvgRenderer = JitHubMarkdownRuntime.SvgRenderer;
-        _renderer.RasterDecoder = JitHubMarkdownRuntime.RasterDecoder;
-        _renderer.PerformanceSession = SharedPerformanceSession;
+        renderer.IsSelectionEnabled = IsSelectionEnabled;
+        renderer.CodeBlockChromeMode = CodeBlockChromeMode.Enhanced;
+        renderer.CodeBlockLineNumberMode = CodeBlockLineNumberMode.AutoMultiline;
+        renderer.IsCodeBlockCopyEnabled = IsCodeBlockCopyEnabled;
+        renderer.ImageResolver = _imageResolver;
+        renderer.SvgRenderer = JitHubMarkdownRuntime.SvgRenderer;
+        renderer.RasterDecoder = JitHubMarkdownRuntime.RasterDecoder;
+        renderer.PerformanceSession = SharedPerformanceSession;
         MarkdownViewerDocumentPayload? documentPayload = _documentPayload;
-        _renderer.ImageBaseUri = GetBaseUri(documentPayload is null ? BaseUrl : documentPayload.BaseUrl);
-        _renderer.ImageDocumentPath = documentPayload is null ? DocumentPath : documentPayload.DocumentPath;
-        _renderer.ImageDocumentSource = documentPayload is null ? DocumentSource : documentPayload.DocumentSource;
-        _renderer.AllowThirdPartyRemoteImages = ShouldAllowThirdPartyRemoteImages();
-        _renderer.LinkClick += OnRendererLinkClick;
-        _renderer.DisclosureToggled += OnRendererDisclosureToggled;
-        _renderer.CopyCompleted += OnRendererCopyCompleted;
-        _renderer.ImageUnavailable += OnRendererImageUnavailable;
-        _renderer.RenderCompleted += OnRendererRenderCompleted;
-        _renderer.RenderFailed += OnRendererRenderFailed;
+        renderer.ImageBaseUri = GetBaseUri(documentPayload is null ? BaseUrl : documentPayload.BaseUrl);
+        renderer.ImageDocumentPath = documentPayload is null ? DocumentPath : documentPayload.DocumentPath;
+        renderer.ImageDocumentSource = documentPayload is null ? DocumentSource : documentPayload.DocumentSource;
+        renderer.AllowThirdPartyRemoteImages = ShouldAllowThirdPartyRemoteImages();
+        renderer.LinkClick += OnRendererLinkClick;
+        renderer.DisclosureToggled += OnRendererDisclosureToggled;
+        renderer.CopyCompleted += OnRendererCopyCompleted;
+        renderer.ImageUnavailable += OnRendererImageUnavailable;
+        renderer.RenderCompleted += OnRendererRenderCompleted;
+        renderer.RenderFailed += OnRendererRenderFailed;
         string automationId = MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId);
-        AutomationProperties.SetName(_renderer, MarkdownHostContract.GetAutomationName(HostKind));
-        AutomationProperties.SetAutomationId(_renderer, automationId);
+        AutomationProperties.SetName(renderer, MarkdownHostContract.GetAutomationName(HostKind));
+        AutomationProperties.SetAutomationId(renderer, automationId);
         MarkdownLifecycleAutomationBridge.SignalHostReady(automationId);
-        _renderer.HorizontalAlignment = HorizontalAlignment.Stretch;
-        _renderer.VerticalAlignment = VerticalAlignment.Stretch;
-        EnsureRendererLoadedSettingsHandler(_renderer);
-        RendererHost.Children.Add(_renderer);
+        renderer.HorizontalAlignment = HorizontalAlignment.Stretch;
+        renderer.VerticalAlignment = VerticalAlignment.Stretch;
+        EnsureRendererLoadedSettingsHandler(renderer);
+        RendererHost.Children.Add(renderer);
         ApplyRendererSettings();
     }
 
@@ -948,7 +834,7 @@ public sealed partial class MarkdownViewer : UserControl
 
     private void OnRendererLoadedForSettings(object? sender, RoutedEventArgs e)
     {
-        if (sender is not MarkdownRendererControl renderer || !ReferenceEquals(renderer, _renderer))
+        if (sender is not MarkdownRendererControl renderer || !ReferenceEquals(renderer, _rendererSlot.Current))
             return;
 
         renderer.Loaded -= OnRendererLoadedForSettings;
@@ -982,7 +868,7 @@ public sealed partial class MarkdownViewer : UserControl
         // admitting a replacement renderer.
         if (ticket != _rendererLayoutSettingsTicket ||
             !ReferenceEquals(renderer, _rendererLayoutSettingsTarget) ||
-            !ReferenceEquals(renderer, _renderer) ||
+            !ReferenceEquals(renderer, _rendererSlot.Current) ||
             !_rendererLayoutSettingsHandlerAttached)
             return;
 
@@ -1015,210 +901,36 @@ public sealed partial class MarkdownViewer : UserControl
             renderer.LayoutUpdated -= handler;
     }
 
-    private void DisposeRenderer()
+    IMarkdownUiDispatcher? IMarkdownRendererSlotHost<MarkdownRendererControl>.Dispatcher =>
+        DispatcherQueueMarkdownUiDispatcher.From(DispatcherQueue);
+
+    void IMarkdownRendererSlotHost<MarkdownRendererControl>.DetachRenderer(MarkdownRendererControl renderer)
     {
-        var renderer = _renderer;
-        if (renderer is null)
-        {
-            return;
-        }
-
-        // Repeated Unloaded/shutdown paths must join the original drain rather
-        // than start a second one or release the same renderer twice.
-        if (ReferenceEquals(_rendererRetirementPending, renderer))
-            return;
-
-        Microsoft.UI.Dispatching.DispatcherQueue? retirementDispatcher = DispatcherQueue;
-        _rendererRetirementPending = renderer;
-        Task retirementCompletion;
-        Task? resourceRelease = null;
-        try
-        {
-            retirementCompletion = MarkdownRendererDisposalCommit.Execute(
-                detachAndDispose: () =>
-                {
-                    renderer.Loaded -= OnRendererLoadedForSettings;
-                    ClearRendererLayoutSettingsHandler();
-                    _rendererLoadedSettingsHandlerAttached = false;
-                    _rendererInitialLayoutReady = false;
-                    renderer.LinkClick -= OnRendererLinkClick;
-                    renderer.DisclosureToggled -= OnRendererDisclosureToggled;
-                    renderer.CopyCompleted -= OnRendererCopyCompleted;
-                    renderer.ImageUnavailable -= OnRendererImageUnavailable;
-                    renderer.RenderCompleted -= OnRendererRenderCompleted;
-                    renderer.RenderFailed -= OnRendererRenderFailed;
-                    RendererHost.Children.Remove(renderer);
-                    // Throws when the view could not finish teardown; the task
-                    // completes when the resources it released are freed.
-                    resourceRelease = renderer.DisposeAsync().AsTask();
-                },
-                disposalCompletedSuccessfully: () => resourceRelease is not null,
-                retirementBegan: () => _renderer = null,
-                drainRetiredResources: () => resourceRelease ??
-                    throw new InvalidOperationException("The Markdown renderer returned no resource-release task."),
-                releaseTracking: () => ReleaseRendererTrackingOnDispatcherAsync(renderer, retirementDispatcher));
-        }
-        catch
-        {
-            // If the view did not finish teardown, the existing retry/failure
-            // path still owns this renderer. If retirement had already begun,
-            // retain the pending latch and active count.
-            if (resourceRelease is null)
-                _rendererRetirementPending = null;
-            throw;
-        }
-
-        UiTaskGuard.Observe(
-            ObserveRendererRetirementAsync(renderer, retirementCompletion, retirementDispatcher),
-            "ui-markdown-retirement");
+        renderer.Loaded -= OnRendererLoadedForSettings;
+        ClearRendererLayoutSettingsHandler();
+        _rendererLoadedSettingsHandlerAttached = false;
+        _rendererInitialLayoutReady = false;
+        renderer.LinkClick -= OnRendererLinkClick;
+        renderer.DisclosureToggled -= OnRendererDisclosureToggled;
+        renderer.CopyCompleted -= OnRendererCopyCompleted;
+        renderer.ImageUnavailable -= OnRendererImageUnavailable;
+        renderer.RenderCompleted -= OnRendererRenderCompleted;
+        renderer.RenderFailed -= OnRendererRenderFailed;
+        RendererHost.Children.Remove(renderer);
     }
 
-    private Task ReleaseRendererTrackingOnDispatcherAsync(
-        MarkdownRendererControl renderer,
-        Microsoft.UI.Dispatching.DispatcherQueue? dispatcher)
+    void IMarkdownRendererSlotHost<MarkdownRendererControl>.OnRendererReleased()
     {
-        if (dispatcher is null)
-        {
-            return Task.FromException(new InvalidOperationException(
-                "The Markdown viewer dispatcher was unavailable before renderer retirement completed."));
-        }
-
-        if (dispatcher.HasThreadAccess)
-        {
-            ReleaseRendererTracking(renderer);
-            return Task.CompletedTask;
-        }
-
-        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        if (!dispatcher.TryEnqueue(() =>
-            {
-                try
-                {
-                    ReleaseRendererTracking(renderer);
-                    completion.TrySetResult();
-                }
-                catch (Exception exception)
-                {
-                    completion.TrySetException(exception);
-                }
-            }))
-        {
-            completion.TrySetException(new InvalidOperationException(
-                "The Markdown viewer dispatcher rejected renderer-retirement completion."));
-        }
-
-        return completion.Task;
-    }
-
-    private void ReleaseRendererTracking(MarkdownRendererControl renderer)
-    {
-        if (_renderer is not null ||
-            !ReferenceEquals(_rendererRetirementPending, renderer))
-        {
-            throw new InvalidOperationException(
-                "The Markdown renderer changed before its snapshot retirement completed.");
-        }
-
-        _renderer = null;
-        _rendererRetirementPending = null;
-        RecordRendererDisposed();
-
-        // A fast unload/reload or viewport ownership change can request a new
-        // renderer while the old snapshot drains. Recreate only after its
-        // ownership has been fully released.
-        if (_isLoaded && !_shutdownRequested && !_rendererDisposalFaulted)
+        if (_isLoaded && !_shutdownRequested && !_rendererSlot.IsDisposalFaulted)
             QueueRendererCreation();
     }
 
-    private async Task ObserveRendererRetirementAsync(
-        MarkdownRendererControl renderer,
-        Task retirementCompletion,
-        Microsoft.UI.Dispatching.DispatcherQueue? dispatcher)
+    void IMarkdownRendererSlotHost<MarkdownRendererControl>.OnRendererTeardownFaulted(Exception exception)
     {
-        try
-        {
-            await retirementCompletion.ConfigureAwait(false);
-        }
-        catch (Exception exception)
-        {
-            try
-            {
-                Trace.TraceError(
-                    "Markdown renderer snapshot retirement failed: {0}; HRESULT=0x{1:X8}",
-                    exception.GetType().Name,
-                    exception.HResult);
-
-                void ReportFailure()
-                {
-                    try
-                    {
-                        if (!ReferenceEquals(_rendererRetirementPending, renderer))
-                            return;
-
-                        _rendererDisposalFaulted = true;
-                        ShowRendererDisposalFailure();
-                        MarkdownLifecycleAutomationBridge.RecordRenderFailure(
-                            MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId),
-                            new InvalidOperationException(
-                                $"Snapshot retirement failed with {exception.GetType().Name} " +
-                                $"(HRESULT 0x{exception.HResult:X8})."));
-                    }
-                    catch (Exception reportingException)
-                    {
-                        Trace.TraceError(
-                            "Markdown renderer retirement failure reporting failed: {0}; HRESULT=0x{1:X8}",
-                            reportingException.GetType().Name,
-                            reportingException.HResult);
-                    }
-                }
-
-                if (dispatcher is { HasThreadAccess: true })
-                {
-                    ReportFailure();
-                }
-                else if (dispatcher is null || !dispatcher.TryEnqueue(ReportFailure))
-                {
-                    // Keep the active-renderer count latched. The close path will
-                    // therefore skip shared-provider teardown rather than treating
-                    // an unreported or rejected completion as success.
-                    Trace.TraceError("Markdown viewer dispatcher rejected retirement-failure reporting.");
-                }
-            }
-            catch (Exception observerException)
-            {
-                // This observer is intentionally terminal: even diagnostics
-                // failure must not surface as an unobserved task exception.
-                try
-                {
-                    Trace.TraceError(
-                        "Markdown renderer retirement observer failed: {0}; HRESULT=0x{1:X8}",
-                        observerException.GetType().Name,
-                        observerException.HResult);
-                }
-                catch
-                {
-                }
-            }
-        }
-    }
-
-    private bool TryDisposeRendererFromLifecycle()
-    {
-        try
-        {
-            DisposeRenderer();
-            return true;
-        }
-        catch (Exception exception)
-        {
-            _rendererDisposalFaulted = true;
-            ShowRendererDisposalFailure();
-            MarkdownLifecycleAutomationBridge.RecordRenderFailure(
-                MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId),
-                exception);
-            Trace.TraceError("Markdown renderer disposal failed during a lifecycle transition: {0}", exception);
-            return false;
-        }
+        ShowRendererDisposalFailure();
+        MarkdownLifecycleAutomationBridge.RecordRenderFailure(
+            MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId),
+            exception);
     }
 
     private void ShowRendererDisposalFailure()
@@ -1262,16 +974,16 @@ public sealed partial class MarkdownViewer : UserControl
 
     private void ApplyRendererSettings()
     {
-        if (_rendererDisposalFaulted)
+        if (_rendererSlot.IsDisposalFaulted)
             return;
 
-        if (_renderer is null)
+        if (_rendererSlot.Current is not { } renderer)
         {
             QueueRendererCreation();
             return;
         }
 
-        if (!_renderer.IsLoaded || !_rendererInitialLayoutReady)
+        if (!renderer.IsLoaded || !_rendererInitialLayoutReady)
         {
             // A source tick is meaningful only when Markdown assignment can
             // request the pipeline at its measured width. The one-shot
@@ -1285,7 +997,7 @@ public sealed partial class MarkdownViewer : UserControl
         MarkdownDocumentSource? documentSource = documentPayload is null ? DocumentSource : documentPayload.DocumentSource;
         string? baseUrl = documentPayload is null ? BaseUrl : documentPayload.BaseUrl;
         string markdown = GetEffectiveMarkdown(documentPayload is null ? Text : documentPayload.Markdown);
-        bool markdownChanged = !string.Equals(_renderer.Markdown, markdown, StringComparison.Ordinal);
+        bool markdownChanged = !string.Equals(renderer.Markdown, markdown, StringComparison.Ordinal);
         if (markdownChanged)
         {
             _lastAppliedMarkdown = markdown;
@@ -1297,53 +1009,53 @@ public sealed partial class MarkdownViewer : UserControl
         // Apply every renderer setting before assigning Markdown. Several of
         // these properties request a rebuild and advance the pipeline
         // generation; assigning the document last keeps one final generation.
-        if (_renderer.IsSelectionEnabled != IsSelectionEnabled)
-            _renderer.IsSelectionEnabled = IsSelectionEnabled;
+        if (renderer.IsSelectionEnabled != IsSelectionEnabled)
+            renderer.IsSelectionEnabled = IsSelectionEnabled;
         CodeBlockChromeMode chromeMode = CodeBlockChromeMode.Enhanced;
         CodeBlockLineNumberMode lineNumberMode = CodeBlockLineNumberMode.AutoMultiline;
         bool copyEnabled = IsCodeBlockCopyEnabled;
-        if (_renderer.CodeBlockChromeMode != chromeMode)
-            _renderer.CodeBlockChromeMode = chromeMode;
-        if (_renderer.CodeBlockLineNumberMode != lineNumberMode)
-            _renderer.CodeBlockLineNumberMode = lineNumberMode;
-        if (_renderer.IsCodeBlockCopyEnabled != copyEnabled)
-            _renderer.IsCodeBlockCopyEnabled = copyEnabled;
+        if (renderer.CodeBlockChromeMode != chromeMode)
+            renderer.CodeBlockChromeMode = chromeMode;
+        if (renderer.CodeBlockLineNumberMode != lineNumberMode)
+            renderer.CodeBlockLineNumberMode = lineNumberMode;
+        if (renderer.IsCodeBlockCopyEnabled != copyEnabled)
+            renderer.IsCodeBlockCopyEnabled = copyEnabled;
         Style? copyButtonStyle = TryResolveResource("AppToolbarButtonStyle", out object? copyStyle)
             ? copyStyle as Style
             : null;
-        if (!ReferenceEquals(_renderer.CodeBlockCopyButtonStyle, copyButtonStyle))
-            _renderer.CodeBlockCopyButtonStyle = copyButtonStyle;
+        if (!ReferenceEquals(renderer.CodeBlockCopyButtonStyle, copyButtonStyle))
+            renderer.CodeBlockCopyButtonStyle = copyButtonStyle;
         var codeHighlighter = IsSyntaxHighlightingEnabled
             ? JitHubMarkdownRuntime.CodeHighlighter
             : null;
-        if (!ReferenceEquals(_renderer.CodeHighlighter, codeHighlighter))
-            _renderer.CodeHighlighter = codeHighlighter;
-        if (_renderer.IsCodeBlockSyntaxHighlightingEnabled != IsSyntaxHighlightingEnabled)
-            _renderer.IsCodeBlockSyntaxHighlightingEnabled = IsSyntaxHighlightingEnabled;
+        if (!ReferenceEquals(renderer.CodeHighlighter, codeHighlighter))
+            renderer.CodeHighlighter = codeHighlighter;
+        if (renderer.IsCodeBlockSyntaxHighlightingEnabled != IsSyntaxHighlightingEnabled)
+            renderer.IsCodeBlockSyntaxHighlightingEnabled = IsSyntaxHighlightingEnabled;
 
-        if (!ReferenceEquals(_renderer.ImageResolver, _imageResolver))
-            _renderer.ImageResolver = _imageResolver;
+        if (!ReferenceEquals(renderer.ImageResolver, _imageResolver))
+            renderer.ImageResolver = _imageResolver;
         IMarkdownSvgRenderer svgRenderer = JitHubMarkdownRuntime.SvgRenderer;
-        if (!ReferenceEquals(_renderer.SvgRenderer, svgRenderer))
-            _renderer.SvgRenderer = svgRenderer;
+        if (!ReferenceEquals(renderer.SvgRenderer, svgRenderer))
+            renderer.SvgRenderer = svgRenderer;
         MarkdownRenderer.Performance.MarkdownPerformanceSession performanceSession = SharedPerformanceSession;
-        if (!ReferenceEquals(_renderer.PerformanceSession, performanceSession))
-            _renderer.PerformanceSession = performanceSession;
+        if (!ReferenceEquals(renderer.PerformanceSession, performanceSession))
+            renderer.PerformanceSession = performanceSession;
         Uri imageBaseUri = GetBaseUri(baseUrl);
-        if (!Equals(_renderer.ImageBaseUri, imageBaseUri))
-            _renderer.ImageBaseUri = imageBaseUri;
-        if (!string.Equals(_renderer.ImageDocumentPath, documentPath, StringComparison.Ordinal))
-            _renderer.ImageDocumentPath = documentPath;
-        if (!Equals(_renderer.ImageDocumentSource, documentSource))
-            _renderer.ImageDocumentSource = documentSource;
+        if (!Equals(renderer.ImageBaseUri, imageBaseUri))
+            renderer.ImageBaseUri = imageBaseUri;
+        if (!string.Equals(renderer.ImageDocumentPath, documentPath, StringComparison.Ordinal))
+            renderer.ImageDocumentPath = documentPath;
+        if (!Equals(renderer.ImageDocumentSource, documentSource))
+            renderer.ImageDocumentSource = documentSource;
         bool allowThirdPartyRemoteImages = ShouldAllowThirdPartyRemoteImages();
-        if (_renderer.AllowThirdPartyRemoteImages != allowThirdPartyRemoteImages)
-            _renderer.AllowThirdPartyRemoteImages = allowThirdPartyRemoteImages;
+        if (renderer.AllowThirdPartyRemoteImages != allowThirdPartyRemoteImages)
+            renderer.AllowThirdPartyRemoteImages = allowThirdPartyRemoteImages;
 
-        _renderer.Markdown = markdown;
-        AutomationProperties.SetName(_renderer, MarkdownHostContract.GetAutomationName(HostKind));
+        renderer.Markdown = markdown;
+        AutomationProperties.SetName(renderer, MarkdownHostContract.GetAutomationName(HostKind));
         AutomationProperties.SetAutomationId(
-            _renderer,
+            renderer,
             MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId));
     }
 
@@ -1622,7 +1334,7 @@ public sealed partial class MarkdownViewer : UserControl
 
     private void OnRendererRenderCompleted(object? sender, EventArgs e)
     {
-        if (_rendererDisposalFaulted)
+        if (_rendererSlot.IsDisposalFaulted)
             return;
 
         RenderErrorInfoBar.IsOpen = false;
@@ -1654,7 +1366,7 @@ public sealed partial class MarkdownViewer : UserControl
 
     private void OnRendererRenderFailed(object? sender, MarkdownRenderFailedEventArgs e)
     {
-        if (_rendererDisposalFaulted)
+        if (_rendererSlot.IsDisposalFaulted)
             return;
 
         MarkdownLifecycleAutomationBridge.RecordRenderFailure(
@@ -1679,7 +1391,7 @@ public sealed partial class MarkdownViewer : UserControl
 
     private void RetryRenderButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_rendererDisposalFaulted)
+        if (_rendererSlot.IsDisposalFaulted)
             return;
 
         RenderErrorInfoBar.IsOpen = false;
@@ -1688,17 +1400,17 @@ public sealed partial class MarkdownViewer : UserControl
             "markdown.action.executed",
             TelemetryTaxonomy.Actions.Retry,
             TelemetryTaxonomy.Results.Queued);
-        _renderer?.RequestRebuild();
+        _rendererSlot.Current?.RequestRebuild();
     }
 
     private void LoadRemoteImagesButton_Click(object sender, RoutedEventArgs e)
     {
         _remoteContentConsent.Grant();
         RemoteImageInfoBar.IsOpen = false;
-        if (_renderer is not null)
+        if (_rendererSlot.Current is not null)
         {
-            _renderer.AllowThirdPartyRemoteImages = true;
-            _renderer.RequestRebuild();
+            _rendererSlot.Current.AllowThirdPartyRemoteImages = true;
+            _rendererSlot.Current.RequestRebuild();
         }
 
         TrackMarkdownEvent(
@@ -1876,12 +1588,12 @@ public sealed partial class MarkdownViewer : UserControl
 
     private void ApplyRendererResources()
     {
-        if (_renderer is null)
+        if (_rendererSlot.Current is null)
         {
             return;
         }
 
-        ResourceDictionary resources = _renderer.Resources;
+        ResourceDictionary resources = _rendererSlot.Current.Resources;
         RemoveLocalRendererResources(resources);
 
         if (TryResolveHostSurfaceBrush(out SolidColorBrush? hostSurface) && hostSurface is not null)
