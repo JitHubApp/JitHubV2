@@ -101,6 +101,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private readonly CanvasEvents _canvasEvents;
     private readonly CanvasInvalidation _canvasInvalidation;
     private readonly GeometryRecovery _geometryRecovery;
+    private readonly InteractiveTextAdorner _textAdorner;
     private readonly VisibleImageReadiness _imageReadiness;
     private readonly DeferredSceneReadiness _deferredScenes;
     private readonly BlockScrollNavigation _blockScroll;
@@ -452,8 +453,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         AttachPerformanceSessionDisposalNotification();
         RequestRebuild(RebuildReason.Full);
         if (_selection.IsActive)
-            UpdateSelectionOverlay();
-        else if (HasInteractiveTextAdornerContent())
+            _textAdorner.UpdateSelectionOverlay();
+        else if (_textAdorner.HasContent())
             _adorner.InvalidateGeometry();
     }
 
@@ -1219,6 +1220,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _imageLoadCompletion = new ImageLoadCompletion(this, _lifetime, _published, _layoutCommit, _imageSubscriptions, _imageRelayout);
         _imageSubscriptions.LoadCompleted += _imageLoadCompletion.OnLoadCompleted;
         _geometryRecovery = new GeometryRecovery(_lifetime, _published, _surface, _pointerInput, _vectorCapacity, _horizontalOverflowDrag, _focusGeometryWork, _overflowScroll, _focusRing, _adorner, _layoutCommit, _imageSubscriptions, _lazyLayout, _imageRelayout, _interactionReset, _dragShield, _contextMenu, _abbreviationTooltip, _cursor, _handles, _automation, _deviceRecovery, _rebuild);
+        _textAdorner = new InteractiveTextAdorner(_surface, _published, _selection, _touchSelection, _hover, _focus, _adorner, _geometryRecovery);
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         Loaded += (_, _) => OnLoadedInternal();
@@ -1514,9 +1516,9 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     bool IPointerInteractionHost.TryGetVectorPointerState(Point point, out bool linked, out bool selectable)
         => TryGetVectorPointerState(point, out linked, out selectable);
 
-    void IPointerInteractionHost.InvalidateInteractiveTextAdorner() => InvalidateInteractiveTextAdorner();
+    void IPointerInteractionHost.InvalidateInteractiveTextAdorner() => _textAdorner.Invalidate();
 
-    void IPointerInteractionHost.UpdateSelectionOverlay() => UpdateSelectionOverlay();
+    void IPointerInteractionHost.UpdateSelectionOverlay() => _textAdorner.UpdateSelectionOverlay();
 
     void IPointerInteractionHost.ClearSelectionForExternalInteraction() => _interactionReset.ClearSelectionForExternalInteraction();
 
@@ -1649,7 +1651,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     Windows.UI.Color? IFocusRingHost.FocusVisualColor => _published.Theme?.FocusVisualColor;
 
-    void IFocusRingHost.InvalidateInteractiveTextAdorner() => InvalidateInteractiveTextAdorner();
+    void IFocusRingHost.InvalidateInteractiveTextAdorner() => _textAdorner.Invalidate();
 
     void IFocusRingHost.RequestFocusGeometryRetry() => _focusGeometryWork.RequestRetry();
 
@@ -1661,7 +1663,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     bool IHostedElementFocusHost.FocusRenderer() => Focus(FocusState.Keyboard);
 
-    void IHorizontalOverflowScrollHost.UpdateSelectionOverlay() => UpdateSelectionOverlay();
+    void IHorizontalOverflowScrollHost.UpdateSelectionOverlay() => _textAdorner.UpdateSelectionOverlay();
 
     void IHorizontalOverflowScrollHost.UpdateFocusRing() => _focusRing.Update();
 
@@ -1809,7 +1811,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     void IRasterPlacementHost.ApplySnapshotSize(Size size) => ApplySnapshotSize(size);
 
     void IRasterPlacementHost.RefreshInteractiveTextAdornerAfterLayoutChange() =>
-        RefreshInteractiveTextAdornerAfterLayoutChange();
+        _textAdorner.RefreshAfterLayoutChange();
 
     void IRasterPlacementHost.InvalidateAutomationLayout() => _automation.InvalidateLayout();
 
@@ -1919,7 +1921,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     void ILayoutCommitHost.ScheduleVisibleCodeBlockHighlighting() => ScheduleVisibleCodeBlockHighlighting();
 
     void ILayoutCommitHost.RefreshInteractiveTextAdornerAfterLayoutChange() =>
-        RefreshInteractiveTextAdornerAfterLayoutChange();
+        _textAdorner.RefreshAfterLayoutChange();
 
     void ILayoutCommitHost.InvalidateAutomationLayout() => _automation.InvalidateLayout();
 
@@ -2053,7 +2055,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         if (_selection.IsActive)
             MarkdownSelectionCoordinator.ClearSelectionsExcept(this);
 
-        UpdateSelectionOverlay();
+        _textAdorner.UpdateSelectionOverlay();
         _automation.QueueSelectionChanged();
     }
 
@@ -2913,7 +2915,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
                 generation,
                 _rebuild.HasPending);
 
-            UpdateSelectionOverlay();
+            _textAdorner.UpdateSelectionOverlay();
             if (restoreTouchSelectionPresentation)
                 _handles.Update();
         }
@@ -2979,7 +2981,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
             // has visible, pending, or interactive state that can change.
             // UpdateSelectionAdornerViewport includes the invalidation, so do
             // not issue a second request for the same scroll callback.
-            if (ShouldRefreshSelectionAdornerForScroll())
+            if (_textAdorner.ShouldRefreshForScroll())
                 _adorner.InvalidateGeometry();
             if (measure)
                 afterAdorner = GC.GetAllocatedBytesForCurrentThread();
@@ -3163,34 +3165,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         double percent)
         => _overflowScroll.SetPercentForAutomation(target, percent);
 
-    private void InvalidateInteractiveTextAdorner()
-    {
-        if (_surface.Overlay is null)
-            return;
-
-        if (!_adorner.IsCreated && !_selection.IsActive &&
-            _hover.Run is not LinkRun && !_focus.TryGetFocusedLink(out _, out _))
-            return;
-
-        _adorner.Invalidate();
-    }
-
-    private void RefreshInteractiveTextAdornerAfterLayoutChange()
-    {
-        // Lazy realization and image measurement can move text without replacing
-        // the snapshot. Recompute selection geometry before redrawing the
-        // viewport-bounded overlay; merely moving the surface would retain stale
-        // highlight/text pixels at the old block positions.
-        if (_selection.IsActive)
-        {
-            UpdateSelectionOverlay();
-            return;
-        }
-
-        _adorner.InvalidateGeometry();
-        _adorner.Invalidate();
-    }
-
     bool ISelectionAdornerHost.IsDeviceRecoveryQueued => _deviceRecovery.IsQueued;
 
     bool ISelectionAdornerHost.HasFocusedLink => _focus.TryGetFocusedLink(out _, out _);
@@ -3213,90 +3187,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         CanvasDrawingSession drawingSession,
         Rect viewport,
         IReadOnlyList<SelectionBackgroundGeometry> selectionBackgrounds)
-        => PaintInteractiveDocumentState(snapshot, drawingSession, viewport, selectionBackgrounds);
-
-    /// <summary>
-    /// Syncs the selection adorner geometry. The adorner is a single stable
-    /// composition-surface child layered above the document text and below hosted controls.
-    /// Selection changes only mutate this in-memory rect list and invalidate
-    /// the adorner; they never invalidate the base document canvas or mutate
-    /// the XAML child tree during a drag.
-    /// </summary>
-    private void UpdateSelectionOverlay()
-    {
-        _adorner.MarkGeometryDirty();
-        if (_geometryRecovery.RequestIfRequired(_published.Snapshot))
-            return;
-        _adorner.Invalidate();
-    }
-
-    private bool HasInteractiveTextAdornerContent()
-        => (_selection.IsActive && _adorner.Rectangles.Count > 0) ||
-           _hover.HasLink ||
-           _focus.TryGetFocusedLink(out _, out _);
-
-    private bool ShouldRefreshSelectionAdornerForScroll()
-    {
-        bool hasHoveredLink = _hover.HasLink;
-        IReadOnlyList<Layout.FocusableItem>? focusableItems = _focus.Items;
-        bool hasFocusedLink = focusableItems is not null &&
-            (uint)_focus.FocusedIndex < (uint)focusableItems.Count &&
-            focusableItems[_focus.FocusedIndex].Kind == Layout.FocusableItemKind.Link;
-        bool hasVisibleAdorner = _adorner.IsVisible;
-        bool hasRetainedRectangles = _adorner.Rectangles.Count > 0;
-        bool hasPendingRefresh = _adorner.HasPendingRefresh;
-
-        return SelectionAdornerScrollRefreshPolicy.ShouldRefreshForScroll(
-            hasActiveSelection: _selection.IsActive,
-            hasHoveredLink: hasHoveredLink,
-            hasFocusedLink: hasFocusedLink,
-            hasVisibleAdorner: hasVisibleAdorner,
-            hasRetainedRectangles: hasRetainedRectangles,
-            hasTouchHandles: _touchSelection.ShouldShowHandles,
-            hasPendingRefresh: hasPendingRefresh);
-    }
-
-    private void PaintInteractiveDocumentState(
-        LayoutSnapshot snapshot,
-        CanvasDrawingSession drawingSession,
-        Rect viewport,
-        IReadOnlyList<SelectionBackgroundGeometry> selectionBackgrounds)
-    {
-        PaintLinkStateOverlay(drawingSession, viewport);
-        if (!_selection.IsActive || selectionBackgrounds.Count == 0)
-            return;
-
-        Color selectedBackground = _published.Theme?.SelectionHighlightColor
-            ?? Color.FromArgb(0xFF, 0x66, 0xAA, 0xE8);
-        Color selectedForeground = _published.Theme?.SelectionForegroundColor
-            ?? Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
-        bool highContrast = _published.Theme?.IsHighContrast ?? false;
-        foreach (SelectionBackgroundGeometry background in selectionBackgrounds)
-        {
-            Rect rectangle = background.Bounds;
-            if (rectangle.Right < viewport.Left || rectangle.Left > viewport.Right ||
-                rectangle.Bottom < viewport.Top || rectangle.Top > viewport.Bottom)
-            {
-                continue;
-            }
-
-            background.Paint(drawingSession, selectedBackground, highContrast);
-        }
-        snapshot.PaintSelectionForeground(
-            drawingSession,
-            _selection.Range.Normalized(),
-            selectedForeground,
-            viewport);
-    }
-
-    private void PaintLinkStateOverlay(CanvasDrawingSession drawingSession, Rect viewport)
-    {
-        if (_hover.TryGetLink(out var hover, out var hoverBox))
-            hoverBox.PaintLinkStateForeground(drawingSession, hover, focused: false, viewport);
-
-        if (_focus.TryGetFocusedLink(out var focusedBox, out var focusedLink))
-            focusedBox.PaintLinkStateForeground(drawingSession, focusedLink, focused: true, viewport);
-    }
+        => _textAdorner.PaintInteractiveDocumentState(snapshot, drawingSession, viewport, selectionBackgrounds);
 
     private void ResumePendingRebuildAfterPointerInteraction()
     {
