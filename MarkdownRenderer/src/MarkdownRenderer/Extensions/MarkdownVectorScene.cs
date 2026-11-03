@@ -67,6 +67,30 @@ public sealed class MarkdownVectorScene
         ArgumentNullException.ThrowIfNull(commands);
         ArgumentNullException.ThrowIfNull(semantics);
         ArgumentNullException.ThrowIfNull(links);
+        MarkdownVectorCommand[] copy = CopyNestedCommands(commands);
+        MarkdownVectorSemanticItem[] semanticCopy = CopySemantics(semantics);
+        int[] semanticDepths = ValidateSemanticHierarchy(semanticCopy);
+        ValidateCommandSemantics(copy, semanticCopy.Length);
+        MarkdownVectorLinkAction[] linkCopy = CopyLinks(
+            links,
+            semanticCopy,
+            out MarkdownVectorLinkAction?[] linkBySemanticIndex);
+
+        Width = width;
+        Height = height;
+        Baseline = baseline;
+        ReferenceFontSize = referenceFontSize;
+        Commands = new ReadOnlyCollection<MarkdownVectorCommand>(copy);
+        Viewport = viewport;
+        Semantics = new ReadOnlyCollection<MarkdownVectorSemanticItem>(semanticCopy);
+        Links = new ReadOnlyCollection<MarkdownVectorLinkAction>(linkCopy);
+        _linkBySemanticIndex = linkBySemanticIndex;
+        SemanticLinks = new ReadOnlyCollection<MarkdownVectorLinkAction?>(linkBySemanticIndex);
+        _semanticDepths = semanticDepths;
+    }
+
+    private static MarkdownVectorCommand[] CopyNestedCommands(IReadOnlyList<MarkdownVectorCommand> commands)
+    {
         var copy = new MarkdownVectorCommand[commands.Count];
         var scopeStack = new MarkdownVectorCommandKind[commands.Count];
         int scopeDepth = 0;
@@ -94,6 +118,11 @@ public sealed class MarkdownVectorScene
         if (scopeDepth != 0)
             throw new ArgumentException("Vector groups and clips must be closed.", nameof(commands));
 
+        return copy;
+    }
+
+    private static MarkdownVectorSemanticItem[] CopySemantics(IReadOnlyList<MarkdownVectorSemanticItem> semantics)
+    {
         var semanticCopy = new MarkdownVectorSemanticItem[semantics.Count];
         var sourceIds = new HashSet<uint>();
         for (int i = 0; i < semanticCopy.Length; i++)
@@ -103,16 +132,26 @@ public sealed class MarkdownVectorScene
                 throw new ArgumentException("Scene semantic identities and parent references must be valid.", nameof(semantics));
             semanticCopy[i] = item;
         }
-        int[] semanticDepths = ValidateSemanticHierarchy(semanticCopy);
 
-        for (int i = 0; i < copy.Length; i++)
+        return semanticCopy;
+    }
+
+    private static void ValidateCommandSemantics(MarkdownVectorCommand[] commands, int semanticCount)
+    {
+        for (int i = 0; i < commands.Length; i++)
         {
-            if (copy[i].SemanticIndex < -1 || copy[i].SemanticIndex >= semanticCopy.Length)
+            if (commands[i].SemanticIndex < -1 || commands[i].SemanticIndex >= semanticCount)
                 throw new ArgumentException("Scene commands must reference scene semantics.", nameof(commands));
         }
+    }
 
+    private static MarkdownVectorLinkAction[] CopyLinks(
+        IReadOnlyList<MarkdownVectorLinkAction> links,
+        MarkdownVectorSemanticItem[] semanticCopy,
+        out MarkdownVectorLinkAction?[] linkBySemanticIndex)
+    {
         var linkCopy = new MarkdownVectorLinkAction[links.Count];
-        var linkBySemanticIndex = new MarkdownVectorLinkAction?[semanticCopy.Length];
+        linkBySemanticIndex = new MarkdownVectorLinkAction?[semanticCopy.Length];
         for (int i = 0; i < linkCopy.Length; i++)
         {
             MarkdownVectorLinkAction link = links[i] ?? throw new ArgumentException("Scene links cannot contain null.", nameof(links));
@@ -135,17 +174,7 @@ public sealed class MarkdownVectorScene
             }
         }
 
-        Width = width;
-        Height = height;
-        Baseline = baseline;
-        ReferenceFontSize = referenceFontSize;
-        Commands = new ReadOnlyCollection<MarkdownVectorCommand>(copy);
-        Viewport = viewport;
-        Semantics = new ReadOnlyCollection<MarkdownVectorSemanticItem>(semanticCopy);
-        Links = new ReadOnlyCollection<MarkdownVectorLinkAction>(linkCopy);
-        _linkBySemanticIndex = linkBySemanticIndex;
-        SemanticLinks = new ReadOnlyCollection<MarkdownVectorLinkAction?>(linkBySemanticIndex);
-        _semanticDepths = semanticDepths;
+        return linkCopy;
     }
 
     /// <summary>Gets the scene width in device-independent units.</summary>
