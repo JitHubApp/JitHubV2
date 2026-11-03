@@ -109,79 +109,85 @@ internal sealed class ImageSourceLoader
         CancellationToken lifetimeToken = imageWork.Token;
         BitmapOutputWorkContext bitmapOutputWork = _outputAdmission.CaptureBitmapOutputWorkContext(
             lifetimeToken, expectedDemand: demand);
-
-        MarkdownImageResolution resolution;
-        MarkdownImageAsset? asset = null;
-        IMarkdownImageResolutionLease? sourceLease = null;
-        Task? resolverTask = null;
         var resolveContext = new MarkdownImageResolveContext(
             _context.ImageBaseUri,
             _context.ImageDocumentPath,
             _context.AllowThirdPartyRemoteImages,
             _context.ImageDocumentSource);
+        var state = new ImageResolveState(
+            resolver, resolveContext, demand, loadDemandGeneration, lifetimeToken, bitmapOutputWork);
+        if (!await TryResolveAsync(state).ConfigureAwait(false))
+            return;
 
-        ValueTask<MarkdownImageResolution> StartResolver(CancellationToken token)
-        {
-            ValueTask<MarkdownImageResolution> operation =
-                resolver.ResolveAsync(_url, resolveContext, token);
-            Task<MarkdownImageResolution> task = operation.AsTask();
-            resolverTask = task;
-            return new ValueTask<MarkdownImageResolution>(task);
-        }
-
-        ValueTask<IMarkdownImageResolutionLease> StartLeasedResolver(CancellationToken token)
-        {
-            var scope = (IMarkdownPerformanceDocumentScope)resolver;
-            ValueTask<IMarkdownImageResolutionLease> operation =
-                scope.ResolveWithSourceLeaseAsync(_url, resolveContext, token);
-            Task<IMarkdownImageResolutionLease> task = operation.AsTask();
-            resolverTask = task;
-            return new ValueTask<IMarkdownImageResolutionLease>(task);
-        }
-
+        // Keep original source ownership through preparation and actual Open,
+        // then release it before source-free Render. Fetch slots are not bytes.
+        state.ConsumerSourceLease = state.SourceLease;
         try
         {
-            if (resolver is IMarkdownPerformanceDocumentScope)
+            if (_host.IsDisposed)
+                return;
+
+            if (MarkdownImageCacheIdentityPolicy.CanUseSourceAfterResolution(state.Resolution))
             {
-                sourceLease = await ImageResolverDeadline.RunAsync(
-                        StartLeasedResolver,
+                LoadBuiltInFallback(state);
+                return;
+            }
+
+            await LoadResolvedAssetAsync(state).ConfigureAwait(false);
+        }
+        finally
+        {
+            ReleaseResolvedSource(state);
+        }
+    }
+
+    /// <returns><see langword="false"/> when the resolver was canceled, timed out or failed.</returns>
+    private async Task<bool> TryResolveAsync(ImageResolveState state)
+    {
+        try
+        {
+            if (state.Resolver is IMarkdownPerformanceDocumentScope)
+            {
+                state.SourceLease = await ImageResolverDeadline.RunAsync(
+                        token => StartLeasedResolver(state, token),
                         ImageResolverTimeout,
-                        lifetimeToken,
+                        state.LifetimeToken,
                         abandonedResultDisposer: static lease => lease.Dispose(),
                         abandonedCompletionObserver: cleanup =>
                             _host.TrackDetachedImageWork(cleanup, failRetirementOnFault: true))
                     .ConfigureAwait(false);
-                resolution = sourceLease.Resolution;
+                state.Resolution = state.SourceLease.Resolution;
             }
             else
             {
-                resolution = await ImageResolverDeadline.RunAsync(
-                    StartResolver,
+                state.Resolution = await ImageResolverDeadline.RunAsync(
+                    token => StartResolver(state, token),
                     ImageResolverTimeout,
-                    lifetimeToken)
+                    state.LifetimeToken)
                 .ConfigureAwait(false);
             }
+            return true;
         }
         catch (OperationCanceledException)
         {
             _host.ResetLoadAfterCancellation();
-            return;
+            return false;
         }
         catch (TimeoutException)
         {
             MarkdownDiagnostics.WriteLine("[ImageBox] image resolver timed out.");
             _host.ReportUnavailable(MarkdownImageUnavailableReason.Unavailable);
             _host.PublishFailure(cacheKey: string.Empty);
-            return;
+            return false;
         }
         catch (Exception ex)
         {
-            if (sourceLease is not null)
-                _host.TryImageCleanup(sourceLease.Dispose);
+            if (state.SourceLease is not null)
+                _host.TryImageCleanup(state.SourceLease.Dispose);
             MarkdownDiagnostics.WriteLine(
                 $"[ImageBox] image resolver failed: {ex.GetType().Name} {GraphicsDeviceErrors.FormatHResult(ex.HResult)}");
             _host.PublishFailure(cacheKey: string.Empty);
-            return;
+            return false;
         }
         finally
         {
@@ -189,109 +195,126 @@ internal sealed class ImageSourceLoader
             // helper observes a completed fault and otherwise adds a lease for
             // an operation that is still running. The current resolver lease
             // remains active until after this finally block.
-            if (resolverTask is not null)
-                _host.TrackDetachedImageWork(resolverTask);
+            if (state.ResolverTask is not null)
+                _host.TrackDetachedImageWork(state.ResolverTask);
             // A completed resolver task stores its source-bearing result.
             // Detached tracking owns only work still draining; this caller no
             // longer needs the task alias once resolution has returned.
-            resolverTask = null;
+            state.ResolverTask = null;
         }
+    }
 
-        // Keep original source ownership through preparation and actual Open,
-        // then release it before source-free Render. Fetch slots are not bytes.
-        IMarkdownImageResolutionLease? consumerSourceLease = sourceLease;
-        try
+    private ValueTask<MarkdownImageResolution> StartResolver(ImageResolveState state, CancellationToken token)
+    {
+        ValueTask<MarkdownImageResolution> operation =
+            state.Resolver.ResolveAsync(_url, state.ResolveContext, token);
+        Task<MarkdownImageResolution> task = operation.AsTask();
+        state.ResolverTask = task;
+        return new ValueTask<MarkdownImageResolution>(task);
+    }
+
+    private ValueTask<IMarkdownImageResolutionLease> StartLeasedResolver(
+        ImageResolveState state, CancellationToken token)
+    {
+        var scope = (IMarkdownPerformanceDocumentScope)state.Resolver;
+        ValueTask<IMarkdownImageResolutionLease> operation =
+            scope.ResolveWithSourceLeaseAsync(_url, state.ResolveContext, token);
+        Task<IMarkdownImageResolutionLease> task = operation.AsTask();
+        state.ResolverTask = task;
+        return new ValueTask<IMarkdownImageResolutionLease>(task);
+    }
+
+    // The resolver left this source to the built-in loader.
+    private void LoadBuiltInFallback(ImageResolveState state)
+    {
+        if (_host.BuiltInSource is not { } fallbackSource)
         {
-            if (_host.IsDisposed)
-                return;
-
-            if (MarkdownImageCacheIdentityPolicy.CanUseSourceAfterResolution(resolution))
-            {
-                if (_host.BuiltInSource is not { } fallbackSource)
-                {
-                    _host.PublishFailure(cacheKey: string.Empty);
-                    return;
-                }
-
-                _host.ActiveCacheKey = fallbackSource.CacheKey;
-
-                // Only sources the built-in loader is allowed to expose can consult
-                // its process-wide caches. This prevents a NotHandled HTTPS result
-                // from observing bytes cached by an earlier resolver-owned request.
-                if (fallbackSource.CanLoadWithoutResolver &&
-                    TryLoadFallbackFromProcessCache(fallbackSource.CacheKey, bitmapOutputWork))
-                {
-                    return;
-                }
-
-                LoadFromDefaultSource(fallbackSource, demand, loadDemandGeneration);
-                return;
-            }
-
-            asset = resolution.Asset;
-            if (asset is null || asset.Bytes.Length == 0)
-            {
-                _host.ReportUnavailable(resolution.UnavailableReason);
-                _host.PublishFailure(cacheKey: string.Empty);
-                return;
-            }
-
-            bool isSvg = ResolvedImageFormat.LooksLikeSvg(asset);
-            // Replace the constructor's source-URI hint as soon as the resolver has
-            // supplied the actual representation. This also covers warm raster-cache
-            // hits, which return before the decode path below.
-            _host.IsSvg = isSvg;
-            // Both SVG and raster cache reuse require the resolver's explicit
-            // security-partitioned identity. ResolvedUri is metadata, not an
-            // account boundary; an unkeyed asset remains local to this box.
-            string cacheKey = MarkdownImageCacheIdentityPolicy.GetResolvedAssetKey(asset);
-            _host.ActiveCacheKey = cacheKey;
-            if (cacheKey.Length > 0 && _resources.Failures.HasFailedUrl(cacheKey))
-            {
-                _host.PublishFailure(cacheKey: string.Empty);
-                return;
-            }
-
-            if (!isSvg && TryPublishCachedRasterBitmap(cacheKey, bitmapOutputWork))
-            {
-                return;
-            }
-
-            if (isSvg)
-            {
-                SvgOpenStageResult result = await _svgOpener.OpenAsync(
-                        asset.Bytes, intrinsicHint: default, securityPartitionKey: cacheKey,
-                        builtInSourceAliasKey: null, demand, loadDemandGeneration)
-                    .ConfigureAwait(false);
-                using SvgOpenedRenderWork? openedWork = result.Work;
-                // Clear source aliases before invoking user cleanup. A synchronous
-                // helper detaches and disposes the lease without leaving a disposed
-                // lease (whose Resolution may still own bytes) in this async frame.
-                asset = null;
-                resolution = default;
-                sourceLease = null;
-                DisposeCallerSource(ref consumerSourceLease);
-                if (result.Deferral is { } hostDeferral)
-                    _svgHostDeferral.DeferSvgHostLoad(hostDeferral);
-                else if (openedWork is not null)
-                    await _svgRenderer.RenderAsync(openedWork).ConfigureAwait(false);
-                return;
-            }
-
-            // A resolver can follow redirects to a representation whose format differs
-            // from the source URI suffix (for example, an *.svg URL that resolves to a
-            // transparent PNG). Once bytes have been resolved, their representation is
-            // authoritative and the pre-resolution URL hint must not leak into layout,
-            // accessibility, or subsequent cache decisions.
-            await _rasterLoader.LoadAsync(asset.Bytes, cacheKey, bitmapOutputWork).ConfigureAwait(false);
+            _host.PublishFailure(cacheKey: string.Empty);
+            return;
         }
-        finally
+
+        _host.ActiveCacheKey = fallbackSource.CacheKey;
+
+        // Only sources the built-in loader is allowed to expose can consult
+        // its process-wide caches. This prevents a NotHandled HTTPS result
+        // from observing bytes cached by an earlier resolver-owned request.
+        if (fallbackSource.CanLoadWithoutResolver &&
+            TryLoadFallbackFromProcessCache(fallbackSource.CacheKey, state.BitmapOutputWork))
         {
-            asset = null;
-            resolution = default;
-            sourceLease = null;
-            DisposeCallerSource(ref consumerSourceLease);
+            return;
         }
+
+        LoadFromDefaultSource(fallbackSource, state.Demand, state.LoadDemandGeneration);
+    }
+
+    private async Task LoadResolvedAssetAsync(ImageResolveState state)
+    {
+        state.Asset = state.Resolution.Asset;
+        if (state.Asset is null || state.Asset.Bytes.Length == 0)
+        {
+            _host.ReportUnavailable(state.Resolution.UnavailableReason);
+            _host.PublishFailure(cacheKey: string.Empty);
+            return;
+        }
+
+        bool isSvg = ResolvedImageFormat.LooksLikeSvg(state.Asset);
+        // Replace the constructor's source-URI hint as soon as the resolver has
+        // supplied the actual representation. This also covers warm raster-cache
+        // hits, which return before the decode path below.
+        _host.IsSvg = isSvg;
+        // Both SVG and raster cache reuse require the resolver's explicit
+        // security-partitioned identity. ResolvedUri is metadata, not an
+        // account boundary; an unkeyed asset remains local to this box.
+        string cacheKey = MarkdownImageCacheIdentityPolicy.GetResolvedAssetKey(state.Asset);
+        _host.ActiveCacheKey = cacheKey;
+        if (cacheKey.Length > 0 && _resources.Failures.HasFailedUrl(cacheKey))
+        {
+            _host.PublishFailure(cacheKey: string.Empty);
+            return;
+        }
+
+        if (!isSvg && TryPublishCachedRasterBitmap(cacheKey, state.BitmapOutputWork))
+        {
+            return;
+        }
+
+        if (isSvg)
+        {
+            await OpenAndRenderResolvedSvgAsync(state, cacheKey).ConfigureAwait(false);
+            return;
+        }
+
+        // A resolver can follow redirects to a representation whose format differs
+        // from the source URI suffix (for example, an *.svg URL that resolves to a
+        // transparent PNG). Once bytes have been resolved, their representation is
+        // authoritative and the pre-resolution URL hint must not leak into layout,
+        // accessibility, or subsequent cache decisions.
+        await _rasterLoader.LoadAsync(state.Asset.Bytes, cacheKey, state.BitmapOutputWork).ConfigureAwait(false);
+    }
+
+    private async Task OpenAndRenderResolvedSvgAsync(ImageResolveState state, string cacheKey)
+    {
+        SvgOpenStageResult result = await _svgOpener.OpenAsync(
+                state.Asset!.Bytes, intrinsicHint: default, securityPartitionKey: cacheKey,
+                builtInSourceAliasKey: null, state.Demand, state.LoadDemandGeneration)
+            .ConfigureAwait(false);
+        using SvgOpenedRenderWork? openedWork = result.Work;
+        // Clear source aliases before invoking user cleanup. A synchronous
+        // helper detaches and disposes the lease without leaving a disposed
+        // lease (whose Resolution may still own bytes) in this async frame.
+        ReleaseResolvedSource(state);
+        if (result.Deferral is { } hostDeferral)
+            _svgHostDeferral.DeferSvgHostLoad(hostDeferral);
+        else if (openedWork is not null)
+            await _svgRenderer.RenderAsync(openedWork).ConfigureAwait(false);
+    }
+
+    private static void ReleaseResolvedSource(ImageResolveState state)
+    {
+        state.Asset = null;
+        state.Resolution = default;
+        state.SourceLease = null;
+        DisposeCallerSource(ref state.ConsumerSourceLease);
     }
 
     private bool TryPublishCachedRasterBitmap(
