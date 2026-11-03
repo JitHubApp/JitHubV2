@@ -548,14 +548,8 @@ public sealed partial class MarkdownViewer : UserControl
     {
         try
         {
-            IGitHubService? gitHubService = Ioc.Default.GetService<IGitHubService>();
-            return gitHubService switch
-            {
-                GitHubService concreteService => concreteService.CreateMarkdownImageResolver(),
-                IGitHubMarkdownImageResolverProvider provider => provider.CreateMarkdownImageResolver(),
-                IMarkdownImageResolver resolver => resolver,
-                _ => DenyAllMarkdownImageResolver.Instance,
-            };
+            return Ioc.Default.GetService<IGitHubMarkdownImageResolverProvider>()?.CreateMarkdownImageResolver()
+                ?? DenyAllMarkdownImageResolver.Instance;
         }
         catch
         {

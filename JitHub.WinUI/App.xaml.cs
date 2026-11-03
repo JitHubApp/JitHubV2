@@ -245,7 +245,12 @@ public partial class App : Application
         services.AddSingleton<IDashboardWidgetLayoutService, DashboardWidgetLayoutService>();
         services.AddSingleton<ISettingsDiagnosticsService, SettingsDiagnosticsService>();
         services.AddSingleton<ISettingsSourceNavigationService, SettingsSourceNavigationService>();
-        services.AddSingleton<IGitHubService, GitHubService>();
+        services.AddSingleton<GitHubMarkdownImageResolver>();
+        services.AddSingleton<IGitHubMarkdownImageResolverProvider>(
+            static provider => provider.GetRequiredService<GitHubMarkdownImageResolver>());
+        services.AddSingleton<IGitHubService>(static provider => new GitHubService(
+            provider.GetRequiredService<IGitHubClientService>(),
+            provider.GetRequiredService<GitHubMarkdownImageResolver>()));
         services.AddSingleton<IAuthService, AuthService>();
         services.AddSingleton<IThemeService, ThemeService>();
         services.AddSingleton<ISettingsPreferencesService, SettingsPreferencesService>();

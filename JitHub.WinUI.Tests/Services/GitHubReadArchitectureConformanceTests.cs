@@ -174,6 +174,18 @@ public sealed partial class GitHubReadArchitectureConformanceTests
             return true;
         }
 
+        // Markdown image resolution moved out of GitHubService with exactly these
+        // repository-image reads; it gains no other direct client reads.
+        if (fileName.Equals("GitHubMarkdownImageResolver.cs", StringComparison.OrdinalIgnoreCase))
+        {
+            return method is "GetRepositoryContentAsync" or "GetBlobAsync";
+        }
+
+        if (fileName.Equals("GitHubRenderedReadmeImageMaps.cs", StringComparison.OrdinalIgnoreCase))
+        {
+            return method is "GetRenderedReadmeHtmlAsync";
+        }
+
         return false;
     }
 
