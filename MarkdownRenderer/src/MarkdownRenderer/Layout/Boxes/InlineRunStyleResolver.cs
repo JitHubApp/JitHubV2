@@ -13,83 +13,25 @@ internal static class InlineRunStyleResolver
 {
     internal static ElementStyle ResolveRunStyle(InlineContainerBox box, InlineRun run)
     {
-        ElementStyle resolved;
-        // A link or formatting run inside a heading inherits the heading's
-        // typography. Its own role supplies only the nested decoration/color;
-        // resolving Link as the base style would silently turn linked heading
-        // text back into body-sized text.
-        string headingKey = GetHeadingStyleKey(box, run);
-        bool inheritsHeading = headingKey.Length > 0;
-        var key = inheritsHeading
-            ? headingKey
-            : string.IsNullOrEmpty(run.ElementKey) ? box.ElementKey : run.ElementKey;
-        IReadOnlyList<string> baseAliases = inheritsHeading
-            ? box.StyleAliasKeys
-            : box.GetEffectiveRunAliases(run.InlineIndex);
-        resolved = box.Context.ThemeSnapshot.GetStyle(
-            key,
-            box.StyleContextKeys,
-            baseAliases,
-            box.CodeLanguage,
-            box.StyleState);
-        float? relativeInlineCodeScale = !inheritsHeading &&
-            run.ElementKey == MarkdownElementKeys.CodeInline
-                ? resolved.RelativeFontSizeScale
-                : null;
-        int modifierStart = 0;
-        if (inheritsHeading && !string.IsNullOrEmpty(run.ElementKey) &&
-            !string.Equals(run.ElementKey, headingKey, StringComparison.Ordinal))
-        {
-            ElementStyle ownStyle = box.Context.ThemeSnapshot.GetStyle(
-                run.ElementKey,
-                box.StyleContextKeys,
-                box.GetEffectiveRunAliases(run.InlineIndex),
-                box.CodeLanguage,
-                box.StyleState);
-            if (run.ElementKey == MarkdownElementKeys.CodeInline)
-                relativeInlineCodeScale = ownStyle.RelativeFontSizeScale;
-            resolved = InlineNestedStyleModifier.ApplyNestedStyleModifier(
-                resolved,
-                ownStyle,
-                run.ElementKey,
-                preserveCodeFontSize: inheritsHeading &&
-                    run.ElementKey == MarkdownElementKeys.CodeInline &&
-                    !box.Context.ThemeSnapshot.HasRelativeInlineCodeFontSizeRules,
-                deferRelativeInlineCodeFontSize: relativeInlineCodeScale.HasValue);
-        }
-        else if (!inheritsHeading && string.IsNullOrEmpty(run.ElementKey) &&
-                 run.StyleModifierKeys.Count > 0)
-        {
-            resolved = box.Context.ThemeSnapshot.GetStyle(
-                run.StyleModifierKeys[0],
-                box.StyleContextKeys,
-                box.GetEffectiveRunAliases(run.InlineIndex),
-                box.CodeLanguage,
-                box.StyleState);
-            modifierStart = 1;
-        }
-
+        ElementStyle resolved = ResolveBaseRunStyle(
+            box,
+            run,
+            out string headingKey,
+            out bool inheritsHeading,
+            out float? relativeInlineCodeScale,
+            out int modifierStart);
         float? absoluteInlineCodeFontSize =
             run.ElementKey == MarkdownElementKeys.CodeInline &&
             box.Context.ThemeSnapshot.HasRelativeInlineCodeFontSizeRules &&
             relativeInlineCodeScale is null
                 ? resolved.FontSize
                 : null;
-        float? scriptModifierContainingFontSize = null;
-        for (int index = modifierStart; index < run.StyleModifierKeys.Count; index++)
-        {
-            string modifierKey = run.StyleModifierKeys[index];
-            if (scriptModifierContainingFontSize is null && IsScriptStyleKey(modifierKey))
-                scriptModifierContainingFontSize = resolved.FontSize;
-
-            ElementStyle modifier = box.Context.ThemeSnapshot.GetStyle(
-                modifierKey,
-                box.StyleContextKeys,
-                box.GetEffectiveRunAliases(run.InlineIndex),
-                box.CodeLanguage,
-                box.StyleState);
-            resolved = InlineNestedStyleModifier.ApplyNestedStyleModifier(resolved, modifier, modifierKey);
-        }
+        resolved = ApplyRunStyleModifiers(
+            box,
+            run,
+            resolved,
+            modifierStart,
+            out float? scriptModifierContainingFontSize);
         float scriptFontSize = resolved.FontSize;
         bool appliedScriptFontSize = absoluteInlineCodeFontSize is null &&
             TryResolveRelativeScriptFontSize(
@@ -122,6 +64,101 @@ internal static class InlineRunStyleResolver
                 InlineNestedStyleModifier.ResolveRelativeInlineCodeFontSize(containingFontSize, inlineCodeScale));
         }
 
+        return resolved;
+    }
+
+    // The heading-inherited or run-own base style, and where the remaining
+    // modifier keys start.
+    private static ElementStyle ResolveBaseRunStyle(
+        InlineContainerBox box,
+        InlineRun run,
+        out string headingKey,
+        out bool inheritsHeading,
+        out float? relativeInlineCodeScale,
+        out int modifierStart)
+    {
+        // A link or formatting run inside a heading inherits the heading's
+        // typography. Its own role supplies only the nested decoration/color;
+        // resolving Link as the base style would silently turn linked heading
+        // text back into body-sized text.
+        headingKey = GetHeadingStyleKey(box, run);
+        inheritsHeading = headingKey.Length > 0;
+        var key = inheritsHeading
+            ? headingKey
+            : string.IsNullOrEmpty(run.ElementKey) ? box.ElementKey : run.ElementKey;
+        IReadOnlyList<string> baseAliases = inheritsHeading
+            ? box.StyleAliasKeys
+            : box.GetEffectiveRunAliases(run.InlineIndex);
+        ElementStyle resolved = box.Context.ThemeSnapshot.GetStyle(
+            key,
+            box.StyleContextKeys,
+            baseAliases,
+            box.CodeLanguage,
+            box.StyleState);
+        relativeInlineCodeScale = !inheritsHeading &&
+            run.ElementKey == MarkdownElementKeys.CodeInline
+                ? resolved.RelativeFontSizeScale
+                : null;
+        modifierStart = 0;
+        if (inheritsHeading && !string.IsNullOrEmpty(run.ElementKey) &&
+            !string.Equals(run.ElementKey, headingKey, StringComparison.Ordinal))
+        {
+            ElementStyle ownStyle = box.Context.ThemeSnapshot.GetStyle(
+                run.ElementKey,
+                box.StyleContextKeys,
+                box.GetEffectiveRunAliases(run.InlineIndex),
+                box.CodeLanguage,
+                box.StyleState);
+            if (run.ElementKey == MarkdownElementKeys.CodeInline)
+                relativeInlineCodeScale = ownStyle.RelativeFontSizeScale;
+            resolved = InlineNestedStyleModifier.ApplyNestedStyleModifier(
+                resolved,
+                ownStyle,
+                run.ElementKey,
+                preserveCodeFontSize: inheritsHeading &&
+                    run.ElementKey == MarkdownElementKeys.CodeInline &&
+                    !box.Context.ThemeSnapshot.HasRelativeInlineCodeFontSizeRules,
+                deferRelativeInlineCodeFontSize: relativeInlineCodeScale.HasValue);
+        }
+        else if (!inheritsHeading && string.IsNullOrEmpty(run.ElementKey) &&
+                 run.StyleModifierKeys.Count > 0)
+        {
+            resolved = box.Context.ThemeSnapshot.GetStyle(
+                run.StyleModifierKeys[0],
+                box.StyleContextKeys,
+                box.GetEffectiveRunAliases(run.InlineIndex),
+                box.CodeLanguage,
+                box.StyleState);
+            modifierStart = 1;
+        }
+
+        return resolved;
+    }
+
+    // Applies each remaining modifier in order, recording the font size that
+    // contains the first script modifier.
+    private static ElementStyle ApplyRunStyleModifiers(
+        InlineContainerBox box,
+        InlineRun run,
+        ElementStyle resolved,
+        int modifierStart,
+        out float? scriptModifierContainingFontSize)
+    {
+        scriptModifierContainingFontSize = null;
+        for (int index = modifierStart; index < run.StyleModifierKeys.Count; index++)
+        {
+            string modifierKey = run.StyleModifierKeys[index];
+            if (scriptModifierContainingFontSize is null && IsScriptStyleKey(modifierKey))
+                scriptModifierContainingFontSize = resolved.FontSize;
+
+            ElementStyle modifier = box.Context.ThemeSnapshot.GetStyle(
+                modifierKey,
+                box.StyleContextKeys,
+                box.GetEffectiveRunAliases(run.InlineIndex),
+                box.CodeLanguage,
+                box.StyleState);
+            resolved = InlineNestedStyleModifier.ApplyNestedStyleModifier(resolved, modifier, modifierKey);
+        }
         return resolved;
     }
 
