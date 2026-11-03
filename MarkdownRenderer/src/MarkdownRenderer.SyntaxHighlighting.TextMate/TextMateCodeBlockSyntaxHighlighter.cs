@@ -19,9 +19,9 @@ public sealed class TextMateCodeBlockSyntaxHighlighter : ICodeHighlighter, IDisp
     private readonly bool _ownsProvider;
     private readonly TextMateHighlighterOptions _options;
     private readonly object _coordinationGate = new();
-    private readonly Dictionary<HighlightKey, InFlightHighlight> _inFlight = new();
-    private readonly Dictionary<HighlightKey, LinkedListNode<CacheEntry>> _cache = new();
-    private readonly LinkedList<CacheEntry> _cacheLru = new();
+    private readonly Dictionary<TextMateHighlightKey, TextMateInFlightHighlight> _inFlight = new();
+    private readonly Dictionary<TextMateHighlightKey, LinkedListNode<TextMateHighlightCacheEntry>> _cache = new();
+    private readonly LinkedList<TextMateHighlightCacheEntry> _cacheLru = new();
     private long _cachedBytes;
     private int _activeProviderOperations;
     private bool _disposed;
@@ -134,12 +134,12 @@ public sealed class TextMateCodeBlockSyntaxHighlighter : ICodeHighlighter, IDisp
         // ReadProviderRevision admits the call into the same lifetime counter as
         // HighlightAsync, so an owned provider cannot be disposed mid-callback.
         int providerRevision = ReadProviderRevision();
-        var key = new HighlightKey(
+        var key = new TextMateHighlightKey(
             request.LanguageId,
             request.Code,
             request.ThemeVariant,
             providerRevision);
-        InFlightHighlight operation;
+        TextMateInFlightHighlight operation;
 
         lock (_coordinationGate)
         {
@@ -149,7 +149,7 @@ public sealed class TextMateCodeBlockSyntaxHighlighter : ICodeHighlighter, IDisp
 
             if (!_inFlight.TryGetValue(key, out operation!))
             {
-                operation = new InFlightHighlight();
+                operation = new TextMateInFlightHighlight();
                 _inFlight.Add(key, operation);
                 _activeProviderOperations++;
                 operation.Task = Task.Run(
@@ -175,9 +175,9 @@ public sealed class TextMateCodeBlockSyntaxHighlighter : ICodeHighlighter, IDisp
     }
 
     private async Task<TextMateGrammarHighlightResult?> RunProviderAsync(
-        HighlightKey key,
+        TextMateHighlightKey key,
         TextMateGrammarHighlightRequest request,
-        InFlightHighlight operation)
+        TextMateInFlightHighlight operation)
     {
         TextMateGrammarHighlightResult? result;
         try
@@ -242,8 +242,8 @@ public sealed class TextMateCodeBlockSyntaxHighlighter : ICodeHighlighter, IDisp
     }
 
     private async Task CompleteOperationAsync(
-        HighlightKey key,
-        InFlightHighlight operation,
+        TextMateHighlightKey key,
+        TextMateInFlightHighlight operation,
         TextMateGrammarHighlightResult? result)
     {
         bool disposeProvider = false;
@@ -272,7 +272,7 @@ public sealed class TextMateCodeBlockSyntaxHighlighter : ICodeHighlighter, IDisp
     /// </summary>
     public void Dispose()
     {
-        List<InFlightHighlight>? operations = null;
+        List<TextMateInFlightHighlight>? operations = null;
         bool disposeProvider;
         lock (_coordinationGate)
         {
@@ -281,7 +281,7 @@ public sealed class TextMateCodeBlockSyntaxHighlighter : ICodeHighlighter, IDisp
 
             _disposed = true;
             if (_inFlight.Count > 0)
-                operations = new List<InFlightHighlight>(_inFlight.Values);
+                operations = new List<TextMateInFlightHighlight>(_inFlight.Values);
             _inFlight.Clear();
             _cache.Clear();
             _cacheLru.Clear();
@@ -291,7 +291,7 @@ public sealed class TextMateCodeBlockSyntaxHighlighter : ICodeHighlighter, IDisp
 
         if (operations is not null)
         {
-            foreach (InFlightHighlight operation in operations)
+            foreach (TextMateInFlightHighlight operation in operations)
                 operation.RequestCancellation();
         }
 
@@ -310,7 +310,7 @@ public sealed class TextMateCodeBlockSyntaxHighlighter : ICodeHighlighter, IDisp
 
     private void DisposeProvider() => ((IDisposable)_provider).Dispose();
 
-    private void ReleaseWaiter(HighlightKey key, InFlightHighlight operation)
+    private void ReleaseWaiter(TextMateHighlightKey key, TextMateInFlightHighlight operation)
     {
         bool cancel = false;
         lock (_coordinationGate)
@@ -338,7 +338,7 @@ public sealed class TextMateCodeBlockSyntaxHighlighter : ICodeHighlighter, IDisp
     }
 
     private bool TryGetCachedResult(
-        HighlightKey key,
+        TextMateHighlightKey key,
         out TextMateGrammarHighlightResult result)
     {
         if (!_cache.TryGetValue(key, out var node))
@@ -353,7 +353,7 @@ public sealed class TextMateCodeBlockSyntaxHighlighter : ICodeHighlighter, IDisp
         return true;
     }
 
-    private void CacheResult(HighlightKey key, TextMateGrammarHighlightResult result)
+    private void CacheResult(TextMateHighlightKey key, TextMateGrammarHighlightResult result)
     {
         if (_options.CacheBudgetBytes == 0)
             return;
@@ -362,7 +362,7 @@ public sealed class TextMateCodeBlockSyntaxHighlighter : ICodeHighlighter, IDisp
         if (weight > _options.CacheBudgetBytes)
             return;
 
-        var entry = new CacheEntry(key, result, weight);
+        var entry = new TextMateHighlightCacheEntry(key, result, weight);
         var node = _cacheLru.AddFirst(entry);
         _cache.Add(key, node);
         _cachedBytes += weight;
@@ -376,7 +376,7 @@ public sealed class TextMateCodeBlockSyntaxHighlighter : ICodeHighlighter, IDisp
     }
 
     private static long EstimateCacheWeight(
-        HighlightKey key,
+        TextMateHighlightKey key,
         TextMateGrammarHighlightResult result) =>
         256L +
         (key.LanguageId.Length * sizeof(char)) +
@@ -445,112 +445,6 @@ public sealed class TextMateCodeBlockSyntaxHighlighter : ICodeHighlighter, IDisp
         };
     }
 
-    private readonly struct HighlightKey : IEquatable<HighlightKey>
-    {
-        private readonly int _hashCode;
-
-        public HighlightKey(
-            string languageId,
-            string code,
-            TextMateGrammarThemeVariant themeVariant,
-            int revision)
-        {
-            LanguageId = languageId;
-            Code = code;
-            ThemeVariant = themeVariant;
-            Revision = revision;
-            _hashCode = HashCode.Combine(
-                StringComparer.Ordinal.GetHashCode(languageId),
-                StringComparer.Ordinal.GetHashCode(code),
-                themeVariant,
-                revision);
-        }
-
-        public string LanguageId { get; }
-
-        public string Code { get; }
-
-        public TextMateGrammarThemeVariant ThemeVariant { get; }
-
-        public int Revision { get; }
-
-        public bool Equals(HighlightKey other) =>
-            _hashCode == other._hashCode &&
-            Revision == other.Revision &&
-            ThemeVariant == other.ThemeVariant &&
-            string.Equals(LanguageId, other.LanguageId, StringComparison.Ordinal) &&
-            string.Equals(Code, other.Code, StringComparison.Ordinal);
-
-        public override bool Equals(object? obj) => obj is HighlightKey other && Equals(other);
-
-        public override int GetHashCode() => _hashCode;
-    }
-
-    private sealed class InFlightHighlight
-    {
-        private readonly object _cancellationGate = new();
-        private Task? _cancellationTask;
-        private bool _disposeCancellationRequested;
-        private bool _cancellationDisposed;
-
-        public CancellationTokenSource WorkCancellation { get; } = new();
-
-        public Task<TextMateGrammarHighlightResult?> Task { get; set; } = null!;
-
-        public int WaiterCount { get; set; }
-
-        public void RequestCancellation()
-        {
-            lock (_cancellationGate)
-            {
-                if (_disposeCancellationRequested || _cancellationDisposed || _cancellationTask is not null)
-                    return;
-
-                _cancellationTask = WorkCancellation.CancelAsync();
-                _ = _cancellationTask.ContinueWith(
-                    static completed => _ = completed.Exception,
-                    CancellationToken.None,
-                    TaskContinuationOptions.ExecuteSynchronously | TaskContinuationOptions.OnlyOnFaulted,
-                    TaskScheduler.Default);
-            }
-        }
-
-        public async ValueTask DisposeCancellationAsync()
-        {
-            Task? cancellationTask;
-            lock (_cancellationGate)
-            {
-                if (_cancellationDisposed)
-                    return;
-
-                _disposeCancellationRequested = true;
-                cancellationTask = _cancellationTask;
-            }
-
-            if (cancellationTask is not null)
-            {
-                try
-                {
-                    await cancellationTask.ConfigureAwait(false);
-                }
-                catch (Exception)
-                {
-                    // Cancellation is best-effort optional work. The fault is
-                    // observed here and must not replace the provider result.
-                }
-            }
-
-            lock (_cancellationGate)
-            {
-                if (_cancellationDisposed)
-                    return;
-
-                WorkCancellation.Dispose();
-                _cancellationDisposed = true;
-            }
-        }
-    }
-
     private int ReadProviderRevision()
     {
         lock (_coordinationGate)
@@ -577,9 +471,4 @@ public sealed class TextMateCodeBlockSyntaxHighlighter : ICodeHighlighter, IDisp
                 DisposeProvider();
         }
     }
-
-    private sealed record CacheEntry(
-        HighlightKey Key,
-        TextMateGrammarHighlightResult Result,
-        long Weight);
 }
