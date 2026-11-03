@@ -18,6 +18,12 @@ InternalsVisibleTo items (MRS0001, MRS0002). This script covers the rest:
   MRS0006  Every project that MarkdownRenderer.slnx lists exists.
   MRS0007  A Compile item with ProjectStructureException names literal files
            that exist, so each exception is explicit.
+  MRS0008  No .cs file under those folders is over 1,000 lines unless
+           eng/file-size-exceptions.json lists it with a reason.
+  MRS0009  A listed file stays within its recorded line cap.
+  MRS0010  Each size exception is current: the file exists, is still over
+           1,000 lines, and its cap equals its length, so the cap only
+           ratchets down.
 
 bin, obj and artifacts folders are skipped. The script prints one line per
 violation and exits 1 if there is any.
@@ -139,6 +145,74 @@ else {
 foreach ($project in $projectFiles) {
     if ((Test-InSourceFolder $project.FullName) -and -not $solutionProjects.Contains($project.FullName)) {
         Add-Violation 'MRS0005' $project.FullName 'project is not in MarkdownRenderer.slnx.'
+    }
+}
+
+# MRS0008 to MRS0010: files over 1,000 lines fail review unless listed, and a
+# listed file's cap follows its length down.
+$maxFileLines = 1000
+$sizeExceptionsPath = Join-Path $Root 'eng/file-size-exceptions.json'
+$sizeExceptions = [Collections.Generic.Dictionary[string, object]]::new($pathComparer)
+# Entry paths in file order, so stale entries are reported in a stable order.
+$sizeExceptionOrder = [Collections.Generic.List[string]]::new()
+# A JSON member that may be absent; StrictMode throws on reading a missing property.
+function Get-JsonMember([object] $Object, [string] $Name) {
+    $member = $Object.PSObject.Properties[$Name]
+    if ($null -eq $member) { return $null }
+    return $member.Value
+}
+if (Test-Path -LiteralPath $sizeExceptionsPath -PathType Leaf) {
+    $sizeDocument = Get-Content -LiteralPath $sizeExceptionsPath -Raw | ConvertFrom-Json
+    $sizeEntries = Get-JsonMember $sizeDocument 'files'
+    foreach ($entry in @(if ($null -ne $sizeEntries) { $sizeEntries })) {
+        $entryPath = Get-JsonMember $entry 'path'
+        if ([string]::IsNullOrWhiteSpace($entryPath)) {
+            Add-Violation 'MRS0010' $sizeExceptionsPath 'an entry has no path.'
+            continue
+        }
+        if ([string]::IsNullOrWhiteSpace((Get-JsonMember $entry 'reason'))) {
+            Add-Violation 'MRS0010' $sizeExceptionsPath "'$entryPath' has no reason."
+        }
+        $entryLines = Get-JsonMember $entry 'lines'
+        if ($entryLines -isnot [long] -and $entryLines -isnot [int]) {
+            Add-Violation 'MRS0010' $sizeExceptionsPath "'$entryPath' has no whole-number line cap."
+            continue
+        }
+        $path = [IO.Path]::GetFullPath((Join-Path $Root $entryPath))
+        if ($sizeExceptions.ContainsKey($path)) {
+            Add-Violation 'MRS0010' $sizeExceptionsPath "'$entryPath' is listed twice."
+            continue
+        }
+        $sizeExceptions[$path] = $entry
+        $sizeExceptionOrder.Add($path)
+    }
+}
+foreach ($file in $sourceFiles) {
+    if (-not (Test-InSourceFolder $file.FullName)) { continue }
+    $lines = [IO.File]::ReadAllLines($file.FullName).Length
+    if ($lines -le $maxFileLines) { continue }
+    if (-not $sizeExceptions.ContainsKey($file.FullName)) {
+        Add-Violation 'MRS0008' $file.FullName "$lines lines; a file over $maxFileLines lines fails review. Split it by responsibility."
+        continue
+    }
+    $cap = [int] $sizeExceptions[$file.FullName].lines
+    if ($lines -gt $cap) {
+        Add-Violation 'MRS0009' $file.FullName "$lines lines, over its recorded cap of $cap in eng/file-size-exceptions.json. Move the new code into its own type."
+    }
+}
+foreach ($path in $sizeExceptionOrder) {
+    $relative = $sizeExceptions[$path].path
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        Add-Violation 'MRS0010' $sizeExceptionsPath "'$relative' does not exist; remove its entry."
+        continue
+    }
+    $lines = [IO.File]::ReadAllLines($path).Length
+    $cap = [int] $sizeExceptions[$path].lines
+    if ($lines -le $maxFileLines) {
+        Add-Violation 'MRS0010' $sizeExceptionsPath "'$relative' is $lines lines, within the limit; remove its entry."
+    }
+    elseif ($lines -lt $cap) {
+        Add-Violation 'MRS0010' $sizeExceptionsPath "'$relative' is $lines lines; lower its cap from $cap to $lines."
     }
 }
 

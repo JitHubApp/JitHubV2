@@ -78,7 +78,7 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
         var doc = GetSemanticDocumentOrNull();
         if (doc is null)
         {
-            return _owner.ResolveLocalizedString(
+            return _owner.Localization.Resolve(
                 MarkdownStringKeys.DocumentName,
                 MarkdownLocalizedStrings.MarkdownDocumentName);
         }
@@ -93,23 +93,23 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
                 return heading.Length > 120 ? heading.Substring(0, 120) : heading;
         }
 
-        return _owner.ResolveLocalizedString(
+        return _owner.Localization.Resolve(
             MarkdownStringKeys.DocumentName,
             MarkdownLocalizedStrings.MarkdownDocumentName);
     }
 
     protected override string GetItemStatusCore()
     {
-        MarkdownVisibleSceneReadiness sceneStatus = _owner.GetVisibleDeferredSceneStatusForAutomation();
+        MarkdownVisibleSceneReadiness sceneStatus = _owner.DeferredSceneReadiness.GetVisibleStatus();
         if (sceneStatus == MarkdownVisibleSceneReadiness.Failed)
-            return _owner.ResolveLocalizedString(MarkdownStringKeys.EmbeddedContentUnavailable,
+            return _owner.Localization.Resolve(MarkdownStringKeys.EmbeddedContentUnavailable,
                 MarkdownLocalizedStrings.EmbeddedContentUnavailable);
-        if (_owner.HasVisibleLoadingImagesForAutomation())
+        if (_owner.ImageReadiness.HasLoadingImages())
         {
-            string imageName = _owner.ResolveLocalizedString(
+            string imageName = _owner.Localization.Resolve(
                 MarkdownStringKeys.ImageName,
                 MarkdownLocalizedStrings.ImageName);
-            return _owner.ResolveFormattedLocalizedString(
+            return _owner.Localization.ResolveFormatted(
                 MarkdownStringKeys.ImageLoading,
                 MarkdownLocalizedStrings.ImageLoadingFormat,
                 imageName);
@@ -117,10 +117,10 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
 
         if (sceneStatus != MarkdownVisibleSceneReadiness.Ready)
         {
-            string sceneName = _owner.ResolveLocalizedString(
+            string sceneName = _owner.Localization.Resolve(
                 MarkdownStringKeys.EmbeddedContentName,
                 MarkdownLocalizedStrings.EmbeddedContentName);
-            return _owner.ResolveFormattedLocalizedString(
+            return _owner.Localization.ResolveFormatted(
                 MarkdownStringKeys.ImageLoading,
                 MarkdownLocalizedStrings.ImageLoadingFormat,
                 sceneName);
@@ -169,7 +169,7 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
     {
         get
         {
-            if (!_owner.TryGetAutomationScrollMetrics(out _, out double viewport, out double extent) ||
+            if (!_owner.AutomationScrolling.TryGetMetrics(out _, out double viewport, out double extent) ||
                 extent <= 0)
             {
                 return 100;
@@ -188,7 +188,7 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
         if (!VerticallyScrollable)
             throw new InvalidOperationException("The markdown document has no vertical overflow.");
 
-        _owner.ScrollFromAutomation(verticalAmount);
+        _owner.AutomationScrolling.Scroll(verticalAmount);
     }
 
     public void SetScrollPercent(double horizontalPercent, double verticalPercent)
@@ -202,7 +202,7 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
         if (!VerticallyScrollable)
             throw new InvalidOperationException("The markdown document has no vertical overflow.");
 
-        _owner.SetAutomationVerticalScrollPercent(verticalPercent);
+        _owner.AutomationScrolling.SetVerticalPercent(verticalPercent);
     }
 
     public ITextRangeProvider[] GetSelection()
@@ -929,7 +929,7 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
         out double viewport,
         out double maximum)
     {
-        if (!_owner.TryGetAutomationScrollMetrics(out offset, out viewport, out double extent))
+        if (!_owner.AutomationScrolling.TryGetMetrics(out offset, out viewport, out double extent))
         {
             maximum = 0;
             return false;

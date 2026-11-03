@@ -1,147 +1,110 @@
 using System;
 using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
+using MarkdownRenderer.Controls.Embeds;
+using MarkdownRenderer.Controls.Focus;
+using MarkdownRenderer.Controls.Input;
+using MarkdownRenderer.Controls.Pipeline;
 using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Performance;
 using Windows.Foundation;
-using MarkdownRenderer.Controls.Embeds;
-using MarkdownRenderer.Controls.Images;
-using MarkdownRenderer.Controls.Focus;
 
-namespace MarkdownRenderer.Controls;
+namespace MarkdownRenderer.Controls.Images;
 
-public partial class MarkdownRendererControl
+/// <summary>
+/// Publishes a raster placement prepared off the UI thread. One synchronous
+/// fence checks every input the candidate was prepared from, then one swap
+/// adopts its subscriptions, image plans, focus items and code block actions
+/// and transfers the candidate snapshot to the control.
+/// </summary>
+internal sealed class RasterPlacementPublisher
 {
-    private readonly object _imagePreparationOwnerToken = new();
-    // Captured on the UI thread; this handoff uses weak control identity and
-    // never forwards callbacks belonging to the old layout generation.
-    private sealed class RasterPlacementInputs(
-        WeakReference<MarkdownRendererControl> receiver,
+    private readonly IRasterPlacementHost _host;
+    private readonly MarkdownViewLifetime _lifetime;
+    private readonly PublishedLayout _published;
+    private readonly LayoutCommitState _layoutCommit;
+    private readonly MarkdownViewSurface _surface;
+    private readonly PointerInputRouter _pointerInput;
+    private readonly ImageSubscriptions _imageSubscriptions;
+    private readonly ImagePlanSet _imagePlans;
+    private readonly ImageResidency _imageResidency;
+    private readonly EmbedRealization _embeds;
+    private readonly KeyboardFocusModel _focus;
+    private readonly FocusRingPresenter _focusRing;
+    private readonly HostedFocusPlanPublication _hostedFocusPlan;
+    private readonly SnapshotRetirementTracker _retirements;
+
+    internal RasterPlacementPublisher(
+        IRasterPlacementHost host,
+        MarkdownViewLifetime lifetime,
+        PublishedLayout published,
+        LayoutCommitState layoutCommit,
+        MarkdownViewSurface surface,
+        PointerInputRouter pointerInput,
+        ImageSubscriptions imageSubscriptions,
+        ImagePlanSet imagePlans,
+        ImageResidency imageResidency,
+        EmbedRealization embeds,
+        KeyboardFocusModel focus,
+        FocusRingPresenter focusRing,
+        HostedFocusPlanPublication hostedFocusPlan,
+        SnapshotRetirementTracker retirements)
+    {
+        _host = host;
+        _lifetime = lifetime;
+        _published = published;
+        _layoutCommit = layoutCommit;
+        _surface = surface;
+        _pointerInput = pointerInput;
+        _imageSubscriptions = imageSubscriptions;
+        _imagePlans = imagePlans;
+        _imageResidency = imageResidency;
+        _embeds = embeds;
+        _focus = focus;
+        _focusRing = focusRing;
+        _hostedFocusPlan = hostedFocusPlan;
+        _retirements = retirements;
+    }
+
+    /// <summary>
+    /// Captures the inputs for a private raster placement of
+    /// <paramref name="snapshot"/>, or returns null when the snapshot is not
+    /// eligible: no performance session opted in, too many roots or images,
+    /// or hosted embeds that a private placement cannot carry.
+    /// </summary>
+    internal RasterPlacementInputs? TryCreateInputs(LayoutSnapshot snapshot, bool optedIn) =>
+        optedIn &&
+        snapshot.TopLevelBlockCount is > 0 and <= LayoutSnapshot.MaximumPrivateRasterPlacementRoots &&
+        _embeds.EmbedPlans.Count == 0 &&
+        _imagePlans.Count is > 0 and <= InlineContainerBox.MaximumPrivateRasterPlacementImages
+            ? new RasterPlacementInputs(new WeakReference<RasterPlacementPublisher>(this), _published.Generation,
+                _host.ImagePreparationOwner, _host.ImageLifetime,
+                _retirements, _surface.Scroll?.VerticalOffset)
+            : null;
+
+    /// <summary>
+    /// Raises an image-unavailable notice from a private candidate only while
+    /// that candidate's generation and snapshot are still published.
+    /// </summary>
+    internal void RaiseImageUnavailableIfCurrent(
+        LayoutSnapshot candidate,
         long generation,
-        object imagePreparationOwner,
-        CancellationToken imageLifetime,
-        SnapshotRetirementTracker retirements,
-        double? scrollOffset)
+        string url,
+        MarkdownImageUnavailableReason reason,
+        MarkdownSvgFailureReason? svgReason)
     {
-        private WeakReference<LayoutSnapshot>? _candidateSnapshot;
-        internal readonly CancellationToken ImageLifetime = imageLifetime;
-        internal readonly object ImagePreparationOwner = imagePreparationOwner;
-        internal readonly Action<Task> RetirementSink = retirements.Track;
-        internal readonly double? ScrollOffset = scrollOffset;
-
-        internal void Bind(LayoutSnapshot snapshot) =>
-            Volatile.Write(ref _candidateSnapshot, new WeakReference<LayoutSnapshot>(snapshot));
-
-        internal void ImageUnavailable(string url, MarkdownImageUnavailableReason reason, MarkdownSvgFailureReason? svgReason)
-        {
-            if (receiver.TryGetTarget(out MarkdownRendererControl? control) &&
-                Volatile.Read(ref _candidateSnapshot) is { } identity && identity.TryGetTarget(out LayoutSnapshot? snapshot) &&
-                !control._lifetime.IsDisposed && !control._lifetime.IsUnloaded && generation == control._published.Generation &&
-                ReferenceEquals(snapshot, control._published.Snapshot))
-                control.RaiseImageUnavailable(url, reason, svgReason);
-        }
+        if (!_lifetime.IsDisposed && !_lifetime.IsUnloaded && generation == _published.Generation &&
+            ReferenceEquals(candidate, _published.Snapshot))
+            _host.RaiseImageUnavailable(url, reason, svgReason);
     }
 
-    // All geometry and membership are prepared privately. Discard releases the
-    // strong candidate; adopted lists are never cleared by the former owner.
-    private sealed class RasterPlacementPlan : IDisposable
-    {
-        internal readonly SingleRasterLayoutCandidate Owner;
-        internal List<ImageBox>? Images;
-        internal HashSet<ImageBox>? Subscriptions;
-        internal ImagePlanPublication? Publication;
-        internal IReadOnlyList<FocusableItem>? Focus;
-        internal List<CodeBlockActionPlan>? CodeActionPlans;
-        internal List<WeakReference<CodeBlockBox>>? CodeActionSources;
-        internal int[]? CodeActionPlacementIndices;
-        internal CodeBlockPlacementIdentity[]? CodePlacements;
-        internal ViewportBandIndex? CodeActionIndex;
-        internal List<(CodeBlockBox Box, Rect Rect, CodeBlockHostedElementKind Kind)>? CodeActionRects;
-        internal List<int>? ActiveCodeActionOrdinals;
-        internal bool HasMeasuredCodeBlocks;
-        internal List<(CodeBlockActionPlan OldPlan, CodeBlockActionPlan NewPlan, int NewOrdinal)>? CodeActionAdoptions;
-        internal Layout.FocusableItem? ResumeFocusIdentity;
-        internal readonly double? AnchorOffset;
-        internal readonly double? CapturedScrollOffset;
-
-        internal RasterPlacementPlan(SingleRasterLayoutCandidate owner, long generation,
-            (int BlockIndex, double OffsetFromTop)? anchor, double? scrollOffset)
-        {
-            Owner = owner;
-            LayoutSnapshot snapshot = owner.Snapshot;
-            // Estimated roots carry only never-started descriptors. They must
-            // not become subscriptions or start work before normal lazy-band
-            // realization discovers them in the newly published snapshot.
-            var imagePlan = new RasterPlacementImagePlan(
-                snapshot, snapshot.GetMeasuredTopLevelBlocks(), owner.SourceSubscribedImageCount);
-            Images = imagePlan.Images;
-            Subscriptions = imagePlan.Subscriptions;
-            Publication = new ImagePlanPublication(snapshot, generation, snapshot.LayoutRevision,
-                imagePlan.PublicationImages, imagePlan.ImageBounds, imagePlan.Index);
-            Focus = snapshot.CollectFocusableItems();
-
-            IReadOnlyList<CodeBlockPlacementIdentity> placements = owner.CodePlacements;
-            CodePlacements = new CodeBlockPlacementIdentity[placements.Count];
-            var actions = new List<CodeBlockActionPlan>(placements.Count);
-            var sources = new List<WeakReference<CodeBlockBox>>(placements.Count);
-            var placementIndices = new List<int>(placements.Count);
-            for (int index = 0; index < placements.Count; index++)
-            {
-                CodeBlockPlacementIdentity identity = placements[index];
-                CodePlacements[index] = identity;
-                CodeBlockBox placement = identity.Placement;
-                if (identity.WasMeasured)
-                    HasMeasuredCodeBlocks = true;
-                if (!identity.WasMeasured || !placement.HasCopyButtonAction ||
-                    placement.CopyButtonBounds.Width <= 0 || placement.CopyButtonBounds.Height <= 0)
-                    continue;
-
-                actions.Add(new CodeBlockActionPlan
-                {
-                    Box = placement,
-                    FocusIdentity = new FocusableItem(
-                        placement.BlockIndex, 0, FocusableItemKind.CodeBlockCopy),
-                    Rect = snapshot.ToLogicalRectForBlockIndex(
-                        placement.BlockIndex, placement.CopyButtonBounds),
-                    Kind = CodeBlockHostedElementKind.Copy,
-                });
-                sources.Add(identity.Source);
-                placementIndices.Add(index);
-            }
-            CodeActionPlans = actions;
-            CodeActionSources = sources;
-            CodeActionPlacementIndices = placementIndices.ToArray();
-            CodeActionIndex = EmbedRealization.BuildPlanIndex(actions);
-            CodeActionRects = new List<(CodeBlockBox Box, Rect Rect, CodeBlockHostedElementKind Kind)>(actions.Count);
-            ActiveCodeActionOrdinals = new List<int>(actions.Count);
-            CodeActionAdoptions = new List<(CodeBlockActionPlan OldPlan, CodeBlockActionPlan NewPlan, int NewOrdinal)>(actions.Count);
-            AnchorOffset = GetScrollAnchorOffset(snapshot, anchor);
-            CapturedScrollOffset = scrollOffset;
-        }
-
-        public void Dispose()
-        {
-            Owner.Dispose();
-            Images = null;
-            Subscriptions = null;
-            Publication = null;
-            Focus = null;
-            CodeActionPlans = null;
-            CodeActionSources = null;
-            CodeActionPlacementIndices = null;
-            CodePlacements = null;
-            CodeActionIndex = null;
-            CodeActionRects = null;
-            ActiveCodeActionOrdinals = null;
-            CodeActionAdoptions = null;
-        }
-    }
-
-    private bool TryPublishRasterPlacement(LayoutSnapshot source, RasterPlacementPlan plan, long generation)
+    /// <summary>
+    /// Publishes <paramref name="plan"/> in place of <paramref name="source"/>
+    /// when every input it was prepared from is still current. Returns false,
+    /// changing nothing, when any fence fails.
+    /// </summary>
+    internal bool TryPublish(LayoutSnapshot source, RasterPlacementPlan plan, long generation)
     {
         SingleRasterLayoutCandidate owner = plan.Owner;
         LayoutSnapshot candidate = owner.Snapshot;
@@ -154,32 +117,12 @@ public partial class MarkdownRendererControl
             return false;
         // UI-dispatcher-only, synchronous fence and swap. No host/XAML/native
         // callbacks intervene. Image publication readers verify snapshot identity.
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _publishingLayoutCommit || _deviceRecovery.IsQueued ||
-            _rebuildCoordinator.HasPendingOrBuilding || HasPendingLazyLayoutWork || _pointerInput.HasSnapshotInteraction ||
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _layoutCommit.IsPublishing || _host.HasCompetingLayoutWork ||
+            _pointerInput.HasSnapshotInteraction ||
             !ReferenceEquals(source, _published.Snapshot) || generation != _published.Generation ||
             source.IsRetiringOrDisposed || source.LayoutRevision != owner.SourceRevision ||
-            (float)Math.Max(50, ActualWidth) != owner.Width ||
-            !ReferenceEquals(_themeSnapshot, context.ThemeSnapshot) ||
-            !ReferenceEquals(PerformanceSession, context.PerformanceSession) ||
-            context.PerformanceSession?.IsDisposed == true ||
-            context.ImageCancellationToken.IsCancellationRequested ||
-            !ReferenceEquals(_imagePreparationOwnerToken, context.ImagePreparationOwner) ||
-            !RasterPlacementResolverFence.Matches(
-                ImageResolver,
-                context.ImageResolver,
-                PerformanceSession as IMarkdownPerformanceSessionInternal,
-                context.PerformanceSession,
-                new MarkdownImageResolveContext(
-                    ImageBaseUri, ImageDocumentPath, AllowThirdPartyRemoteImages, ImageDocumentSource),
-                new MarkdownImageResolveContext(
-                    context.ImageBaseUri, context.ImageDocumentPath,
-                    context.AllowThirdPartyRemoteImages, context.ImageDocumentSource)) ||
-            !ReferenceEquals(SvgRenderer, context.SvgRenderer) ||
-            !ReferenceEquals(ImageDocumentSource, context.ImageDocumentSource) ||
-            !Equals(ImageBaseUri, context.ImageBaseUri) ||
-            !string.Equals(ImageDocumentPath, context.ImageDocumentPath, StringComparison.Ordinal) ||
-            AllowThirdPartyRemoteImages != context.AllowThirdPartyRemoteImages ||
-            FlowDirection != context.FlowDirection || (XamlRoot?.RasterizationScale ?? 1) != context.RasterizationScale ||
+            _host.LayoutWidth != owner.Width ||
+            !_host.MatchesLayoutInputs(context) ||
             _embeds.EmbedPlans.Count != 0 ||
             !owner.MatchesSourceImages(_imagePlans.Items, _imageSubscriptions.Images) ||
             (_pointerInput.DeferredSnapshot is not null && !ReferenceEquals(_pointerInput.DeferredSnapshot, source)) ||
@@ -199,7 +142,7 @@ public partial class MarkdownRendererControl
                 : null;
         plan.ResumeFocusIdentity = resumeFocusIdentity;
 
-        _publishingLayoutCommit = true;
+        _layoutCommit.BeginPublishing();
         bool sourceRetirementRequested = false;
         bool committed = false;
         try
@@ -217,10 +160,9 @@ public partial class MarkdownRendererControl
             plan.CodeActionIndex = null;
             plan.ActiveCodeActionOrdinals = null;
             plan.CodeActionRects = null;
-            _appliedLazyLayoutRevision = candidate.LayoutRevision;
-            _pendingLayoutCommit = null;
-            _hover.Clear();
-            _abbreviationTooltip.ForgetTarget();
+            _layoutCommit.MarkApplied(candidate.LayoutRevision);
+            _layoutCommit.ClearPending();
+            _host.ForgetHoverTarget();
             long epoch = _hostedFocusPlan.Invalidate();
             _published.Snapshot = owner.TransferToControl();
             _imagePlans.Publication = plan.Publication;
@@ -231,7 +173,7 @@ public partial class MarkdownRendererControl
             {
                 // Ask the old tree to retire before any callback-capable code
                 // button localization/highlighting or UI publication work.
-                RetireSnapshot(source);
+                _host.RetireSnapshot(source);
                 sourceRetirementRequested = true;
 
                 if (ReferenceEquals(_pointerInput.DeferredSnapshot, source))
@@ -251,14 +193,14 @@ public partial class MarkdownRendererControl
                             $"[MarkdownRendererControl] Candidate input-waiter cleanup failed: {exception.GetType().Name}.");
                     }
 
-                    if (!IsCurrentRasterCodeActionPublication(
+                    if (!IsCurrentPublication(
                             candidate, generation, candidate.LayoutRevision, epoch))
                         return true;
                 }
 
                 foreach (var adoption in plan.CodeActionAdoptions!)
                 {
-                    if (!IsCurrentRasterCodeActionPublication(
+                    if (!IsCurrentPublication(
                             candidate, generation, candidate.LayoutRevision, epoch))
                         break;
 
@@ -275,7 +217,7 @@ public partial class MarkdownRendererControl
                             $"[MarkdownRendererControl] Candidate code-action adoption failed: {exception.GetType().Name}.");
                     }
 
-                    if (!IsCurrentRasterCodeActionPublication(
+                    if (!IsCurrentPublication(
                             candidate, generation, candidate.LayoutRevision, epoch))
                         break;
 
@@ -284,7 +226,7 @@ public partial class MarkdownRendererControl
                             _embeds.Context.Host, candidate, generation, candidate.LayoutRevision, epoch, adoptedElement))
                         break;
 
-                    if (!adopted && IsCurrentRasterCodeActionPublication(
+                    if (!adopted && IsCurrentPublication(
                             candidate, generation, candidate.LayoutRevision, epoch))
                     {
                         if (adoption.NewPlan.Realized is { } failedElement &&
@@ -300,7 +242,7 @@ public partial class MarkdownRendererControl
                                     $"[MarkdownRendererControl] Candidate code-action cleanup failed: {exception.GetType().Name}.");
                             }
                         }
-                        if (!IsCurrentRasterCodeActionPublication(
+                        if (!IsCurrentPublication(
                                 candidate, generation, candidate.LayoutRevision, epoch))
                             break;
                         _embeds.ForgetCodeBlockAction(adoption.NewOrdinal, adoption.NewPlan.Box);
@@ -310,9 +252,9 @@ public partial class MarkdownRendererControl
                 // Highlight tasks are snapshot-bound, so their old callbacks
                 // cannot mutate this candidate. Re-run the normal visible path
                 // after publishing the fresh code placements.
-                if (IsCurrentRasterCodeActionPublication(
+                if (IsCurrentPublication(
                         candidate, generation, candidate.LayoutRevision, epoch))
-                    ScheduleVisibleCodeBlockHighlighting();
+                    _host.ScheduleVisibleCodeBlockHighlighting();
             }
             finally
             {
@@ -333,34 +275,34 @@ public partial class MarkdownRendererControl
                 }
             }
 
-            if (!IsCurrentRasterCodeActionPublication(
+            if (!IsCurrentPublication(
                     candidate, generation, candidate.LayoutRevision, epoch))
                 return true;
-            NotifyAutomationSnapshotChanged();
-            if (!IsCurrentRasterCodeActionPublication(
+            _host.NotifyAutomationSnapshotChanged();
+            if (!IsCurrentPublication(
                     candidate, generation, candidate.LayoutRevision, epoch))
                 return true;
-            _abbreviationTooltip.Hide();
-            if (!IsCurrentRasterCodeActionPublication(
+            _host.HideAbbreviationTooltip();
+            if (!IsCurrentPublication(
                     candidate, generation, candidate.LayoutRevision, epoch))
                 return true;
-            _cursor.SetShape(null);
-            if (!IsCurrentRasterCodeActionPublication(
+            _host.ResetCursor();
+            if (!IsCurrentPublication(
                     candidate, generation, candidate.LayoutRevision, epoch))
                 return true;
-            ApplySnapshotSize(candidate.Size);
-            if (!IsCurrentRasterCodeActionPublication(
+            _host.ApplySnapshotSize(candidate.Size);
+            if (!IsCurrentPublication(
                     candidate, generation, candidate.LayoutRevision, epoch))
                 return true;
             if (plan.AnchorOffset is { } target && _surface.Scroll is { } scroll &&
-                LazyLayoutScrollAnchorPolicy.ShouldRestore(plan.CapturedScrollOffset, scroll.VerticalOffset, _scrollViewIntermediate) &&
+                LazyLayoutScrollAnchorPolicy.ShouldRestore(plan.CapturedScrollOffset, scroll.VerticalOffset, _host.IsScrollViewIntermediate) &&
                 Math.Abs(target - scroll.VerticalOffset) >= .5)
                 scroll.ChangeView(null, target, null, disableAnimation: true);
-            if (!IsCurrentRasterCodeActionPublication(
+            if (!IsCurrentPublication(
                     candidate, generation, candidate.LayoutRevision, epoch))
                 return true;
             _imageResidency.Prepare(candidate);
-            if (!IsCurrentRasterCodeActionPublication(
+            if (!IsCurrentPublication(
                     candidate, generation, candidate.LayoutRevision, epoch))
                 return true;
             // Image geometry can move code actions into or out of the current
@@ -368,23 +310,23 @@ public partial class MarkdownRendererControl
             // subsequent scroll to realize newly visible Copy buttons or trim
             // constructor-acquired offscreen image leases.
             _embeds.RealizeVisible();
-            if (!IsCurrentRasterCodeActionPublication(
+            if (!IsCurrentPublication(
                     candidate, generation, candidate.LayoutRevision, epoch))
                 return true;
             _focusRing.Update();
-            if (!IsCurrentRasterCodeActionPublication(
+            if (!IsCurrentPublication(
                     candidate, generation, candidate.LayoutRevision, epoch))
                 return true;
-            RefreshInteractiveTextAdornerAfterLayoutChange();
-            if (!IsCurrentRasterCodeActionPublication(
+            _host.RefreshInteractiveTextAdornerAfterLayoutChange();
+            if (!IsCurrentPublication(
                     candidate, generation, candidate.LayoutRevision, epoch))
                 return true;
-            InvalidateAutomationLayout();
-            if (!IsCurrentRasterCodeActionPublication(
+            _host.InvalidateAutomationLayout();
+            if (!IsCurrentPublication(
                     candidate, generation, candidate.LayoutRevision, epoch))
                 return true;
-            InvalidateCanvas();
-            if (!IsCurrentRasterCodeActionPublication(
+            _host.InvalidateCanvas();
+            if (!IsCurrentPublication(
                     candidate, generation, candidate.LayoutRevision, epoch))
                 return true;
             return true;
@@ -394,11 +336,11 @@ public partial class MarkdownRendererControl
             try
             {
                 if (committed && !sourceRetirementRequested)
-                    RetireSnapshot(source);
+                    _host.RetireSnapshot(source);
             }
             finally
             {
-                _publishingLayoutCommit = false;
+                _layoutCommit.EndPublishing();
             }
         }
     }
@@ -478,7 +420,12 @@ public partial class MarkdownRendererControl
         return true;
     }
 
-    private bool IsCurrentRasterCodeActionPublication(
+    /// <summary>
+    /// True while <paramref name="candidate"/> is still the published
+    /// snapshot at the given generation, layout revision and hosted focus
+    /// plan epoch.
+    /// </summary>
+    internal bool IsCurrentPublication(
         LayoutSnapshot candidate,
         long generation,
         long layoutRevision,

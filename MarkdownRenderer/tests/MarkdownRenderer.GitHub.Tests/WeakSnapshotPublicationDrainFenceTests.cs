@@ -77,22 +77,22 @@ public sealed class WeakSnapshotPublicationDrainFenceTests
     }
 
     [Theory]
-    [InlineData("<CreateLazyLayoutCompletionPublication>")]
-    [InlineData("<CreateLazyLayoutCompletionDispatchCallback>")]
-    public void DelayedLazyCallbacksCaptureOnlyWeakControlAndValueMetadata(string callbackPrefix)
+    [InlineData("<CreateCompletionPublication>")]
+    [InlineData("<CreateCompletionDispatchCallback>")]
+    public void DelayedLazyCallbacksCaptureOnlyWeakOwnerAndValueMetadata(string callbackPrefix)
     {
         const BindingFlags fields = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         const BindingFlags methods = BindingFlags.Instance | BindingFlags.Static |
             BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
         Type control = typeof(MarkdownDocumentView).BaseType!;
-        Type closure = Assert.Single(control.GetNestedTypes(BindingFlags.NonPublic),
+        Type owner = typeof(MarkdownRenderer.Controls.LazyLayout.LazyLayoutRealization);
+        Type closure = Assert.Single(typeof(MarkdownRenderer.Controls.LazyLayout.LazyLayoutWork).GetNestedTypes(BindingFlags.NonPublic),
             type => type.GetMethods(methods).Any(method =>
                 method.Name.StartsWith(callbackPrefix, StringComparison.Ordinal)));
 
         FieldInfo[] captured = closure.GetFields(fields);
-        Assert.Contains(captured, field => field.FieldType.IsGenericType &&
-            field.FieldType.GetGenericTypeDefinition() == typeof(WeakReference<>));
-        Assert.DoesNotContain(captured, field => field.FieldType == control ||
+        Assert.Contains(captured, field => field.FieldType == typeof(WeakReference<>).MakeGenericType(owner));
+        Assert.DoesNotContain(captured, field => field.FieldType == control || field.FieldType == owner ||
             field.FieldType == typeof(LayoutSnapshot) ||
             field.FieldType == typeof(CancellationTokenSource) ||
             field.FieldType == typeof(MarkdownRenderer.Layout.Boxes.ImageBox));

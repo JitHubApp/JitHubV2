@@ -119,7 +119,7 @@ public class FootnoteBacklinkTests
     public void MarkdigFootnote_BackLinkScheme_FormatConsistent()
     {
         // Verify the URL scheme constants we depend on for navigation.
-        // These constants are mirrored in LayoutBuilder.cs and HandleInternalAnchor.
+        // These constants are mirrored in LayoutBuilder.cs and BlockScrollNavigation.TryScrollToInternalAnchor.
         const string defPrefix = "#footnote-def-";
         const string refPrefix = "#footnote-ref-";
 

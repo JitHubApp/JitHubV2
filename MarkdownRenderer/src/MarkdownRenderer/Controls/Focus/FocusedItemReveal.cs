@@ -224,7 +224,7 @@ internal sealed class FocusedItemReveal
             revealTop = _surface.Scroll is not null ? Math.Max(0, rect.Top - margin) : rect.Top;
             _ = _surface.Scroll is not null
                 ? _surface.Scroll.ChangeView(null, Math.Max(0, rect.Top - margin), null, disableAnimation: false)
-                : _host.BringDocumentRectIntoExternalViewport(rect, animate: true, alignmentRatio: 0);
+                : _surface.BringIntoExternalViewport(rect, animate: true, alignmentRatio: 0);
         }
         else if (rect.Bottom > bottom - margin)
         {
@@ -233,7 +233,7 @@ internal sealed class FocusedItemReveal
                 : rect.Bottom - viewportHeight;
             _ = _surface.Scroll is not null
                 ? _surface.Scroll.ChangeView(null, rect.Bottom - viewportHeight + margin, null, disableAnimation: false)
-                : _host.BringDocumentRectIntoExternalViewport(rect, animate: true, alignmentRatio: 1);
+                : _surface.BringIntoExternalViewport(rect, animate: true, alignmentRatio: 1);
         }
         // The reveal's own animated scroll toward this top keeps it current.
         // Owned: ChangeView's target. Ancestor: StartBringIntoView aligns the
@@ -273,7 +273,7 @@ internal sealed class FocusedItemReveal
             band.Top,
             Math.Max(1, viewportWidth),
             Math.Max(1, band.Bottom - band.Top));
-        _host.BringDocumentRectIntoExternalViewport(
+        _surface.BringIntoExternalViewport(
             targetRect,
             animate: true,
             alignmentRatio: reverse ? 1 : 0);

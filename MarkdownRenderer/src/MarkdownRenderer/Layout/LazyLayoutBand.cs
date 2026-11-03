@@ -11,6 +11,10 @@ internal readonly struct LazyLayoutBand(double Top, double Bottom)
     internal readonly double Top = Top;
     internal readonly double Bottom = Bottom;
 
+    /// <summary>The smallest band covering both <paramref name="first"/> and <paramref name="second"/>.</summary>
+    internal static LazyLayoutBand Union(LazyLayoutBand first, LazyLayoutBand second)
+        => new(Math.Min(first.Top, second.Top), Math.Max(first.Bottom, second.Bottom));
+
     public static LazyLayoutBand FromViewport(double viewportTop, double viewportHeight, double overscan)
     {
         if (double.IsNaN(viewportTop) || double.IsInfinity(viewportTop))

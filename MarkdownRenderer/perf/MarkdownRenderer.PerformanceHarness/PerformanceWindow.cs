@@ -1047,7 +1047,7 @@ internal sealed class PerformanceWindow : Window
         // realization or count its background collections.
         var warmupIntervals = new List<double>(_options.ScrollFrames);
         await RunScrollFramesAsync(0, _options.ScrollFrames, warmupIntervals);
-        _renderer.SetAutomationVerticalScrollPercent(0);
+        _renderer.AutomationScrolling.SetVerticalPercent(0);
         await WaitForScrollTopAsync("prewarmed scroll reset");
         await WaitUntilAsync(
             () => !_renderer.HasPendingLazyLayoutWork,
@@ -1092,7 +1092,7 @@ internal sealed class PerformanceWindow : Window
 
         for (int trialOrdinal = 0; trialOrdinal < _options.ScrollTrials; trialOrdinal++)
         {
-            _renderer.SetAutomationVerticalScrollPercent(0);
+            _renderer.AutomationScrolling.SetVerticalPercent(0);
             await WaitForScrollTopAsync($"scroll trial {trialOrdinal} reset");
             await WaitUntilAsync(
                 () => !_renderer.HasPendingLazyLayoutWork,
@@ -1884,7 +1884,7 @@ internal sealed class PerformanceWindow : Window
 
             previousTimestamp = now;
             MarkdownPerformanceEventSource.SetLogicalFrameId(firstFrameId + frame);
-            if (!_renderer.TryGetAutomationScrollMetrics(out _, out double viewportHeight, out double extentHeight))
+            if (!_renderer.AutomationScrolling.TryGetMetrics(out _, out double viewportHeight, out double extentHeight))
             {
                 CompositionTarget.Rendering -= handler;
                 completion.TrySetException(new InvalidOperationException("Renderer did not expose scroll metrics."));
@@ -1903,7 +1903,7 @@ internal sealed class PerformanceWindow : Window
                 position = 0;
                 direction = 1;
             }
-            _renderer.SetAutomationVerticalScrollPercent(position * 100.0 / maximum);
+            _renderer.AutomationScrolling.SetVerticalPercent(position * 100.0 / maximum);
             frame++;
         };
 
@@ -1925,7 +1925,7 @@ internal sealed class PerformanceWindow : Window
     private Task WaitForScrollTopAsync(string operation)
         => WaitUntilAsync(
             () => _renderer is not null &&
-                  _renderer.TryGetAutomationScrollMetrics(
+                  _renderer.AutomationScrolling.TryGetMetrics(
                       out double verticalOffset,
                       out _,
                       out _) &&

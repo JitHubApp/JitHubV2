@@ -51,6 +51,15 @@ function New-ConformingTree([string] $Name) {
     return $tree
 }
 
+function New-LongSource([int] $Lines) {
+    $body = @('namespace Lib;', 'internal static class Long', '{') + @(1..($Lines - 4) | ForEach-Object { "    // line $_" }) + @('}')
+    return ($body -join "`n") + "`n"
+}
+
+function Write-SizeExceptions([string] $Tree, [object[]] $Files) {
+    Write-TreeFile $Tree 'eng/file-size-exceptions.json' (@{ files = $Files } | ConvertTo-Json -Depth 4)
+}
+
 function Invoke-Check([string] $Tree) {
     $output = @(& $pwsh -NoLogo -NoProfile -File $script -Root $Tree 2>&1 | ForEach-Object { "$_" })
     return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $output }
@@ -119,6 +128,54 @@ try {
 </Project>
 '@
     } @("MRS0007 src/Lib.Pack/Lib.Pack.csproj: Compile '..\Lib.Shared\*.cs'", "MRS0007 src/Lib.Pack/Lib.Pack.csproj: Compile '..\Lib.Shared\Missing.cs'")
+
+    Assert-Check 'MRS0008 file over 1,000 lines' {
+        param($tree)
+        Write-TreeFile $tree 'src/Lib/Big.cs' (New-LongSource 1001)
+    } @('MRS0008 src/Lib/Big.cs: 1001 lines')
+
+    Assert-Check 'listed file at its cap passes' {
+        param($tree)
+        Write-TreeFile $tree 'src/Lib/Big.cs' (New-LongSource 1001)
+        Write-SizeExceptions $tree @(@{ path = 'src/Lib/Big.cs'; lines = 1001; reason = 'Self-test exception.' })
+    } @()
+
+    Assert-Check 'MRS0009 listed file over its cap' {
+        param($tree)
+        Write-TreeFile $tree 'src/Lib/Big.cs' (New-LongSource 1002)
+        Write-SizeExceptions $tree @(@{ path = 'src/Lib/Big.cs'; lines = 1001; reason = 'Self-test exception.' })
+    } @('MRS0009 src/Lib/Big.cs: 1002 lines')
+
+    Assert-Check 'MRS0010 size exceptions that are not current' {
+        param($tree)
+        Write-TreeFile $tree 'src/Lib/Big.cs' (New-LongSource 1001)
+        Write-SizeExceptions $tree @(
+            @{ path = 'src/Lib/Big.cs'; lines = 1005; reason = 'Shrank without lowering its cap.' }
+            @{ path = 'src/Lib/Gone.cs'; lines = 1200; reason = 'Deleted.' }
+            @{ path = 'src/Lib/Library.cs'; lines = 1100; reason = 'Within the limit.' }
+            @{ path = 'tests/Lib.Tests/LibraryTests.cs'; lines = 1100; reason = '' }
+        )
+    } @(
+        "MRS0010 eng/file-size-exceptions.json: 'tests/Lib.Tests/LibraryTests.cs' has no reason."
+        "MRS0010 eng/file-size-exceptions.json: 'src/Lib/Big.cs' is 1001 lines; lower its cap"
+        "MRS0010 eng/file-size-exceptions.json: 'src/Lib/Gone.cs' does not exist"
+        "MRS0010 eng/file-size-exceptions.json: 'src/Lib/Library.cs' is 1 lines"
+        "MRS0010 eng/file-size-exceptions.json: 'tests/Lib.Tests/LibraryTests.cs' is 1 lines"
+    )
+
+    Assert-Check 'MRS0010 size exceptions with missing members' {
+        param($tree)
+        Write-SizeExceptions $tree @(
+            @{ lines = 1100; reason = 'No path.' }
+            @{ path = 'src/Lib/Library.cs'; lines = 1100 }
+            @{ path = 'src/Lib/Other.cs'; reason = 'No cap.' }
+        )
+    } @(
+        "MRS0010 eng/file-size-exceptions.json: an entry has no path."
+        "MRS0010 eng/file-size-exceptions.json: 'src/Lib/Library.cs' has no reason."
+        "MRS0010 eng/file-size-exceptions.json: 'src/Lib/Other.cs' has no whole-number line cap."
+        "MRS0010 eng/file-size-exceptions.json: 'src/Lib/Library.cs' is 1 lines"
+    )
 }
 finally {
     if (Test-Path -LiteralPath $tempRoot) { Remove-Item -LiteralPath $tempRoot -Recurse -Force }

@@ -273,9 +273,13 @@ public sealed class MarkdownHostContractTests
         Assert.Contains("if (!expanded)", renderer, StringComparison.Ordinal);
         Assert.Contains("DisclosureId = disclosureId", renderer, StringComparison.Ordinal);
         Assert.Contains("_disclosureStates.Clear()", control, StringComparison.Ordinal);
-        Assert.Contains("var disclosureStatesSnapshot = new Dictionary<string, bool>(", control, StringComparison.Ordinal);
-        Assert.Contains("DisclosureStates = disclosureStatesSnapshot", control, StringComparison.Ordinal);
-        Assert.Contains("TryActivateDisclosure", control, StringComparison.Ordinal);
+        Assert.Contains("DisclosureStates = new Dictionary<string, bool>(_disclosureStates, StringComparer.Ordinal)", control, StringComparison.Ordinal);
+        string layoutSetup = File.ReadAllText(Path.Combine(
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Pipeline", "RebuildLayoutSetup.cs"));
+        Assert.Contains("DisclosureStates = inputs.DisclosureStates", layoutSetup, StringComparison.Ordinal);
+        string linkActivation = File.ReadAllText(Path.Combine(
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Input", "LinkActivation.cs"));
+        Assert.Contains("TryActivateDisclosure", linkActivation, StringComparison.Ordinal);
         Assert.Contains("DisclosureToggled?.Invoke", control, StringComparison.Ordinal);
         Assert.Contains("IExpandCollapseProvider", peer, StringComparison.Ordinal);
         Assert.Contains("PatternInterface.ExpandCollapse", peer, StringComparison.Ordinal);
@@ -771,8 +775,9 @@ public sealed class MarkdownHostContractTests
             "Controls",
             "MarkdownRendererControl.cs"));
         Assert.Contains("bool sameDocumentIdentity = _committedImageDocumentId == imageDocumentId", renderer, StringComparison.Ordinal);
-        Assert.Contains("imageDocumentSourceSnapshot?.DocumentId", renderer, StringComparison.Ordinal);
-        Assert.Contains("if (sameDocumentIdentity &&", renderer, StringComparison.Ordinal);
+        Assert.Contains("string? imageDocumentId = plan.Inputs.ImageDocumentSource?.DocumentId;", renderer, StringComparison.Ordinal);
+        Assert.Contains("ReplacementScrollAnchor? scrollAnchor = sameDocumentIdentity", renderer, StringComparison.Ordinal);
+        Assert.Contains("? ReplacementScrollAnchor.Capture(_published.Snapshot, _surface)", renderer, StringComparison.Ordinal);
         Assert.Contains("old is not null && sameDocumentIdentity &&", renderer, StringComparison.Ordinal);
         Assert.Contains("_committedImageDocumentId = imageDocumentId", renderer, StringComparison.Ordinal);
     }

@@ -185,7 +185,7 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
 
         string segment = doc.Text.Substring(rangeStart, rangeEnd - rangeStart);
         CompareOptions options = ignoreCase ? CompareOptions.IgnoreCase : CompareOptions.None;
-        CompareInfo compareInfo = _peer.OwnerControl.AutomationCulture.CompareInfo;
+        CompareInfo compareInfo = _peer.OwnerControl.Localization.Culture.CompareInfo;
         int relative = backward
             ? compareInfo.LastIndexOf(segment, text, options)
             : compareInfo.IndexOf(segment, text, options);
@@ -396,7 +396,7 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
         {
             if (TryGetFirstNonEmptyScrollRect(documentRects, out var rect))
             {
-                _peer.OwnerControl.ScrollDocumentRectIntoView(rect, alignToTop);
+                _peer.OwnerControl.AutomationScrolling.ScrollIntoView(rect, alignToTop);
                 return;
             }
         }
@@ -741,7 +741,7 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
         string? key = MarkdownLocalizedStrings.StyleNameKey(elementKey);
         return key is null
             ? fallback
-            : _peer.OwnerControl.ResolveLocalizedString(key, fallback);
+            : _peer.OwnerControl.Localization.Resolve(key, fallback);
     }
 
     private static int ToColorRef(Color color) =>

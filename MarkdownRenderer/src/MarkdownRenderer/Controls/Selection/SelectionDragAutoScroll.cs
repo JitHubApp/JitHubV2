@@ -16,23 +16,14 @@ internal sealed class SelectionDragAutoScroll
 {
     private readonly MarkdownViewSurface _surface;
     private readonly MarkdownViewport _viewport;
-    private readonly Action<Rect> _bringIntoExternalViewport;
     private double _lastPointerViewportY = double.NaN;
 
     /// <param name="surface">The renderer's scroll viewer and canvas.</param>
     /// <param name="viewport">The visible document band.</param>
-    /// <param name="bringIntoExternalViewport">
-    /// Scrolls an ancestor viewport, without animation, to show a document rect
-    /// when the renderer does not own its scroll viewer.
-    /// </param>
-    internal SelectionDragAutoScroll(
-        MarkdownViewSurface surface,
-        MarkdownViewport viewport,
-        Action<Rect> bringIntoExternalViewport)
+    internal SelectionDragAutoScroll(MarkdownViewSurface surface, MarkdownViewport viewport)
     {
         _surface = surface;
         _viewport = viewport;
-        _bringIntoExternalViewport = bringIntoExternalViewport;
     }
 
     /// <summary>Records where a drag started, relative to the viewport top.</summary>
@@ -83,7 +74,7 @@ internal sealed class SelectionDragAutoScroll
                 if (_surface.Scroll is not null)
                     _surface.Scroll.ChangeView(null, target, null, disableAnimation: true);
                 else
-                    _bringIntoExternalViewport(new Rect(0, target, 1, 1));
+                    _surface.BringIntoExternalViewport(new Rect(0, target, 1, 1), animate: false);
                 viewportTop = target;
             }
         }
