@@ -1,5 +1,4 @@
 using System.Buffers.Binary;
-using System.ComponentModel;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 using static MarkdownRenderer.Svg.Resvg.Internal.InstalledFontNativeMethods;
@@ -22,8 +21,6 @@ internal sealed class InstalledFontCatalogTransfer : IDisposable
     internal const long MaximumMappedViewBytesX86 = 1_342_177_280L;
     internal const long MaximumMappedViewBytesWide = 4L * 1024 * 1024 * 1024;
 
-    private const int FileNameBufferInitialChars = 512;
-    private const int FileNameBufferMaximumChars = 32768;
     private const long AllocationGranularity = 64 * 1024;
 
     private readonly List<FontSectionLease> _fontSections = [];
@@ -107,22 +104,22 @@ internal sealed class InstalledFontCatalogTransfer : IDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(enumeratedPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(finalHandlePath);
 
-        string normalizedRoot = NormalizePath(Path.GetFullPath(NormalizePath(canonicalRoot)));
-        string normalizedEnumerated = NormalizePath(Path.GetFullPath(enumeratedPath));
-        string normalizedFinal = NormalizePath(Path.GetFullPath(NormalizePath(finalHandlePath)));
-        if (!IsLocalDrivePath(normalizedRoot) ||
-            !IsLocalDrivePath(normalizedEnumerated) ||
-            !IsLocalDrivePath(normalizedFinal))
+        string normalizedRoot = InstalledFontFiles.NormalizePath(Path.GetFullPath(InstalledFontFiles.NormalizePath(canonicalRoot)));
+        string normalizedEnumerated = InstalledFontFiles.NormalizePath(Path.GetFullPath(enumeratedPath));
+        string normalizedFinal = InstalledFontFiles.NormalizePath(Path.GetFullPath(InstalledFontFiles.NormalizePath(finalHandlePath)));
+        if (!InstalledFontFiles.IsLocalDrivePath(normalizedRoot) ||
+            !InstalledFontFiles.IsLocalDrivePath(normalizedEnumerated) ||
+            !InstalledFontFiles.IsLocalDrivePath(normalizedFinal))
         {
             return false;
         }
 
         string? enumeratedParent = Path.GetDirectoryName(normalizedEnumerated);
         string? finalParent = Path.GetDirectoryName(normalizedFinal);
-        string rootWithoutTrailingSeparator = TrimTrailingSeparator(normalizedRoot);
-        return string.Equals(TrimTrailingSeparator(enumeratedParent ?? string.Empty),
+        string rootWithoutTrailingSeparator = InstalledFontFiles.TrimTrailingSeparator(normalizedRoot);
+        return string.Equals(InstalledFontFiles.TrimTrailingSeparator(enumeratedParent ?? string.Empty),
                    rootWithoutTrailingSeparator, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(TrimTrailingSeparator(finalParent ?? string.Empty),
+            string.Equals(InstalledFontFiles.TrimTrailingSeparator(finalParent ?? string.Empty),
                    rootWithoutTrailingSeparator, StringComparison.OrdinalIgnoreCase) &&
             string.Equals(Path.GetFileName(normalizedEnumerated), Path.GetFileName(normalizedFinal),
                    StringComparison.OrdinalIgnoreCase);
@@ -231,10 +228,10 @@ internal sealed class InstalledFontCatalogTransfer : IDisposable
         var enumeration = new InstalledFontEnumeration();
 
         MapFontRoot(machineFonts, optional: false, worker, transfer, objectSecurity, ref enumeration, cancellationToken);
-        visitedRoots.Add(NormalizePath(machineFonts));
+        visitedRoots.Add(InstalledFontFiles.NormalizePath(machineFonts));
         if (userFonts is not null)
         {
-            string normalizedUserFonts = NormalizePath(userFonts);
+            string normalizedUserFonts = InstalledFontFiles.NormalizePath(userFonts);
             if (visitedRoots.Add(normalizedUserFonts))
                 MapFontRoot(userFonts, optional: true, worker, transfer, objectSecurity, ref enumeration, cancellationToken);
         }
@@ -263,15 +260,15 @@ internal sealed class InstalledFontCatalogTransfer : IDisposable
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        string normalizedRoot = NormalizePath(Path.GetFullPath(rootPath));
-        if (!IsLocalDrivePath(normalizedRoot))
+        string normalizedRoot = InstalledFontFiles.NormalizePath(Path.GetFullPath(rootPath));
+        if (!InstalledFontFiles.IsLocalDrivePath(normalizedRoot))
         {
             throw new InstalledFontCatalogException(
                 InstalledFontCatalogFailure.UnsafePath,
                 "An installed-font root did not resolve to a local drive path.");
         }
 
-        using SafeFileHandle rootHandle = OpenDirectory(rootPath, optional);
+        using SafeFileHandle rootHandle = InstalledFontFiles.OpenDirectory(rootPath, optional);
         if (rootHandle.IsInvalid)
             return;
 
@@ -314,7 +311,7 @@ internal sealed class InstalledFontCatalogTransfer : IDisposable
     /// <returns>The root's normalized final path.</returns>
     private static string GetApprovedRootFinalPath(SafeFileHandle rootHandle, string rootPath, string normalizedRoot)
     {
-        ByHandleFileInformation rootInformation = GetFileInformation(rootHandle, rootPath);
+        ByHandleFileInformation rootInformation = InstalledFontFiles.GetFileInformation(rootHandle, rootPath);
         if ((rootInformation.FileAttributes & FileAttributeDirectory) == 0 ||
             (rootInformation.FileAttributes & FileAttributeReparsePoint) != 0)
         {
@@ -323,9 +320,9 @@ internal sealed class InstalledFontCatalogTransfer : IDisposable
                 "An installed-font root is not a plain directory.");
         }
 
-        string finalRoot = NormalizePath(GetFinalPath(rootHandle));
-        if (!IsLocalDrivePath(finalRoot) ||
-            !string.Equals(TrimTrailingSeparator(finalRoot), TrimTrailingSeparator(normalizedRoot),
+        string finalRoot = InstalledFontFiles.NormalizePath(InstalledFontFiles.GetFinalPath(rootHandle));
+        if (!InstalledFontFiles.IsLocalDrivePath(finalRoot) ||
+            !string.Equals(InstalledFontFiles.TrimTrailingSeparator(finalRoot), InstalledFontFiles.TrimTrailingSeparator(normalizedRoot),
                 StringComparison.OrdinalIgnoreCase))
         {
             throw new InstalledFontCatalogException(
@@ -353,19 +350,19 @@ internal sealed class InstalledFontCatalogTransfer : IDisposable
         cancellationToken.ThrowIfCancellationRequested();
         enumeration.CandidateCount = checked(enumeration.CandidateCount + 1);
         ValidateFileCandidateCount(enumeration.CandidateCount);
-        if (!IsSupportedFontExtension(filePath))
+        if (!InstalledFontFiles.IsSupportedFontExtension(filePath))
             return;
-        string enumeratedPath = NormalizePath(Path.GetFullPath(filePath));
-        if (!string.Equals(TrimTrailingSeparator(Path.GetDirectoryName(enumeratedPath) ?? string.Empty),
-                TrimTrailingSeparator(finalRoot), StringComparison.OrdinalIgnoreCase))
+        string enumeratedPath = InstalledFontFiles.NormalizePath(Path.GetFullPath(filePath));
+        if (!string.Equals(InstalledFontFiles.TrimTrailingSeparator(Path.GetDirectoryName(enumeratedPath) ?? string.Empty),
+                InstalledFontFiles.TrimTrailingSeparator(finalRoot), StringComparison.OrdinalIgnoreCase))
         {
             throw new InstalledFontCatalogException(
                 InstalledFontCatalogFailure.UnsafePath,
                 "A font enumeration result escaped its approved root.");
         }
 
-        using SafeFileHandle fontFile = OpenFontFile(filePath);
-        ByHandleFileInformation fileInformation = GetFileInformation(fontFile, filePath);
+        using SafeFileHandle fontFile = InstalledFontFiles.OpenFontFile(filePath);
+        ByHandleFileInformation fileInformation = InstalledFontFiles.GetFileInformation(fontFile, filePath);
         if ((fileInformation.FileAttributes & (FileAttributeDirectory | FileAttributeReparsePoint)) != 0)
         {
             throw new InstalledFontCatalogException(
@@ -373,7 +370,7 @@ internal sealed class InstalledFontCatalogTransfer : IDisposable
                 "An enumerated font file is a directory or reparse point.");
         }
 
-        string finalFilePath = GetFinalPath(fontFile);
+        string finalFilePath = InstalledFontFiles.GetFinalPath(fontFile);
         if (!IsExactApprovedFilePath(finalRoot, enumeratedPath, finalFilePath))
         {
             throw new InstalledFontCatalogException(
@@ -381,7 +378,7 @@ internal sealed class InstalledFontCatalogTransfer : IDisposable
                 "An opened font file did not retain its exact approved-root identity.");
         }
 
-        long fileBytes = GetFileLength(fileInformation);
+        long fileBytes = InstalledFontFiles.GetFileLength(fileInformation);
         ulong fileIndex = ((ulong)fileInformation.FileIndexHigh << 32) | fileInformation.FileIndexLow;
         var identity = new FontFileIdentity(fileInformation.VolumeSerialNumber, fileIndex);
         if (fileIndex != 0 && !enumeration.FileIdentities.Add(identity))
@@ -390,7 +387,7 @@ internal sealed class InstalledFontCatalogTransfer : IDisposable
         long nextAggregate = ReserveMappedView(enumeration.AggregateViewBytes, fileBytes, IntPtr.Size);
 
         cancellationToken.ThrowIfCancellationRequested();
-        SafeFileMappingHandle section = CreateReadOnlySection(fontFile, filePath, objectSecurity);
+        SafeFileMappingHandle section = InstalledFontFiles.CreateReadOnlySection(fontFile, filePath, objectSecurity);
         WorkerMappingLease? remote = null;
         try
         {
@@ -432,169 +429,4 @@ internal sealed class InstalledFontCatalogTransfer : IDisposable
         }
     }
 
-    private static SafeFileHandle OpenDirectory(string path, bool optional)
-    {
-        nint rawHandle = CreateFileW(
-            path,
-            FileReadAttributes,
-            ShareRead | ShareWrite,
-            0,
-            OpenExisting,
-            FileFlagBackupSemantics | FileFlagOpenReparsePoint,
-            0);
-        if (rawHandle != 0 && rawHandle != new nint(-1))
-            return new SafeFileHandle(rawHandle, ownsHandle: true);
-
-        int error = Marshal.GetLastPInvokeError();
-        if (optional && error is ErrorFileNotFound or ErrorPathNotFound)
-            return new SafeFileHandle(new nint(-1), ownsHandle: false);
-        throw new InstalledFontCatalogException(
-            InstalledFontCatalogFailure.CatalogUnavailable,
-            "An approved installed-font directory could not be opened.",
-            new Win32Exception(error));
-    }
-
-    private static SafeFileHandle OpenFontFile(string path)
-    {
-        // Sharing read-only prevents a concurrently opened writer from changing
-        // the bytes after the handle identity and section length are validated.
-        nint rawHandle = CreateFileW(
-            path,
-            GenericRead,
-            ShareRead,
-            0,
-            OpenExisting,
-            FileFlagOpenReparsePoint | FileFlagSequentialScan,
-            0);
-        if (rawHandle != 0 && rawHandle != new nint(-1))
-            return new SafeFileHandle(rawHandle, ownsHandle: true);
-
-        int error = Marshal.GetLastPInvokeError();
-        throw new InstalledFontCatalogException(
-            InstalledFontCatalogFailure.CatalogUnavailable,
-            "An enumerated installed font could not be read.",
-            new Win32Exception(error));
-    }
-
-    private static SafeFileMappingHandle CreateReadOnlySection(
-        SafeFileHandle file,
-        string path,
-        WorkerObjectSecurity.WorkerObjectSecurityContext objectSecurity)
-    {
-        WorkerObjectSecurity.SecurityDescriptorHandle descriptor = objectSecurity.Descriptor;
-        bool descriptorReferenceAdded = false;
-        nint rawMapping;
-        int mappingError = 0;
-        try
-        {
-            descriptor.DangerousAddRef(ref descriptorReferenceAdded);
-            var attributes = new SecurityAttributes
-            {
-                Length = checked((uint)Marshal.SizeOf<SecurityAttributes>()),
-                SecurityDescriptor = descriptor.DangerousGetHandle(),
-                InheritHandle = 0,
-            };
-            rawMapping = CreateFileMappingW(file, ref attributes, PageReadOnly, 0, 0, null);
-            if (rawMapping == 0 || rawMapping == new nint(-1))
-                mappingError = Marshal.GetLastPInvokeError();
-        }
-        finally
-        {
-            if (descriptorReferenceAdded)
-                descriptor.DangerousRelease();
-        }
-
-        if (rawMapping != 0 && rawMapping != new nint(-1))
-            return new SafeFileMappingHandle(rawMapping);
-
-        throw new InstalledFontCatalogException(
-            InstalledFontCatalogFailure.MappingFailed,
-            "An installed font could not be represented by a read-only file mapping.",
-            new Win32Exception(mappingError, path));
-    }
-
-    private static ByHandleFileInformation GetFileInformation(SafeFileHandle file, string path)
-    {
-        if (GetFileInformationByHandle(file, out ByHandleFileInformation information))
-            return information;
-
-        int error = Marshal.GetLastPInvokeError();
-        throw new InstalledFontCatalogException(
-            InstalledFontCatalogFailure.CatalogUnavailable,
-            "An installed-font handle could not be inspected safely.",
-            new Win32Exception(error, path));
-    }
-
-    private static long GetFileLength(ByHandleFileInformation information)
-    {
-        ulong length = ((ulong)information.FileSizeHigh << 32) | information.FileSizeLow;
-        if (length > long.MaxValue)
-        {
-            throw new InstalledFontCatalogException(
-                InstalledFontCatalogFailure.ResourceLimit,
-                "An installed font has an invalid file length.");
-        }
-
-        return (long)length;
-    }
-
-    private static unsafe string GetFinalPath(SafeFileHandle handle)
-    {
-        int capacity = FileNameBufferInitialChars;
-        while (true)
-        {
-            char[] buffer = new char[capacity];
-            uint length;
-            fixed (char* pointer = buffer)
-            {
-                length = GetFinalPathNameByHandleW(
-                    handle,
-                    pointer,
-                    checked((uint)buffer.Length),
-                    FileNameNormalized | VolumeNameDos);
-            }
-
-            if (length == 0)
-            {
-                int error = Marshal.GetLastPInvokeError();
-                throw new InstalledFontCatalogException(
-                    InstalledFontCatalogFailure.CatalogUnavailable,
-                    "An installed-font handle's final path could not be verified.",
-                    new Win32Exception(error));
-            }
-
-            if (length < buffer.Length)
-                return NormalizePath(new string(buffer, 0, checked((int)length)));
-            if (length > FileNameBufferMaximumChars)
-            {
-                throw new InstalledFontCatalogException(
-                    InstalledFontCatalogFailure.UnsafePath,
-                    "An installed-font path exceeded the Windows path bound.");
-            }
-
-            capacity = checked((int)length + 1);
-        }
-    }
-
-    private static bool IsSupportedFontExtension(string path) =>
-        Path.GetExtension(path).ToLowerInvariant() is ".ttf" or ".otf" or ".ttc" or ".otc";
-
-    private static bool IsLocalDrivePath(string path) =>
-        path.Length >= 3 &&
-        ((path[0] is >= 'A' and <= 'Z') || (path[0] is >= 'a' and <= 'z')) &&
-        path[1] == ':' &&
-        Path.IsPathFullyQualified(path) &&
-        (path[2] == Path.DirectorySeparatorChar || path[2] == Path.AltDirectorySeparatorChar) &&
-        !path.StartsWith("\\\\", StringComparison.Ordinal);
-
-    private static string NormalizePath(string path)
-    {
-        if (path.StartsWith("\\\\?\\UNC\\", StringComparison.OrdinalIgnoreCase))
-            return "\\\\" + path[8..];
-        if (path.StartsWith("\\\\?\\", StringComparison.OrdinalIgnoreCase))
-            return path[4..];
-        return path;
-    }
-
-    private static string TrimTrailingSeparator(string path) => Path.TrimEndingDirectorySeparator(path);
 }
