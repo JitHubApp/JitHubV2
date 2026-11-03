@@ -43,8 +43,7 @@ internal sealed class CodeBlockHighlighting
         static key => 64L + ((key.Language?.Length ?? 0) * sizeof(char)));
     private readonly HashSet<CodeBlockHighlightCacheKey> _inFlight = new();
     private readonly SemaphoreSlim _semaphore = new(2, 2);
-    private readonly object _tasksGate = new();
-    private readonly HashSet<Task> _tasks = new();
+    private readonly CodeBlockHighlightTasks _tasks = new();
     private CancellationTokenSource? _cts;
     private Task _retirement = Task.CompletedTask;
     private int _generation;
@@ -76,7 +75,7 @@ internal sealed class CodeBlockHighlighting
         var old = _cts;
         Task workLifetime = OwnedResourceRetirement.CombineLifetimes(
             _retirement,
-            DrainTasks());
+            _tasks.Drain());
         _cts = restart ? new CancellationTokenSource() : null;
         _generation++;
         _inFlight.Clear();
@@ -244,7 +243,7 @@ internal sealed class CodeBlockHighlighting
                 try
                 {
                     CodeBlockHighlightOperationLifetime.StartAndTrack(
-                        TrackTask,
+                        _tasks.Track,
                         () => runOnWorker
                             ? Task.Run(
                                 () => HighlightAsync(
@@ -268,44 +267,6 @@ internal sealed class CodeBlockHighlighting
 
         if (appliedCached)
             _host.InvalidateCanvas();
-    }
-
-    private void TrackTask(Task task)
-    {
-        lock (_tasksGate)
-        {
-            _tasks.Add(task);
-        }
-
-        _ = task.ContinueWith(
-            static (completed, state) =>
-            {
-                var owner = (CodeBlockHighlighting)state!;
-                lock (owner._tasksGate)
-                {
-                    owner._tasks.Remove(completed);
-                }
-            },
-            this,
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default);
-    }
-
-    private Task DrainTasks()
-    {
-        Task[] tasks;
-        lock (_tasksGate)
-        {
-            if (_tasks.Count == 0)
-                return Task.CompletedTask;
-
-            tasks = new Task[_tasks.Count];
-            _tasks.CopyTo(tasks);
-            _tasks.Clear();
-        }
-
-        return Task.WhenAll(tasks);
     }
 
     private async Task HighlightAsync(
