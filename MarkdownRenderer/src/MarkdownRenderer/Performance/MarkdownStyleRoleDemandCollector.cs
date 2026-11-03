@@ -9,23 +9,12 @@ using Markdig.Extensions.Mathematics;
 using Markdig.Extensions.Tables;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
-using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Parsing;
 using MarkdownDocumentSnapshot = MarkdownRenderer.Document.MarkdownDocument;
 
 namespace MarkdownRenderer.Performance;
-
-internal sealed class MarkdownStyleRoleDemandResult(
-    ulong mask,
-    bool isComplete,
-    string? firstIncompleteNodeType)
-{
-    internal ulong Mask { get; } = mask;
-    internal bool IsComplete { get; } = isComplete;
-    internal string? FirstIncompleteNodeType { get; } = firstIncompleteNodeType;
-}
 
 /// <summary>
 /// Computes the built-in style roles a complete immutable document can use.

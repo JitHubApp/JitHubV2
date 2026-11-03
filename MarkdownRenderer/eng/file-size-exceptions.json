@@ -62,11 +62,6 @@
       "reason": "Composition root: dependency properties, the explicit host adapters its owners call, and the commit, recovery and lifecycle sequencing across those owners. Structure step 3d moved its logic into owners (7,795 to 3,825 lines); this cap holds that."
     },
     {
-      "path": "src/MarkdownRenderer/Document/MarkdownDocument.cs",
-      "lines": 1091,
-      "reason": "Predates the size rule; split by responsibility in a later structure step."
-    },
-    {
       "path": "src/MarkdownRenderer/Engine/Gfm029Compatibility.cs",
       "lines": 1223,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
@@ -74,11 +69,6 @@
     {
       "path": "src/MarkdownRenderer/Engine/MarkdownEngine.cs",
       "lines": 1204,
-      "reason": "Predates the size rule; split by responsibility in a later structure step."
-    },
-    {
-      "path": "src/MarkdownRenderer/Extensions/MarkdownVectorScene.cs",
-      "lines": 1057,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
@@ -143,17 +133,17 @@
     },
     {
       "path": "src/MarkdownRenderer/Parsing/SafeHtmlParser.cs",
-      "lines": 1432,
+      "lines": 1218,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
       "path": "src/MarkdownRenderer/Performance/MarkdownPerformanceSession.cs",
-      "lines": 3531,
+      "lines": 3521,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
       "path": "src/MarkdownRenderer/Performance/MarkdownProgressiveScenePlan.cs",
-      "lines": 1573,
+      "lines": 1564,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {

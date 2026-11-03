@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 using MarkdownRenderer.Controls;
-using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Layout;
@@ -17,14 +16,6 @@ using RendererDocument = MarkdownRenderer.Document.MarkdownDocument;
 using Windows.Foundation;
 
 namespace MarkdownRenderer.Performance;
-
-internal sealed class MarkdownDeferredSceneResult(
-    MarkdownContentFragment fragment,
-    IReadOnlyList<MarkdownDiagnostic> diagnostics)
-{
-    internal MarkdownContentFragment Fragment { get; } = fragment;
-    internal IReadOnlyList<MarkdownDiagnostic> Diagnostics { get; } = diagnostics;
-}
 
 /// <summary>
 /// Control-owned viewport work plan for deferred built-in scenes. The plan is

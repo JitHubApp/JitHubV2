@@ -19,16 +19,6 @@ using Windows.Foundation;
 
 namespace MarkdownRenderer.Performance;
 
-internal enum MarkdownParsePipelineStage
-{
-    Begin = 0,
-    EngineParseAndCache = 1,
-    LegacyParseAndDocument = 2,
-    ProgressiveScenePlan = 3,
-    StyleRoleDemand = 4,
-    SessionTotal = 5,
-}
-
 /// <summary>
 /// Shares bounded image preparation between document views in one security partition.
 /// The host owns this service; controls borrow it and own their document scopes.
