@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using Markdig;
 using Markdig.Syntax;
 using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Parsing;
 
 namespace MarkdownRenderer.Html.Renderers;
@@ -75,6 +76,46 @@ internal sealed class HtmlNestedMarkdown
         }
 
         return -1;
+    }
+
+    /// <summary>
+    /// Reparses the Markdown that follows a pure void-tag prefix and appends
+    /// its blocks to <paramref name="root"/>, one nesting level deeper.
+    /// </summary>
+    internal static void AppendMarkdownTail(
+        StackBox root,
+        string tailSource,
+        int absoluteTextStart,
+        MarkdownLayoutContext context,
+        HtmlNestedMarkdownPass pass)
+    {
+        pass.Depth++;
+        try
+        {
+            string nestedSource = HtmlNestedMarkdownSource.BuildNestedMarkdownSource(
+                tailSource,
+                absoluteTextStart,
+                context,
+                pass.RootDocument,
+                out int bodyOffset,
+                out MarkdownSourceProjection? nestedProjection);
+            MarkdownDocument tail = Markdown.Parse(nestedSource, context.Registry.BuildPipeline());
+            if (nestedProjection is null)
+            {
+                HtmlMarkdownSpanOffsets.OffsetMarkdownSpans(tail, absoluteTextStart - bodyOffset);
+                GfmChildBuilder.PopulateChildren(root, tail, context);
+            }
+            else
+            {
+                nestedProjection.ApplyTo(tail, context.CancellationToken);
+                using (context.PushSourceProjection(nestedProjection))
+                    GfmChildBuilder.PopulateChildren(root, tail, context);
+            }
+        }
+        finally
+        {
+            pass.Depth--;
+        }
     }
 
     internal BlockBox? TryBuildMarkdownContainer(

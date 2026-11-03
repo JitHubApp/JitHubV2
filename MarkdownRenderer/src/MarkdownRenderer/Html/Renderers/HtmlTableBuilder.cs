@@ -13,6 +13,8 @@ namespace MarkdownRenderer.Html.Renderers;
 /// </summary>
 internal sealed class HtmlTableBuilder
 {
+    private const int MaxTableColumns = 64;
+
     private readonly IHtmlBlockBuilderHost _host;
     private readonly HtmlInlineBuilder _inline;
 
@@ -22,9 +24,37 @@ internal sealed class HtmlTableBuilder
         _inline = inline;
     }
 
-    private const int MaxTableColumns = 64;
-
     internal BlockBox? BuildTable(
+        SafeHtmlElement table,
+        MarkdownLayoutContext context,
+        int sourceOffset,
+        SafeHtmlAlignment alignment)
+    {
+        StackBox? captionStack = BuildCaptionStack(table, context, sourceOffset, alignment);
+
+        List<HtmlTableRow> rows = [];
+        CollectRows(table, inHeaderGroup: false, rows);
+        int columnCount = Math.Min(
+            MaxTableColumns,
+            rows.Count == 0 ? 0 : rows.Max(row => row.Cells.Sum(cell => cell.ColumnSpan)));
+        if (columnCount == 0)
+        {
+            return captionStack is null ? null : HtmlBoxes.ReturnIfNonEmpty(captionStack, context);
+        }
+
+        List<InlineContainerBox[]> headerRows = [];
+        List<InlineContainerBox[]> bodyRows = [];
+        var alignments = new TableBox.CellAlignment[columnCount];
+        foreach (HtmlTableRow row in rows)
+        {
+            InlineContainerBox[] cells = BuildRowCells(row, columnCount, alignments, context, sourceOffset);
+            (row.IsHeader ? headerRows : bodyRows).Add(cells);
+        }
+
+        return PublishTable(headerRows, bodyRows, alignments, captionStack, context);
+    }
+
+    private StackBox? BuildCaptionStack(
         SafeHtmlElement table,
         MarkdownLayoutContext context,
         int sourceOffset,
@@ -47,67 +77,69 @@ internal sealed class HtmlTableBuilder
             }
         }
 
-        List<HtmlTableRow> rows = [];
-        CollectRows(table, inHeaderGroup: false, rows);
-        int columnCount = Math.Min(
-            MaxTableColumns,
-            rows.Count == 0 ? 0 : rows.Max(row => row.Cells.Sum(cell => cell.ColumnSpan)));
-        if (columnCount == 0)
-        {
-            return captionStack is null ? null : HtmlBoxes.ReturnIfNonEmpty(captionStack, context);
-        }
+        return captionStack;
+    }
 
-        List<InlineContainerBox[]> headerRows = [];
-        List<InlineContainerBox[]> bodyRows = [];
-        var alignments = new TableBox.CellAlignment[columnCount];
-        foreach (HtmlTableRow row in rows)
+    private InlineContainerBox[] BuildRowCells(
+        HtmlTableRow row,
+        int columnCount,
+        TableBox.CellAlignment[] alignments,
+        MarkdownLayoutContext context,
+        int sourceOffset)
+    {
+        var cells = new InlineContainerBox[columnCount];
+        int column = 0;
+        foreach (HtmlTableCell cell in row.Cells)
         {
-            var cells = new InlineContainerBox[columnCount];
-            int column = 0;
-            foreach (HtmlTableCell cell in row.Cells)
+            if (column >= columnCount)
             {
-                if (column >= columnCount)
-                {
-                    break;
-                }
-
-                string key = row.IsHeader ? MarkdownElementKeys.TableHeader : MarkdownElementKeys.TableCell;
-                SafeHtmlElement? preformatted = HtmlElementQueries.FindDescendant(cell.Element, "pre");
-                bool hasMixedContent = preformatted is not null &&
-                    HasRenderableContentOutside(cell.Element, preformatted);
-                InlineContainerBox box = preformatted is null || hasMixedContent
-                    ? HtmlBoxes.CreateInlineBox(context, key, SafeHtmlParser.GetAlignment(cell.Element))
-                    : BuildPreformattedTableCell(
-                        preformatted,
-                        context,
-                        sourceOffset,
-                        SafeHtmlParser.GetAlignment(cell.Element));
-                if (preformatted is null || hasMixedContent)
-                    _inline.PopulateInline(box, cell.Element.Children, context, sourceOffset, HtmlInlineContext.Empty);
-                cells[column] = box;
-                if (alignments[column] == TableBox.CellAlignment.Default)
-                {
-                    alignments[column] = HtmlAlignments.ToCellAlignment(SafeHtmlParser.GetAlignment(cell.Element));
-                }
-
-                column++;
-                for (int span = 1; span < cell.ColumnSpan && column < columnCount; span++, column++)
-                {
-                    cells[column] = HtmlBoxes.CreateInlineBox(context, key, SafeHtmlAlignment.Inherit);
-                }
+                break;
             }
 
-            for (; column < columnCount; column++)
-            {
-                cells[column] = HtmlBoxes.CreateInlineBox(
+            string key = row.IsHeader ? MarkdownElementKeys.TableHeader : MarkdownElementKeys.TableCell;
+            SafeHtmlElement? preformatted = HtmlElementQueries.FindDescendant(cell.Element, "pre");
+            bool hasMixedContent = preformatted is not null &&
+                HasRenderableContentOutside(cell.Element, preformatted);
+            InlineContainerBox box = preformatted is null || hasMixedContent
+                ? HtmlBoxes.CreateInlineBox(context, key, SafeHtmlParser.GetAlignment(cell.Element))
+                : BuildPreformattedTableCell(
+                    preformatted,
                     context,
-                    row.IsHeader ? MarkdownElementKeys.TableHeader : MarkdownElementKeys.TableCell,
-                    SafeHtmlAlignment.Inherit);
+                    sourceOffset,
+                    SafeHtmlParser.GetAlignment(cell.Element));
+            if (preformatted is null || hasMixedContent)
+                _inline.PopulateInline(box, cell.Element.Children, context, sourceOffset, HtmlInlineContext.Empty);
+            cells[column] = box;
+            if (alignments[column] == TableBox.CellAlignment.Default)
+            {
+                alignments[column] = HtmlAlignments.ToCellAlignment(SafeHtmlParser.GetAlignment(cell.Element));
             }
 
-            (row.IsHeader ? headerRows : bodyRows).Add(cells);
+            column++;
+            for (int span = 1; span < cell.ColumnSpan && column < columnCount; span++, column++)
+            {
+                cells[column] = HtmlBoxes.CreateInlineBox(context, key, SafeHtmlAlignment.Inherit);
+            }
         }
 
+        for (; column < columnCount; column++)
+        {
+            cells[column] = HtmlBoxes.CreateInlineBox(
+                context,
+                row.IsHeader ? MarkdownElementKeys.TableHeader : MarkdownElementKeys.TableCell,
+                SafeHtmlAlignment.Inherit);
+        }
+
+        return cells;
+    }
+
+    private static BlockBox PublishTable(
+        List<InlineContainerBox[]> headerRows,
+        List<InlineContainerBox[]> bodyRows,
+        TableBox.CellAlignment[] alignments,
+        StackBox? captionStack,
+        MarkdownLayoutContext context)
+    {
         InlineContainerBox[][] publishedHeaderRows = headerRows.ToArray();
         InlineContainerBox[][] publishedBodyRows = bodyRows.ToArray();
         var tableBox = new TableBox(context, publishedHeaderRows, publishedBodyRows, alignments)

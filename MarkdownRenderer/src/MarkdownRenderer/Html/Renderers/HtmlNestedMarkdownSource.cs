@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading;
 using Markdig.Syntax;
 using MarkdownRenderer.Layout;
 
@@ -28,25 +29,15 @@ internal static class HtmlNestedMarkdownSource
             ? null
             : new MarkdownSourceProjectionBuilder();
 
-        void AppendRawText(StringBuilder destination)
-        {
-            destination.Append(rawText);
-            projectionBuilder?.AppendProjection(
-                rawText,
-                safeHtmlProjection!,
-                absoluteTextStart,
-                context.CancellationToken);
-        }
-
         if (rawText.IndexOf('[') < 0)
         {
-            if (projectionBuilder is null)
-                return rawText;
-
-            var rawOnly = new StringBuilder(rawText.Length);
-            AppendRawText(rawOnly);
-            nestedProjection = projectionBuilder.Build();
-            return rawOnly.ToString();
+            return BuildRawOnly(
+                rawText,
+                absoluteTextStart,
+                safeHtmlProjection,
+                projectionBuilder,
+                context.CancellationToken,
+                out nestedProjection);
         }
 
         string sourceText = context.SourceMap.SourceText;
@@ -61,22 +52,101 @@ internal static class HtmlNestedMarkdownSource
             sourceRange.Start > sourceText.Length ||
             sourceRange.Length > sourceText.Length - sourceRange.Start)
         {
-            if (projectionBuilder is not null)
-            {
-                var rawOnly = new StringBuilder(rawText.Length);
-                AppendRawText(rawOnly);
-                nestedProjection = projectionBuilder.Build();
-                return rawOnly.ToString();
-            }
-
-            return rawText;
+            return BuildRawOnly(
+                rawText,
+                absoluteTextStart,
+                safeHtmlProjection,
+                projectionBuilder,
+                context.CancellationToken,
+                out nestedProjection);
         }
 
+        var precedingDefinitions = new List<(int Start, int Length)>();
+        var followingDefinitions = new List<(int Start, int Length)>();
+        PartitionReplayDefinitions(
+            definitions,
+            rawText,
+            sourceText,
+            sourceRange,
+            precedingDefinitions,
+            followingDefinitions);
+
+        var combined = new StringBuilder();
+        if (precedingDefinitions.Count > 0)
+        {
+            AppendDefinitionSources(combined, precedingDefinitions, sourceText, projectionBuilder);
+            AppendSyntheticLineBreak(combined, projectionBuilder, new SourceSpan(sourceRange.Start, 0));
+        }
+
+        bodyOffset = combined.Length;
+        AppendRawText(
+            combined,
+            rawText,
+            absoluteTextStart,
+            safeHtmlProjection,
+            projectionBuilder,
+            context.CancellationToken);
+        AppendFollowingDefinitions(combined, followingDefinitions, sourceText, sourceRange, projectionBuilder);
+
+        if (projectionBuilder is not null)
+            nestedProjection = projectionBuilder.Build();
+
+        return combined.ToString();
+    }
+
+    /// <summary>
+    /// Returns the fragment text alone; with a safe-HTML projection, also maps
+    /// it back to authored source.
+    /// </summary>
+    private static string BuildRawOnly(
+        string rawText,
+        int absoluteTextStart,
+        MarkdownSourceProjection? safeHtmlProjection,
+        MarkdownSourceProjectionBuilder? projectionBuilder,
+        CancellationToken cancellationToken,
+        out MarkdownSourceProjection? nestedProjection)
+    {
+        nestedProjection = null;
+        if (projectionBuilder is null)
+            return rawText;
+
+        var rawOnly = new StringBuilder(rawText.Length);
+        AppendRawText(rawOnly, rawText, absoluteTextStart, safeHtmlProjection, projectionBuilder, cancellationToken);
+        nestedProjection = projectionBuilder.Build();
+        return rawOnly.ToString();
+    }
+
+    private static void AppendRawText(
+        StringBuilder destination,
+        string rawText,
+        int absoluteTextStart,
+        MarkdownSourceProjection? safeHtmlProjection,
+        MarkdownSourceProjectionBuilder? projectionBuilder,
+        CancellationToken cancellationToken)
+    {
+        destination.Append(rawText);
+        projectionBuilder?.AppendProjection(
+            rawText,
+            safeHtmlProjection!,
+            absoluteTextStart,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Collects the authored definitions the fragment may use, split into those
+    /// before and after the fragment's own source range.
+    /// </summary>
+    private static void PartitionReplayDefinitions(
+        LinkReferenceDefinitionGroup definitions,
+        string rawText,
+        string sourceText,
+        SourceSpan sourceRange,
+        List<(int Start, int Length)> precedingDefinitions,
+        List<(int Start, int Length)> followingDefinitions)
+    {
         int absoluteTextStartInDocument = sourceRange.Start;
         int absoluteTextEnd = sourceRange.End;
         bool literalReferenceMatchIsSafe = HasSimpleAsciiReferenceLabels(rawText);
-        var precedingDefinitions = new List<(int Start, int Length)>();
-        var followingDefinitions = new List<(int Start, int Length)>();
         foreach (LinkReferenceDefinition definition in definitions.Links.Values)
         {
             // Generated heading and footnote entries have no source definition
@@ -108,16 +178,15 @@ internal static class HtmlNestedMarkdownSource
             // A definition inside this Markdown fragment is already present in
             // rawText. Overlapping/synthetic spans are intentionally not replayed.
         }
+    }
 
-        var combined = new StringBuilder();
-        if (precedingDefinitions.Count > 0)
-        {
-            AppendDefinitionSources(combined, precedingDefinitions, sourceText, projectionBuilder);
-            AppendSyntheticLineBreak(combined, projectionBuilder, new SourceSpan(sourceRange.Start, 0));
-        }
-
-        bodyOffset = combined.Length;
-        AppendRawText(combined);
+    private static void AppendFollowingDefinitions(
+        StringBuilder combined,
+        List<(int Start, int Length)> followingDefinitions,
+        string sourceText,
+        SourceSpan sourceRange,
+        MarkdownSourceProjectionBuilder? projectionBuilder)
+    {
         foreach ((int start, int length) in followingDefinitions)
         {
             combined.Append("\n\n");
@@ -133,11 +202,6 @@ internal static class HtmlNestedMarkdownSource
                 new SourceSpan(start, length));
             AppendDefinitionLineBreak(combined, projectionBuilder, sourceText, start + length);
         }
-
-        if (projectionBuilder is not null)
-            nestedProjection = projectionBuilder.Build();
-
-        return combined.ToString();
     }
 
     internal static bool HasSimpleAsciiReferenceLabels(string? text)

@@ -49,6 +49,33 @@ internal sealed class HtmlDetailsBuilder
             .ToString(CultureInfo.InvariantCulture);
         bool defaultExpanded = details.TryGetAttribute("open", out _);
         bool expanded = context.IsDisclosureExpanded(disclosureId, defaultExpanded);
+        AppendSummaryToggle(stack, details, summary, disclosureId, expanded, context, sourceOffset, alignment);
+
+        if (summary is not null)
+            AppendSummaryCode(stack, summary, context, sourceOffset, alignment);
+
+        if (summary is not null && _options.EnableImages)
+            AppendSummaryMedia(stack, summary, context, sourceOffset, alignment);
+
+        if (!expanded)
+        {
+            return stack;
+        }
+
+        AppendExpandedBody(stack, details, summary, context, sourceOffset, alignment);
+        return HtmlBoxes.ReturnIfNonEmpty(stack, context);
+    }
+
+    private static void AppendSummaryToggle(
+        StackBox stack,
+        SafeHtmlElement details,
+        SafeHtmlElement? summary,
+        string disclosureId,
+        bool expanded,
+        MarkdownLayoutContext context,
+        int sourceOffset,
+        SafeHtmlAlignment alignment)
+    {
         string defaultSummary = context.ResolveString(
             MarkdownStringKeys.HtmlDetails,
             MarkdownLocalizedStrings.HtmlDetails);
@@ -67,7 +94,7 @@ internal sealed class HtmlDetailsBuilder
         string summaryStyleKey = summaryHeadingKey ?? MarkdownElementKeys.Strong;
         InlineContainerBox summaryBox = HtmlBoxes.CreateInlineBox(context, summaryStyleKey, alignment);
         summaryBox.Add(new LinkRun(
-            $"{(expanded ? "\u25BE" : "\u25B8")} {summaryText}",
+            $"{(expanded ? "▾" : "▸")} {summaryText}",
             $"markdown-disclosure:{disclosureId}")
         {
             AccessibilityName = summaryText,
@@ -79,73 +106,87 @@ internal sealed class HtmlDetailsBuilder
                 summary?.SourceLength ?? details.SourceLength),
         });
         HtmlBoxes.AddChild(stack, summaryBox, context);
+    }
 
-        if (summary is not null)
+    private static void AppendSummaryCode(
+        StackBox stack,
+        SafeHtmlElement summary,
+        MarkdownLayoutContext context,
+        int sourceOffset,
+        SafeHtmlAlignment alignment)
+    {
+        // GitHub permits fenced Markdown inside <summary> and emits it as a
+        // nested <pre>. A closed disclosure still displays the complete
+        // summary, so flattening that code into the disclosure label both
+        // loses its layout and removes its code-block accessibility
+        // semantics. Keep the compact textual label as the toggle and
+        // publish each visible preformatted descendant exactly once.
+        foreach (SafeHtmlElement preformatted in HtmlElementQueries.DescendantPreformatted(summary))
         {
-            // GitHub permits fenced Markdown inside <summary> and emits it as a
-            // nested <pre>. A closed disclosure still displays the complete
-            // summary, so flattening that code into the disclosure label both
-            // loses its layout and removes its code-block accessibility
-            // semantics. Keep the compact textual label as the toggle and
-            // publish each visible preformatted descendant exactly once.
-            foreach (SafeHtmlElement preformatted in HtmlElementQueries.DescendantPreformatted(summary))
-            {
-                BlockBox? codeBlock = HtmlPreformattedBlock.BuildPreformatted(
-                    preformatted,
-                    context,
-                    sourceOffset,
-                    alignment);
-                if (codeBlock is not null)
-                    HtmlBoxes.AddChild(stack, codeBlock, context);
-            }
+            BlockBox? codeBlock = HtmlPreformattedBlock.BuildPreformatted(
+                preformatted,
+                context,
+                sourceOffset,
+                alignment);
+            if (codeBlock is not null)
+                HtmlBoxes.AddChild(stack, codeBlock, context);
         }
+    }
 
-        if (summary is not null && _options.EnableImages)
+    private void AppendSummaryMedia(
+        StackBox stack,
+        SafeHtmlElement summary,
+        MarkdownLayoutContext context,
+        int sourceOffset,
+        SafeHtmlAlignment alignment)
+    {
+        // A disclosure summary may contain diagrams or badges. They remain
+        // visible when <details> is closed, just like multiline Markdown
+        // content in the summary. Build the inline content once to retain
+        // picture selection and link metadata, then publish only its atomic
+        // media runs because textual descendants are already represented by
+        // the disclosure control above.
+        InlineContainerBox summaryContent = HtmlBoxes.CreateInlineBox(
+            context,
+            MarkdownElementKeys.Body,
+            alignment);
+        _inline.PopulateInline(
+            summaryContent,
+            summary.Children,
+            context,
+            sourceOffset,
+            HtmlInlineContext.Empty);
+        InlineRun[] summaryVisualRuns = summaryContent.DetachInlineImagesAndSpacersForTransfer();
+        foreach (InlineRun visualRun in summaryVisualRuns)
         {
-            // A disclosure summary may contain diagrams or badges. They remain
-            // visible when <details> is closed, just like multiline Markdown
-            // content in the summary. Build the inline content once to retain
-            // picture selection and link metadata, then publish only its atomic
-            // media runs because textual descendants are already represented by
-            // the disclosure control above.
-            InlineContainerBox summaryContent = HtmlBoxes.CreateInlineBox(
+            if (visualRun is InlineImageRun image)
+                context.RegisterConstructionBlock(image.Image);
+        }
+        if (summaryVisualRuns.Length > 0)
+        {
+            InlineContainerBox summaryMedia = HtmlBoxes.CreateInlineBox(
                 context,
                 MarkdownElementKeys.Body,
                 alignment);
-            _inline.PopulateInline(
-                summaryContent,
-                summary.Children,
-                context,
-                sourceOffset,
-                HtmlInlineContext.Empty);
-            InlineRun[] summaryVisualRuns = summaryContent.DetachInlineImagesAndSpacersForTransfer();
             foreach (InlineRun visualRun in summaryVisualRuns)
-            {
-                if (visualRun is InlineImageRun image)
-                    context.RegisterConstructionBlock(image.Image);
-            }
-            if (summaryVisualRuns.Length > 0)
-            {
-                InlineContainerBox summaryMedia = HtmlBoxes.CreateInlineBox(
-                    context,
-                    MarkdownElementKeys.Body,
-                    alignment);
-                foreach (InlineRun visualRun in summaryVisualRuns)
-                    HtmlBoxes.AddRun(summaryMedia, visualRun);
-                HtmlBoxes.AddChild(stack, summaryMedia, context);
-            }
-
-            // The summary box was only a staging owner for atomic visual runs.
-            // Detached image resources now belong to the summary media box;
-            // dispose remaining temporary text/vector runs.
-            context.DiscardConstructionBlock(summaryContent);
+                HtmlBoxes.AddRun(summaryMedia, visualRun);
+            HtmlBoxes.AddChild(stack, summaryMedia, context);
         }
 
-        if (!expanded)
-        {
-            return stack;
-        }
+        // The summary box was only a staging owner for atomic visual runs.
+        // Detached image resources now belong to the summary media box;
+        // dispose remaining temporary text/vector runs.
+        context.DiscardConstructionBlock(summaryContent);
+    }
 
+    private void AppendExpandedBody(
+        StackBox stack,
+        SafeHtmlElement details,
+        SafeHtmlElement? summary,
+        MarkdownLayoutContext context,
+        int sourceOffset,
+        SafeHtmlAlignment alignment)
+    {
         IReadOnlyList<SafeHtmlNode> body = details.Children.Where(node => !ReferenceEquals(node, summary)).ToArray();
         var bodyStack = HtmlBoxes.CreateStack(context);
         float indent = context.ThemeSnapshot.GetStyle(MarkdownElementKeys.Body).ListIndent;
@@ -161,7 +202,5 @@ internal sealed class HtmlDetailsBuilder
         {
             context.DiscardConstructionBlock(bodyStack);
         }
-
-        return HtmlBoxes.ReturnIfNonEmpty(stack, context);
     }
 }

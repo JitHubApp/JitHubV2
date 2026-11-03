@@ -54,6 +54,40 @@ internal sealed class HtmlInlineBuilder
         int sourceOffset,
         HtmlInlineContext inlineContext)
     {
+        if (TryAddPolicyElement(box, element, context, sourceOffset, inlineContext))
+            return;
+
+        var span = context.MapSafeHtmlSourceRange(sourceOffset + element.SourceStart, element.SourceLength);
+        if (TryAddAtomicElement(box, element, span, context, sourceOffset, inlineContext))
+            return;
+
+        HtmlInlineContext childContext = CreateChildContext(element, inlineContext);
+        bool blockBoundary = HtmlElementNames.IsBlockElement(element.Name);
+        if (blockBoundary && box.Runs.Count > 0 && box.Runs[^1] is not LineBreakRun)
+        {
+            box.Add(new LineBreakRun(isHard: true) { SourceSpan = span });
+        }
+
+        PopulateInline(box, element.Children, context, sourceOffset, childContext);
+
+        if (blockBoundary && box.Runs.Count > 0 && box.Runs[^1] is not LineBreakRun)
+        {
+            box.Add(new LineBreakRun(isHard: true) { SourceSpan = span });
+        }
+    }
+
+    /// <summary>
+    /// Handles the elements whose treatment is fixed by policy before any
+    /// supported-element rendering: literal script, suppressed and form
+    /// elements, checkbox inputs, and unknown elements.
+    /// </summary>
+    private bool TryAddPolicyElement(
+        InlineContainerBox box,
+        SafeHtmlElement element,
+        MarkdownLayoutContext context,
+        int sourceOffset,
+        HtmlInlineContext inlineContext)
+    {
         // The default literal policy exposes script markup as inert source
         // for inspection. It is ordinary text: do not carry link or
         // styling semantics from an enclosing element into the fallback.
@@ -67,18 +101,18 @@ internal sealed class HtmlInlineBuilder
                 element,
                 sourceOffset,
                 HtmlInlineContext.Empty with { SourceProjection = inlineContext.SourceProjection });
-            return;
+            return true;
         }
 
         if (SafeHtmlParser.IsSuppressedElement(element.Name) || element.Name is "form" or "button")
         {
-            return;
+            return true;
         }
 
         if (element.Name == "input")
         {
             AddInputRun(box, element, context, sourceOffset);
-            return;
+            return true;
         }
 
         if (!HtmlElementNames.IsSupportedElement(element.Name))
@@ -87,55 +121,52 @@ internal sealed class HtmlInlineBuilder
                 HtmlTextRuns.AddLiteralElement(box, element, sourceOffset, inlineContext);
             else
                 PopulateInline(box, element.Children, context, sourceOffset, inlineContext);
-            return;
+            return true;
         }
 
-        var span = context.MapSafeHtmlSourceRange(sourceOffset + element.SourceStart, element.SourceLength);
+        return false;
+    }
+
+    /// <summary>
+    /// Handles the supported elements that render as one atomic run (or as
+    /// nothing) rather than as styled children.
+    /// </summary>
+    private bool TryAddAtomicElement(
+        InlineContainerBox box,
+        SafeHtmlElement element,
+        SourceSpan span,
+        MarkdownLayoutContext context,
+        int sourceOffset,
+        HtmlInlineContext inlineContext)
+    {
         if (element.Name == "br")
         {
             box.Add(new LineBreakRun(isHard: true) { SourceSpan = span });
-            return;
+            return true;
         }
 
         if (element.Name == "hr")
         {
             box.Add(new LineBreakRun(isHard: true) { SourceSpan = span });
-            return;
+            return true;
         }
 
         if (element.Name == "pre")
         {
             AddPreformattedInline(box, element, context, sourceOffset, inlineContext);
-            return;
+            return true;
         }
 
         if (element.Name is "img" or "picture")
         {
-            if (!_options.EnableImages)
-            {
-                SafeHtmlElement? image = element.Name == "img" ? element : HtmlElementQueries.FindDescendant(element, "img");
-                if (image is not null &&
-                    image.TryGetAttribute("alt", out string disabledAlt) &&
-                    !string.IsNullOrWhiteSpace(disabledAlt))
-                {
-                    HtmlTextRuns.AddDecodedTextRun(
-                        box,
-                        disabledAlt,
-                        context.MapSafeHtmlSourceRange(sourceOffset + image.SourceStart, image.SourceLength),
-                        inlineContext);
-                }
-
-                return;
-            }
-
-            AddImageRun(box, element, context, sourceOffset, inlineContext);
-            return;
+            AddImageElement(box, element, context, sourceOffset, inlineContext);
+            return true;
         }
 
         if (element.Name is "video" or "audio")
         {
             HtmlMediaRuns.AddMediaRun(box, element, context, sourceOffset, inlineContext);
-            return;
+            return true;
         }
 
         if (element.Name == "svg")
@@ -149,14 +180,46 @@ internal sealed class HtmlInlineBuilder
                 ariaHidden.Equals("true", StringComparison.OrdinalIgnoreCase);
             if (_options.EnableImages && !isAriaHidden)
                 HtmlMediaRuns.AddInlineSvgRun(box, element, context, sourceOffset, inlineContext);
-            return;
+            return true;
         }
 
-        if (element.Name == "source")
+        return element.Name == "source";
+    }
+
+    private void AddImageElement(
+        InlineContainerBox box,
+        SafeHtmlElement element,
+        MarkdownLayoutContext context,
+        int sourceOffset,
+        HtmlInlineContext inlineContext)
+    {
+        if (!_options.EnableImages)
         {
+            SafeHtmlElement? image = element.Name == "img" ? element : HtmlElementQueries.FindDescendant(element, "img");
+            if (image is not null &&
+                image.TryGetAttribute("alt", out string disabledAlt) &&
+                !string.IsNullOrWhiteSpace(disabledAlt))
+            {
+                HtmlTextRuns.AddDecodedTextRun(
+                    box,
+                    disabledAlt,
+                    context.MapSafeHtmlSourceRange(sourceOffset + image.SourceStart, image.SourceLength),
+                    inlineContext);
+            }
+
             return;
         }
 
+        AddImageRun(box, element, context, sourceOffset, inlineContext);
+    }
+
+    /// <summary>
+    /// Derives the inline state a supported styled element passes to its
+    /// children: class aliases, a safe link target, anchor membership, the
+    /// style key, and heading semantics.
+    /// </summary>
+    private HtmlInlineContext CreateChildContext(SafeHtmlElement element, HtmlInlineContext inlineContext)
+    {
         HtmlInlineContext childContext = inlineContext;
         IReadOnlyList<string> classAliases = GetAllowedClassAliases(element);
         if (classAliases.Count > 0)
@@ -198,18 +261,7 @@ internal sealed class HtmlInlineBuilder
         if (!string.IsNullOrEmpty(headingKey))
             childContext = childContext with { HeadingKey = headingKey };
 
-        bool blockBoundary = HtmlElementNames.IsBlockElement(element.Name);
-        if (blockBoundary && box.Runs.Count > 0 && box.Runs[^1] is not LineBreakRun)
-        {
-            box.Add(new LineBreakRun(isHard: true) { SourceSpan = span });
-        }
-
-        PopulateInline(box, element.Children, context, sourceOffset, childContext);
-
-        if (blockBoundary && box.Runs.Count > 0 && box.Runs[^1] is not LineBreakRun)
-        {
-            box.Add(new LineBreakRun(isHard: true) { SourceSpan = span });
-        }
+        return childContext;
     }
 
     private static void AddPreformattedInline(
