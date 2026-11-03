@@ -21,21 +21,25 @@ public sealed class RasterNativeWicCopyBandEquivalenceTests(ITestOutputHelper ou
 
     [Fact]
     [Trait("Category", "NativeMemoryQualification")]
+    [Trait("Requires", "WicWebpDecoder")]
     public Task OversizedStaticWebp_FullCopy_ReportsDirectDecodePeak() =>
         ReportOversizedWebpPeakAsync(CopyMode.Full);
 
     [Fact]
     [Trait("Category", "NativeMemoryQualification")]
+    [Trait("Requires", "WicWebpDecoder")]
     public Task OversizedStaticWebp_Banded64_ReportsDirectDecodePeak() =>
         ReportOversizedWebpPeakAsync(CopyMode.Banded64);
 
     [Fact]
     [Trait("Category", "NativeMemoryQualification")]
+    [Trait("Requires", "WicWebpDecoder")]
     public Task OversizedStaticWebp_Banded16_ReportsDirectDecodePeak() =>
         ReportOversizedWebpPeakAsync(CopyMode.Banded16);
 
     [Fact]
     [Trait("Category", "NativeMemoryQualification")]
+    [Trait("Requires", "WicWebpDecoder")]
     public async Task OversizedStaticWebp_FullAndBandedCopyMatchEveryPixel()
     {
         using Stream fixture = typeof(RasterNativeWicCopyBandEquivalenceTests).Assembly
