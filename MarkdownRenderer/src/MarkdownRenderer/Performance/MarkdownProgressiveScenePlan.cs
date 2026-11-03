@@ -23,7 +23,10 @@ namespace MarkdownRenderer.Performance;
 /// built once from immutable parser output, then visible boxes resolve their
 /// private marker without rescanning the syntax tree.
 /// </summary>
-internal sealed partial class MarkdownProgressiveScenePlan : IScenePublicationTarget, IDisposable
+internal sealed class MarkdownProgressiveScenePlan :
+    IScenePublicationTarget,
+    IDeferredSceneGraphRebindHost,
+    IDisposable
 {
     private readonly object _gate = new();
     private readonly object _retirementLifecycleGate = new();
@@ -35,6 +38,7 @@ internal sealed partial class MarkdownProgressiveScenePlan : IScenePublicationTa
     private readonly DeferredSceneResultStore _results;
     private readonly Dictionary<string, ActiveSceneWork> _active = new(StringComparer.Ordinal);
     private readonly DeferredSceneDiagnostics _diagnosticSet = new();
+    private readonly DeferredSceneGraphRebinder _graphRebinder;
     private HashSet<string> _visibleMarkers = new(StringComparer.Ordinal);
     private MarkdownRendererControl? _callbackOwner;
     private Func<Action, bool>? _enqueuePublication;
@@ -59,6 +63,15 @@ internal sealed partial class MarkdownProgressiveScenePlan : IScenePublicationTa
         _documentOwner = documentOwner;
         _works = works;
         _results = new DeferredSceneResultStore(((MarkdownPerformanceSession)session).CompletedSceneCache, this);
+        _graphRebinder = new DeferredSceneGraphRebinder(
+            _gate,
+            this,
+            session,
+            documentOwner,
+            works,
+            _results,
+            _diagnosticSet,
+            _retirements);
     }
 
     /// <summary>
@@ -279,6 +292,31 @@ internal sealed partial class MarkdownProgressiveScenePlan : IScenePublicationTa
         return restored;
     }
 
+    internal bool CanDetachGraph(VectorSceneBox box) => _graphRebinder.CanDetachGraph(box);
+
+    /// <summary>
+    /// Refills the detached graphs a lazy band needs. Called by the active
+    /// lazy-layout request, outside its layout queue slot.
+    /// </summary>
+    internal Task<bool> RebindBandAsync(
+        LayoutSnapshot snapshot, LazyLayoutBand band, CancellationToken cancellationToken) =>
+        _graphRebinder.RebindBandAsync(snapshot, band, cancellationToken);
+
+    bool IDeferredSceneGraphRebindHost.IsDisposedNoLock => _disposed;
+
+    long IDeferredSceneGraphRebindHost.GenerationNoLock => _generation;
+
+    CancellationToken IDeferredSceneGraphRebindHost.GenerationTokenNoLock => _generationCancellation.Token;
+
+    long IDeferredSceneGraphRebindHost.CurrentGeneration => Volatile.Read(ref _generation);
+
+    bool IDeferredSceneGraphRebindHost.TryRestoreOnWorker(
+        string marker,
+        CancellationToken cancellationToken,
+        out MarkdownDeferredSceneResult? result,
+        out MarkdownCompletedSceneDescriptor? descriptor) =>
+        TryRestoreOnWorker(marker, cancellationToken, out result, out descriptor);
+
     internal IReadOnlyList<MarkdownDiagnostic> Diagnostics
     {
         get
@@ -307,9 +345,9 @@ internal sealed partial class MarkdownProgressiveScenePlan : IScenePublicationTa
                 oldCancellation = _generationCancellation;
                 _generationCancellation = new CancellationTokenSource();
                 _generation++;
-                activeWorks = _active.Count == 0 && _graphRebinds.Count == 0
+                activeWorks = _active.Count == 0 && !_graphRebinder.HasRebindsNoLock
                     ? Array.Empty<ActiveSceneWork>()
-                    : _active.Values.Concat(_graphRebinds.Values.Select(static request => request.Work)).ToArray();
+                    : _active.Values.Concat(_graphRebinder.RebindWorksNoLock).ToArray();
             }
 
             Task[] activeTasks = new Task[activeWorks.Length];
@@ -879,11 +917,11 @@ internal sealed partial class MarkdownProgressiveScenePlan : IScenePublicationTa
                 completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                 _retirementTask = completion.Task;
                 cancellation = _generationCancellation;
-                activeWorks = _active.Count == 0 && _graphRebinds.Count == 0
+                activeWorks = _active.Count == 0 && !_graphRebinder.HasRebindsNoLock
                     ? Array.Empty<ActiveSceneWork>()
-                    : _active.Values.Concat(_graphRebinds.Values.Select(static request => request.Work)).ToArray();
+                    : _active.Values.Concat(_graphRebinder.RebindWorksNoLock).ToArray();
                 _active.Clear();
-                _graphRebinds.Clear();
+                _graphRebinder.ClearNoLock();
                 _results.Clear();
                 _callbackOwner = null;
                 _enqueuePublication = null;

@@ -1,20 +1,78 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using MarkdownRenderer.Controls;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Performance.ProgressiveScenes;
 
-namespace MarkdownRenderer.Performance;
+namespace MarkdownRenderer.Performance.ProgressiveScenes;
 
-internal sealed partial class MarkdownProgressiveScenePlan
+/// <summary>
+/// Refills detached vector-scene graphs for one progressive scene plan. When
+/// residency detaches a completed scene's command graph, a later band that
+/// needs it again reproduces or restores the identical projection off the UI
+/// thread and swaps it into the box under a short snapshot lease. Owns the
+/// in-flight rebind table; generation and retirement state stay with the plan.
+/// </summary>
+internal sealed class DeferredSceneGraphRebinder
 {
     private readonly Dictionary<VectorSceneBox, GraphRebindWork> _graphRebinds =
         new(ReferenceEqualityComparer.Instance);
+    private readonly object _gate;
+    private readonly IDeferredSceneGraphRebindHost _host;
+    private readonly IMarkdownPerformanceSessionInternal _session;
+    private readonly object _documentOwner;
+    private readonly IReadOnlyDictionary<string, DeferredSceneWork> _works;
+    private readonly DeferredSceneResultStore _results;
+    private readonly DeferredSceneDiagnostics _diagnosticSet;
+    private readonly SnapshotRetirementTracker _retirements;
+
+    /// <param name="gate">
+    /// The owning plan's monitor. A rebind's registration, generation check and
+    /// completed-descriptor commit form one invariant with the plan's active
+    /// work, so they share that monitor instead of nesting a second lock.
+    /// </param>
+    /// <param name="host">The owning plan's generation and retirement state.</param>
+    /// <param name="session">Session that admits scene preparation.</param>
+    /// <param name="documentOwner">Document owner whose admission slot rebinds use.</param>
+    /// <param name="works">The plan's immutable producer table.</param>
+    /// <param name="results">The plan's completed results; read and written under <paramref name="gate"/>.</param>
+    /// <param name="diagnosticSet">The plan's diagnostics; written under <paramref name="gate"/>.</param>
+    /// <param name="retirements">The plan's retirement tracker for producer tasks and sources.</param>
+    internal DeferredSceneGraphRebinder(
+        object gate,
+        IDeferredSceneGraphRebindHost host,
+        IMarkdownPerformanceSessionInternal session,
+        object documentOwner,
+        IReadOnlyDictionary<string, DeferredSceneWork> works,
+        DeferredSceneResultStore results,
+        DeferredSceneDiagnostics diagnosticSet,
+        SnapshotRetirementTracker retirements)
+    {
+        _gate = gate;
+        _host = host;
+        _session = session;
+        _documentOwner = documentOwner;
+        _works = works;
+        _results = results;
+        _diagnosticSet = diagnosticSet;
+        _retirements = retirements;
+    }
+
+    /// <summary>Whether any rebind producer is registered. Call under the plan gate.</summary>
+    internal bool HasRebindsNoLock => _graphRebinds.Count != 0;
+
+    /// <summary>The registered rebind producers. Call under the plan gate.</summary>
+    internal IEnumerable<ActiveSceneWork> RebindWorksNoLock =>
+        _graphRebinds.Values.Select(static request => request.Work);
+
+    /// <summary>Forgets every registered rebind at plan retirement. Call under the plan gate.</summary>
+    internal void ClearNoLock() => _graphRebinds.Clear();
 
     internal bool CanDetachGraph(VectorSceneBox box)
     {
@@ -29,7 +87,7 @@ internal sealed partial class MarkdownProgressiveScenePlan
         marker = string.Empty;
         work = null;
         descriptor = null;
-        if (_disposed || _session.IsDisposed || box.GraphRebindFailed ||
+        if (_host.IsDisposedNoLock || _session.IsDisposed || box.GraphRebindFailed ||
             box.DeferredSceneBinding is not { SceneOrdinal: 0 } binding ||
             !_works.TryGetValue(binding.Marker, out work) || work.IsInline ||
             box.SourceRange != work.Node.SourceSpan ||
@@ -134,7 +192,7 @@ internal sealed partial class MarkdownProgressiveScenePlan
                     return;
                 if (_graphRebinds.TryGetValue(box, out request!))
                 {
-                    superseded = request.Work.Generation != _generation ||
+                    superseded = request.Work.Generation != _host.GenerationNoLock ||
                         request.Work.Token.IsCancellationRequested ||
                         !ReferenceEquals(request.Snapshot, snapshot) || request.Revision != revision ||
                         request.Band.Top != band.Top || request.Band.Bottom != band.Bottom;
@@ -143,8 +201,8 @@ internal sealed partial class MarkdownProgressiveScenePlan
                 }
                 else
                 {
-                    var active = new ActiveSceneWork(_generation,
-                        CancellationTokenSource.CreateLinkedTokenSource(_generationCancellation.Token, cancellationToken));
+                    var active = new ActiveSceneWork(_host.GenerationNoLock,
+                        CancellationTokenSource.CreateLinkedTokenSource(_host.GenerationTokenNoLock, cancellationToken));
                     request = new GraphRebindWork(active, snapshot, policy, candidate.Preparation, revision, band);
                     _graphRebinds.Add(box, request);
                     active.Task = Task.Run(() => PrepareGraphRebindAsync(
@@ -160,7 +218,7 @@ internal sealed partial class MarkdownProgressiveScenePlan
                 // invalidation must win even when a fast producer observes
                 // the stale generation before its linked token is signaled.
                 if (request.WasCanceled || request.Work.Token.IsCancellationRequested ||
-                    request.Work.Generation != Volatile.Read(ref _generation))
+                    request.Work.Generation != _host.CurrentGeneration)
                     throw new OperationCanceledException(request.Work.Token);
             }
             catch (OperationCanceledException) when (superseded && !cancellationToken.IsCancellationRequested)
@@ -197,7 +255,7 @@ internal sealed partial class MarkdownProgressiveScenePlan
                     if (_results.TryGetCompleted(marker, consumeHandoff: false, out result))
                         descriptor = expected;
                 }
-                if (result is null && !TryRestoreOnWorker(marker, token, out result, out descriptor))
+                if (result is null && !_host.TryRestoreOnWorker(marker, token, out result, out descriptor))
                 {
                     result = await work.RenderAsync(token).ConfigureAwait(false);
                     descriptor = MarkdownCompletedSceneDescriptor.Create(result, token);
@@ -261,7 +319,7 @@ internal sealed partial class MarkdownProgressiveScenePlan
                     return;
                 lock (_gate)
                 {
-                    if (_disposed || _session.IsDisposed || request.Work.Generation != _generation ||
+                    if (_host.IsDisposedNoLock || _session.IsDisposed || request.Work.Generation != _host.GenerationNoLock ||
                         token.IsCancellationRequested || request.Work.Token.IsCancellationRequested ||
                         !_graphRebinds.TryGetValue(box, out GraphRebindWork? current) ||
                         !ReferenceEquals(current, request))
@@ -336,24 +394,5 @@ internal sealed partial class MarkdownProgressiveScenePlan
                 }
             }
         }
-    }
-
-    private sealed class GraphRebindWork(
-        ActiveSceneWork work, LayoutSnapshot snapshot, MarkdownVectorSceneResidencyPolicy policy,
-        VectorScenePreparation preparation, long revision, LazyLayoutBand band)
-    {
-        internal readonly ActiveSceneWork Work = work;
-        internal readonly LayoutSnapshot Snapshot = snapshot;
-        internal readonly MarkdownVectorSceneResidencyPolicy Policy = policy;
-        internal readonly VectorScenePreparation Preparation = preparation;
-        internal readonly long Revision = revision;
-        internal readonly LazyLayoutBand Band = band;
-        internal volatile bool WasCanceled;
-    }
-
-    private readonly struct GraphRebindCandidate(VectorSceneBox box, VectorScenePreparation preparation)
-    {
-        internal readonly VectorSceneBox Box = box;
-        internal readonly VectorScenePreparation Preparation = preparation;
     }
 }
