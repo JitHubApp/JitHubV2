@@ -154,51 +154,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         }
     }
 
-    private sealed class ImageWorkLease : IDisposable
-    {
-        private ImageBox? _owner;
-
-        internal ImageWorkLease(ImageBox owner, CancellationToken token)
-        {
-            _owner = owner;
-            Token = token;
-        }
-
-        internal readonly CancellationToken Token;
-
-        public void Dispose() =>
-            Interlocked.Exchange(ref _owner, null)?.CompleteImageWork();
-    }
-
-    private sealed class SvgDocumentUseState(IMarkdownSvgDocument document)
-    {
-        internal readonly IMarkdownSvgDocument Document = document;
-        internal int ActiveUses;
-        internal bool CandidateReserved;
-        internal bool Retired;
-        internal bool DisposalScheduled;
-        internal ImageWorkLease? ReservedDisposalWork;
-    }
-
-    private sealed class SvgDocumentUseLease : IDisposable
-    {
-        private ImageBox? _owner;
-
-        internal SvgDocumentUseLease(ImageBox owner, SvgDocumentUseState state, bool candidate = false)
-        {
-            _owner = owner;
-            State = state;
-            IsCandidate = candidate;
-        }
-
-        internal readonly SvgDocumentUseState State;
-        internal readonly bool IsCandidate;
-        internal bool IsOwnedBy(ImageBox owner) => ReferenceEquals(Volatile.Read(ref _owner), owner);
-
-        public void Dispose() =>
-            Interlocked.Exchange(ref _owner, null)?.CompleteSvgDocumentUse(State, IsCandidate);
-    }
-
     private static readonly long RasterDecoderMaximumWorkingBytes = IntPtr.Size == 4
         ? 32L * 1024 * 1024
         : 64L * 1024 * 1024;
@@ -345,18 +300,6 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
     private const int SvgHostDeferredNone = 0;
     private const int SvgHostDeferredWaiting = 1;
     private const int SvgHostDeferredRetryQueued = 2;
-
-    private readonly struct SvgDeferredLoadWork(
-        ImageBox owner,
-        MarkdownSvgRenderDemand demand,
-        int loadGeneration,
-        object? denialIdentity)
-    {
-        internal readonly ImageBox Owner = owner;
-        internal readonly MarkdownSvgRenderDemand Demand = demand;
-        internal readonly int LoadGeneration = loadGeneration;
-        internal readonly object? DenialIdentity = denialIdentity;
-    }
     private CanvasTextLayout? _placeholder;
     private CanvasTextLayout? _caption;
     private volatile bool _loadStarted;
@@ -3027,7 +2970,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         }
     }
 
-    private void CompleteImageWork()
+    internal void CompleteImageWork()
     {
         TaskCompletionSource? workDrained = null;
         lock (_svgWorkSync)
@@ -3068,7 +3011,7 @@ internal sealed partial class ImageBox : BlockBox, ISelectionBackgroundGeometryS
         _svgWorkCount++;
     }
 
-    private void CompleteSvgDocumentUse(SvgDocumentUseState state, bool candidate)
+    internal void CompleteSvgDocumentUse(SvgDocumentUseState state, bool candidate)
     {
         ImageWorkLease? disposalWork = null;
         TaskCompletionSource? workDrained = null;
