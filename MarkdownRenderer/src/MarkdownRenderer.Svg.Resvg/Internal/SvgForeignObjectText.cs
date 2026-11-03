@@ -53,6 +53,40 @@ internal static class SvgForeignObjectText
         }
 
         XmlElement svgText = document.CreateElement("text", SvgContentRules.SvgNamespace);
+        if (!TryApplyTextAlignment(svgText, style, width, ref x))
+            return false;
+
+        svgText.SetAttribute("x", FormatNumber(x));
+        svgText.SetAttribute("y", FormatNumber(y + Math.Min(fontSize, height)));
+        svgText.SetAttribute("font-size", FormatNumber(fontSize));
+        if (!TryApplyPresentationStyle(svgText, style))
+            return false;
+
+        if (foreignObject.HasAttribute("transform"))
+            svgText.SetAttribute("transform", foreignObject.GetAttribute("transform"));
+        if (foreignObject.HasAttribute("opacity"))
+            svgText.SetAttribute("opacity", foreignObject.GetAttribute("opacity"));
+
+        svgText.InnerText = text;
+        replacement = svgText;
+        return true;
+    }
+
+    /// <summary>
+    /// Maps the HTML <c>text-align</c> onto an SVG <c>text-anchor</c>,
+    /// shifting <paramref name="x"/> to the anchor point.
+    /// </summary>
+    /// <param name="svgText">The replacement text element.</param>
+    /// <param name="style">The foreignObject's parsed style.</param>
+    /// <param name="width">The foreignObject's width.</param>
+    /// <param name="x">The text origin, adjusted for the anchor.</param>
+    /// <returns><see langword="false"/> for an unsupported alignment.</returns>
+    private static bool TryApplyTextAlignment(
+        XmlElement svgText,
+        Dictionary<string, string> style,
+        double width,
+        ref double x)
+    {
         string alignment = style.GetValueOrDefault("text-align", "start").Trim();
         if (alignment.Equals("center", StringComparison.OrdinalIgnoreCase))
         {
@@ -71,10 +105,19 @@ internal static class SvgForeignObjectText
             return false;
         }
 
-        svgText.SetAttribute("x", FormatNumber(x));
-        svgText.SetAttribute("y", FormatNumber(y + Math.Min(fontSize, height)));
-        svgText.SetAttribute("font-size", FormatNumber(fontSize));
+        return true;
+    }
 
+    /// <summary>
+    /// Copies the supported, validated text presentation properties onto the
+    /// replacement in a fixed order, and validates the line height it does
+    /// not copy.
+    /// </summary>
+    /// <param name="svgText">The replacement text element.</param>
+    /// <param name="style">The foreignObject's parsed style.</param>
+    /// <returns><see langword="false"/> when any property is unsafe or out of range.</returns>
+    private static bool TryApplyPresentationStyle(XmlElement svgText, Dictionary<string, string> style)
+    {
         if (style.TryGetValue("color", out string? color))
         {
             if (!SvgHtmlTextStyleRules.IsSafeCssToken(color, 128))
@@ -132,13 +175,6 @@ internal static class SvgForeignObjectText
             return false;
         }
 
-        if (foreignObject.HasAttribute("transform"))
-            svgText.SetAttribute("transform", foreignObject.GetAttribute("transform"));
-        if (foreignObject.HasAttribute("opacity"))
-            svgText.SetAttribute("opacity", foreignObject.GetAttribute("opacity"));
-
-        svgText.InnerText = text;
-        replacement = svgText;
         return true;
     }
 
@@ -175,6 +211,29 @@ internal static class SvgForeignObjectText
     {
         cancellationToken.ThrowIfCancellationRequested();
         var accumulator = new CollapsedTextAccumulator(cancellationToken);
+        if (!TryAccumulatePlainHtmlText(foreignObject, accumulator, cancellationToken))
+        {
+            text = string.Empty;
+            return false;
+        }
+
+        text = accumulator.ToString();
+        return text.Length > 0;
+    }
+
+    /// <summary>
+    /// Walks the foreignObject's subtree in document order, appending its
+    /// collapsed text and rejecting anything that is not plain HTML text.
+    /// </summary>
+    /// <param name="foreignObject">The foreignObject being replaced.</param>
+    /// <param name="accumulator">Receives the collapsed text.</param>
+    /// <param name="cancellationToken">Cancels the walk.</param>
+    /// <returns><see langword="false"/> when the subtree is not representable as plain text.</returns>
+    private static bool TryAccumulatePlainHtmlText(
+        XmlElement foreignObject,
+        CollapsedTextAccumulator accumulator,
+        CancellationToken cancellationToken)
+    {
         XmlNode? current = foreignObject.FirstChild;
         while (current is not null)
         {
@@ -183,46 +242,24 @@ internal static class SvgForeignObjectText
                 XmlNodeType.Whitespace or XmlNodeType.SignificantWhitespace)
             {
                 if (!accumulator.Append(current.Value))
-                {
-                    text = string.Empty;
                     return false;
-                }
                 current = AdvanceAfterPlainTextSubtree(current, foreignObject, accumulator);
                 if (accumulator.IsTooLong)
-                {
-                    text = string.Empty;
                     return false;
-                }
                 continue;
             }
 
             if (current is not XmlElement element)
-            {
-                text = string.Empty;
                 return false;
-            }
 
             if (element.NamespaceURI.Equals(SvgContentRules.SvgNamespace, StringComparison.Ordinal))
             {
-                // CSS inside an SVG image's foreignObject is inert once the
-                // entire HTML branch is replaced by native SVG text. Accept
-                // only a stylesheet whose XML children are text, discard it
-                // rather than forwarding CSS or executable web content.
-                bool safe = element.LocalName.Equals("style", StringComparison.OrdinalIgnoreCase)
-                    ? HasOnlyTextChildren(element, cancellationToken)
-                    : IsSafeDiscardedSvgGraphic(element, cancellationToken);
-                if (!safe)
-                {
-                    text = string.Empty;
+                if (!IsSafeDiscardedSvgChild(element, cancellationToken))
                     return false;
-                }
 
                 current = AdvanceAfterPlainTextSubtree(current, foreignObject, accumulator);
                 if (accumulator.IsTooLong)
-                {
-                    text = string.Empty;
                     return false;
-                }
                 continue;
             }
 
@@ -230,15 +267,11 @@ internal static class SvgForeignObjectText
                 !IsSafeTextContainer(element.LocalName) ||
                 !SvgHtmlTextStyleRules.HasOnlySafeHtmlTextAttributes(element, cancellationToken))
             {
-                text = string.Empty;
                 return false;
             }
 
             if (AddsPlainTextBoundary(element.LocalName) && !accumulator.AppendBoundary())
-            {
-                text = string.Empty;
                 return false;
-            }
 
             if (element.FirstChild is { } firstChild)
             {
@@ -248,15 +281,25 @@ internal static class SvgForeignObjectText
 
             current = AdvanceAfterPlainTextSubtree(element, foreignObject, accumulator);
             if (accumulator.IsTooLong)
-            {
-                text = string.Empty;
                 return false;
-            }
         }
 
-        text = accumulator.ToString();
-        return text.Length > 0;
+        return true;
     }
+
+    /// <summary>
+    /// CSS inside an SVG image's foreignObject is inert once the entire HTML
+    /// branch is replaced by native SVG text. Accept only a stylesheet whose
+    /// XML children are text, discard it rather than forwarding CSS or
+    /// executable web content.
+    /// </summary>
+    /// <param name="element">An SVG-namespace child of the HTML branch.</param>
+    /// <param name="cancellationToken">Cancels the check.</param>
+    /// <returns><see langword="true"/> when the element can be discarded safely.</returns>
+    private static bool IsSafeDiscardedSvgChild(XmlElement element, CancellationToken cancellationToken) =>
+        element.LocalName.Equals("style", StringComparison.OrdinalIgnoreCase)
+            ? HasOnlyTextChildren(element, cancellationToken)
+            : IsSafeDiscardedSvgGraphic(element, cancellationToken);
 
     internal static bool AddsPlainTextBoundary(string localName) =>
         localName.Equals("div", StringComparison.OrdinalIgnoreCase) ||
