@@ -77,15 +77,48 @@ public sealed partial class WorkerStartupTokenPolicyTests
         }
     }
 
-    [Fact]
-    public void BootstrapIsX86OnlyAfterJobAssignmentAndBeforeResume()
+    [Theory]
+    [InlineData(Architecture.X86, "assign,x86-token,resume")]
+    [InlineData(Architecture.X64, "assign,resume")]
+    [InlineData(Architecture.Arm64, "assign,resume")]
+    public void BootstrapIsX86OnlyAfterJobAssignmentAndBeforeResume(Architecture architecture, string expected)
     {
-        string source = ReadSource("Internal", "WorkerProcessSandbox.cs");
-        string contract = "job.Assign(process);\n" +
-            "                                if (RuntimeInformation.ProcessArchitecture == Architecture.X86)\n" +
-            "                                    AttachX86StartupToken(thread, sourceToken, objectSecurity);\n" +
-            "                                if (WorkerNativeMethods.ResumeThread(thread) == uint.MaxValue)";
-        Assert.Contains(contract, source.Replace("\r\n", "\n"), StringComparison.Ordinal);
+        var activation = new RecordingActivation(failAt: null);
+
+        WorkerProcessSandbox.ActivateSuspended(activation, architecture);
+
+        Assert.Equal(expected, string.Join(',', activation.Steps));
+    }
+
+    [Theory]
+    [InlineData("assign", "assign")]
+    [InlineData("x86-token", "assign,x86-token")]
+    public void FailedActivationStepNeverResumesTheWorker(string failAt, string expected)
+    {
+        var activation = new RecordingActivation(failAt);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            WorkerProcessSandbox.ActivateSuspended(activation, Architecture.X86));
+
+        Assert.Equal(expected, string.Join(',', activation.Steps));
+    }
+
+    private sealed class RecordingActivation(string? failAt) : ISuspendedWorkerActivation
+    {
+        public List<string> Steps { get; } = [];
+
+        public void AssignToJob() => Record("assign");
+
+        public void AttachX86StartupToken() => Record("x86-token");
+
+        public void Resume() => Record("resume");
+
+        private void Record(string step)
+        {
+            Steps.Add(step);
+            if (step == failAt)
+                throw new InvalidOperationException(step);
+        }
     }
 
     [Fact]

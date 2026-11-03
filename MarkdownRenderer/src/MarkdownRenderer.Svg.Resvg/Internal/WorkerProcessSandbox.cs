@@ -57,7 +57,104 @@ internal static class WorkerProcessSandbox
         SafeTokenHandle sourceToken,
         WorkerObjectSecurity.WorkerObjectSecurityContext objectSecurity)
     {
+        using SafeTokenHandle restrictedToken = CreateRestrictedWorkerToken(sourceToken, objectSecurity);
+        string commandLine = $"\"{executablePath}\" --pipe {pipeName} --nonce {nonce}";
+        char[] mutableCommandLine = [.. commandLine, '\0'];
+        char[] sanitizedEnvironment = BuildSanitizedEnvironment();
+        nuint attributeBytes = 0;
+        _ = WorkerNativeMethods.InitializeProcThreadAttributeList(0, 1, 0, ref attributeBytes);
+        if (attributeBytes == 0)
+            throw new Win32Exception(Marshal.GetLastPInvokeError(), "The SVG worker mitigation list size could not be determined.");
+        nint attributeList = Marshal.AllocHGlobal(checked((nint)attributeBytes));
+        try
+        {
+            if (!WorkerNativeMethods.InitializeProcThreadAttributeList(attributeList, 1, 0, ref attributeBytes))
+            {
+                throw new Win32Exception(Marshal.GetLastPInvokeError(), "The SVG worker mitigation list could not be initialized.");
+            }
+
+            try
+            {
+                ulong mitigationPolicy = CreateMitigationPolicy();
+                if (!WorkerNativeMethods.UpdateProcThreadAttribute(
+                        attributeList,
+                        0,
+                        WorkerNativeMethods.ProcThreadAttributeMitigationPolicy,
+                        (nint)(&mitigationPolicy),
+                        checked((nuint)sizeof(ulong)),
+                        0,
+                        0))
+                {
+                    throw new Win32Exception(Marshal.GetLastPInvokeError(), "The SVG worker process mitigations could not be applied.");
+                }
+
+                var startup = new WorkerNativeMethods.StartupInfoEx
+                {
+                    StartupInfo = new WorkerNativeMethods.StartupInfo
+                    {
+                        Size = checked((uint)Marshal.SizeOf<WorkerNativeMethods.StartupInfoEx>()),
+                    },
+                    AttributeList = attributeList,
+                };
+                fixed (char* commandLinePointer = mutableCommandLine)
+                fixed (char* environmentPointer = sanitizedEnvironment)
+                {
+                    if (!WorkerNativeMethods.CreateProcessAsUserW(
+                            restrictedToken,
+                            executablePath,
+                            commandLinePointer,
+                            0,
+                            0,
+                            inheritHandles: false,
+                            WorkerNativeMethods.CreateNoWindow | WorkerNativeMethods.CreateSuspended | WorkerNativeMethods.CreateUnicodeEnvironment | WorkerNativeMethods.ExtendedStartupInfoPresent,
+                            (nint)environmentPointer,
+                            workingDirectory,
+                            ref startup,
+                            out WorkerNativeMethods.ProcessInformation information))
+                    {
+                        throw new Win32Exception(Marshal.GetLastPInvokeError(), "The restricted SVG worker could not start.");
+                    }
+
+                    var process = new SafeProcessHandle(information.Process, ownsHandle: true);
+                    using var thread = new SafeWaitHandle(information.Thread, ownsHandle: true);
+                    try
+                    {
+                        ActivateSuspended(
+                            new SuspendedWorkerActivation(job, process, thread, sourceToken, objectSecurity),
+                            RuntimeInformation.ProcessArchitecture);
+                        return process;
+                    }
+                    catch
+                    {
+                        _ = WorkerNativeMethods.TerminateProcess(process, WorkerTerminationExitCode);
+                        _ = WorkerNativeMethods.WaitForSingleObject(process, WorkerTerminationWaitMilliseconds);
+                        process.Dispose();
+                        throw;
+                    }
+                }
+            }
+            finally
+            {
+                WorkerNativeMethods.DeleteProcThreadAttributeList(attributeList);
+            }
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(attributeList);
+        }
+    }
+
+    /// <summary>
+    /// Creates the worker's primary token from <paramref name="sourceToken"/>:
+    /// maximum privileges removed, RESTRICTED (S-1-5-12) as the only
+    /// restricting SID, low integrity, and the restricted default DACL.
+    /// </summary>
+    internal static unsafe SafeTokenHandle CreateRestrictedWorkerToken(
+        SafeTokenHandle sourceToken,
+        WorkerObjectSecurity.WorkerObjectSecurityContext objectSecurity)
+    {
         byte[] restrictedCodeSid = GetSidBytes("S-1-5-12");
+        SafeTokenHandle restrictedToken;
         fixed (byte* restrictedCodeSidPointer = restrictedCodeSid)
         {
             var restrictingSid = new WorkerNativeMethods.SidAndAttributes
@@ -74,104 +171,38 @@ internal static class WorkerProcessSandbox
                     0,
                     1,
                     (nint)(&restrictingSid),
-                    out SafeTokenHandle restrictedToken))
+                    out restrictedToken))
             {
                 int error = Marshal.GetLastPInvokeError();
                 throw new Win32Exception(error, $"A restricted SVG worker token could not be created (Win32 error {error}).");
             }
-
-            using (restrictedToken)
-            {
-                SetLowIntegrity(restrictedToken);
-                SetRestrictedDefaultDacl(restrictedToken, objectSecurity);
-                string commandLine = $"\"{executablePath}\" --pipe {pipeName} --nonce {nonce}";
-                char[] mutableCommandLine = [.. commandLine, '\0'];
-                char[] sanitizedEnvironment = BuildSanitizedEnvironment();
-                nuint attributeBytes = 0;
-                _ = WorkerNativeMethods.InitializeProcThreadAttributeList(0, 1, 0, ref attributeBytes);
-                if (attributeBytes == 0)
-                    throw new Win32Exception(Marshal.GetLastPInvokeError(), "The SVG worker mitigation list size could not be determined.");
-                nint attributeList = Marshal.AllocHGlobal(checked((nint)attributeBytes));
-                try
-                {
-                    if (!WorkerNativeMethods.InitializeProcThreadAttributeList(attributeList, 1, 0, ref attributeBytes))
-                    {
-                        throw new Win32Exception(Marshal.GetLastPInvokeError(), "The SVG worker mitigation list could not be initialized.");
-                    }
-
-                    try
-                    {
-                        ulong mitigationPolicy = CreateMitigationPolicy();
-                        if (!WorkerNativeMethods.UpdateProcThreadAttribute(
-                                attributeList,
-                                0,
-                                WorkerNativeMethods.ProcThreadAttributeMitigationPolicy,
-                                (nint)(&mitigationPolicy),
-                                checked((nuint)sizeof(ulong)),
-                                0,
-                                0))
-                        {
-                            throw new Win32Exception(Marshal.GetLastPInvokeError(), "The SVG worker process mitigations could not be applied.");
-                        }
-
-                        var startup = new WorkerNativeMethods.StartupInfoEx
-                        {
-                            StartupInfo = new WorkerNativeMethods.StartupInfo
-                            {
-                                Size = checked((uint)Marshal.SizeOf<WorkerNativeMethods.StartupInfoEx>()),
-                            },
-                            AttributeList = attributeList,
-                        };
-                        fixed (char* commandLinePointer = mutableCommandLine)
-                        fixed (char* environmentPointer = sanitizedEnvironment)
-                        {
-                            if (!WorkerNativeMethods.CreateProcessAsUserW(
-                                    restrictedToken,
-                                    executablePath,
-                                    commandLinePointer,
-                                    0,
-                                    0,
-                                    inheritHandles: false,
-                                    WorkerNativeMethods.CreateNoWindow | WorkerNativeMethods.CreateSuspended | WorkerNativeMethods.CreateUnicodeEnvironment | WorkerNativeMethods.ExtendedStartupInfoPresent,
-                                    (nint)environmentPointer,
-                                    workingDirectory,
-                                    ref startup,
-                                    out WorkerNativeMethods.ProcessInformation information))
-                            {
-                                throw new Win32Exception(Marshal.GetLastPInvokeError(), "The restricted SVG worker could not start.");
-                            }
-
-                            var process = new SafeProcessHandle(information.Process, ownsHandle: true);
-                            using var thread = new SafeWaitHandle(information.Thread, ownsHandle: true);
-                            try
-                            {
-                                job.Assign(process);
-                                if (RuntimeInformation.ProcessArchitecture == Architecture.X86)
-                                    AttachX86StartupToken(thread, sourceToken, objectSecurity);
-                                if (WorkerNativeMethods.ResumeThread(thread) == uint.MaxValue)
-                                    throw new Win32Exception(Marshal.GetLastPInvokeError(), "The resvg worker could not leave its suspended launch state.");
-                                return process;
-                            }
-                            catch
-                            {
-                                _ = WorkerNativeMethods.TerminateProcess(process, WorkerTerminationExitCode);
-                                _ = WorkerNativeMethods.WaitForSingleObject(process, WorkerTerminationWaitMilliseconds);
-                                process.Dispose();
-                                throw;
-                            }
-                        }
-                    }
-                    finally
-                    {
-                        WorkerNativeMethods.DeleteProcThreadAttributeList(attributeList);
-                    }
-                }
-                finally
-                {
-                    Marshal.FreeHGlobal(attributeList);
-                }
-            }
         }
+
+        try
+        {
+            SetLowIntegrity(restrictedToken);
+            SetRestrictedDefaultDacl(restrictedToken, objectSecurity);
+            return restrictedToken;
+        }
+        catch
+        {
+            restrictedToken.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Releases a suspended worker in the only safe order: the kill-on-close
+    /// job owns the process before any worker code runs, the x86 startup
+    /// token (x86 hosts only) is attached next, and the initial thread is
+    /// resumed last. A failed step stops the sequence before resume.
+    /// </summary>
+    internal static void ActivateSuspended(ISuspendedWorkerActivation activation, Architecture processArchitecture)
+    {
+        activation.AssignToJob();
+        if (processArchitecture == Architecture.X86)
+            activation.AttachX86StartupToken();
+        activation.Resume();
     }
 
     internal static SafeTokenHandle OpenCurrentPrimaryTokenForWorker()

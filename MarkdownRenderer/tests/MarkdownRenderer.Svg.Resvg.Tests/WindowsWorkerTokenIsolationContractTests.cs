@@ -1,45 +1,89 @@
-using System.Text.RegularExpressions;
+using System.Runtime.InteropServices;
+using System.Security.Principal;
+using MarkdownRenderer.Svg.Resvg.Internal;
 using Xunit;
 
 namespace MarkdownRenderer.Svg.Resvg.Tests;
 
-public sealed class WindowsWorkerTokenIsolationContractTests
+public sealed partial class WindowsWorkerTokenIsolationContractTests
 {
+    private const int TokenRestrictedSids = 11;
+    private const int TokenIntegrityLevel = 25;
+
     [Fact]
     public void RestrictedCodeSidIsPassedAsARestrictingSid()
     {
-        string source = File.ReadAllText(FindWorkerSourcePath());
+        using SafeTokenHandle sourceToken = WorkerProcessSandbox.OpenCurrentPrimaryTokenForWorker();
+        using WorkerObjectSecurity.WorkerObjectSecurityContext objectSecurity =
+            WorkerObjectSecurity.CreateForPrimaryToken(sourceToken);
+        using SafeTokenHandle workerToken =
+            WorkerProcessSandbox.CreateRestrictedWorkerToken(sourceToken, objectSecurity);
 
-        Assert.Matches(
-            new Regex(
-                "GetSidBytes\\(\"S-1-5-12\"\\);\\s*fixed \\(byte\\* restrictedCodeSidPointer = restrictedCodeSid\\)\\s*\\{\\s*var restrictingSid = new WorkerNativeMethods\\.SidAndAttributes\\s*\\{\\s*Sid = \\(nint\\)restrictedCodeSidPointer,\\s*Attributes = 0,\\s*\\};",
-                RegexOptions.CultureInvariant),
-            source);
-        Assert.Matches(
-            new Regex(
-                "WorkerNativeMethods\\.CreateRestrictedToken\\(\\s*sourceToken,\\s*WorkerNativeMethods\\.DisableMaxPrivilege,\\s*0,\\s*0,\\s*0,\\s*0,\\s*1,\\s*\\(nint\\)\\(&restrictingSid\\),\\s*out SafeTokenHandle restrictedToken\\)",
-                RegexOptions.CultureInvariant),
-            source);
+        SecurityIdentifier restrictingSid = Assert.Single(ReadRestrictingSids(workerToken));
+        Assert.Equal(new SecurityIdentifier("S-1-5-12"), restrictingSid);
+        Assert.Equal(new SecurityIdentifier("S-1-16-4096"), ReadIntegrityLevel(workerToken));
     }
 
-    private static string FindWorkerSourcePath()
+    private static SecurityIdentifier[] ReadRestrictingSids(SafeTokenHandle token)
     {
-        for (DirectoryInfo? directory = new(AppContext.BaseDirectory);
-             directory is not null;
-             directory = directory.Parent)
+        byte[] buffer = ReadTokenInformation(token, TokenRestrictedSids);
+        GCHandle pin = GCHandle.Alloc(buffer, GCHandleType.Pinned);
+        try
         {
-            string sourcePath = Path.Combine(
-                directory.FullName,
-                "MarkdownRenderer",
-                "src",
-                "MarkdownRenderer.Svg.Resvg",
-                "Internal",
-                "WorkerProcessSandbox.cs");
-            if (File.Exists(sourcePath))
-                return sourcePath;
+            nint groups = pin.AddrOfPinnedObject();
+            int count = Marshal.ReadInt32(groups);
+            // TOKEN_GROUPS: a DWORD count, then pointer-aligned SID_AND_ATTRIBUTES.
+            int entrySize = Marshal.SizeOf<SidAndAttributes>();
+            nint first = groups + IntPtr.Size;
+            var sids = new SecurityIdentifier[count];
+            for (int index = 0; index < count; index++)
+                sids[index] = new SecurityIdentifier(Marshal.ReadIntPtr(first + (index * entrySize)));
+            return sids;
         }
-
-        throw new FileNotFoundException(
-            "The repository source for the restricted SVG worker token contract was not found.");
+        finally
+        {
+            pin.Free();
+        }
     }
+
+    private static SecurityIdentifier ReadIntegrityLevel(SafeTokenHandle token)
+    {
+        byte[] buffer = ReadTokenInformation(token, TokenIntegrityLevel);
+        GCHandle pin = GCHandle.Alloc(buffer, GCHandleType.Pinned);
+        try
+        {
+            // TOKEN_MANDATORY_LABEL starts with the label's SID pointer.
+            return new SecurityIdentifier(Marshal.ReadIntPtr(pin.AddrOfPinnedObject()));
+        }
+        finally
+        {
+            pin.Free();
+        }
+    }
+
+    private static byte[] ReadTokenInformation(SafeTokenHandle token, int informationClass)
+    {
+        _ = GetTokenInformation(token, informationClass, null, 0, out int length);
+        Assert.True(length > 0, $"Token information class {informationClass} reported no length.");
+        byte[] buffer = new byte[length];
+        Assert.True(GetTokenInformation(token, informationClass, buffer, length, out _),
+            $"Token information class {informationClass} could not be read: {Marshal.GetLastPInvokeError()}.");
+        return buffer;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SidAndAttributes
+    {
+        public nint Sid;
+        public uint Attributes;
+    }
+
+    [LibraryImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetTokenInformation(
+        SafeTokenHandle token,
+        int informationClass,
+        byte[]? information,
+        int informationLength,
+        out int returnLength);
 }
