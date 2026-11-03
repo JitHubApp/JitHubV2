@@ -6,7 +6,6 @@ using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Windows.Foundation;
 
@@ -39,10 +38,7 @@ internal sealed class EmbedRealization
     // Document ordinals stay sorted so hit-test rectangles retain their source
     // order while scroll work visits only the small active realization band.
     private readonly List<int> _activeEmbedOrdinals = new();
-    private List<CodeBlockActionPlan> _codeBlockActionPlans = new();
-    private bool _hasMeasuredCodeBlocks;
-    private ViewportBandIndex? _codeBlockActionPlanIndex;
-    private List<int> _activeCodeBlockActionOrdinals = new();
+    private readonly CodeBlockActionRealization _codeBlockActions;
     private bool _derealizingAllEmbeds;
     private bool _realizingVisibleEmbeds;
     private bool _realizeVisibleEmbedsRequested;
@@ -71,6 +67,8 @@ internal sealed class EmbedRealization
         _dispatcher = dispatcher;
         _services = new EmbedPlanServices(this, host, copyButtonHost, surface, lifetime, viewport);
         Context = new EmbedPlanContext(_services, surface, lifetime, published, dispatcher, hostedKeyDown);
+        _codeBlockActions = new CodeBlockActionRealization(
+            this, host, Context, HitTargets, _services.CopyButtons, viewport);
     }
 
     /// <summary>The context every plan realizes, places and releases its element with.</summary>
@@ -86,10 +84,10 @@ internal sealed class EmbedRealization
     internal IReadOnlyList<EmbedPlan> EmbedPlans => _embedPlans;
 
     /// <summary>Code block copy button plans of the published layout, in document order.</summary>
-    internal IReadOnlyList<CodeBlockActionPlan> CodeBlockActionPlans => _codeBlockActionPlans;
+    internal IReadOnlyList<CodeBlockActionPlan> CodeBlockActionPlans => _codeBlockActions.Plans;
 
     /// <summary>True when plan collection measured at least one code block.</summary>
-    internal bool HasMeasuredCodeBlocks => _hasMeasuredCodeBlocks;
+    internal bool HasMeasuredCodeBlocks => _codeBlockActions.HasMeasuredCodeBlocks;
 
     /// <summary>The number of hosted elements currently realized.</summary>
     internal int RealizedEmbedCount
@@ -108,7 +106,7 @@ internal sealed class EmbedRealization
 
     internal bool Contains(EmbedPlan plan) => _embedPlans.Contains(plan);
 
-    internal bool Contains(CodeBlockActionPlan plan) => _codeBlockActionPlans.Contains(plan);
+    internal bool Contains(CodeBlockActionPlan plan) => _codeBlockActions.Contains(plan);
 
     /// <summary>Copies the hosted elements that fell back, for a layout build.</summary>
     internal HashSet<HostedElementFallbackKey> CopyHostedElementFallbacks() =>
@@ -141,23 +139,20 @@ internal sealed class EmbedRealization
         try
         {
             embedPlans = _embedPlans.ToArray();
-            actionPlans = _codeBlockActionPlans.ToArray();
+            actionPlans = _codeBlockActions.CapturePlans();
             // Previously pooled buttons may still be collapsed children of the
             // current overlay. The caller clears that overlay after this pass,
             // so discard those attached-state entries before pooling plans.
             _services.CopyButtons.Clear();
             foreach (EmbedPlan plan in embedPlans)
                 plan.Derealize(Context);
-            foreach (CodeBlockActionPlan plan in actionPlans)
-            {
-                if (plan.Realized is not null) plan.Derealize(Context);
-            }
+            _codeBlockActions.DerealizeDetached(actionPlans);
         }
         finally
         {
             _derealizingAllEmbeds = false;
             _activeEmbedOrdinals.Clear();
-            _activeCodeBlockActionOrdinals.Clear();
+            _codeBlockActions.ClearActiveOrdinals();
         }
     }
 
@@ -167,10 +162,7 @@ internal sealed class EmbedRealization
         _embedPlans.Clear();
         _embedPlanIndex = null;
         _activeEmbedOrdinals.Clear();
-        _codeBlockActionPlans.Clear();
-        _hasMeasuredCodeBlocks = false;
-        _codeBlockActionPlanIndex = null;
-        _activeCodeBlockActionOrdinals.Clear();
+        _codeBlockActions.Clear();
     }
 
     /// <summary>Forgets pooled copy buttons before the overlay is discarded.</summary>
@@ -192,7 +184,7 @@ internal sealed class EmbedRealization
         out CodeBlockActionPlan[] oldActionPlans)
     {
         oldPlans = preserveRealized ? _embedPlans.ToArray() : Array.Empty<EmbedPlan>();
-        oldActionPlans = preserveRealized ? _codeBlockActionPlans.ToArray() : Array.Empty<CodeBlockActionPlan>();
+        oldActionPlans = preserveRealized ? _codeBlockActions.CapturePlans() : Array.Empty<CodeBlockActionPlan>();
     }
 
     /// <summary>
@@ -302,17 +294,7 @@ internal sealed class EmbedRealization
             }
             case CodeBlockBox codeBlock:
             {
-                _hasMeasuredCodeBlocks = true;
-                if (codeBlock.IsCopyButtonEnabled && codeBlock.CopyButtonBounds.Width > 0 && codeBlock.CopyButtonBounds.Height > 0)
-                    _codeBlockActionPlans.Add(new CodeBlockActionPlan
-                    {
-                        Box = codeBlock,
-                        FocusIdentity = new FocusableItem(
-                            codeBlock.BlockIndex, 0, FocusableItemKind.CodeBlockCopy),
-                        Rect = snapshot.ToLogicalRectForTopLevelBlockUnderPaint(
-                            topLevelRoot, codeBlock.CopyButtonBounds),
-                        Kind = CodeBlockHostedElementKind.Copy,
-                    });
+                _codeBlockActions.Collect(snapshot, topLevelRoot, codeBlock);
                 break;
             }
             case ListItemBox lib:
@@ -332,7 +314,7 @@ internal sealed class EmbedRealization
     internal void CommitPlanIndexes()
     {
         _embedPlanIndex = BuildPlanIndex(_embedPlans);
-        _codeBlockActionPlanIndex = BuildPlanIndex(_codeBlockActionPlans);
+        _codeBlockActions.CommitIndex();
     }
 
     /// <summary>Forgets every hit rectangle.</summary>
@@ -350,8 +332,8 @@ internal sealed class EmbedRealization
     /// </summary>
     /// <remarks>
     /// Every transfer can call back into the host, so each is followed by
-    /// the same publication check. Keeping the embed and code action passes
-    /// in one method keeps those checks in one visible sequence.
+    /// the same publication check. Hosted elements are adopted before code
+    /// block actions, and no plan is marked active until both passes finish.
     /// </remarks>
     internal bool AdoptRealizedElements(
         EmbedPlan[] oldPlans,
@@ -413,53 +395,16 @@ internal sealed class EmbedRealization
             }
         }
 
-        if (oldActionPlans.Length > 0)
-        {
-            var oldByBox = new Dictionary<CodeBlockBox, List<CodeBlockActionPlan>>(
-                ReferenceEqualityComparer.Instance);
-            foreach (CodeBlockActionPlan oldPlan in oldActionPlans)
-            {
-                if (oldPlan.Realized is null)
-                    continue;
-                if (!oldByBox.TryGetValue(oldPlan.Box, out var candidates))
-                    oldByBox.Add(oldPlan.Box, candidates = []);
-                candidates.Add(oldPlan);
-            }
-
-            for (int ordinal = 0; ordinal < _codeBlockActionPlans.Count; ordinal++)
-            {
-                if (!_host.IsCurrentPlanPublication(
-                        snapshot, planGeneration, hostedFocusPlanEpoch, hostedFocusPlanRevision))
-                    return false;
-                CodeBlockActionPlan newPlan = _codeBlockActionPlans[ordinal];
-                if (!oldByBox.TryGetValue(newPlan.Box, out var candidates))
-                    continue;
-                for (int index = 0; index < candidates.Count; index++)
-                {
-                    CodeBlockActionPlan oldPlan = candidates[index];
-                    if (!newPlan.IsSameLogicalAction(oldPlan))
-                        continue;
-
-                    newPlan.AdoptRealizedFrom(oldPlan, Context);
-                    if (!_host.IsCurrentPlanPublication(
-                            snapshot, planGeneration, hostedFocusPlanEpoch, hostedFocusPlanRevision))
-                        return false;
-                    candidates.RemoveAt(index);
-                    break;
-                }
-            }
-        }
+        if (!_codeBlockActions.AdoptRealizedElements(
+                oldActionPlans, snapshot, planGeneration, hostedFocusPlanEpoch, hostedFocusPlanRevision))
+            return false;
 
         for (int index = 0; index < _embedPlans.Count; index++)
         {
             if (_embedPlans[index].HasActiveWork)
                 _activeEmbedOrdinals.Add(index);
         }
-        for (int index = 0; index < _codeBlockActionPlans.Count; index++)
-        {
-            if (_codeBlockActionPlans[index].Realized is not null)
-                _activeCodeBlockActionOrdinals.Add(index);
-        }
+        _codeBlockActions.MarkActiveOrdinals();
 
         _lastFiredRealizedCount = -1;
         return true;
@@ -474,11 +419,7 @@ internal sealed class EmbedRealization
     {
         foreach (EmbedPlan oldPlan in oldPlans)
             oldPlan.Derealize(Context);
-        foreach (CodeBlockActionPlan oldPlan in oldActionPlans)
-        {
-            if (oldPlan.Realized is not null)
-                oldPlan.Derealize(Context);
-        }
+        _codeBlockActions.DerealizeDetached(oldActionPlans);
     }
 
     /// <summary>
@@ -490,44 +431,22 @@ internal sealed class EmbedRealization
         ViewportBandIndex? index,
         List<int> activeOrdinals,
         bool hasMeasuredCodeBlocks,
-        List<(CodeBlockBox Box, Rect Rect, CodeBlockHostedElementKind Kind)> rects)
-    {
-        _codeBlockActionPlans = plans;
-        _codeBlockActionPlanIndex = index;
-        _activeCodeBlockActionOrdinals = activeOrdinals;
-        _hasMeasuredCodeBlocks = hasMeasuredCodeBlocks;
-        HitTargets.ReplaceCodeActions(rects);
-    }
+        List<(CodeBlockBox Box, Rect Rect, CodeBlockHostedElementKind Kind)> rects) =>
+        _codeBlockActions.AdoptPublication(plans, index, activeOrdinals, hasMeasuredCodeBlocks, rects);
 
     /// <summary>
     /// Forgets the copy button at <paramref name="ordinal"/> after a raster
     /// candidate failed to adopt its button.
     /// </summary>
-    internal void ForgetCodeBlockAction(int ordinal, CodeBlockBox box)
-    {
-        _activeCodeBlockActionOrdinals?.Remove(ordinal);
-        HitTargets.RemoveCodeAction(box);
-    }
+    internal void ForgetCodeBlockAction(int ordinal, CodeBlockBox box) =>
+        _codeBlockActions.Forget(ordinal, box);
 
     /// <summary>Applies the current copy button labels to realized buttons.</summary>
-    internal void UpdateCodeBlockCopyButtonLabels()
-    {
-        foreach (var plan in _codeBlockActionPlans)
-        {
-            if (plan.Realized is Button button)
-                _services.CopyButtons.SetState(button, copied: false);
-        }
-    }
+    internal void UpdateCodeBlockCopyButtonLabels() => _codeBlockActions.UpdateCopyButtonLabels();
 
     /// <summary>Applies the current copy button style to realized buttons.</summary>
-    internal void UpdateCodeBlockCopyButtonStyles(Style? style)
-    {
-        foreach (var plan in _codeBlockActionPlans)
-        {
-            if (plan.Realized is Button button)
-                button.Style = style;
-        }
-    }
+    internal void UpdateCodeBlockCopyButtonStyles(Style? style) =>
+        _codeBlockActions.UpdateCopyButtonStyles(style);
 
     /// <summary>
     /// Realise embeds whose rect intersects the realisation band (viewport +
@@ -586,28 +505,14 @@ internal sealed class EmbedRealization
         ReferenceEquals(pass.Snapshot, _published.Snapshot) &&
         ReferenceEquals(pass.ImageIndex, _host.ImagePlanIndex) &&
         ReferenceEquals(pass.EmbedIndex, _embedPlanIndex) &&
-        ReferenceEquals(pass.ActionIndex, _codeBlockActionPlanIndex);
+        ReferenceEquals(pass.ActionIndex, _codeBlockActions.Index);
 
     /// <summary>
     /// Counts realized copy buttons, and how many of them lie outside the
     /// viewport.
     /// </summary>
-    internal void GetCodeBlockActionRealizationCounts(out int realizedCount, out int offscreenCount)
-    {
-        _viewport.TryGet(out double top, out double viewportHeight, out _);
-        double bottom = top + viewportHeight;
-        realizedCount = 0;
-        offscreenCount = 0;
-        foreach (int ordinal in _activeCodeBlockActionOrdinals)
-        {
-            CodeBlockActionPlan plan = _codeBlockActionPlans[ordinal];
-            if (plan.Realized is null)
-                continue;
-            realizedCount++;
-            if (plan.Rect.Bottom < top || plan.Rect.Top > bottom)
-                offscreenCount++;
-        }
-    }
+    internal void GetCodeBlockActionRealizationCounts(out int realizedCount, out int offscreenCount) =>
+        _codeBlockActions.GetRealizationCounts(out realizedCount, out offscreenCount);
 
     /// <summary>Indexes <paramref name="plans"/> by vertical extent, or returns null when empty.</summary>
     internal static ViewportBandIndex? BuildPlanIndex(List<CodeBlockActionPlan> plans)
@@ -638,7 +543,8 @@ internal sealed class EmbedRealization
         return index;
     }
 
-    private static void AddActiveOrdinal(List<int> ordinals, int ordinal)
+    /// <summary>Inserts <paramref name="ordinal"/> into the sorted <paramref name="ordinals"/> unless present.</summary>
+    internal static void AddActiveOrdinal(List<int> ordinals, int ordinal)
     {
         int position = ordinals.BinarySearch(ordinal);
         if (position < 0)
@@ -729,7 +635,7 @@ internal sealed class EmbedRealization
             _realizationPassEpoch,
             _host.ImagePlanIndex,
             _embedPlanIndex,
-            _codeBlockActionPlanIndex);
+            _codeBlockActions.Index);
         if (!IsCurrent(pass))
             return;
 
@@ -742,53 +648,8 @@ internal sealed class EmbedRealization
         // Drop old realisation-side caches; they'll be repopulated from realised plans.
         HitTargets.Clear();
 
-        ViewportBandIndex? actionIndex = pass.ActionIndex;
-        ViewportRange actionRange = actionIndex?.Find(top, bottom) ?? default;
-        for (int index = actionRange.Start; index < actionRange.End; index++)
-        {
-            int ordinal = actionIndex!.GetBlockOrdinal(index);
-            CodeBlockActionPlan plan = _codeBlockActionPlans[ordinal];
-            double actionTop = plan.Rect.Top;
-            double actionBottom = plan.Rect.Bottom;
-            // Copy buttons are XAML controls, so retaining them in an overscan
-            // band creates off-screen automation peers and warm-scroll churn.
-            // Realize only actions that intersect the effective viewport; the
-            // detached bounded pool makes boundary crossings inexpensive.
-            bool inRealize = actionBottom >= top && actionTop <= bottom;
-            if (inRealize)
-            {
-                plan.Realize(Context);
-                if (!IsCurrent(pass))
-                    return;
-                if (plan.Realized is not null)
-                    AddActiveOrdinal(_activeCodeBlockActionOrdinals, ordinal);
-            }
-        }
-
-        for (int index = _activeCodeBlockActionOrdinals.Count - 1; index >= 0; index--)
-        {
-            int ordinal = _activeCodeBlockActionOrdinals[index];
-            CodeBlockActionPlan plan = _codeBlockActionPlans[ordinal];
-            if (plan.Rect.Bottom >= top && plan.Rect.Top <= bottom)
-                continue;
-            plan.Derealize(Context);
-            if (!IsCurrent(pass))
-                return;
-            _activeCodeBlockActionOrdinals.RemoveAt(index);
-        }
-
-        foreach (int ordinal in _activeCodeBlockActionOrdinals)
-        {
-            CodeBlockActionPlan plan = _codeBlockActionPlans[ordinal];
-            if (plan.Realized is not null)
-            {
-                double left = Math.Round(plan.Rect.X);
-                double t = Math.Round(plan.Rect.Y);
-                double w = Math.Round(plan.Rect.X + plan.Rect.Width) - left;
-                double h = Math.Round(plan.Rect.Y + plan.Rect.Height) - t;
-                HitTargets.AddCodeAction(plan.Box, new Rect(left, t, w, h), plan.Kind);
-            }
-        }
+        if (!_codeBlockActions.RealizeVisible(pass, top, bottom))
+            return;
 
         if (_embedPlans.Count == 0)
         {
