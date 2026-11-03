@@ -10,6 +10,8 @@ using JitHub.Models.NavArgs;
 using JitHub.Services;
 using JitHub.Services.CodeViewer;
 using JitHub.Services.Markdown;
+using JitHub.Services.Markdown.Automation;
+using JitHub.Services.Markdown.Hosting;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.ViewModels.CodeViewer;
 using JitHub.WinUI.ViewModels.Pages;
@@ -251,6 +253,7 @@ public partial class App : Application
         services.AddSingleton<IGitHubService>(static provider => new GitHubService(
             provider.GetRequiredService<IGitHubClientService>(),
             provider.GetRequiredService<GitHubMarkdownImageResolver>()));
+        RegisterMarkdownHostBoundaries(services);
         services.AddSingleton<IAuthService, AuthService>();
         services.AddSingleton<IThemeService, ThemeService>();
         services.AddSingleton<ISettingsPreferencesService, SettingsPreferencesService>();
@@ -287,6 +290,19 @@ public partial class App : Application
             RecordBackgroundTaskFailure(serviceProvider, failure);
         Ioc.Default.ConfigureServices(serviceProvider);
         return serviceProvider;
+    }
+
+    private static void RegisterMarkdownHostBoundaries(ServiceCollection services)
+    {
+        services.AddSingleton<IMarkdownRouteNavigator>(static provider => new ShellMarkdownRouteNavigator(provider));
+        if (MarkdownLifecycleAutomationBridge.IsEnabled)
+        {
+            // Lifecycle automation reads host evidence out of process.
+            services.AddSingleton<IMarkdownHostObserver, MarkdownLifecycleHostObserver>();
+            return;
+        }
+
+        services.AddSingleton<IMarkdownHostObserver>(NoMarkdownHostObserver.Instance);
     }
 
     private void RegisterAuthBoundaries(ServiceCollection services)

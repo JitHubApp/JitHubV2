@@ -267,13 +267,19 @@ public sealed class ProfileNativeWorkspaceContractTests
     public void SharedMarkdownRouterKeepsGitHubWorkItemsInsideTheApp()
     {
         string root = Root();
-        string viewer = File.ReadAllText(Path.Combine(
+        string navigator = File.ReadAllText(Path.Combine(
             root,
             "JitHub.WinUI",
-            "Views",
-            "Controls",
-            "Common",
-            "MarkdownViewer.xaml.cs"));
+            "Services",
+            "Markdown",
+            "Hosting",
+            "ShellMarkdownRouteNavigator.cs"));
+        string activator = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Services",
+            "Markdown",
+            "MarkdownLinkActivator.cs"));
         string policy = File.ReadAllText(Path.Combine(
             root,
             "JitHub.WinUI",
@@ -283,9 +289,9 @@ public sealed class ProfileNativeWorkspaceContractTests
 
         Assert.Contains("MarkdownGitHubRouteKind.Issue", policy, StringComparison.Ordinal);
         Assert.Contains("MarkdownGitHubRouteKind.PullRequest", policy, StringComparison.Ordinal);
-        Assert.Contains("new IssueNavArg(repository, route.Number", viewer, StringComparison.Ordinal);
-        Assert.Contains("new PullRequestPageNavArg(repository, route.Number", viewer, StringComparison.Ordinal);
-        Assert.Contains("await Launcher.LaunchUriAsync(uri)", viewer, StringComparison.Ordinal);
+        Assert.Contains("new IssueNavArg(repository, route.Number", navigator, StringComparison.Ordinal);
+        Assert.Contains("new PullRequestPageNavArg(repository, route.Number", navigator, StringComparison.Ordinal);
+        Assert.Contains("await _launcher.LaunchAsync(uri)", activator, StringComparison.Ordinal);
     }
 
     private const string XamlNamespace = "http://schemas.microsoft.com/winfx/2006/xaml";

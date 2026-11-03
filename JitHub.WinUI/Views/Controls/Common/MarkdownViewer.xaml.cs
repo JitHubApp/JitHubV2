@@ -40,7 +40,8 @@ namespace JitHub.WinUI.Views.Controls.Common;
 public sealed partial class MarkdownViewer :
     UserControl,
     IMarkdownRendererShutdownParticipant,
-    IMarkdownRendererSlotHost<MarkdownRendererControl>
+    IMarkdownRendererSlotHost<MarkdownRendererControl>,
+    IMarkdownViewerNoticePresenter
 {
     private static readonly Uri DefaultBaseUri = new("https://github.com/", UriKind.Absolute);
     private static MarkdownEngine SharedGitHubEngine => JitHubMarkdownRuntime.Engine;
@@ -150,10 +151,9 @@ public sealed partial class MarkdownViewer :
 
     private readonly MarkdownTheme _theme = new();
     private readonly IMarkdownImageResolver _imageResolver;
-    private readonly ITelemetryService? _telemetryService;
-    private readonly MarkdownRemoteContentConsent _remoteContentConsent = new();
-    private readonly HashSet<MarkdownImageUnavailableReason> _reportedImageUnavailableReasons = [];
-    private bool _remoteImageNoticeDismissed;
+    private readonly IMarkdownHostObserver _hostObserver;
+    private readonly MarkdownViewerFeedback _feedback;
+    private readonly MarkdownLinkActivator _links;
     private MarkdownViewerDocumentPayload? _documentPayload;
     private readonly MarkdownRendererSlot<MarkdownRendererControl> _rendererSlot;
     private bool _isLoaded;
@@ -168,9 +168,7 @@ public sealed partial class MarkdownViewer :
     private bool _paletteSubscribed;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _lifecycleRuntimeSettingsTimer;
     private int _lifecycleRuntimeSettingsRevision;
-    private string? _lastAppliedMarkdown;
-    private bool _renderFailureReportedForDocument;
-    private bool _retryRenderPending;
+
     public static readonly DependencyProperty TextProperty = DependencyProperty.Register(
         nameof(Text),
         typeof(string),
@@ -375,6 +373,17 @@ public sealed partial class MarkdownViewer :
             this,
             static retirement => UiTaskGuard.Observe(retirement, "ui-markdown-retirement"));
 
+        _hostObserver = ResolveService<IMarkdownHostObserver>() ?? NoMarkdownHostObserver.Instance;
+        var telemetry = new MarkdownViewerTelemetry(ResolveTelemetryService(), () => HostKind);
+        _feedback = new MarkdownViewerFeedback(this, _hostObserver, telemetry);
+        // Links launch through Windows directly. The DI launcher can be a
+        // sign-in automation substitute that must not handle document links.
+        _links = new MarkdownLinkActivator(
+            ResolveService<IMarkdownRouteNavigator>() ?? new ShellMarkdownRouteNavigator(Ioc.Default),
+            new WindowsExternalUriLauncher(),
+            _hostObserver,
+            telemetry);
+
         // The production app defaults to trusted HTTPS image loading. Lifecycle
         // automation opts into the configurable privacy mode so that the prompt,
         // consent, and retry path remain covered as well.
@@ -383,7 +392,6 @@ public sealed partial class MarkdownViewer :
             AllowThirdPartyRemoteImagesByDefault = false;
         }
 
-        _telemetryService = ResolveTelemetryService();
         IMarkdownImageResolver imageResolver = ResolveImageResolver();
         _imageResolver = MarkdownLifecycleAutomationBridge.IsEnabled
             ? MarkdownLifecycleImageResolver.Create(imageResolver)
@@ -411,7 +419,7 @@ public sealed partial class MarkdownViewer :
         {
             if (DocumentSource is null)
             {
-                ResetRemoteContentConsent();
+                _feedback.ResetForHostReuse();
             }
         };
     }
@@ -463,16 +471,13 @@ public sealed partial class MarkdownViewer :
             {
                 if (viewer.DocumentSource is null)
                 {
-                    viewer.ResetRemoteContentConsent();
+                    viewer._feedback.ResetForHostReuse();
                 }
             }
 
-            if (e.Property == AllowThirdPartyRemoteImagesByDefaultProperty &&
-                viewer.ShouldAllowThirdPartyRemoteImages())
+            if (e.Property == AllowThirdPartyRemoteImagesByDefaultProperty)
             {
-                // A host can promote its policy at runtime. Do not leave a stale
-                // consent prompt visible while the renderer rebuilds its images.
-                viewer.RemoteImageInfoBar.IsOpen = false;
+                viewer._feedback.OnRemoteImagePolicyChanged();
             }
 
             viewer.ApplyRendererSettings();
@@ -499,6 +504,19 @@ public sealed partial class MarkdownViewer :
     private void RootGrid_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         UpdateHostLayout();
+    }
+
+    private static T? ResolveService<T>()
+        where T : class
+    {
+        try
+        {
+            return Ioc.Default.GetService<T>();
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static ITelemetryService? ResolveTelemetryService()
@@ -649,19 +667,7 @@ public sealed partial class MarkdownViewer :
             ResetOwnedViewportForNewDocument();
         }
 
-        _remoteContentConsent.Activate(newSource);
-        _reportedImageUnavailableReasons.Clear();
-        _remoteImageNoticeDismissed = false;
-        _renderFailureReportedForDocument = false;
-        _retryRenderPending = false;
-        if (RemoteImageInfoBar is not null)
-        {
-            RemoteImageInfoBar.IsOpen = false;
-        }
-        if (!_rendererSlot.IsDisposalFaulted && RenderErrorInfoBar is not null)
-        {
-            RenderErrorInfoBar.IsOpen = false;
-        }
+        _feedback.ActivateDocument(newSource);
     }
 
     private void ResetOwnedViewportForNewDocument()
@@ -676,23 +682,6 @@ public sealed partial class MarkdownViewer :
         ScrollViewer? viewport = FindDescendantVerticalScrollViewer(_rendererSlot.Current);
         if (viewport is { VerticalOffset: > 0.5 })
             viewport.ChangeView(null, 0, null, disableAnimation: true);
-    }
-
-    private void ResetRemoteContentConsent()
-    {
-        _remoteContentConsent.ResetForHostReuse();
-        _reportedImageUnavailableReasons.Clear();
-        _remoteImageNoticeDismissed = false;
-        _renderFailureReportedForDocument = false;
-        _retryRenderPending = false;
-        if (RemoteImageInfoBar is not null)
-        {
-            RemoteImageInfoBar.IsOpen = false;
-        }
-        if (!_rendererSlot.IsDisposalFaulted && RenderErrorInfoBar is not null)
-        {
-            RenderErrorInfoBar.IsOpen = false;
-        }
     }
 
     private void QueueRendererCreation()
@@ -794,7 +783,7 @@ public sealed partial class MarkdownViewer :
         renderer.ImageBaseUri = GetBaseUri(documentPayload is null ? BaseUrl : documentPayload.BaseUrl);
         renderer.ImageDocumentPath = documentPayload is null ? DocumentPath : documentPayload.DocumentPath;
         renderer.ImageDocumentSource = documentPayload is null ? DocumentSource : documentPayload.DocumentSource;
-        renderer.AllowThirdPartyRemoteImages = ShouldAllowThirdPartyRemoteImages();
+        renderer.AllowThirdPartyRemoteImages = _feedback.AllowsThirdPartyRemoteImages;
         renderer.LinkClick += OnRendererLinkClick;
         renderer.DisclosureToggled += OnRendererDisclosureToggled;
         renderer.CopyCompleted += OnRendererCopyCompleted;
@@ -804,7 +793,7 @@ public sealed partial class MarkdownViewer :
         string automationId = MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId);
         AutomationProperties.SetName(renderer, MarkdownHostContract.GetAutomationName(HostKind));
         AutomationProperties.SetAutomationId(renderer, automationId);
-        MarkdownLifecycleAutomationBridge.SignalHostReady(automationId);
+        _hostObserver.OnHostReady(automationId);
         renderer.HorizontalAlignment = HorizontalAlignment.Stretch;
         renderer.VerticalAlignment = VerticalAlignment.Stretch;
         EnsureRendererLoadedSettingsHandler(renderer);
@@ -928,10 +917,55 @@ public sealed partial class MarkdownViewer :
     void IMarkdownRendererSlotHost<MarkdownRendererControl>.OnRendererTeardownFaulted(Exception exception)
     {
         ShowRendererDisposalFailure();
-        MarkdownLifecycleAutomationBridge.RecordRenderFailure(
+        _hostObserver.OnRenderFailed(
             MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId),
             exception);
     }
+
+    string? IMarkdownViewerNoticePresenter.HostKind => HostKind;
+
+    string IMarkdownViewerNoticePresenter.AutomationId =>
+        MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId);
+
+    bool IMarkdownViewerNoticePresenter.AllowsThirdPartyRemoteImagesByDefault => AllowThirdPartyRemoteImagesByDefault;
+
+    bool IMarkdownViewerNoticePresenter.IsRendererDisposalFaulted => _rendererSlot.IsDisposalFaulted;
+
+    void IMarkdownViewerNoticePresenter.UpdateRemoteImageNotice(string title, string message, bool offerLoadImages)
+    {
+        RemoteImageInfoBar.Title = title;
+        RemoteImageInfoBar.Message = message;
+        LoadRemoteImagesButton.Visibility = offerLoadImages ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    void IMarkdownViewerNoticePresenter.OpenRemoteImageNotice() => RemoteImageInfoBar.IsOpen = true;
+
+    void IMarkdownViewerNoticePresenter.CloseRemoteImageNotice()
+    {
+        if (RemoteImageInfoBar is not null)
+        {
+            RemoteImageInfoBar.IsOpen = false;
+        }
+    }
+
+    void IMarkdownViewerNoticePresenter.SetRenderErrorNoticeOpen(bool isOpen)
+    {
+        if (RenderErrorInfoBar is not null)
+        {
+            RenderErrorInfoBar.IsOpen = isOpen;
+        }
+    }
+
+    void IMarkdownViewerNoticePresenter.ApplyRemoteImageGrant()
+    {
+        if (_rendererSlot.Current is { } renderer)
+        {
+            renderer.AllowThirdPartyRemoteImages = true;
+            renderer.RequestRebuild();
+        }
+    }
+
+    void IMarkdownViewerNoticePresenter.RequestRebuild() => _rendererSlot.Current?.RequestRebuild();
 
     private void ShowRendererDisposalFailure()
     {
@@ -1000,10 +1034,7 @@ public sealed partial class MarkdownViewer :
         bool markdownChanged = !string.Equals(renderer.Markdown, markdown, StringComparison.Ordinal);
         if (markdownChanged)
         {
-            _lastAppliedMarkdown = markdown;
-            _renderFailureReportedForDocument = false;
-            _retryRenderPending = false;
-            RenderErrorInfoBar.IsOpen = false;
+            _feedback.OnMarkdownChanged();
         }
 
         // Apply every renderer setting before assigning Markdown. Several of
@@ -1048,7 +1079,7 @@ public sealed partial class MarkdownViewer :
             renderer.ImageDocumentPath = documentPath;
         if (!Equals(renderer.ImageDocumentSource, documentSource))
             renderer.ImageDocumentSource = documentSource;
-        bool allowThirdPartyRemoteImages = ShouldAllowThirdPartyRemoteImages();
+        bool allowThirdPartyRemoteImages = _feedback.AllowsThirdPartyRemoteImages;
         if (renderer.AllowThirdPartyRemoteImages != allowThirdPartyRemoteImages)
             renderer.AllowThirdPartyRemoteImages = allowThirdPartyRemoteImages;
 
@@ -1228,201 +1259,29 @@ public sealed partial class MarkdownViewer :
             """;
     }
 
-    private void OnRendererImageUnavailable(object? sender, MarkdownImageUnavailableEventArgs e)
-    {
-        if (e.Reason == MarkdownImageUnavailableReason.RemoteContentBlocked &&
-            ShouldAllowThirdPartyRemoteImages())
-        {
-            return;
-        }
+    private void OnRendererImageUnavailable(object? sender, MarkdownImageUnavailableEventArgs e) =>
+        _feedback.OnImageUnavailable(e.Source, e.Reason);
 
-        MarkdownLifecycleAutomationBridge.RecordImageUnavailable(
-            MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId),
-            e.Source,
-            e.Reason);
+    private void RemoteImageInfoBar_Closed(InfoBar sender, InfoBarClosedEventArgs args) =>
+        _feedback.OnRemoteImageNoticeClosed(args.Reason == InfoBarCloseReason.CloseButton);
 
-        if (_reportedImageUnavailableReasons.Add(e.Reason))
-        {
-            TrackMarkdownEvent(
-                "markdown.resource.unavailable",
-                action: null,
-                result: e.Reason switch
-                {
-                    MarkdownImageUnavailableReason.RemoteContentBlocked or
-                    MarkdownImageUnavailableReason.InsecureRemoteContent => TelemetryTaxonomy.Results.Rejected,
-                    MarkdownImageUnavailableReason.Offline or
-                    MarkdownImageUnavailableReason.MeteredConnection => TelemetryTaxonomy.Results.Deferred,
-                    _ => TelemetryTaxonomy.Results.Unavailable,
-                },
-                resource: "remote_image",
-                policy: e.Reason switch
-                {
-                    MarkdownImageUnavailableReason.Offline or
-                    MarkdownImageUnavailableReason.MeteredConnection => "deferred",
-                    MarkdownImageUnavailableReason.RemoteContentBlocked or
-                    MarkdownImageUnavailableReason.InsecureRemoteContent => "suppressed",
-                    _ => null,
-                });
-        }
-
-        if (e.Reason is not (MarkdownImageUnavailableReason.RemoteContentBlocked or
-            MarkdownImageUnavailableReason.InsecureRemoteContent or
-            MarkdownImageUnavailableReason.Offline or
-            MarkdownImageUnavailableReason.MeteredConnection))
-        {
-            return;
-        }
-
-        bool compactNotice = MarkdownHostContract.Parse(HostKind) == MarkdownHostKind.EditorPreview;
-        string message = e.Reason switch
-        {
-            MarkdownImageUnavailableReason.InsecureRemoteContent =>
-                LocalizedResourceText.GetString(
-                    "Markdown.RemoteImage.InsecureMessage",
-                    "An image used insecure HTTP and cannot be loaded."),
-            MarkdownImageUnavailableReason.Offline =>
-                LocalizedResourceText.GetString(
-                    "Markdown.RemoteImage.OfflineMessage",
-                    "An image is not cached and cannot be loaded while offline."),
-            MarkdownImageUnavailableReason.MeteredConnection =>
-                LocalizedResourceText.GetString(
-                    "Markdown.RemoteImage.MeteredMessage",
-                    "Automatic image loading is paused on this metered connection."),
-            _ => LocalizedResourceText.GetString(
-                "Markdown.RemoteImage.PrivacyMessage",
-                "External images can reveal your IP address and request timing to another site."),
-        };
-        RemoteImageInfoBar.Title = compactNotice
-            ? e.Reason switch
-            {
-                MarkdownImageUnavailableReason.Offline => LocalizedResourceText.GetString(
-                    "Markdown.RemoteImage.OfflineCompactTitle",
-                    "Images unavailable offline"),
-                MarkdownImageUnavailableReason.MeteredConnection => LocalizedResourceText.GetString(
-                    "Markdown.RemoteImage.MeteredCompactTitle",
-                    "Images paused on this connection"),
-                MarkdownImageUnavailableReason.InsecureRemoteContent => LocalizedResourceText.GetString(
-                    "Markdown.RemoteImage.InsecureCompactTitle",
-                    "Insecure image blocked"),
-                _ => LocalizedResourceText.GetString(
-                    "Markdown.RemoteImage.BlockedCompactTitle",
-                    "External images blocked"),
-            }
-            : LocalizedResourceText.GetString(
-                "Markdown.RemoteImage.ProtectedTitle",
-                "Remote images are protected");
-        RemoteImageInfoBar.Message = compactNotice ? string.Empty : message;
-        LoadRemoteImagesButton.Visibility = e.Reason is MarkdownImageUnavailableReason.RemoteContentBlocked or
-            MarkdownImageUnavailableReason.MeteredConnection
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-        // The notice overlays the top of the reading region; once the reader
-        // closes it, later images in the same document do not reopen it.
-        if (!_remoteImageNoticeDismissed)
-        {
-            RemoteImageInfoBar.IsOpen = true;
-        }
-    }
-
-    private void RemoteImageInfoBar_Closed(InfoBar sender, InfoBarClosedEventArgs args)
-    {
-        if (args.Reason == InfoBarCloseReason.CloseButton)
-        {
-            _remoteImageNoticeDismissed = true;
-        }
-    }
-
-    private void OnRendererRenderCompleted(object? sender, EventArgs e)
-    {
-        if (_rendererSlot.IsDisposalFaulted)
-            return;
-
-        RenderErrorInfoBar.IsOpen = false;
-        if (!_retryRenderPending)
-        {
-            return;
-        }
-
-        _retryRenderPending = false;
-        TrackMarkdownEvent(
-            "markdown.action.executed",
-            TelemetryTaxonomy.Actions.Retry,
-            TelemetryTaxonomy.Results.Success);
-    }
+    private void OnRendererRenderCompleted(object? sender, EventArgs e) =>
+        _feedback.OnRenderCompleted();
 
     private void OnRendererDisclosureToggled(object? sender, MarkdownDisclosureToggledEventArgs e) =>
-        TrackMarkdownEvent(
-            "markdown.action.executed",
-            TelemetryTaxonomy.Actions.ToggleDetails,
-            e.IsExpanded ? TelemetryTaxonomy.Results.Expanded : TelemetryTaxonomy.Results.Collapsed);
+        _feedback.OnDisclosureToggled(e.IsExpanded);
 
     private void OnRendererCopyCompleted(object? sender, MarkdownCopyCompletedEventArgs e) =>
-        TrackMarkdownEvent(
-            "markdown.action.executed",
-            e.Kind == MarkdownCopyKind.CodeBlock
-                ? TelemetryTaxonomy.Actions.CopyCode
-                : TelemetryTaxonomy.Actions.CopySelection,
-            e.Succeeded ? TelemetryTaxonomy.Results.Success : TelemetryTaxonomy.Results.Error);
+        _feedback.OnCopyCompleted(e.Kind == MarkdownCopyKind.CodeBlock, e.Succeeded);
 
-    private void OnRendererRenderFailed(object? sender, MarkdownRenderFailedEventArgs e)
-    {
-        if (_rendererSlot.IsDisposalFaulted)
-            return;
+    private void OnRendererRenderFailed(object? sender, MarkdownRenderFailedEventArgs e) =>
+        _feedback.OnRenderFailed(e.Exception);
 
-        MarkdownLifecycleAutomationBridge.RecordRenderFailure(
-            MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId),
-            e.Exception);
-        RenderErrorInfoBar.IsOpen = true;
-        bool wasRetry = _retryRenderPending;
-        _retryRenderPending = false;
-        if (_renderFailureReportedForDocument && !wasRetry)
-        {
-            return;
-        }
+    private void RetryRenderButton_Click(object sender, RoutedEventArgs e) =>
+        _feedback.Retry();
 
-        _renderFailureReportedForDocument = true;
-        TrackMarkdownEvent(
-            "markdown.error",
-            wasRetry ? TelemetryTaxonomy.Actions.Retry : TelemetryTaxonomy.Actions.Render,
-            TelemetryTaxonomy.Results.Failed,
-            errorKind: TelemetryTaxonomy.ErrorKinds.Unexpected,
-            source: "background");
-    }
-
-    private void RetryRenderButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (_rendererSlot.IsDisposalFaulted)
-            return;
-
-        RenderErrorInfoBar.IsOpen = false;
-        _retryRenderPending = true;
-        TrackMarkdownEvent(
-            "markdown.action.executed",
-            TelemetryTaxonomy.Actions.Retry,
-            TelemetryTaxonomy.Results.Queued);
-        _rendererSlot.Current?.RequestRebuild();
-    }
-
-    private void LoadRemoteImagesButton_Click(object sender, RoutedEventArgs e)
-    {
-        _remoteContentConsent.Grant();
-        RemoteImageInfoBar.IsOpen = false;
-        if (_rendererSlot.Current is not null)
-        {
-            _rendererSlot.Current.AllowThirdPartyRemoteImages = true;
-            _rendererSlot.Current.RequestRebuild();
-        }
-
-        TrackMarkdownEvent(
-            "markdown.action.executed",
-            TelemetryTaxonomy.Actions.LoadRemoteImages,
-            "allowed",
-            resource: "remote_image");
-    }
-
-    private bool ShouldAllowThirdPartyRemoteImages() =>
-        AllowThirdPartyRemoteImagesByDefault || _remoteContentConsent.IsGranted;
-
+    private void LoadRemoteImagesButton_Click(object sender, RoutedEventArgs e) =>
+        _feedback.GrantRemoteImages();
     private Uri GetEffectiveBaseUri()
     {
         MarkdownViewerDocumentPayload? documentPayload = _documentPayload;
@@ -1442,150 +1301,14 @@ public sealed partial class MarkdownViewer :
             : DefaultBaseUri;
     }
 
-    private void OnRendererLinkClick(object? sender, MarkdownLinkClickEventArgs e)
-    {
-        UiTaskGuard.Run(async () =>
-        {
-            if (!TryCreateLaunchUri(e.Url, out Uri? uri, out bool mayNavigateInternally) || uri is null)
-            {
-                TrackMarkdownEvent("markdown.action.executed", TelemetryTaxonomy.Actions.OpenLink, TelemetryTaxonomy.Results.Rejected, resource: "link");
-                return;
-            }
-
-            MarkdownGitHubRoute route = MarkdownLinkNavigationPolicy.ClassifyGitHubRoute(uri);
-            string disposition = mayNavigateInternally && route.Kind is (MarkdownGitHubRouteKind.User or MarkdownGitHubRouteKind.Repository or MarkdownGitHubRouteKind.Issue or MarkdownGitHubRouteKind.PullRequest) ? route.Kind.ToString().ToLowerInvariant() : "external-browser";
-            string automationId = MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId);
-            if (MarkdownLifecycleAutomationBridge.RecordLinkRoute(automationId, uri, disposition))
-            {
-                TrackMarkdownEvent("markdown.action.executed", TelemetryTaxonomy.Actions.OpenLink, TelemetryTaxonomy.Results.Success, resource: "link");
-                return;
-            }
-
-            if (mayNavigateInternally && TryOpenInternalGitHubRoute(uri))
-            {
-                TrackMarkdownEvent("markdown.action.executed", TelemetryTaxonomy.Actions.OpenLink, TelemetryTaxonomy.Results.Success, resource: "link");
-                return;
-            }
-
-            try
-            {
-                bool launched = await Launcher.LaunchUriAsync(uri);
-                TrackMarkdownEvent("markdown.action.executed", TelemetryTaxonomy.Actions.OpenLink, launched ? TelemetryTaxonomy.Results.Launched : TelemetryTaxonomy.Results.Failed, resource: "link");
-            }
-            catch (Exception)
-            {
-                TrackMarkdownEvent("markdown.error", TelemetryTaxonomy.Actions.OpenLink, TelemetryTaxonomy.Results.Failed, resource: "link", errorKind: TelemetryTaxonomy.ErrorKinds.Launch);
-            }
-        }, "ui-markdown-viewer");
-    }
-
-    private void TrackMarkdownEvent(
-        string eventName,
-        string? action,
-        string result,
-        string? resource = null,
-        string? policy = null,
-        string? errorKind = null,
-        string source = TelemetryTaxonomy.Sources.User)
-    {
-        if (_telemetryService is null)
-        {
-            return;
-        }
-
-        var properties = new Dictionary<string, string?>
-        {
-            ["feature"] = "markdown",
-            ["section"] = MarkdownHostContract.GetTelemetrySection(HostKind),
-            ["source"] = source,
-            ["action"] = action,
-            ["result"] = result,
-            ["resource"] = resource,
-            ["policy"] = policy,
-            ["error_kind"] = errorKind,
-        };
-        _telemetryService.TrackEvent(eventName, properties);
-    }
-
-    private static bool TryOpenInternalGitHubRoute(Uri uri)
-    {
-        MarkdownGitHubRoute route = MarkdownLinkNavigationPolicy.ClassifyGitHubRoute(uri);
-        if (route.Kind is not (
-            MarkdownGitHubRouteKind.User or
-            MarkdownGitHubRouteKind.Repository or
-            MarkdownGitHubRouteKind.Issue or
-            MarkdownGitHubRouteKind.PullRequest))
-        {
-            return false;
-        }
-
-        ShellPageViewModel? shell = Ioc.Default.GetService<ShellPageViewModel>();
-        if (shell is null)
-        {
-            return false;
-        }
-
-        ShellWorkspaceTabIdentity expectedRoute;
-        if (route.Kind == MarkdownGitHubRouteKind.User)
-        {
-            expectedRoute = ShellWorkspaceTabIdentity.Profile(route.Owner!);
-            shell.OpenUserProfile(route.Owner!, "markdown");
-        }
-        else if (route.Kind == MarkdownGitHubRouteKind.Repository)
-        {
-            expectedRoute = ShellWorkspaceTabIdentity.Repository(
-                $"{route.Owner}/{route.Repository}",
-                RepoPageType.CodePage,
-                "main");
-            shell.OpenRepositoryPage($"{route.Owner}/{route.Repository}", "code", null);
-        }
-        else
-        {
-            GitHubRepository repository = new()
-            {
-                FullName = $"{route.Owner}/{route.Repository}",
-                Name = route.Repository!,
-                DefaultBranch = "main",
-                Owner = new GitHubRepositoryOwner { Login = route.Owner! }
-            };
-            if (route.Kind == MarkdownGitHubRouteKind.Issue)
-            {
-                expectedRoute = ShellWorkspaceTabIdentity.Repository(
-                    repository,
-                    RepoPageType.IssuePage,
-                    repository.DefaultBranch);
-                shell.OpenRepositoryTarget(
-                    repository,
-                    RepoPageType.IssuePage,
-                    new IssueNavArg(repository, route.Number ?? 0));
-            }
-            else
-            {
-                expectedRoute = ShellWorkspaceTabIdentity.Repository(
-                    repository,
-                    RepoPageType.PullRequestPage,
-                    repository.DefaultBranch);
-                shell.OpenRepositoryTarget(
-                    repository,
-                    RepoPageType.PullRequestPage,
-                    new PullRequestPageNavArg(repository, route.Number ?? 0));
-            }
-        }
-
-        return shell.IsCurrentRoute(expectedRoute);
-    }
-
-    private bool TryCreateLaunchUri(
-        string? url,
-        out Uri? uri,
-        out bool mayNavigateInternally)
-        => MarkdownLinkNavigationPolicy.TryResolveLaunchUri(
-            url,
-            GetEffectiveBaseUri(),
-            GetEffectiveDocumentSource(),
-            out uri,
-            out mayNavigateInternally);
-
+    private void OnRendererLinkClick(object? sender, MarkdownLinkClickEventArgs e) =>
+        UiTaskGuard.Run(
+            () => _links.ActivateAsync(
+                e.Url,
+                GetEffectiveBaseUri(),
+                GetEffectiveDocumentSource(),
+                MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId)),
+            "ui-markdown-viewer");
     private void ApplyRendererResources()
     {
         if (_rendererSlot.Current is null)

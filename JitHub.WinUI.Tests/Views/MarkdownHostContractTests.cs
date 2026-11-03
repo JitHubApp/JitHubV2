@@ -203,11 +203,10 @@ public sealed class MarkdownHostContractTests
         Assert.DoesNotContain("_theme.Overrides", source, StringComparison.Ordinal);
         Assert.Contains("renderer.RenderCompleted += OnRendererRenderCompleted", source, StringComparison.Ordinal);
         Assert.Contains("renderer.RenderFailed += OnRendererRenderFailed", source, StringComparison.Ordinal);
-        Assert.Contains("MarkdownLifecycleAutomationBridge.RecordRenderFailure", source, StringComparison.Ordinal);
-        Assert.Contains("\"markdown.error\"", source, StringComparison.Ordinal);
-        Assert.Contains("TelemetryTaxonomy.Actions.Retry", source, StringComparison.Ordinal);
-        Assert.Contains("e.Reason == MarkdownImageUnavailableReason.RemoteContentBlocked", source, StringComparison.Ordinal);
-        Assert.Contains("ShouldAllowThirdPartyRemoteImages()", source, StringComparison.Ordinal);
+        // Render-failure reporting, retry telemetry and blocked-image filtering
+        // moved to MarkdownViewerFeedback and are covered by MarkdownViewerFeedbackTests.
+        Assert.Contains("_feedback.OnRenderFailed(e.Exception)", source, StringComparison.Ordinal);
+        Assert.Contains("_feedback.OnImageUnavailable(e.Source, e.Reason)", source, StringComparison.Ordinal);
         Assert.DoesNotContain("e.Exception.Message", source, StringComparison.Ordinal);
     }
 
@@ -250,9 +249,12 @@ public sealed class MarkdownHostContractTests
             (string?)element.Attributes().FirstOrDefault(attribute => attribute.Name.LocalName == "Name") == "RemoteImageInfoBar");
         Assert.Equal("True", (string?)remoteNotice.Attribute("IsClosable"));
         Assert.Equal("RemoteImageInfoBar_Closed", (string?)remoteNotice.Attribute("Closed"));
-        Assert.Contains("args.Reason == InfoBarCloseReason.CloseButton", source, StringComparison.Ordinal);
-        Assert.Contains("if (!_remoteImageNoticeDismissed)", source, StringComparison.Ordinal);
-        Assert.Equal(3, source.Split("_remoteImageNoticeDismissed = false;").Length);
+        Assert.Contains(
+            "_feedback.OnRemoteImageNoticeClosed(args.Reason == InfoBarCloseReason.CloseButton)",
+            source,
+            StringComparison.Ordinal);
+        // Dismissal lasting for the document, and resetting for a new document
+        // or host reuse, is covered by MarkdownViewerFeedbackTests.
     }
 
     [Fact]
@@ -290,9 +292,8 @@ public sealed class MarkdownHostContractTests
         Assert.Contains("PatternInterface.ExpandCollapse", peer, StringComparison.Ordinal);
         Assert.Contains("AutomationControlType.Button", peer, StringComparison.Ordinal);
         Assert.Contains("renderer.DisclosureToggled += OnRendererDisclosureToggled", viewer, StringComparison.Ordinal);
-        Assert.Contains("TelemetryTaxonomy.Actions.ToggleDetails", viewer, StringComparison.Ordinal);
-        Assert.Contains("TelemetryTaxonomy.Results.Expanded", viewer, StringComparison.Ordinal);
-        Assert.Contains("TelemetryTaxonomy.Results.Collapsed", viewer, StringComparison.Ordinal);
+        Assert.Contains("_feedback.OnDisclosureToggled(e.IsExpanded)", viewer, StringComparison.Ordinal);
+        // Disclosure telemetry results are covered by MarkdownViewerFeedbackTests.
     }
 
     [Fact]
@@ -362,8 +363,8 @@ public sealed class MarkdownHostContractTests
         Assert.Contains("_host.RaiseCopyCompleted(MarkdownCopyKind.Selection", selectionCommands, StringComparison.Ordinal);
         Assert.Contains("renderer.CopyCompleted += OnRendererCopyCompleted", viewer, StringComparison.Ordinal);
         Assert.Contains("AppToolbarButtonStyle", viewer, StringComparison.Ordinal);
-        Assert.Contains("TelemetryTaxonomy.Actions.CopyCode", viewer, StringComparison.Ordinal);
-        Assert.Contains("TelemetryTaxonomy.Actions.CopySelection", viewer, StringComparison.Ordinal);
+        Assert.Contains("_feedback.OnCopyCompleted(e.Kind == MarkdownCopyKind.CodeBlock, e.Succeeded)", viewer, StringComparison.Ordinal);
+        // Copy telemetry results are covered by MarkdownViewerFeedbackTests.
     }
 
     [Fact]
@@ -377,26 +378,23 @@ public sealed class MarkdownHostContractTests
             "Common",
             "MarkdownViewer.xaml.cs"));
 
-        Assert.Contains("MarkdownRemoteContentConsent", source, StringComparison.Ordinal);
+        // Per-document consent (default policy or explicit grant) and closing a
+        // stale prompt on policy promotion are covered by MarkdownViewerFeedbackTests.
         Assert.Contains("DocumentSourceProperty", source, StringComparison.Ordinal);
         Assert.Contains("renderer.ImageDocumentSource = documentSource", source, StringComparison.Ordinal);
-        Assert.Contains("_remoteContentConsent.Grant()", source, StringComparison.Ordinal);
+        Assert.Contains("_feedback.GrantRemoteImages()", source, StringComparison.Ordinal);
         Assert.Contains("AllowThirdPartyRemoteImagesByDefaultProperty", source, StringComparison.Ordinal);
         Assert.Contains("new PropertyMetadata(true, OnRendererPropertyChanged)", source, StringComparison.Ordinal);
-        Assert.Contains(
-            "AllowThirdPartyRemoteImagesByDefault || _remoteContentConsent.IsGranted",
-            source,
-            StringComparison.Ordinal);
         Assert.Contains("AllowThirdPartyRemoteImagesByDefault = false", source, StringComparison.Ordinal);
         Assert.Contains(
-            "renderer.AllowThirdPartyRemoteImages = ShouldAllowThirdPartyRemoteImages();",
+            "renderer.AllowThirdPartyRemoteImages = _feedback.AllowsThirdPartyRemoteImages;",
             source,
             StringComparison.Ordinal);
         Assert.Contains(
             "e.Property == AllowThirdPartyRemoteImagesByDefaultProperty",
             source,
             StringComparison.Ordinal);
-        Assert.Contains("viewer.RemoteImageInfoBar.IsOpen = false;", source, StringComparison.Ordinal);
+        Assert.Contains("viewer._feedback.OnRemoteImagePolicyChanged();", source, StringComparison.Ordinal);
         Assert.DoesNotContain("_allowRemoteImagesForDocument", source, StringComparison.Ordinal);
     }
 
@@ -449,7 +447,7 @@ public sealed class MarkdownHostContractTests
         Assert.Contains("renderer.RasterDecoder = JitHubMarkdownRuntime.RasterDecoder;", viewer, StringComparison.Ordinal);
         Assert.Contains("internal static IMarkdownRasterDecoder RasterDecoder", runtime, StringComparison.Ordinal);
         Assert.Contains("renderer.ImageResolver = _imageResolver", viewer, StringComparison.Ordinal);
-        Assert.Contains("renderer.AllowThirdPartyRemoteImages = ShouldAllowThirdPartyRemoteImages()", viewer, StringComparison.Ordinal);
+        Assert.Contains("renderer.AllowThirdPartyRemoteImages = _feedback.AllowsThirdPartyRemoteImages", viewer, StringComparison.Ordinal);
         Assert.Contains("new ResvgMarkdownSvgRenderer()", runtime, StringComparison.Ordinal);
         Assert.Contains("DeferredFrameAction.Schedule", shell, StringComparison.Ordinal);
         Assert.Contains("WarmUpSvgRendererAsync", shell, StringComparison.Ordinal);

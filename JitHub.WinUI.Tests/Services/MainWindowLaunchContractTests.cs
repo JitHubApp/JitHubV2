@@ -327,7 +327,8 @@ public sealed class MainWindowLaunchContractTests
         Assert.True(failureReport >= 0 && showFailure > failureReport);
         Assert.True(ensureRenderer >= 0 && rejectFailedRenderer > ensureRenderer && reattachRenderer > rejectFailedRenderer);
         Assert.Contains("RetryRenderButton.Visibility = Visibility.Collapsed;", source, StringComparison.Ordinal);
-        Assert.Contains("if (!_rendererSlot.IsDisposalFaulted && RenderErrorInfoBar is not null)", source, StringComparison.Ordinal);
+        // Keeping the disposal failure notice open across document resets is
+        // covered by MarkdownViewerFeedbackTests.
     }
 
     private static string FindRepositoryRoot()

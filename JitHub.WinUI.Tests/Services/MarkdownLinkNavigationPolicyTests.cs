@@ -157,7 +157,7 @@ public sealed class MarkdownLinkNavigationPolicyTests
             "Controls",
             "Common",
             "MarkdownViewer.xaml.cs"));
-        int resolverStart = viewerSource.IndexOf("private bool TryCreateLaunchUri(", StringComparison.Ordinal);
+        int resolverStart = viewerSource.IndexOf("private void OnRendererLinkClick(", StringComparison.Ordinal);
         int resolverEnd = resolverStart < 0
             ? -1
             : viewerSource.IndexOf("private void ApplyRendererResources(", resolverStart, StringComparison.Ordinal);
@@ -173,13 +173,13 @@ public sealed class MarkdownLinkNavigationPolicyTests
     public void InternalRoute_IsHandledOnlyAfterShellConfirmsTheRequestedRoute()
     {
         string root = FindRepositoryRoot();
-        string viewer = File.ReadAllText(Path.Combine(
+        string navigator = File.ReadAllText(Path.Combine(
             root,
             "JitHub.WinUI",
-            "Views",
-            "Controls",
-            "Common",
-            "MarkdownViewer.xaml.cs"));
+            "Services",
+            "Markdown",
+            "Hosting",
+            "ShellMarkdownRouteNavigator.cs"));
         string shell = File.ReadAllText(Path.Combine(
             root,
             "JitHub.WinUI",
@@ -187,8 +187,10 @@ public sealed class MarkdownLinkNavigationPolicyTests
             "Pages",
             "ShellPageViewModel.cs"));
 
-        Assert.Contains("return shell.IsCurrentRoute(expectedRoute);", viewer, StringComparison.Ordinal);
-        Assert.DoesNotContain("return true;\n    }\n\n    private bool TryCreateLaunchUri", viewer, StringComparison.Ordinal);
+        Assert.Contains("return shell.IsCurrentRoute(expectedRoute);", navigator, StringComparison.Ordinal);
+        Assert.DoesNotContain("return true;", navigator, StringComparison.Ordinal);
+        // Falling back to the external launcher when the shell does not confirm
+        // the route is covered by MarkdownLinkActivatorTests.
         Assert.Contains("public bool IsCurrentRoute(ShellWorkspaceTabIdentity identity)", shell, StringComparison.Ordinal);
         Assert.Contains("_contentFrame.Content is not null", shell, StringComparison.Ordinal);
     }
