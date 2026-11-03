@@ -70,40 +70,10 @@ internal static class InlineMeasureRollback
         try
         {
             if (changedInlineMeasures is not null)
-            {
-                foreach (InlineMeasureRollbackState state in changedInlineMeasures)
-                {
-                    try
-                    {
-                        state.Restore();
-                    }
-                    catch (Exception exception)
-                    {
-                        cleanupFailure = InlineNativeLayoutRetirement.CombineFailures(
-                            "rolling back speculative inline measurements",
-                            cleanupFailure,
-                            exception);
-                    }
-                }
-            }
+                RestoreInlineMeasures(changedInlineMeasures, ref cleanupFailure);
 
             if (previousScenePlacements is not null)
-            {
-                foreach (InlineScenePlacementRollbackState state in previousScenePlacements)
-                {
-                    try
-                    {
-                        state.Run.SetLocalBounds(state.LocalBounds);
-                    }
-                    catch (Exception exception)
-                    {
-                        cleanupFailure = InlineNativeLayoutRetirement.CombineFailures(
-                            "rolling back inline scene placements",
-                            cleanupFailure,
-                            exception);
-                    }
-                }
-            }
+                RestoreScenePlacements(previousScenePlacements, ref cleanupFailure);
         }
         finally
         {
@@ -138,6 +108,47 @@ internal static class InlineMeasureRollback
             catch
             {
                 // Failure metadata must not replace the original exception.
+            }
+        }
+    }
+
+    // Each restore runs even when an earlier one fails; failures aggregate.
+    private static void RestoreInlineMeasures(
+        List<InlineMeasureRollbackState> changedInlineMeasures,
+        ref Exception? cleanupFailure)
+    {
+        foreach (InlineMeasureRollbackState state in changedInlineMeasures)
+        {
+            try
+            {
+                state.Restore();
+            }
+            catch (Exception exception)
+            {
+                cleanupFailure = InlineNativeLayoutRetirement.CombineFailures(
+                    "rolling back speculative inline measurements",
+                    cleanupFailure,
+                    exception);
+            }
+        }
+    }
+
+    private static void RestoreScenePlacements(
+        InlineScenePlacementRollbackState[] previousScenePlacements,
+        ref Exception? cleanupFailure)
+    {
+        foreach (InlineScenePlacementRollbackState state in previousScenePlacements)
+        {
+            try
+            {
+                state.Run.SetLocalBounds(state.LocalBounds);
+            }
+            catch (Exception exception)
+            {
+                cleanupFailure = InlineNativeLayoutRetirement.CombineFailures(
+                    "rolling back inline scene placements",
+                    cleanupFailure,
+                    exception);
             }
         }
     }
