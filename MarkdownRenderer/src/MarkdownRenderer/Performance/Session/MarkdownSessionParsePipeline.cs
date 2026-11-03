@@ -1,8 +1,7 @@
 using System;
-using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using MarkdownRenderer.Document;
 
 namespace MarkdownRenderer.Performance;
 
@@ -38,28 +37,10 @@ internal sealed class MarkdownSessionParsePipeline
     // discovery and remains compatible with NativeAOT trimming.
     internal Action<int, int, long>? StageRecorder { get; set; }
 
-    private static long StartParseStageTiming(bool enabled) =>
-        enabled ? Stopwatch.GetTimestamp() : 0;
-
-    private static void RecordParseStageTiming(
-        Action<int, int, long>? recorder,
-        int ownerIdentity,
-        MarkdownParsePipelineStage stage,
-        long startedTimestamp)
-    {
-        if (recorder is null)
-            return;
-
-        long elapsedTicks = stage == MarkdownParsePipelineStage.Begin
-            ? 0
-            : Stopwatch.GetTimestamp() - startedTimestamp;
-        recorder(ownerIdentity, (int)stage, elapsedTicks);
-    }
-
-    internal ValueTask<MarkdownRenderer.Document.MarkdownDocument?>
+    internal ValueTask<MarkdownDocument?>
         ParseAndPrepareDocumentAsync(
         MarkdownEngine? engine,
-        MarkdownRenderer.Document.MarkdownDocument? document,
+        MarkdownDocument? document,
         string? source,
         MarkdownRenderer.Parsing.MarkdownExtensionRegistry legacyRegistry,
         object documentOwner,
@@ -94,10 +75,10 @@ internal sealed class MarkdownSessionParsePipeline
             cancellationToken);
     }
 
-    private async ValueTask<MarkdownRenderer.Document.MarkdownDocument?>
+    private async ValueTask<MarkdownDocument?>
         ParseAndPrepareRegisteredDocumentAsync(
         MarkdownEngine? engine,
-        MarkdownRenderer.Document.MarkdownDocument? document,
+        MarkdownDocument? document,
         string? source,
         MarkdownRenderer.Parsing.MarkdownExtensionRegistry legacyRegistry,
         object documentOwner,
@@ -119,84 +100,35 @@ internal sealed class MarkdownSessionParsePipeline
         }
     }
 
-    private async ValueTask<MarkdownRenderer.Document.MarkdownDocument?>
-        ParseAndPrepareDocumentCoreAsync(
+    private async ValueTask<MarkdownDocument?> ParseAndPrepareDocumentCoreAsync(
         MarkdownEngine? engine,
-        MarkdownRenderer.Document.MarkdownDocument? document,
+        MarkdownDocument? document,
         string? source,
         MarkdownRenderer.Parsing.MarkdownExtensionRegistry legacyRegistry,
         object documentOwner,
         CancellationToken cancellationToken)
     {
-        Action<int, int, long>? parseStageRecorder = StageRecorder;
-        bool captureParseStageTimings = parseStageRecorder is not null;
-        int ownerIdentity = captureParseStageTimings
-            ? RuntimeHelpers.GetHashCode(documentOwner)
-            : 0;
-        long sessionStarted = StartParseStageTiming(captureParseStageTimings);
-        if (captureParseStageTimings)
-        {
-            RecordParseStageTiming(
-                parseStageRecorder,
-                ownerIdentity,
-                MarkdownParsePipelineStage.Begin,
-                startedTimestamp: 0);
-        }
+        var timer = new MarkdownParseStageTimer(StageRecorder, documentOwner);
+        long sessionStarted = timer.Start();
+        timer.Record(MarkdownParsePipelineStage.Begin, startedTimestamp: 0);
 
         bool parseProgressively = engine is not null && _deferOffscreenScenes && !_lifetime.IsDisposed;
-        if (document is null && engine is not null)
+        if (document is null)
         {
-            long engineParseStarted = StartParseStageTiming(captureParseStageTimings);
-            document = parseProgressively
-                ? await engine.ParseForProgressivePresentationAsync(source, cancellationToken).ConfigureAwait(false)
-                : await engine.ParseAsync(source, cancellationToken).ConfigureAwait(false);
-            if (captureParseStageTimings)
-            {
-                RecordParseStageTiming(
-                    parseStageRecorder,
-                    ownerIdentity,
-                    MarkdownParsePipelineStage.EngineParseAndCache,
-                    engineParseStarted);
-            }
-        }
-        else if (document is null && documentOwner is IMarkdownPerformanceLegacyParser legacyParser)
-        {
-            long legacyParseStarted = StartParseStageTiming(captureParseStageTimings);
-            MarkdownRenderer.Parsing.ParsedMarkdown? parsed = await legacyParser.ParseLegacyMarkdownAsync(
-                source ?? string.Empty,
+            document = await ParseSourceAsync(
+                engine,
+                source,
                 legacyRegistry,
+                documentOwner,
+                parseProgressively,
+                timer,
                 cancellationToken).ConfigureAwait(false);
-            if (parsed is not null)
-            {
-                document = await Task.Run(
-                    () => MarkdownRenderer.Document.MarkdownDocument.FromParsed(
-                        parsed.SourceText,
-                        parsed.Document,
-                        diagnostics: [],
-                    cancellationToken),
-                    CancellationToken.None).ConfigureAwait(false);
-            }
-            if (captureParseStageTimings)
-            {
-                RecordParseStageTiming(
-                    parseStageRecorder,
-                    ownerIdentity,
-                    MarkdownParsePipelineStage.LegacyParseAndDocument,
-                    legacyParseStarted);
-            }
         }
 
         if (document is null)
         {
             await _scenePlans.Release(documentOwner).ConfigureAwait(false);
-            if (captureParseStageTimings)
-            {
-                RecordParseStageTiming(
-                    parseStageRecorder,
-                    ownerIdentity,
-                    MarkdownParsePipelineStage.SessionTotal,
-                    sessionStarted);
-            }
+            timer.Record(MarkdownParsePipelineStage.SessionTotal, sessionStarted);
             return null;
         }
 
@@ -205,77 +137,112 @@ internal sealed class MarkdownSessionParsePipeline
             await _scenePlans.Release(documentOwner).ConfigureAwait(false);
             if (MarkdownProgressiveScenePlan.ContainsDeferredSceneFallback(document))
             {
-                if (engine is not null)
-                {
-                    long engineParseStarted = StartParseStageTiming(captureParseStageTimings);
-                    document = await engine.ParseAsync(document.Source, cancellationToken).ConfigureAwait(false);
-                    if (captureParseStageTimings)
-                    {
-                        RecordParseStageTiming(
-                            parseStageRecorder,
-                            ownerIdentity,
-                            MarkdownParsePipelineStage.EngineParseAndCache,
-                            engineParseStarted);
-                    }
-                }
-                else if (documentOwner is IMarkdownPerformanceLegacyParser legacyParser)
-                {
-                    long legacyParseStarted = StartParseStageTiming(captureParseStageTimings);
-                    MarkdownRenderer.Parsing.ParsedMarkdown? parsed = await legacyParser.ParseLegacyMarkdownAsync(
-                        document.Source,
-                        legacyRegistry,
-                        cancellationToken).ConfigureAwait(false);
-                    if (parsed is not null)
-                    {
-                        document = await Task.Run(
-                            () => MarkdownRenderer.Document.MarkdownDocument.FromParsed(
-                                parsed.SourceText,
-                                parsed.Document,
-                                diagnostics: [],
-                                cancellationToken),
-                                CancellationToken.None).ConfigureAwait(false);
-                    }
-                    if (captureParseStageTimings)
-                    {
-                        RecordParseStageTiming(
-                            parseStageRecorder,
-                            ownerIdentity,
-                            MarkdownParsePipelineStage.LegacyParseAndDocument,
-                            legacyParseStarted);
-                    }
-                }
+                document = await ReparseEagerlyAsync(
+                    engine,
+                    document,
+                    legacyRegistry,
+                    documentOwner,
+                    timer,
+                    cancellationToken).ConfigureAwait(false);
             }
-            long roleDemandStarted = StartParseStageTiming(captureParseStageTimings);
-            await _styleRoleDemand.CacheAsync(document, cancellationToken).ConfigureAwait(false);
-            if (captureParseStageTimings)
-            {
-                RecordParseStageTiming(
-                    parseStageRecorder,
-                    ownerIdentity,
-                    MarkdownParsePipelineStage.StyleRoleDemand,
-                    roleDemandStarted);
-                RecordParseStageTiming(
-                    parseStageRecorder,
-                    ownerIdentity,
-                    MarkdownParsePipelineStage.SessionTotal,
-                    sessionStarted);
-            }
-            return document;
+        }
+        else
+        {
+            document = await PrepareProgressiveDocumentAsync(
+                engine,
+                document,
+                documentOwner,
+                timer,
+                cancellationToken).ConfigureAwait(false);
         }
 
-        long scenePlanStarted = StartParseStageTiming(captureParseStageTimings);
+        long roleDemandStarted = timer.Start();
+        await _styleRoleDemand.CacheAsync(document, cancellationToken).ConfigureAwait(false);
+        timer.Record(MarkdownParsePipelineStage.StyleRoleDemand, roleDemandStarted);
+        timer.Record(MarkdownParsePipelineStage.SessionTotal, sessionStarted);
+        return document;
+    }
+
+    // Parses the source with the engine (progressively when offscreen scenes
+    // are deferred) or with the owner's legacy parser. Returns null when
+    // neither can parse it.
+    private static async ValueTask<MarkdownDocument?> ParseSourceAsync(
+        MarkdownEngine? engine,
+        string? source,
+        MarkdownRenderer.Parsing.MarkdownExtensionRegistry legacyRegistry,
+        object documentOwner,
+        bool parseProgressively,
+        MarkdownParseStageTimer timer,
+        CancellationToken cancellationToken)
+    {
+        if (engine is not null)
+        {
+            long engineParseStarted = timer.Start();
+            MarkdownDocument parsed = parseProgressively
+                ? await engine.ParseForProgressivePresentationAsync(source, cancellationToken).ConfigureAwait(false)
+                : await engine.ParseAsync(source, cancellationToken).ConfigureAwait(false);
+            timer.Record(MarkdownParsePipelineStage.EngineParseAndCache, engineParseStarted);
+            return parsed;
+        }
+
+        if (documentOwner is not IMarkdownPerformanceLegacyParser legacyParser)
+            return null;
+
+        long legacyParseStarted = timer.Start();
+        MarkdownDocument? document = await ParseLegacyDocumentAsync(
+            legacyParser,
+            source ?? string.Empty,
+            legacyRegistry,
+            cancellationToken).ConfigureAwait(false);
+        timer.Record(MarkdownParsePipelineStage.LegacyParseAndDocument, legacyParseStarted);
+        return document;
+    }
+
+    // Replaces a document that still holds deferred-scene fallbacks with an
+    // eager parse of the same source. Keeps the document when no parser can
+    // produce a replacement.
+    private static async ValueTask<MarkdownDocument> ReparseEagerlyAsync(
+        MarkdownEngine? engine,
+        MarkdownDocument document,
+        MarkdownRenderer.Parsing.MarkdownExtensionRegistry legacyRegistry,
+        object documentOwner,
+        MarkdownParseStageTimer timer,
+        CancellationToken cancellationToken)
+    {
+        if (engine is not null)
+        {
+            long engineParseStarted = timer.Start();
+            MarkdownDocument reparsed = await engine.ParseAsync(document.Source, cancellationToken).ConfigureAwait(false);
+            timer.Record(MarkdownParsePipelineStage.EngineParseAndCache, engineParseStarted);
+            return reparsed;
+        }
+
+        if (documentOwner is not IMarkdownPerformanceLegacyParser legacyParser)
+            return document;
+
+        long legacyParseStarted = timer.Start();
+        MarkdownDocument? legacyDocument = await ParseLegacyDocumentAsync(
+            legacyParser,
+            document.Source,
+            legacyRegistry,
+            cancellationToken).ConfigureAwait(false);
+        timer.Record(MarkdownParsePipelineStage.LegacyParseAndDocument, legacyParseStarted);
+        return legacyDocument ?? document;
+    }
+
+    private async ValueTask<MarkdownDocument> PrepareProgressiveDocumentAsync(
+        MarkdownEngine engine,
+        MarkdownDocument document,
+        object documentOwner,
+        MarkdownParseStageTimer timer,
+        CancellationToken cancellationToken)
+    {
+        long scenePlanStarted = timer.Start();
         await _scenePlans.PrepareAsync(
             document,
             documentOwner,
             cancellationToken).ConfigureAwait(false);
-        if (captureParseStageTimings)
-        {
-            RecordParseStageTiming(
-                parseStageRecorder,
-                ownerIdentity,
-                MarkdownParsePipelineStage.ProgressiveScenePlan,
-                scenePlanStarted);
-        }
+        timer.Record(MarkdownParsePipelineStage.ProgressiveScenePlan, scenePlanStarted);
 
         // If the borrowed session is disposed while parse/plan construction is
         // in flight, never leave this control with a deferred fallback and no
@@ -284,40 +251,17 @@ internal sealed class MarkdownSessionParsePipeline
         if (_lifetime.IsDisposed && MarkdownProgressiveScenePlan.ContainsDeferredSceneFallback(document))
         {
             await _scenePlans.Release(documentOwner).ConfigureAwait(false);
-            long engineParseStarted = StartParseStageTiming(captureParseStageTimings);
+            long engineParseStarted = timer.Start();
             document = await engine.ParseAsync(document.Source, cancellationToken).ConfigureAwait(false);
-            if (captureParseStageTimings)
-            {
-                RecordParseStageTiming(
-                    parseStageRecorder,
-                    ownerIdentity,
-                    MarkdownParsePipelineStage.EngineParseAndCache,
-                    engineParseStarted);
-            }
+            timer.Record(MarkdownParsePipelineStage.EngineParseAndCache, engineParseStarted);
         }
 
-        long progressiveRoleDemandStarted = StartParseStageTiming(captureParseStageTimings);
-        await _styleRoleDemand.CacheAsync(document, cancellationToken).ConfigureAwait(false);
-        if (captureParseStageTimings)
-        {
-            RecordParseStageTiming(
-                parseStageRecorder,
-                ownerIdentity,
-                MarkdownParsePipelineStage.StyleRoleDemand,
-                progressiveRoleDemandStarted);
-            RecordParseStageTiming(
-                parseStageRecorder,
-                ownerIdentity,
-                MarkdownParsePipelineStage.SessionTotal,
-                sessionStarted);
-        }
         return document;
     }
 
-    private static async ValueTask<MarkdownRenderer.Document.MarkdownDocument?>
-        ParseForDisposedSessionAsync(
+    private static async ValueTask<MarkdownDocument?> ParseForDisposedSessionAsync(
         MarkdownEngine? engine,
-        MarkdownRenderer.Document.MarkdownDocument? document,
+        MarkdownDocument? document,
         string? source,
         MarkdownRenderer.Parsing.MarkdownExtensionRegistry legacyRegistry,
         object documentOwner,
@@ -326,28 +270,15 @@ internal sealed class MarkdownSessionParsePipeline
         if (document is null)
         {
             if (engine is not null)
-            {
                 return await engine.ParseAsync(source, cancellationToken).ConfigureAwait(false);
-            }
 
-            if (documentOwner is IMarkdownPerformanceLegacyParser legacyParser)
-            {
-                MarkdownRenderer.Parsing.ParsedMarkdown? parsed = await legacyParser
-                    .ParseLegacyMarkdownAsync(source ?? string.Empty, legacyRegistry, cancellationToken)
-                    .ConfigureAwait(false);
-                if (parsed is null)
-                    return null;
-
-                return await Task.Run(
-                    () => MarkdownRenderer.Document.MarkdownDocument.FromParsed(
-                        parsed.SourceText,
-                        parsed.Document,
-                        diagnostics: [],
-                        cancellationToken),
-                    CancellationToken.None).ConfigureAwait(false);
-            }
-
-            return null;
+            return documentOwner is IMarkdownPerformanceLegacyParser legacyParser
+                ? await ParseLegacyDocumentAsync(
+                    legacyParser,
+                    source ?? string.Empty,
+                    legacyRegistry,
+                    cancellationToken).ConfigureAwait(false)
+                : null;
         }
 
         if (!MarkdownProgressiveScenePlan.ContainsDeferredSceneFallback(document))
@@ -359,16 +290,32 @@ internal sealed class MarkdownSessionParsePipeline
         if (documentOwner is not IMarkdownPerformanceLegacyParser legacyDocumentParser)
             return document;
 
-        MarkdownRenderer.Parsing.ParsedMarkdown? reparsed = await legacyDocumentParser
-            .ParseLegacyMarkdownAsync(document.Source, legacyRegistry, cancellationToken)
+        MarkdownDocument? reparsed = await ParseLegacyDocumentAsync(
+            legacyDocumentParser,
+            document.Source,
+            legacyRegistry,
+            cancellationToken).ConfigureAwait(false);
+        return reparsed ?? document;
+    }
+
+    // Runs the owner's legacy parser and builds the immutable document off
+    // the caller's thread. Returns null when the legacy parser produced nothing.
+    private static async ValueTask<MarkdownDocument?> ParseLegacyDocumentAsync(
+        IMarkdownPerformanceLegacyParser legacyParser,
+        string source,
+        MarkdownRenderer.Parsing.MarkdownExtensionRegistry legacyRegistry,
+        CancellationToken cancellationToken)
+    {
+        MarkdownRenderer.Parsing.ParsedMarkdown? parsed = await legacyParser
+            .ParseLegacyMarkdownAsync(source, legacyRegistry, cancellationToken)
             .ConfigureAwait(false);
-        if (reparsed is null)
-            return document;
+        if (parsed is null)
+            return null;
 
         return await Task.Run(
-            () => MarkdownRenderer.Document.MarkdownDocument.FromParsed(
-                reparsed.SourceText,
-                reparsed.Document,
+            () => MarkdownDocument.FromParsed(
+                parsed.SourceText,
+                parsed.Document,
                 diagnostics: [],
                 cancellationToken),
             CancellationToken.None).ConfigureAwait(false);
