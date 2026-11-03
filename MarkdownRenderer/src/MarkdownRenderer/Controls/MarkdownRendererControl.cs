@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Graphics.Canvas;
@@ -114,7 +113,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     // attach a PerformanceSession or alter normal layout scheduling; it merely
     // enables the existing build-stage counters for this control instance.
     internal bool EnableStandaloneLayoutDiagnostics { get; set; }
-    private readonly PipelineTimings _timings = new();
     private readonly LayoutCommitState _layoutCommit = new();
     private readonly LayoutCommitPublisher _layoutPublisher;
     private readonly object _imagePreparationOwnerToken = new();
@@ -127,12 +125,9 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     // exact snapshot generation and layout revision. The attempt epoch also
     // invalidates a plan while a same-snapshot rebuild is being transferred.
     private readonly HostedFocusPlanPublication _hostedFocusPlan = new();
-    private float _lastWidth;
-    // The theme used while Theme is null. A MarkdownTheme is a thread-affine
-    // DependencyObject, so each control owns one rather than sharing a static.
-    private readonly MarkdownTheme _defaultTheme = new();
-    private readonly ParsedMarkdownCache _parseCache = new();
-    private SizeChangedEventHandler? _sizeChangedHandler;
+    private readonly LayoutWidthWatch _width;
+    private readonly RebuildInputCapture _inputCapture;
+    private readonly RebuildPipeline _pipeline;
     private readonly SelectionController _selection = new();
     private readonly MarkdownTouchSelectionSession _touchSelection = new();
     private readonly TouchSelectionRestore _touchRestore;
@@ -1048,7 +1043,10 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _theme = new ThemeSubscription(this, _lifetime, _rebuild);
         _environment = new EnvironmentSubscription(this, _lifetime, _rebuild);
         _replacementPublisher = new ReplacementPublisher(this, _published, _surface, _rebuild, _touchRestore, _automationDocumentGenerations, _selection, _lazyLayout, _layoutCommit, _scrolling, _painter, _localization, _focusRefresh, _vectorCapacity, _geometryRecovery, _imageSubscriptions, _imageRelayout, _blockScroll, _imagePlans, _focus);
+        _width = new LayoutWidthWatch(this, _rebuild);
+        _inputCapture = new RebuildInputCapture(this, _documentInputs, _localization, _environment);
         _replacementPresentation = new ReplacementPresentation(_surface, _snapshotRetirements, _rebuild, _layoutCommit, _layoutPublisher, _documentInputs, _extent, _scrolling, _hover, _selection, _touchRestore, _contextMenu, _dragShield, _adorner, _textAdorner, _handles, _embeds, _imageSubscriptions, _imagePlans, _imageResidency, _focus, _focusRing, _focusCommit, _highlighting, _visibleWork, _canvasInvalidation, _automation, _deferredScenes);
+        _pipeline = new RebuildPipeline(this, this, _lifetime, _surface, _viewport, _rebuild, _inputCapture, _layoutSetup, _width, _imagePrefetch, _automation, _replacementPublisher, _replacementPresentation);
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         Loaded += (_, _) => OnLoadedInternal();
@@ -1704,7 +1702,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         long generation,
         long pipelineStartTimestamp,
         long sourceUtf16Bytes) =>
-        RebuildAsync(ct, reason, generation, pipelineStartTimestamp, sourceUtf16Bytes);
+        _pipeline.RunAsync(ct, reason, generation, pipelineStartTimestamp, sourceUtf16Bytes);
 
     Microsoft.UI.Dispatching.DispatcherQueue? IRebuildLayoutSetupHost.DispatcherQueue => DispatcherQueue;
 
@@ -1825,11 +1823,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         MarkdownSelectionCoordinator.Register(this);
         _selectionDismissal.Register();
         _environment.Acquire();
-        _sizeChangedHandler = (_, e) =>
-        {
-            if (Math.Abs(_lastWidth - (float)e.NewSize.Width) > 0.5f) RequestRebuild(RebuildReason.Restyle);
-        };
-        SizeChanged += _sizeChangedHandler;
+        _width.Attach();
         _theme.Attach();
         _svgRenderer.Attach();
         _performanceSession.Attach();
@@ -1882,11 +1876,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _horizontalOverflowDrag.Clear();
         _abbreviationTooltip.Hide();
         _abbreviationTooltip.ReleaseTimers();
-        if (_sizeChangedHandler is not null)
-        {
-            SizeChanged -= _sizeChangedHandler;
-            _sizeChangedHandler = null;
-        }
+        _width.Detach();
         _theme.Detach();
         _svgRenderer.Detach();
         _environment.Release();
@@ -1972,7 +1962,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _surface.Detach();
         _documentInputs.ReleaseOwnedEngine();
         _lifetime.MarkDisposalComplete();
-        try { ((IRendererEventSink)this).InvokeDisposed(); }
+        try { Disposed?.Invoke(this, EventArgs.Empty); }
         catch (Exception ex)
         {
             MarkdownDiagnostics.WriteLine(
@@ -2027,8 +2017,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     void IRendererEventSink.InvokeRenderFailed(MarkdownRenderFailedEventArgs args) => RenderFailed?.Invoke(this, args);
 
-    void IRendererEventSink.InvokeDisposed() => Disposed?.Invoke(this, EventArgs.Empty);
-
     private void DetachCanvasHandlers()
     {
         _canvasEvents.DetachRenderHandlers();
@@ -2061,257 +2049,15 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         RequestRebuild(RebuildReason.Restyle);
     }
 
-    private async Task RebuildAsync(
-        CancellationToken ct,
-        RebuildReason reason,
-        long generation,
-        long pipelineStartTimestamp,
-        long sourceUtf16Bytes)
-    {
-        try
-        {
-            await RebuildInternalAsync(
-                ct,
-                reason,
-                generation,
-                pipelineStartTimestamp,
-                sourceUtf16Bytes).ConfigureAwait(true);
-            if (!ct.IsCancellationRequested && generation == _rebuild.Generation)
-            {
-                RaiseRenderCompleted(generation);
-            }
-        }
-        catch (OperationCanceledException) { /* expected – a new build was requested */ }
-        catch (MarkdownLayoutRetirementException retirementFailure)
-        {
-            if (retirementFailure.TakePrimaryFailure() is { } primaryFailure &&
-                primaryFailure is not OperationCanceledException)
-            {
-                RaiseRenderFailed(generation, primaryFailure);
-            }
-
-            // Resource retirement is part of pipeline completion, not an
-            // ordinary render diagnostic. Keep this task faulted so a control
-            // shutdown barrier cannot report success after failed cleanup.
-            throw;
-        }
-        catch (Exception ex)
-        {
-            MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] Rebuild failed: {ex}");
-            RaiseRenderFailed(generation, ex);
-        }
-    }
-
-    private void RaiseRenderCompleted(long generation)
-    {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || generation != _rebuild.Generation)
-            return;
-
-        try
-        {
-            ((IRendererEventSink)this).InvokeRenderCompleted();
-        }
-        catch (Exception ex)
-        {
-            MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] RenderCompleted subscriber failed: {ex.Message}");
-        }
-
-        _imagePrefetch.StartPending();
-    }
-
-    private void RaiseRenderFailed(long generation, Exception exception)
-    {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded || generation != _rebuild.Generation)
-            return;
-
-        try
-        {
-            ((IRendererEventSink)this).InvokeRenderFailed(new MarkdownRenderFailedEventArgs(exception));
-        }
-        catch (Exception ex)
-        {
-            MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] RenderFailed subscriber failed: {ex.Message}");
-        }
-    }
-
     Task<ParsedMarkdown?> IMarkdownPerformanceLegacyParser.ParseLegacyMarkdownAsync(
         string source,
         MarkdownExtensionRegistry registry,
         CancellationToken cancellationToken) =>
-        _parseCache.GetAsync(source, registry, cancellationToken);
-
-    private async Task RebuildInternalAsync(
-        CancellationToken ct,
-        RebuildReason reason,
-        long generation,
-        long pipelineStartTimestamp,
-        long sourceUtf16Bytes)
-    {
-        if (_surface.Canvas is null || _surface.Overlay is null || _surface.Root is null) return;
-        var width = (float)Math.Max(50, ActualWidth);
-        _lastWidth = width;
-
-        RebuildSourceInputs source = CaptureRebuildSourceInputs();
-        if (ct.IsCancellationRequested || generation != _rebuild.Generation)
-            return;
-
-        RebuildParseResult? parse = await RebuildParse.ParseAsync(source, _parseCache, this, ct).ConfigureAwait(true);
-        if (parse is null || ct.IsCancellationRequested || generation != _rebuild.Generation)
-            return;
-
-        RebuildLayoutPlan plan = _layoutSetup.CreatePlan(
-            source,
-            CaptureRebuildLayoutInputs(),
-            parse,
-            reason,
-            width,
-            ct);
-        Exception? primaryFailure = null;
-        try
-        {
-            await BuildAndCommitAsync(plan, generation, pipelineStartTimestamp, sourceUtf16Bytes, ct)
-                .ConfigureAwait(true);
-        }
-        catch (Exception exception)
-        {
-            primaryFailure = exception;
-            throw;
-        }
-        finally
-        {
-            // The control-level drain is epoch-based: work registered after its
-            // disposal snapshot belongs to a later epoch. Drain this build's
-            // own registrations before its pipeline task completes so provider
-            // retirement cannot race failed-build image teardown.
-            await plan.Context.DrainOwnedRetirementsAsync(primaryFailure).ConfigureAwait(true);
-        }
-    }
-
-    private RebuildSourceInputs CaptureRebuildSourceInputs()
-    {
-        MarkdownExtensionRegistry? extensionRegistry = ExtensionRegistry;
-        MarkdownExtensionRegistry legacyRegistry = extensionRegistry ?? RebuildLayoutSetup.DefaultRegistry;
-        IMarkdownPerformanceSessionInternal? performanceSession =
-            PerformanceSession as IMarkdownPerformanceSessionInternal;
-        if (performanceSession?.IsDisposed == true)
-            performanceSession = null;
-        var reusableDocument = _documentInputs.HasExplicitDocument ? Document : null;
-        return new RebuildSourceInputs(
-            extensionRegistry,
-            legacyRegistry,
-            legacyRegistry.Revision,
-            Engine,
-            performanceSession,
-            reusableDocument,
-            reusableDocument?.Source ?? Markdown ?? string.Empty);
-    }
-
-    private RebuildLayoutInputs CaptureRebuildLayoutInputs() => new()
-    {
-        Theme = Theme ?? _defaultTheme,
-        StyleSheet = StyleSheet,
-        FlowDirection = FlowDirection,
-        EmbedFactory = EmbedFactory,
-        HostedElementFactory = HostedElementFactory,
-        ImageResolver = ImageResolver,
-        SvgRenderer = SvgRenderer,
-        RasterDecoder = RasterDecoder,
-        ImageBaseUri = ImageBaseUri,
-        ImageDocumentPath = ImageDocumentPath,
-        ImageDocumentSource = ImageDocumentSource,
-        AllowThirdPartyRemoteImages = AllowThirdPartyRemoteImages,
-        IsCodeBlockCopyEnabled = IsCodeBlockCopyEnabled,
-        IsTaskListEditingEnabled = IsTaskListEditingEnabled,
-        CommandProvider = CommandProvider,
-        Localization = _localization.CaptureRequested(),
-        LineNumberMode = CodeBlockLineNumberMode,
-        WrappingMode = CodeBlockWrappingMode,
-        ChromeMode = CodeBlockChromeMode,
-        DisclosureStates = _documentInputs.CopyDisclosureStates(),
-        TextScaleFactor = _environment.Snapshot.TextScaleFactor > 0
-            ? _environment.Snapshot.TextScaleFactor
-            : 1.0,
-        // XamlRoot is null until the control is loaded; default to 1.0.
-        RasterScale = XamlRoot?.RasterizationScale ?? 1.0,
-    };
-
-    /// <summary>
-    /// Builds the snapshot <paramref name="plan"/> describes and, while
-    /// <paramref name="generation"/> is still current, replaces the published
-    /// snapshot with it. An unpublished snapshot is always retired.
-    /// </summary>
-    private async Task BuildAndCommitAsync(
-        RebuildLayoutPlan plan,
-        long generation,
-        long pipelineStartTimestamp,
-        long sourceUtf16Bytes,
-        CancellationToken ct)
-    {
-        MarkdownLayoutContext ctx = plan.Context;
-        LayoutBuilder builder = _layoutSetup.CreateBuilder(plan);
-        if (ct.IsCancellationRequested || generation != _rebuild.Generation)
-            return;
-
-        _viewport.TryGet(out double viewportTop, out double viewportHeight, out _);
-        bool captureLayoutCpu = plan.PerformanceSession is not null;
-        Action<long>? workerCompleted = null;
-        using var initialLayoutDispatcherProbe =
-            _timings.StartInitialDispatcherProbe(DispatcherQueue, plan.LayoutDiagnostics);
-        captureLayoutCpu |= plan.LayoutDiagnostics is not null;
-        if (initialLayoutDispatcherProbe is not null)
-            workerCompleted = initialLayoutDispatcherProbe.EnqueueWorkerCompletionSentinel;
-        RebuildLayoutRunResult? run = await RebuildLayoutRun.RunAsync(
-            builder, ctx, plan.Parse.Parsed, plan.Width, viewportTop, viewportHeight,
-            hasCustomBlockEmbedMeasurement: plan.Inputs.EmbedFactory is not null,
-            plan.PerformanceSession, captureLayoutCpu, workerCompleted, ct).ConfigureAwait(true);
-        if (run is null)
-            return;
-        MarkdownLayoutDiagnosticsSnapshot layoutDiagnosticSnapshot =
-            plan.LayoutDiagnostics?.Capture() ?? default;
-        LayoutSnapshot? snapshot = run.Snapshot;
-        if (snapshot is null || ct.IsCancellationRequested || generation != _rebuild.Generation)
-        {
-            if (snapshot is not null)
-                ctx.RegisterRetirement(snapshot.Retire());
-            return;
-        }
-
-        // From this point the snapshot holds GPU-side CanvasTextLayout objects.
-        // If we are cancelled before committing, dispose it to avoid a native-memory leak.
-        // `committed` tracks whether the snapshot was published; only an
-        // unpublished snapshot is retired here (once published, _published owns it).
-        bool committed = false;
-        var timeline = new ReplacementTimeline(Stopwatch.GetTimestamp());
-        try
-        {
-            if (!_replacementPublisher.TryPublish(
-                    plan, snapshot, generation, pipelineStartTimestamp, sourceUtf16Bytes, ct,
-                    out ReplacementPublication? publication))
-            {
-                return;
-            }
-
-            committed = true;
-            _automation.NotifySnapshotChanged();
-            _timings.CompleteInitialDispatcherProbe(initialLayoutDispatcherProbe, plan.LayoutDiagnostics);
-            _replacementPresentation.Finish(plan, snapshot, generation, publication, timeline);
-            _timings.PublishCommitted(
-                generation, sourceUtf16Bytes, plan, run,
-                layoutDiagnosticSnapshot,
-                timeline);
-        }
-        finally
-        {
-            // Every cancellation/generation retry after construction must release
-            // the unpublished Win2D layout. Once committed, _published owns it.
-            if (!committed)
-                ctx.RegisterRetirement(snapshot.Retire());
-        }
-    }
+        _pipeline.ParseLegacyMarkdownAsync(source, registry, cancellationToken);
 
     /// <summary>The stage timings of the committed snapshot's pipeline.</summary>
     internal MarkdownPipelineTimingSnapshot GetLastPipelineTimingSnapshot() =>
-        _timings.Last;
+        _pipeline.LastTimings;
 
     internal void ScheduleVisibleDeferredScenes() => _visibleWork.ScheduleDeferredScenes();
 

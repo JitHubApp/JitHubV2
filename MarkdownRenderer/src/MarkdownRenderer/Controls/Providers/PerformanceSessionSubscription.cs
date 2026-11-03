@@ -130,9 +130,9 @@ internal sealed class PerformanceSessionSubscription
             if (ReferenceEquals(sender, Volatile.Read(ref _subscribed)) &&
                 !_lifetime.IsDisposed && !_lifetime.IsUnloaded)
             {
-                // RebuildInternalAsync detects the disposed borrowed session
-                // and uses the eager engine/legacy parser path, replacing any
-                // committed code fallback with its native scene.
+                // RebuildInputCapture drops the disposed borrowed session, so
+                // the rebuild uses the eager engine/legacy parser path, replacing
+                // any committed code fallback with its native scene.
                 _rebuild.Request(RebuildReason.Full);
             }
         });

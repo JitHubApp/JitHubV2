@@ -23,6 +23,4 @@ internal interface IRendererEventSink
     void InvokeRenderCompleted();
 
     void InvokeRenderFailed(MarkdownRenderFailedEventArgs args);
-
-    void InvokeDisposed();
 }
