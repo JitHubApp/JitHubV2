@@ -256,10 +256,10 @@ public sealed class SvgProcessSnapshotAdmissionTests
             snapshotAdmission: reservation).WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.True(observedReservationAtClone);
-        byte[] privateSource = preflight.Source.CopyToArrayForTest();
+        byte[] privateSource = preflight.Source.ReadAllBytes();
         Assert.Equal(Encoding.UTF8.GetString(bytes), Encoding.UTF8.GetString(privateSource));
         Array.Fill(bytes, (byte)0);
-        Assert.Equal(privateSource, preflight.Source.CopyToArrayForTest());
+        Assert.Equal(privateSource, preflight.Source.ReadAllBytes());
         Assert.Equal(preflight.Source.AllocatedCapacity, preflight.SourceReservationBytes);
         Assert.Equal(preflight.Source.AllocatedCapacity, owner.ReservedBytes);
         preflight.ReleaseSource();
@@ -286,7 +286,7 @@ public sealed class SvgProcessSnapshotAdmissionTests
             CancellationToken.None,
             snapshotAdmission: reservation).WaitAsync(TimeSpan.FromSeconds(5));
 
-        byte[] normalizedSource = preflight.Source.CopyToArrayForTest();
+        byte[] normalizedSource = preflight.Source.ReadAllBytes();
         Assert.NotEqual(callerBytes.Length, preflight.Source.Length);
         Assert.Equal(originalCallerBytes, callerBytes);
         Assert.Equal(expectedNormalized, Encoding.UTF8.GetString(normalizedSource));

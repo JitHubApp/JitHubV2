@@ -108,7 +108,7 @@ public sealed class SvgUtf8TextReaderTests
             Assert.Equal(description, result.Info.Description);
             Assert.Equal(7, result.Info.IntrinsicWidthDips);
             Assert.Equal(5, result.Info.IntrinsicHeightDips);
-            Assert.Contains(description, Encoding.UTF8.GetString(result.Source.CopyToArrayForTest()));
+            Assert.Contains(description, Encoding.UTF8.GetString(result.Source.ReadAllBytes()));
         }
         finally
         {

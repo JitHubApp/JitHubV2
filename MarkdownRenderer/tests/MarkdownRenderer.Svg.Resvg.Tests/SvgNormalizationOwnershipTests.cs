@@ -19,7 +19,7 @@ public sealed class SvgNormalizationOwnershipTests
         AssertCollected(source);
 
         using SvgSourceBuffer normalizedSource = segments.DetachSourceBuffer();
-        byte[] normalized = normalizedSource.CopyToArrayForTest();
+        byte[] normalized = normalizedSource.ReadAllBytes();
         Assert.NotEmpty(normalized);
         Assert.StartsWith("<?xml", Encoding.UTF8.GetString(normalized), StringComparison.Ordinal);
         Assert.False(normalized.AsSpan().StartsWith(new byte[] { 0xef, 0xbb, 0xbf }));

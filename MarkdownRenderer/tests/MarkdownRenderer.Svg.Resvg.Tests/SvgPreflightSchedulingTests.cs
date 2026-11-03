@@ -133,7 +133,7 @@ public sealed class SvgPreflightSchedulingTests
         Assert.NotEqual(callerThreadId, manager.LastAccessThreadId);
         Assert.True(manager.LastAccessWasThreadPoolThread);
         Assert.Equal(original, source);
-        Assert.Equal(original, result.Source.CopyToArrayForTest());
+        Assert.Equal(original, result.Source.ReadAllBytes());
     }
 
     [Fact]
@@ -151,7 +151,7 @@ public sealed class SvgPreflightSchedulingTests
             CancellationToken.None);
 
         Assert.Equal(original, source);
-        Assert.Equal(sourceText, Encoding.UTF8.GetString(result.Source.CopyToArrayForTest()));
+        Assert.Equal(sourceText, Encoding.UTF8.GetString(result.Source.ReadAllBytes()));
     }
 
     [Fact]
@@ -170,7 +170,7 @@ public sealed class SvgPreflightSchedulingTests
             CancellationToken.None);
 
         Assert.Equal(original, source);
-        Assert.Equal(original, result.Source.CopyToArrayForTest());
+        Assert.Equal(original, result.Source.ReadAllBytes());
         Assert.Equal(png.Length, result.EmbeddedBytes);
         Assert.Equal(1, result.EmbeddedPixels);
     }
@@ -194,7 +194,7 @@ public sealed class SvgPreflightSchedulingTests
             new ResvgMarkdownSvgRendererOptions(),
             CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
 
-        string normalized = Encoding.UTF8.GetString(result.Source.CopyToArrayForTest());
+        string normalized = Encoding.UTF8.GetString(result.Source.ReadAllBytes());
         Assert.Equal(original, source);
         Assert.False(result.Source.Length >= 3 &&
                      result.Source.GetByte(0) == 0xef && result.Source.GetByte(1) == 0xbb && result.Source.GetByte(2) == 0xbf);
@@ -281,7 +281,7 @@ public sealed class SvgPreflightSchedulingTests
             new ResvgMarkdownSvgRendererOptions(),
             CancellationToken.None);
 
-        string normalized = Encoding.UTF8.GetString(result.Source.CopyToArrayForTest());
+        string normalized = Encoding.UTF8.GetString(result.Source.ReadAllBytes());
         Assert.Equal(original, source);
         Assert.Contains("encoding=\"utf-8\"", normalized, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("café", normalized, StringComparison.Ordinal);
@@ -335,7 +335,7 @@ public sealed class SvgPreflightSchedulingTests
         using BoundedOutputStream normalizedOutput = await task.WaitAsync(TimeSpan.FromSeconds(5));
         AssertCollected(source);
         using SvgSourceBuffer normalizedSource = normalizedOutput.DetachSourceBuffer();
-        byte[] normalized = normalizedSource.CopyToArrayForTest();
+        byte[] normalized = normalizedSource.ReadAllBytes();
 
         Assert.StartsWith("<?xml", Encoding.UTF8.GetString(normalized), StringComparison.Ordinal);
         GC.KeepAlive(normalized);
@@ -618,7 +618,7 @@ public sealed class SvgPreflightSchedulingTests
             CancellationToken.None);
 
         Assert.Equal(original, source);
-        Assert.Equal(original, result.Source.CopyToArrayForTest());
+        Assert.Equal(original, result.Source.ReadAllBytes());
     }
 
     [Fact]
@@ -635,7 +635,7 @@ public sealed class SvgPreflightSchedulingTests
             CancellationToken.None);
 
         Assert.Equal(original, source);
-        Assert.Contains(markerComment, Encoding.UTF8.GetString(result.Source.CopyToArrayForTest()));
+        Assert.Contains(markerComment, Encoding.UTF8.GetString(result.Source.ReadAllBytes()));
     }
 
     [Fact]

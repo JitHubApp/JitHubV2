@@ -25,18 +25,18 @@ public sealed class SvgSourceBufferTests
 
         Assert.Equal(expected.Length, source.Length);
         Assert.Equal(expected.Length, source.AllocatedCapacity);
-        Assert.Equal(expected, source.CopyToArrayForTest());
+        Assert.Equal(expected, source.ReadAllBytes());
         Assert.Equal(SHA256.HashData(expected), source.ComputeSha256());
     }
 
     [Fact]
     public void SealedSourceBufferRejectsFurtherPreflightMutation()
     {
-        using SvgSourceBuffer source = Encoding.ASCII.GetBytes("<svg/>").CopyIntoBufferForTest();
+        using SvgSourceBuffer source = Encoding.ASCII.GetBytes("<svg/>").ToSourceBuffer();
         source.Seal();
 
         Assert.Throws<InvalidOperationException>(() => source.FillRange(0, 1, (byte)' '));
-        Assert.Equal("<svg/>", Encoding.ASCII.GetString(source.CopyToArrayForTest()));
+        Assert.Equal("<svg/>", Encoding.ASCII.GetString(source.ReadAllBytes()));
     }
 
     [Fact]
@@ -51,7 +51,7 @@ public sealed class SvgSourceBufferTests
         Assert.Equal(caller.Length, source.AllocatedCapacity);
         caller.AsSpan().Fill((byte)'x');
 
-        Assert.Equal(expected, source.CopyToArrayForTest());
+        Assert.Equal(expected, source.ReadAllBytes());
     }
 
     [Fact]
@@ -75,10 +75,10 @@ public sealed class SvgSourceBufferTests
     [Fact]
     public void SmallSnapshotRemainsArrayBacked()
     {
-        using SvgSourceBuffer source = "<svg/>"u8.ToArray().CopyIntoBufferForTest();
+        using SvgSourceBuffer source = "<svg/>"u8.ToArray().ToSourceBuffer();
 
         Assert.False(source.IsNativeBacked);
-        Assert.Equal("<svg/>", Encoding.ASCII.GetString(source.CopyToArrayForTest()));
+        Assert.Equal("<svg/>", Encoding.ASCII.GetString(source.ReadAllBytes()));
     }
 
     [Fact]
@@ -145,7 +145,7 @@ public sealed class SvgSourceBufferTests
     [Fact]
     public void ActiveReadLeasePreventsPreflightMutation()
     {
-        using SvgSourceBuffer source = Encoding.ASCII.GetBytes("<svg/>").CopyIntoBufferForTest();
+        using SvgSourceBuffer source = Encoding.ASCII.GetBytes("<svg/>").ToSourceBuffer();
         using (SvgSourceReadLease lease = source.AcquireReadLease())
         {
             Assert.Throws<InvalidOperationException>(() => source.FillRange(0, 1, (byte)' '));
@@ -279,8 +279,8 @@ public sealed class SvgSourceBufferTests
 
         Assert.Equal(logicalLength, source.Length);
         Assert.Equal(first.Length + tail.Length, source.AllocatedCapacity);
-        Assert.Equal(logicalLength, source.CopyToArrayForTest().Length);
-        Assert.Equal(SHA256.HashData(source.CopyToArrayForTest()), source.ComputeSha256());
+        Assert.Equal(logicalLength, source.ReadAllBytes().Length);
+        Assert.Equal(SHA256.HashData(source.ReadAllBytes()), source.ComputeSha256());
         using SvgSourceReadLease lease = source.AcquireReadLease();
         Assert.Equal(17, lease.GetSpanAt(first.Length).Length);
         Assert.True(lease.GetSpanAt(logicalLength).IsEmpty);
@@ -394,7 +394,7 @@ public sealed class SvgSourceBufferTests
     [Fact]
     public void SourceMappingRejectsRetiredStorageBeforeNativeAllocation()
     {
-        using SvgSourceBuffer source = Encoding.ASCII.GetBytes("<svg/>").CopyIntoBufferForTest();
+        using SvgSourceBuffer source = Encoding.ASCII.GetBytes("<svg/>").ToSourceBuffer();
         source.Dispose();
 
         // The retired source must fail before even attempting a native object
@@ -428,7 +428,7 @@ public sealed class SvgSourceBufferTests
             writer.Write(expected);
         using SvgSourceBuffer source = segmented
             ? writer.DetachSourceBuffer()
-            : expected.CopyIntoBufferForTest();
+            : expected.ToSourceBuffer();
 
         foreach (int start in new[] { 0, first - 2, first, first + 1, expected.Length - marker.Length, expected.Length })
         {
@@ -460,7 +460,7 @@ public sealed class SvgSourceBufferTests
             writer.Write(bytes);
         using SvgSourceBuffer source = segmented
             ? writer.DetachSourceBuffer()
-            : bytes.CopyIntoBufferForTest();
+            : bytes.ToSourceBuffer();
 
         _ = MeasureMarkerReadAllocations(source, markerStart, out _);
         long allocated = MeasureMarkerReadAllocations(source, markerStart, out int matches);

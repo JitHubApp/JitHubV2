@@ -69,7 +69,7 @@ public sealed class WorkerOpenSourceMappingAdmissionTests
     public async Task SourceMappingIsDisposedWhenOpenTransactionCompletes()
     {
         SharedMemoryLease? mapping = null;
-        using SvgSourceBuffer sourceBuffer = CreateRequest().SanitizedSvgBytes.ToArray().CopyIntoBufferForTest();
+        using SvgSourceBuffer sourceBuffer = CreateRequest().SanitizedSvgBytes.ToArray().ToSourceBuffer();
         int result = await WorkerSharedMemoryMapping.WithSourceMappingAsync(
             CreateSourceMapping,
             NewMappingName(),
@@ -97,7 +97,7 @@ public sealed class WorkerOpenSourceMappingAdmissionTests
     public async Task SourceMappingIsDisposedWhenOpenTransactionThrows()
     {
         SharedMemoryLease? mapping = null;
-        using SvgSourceBuffer sourceBuffer = CreateRequest().SanitizedSvgBytes.ToArray().CopyIntoBufferForTest();
+        using SvgSourceBuffer sourceBuffer = CreateRequest().SanitizedSvgBytes.ToArray().ToSourceBuffer();
         var failure = new IOException("simulated open transport failure");
 
         IOException thrown = await Assert.ThrowsAsync<IOException>(async () =>
@@ -126,7 +126,7 @@ public sealed class WorkerOpenSourceMappingAdmissionTests
         int allocations = 0;
         int attachments = 0;
         SharedMemoryLease? mapping = null;
-        using SvgSourceBuffer sourceBuffer = CreateRequest().SanitizedSvgBytes.ToArray().CopyIntoBufferForTest();
+        using SvgSourceBuffer sourceBuffer = CreateRequest().SanitizedSvgBytes.ToArray().ToSourceBuffer();
 
         Task<WorkerResponse> AttachAsync() => WorkerSharedMemoryMapping.WithSourceMappingAsync(
             (name, source) =>

@@ -5,7 +5,7 @@ namespace MarkdownRenderer.Svg.Resvg.Tests;
 /// <summary>Explicit source materialization helpers for assertions only.</summary>
 internal static class SvgSourceBufferTestExtensions
 {
-    internal static byte[] CopyToArrayForTest(this SvgSourceBuffer source)
+    internal static byte[] ReadAllBytes(this SvgSourceBuffer source)
     {
         ArgumentNullException.ThrowIfNull(source);
         var copy = new byte[source.Length];
@@ -13,7 +13,7 @@ internal static class SvgSourceBufferTestExtensions
         return copy;
     }
 
-    internal static SvgSourceBuffer CopyIntoBufferForTest(this byte[] source)
+    internal static SvgSourceBuffer ToSourceBuffer(this byte[] source)
     {
         ArgumentNullException.ThrowIfNull(source);
         return SvgSourceBuffer.CopyFrom(source);
