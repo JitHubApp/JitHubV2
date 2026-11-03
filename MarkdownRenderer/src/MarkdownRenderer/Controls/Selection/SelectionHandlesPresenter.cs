@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Document;
@@ -10,7 +9,6 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
 using Windows.System;
 
@@ -31,19 +29,13 @@ namespace MarkdownRenderer.Controls.Selection;
 /// </para>
 /// <para>
 /// A drag is coalesced onto the compositor frame: pointer moves only record
-/// the latest contact, and one hit-test runs per frame. The frame clock
-/// keeps running while the contact is stationary, so edge auto-scroll
-/// continues, and it retires a drag whose capture was lost without a
-/// routed terminal.
-/// </para>
-/// <para>
-/// This file is longer than 500 lines because placement and the drag
-/// lifecycle (press, frame-coalesced move, release, cancel and silent
-/// capture loss) read and reset the same drag fields; splitting them would
-/// make one class reset another's state.
+/// the latest contact, and one hit-test runs per frame. The
+/// <see cref="SelectionHandleFrameClock"/> keeps running while the contact
+/// is stationary, so edge auto-scroll continues, and it retires a drag whose
+/// capture was lost without a routed terminal.
 /// </para>
 /// </remarks>
-internal sealed class SelectionHandlesPresenter : ISelectionHandleDragView
+internal sealed class SelectionHandlesPresenter : ISelectionHandleFrameTarget
 {
     private readonly ISelectionHandlesHost _host;
     private readonly FrameworkElement _renderer;
@@ -58,6 +50,7 @@ internal sealed class SelectionHandlesPresenter : ISelectionHandleDragView
     private readonly SelectionDragAutoScroll _autoScroll;
     private readonly SelectionHandleButtons _buttons;
     private readonly SelectionHandlePlacement _placement;
+    private readonly SelectionHandleFrameClock _frameClock;
 
     // The drag in progress. The fixed position is the endpoint that stays
     // put; the active endpoint can swap roles as the drag crosses it.
@@ -69,8 +62,6 @@ internal sealed class SelectionHandlesPresenter : ISelectionHandleDragView
     private double _latestViewportY;
     private Point _caretOffset;
     private bool _movePending;
-    private bool _frameSubscribed;
-    private long _lastFrameTimestamp;
 
     internal SelectionHandlesPresenter(
         ISelectionHandlesHost host,
@@ -99,6 +90,7 @@ internal sealed class SelectionHandlesPresenter : ISelectionHandleDragView
         _autoScroll = autoScroll;
         _buttons = new SelectionHandleButtons(host, input, renderer, surface, OnHandleKeyDown);
         _placement = new SelectionHandlePlacement(host, renderer, selection, touchSelection, _buttons, this);
+        _frameClock = new SelectionHandleFrameClock(lifetime, published, this);
     }
 
     /// <summary>The pointer that owns the drag in progress, or 0.</summary>
@@ -268,7 +260,7 @@ internal sealed class SelectionHandlesPresenter : ISelectionHandleDragView
         _captureTarget = handle;
 
         _buttons.SetGlyphVisibility(visible: false);
-        StartFrameClock();
+        _frameClock.Start();
         e.Handled = true;
     }
 
@@ -290,7 +282,7 @@ internal sealed class SelectionHandlesPresenter : ISelectionHandleDragView
         _viewport.TryGet(out double viewportTop, out _, out _);
         _latestViewportY = pointerPoint.Position.Y - viewportTop;
         _movePending = true;
-        StartFrameClock();
+        _frameClock.Start();
         e.Handled = true;
     }
 
@@ -406,59 +398,6 @@ internal sealed class SelectionHandlesPresenter : ISelectionHandleDragView
         return true;
     }
 
-    private void StartFrameClock()
-    {
-        if (_frameSubscribed)
-            return;
-
-        _lastFrameTimestamp = Stopwatch.GetTimestamp();
-        CompositionTarget.Rendering += OnFrame;
-        _frameSubscribed = true;
-    }
-
-    private void OnFrame(object? sender, object args)
-    {
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded ||
-            _activeEndpoint == SelectionHandleEndpoint.None ||
-            _published.Snapshot is not { } snapshot)
-        {
-            StopFrameClock();
-            return;
-        }
-
-        if (!snapshot.TryBeginInteraction())
-            return;
-
-        try
-        {
-            // The clock runs for the whole drag, so a capture that
-            // moved without a routed terminal is retired within a frame.
-            if (RetireSilentlyLostCapture())
-                return;
-
-            long timestamp = Stopwatch.GetTimestamp();
-            double elapsedSeconds = Math.Max(
-                0,
-                (timestamp - _lastFrameTimestamp) / (double)Stopwatch.Frequency);
-            _lastFrameTimestamp = timestamp;
-
-            // Rendering is the coalescing boundary: at most one hit-test and
-            // overlay update is performed per compositor frame. The latest
-            // contact remains active without PointerMoved so edge scrolling
-            // continues while the finger is stationary.
-            // The return value only reports whether movement or edge scrolling
-            // continues; the clock itself stays subscribed until the drag ends
-            // (ResetDrag or a routed release stops it).
-            _ = ApplyPendingMove(
-                sustained: true,
-                elapsedSeconds);
-        }
-        finally
-        {
-            snapshot.EndInteraction();
-        }
-    }
-
     private bool ApplyPendingMove(
         bool sustained,
         double elapsedSeconds = 0)
@@ -521,15 +460,7 @@ internal sealed class SelectionHandlesPresenter : ISelectionHandleDragView
     }
 
     /// <summary>Stops the drag's frame clock.</summary>
-    internal void StopFrameClock()
-    {
-        if (!_frameSubscribed)
-            return;
-
-        CompositionTarget.Rendering -= OnFrame;
-        _frameSubscribed = false;
-        _lastFrameTimestamp = 0;
-    }
+    internal void StopFrameClock() => _frameClock.Stop();
 
     private void OnHandleKeyDown(object sender, KeyRoutedEventArgs e)
     {
@@ -681,4 +612,9 @@ internal sealed class SelectionHandlesPresenter : ISelectionHandleDragView
     bool ISelectionHandleDragView.IsPointerDragActive => IsPointerDragActive();
 
     bool ISelectionHandleDragView.IsCaptured(SelectionHandleEndpoint endpoint) => IsCaptured(endpoint);
+
+    bool ISelectionHandleFrameTarget.RetireSilentlyLostCapture() => RetireSilentlyLostCapture();
+
+    bool ISelectionHandleFrameTarget.ApplyPendingMove(bool sustained, double elapsedSeconds)
+        => ApplyPendingMove(sustained, elapsedSeconds);
 }
