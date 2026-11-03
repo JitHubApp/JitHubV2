@@ -11,7 +11,6 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
-using Windows.ApplicationModel.DataTransfer;
 using RebuildReason = MarkdownRenderer.Controls.MarkdownRebuildCoordinatorReason;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.CodeBlocks;
@@ -139,6 +138,9 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private readonly SnapshotExtent _extent;
     private readonly ReplacementPublisher _replacementPublisher;
     private readonly ReplacementPresentation _replacementPresentation;
+    private readonly CodeBlockClipboard _codeBlockClipboard;
+    private readonly VisibleImageLoading _visibleImages;
+    private readonly PointerInteractionResume _pointerResume;
 
     // ---- Keyboard navigation ----
     private readonly KeyboardFocusModel _focus;
@@ -903,45 +905,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     private void UpdateCodeBlockCopyButtonStyles() => _embeds.UpdateCodeBlockCopyButtonStyles(CodeBlockCopyButtonStyle);
 
-    private void CopyCodeBlockToClipboard(CodeBlockActionPlan plan)
-    {
-        bool succeeded = false;
-        try
-        {
-            var package = new DataPackage();
-            package.SetText(plan.Box.CodeText);
-            Clipboard.SetContent(package);
-            Clipboard.Flush();
-            plan.ShowCopiedFeedback(_embeds.Context);
-            succeeded = true;
-        }
-        catch (Exception ex)
-        {
-            MarkdownDiagnostics.WriteLine($"[MarkdownRendererControl] Code block copy failed: {ex.Message}");
-        }
-
-        _events.RaiseCopyCompleted(MarkdownCopyKind.CodeBlock, succeeded);
-    }
-
-    internal void CopyCodeBlockFromAutomation(Layout.Boxes.CodeBlockBox box)
-    {
-        if (CodeBlockChromeMode == CodeBlockChromeMode.PlainMarkdown || !box.IsCopyButtonEnabled)
-            return;
-
-        foreach (CodeBlockActionPlan plan in _embeds.CodeBlockActionPlans)
-        {
-            if (ReferenceEquals(plan.Box, box))
-            {
-                CopyCodeBlockToClipboard(plan);
-                return;
-            }
-        }
-
-        // UI Automation can invoke an off-screen code block before its
-        // viewport-owned XAML button is realized. Copy directly without
-        // realizing an overlay element or mutating the UIA child tree.
-        CopyCodeBlockToClipboard(new CodeBlockActionPlan { Box = box });
-    }
+    internal void CopyCodeBlockFromAutomation(Layout.Boxes.CodeBlockBox box) => _codeBlockClipboard.CopyFromAutomation(box);
 
     internal DocumentRange CurrentSelectionRange => _selection.Range;
 
@@ -1044,9 +1008,12 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _environment = new EnvironmentSubscription(this, _lifetime, _rebuild);
         _replacementPublisher = new ReplacementPublisher(this, _published, _surface, _rebuild, _touchRestore, _automationDocumentGenerations, _selection, _lazyLayout, _layoutCommit, _scrolling, _painter, _localization, _focusRefresh, _vectorCapacity, _geometryRecovery, _imageSubscriptions, _imageRelayout, _blockScroll, _imagePlans, _focus);
         _width = new LayoutWidthWatch(this, _rebuild);
-        _inputCapture = new RebuildInputCapture(this, _documentInputs, _localization, _environment);
+        _inputCapture = new RebuildInputCapture(this, _published, _imagePreparationOwnerToken, _documentInputs, _localization, _environment);
         _replacementPresentation = new ReplacementPresentation(_surface, _snapshotRetirements, _rebuild, _layoutCommit, _layoutPublisher, _documentInputs, _extent, _scrolling, _hover, _selection, _touchRestore, _contextMenu, _dragShield, _adorner, _textAdorner, _handles, _embeds, _imageSubscriptions, _imagePlans, _imageResidency, _focus, _focusRing, _focusCommit, _highlighting, _visibleWork, _canvasInvalidation, _automation, _deferredScenes);
         _pipeline = new RebuildPipeline(this, this, _lifetime, _surface, _viewport, _rebuild, _inputCapture, _layoutSetup, _width, _imagePrefetch, _automation, _replacementPublisher, _replacementPresentation);
+        _codeBlockClipboard = new CodeBlockClipboard(this, _embeds, _events);
+        _visibleImages = new VisibleImageLoading(this, _lazyLayout, _imageResidency, _imagePlans, _embeds);
+        _pointerResume = new PointerInteractionResume(_lifetime, _rebuild, _imageRelayout);
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         Loaded += (_, _) => OnLoadedInternal();
@@ -1198,7 +1165,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         => _pointerInput.HasDeferredInputFor(pointerId);
 
     void ISelectionHandlesHost.ResumePendingRebuildAfterPointerInteraction()
-        => ResumePendingRebuildAfterPointerInteraction();
+        => _pointerResume.ResumePendingWork();
 
     void ISelectionHandlesHost.CancelPendingTouchSelectionRestore()
         => _touchRestore.Cancel();
@@ -1260,7 +1227,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     void IPointerInteractionHost.ClearSelectionForExternalInteraction() => _interactionReset.ClearSelectionForExternalInteraction();
 
     void IPointerInteractionHost.ResumePendingRebuildAfterPointerInteraction()
-        => ResumePendingRebuildAfterPointerInteraction();
+        => _pointerResume.ResumePendingWork();
 
     void IHorizontalOverflowPointerHost.RefreshHorizontalOverflowVisualState(IHorizontalOverflowBox target, double oldOffset)
         => _overflowScroll.Refresh(target, oldOffset);
@@ -1275,7 +1242,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         => _geometryRecovery.RequestIfRequired(snapshot);
 
     void IPointerInputRouterHost.ResumePendingRebuildAfterPointerInteraction()
-        => ResumePendingRebuildAfterPointerInteraction();
+        => _pointerResume.ResumePendingWork();
 
     void IPointerInputRouterHost.ClearSelectionForExternalInteraction(bool resetClickTracking, bool resetDeferredPointerInput)
         => _interactionReset.ClearSelectionForExternalInteraction(resetClickTracking, resetDeferredPointerInput);
@@ -1302,49 +1269,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         double top,
         double viewportHeight,
         double bottom)
-    {
-        // Lazy image loading: trigger EnsureLoading for images within the
-        // viewport + LazyImageOverscanPx band.  Images already started (cached
-        // or previously triggered) are silently skipped by EnsureLoading().
-        LazyLayoutBand imageBand = PerformanceSession is { } performanceSession
-            ? LazyLayoutBand.FromDirectionalViewport(
-                top,
-                viewportHeight,
-                performanceSession.Options.LookAheadViewports,
-                _lazyLayout.ScrollVelocity)
-            : LazyLayoutBand.FromViewport(top, viewportHeight, LazyImageOverscanPx);
-        double imgLoadTop = imageBand.Top;
-        double imgLoadBottom = imageBand.Bottom;
-        ViewportBandIndex? imageIndex = pass.ImageIndex;
-        ViewportRange imageRange = imageIndex?.Find(imgLoadTop, imgLoadBottom) ?? default;
-        _imageResidency.Reconcile(imageBand, imageRange);
-        if (!_embeds.IsCurrent(pass))
-            return false;
-
-        for (int index = imageRange.Start; index < imageRange.End; index++)
-        {
-            int imageOrdinal = imageIndex!.GetBlockOrdinal(index);
-            (double imageTop, double imageBottom) = imageIndex.GetBounds(index);
-            var img = _imagePlans[imageOrdinal];
-            if (imageBottom >= imgLoadTop && imageTop <= imgLoadBottom)
-            {
-                bool intersectsViewport = imageBottom >= top && imageTop <= bottom;
-                if (!_embeds.IsCurrent(pass))
-                    return false;
-
-                // Paint culls offscreen images before ImageBox can observe the
-                // viewport. Keep current residency visibility separate from the
-                // monotonic load-demand ticket, including images in overscan.
-                object? svgObservation = img.CaptureSvgViewportObservationToken();
-                img.ObserveSvgViewportVisibility(svgObservation, intersectsViewport);
-                img.EnsureLoading(isVisible: intersectsViewport);
-                if (!_embeds.IsCurrent(pass))
-                    return false;
-            }
-        }
-
-        return true;
-    }
+        => _visibleImages.Realize(pass, top, viewportHeight, bottom);
 
     bool IEmbedRealizationHost.IsCurrentPlanPublication(
         LayoutSnapshot snapshot,
@@ -1362,7 +1287,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     void IEmbedRealizationHost.InvalidateHostedFocusPlanPublication() => _hostedFocusPlan.Invalidate();
 
-    void IEmbedRealizationHost.CopyCodeBlockToClipboard(CodeBlockActionPlan plan) => CopyCodeBlockToClipboard(plan);
+    void IEmbedRealizationHost.CopyCodeBlockToClipboard(CodeBlockActionPlan plan) => _codeBlockClipboard.Copy(plan);
 
     void IEmbedRealizationHost.RestoreFocusedCodeBlockActionIfNeeded(CodeBlockActionPlan plan)
         => _hostedFocus.RestoreCodeBlockActionIfNeeded(plan);
@@ -1507,27 +1432,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     bool IRasterPlacementHost.IsScrollViewIntermediate => _scrolling.IsIntermediate;
 
     bool IRasterPlacementHost.MatchesLayoutInputs(MarkdownLayoutContext context) =>
-        ReferenceEquals(_published.Theme, context.ThemeSnapshot) &&
-        ReferenceEquals(PerformanceSession, context.PerformanceSession) &&
-        context.PerformanceSession?.IsDisposed != true &&
-        !context.ImageCancellationToken.IsCancellationRequested &&
-        ReferenceEquals(_imagePreparationOwnerToken, context.ImagePreparationOwner) &&
-        RasterPlacementResolverFence.Matches(
-            ImageResolver,
-            context.ImageResolver,
-            PerformanceSession as IMarkdownPerformanceSessionInternal,
-            context.PerformanceSession,
-            new MarkdownImageResolveContext(
-                ImageBaseUri, ImageDocumentPath, AllowThirdPartyRemoteImages, ImageDocumentSource),
-            new MarkdownImageResolveContext(
-                context.ImageBaseUri, context.ImageDocumentPath,
-                context.AllowThirdPartyRemoteImages, context.ImageDocumentSource)) &&
-        ReferenceEquals(SvgRenderer, context.SvgRenderer) &&
-        ReferenceEquals(ImageDocumentSource, context.ImageDocumentSource) &&
-        Equals(ImageBaseUri, context.ImageBaseUri) &&
-        string.Equals(ImageDocumentPath, context.ImageDocumentPath, StringComparison.Ordinal) &&
-        AllowThirdPartyRemoteImages == context.AllowThirdPartyRemoteImages &&
-        FlowDirection == context.FlowDirection && (XamlRoot?.RasterizationScale ?? 1) == context.RasterizationScale;
+        _inputCapture.MatchesLayoutInputs(context);
 
     void IRasterPlacementHost.RetireSnapshot(LayoutSnapshot snapshot) => _snapshotRetirements.Retire(snapshot);
 
@@ -2109,13 +2014,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         Rect viewport,
         IReadOnlyList<SelectionBackgroundGeometry> selectionBackgrounds)
         => _textAdorner.PaintInteractiveDocumentState(snapshot, drawingSession, viewport, selectionBackgrounds);
-
-    private void ResumePendingRebuildAfterPointerInteraction()
-    {
-        _rebuild.QueuePendingIfIdle();
-        if (!_lifetime.IsDisposed && !_lifetime.IsUnloaded)
-            _imageRelayout.QueueFirstPending();
-    }
 
     /// <summary>
     /// Scrolls the document so the block with <paramref name="blockIndex"/>

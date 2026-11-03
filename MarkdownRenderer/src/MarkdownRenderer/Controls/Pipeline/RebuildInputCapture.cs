@@ -1,4 +1,7 @@
+using System;
 using MarkdownRenderer.Controls.Providers;
+using MarkdownRenderer.Images;
+using MarkdownRenderer.Layout;
 using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
@@ -12,6 +15,8 @@ namespace MarkdownRenderer.Controls.Pipeline;
 internal sealed class RebuildInputCapture
 {
     private readonly MarkdownRendererControl _control;
+    private readonly PublishedLayout _published;
+    private readonly object _imagePreparationOwner;
     private readonly DocumentInputs _documentInputs;
     private readonly RendererLocalization _localization;
     private readonly EnvironmentSubscription _environment;
@@ -21,11 +26,15 @@ internal sealed class RebuildInputCapture
 
     internal RebuildInputCapture(
         MarkdownRendererControl control,
+        PublishedLayout published,
+        object imagePreparationOwner,
         DocumentInputs documentInputs,
         RendererLocalization localization,
         EnvironmentSubscription environment)
     {
         _control = control;
+        _published = published;
+        _imagePreparationOwner = imagePreparationOwner;
         _documentInputs = documentInputs;
         _localization = localization;
         _environment = environment;
@@ -78,4 +87,31 @@ internal sealed class RebuildInputCapture
         // XamlRoot is null until the control is loaded; default to 1.0.
         RasterScale = _control.XamlRoot?.RasterizationScale ?? 1.0,
     };
+
+    /// <summary>
+    /// True while <paramref name="context"/> still describes the committed
+    /// theme and the control's current image and layout inputs.
+    /// </summary>
+    internal bool MatchesLayoutInputs(MarkdownLayoutContext context) =>
+        ReferenceEquals(_published.Theme, context.ThemeSnapshot) &&
+        ReferenceEquals(_control.PerformanceSession, context.PerformanceSession) &&
+        context.PerformanceSession?.IsDisposed != true &&
+        !context.ImageCancellationToken.IsCancellationRequested &&
+        ReferenceEquals(_imagePreparationOwner, context.ImagePreparationOwner) &&
+        RasterPlacementResolverFence.Matches(
+            _control.ImageResolver,
+            context.ImageResolver,
+            _control.PerformanceSession as IMarkdownPerformanceSessionInternal,
+            context.PerformanceSession,
+            new MarkdownImageResolveContext(
+                _control.ImageBaseUri, _control.ImageDocumentPath, _control.AllowThirdPartyRemoteImages, _control.ImageDocumentSource),
+            new MarkdownImageResolveContext(
+                context.ImageBaseUri, context.ImageDocumentPath,
+                context.AllowThirdPartyRemoteImages, context.ImageDocumentSource)) &&
+        ReferenceEquals(_control.SvgRenderer, context.SvgRenderer) &&
+        ReferenceEquals(_control.ImageDocumentSource, context.ImageDocumentSource) &&
+        Equals(_control.ImageBaseUri, context.ImageBaseUri) &&
+        string.Equals(_control.ImageDocumentPath, context.ImageDocumentPath, StringComparison.Ordinal) &&
+        _control.AllowThirdPartyRemoteImages == context.AllowThirdPartyRemoteImages &&
+        _control.FlowDirection == context.FlowDirection && (_control.XamlRoot?.RasterizationScale ?? 1) == context.RasterizationScale;
 }
