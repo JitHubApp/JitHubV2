@@ -71,16 +71,9 @@ internal sealed class LayoutBlockBuilder
                     htmlBlock.Span.Start,
                     _context.DisclosureStates,
                     cancellationToken) == true;
-            int? inlineFlowScopeIdForBlock = htmlScopes?.CurrentInlineFlowScopeId;
-            if (inlineFlowScopeIdAtBlockEntry is int entryScopeId &&
-                inlineFlowScopeIdForBlock != entryScopeId)
-            {
-                // Fail closed when this HtmlBlock exits the flow that was open
-                // at entry (for example `</div><br>outside`). A newly opened
-                // scope may still qualify if the renderer confirms the block is
-                // exactly that scope's inline-only content.
-                inlineFlowScopeIdForBlock = null;
-            }
+            int? inlineFlowScopeIdForBlock = ResolveInlineFlowScopeForBlock(
+                inlineFlowScopeIdAtBlockEntry,
+                htmlScopes?.CurrentInlineFlowScopeId);
             bool inlineFlowContinuesPrevious = inlineFlowScopeIdForBlock is int scopeId &&
                 blocks.Count > 0 &&
                 blocks[^1].SafeHtmlInlineFlowScopeId == scopeId;
@@ -188,6 +181,15 @@ internal sealed class LayoutBlockBuilder
 
         return box;
     }
+
+    // Fail closed when an HtmlBlock exits the flow that was open at entry
+    // (for example `</div><br>outside`). A newly opened scope may still
+    // qualify if the renderer confirms the block is exactly that scope's
+    // inline-only content.
+    internal static int? ResolveInlineFlowScopeForBlock(int? scopeIdAtEntry, int? scopeIdAfterBlock)
+        => scopeIdAtEntry is int entryScopeId && scopeIdAfterBlock != entryScopeId
+            ? null
+            : scopeIdAfterBlock;
 
     private InlineContainerBox CreateHtmlBudgetNotice()
     {

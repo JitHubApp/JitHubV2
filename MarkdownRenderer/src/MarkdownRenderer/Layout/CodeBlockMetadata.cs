@@ -54,17 +54,7 @@ internal sealed class CodeBlockMetadata
 
     public static CodeBlockMetadata FromBlock(LeafBlock block, string displayedCodeText)
     {
-        string info = string.Empty;
-        if (block is FencedCodeBlock fenced)
-        {
-            var languageInfo = fenced.Info?.ToString() ?? string.Empty;
-            var arguments = fenced.Arguments?.ToString() ?? string.Empty;
-            info = string.IsNullOrWhiteSpace(arguments)
-                ? languageInfo
-                : string.IsNullOrWhiteSpace(languageInfo)
-                    ? arguments
-                    : languageInfo + " " + arguments;
-        }
+        string info = GetFenceInfo(block);
 
         string? language = null;
         string? title = null;
@@ -109,28 +99,7 @@ internal sealed class CodeBlockMetadata
             var eq = token.IndexOf('=');
             if (eq > 0)
             {
-                var key = token.Substring(0, eq).Trim();
-                var value = Unquote(token.Substring(eq + 1).Trim());
-                switch (key.ToLowerInvariant())
-                {
-                    case "filename":
-                    case "file":
-                        fileName = value;
-                        break;
-                    case "title":
-                        title = value;
-                        break;
-                    case "startline":
-                    case "start":
-                        if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedStart))
-                            startLine = Math.Max(1, parsedStart);
-                        break;
-                    case "diff":
-                        if (TryParseBoolean(value, out var parsedDiff))
-                            isDiff = parsedDiff;
-                        break;
-                }
-
+                ApplyInfoAttribute(token, eq, ref fileName, ref title, ref startLine, ref isDiff);
                 continue;
             }
 
@@ -156,6 +125,53 @@ internal sealed class CodeBlockMetadata
             isDiff,
             stableKey,
             codeTextHash);
+    }
+
+    // A fenced block's info string is its language info followed by any arguments.
+    private static string GetFenceInfo(LeafBlock block)
+    {
+        if (block is not FencedCodeBlock fenced)
+            return string.Empty;
+
+        var languageInfo = fenced.Info?.ToString() ?? string.Empty;
+        var arguments = fenced.Arguments?.ToString() ?? string.Empty;
+        return string.IsNullOrWhiteSpace(arguments)
+            ? languageInfo
+            : string.IsNullOrWhiteSpace(languageInfo)
+                ? arguments
+                : languageInfo + " " + arguments;
+    }
+
+    // Applies one key=value info token; unknown keys are ignored.
+    private static void ApplyInfoAttribute(
+        string token,
+        int eq,
+        ref string? fileName,
+        ref string? title,
+        ref int startLine,
+        ref bool isDiff)
+    {
+        var key = token.Substring(0, eq).Trim();
+        var value = Unquote(token.Substring(eq + 1).Trim());
+        switch (key.ToLowerInvariant())
+        {
+            case "filename":
+            case "file":
+                fileName = value;
+                break;
+            case "title":
+                title = value;
+                break;
+            case "startline":
+            case "start":
+                if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedStart))
+                    startLine = Math.Max(1, parsedStart);
+                break;
+            case "diff":
+                if (TryParseBoolean(value, out var parsedDiff))
+                    isDiff = parsedDiff;
+                break;
+        }
     }
 
     internal static CodeBlockMetadata FromDeclarative(

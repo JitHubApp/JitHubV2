@@ -67,22 +67,7 @@ internal sealed class InlineVectorSceneRun : InlineRun, IDisposable
         DesiredWidth = Math.Max(1f, _sceneWidth);
         DesiredHeight = Math.Max(1f, _sceneHeight);
         DesiredBaseline = Math.Clamp(_sceneBaseline, 0f, DesiredHeight);
-        string resolvedElementKey = string.IsNullOrWhiteSpace(elementKey)
-            ? MarkdownElementKeys.Math
-            : elementKey;
-        var styleContextKeys = context.CreateStyleContextSnapshot();
-        var styleAliasKeys = context.CreateStyleAliasSnapshot();
-        ElementStyle vectorStyle = context.ThemeSnapshot.GetStyle(
-            resolvedElementKey,
-            styleContextKeys,
-            styleAliasKeys);
-        _paintPalette = new VectorScenePaintPalette(
-            vectorStyle.Foreground,
-            vectorStyle.Background ?? context.ThemeSnapshot.SurfaceColor,
-            context.ThemeSnapshot.GetStyle(
-                MarkdownElementKeys.Link,
-                styleContextKeys,
-                styleAliasKeys).Foreground);
+        ElementStyle vectorStyle = ResolveVectorStyle(context, elementKey, out _paintPalette);
         _drawing = new VectorSceneDrawing(
             context.ResourceCreator,
             scene,
@@ -100,32 +85,61 @@ internal sealed class InlineVectorSceneRun : InlineRun, IDisposable
         // registration by the builder is harmless in the identity ledger.
         context.RegisterConstructionResource(this);
         if (!ShouldDeferNativeResources(context))
+            PrepareConstructedNativeResources(_drawing, context.CancellationToken);
+    }
+
+    // Resolves the vector element style (Math when no key is given) and the
+    // paint palette, whose link color comes from the same style context.
+    private static ElementStyle ResolveVectorStyle(
+        MarkdownLayoutContext context,
+        string elementKey,
+        out VectorScenePaintPalette paintPalette)
+    {
+        string resolvedElementKey = string.IsNullOrWhiteSpace(elementKey)
+            ? MarkdownElementKeys.Math
+            : elementKey;
+        var styleContextKeys = context.CreateStyleContextSnapshot();
+        var styleAliasKeys = context.CreateStyleAliasSnapshot();
+        ElementStyle vectorStyle = context.ThemeSnapshot.GetStyle(
+            resolvedElementKey,
+            styleContextKeys,
+            styleAliasKeys);
+        paintPalette = new VectorScenePaintPalette(
+            vectorStyle.Foreground,
+            vectorStyle.Background ?? context.ThemeSnapshot.SurfaceColor,
+            context.ThemeSnapshot.GetStyle(
+                MarkdownElementKeys.Link,
+                styleContextKeys,
+                styleAliasKeys).Foreground);
+        return vectorStyle;
+    }
+
+    private void PrepareConstructedNativeResources(VectorSceneDrawing drawing, CancellationToken cancellationToken)
+    {
+        try
         {
+            if (drawing.NativeResourceAdmission is null)
+                drawing.PrepareNativeResources(cancellationToken);
+            else
+                _ = TryPrepareNativeResources(cancellationToken, out _);
+        }
+        catch (Exception preparationFailure)
+        {
+            // Direct internal callers may not have a construction scope.
+            // Give retained partial slots a terminal cleanup attempt while
+            // preserving the preparation failure. Scoped production builds
+            // still own this run if that cleanup remains incomplete.
             try
             {
-                if (_drawing.NativeResourceAdmission is null)
-                    _drawing.PrepareNativeResources(context.CancellationToken);
-                else
-                    _ = TryPrepareNativeResources(context.CancellationToken, out _);
+                drawing.Dispose();
             }
-            catch (Exception preparationFailure)
+            catch (Exception cleanupFailure)
             {
-                // Direct internal callers may not have a construction scope.
-                // Give retained partial slots a terminal cleanup attempt while
-                // preserving the preparation failure. Scoped production builds
-                // still own this run if that cleanup remains incomplete.
-                try
-                {
-                    _drawing.Dispose();
-                }
-                catch (Exception cleanupFailure)
-                {
-                    throw new AggregateException(
-                        "Inline vector preparation failed and retirement was incomplete.",
-                        preparationFailure, cleanupFailure);
-                }
-                throw;
+                throw new AggregateException(
+                    "Inline vector preparation failed and retirement was incomplete.",
+                    preparationFailure, cleanupFailure);
             }
+            throw;
         }
     }
 

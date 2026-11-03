@@ -116,43 +116,23 @@ internal sealed class LayoutBuilder : ILayoutBlockDispatcher
         IMarkdownVectorSceneResidencyPolicy? vectorSceneResidencyPolicy = null;
         try
         {
-            MarkdownLayoutDiagnostics? diagnostics = _context.LayoutDiagnostics;
-            if (diagnostics?.IsCaptured == true)
-                diagnostics = null;
-            long phaseStarted = diagnostics is null ? 0 : Stopwatch.GetTimestamp();
-            var blocks = _blocks.BuildBlocks(document, effectiveCancellationToken);
-            if (diagnostics is not null)
-            {
-                diagnostics.RecordBlockConstruction(Stopwatch.GetTimestamp() - phaseStarted);
-                diagnostics.SetTopLevelBlockCount(blocks.Count);
-            }
+            MarkdownLayoutDiagnostics? diagnostics = ResolveUncapturedDiagnostics();
+            var blocks = BuildTopLevelBlocks(document, diagnostics, effectiveCancellationToken);
+            long phaseStarted = 0;
 
             SharedLayoutMetrics? sharedMetrics = AcquireSharedMetrics(blocks.Count);
             if (diagnostics is not null)
                 phaseStarted = Stopwatch.GetTimestamp();
 
             Thickness documentPadding = _context.ThemeSnapshot.DocumentPadding;
-            float contentX = (float)documentPadding.Left;
-            float contentWidth = (float)Math.Max(
-                1,
-                availableWidth - documentPadding.Left - documentPadding.Right);
             float blockSpacing = (float)_context.ThemeSnapshot.BlockSpacing;
-            float y = (float)documentPadding.Top;
-            for (int blockOrdinal = 0; blockOrdinal < blocks.Count; blockOrdinal++)
-            {
-                effectiveCancellationToken.ThrowIfCancellationRequested();
-                BlockBox b = blocks[blockOrdinal];
-                b.ThrowIfCancellationRequested();
-                float h = b.Measure(contentWidth);
-                b.Arrange(contentX, y, contentWidth);
-                sharedMetrics?.RecordHeight(blockOrdinal, h);
-                y += h;
-                if (blockOrdinal < blocks.Count - 1 &&
-                    !StackBox.SharesSafeHtmlInlineFlow(b, blocks[blockOrdinal + 1]))
-                    y += blockSpacing;
-            }
-            effectiveCancellationToken.ThrowIfCancellationRequested();
-            y += (float)documentPadding.Bottom;
+            float y = ArrangeEagerBlocks(
+                blocks,
+                availableWidth,
+                documentPadding,
+                blockSpacing,
+                sharedMetrics,
+                effectiveCancellationToken);
 
             if (diagnostics is not null)
             {
@@ -181,17 +161,7 @@ internal sealed class LayoutBuilder : ILayoutBlockDispatcher
             vectorSceneResidencyPolicy = null;
             ownership.TransferToSnapshot(blocks);
             if (snapshot.VectorSceneResidencyPolicy is not null)
-            {
-                // The explicit eager API keeps its all-document measure/arrange
-                // contract. When the caller has opted into native admission,
-                // attach the policy and make the whole eagerly built document
-                // its initial residency band so any capacity fallback remains
-                // owned and can later be narrowed/refilled by a viewport host.
-                LazyLayoutBand eagerDocumentBand = LazyLayoutBand.FromViewport(
-                    0, snapshot.Size.Height, overscan: 0);
-                snapshot.EnsureMeasuredBand(
-                    eagerDocumentBand, eagerDocumentBand, effectiveCancellationToken);
-            }
+                EnsureEagerDocumentResidencyBand(snapshot, effectiveCancellationToken);
             if (diagnostics is not null)
                 diagnostics.RecordSnapshotConstruction(Stopwatch.GetTimestamp() - phaseStarted);
             return snapshot;
@@ -302,16 +272,9 @@ internal sealed class LayoutBuilder : ILayoutBlockDispatcher
         IMarkdownVectorSceneResidencyPolicy? vectorSceneResidencyPolicy = null;
         try
         {
-            MarkdownLayoutDiagnostics? diagnostics = _context.LayoutDiagnostics;
-            if (diagnostics?.IsCaptured == true)
-                diagnostics = null;
-            long phaseStarted = diagnostics is null ? 0 : Stopwatch.GetTimestamp();
-            var blocks = _blocks.BuildBlocks(document, effectiveCancellationToken);
-            if (diagnostics is not null)
-            {
-                diagnostics.RecordBlockConstruction(Stopwatch.GetTimestamp() - phaseStarted);
-                diagnostics.SetTopLevelBlockCount(blocks.Count);
-            }
+            MarkdownLayoutDiagnostics? diagnostics = ResolveUncapturedDiagnostics();
+            var blocks = BuildTopLevelBlocks(document, diagnostics, effectiveCancellationToken);
+            long phaseStarted = 0;
 
             effectiveCancellationToken.ThrowIfCancellationRequested();
             SharedLayoutMetrics? sharedMetrics = AcquireSharedMetrics(blocks.Count);
@@ -370,6 +333,77 @@ internal sealed class LayoutBuilder : ILayoutBlockDispatcher
         {
             _tracker.EndBlockBuildOwnership(ownership);
         }
+    }
+
+    // Diagnostics already captured by an earlier pass are not recorded again.
+    private MarkdownLayoutDiagnostics? ResolveUncapturedDiagnostics()
+    {
+        MarkdownLayoutDiagnostics? diagnostics = _context.LayoutDiagnostics;
+        return diagnostics?.IsCaptured == true ? null : diagnostics;
+    }
+
+    private List<BlockBox> BuildTopLevelBlocks(
+        MarkdownDocument document,
+        MarkdownLayoutDiagnostics? diagnostics,
+        CancellationToken cancellationToken)
+    {
+        long phaseStarted = diagnostics is null ? 0 : Stopwatch.GetTimestamp();
+        var blocks = _blocks.BuildBlocks(document, cancellationToken);
+        if (diagnostics is not null)
+        {
+            diagnostics.RecordBlockConstruction(Stopwatch.GetTimestamp() - phaseStarted);
+            diagnostics.SetTopLevelBlockCount(blocks.Count);
+        }
+
+        return blocks;
+    }
+
+    // Measures and arranges every top-level block in document order and
+    // returns the document height including padding.
+    private static float ArrangeEagerBlocks(
+        List<BlockBox> blocks,
+        float availableWidth,
+        Thickness documentPadding,
+        float blockSpacing,
+        SharedLayoutMetrics? sharedMetrics,
+        CancellationToken cancellationToken)
+    {
+        float contentX = (float)documentPadding.Left;
+        float contentWidth = (float)Math.Max(
+            1,
+            availableWidth - documentPadding.Left - documentPadding.Right);
+        float y = (float)documentPadding.Top;
+        for (int blockOrdinal = 0; blockOrdinal < blocks.Count; blockOrdinal++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            BlockBox b = blocks[blockOrdinal];
+            b.ThrowIfCancellationRequested();
+            float h = b.Measure(contentWidth);
+            b.Arrange(contentX, y, contentWidth);
+            sharedMetrics?.RecordHeight(blockOrdinal, h);
+            y += h;
+            if (blockOrdinal < blocks.Count - 1 &&
+                !StackBox.SharesSafeHtmlInlineFlow(b, blocks[blockOrdinal + 1]))
+                y += blockSpacing;
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        y += (float)documentPadding.Bottom;
+        return y;
+    }
+
+    // The explicit eager API keeps its all-document measure/arrange
+    // contract. When the caller has opted into native admission,
+    // attach the policy and make the whole eagerly built document
+    // its initial residency band so any capacity fallback remains
+    // owned and can later be narrowed/refilled by a viewport host.
+    private static void EnsureEagerDocumentResidencyBand(
+        LayoutSnapshot snapshot,
+        CancellationToken cancellationToken)
+    {
+        LazyLayoutBand eagerDocumentBand = LazyLayoutBand.FromViewport(
+            0, snapshot.Size.Height, overscan: 0);
+        snapshot.EnsureMeasuredBand(
+            eagerDocumentBand, eagerDocumentBand, cancellationToken);
     }
 
     private SharedLayoutMetrics? AcquireSharedMetrics(int topLevelBlockCount)

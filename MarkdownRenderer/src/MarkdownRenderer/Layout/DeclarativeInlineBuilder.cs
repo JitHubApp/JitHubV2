@@ -114,58 +114,67 @@ internal sealed class DeclarativeInlineBuilder
                 destination.Add(CreateDeclarativeImageRun(content, linkUrl: null, linkTitle: null));
                 break;
             case MarkdownContentKind.VectorScene:
-                if (content.VectorScene is not null)
-                {
-                    string elementKey = DeclarativeContentSyntax.GetElementKey(
-                        content,
-                        content.AccessibilityRole == MarkdownAccessibilityRole.Math
-                            ? MarkdownElementKeys.Math
-                            : MarkdownElementKeys.Diagram);
-                    string? deferredMarker = DeclarativeContentSyntax.GetAttribute(content, MarkdownContentAttributes.DeferredScene);
-                    var run = new InlineVectorSceneRun(
-                        _context,
-                        content.VectorScene,
-                        content.SemanticText ?? string.Empty,
-                        content.AccessibilityName ?? content.SemanticText ?? string.Empty,
-                        content.AccessibilityDescription,
-                        elementKey)
-                    {
-                        ElementKey = elementKey,
-                        SourceSpan = content.SourceSpan,
-                        DeferredSceneMarker = deferredMarker,
-                        DeferredSceneBinding = deferredMarker is null
-                            ? _scenes.NextBinding()
-                            : null,
-                    };
-                    _context.RegisterConstructionResource(run);
-                    destination.Add(run);
-                }
+                if (content.VectorScene is { } scene)
+                    destination.Add(CreateDeclarativeVectorRun(content, scene));
                 break;
             case MarkdownContentKind.Link:
-                if (content.Children.Count == 1 && content.Children[0].Kind == MarkdownContentKind.Image)
-                {
-                    destination.Add(CreateDeclarativeImageRun(
-                        content.Children[0],
-                        content.Destination,
-                        DeclarativeContentSyntax.GetAttribute(content, MarkdownContentAttributes.Title)));
-                    break;
-                }
-
-                destination.Add(new LinkRun(
-                    DeclarativeContentSyntax.CollectDeclarativeText(content),
-                    content.Destination ?? string.Empty,
-                    DeclarativeContentSyntax.GetAttribute(content, MarkdownContentAttributes.Title))
-                {
-                    AccessibilityName = content.AccessibilityName,
-                    ElementKey = DeclarativeContentSyntax.GetElementKey(content, MarkdownElementKeys.Link),
-                    SourceSpan = content.SourceSpan,
-                });
+                destination.Add(CreateDeclarativeLinkRun(content));
                 break;
             case MarkdownContentKind.Container:
                 foreach (MarkdownContent child in content.Children)
                     AppendDeclarativeInline(child, destination);
                 break;
         }
+    }
+
+    // The run is registered for construction cleanup before it is published.
+    private InlineVectorSceneRun CreateDeclarativeVectorRun(MarkdownContent content, MarkdownVectorScene scene)
+    {
+        string elementKey = DeclarativeContentSyntax.GetElementKey(
+            content,
+            content.AccessibilityRole == MarkdownAccessibilityRole.Math
+                ? MarkdownElementKeys.Math
+                : MarkdownElementKeys.Diagram);
+        string? deferredMarker = DeclarativeContentSyntax.GetAttribute(content, MarkdownContentAttributes.DeferredScene);
+        var run = new InlineVectorSceneRun(
+            _context,
+            scene,
+            content.SemanticText ?? string.Empty,
+            content.AccessibilityName ?? content.SemanticText ?? string.Empty,
+            content.AccessibilityDescription,
+            elementKey)
+        {
+            ElementKey = elementKey,
+            SourceSpan = content.SourceSpan,
+            DeferredSceneMarker = deferredMarker,
+            DeferredSceneBinding = deferredMarker is null
+                ? _scenes.NextBinding()
+                : null,
+        };
+        _context.RegisterConstructionResource(run);
+        return run;
+    }
+
+    // A link whose only child is an image renders as a linked image run.
+    private InlineRun CreateDeclarativeLinkRun(MarkdownContent content)
+    {
+        if (content.Children.Count == 1 && content.Children[0].Kind == MarkdownContentKind.Image)
+        {
+            return CreateDeclarativeImageRun(
+                content.Children[0],
+                content.Destination,
+                DeclarativeContentSyntax.GetAttribute(content, MarkdownContentAttributes.Title));
+        }
+
+        return new LinkRun(
+            DeclarativeContentSyntax.CollectDeclarativeText(content),
+            content.Destination ?? string.Empty,
+            DeclarativeContentSyntax.GetAttribute(content, MarkdownContentAttributes.Title))
+        {
+            AccessibilityName = content.AccessibilityName,
+            ElementKey = DeclarativeContentSyntax.GetElementKey(content, MarkdownElementKeys.Link),
+            SourceSpan = content.SourceSpan,
+        };
     }
 
     private InlineImageRun CreateDeclarativeImageRun(

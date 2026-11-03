@@ -272,12 +272,9 @@ internal sealed class LayoutContainerBuilder
                     htmlBlock.Span.Start,
                     _context.DisclosureStates,
                     _context.CancellationToken) == true;
-            int? inlineFlowScopeIdForBlock = htmlScopes?.CurrentInlineFlowScopeId;
-            if (inlineFlowScopeIdAtBlockEntry is int entryScopeId &&
-                inlineFlowScopeIdForBlock != entryScopeId)
-            {
-                inlineFlowScopeIdForBlock = null;
-            }
+            int? inlineFlowScopeIdForBlock = LayoutBlockBuilder.ResolveInlineFlowScopeForBlock(
+                inlineFlowScopeIdAtBlockEntry,
+                htmlScopes?.CurrentInlineFlowScopeId);
             bool inlineFlowContinuesPrevious = inlineFlowScopeIdForBlock is int scopeId &&
                 destination.Children.Count > 0 &&
                 destination.Children[^1].SafeHtmlInlineFlowScopeId == scopeId;
@@ -293,13 +290,7 @@ internal sealed class LayoutContainerBuilder
             {
                 if (!htmlBudgetNoticeAdded)
                 {
-                    var notice = new InlineContainerBox(_context, MarkdownElementKeys.Body)
-                    {
-                        BlockIndex = _context.NextBlockIndex(),
-                    };
-                    _tracker.TrackBlock(notice);
-                    _tracker.AddHtmlBudgetNotice(notice);
-                    _tracker.AddStackChild(destination, notice);
+                    AddHtmlBudgetNotice(destination);
                     htmlBudgetNoticeAdded = true;
                 }
 
@@ -310,39 +301,15 @@ internal sealed class LayoutContainerBuilder
             if (scopeOnly || suppressedBeforeBlock)
                 continue;
 
-            SafeHtmlBlockScopeTracker? nestedScopes = child is ContainerBlock or HtmlBlock
-                ? htmlScopes?.CloneForNestedContent()
-                : null;
-            BlockBox? box;
-            using (_context.PushSafeHtmlBlockContext(
-                       alignmentAtBlockEntry,
-                       nestedScopes,
-                       inlineFlowScopeIdForBlock,
-                       inlineFlowContinuesPrevious))
-                box = _blockDispatcher.BuildBlock(child);
+            BlockBox? box = BuildChildBlock(
+                child,
+                htmlScopes,
+                alignmentAtBlockEntry,
+                inlineFlowScopeIdForBlock,
+                inlineFlowContinuesPrevious,
+                suppressDirectParagraphMargins);
             if (box is null)
                 continue;
-
-            if (suppressDirectParagraphMargins && child is ParagraphBlock)
-            {
-                Thickness margin = box.Margin;
-                box.Margin = new Thickness(margin.Left, 0, margin.Right, 0);
-                if (box is InlineContainerBox paragraphBox)
-                    paragraphBox.UseContainerMargin = false;
-            }
-
-            if (htmlScopes is not null && child is not HtmlBlock)
-                LayoutBlockBuilder.ApplyHtmlAlignment(box, alignmentAtBlockEntry);
-
-            if (child is ParagraphBlock paragraph &&
-                box is InlineContainerBox inlineParagraph &&
-                inlineFlowScopeIdForBlock is int inlineFlowScopeId &&
-                SafeHtmlFlowParagraphs.IsBadgeOnlyHtmlFlowParagraph(paragraph))
-            {
-                inlineParagraph.SafeHtmlInlineFlowScopeId = inlineFlowScopeId;
-                inlineParagraph.UseContainerMargin = false;
-                inlineParagraph.Margin = default;
-            }
 
             _tracker.AddStackChild(destination, box);
 
@@ -354,16 +321,68 @@ internal sealed class LayoutContainerBuilder
                     _context.CancellationToken);
                 if (htmlScopes?.BudgetExceeded == true && !htmlBudgetNoticeAdded)
                 {
-                    var notice = new InlineContainerBox(_context, MarkdownElementKeys.Body)
-                    {
-                        BlockIndex = _context.NextBlockIndex(),
-                    };
-                    _tracker.TrackBlock(notice);
-                    _tracker.AddHtmlBudgetNotice(notice);
-                    _tracker.AddStackChild(destination, notice);
+                    AddHtmlBudgetNotice(destination);
                     htmlBudgetNoticeAdded = true;
                 }
             }
         }
+    }
+
+    // Builds one child under the safe-HTML context captured at its entry and
+    // applies paragraph margin, alignment and inline-flow adjustments.
+    private BlockBox? BuildChildBlock(
+        Block child,
+        SafeHtmlBlockScopeTracker? htmlScopes,
+        SafeHtmlAlignment alignmentAtBlockEntry,
+        int? inlineFlowScopeIdForBlock,
+        bool inlineFlowContinuesPrevious,
+        bool suppressDirectParagraphMargins)
+    {
+        SafeHtmlBlockScopeTracker? nestedScopes = child is ContainerBlock or HtmlBlock
+            ? htmlScopes?.CloneForNestedContent()
+            : null;
+        BlockBox? box;
+        using (_context.PushSafeHtmlBlockContext(
+                   alignmentAtBlockEntry,
+                   nestedScopes,
+                   inlineFlowScopeIdForBlock,
+                   inlineFlowContinuesPrevious))
+            box = _blockDispatcher.BuildBlock(child);
+        if (box is null)
+            return null;
+
+        if (suppressDirectParagraphMargins && child is ParagraphBlock)
+        {
+            Thickness margin = box.Margin;
+            box.Margin = new Thickness(margin.Left, 0, margin.Right, 0);
+            if (box is InlineContainerBox paragraphBox)
+                paragraphBox.UseContainerMargin = false;
+        }
+
+        if (htmlScopes is not null && child is not HtmlBlock)
+            LayoutBlockBuilder.ApplyHtmlAlignment(box, alignmentAtBlockEntry);
+
+        if (child is ParagraphBlock paragraph &&
+            box is InlineContainerBox inlineParagraph &&
+            inlineFlowScopeIdForBlock is int inlineFlowScopeId &&
+            SafeHtmlFlowParagraphs.IsBadgeOnlyHtmlFlowParagraph(paragraph))
+        {
+            inlineParagraph.SafeHtmlInlineFlowScopeId = inlineFlowScopeId;
+            inlineParagraph.UseContainerMargin = false;
+            inlineParagraph.Margin = default;
+        }
+
+        return box;
+    }
+
+    private void AddHtmlBudgetNotice(StackBox destination)
+    {
+        var notice = new InlineContainerBox(_context, MarkdownElementKeys.Body)
+        {
+            BlockIndex = _context.NextBlockIndex(),
+        };
+        _tracker.TrackBlock(notice);
+        _tracker.AddHtmlBudgetNotice(notice);
+        _tracker.AddStackChild(destination, notice);
     }
 }

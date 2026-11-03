@@ -32,34 +32,8 @@ internal sealed class CodeBlockSourceProjector
             return false;
 
         MarkdownSourceProjection? transformedSource = _context.SourceProjection;
-        string? parserSource = null;
-        if (transformedSource is null)
-        {
-            parserSource = _context.SourceMap.SourceText;
-            if (block.Span.Start > parserSource.Length ||
-                block.Span.Length > parserSource.Length - block.Span.Start)
-            {
-                return false;
-            }
-
-            sourceSpan = new SourceSpan(block.Span.Start, block.Span.Length);
-        }
-        else
-        {
-            // GitHubDetailsBlockRenderer calls MarkdownSourceProjection.ApplyTo
-            // before building this fragment. That rewrites AST node spans into
-            // document coordinates, while Markdig's StringLine slices remain
-            // fragment-local. Do not project block.Span a second time; only
-            // line slices below are still in the projection's local domain.
-            string sourceText = _context.SourceMap.SourceText;
-            if (block.Span.Start > sourceText.Length ||
-                block.Span.Length > sourceText.Length - block.Span.Start)
-            {
-                return false;
-            }
-
-            sourceSpan = new SourceSpan(block.Span.Start, block.Span.Length);
-        }
+        if (!TryResolveBlockSourceSpan(block, out sourceSpan))
+            return false;
 
         int renderedOffset = 0;
         string? lineSourceText = null;
@@ -86,18 +60,9 @@ internal sealed class CodeBlockSourceProjector
                 }
             }
 
-            if (sliceSource is null || sliceStart < 0 || sliceLength < 0 ||
-                sliceStart > sliceSource.Length || sliceLength > sliceSource.Length - sliceStart ||
+            if (sliceSource is null ||
                 !ReferenceEquals(lineSourceText, sliceSource) ||
-                sliceLength > text.Length - renderedOffset ||
-                !text.AsSpan(renderedOffset, sliceLength).SequenceEqual(sliceSource.AsSpan(sliceStart, sliceLength)))
-            {
-                return false;
-            }
-
-            if (sliceLength > 0 &&
-                (!TryMapCodeBlockParserRange(sliceSource, sliceStart, sliceLength, out SourceSpan mappedLine) ||
-                 !ContainsSourceRange(sourceSpan, mappedLine)))
+                !IsRenderedLineContent(text, renderedOffset, sliceSource, sliceStart, sliceLength, sourceSpan))
             {
                 return false;
             }
@@ -116,13 +81,8 @@ internal sealed class CodeBlockSourceProjector
                 continue;
 
             int newlineStart = sliceStart + sliceLength;
-            if (!IsExpectedSourceNewline(sliceSource, newlineStart, line.NewLine) ||
-                renderedOffset >= text.Length || text[renderedOffset] != '\n' ||
-                !TryMapCodeBlockParserRange(sliceSource, newlineStart, newlineLength, out SourceSpan mappedNewline) ||
-                !ContainsSourceRange(sourceSpan, mappedNewline))
-            {
+            if (!IsRenderedLineNewline(text, renderedOffset, sliceSource, newlineStart, newlineLength, line.NewLine, sourceSpan))
                 return false;
-            }
 
             renderedOffset++;
         }
@@ -132,6 +92,64 @@ internal sealed class CodeBlockSourceProjector
 
         return true;
     }
+
+    // GitHubDetailsBlockRenderer calls MarkdownSourceProjection.ApplyTo
+    // before building a transformed fragment. That rewrites AST node spans into
+    // document coordinates, while Markdig's StringLine slices remain
+    // fragment-local. Do not project block.Span a second time; only line
+    // slices are still in the projection's local domain. Either way the block
+    // span is checked against the document source text.
+    private bool TryResolveBlockSourceSpan(LeafBlock block, out SourceSpan sourceSpan)
+    {
+        sourceSpan = SourceSpan.Empty;
+        string sourceText = _context.SourceMap.SourceText;
+        if (block.Span.Start > sourceText.Length ||
+            block.Span.Length > sourceText.Length - block.Span.Start)
+        {
+            return false;
+        }
+
+        sourceSpan = new SourceSpan(block.Span.Start, block.Span.Length);
+        return true;
+    }
+
+    // One stored line's slice must be in range, match the rendered text at the
+    // current offset and map inside the block's source span.
+    private bool IsRenderedLineContent(
+        string text,
+        int renderedOffset,
+        string sliceSource,
+        int sliceStart,
+        int sliceLength,
+        SourceSpan sourceSpan)
+    {
+        if (sliceStart < 0 || sliceLength < 0 ||
+            sliceStart > sliceSource.Length || sliceLength > sliceSource.Length - sliceStart ||
+            sliceLength > text.Length - renderedOffset ||
+            !text.AsSpan(renderedOffset, sliceLength).SequenceEqual(sliceSource.AsSpan(sliceStart, sliceLength)))
+        {
+            return false;
+        }
+
+        return sliceLength == 0 ||
+            (TryMapCodeBlockParserRange(sliceSource, sliceStart, sliceLength, out SourceSpan mappedLine) &&
+             ContainsSourceRange(sourceSpan, mappedLine));
+    }
+
+    // A stored separator must be the authored terminator in source, a single
+    // LF in the rendered text, and map inside the block's source span.
+    private bool IsRenderedLineNewline(
+        string text,
+        int renderedOffset,
+        string sliceSource,
+        int newlineStart,
+        int newlineLength,
+        NewLine newline,
+        SourceSpan sourceSpan)
+        => IsExpectedSourceNewline(sliceSource, newlineStart, newline) &&
+           renderedOffset < text.Length && text[renderedOffset] == '\n' &&
+           TryMapCodeBlockParserRange(sliceSource, newlineStart, newlineLength, out SourceSpan mappedNewline) &&
+           ContainsSourceRange(sourceSpan, mappedNewline);
 
     private bool TryMapCodeBlockParserRange(string parserSource, int localStart, int localLength, out SourceSpan sourceSpan)
     {
@@ -181,82 +199,19 @@ internal sealed class CodeBlockSourceProjector
             if ((cursor.LineIndex & 0x3f) == 0)
                 _context.CancellationToken.ThrowIfCancellationRequested();
 
-            StringLine line = lines[cursor.LineIndex];
-            StringSlice slice = line.Slice;
-            string? parserSource = slice.Text;
-            cursor.ParserSource ??= parserSource;
-            int contentStart = cursor.RenderedOffset;
-            int contentLength = slice.Length;
-            if (parserSource is null || !ReferenceEquals(cursor.ParserSource, parserSource) ||
-                slice.Start < 0 || slice.Start > parserSource.Length || contentLength < 0 ||
-                contentLength > parserSource.Length - slice.Start || contentStart > text.Length ||
-                contentLength > text.Length - contentStart)
-            {
+            bool? advanced = TryProjectChunkLine(
+                segments,
+                text,
+                lines[cursor.LineIndex],
+                hasFollowingLine: cursor.LineIndex + 1 < lineCount,
+                chunkStart,
+                chunkEnd,
+                blockSourceSpan,
+                ref cursor);
+            if (advanced is null)
                 return null;
-            }
-
-            int contentEnd = contentStart + contentLength;
-            if (!text.AsSpan(contentStart, contentLength).SequenceEqual(parserSource.AsSpan(slice.Start, contentLength)))
-            {
-                return null;
-            }
-
-            int selectedContentStart = Math.Max(contentStart, chunkStart);
-            int selectedContentEnd = Math.Min(contentEnd, chunkEnd);
-            if (selectedContentEnd > selectedContentStart)
-            {
-                int parserStart = slice.Start + selectedContentStart - contentStart;
-                int parserLength = selectedContentEnd - selectedContentStart;
-                if (!TryAddCodeBlockProjectionSegment(
-                    segments,
-                    selectedContentStart - chunkStart,
-                    selectedContentEnd - selectedContentStart,
-                    parserSource,
-                    parserStart,
-                    parserLength,
-                    blockSourceSpan,
-                    allowAtomicLengthChange: false))
-                {
-                    return null;
-                }
-            }
-
-            int sourceNewlineLength = cursor.LineIndex + 1 < lineCount
-                ? GetCodeBlockSourceNewlineLength(line.NewLine)
-                : 0;
-            if (sourceNewlineLength < 0)
-                return null;
-            int renderedLineEnd = contentEnd;
-            if (sourceNewlineLength > 0 && renderedLineEnd >= chunkStart && renderedLineEnd < chunkEnd)
-            {
-                int parserNewlineStart = slice.Start + contentLength;
-                if (!IsExpectedSourceNewline(parserSource, parserNewlineStart, line.NewLine) ||
-                    renderedLineEnd >= text.Length || text[renderedLineEnd] != '\n' ||
-                    !TryAddCodeBlockProjectionSegment(
-                        segments,
-                        renderedLineEnd - chunkStart,
-                        1,
-                        parserSource,
-                        parserNewlineStart,
-                        sourceNewlineLength,
-                        blockSourceSpan,
-                        allowAtomicLengthChange: true))
-                {
-                    return null;
-                }
-            }
-
-            int renderedLineLength = contentLength + (sourceNewlineLength > 0 ? 1 : 0);
-            int renderedLineEndWithNewline = contentStart + renderedLineLength;
-            if (renderedLineEndWithNewline <= chunkEnd)
-            {
-                cursor.LineIndex++;
-                cursor.RenderedOffset = renderedLineEndWithNewline;
-            }
-            else
-            {
+            if (advanced == false)
                 break;
-            }
         }
 
         if (segments.Count == 0)
@@ -269,6 +224,135 @@ internal sealed class CodeBlockSourceProjector
             includeSourcePrefix,
             includeSourceSuffix);
     }
+
+    // Projects one stored line's content and separator into the chunk's
+    // segments. Returns null when the line cannot be projected exactly, true
+    // when the cursor moved past the whole line, and false when the line
+    // continues beyond the chunk and the next chunk resumes on it.
+    private bool? TryProjectChunkLine(
+        List<MarkdownSourceMap.ProjectionSegment> segments,
+        string text,
+        StringLine line,
+        bool hasFollowingLine,
+        int chunkStart,
+        int chunkEnd,
+        SourceSpan blockSourceSpan,
+        ref CodeBlockSourceCursor cursor)
+    {
+        StringSlice slice = line.Slice;
+        string? parserSource = slice.Text;
+        cursor.ParserSource ??= parserSource;
+        int contentStart = cursor.RenderedOffset;
+        int contentLength = slice.Length;
+        if (parserSource is null || !ReferenceEquals(cursor.ParserSource, parserSource) ||
+            slice.Start < 0 || slice.Start > parserSource.Length || contentLength < 0 ||
+            contentLength > parserSource.Length - slice.Start || contentStart > text.Length ||
+            contentLength > text.Length - contentStart)
+        {
+            return null;
+        }
+
+        int contentEnd = contentStart + contentLength;
+        if (!text.AsSpan(contentStart, contentLength).SequenceEqual(parserSource.AsSpan(slice.Start, contentLength)))
+        {
+            return null;
+        }
+
+        if (!TryAddChunkContentSegment(
+                segments,
+                parserSource,
+                slice.Start,
+                contentStart,
+                contentEnd,
+                chunkStart,
+                chunkEnd,
+                blockSourceSpan))
+        {
+            return null;
+        }
+
+        int sourceNewlineLength = hasFollowingLine
+            ? GetCodeBlockSourceNewlineLength(line.NewLine)
+            : 0;
+        if (sourceNewlineLength < 0)
+            return null;
+        int renderedLineEnd = contentEnd;
+        if (sourceNewlineLength > 0 && renderedLineEnd >= chunkStart && renderedLineEnd < chunkEnd &&
+            !TryAddChunkNewlineSegment(
+                segments,
+                text,
+                parserSource,
+                slice.Start + contentLength,
+                sourceNewlineLength,
+                line.NewLine,
+                renderedLineEnd,
+                chunkStart,
+                blockSourceSpan))
+        {
+            return null;
+        }
+
+        int renderedLineLength = contentLength + (sourceNewlineLength > 0 ? 1 : 0);
+        int renderedLineEndWithNewline = contentStart + renderedLineLength;
+        if (renderedLineEndWithNewline > chunkEnd)
+            return false;
+
+        cursor.LineIndex++;
+        cursor.RenderedOffset = renderedLineEndWithNewline;
+        return true;
+    }
+
+    // Adds the part of one line's content that falls inside the chunk.
+    private bool TryAddChunkContentSegment(
+        List<MarkdownSourceMap.ProjectionSegment> segments,
+        string parserSource,
+        int sliceStart,
+        int contentStart,
+        int contentEnd,
+        int chunkStart,
+        int chunkEnd,
+        SourceSpan blockSourceSpan)
+    {
+        int selectedContentStart = Math.Max(contentStart, chunkStart);
+        int selectedContentEnd = Math.Min(contentEnd, chunkEnd);
+        if (selectedContentEnd <= selectedContentStart)
+            return true;
+
+        int parserStart = sliceStart + selectedContentStart - contentStart;
+        int parserLength = selectedContentEnd - selectedContentStart;
+        return TryAddCodeBlockProjectionSegment(
+            segments,
+            selectedContentStart - chunkStart,
+            selectedContentEnd - selectedContentStart,
+            parserSource,
+            parserStart,
+            parserLength,
+            blockSourceSpan,
+            allowAtomicLengthChange: false);
+    }
+
+    // Adds a line's rendered LF as one atomic segment over its authored terminator.
+    private bool TryAddChunkNewlineSegment(
+        List<MarkdownSourceMap.ProjectionSegment> segments,
+        string text,
+        string parserSource,
+        int parserNewlineStart,
+        int sourceNewlineLength,
+        NewLine newline,
+        int renderedLineEnd,
+        int chunkStart,
+        SourceSpan blockSourceSpan)
+        => IsExpectedSourceNewline(parserSource, parserNewlineStart, newline) &&
+           renderedLineEnd < text.Length && text[renderedLineEnd] == '\n' &&
+           TryAddCodeBlockProjectionSegment(
+               segments,
+               renderedLineEnd - chunkStart,
+               1,
+               parserSource,
+               parserNewlineStart,
+               sourceNewlineLength,
+               blockSourceSpan,
+               allowAtomicLengthChange: true);
 
     private bool TryAddCodeBlockProjectionSegment(
         List<MarkdownSourceMap.ProjectionSegment> segments,

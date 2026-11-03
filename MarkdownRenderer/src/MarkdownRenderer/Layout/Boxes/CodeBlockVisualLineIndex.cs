@@ -81,48 +81,10 @@ internal sealed class CodeBlockVisualLineIndex
         bool previousTemplateValid = _visualLineTemplateValid &&
                                      _visualLines.Length == _visualLineBottomEdges.Length;
         _visualLineTemplateValid = false;
-        bool inputsMatch = previousTemplateValid;
-        bool allOriginsUnchanged = previousTemplateValid;
-
-        for (int index = 0; index < _chunks.Count; index++)
+        if (!TryCaptureChunkInputs(previousTemplateValid, out bool inputsMatch, out bool allOriginsUnchanged))
         {
-            InlineContainerBox chunk = _chunks[index];
-            CanvasLineMetrics[]? metrics = chunk.GetLineMetricsSnapshot();
-            if (metrics is null || metrics.Length == 0)
-            {
-                ClearVisualLineIndex();
-                return;
-            }
-            double originY = chunk.GetTextOriginY();
-            if (!double.IsFinite(originY))
-            {
-                ClearVisualLineIndex();
-                return;
-            }
-
-            VisualLineChunkCache previous = _visualLineChunkCache[index];
-            int lineCount = GetEffectiveNativeLineCount(index, chunk, metrics);
-            bool inputMatches = previousTemplateValid &&
-                                ReferenceEquals(previous.Chunk, chunk) &&
-                                ReferenceEquals(previous.Metrics, metrics) &&
-                                previous.TextOffset == chunk.CodeBlockTextOffset &&
-                                previous.TextLength == chunk.CodeBlockTextLength &&
-                                previous.LineCount == lineCount;
-            bool originUnchanged = inputMatches && previous.OriginY == originY;
-            inputsMatch &= inputMatches;
-            allOriginsUnchanged &= originUnchanged;
-
-            _visualLineChunkCache[index] = new VisualLineChunkCache
-            {
-                Chunk = chunk,
-                Metrics = metrics,
-                TextOffset = chunk.CodeBlockTextOffset,
-                TextLength = chunk.CodeBlockTextLength,
-                OriginY = originY,
-                StartIndex = previous.StartIndex,
-                LineCount = lineCount,
-                OriginUnchanged = originUnchanged,
-            };
+            ClearVisualLineIndex();
+            return;
         }
 
         if (inputsMatch && _visualLines.Length > 0)
@@ -152,6 +114,56 @@ internal sealed class CodeBlockVisualLineIndex
         _visualLineTemplateValid = true;
         if (_visualLineCacheBuildCount < int.MaxValue)
             _visualLineCacheBuildCount++;
+    }
+
+    // Records each chunk's current metrics and text origin in the per-chunk
+    // cache and reports whether every input, and every origin, still matches
+    // the previous template. Returns false when a chunk has no usable metrics
+    // or origin yet.
+    private bool TryCaptureChunkInputs(
+        bool previousTemplateValid,
+        out bool inputsMatch,
+        out bool allOriginsUnchanged)
+    {
+        inputsMatch = previousTemplateValid;
+        allOriginsUnchanged = previousTemplateValid;
+
+        for (int index = 0; index < _chunks.Count; index++)
+        {
+            InlineContainerBox chunk = _chunks[index];
+            CanvasLineMetrics[]? metrics = chunk.GetLineMetricsSnapshot();
+            if (metrics is null || metrics.Length == 0)
+                return false;
+            double originY = chunk.GetTextOriginY();
+            if (!double.IsFinite(originY))
+                return false;
+
+            VisualLineChunkCache previous = _visualLineChunkCache[index];
+            int lineCount = GetEffectiveNativeLineCount(index, chunk, metrics);
+            bool inputMatches = previousTemplateValid &&
+                                ReferenceEquals(previous.Chunk, chunk) &&
+                                ReferenceEquals(previous.Metrics, metrics) &&
+                                previous.TextOffset == chunk.CodeBlockTextOffset &&
+                                previous.TextLength == chunk.CodeBlockTextLength &&
+                                previous.LineCount == lineCount;
+            bool originUnchanged = inputMatches && previous.OriginY == originY;
+            inputsMatch &= inputMatches;
+            allOriginsUnchanged &= originUnchanged;
+
+            _visualLineChunkCache[index] = new VisualLineChunkCache
+            {
+                Chunk = chunk,
+                Metrics = metrics,
+                TextOffset = chunk.CodeBlockTextOffset,
+                TextLength = chunk.CodeBlockTextLength,
+                OriginY = originY,
+                StartIndex = previous.StartIndex,
+                LineCount = lineCount,
+                OriginUnchanged = originUnchanged,
+            };
+        }
+
+        return true;
     }
 
     private bool TryBuildVisualLineIndex()

@@ -147,36 +147,10 @@ internal sealed class DeclarativeBlockBuilder
         HostedElementFallbackKey fallbackKey)
     {
         if (content.Kind == MarkdownContentKind.HostedElement)
-        {
-            var box = new DeclarativeHostedElementBox(_context, content, fallbackKey)
-            {
-                BlockIndex = _context.NextBlockIndex(),
-            };
-            _tracker.TrackBlock(box);
-            if (!content.SourceSpan.IsEmpty)
-                _context.SourceMap.Add(box.BlockIndex, 0, 1, content.SourceSpan);
-            return box;
-        }
+            return BuildDeclarativeHostedElement(content, fallbackKey);
 
         if (content.Kind == MarkdownContentKind.VectorScene && content.VectorScene is not null)
-        {
-            var vector = new VectorSceneBox(
-                _context,
-                content,
-                DeclarativeContentSyntax.GetElementKey(
-                    content,
-                    content.AccessibilityRole == MarkdownAccessibilityRole.Math
-                        ? MarkdownElementKeys.Math
-                        : MarkdownElementKeys.Diagram))
-            {
-                BlockIndex = _context.NextBlockIndex(),
-                DeferredSceneBinding = _scenes.NextBinding(),
-            };
-            _tracker.TrackBlock(vector);
-            if (!content.SourceSpan.IsEmpty)
-                _context.SourceMap.Add(vector.BlockIndex, 0, 1, content.SourceSpan);
-            return vector;
-        }
+            return BuildDeclarativeVectorScene(content);
 
         if (content.Kind == MarkdownContentKind.Text ||
             content.Kind == MarkdownContentKind.Link ||
@@ -190,18 +164,7 @@ internal sealed class DeclarativeBlockBuilder
             return BuildDeclarativeImage(content);
 
         if (content.Kind == MarkdownContentKind.CodeBlock)
-        {
-            if (content.Attributes.TryGetValue(MarkdownContentAttributes.DeferredScene, out string? deferredSceneMarker) &&
-                !string.IsNullOrWhiteSpace(deferredSceneMarker) &&
-                _context.PerformanceSession is IMarkdownPerformanceSessionInternal session &&
-                _context.PerformanceDocumentOwner is { } documentOwner &&
-                session.TryGetDeferredSceneResult(documentOwner, deferredSceneMarker,
-                    out MarkdownContentFragment? result, out object? projectionIdentity) &&
-                TryBuildMaterializedSceneBlock(deferredSceneMarker, result!, projectionIdentity) is { } materialized)
-                return materialized;
-
-            return _codeBlocks.BuildDeclarativeCodeBlock(content);
-        }
+            return BuildDeclarativeCodeOrMaterializedScene(content);
 
         if (content.Kind == MarkdownContentKind.List)
             return BuildDeclarativeList(content, fallbackKey);
@@ -213,31 +176,87 @@ internal sealed class DeclarativeBlockBuilder
              content.Kind == MarkdownContentKind.ListItem) &&
             content.Children.Count > 0)
         {
-            var stack = new StackBox
-            {
-                FlowDirection = _context.FlowDirection,
-                BlockIndex = _context.NextBlockIndex(),
-            };
-            _tracker.TrackBlock(stack);
-            foreach (MarkdownContent childContent in content.Children)
-            {
-                var child = TryBuildDeclarativeContent(childContent, fallbackKey);
-                if (child is null)
-                {
-                    _tracker.DiscardUnpublishedBlock(stack);
-                    return null;
-                }
-                _tracker.AddStackChild(stack, child);
-            }
-            if (stack.Children.Count == 0)
+            return BuildDeclarativeStack(content, fallbackKey);
+        }
+
+        return null;
+    }
+
+    private DeclarativeHostedElementBox BuildDeclarativeHostedElement(
+        MarkdownContent content,
+        HostedElementFallbackKey fallbackKey)
+    {
+        var box = new DeclarativeHostedElementBox(_context, content, fallbackKey)
+        {
+            BlockIndex = _context.NextBlockIndex(),
+        };
+        _tracker.TrackBlock(box);
+        if (!content.SourceSpan.IsEmpty)
+            _context.SourceMap.Add(box.BlockIndex, 0, 1, content.SourceSpan);
+        return box;
+    }
+
+    private VectorSceneBox BuildDeclarativeVectorScene(MarkdownContent content)
+    {
+        var vector = new VectorSceneBox(
+            _context,
+            content,
+            DeclarativeContentSyntax.GetElementKey(
+                content,
+                content.AccessibilityRole == MarkdownAccessibilityRole.Math
+                    ? MarkdownElementKeys.Math
+                    : MarkdownElementKeys.Diagram))
+        {
+            BlockIndex = _context.NextBlockIndex(),
+            DeferredSceneBinding = _scenes.NextBinding(),
+        };
+        _tracker.TrackBlock(vector);
+        if (!content.SourceSpan.IsEmpty)
+            _context.SourceMap.Add(vector.BlockIndex, 0, 1, content.SourceSpan);
+        return vector;
+    }
+
+    // A code block carrying a deferred-scene marker renders the session's
+    // materialized scene when one is ready; otherwise it renders as code.
+    private BlockBox? BuildDeclarativeCodeOrMaterializedScene(MarkdownContent content)
+    {
+        if (content.Attributes.TryGetValue(MarkdownContentAttributes.DeferredScene, out string? deferredSceneMarker) &&
+            !string.IsNullOrWhiteSpace(deferredSceneMarker) &&
+            _context.PerformanceSession is IMarkdownPerformanceSessionInternal session &&
+            _context.PerformanceDocumentOwner is { } documentOwner &&
+            session.TryGetDeferredSceneResult(documentOwner, deferredSceneMarker,
+                out MarkdownContentFragment? result, out object? projectionIdentity) &&
+            TryBuildMaterializedSceneBlock(deferredSceneMarker, result!, projectionIdentity) is { } materialized)
+            return materialized;
+
+        return _codeBlocks.BuildDeclarativeCodeBlock(content);
+    }
+
+    // All children must build; a failed or empty container is discarded.
+    private StackBox? BuildDeclarativeStack(MarkdownContent content, HostedElementFallbackKey fallbackKey)
+    {
+        var stack = new StackBox
+        {
+            FlowDirection = _context.FlowDirection,
+            BlockIndex = _context.NextBlockIndex(),
+        };
+        _tracker.TrackBlock(stack);
+        foreach (MarkdownContent childContent in content.Children)
+        {
+            var child = TryBuildDeclarativeContent(childContent, fallbackKey);
+            if (child is null)
             {
                 _tracker.DiscardUnpublishedBlock(stack);
                 return null;
             }
-            return stack;
+            _tracker.AddStackChild(stack, child);
         }
-
-        return null;
+        if (stack.Children.Count == 0)
+        {
+            _tracker.DiscardUnpublishedBlock(stack);
+            return null;
+        }
+        return stack;
     }
 
     private InlineContainerBox BuildDeclarativeInlineBlock(MarkdownContent content)

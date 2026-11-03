@@ -1,6 +1,7 @@
 using System;
 using Microsoft.Graphics.Canvas;
 using Windows.Foundation;
+using Windows.UI;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Theming;
@@ -31,37 +32,8 @@ internal sealed class CodeBlockPainter
         if (codeStyle.Background is { } bg)
             ds.FillRoundedRectangle(outer, radius, radius, bg);
 
-        bool hasEnhancedChrome = _host.Context.CodeBlockChromeMode != CodeBlockChromeMode.PlainMarkdown;
-        if (hasEnhancedChrome && headerStyle.Background is { } headerBg)
-        {
-            ds.FillRoundedRectangle(outer, radius, radius, headerBg);
-            if (codeStyle.Background is { } bodyBg)
-            {
-                ds.FillRectangle(
-                    new Rect(outer.X, outer.Y + _host.HeaderHeight, outer.Width, Math.Max(0, outer.Height - _host.HeaderHeight)),
-                    bodyBg);
-            }
-        }
-
-        if (hasEnhancedChrome)
-        {
-            var separator = codeStyle.BorderBrush ?? headerStyle.BorderBrush ?? languageStyle.Foreground;
-            ds.DrawLine(
-                (float)outer.Left,
-                (float)(outer.Top + _host.HeaderHeight),
-                (float)outer.Right,
-                (float)(outer.Top + _host.HeaderHeight),
-                _host.Context.ThemeSnapshot.IsHighContrast
-                    ? separator
-                    : CodeBlockBox.WithAlpha(separator, Math.Min(separator.A, (byte)0x60)),
-                1f);
-
-            if (outer.Left < viewport.Right && outer.Right > viewport.Left &&
-                outer.Top < viewport.Bottom && outer.Top + _host.HeaderHeight > viewport.Top)
-            {
-                _host.DrawHeaderText(ds, outer, languageStyle);
-            }
-        }
+        if (_host.Context.CodeBlockChromeMode != CodeBlockChromeMode.PlainMarkdown)
+            PaintEnhancedChrome(ds, outer, radius, codeStyle, headerStyle, languageStyle, viewport);
         _host.Gutter.DrawBodySurfaces(ds, outer, codeStyle, headerStyle, languageStyle, viewport);
 
         var clip = _host.CodeViewportRect(outer, codeStyle);
@@ -91,19 +63,62 @@ internal sealed class CodeBlockPainter
         PaintHorizontalScrollbar(ds, codeStyle);
 
         if (codeStyle.BorderBrush is { } border && codeStyle.BorderThickness > 0)
+            PaintBorder(ds, outer, radius, border, codeStyle.BorderThickness);
+    }
+
+    // Header background, header/body separator and the header text when the
+    // header intersects the viewport.
+    private void PaintEnhancedChrome(
+        CanvasDrawingSession ds,
+        Rect outer,
+        float radius,
+        ElementStyle codeStyle,
+        ElementStyle headerStyle,
+        ElementStyle languageStyle,
+        Rect viewport)
+    {
+        if (headerStyle.Background is { } headerBg)
         {
-            float inset = codeStyle.BorderThickness / 2f;
-            ds.DrawRoundedRectangle(
-                new Rect(
-                    outer.X + inset,
-                    outer.Y + inset,
-                    Math.Max(0, outer.Width - codeStyle.BorderThickness),
-                    Math.Max(0, outer.Height - codeStyle.BorderThickness)),
-                radius,
-                radius,
-                border,
-                codeStyle.BorderThickness);
+            ds.FillRoundedRectangle(outer, radius, radius, headerBg);
+            if (codeStyle.Background is { } bodyBg)
+            {
+                ds.FillRectangle(
+                    new Rect(outer.X, outer.Y + _host.HeaderHeight, outer.Width, Math.Max(0, outer.Height - _host.HeaderHeight)),
+                    bodyBg);
+            }
         }
+
+        var separator = codeStyle.BorderBrush ?? headerStyle.BorderBrush ?? languageStyle.Foreground;
+        ds.DrawLine(
+            (float)outer.Left,
+            (float)(outer.Top + _host.HeaderHeight),
+            (float)outer.Right,
+            (float)(outer.Top + _host.HeaderHeight),
+            _host.Context.ThemeSnapshot.IsHighContrast
+                ? separator
+                : CodeBlockBox.WithAlpha(separator, Math.Min(separator.A, (byte)0x60)),
+            1f);
+
+        if (outer.Left < viewport.Right && outer.Right > viewport.Left &&
+            outer.Top < viewport.Bottom && outer.Top + _host.HeaderHeight > viewport.Top)
+        {
+            _host.DrawHeaderText(ds, outer, languageStyle);
+        }
+    }
+
+    private static void PaintBorder(CanvasDrawingSession ds, Rect outer, float radius, Color border, float thickness)
+    {
+        float inset = thickness / 2f;
+        ds.DrawRoundedRectangle(
+            new Rect(
+                outer.X + inset,
+                outer.Y + inset,
+                Math.Max(0, outer.Width - thickness),
+                Math.Max(0, outer.Height - thickness)),
+            radius,
+            radius,
+            border,
+            thickness);
     }
 
     private void PaintVisibleChunks(CanvasDrawingSession ds, Rect viewport)

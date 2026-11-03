@@ -279,6 +279,57 @@ internal sealed class ChangedBlockRelayout
         }
     }
 
+    // Places every block from the first changed ordinal to the end: changed
+    // and measured blocks at their measured height, unmeasured blocks at their
+    // estimate. arrangeAttempted is set before the first placement so a
+    // failure marks geometry recovery. Returns the y after the last block.
+    private float ArrangeSuffixNoLock(
+        ChangedBlockMeasure[] changedMeasures,
+        int firstChangedOrdinal,
+        float contentX,
+        float contentWidth,
+        float y,
+        float[]? continuationUpdate,
+        ref bool arrangeAttempted)
+    {
+        int changedIndex = 0;
+        for (int ordinal = firstChangedOrdinal; ordinal < _geometry.Blocks.Count; ordinal++)
+        {
+            while (changedIndex < changedMeasures.Length &&
+                changedMeasures[changedIndex].Ordinal < ordinal)
+            {
+                changedIndex++;
+            }
+
+            bool isChanged = changedIndex < changedMeasures.Length &&
+                changedMeasures[changedIndex].Ordinal == ordinal;
+            BlockBox block = _geometry.Blocks[ordinal];
+            float height;
+            if (_geometry.IsTopLevelMeasuredNoLock(ordinal))
+            {
+                height = isChanged
+                    ? changedMeasures[changedIndex].Height
+                    : (float)block.Bounds.Height;
+                arrangeAttempted = true;
+                block.Arrange(contentX, y, contentWidth);
+                if (isChanged)
+                    _geometry.SharedLayoutMetrics?.RecordHeight(ordinal, height);
+            }
+            else
+            {
+                height = _geometry.EstimateHeight(block, ordinal);
+                arrangeAttempted = true;
+                block.ArrangeEstimated(contentX, y, contentWidth, height);
+            }
+
+            _geometry.AdvanceBlock(ref y, height, ordinal);
+            if (continuationUpdate is not null)
+                continuationUpdate[ordinal] = y;
+        }
+
+        return y;
+    }
+
     private void CommitSuffixReflowNoLock(
         ChangedBlockMeasure[] changedMeasures,
         int firstChangedOrdinal,
@@ -319,40 +370,14 @@ internal sealed class ChangedBlockRelayout
             {
                 float y = GetChangedRelayoutStartNoLock(firstChangedOrdinal);
                 float[]? continuationUpdate = _geometry.BeginLazyReflowContinuationUpdateNoLock(firstChangedOrdinal, y);
-                int changedIndex = 0;
-                for (int ordinal = firstChangedOrdinal; ordinal < _geometry.Blocks.Count; ordinal++)
-                {
-                    while (changedIndex < changedMeasures.Length &&
-                        changedMeasures[changedIndex].Ordinal < ordinal)
-                    {
-                        changedIndex++;
-                    }
-
-                    bool isChanged = changedIndex < changedMeasures.Length &&
-                        changedMeasures[changedIndex].Ordinal == ordinal;
-                    BlockBox block = _geometry.Blocks[ordinal];
-                    float height;
-                    if (_geometry.IsTopLevelMeasuredNoLock(ordinal))
-                    {
-                        height = isChanged
-                            ? changedMeasures[changedIndex].Height
-                            : (float)block.Bounds.Height;
-                        arrangeAttempted = true;
-                        block.Arrange(contentX, y, contentWidth);
-                        if (isChanged)
-                            _geometry.SharedLayoutMetrics?.RecordHeight(ordinal, height);
-                    }
-                    else
-                    {
-                        height = _geometry.EstimateHeight(block, ordinal);
-                        arrangeAttempted = true;
-                        block.ArrangeEstimated(contentX, y, contentWidth, height);
-                    }
-
-                    _geometry.AdvanceBlock(ref y, height, ordinal);
-                    if (continuationUpdate is not null)
-                        continuationUpdate[ordinal] = y;
-                }
+                y = ArrangeSuffixNoLock(
+                    changedMeasures,
+                    firstChangedOrdinal,
+                    contentX,
+                    contentWidth,
+                    y,
+                    continuationUpdate,
+                    ref arrangeAttempted);
 
                 y += (float)_geometry.DocumentPadding.Bottom;
                 _geometry.Size = new Size(_geometry.AvailableWidth, y);
