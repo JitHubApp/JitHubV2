@@ -62,11 +62,6 @@
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
 {
-      "path": "src/MarkdownRenderer.Svg.Resvg/Internal/WorkerPool.cs",
-      "lines": 2626,
-      "reason": "Predates the size rule; split by responsibility in a later structure step."
-    },
-    {
       "path": "src/MarkdownRenderer/Accessibility/MarkdownAutomationPeer.cs",
       "lines": 1093,
       "reason": "Predates the size rule; split by responsibility in a later structure step."

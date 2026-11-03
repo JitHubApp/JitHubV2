@@ -30,6 +30,8 @@ internal sealed class WindowsWorkerProcess : IAsyncDisposable, IDisposable, IWor
 
     // StartAsync is the production path. This constructor adopts a process
     // handle and an already-connected pipe whose handshake the caller owns.
+    // The optional factory composes the font-catalog supplier around this
+    // worker as its host; the default supplies the catalog directly.
     internal WindowsWorkerProcess(
         SafeProcessHandle process,
         NamedPipeServerStream pipe,
@@ -37,7 +39,8 @@ internal sealed class WindowsWorkerProcess : IAsyncDisposable, IDisposable, IWor
         ulong nonceHigh,
         string? workerExecutableSha256,
         int queueCapacity,
-        WorkerObjectSecurity.WorkerObjectSecurityContext objectSecurity)
+        WorkerObjectSecurity.WorkerObjectSecurityContext objectSecurity,
+        Func<IWorkerFontCatalogHost, WorkerFontCatalogSupplier>? fontCatalogSupplierFactory = null)
     {
         _process = process;
         _pipe = pipe;
@@ -47,7 +50,7 @@ internal sealed class WindowsWorkerProcess : IAsyncDisposable, IDisposable, IWor
         WorkerExecutableSha256 = workerExecutableSha256;
         _queueCapacity = queueCapacity;
         InstanceId = Interlocked.Increment(ref s_nextInstanceId);
-        _fontCatalogSupplier = new WorkerFontCatalogSupplier(this);
+        _fontCatalogSupplier = fontCatalogSupplierFactory?.Invoke(this) ?? new WorkerFontCatalogSupplier(this);
     }
 
     public ulong NonceLow { get; }

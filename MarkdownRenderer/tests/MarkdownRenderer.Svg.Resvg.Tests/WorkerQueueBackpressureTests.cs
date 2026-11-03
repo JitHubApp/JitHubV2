@@ -1,4 +1,3 @@
-using System.Reflection;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Svg.Resvg.Internal;
 using Xunit;
@@ -16,15 +15,10 @@ public sealed class WorkerQueueBackpressureTests
     public async Task RequestsBeyondQueueCapacityWaitAndAreAllServed()
     {
         var options = new ResvgMarkdownSvgRendererOptions();
-        using var pool = new WorkerPool(
-            options,
-            TimeProvider.System,
-            // Energy saver on: only the primary slot, so queued work stays queued.
-            static () => true,
-            static (_, _) => throw new InvalidOperationException(
-                "Acquire-only scheduling must not allocate a source mapping."));
+        // Energy saver on: only the primary slot, so queued work stays queued.
+        using WorkerScheduler pool = TestWorkerSchedulers.Create(static () => true, options: options);
         using var cancellation = new CancellationTokenSource();
-        var pending = new List<Task>();
+        var pending = new List<Task<WorkerLease>>();
         IDisposable? held = null;
         try
         {
@@ -32,7 +26,7 @@ public sealed class WorkerQueueBackpressureTests
             for (int index = 0; index < options.QueueCapacity; index++)
                 pending.Add(InvokeAcquireAsync(pool, cancellation.Token));
 
-            Task beyondCapacity = InvokeAcquireAsync(pool, cancellation.Token);
+            Task<WorkerLease> beyondCapacity = InvokeAcquireAsync(pool, cancellation.Token);
             pending.Add(beyondCapacity);
             await Task.Delay(200);
             Assert.False(beyondCapacity.IsFaulted, beyondCapacity.Exception?.InnerException?.Message);
@@ -40,7 +34,7 @@ public sealed class WorkerQueueBackpressureTests
 
             held.Dispose();
             held = null;
-            foreach (Task admission in pending.ToArray())
+            foreach (Task<WorkerLease> admission in pending.ToArray())
             {
                 IDisposable lease = await AcquireLeaseAsync(admission);
                 lease.Dispose();
@@ -50,13 +44,13 @@ public sealed class WorkerQueueBackpressureTests
         finally
         {
             cancellation.Cancel();
-            foreach (Task admission in pending)
+            foreach (Task<WorkerLease> admission in pending)
             {
                 try
                 {
                     await admission.WaitAsync(TimeSpan.FromSeconds(5));
-                    if (admission.GetType().GetProperty("Result")?.GetValue(admission) is IDisposable lease)
-                        lease.Dispose();
+                    if (admission.IsCompletedSuccessfully)
+                        (await admission).Dispose();
                 }
                 catch (Exception)
                 {
@@ -71,14 +65,10 @@ public sealed class WorkerQueueBackpressureTests
     public async Task WaitingForCapacityHonorsCancellation()
     {
         var options = new ResvgMarkdownSvgRendererOptions();
-        using var pool = new WorkerPool(
-            options,
-            TimeProvider.System,
-            static () => true,
-            static (_, _) => throw new InvalidOperationException("No source mapping."));
+        using WorkerScheduler pool = TestWorkerSchedulers.Create(static () => true, options: options);
         using var queued = new CancellationTokenSource();
         using var waiting = new CancellationTokenSource();
-        var admissions = new List<Task>();
+        var admissions = new List<Task<WorkerLease>>();
         IDisposable? held = null;
         try
         {
@@ -86,7 +76,7 @@ public sealed class WorkerQueueBackpressureTests
             for (int index = 0; index < options.QueueCapacity; index++)
                 admissions.Add(InvokeAcquireAsync(pool, queued.Token));
 
-            Task beyondCapacity = InvokeAcquireAsync(pool, waiting.Token);
+            Task<WorkerLease> beyondCapacity = InvokeAcquireAsync(pool, waiting.Token);
             waiting.Cancel();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(
                 async () => await beyondCapacity.WaitAsync(TimeSpan.FromSeconds(5)));
@@ -109,28 +99,9 @@ public sealed class WorkerQueueBackpressureTests
         }
     }
 
-    private static async Task<IDisposable> AcquireLeaseAsync(Task acquire)
-    {
+    private static async Task<IDisposable> AcquireLeaseAsync(Task<WorkerLease> acquire) =>
         await acquire.WaitAsync(TimeSpan.FromSeconds(10));
-        object lease = acquire.GetType().GetProperty("Result")!.GetValue(acquire)!;
-        return Assert.IsAssignableFrom<IDisposable>(lease);
-    }
 
-    private static Task InvokeAcquireAsync(WorkerPool pool, CancellationToken cancellationToken)
-    {
-        MethodInfo acquire = typeof(WorkerPool).GetMethod(
-            "AcquireAsync",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return (Task)acquire.Invoke(pool,
-        [
-            WorkerOperation.Render,
-            MarkdownSvgRenderPriority.Visible,
-            cancellationToken,
-            false,
-            0L,
-            false,
-            null,
-            null,
-        ])!;
-    }
+    private static Task<WorkerLease> InvokeAcquireAsync(WorkerScheduler pool, CancellationToken cancellationToken) =>
+        TestWorkerSchedulers.AcquireAsync(pool, cancellationToken);
 }

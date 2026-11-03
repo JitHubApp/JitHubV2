@@ -1,7 +1,6 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.IO.Pipes;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Svg.Resvg.Internal;
@@ -15,29 +14,33 @@ public sealed partial class WorkerTransportFaultTests
     [Fact]
     public async Task PoolShutdownWaitsForFontOwnersOfAnAlreadyDetachedWorker()
     {
-        await using var fixture = await WorkerTransportFixture.CreateAsync();
-        using var pool = new WorkerPool(new ResvgMarkdownSvgRendererOptions());
         var preparation = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var exchangeEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var fixture = await WorkerTransportFixture.CreateAsync(
+            fontCatalogSupplierFactory: host => new WorkerFontCatalogSupplier(
+                new BlockingFontCatalogExchangeHost(host, exchangeEntered, preparation.Task)));
+        var launcher = new AdoptingWorkerLauncher(fixture.Worker);
+        using var pool = new WorkerPool(new ResvgMarkdownSvgRendererOptions(), launcher);
         WorkerObjectSecurity.WorkerObjectSecurityContext objectSecurity = fixture.Worker.ObjectSecurity;
-        object supplier = typeof(WindowsWorkerProcess).GetField("_fontCatalogSupplier", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(fixture.Worker)!;
-        typeof(WorkerFontCatalogSupplier).GetField("_fontPreparationTask", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .SetValue(supplier, preparation.Task);
-        var owners = (WorkerLifetimeRegistry<WindowsWorkerProcess>)typeof(WorkerPool)
-            .GetField("_workerLifetimes", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(pool)!;
-        using var startup = owners.Reserve();
-        startup.Attach(fixture.Worker);
-        object primary = typeof(WorkerPool).GetField("_primary", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(pool)!;
-        primary.GetType().GetProperty("Worker")!.SetValue(primary, fixture.Worker);
 
         Task? shutdown = null;
         try
         {
+            // Warmup adopts the fixture worker as the primary and starts its
+            // eager font-catalog preparation, which parks in the exchange.
+            await pool.WarmUpAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+            await exchangeEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(1, launcher.StartCount);
+
             pool.InvalidateWorker(fixture.Worker.InstanceId);
-            Assert.Null(primary.GetType().GetProperty("Worker")!.GetValue(primary));
             Assert.True(fixture.Child.HasExited);
             Assert.Same(objectSecurity, fixture.Worker.ObjectSecurity);
+
+            // The detached worker no longer serves the pool: the next request
+            // asks the launcher for a replacement instead of reusing it.
+            await Assert.ThrowsAsync<MarkdownSvgException>(() => pool.WarmUpAsync(CancellationToken.None));
+            Assert.Equal(2, launcher.StartCount);
+
             shutdown = pool.DisposeAsync().AsTask();
             Assert.False(shutdown.IsCompleted);
         }
@@ -374,7 +377,8 @@ public sealed partial class WorkerTransportFaultTests
 
     private static WindowsWorkerProcess CreateConnectedWorker(
         SafeProcessHandle process,
-        NamedPipeServerStream pipe)
+        NamedPipeServerStream pipe,
+        Func<IWorkerFontCatalogHost, WorkerFontCatalogSupplier>? fontCatalogSupplierFactory = null)
     {
         using SafeTokenHandle primaryToken =
             WorkerProcessSandbox.OpenCurrentPrimaryTokenForWorker();
@@ -388,7 +392,8 @@ public sealed partial class WorkerTransportFaultTests
                 0x8877_6655_4433_2211ul,
                 workerExecutableSha256: null,
                 queueCapacity: 4,
-                objectSecurity);
+                objectSecurity,
+                fontCatalogSupplierFactory);
         }
         catch
         {
@@ -477,7 +482,9 @@ public sealed partial class WorkerTransportFaultTests
         internal NamedPipeClientStream Peer { get; }
         internal WindowsWorkerProcess Worker { get; }
 
-        internal static async Task<WorkerTransportFixture> CreateAsync(bool allowTermination = true)
+        internal static async Task<WorkerTransportFixture> CreateAsync(
+            bool allowTermination = true,
+            Func<IWorkerFontCatalogHost, WorkerFontCatalogSupplier>? fontCatalogSupplierFactory = null)
         {
             Process child = StartBlockingChild();
             SafeProcessHandle? inspectionProcess = null;
@@ -502,7 +509,7 @@ public sealed partial class WorkerTransportFaultTests
                     PipeTransmissionMode.Byte,
                     PipeOptions.Asynchronous);
                 peer = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-                worker = CreateConnectedWorker(workerProcess, server);
+                worker = CreateConnectedWorker(workerProcess, server, fontCatalogSupplierFactory);
                 workerProcess = null;
 
                 Task serverConnection = server.WaitForConnectionAsync();

@@ -803,10 +803,10 @@ public sealed class ResvgProviderTests
 
         static long PrimaryPublishedFontGeneration(ResvgMarkdownSvgRenderer renderer)
         {
-            const System.Reflection.BindingFlags fields = System.Reflection.BindingFlags.Instance |
-                System.Reflection.BindingFlags.NonPublic;
+            const System.Reflection.BindingFlags fields = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
             var pool = (WorkerPool)typeof(ResvgMarkdownSvgRenderer).GetField("_workers", fields)!.GetValue(renderer)!;
-            object primary = typeof(WorkerPool).GetField("_primary", fields)!.GetValue(pool)!;
+            object scheduler = typeof(WorkerPool).GetField("_scheduler", fields)!.GetValue(pool)!;
+            object primary = typeof(WorkerScheduler).GetField("_primary", fields)!.GetValue(scheduler)!;
             var worker = (WindowsWorkerProcess)primary.GetType().GetProperty("Worker")!.GetValue(primary)!;
             return worker.ReadyFontGeneration;
         }

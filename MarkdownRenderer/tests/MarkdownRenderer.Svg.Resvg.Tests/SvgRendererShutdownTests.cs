@@ -259,10 +259,10 @@ public sealed class SvgRendererShutdownTests
         using var renderer = new ResvgMarkdownSvgRenderer();
         WorkerPool workers = (WorkerPool)typeof(ResvgMarkdownSvgRenderer)
             .GetField("_workers", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(renderer)!;
-        object admissionGate = typeof(WorkerPool)
-            .GetField("_stateLock", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(workers)!;
-        FieldInfo admittedIdentity = typeof(WorkerPool)
-            .GetField("_nextDocumentId", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        object scheduler = typeof(WorkerPool)
+            .GetField("_scheduler", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(workers)!;
+        object admissionGate = typeof(WorkerScheduler)
+            .GetField("_stateLock", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(scheduler)!;
         byte[] source = "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='8'/>"u8.ToArray();
         Task<IMarkdownSvgDocument>? open = null;
 
@@ -275,7 +275,7 @@ public sealed class SvgRendererShutdownTests
         {
             open = renderer.OpenAsync(new MarkdownSvgOpenRequest(source)).AsTask();
             Assert.True(SpinWait.SpinUntil(
-                () => (long)admittedIdentity.GetValue(workers)! > 0,
+                () => workers.IssuedDocumentCount > 0,
                 TimeSpan.FromSeconds(10)), "Open did not finish preflight and reach worker admission.");
             renderer.Dispose();
             Assert.False(renderer.DisposeAsync().IsCompleted);

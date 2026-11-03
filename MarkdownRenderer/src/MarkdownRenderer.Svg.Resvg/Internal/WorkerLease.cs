@@ -1,5 +1,3 @@
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using MarkdownRenderer.Images;
 
 namespace MarkdownRenderer.Svg.Resvg.Internal;
@@ -9,7 +7,7 @@ namespace MarkdownRenderer.Svg.Resvg.Internal;
 /// the pool exactly once.
 /// </summary>
 internal sealed class WorkerLease(
-    WorkerPool owner,
+    WorkerScheduler owner,
     WorkerSlot slot,
     PendingWork pending) : IDisposable
 {

@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.Tracing;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -45,28 +44,24 @@ public sealed class WorkerSchedulingTests
     {
         int queryCount = 0;
         var policySnapshots = new ConcurrentQueue<SvgWorkerPolicySnapshot>();
-        using var pool = new WorkerPool(
-            new ResvgMarkdownSvgRendererOptions(),
-            TimeProvider.System,
+        using WorkerScheduler pool = TestWorkerSchedulers.Create(
             () =>
             {
                 Interlocked.Increment(ref queryCount);
                 throw new InvalidOperationException("Power state is unavailable for this test.");
             },
-            static (_, _) => throw new InvalidOperationException(
-                "Acquire-only scheduling must not allocate a source mapping."),
-            workerPolicyTrace: new SvgWorkerPolicyTrace(observer: policySnapshots.Enqueue));
+            new SvgWorkerPolicyTrace(observer: policySnapshots.Enqueue));
         using var queuedCancellation = new CancellationTokenSource();
         IDisposable? firstLease = null;
         IDisposable? secondLease = null;
-        Task? queuedAdmission = null;
+        Task<WorkerLease>? queuedAdmission = null;
 
         try
         {
             firstLease = await AcquireWorkerLeaseAsync(pool, CancellationToken.None);
-            Assert.Null(GetPrivateField(pool, "_secondary"));
+            AssertNoSecondaryWorker(policySnapshots);
 
-            Task pendingAdmission = InvokeAcquireAsync(pool, queuedCancellation.Token);
+            Task<WorkerLease> pendingAdmission = InvokeAcquireAsync(pool, queuedCancellation.Token);
             queuedAdmission = pendingAdmission;
             Assert.False(pendingAdmission.IsCompleted);
             Assert.Contains(policySnapshots, snapshot =>
@@ -75,13 +70,13 @@ public sealed class WorkerSchedulingTests
                 snapshot.CanUseSecondary == 0 &&
                 snapshot.ShouldStartSecondary == 0 &&
                 snapshot.VisibleRenderCount == 1);
-            Assert.Null(GetPrivateField(pool, "_secondary"));
+            AssertNoSecondaryWorker(policySnapshots);
 
             queuedCancellation.Cancel();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
                 await pendingAdmission.WaitAsync(TimeSpan.FromSeconds(5)));
             queuedAdmission = null;
-            Assert.Null(GetPrivateField(pool, "_secondary"));
+            AssertNoSecondaryWorker(policySnapshots);
 
             firstLease.Dispose();
             firstLease = null;
@@ -90,7 +85,7 @@ public sealed class WorkerSchedulingTests
             // would be dispatched first after the primary lease is released,
             // leaving this independently-owned admission pending forever.
             secondLease = await AcquireWorkerLeaseAsync(pool, CancellationToken.None);
-            Assert.Null(GetPrivateField(pool, "_secondary"));
+            AssertNoSecondaryWorker(policySnapshots);
             secondLease.Dispose();
             secondLease = null;
             Assert.True(Volatile.Read(ref queryCount) >= 3);
@@ -110,11 +105,8 @@ public sealed class WorkerSchedulingTests
                     // admission error so no task fault escapes unobserved.
                 }
 
-                if (queuedAdmission.IsCompletedSuccessfully &&
-                    queuedAdmission.GetType().GetProperty("Result")?.GetValue(queuedAdmission) is IDisposable admittedLease)
-                {
-                    admittedLease.Dispose();
-                }
+                if (queuedAdmission.IsCompletedSuccessfully)
+                    (await queuedAdmission).Dispose();
             }
             secondLease?.Dispose();
             firstLease?.Dispose();
@@ -140,35 +132,18 @@ public sealed class WorkerSchedulingTests
     }
 
     private static async Task<IDisposable> AcquireWorkerLeaseAsync(
-        WorkerPool pool,
-        CancellationToken cancellationToken)
-    {
-        Task acquire = InvokeAcquireAsync(pool, cancellationToken);
-        await acquire.WaitAsync(TimeSpan.FromSeconds(5));
-        object lease = acquire.GetType().GetProperty("Result")!.GetValue(acquire)!;
-        return Assert.IsAssignableFrom<IDisposable>(lease);
-    }
+        WorkerScheduler pool,
+        CancellationToken cancellationToken) =>
+        await InvokeAcquireAsync(pool, cancellationToken).WaitAsync(TimeSpan.FromSeconds(5));
 
-    private static Task InvokeAcquireAsync(WorkerPool pool, CancellationToken cancellationToken)
-    {
-        MethodInfo acquire = typeof(WorkerPool).GetMethod(
-            "AcquireAsync",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return (Task)acquire.Invoke(pool,
-        [
-            WorkerOperation.Render,
-            MarkdownSvgRenderPriority.Visible,
-            cancellationToken,
-            false,
-            0L,
-            false,
-            null,
-            null,
-        ])!;
-    }
+    private static Task<WorkerLease> InvokeAcquireAsync(WorkerScheduler pool, CancellationToken cancellationToken) =>
+        TestWorkerSchedulers.AcquireAsync(pool, cancellationToken);
 
-    private static object? GetPrivateField(object target, string name) =>
-        target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(target);
+    // The policy trace records every scheduling pass with visible work or a
+    // secondary slot, so a secondary that was ever created or requested shows.
+    private static void AssertNoSecondaryWorker(IEnumerable<SvgWorkerPolicySnapshot> snapshots) =>
+        Assert.DoesNotContain(snapshots, snapshot =>
+            snapshot.ShouldStartSecondary != 0 || snapshot.SecondaryReadinessState != 0);
 
     [Fact]
     public async Task RestartReleasesTheSingleProcessJobSlotBeforeStartingAnotherWorker()

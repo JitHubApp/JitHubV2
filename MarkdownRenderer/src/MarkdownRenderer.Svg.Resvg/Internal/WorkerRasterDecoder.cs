@@ -1,9 +1,21 @@
+using System.Runtime.InteropServices;
 using MarkdownRenderer.Images;
 
 namespace MarkdownRenderer.Svg.Resvg.Internal;
 
-internal sealed partial class WorkerPool
+/// <summary>
+/// Decodes one untrusted raster image in the isolated worker into a mapping
+/// that carries both the encoded input and the decoded output.
+/// </summary>
+internal sealed class WorkerRasterDecoder(
+    WorkerScheduler scheduler,
+    WorkerRequestFactory requests,
+    ResvgMarkdownSvgRendererOptions options)
 {
+    private readonly WorkerScheduler _scheduler = scheduler;
+    private readonly WorkerRequestFactory _requests = requests;
+    private readonly ResvgMarkdownSvgRendererOptions _options = options;
+
     internal async Task<WorkerRenderResult> DecodeRasterAsync(
         MarkdownRasterDecodeRequest request,
         RasterDecodeGeometry geometry,
@@ -19,10 +31,10 @@ internal sealed partial class WorkerPool
             MarkdownSvgRenderPriority priority = request.Priority == MarkdownRasterDecodePriority.Visible
                 ? MarkdownSvgRenderPriority.Visible : MarkdownSvgRenderPriority.Overscan;
             // No source copy or output section exists while this request is queued.
-            lease = await AcquireAsync(WorkerOperation.RasterDecode, priority, cancellationToken).ConfigureAwait(false);
+            lease = await _scheduler.AcquireAsync(WorkerOperation.RasterDecode, priority, cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             contentAdmissionGuard();
-            WindowsWorkerProcess worker = await EnsureWorkerAsync(lease
+            WindowsWorkerProcess worker = await _scheduler.EnsureWorkerAsync(lease
                 , 0, 0, 0, 0, 0
                 ).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
@@ -32,7 +44,7 @@ internal sealed partial class WorkerPool
             cancellationToken.ThrowIfCancellationRequested();
             contentAdmissionGuard();
 
-            WorkerRequest wireRequest = new(WorkerOperation.RasterDecode, NextRequestId(),
+            WorkerRequest wireRequest = new(WorkerOperation.RasterDecode, _requests.NextRequestId(),
                 worker.NonceLow, worker.NonceHigh, 0, hash, request.EncodedBytes.Length,
                 geometry.OutputLength, request.TargetWidthPixels, request.TargetHeightPixels,
                 null, string.Empty, MarkdownSvgColorScheme.Light, null,
@@ -54,7 +66,7 @@ internal sealed partial class WorkerPool
             {
                 WorkerResponseValidation.QuarantineContentBeforeWorkerRelease(null, contentFailureCallback,
                     cancellationToken.IsCancellationRequested, false, 0, 0,
-                    () => Invalidate(lease.Slot, worker));
+                    () => _scheduler.Invalidate(lease.Slot, worker));
                 cancellationToken.ThrowIfCancellationRequested();
                 throw;
             }
