@@ -1,12 +1,17 @@
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Controls.Focus;
 using MarkdownRenderer.Controls.Input;
+using MarkdownRenderer.Controls.Selection;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Selection;
+using MarkdownRenderer.Theming;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
+using Windows.Foundation;
 
 namespace MarkdownRenderer.Controls;
 
@@ -15,16 +20,23 @@ namespace MarkdownRenderer.Controls;
 /// notifications, keyboard-focus queries for virtual children, and focus,
 /// selection and activation requested by automation clients.
 /// </summary>
-internal sealed class RendererAutomation
+internal sealed class RendererAutomation : IMarkdownAutomationHost
 {
     private readonly MarkdownRendererControl _control;
     private readonly MarkdownViewLifetime _lifetime;
+    private readonly MarkdownViewSurface _surface;
+    private readonly MarkdownViewport _viewport;
+    private readonly PublishedLayout _published;
+    private readonly MarkdownAutomationDocumentGeneration _documentGenerations;
+    private readonly RendererLocalization _localization;
     private readonly SelectionController _selection;
     private readonly KeyboardFocusModel _focus;
     private readonly FocusRingPresenter _focusRing;
     private readonly FocusedItemCommit _focusCommit;
     private readonly RendererFocusEntry _focusEntry;
     private readonly LinkActivation _links;
+    private readonly SelectionHandlesPresenter _handles;
+    private readonly HorizontalOverflowScrollVisuals _overflowScroll;
 
     // Stable per-LinkRun automation peer cache. UIA traversals re-request the
     // children of a block frequently; returning fresh peers each time loses
@@ -37,33 +49,59 @@ internal sealed class RendererAutomation
     internal RendererAutomation(
         MarkdownRendererControl control,
         MarkdownViewLifetime lifetime,
+        MarkdownViewSurface surface,
+        MarkdownViewport viewport,
+        PublishedLayout published,
+        MarkdownAutomationDocumentGeneration documentGenerations,
+        RendererLocalization localization,
         SelectionController selection,
         KeyboardFocusModel focus,
         FocusRingPresenter focusRing,
         FocusedItemCommit focusCommit,
         RendererFocusEntry focusEntry,
-        LinkActivation links)
+        LinkActivation links,
+        SelectionHandlesPresenter handles,
+        HorizontalOverflowScrollVisuals overflowScroll)
     {
         _control = control;
         _lifetime = lifetime;
+        _surface = surface;
+        _viewport = viewport;
+        _published = published;
+        _documentGenerations = documentGenerations;
+        _localization = localization;
         _selection = selection;
         _focus = focus;
         _focusRing = focusRing;
         _focusCommit = focusCommit;
         _focusEntry = focusEntry;
         _links = links;
+        _handles = handles;
+        _overflowScroll = overflowScroll;
     }
 
     /// <summary>The control's existing document peer, without creating one.</summary>
     internal MarkdownAutomationPeer? FindPeer() =>
         FrameworkElementAutomationPeer.FromElement(_control) as MarkdownAutomationPeer;
 
+    int IMarkdownAutomationHost.CultureLcid => _localization.Culture.LCID;
+
+    long IMarkdownAutomationHost.DocumentGeneration => _documentGenerations.CurrentGeneration;
+
+    ThemeSnapshot? IMarkdownAutomationHost.Theme => _published.Theme;
+
+    DocumentRange IMarkdownAutomationHost.SelectionRange => _selection.Range;
+
+    double IMarkdownAutomationHost.ScrollOffsetY => _surface.Scroll?.VerticalOffset ?? 0;
+
+    bool IMarkdownAutomationHost.TryGetVisibleDocumentRect(out Rect rect) => _viewport.TryGetRect(out rect);
+
     /// <summary>The control's document peer, created when none exists yet.</summary>
     internal MarkdownAutomationPeer? GetOrCreatePeer() =>
         FrameworkElementAutomationPeer.FromElement(_control) as MarkdownAutomationPeer
         ?? FrameworkElementAutomationPeer.CreatePeerForElement(_control) as MarkdownAutomationPeer;
 
-    internal MarkdownLinkPeer GetOrCreateLinkPeer(MarkdownBlockPeer parent, LinkRun run)
+    MarkdownLinkPeer IMarkdownAutomationHost.GetOrCreateLinkPeer(MarkdownBlockPeer parent, LinkRun run)
     {
         // GetValue is atomic for concurrent UIA callers and avoids the
         // TryGetValue+Add race. These caches are cleared when the root peer
@@ -72,7 +110,7 @@ internal sealed class RendererAutomation
         return _linkPeerCache.GetValue(run, r => new MarkdownLinkPeer(_control, parent, r));
     }
 
-    internal void InvalidateChildPeerCaches()
+    void IMarkdownAutomationHost.InvalidateChildPeerCaches()
     {
         _linkPeerCache.Clear();
         _linkedImagePeerCache.Clear();
@@ -94,12 +132,12 @@ internal sealed class RendererAutomation
         FrameworkElementAutomationPeer.FromElement(_control)?.InvalidatePeer();
     }
 
-    internal MarkdownLinkedImagePeer GetOrCreateLinkedImagePeer(
+    MarkdownLinkedImagePeer IMarkdownAutomationHost.GetOrCreateLinkedImagePeer(
         MarkdownBlockPeer parent,
         InlineImageRun run) =>
         _linkedImagePeerCache.GetValue(run, r => new MarkdownLinkedImagePeer(_control, parent, r));
 
-    internal bool TryGetLinkedImagePeer(
+    bool IMarkdownAutomationHost.TryGetLinkedImagePeer(
         InlineImageRun run,
         out MarkdownLinkedImagePeer peer)
     {
@@ -114,24 +152,24 @@ internal sealed class RendererAutomation
         return false;
     }
 
-    internal bool IsKeyboardFocusOnLink(LinkRun run)
+    bool IMarkdownAutomationHost.IsKeyboardFocusOnLink(LinkRun run)
     {
         return _focus.TryGetFocusedLinkedAtomic(out _, out InlineRun linkedRun) &&
                linkedRun is LinkRun focusedRun &&
                LinkTargets.AreEquivalentLinks(focusedRun, run);
     }
 
-    internal bool IsKeyboardFocusOnLinkedImage(InlineImageRun run) =>
+    bool IMarkdownAutomationHost.IsKeyboardFocusOnLinkedImage(InlineImageRun run) =>
         _focus.TryGetFocusedLinkedAtomic(out _, out InlineRun linkedRun) &&
         linkedRun is InlineImageRun focusedRun &&
         ReferenceEquals(focusedRun, run);
 
-    internal bool IsKeyboardFocusOnLinkedInlineVectorScene(InlineVectorSceneRun run) =>
+    bool IMarkdownAutomationHost.IsKeyboardFocusOnLinkedInlineVectorScene(InlineVectorSceneRun run) =>
         _focus.TryGetFocusedLinkedAtomic(out _, out InlineRun linkedRun) &&
         linkedRun is InlineVectorSceneRun focusedRun &&
         ReferenceEquals(focusedRun, run);
 
-    internal bool IsKeyboardFocusOnVectorSemantic(
+    bool IMarkdownAutomationHost.IsKeyboardFocusOnVectorSemantic(
         Layout.Boxes.VectorSceneBox box,
         int semanticIndex) =>
         _control.FocusState != FocusState.Unfocused &&
@@ -139,21 +177,21 @@ internal sealed class RendererAutomation
         ReferenceEquals(focusedBox, box) &&
         focusedSemanticIndex == semanticIndex;
 
-    internal bool IsKeyboardFocusOnHorizontalOverflow(IHorizontalOverflowBox overflow) =>
+    bool IMarkdownAutomationHost.IsKeyboardFocusOnHorizontalOverflow(IHorizontalOverflowBox overflow) =>
         _control.FocusState != FocusState.Unfocused &&
         _focus.TryGetFocusedHorizontalOverflow(out var focusedOverflow) &&
         ReferenceEquals(focusedOverflow, overflow);
 
-    internal bool IsHorizontalOverflowKeyboardFocusable(IHorizontalOverflowBox overflow) =>
+    bool IMarkdownAutomationHost.IsHorizontalOverflowKeyboardFocusable(IHorizontalOverflowBox overflow) =>
         _focus.TryGetIndexForHorizontalOverflow(overflow, out _);
 
-    internal bool HasKeyboardFocusOnVirtualChild =>
+    bool IMarkdownAutomationHost.HasKeyboardFocusOnVirtualChild =>
         _control.FocusState != FocusState.Unfocused &&
         (_focus.TryGetFocusedLinkedAtomic(out _, out _) ||
          _focus.TryGetFocusedVectorSemantic(out _, out _) ||
          _focus.TryGetFocusedHorizontalOverflow(out _));
 
-    internal bool FocusLinkedAtomic(InlineRun run)
+    bool IMarkdownAutomationHost.FocusLinkedAtomic(InlineRun run)
     {
         if (!_focus.TryGetIndexForLinkedAtomic(run, out var index))
             return _control.Focus(FocusState.Programmatic);
@@ -161,7 +199,7 @@ internal sealed class RendererAutomation
         return _focusCommit.FocusFromAutomation(index);
     }
 
-    internal bool FocusVectorSemantic(
+    bool IMarkdownAutomationHost.FocusVectorSemantic(
         Layout.Boxes.VectorSceneBox box,
         int semanticIndex)
     {
@@ -171,7 +209,7 @@ internal sealed class RendererAutomation
         return _focusCommit.FocusFromAutomation(index);
     }
 
-    internal bool FocusHorizontalOverflow(IHorizontalOverflowBox overflow)
+    bool IMarkdownAutomationHost.FocusHorizontalOverflow(IHorizontalOverflowBox overflow)
     {
         if (!_focus.TryGetIndexForHorizontalOverflow(overflow, out int index))
             return false;
@@ -179,7 +217,7 @@ internal sealed class RendererAutomation
         return _focusCommit.FocusFromAutomation(index);
     }
 
-    internal bool FocusDocument()
+    bool IMarkdownAutomationHost.FocusDocument()
     {
         _focusEntry.SuppressNextPromotion();
         _focus.ClearFocus();
@@ -187,14 +225,14 @@ internal sealed class RendererAutomation
         return _focusEntry.FocusWithoutPromotion();
     }
 
-    internal void ActivateLinkedAtomic(InlineRun run)
+    void IMarkdownAutomationHost.ActivateLinkedAtomic(InlineRun run)
     {
         if (LinkTargets.TryCreateLinkedAtomicTarget(run, out LinkTarget target))
             _links.ActivateFromAutomation(target);
     }
 
     /// <summary>Activates a host-approved vector-scene link/action from UI Automation.</summary>
-    internal void ActivateVectorSceneLink(
+    void IMarkdownAutomationHost.ActivateVectorSceneLink(
         Layout.Boxes.VectorSceneBox box,
         int semanticIndex)
     {
@@ -211,13 +249,24 @@ internal sealed class RendererAutomation
             link.External));
     }
 
-    internal void Select(DocumentRange range)
+    void IMarkdownAutomationHost.Select(DocumentRange range)
     {
         if (!_control.IsSelectionEnabled) return;
         var normalized = range.Normalized();
         _selection.SetAnchor(normalized.Start);
         _selection.ExtendTo(normalized.End);
     }
+
+    void IMarkdownAutomationHost.ClearSelection() => _selection.Clear();
+
+    void IMarkdownAutomationHost.AppendVisibleSelectionHandlePeers(IList<AutomationPeer> peers) =>
+        _handles.AppendVisibleAutomationPeers(peers);
+
+    void IMarkdownAutomationHost.ScrollHorizontalOverflow(IHorizontalOverflowBox overflow, ScrollAmount amount) =>
+        _overflowScroll.ScrollForAutomation(overflow, amount);
+
+    void IMarkdownAutomationHost.SetHorizontalOverflowPercent(IHorizontalOverflowBox overflow, double percent) =>
+        _overflowScroll.SetPercentForAutomation(overflow, percent);
 
     /// <summary>Raises one selection-changed automation event per dispatcher turn.</summary>
     internal void QueueSelectionChanged()

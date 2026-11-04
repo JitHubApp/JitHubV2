@@ -8,7 +8,6 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
 using RebuildReason = MarkdownRenderer.Controls.MarkdownRebuildCoordinatorReason;
-using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Hosting;
@@ -127,7 +126,9 @@ internal sealed class EmbedHosts :
     Style? ICodeBlockCopyButtonHost.CodeBlockCopyButtonStyle => _control.CodeBlockCopyButtonStyle;
 
     string ICodeBlockCopyButtonHost.ResolveCodeBlockCopyButtonLabel(bool copied) =>
-        copied ? ResolvedCodeBlockCopiedButtonLabel : _control.ResolvedCodeBlockCopyButtonLabel;
+        Owners.Localization.ResolveCodeBlockCopyLabel(
+            copied ? _control.CodeBlockCopiedButtonLabel : _control.CodeBlockCopyButtonLabel,
+            copied);
 
     object ICodeBlockHighlightingHost.DocumentOwner => _control;
 
@@ -157,9 +158,4 @@ internal sealed class EmbedHosts :
 
         Owners.ImagePlans.Add(image);
     }
-
-    private string ResolvedCodeBlockCopiedButtonLabel =>
-        string.IsNullOrWhiteSpace(_control.CodeBlockCopiedButtonLabel)
-            ? Owners.Localization.Resolve(MarkdownStringKeys.CodeCopied, MarkdownLocalizedStrings.CodeBlockCopied)
-            : _control.CodeBlockCopiedButtonLabel!;
 }

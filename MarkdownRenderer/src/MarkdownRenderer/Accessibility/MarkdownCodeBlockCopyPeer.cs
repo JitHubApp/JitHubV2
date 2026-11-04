@@ -48,7 +48,7 @@ internal sealed partial class MarkdownCodeBlockCopyPeer : FrameworkElementAutoma
     protected override string GetNameCore()
     {
         EnsureCurrentDocument();
-        return _owner.ResolvedCodeBlockCopyButtonLabel;
+        return _owner.Localization.ResolveCodeBlockCopyLabel(_owner.CodeBlockCopyButtonLabel, copied: false);
     }
 
     protected override string GetAutomationIdCore()
@@ -60,7 +60,7 @@ internal sealed partial class MarkdownCodeBlockCopyPeer : FrameworkElementAutoma
     protected override int GetCultureCore()
     {
         EnsureCurrentDocument();
-        return _owner.AutomationCultureLcid;
+        return _owner.AutomationHost.CultureLcid;
     }
 
     protected override bool IsControlElementCore()

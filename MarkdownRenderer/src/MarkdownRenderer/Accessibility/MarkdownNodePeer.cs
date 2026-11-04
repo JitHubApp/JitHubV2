@@ -78,7 +78,7 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
         if (LinkedInlineVectorScene is not null)
             return true;
         if (HorizontalOverflow is { } overflow)
-            return _owner.IsHorizontalOverflowKeyboardFocusable(overflow);
+            return _owner.AutomationHost.IsHorizontalOverflowKeyboardFocusable(overflow);
         // Ordinary semantic peers share the renderer as their FrameworkElement
         // owner, but they are virtual structure rather than independent focus
         // targets. Never inherit the owner's focusability.
@@ -90,14 +90,14 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
         EnsureCurrentDocument();
         if (IsVectorSemanticNode && _node.VectorSceneBox is { } vector)
         {
-            return _owner.IsKeyboardFocusOnVectorSemantic(vector, _node.VectorSemanticIndex);
+            return _owner.AutomationHost.IsKeyboardFocusOnVectorSemantic(vector, _node.VectorSemanticIndex);
         }
 
         if (LinkedInlineVectorScene is { } inlineScene)
-            return _owner.IsKeyboardFocusOnLinkedInlineVectorScene(inlineScene);
+            return _owner.AutomationHost.IsKeyboardFocusOnLinkedInlineVectorScene(inlineScene);
 
         if (HorizontalOverflow is { } overflow)
-            return _owner.IsKeyboardFocusOnHorizontalOverflow(overflow);
+            return _owner.AutomationHost.IsKeyboardFocusOnHorizontalOverflow(overflow);
 
         return false;
     }
@@ -110,21 +110,21 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
             if (MarkdownVectorSemanticPolicy.IsKeyboardFocusable(_node.VectorSemanticFlags) &&
                 _node.VectorSceneBox is { } vector)
             {
-                _owner.FocusVectorSemanticFromAutomation(vector, _node.VectorSemanticIndex);
+                _owner.AutomationHost.FocusVectorSemantic(vector, _node.VectorSemanticIndex);
             }
             return;
         }
 
         if (LinkedInlineVectorScene is { } inlineScene)
         {
-            _owner.FocusInlineVectorSceneFromAutomation(inlineScene);
+            _owner.AutomationHost.FocusLinkedAtomic(inlineScene);
             return;
         }
 
         if (HorizontalOverflow is { } overflow &&
-            _owner.IsHorizontalOverflowKeyboardFocusable(overflow))
+            _owner.AutomationHost.IsHorizontalOverflowKeyboardFocusable(overflow))
         {
-            _owner.FocusHorizontalOverflowFromAutomation(overflow);
+            _owner.AutomationHost.FocusHorizontalOverflow(overflow);
             return;
         }
 
@@ -171,7 +171,7 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
     protected override int GetCultureCore()
     {
         EnsureCurrentDocument();
-        return _owner.AutomationCultureLcid;
+        return _owner.AutomationHost.CultureLcid;
     }
 
     protected override int GetLevelCore()
@@ -423,7 +423,7 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
         var overflow = HorizontalOverflow;
         if (overflow is null || !overflow.CanScrollHorizontally)
             throw new System.InvalidOperationException("The markdown block has no horizontal overflow.");
-        _owner.ScrollHorizontalOverflowForAutomation(overflow, horizontalAmount);
+        _owner.AutomationHost.ScrollHorizontalOverflow(overflow, horizontalAmount);
     }
 
     void IScrollProvider.SetScrollPercent(double horizontalPercent, double verticalPercent)
@@ -439,7 +439,7 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
         var overflow = HorizontalOverflow;
         if (overflow is null || !overflow.CanScrollHorizontally)
             throw new System.InvalidOperationException("The markdown block has no horizontal overflow.");
-        _owner.SetHorizontalOverflowPercentForAutomation(overflow, horizontalPercent);
+        _owner.AutomationHost.SetHorizontalOverflowPercent(overflow, horizontalPercent);
     }
 
     private bool IsVectorSemanticNode =>
@@ -532,13 +532,13 @@ internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
         EnsureCurrentDocument();
         if (LinkedInlineVectorScene is { } inlineScene)
         {
-            _owner.RaiseInlineVectorSceneClickFromAutomation(inlineScene);
+            _owner.AutomationHost.ActivateLinkedAtomic(inlineScene);
             return;
         }
 
         if (!IsVectorSemanticInvokable || _node.VectorSceneBox is null)
             throw new System.InvalidOperationException("This semantic item is not invokable.");
-        _owner.RaiseVectorSceneLinkClickFromAutomation(_node.VectorSceneBox, _node.VectorSemanticIndex);
+        _owner.AutomationHost.ActivateVectorSceneLink(_node.VectorSceneBox, _node.VectorSemanticIndex);
     }
 
     ToggleState IToggleProvider.ToggleState

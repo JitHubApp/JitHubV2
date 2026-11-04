@@ -57,11 +57,6 @@
       "reason": "Vendored third-party source, kept as upstream wrote it so it can be compared with its release."
     },
     {
-      "path": "src/MarkdownRenderer/Controls/MarkdownRendererControl.cs",
-      "lines": 1099,
-      "reason": "Composition root: dependency properties, the explicit host adapters its owners call, and the commit, recovery and lifecycle sequencing across those owners. Structure step 3d moved its logic into owners (7,795 to 3,825 lines); this cap holds that."
-    },
-    {
       "path": "src/MarkdownRenderer/Layout/Boxes/ImageBox.cs",
       "lines": 4545,
       "reason": "Predates the size rule; split by responsibility in a later structure step."

@@ -51,7 +51,7 @@ internal sealed class MarkdownAutomationTextPattern
             return Array.Empty<ITextRangeProvider>();
 
         var doc = _root.GetSemanticDocument();
-        var range = _owner.CurrentSelectionRange;
+        var range = _owner.AutomationHost.SelectionRange;
         if (!range.IsEmpty)
         {
             var normalized = range.Normalized();
@@ -66,7 +66,7 @@ internal sealed class MarkdownAutomationTextPattern
     internal ITextRangeProvider[] GetVisibleRanges()
     {
         var doc = _root.GetCurrentTextRangeDocument(out long generation);
-        if (!_owner.TryGetVisibleDocumentRect(out var viewport))
+        if (!_owner.AutomationHost.TryGetVisibleDocumentRect(out var viewport))
         {
             return new ITextRangeProvider[]
             {

@@ -1,10 +1,8 @@
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -14,7 +12,6 @@ using RebuildReason = MarkdownRenderer.Controls.MarkdownRebuildCoordinatorReason
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Diagnostics;
-using MarkdownRenderer.Document;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
@@ -45,6 +42,12 @@ namespace MarkdownRenderer.Controls;
 /// Hosts a <see cref="CanvasVirtualControl"/> for paint and a sibling
 /// <see cref="Canvas"/> overlay for hosted WinUI embeds.
 /// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because it is the composition root: the
+/// public dependency properties, events and methods, the constructor that
+/// builds each owner in dependency order, and disposal. Its behavior lives in
+/// those owners; UI Automation peers reach it through <see cref="AutomationHost"/>.
+/// </remarks>
 public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsyncDisposable,
     IMarkdownPerformanceLegacyParser, IRendererEventSink
 {
@@ -554,59 +557,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
             .WithCodeBlockWrappingMode(codeBlockWrappingMode)
             .BuildScrollView();
 
-    internal MarkdownLinkPeer GetOrCreateLinkPeer(MarkdownBlockPeer parent, LinkRun run) =>
-        _automation.GetOrCreateLinkPeer(parent, run);
-
-    internal void InvalidateAutomationChildPeerCaches() => _automation.InvalidateChildPeerCaches();
-
-    internal MarkdownLinkedImagePeer GetOrCreateLinkedImagePeer(MarkdownBlockPeer parent, InlineImageRun run) =>
-        _automation.GetOrCreateLinkedImagePeer(parent, run);
-
-    internal bool TryGetLinkedImagePeer(InlineImageRun run, out MarkdownLinkedImagePeer peer) =>
-        _automation.TryGetLinkedImagePeer(run, out peer);
-
-    internal bool IsKeyboardFocusOnLink(LinkRun run) => _automation.IsKeyboardFocusOnLink(run);
-
-    internal bool IsKeyboardFocusOnLinkedImage(InlineImageRun run) => _automation.IsKeyboardFocusOnLinkedImage(run);
-
-    internal bool IsKeyboardFocusOnLinkedInlineVectorScene(InlineVectorSceneRun run) =>
-        _automation.IsKeyboardFocusOnLinkedInlineVectorScene(run);
-
-    internal bool IsKeyboardFocusOnVectorSemantic(Layout.Boxes.VectorSceneBox box, int semanticIndex) =>
-        _automation.IsKeyboardFocusOnVectorSemantic(box, semanticIndex);
-
-    internal bool IsKeyboardFocusOnHorizontalOverflow(IHorizontalOverflowBox overflow) =>
-        _automation.IsKeyboardFocusOnHorizontalOverflow(overflow);
-
-    internal bool IsHorizontalOverflowKeyboardFocusable(IHorizontalOverflowBox overflow) =>
-        _automation.IsHorizontalOverflowKeyboardFocusable(overflow);
-
-    internal bool HasKeyboardFocusOnVirtualChild => _automation.HasKeyboardFocusOnVirtualChild;
-
-    internal bool FocusLinkFromAutomation(LinkRun run) => _automation.FocusLinkedAtomic(run);
-
-    internal bool FocusLinkedImageFromAutomation(InlineImageRun run) => _automation.FocusLinkedAtomic(run);
-
-    internal bool FocusInlineVectorSceneFromAutomation(InlineVectorSceneRun run) => _automation.FocusLinkedAtomic(run);
-
-    internal bool FocusVectorSemanticFromAutomation(Layout.Boxes.VectorSceneBox box, int semanticIndex) =>
-        _automation.FocusVectorSemantic(box, semanticIndex);
-
-    internal bool FocusHorizontalOverflowFromAutomation(IHorizontalOverflowBox overflow) =>
-        _automation.FocusHorizontalOverflow(overflow);
-
-    internal bool FocusDocumentFromAutomation() => _automation.FocusDocument();
-
-    /// <summary>Invoked by <see cref="MarkdownLinkPeer.Invoke"/> so UIA clients
-    /// can activate a link the same way as pointer interaction. UIA callers
-    /// can arrive on the RPC thread, so marshal back to the UI dispatcher
-    /// before raising the public event.</summary>
-    internal void RaiseLinkClickFromAutomation(LinkRun run) => _automation.ActivateLinkedAtomic(run);
-
-    internal void RaiseLinkedImageClickFromAutomation(InlineImageRun run) => _automation.ActivateLinkedAtomic(run);
-
-    internal void RaiseInlineVectorSceneClickFromAutomation(InlineVectorSceneRun run) =>
-        _automation.ActivateLinkedAtomic(run);
+    /// <summary>What UI Automation peers ask of this renderer.</summary>
+    internal IMarkdownAutomationHost AutomationHost => _automation;
 
     /// <summary>Raised when the user activates a non-internal markdown link.</summary>
     public event EventHandler<MarkdownLinkClickEventArgs>? LinkClick;
@@ -661,13 +613,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// </summary>
     public event EventHandler? EmbedsRealizationChanged;
 
-    /// <summary>
-    /// Current vertical offset owned by this control. An ancestor-owned
-    /// effective viewport is already represented by the control's transform to
-    /// screen coordinates and must not be subtracted a second time.
-    /// </summary>
-    internal double CurrentScrollOffsetY => _surface.Scroll?.VerticalOffset ?? 0;
-
     internal bool OwnsScrollViewport => _surface.OwnsScrollViewport;
 
     /// <summary>
@@ -690,17 +635,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <summary>Releases device-bound snapshot resources before a deliberate Win2D device replacement.</summary>
     internal void PrepareForSyntheticDeviceReset() => _deviceReset.Prepare();
 
-    /// <summary>Raises a host-approved vector-scene link/action from UI Automation.</summary>
-    internal void RaiseVectorSceneLinkClickFromAutomation(Layout.Boxes.VectorSceneBox box, int semanticIndex) =>
-        _automation.ActivateVectorSceneLink(box, semanticIndex);
-
-    /// <summary>
-    /// Offset applied between the scroll viewport and document content. The
-    /// renderer pins short documents to the top of the viewport, so this is
-    /// normally zero.
-    /// </summary>
-    internal double CurrentContentOffsetY => 0;
-
     /// <inheritdoc />
     protected override AutomationPeer OnCreateAutomationPeer() => new MarkdownAutomationPeer(this);
 
@@ -710,17 +644,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// May be null before the first layout completes.
     /// </summary>
     internal LayoutSnapshot? CurrentSnapshot => _published.Snapshot;
-    internal long CurrentAutomationDocumentGeneration =>
-        _automationDocumentGenerations.CurrentGeneration;
-
-    /// <summary>
-    /// Last committed theme snapshot. Used by automation peers to expose UIA
-    /// text attributes that match the pixels currently painted on the canvas.
-    /// </summary>
-    internal Theming.ThemeSnapshot? CurrentThemeSnapshot => _published.Theme;
-
-    /// <summary>Effective document-language LCID exposed through UI Automation.</summary>
-    internal int AutomationCultureLcid => _localization.Culture.LCID;
 
     /// <summary>UI Automation's scroll pattern and ScrollIntoView requests.</summary>
     internal AutomationScrolling AutomationScrolling => _automationScrolling;
@@ -737,24 +660,11 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     internal void SetDisclosureExpanded(LinkRun run, bool expanded) => _documentInputs.SetDisclosureExpanded(run, expanded);
 
-    internal string ResolvedCodeBlockCopyButtonLabel =>
-        string.IsNullOrWhiteSpace(CodeBlockCopyButtonLabel)
-            ? _localization.Resolve(MarkdownStringKeys.CopyCode, MarkdownLocalizedStrings.CodeBlockCopyAutomationName)
-            : CodeBlockCopyButtonLabel!;
-
     internal void CopyCodeBlockFromAutomation(Layout.Boxes.CodeBlockBox box) => _codeBlockClipboard.CopyFromAutomation(box);
-
-    internal DocumentRange CurrentSelectionRange => _selection.Range;
-
-    internal void SelectAutomationRange(DocumentRange range) => _automation.Select(range);
-
-    internal void ClearAutomationSelection() => _selection.Clear();
 
     internal VisibleImageReadiness ImageReadiness => _imageReadiness;
 
     internal DeferredSceneReadiness DeferredSceneReadiness => _deferredScenes;
-
-    internal bool TryGetVisibleDocumentRect(out Windows.Foundation.Rect rect) => _viewport.TryGetRect(out rect);
 
     /// <summary>
     /// Initializes a renderer with either an owned scroll viewport or an
@@ -843,7 +753,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _lazyLayout = new LazyLayoutRealization(layoutHosts, _lifetime, _published, _layoutCommit, layoutPublisher, _surface, _viewport, recoveryClock, vectorCapacity, pointerInput, focus, focusCommit);
         _blockScroll = new BlockScrollNavigation(_lifetime, _published, _surface, _viewport, _lazyLayout, reveal);
         var links = new LinkActivation(pipelineHosts, _blockScroll);
-        _automation = new RendererAutomation(this, _lifetime, _selection, focus, focusRing, focusCommit, focusEntry, links);
+        _automation = new RendererAutomation(this, _lifetime, _surface, _viewport, _published, _automationDocumentGenerations, _localization, _selection, focus, focusRing, focusCommit, focusEntry, links, _handles, _overflowScroll);
         _deferredScenes = new DeferredSceneReadiness(pipelineHosts, _lifetime, _published, _viewport, _rebuild);
         _imageReadiness = new VisibleImageReadiness(_published, imagePlans, _viewport);
         _painter = new CanvasTilePainter(layoutHosts, _lifetime, _published, _surface, _lazyLayout, _deviceRecovery, _rebuild, _deferredScenes);
@@ -1076,19 +986,6 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <summary>Re-runs the visible deferred-scene probe after the next successful paint.</summary>
     internal void RequestDeferredSceneProbeAfterPaint()
         => _painter.RequestDeferredSceneProbe();
-
-    internal void ScrollHorizontalOverflowForAutomation(
-        IHorizontalOverflowBox target,
-        ScrollAmount amount)
-        => _overflowScroll.ScrollForAutomation(target, amount);
-
-    internal void SetHorizontalOverflowPercentForAutomation(
-        IHorizontalOverflowBox target,
-        double percent)
-        => _overflowScroll.SetPercentForAutomation(target, percent);
-
-    internal void AppendVisibleSelectionHandleAutomationPeers(IList<AutomationPeer> peers)
-        => _handles.AppendVisibleAutomationPeers(peers);
 
     /// <summary>
     /// Scrolls the document so the block with <paramref name="blockIndex"/>
