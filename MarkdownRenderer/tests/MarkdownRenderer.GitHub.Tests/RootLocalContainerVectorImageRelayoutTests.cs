@@ -874,7 +874,7 @@ public sealed class RootLocalContainerVectorImageRelayoutTests
     {
         await DisplaySizedRasterDecodeTests.WaitForLoadAsync(image).WaitAsync(AsyncDeadline);
         await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-            () => image.ActiveImageWorkCountForTests == 0).WaitAsync(AsyncDeadline);
+            () => image.GetWorkState().ActiveWorkCount == 0).WaitAsync(AsyncDeadline);
         Assert.NotNull(image.Bitmap);
     }
 
@@ -886,7 +886,7 @@ public sealed class RootLocalContainerVectorImageRelayoutTests
 
     private static int GetLeaseReferenceCount(SharedCanvasBitmapCache.Lease lease)
     {
-        object entry = Assert.IsAssignableFrom<SharedCanvasBitmapCache.Entry>(
+        object entry = Assert.IsAssignableFrom<SharedCanvasBitmapCacheEntry>(
             ReadRawField(lease, "_entry"));
         return Assert.IsType<int>(ReadRawField(entry, "_referenceCount"));
     }

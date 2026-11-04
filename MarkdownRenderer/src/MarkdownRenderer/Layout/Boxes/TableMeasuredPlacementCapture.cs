@@ -270,7 +270,7 @@ internal static class TableMeasuredPlacementCapture
         Thickness bodyPadding,
         bool allowMeasuredVectorPlacement)
     {
-        const int MaximumTableImagePairs = ImageBox.MaximumMeasuredPlacementTransferBatchCount;
+        const int MaximumTableImagePairs = ImageMeasuredPlacementTransfer.MaximumBatchCount;
         if (cellCount + 1 > PrivateRasterPlacementTree.MaximumNodes)
             return false;
 
@@ -356,7 +356,7 @@ internal static class TableMeasuredPlacementCapture
         int textLength = source.PrivateRasterPlacementTextLength;
         if (cellRunCount < runCount || imageCount < 0 || textLength < 0 ||
             cellRunCount > InlineContainerBox.MaximumPrivateRasterPlacementRuns - totalRuns ||
-            imageCount > ImageBox.MaximumMeasuredPlacementTransferBatchCount - totalImages ||
+            imageCount > ImageMeasuredPlacementTransfer.MaximumBatchCount - totalImages ||
             textLength > InlineContainerBox.MaximumPrivateRasterPlacementTextLength - totalTextLength ||
             !PrivateRasterPlacementTree.TryAccumulateStyleKeyCopyEntries(
                 ref totalStyleKeyEntries, styleKeyEntries) ||

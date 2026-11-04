@@ -25,7 +25,7 @@ public sealed class ImageBitmapOutputSizingTests
     [Fact]
     public async Task AdmissionBaselineWaitsForPreviousOutputOwnerToDrain()
     {
-        BitmapOutputAdmission admission = BitmapOutputAdmission.Shared;
+        BitmapOutputAdmission admission = ImageResourceScope.Shared.BitmapOutput;
         await CaptureCleanAdmissionBaselineAsync(admission);
 
         Assert.True(admission.TryReserve(
@@ -53,7 +53,7 @@ public sealed class ImageBitmapOutputSizingTests
     [Fact]
     public async Task OffscreenPolicyBoundsRasterEvenWhenDisplaySizedDecodeIsDisabled()
     {
-        BitmapOutputAdmission admission = BitmapOutputAdmission.Shared;
+        BitmapOutputAdmission admission = ImageResourceScope.Shared.BitmapOutput;
         long baseline = await CaptureCleanAdmissionBaselineAsync(admission);
         int sourceWidth = Environment.Is64BitProcess ? 4096 : 2048;
         int sourceHeight = 1025;
@@ -69,7 +69,7 @@ public sealed class ImageBitmapOutputSizingTests
                 MaxRasterOutputPixels = sourcePixels,
             });
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1),
+            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
             "https://images.example/bounded-without-display-size.png",
             string.Empty);
 
@@ -94,7 +94,7 @@ public sealed class ImageBitmapOutputSizingTests
     [Fact]
     public async Task PartialGifChargesCanvasAndTemporaryFrameTogetherThenRetainsOnlyCanvas()
     {
-        BitmapOutputAdmission admission = BitmapOutputAdmission.Shared;
+        BitmapOutputAdmission admission = ImageResourceScope.Shared.BitmapOutput;
         long baseline = await CaptureCleanAdmissionBaselineAsync(admission);
         byte[] gif = CreateSolidGif(
             logicalWidth: 3072,
@@ -110,7 +110,7 @@ public sealed class ImageBitmapOutputSizingTests
         using var session = new MarkdownPerformanceSession(
             MarkdownPerformanceOptions.Progressive with { UseDisplaySizedRasterDecode = false });
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1),
+            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
             "https://images.example/partial-output.gif",
             string.Empty);
         using var admissionTrace = new RasterAdmissionTrace(admission);
@@ -140,7 +140,7 @@ public sealed class ImageBitmapOutputSizingTests
     [Fact]
     public async Task DisabledOffscreenPolicyKeepsLegacySourceSizedRasterOutput()
     {
-        BitmapOutputAdmission admission = BitmapOutputAdmission.Shared;
+        BitmapOutputAdmission admission = ImageResourceScope.Shared.BitmapOutput;
         long baseline = await CaptureCleanAdmissionBaselineAsync(admission);
         int width = 4096;
         int height = Environment.Is64BitProcess ? 1025 : 513;
@@ -157,7 +157,7 @@ public sealed class ImageBitmapOutputSizingTests
                 MaxRasterOutputPixels = sourcePixels,
             });
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1),
+            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
             "https://images.example/legacy-source-sized.png",
             string.Empty);
 
@@ -180,7 +180,7 @@ public sealed class ImageBitmapOutputSizingTests
     [Fact]
     public async Task OversizedSvgUsesHeadroomSizedVisibleTilesInsteadOfUnavailableFailure()
     {
-        BitmapOutputAdmission admission = BitmapOutputAdmission.Shared;
+        BitmapOutputAdmission admission = ImageResourceScope.Shared.BitmapOutput;
         long baseline = await CaptureCleanAdmissionBaselineAsync(admission);
         var renderer = new RasterSizingSvgRenderer(new MarkdownSvgDocumentInfo(
             IntrinsicWidthDips: 5000,
@@ -188,7 +188,7 @@ public sealed class ImageBitmapOutputSizingTests
             IntrinsicAspectRatio: 5));
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
         var image = new ImageBox(
-            CreateSvgContext(renderer, session, rasterizationScale: 4),
+            CreateSvgContext(renderer, session, rasterizationScale: 4), ImageResourceScope.Shared,
             CreateSvgDataUri(Guid.NewGuid().ToString("N")),
             "large diagram");
 
@@ -210,7 +210,7 @@ public sealed class ImageBitmapOutputSizingTests
             }
 
             await WaitUntilAsync(() => renderer.RenderRequests.TryPeek(out _));
-            await WaitUntilAsync(() => image.HasAllSvgTilesForAutomation(0, 0, 0, 0));
+            await WaitUntilAsync(() => SvgTileCacheTestOperations.HasAllTiles(image, 0, 0, 0, 0));
             Assert.Contains(renderer.RenderRequests, request => request.TileRegion.HasValue);
             Assert.All(renderer.RenderRequests, request =>
             {
@@ -232,7 +232,7 @@ public sealed class ImageBitmapOutputSizingTests
 
     private static async Task<long> CaptureCleanAdmissionBaselineAsync(BitmapOutputAdmission admission)
     {
-        SharedCanvasBitmapCache.Clear();
+        ImageResourceScope.Shared.BitmapCache.Clear();
         await WaitForAdmissionActiveBytesAsync(admission, 0, "prior bitmap retirement");
         BitmapOutputAdmission.Snapshot snapshot = admission.GetSnapshot();
         Assert.Equal(0, snapshot.ActiveBytes);
@@ -281,7 +281,7 @@ public sealed class ImageBitmapOutputSizingTests
         {
             // Clear even when retirement faults so the cache cannot leak into
             // later tests. Re-throw the retirement fault below as the primary failure.
-            SharedCanvasBitmapCache.Clear();
+            ImageResourceScope.Shared.BitmapCache.Clear();
         }
 
         if (retirementFailure is not null)
@@ -318,8 +318,8 @@ public sealed class ImageBitmapOutputSizingTests
         BitmapOutputAdmission.Snapshot snapshot = admission.GetSnapshot();
         string imageState = image is null
             ? "not supplied"
-            : $"active work={image.ActiveImageWorkCountForTests}, " +
-                $"lifetime disposed={image.ImageLifetimeDisposedForTests}, " +
+            : $"active work={image.GetWorkState().ActiveWorkCount}, " +
+                $"lifetime disposed={image.GetWorkState().LifetimeDisposed}, " +
                 $"retirement task={image.RetirementTask.Status}, " +
                 $"SVG tiles={image.UsesSvgTilesForAutomation}, " +
                 $"SVG raster pixels={image.SvgRasterPixelSize.Width}x{image.SvgRasterPixelSize.Height}";
@@ -329,11 +329,11 @@ public sealed class ImageBitmapOutputSizingTests
             $"charged bytes={snapshot.ChargedBytes}, uncertain bytes={snapshot.UncertainBytes}, " +
             $"active reservations={snapshot.ActiveReservationCount}, " +
             $"uncertain reservations={snapshot.UncertainReservationCount}, waiters={snapshot.WaiterCount}; " +
-            $"cache retained bytes={SharedCanvasBitmapCache.RetainedBytesForTests}, " +
-            $"live bitmap pixel bytes={SharedCanvasBitmapCache.LiveBitmapPixelWeightBytesForTests}, " +
-            $"uncertain bitmap pixel bytes={SharedCanvasBitmapCache.UncertainBitmapDisposePixelWeightBytesForTests}, " +
-            $"cache disposal failures={SharedCanvasBitmapCache.CacheDisposalFailureCountForTests}, " +
-            $"last cache disposal HResult=0x{SharedCanvasBitmapCache.LastCacheDisposalFailureHResultForTests:X8}; " +
+            $"cache retained bytes={ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes}, " +
+            $"live bitmap pixel bytes={ImageResourceScope.Shared.BitmapCache.GetSnapshot().LivePixelWeightBytes}, " +
+            $"uncertain bitmap pixel bytes={ImageResourceScope.Shared.BitmapCache.GetSnapshot().UncertainDisposePixelWeightBytes}, " +
+            $"cache disposal failures={ImageResourceScope.Shared.BitmapCache.GetSnapshot().DisposalFailureCount}, " +
+            $"last cache disposal HResult=0x{ImageResourceScope.Shared.BitmapCache.GetSnapshot().LastDisposalFailureHResult:X8}; " +
             $"image state: {imageState}.",
             exception);
     }

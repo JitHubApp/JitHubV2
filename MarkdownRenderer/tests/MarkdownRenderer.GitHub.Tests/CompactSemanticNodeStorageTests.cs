@@ -23,7 +23,7 @@ public sealed class CompactSemanticNodeStorageTests
     {
         MarkdownLayoutContext context = CreateContext();
         var inline = new InlineContainerBox(context, MarkdownElementKeys.Body);
-        var image = new ImageBox(context, "https://example.test/image.png", "image");
+        var image = new ImageBox(context, ImageResourceScope.Shared, "https://example.test/image.png", "image");
         var embed = new EmbedBox(Markdig.Markdown.Parse("embed")[0], StubEmbedFactory.Instance);
         var table = new TableBox(
             context,

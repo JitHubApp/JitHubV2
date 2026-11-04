@@ -40,7 +40,7 @@ public sealed class ImageBoxVisibleArtworkSelectionEndpointTests
         string alt = string.Join(" ", Enumerable.Repeat("caption", 80));
         MarkdownLayoutContext context = CreateContext(flowDirection, textScaleFactor, alt);
         var image = new ImageBox(
-            context,
+            context, ImageResourceScope.Shared,
             SvgDataUri,
             alt,
             new SafeHtmlLength(ImageSize, IsPercent: false),

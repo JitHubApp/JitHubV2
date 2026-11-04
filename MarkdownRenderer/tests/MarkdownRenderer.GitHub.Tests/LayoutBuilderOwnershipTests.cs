@@ -471,11 +471,11 @@ public sealed class LayoutBuilderOwnershipTests
             Assert.Single(snapshot.Blocks));
         ImageBox image = Assert.Single(paragraph.InlineImageRuns).Run.Image;
 
-        Assert.False(image.ImageLifetimeDisposedForTests);
+        Assert.False(image.GetWorkState().LifetimeDisposed);
 
         await snapshot.Retire().WaitAsync(TimeSpan.FromSeconds(10));
 
-        Assert.True(image.ImageLifetimeDisposedForTests);
+        Assert.True(image.GetWorkState().LifetimeDisposed);
         Assert.True(image.RetirementTask.IsCompletedSuccessfully);
     }
 

@@ -39,7 +39,7 @@ public sealed class ExifRasterCachePolicyTests
                 MaxRasterOutputPixels = 4_000_000,
             });
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1),
+            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
             "https://images.example/oriented.jpg",
             string.Empty);
 
@@ -262,7 +262,7 @@ public sealed class ExifRasterCachePolicyTests
         uint expectedHeight)
     {
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1),
+            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
             "https://images.example/capped.jpg",
             string.Empty);
         try
@@ -289,7 +289,7 @@ public sealed class ExifRasterCachePolicyTests
         uint expectedHeight)
     {
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1),
+            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
             "https://images.example/display.jpg",
             string.Empty);
         try

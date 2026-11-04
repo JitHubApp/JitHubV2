@@ -602,7 +602,7 @@ public sealed class RootLocalContainerImageRelayoutTests
             Assert.Equal(farBoundsBefore.Height, farRootAfter.Bounds.Height);
             Assert.Same(pending, Assert.Single(EnumerateImages(snapshot.Blocks), image => image.Url == resolver.PendingUrl));
             Assert.Same(pendingBitmapBefore, pending.Bitmap);
-            Assert.True(pending.ActiveImageWorkCountForTests > 0,
+            Assert.True(pending.GetWorkState().ActiveWorkCount > 0,
                 "The pending sibling's active resolver work must survive another root's transfer.");
             Assert.Equal(pendingResolveCountBefore, resolver.ResolveCountFor(resolver.PendingUrl));
             Assert.Equal(targetResolveCountBefore, resolver.ResolveCountFor(resolver.FirstUrl));
@@ -630,7 +630,7 @@ public sealed class RootLocalContainerImageRelayoutTests
         Assert.True(EnumerateBoxes([root]).Count() < PrivateRasterPlacementTree.MaximumNodes,
             "The fixture must stay below the node cap so image count is the rejecting budget.");
         ImageBox[] images = EnumerateImages([root]).ToArray();
-        Assert.Equal(ImageBox.MaximumMeasuredPlacementTransferBatchCount + 1, images.Length);
+        Assert.Equal(ImageMeasuredPlacementTransfer.MaximumBatchCount + 1, images.Length);
         await LoadAllImagesAsync(images);
         AssertContainerShapeIsSupportedAndMeasured([root]);
 
@@ -781,7 +781,7 @@ public sealed class RootLocalContainerImageRelayoutTests
         ImageBox[][] rootImages = roots.Select(static root => EnumerateImages([root]).ToArray()).ToArray();
         Assert.All(rootImages, images => Assert.Equal(imagesPerRoot, images.Length));
         Assert.True(rootImages.Sum(static images => images.Length) >
-                    ImageBox.MaximumMeasuredPlacementTransferBatchCount);
+                    ImageMeasuredPlacementTransfer.MaximumBatchCount);
         Assert.True(roots.Sum(root => EnumerateBoxes([root]).Count()) <= PrivateRasterPlacementTree.MaximumNodes,
             "The roots must stay within the aggregate node cap so aggregate image count is the rejecting budget.");
         ImageBox[] images = rootImages.SelectMany(static group => group).ToArray();
@@ -1002,7 +1002,7 @@ public sealed class RootLocalContainerImageRelayoutTests
         foreach (ImageBox image in images)
         {
             Assert.NotNull(image.Bitmap);
-            Assert.Equal(0, image.ActiveImageWorkCountForTests);
+            Assert.Equal(0, image.GetWorkState().ActiveWorkCount);
             if (!inlineImages.Contains(image))
                 Assert.False(image.IsDirty,
                     "Non-inline image boxes must have a completed measured source placement.");
@@ -1519,7 +1519,7 @@ public sealed class RootLocalContainerImageRelayoutTests
         // essential when repeated URLs complete synchronously from the cache.
         await DisplaySizedRasterDecodeTests.WaitForLoadAsync(image).WaitAsync(AsyncDeadline);
         await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-            () => image.ActiveImageWorkCountForTests == 0).WaitAsync(AsyncDeadline);
+            () => image.GetWorkState().ActiveWorkCount == 0).WaitAsync(AsyncDeadline);
         Assert.NotNull(image.Bitmap);
     }
 
@@ -1528,7 +1528,7 @@ public sealed class RootLocalContainerImageRelayoutTests
         foreach (ImageBox image in images)
         {
             await LoadImageAsync(image);
-            Assert.Equal(0, image.ActiveImageWorkCountForTests);
+            Assert.Equal(0, image.GetWorkState().ActiveWorkCount);
         }
     }
 
@@ -1560,8 +1560,8 @@ public sealed class RootLocalContainerImageRelayoutTests
         FieldInfo entryField = typeof(SharedCanvasBitmapCache.Lease).GetField("_entry",
             BindingFlags.Instance | BindingFlags.NonPublic)
             ?? throw new InvalidOperationException("Missing shared bitmap cache entry field.");
-        object entry = Assert.IsAssignableFrom<SharedCanvasBitmapCache.Entry>(entryField.GetValue(lease));
-        FieldInfo countField = typeof(SharedCanvasBitmapCache.Entry).GetField("_referenceCount",
+        object entry = Assert.IsAssignableFrom<SharedCanvasBitmapCacheEntry>(entryField.GetValue(lease));
+        FieldInfo countField = typeof(SharedCanvasBitmapCacheEntry).GetField("_referenceCount",
             BindingFlags.Instance | BindingFlags.NonPublic)
             ?? throw new InvalidOperationException("Missing shared bitmap reference count.");
         return Assert.IsType<int>(countField.GetValue(entry));

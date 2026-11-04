@@ -466,7 +466,7 @@ internal static class InlineAtomicObjectLayout
                 List<InlineMeasureRollbackState> imageStates =
                     rollbackStates ??= new List<InlineMeasureRollbackState>();
                 imageStates.EnsureCapacity(imageStates.Count + 1);
-                ImageBox.InlineMeasureCheckpoint checkpoint =
+                InlineMeasureCheckpoint checkpoint =
                     image.Image.BeginInlineCheckpoint();
                 imageStates.Add(new InlineMeasureRollbackState(
                     image,

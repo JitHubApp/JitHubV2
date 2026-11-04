@@ -39,7 +39,7 @@ public sealed class ImageBoxSourceLeaseTests
                 new MarkdownImageResolveContext(null));
         var renderer = new GatedSvgRenderer(blockDocumentDispose: true);
         var image = new ImageBox(
-            CreateContext(renderer, session, documentScope),
+            CreateContext(renderer, session, documentScope), ImageResourceScope.Shared,
             sourceUrl,
             "Evicted SVG source");
 
@@ -137,7 +137,7 @@ public sealed class ImageBoxSourceLeaseTests
         byte[] source = CreateSvgBytes("partition-bound-metadata");
         var session = CreateSession(source.Length + 128L);
         var image = new ImageBox(
-            CreateContext(new GatedSvgRenderer(), session),
+            CreateContext(new GatedSvgRenderer(), session), ImageResourceScope.Shared,
             "https://example.test/partition.svg",
             "Partitioned SVG");
 
@@ -172,9 +172,7 @@ public sealed class ImageBoxSourceLeaseTests
     [Fact]
     public void QueuedSvgPublicationUsesWeakSourceMetadataCarrier()
     {
-        Type metadata = typeof(ImageBox).GetNestedType(
-            "SvgPublicationMetadata",
-            BindingFlags.NonPublic)!;
+        Type metadata = typeof(SvgPublicationMetadata);
         FieldInfo[] fields = metadata.GetFields(
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         Assert.Contains(fields, field => field.FieldType == typeof(WeakReference<byte[]>));
@@ -204,9 +202,7 @@ public sealed class ImageBoxSourceLeaseTests
         Assert.DoesNotContain(bitmapPublication.GetParameters(), parameter =>
             typeof(IMarkdownSvgDocument).IsAssignableFrom(parameter.ParameterType));
 
-        Type metadataType = typeof(ImageBox).GetNestedType(
-            "SvgPublicationMetadata",
-            BindingFlags.NonPublic)!;
+        Type metadataType = typeof(SvgPublicationMetadata);
         Type bitmapLeaseType = Assert.Single(bitmapPublication.GetParameters(), parameter =>
             parameter.ParameterType.Name == "Lease").ParameterType;
         Type[] bitmapPublicationClosures = typeof(ImageBox)
@@ -241,7 +237,7 @@ public sealed class ImageBoxSourceLeaseTests
             ((IMarkdownPerformanceSessionInternal)session).OpenDocument(resolver, resolveContext);
         var renderer = new GatedSvgRenderer();
         var image = new ImageBox(
-            CreateContext(renderer, session, documentScope),
+            CreateContext(renderer, session, documentScope), ImageResourceScope.Shared,
             "https://example.test/leased.svg",
             "Leased SVG");
 
@@ -306,7 +302,7 @@ public sealed class ImageBoxSourceLeaseTests
                 new LeasedSvgResolver(MakeSource, sourceTemplate.Length), new MarkdownImageResolveContext(null));
         IMarkdownImageResolver resolver = scope ?? (IMarkdownImageResolver)new GeneratedSvgResolver(MakeSource);
         var renderer = new GatedSvgRenderer(blockRender: true, distinctPreparation: true);
-        var image = new ImageBox(CreateContext(renderer, session, resolver),
+        var image = new ImageBox(CreateContext(renderer, session, resolver), ImageResourceScope.Shared,
             $"https://example.test/{Guid.NewGuid():N}.svg", "Source release before render");
         Exception? primaryFailure = null;
         try
@@ -386,7 +382,7 @@ public sealed class ImageBoxSourceLeaseTests
         long sourceLength = dataUri ? template.Length : new FileInfo(new Uri(source).LocalPath).Length;
         var session = CreateSession(sourceLength + 128L);
         var renderer = new GatedSvgRenderer(blockRender: true, distinctPreparation: true);
-        var image = new ImageBox(CreateContext(renderer, session), source, "Built-in source release");
+        var image = new ImageBox(CreateContext(renderer, session), ImageResourceScope.Shared, source, "Built-in source release");
         Exception? primaryFailure = null;
         try
         {
@@ -441,7 +437,7 @@ public sealed class ImageBoxSourceLeaseTests
         var session = CreateSession(sourceBytes.Length + 128L);
         var renderer = new GatedSvgRenderer();
         var image = new ImageBox(
-            CreateContext(renderer, session),
+            CreateContext(renderer, session), ImageResourceScope.Shared,
             dataUri,
             "Data URI SVG");
 
@@ -489,7 +485,7 @@ public sealed class ImageBoxSourceLeaseTests
         var session = CreateSession(System.Math.Max(8, sourceBytes.Length / 2));
         var renderer = new GatedSvgRenderer();
         var image = new ImageBox(
-            CreateContext(renderer, session),
+            CreateContext(renderer, session), ImageResourceScope.Shared,
             new Uri(path).AbsoluteUri,
             "Oversized local SVG");
 
@@ -528,22 +524,20 @@ public sealed class ImageBoxSourceLeaseTests
     {
         var renderer = new GatedSvgRenderer();
         renderer.ReleaseFirstOpen.TrySetResult();
-        var image = new ImageBox(CreateContext(renderer, session: null),
+        var image = new ImageBox(CreateContext(renderer, session: null), ImageResourceScope.Shared,
             $"https://example.test/pending-{Guid.NewGuid():N}.svg", "Pending SVG");
         IDisposable? openedWork = null;
         Exception? primaryFailure = null;
         try
         {
             image.Measure(80);
-            MethodInfo open = typeof(ImageBox).GetMethod("OpenSvgSourceAsync",
-                BindingFlags.Instance | BindingFlags.NonPublic)!;
-            object operation = open.Invoke(image, [CreateSvgBytes("unconsumed-handoff"),
-                default(Windows.Foundation.Size), image.Url, null,
-                new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Visible), 0])!;
-            await ((Task)operation).WaitAsync(TimeSpan.FromSeconds(5));
-            object result = operation.GetType().GetProperty("Result")!.GetValue(operation)!;
-            openedWork = Assert.IsAssignableFrom<IDisposable>(
-                result.GetType().GetProperty("Work")!.GetValue(result));
+            var opener = new SvgSourceOpener(image, image.Context, ImageResourceScope.Shared,
+                image.OutputAdmission, image.OutputDeferral, image.Url);
+            SvgOpenStageResult result = await opener.OpenAsync(CreateSvgBytes("unconsumed-handoff"),
+                    default, image.Url, null,
+                    new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Visible), 0)
+                .WaitAsync(TimeSpan.FromSeconds(5));
+            openedWork = Assert.IsAssignableFrom<IDisposable>(result.Work);
             Assert.Equal(1, renderer.OpenCount);
             Assert.Equal(0, renderer.RenderCount);
             Assert.Equal(0, renderer.DocumentDisposeCount);
@@ -587,11 +581,11 @@ public sealed class ImageBoxSourceLeaseTests
             ((IMarkdownPerformanceSessionInternal)session).OpenDocument(resolver, resolveContext);
         var renderer = new GatedSvgRenderer();
         var first = new ImageBox(
-            CreateContext(renderer, session, documentScope),
+            CreateContext(renderer, session, documentScope), ImageResourceScope.Shared,
             "https://example.test/first.svg",
             "First SVG");
         var second = new ImageBox(
-            CreateContext(renderer, session, documentScope),
+            CreateContext(renderer, session, documentScope), ImageResourceScope.Shared,
             "https://example.test/second.svg",
             "Second SVG");
 
@@ -752,17 +746,9 @@ public sealed class ImageBoxSourceLeaseTests
     {
         string activeCacheKey = GetPrivateField<string>(image, "_activeCacheKey");
         string contentHash = GetPrivateField<string>(image, "_svgContentHash");
-        FieldInfo cacheField = typeof(ImageBox).GetField(
-            "_svgCache",
-            BindingFlags.Static | BindingFlags.NonPublic)!;
-        object cache = cacheField.GetValue(null)!;
-        Predicate<string> matches = key =>
+        return ImageResourceScope.Shared.SvgSources.RemoveWhere(key =>
             string.Equals(key, activeCacheKey, StringComparison.Ordinal) ||
-            key.Contains($":content={contentHash}:", StringComparison.Ordinal);
-        MethodInfo removeWhere = cache.GetType().GetMethod(
-            "RemoveWhere",
-            BindingFlags.Instance | BindingFlags.Public)!;
-        return Assert.IsType<int>(removeWhere.Invoke(cache, [matches]));
+            key.Contains($":content={contentHash}:", StringComparison.Ordinal));
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

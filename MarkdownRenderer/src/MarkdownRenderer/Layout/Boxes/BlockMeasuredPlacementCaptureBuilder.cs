@@ -15,9 +15,9 @@ internal sealed class BlockMeasuredPlacementCaptureBuilder
     private readonly bool _allowMeasuredVectorPlacement;
     private readonly HashSet<BlockBox> _sources = new(BlockMeasuredPlacementTransfer.MaximumNodes, ReferenceEqualityComparer.Instance);
     private readonly HashSet<BlockBox> _prepared = new(BlockMeasuredPlacementTransfer.MaximumNodes, ReferenceEqualityComparer.Instance);
-    private readonly HashSet<ImageBox> _images = new(ImageBox.MaximumMeasuredPlacementTransferBatchCount,
+    private readonly HashSet<ImageBox> _images = new(ImageMeasuredPlacementTransfer.MaximumBatchCount,
         ReferenceEqualityComparer.Instance);
-    private readonly HashSet<ImageBox> _preparedImages = new(ImageBox.MaximumMeasuredPlacementTransferBatchCount,
+    private readonly HashSet<ImageBox> _preparedImages = new(ImageMeasuredPlacementTransfer.MaximumBatchCount,
         ReferenceEqualityComparer.Instance);
     private readonly HashSet<double[]> _sourceEdgeOwners = new(BlockMeasuredPlacementTransfer.MaximumNodes, ReferenceEqualityComparer.Instance);
     private int _nodeCount;
@@ -27,7 +27,7 @@ internal sealed class BlockMeasuredPlacementCaptureBuilder
 
     internal readonly List<BlockMeasuredPlacementNodeFence> Nodes = new(BlockMeasuredPlacementTransfer.MaximumNodes);
     internal readonly List<InlineMeasuredPlacementTransfer> InlineTransfers = new(BlockMeasuredPlacementTransfer.MaximumNodes);
-    internal readonly List<BlockMeasuredPlacementTransfer.ImagePair> ImagePairs = new(ImageBox.MaximumMeasuredPlacementTransferBatchCount);
+    internal readonly List<BlockMeasuredPlacementTransfer.ImagePair> ImagePairs = new(ImageMeasuredPlacementTransfer.MaximumBatchCount);
     internal HashSet<double[]> SourceEdgeOwners => _sourceEdgeOwners;
     internal MarkdownLayoutContext? SourceContext;
     internal MarkdownLayoutContext? PreparedContext;
@@ -230,7 +230,7 @@ internal sealed class BlockMeasuredPlacementCaptureBuilder
             _images.Contains(prepared) || _preparedImages.Contains(source) ||
             !_images.Add(source) ||
             !_preparedImages.Add(prepared) ||
-            ImagePairs.Count >= ImageBox.MaximumMeasuredPlacementTransferBatchCount)
+            ImagePairs.Count >= ImageMeasuredPlacementTransfer.MaximumBatchCount)
         {
             return false;
         }

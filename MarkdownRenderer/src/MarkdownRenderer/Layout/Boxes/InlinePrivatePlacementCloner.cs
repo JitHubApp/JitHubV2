@@ -222,7 +222,7 @@ internal static class InlinePrivatePlacementCloner
         fence = default;
         ImageBox? image;
         SharedCanvasBitmapCache.Lease? lease;
-        ImageBox.CompletedSvgPlacementMetadataFence? metadata;
+        CompletedSvgPlacementMetadataFence? metadata;
         bool isIdle = false;
         int idleGeneration = 0;
         bool created = allowIdleImagePlacements

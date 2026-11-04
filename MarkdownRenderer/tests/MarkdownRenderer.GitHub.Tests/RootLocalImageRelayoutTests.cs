@@ -97,7 +97,7 @@ public sealed class RootLocalImageRelayoutTests
                 out constructionContext,
                 expectedPointerInputEpoch: snapshot.PointerInputEpoch);
             Assert.Equal(PreparedImageRelayoutResult.Committed, result);
-            Assert.Equal(sourceWaiterEpoch, ReadPrivateLongField(optimizedImage, "_bitmapOutputWaiterEpoch"));
+            Assert.Equal(sourceWaiterEpoch, optimizedImage.OutputDeferral.GetState().WaiterEpoch);
             Assert.Equal(oldRevision + 1, snapshot.LayoutRevision);
             Assert.NotEqual(oldSize, snapshot.Size);
             Assert.Equal(fallback.Snapshot.Size, snapshot.Size);
@@ -315,8 +315,8 @@ public sealed class RootLocalImageRelayoutTests
             Assert.Same(secondBitmap, second.Bitmap);
             Assert.Same(firstLease, GetImageLease(first));
             Assert.Same(secondLease, GetImageLease(second));
-            Assert.Equal(0, first.ActiveImageWorkCountForTests);
-            Assert.Equal(0, second.ActiveImageWorkCountForTests);
+            Assert.Equal(0, first.GetWorkState().ActiveWorkCount);
+            Assert.Equal(0, second.GetWorkState().ActiveWorkCount);
             Assert.Equal(rootsBefore.Length, snapshot.Blocks.Count);
             for (int ordinal = 0; ordinal < rootsBefore.Length; ordinal++)
             {
@@ -734,7 +734,7 @@ public sealed class RootLocalImageRelayoutTests
         await StartPendingSiblingAsync(optimized);
         await StartPendingSiblingAsync(fallback);
         await WaitForPendingWorkAndResolverStabilityAsync(optimized, fallback);
-        Assert.True(fallbackPending.ActiveImageWorkCountForTests > 0);
+        Assert.True(fallbackPending.GetWorkState().ActiveWorkCount > 0);
 
         LayoutSnapshot snapshot = optimized.Snapshot;
         BlockBox[] rootsBefore = snapshot.Blocks.ToArray();
@@ -746,7 +746,7 @@ public sealed class RootLocalImageRelayoutTests
         int targetResolvesBefore = resolver.ResolveCountFor(optimized.Resolver.TargetUrl);
         int secondResolvesBefore = resolver.ResolveCountFor(optimized.Resolver.SecondTargetUrl);
         int pendingResolvesBefore = resolver.ResolveCountFor(optimized.Resolver.PendingUrl);
-        int pendingWorkBefore = optimizedPending.ActiveImageWorkCountForTests;
+        int pendingWorkBefore = optimizedPending.GetWorkState().ActiveWorkCount;
         Assert.True(pendingWorkBefore > 0);
         Assert.Null(optimizedPending.Bitmap);
 
@@ -773,8 +773,8 @@ public sealed class RootLocalImageRelayoutTests
             Assert.Equal(targetResolvesBefore, resolver.ResolveCountFor(optimized.Resolver.TargetUrl));
             Assert.Equal(secondResolvesBefore, resolver.ResolveCountFor(optimized.Resolver.SecondTargetUrl));
             Assert.Equal(pendingResolvesBefore, resolver.ResolveCountFor(optimized.Resolver.PendingUrl));
-            Assert.True(optimizedPending.ActiveImageWorkCountForTests > 0);
-            Assert.Equal(pendingWorkBefore, optimizedPending.ActiveImageWorkCountForTests);
+            Assert.True(optimizedPending.GetWorkState().ActiveWorkCount > 0);
+            Assert.Equal(pendingWorkBefore, optimizedPending.GetWorkState().ActiveWorkCount);
             Assert.Null(optimizedPending.Bitmap);
             Assert.False(snapshot.IsTopLevelBlockMeasured(optimizedFar));
             Assert.Null(optimizedFar.Bitmap);
@@ -829,7 +829,7 @@ public sealed class RootLocalImageRelayoutTests
                 {
                     replacementBitmap = CreateBitmap(seed.Device, 24, 12);
                     SharedCanvasBitmapCache.Lease replacementLease =
-                        SharedCanvasBitmapCache.CreateUncachedLease(replacementBitmap);
+                        ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(replacementBitmap);
                     InvokeReplaceBitmap(source, replacementLease);
                 }),
                 expectedPointerInputEpoch: snapshot.PointerInputEpoch);
@@ -843,7 +843,7 @@ public sealed class RootLocalImageRelayoutTests
             Assert.Same(semanticsBefore, snapshot.SemanticDocument);
             Assert.Contains(snapshot.Blocks, block => ReferenceEquals(block, source));
             Assert.Equal(sourceBounds, source.Bounds);
-            Assert.Equal(0, source.ActiveImageWorkCountForTests);
+            Assert.Equal(0, source.GetWorkState().ActiveWorkCount);
             for (int ordinal = 0; ordinal < rootsBefore.Length; ordinal++)
             {
                 Assert.Same(rootsBefore[ordinal], snapshot.Blocks[ordinal]);
@@ -891,7 +891,7 @@ public sealed class RootLocalImageRelayoutTests
                 {
                     replacementBitmap = CreateBitmap(seed.Device, 24, 12);
                     InvokeReplaceBitmap(second,
-                        SharedCanvasBitmapCache.CreateUncachedLease(replacementBitmap));
+                        ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(replacementBitmap));
                 }),
                 expectedPointerInputEpoch: snapshot.PointerInputEpoch);
 
@@ -1230,7 +1230,7 @@ public sealed class RootLocalImageRelayoutTests
     {
         await DisplaySizedRasterDecodeTests.WaitForLoadAsync(image).WaitAsync(TimeSpan.FromSeconds(10));
         await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-            () => image.ActiveImageWorkCountForTests == 0);
+            () => image.GetWorkState().ActiveWorkCount == 0);
         Assert.NotNull(image.Bitmap);
     }
 
@@ -1250,19 +1250,17 @@ public sealed class RootLocalImageRelayoutTests
                 context,
                 out prepared,
                 out SharedCanvasBitmapCache.Lease? expectedLease,
-                out ImageBox.CompletedSvgPlacementMetadataFence? svgFence));
+                out CompletedSvgPlacementMetadataFence? svgFence));
             Assert.NotNull(prepared);
             Assert.NotNull(expectedLease);
             _ = prepared.Measure(availableWidth);
             prepared.Arrange(0, 0, availableWidth);
 
-            string waiterState = DescribeBitmapOutputWaiterState(source);
-            bool sourcePristineWaiterState =
-                InvokePrivateBool(source, "HasNoBitmapOutputPlacementWaiterState");
-            bool sourceHasNoLiveWaiterWork =
-                InvokePrivateBool(source, "HasNoLiveBitmapOutputPlacementWork");
-            bool preparedWaiterStateIsClear =
-                InvokePrivateBool(prepared, "HasNoLiveBitmapOutputPlacementWork");
+            ImageBitmapOutputState sourceWaiter = source.OutputDeferral.GetState();
+            string waiterState = sourceWaiter.ToString();
+            bool sourcePristineWaiterState = sourceWaiter.IsPristine;
+            bool sourceHasNoLiveWaiterWork = sourceWaiter.HasNoLiveWork;
+            bool preparedWaiterStateIsClear = prepared.OutputDeferral.GetState().HasNoLiveWork;
             bool sourcePlacementIsCoherent =
                 InvokePrivateBool(source, "HasCoherentMeasuredPlacementNoLock", availableWidth, false);
             bool preparedPlacementIsCoherent =
@@ -1270,7 +1268,7 @@ public sealed class RootLocalImageRelayoutTests
             bool inputsMatch = InvokePrivateBool(source, "HasMatchingPlacementInputs", prepared);
             bool transferEligible = InvokePrivateBool(source, "IsTransferSourceEligibleNoLock",
                 prepared, expectedLease, svgFence, 0L, availableWidth, false);
-            long sourceWaiterEpoch = ReadPrivateLongField(source, "_bitmapOutputWaiterEpoch");
+            long sourceWaiterEpoch = sourceWaiter.WaiterEpoch;
 
             Assert.True(sourceWaiterEpoch > 0,
                 $"The completed source did not exercise historical admission state: {waiterState}");
@@ -1333,40 +1331,6 @@ public sealed class RootLocalImageRelayoutTests
         method.Invoke(image, [lease.Bitmap, lease, null]);
     }
 
-    private static long ReadPrivateLongField(ImageBox image, string fieldName)
-    {
-        FieldInfo field = typeof(ImageBox).GetField(fieldName,
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException($"Missing private field {fieldName}.");
-        return Assert.IsType<long>(field.GetValue(image));
-    }
-
-    private static string DescribeBitmapOutputWaiterState(ImageBox image)
-    {
-        string[] fields =
-        [
-            "_bitmapOutputWaiterEpoch",
-            "_bitmapOutputWaiterOwner",
-            "_bitmapOutputWaiter",
-            "_bitmapOutputDeferred",
-            "_bitmapOutputRetryOfferPending",
-            "_bitmapOutputRetryInProgress",
-            "_bitmapOutputRetryQueued",
-            "_bitmapOutputRegistering",
-            "_bitmapOutputRegistrationNeeded",
-            "_bitmapOutputRegistrationFailed",
-            "_bitmapOutputCancellationRegistered",
-        ];
-        return string.Join(", ", fields.Select(name =>
-        {
-            FieldInfo field = typeof(ImageBox).GetField(name,
-                BindingFlags.Instance | BindingFlags.NonPublic)
-                ?? throw new InvalidOperationException($"Missing bitmap-output field {name}.");
-            object? value = field.GetValue(image);
-            return $"{name}={(value is null ? "null" : Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture))}";
-        }));
-    }
-
     private static async Task StartPendingSiblingAsync(ImageDocument document)
     {
         if (document.PendingImage is null)
@@ -1380,8 +1344,8 @@ public sealed class RootLocalImageRelayoutTests
         ImageDocument second)
     {
         await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-            () => first.PendingImage is { ActiveImageWorkCountForTests: > 0 } &&
-                  second.PendingImage is { ActiveImageWorkCountForTests: > 0 } &&
+            () => first.PendingImage?.GetWorkState().ActiveWorkCount > 0 &&
+                  second.PendingImage?.GetWorkState().ActiveWorkCount > 0 &&
                   first.Resolver.ResolveCountFor(first.Resolver.PendingUrl) > 0);
 
         int previousCount = first.Resolver.ResolveCountFor(first.Resolver.PendingUrl);
@@ -1391,8 +1355,8 @@ public sealed class RootLocalImageRelayoutTests
             await Task.Delay(TimeSpan.FromMilliseconds(25));
             int currentCount = first.Resolver.ResolveCountFor(first.Resolver.PendingUrl);
             bool bothWorkItemsRemainActive =
-                first.PendingImage is { ActiveImageWorkCountForTests: > 0 } &&
-                second.PendingImage is { ActiveImageWorkCountForTests: > 0 };
+                first.PendingImage?.GetWorkState().ActiveWorkCount > 0 &&
+                second.PendingImage?.GetWorkState().ActiveWorkCount > 0;
             stableSamples = bothWorkItemsRemainActive && currentCount == previousCount
                 ? stableSamples + 1
                 : 0;
@@ -1477,8 +1441,8 @@ public sealed class RootLocalImageRelayoutTests
         FieldInfo entryField = typeof(SharedCanvasBitmapCache.Lease).GetField(
             "_entry", BindingFlags.Instance | BindingFlags.NonPublic)
             ?? throw new InvalidOperationException("Missing shared bitmap entry field.");
-        object entry = Assert.IsAssignableFrom<SharedCanvasBitmapCache.Entry>(entryField.GetValue(lease));
-        FieldInfo countField = typeof(SharedCanvasBitmapCache.Entry).GetField(
+        object entry = Assert.IsAssignableFrom<SharedCanvasBitmapCacheEntry>(entryField.GetValue(lease));
+        FieldInfo countField = typeof(SharedCanvasBitmapCacheEntry).GetField(
             "_referenceCount", BindingFlags.Instance | BindingFlags.NonPublic)
             ?? throw new InvalidOperationException("Missing shared bitmap reference count.");
         return Assert.IsType<int>(countField.GetValue(entry));

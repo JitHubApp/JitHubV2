@@ -43,14 +43,14 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             SharedCanvasBitmapCache.Lease sourceLease = GetField<SharedCanvasBitmapCache.Lease>(source, "_bitmapLease");
             SharedCanvasBitmapCache.Lease preparedLease = GetField<SharedCanvasBitmapCache.Lease>(prepared, "_bitmapLease");
             CanvasBitmap sourceBitmap = Assert.IsType<CanvasBitmap>(source.Bitmap);
-            CanvasTextLayout sourceCaption = GetField<CanvasTextLayout>(source, "_caption");
-            CanvasTextLayout preparedCaption = GetField<CanvasTextLayout>(prepared, "_caption");
+            CanvasTextLayout sourceCaption = Assert.IsType<CanvasTextLayout>(source.MeasureCustody.GetLayoutState().Caption);
+            CanvasTextLayout preparedCaption = Assert.IsType<CanvasTextLayout>(prepared.MeasureCustody.GetLayoutState().Caption);
             Rect sourceBounds = source.Bounds;
             Rect preparedBounds = prepared.Bounds;
             CancellationTokenSource sourceImageLifetime = GetAssignableField<CancellationTokenSource>(
                 source, "_imageLifetimeCancellation");
-            CanvasTextLayout? sourcePlaceholder = GetNullableField<CanvasTextLayout>(source, "_placeholder");
-            CanvasTextLayout? preparedPlaceholder = GetNullableField<CanvasTextLayout>(prepared, "_placeholder");
+            CanvasTextLayout? sourcePlaceholder = source.MeasureCustody.GetLayoutState().Placeholder;
+            CanvasTextLayout? preparedPlaceholder = prepared.MeasureCustody.GetLayoutState().Placeholder;
 
             Assert.NotSame(sourceLease, preparedLease);
             Assert.Same(sourceBitmap, prepared.Bitmap);
@@ -80,20 +80,20 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             Assert.Same(sourceBitmap, prepared.Bitmap);
             Assert.Equal(preparedBounds, source.Bounds);
             Assert.Equal(sourceBounds, prepared.Bounds);
-            Assert.Same(preparedCaption, GetField<CanvasTextLayout>(source, "_caption"));
-            Assert.Same(sourceCaption, GetField<CanvasTextLayout>(prepared, "_caption"));
-            Assert.Same(preparedPlaceholder, GetNullableField<CanvasTextLayout>(source, "_placeholder"));
-            Assert.Same(sourcePlaceholder, GetNullableField<CanvasTextLayout>(prepared, "_placeholder"));
+            Assert.Same(preparedCaption, Assert.IsType<CanvasTextLayout>(source.MeasureCustody.GetLayoutState().Caption));
+            Assert.Same(sourceCaption, Assert.IsType<CanvasTextLayout>(prepared.MeasureCustody.GetLayoutState().Caption));
+            Assert.Same(preparedPlaceholder, source.MeasureCustody.GetLayoutState().Placeholder);
+            Assert.Same(sourcePlaceholder, prepared.MeasureCustody.GetLayoutState().Placeholder);
 
             targetContext.DiscardConstructionBlock(prepared);
             await prepared.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.Null(prepared.Bitmap);
             Assert.Same(sourceBitmap, source.Bitmap);
-            Assert.False(source.ImageLifetimeDisposedForTests);
+            Assert.False(source.GetWorkState().LifetimeDisposed);
         }
         finally
         {
-            if (prepared is not null && !prepared.ImageLifetimeDisposedForTests)
+            if (prepared is not null && !prepared.GetWorkState().LifetimeDisposed)
             {
                 targetContext.DiscardConstructionBlock(prepared);
                 await prepared.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
@@ -141,11 +141,11 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
 
             Assert.Same(source, Assert.IsType<ImageBox>(Assert.Single(snapshot.Blocks)));
             Assert.NotNull(source.Bitmap);
-            Assert.False(source.ImageLifetimeDisposedForTests);
+            Assert.False(source.GetWorkState().LifetimeDisposed);
         }
         finally
         {
-            if (prepared is not null && !prepared.ImageLifetimeDisposedForTests)
+            if (prepared is not null && !prepared.GetWorkState().LifetimeDisposed)
             {
                 targetContext.DiscardConstructionBlock(prepared);
                 await prepared.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
@@ -171,13 +171,13 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             Assert.NotNull(expectedLease);
             PrepareAtDifferentOrigin(source, prepared);
 
-            SetField(source, "_bitmapOutputWaiterEpoch", 11L);
-            SetField(source, "_bitmapOutputRecoverySignaledEpoch", 7L);
-            SetField(source, "_bitmapOutputVisible", 1);
-            SetField(source, "_bitmapOutputReplacement", 1);
-            SetField(source, "_bitmapOutputExistingTile", 1);
+            SetField(source.OutputDeferral, "_bitmapOutputWaiterEpoch", 11L);
+            SetField(source.OutputDeferral, "_bitmapOutputRecoverySignaledEpoch", 7L);
+            SetField(source.OutputDeferral, "_bitmapOutputVisible", 1);
+            SetField(source.OutputDeferral, "_bitmapOutputReplacement", 1);
+            SetField(source.OutputDeferral, "_bitmapOutputExistingTile", 1);
             Rect preparedBounds = prepared.Bounds;
-            CanvasTextLayout preparedCaption = GetField<CanvasTextLayout>(prepared, "_caption");
+            CanvasTextLayout preparedCaption = Assert.IsType<CanvasTextLayout>(prepared.MeasureCustody.GetLayoutState().Caption);
 
             Assert.True(snapshot.TryBeginInteraction());
             try
@@ -194,17 +194,16 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
                 snapshot.EndInteraction();
             }
 
-            Assert.Equal(11L, GetField<long>(source, "_bitmapOutputWaiterEpoch"));
-            Assert.Equal(7L, GetField<long>(source, "_bitmapOutputRecoverySignaledEpoch"));
-            Assert.Equal(1, GetField<int>(source, "_bitmapOutputVisible"));
-            Assert.Equal(1, GetField<int>(source, "_bitmapOutputReplacement"));
-            Assert.Equal(1, GetField<int>(source, "_bitmapOutputExistingTile"));
+            ImageBitmapOutputState history = source.OutputDeferral.GetState();
+            Assert.Equal(11L, history.WaiterEpoch);
+            Assert.Equal(7L, history.RecoverySignaledEpoch);
+            Assert.True(history.Visible && history.Replacement && history.ExistingTile);
             Assert.Equal(preparedBounds, source.Bounds);
-            Assert.Same(preparedCaption, GetField<CanvasTextLayout>(source, "_caption"));
+            Assert.Same(preparedCaption, Assert.IsType<CanvasTextLayout>(source.MeasureCustody.GetLayoutState().Caption));
         }
         finally
         {
-            if (prepared is not null && !prepared.ImageLifetimeDisposedForTests)
+            if (prepared is not null && !prepared.GetWorkState().LifetimeDisposed)
             {
                 targetContext.DiscardConstructionBlock(prepared);
                 await prepared.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
@@ -232,9 +231,9 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
 
             Rect sourceBounds = source.Bounds;
             Rect preparedBounds = prepared.Bounds;
-            CanvasTextLayout sourceCaption = GetField<CanvasTextLayout>(source, "_caption");
-            CanvasTextLayout preparedCaption = GetField<CanvasTextLayout>(prepared, "_caption");
-            var fakeOwner = CreateUnattachedBitmapOutputWaiterOwner(source);
+            CanvasTextLayout sourceCaption = Assert.IsType<CanvasTextLayout>(source.MeasureCustody.GetLayoutState().Caption);
+            CanvasTextLayout preparedCaption = Assert.IsType<CanvasTextLayout>(prepared.MeasureCustody.GetLayoutState().Caption);
+            var fakeOwner = new ImageBitmapOutputWaiter(source.OutputDeferral, 17L);
             var liveStates = new (string Field, object? Value)[]
             {
                 ("_bitmapOutputDeferred", 1),
@@ -245,7 +244,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
 
             foreach ((string field, object? value) in liveStates)
             {
-                SetField(source, field, value);
+                SetField(source.OutputDeferral, field, value);
                 try
                 {
                     Assert.True(snapshot.TryBeginInteraction());
@@ -265,21 +264,21 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
 
                     Assert.Equal(sourceBounds, source.Bounds);
                     Assert.Equal(preparedBounds, prepared.Bounds);
-                    Assert.Same(sourceCaption, GetField<CanvasTextLayout>(source, "_caption"));
-                    Assert.Same(preparedCaption, GetField<CanvasTextLayout>(prepared, "_caption"));
+                    Assert.Same(sourceCaption, Assert.IsType<CanvasTextLayout>(source.MeasureCustody.GetLayoutState().Caption));
+                    Assert.Same(preparedCaption, Assert.IsType<CanvasTextLayout>(prepared.MeasureCustody.GetLayoutState().Caption));
                 }
                 finally
                 {
                     if (field == "_bitmapOutputDeferred" || field == "_bitmapOutputRetryOfferPending")
-                        SetField(source, field, 0);
+                        SetField(source.OutputDeferral, field, 0);
                     else
-                        SetField(source, field, null);
+                        SetField(source.OutputDeferral, field, null);
                 }
             }
         }
         finally
         {
-            if (prepared is not null && !prepared.ImageLifetimeDisposedForTests)
+            if (prepared is not null && !prepared.GetWorkState().LifetimeDisposed)
             {
                 targetContext.DiscardConstructionBlock(prepared);
                 await prepared.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
@@ -319,7 +318,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             Assert.NotNull(candidate);
             Assert.True(candidate!.HasCurrentSourceRaster());
 
-            SetField(sourceImage, "_bitmapOutputDeferred", 1);
+            SetField(sourceImage.OutputDeferral, "_bitmapOutputDeferred", 1);
             try
             {
                 Assert.False(sourceImage.IsCurrentCompletedRasterPlacement(retainedLease));
@@ -327,7 +326,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
                     candidate.Context,
                     out ImageBox? privateClone,
                     out SharedCanvasBitmapCache.Lease? privateLease,
-                    out ImageBox.CompletedSvgPlacementMetadataFence? svgFence));
+                    out CompletedSvgPlacementMetadataFence? svgFence));
                 Assert.Null(privateClone);
                 Assert.Null(privateLease);
                 Assert.Null(svgFence);
@@ -349,7 +348,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             }
             finally
             {
-                SetField(sourceImage, "_bitmapOutputDeferred", 0);
+                SetField(sourceImage.OutputDeferral, "_bitmapOutputDeferred", 0);
             }
         }
         finally
@@ -392,10 +391,10 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             SharedCanvasBitmapCache.Lease sourceLease2 = GetField<SharedCanvasBitmapCache.Lease>(source2, "_bitmapLease");
             SharedCanvasBitmapCache.Lease preparedLease1 = GetField<SharedCanvasBitmapCache.Lease>(prepared1, "_bitmapLease");
             SharedCanvasBitmapCache.Lease preparedLease2 = GetField<SharedCanvasBitmapCache.Lease>(prepared2, "_bitmapLease");
-            CanvasTextLayout sourceCaption1 = GetField<CanvasTextLayout>(source1, "_caption");
-            CanvasTextLayout sourceCaption2 = GetField<CanvasTextLayout>(source2, "_caption");
-            CanvasTextLayout preparedCaption1 = GetField<CanvasTextLayout>(prepared1, "_caption");
-            CanvasTextLayout preparedCaption2 = GetField<CanvasTextLayout>(prepared2, "_caption");
+            CanvasTextLayout sourceCaption1 = Assert.IsType<CanvasTextLayout>(source1.MeasureCustody.GetLayoutState().Caption);
+            CanvasTextLayout sourceCaption2 = Assert.IsType<CanvasTextLayout>(source2.MeasureCustody.GetLayoutState().Caption);
+            CanvasTextLayout preparedCaption1 = Assert.IsType<CanvasTextLayout>(prepared1.MeasureCustody.GetLayoutState().Caption);
+            CanvasTextLayout preparedCaption2 = Assert.IsType<CanvasTextLayout>(prepared2.MeasureCustody.GetLayoutState().Caption);
             Rect sourceBounds1 = source1.Bounds;
             Rect sourceBounds2 = source2.Bounds;
             Rect preparedBounds1 = prepared1.Bounds;
@@ -406,7 +405,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             try
             {
                 Assert.True(ImageBox.TryTransferMeasuredPlacementsFromCompletedClones(
-                    new ImageBox.MeasuredPlacementTransfer[]
+                    new ImageMeasuredPlacementTransfer[]
                     {
                         new(source1, prepared1, expectedLease1, ExpectedSvgMetadataFence: null),
                         new(source2, prepared2, expectedLease2, ExpectedSvgMetadataFence: null),
@@ -424,12 +423,12 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             Assert.Equal(preparedBounds2, source2.Bounds);
             Assert.Equal(sourceBounds1, prepared1.Bounds);
             Assert.Equal(sourceBounds2, prepared2.Bounds);
-            Assert.NotSame(sourceCaption1, GetField<CanvasTextLayout>(source1, "_caption"));
-            Assert.NotSame(sourceCaption2, GetField<CanvasTextLayout>(source2, "_caption"));
-            Assert.Same(preparedCaption1, GetField<CanvasTextLayout>(source1, "_caption"));
-            Assert.Same(preparedCaption2, GetField<CanvasTextLayout>(source2, "_caption"));
-            Assert.Same(sourceCaption1, GetField<CanvasTextLayout>(prepared1, "_caption"));
-            Assert.Same(sourceCaption2, GetField<CanvasTextLayout>(prepared2, "_caption"));
+            Assert.NotSame(sourceCaption1, Assert.IsType<CanvasTextLayout>(source1.MeasureCustody.GetLayoutState().Caption));
+            Assert.NotSame(sourceCaption2, Assert.IsType<CanvasTextLayout>(source2.MeasureCustody.GetLayoutState().Caption));
+            Assert.Same(preparedCaption1, Assert.IsType<CanvasTextLayout>(source1.MeasureCustody.GetLayoutState().Caption));
+            Assert.Same(preparedCaption2, Assert.IsType<CanvasTextLayout>(source2.MeasureCustody.GetLayoutState().Caption));
+            Assert.Same(sourceCaption1, Assert.IsType<CanvasTextLayout>(prepared1.MeasureCustody.GetLayoutState().Caption));
+            Assert.Same(sourceCaption2, Assert.IsType<CanvasTextLayout>(prepared2.MeasureCustody.GetLayoutState().Caption));
             Assert.Same(sourceLease1, GetField<SharedCanvasBitmapCache.Lease>(source1, "_bitmapLease"));
             Assert.Same(sourceLease2, GetField<SharedCanvasBitmapCache.Lease>(source2, "_bitmapLease"));
             Assert.Same(preparedLease1, GetField<SharedCanvasBitmapCache.Lease>(prepared1, "_bitmapLease"));
@@ -437,12 +436,12 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
         }
         finally
         {
-            if (prepared1 is not null && !prepared1.ImageLifetimeDisposedForTests)
+            if (prepared1 is not null && !prepared1.GetWorkState().LifetimeDisposed)
             {
                 targetContext1.DiscardConstructionBlock(prepared1);
                 await prepared1.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
             }
-            if (prepared2 is not null && !prepared2.ImageLifetimeDisposedForTests)
+            if (prepared2 is not null && !prepared2.GetWorkState().LifetimeDisposed)
             {
                 targetContext2.DiscardConstructionBlock(prepared2);
                 await prepared2.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
@@ -481,16 +480,16 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             PrepareAtDifferentOrigin(source1, prepared1);
             PrepareAtDifferentOrigin(source2, prepared2);
 
-            staleLease = SharedCanvasBitmapCache.CreateUncachedLease(
+            staleLease = ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(
                 CreateBitmap(fixture.Device, 7, 5), 7, 5, new Size(7, 5));
             Rect sourceBounds1 = source1.Bounds;
             Rect sourceBounds2 = source2.Bounds;
             Rect preparedBounds1 = prepared1.Bounds;
             Rect preparedBounds2 = prepared2.Bounds;
-            CanvasTextLayout sourceCaption1 = GetField<CanvasTextLayout>(source1, "_caption");
-            CanvasTextLayout sourceCaption2 = GetField<CanvasTextLayout>(source2, "_caption");
-            CanvasTextLayout preparedCaption1 = GetField<CanvasTextLayout>(prepared1, "_caption");
-            CanvasTextLayout preparedCaption2 = GetField<CanvasTextLayout>(prepared2, "_caption");
+            CanvasTextLayout sourceCaption1 = Assert.IsType<CanvasTextLayout>(source1.MeasureCustody.GetLayoutState().Caption);
+            CanvasTextLayout sourceCaption2 = Assert.IsType<CanvasTextLayout>(source2.MeasureCustody.GetLayoutState().Caption);
+            CanvasTextLayout preparedCaption1 = Assert.IsType<CanvasTextLayout>(prepared1.MeasureCustody.GetLayoutState().Caption);
+            CanvasTextLayout preparedCaption2 = Assert.IsType<CanvasTextLayout>(prepared2.MeasureCustody.GetLayoutState().Caption);
             SharedCanvasBitmapCache.Lease sourceLease1 = GetField<SharedCanvasBitmapCache.Lease>(source1, "_bitmapLease");
             SharedCanvasBitmapCache.Lease sourceLease2 = GetField<SharedCanvasBitmapCache.Lease>(source2, "_bitmapLease");
 
@@ -499,7 +498,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             try
             {
                 Assert.False(ImageBox.TryTransferMeasuredPlacementsFromCompletedClones(
-                    new ImageBox.MeasuredPlacementTransfer[]
+                    new ImageMeasuredPlacementTransfer[]
                     {
                         new(source1, prepared1, expectedLease1, ExpectedSvgMetadataFence: null),
                         // The final pair has an unrelated live lease identity.
@@ -519,22 +518,22 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             Assert.Equal(sourceBounds2, source2.Bounds);
             Assert.Equal(preparedBounds1, prepared1.Bounds);
             Assert.Equal(preparedBounds2, prepared2.Bounds);
-            Assert.Same(sourceCaption1, GetField<CanvasTextLayout>(source1, "_caption"));
-            Assert.Same(sourceCaption2, GetField<CanvasTextLayout>(source2, "_caption"));
-            Assert.Same(preparedCaption1, GetField<CanvasTextLayout>(prepared1, "_caption"));
-            Assert.Same(preparedCaption2, GetField<CanvasTextLayout>(prepared2, "_caption"));
+            Assert.Same(sourceCaption1, Assert.IsType<CanvasTextLayout>(source1.MeasureCustody.GetLayoutState().Caption));
+            Assert.Same(sourceCaption2, Assert.IsType<CanvasTextLayout>(source2.MeasureCustody.GetLayoutState().Caption));
+            Assert.Same(preparedCaption1, Assert.IsType<CanvasTextLayout>(prepared1.MeasureCustody.GetLayoutState().Caption));
+            Assert.Same(preparedCaption2, Assert.IsType<CanvasTextLayout>(prepared2.MeasureCustody.GetLayoutState().Caption));
             Assert.Same(sourceLease1, GetField<SharedCanvasBitmapCache.Lease>(source1, "_bitmapLease"));
             Assert.Same(sourceLease2, GetField<SharedCanvasBitmapCache.Lease>(source2, "_bitmapLease"));
         }
         finally
         {
             staleLease?.Dispose();
-            if (prepared1 is not null && !prepared1.ImageLifetimeDisposedForTests)
+            if (prepared1 is not null && !prepared1.GetWorkState().LifetimeDisposed)
             {
                 targetContext1.DiscardConstructionBlock(prepared1);
                 await prepared1.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
             }
-            if (prepared2 is not null && !prepared2.ImageLifetimeDisposedForTests)
+            if (prepared2 is not null && !prepared2.GetWorkState().LifetimeDisposed)
             {
                 targetContext2.DiscardConstructionBlock(prepared2);
                 await prepared2.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
@@ -574,24 +573,24 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             PrepareAtDifferentOrigin(source1, prepared1);
             PrepareAtDifferentOrigin(source2, prepared2);
 
-            CanvasTextLayout source1Caption = GetField<CanvasTextLayout>(source1, "_caption");
-            originalSource2Caption = GetField<CanvasTextLayout>(source2, "_caption");
+            CanvasTextLayout source1Caption = Assert.IsType<CanvasTextLayout>(source1.MeasureCustody.GetLayoutState().Caption);
+            originalSource2Caption = Assert.IsType<CanvasTextLayout>(source2.MeasureCustody.GetLayoutState().Caption);
             Rect sourceBounds1 = source1.Bounds;
             Rect sourceBounds2 = source2.Bounds;
             Rect preparedBounds1 = prepared1.Bounds;
             Rect preparedBounds2 = prepared2.Bounds;
-            CanvasTextLayout preparedCaption1 = GetField<CanvasTextLayout>(prepared1, "_caption");
-            CanvasTextLayout preparedCaption2 = GetField<CanvasTextLayout>(prepared2, "_caption");
+            CanvasTextLayout preparedCaption1 = Assert.IsType<CanvasTextLayout>(prepared1.MeasureCustody.GetLayoutState().Caption);
+            CanvasTextLayout preparedCaption2 = Assert.IsType<CanvasTextLayout>(prepared2.MeasureCustody.GetLayoutState().Caption);
 
             // Simulate a malformed caller offering two pairs with a shared native
             // layout. The batch must reject before any pair is swapped.
-            SetField(source2, "_caption", source1Caption);
+            source2.MeasureCustody.Caption = source1Caption;
             Assert.True(snapshot1.TryBeginInteraction());
             Assert.True(snapshot2.TryBeginInteraction());
             try
             {
                 Assert.False(ImageBox.TryTransferMeasuredPlacementsFromCompletedClones(
-                    new ImageBox.MeasuredPlacementTransfer[]
+                    new ImageMeasuredPlacementTransfer[]
                     {
                         new(source1, prepared1, expectedLease1, ExpectedSvgMetadataFence: null),
                         new(source2, prepared2, expectedLease2, ExpectedSvgMetadataFence: null),
@@ -609,21 +608,21 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             Assert.Equal(sourceBounds2, source2.Bounds);
             Assert.Equal(preparedBounds1, prepared1.Bounds);
             Assert.Equal(preparedBounds2, prepared2.Bounds);
-            Assert.Same(source1Caption, GetField<CanvasTextLayout>(source1, "_caption"));
-            Assert.Same(source1Caption, GetField<CanvasTextLayout>(source2, "_caption"));
-            Assert.Same(preparedCaption1, GetField<CanvasTextLayout>(prepared1, "_caption"));
-            Assert.Same(preparedCaption2, GetField<CanvasTextLayout>(prepared2, "_caption"));
+            Assert.Same(source1Caption, Assert.IsType<CanvasTextLayout>(source1.MeasureCustody.GetLayoutState().Caption));
+            Assert.Same(source1Caption, Assert.IsType<CanvasTextLayout>(source2.MeasureCustody.GetLayoutState().Caption));
+            Assert.Same(preparedCaption1, Assert.IsType<CanvasTextLayout>(prepared1.MeasureCustody.GetLayoutState().Caption));
+            Assert.Same(preparedCaption2, Assert.IsType<CanvasTextLayout>(prepared2.MeasureCustody.GetLayoutState().Caption));
         }
         finally
         {
             if (originalSource2Caption is not null)
-                SetField(source2, "_caption", originalSource2Caption);
-            if (prepared1 is not null && !prepared1.ImageLifetimeDisposedForTests)
+                source2.MeasureCustody.Caption = originalSource2Caption;
+            if (prepared1 is not null && !prepared1.GetWorkState().LifetimeDisposed)
             {
                 targetContext1.DiscardConstructionBlock(prepared1);
                 await prepared1.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
             }
-            if (prepared2 is not null && !prepared2.ImageLifetimeDisposedForTests)
+            if (prepared2 is not null && !prepared2.GetWorkState().LifetimeDisposed)
             {
                 targetContext2.DiscardConstructionBlock(prepared2);
                 await prepared2.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
@@ -652,13 +651,13 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             Assert.NotNull(expectedLease);
             PrepareAtDifferentOrigin(source, prepared);
 
-            CanvasTextLayout sourceCaption = GetField<CanvasTextLayout>(source, "_caption");
-            CanvasTextLayout preparedCaption = GetField<CanvasTextLayout>(prepared, "_caption");
+            CanvasTextLayout sourceCaption = Assert.IsType<CanvasTextLayout>(source.MeasureCustody.GetLayoutState().Caption);
+            CanvasTextLayout preparedCaption = Assert.IsType<CanvasTextLayout>(prepared.MeasureCustody.GetLayoutState().Caption);
             Rect sourceBounds = source.Bounds;
             Rect preparedBounds = prepared.Bounds;
             CanvasBitmap preparedBitmap = Assert.IsType<CanvasBitmap>(prepared.Bitmap);
             CanvasBitmap replacementBitmap = CreateBitmap(fixture.Device, 24, 12);
-            SharedCanvasBitmapCache.Lease replacementLease = SharedCanvasBitmapCache.CreateUncachedLease(
+            SharedCanvasBitmapCache.Lease replacementLease = ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(
                 replacementBitmap,
                 24,
                 12,
@@ -666,7 +665,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             InvokeReplaceBitmap(source, replacementLease);
             _ = source.Measure(Width);
             source.Arrange(7, 9, Width);
-            sourceCaption = GetField<CanvasTextLayout>(source, "_caption");
+            sourceCaption = Assert.IsType<CanvasTextLayout>(source.MeasureCustody.GetLayoutState().Caption);
             sourceBounds = source.Bounds;
 
             Assert.True(snapshot.TryBeginInteraction());
@@ -686,14 +685,14 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
 
             Assert.Same(replacementBitmap, source.Bitmap);
             Assert.Same(preparedBitmap, prepared.Bitmap);
-            Assert.Same(sourceCaption, GetField<CanvasTextLayout>(source, "_caption"));
-            Assert.Same(preparedCaption, GetField<CanvasTextLayout>(prepared, "_caption"));
+            Assert.Same(sourceCaption, Assert.IsType<CanvasTextLayout>(source.MeasureCustody.GetLayoutState().Caption));
+            Assert.Same(preparedCaption, Assert.IsType<CanvasTextLayout>(prepared.MeasureCustody.GetLayoutState().Caption));
             Assert.Equal(sourceBounds, source.Bounds);
             Assert.Equal(preparedBounds, prepared.Bounds);
         }
         finally
         {
-            if (prepared is not null && !prepared.ImageLifetimeDisposedForTests)
+            if (prepared is not null && !prepared.GetWorkState().LifetimeDisposed)
             {
                 targetContext.DiscardConstructionBlock(prepared);
                 await prepared.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
@@ -704,7 +703,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
 
     private static ImageBox CreateStandaloneImage(CompletedRasterPlacementCloneTests.PlacementFixture fixture)
     {
-        var image = new ImageBox(fixture.SourceContext, fixture.RasterSource, "Standalone test image")
+        var image = new ImageBox(fixture.SourceContext, ImageResourceScope.Shared, fixture.RasterSource, "Standalone test image")
         {
             BlockIndex = fixture.Source.BlockIndex,
         };
@@ -767,17 +766,6 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
         field.SetValue(instance, value);
     }
 
-    private static object CreateUnattachedBitmapOutputWaiterOwner(ImageBox image)
-    {
-        Type ownerType = typeof(ImageBox).GetNestedType("BitmapOutputWaiter", BindingFlags.NonPublic)!;
-        ConstructorInfo constructor = ownerType.GetConstructor(
-            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
-            binder: null,
-            types: [typeof(ImageBox), typeof(long)],
-            modifiers: null)!;
-        return constructor.Invoke([image, 17L]);
-    }
-
     private static T GetAssignableField<T>(object instance, string name) where T : class
     {
         FieldInfo field = instance.GetType().GetField(name,
@@ -798,7 +786,7 @@ public sealed class ImageBoxMeasuredSvgPlacementTransferTests
         var renderer = new TransferSvgRenderer(hasText: true);
         var resolver = new TransferSvgResolver(System.Text.Encoding.UTF8.GetBytes(SvgMarkup));
         MarkdownLayoutContext sourceContext = CreateSvgContext(renderer, resolver);
-        var source = new ImageBox(sourceContext, resolver.Url, "Text SVG");
+        var source = new ImageBox(sourceContext, ImageResourceScope.Shared, resolver.Url, "Text SVG");
         MarkdownLayoutContext targetContext = sourceContext.CreateRasterPlacementContext(
             CancellationToken.None,
             sourceContext.ImagePreparationOwner!,
@@ -819,7 +807,7 @@ public sealed class ImageBoxMeasuredSvgPlacementTransferTests
                 targetContext,
                 out prepared,
                 out SharedCanvasBitmapCache.Lease? expectedLease,
-                out ImageBox.CompletedSvgPlacementMetadataFence? svgFence));
+                out CompletedSvgPlacementMetadataFence? svgFence));
             Assert.NotNull(prepared);
             Assert.NotNull(expectedLease);
             Assert.NotNull(svgFence);
@@ -827,8 +815,8 @@ public sealed class ImageBoxMeasuredSvgPlacementTransferTests
             snapshot = CreateSnapshot(source, sourceContext.SourceMap);
 
             SharedCanvasBitmapCache.Lease sourceLease = GetField<SharedCanvasBitmapCache.Lease>(source, "_bitmapLease");
-            CanvasTextLayout sourceCaption = GetField<CanvasTextLayout>(source, "_caption");
-            CanvasTextLayout preparedCaption = GetField<CanvasTextLayout>(prepared, "_caption");
+            CanvasTextLayout sourceCaption = Assert.IsType<CanvasTextLayout>(source.MeasureCustody.GetLayoutState().Caption);
+            CanvasTextLayout preparedCaption = Assert.IsType<CanvasTextLayout>(prepared.MeasureCustody.GetLayoutState().Caption);
             Rect sourceBounds = source.Bounds;
             Rect preparedBounds = prepared.Bounds;
             CanvasBitmap sourceBitmap = Assert.IsType<CanvasBitmap>(source.Bitmap);
@@ -853,8 +841,8 @@ public sealed class ImageBoxMeasuredSvgPlacementTransferTests
             Assert.Same(sourceBitmap, prepared.Bitmap);
             Assert.Equal(preparedBounds, source.Bounds);
             Assert.Equal(sourceBounds, prepared.Bounds);
-            Assert.Same(preparedCaption, GetField<CanvasTextLayout>(source, "_caption"));
-            Assert.Same(sourceCaption, GetField<CanvasTextLayout>(prepared, "_caption"));
+            Assert.Same(preparedCaption, Assert.IsType<CanvasTextLayout>(source.MeasureCustody.GetLayoutState().Caption));
+            Assert.Same(sourceCaption, Assert.IsType<CanvasTextLayout>(prepared.MeasureCustody.GetLayoutState().Caption));
             Assert.Equal(1, renderer.OpenCount);
             Assert.Equal(1, renderer.RenderCount);
             GC.KeepAlive(sourceIdentityBytes);
@@ -882,7 +870,7 @@ public sealed class ImageBoxMeasuredSvgPlacementTransferTests
         var renderer = new TransferSvgRenderer(hasText: true);
         var resolver = new TransferSvgResolver(System.Text.Encoding.UTF8.GetBytes(SvgMarkup));
         MarkdownLayoutContext sourceContext = CreateSvgContext(renderer, resolver);
-        var source = new ImageBox(sourceContext, resolver.Url, "Text SVG");
+        var source = new ImageBox(sourceContext, ImageResourceScope.Shared, resolver.Url, "Text SVG");
         MarkdownLayoutContext targetContext = sourceContext.CreateRasterPlacementContext(
             CancellationToken.None,
             sourceContext.ImagePreparationOwner!,
@@ -900,15 +888,15 @@ public sealed class ImageBoxMeasuredSvgPlacementTransferTests
                 targetContext,
                 out prepared,
                 out SharedCanvasBitmapCache.Lease? expectedLease,
-                out ImageBox.CompletedSvgPlacementMetadataFence? svgFence));
+                out CompletedSvgPlacementMetadataFence? svgFence));
             Assert.NotNull(prepared);
             Assert.NotNull(expectedLease);
             Assert.NotNull(svgFence);
             PrepareAtDifferentOrigin(source, prepared);
             snapshot = CreateSnapshot(source, sourceContext.SourceMap);
 
-            CanvasTextLayout sourceCaption = GetField<CanvasTextLayout>(source, "_caption");
-            CanvasTextLayout preparedCaption = GetField<CanvasTextLayout>(prepared, "_caption");
+            CanvasTextLayout sourceCaption = Assert.IsType<CanvasTextLayout>(source.MeasureCustody.GetLayoutState().Caption);
+            CanvasTextLayout preparedCaption = Assert.IsType<CanvasTextLayout>(prepared.MeasureCustody.GetLayoutState().Caption);
             Rect sourceBounds = source.Bounds;
             Rect preparedBounds = prepared.Bounds;
             CanvasBitmap sourceBitmap = Assert.IsType<CanvasBitmap>(source.Bitmap);
@@ -933,8 +921,8 @@ public sealed class ImageBoxMeasuredSvgPlacementTransferTests
             Assert.Same(sourceBitmap, prepared.Bitmap);
             Assert.Equal(sourceBounds, source.Bounds);
             Assert.Equal(preparedBounds, prepared.Bounds);
-            Assert.Same(sourceCaption, GetField<CanvasTextLayout>(source, "_caption"));
-            Assert.Same(preparedCaption, GetField<CanvasTextLayout>(prepared, "_caption"));
+            Assert.Same(sourceCaption, Assert.IsType<CanvasTextLayout>(source.MeasureCustody.GetLayoutState().Caption));
+            Assert.Same(preparedCaption, Assert.IsType<CanvasTextLayout>(prepared.MeasureCustody.GetLayoutState().Caption));
             GC.KeepAlive(sourceIdentityBytes);
         }
         finally
@@ -1005,7 +993,7 @@ public sealed class ImageBoxMeasuredSvgPlacementTransferTests
             image.EnsureLoading();
             await completion.Task.WaitAsync(TimeSpan.FromSeconds(10));
             await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-                () => image.ActiveImageWorkCountForTests == 0);
+                () => image.GetWorkState().ActiveWorkCount == 0);
             Assert.NotNull(image.Bitmap);
             _ = image.Measure(Width);
             image.Arrange(5, 8, Width);

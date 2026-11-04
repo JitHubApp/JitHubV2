@@ -11,68 +11,6 @@ namespace MarkdownRenderer.Layout.Boxes;
 
 internal sealed partial class ImageBox
 {
-    internal const int MaximumMeasuredPlacementTransferBatchCount = 32;
-
-    // Only placement swaps are serialized here. Image work and native
-    // construction remain outside this gate; it prevents overlapping batches
-    // from acquiring disjoint image pairs in opposite orders.
-    private static readonly object s_measuredPlacementTransferSync = new();
-
-    internal readonly struct NativeLayoutPlacementFence(
-        CanvasTextLayout? Placeholder,
-        NativeResourceRetirementRecord? PlaceholderRetirementRecord,
-        CanvasTextLayout? Caption,
-        NativeResourceRetirementRecord? CaptionRetirementRecord,
-        int Generation,
-        bool IsValid)
-    {
-        public CanvasTextLayout? Placeholder { get; init; } = Placeholder;
-        public NativeResourceRetirementRecord? PlaceholderRetirementRecord { get; init; } = PlaceholderRetirementRecord;
-        public CanvasTextLayout? Caption { get; init; } = Caption;
-        public NativeResourceRetirementRecord? CaptionRetirementRecord { get; init; } = CaptionRetirementRecord;
-        public int Generation { get; init; } = Generation;
-        public bool IsValid { get; init; } = IsValid;
-    }
-
-    internal readonly struct MeasuredPlacementTransfer
-    {
-        internal ImageBox Source { get; init; }
-        internal ImageBox Prepared { get; init; }
-        internal SharedCanvasBitmapCache.Lease ExpectedSourceLease { get; init; }
-        internal CompletedSvgPlacementMetadataFence? ExpectedSvgMetadataFence { get; init; }
-        internal bool ExpectedInlineLayout { get; init; }
-        internal float ExpectedAvailableWidth { get; init; }
-        internal float ExpectedPreparedAvailableWidth { get; init; }
-        internal NativeLayoutPlacementFence ExpectedSourceNativeLayouts { get; init; }
-        internal NativeLayoutPlacementFence? ExpectedPreparedNativeLayouts { get; init; }
-
-        internal MeasuredPlacementTransfer(
-            ImageBox Source,
-            ImageBox Prepared,
-            SharedCanvasBitmapCache.Lease ExpectedSourceLease,
-            CompletedSvgPlacementMetadataFence? ExpectedSvgMetadataFence,
-            bool ExpectedInlineLayout = false,
-            float ExpectedAvailableWidth = 0f,
-            float ExpectedPreparedAvailableWidth = 0f)
-        {
-            this.Source = Source;
-            this.Prepared = Prepared;
-            this.ExpectedSourceLease = ExpectedSourceLease;
-            this.ExpectedSvgMetadataFence = ExpectedSvgMetadataFence;
-            this.ExpectedInlineLayout = ExpectedInlineLayout;
-            this.ExpectedAvailableWidth = ExpectedAvailableWidth;
-            this.ExpectedPreparedAvailableWidth = ExpectedPreparedAvailableWidth;
-            ExpectedSourceNativeLayouts = Source is not null &&
-                Source.TryCaptureNativeLayoutPlacementFence(out var fence)
-                ? fence
-                : default;
-            ExpectedPreparedNativeLayouts = Prepared is not null &&
-                Prepared.TryCaptureNativeLayoutPlacementFence(out var preparedFence)
-                ? preparedFence
-                : null;
-        }
-    }
-
     /// <summary>
     /// Captures the exact width used by a completed inline image's atomic
     /// measurement. Callers must still retain the image identity and validate
@@ -93,30 +31,30 @@ internal sealed partial class ImageBox
         out float imageWidth,
         out float imageHeight)
     {
-        lock (_inlineMeasureSync)
+        lock (_measure.Sync)
         {
             availableWidth = 0f;
             imageWidth = 0f;
             imageHeight = 0f;
             Rect bounds = Bounds;
-            if (_disposed || !_isInlineLayout || _inlineMeasureCheckpointActive ||
-                _inlineMeasureOriginalPlaceholder is not null ||
-                _inlineMeasureOriginalCaption is not null ||
+            if (_disposed || !_measure.IsInlineLayout || _measure.CheckpointActive ||
+                _measure.OriginalPlaceholder is not null ||
+                _measure.OriginalCaption is not null ||
                 !_hasPresentedImage || _bitmap is null || _bitmapLease is null ||
-                !float.IsFinite(_availableWidth) || _availableWidth <= 0f ||
-                !float.IsFinite(_imageWidth) || _imageWidth <= 0f ||
-                !float.IsFinite(_imageHeight) || _imageHeight <= 0f ||
-                !float.IsFinite(_captionHeight) || _captionHeight != 0f || _caption is not null ||
+                !float.IsFinite(_measure.AvailableWidth) || _measure.AvailableWidth <= 0f ||
+                !float.IsFinite(_measure.ImageWidth) || _measure.ImageWidth <= 0f ||
+                !float.IsFinite(_measure.ImageHeight) || _measure.ImageHeight <= 0f ||
+                !float.IsFinite(_measure.CaptionHeight) || _measure.CaptionHeight != 0f || _measure.Caption is not null ||
                 !double.IsFinite(bounds.X) || !double.IsFinite(bounds.Y) ||
-                !double.IsFinite(bounds.Width) || bounds.Width != _imageWidth ||
-                !double.IsFinite(bounds.Height) || bounds.Height != _imageHeight)
+                !double.IsFinite(bounds.Width) || bounds.Width != _measure.ImageWidth ||
+                !double.IsFinite(bounds.Height) || bounds.Height != _measure.ImageHeight)
             {
                 return false;
             }
 
-            availableWidth = _availableWidth;
-            imageWidth = _imageWidth;
-            imageHeight = _imageHeight;
+            availableWidth = _measure.AvailableWidth;
+            imageWidth = _measure.ImageWidth;
+            imageHeight = _measure.ImageHeight;
             return true;
         }
     }
@@ -128,10 +66,10 @@ internal sealed partial class ImageBox
     /// </summary>
     internal bool HasNativePlacementLayoutAlias(CanvasTextLayout? candidate)
     {
-        lock (_inlineMeasureSync)
+        lock (_measure.Sync)
         {
-            return NativeLayoutsAlias(_placeholder, candidate) ||
-                   NativeLayoutsAlias(_caption, candidate);
+            return NativeLayoutsAlias(_measure.Placeholder, candidate) ||
+                   NativeLayoutsAlias(_measure.Caption, candidate);
         }
     }
 
@@ -140,10 +78,10 @@ internal sealed partial class ImageBox
     // and image in the batch, including aliases within one image owner.
     internal bool TryAddNativePlacementLayoutOwners(HashSet<CanvasTextLayout> owners)
     {
-        lock (_inlineMeasureSync)
+        lock (_measure.Sync)
         {
-            return (_placeholder is null || owners.Add(_placeholder)) &&
-                   (_caption is null || owners.Add(_caption));
+            return (_measure.Placeholder is null || owners.Add(_measure.Placeholder)) &&
+                   (_measure.Caption is null || owners.Add(_measure.Caption));
         }
     }
 
@@ -154,29 +92,29 @@ internal sealed partial class ImageBox
         HashSet<CanvasTextLayout> layoutOwners,
         HashSet<NativeResourceRetirementRecord> retirementOwners)
     {
-        lock (_inlineMeasureSync)
+        lock (_measure.Sync)
         {
-            return HasValidNativeLayoutCustodyNoLock() &&
-                AddNativeLayoutOwner(_placeholder, layoutOwners) &&
-                AddNativeLayoutOwner(_caption, layoutOwners) &&
-                AddRetirementOwner(_placeholderRetirementRecord, retirementOwners) &&
-                AddRetirementOwner(_captionRetirementRecord, retirementOwners);
+            return _measure.HasValidNativeLayoutCustodyNoLock() &&
+                AddNativeLayoutOwner(_measure.Placeholder, layoutOwners) &&
+                AddNativeLayoutOwner(_measure.Caption, layoutOwners) &&
+                AddRetirementOwner(_measure.PlaceholderRecord, retirementOwners) &&
+                AddRetirementOwner(_measure.CaptionRecord, retirementOwners);
         }
     }
 
     internal bool TryCaptureNativeLayoutPlacementFence(out NativeLayoutPlacementFence fence)
     {
-        lock (_inlineMeasureSync)
+        lock (_measure.Sync)
         {
             fence = new NativeLayoutPlacementFence(
-                _placeholder,
-                _placeholderRetirementRecord,
-                _caption,
-                _captionRetirementRecord,
-                _nativeLayoutGeneration,
-                !_disposed && !_inlineMeasureCheckpointActive &&
-                _inlineMeasureOriginalPlaceholder is null && _inlineMeasureOriginalCaption is null &&
-                HasValidNativeLayoutCustodyNoLock());
+                _measure.Placeholder,
+                _measure.PlaceholderRecord,
+                _measure.Caption,
+                _measure.CaptionRecord,
+                _measure.NativeLayoutGeneration,
+                !_disposed && !_measure.CheckpointActive &&
+                _measure.OriginalPlaceholder is null && _measure.OriginalCaption is null &&
+                _measure.HasValidNativeLayoutCustodyNoLock());
             return fence.IsValid;
         }
     }
@@ -184,15 +122,15 @@ internal sealed partial class ImageBox
     internal bool IsCurrentNativeLayoutPlacementFenceNoLock(NativeLayoutPlacementFence fence) =>
         fence.IsValid &&
         !_disposed &&
-        !_inlineMeasureCheckpointActive &&
-        _inlineMeasureOriginalPlaceholder is null &&
-        _inlineMeasureOriginalCaption is null &&
-        fence.Generation == _nativeLayoutGeneration &&
-        ReferenceEquals(fence.Placeholder, _placeholder) &&
-        ReferenceEquals(fence.PlaceholderRetirementRecord, _placeholderRetirementRecord) &&
-        ReferenceEquals(fence.Caption, _caption) &&
-        ReferenceEquals(fence.CaptionRetirementRecord, _captionRetirementRecord) &&
-        HasValidNativeLayoutCustodyNoLock();
+        !_measure.CheckpointActive &&
+        _measure.OriginalPlaceholder is null &&
+        _measure.OriginalCaption is null &&
+        fence.Generation == _measure.NativeLayoutGeneration &&
+        ReferenceEquals(fence.Placeholder, _measure.Placeholder) &&
+        ReferenceEquals(fence.PlaceholderRetirementRecord, _measure.PlaceholderRecord) &&
+        ReferenceEquals(fence.Caption, _measure.Caption) &&
+        ReferenceEquals(fence.CaptionRetirementRecord, _measure.CaptionRecord) &&
+        _measure.HasValidNativeLayoutCustodyNoLock();
 
     private static bool AddNativeLayoutOwner(
         CanvasTextLayout? layout,
@@ -224,7 +162,7 @@ internal sealed partial class ImageBox
     {
         ArgumentNullException.ThrowIfNull(prepared);
         ArgumentNullException.ThrowIfNull(expectedSourceLease);
-        var transfer = new MeasuredPlacementTransfer(
+        var transfer = new ImageMeasuredPlacementTransfer(
             this, prepared, expectedSourceLease, expectedSvgMetadataFence);
         return TryTransferMeasuredPlacementsFromCompletedClones(
             MemoryMarshal.CreateReadOnlySpan(ref transfer, 1),
@@ -239,12 +177,12 @@ internal sealed partial class ImageBox
     /// is swapped, so a stale final pair leaves every earlier pair untouched.
     /// </summary>
     internal static bool TryTransferMeasuredPlacementsFromCompletedClones(
-        ReadOnlySpan<MeasuredPlacementTransfer> transfers,
+        ReadOnlySpan<ImageMeasuredPlacementTransfer> transfers,
         long currentProviderCacheGeneration,
         float expectedAvailableWidth)
     {
         if (transfers.IsEmpty ||
-            transfers.Length > MaximumMeasuredPlacementTransferBatchCount ||
+            transfers.Length > ImageMeasuredPlacementTransfer.MaximumBatchCount ||
             !float.IsFinite(expectedAvailableWidth) || expectedAvailableWidth <= 0)
         {
             return false;
@@ -254,9 +192,10 @@ internal sealed partial class ImageBox
         // metadata requirement, and live output waiter before taking pair locks.
         // The quadratic identity check is bounded to at most 32 entries and
         // avoids temporary HashSet allocations in this commit path.
+        ImageResourceScope? batchResources = transfers[0].Source?._resources;
         for (int index = 0; index < transfers.Length; index++)
         {
-            MeasuredPlacementTransfer transfer = transfers[index];
+            ImageMeasuredPlacementTransfer transfer = transfers[index];
             ImageBox? source = transfer.Source;
             ImageBox? prepared = transfer.Prepared;
             SharedCanvasBitmapCache.Lease? expectedLease = transfer.ExpectedSourceLease;
@@ -264,6 +203,8 @@ internal sealed partial class ImageBox
             float preparedExpectedWidth = ResolveExpectedPreparedAvailableWidth(transfer, pairExpectedWidth);
             if (source is null || prepared is null || expectedLease is null ||
                 ReferenceEquals(source, prepared) ||
+                !ReferenceEquals(source._resources, batchResources) ||
+                !ReferenceEquals(prepared._resources, batchResources) ||
                 !float.IsFinite(pairExpectedWidth) || pairExpectedWidth <= 0f ||
                 !float.IsFinite(preparedExpectedWidth) || preparedExpectedWidth <= 0f ||
                 (!transfer.ExpectedInlineLayout && preparedExpectedWidth != pairExpectedWidth) ||
@@ -273,8 +214,8 @@ internal sealed partial class ImageBox
                 prepared.Context.CancellationToken.IsCancellationRequested ||
                 source.Context.PerformanceSession is IMarkdownPerformanceSessionInternal { IsDisposed: true } ||
                 prepared.Context.PerformanceSession is IMarkdownPerformanceSessionInternal { IsDisposed: true } ||
-                !source.HasNoLiveBitmapOutputPlacementWork() ||
-                !prepared.HasNoLiveBitmapOutputPlacementWork())
+                !source.OutputDeferral.GetState().HasNoLiveWork ||
+                !prepared.OutputDeferral.GetState().HasNoLiveWork)
             {
                 return false;
             }
@@ -289,7 +230,7 @@ internal sealed partial class ImageBox
 
             for (int previous = 0; previous < index; previous++)
             {
-                MeasuredPlacementTransfer earlier = transfers[previous];
+                ImageMeasuredPlacementTransfer earlier = transfers[previous];
                 if (ReferenceEquals(source, earlier.Source) ||
                     ReferenceEquals(source, earlier.Prepared) ||
                     ReferenceEquals(prepared, earlier.Source) ||
@@ -300,17 +241,17 @@ internal sealed partial class ImageBox
             }
         }
 
-        lock (s_measuredPlacementTransferSync)
+        lock (batchResources!.MeasuredPlacementTransferSync)
         {
             // Every batch uses the same source→prepared ordering within a pair,
-            // and the static gate serializes overlapping pair sequences.
+            // and the scope's gate serializes overlapping pair sequences.
             return TryAcquireSvgTransferLocks(
                 transfers, 0, currentProviderCacheGeneration, expectedAvailableWidth);
         }
     }
 
     private static bool TryAcquireSvgTransferLocks(
-        ReadOnlySpan<MeasuredPlacementTransfer> transfers,
+        ReadOnlySpan<ImageMeasuredPlacementTransfer> transfers,
         int index,
         long currentProviderCacheGeneration,
         float expectedAvailableWidth)
@@ -321,7 +262,7 @@ internal sealed partial class ImageBox
                 transfers, 0, currentProviderCacheGeneration, expectedAvailableWidth);
         }
 
-        MeasuredPlacementTransfer transfer = transfers[index];
+        ImageMeasuredPlacementTransfer transfer = transfers[index];
         ImageBox source = transfer.Source;
         ImageBox prepared = transfer.Prepared;
         lock (source._svgWorkSync)
@@ -333,7 +274,7 @@ internal sealed partial class ImageBox
     }
 
     private static bool TryAcquireInlineTransferLocks(
-        ReadOnlySpan<MeasuredPlacementTransfer> transfers,
+        ReadOnlySpan<ImageMeasuredPlacementTransfer> transfers,
         int index,
         long currentProviderCacheGeneration,
         float expectedAvailableWidth)
@@ -345,10 +286,10 @@ internal sealed partial class ImageBox
             // does not call back into image lifecycle locks.
             for (int check = 0; check < transfers.Length; check++)
             {
-                MeasuredPlacementTransfer validatedTransfer = transfers[check];
+                ImageMeasuredPlacementTransfer validatedTransfer = transfers[check];
                 for (int previous = 0; previous < check; previous++)
                 {
-                    MeasuredPlacementTransfer earlierTransfer = transfers[previous];
+                    ImageMeasuredPlacementTransfer earlierTransfer = transfers[previous];
                     if (NativePlacementLayoutsAlias(validatedTransfer.Source, earlierTransfer.Source) ||
                         NativePlacementLayoutsAlias(validatedTransfer.Source, earlierTransfer.Prepared) ||
                         NativePlacementLayoutsAlias(validatedTransfer.Prepared, earlierTransfer.Source) ||
@@ -373,8 +314,8 @@ internal sealed partial class ImageBox
                     !validatedTransfer.Source.IsCurrentNativeLayoutPlacementFenceNoLock(
                         validatedTransfer.ExpectedSourceNativeLayouts) ||
                     !validatedTransfer.Prepared.IsCurrentNativeLayoutPlacementFenceNoLock(preparedNativeFence) ||
-                    !validatedTransfer.Source.HasNoLiveBitmapOutputPlacementWork() ||
-                    !validatedTransfer.Prepared.HasNoLiveBitmapOutputPlacementWork() ||
+                    !validatedTransfer.Source.OutputDeferral.GetState().HasNoLiveWork ||
+                    !validatedTransfer.Prepared.OutputDeferral.GetState().HasNoLiveWork ||
                     !validatedTransfer.Source.IsTransferSourceEligibleForWidthsNoLock(
                         validatedTransfer.Prepared,
                         validatedTransfer.ExpectedSourceLease,
@@ -393,38 +334,38 @@ internal sealed partial class ImageBox
             // reference/scalar swaps and cannot invoke native or host code.
             for (int commit = 0; commit < transfers.Length; commit++)
             {
-                MeasuredPlacementTransfer committedTransfer = transfers[commit];
+                ImageMeasuredPlacementTransfer committedTransfer = transfers[commit];
                 ImageBox committedSource = committedTransfer.Source;
                 ImageBox committedPrepared = committedTransfer.Prepared;
-                (committedSource._availableWidth, committedPrepared._availableWidth) =
-                    (committedPrepared._availableWidth, committedSource._availableWidth);
-                (committedSource._imageWidth, committedPrepared._imageWidth) =
-                    (committedPrepared._imageWidth, committedSource._imageWidth);
-                (committedSource._imageHeight, committedPrepared._imageHeight) =
-                    (committedPrepared._imageHeight, committedSource._imageHeight);
-                (committedSource._captionHeight, committedPrepared._captionHeight) =
-                    (committedPrepared._captionHeight, committedSource._captionHeight);
+                (committedSource._measure.AvailableWidth, committedPrepared._measure.AvailableWidth) =
+                    (committedPrepared._measure.AvailableWidth, committedSource._measure.AvailableWidth);
+                (committedSource._measure.ImageWidth, committedPrepared._measure.ImageWidth) =
+                    (committedPrepared._measure.ImageWidth, committedSource._measure.ImageWidth);
+                (committedSource._measure.ImageHeight, committedPrepared._measure.ImageHeight) =
+                    (committedPrepared._measure.ImageHeight, committedSource._measure.ImageHeight);
+                (committedSource._measure.CaptionHeight, committedPrepared._measure.CaptionHeight) =
+                    (committedPrepared._measure.CaptionHeight, committedSource._measure.CaptionHeight);
                 (committedSource.Bounds, committedPrepared.Bounds) =
                     (committedPrepared.Bounds, committedSource.Bounds);
-                (committedSource._placeholder, committedPrepared._placeholder) =
-                    (committedPrepared._placeholder, committedSource._placeholder);
-                (committedSource._placeholderRetirementRecord, committedPrepared._placeholderRetirementRecord) =
-                    (committedPrepared._placeholderRetirementRecord, committedSource._placeholderRetirementRecord);
-                (committedSource._caption, committedPrepared._caption) =
-                    (committedPrepared._caption, committedSource._caption);
-                (committedSource._captionRetirementRecord, committedPrepared._captionRetirementRecord) =
-                    (committedPrepared._captionRetirementRecord, committedSource._captionRetirementRecord);
-                committedSource.AdvanceNativeLayoutGenerationNoLock();
-                committedPrepared.AdvanceNativeLayoutGenerationNoLock();
+                (committedSource._measure.Placeholder, committedPrepared._measure.Placeholder) =
+                    (committedPrepared._measure.Placeholder, committedSource._measure.Placeholder);
+                (committedSource._measure.PlaceholderRecord, committedPrepared._measure.PlaceholderRecord) =
+                    (committedPrepared._measure.PlaceholderRecord, committedSource._measure.PlaceholderRecord);
+                (committedSource._measure.Caption, committedPrepared._measure.Caption) =
+                    (committedPrepared._measure.Caption, committedSource._measure.Caption);
+                (committedSource._measure.CaptionRecord, committedPrepared._measure.CaptionRecord) =
+                    (committedPrepared._measure.CaptionRecord, committedSource._measure.CaptionRecord);
+                committedSource._measure.AdvanceNativeLayoutGenerationNoLock();
+                committedPrepared._measure.AdvanceNativeLayoutGenerationNoLock();
             }
             return true;
         }
 
-        MeasuredPlacementTransfer transfer = transfers[index];
+        ImageMeasuredPlacementTransfer transfer = transfers[index];
         ImageBox source = transfer.Source;
         ImageBox prepared = transfer.Prepared;
-        lock (source._inlineMeasureSync)
-        lock (prepared._inlineMeasureSync)
+        lock (source._measure.Sync)
+        lock (prepared._measure.Sync)
         {
             return TryAcquireInlineTransferLocks(
                 transfers, index + 1, currentProviderCacheGeneration, expectedAvailableWidth);
@@ -452,20 +393,20 @@ internal sealed partial class ImageBox
         bool expectedInlineLayout)
     {
         SharedCanvasBitmapCache.Lease? preparedLease = prepared._bitmapLease;
-        if (!HasValidNativeLayoutCustodyNoLock() ||
-            !prepared.HasValidNativeLayoutCustodyNoLock() ||
+        if (!_measure.HasValidNativeLayoutCustodyNoLock() ||
+            !prepared._measure.HasValidNativeLayoutCustodyNoLock() ||
             Context.ImageCancellationToken.IsCancellationRequested ||
             prepared.Context.ImageCancellationToken.IsCancellationRequested ||
             prepared.Context.CancellationToken.IsCancellationRequested ||
             (!expectedInlineLayout && (IsDirty || prepared.IsDirty)) ||
-            _isInlineLayout != expectedInlineLayout ||
-            prepared._isInlineLayout != expectedInlineLayout ||
-            _inlineMeasureCheckpointActive || prepared._inlineMeasureCheckpointActive ||
+            _measure.IsInlineLayout != expectedInlineLayout ||
+            prepared._measure.IsInlineLayout != expectedInlineLayout ||
+            _measure.CheckpointActive || prepared._measure.CheckpointActive ||
             (expectedInlineLayout &&
-             (_inlineMeasureOriginalPlaceholder is not null ||
-              _inlineMeasureOriginalCaption is not null ||
-              prepared._inlineMeasureOriginalPlaceholder is not null ||
-              prepared._inlineMeasureOriginalCaption is not null)) ||
+             (_measure.OriginalPlaceholder is not null ||
+              _measure.OriginalCaption is not null ||
+              prepared._measure.OriginalPlaceholder is not null ||
+              prepared._measure.OriginalCaption is not null)) ||
             !HasCoherentMeasuredPlacementNoLock(expectedAvailableWidth, expectedInlineLayout) ||
             !prepared.HasCoherentMeasuredPlacementNoLock(expectedPreparedAvailableWidth, expectedInlineLayout) ||
             !_hasPresentedImage || !prepared._hasPresentedImage ||
@@ -473,10 +414,10 @@ internal sealed partial class ImageBox
             !ReferenceEquals(_bitmap, prepared._bitmap) ||
             preparedLease is null ||
             ReferenceEquals(_bitmapLease, preparedLease) ||
-            NativeLayoutsAlias(_placeholder, prepared._placeholder) ||
-            NativeLayoutsAlias(_caption, prepared._caption) ||
-            NativeLayoutsAlias(_placeholder, prepared._caption) ||
-            NativeLayoutsAlias(_caption, prepared._placeholder) ||
+            NativeLayoutsAlias(_measure.Placeholder, prepared._measure.Placeholder) ||
+            NativeLayoutsAlias(_measure.Caption, prepared._measure.Caption) ||
+            NativeLayoutsAlias(_measure.Placeholder, prepared._measure.Caption) ||
+            NativeLayoutsAlias(_measure.Caption, prepared._measure.Placeholder) ||
             !HasMatchingPlacementInputs(prepared))
         {
             return false;
@@ -545,37 +486,6 @@ internal sealed partial class ImageBox
                _svgIntrinsicSize.Equals(other._svgIntrinsicSize);
     }
 
-    private bool HasNoLiveBitmapOutputPlacementWork()
-    {
-        lock (_bitmapOutputSync)
-        {
-            // Successful admission leaves monotonic waiter epochs and cached
-            // visibility/tier hints behind. They are historical bookkeeping,
-            // not pending ownership. A private placement transfer only needs
-            // to exclude live waiters, registrations, deferrals, and retries.
-            return _bitmapOutputWaiter is null &&
-                _bitmapOutputWaiterOwner is null &&
-                _bitmapOutputImageCancellation.Equals(default(CancellationTokenRegistration)) &&
-                _bitmapOutputSessionCancellation.Equals(default(CancellationTokenRegistration)) &&
-                _bitmapOutputDemand is null &&
-                _bitmapOutputRequiredBytes == 0 &&
-                _bitmapOutputCapacityVersion == 0 &&
-                _bitmapOutputWaiterSlotVersion == 0 &&
-                _bitmapOutputDemandGeneration == 0 &&
-                _bitmapOutputSvgGeneration == 0 &&
-                _bitmapOutputDeferred == 0 &&
-                _bitmapOutputNeedsTrim == 0 &&
-                _bitmapOutputRegistering == 0 &&
-                _bitmapOutputRegistrationNeeded == 0 &&
-                _bitmapOutputCapacityReady == 0 &&
-                _bitmapOutputRetryQueued == 0 &&
-                _bitmapOutputRetryInProgress == 0 &&
-                _bitmapOutputRetryOfferPending == 0 &&
-                _bitmapOutputRegistrationFailed == 0 &&
-                _bitmapOutputCancellationRegistered == 0;
-        }
-    }
-
     private static bool RequestedSizeMatches(SafeHtmlLength? left, SafeHtmlLength? right)
     {
         if (left.HasValue != right.HasValue)
@@ -591,33 +501,33 @@ internal sealed partial class ImageBox
 
     private bool HasCoherentMeasuredPlacementNoLock(float expectedAvailableWidth, bool expectedInlineLayout)
     {
-        if (_isInlineLayout != expectedInlineLayout)
+        if (_measure.IsInlineLayout != expectedInlineLayout)
             return false;
 
         if (expectedInlineLayout)
         {
             Rect inlineBounds = Bounds;
-            return float.IsFinite(_availableWidth) && _availableWidth == expectedAvailableWidth &&
-                   float.IsFinite(_imageWidth) && _imageWidth > 0f &&
-                   float.IsFinite(_imageHeight) && _imageHeight > 0f &&
-                   float.IsFinite(_captionHeight) && _captionHeight == 0f && _caption is null &&
-                   _captionRetirementRecord is null &&
-                   _inlineMeasureOriginalPlaceholder is null &&
-                   _inlineMeasureOriginalCaption is null &&
+            return float.IsFinite(_measure.AvailableWidth) && _measure.AvailableWidth == expectedAvailableWidth &&
+                   float.IsFinite(_measure.ImageWidth) && _measure.ImageWidth > 0f &&
+                   float.IsFinite(_measure.ImageHeight) && _measure.ImageHeight > 0f &&
+                   float.IsFinite(_measure.CaptionHeight) && _measure.CaptionHeight == 0f && _measure.Caption is null &&
+                   _measure.CaptionRecord is null &&
+                   _measure.OriginalPlaceholder is null &&
+                   _measure.OriginalCaption is null &&
                    double.IsFinite(inlineBounds.X) && double.IsFinite(inlineBounds.Y) &&
-                   double.IsFinite(inlineBounds.Width) && inlineBounds.Width == _imageWidth &&
-                   double.IsFinite(inlineBounds.Height) && inlineBounds.Height == _imageHeight;
+                   double.IsFinite(inlineBounds.Width) && inlineBounds.Width == _measure.ImageWidth &&
+                   double.IsFinite(inlineBounds.Height) && inlineBounds.Height == _measure.ImageHeight;
         }
 
         Rect bounds = Bounds;
         float expectedBoundsHeight =
-            Math.Max(_imageHeight, GetParagraphLineHeight()) +
-            _captionHeight +
+            Math.Max(_measure.ImageHeight, GetParagraphLineHeight()) +
+            _measure.CaptionHeight +
             (float)(Margin.Top + Margin.Bottom);
-        if (!float.IsFinite(_availableWidth) || _availableWidth != expectedAvailableWidth ||
-            !float.IsFinite(_imageWidth) || _imageWidth <= 0 ||
-            !float.IsFinite(_imageHeight) || _imageHeight <= 0 ||
-            !float.IsFinite(_captionHeight) || _captionHeight < 0 ||
+        if (!float.IsFinite(_measure.AvailableWidth) || _measure.AvailableWidth != expectedAvailableWidth ||
+            !float.IsFinite(_measure.ImageWidth) || _measure.ImageWidth <= 0 ||
+            !float.IsFinite(_measure.ImageHeight) || _measure.ImageHeight <= 0 ||
+            !float.IsFinite(_measure.CaptionHeight) || _measure.CaptionHeight < 0 ||
             !float.IsFinite(expectedBoundsHeight) ||
             !double.IsFinite(bounds.X) || !double.IsFinite(bounds.Y) ||
             !double.IsFinite(bounds.Width) || bounds.Width != expectedAvailableWidth ||
@@ -627,20 +537,20 @@ internal sealed partial class ImageBox
         }
 
         if (string.IsNullOrEmpty(Alt))
-            return _caption is null && _captionHeight == 0;
+            return _measure.Caption is null && _measure.CaptionHeight == 0;
 
-        return _caption is not null && _captionHeight > 0;
+        return _measure.Caption is not null && _measure.CaptionHeight > 0;
     }
 
     private static float ResolveExpectedAvailableWidth(
-        MeasuredPlacementTransfer transfer,
+        ImageMeasuredPlacementTransfer transfer,
         float fallbackWidth) =>
         transfer.ExpectedAvailableWidth == 0f
             ? fallbackWidth
             : transfer.ExpectedAvailableWidth;
 
     private static float ResolveExpectedPreparedAvailableWidth(
-        MeasuredPlacementTransfer transfer,
+        ImageMeasuredPlacementTransfer transfer,
         float sourceWidth) =>
         transfer.ExpectedPreparedAvailableWidth == 0f
             ? sourceWidth
@@ -650,16 +560,16 @@ internal sealed partial class ImageBox
         first is not null && ReferenceEquals(first, second);
 
     private static bool NativePlacementLayoutsAlias(ImageBox first, ImageBox second) =>
-        NativeLayoutsAlias(first._placeholder, second._placeholder) ||
-        NativeLayoutsAlias(first._placeholder, second._caption) ||
-        NativeLayoutsAlias(first._caption, second._placeholder) ||
-        NativeLayoutsAlias(first._caption, second._caption);
+        NativeLayoutsAlias(first._measure.Placeholder, second._measure.Placeholder) ||
+        NativeLayoutsAlias(first._measure.Placeholder, second._measure.Caption) ||
+        NativeLayoutsAlias(first._measure.Caption, second._measure.Placeholder) ||
+        NativeLayoutsAlias(first._measure.Caption, second._measure.Caption);
 
     private static bool NativePlacementRetirementRecordsAlias(ImageBox first, ImageBox second) =>
-        NativeRetirementRecordsAlias(first._placeholderRetirementRecord, second._placeholderRetirementRecord) ||
-        NativeRetirementRecordsAlias(first._placeholderRetirementRecord, second._captionRetirementRecord) ||
-        NativeRetirementRecordsAlias(first._captionRetirementRecord, second._placeholderRetirementRecord) ||
-        NativeRetirementRecordsAlias(first._captionRetirementRecord, second._captionRetirementRecord);
+        NativeRetirementRecordsAlias(first._measure.PlaceholderRecord, second._measure.PlaceholderRecord) ||
+        NativeRetirementRecordsAlias(first._measure.PlaceholderRecord, second._measure.CaptionRecord) ||
+        NativeRetirementRecordsAlias(first._measure.CaptionRecord, second._measure.PlaceholderRecord) ||
+        NativeRetirementRecordsAlias(first._measure.CaptionRecord, second._measure.CaptionRecord);
 
     private static bool NativeRetirementRecordsAlias(
         NativeResourceRetirementRecord? first,

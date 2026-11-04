@@ -12,10 +12,6 @@ namespace MarkdownRenderer.Images;
 /// </summary>
 internal sealed class MarkdownImagePreparationAdmission
 {
-    private static readonly MarkdownImagePreparationAdmission SharedInstance = new(
-        IntPtr.Size == 4 ? 64L * 1024 * 1024 : 128L * 1024 * 1024,
-        IntPtr.Size == 4 ? 1 : 2);
-
     private readonly object _gate = new();
     private readonly Dictionary<object, OwnerQueue> _queues =
         new(ReferenceEqualityComparer.Instance);
@@ -31,7 +27,10 @@ internal sealed class MarkdownImagePreparationAdmission
         MaxConcurrency = maxConcurrency;
     }
 
-    internal static MarkdownImagePreparationAdmission Shared => SharedInstance;
+    /// <summary>Creates the process-sized admission an image resource scope uses by default.</summary>
+    internal static MarkdownImagePreparationAdmission CreateDefault() => new(
+        IntPtr.Size == 4 ? 64L * 1024 * 1024 : 128L * 1024 * 1024,
+        IntPtr.Size == 4 ? 1 : 2);
 
     internal readonly long CapacityBytes;
 

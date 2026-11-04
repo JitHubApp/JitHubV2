@@ -261,8 +261,8 @@ public sealed class MultiRootInlinePlacementCloneTests
     {
         FieldInfo entryField = typeof(SharedCanvasBitmapCache.Lease).GetField(
             "_entry", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        object entry = Assert.IsAssignableFrom<SharedCanvasBitmapCache.Entry>(entryField.GetValue(lease));
-        FieldInfo countField = typeof(SharedCanvasBitmapCache.Entry).GetField(
+        object entry = Assert.IsAssignableFrom<SharedCanvasBitmapCacheEntry>(entryField.GetValue(lease));
+        FieldInfo countField = typeof(SharedCanvasBitmapCacheEntry).GetField(
             "_referenceCount", BindingFlags.Instance | BindingFlags.NonPublic)!;
         return Assert.IsType<int>(countField.GetValue(entry));
     }
@@ -451,7 +451,7 @@ public sealed class MultiRootInlinePlacementCloneTests
         {
             string url = $"ms-appx:///inline-placement-{Guid.NewGuid():N}.png";
             Assert.True(MarkdownBuiltInImageSourcePolicy.TryResolve(url, null, out MarkdownBuiltInImageSource resolved));
-            using SharedCanvasBitmapCache.Lease cachedLease = SharedCanvasBitmapCache.StoreAndAcquire(
+            using SharedCanvasBitmapCache.Lease cachedLease = ImageResourceScope.Shared.BitmapCache.StoreAndAcquire(
                 _device,
                 resolved.CacheKey,
                 CreateBitmap(_device, 48, 24),
@@ -491,7 +491,7 @@ public sealed class MultiRootInlinePlacementCloneTests
                 await SourceContext.DrainOwnedRetirementsAsync();
             }
 
-            SharedCanvasBitmapCache.ReleaseDevice(_device);
+            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(_device);
             _device.Dispose();
         }
 

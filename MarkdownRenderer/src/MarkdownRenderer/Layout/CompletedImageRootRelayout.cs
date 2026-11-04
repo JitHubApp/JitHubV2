@@ -296,10 +296,10 @@ internal sealed class CompletedImageRootRelayout
         // Table column resolution may change every cell's measurement width.
         // Fence the old source width and new private width independently;
         // adopting a placement must never assume the source was remeasured.
-        ImageBox.MeasuredPlacementTransfer[] transfers = batch.Transfers;
+        ImageMeasuredPlacementTransfer[] transfers = batch.Transfers;
         for (int index = 0; index < transfers.Length; index++)
         {
-            ImageBox.MeasuredPlacementTransfer transfer = transfers[index];
+            ImageMeasuredPlacementTransfer transfer = transfers[index];
             if (!transfer.Prepared.TryCaptureNativeLayoutPlacementFence(out var preparedNativeFence))
                 return false;
             transfer = transfer with { ExpectedPreparedNativeLayouts = preparedNativeFence };
@@ -368,7 +368,7 @@ internal sealed class CompletedImageRootRelayout
         foreach (InlineMeasuredPlacementTransfer inlineTransfer in batch.AllInlineTransfers)
             if (!inlineTransfer.TryAddNativeLayoutOwners(batch.NativeLayoutOwners, batch.NativeRetirementOwners))
                 return false;
-        foreach (ImageBox.MeasuredPlacementTransfer imageTransfer in batch.Transfers)
+        foreach (ImageMeasuredPlacementTransfer imageTransfer in batch.Transfers)
             if (!imageTransfer.Source.TryAddNativePlacementOwners(batch.NativeLayoutOwners, batch.NativeRetirementOwners) ||
                 !imageTransfer.Prepared.TryAddNativePlacementOwners(batch.NativeLayoutOwners, batch.NativeRetirementOwners))
                 return false;

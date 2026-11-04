@@ -120,7 +120,7 @@ public sealed class PaintOnlyImageCompletionTests
         var sourceMap = new MarkdownSourceMap(imageUrl);
         MarkdownLayoutContext context = CreateContext(sourceMap, resolver, session);
         var image = new ImageBox(
-            context,
+            context, ImageResourceScope.Shared,
             imageUrl,
             "badge",
             new SafeHtmlLength(80, IsPercent: false),
@@ -171,7 +171,7 @@ public sealed class PaintOnlyImageCompletionTests
         var sourceMap = new MarkdownSourceMap(imageUrl);
         MarkdownLayoutContext context = CreateContext(sourceMap, resolver, session: null);
         var image = new ImageBox(
-            context,
+            context, ImageResourceScope.Shared,
             imageUrl,
             "badge",
             new SafeHtmlLength(80, IsPercent: false),
@@ -221,7 +221,7 @@ public sealed class PaintOnlyImageCompletionTests
             ? null
             : new SafeHtmlLength(40, IsPercent: heightKind == 2);
         var image = new ImageBox(
-            context,
+            context, ImageResourceScope.Shared,
             imageUrl,
             "badge",
             requestedWidth,

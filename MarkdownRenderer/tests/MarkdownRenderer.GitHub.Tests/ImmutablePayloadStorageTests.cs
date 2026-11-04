@@ -74,13 +74,13 @@ public sealed class ImmutablePayloadStorageTests
             "IsDark IsHighContrast DocumentPadding LayoutFingerprint");
         AssertReadonly(typeof(ThemeStyleCacheKey),
             "ElementKey ContextKeys AliasKeys Language State");
-        AssertReadonly(Nested(typeof(SharedCanvasBitmapCache), "CacheKey"), "Device Identity");
+        AssertReadonly(typeof(SharedCanvasBitmapCacheKey), "Device Identity");
         AssertReadonly(typeof(InlineScenePlacementRollbackState), "Run LocalBounds");
-        AssertReadonly(Nested(typeof(ImageBox), "InlineMeasureCheckpoint"),
+        AssertReadonly(typeof(InlineMeasureCheckpoint),
             "Owner Generation WasInlineLayout PreviousAvailableWidth PreviousImageWidth PreviousImageHeight " +
             "PreviousCaptionHeight PreviousBounds");
-        AssertReadonly(Nested(typeof(RasterImageResourceBudget), "IconPayloadRange"), "Offset Length");
-        AssertReadonly(Nested(typeof(ImageBox), "SvgRendererCacheIdentity"), "Value");
+        AssertReadonly(Nested(typeof(RasterIconHeaderReader), "IconPayloadRange"), "Offset Length");
+        AssertReadonly(Nested(typeof(ImageProviderIdentities), "Identity"), "Value");
         AssertReadonly(Nested(typeof(SnapshotRetirementTracker), "RetirementFailure"), "Sequence Exception");
         AssertReadonly(Nested(typeof(DeferredInputQueue<>), "Entry"), "Value PointerId Coalescible");
         AssertReadonly(Nested(typeof(BlockBoxCleanupScope), "AggregateFailureCursor"), "InnerExceptions NextIndex Depth");
@@ -105,7 +105,7 @@ public sealed class ImmutablePayloadStorageTests
         AssertReadonly(typeof(InlineSceneGeometry), "Run RegionCount");
         AssertReadonly(typeof(FocusableItem), "BlockIndex InlineIndex Kind");
         AssertReadonly(typeof(LoadCompletedEventArgs), "LayoutInvalidated");
-        AssertReadonly(Nested(typeof(SharedCanvasBitmapCache), "Entry"),
+        AssertReadonly(typeof(SharedCanvasBitmapCacheEntry),
             "Bitmap WeightBytes IntrinsicSize PixelWidth PixelHeight");
         AssertReadonly(typeof(SharedCanvasTextFormatEntry), "Format WeightBytes");
         AssertReadonly(typeof(SharedLayoutMetrics), "EstimatedWeightBytes");
@@ -225,7 +225,7 @@ public sealed class ImmutablePayloadStorageTests
         const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         object menuTarget = Activator.CreateInstance(type, nonPublic: true)!;
         type.GetProperty("ImageUrl", flags)!.SetValue(menuTarget, "https://example.test/image.png");
-        SharedCanvasBitmapCache.Lease lease = SharedCanvasBitmapCache.StoreAndAcquire(
+        SharedCanvasBitmapCache.Lease lease = ImageResourceScope.Shared.BitmapCache.StoreAndAcquire(
             device,
             $"context-menu-target-{Guid.NewGuid():N}",
             CreateBitmap(device));
@@ -239,7 +239,7 @@ public sealed class ImmutablePayloadStorageTests
 
             type.GetMethod("Dispose", flags)!.Invoke(menuTarget, null);
             Assert.Null(type.GetProperty("ImageBitmapLease", flags)!.GetValue(menuTarget));
-            SharedCanvasBitmapCache.ReleaseDevice(device);
+            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(device);
 
             object executionLease = Assert.IsAssignableFrom<IDisposable>(
                 type.GetProperty("ImageBitmapLease", flags)!.GetValue(executionTarget));
@@ -257,7 +257,7 @@ public sealed class ImmutablePayloadStorageTests
                 type.GetMethod("Dispose", flags)!.Invoke(executionTarget, null);
             else
                 type.GetMethod("Dispose", flags)!.Invoke(menuTarget, null);
-            SharedCanvasBitmapCache.ReleaseDevice(device);
+            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(device);
         }
     }
 
@@ -365,68 +365,55 @@ public sealed class ImmutablePayloadStorageTests
     public void CompactSharedCacheEntriesPreserveConstructorValuesAndReferences()
     {
         const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-        Type bitmapEntryType = Nested(typeof(SharedCanvasBitmapCache), "Entry");
         CanvasDevice device = CanvasDevice.GetSharedDevice();
+        SharedCanvasBitmapCache cache = ImageResourceScope.Shared.BitmapCache;
 
         CanvasBitmap uncachedBitmap = CreateBitmap(device);
-        object? uncachedEntry = null;
+        SharedCanvasBitmapCacheEntry? uncachedEntry = null;
         try
         {
-            uncachedEntry = Construct(bitmapEntryType, [uncachedBitmap, null!]);
-            Assert.Same(uncachedBitmap, Field(uncachedEntry, "Bitmap"));
-            Assert.Equal(4L, Field(uncachedEntry, "WeightBytes"));
-            Assert.Equal(4L, Field(uncachedEntry, "PixelWeightBytes"));
-            Assert.Null(Field(uncachedEntry, "IntrinsicSize"));
-            Assert.Equal(1, Field(uncachedEntry, "PixelWidth"));
-            Assert.Equal(1, Field(uncachedEntry, "PixelHeight"));
+            uncachedEntry = new SharedCanvasBitmapCacheEntry(cache, uncachedBitmap, bitmapReservation: null);
+            Assert.Same(uncachedBitmap, uncachedEntry.Bitmap);
+            Assert.Equal(4L, uncachedEntry.WeightBytes);
+            Assert.Equal(4L, uncachedEntry.PixelWeightBytes);
+            Assert.Null(uncachedEntry.IntrinsicSize);
+            Assert.Equal(1, uncachedEntry.PixelWidth);
+            Assert.Equal(1, uncachedEntry.PixelHeight);
         }
         finally
         {
             if (uncachedEntry is null)
                 uncachedBitmap.Dispose();
             else
-                uncachedEntry.GetType().GetMethod("Release", flags)!.Invoke(uncachedEntry, null);
+                uncachedEntry.Release();
         }
 
         CanvasBitmap cachedBitmap = CreateBitmap(device);
-        object? cachedEntry = null;
+        SharedCanvasBitmapCacheEntry? cachedEntry = null;
         try
         {
-            ConstructorInfo cachedConstructor = Assert.Single(
-                bitmapEntryType.GetConstructors(flags),
-                constructor => constructor.GetParameters().Any(parameter => parameter.Name == "knownPixelWidth"));
-            ParameterInfo[] parameters = cachedConstructor.GetParameters();
-            var arguments = new object[parameters.Length];
-            for (int index = 0; index < parameters.Length; index++)
-            {
-                arguments[index] = parameters[index].Name switch
-                {
-                    "bitmap" => cachedBitmap,
-                    "intrinsicSize" => new Size(24, 16),
-                    "knownPixelWidth" => 3,
-                    "knownPixelHeight" => 4,
-                    "svgWorkId" => 11L,
-                    "svgSourceBytes" => 12L,
-                    "svgTargetPixels" => 13L,
-                    "bitmapReservation" => null!,
-                    _ => throw new InvalidOperationException(
-                        $"Unexpected {bitmapEntryType.Name} constructor parameter: {parameters[index].Name}"),
-                };
-            }
-
-            cachedEntry = cachedConstructor.Invoke(arguments);
-            Assert.Same(cachedBitmap, Field(cachedEntry, "Bitmap"));
-            Assert.Equal(48L, Field(cachedEntry, "WeightBytes"));
-            Assert.Equal(new Size(24, 16), Field(cachedEntry, "IntrinsicSize"));
-            Assert.Equal(3, Field(cachedEntry, "PixelWidth"));
-            Assert.Equal(4, Field(cachedEntry, "PixelHeight"));
+            cachedEntry = new SharedCanvasBitmapCacheEntry(
+                cache,
+                cachedBitmap,
+                intrinsicSize: new Size(24, 16),
+                knownPixelWidth: 3,
+                knownPixelHeight: 4,
+                svgWorkId: 11L,
+                svgSourceBytes: 12L,
+                svgTargetPixels: 13L,
+                bitmapReservation: null);
+            Assert.Same(cachedBitmap, cachedEntry.Bitmap);
+            Assert.Equal(48L, cachedEntry.WeightBytes);
+            Assert.Equal(new Size(24, 16), cachedEntry.IntrinsicSize);
+            Assert.Equal(3, cachedEntry.PixelWidth);
+            Assert.Equal(4, cachedEntry.PixelHeight);
         }
         finally
         {
             if (cachedEntry is null)
                 cachedBitmap.Dispose();
             else
-                cachedEntry.GetType().GetMethod("Release", flags)!.Invoke(cachedEntry, null);
+                cachedEntry.Release();
         }
 
         Type textEntryType = typeof(SharedCanvasTextFormatEntry);
@@ -534,7 +521,7 @@ public sealed class ImmutablePayloadStorageTests
     [Fact]
     public void CompactPrivateRangeAndRetirementPayloadsPreserveConstructorValues()
     {
-        object range = Construct(Nested(typeof(RasterImageResourceBudget), "IconPayloadRange"), [31, 17]);
+        object range = Construct(Nested(typeof(RasterIconHeaderReader), "IconPayloadRange"), [31, 17]);
         Assert.Equal(31, Field(range, "Offset"));
         Assert.Equal(17, Field(range, "Length"));
         Assert.Equal(48, range.GetType().GetProperty("End")!.GetValue(range));

@@ -39,7 +39,7 @@ public sealed class SvgHostPreparationAdmissionTests
         {
             image.EnsureLoading();
             await renderer.CapacityWaitStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            await WaitUntilAsync(() => image.ActiveImageWorkCountForTests == 0);
+            await WaitUntilAsync(() => image.GetWorkState().ActiveWorkCount == 0);
 
             Assert.Equal(1, renderer.ScratchReservationCount);
             Assert.Equal(0, renderer.PrepareSourceCount);
@@ -71,7 +71,7 @@ public sealed class SvgHostPreparationAdmissionTests
         try
         {
             await load.Completion.WaitAsync(TimeSpan.FromSeconds(10));
-            await WaitUntilAsync(() => image.ActiveImageWorkCountForTests == 0);
+            await WaitUntilAsync(() => image.GetWorkState().ActiveWorkCount == 0);
 
             Assert.Equal(0, renderer.ScratchReservationCount);
             Assert.Equal(1, renderer.PrepareSourceCount);
@@ -96,7 +96,7 @@ public sealed class SvgHostPreparationAdmissionTests
         {
             image.EnsureLoading();
             await renderer.CapacityWaitStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            await WaitUntilAsync(() => image.ActiveImageWorkCountForTests == 0);
+            await WaitUntilAsync(() => image.GetWorkState().ActiveWorkCount == 0);
 
             Assert.Equal(1, renderer.PrepareSourceCount);
             Assert.Equal(1, renderer.OpenCount);
@@ -149,7 +149,7 @@ public sealed class SvgHostPreparationAdmissionTests
 
             renderer.ReleaseOpen();
             await renderer.CapacityWaitStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            await WaitUntilAsync(() => image.ActiveImageWorkCountForTests == 0);
+            await WaitUntilAsync(() => image.GetWorkState().ActiveWorkCount == 0);
 
             Assert.Equal(1, renderer.OpenCount);
             Assert.Equal(0, renderer.OpenLeaseDisposeCount);
@@ -185,7 +185,7 @@ public sealed class SvgHostPreparationAdmissionTests
         {
             image.EnsureLoading();
             await renderer.CapacityWaitStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            await WaitUntilAsync(() => image.ActiveImageWorkCountForTests == 0);
+            await WaitUntilAsync(() => image.GetWorkState().ActiveWorkCount == 0);
 
             TrackingPreparationLease lease = Assert.IsType<TrackingPreparationLease>(renderer.LastLease);
             Assert.Equal(1, renderer.PrepareSourceCount);
@@ -218,7 +218,7 @@ public sealed class SvgHostPreparationAdmissionTests
         try
         {
             await load.Completion.WaitAsync(TimeSpan.FromSeconds(10));
-            await WaitUntilAsync(() => image.ActiveImageWorkCountForTests == 0);
+            await WaitUntilAsync(() => image.GetWorkState().ActiveWorkCount == 0);
 
             TrackingPreparationLease lease = Assert.IsType<TrackingPreparationLease>(renderer.LastLease);
             Assert.Equal(MarkdownSvgFailureReason.ResourceLimitExceeded, image.SvgFailureReason);
@@ -248,7 +248,7 @@ public sealed class SvgHostPreparationAdmissionTests
         try
         {
             await load.Completion.WaitAsync(TimeSpan.FromSeconds(10));
-            await WaitUntilAsync(() => image.ActiveImageWorkCountForTests == 0);
+            await WaitUntilAsync(() => image.GetWorkState().ActiveWorkCount == 0);
 
             TrackingPreparationLease lease = Assert.IsType<TrackingPreparationLease>(renderer.LastLease);
             Assert.Equal(MarkdownSvgFailureReason.WorkerFailure, image.SvgFailureReason);
@@ -285,7 +285,7 @@ public sealed class SvgHostPreparationAdmissionTests
         {
             image.EnsureLoading();
             await WaitUntilAsync(() => renderer.LastLease?.DisposeCount == 1);
-            await WaitUntilAsync(() => image.ActiveImageWorkCountForTests == 0);
+            await WaitUntilAsync(() => image.GetWorkState().ActiveWorkCount == 0);
 
             TrackingPreparationLease lease = Assert.IsType<TrackingPreparationLease>(renderer.LastLease);
             Assert.Equal(1, renderer.ScratchReservationCount);
@@ -374,7 +374,7 @@ public sealed class SvgHostPreparationAdmissionTests
             Assert.Equal(1, sourceOwner.DisposeCount);
             Assert.Equal(0, sourceOwner.CurrentBytes);
             Assert.Equal(0, renderer.ProviderSourceWeight);
-            Assert.Equal(0, image.ActiveImageWorkCountForTests);
+            Assert.Equal(0, image.GetWorkState().ActiveWorkCount);
         }
         finally
         {
@@ -403,7 +403,7 @@ public sealed class SvgHostPreparationAdmissionTests
         try
         {
             await load.Completion.WaitAsync(TimeSpan.FromSeconds(10));
-            await WaitUntilAsync(() => image.ActiveImageWorkCountForTests == 0);
+            await WaitUntilAsync(() => image.GetWorkState().ActiveWorkCount == 0);
 
             Assert.Equal(MarkdownSvgFailureReason.WorkerFailure, image.SvgFailureReason);
             Assert.Equal(MarkdownImageAccessibilityState.Error, image.AccessibilityState);
@@ -469,7 +469,7 @@ public sealed class SvgHostPreparationAdmissionTests
         };
 
         return new ImageBox(
-            context,
+            context, ImageResourceScope.Shared,
             $"https://example.test/svg-preparation/{Guid.NewGuid():N}.svg",
             alt: "SVG preparation admission test");
     }

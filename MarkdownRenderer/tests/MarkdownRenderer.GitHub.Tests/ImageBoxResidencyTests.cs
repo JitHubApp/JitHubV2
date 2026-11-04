@@ -41,7 +41,7 @@ public sealed class ImageBoxResidencyTests
             resolver,
             new MarkdownImageResolveContext(BaseUri: null));
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(documentScope, session, scale: 1),
+            DisplaySizedRasterDecodeTests.CreateContext(documentScope, session, scale: 1), ImageResourceScope.Shared,
             "https://images.example/residency.png",
             "A retained image description");
 
@@ -99,7 +99,7 @@ public sealed class ImageBoxResidencyTests
             });
         var resolver = new LateResolver();
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1),
+            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
             "https://images.example/late.png",
             "Late image");
         int publications = 0;
@@ -119,7 +119,7 @@ public sealed class ImageBoxResidencyTests
             resolver.Complete(DisplaySizedRasterDecodeTests.CreatePng(320, 160));
             await drained.WaitAsync(TimeSpan.FromSeconds(10));
 
-            Assert.Equal(0, image.ActiveImageWorkCountForTests);
+            Assert.Equal(0, image.GetWorkState().ActiveWorkCount);
             Assert.True(image.TryReleaseSuspendedResources());
             Assert.Null(image.Bitmap);
             Assert.Equal(0, Volatile.Read(ref publications));
@@ -142,7 +142,7 @@ public sealed class ImageBoxResidencyTests
             });
         var image = new ImageBox(
             DisplaySizedRasterDecodeTests.CreateContext(
-                new UnusedResolver(), session, scale: 1),
+                new UnusedResolver(), session, scale: 1), ImageResourceScope.Shared,
             "https://images.example/queued.png",
             "Queued image");
         var queued = new TaskCompletionSource<Action>(
@@ -162,7 +162,7 @@ public sealed class ImageBoxResidencyTests
                 });
 
             Action callback = await queued.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            Assert.True(image.ActiveImageWorkCountForTests > 0);
+            Assert.True(image.GetWorkState().ActiveWorkCount > 0);
             Task drained = ObserveResidencyDrainAsync(image);
             image.SuspendResources();
             Assert.False(image.TryReleaseSuspendedResources());
@@ -172,7 +172,7 @@ public sealed class ImageBoxResidencyTests
 
             Assert.Equal(0, Volatile.Read(ref publications));
             Assert.Equal(1, Volatile.Read(ref dropped));
-            Assert.Equal(0, image.ActiveImageWorkCountForTests);
+            Assert.Equal(0, image.GetWorkState().ActiveWorkCount);
             Assert.True(image.TryReleaseSuspendedResources());
         }
         finally
@@ -187,7 +187,7 @@ public sealed class ImageBoxResidencyTests
         using var session = CreateResidencySession();
         var renderer = new ResidencySvgRenderer(blockDispose: true);
         var image = new ImageBox(
-            CreateContext(null, session, renderer),
+            CreateContext(null, session, renderer), ImageResourceScope.Shared,
             CreateSvgDataUri("blocked-dispose-" + Guid.NewGuid().ToString("N")),
             "SVG alternative text");
 
@@ -212,7 +212,7 @@ public sealed class ImageBoxResidencyTests
             // The document retirement lease is held by the blocked provider
             // Dispose call. Register while that work is known to be active so
             // the drained signal cannot have raced ahead of this observer.
-            Assert.True(image.ActiveImageWorkCountForTests > 0);
+            Assert.True(image.GetWorkState().ActiveWorkCount > 0);
             Task documentDisposalDrained = ObserveResidencyDrainAsync(image);
             image.SuspendResources();
             Assert.False(image.TryReleaseSuspendedResources());
@@ -258,7 +258,7 @@ public sealed class ImageBoxResidencyTests
     {
         var renderer = new ResidencySvgRenderer();
         var image = new ImageBox(
-            CreateContext(null, session: null, renderer),
+            CreateContext(null, session: null, renderer), ImageResourceScope.Shared,
             CreateSvgDataUri("legacy-retirement-" + Guid.NewGuid().ToString("N")),
             "Legacy SVG");
 
@@ -292,7 +292,7 @@ public sealed class ImageBoxResidencyTests
                 IntrinsicAspectRatio: 5,
                 Description: "Large provider document"));
         var image = new ImageBox(
-            CreateContext(null, session, renderer),
+            CreateContext(null, session, renderer), ImageResourceScope.Shared,
             CreateSvgDataUri("tiled-retirement-" + Guid.NewGuid().ToString("N")),
             "Tiled SVG");
 
@@ -309,8 +309,8 @@ public sealed class ImageBoxResidencyTests
             Assert.Equal(0, renderer.Document.DisposeCount);
 
             BitmapOutputAdmission.Snapshot admissionBeforeTilePaint =
-                BitmapOutputAdmission.Shared.GetSnapshot();
-            long cacheBytesBeforeTilePaint = SharedCanvasBitmapCache.RetainedBytesForTests;
+                ImageResourceScope.Shared.BitmapOutput.GetSnapshot();
+            long cacheBytesBeforeTilePaint = ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes;
             TaskCompletionSource repaintPulse = new(TaskCreationOptions.RunContinuationsAsynchronously);
             void OnLoadCompleted(object? sender, LoadCompletedEventArgs args)
             {
@@ -354,7 +354,7 @@ public sealed class ImageBoxResidencyTests
             }
             catch (OperationCanceledException exception) when (renderDeadline.IsCancellationRequested)
             {
-                BitmapOutputAdmission.Snapshot admission = BitmapOutputAdmission.Shared.GetSnapshot();
+                BitmapOutputAdmission.Snapshot admission = ImageResourceScope.Shared.BitmapOutput.GetSnapshot();
                 throw new TimeoutException(
                     $"Visible SVG tile render did not start. " +
                     $"beforePaint(admissionCharged={admissionBeforeTilePaint.ChargedBytes}, " +
@@ -366,10 +366,10 @@ public sealed class ImageBoxResidencyTests
                     $"uncertain={admission.UncertainBytes}, capacity={admission.CapacityBytes}, " +
                     $"visibleLimit={admission.VisibleInitialLimitBytes}, waiters={admission.WaiterCount}, " +
                     $"offered={admission.OfferedBytes}, capacityVersion={admission.CapacityVersion}); " +
-                    $"cache(retained={SharedCanvasBitmapCache.RetainedBytesForTests}, " +
-                    $"pixelLedger={SharedCanvasBitmapCache.LiveBitmapPixelWeightBytesForTests}, " +
-                    $"uncertainPixelLedger={SharedCanvasBitmapCache.UncertainBitmapDisposePixelWeightBytesForTests}); " +
-                    $"image(work={image.ActiveImageWorkCountForTests}, " +
+                    $"cache(retained={ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes}, " +
+                    $"pixelLedger={ImageResourceScope.Shared.BitmapCache.GetSnapshot().LivePixelWeightBytes}, " +
+                    $"uncertainPixelLedger={ImageResourceScope.Shared.BitmapCache.GetSnapshot().UncertainDisposePixelWeightBytes}); " +
+                    $"image(work={image.GetWorkState().ActiveWorkCount}, " +
                     $"needsRecovery={image.NeedsBitmapOutputRecovery}, " +
                     $"svgTiles={image.UsesSvgTilesForAutomation}, raster={image.SvgRasterPixelSize}, " +
                     $"accessibility={image.AccessibilityState}); " +
@@ -405,7 +405,7 @@ public sealed class ImageBoxResidencyTests
     {
         var renderer = new ResidencySvgRenderer(throwOnDispose: true);
         var image = new ImageBox(
-            CreateContext(null, session: null, renderer),
+            CreateContext(null, session: null, renderer), ImageResourceScope.Shared,
             CreateSvgDataUri("dispose-failure-" + Guid.NewGuid().ToString("N")),
             "SVG with provider cleanup failure");
 
@@ -446,7 +446,7 @@ public sealed class ImageBoxResidencyTests
         using var session = CreateResidencySession();
         var renderer = new ResidencySvgRenderer(blockRender: true);
         var image = new ImageBox(
-            CreateContext(null, session, renderer),
+            CreateContext(null, session, renderer), ImageResourceScope.Shared,
             CreateSvgDataUri("late-render-" + Guid.NewGuid().ToString("N")),
             "Late SVG");
         int publications = 0;
@@ -481,7 +481,7 @@ public sealed class ImageBoxResidencyTests
             await drain.WaitAsync(TimeSpan.FromSeconds(10));
 
             Assert.Equal(1, renderer.LastRasterOwner!.DisposeCount);
-            Assert.Equal(0, image.ActiveImageWorkCountForTests);
+            Assert.Equal(0, image.GetWorkState().ActiveWorkCount);
             if (renderer.Document.DisposeCount == 0)
             {
                 Task releaseDrained = ObserveResidencyDrainAsync(image);
@@ -508,7 +508,7 @@ public sealed class ImageBoxResidencyTests
     public async Task RetiredSvgDocumentDrainsItsOwnUseWhileUnrelatedDocumentRemainsActive()
     {
         var image = new ImageBox(
-            CreateContext(null, session: null),
+            CreateContext(null, session: null), ImageResourceScope.Shared,
             CreateSvgDataUri("per-document-use-" + Guid.NewGuid().ToString("N")),
             "Per-document SVG lifetime");
         var oldDocument = new ResidencySvgDocument(blockRender: false, blockDispose: false);
@@ -573,7 +573,7 @@ public sealed class ImageBoxResidencyTests
             DisplaySizedRasterDecodeTests.CreatePng(32, 16),
             $"legacy-residency-{Guid.NewGuid():N}");
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1),
+            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
             "https://images.example/legacy.png",
             "Legacy image");
 
@@ -600,7 +600,7 @@ public sealed class ImageBoxResidencyTests
         byte[] bytes = DisplaySizedRasterDecodeTests.CreatePng(83, 27);
         string source = "data:image/png," +
             string.Concat(Array.ConvertAll(bytes, value => $"%{value:X2}"));
-        var image = new ImageBox(CreateContext(null, session: null), source, "Percent-encoded PNG");
+        var image = new ImageBox(CreateContext(null, session: null), ImageResourceScope.Shared, source, "Percent-encoded PNG");
         try
         {
             image.Measure(100);
@@ -623,7 +623,7 @@ public sealed class ImageBoxResidencyTests
         string source = "data:image/png;base64," + Convert.ToBase64String(bytes);
         // Use one resource creator for both halves of this device-cache test.
         CanvasDevice device = CanvasDevice.GetSharedDevice();
-        var warm = new ImageBox(CreateContext(null, session: null, device: device), source, "Warm cache image");
+        var warm = new ImageBox(CreateContext(null, session: null, device: device), ImageResourceScope.Shared, source, "Warm cache image");
         try
         {
             warm.Measure(80);
@@ -631,10 +631,10 @@ public sealed class ImageBoxResidencyTests
             Assert.NotNull(warm.Bitmap);
             Assert.True(MarkdownBuiltInImageSourcePolicy.TryResolve(source, null, out var builtIn));
             CanvasDevice observedDevice = warm.Context.ResourceCreator.Device;
-            bool cached = SharedCanvasBitmapCache.TryAcquire(observedDevice, builtIn.CacheKey, out var cacheProbe);
+            bool cached = ImageResourceScope.Shared.BitmapCache.TryAcquire(observedDevice, builtIn.CacheKey, out var cacheProbe);
             cacheProbe?.Dispose();
             Assert.True(cached,
-                $"Warm bitmap was not cached under its built-in source key; creator/device same={ReferenceEquals(device, observedDevice)}, device getter stable={ReferenceEquals(observedDevice, warm.Context.ResourceCreator.Device)}, cache bytes={SharedCanvasBitmapCache.RetainedBytesForTests}.");
+                $"Warm bitmap was not cached under its built-in source key; creator/device same={ReferenceEquals(device, observedDevice)}, device getter stable={ReferenceEquals(observedDevice, warm.Context.ResourceCreator.Device)}, cache bytes={ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes}.");
         }
         finally
         {
@@ -644,7 +644,7 @@ public sealed class ImageBoxResidencyTests
         // This tests synchronous release of an eligible source-sized warm
         // lease. Display-sized consumers intentionally defer until measured.
         using var session = CreateResidencySession(displaySized: false);
-        var image = new ImageBox(CreateContext(null, session, device: device), source, "Warm cache image");
+        var image = new ImageBox(CreateContext(null, session, device: device), ImageResourceScope.Shared, source, "Warm cache image");
         int drainEvents = 0;
         image.ResidencyWorkDrained += (_, _) => Interlocked.Increment(ref drainEvents);
         try
@@ -711,7 +711,7 @@ public sealed class ImageBoxResidencyTests
     private static async Task WaitForWorkCountAsync(ImageBox image, int expected)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        while (image.ActiveImageWorkCountForTests != expected)
+        while (image.GetWorkState().ActiveWorkCount != expected)
             await Task.Delay(1, timeout.Token);
     }
 

@@ -43,7 +43,7 @@ public sealed class ImageBoxSelectionBackgroundTests
     {
         MarkdownLayoutContext context = CreateContext(flowDirection);
         var image = new ImageBox(
-            context,
+            context, ImageResourceScope.Shared,
             SvgDataUri,
             Alt,
             new SafeHtmlLength(ImageSize, IsPercent: false),

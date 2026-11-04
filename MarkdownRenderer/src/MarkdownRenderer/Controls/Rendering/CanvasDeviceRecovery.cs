@@ -155,7 +155,7 @@ internal sealed class CanvasDeviceRecovery
 
         try
         {
-            Layout.Boxes.ImageBox.ReleaseDeviceResources(device);
+            Layout.Boxes.ImageResourceScope.Shared.ReleaseDevice(device);
         }
         catch (Exception releaseException)
         {

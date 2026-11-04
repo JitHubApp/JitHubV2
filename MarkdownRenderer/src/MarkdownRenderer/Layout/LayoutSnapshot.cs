@@ -282,7 +282,7 @@ internal sealed class LayoutSnapshot : System.IDisposable, ILayoutSnapshotRetire
 
     // Bounds private native preparation independently of total document size.
     // This does not raise the separate whole-tree COW envelope.
-    internal const int MaximumPreparedImageRoots = ImageBox.MaximumMeasuredPlacementTransferBatchCount;
+    internal const int MaximumPreparedImageRoots = ImageMeasuredPlacementTransfer.MaximumBatchCount;
 
     /// <summary>Mutable committed geometry, guarded by the snapshot layout gate.</summary>
     internal LayoutSnapshotGeometry Geometry => _geometry;

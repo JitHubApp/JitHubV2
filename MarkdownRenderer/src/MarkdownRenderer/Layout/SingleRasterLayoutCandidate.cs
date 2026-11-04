@@ -25,14 +25,14 @@ internal sealed class SingleRasterLayoutCandidate : IDisposable
     private readonly struct SourceIdentity(
         WeakReference<ImageBox> Image,
         WeakReference<SharedCanvasBitmapCache.Lease>? Lease,
-        ImageBox.CompletedSvgPlacementMetadataFence? SvgMetadata,
+        CompletedSvgPlacementMetadataFence? SvgMetadata,
         bool IsIdleDescriptor,
         int IdleLoadDemandGeneration,
         bool WasSubscribed)
     {
         public WeakReference<ImageBox> Image { get; init; } = Image;
         public WeakReference<SharedCanvasBitmapCache.Lease>? Lease { get; init; } = Lease;
-        public ImageBox.CompletedSvgPlacementMetadataFence? SvgMetadata { get; init; } = SvgMetadata;
+        public CompletedSvgPlacementMetadataFence? SvgMetadata { get; init; } = SvgMetadata;
         public bool IsIdleDescriptor { get; init; } = IsIdleDescriptor;
         public int IdleLoadDemandGeneration { get; init; } = IdleLoadDemandGeneration;
         public bool WasSubscribed { get; init; } = WasSubscribed;

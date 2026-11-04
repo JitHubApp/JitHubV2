@@ -136,14 +136,14 @@ public sealed class SingleRasterLayoutCandidateTests
 
             await originalRetirement.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.Null(fixture.ImageRun.Image.Bitmap);
-            Assert.True(fixture.ImageRun.Image.ImageLifetimeDisposedForTests);
+            Assert.True(fixture.ImageRun.Image.GetWorkState().LifetimeDisposed);
             Assert.Same(originalBitmap, candidateImageRun.Image.Bitmap);
             Assert.False(candidateOwner.HasCurrentSourceRaster());
 
             candidateOwner.Dispose();
             await constructionContext.DrainOwnedRetirementsAsync();
             Assert.Null(candidateImageRun.Image.Bitmap);
-            Assert.True(candidateImageRun.Image.ImageLifetimeDisposedForTests);
+            Assert.True(candidateImageRun.Image.GetWorkState().LifetimeDisposed);
         }
     }
 
@@ -167,7 +167,7 @@ public sealed class SingleRasterLayoutCandidateTests
         constructionContext.RegisterRetirement(retirement);
         await constructionContext.DrainOwnedRetirementsAsync();
         Assert.Null(transferredImageRun.Image.Bitmap);
-        Assert.True(transferredImageRun.Image.ImageLifetimeDisposedForTests);
+        Assert.True(transferredImageRun.Image.GetWorkState().LifetimeDisposed);
         Assert.True(transferred.IsRetiringOrDisposed);
     }
 
@@ -185,9 +185,9 @@ public sealed class SingleRasterLayoutCandidateTests
         Assert.Throws<ObjectDisposedException>(() => _ = candidate.Snapshot);
         await constructionContext.DrainOwnedRetirementsAsync();
         Assert.Null(candidateImageRun.Image.Bitmap);
-        Assert.True(candidateImageRun.Image.ImageLifetimeDisposedForTests);
+        Assert.True(candidateImageRun.Image.GetWorkState().LifetimeDisposed);
         Assert.NotNull(fixture.ImageRun.Image.Bitmap);
-        Assert.False(fixture.ImageRun.Image.ImageLifetimeDisposedForTests);
+        Assert.False(fixture.ImageRun.Image.GetWorkState().LifetimeDisposed);
     }
 
     [Fact]
@@ -211,7 +211,7 @@ public sealed class SingleRasterLayoutCandidateTests
                 20,
                 DirectXPixelFormat.B8G8R8A8UIntNormalized);
             SharedCanvasBitmapCache.Lease replacementLease =
-                SharedCanvasBitmapCache.CreateUncachedLease(replacementBitmap);
+                ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(replacementBitmap);
             MethodInfo replaceBitmap = typeof(ImageBox).GetMethod(
                 "ReplaceBitmap",
                 BindingFlags.Instance | BindingFlags.NonPublic)!;
@@ -265,7 +265,7 @@ public sealed class SingleRasterLayoutCandidateTests
         Assert.Equal(0, source.LayoutRevision);
         Assert.Equal(127, source.AutomationDocumentGeneration);
         Assert.Same(originalBitmap, fixture.ImageRun.Image.Bitmap);
-        Assert.False(fixture.ImageRun.Image.ImageLifetimeDisposedForTests);
+        Assert.False(fixture.ImageRun.Image.GetWorkState().LifetimeDisposed);
     }
 
     [Fact]
@@ -386,7 +386,7 @@ public sealed class SingleRasterLayoutCandidateTests
         Assert.Equal(157, source.AutomationDocumentGeneration);
         Assert.Equal(semanticFingerprint, source.SemanticDocument.SemanticRangeFingerprint);
         Assert.Same(sourceBitmap, fixture.ImageRun.Image.Bitmap);
-        Assert.False(fixture.ImageRun.Image.ImageLifetimeDisposedForTests);
+        Assert.False(fixture.ImageRun.Image.GetWorkState().LifetimeDisposed);
     }
 
     private sealed class OpaqueTestRun : InlineRun

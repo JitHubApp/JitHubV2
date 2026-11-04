@@ -171,8 +171,8 @@ public sealed class RasterNativeWicCopyBandEquivalenceTests(ITestOutputHelper ou
         mode switch
         {
             CopyMode.Full => RasterNativeWicDecoder.Decode(source, plan, credit, s_noCancellation),
-            CopyMode.Banded64 => RasterNativeWicDecoder.DecodeWithCopyBandsForDiagnostics(source, plan, credit, 64, s_noCancellation),
-            CopyMode.Banded16 => RasterNativeWicDecoder.DecodeWithCopyBandsForDiagnostics(source, plan, credit, 16, s_noCancellation),
+            CopyMode.Banded64 => RasterNativeWicDecoder.Decode(source, plan, credit, new RasterNativeWicDecodeOptions(CopyBandRows: 64), s_noCancellation),
+            CopyMode.Banded16 => RasterNativeWicDecoder.Decode(source, plan, credit, new RasterNativeWicDecodeOptions(CopyBandRows: 16), s_noCancellation),
             _ => throw new ArgumentOutOfRangeException(nameof(mode)),
         };
 
@@ -195,8 +195,8 @@ public sealed class RasterNativeWicCopyBandEquivalenceTests(ITestOutputHelper ou
         LedgerSnapshot before = GetLedgerSnapshot();
         using (RasterDecodedPixelLease full = RasterNativeWicDecoder.Decode(
                    source, plan, fullCredit, s_noCancellation))
-        using (RasterDecodedPixelLease banded = RasterNativeWicDecoder.DecodeWithCopyBandsForDiagnostics(
-                   source, plan, bandedCredit, copyBandRows, s_noCancellation))
+        using (RasterDecodedPixelLease banded = RasterNativeWicDecoder.Decode(
+                   source, plan, bandedCredit, new RasterNativeWicDecodeOptions(CopyBandRows: copyBandRows), s_noCancellation))
         {
             Assert.Equal((full.Width, full.Height), (banded.Width, banded.Height));
             Assert.True(full.Pixels.AsSpan().SequenceEqual(banded.Pixels), "Row-banded final CopyPixels changed output bytes.");
@@ -214,8 +214,8 @@ public sealed class RasterNativeWicCopyBandEquivalenceTests(ITestOutputHelper ou
         LedgerSnapshot before = GetLedgerSnapshot();
         using (RasterDecodedPixelLease full = RasterNativeWicDecoder.DecodeGifFirstFrame(
                    source, plan, fullCredit, s_noCancellation))
-        using (RasterDecodedPixelLease banded = RasterNativeWicDecoder.DecodeGifFirstFrameWithCopyBandsForDiagnostics(
-                   source, plan, bandedCredit, copyBandRows, s_noCancellation))
+        using (RasterDecodedPixelLease banded = RasterNativeWicDecoder.DecodeGifFirstFrame(
+                   source, plan, bandedCredit, new RasterNativeWicDecodeOptions(CopyBandRows: copyBandRows), s_noCancellation))
         {
             Assert.Equal((full.Width, full.Height), (banded.Width, banded.Height));
             Assert.True(full.Pixels.AsSpan().SequenceEqual(banded.Pixels), "GIF row-banded final CopyPixels changed output bytes.");

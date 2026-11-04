@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using MarkdownRenderer.Layout.Boxes;
@@ -20,10 +19,10 @@ public sealed class SharedCanvasBitmapCacheKeyTests
         string equalIdentity = new(identity.ToCharArray());
         string differentCaseIdentity = identity.ToUpperInvariant();
 
-        var original = new SharedCanvasBitmapCache.CacheKey(firstDevice, identity);
-        var sameDeviceAndValue = new SharedCanvasBitmapCache.CacheKey(firstDevice, equalIdentity);
-        var otherDevice = new SharedCanvasBitmapCache.CacheKey(secondDevice, identity);
-        var differentCase = new SharedCanvasBitmapCache.CacheKey(firstDevice, differentCaseIdentity);
+        var original = new SharedCanvasBitmapCacheKey(firstDevice, identity);
+        var sameDeviceAndValue = new SharedCanvasBitmapCacheKey(firstDevice, equalIdentity);
+        var otherDevice = new SharedCanvasBitmapCacheKey(secondDevice, identity);
+        var differentCase = new SharedCanvasBitmapCacheKey(firstDevice, differentCaseIdentity);
 
         Assert.NotSame(identity, equalIdentity);
         Assert.True(original.Equals(sameDeviceAndValue));
@@ -34,7 +33,7 @@ public sealed class SharedCanvasBitmapCacheKeyTests
         // Exercise the actual key behavior used by the generic LRU dictionary;
         // hash collisions remain legal, while distinct device/string components
         // must still occupy separate entries.
-        var entries = new Dictionary<SharedCanvasBitmapCache.CacheKey, string>
+        var entries = new Dictionary<SharedCanvasBitmapCacheKey, string>
         {
             [original] = "original",
             [otherDevice] = "other device",
@@ -53,12 +52,12 @@ public sealed class SharedCanvasBitmapCacheKeyTests
     [Fact]
     public void DefaultKeyHasStableHashAndWorksInDictionary()
     {
-        SharedCanvasBitmapCache.CacheKey key = default;
+        SharedCanvasBitmapCacheKey key = default;
 
         int hashCode = key.GetHashCode();
         Assert.Equal(hashCode, key.GetHashCode());
 
-        var entries = new Dictionary<SharedCanvasBitmapCache.CacheKey, int>
+        var entries = new Dictionary<SharedCanvasBitmapCacheKey, int>
         {
             [key] = 42,
         };
@@ -73,8 +72,8 @@ public sealed class SharedCanvasBitmapCacheKeyTests
     {
         const string identity = "svg:allocation-probe:1024x512";
         string lookupIdentity = new(identity.ToCharArray());
-        var storedKey = new SharedCanvasBitmapCache.CacheKey(null!, identity);
-        var entries = new Dictionary<SharedCanvasBitmapCache.CacheKey, int>(capacity: 1)
+        var storedKey = new SharedCanvasBitmapCacheKey(null!, identity);
+        var entries = new Dictionary<SharedCanvasBitmapCacheKey, int>(capacity: 1)
         {
             [storedKey] = 1,
         };
@@ -98,31 +97,20 @@ public sealed class SharedCanvasBitmapCacheKeyTests
     [Fact]
     public void FailedUrlMemoizationEnforcesTheExactKeyLengthBoundary()
     {
-        ConcurrentDictionary<string, byte> failedUrls = FailedUrlCache();
+        var failures = new ImageFailureCache();
         string acceptedKey = CreateUniqueKey(4_096);
         string rejectedKey = CreateUniqueKey(4_097);
-        bool emptyKeyWasPresent = failedUrls.ContainsKey(string.Empty);
 
-        Assert.False(failedUrls.ContainsKey(acceptedKey));
-        Assert.False(failedUrls.ContainsKey(rejectedKey));
+        Assert.False(failures.HasFailedUrl(acceptedKey));
+        Assert.False(failures.HasFailedUrl(rejectedKey));
 
-        try
-        {
-            RememberFailedUrl(acceptedKey);
-            RememberFailedUrl(rejectedKey);
-            RememberFailedUrl(string.Empty);
+        failures.RememberFailedUrl(acceptedKey);
+        failures.RememberFailedUrl(rejectedKey);
+        failures.RememberFailedUrl(string.Empty);
 
-            Assert.True(failedUrls.ContainsKey(acceptedKey));
-            Assert.False(failedUrls.ContainsKey(rejectedKey));
-            Assert.Equal(emptyKeyWasPresent, failedUrls.ContainsKey(string.Empty));
-        }
-        finally
-        {
-            // These keys are unique to this test. Do not reset the process-wide
-            // cache or remove entries written by concurrently running tests.
-            _ = failedUrls.TryRemove(acceptedKey, out _);
-            _ = failedUrls.TryRemove(rejectedKey, out _);
-        }
+        Assert.True(failures.HasFailedUrl(acceptedKey));
+        Assert.False(failures.HasFailedUrl(rejectedKey));
+        Assert.False(failures.HasFailedUrl(string.Empty));
     }
 
     private static CanvasDevice CreateIdentityOnlyDevice()
@@ -134,35 +122,17 @@ public sealed class SharedCanvasBitmapCacheKeyTests
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static int MeasureDictionaryLookups(
-        Dictionary<SharedCanvasBitmapCache.CacheKey, int> entries,
+        Dictionary<SharedCanvasBitmapCacheKey, int> entries,
         string lookupIdentity,
         int lookupCount)
     {
         int hits = 0;
         for (int i = 0; i < lookupCount; i++)
         {
-            if (entries.ContainsKey(new SharedCanvasBitmapCache.CacheKey(null!, lookupIdentity)))
+            if (entries.ContainsKey(new SharedCanvasBitmapCacheKey(null!, lookupIdentity)))
                 hits++;
         }
         return hits;
-    }
-
-    private static ConcurrentDictionary<string, byte> FailedUrlCache()
-    {
-        FieldInfo field = typeof(ImageBox).GetField(
-            "_failedUrls",
-            BindingFlags.Static | BindingFlags.NonPublic)
-            ?? throw new MissingFieldException(typeof(ImageBox).FullName, "_failedUrls");
-        return (ConcurrentDictionary<string, byte>)field.GetValue(null)!;
-    }
-
-    private static void RememberFailedUrl(string cacheKey)
-    {
-        MethodInfo method = typeof(ImageBox).GetMethod(
-            "RememberFailedUrl",
-            BindingFlags.Static | BindingFlags.NonPublic)
-            ?? throw new MissingMethodException(typeof(ImageBox).FullName, "RememberFailedUrl");
-        _ = method.Invoke(null, [cacheKey]);
     }
 
     private static string CreateUniqueKey(int length)

@@ -33,7 +33,7 @@ public sealed class RasterBitmapSizingCacheTests
         {
             stored = Store(device, identity, previewSize.Width, previewSize.Height, new Size(8, 2));
 
-            Assert.True(SharedCanvasBitmapCache.TryAcquireBestRasterPreview(
+            Assert.True(ImageResourceScope.Shared.BitmapCache.TryAcquireBestRasterPreview(
                 device,
                 family,
                 targetRequest,
@@ -47,7 +47,7 @@ public sealed class RasterBitmapSizingCacheTests
         }
         finally
         {
-            SharedCanvasBitmapCache.ReleaseDevice(device);
+            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(device);
             preview?.Dispose();
             stored?.Dispose();
         }
@@ -88,16 +88,16 @@ public sealed class RasterBitmapSizingCacheTests
             // makes it a distinct cache family.
             Assert.Equal((3, 1), cappedRequest.GetSize(8, 2));
             Assert.Equal((3, 1), authoredWidthRequest.GetSize(8, 2));
-            Assert.False(SharedCanvasBitmapCache.TryAcquireBestRasterPreview(
+            Assert.False(ImageResourceScope.Shared.BitmapCache.TryAcquireBestRasterPreview(
                 device, cappedFamily, cappedRequest, out _));
-            Assert.False(SharedCanvasBitmapCache.TryAcquireBestRasterPreview(
+            Assert.False(ImageResourceScope.Shared.BitmapCache.TryAcquireBestRasterPreview(
                 device, authoredFamily, authoredWidthRequest, out _));
-            Assert.False(SharedCanvasBitmapCache.TryAcquireBestRasterPreview(
+            Assert.False(ImageResourceScope.Shared.BitmapCache.TryAcquireBestRasterPreview(
                 device, nondisplayFamily, baseRequest, out _));
         }
         finally
         {
-            SharedCanvasBitmapCache.ReleaseDevice(device);
+            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(device);
             stored?.Dispose();
         }
     }
@@ -115,12 +115,12 @@ public sealed class RasterBitmapSizingCacheTests
         try
         {
             stored = Store(device, identity, previewSize.Width, previewSize.Height, intrinsicSize: null);
-            Assert.False(SharedCanvasBitmapCache.TryAcquireBestRasterPreview(
+            Assert.False(ImageResourceScope.Shared.BitmapCache.TryAcquireBestRasterPreview(
                 device, family, request, out _));
         }
         finally
         {
-            SharedCanvasBitmapCache.ReleaseDevice(device);
+            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(device);
             stored?.Dispose();
         }
     }
@@ -141,12 +141,12 @@ public sealed class RasterBitmapSizingCacheTests
                 width: 4,
                 height: 1,
                 intrinsicSize: new Size(8.5, 2));
-            Assert.False(SharedCanvasBitmapCache.TryAcquireBestRasterPreview(
+            Assert.False(ImageResourceScope.Shared.BitmapCache.TryAcquireBestRasterPreview(
                 device, family, request, out _));
         }
         finally
         {
-            SharedCanvasBitmapCache.ReleaseDevice(device);
+            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(device);
             stored?.Dispose();
         }
     }
@@ -173,7 +173,7 @@ public sealed class RasterBitmapSizingCacheTests
                 width: 4,
                 height: 1,
                 intrinsicSize: new Size(8, 2));
-            Assert.False(SharedCanvasBitmapCache.TryAcquireBestRasterPreview(
+            Assert.False(ImageResourceScope.Shared.BitmapCache.TryAcquireBestRasterPreview(
                 device, cappedFamily, cappedRequest, out _));
 
             Assert.Equal((4, 1), equalRequest.GetSize(8, 2));
@@ -183,12 +183,12 @@ public sealed class RasterBitmapSizingCacheTests
                 width: 4,
                 height: 1,
                 intrinsicSize: new Size(8, 2));
-            Assert.False(SharedCanvasBitmapCache.TryAcquireBestRasterPreview(
+            Assert.False(ImageResourceScope.Shared.BitmapCache.TryAcquireBestRasterPreview(
                 device, equalFamily, equalRequest, out _));
         }
         finally
         {
-            SharedCanvasBitmapCache.ReleaseDevice(device);
+            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(device);
             equal?.Dispose();
             oversized?.Dispose();
         }
@@ -211,7 +211,7 @@ public sealed class RasterBitmapSizingCacheTests
                 width: 6,
                 height: 1,
                 intrinsicSize: new Size(8, 2));
-            Assert.True(SharedCanvasBitmapCache.TryAcquireBestRasterPreview(
+            Assert.True(ImageResourceScope.Shared.BitmapCache.TryAcquireBestRasterPreview(
                 device, family, request, out preview));
             Assert.NotNull(preview);
             Assert.Equal((uint)6, preview.Bitmap.SizeInPixels.Width);
@@ -219,7 +219,7 @@ public sealed class RasterBitmapSizingCacheTests
         }
         finally
         {
-            SharedCanvasBitmapCache.ReleaseDevice(device);
+            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(device);
             preview?.Dispose();
             stored?.Dispose();
         }
@@ -255,7 +255,7 @@ public sealed class RasterBitmapSizingCacheTests
         {
             Assert.EndsWith("\u001Frequest:6@1", validIdentity, StringComparison.Ordinal);
             validStored = Store(device, validIdentity, previewSize.Width, previewSize.Height, new Size(8, 2));
-            Assert.True(SharedCanvasBitmapCache.TryAcquireBestRasterPreview(
+            Assert.True(ImageResourceScope.Shared.BitmapCache.TryAcquireBestRasterPreview(
                 device, validFamily, request, out validPreview));
             Assert.NotNull(validPreview);
 
@@ -265,12 +265,12 @@ public sealed class RasterBitmapSizingCacheTests
                 previewSize.Width,
                 previewSize.Height,
                 new Size(8, 2));
-            Assert.False(SharedCanvasBitmapCache.TryAcquireBestRasterPreview(
+            Assert.False(ImageResourceScope.Shared.BitmapCache.TryAcquireBestRasterPreview(
                 device, malformedFamily, request, out _));
         }
         finally
         {
-            SharedCanvasBitmapCache.ReleaseDevice(device);
+            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(device);
             malformedStored?.Dispose();
             validPreview?.Dispose();
             validStored?.Dispose();
@@ -301,12 +301,12 @@ public sealed class RasterBitmapSizingCacheTests
                 height: 1,
                 intrinsicSize: new Size(8, 2));
 
-            Assert.False(SharedCanvasBitmapCache.TryAcquireBestRasterPreview(
+            Assert.False(ImageResourceScope.Shared.BitmapCache.TryAcquireBestRasterPreview(
                 device, family, request, out _));
         }
         finally
         {
-            SharedCanvasBitmapCache.ReleaseDevice(device);
+            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(device);
             stored?.Dispose();
         }
     }
@@ -326,7 +326,7 @@ public sealed class RasterBitmapSizingCacheTests
         try
         {
             stored = Store(device, identity, size.Width, size.Height, new Size(8, 2));
-            Assert.True(SharedCanvasBitmapCache.TryAcquireBestRasterPreview(
+            Assert.True(ImageResourceScope.Shared.BitmapCache.TryAcquireBestRasterPreview(
                 device, family, targetRequest, out preview));
             Assert.NotNull(preview);
             preview.Dispose();
@@ -336,7 +336,7 @@ public sealed class RasterBitmapSizingCacheTests
         }
         finally
         {
-            SharedCanvasBitmapCache.ReleaseDevice(device);
+            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(device);
             preview?.Dispose();
             stored?.Dispose();
         }
@@ -372,7 +372,7 @@ public sealed class RasterBitmapSizingCacheTests
         int width,
         int height,
         Size? intrinsicSize) =>
-        SharedCanvasBitmapCache.StoreAndAcquire(
+        ImageResourceScope.Shared.BitmapCache.StoreAndAcquire(
             device,
             identity,
             CreateBitmap(device, width, height),

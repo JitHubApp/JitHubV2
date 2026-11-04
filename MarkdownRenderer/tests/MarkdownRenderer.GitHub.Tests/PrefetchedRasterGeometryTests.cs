@@ -153,7 +153,7 @@ public sealed class PrefetchedRasterGeometryTests
         image.MeasureInline(200, 20);
         Rect original = image.Bounds;
         await scope.PrefetchAsync([Source], CancellationToken.None);
-        ImageBox.InlineMeasureCheckpoint checkpoint = image.BeginInlineCheckpoint();
+        InlineMeasureCheckpoint checkpoint = image.BeginInlineCheckpoint();
         image.MeasureInline(200, 20, checkpoint);
         Assert.False(image.HasExactReservedRasterGeometry(new Size(1024, 512)));
         checkpoint.Rollback();
@@ -182,7 +182,7 @@ public sealed class PrefetchedRasterGeometryTests
             new ByteResolver(DisplaySizedRasterDecodeTests.CreatePng(1024, 512)));
         await scope.PrefetchAsync([Source], CancellationToken.None);
         using var images = new ImageCustody();
-        ImageBox image = images.Own(new ImageBox(DisplaySizedRasterDecodeTests.CreateContext(scope, session, 2),
+        ImageBox image = images.Own(new ImageBox(DisplaySizedRasterDecodeTests.CreateContext(scope, session, 2), ImageResourceScope.Shared,
             Source, "A real caption", new SafeHtmlLength(authoredWidth, false),
             new SafeHtmlLength(authoredHeight, false)));
         image.MinimumParagraphLineHeight = 24;
@@ -207,7 +207,7 @@ public sealed class PrefetchedRasterGeometryTests
             new ByteResolver(DisplaySizedRasterDecodeTests.CreatePng(1024, 512)));
         await scope.PrefetchAsync([Source], CancellationToken.None);
         using var images = new ImageCustody();
-        ImageBox image = images.Own(new ImageBox(DisplaySizedRasterDecodeTests.CreateContext(scope, session, 2),
+        ImageBox image = images.Own(new ImageBox(DisplaySizedRasterDecodeTests.CreateContext(scope, session, 2), ImageResourceScope.Shared,
             Source, string.Empty, new SafeHtmlLength(50, true), new SafeHtmlLength(80, true)));
         image.Margin = new Microsoft.UI.Xaml.Thickness(10, 4, 20, 8);
         image.MinimumParagraphLineHeight = 64;
@@ -232,7 +232,7 @@ public sealed class PrefetchedRasterGeometryTests
         await scope.PrefetchAsync([Source], CancellationToken.None);
         var context = DisplaySizedRasterDecodeTests.CreateContext(scope, session, 1);
         using var images = new ImageCustody();
-        ImageBox image = images.Own(new ImageBox(context, Source, string.Empty));
+        ImageBox image = images.Own(new ImageBox(context, ImageResourceScope.Shared, Source, string.Empty));
         image.Measure(200);
         Assert.True(image.TryCreatePrivateImagePlacementClone(context,
             out ImageBox? clone, out var lease, out var svgFence, out bool idle, out int generation));
@@ -258,7 +258,7 @@ public sealed class PrefetchedRasterGeometryTests
 
     private static ImageBox CreateImage(IMarkdownImageResolver resolver,
         MarkdownPerformanceSession session, double scale) =>
-        new(DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale), Source, string.Empty);
+        new(DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale), ImageResourceScope.Shared, Source, string.Empty);
 
     private sealed class ImageCustody : IDisposable
     {

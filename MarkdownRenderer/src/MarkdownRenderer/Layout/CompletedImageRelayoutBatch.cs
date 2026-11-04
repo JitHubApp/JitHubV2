@@ -53,7 +53,7 @@ internal sealed class CompletedImageRelayoutBatch
 
     internal RasterPlacementSourceFence[] Sources { get; set; } = [];
 
-    internal ImageBox.MeasuredPlacementTransfer[] Transfers { get; set; } = [];
+    internal ImageMeasuredPlacementTransfer[] Transfers { get; set; } = [];
 
     internal InlineMeasuredPlacementTransfer?[] InlineTransfers { get; set; } = [];
 

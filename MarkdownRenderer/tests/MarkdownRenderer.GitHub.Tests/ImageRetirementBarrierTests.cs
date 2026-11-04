@@ -24,7 +24,7 @@ public sealed class ImageRetirementBarrierTests
     [InlineData(true)]
     public async Task ReadyImageRetirementLeavesCallerBeforeNativeCleanup(bool throwOnDispose)
     {
-        var image = new ImageBox(CreateContext(renderer: null), "", "ready image");
+        var image = new ImageBox(CreateContext(renderer: null), ImageResourceScope.Shared, "", "ready image");
         var document = new BlockingReadySvgDocument(throwOnDispose);
         SetPrivateField(image, "_svgDocument", document);
         var callerReturned = new TaskCompletionSource(
@@ -62,7 +62,7 @@ public sealed class ImageRetirementBarrierTests
             Assert.Null(document.DisposeContext);
             Assert.Equal(0, Volatile.Read(ref callerContext.PostCount));
             Assert.False(image.RetirementTask.IsCompleted);
-            Assert.False(image.ImageLifetimeDisposedForTests);
+            Assert.False(image.GetWorkState().LifetimeDisposed);
 
             image.Dispose();
             document.ReleaseDispose.TrySetResult();
@@ -77,7 +77,7 @@ public sealed class ImageRetirementBarrierTests
                 await image.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
             }
             Assert.Equal(1, Volatile.Read(ref document.DisposeCount));
-            Assert.True(image.ImageLifetimeDisposedForTests);
+            Assert.True(image.GetWorkState().LifetimeDisposed);
         }
         finally
         {
@@ -138,19 +138,19 @@ public sealed class ImageRetirementBarrierTests
 
         await renderer.Canceled.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.False(retirement.IsCompleted);
-        Assert.False(image.ImageLifetimeDisposedForTests);
+        Assert.False(image.GetWorkState().LifetimeDisposed);
 
         renderer.ReleaseOpen.TrySetResult();
         await retirement.WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.Equal(1, renderer.DocumentDisposeCount);
-        Assert.True(image.ImageLifetimeDisposedForTests);
+        Assert.True(image.GetWorkState().LifetimeDisposed);
     }
 
     [Fact]
     public async Task AcceptedQueuedPublicationRemainsInRetirementBarrierUntilExactlyOnceDrop()
     {
-        var image = new ImageBox(CreateContext(renderer: null), CreateSvgDataUri(), "queued publication");
+        var image = new ImageBox(CreateContext(renderer: null), ImageResourceScope.Shared, CreateSvgDataUri(), "queued publication");
         byte[] rawBytes = [1, 2, 3, 4];
         SetPrivateField(image, "_svgSourceIdentity", new WeakReference<byte[]>(rawBytes));
         SetPrivateField(image, "_svgTitle", "accessible title");
@@ -191,7 +191,7 @@ public sealed class ImageRetirementBarrierTests
     [Fact]
     public async Task ImageRetirementWaitsForTileCancellationCallbacksBeforeDisposingSource()
     {
-        var image = new ImageBox(CreateContext(renderer: null), "", "tile cancellation");
+        var image = new ImageBox(CreateContext(renderer: null), ImageResourceScope.Shared, "", "tile cancellation");
         using var source = new CancellationTokenSource();
         var callbackStarted = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -205,11 +205,9 @@ public sealed class ImageRetirementBarrierTests
             releaseCallback.Task.GetAwaiter().GetResult();
         });
 
-        MethodInfo retireSource = typeof(ImageBox).GetMethod(
-            "RetireTileCancellationSource",
-            BindingFlags.Instance | BindingFlags.NonPublic) ??
-            throw new MissingMethodException(typeof(ImageBox).FullName, "RetireTileCancellationSource");
-        Task request = Task.Run(() => retireSource.Invoke(image, new object[] { source }));
+        // The request returns once cancellation is requested; it does not
+        // wait for the callbacks it tracks.
+        Task request = Task.Run(() => { _ = image.SvgTileRenderer.RetireTileCancellationSource(source); });
 
         try
         {
@@ -240,8 +238,8 @@ public sealed class ImageRetirementBarrierTests
             catch
             {
                 // Preserve the test's primary assertion failure; the request
-                // task is observed here so a failed reflection invocation does
-                // not become an unobserved test-runner task.
+                // task is observed here so a failed request does not become
+                // an unobserved test-runner task.
                 _ = request.Exception;
             }
             image.Dispose();
@@ -252,7 +250,7 @@ public sealed class ImageRetirementBarrierTests
     [Fact]
     public async Task RejectedQueuedPublicationDropsOwnedResourceOnceAndRetires()
     {
-        var image = new ImageBox(CreateContext(renderer: null), "", "rejected publication");
+        var image = new ImageBox(CreateContext(renderer: null), ImageResourceScope.Shared, "", "rejected publication");
         int dropped = 0;
 
         image.PublishOnUiThread(
@@ -269,7 +267,7 @@ public sealed class ImageRetirementBarrierTests
     [Fact]
     public async Task ImageRetirementFaultsOnRejectedPublicationCleanupFailure()
     {
-        var image = new ImageBox(CreateContext(renderer: null), "", "rejected cleanup");
+        var image = new ImageBox(CreateContext(renderer: null), ImageResourceScope.Shared, "", "rejected cleanup");
         int dropped = 0;
 
         InvalidOperationException rejected = Assert.Throws<InvalidOperationException>(() =>
@@ -296,7 +294,7 @@ public sealed class ImageRetirementBarrierTests
     {
         var resolver = new NonCooperativeImageResolver();
         var image = new ImageBox(
-            CreateContext(renderer: null, resolver: resolver),
+            CreateContext(renderer: null, resolver: resolver), ImageResourceScope.Shared,
             "https://example.test/late.png",
             "late response");
         image.Measure(80);
@@ -309,7 +307,7 @@ public sealed class ImageRetirementBarrierTests
 
         resolver.Release.TrySetResult();
         await retirement.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.True(image.ImageLifetimeDisposedForTests);
+        Assert.True(image.GetWorkState().LifetimeDisposed);
     }
 
     [Fact]
@@ -317,7 +315,7 @@ public sealed class ImageRetirementBarrierTests
     {
         var renderer = new NonCooperativeSvgRenderer(throwOnDocumentDispose: true);
         MarkdownLayoutContext context = CreateContext(renderer);
-        var image = new ImageBox(context, CreateSvgDataUri(), "late SVG cleanup failure");
+        var image = new ImageBox(context, ImageResourceScope.Shared, CreateSvgDataUri(), "late SVG cleanup failure");
         image.Measure(80);
         image.EnsureLoading();
 
@@ -345,7 +343,7 @@ public sealed class ImageRetirementBarrierTests
     {
         var renderer = new NonCooperativeSvgRenderer(throwOnDocumentDispose: true);
         MarkdownLayoutContext context = CreateContext(renderer);
-        var image = new ImageBox(context, CreateSvgDataUri(), "adopted SVG cleanup failure");
+        var image = new ImageBox(context, ImageResourceScope.Shared, CreateSvgDataUri(), "adopted SVG cleanup failure");
         image.Measure(80);
 
         var root = new StackBox();

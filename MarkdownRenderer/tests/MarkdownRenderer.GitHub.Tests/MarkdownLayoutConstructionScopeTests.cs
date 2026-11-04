@@ -28,7 +28,7 @@ public sealed class MarkdownLayoutConstructionScopeTests
     {
         using var device = new CanvasDevice();
         CanvasBitmap cachedBitmap = CreateBitmap(device);
-        SharedCanvasBitmapCache.Lease cacheLease = SharedCanvasBitmapCache.StoreAndAcquire(
+        SharedCanvasBitmapCache.Lease cacheLease = ImageResourceScope.Shared.BitmapCache.StoreAndAcquire(
             device,
             OnePixelPng,
             cachedBitmap);
@@ -52,7 +52,7 @@ public sealed class MarkdownLayoutConstructionScopeTests
         }
         finally
         {
-            SharedCanvasBitmapCache.ReleaseDevice(device);
+            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(device);
         }
 
         // If the partially-built HTML tree did not release its ImageBox
@@ -117,14 +117,14 @@ public sealed class MarkdownLayoutConstructionScopeTests
 
         try
         {
-            Assert.False(image.ImageLifetimeDisposedForTests);
+            Assert.False(image.GetWorkState().LifetimeDisposed);
         }
         finally
         {
             await snapshot.Retire().WaitAsync(TimeSpan.FromSeconds(5));
         }
 
-        Assert.True(image.ImageLifetimeDisposedForTests);
+        Assert.True(image.GetWorkState().LifetimeDisposed);
     }
 
     [Fact]
@@ -175,7 +175,7 @@ public sealed class MarkdownLayoutConstructionScopeTests
                 baseY: 0,
                 semanticForeground: Color.FromArgb(0xFF, 0, 0, 0),
                 highContrast: false));
-            Assert.False(image.Image.ImageLifetimeDisposedForTests);
+            Assert.False(image.Image.GetWorkState().LifetimeDisposed);
         }
         finally
         {
@@ -183,7 +183,7 @@ public sealed class MarkdownLayoutConstructionScopeTests
         }
 
         await image.Image.RetirementTask.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.True(image.Image.ImageLifetimeDisposedForTests);
+        Assert.True(image.Image.GetWorkState().LifetimeDisposed);
     }
 
     [Theory]

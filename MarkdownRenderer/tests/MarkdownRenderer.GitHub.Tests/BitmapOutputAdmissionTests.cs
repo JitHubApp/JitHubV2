@@ -12,7 +12,7 @@ public sealed class BitmapOutputAdmissionTests
     [Fact]
     public void SharedBudgetUsesArchitectureSpecificCapAndTransitionTiers()
     {
-        BitmapOutputAdmission admission = BitmapOutputAdmission.Shared;
+        BitmapOutputAdmission admission = ImageResourceScope.Shared.BitmapOutput;
         long capacity = Environment.Is64BitProcess ? 64L * 1024 * 1024 : 32L * 1024 * 1024;
         long headroom = Environment.Is64BitProcess ? 16L * 1024 * 1024 : 8L * 1024 * 1024;
 
@@ -192,7 +192,7 @@ public sealed class BitmapOutputAdmissionTests
     public void CommittedReservationCanOnlyResizeDownAndWakesWhenChargeShrinks()
     {
         var queue = new ManualNotificationQueue();
-        var admission = new BitmapOutputAdmission(64, 16, testNotificationScheduler: queue.Enqueue);
+        var admission = new BitmapOutputAdmission(64, 16, notificationScheduler: queue.Enqueue);
         Assert.True(admission.TryReserve(16, isVisible: true, isReplacement: true, out var reservation, out _));
         Assert.True(reservation!.Commit());
         Assert.True(reservation.TransferToEntry());
@@ -234,7 +234,7 @@ public sealed class BitmapOutputAdmissionTests
     public void SpeculativeWaitersLeaveEightSlotsForVisibleDemandWithoutIncreasingTotalCap()
     {
         var queue = new ManualNotificationQueue();
-        var admission = new BitmapOutputAdmission(64, 16, testNotificationScheduler: queue.Enqueue);
+        var admission = new BitmapOutputAdmission(64, 16, notificationScheduler: queue.Enqueue);
         var held = new List<BitmapOutputAdmission.Reservation>();
         var owners = new List<RecordingWaiter>();
         var registrations = new List<BitmapOutputAdmission.WaiterRegistration>();
@@ -407,7 +407,7 @@ public sealed class BitmapOutputAdmissionTests
     {
         var queue = new ManualNotificationQueue();
         var admission = new BitmapOutputAdmission(
-            64, 16, maximumWaiters: 1, testNotificationScheduler: queue.Enqueue);
+            64, 16, maximumWaiters: 1, notificationScheduler: queue.Enqueue);
         var held = new List<BitmapOutputAdmission.Reservation>();
         BitmapOutputAdmission.WaiterRegistration? firstRegistration = null;
         BitmapOutputAdmission.WaiterRegistration? overflowRegistration = null;
@@ -509,7 +509,7 @@ public sealed class BitmapOutputAdmissionTests
     {
         var queue = new ManualNotificationQueue();
         var admission = new BitmapOutputAdmission(
-            64, 16, maximumWaiters: 1, testNotificationScheduler: queue.Enqueue);
+            64, 16, maximumWaiters: 1, notificationScheduler: queue.Enqueue);
         var held = new List<BitmapOutputAdmission.Reservation>();
         BitmapOutputAdmission.WaiterRegistration? cacheHitRegistration = null;
         BitmapOutputAdmission.WaiterRegistration? overflowRegistration = null;
@@ -613,7 +613,7 @@ public sealed class BitmapOutputAdmissionTests
     public void StaleCapacityVersionRegistrationImmediatelyClosesLostWakeWindow()
     {
         var queue = new ManualNotificationQueue();
-        var admission = new BitmapOutputAdmission(64, 16, testNotificationScheduler: queue.Enqueue);
+        var admission = new BitmapOutputAdmission(64, 16, notificationScheduler: queue.Enqueue);
         List<BitmapOutputAdmission.Reservation> held = HoldFullBudget(admission);
         long deniedVersion = admission.GetSnapshot().CapacityVersion;
         foreach (BitmapOutputAdmission.Reservation item in held)
@@ -634,7 +634,7 @@ public sealed class BitmapOutputAdmissionTests
     public void CapacityWaveIsVisibleFirstFifoAndDoesNotWakeBeyondItsVirtualBudget()
     {
         var queue = new ManualNotificationQueue();
-        var admission = new BitmapOutputAdmission(64, 16, testNotificationScheduler: queue.Enqueue);
+        var admission = new BitmapOutputAdmission(64, 16, notificationScheduler: queue.Enqueue);
         List<BitmapOutputAdmission.Reservation> held = HoldFullBudget(admission);
         var delivered = new List<string>();
         var background = new RecordingWaiter(_ => delivered.Add("background"));
@@ -666,7 +666,7 @@ public sealed class BitmapOutputAdmissionTests
     public void OneTransitionHeadroomReleaseOffersOnlyOneHeadroomSizedRetry()
     {
         var queue = new ManualNotificationQueue();
-        var admission = new BitmapOutputAdmission(64, 16, testNotificationScheduler: queue.Enqueue);
+        var admission = new BitmapOutputAdmission(64, 16, notificationScheduler: queue.Enqueue);
         List<BitmapOutputAdmission.Reservation> held = HoldFullBudget(admission);
         int callbacks = 0;
         var firstOwner = new RecordingWaiter(_ => callbacks++);
@@ -695,8 +695,8 @@ public sealed class BitmapOutputAdmissionTests
         var deliveryQueue = new ManualNotificationQueue();
         var admission = new BitmapOutputAdmission(
             64, 16,
-            testNotificationScheduler: sweepQueue.Enqueue,
-            testNotificationDeliveryScheduler: deliveryQueue.Enqueue);
+            notificationScheduler: sweepQueue.Enqueue,
+            notificationDeliveryScheduler: deliveryQueue.Enqueue);
         List<BitmapOutputAdmission.Reservation> held = HoldFullBudget(admission);
         BitmapOutputAdmission.WaiterRegistration? canceledRegistration = null;
         BitmapOutputAdmission.WaiterRegistration? nextRegistration = null;
@@ -760,7 +760,7 @@ public sealed class BitmapOutputAdmissionTests
     public void SuccessfulRetryReplacesVirtualOfferWithActualCharge()
     {
         var queue = new ManualNotificationQueue();
-        var admission = new BitmapOutputAdmission(64, 16, testNotificationScheduler: queue.Enqueue);
+        var admission = new BitmapOutputAdmission(64, 16, notificationScheduler: queue.Enqueue);
         List<BitmapOutputAdmission.Reservation> held = HoldFullBudget(admission);
         var firstOwner = new RecordingWaiter(_ => { });
         var secondOwner = new RecordingWaiter(_ => { });
@@ -804,7 +804,7 @@ public sealed class BitmapOutputAdmissionTests
     public void FailedRetryReturnsOfferAndPassesBoundedSameVersionWave()
     {
         var queue = new ManualNotificationQueue();
-        var admission = new BitmapOutputAdmission(64, 16, testNotificationScheduler: queue.Enqueue);
+        var admission = new BitmapOutputAdmission(64, 16, notificationScheduler: queue.Enqueue);
         List<BitmapOutputAdmission.Reservation> held = HoldFullBudget(admission);
         var firstOwner = new RecordingWaiter(_ => { });
         var secondOwner = new RecordingWaiter(_ => { });
@@ -829,7 +829,7 @@ public sealed class BitmapOutputAdmissionTests
     public void CallbackCanReenterAdmissionAndExceptionsDoNotStrandNextWaiter()
     {
         var queue = new ManualNotificationQueue();
-        var admission = new BitmapOutputAdmission(64, 16, testNotificationScheduler: queue.Enqueue);
+        var admission = new BitmapOutputAdmission(64, 16, notificationScheduler: queue.Enqueue);
         List<BitmapOutputAdmission.Reservation> held = HoldFullBudget(admission);
         var observed = new List<string>();
         var throwing = new RecordingWaiter(_ => throw new InvalidOperationException("fixture"));
@@ -887,14 +887,14 @@ public sealed class BitmapOutputAdmissionTests
         var failedScheduler = new BitmapOutputAdmission(
             64,
             16,
-            testNotificationScheduler: _ => throw new OutOfMemoryException("fixture"));
+            notificationScheduler: _ => throw new OutOfMemoryException("fixture"));
         var waiter = new RecordingWaiter(_ => { });
         Assert.True(failedScheduler.TryRegisterWaiter(waiter, 1, true, true, 0, out var registration));
         Assert.Equal(1, failedScheduler.GetSnapshot().CallbackFailureCount);
         registration!.Dispose();
 
         var queue = new ManualNotificationQueue();
-        var empty = new BitmapOutputAdmission(64, 16, testNotificationScheduler: queue.Enqueue);
+        var empty = new BitmapOutputAdmission(64, 16, notificationScheduler: queue.Enqueue);
         Assert.True(empty.TryReserve(8, true, false, out var reservation, out _));
         reservation!.Dispose();
         Assert.Equal(0, queue.Count);

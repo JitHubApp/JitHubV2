@@ -15,7 +15,7 @@ internal readonly struct InlineMeasureRollbackState
     private readonly float _desiredHeight;
     private readonly float _desiredBaseline;
     private readonly Rect _localBounds;
-    private readonly ImageBox.InlineMeasureCheckpoint _imageCheckpoint;
+    private readonly InlineMeasureCheckpoint _imageCheckpoint;
 
     internal InlineMeasureRollbackState(
         InlineImageRun? imageRun,
@@ -24,7 +24,7 @@ internal readonly struct InlineMeasureRollbackState
         float desiredHeight,
         float desiredBaseline,
         Rect localBounds,
-        ImageBox.InlineMeasureCheckpoint imageCheckpoint = default)
+        InlineMeasureCheckpoint imageCheckpoint = default)
     {
         _imageRun = imageRun;
         _vectorRun = vectorRun;

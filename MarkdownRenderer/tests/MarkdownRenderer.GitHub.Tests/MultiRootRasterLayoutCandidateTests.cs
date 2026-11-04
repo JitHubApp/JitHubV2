@@ -120,7 +120,7 @@ public sealed class MultiRootRasterLayoutCandidateTests
             Rect sourceFarBounds = sourceRoots[^1].Bounds;
             await DisplaySizedRasterDecodeTests.WaitForLoadAsync(sourceImage);
             await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-                () => sourceImage.ActiveImageWorkCountForTests == 0);
+                () => sourceImage.GetWorkState().ActiveWorkCount == 0);
             Assert.NotNull(sourceImage.Bitmap);
             Assert.Equal(1, resolver.ResolveCount);
             Assert.Equal(imageBoundsBeforeCompletion, sourceImage.Bounds);
@@ -438,7 +438,7 @@ public sealed class MultiRootRasterLayoutCandidateTests
             Assert.All(sourceImages.Select((image, index) => (image, index)), entry =>
             {
                 Assert.Same(sourceBitmaps[entry.index], entry.image.Bitmap);
-                Assert.False(entry.image.ImageLifetimeDisposedForTests);
+                Assert.False(entry.image.GetWorkState().LifetimeDisposed);
             });
         }
         finally
@@ -763,7 +763,7 @@ public sealed class MultiRootRasterLayoutCandidateTests
             await buildContext.DrainOwnedRetirementsAsync();
             Assert.Equal(referenceCount, GetEntryReferenceCount(GetImageLease(readySource)));
             Assert.Same(readyBitmap, readySource.Bitmap);
-            Assert.False(readySource.ImageLifetimeDisposedForTests);
+            Assert.False(readySource.GetWorkState().LifetimeDisposed);
             Assert.Same(document.Roots[0], document.Snapshot.Blocks[0]);
             Assert.Same(document.Roots[1], document.Snapshot.Blocks[1]);
             Assert.Equal(0, document.Snapshot.LayoutRevision);
@@ -983,8 +983,8 @@ public sealed class MultiRootRasterLayoutCandidateTests
     {
         FieldInfo entryField = typeof(SharedCanvasBitmapCache.Lease).GetField(
             "_entry", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        object entry = Assert.IsAssignableFrom<SharedCanvasBitmapCache.Entry>(entryField.GetValue(lease));
-        FieldInfo countField = typeof(SharedCanvasBitmapCache.Entry).GetField(
+        object entry = Assert.IsAssignableFrom<SharedCanvasBitmapCacheEntry>(entryField.GetValue(lease));
+        FieldInfo countField = typeof(SharedCanvasBitmapCacheEntry).GetField(
             "_referenceCount", BindingFlags.Instance | BindingFlags.NonPublic)!;
         return Assert.IsType<int>(countField.GetValue(entry));
     }

@@ -32,9 +32,9 @@ public sealed class AnimatedWebpFirstCanvasImageBoxTests(ITestOutputHelper outpu
     [Fact]
     public async Task ImageBoxPublishesFirstCanvasAndSkipsStaticProviderForAnimation()
     {
-        SharedCanvasBitmapCache.Clear();
+        ImageResourceScope.Shared.BitmapCache.Clear();
         await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-            () => SharedCanvasBitmapCache.RetainedBytesForTests == 0);
+            () => ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes == 0);
 
         byte[] source = CreateAnimatedWebp();
         RasterImageBudgetResult budget = RasterImageResourceBudget.Validate(source);
@@ -63,14 +63,14 @@ public sealed class AnimatedWebpFirstCanvasImageBoxTests(ITestOutputHelper outpu
                         MaxRasterOutputPixels = 16,
                     });
                 MarkdownLayoutContext context = CreateContext(device, resolver, session, provider);
-                var image = new ImageBox(context, "https://images.example/partial-animation.webp", "frame one");
+                var image = new ImageBox(context, ImageResourceScope.Shared, "https://images.example/partial-animation.webp", "frame one");
 
                 try
                 {
                     image.Measure(3);
                     await DisplaySizedRasterDecodeTests.WaitForLoadAsync(image);
                     await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-                        () => image.ActiveImageWorkCountForTests == 0);
+                        () => image.GetWorkState().ActiveWorkCount == 0);
 
                     Assert.NotNull(image.Bitmap);
                     Assert.Equal(MarkdownImageAccessibilityState.Loaded, image.AccessibilityState);
@@ -109,7 +109,7 @@ public sealed class AnimatedWebpFirstCanvasImageBoxTests(ITestOutputHelper outpu
                 {
                     image.Dispose();
                     await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-                        () => image.ActiveImageWorkCountForTests == 0);
+                        () => image.GetWorkState().ActiveWorkCount == 0);
                 }
             }
         }
@@ -117,9 +117,9 @@ public sealed class AnimatedWebpFirstCanvasImageBoxTests(ITestOutputHelper outpu
         {
             if (noProviderPixels is not null)
                 Array.Clear(noProviderPixels);
-            SharedCanvasBitmapCache.Clear();
+            ImageResourceScope.Shared.BitmapCache.Clear();
             await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-                () => SharedCanvasBitmapCache.RetainedBytesForTests == 0);
+                () => ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes == 0);
         }
     }
 

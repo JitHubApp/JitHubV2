@@ -63,8 +63,7 @@ public sealed class RootLocalInlineImageRelayoutTests
         Assert.True(rasterSize.Width > 0 && rasterSize.Height > 0);
         Assert.Null(ReadRawField(image, "_svgDocument"));
         Assert.Null(ReadRawField(image, "_svgTileRenderPlan"));
-        Assert.Empty(Assert.IsAssignableFrom<System.Collections.IDictionary>(
-            ReadRawField(image, "_svgTiles")));
+        Assert.Empty(image.SvgTileCache.CaptureSnapshot().Tiles);
         Assert.True(renderer.FullRenderCount > 0);
         Assert.Equal(0, renderer.TiledRenderCount);
 
@@ -571,8 +570,8 @@ public sealed class RootLocalInlineImageRelayoutTests
         fallbackPending.EnsureLoading();
         await resolver.WaitForPendingResolveAsync().WaitAsync(TimeSpan.FromSeconds(10));
         await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-            () => optimizedPending.ActiveImageWorkCountForTests > 0 &&
-                  fallbackPending.ActiveImageWorkCountForTests > 0 &&
+            () => optimizedPending.GetWorkState().ActiveWorkCount > 0 &&
+                  fallbackPending.GetWorkState().ActiveWorkCount > 0 &&
                   resolver.ResolveCountFor(resolver.PendingUrl) >= 2);
         foreach (ImageBox image in FindInlineImages(optimizedInline))
             await LoadImageAsync(image);
@@ -584,7 +583,7 @@ public sealed class RootLocalInlineImageRelayoutTests
         long revisionBefore = optimized.Snapshot.LayoutRevision;
         long pendingResolveCount = resolver.ResolveCountFor(resolver.PendingUrl);
         long farResolveCount = resolver.ResolveCountFor(resolver.FarUrl);
-        int pendingWorkBefore = optimizedPending.ActiveImageWorkCountForTests;
+        int pendingWorkBefore = optimizedPending.GetWorkState().ActiveWorkCount;
         int[] changedBlockIndices = [optimizedInline.BlockIndex];
         fallback.Snapshot.RelayoutChangedBlocks(
             [fallbackInline.BlockIndex], LayoutWidth, CancellationToken.None);
@@ -606,8 +605,8 @@ public sealed class RootLocalInlineImageRelayoutTests
                 root => ReferenceEquals(root, optimizedInline)));
             Assert.Same(optimizedPending, FindImage(optimized.Snapshot, resolver.PendingUrl));
             Assert.Same(optimizedFar, FindImage(optimized.Snapshot, resolver.FarUrl));
-            Assert.True(optimizedPending.ActiveImageWorkCountForTests > 0);
-            Assert.Equal(pendingWorkBefore, optimizedPending.ActiveImageWorkCountForTests);
+            Assert.True(optimizedPending.GetWorkState().ActiveWorkCount > 0);
+            Assert.Equal(pendingWorkBefore, optimizedPending.GetWorkState().ActiveWorkCount);
             Assert.Null(optimizedPending.Bitmap);
             Assert.Equal(pendingResolveCount, resolver.ResolveCountFor(resolver.PendingUrl));
             Assert.Equal(farResolveCount, resolver.ResolveCountFor(resolver.FarUrl));
@@ -1035,7 +1034,7 @@ public sealed class RootLocalInlineImageRelayoutTests
         // hit must not publish its sole completion before the test subscribes.
         await DisplaySizedRasterDecodeTests.WaitForLoadAsync(image).WaitAsync(TimeSpan.FromSeconds(10));
         await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-            () => image.ActiveImageWorkCountForTests == 0);
+            () => image.GetWorkState().ActiveWorkCount == 0);
         Assert.NotNull(image.Bitmap);
     }
 

@@ -102,9 +102,6 @@ public sealed class Utf8Sha256CompatibilityTests
     [Fact]
     public void ImageBoxSecurityPartitionHashMatchesExactUtf8Sha256()
     {
-        MethodInfo method = typeof(ImageBox).GetMethod(
-            "HashSvgSecurityPartition",
-            BindingFlags.Static | BindingFlags.NonPublic)!;
         foreach (string? partition in new string?[]
         {
             null,
@@ -114,7 +111,7 @@ public sealed class Utf8Sha256CompatibilityTests
         })
         {
             string expected = Original(partition);
-            string actual = Assert.IsType<string>(method.Invoke(null, [partition]));
+            string actual = SvgSourcePreflight.HashSecurityPartition(partition);
             Assert.Equal(expected, actual);
             Assert.Equal(64, actual.Length);
             if (!string.IsNullOrEmpty(partition))

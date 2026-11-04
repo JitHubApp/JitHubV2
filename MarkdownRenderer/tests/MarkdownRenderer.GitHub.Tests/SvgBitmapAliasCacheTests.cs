@@ -182,11 +182,7 @@ public sealed class SvgBitmapAliasCacheTests
         long providerCacheGeneration,
         string title)
     {
-        Type entryType = typeof(ImageBox).GetNestedType("SvgCacheEntry", BindingFlags.NonPublic)!;
-        ConstructorInfo constructor = Assert.Single(entryType.GetConstructors(
-            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic));
-        return constructor.Invoke(
-        [
+        return new SvgCacheEntry(
             rawBytes,
             new Size(40, 20),
             title,
@@ -199,8 +195,7 @@ public sealed class SvgBitmapAliasCacheTests
             null,
             0,
             0,
-            null,
-        ]);
+            null);
     }
 
     private static void Update(
@@ -210,39 +205,24 @@ public sealed class SvgBitmapAliasCacheTests
         int width,
         int height)
     {
-        MethodInfo method = typeof(ImageBox).GetMethod(
-            "UpdateSvgSourceCacheBitmap",
-            BindingFlags.Static | BindingFlags.NonPublic)!;
-        method.Invoke(null, [builtInSourceAliasKey, contentKey, bitmapIdentity, width, height, null]);
+        ImageResourceScope.Shared.SvgSources.RecordLastBitmap(
+            builtInSourceAliasKey, contentKey, bitmapIdentity, width, height, physicalViewport: null);
     }
 
     private static void SetEntry(string key, object entry)
     {
-        object cache = GetCache();
-        cache.GetType().GetMethod("Set", BindingFlags.Instance | BindingFlags.Public)!
-            .Invoke(cache, [key, entry]);
+        ImageResourceScope.Shared.SvgSources.Set(key, (SvgCacheEntry)entry);
     }
 
     private static object? GetEntry(string key)
     {
-        object cache = GetCache();
-        object?[] arguments = [key, null];
-        bool found = Assert.IsType<bool>(cache.GetType()
-            .GetMethod("TryGetValue", BindingFlags.Instance | BindingFlags.Public)!
-            .Invoke(cache, arguments));
-        return found ? arguments[1] : null;
+        return ImageResourceScope.Shared.SvgSources.TryGetValue(key, out SvgCacheEntry? entry) ? entry : null;
     }
 
     private static void RemoveEntry(string key)
     {
-        object cache = GetCache();
-        _ = cache.GetType().GetMethod("Remove", BindingFlags.Instance | BindingFlags.Public)!
-            .Invoke(cache, [key]);
+        _ = ImageResourceScope.Shared.SvgSources.Remove(key);
     }
-
-    private static object GetCache() => typeof(ImageBox)
-        .GetField("_svgCache", BindingFlags.Static | BindingFlags.NonPublic)!
-        .GetValue(null)!;
 
     private static T GetField<T>(object instance, string fieldName) =>
         (T)instance.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)!

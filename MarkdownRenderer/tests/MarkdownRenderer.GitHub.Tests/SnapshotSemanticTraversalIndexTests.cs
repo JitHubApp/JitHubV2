@@ -142,7 +142,7 @@ public sealed class SnapshotSemanticTraversalIndexTests
         var root = new StackBox { BlockIndex = 100 };
         root.Add(paragraph);
         var standaloneDecorativeImage = new ImageBox(
-            context,
+            context, ImageResourceScope.Shared,
             "https://example.test/standalone-decorative.png",
             string.Empty)
         {

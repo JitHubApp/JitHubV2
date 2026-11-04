@@ -95,12 +95,10 @@ public sealed class CompletedRasterPlacementCloneTests
         Assert.NotSame(
             GetField<CancellationTokenSource>(fixture.ImageRun.Image, "_imageLifetimeCancellation"),
             GetField<CancellationTokenSource>(clonedImageRun.Image, "_imageLifetimeCancellation"));
-        Assert.Equal(0, clonedImageRun.Image.ActiveImageWorkCountForTests);
+        Assert.Equal(0, clonedImageRun.Image.GetWorkState().ActiveWorkCount);
         Assert.Null(GetNullableField<IMarkdownSvgDocument>(clonedImageRun.Image, "_svgDocument"));
         Assert.Null(GetNullableField<WeakReference<byte[]>>(clonedImageRun.Image, "_svgSourceIdentity"));
-        AssertPrivateDictionaryEmpty(clonedImageRun.Image, "_svgTiles");
-        AssertPrivateDictionaryEmpty(clonedImageRun.Image, "_svgTilesInFlight");
-        AssertPrivateDictionaryEmpty(clonedImageRun.Image, "_svgTileWorkOwners");
+        Assert.True(clonedImageRun.Image.SvgTileCache.IsClear());
 
         float measuredHeight = clonedContainer.Measure(320f);
         clonedContainer.Arrange(0f, 0f, 320f);
@@ -120,7 +118,7 @@ public sealed class CompletedRasterPlacementCloneTests
     public async Task UncachedPlacementCloneCopiesAlreadyResolvedIntrinsicGeometry()
     {
         await using var fixture = new PlacementFixture();
-        SharedCanvasBitmapCache.Lease uncached = SharedCanvasBitmapCache.CreateUncachedLease(
+        SharedCanvasBitmapCache.Lease uncached = ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(
             CreateBitmap(fixture.Device, 40, 20));
         InvokeReplaceBitmap(fixture.ImageRun.Image, uncached);
         Assert.Null(uncached.IntrinsicSize);
@@ -199,7 +197,7 @@ public sealed class CompletedRasterPlacementCloneTests
         }
         Assert.True(fixture.ImageRun.Image.IsCurrentCompletedRasterPlacement(expected));
 
-        SharedCanvasBitmapCache.Lease replacementLease = SharedCanvasBitmapCache.CreateUncachedLease(
+        SharedCanvasBitmapCache.Lease replacementLease = ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(
             CreateBitmap(fixture.Device, 40, 20));
         CanvasBitmap replacementBitmap = replacementLease.Bitmap;
         InvokeReplaceBitmap(fixture.ImageRun.Image, replacementLease);
@@ -246,7 +244,7 @@ public sealed class CompletedRasterPlacementCloneTests
         Assert.Equal(0, candidateUnavailableCalls);
 
         await fixture.RetireCandidateAsync();
-        Assert.True(cloneRun.Image.ImageLifetimeDisposedForTests);
+        Assert.True(cloneRun.Image.GetWorkState().LifetimeDisposed);
         Assert.Null(cloneRun.Image.Bitmap);
         Assert.False(originalLifetime.IsCancellationRequested);
     }
@@ -269,7 +267,7 @@ public sealed class CompletedRasterPlacementCloneTests
         await using (var activeFixture = new PlacementFixture())
         {
             using IDisposable activeWork = BeginImageWork(activeFixture.ImageRun.Image);
-            Assert.Equal(1, activeFixture.ImageRun.Image.ActiveImageWorkCountForTests);
+            Assert.Equal(1, activeFixture.ImageRun.Image.GetWorkState().ActiveWorkCount);
             Assert.False(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
                 activeFixture.Source,
                 activeFixture.CreateContext(),
@@ -380,14 +378,6 @@ public sealed class CompletedRasterPlacementCloneTests
         return value is null ? null : Assert.IsType<T>(value);
     }
 
-    private static void AssertPrivateDictionaryEmpty(object instance, string name)
-    {
-        FieldInfo field = instance.GetType().GetField(
-            name,
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        Assert.Empty(Assert.IsAssignableFrom<IDictionary>(field.GetValue(instance)));
-    }
-
     internal sealed class PlacementFixture : IAsyncDisposable
     {
         private readonly TestContextEnvironment _environment;
@@ -462,7 +452,7 @@ public sealed class CompletedRasterPlacementCloneTests
             _sourceRetired = true;
         }
 
-        internal void ReleaseCacheEntry() => SharedCanvasBitmapCache.ReleaseDevice(Device);
+        internal void ReleaseCacheEntry() => ImageResourceScope.Shared.BitmapCache.ReleaseDevice(Device);
 
         internal async Task RetireSourceAsync()
         {
@@ -620,7 +610,7 @@ public sealed class CompletedRasterPlacementCloneTests
 
         internal void StoreRaster(string identity, int width, int height, Size intrinsicSize)
         {
-            using SharedCanvasBitmapCache.Lease lease = SharedCanvasBitmapCache.StoreAndAcquire(
+            using SharedCanvasBitmapCache.Lease lease = ImageResourceScope.Shared.BitmapCache.StoreAndAcquire(
                 Device,
                 identity,
                 CreateBitmap(Device, width, height),
@@ -629,7 +619,7 @@ public sealed class CompletedRasterPlacementCloneTests
 
         public void Dispose()
         {
-            SharedCanvasBitmapCache.ReleaseDevice(Device);
+            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(Device);
             Device.Dispose();
         }
     }

@@ -1020,8 +1020,8 @@ public sealed class RootLocalTableImageRelayoutTests
         fallbackPending.EnsureLoading();
         await resolver.WaitForPendingResolveAsync().WaitAsync(TimeSpan.FromSeconds(10));
         await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-            () => pending.ActiveImageWorkCountForTests > 0 &&
-                  fallbackPending.ActiveImageWorkCountForTests > 0 &&
+            () => pending.GetWorkState().ActiveWorkCount > 0 &&
+                  fallbackPending.GetWorkState().ActiveWorkCount > 0 &&
                   resolver.ResolveCountFor(resolver.PendingUrl) >= 2);
         foreach (ImageBox image in EnumerateTableImages(table))
             await LoadImageAsync(image);
@@ -1032,7 +1032,7 @@ public sealed class RootLocalTableImageRelayoutTests
         Rect[] rootBoundsBefore = rootsBefore.Select(static root => root.Bounds).ToArray();
         Rect[] tableCellBoundsBefore = CaptureCellBounds(optimized.Snapshot, table);
         long revisionBefore = optimized.Snapshot.LayoutRevision;
-        int pendingWorkBefore = pending.ActiveImageWorkCountForTests;
+        int pendingWorkBefore = pending.GetWorkState().ActiveWorkCount;
         int pendingResolveCount = resolver.ResolveCountFor(resolver.PendingUrl);
         int farResolveCount = resolver.ResolveCountFor(resolver.FarUrl);
         fallback.Snapshot.RelayoutChangedBlocks([fallbackTable.BlockIndex], LayoutWidth, CancellationToken.None);
@@ -1050,8 +1050,8 @@ public sealed class RootLocalTableImageRelayoutTests
             Assert.Equal(tableCellBoundsBefore.Length, CaptureCellBounds(optimized.Snapshot, table).Length);
             Assert.Same(pending, FindImage(optimized.Snapshot, resolver.PendingUrl));
             Assert.Same(far, FindImage(optimized.Snapshot, resolver.FarUrl));
-            Assert.True(pending.ActiveImageWorkCountForTests > 0);
-            Assert.Equal(pendingWorkBefore, pending.ActiveImageWorkCountForTests);
+            Assert.True(pending.GetWorkState().ActiveWorkCount > 0);
+            Assert.Equal(pendingWorkBefore, pending.GetWorkState().ActiveWorkCount);
             Assert.Null(pending.Bitmap);
             Assert.Equal(pendingResolveCount, resolver.ResolveCountFor(resolver.PendingUrl));
             Assert.Equal(farResolveCount, resolver.ResolveCountFor(resolver.FarUrl));
@@ -1249,10 +1249,7 @@ public sealed class RootLocalTableImageRelayoutTests
         InlineContainerBox cell = table.GetCellBoxes().First(static candidate => candidate.Runs.Count > 0);
         CanvasTextLayout cellLayout = GetInlineLayout(cell);
         ImageBox imageSource = images[0];
-        FieldInfo placeholderField = typeof(ImageBox).GetField("_placeholder",
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Missing image placeholder native-layout field.");
-        CanvasTextLayout? originalPlaceholder = imageSource.PlaceholderLayoutForTests;
+        CanvasTextLayout? originalPlaceholder = imageSource.MeasureCustody.GetLayoutState().Placeholder;
         Assert.NotSame(cellLayout, originalPlaceholder);
 
         TableSourceState initialState = CaptureState(document.Snapshot, table);
@@ -1275,7 +1272,7 @@ public sealed class RootLocalTableImageRelayoutTests
                 {
                     hookCalls++;
                     aliasInstalled = true;
-                    placeholderField.SetValue(imageSource, cellLayout);
+                    imageSource.MeasureCustody.Placeholder = cellLayout;
                 }),
                 expectedPointerInputEpoch: document.Snapshot.PointerInputEpoch);
         }
@@ -1287,7 +1284,7 @@ public sealed class RootLocalTableImageRelayoutTests
                 // Restore its exact prior owner field before draining candidates
                 // or the document snapshot, even when the assertion path throws.
                 if (aliasInstalled)
-                    placeholderField.SetValue(imageSource, originalPlaceholder);
+                    imageSource.MeasureCustody.Placeholder = originalPlaceholder;
             }
             finally
             {
@@ -1296,7 +1293,7 @@ public sealed class RootLocalTableImageRelayoutTests
             }
         }
 
-        Assert.Same(originalPlaceholder, imageSource.PlaceholderLayoutForTests);
+        Assert.Same(originalPlaceholder, imageSource.MeasureCustody.GetLayoutState().Placeholder);
         Assert.Equal(1, hookCalls);
         Assert.Equal(PreparedImageRelayoutResult.Retry, result);
         Assert.Equal(revisionBefore, document.Snapshot.LayoutRevision);
@@ -1619,7 +1616,7 @@ public sealed class RootLocalTableImageRelayoutTests
     private static async Task LoadImageAsync(ImageBox image)
     {
         await DisplaySizedRasterDecodeTests.WaitForLoadAsync(image).WaitAsync(TimeSpan.FromSeconds(10));
-        await DisplaySizedRasterDecodeTests.WaitUntilAsync(() => image.ActiveImageWorkCountForTests == 0);
+        await DisplaySizedRasterDecodeTests.WaitUntilAsync(() => image.GetWorkState().ActiveWorkCount == 0);
         Assert.NotNull(image.Bitmap);
     }
 

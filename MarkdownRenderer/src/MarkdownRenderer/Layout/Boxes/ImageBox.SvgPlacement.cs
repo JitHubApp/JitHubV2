@@ -1,84 +1,12 @@
 using System;
 using System.Threading;
-using Windows.Foundation;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout;
 using MarkdownRenderer.Performance;
 
 namespace MarkdownRenderer.Layout.Boxes;
 
 internal sealed partial class ImageBox
 {
-    /// <summary>
-    /// Immutable accepted-SVG state used only to validate a private bitmap
-    /// placement. The source identity is weak; this value never owns source bytes,
-    /// a provider/document, tile plan, work owner, or cancellation state.
-    /// </summary>
-    internal readonly struct CompletedSvgPlacementMetadataFence
-    {
-        internal CompletedSvgPlacementMetadataFence(
-            WeakReference<byte[]> sourceIdentity,
-            long sourceByteLength,
-            string? anonymousPartitionKey,
-            string? preResolutionCacheKey,
-            Size intrinsicSize,
-            string? title,
-            string? description,
-            string contentHash,
-            string securityPartitionHash,
-            MarkdownSvgDocumentInfo info,
-            string? activeCacheKey,
-            long rendererIdentity,
-            long providerCacheGeneration,
-            int renderGeneration,
-            int loadDemandGeneration,
-            int bitmapWidthPixels,
-            int bitmapHeightPixels,
-            MarkdownSvgPhysicalViewport? physicalViewport,
-            MarkdownSvgPhysicalViewport? bitmapPhysicalViewport)
-        {
-            SourceIdentity = sourceIdentity;
-            SourceByteLength = sourceByteLength;
-            AnonymousPartitionKey = anonymousPartitionKey;
-            PreResolutionCacheKey = preResolutionCacheKey;
-            IntrinsicSize = intrinsicSize;
-            Title = title;
-            Description = description;
-            ContentHash = contentHash;
-            SecurityPartitionHash = securityPartitionHash;
-            Info = info;
-            ActiveCacheKey = activeCacheKey;
-            RendererIdentity = rendererIdentity;
-            ProviderCacheGeneration = providerCacheGeneration;
-            RenderGeneration = renderGeneration;
-            LoadDemandGeneration = loadDemandGeneration;
-            BitmapWidthPixels = bitmapWidthPixels;
-            BitmapHeightPixels = bitmapHeightPixels;
-            PhysicalViewport = physicalViewport;
-            BitmapPhysicalViewport = bitmapPhysicalViewport;
-        }
-
-        internal WeakReference<byte[]> SourceIdentity { get; }
-        internal long SourceByteLength { get; }
-        internal string? AnonymousPartitionKey { get; }
-        internal string? PreResolutionCacheKey { get; }
-        internal Size IntrinsicSize { get; }
-        internal string? Title { get; }
-        internal string? Description { get; }
-        internal string ContentHash { get; }
-        internal string SecurityPartitionHash { get; }
-        internal MarkdownSvgDocumentInfo Info { get; }
-        internal string? ActiveCacheKey { get; }
-        internal long RendererIdentity { get; }
-        internal long ProviderCacheGeneration { get; }
-        internal int RenderGeneration { get; }
-        internal int LoadDemandGeneration { get; }
-        internal int BitmapWidthPixels { get; }
-        internal int BitmapHeightPixels { get; }
-        internal MarkdownSvgPhysicalViewport? PhysicalViewport { get; }
-        internal MarkdownSvgPhysicalViewport? BitmapPhysicalViewport { get; }
-    }
-
     /// <summary>
     /// Creates the existing completed-raster placement or, for a strictly
     /// completed full SVG bitmap, returns its immutable metadata fence too.
@@ -190,7 +118,7 @@ internal sealed partial class ImageBox
     {
         sourceLease = null;
         fence = default;
-        if (IsBitmapOutputDeferred)
+        if (OutputDeferral.IsBitmapOutputDeferred)
             return false;
 
         lock (_svgWorkSync)
@@ -255,7 +183,7 @@ internal sealed partial class ImageBox
         SharedCanvasBitmapCache.Lease expectedSourceLease,
         CompletedSvgPlacementMetadataFence expected)
     {
-        if (IsBitmapOutputDeferred)
+        if (OutputDeferral.IsBitmapOutputDeferred)
             return false;
 
         lock (_svgWorkSync)
@@ -264,7 +192,7 @@ internal sealed partial class ImageBox
                 return false;
         }
 
-        if (!AreSvgPlacementAuxiliaryStatesClear() || IsBitmapOutputDeferred)
+        if (!AreSvgPlacementAuxiliaryStatesClear() || OutputDeferral.IsBitmapOutputDeferred)
             return false;
 
         // Do not nest the image, tile, and host locks. Recheck the image
@@ -272,7 +200,7 @@ internal sealed partial class ImageBox
         // newly admitted work cannot cross the metadata fence.
         lock (_svgWorkSync)
         {
-            return !IsBitmapOutputDeferred &&
+            return !OutputDeferral.IsBitmapOutputDeferred &&
                    CompletedSvgPlacementMetadataMatchesNoLock(expectedSourceLease, expected);
         }
     }
@@ -322,9 +250,9 @@ internal sealed partial class ImageBox
                Volatile.Read(ref _svgTileRenderPlan) is null &&
                Volatile.Read(ref _svgParkingPlan) is null &&
                !_svgUsesTiles &&
-               !_svgHasRenderedTile &&
+               !_svgTileCache.HasRenderedTile &&
                !_svgPressureParked &&
-               !_svgPressureDemandSignatureKnown &&
+               !_svgTileCache.PressureDemandSignatureKnown &&
                _svgFailureReason is null &&
                _svgFailureDescription is null &&
                !Url.StartsWith("data:", StringComparison.OrdinalIgnoreCase) &&
@@ -334,37 +262,10 @@ internal sealed partial class ImageBox
 
     private bool AreSvgPlacementAuxiliaryStatesClear()
     {
-        lock (_svgTileLock)
-        {
-            if (_svgTileCacheTransitionToken is not null ||
-                _svgTiles.Count != 0 ||
-                _svgTilesInFlight.Count != 0 ||
-                _svgTileWorkOwners.Count != 0 ||
-                _svgFallbackTiles is not null ||
-                _svgFallbackIdentityPrefix is not null ||
-                _svgFallbackWidthPixels != 0 ||
-                _svgFallbackHeightPixels != 0 ||
-                _svgFallbackPhysicalViewport is not null ||
-                _svgTileCacheIdentityPrefix is not null ||
-                _svgTileCacheWidthPixels != 0 ||
-                _svgTileCacheHeightPixels != 0 ||
-                _svgTileCachePhysicalViewport is not null ||
-                _svgHasRenderedTile)
-            {
-                return false;
-            }
-        }
+        if (!_svgTileCache.IsClear())
+            return false;
 
-        lock (_svgHostDeferredSync)
-        {
-            return _svgHostDeferred == SvgHostDeferredNone &&
-                   _svgHostDeferredWaiter is null &&
-                   _svgHostDeferredWaiterIdentity is null &&
-                   _svgHostDeferredRegistrationAttempt is null &&
-                   _svgHostDeferredDenialIdentity is null &&
-                   _svgHostDeferredAdmission is null &&
-                   !_svgHostDeferredCapacityReady;
-        }
+        return SvgHostDeferral.IsClear();
     }
 
     private static bool IsFinitePositive(double value) =>

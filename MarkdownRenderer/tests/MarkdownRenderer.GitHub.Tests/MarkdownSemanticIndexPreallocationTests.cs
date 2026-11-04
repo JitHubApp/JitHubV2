@@ -22,7 +22,7 @@ public sealed class MarkdownSemanticIndexPreallocationTests
         var images = new ImageBox[imageCount];
         for (int i = 0; i < images.Length; i++)
         {
-            images[i] = new ImageBox(context, $"https://example.test/{i}.png", $"image {i}")
+            images[i] = new ImageBox(context, ImageResourceScope.Shared, $"https://example.test/{i}.png", $"image {i}")
             {
                 BlockIndex = context.NextBlockIndex(),
             };

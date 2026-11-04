@@ -26,11 +26,11 @@ public sealed class SvgFallbackTileResidencyTests
         var previous = new MarkdownSvgPhysicalViewport(1024.25, 100);
         var replacement = new MarkdownSvgPhysicalViewport(1024.75, 100);
         var tiles = NewTileMap((0, 0, TileSize, 100));
-        Assert.True(ImageBox.ShouldRetainSvgFallbackTile(
+        Assert.True(SvgFallbackTileRetention.ShouldRetain(
             (0, 0, TileSize, 100), 1025, 100, 1025, 100,
             destination, destination, tiles, previous, replacement));
         tiles.Add((1024, 0, 1, 100), null!);
-        Assert.False(ImageBox.ShouldRetainSvgFallbackTile(
+        Assert.False(SvgFallbackTileRetention.ShouldRetain(
             (0, 0, TileSize, 100), 1025, 100, 1025, 100,
             destination, destination, tiles, previous, replacement));
     }
@@ -290,32 +290,41 @@ public sealed class SvgFallbackTileResidencyTests
     {
         var document = new NonRenderingSvgDocument();
         var renderer = new NonOpeningSvgRenderer();
-        var plan = new ImageBox.SvgTileRenderPlan(
+        var plan = new SvgTileRenderPlan(
             document,
             "svg-cache-prefix:fallback-pruning-integration",
             fullWidthPixels: 4096,
             fullHeightPixels: 1024,
             renderGeneration: 91);
-        ImageBox box = CreateBareBox(plan, renderer);
-        var fallback = new Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease>
-        {
-            [(0, 0, TileSize, TileSize)] = new(),
-            [(TileSize, 0, TileSize, TileSize)] = new(),
-            [(2 * TileSize, 0, TileSize, TileSize)] = new(),
-        };
-        SetField(box, "_svgFallbackTiles", fallback);
-        SetField(box, "_svgFallbackWidthPixels", 3072);
-        SetField(box, "_svgFallbackHeightPixels", 1024);
-
-        Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease> current =
-            GetField<Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease>>(box, "_svgTiles");
+        var previous = new SvgTileRenderPlan(
+            document,
+            "svg-cache-prefix:fallback-pruning-previous",
+            fullWidthPixels: 3072,
+            fullHeightPixels: 1024,
+            renderGeneration: 90);
+        ImageBox box = CreateBareBox(previous, renderer);
+        SvgTileCache cache = box.SvgTileCache;
+        void Accept(SvgTileRenderPlan? accepted) => SetField(box, "_svgTileRenderPlan", accepted);
         try
         {
-            current.Add((0, 0, TileSize, TileSize), new());
-            current.Add((TileSize, 0, TileSize, TileSize), new());
+            // The previous good grid becomes the fallback when the next plan is adopted.
+            SvgTileCacheTestOperations.Adopt(cache, previous, Accept);
+            SvgTileCacheTestOperations.PublishTile(cache, previous, (0, 0, TileSize, TileSize), new());
+            SvgTileCacheTestOperations.PublishTile(cache, previous, (TileSize, 0, TileSize, TileSize), new());
+            SvgTileCacheTestOperations.PublishTile(cache, previous, (2 * TileSize, 0, TileSize, TileSize), new());
+            SvgTileCacheTestOperations.Adopt(cache, plan, Accept);
+            SvgTileCacheSnapshot adopted = cache.CaptureSnapshot();
+            Assert.Equal(3, adopted.FallbackTiles?.Count);
+            Assert.Equal(3072, adopted.FallbackWidthPixels);
+            Assert.Equal(1024, adopted.FallbackHeightPixels);
+
+            SvgTileCacheTestOperations.PublishTile(cache, plan, (0, 0, TileSize, TileSize), new());
+            SvgTileCacheTestOperations.PublishTile(cache, plan, (TileSize, 0, TileSize, TileSize), new());
 
             QueueVisible(box, new Rect(0, 0, 1024, 256), new Rect(0, 0, 256, 256));
 
+            IReadOnlyDictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease> fallback =
+                FallbackTiles(cache);
             Assert.False(fallback.ContainsKey((0, 0, TileSize, TileSize)));
             Assert.True(fallback.ContainsKey((TileSize, 0, TileSize, TileSize)));
             Assert.False(fallback.ContainsKey((2 * TileSize, 0, TileSize, TileSize)));
@@ -334,22 +343,25 @@ public sealed class SvgFallbackTileResidencyTests
 
             // Widen the viewport, add the remaining canonical current tiles,
             // and verify replacement coverage retires the formerly retained tile.
-            current.Add((2 * TileSize, 0, TileSize, TileSize), new());
-            current.Add((3 * TileSize, 0, TileSize, TileSize), new());
+            SvgTileCacheTestOperations.PublishTile(cache, plan, (2 * TileSize, 0, TileSize, TileSize), new());
+            SvgTileCacheTestOperations.PublishTile(cache, plan, (3 * TileSize, 0, TileSize, TileSize), new());
             QueueVisible(box, new Rect(0, 0, 1024, 256), new Rect(0, 0, 768, 256));
 
-            Assert.Empty(fallback);
+            Assert.Empty(FallbackTiles(cache));
             Assert.Equal(0, document.RenderCount);
             Assert.Equal(0, renderer.OpenCount);
         }
         finally
         {
-            foreach (SharedCanvasBitmapCache.Lease lease in fallback.Values)
-                lease.Dispose();
-            foreach (SharedCanvasBitmapCache.Lease lease in current.Values)
-                lease.Dispose();
+            (SharedCanvasBitmapCache.Lease[] tiles, CancellationTokenSource[] work) = cache.DetachAll();
+            cache.RetireDetached(tiles, work);
         }
     }
+
+    private static IReadOnlyDictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease> FallbackTiles(
+        SvgTileCache cache) =>
+        cache.CaptureSnapshot().FallbackTiles ??
+            new Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease>();
 
     private static bool Retain(
         (int X, int Y, int Width, int Height) key,
@@ -360,7 +372,7 @@ public sealed class SvgFallbackTileResidencyTests
         Rect destination,
         Rect visible,
         Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease> currentTiles) =>
-        ImageBox.ShouldRetainSvgFallbackTile(
+        SvgFallbackTileRetention.ShouldRetain(
             key,
             fallbackWidth,
             fallbackHeight,
@@ -371,36 +383,11 @@ public sealed class SvgFallbackTileResidencyTests
             currentTiles);
 
     private static ImageBox CreateBareBox(
-        ImageBox.SvgTileRenderPlan plan,
+        SvgTileRenderPlan plan,
         IMarkdownSvgRenderer renderer)
     {
         // Current-generation keys are already cached/pending in these tests;
         // no native resource creator, SVG provider, or dispatcher is accessed.
-        var box = (ImageBox)RuntimeHelpers.GetUninitializedObject(typeof(ImageBox));
-        SetField(box, "_svgWorkSync", new object());
-        SetField(box, "_svgPublicationSync", new object());
-        SetField(box, "_svgTileLock", new object());
-        SetField(box, "_svgTiles", new Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease>());
-        SetField(box, "_svgTilesInFlight", new Dictionary<(int X, int Y, int Width, int Height), CancellationTokenSource>());
-        SetField(box, "_svgTileWorkOwners", Activator.CreateInstance(
-            typeof(Dictionary<,>).MakeGenericType(
-                typeof(ValueTuple<int, int, int, int>),
-                typeof(ImageBox).GetNestedType("SvgTileWorkOwner", BindingFlags.NonPublic)!))!);
-        SetField(box, "_svgTileCacheTransitionToken", null);
-        SetField(box, "_svgFallbackTiles", null);
-        SetField(box, "_svgTileCacheIdentityPrefix", null);
-        SetField(box, "_svgTileCacheWidthPixels", 0);
-        SetField(box, "_svgTileCacheHeightPixels", 0);
-        SetField(box, "_svgVisibleTileRangeKnown", false);
-        SetField(box, "_svgCurrentViewportVisible", -1);
-        SetField(box, "_svgTileRenderPlan", plan);
-        SetField(box, "_svgDocument", plan.Document);
-        SetField(box, "_svgLoadDemandTicket", plan.Demand);
-        SetField(box, "_svgRenderGeneration", plan.RenderGeneration);
-        SetField(box, "_svgUsesTiles", true);
-        SetField(box, "_resourcesSuspended", false);
-        SetField(box, "_disposed", false);
-
         var context = new MarkdownLayoutContext(
             resourceCreator: null!,
             themeSnapshot: null!,
@@ -410,7 +397,12 @@ public sealed class SvgFallbackTileResidencyTests
         {
             SvgRenderer = renderer,
         };
-        SetField(box, "Context", context);
+        var box = new ImageBox(context, ImageResourceScope.Shared, "https://example.test/tiled.svg", "tiled svg");
+        SetField(box, "_svgTileRenderPlan", plan);
+        SetField(box, "_svgDocument", plan.Document);
+        SetField(box, "_svgLoadDemandTicket", plan.Demand);
+        SetField(box, "_svgRenderGeneration", plan.RenderGeneration);
+        SetField(box, "_svgUsesTiles", true);
         SetField(box, "_svgRendererIdentity", GetRendererIdentity(renderer));
         SetField(box, "_svgProviderCacheGeneration", renderer.CacheGeneration);
         SetField(box, "_svgInfo", plan.Document.Info);
@@ -431,17 +423,11 @@ public sealed class SvgFallbackTileResidencyTests
         return (T)field.GetValue(target)!;
     }
 
-    private static long GetRendererIdentity(IMarkdownSvgRenderer renderer)
-    {
-        MethodInfo method = typeof(ImageBox).GetMethod(
-                "GetSvgRendererIdentity",
-                BindingFlags.Static | BindingFlags.NonPublic)
-            ?? throw new MissingMethodException(typeof(ImageBox).FullName, "GetSvgRendererIdentity");
-        return (long)method.Invoke(null, [renderer])!;
-    }
+    private static long GetRendererIdentity(IMarkdownSvgRenderer renderer) =>
+        ImageResourceScope.Shared.ProviderIdentities.GetSvgRendererIdentity(renderer);
 
-    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "QueueVisibleSvgTiles")]
-    private static extern void QueueVisible(ImageBox box, Rect destination, Rect viewport);
+    private static void QueueVisible(ImageBox box, Rect destination, Rect viewport) =>
+        box.SvgTileRenderer.QueueVisibleSvgTiles(destination, viewport);
 
     private static Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease> NewTileMap(
         params (int X, int Y, int Width, int Height)[] keys)

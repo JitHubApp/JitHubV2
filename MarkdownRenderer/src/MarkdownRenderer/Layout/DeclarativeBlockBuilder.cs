@@ -281,7 +281,7 @@ internal sealed class DeclarativeBlockBuilder
         DeclarativeContentSyntax.TryGetDeclarativeLength(content, MarkdownContentAttributes.ImageWidth, out SafeHtmlLength width);
         DeclarativeContentSyntax.TryGetDeclarativeLength(content, MarkdownContentAttributes.ImageHeight, out SafeHtmlLength height);
         var box = new ImageBox(
-            _context,
+            _context, ImageResourceScope.Shared, // TODO: take the scope from MarkdownLayoutContext.
             content.Destination ?? string.Empty,
             content.Text ?? string.Empty,
             width.Value > 0 ? width : null,

@@ -102,16 +102,14 @@ public sealed class CompletedSvgPlacementCloneTests
         Assert.Null(GetField(privateImage, "_svgDocument"));
         Assert.Null(GetField(privateImage, "_svgTileRenderPlan"));
         Assert.Null(GetField(privateImage, "_svgParkingPlan"));
-        Assert.Empty(Assert.IsAssignableFrom<IDictionary>(GetField(privateImage, "_svgTiles")));
-        Assert.Empty(Assert.IsAssignableFrom<IDictionary>(GetField(privateImage, "_svgTilesInFlight")));
-        Assert.Empty(Assert.IsAssignableFrom<IDictionary>(GetField(privateImage, "_svgTileWorkOwners")));
-        Assert.Equal(0, privateImage.ActiveImageWorkCountForTests);
+        Assert.True(privateImage.SvgTileCache.IsClear());
+        Assert.Equal(0, privateImage.GetWorkState().ActiveWorkCount);
 
         await fixture.RetireSourceAsync();
         Assert.Null(sourceImage.Bitmap);
-        Assert.True(sourceImage.ImageLifetimeDisposedForTests);
+        Assert.True(sourceImage.GetWorkState().LifetimeDisposed);
         Assert.Same(bitmap, privateImage.Bitmap);
-        Assert.False(privateImage.ImageLifetimeDisposedForTests);
+        Assert.False(privateImage.GetWorkState().LifetimeDisposed);
 
         using var target = new CanvasRenderTarget(
             CanvasDevice.GetSharedDevice(),
@@ -242,7 +240,7 @@ public sealed class CompletedSvgPlacementCloneTests
             target,
             out ImageBox? clone,
             out SharedCanvasBitmapCache.Lease? expectedLease,
-            out ImageBox.CompletedSvgPlacementMetadataFence? metadataFence));
+            out CompletedSvgPlacementMetadataFence? metadataFence));
         Assert.NotNull(clone);
         Assert.NotNull(expectedLease);
         Assert.NotNull(metadataFence);
@@ -310,7 +308,7 @@ public sealed class CompletedSvgPlacementCloneTests
             intrinsicHeight: 1_000,
             layoutWidth: 5_000);
         await WaitUntilAsync(() => fixture.Image.UsesSvgTilesForAutomation &&
-            fixture.Image.ActiveImageWorkCountForTests == 0);
+            fixture.Image.GetWorkState().ActiveWorkCount == 0);
 
         Assert.True(fixture.Image.UsesSvgTilesForAutomation);
         Assert.Null(fixture.Image.Bitmap);
@@ -321,11 +319,39 @@ public sealed class CompletedSvgPlacementCloneTests
     public async Task ExistingSvgFallbackTileStateRejectsFullBitmapClone()
     {
         await using var fixture = await SvgPlacementFixture.CreateReadyAsync(hasText: false);
-        var fallbackField = typeof(ImageBox).GetField("_svgFallbackTiles", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        fallbackField.SetValue(fixture.Image,
-            new Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease>());
+        ImageBox image = fixture.Image;
+        SvgTileCache cache = image.SvgTileCache;
+        SvgTileRenderPlan previous = TestSvgTileCacheHost.Plan("svg-cache-prefix:previous-good", 1024, 1024);
+        SvgTileRenderPlan replacement = TestSvgTileCacheHost.Plan(
+            "svg-cache-prefix:replacement", 1024, 1024, document: previous.Document);
+        object? acceptedPlan = GetField(image, "_svgTileRenderPlan");
+        object? acceptedDocument = GetField(image, "_svgDocument");
+        bool usesTiles = GetField<bool>(image, "_svgUsesTiles");
 
-        AssertCloneRejected(fixture.Image, fixture.CreateTargetContext());
+        // A previous good grid is left behind as the fallback through the
+        // cache's own transitions; the box's full-bitmap state is then
+        // restored so that only the tile cache differs.
+        void Accept(SvgTileRenderPlan? plan) => SetField(image, "_svgTileRenderPlan", plan);
+        SetField(image, "_svgDocument", previous.Document);
+        SetField(image, "_svgUsesTiles", true);
+        SvgTileCacheTestOperations.Adopt(cache, previous, Accept);
+        SvgTileCacheTestOperations.PublishTile(
+            cache, previous, (0, 0, 1024, 1024), new SharedCanvasBitmapCache.Lease(null!));
+        SvgTileCacheTestOperations.Adopt(cache, replacement, Accept);
+        SetField(image, "_svgTileRenderPlan", acceptedPlan);
+        SetField(image, "_svgDocument", acceptedDocument);
+        SetField(image, "_svgUsesTiles", usesTiles);
+        Assert.NotNull(cache.CaptureSnapshot().FallbackTiles);
+
+        try
+        {
+            AssertCloneRejected(image, fixture.CreateTargetContext());
+        }
+        finally
+        {
+            (SharedCanvasBitmapCache.Lease[] tiles, CancellationTokenSource[] work) = cache.DetachAll();
+            cache.RetireDetached(tiles, work);
+        }
     }
 
     [Fact]
@@ -338,7 +364,7 @@ public sealed class CompletedSvgPlacementCloneTests
         };
         await using var fixture = await SvgPlacementFixture.CreateStartedAsync(renderer: renderer);
         await renderer.OpenStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.True(fixture.Image.ActiveImageWorkCountForTests > 0);
+        Assert.True(fixture.Image.GetWorkState().ActiveWorkCount > 0);
         AssertCloneRejected(fixture.Image, fixture.CreateTargetContext());
     }
 
@@ -350,8 +376,8 @@ public sealed class CompletedSvgPlacementCloneTests
         await using var fixture = await SvgPlacementFixture.CreateStartedAsync(renderer: renderer);
         // Registration precedes dispatch of the provider's asynchronous wait.
         // Observe both milestones rather than racing that queued callback.
-        await WaitUntilAsync(() => GetField<int>(fixture.Image, "_svgHostDeferred") != 0 &&
-            GetField(fixture.Image, "_svgHostDeferredWaiter") is not null && renderer.WaitCount > 0);
+        await WaitUntilAsync(() => GetField<int>(fixture.Image.SvgHostDeferral, "_svgHostDeferred") != 0 &&
+            GetField(fixture.Image.SvgHostDeferral, "_svgHostDeferredWaiter") is not null && renderer.WaitCount > 0);
         AssertCloneRejected(fixture.Image, fixture.CreateTargetContext());
         Assert.True(renderer.WaitCount > 0);
     }
@@ -365,9 +391,9 @@ public sealed class CompletedSvgPlacementCloneTests
         {
             SvgPlacementFixture readyFixture = await SvgPlacementFixture.CreateStartedAsync();
             fixture = readyFixture;
-            await WaitUntilAsync(() => GetField<int>(readyFixture.Image, "_bitmapOutputDeferred") != 0 &&
-                GetField(readyFixture.Image, "_bitmapOutputWaiter") is not null &&
-                readyFixture.Image.ActiveImageWorkCountForTests == 0);
+            await WaitUntilAsync(() => readyFixture.Image.OutputDeferral.GetState().Deferred &&
+                readyFixture.Image.OutputDeferral.GetState().HasWaiter &&
+                readyFixture.Image.GetWorkState().ActiveWorkCount == 0);
             Assert.Null(readyFixture.Image.Bitmap);
             AssertCloneRejected(readyFixture.Image, readyFixture.CreateTargetContext());
         }
@@ -391,7 +417,7 @@ public sealed class CompletedSvgPlacementCloneTests
             target,
             out ImageBox? clone,
             out SharedCanvasBitmapCache.Lease? lease,
-            out ImageBox.CompletedSvgPlacementMetadataFence? fence));
+            out CompletedSvgPlacementMetadataFence? fence));
         Assert.Null(clone);
         Assert.Null(lease);
         Assert.Null(fence);
@@ -406,8 +432,8 @@ public sealed class CompletedSvgPlacementCloneTests
 
     private static async Task<List<BitmapOutputAdmission.Reservation>> SaturateAdmissionAsync()
     {
-        BitmapOutputAdmission admission = BitmapOutputAdmission.Shared;
-        SharedCanvasBitmapCache.Clear();
+        BitmapOutputAdmission admission = ImageResourceScope.Shared.BitmapOutput;
+        ImageResourceScope.Shared.BitmapCache.Clear();
         await WaitUntilAsync(() => admission.GetSnapshot().ChargedBytes == 0);
         var reservations = new List<BitmapOutputAdmission.Reservation>();
         while (true)
@@ -659,7 +685,7 @@ public sealed class CompletedSvgPlacementCloneTests
 
         private async Task WaitForFullBitmapAsync()
         {
-            await WaitUntilAsync(() => Image.Bitmap is not null && Image.ActiveImageWorkCountForTests == 0);
+            await WaitUntilAsync(() => Image.Bitmap is not null && Image.GetWorkState().ActiveWorkCount == 0);
             float height = Root.Measure(LayoutWidth);
             Root.Arrange(0, 0, LayoutWidth);
             Snapshot = new LayoutSnapshot([Root], SourceMap, LayoutWidth, System.Math.Max(1, height));

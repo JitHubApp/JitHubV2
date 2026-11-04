@@ -9,13 +9,13 @@ public sealed class ImagePublicationCarrierContractTests
     [Fact]
     public void SvgPublicationFactoryAcceptsOnlyWeakSourceIdentityAndScalarLength()
     {
-        MethodInfo factory = typeof(ImageBox).GetMethod(
-            "CreateSvgPublicationMetadata", BindingFlags.Static | BindingFlags.NonPublic)!;
+        ConstructorInfo factory = Assert.Single(typeof(SvgPublicationMetadata).GetConstructors(
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic));
         ParameterInfo[] parameters = factory.GetParameters();
         Assert.Equal(typeof(WeakReference<byte[]>), parameters[0].ParameterType);
         Assert.Equal(typeof(long), parameters[1].ParameterType);
         Assert.DoesNotContain(parameters, parameter => parameter.ParameterType == typeof(byte[]));
-        FieldInfo[] fields = factory.ReturnType.GetFields(
+        FieldInfo[] fields = typeof(SvgPublicationMetadata).GetFields(
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         Assert.DoesNotContain(fields, field => field.FieldType == typeof(byte[]));
         Assert.Equal(typeof(WeakReference<byte[]>),
@@ -25,7 +25,7 @@ public sealed class ImagePublicationCarrierContractTests
     [Fact]
     public void OpenedRenderHandoffContainsNoSourceBearingPayloadFields()
     {
-        Type work = typeof(ImageBox).GetNestedType("SvgOpenedRenderWork", BindingFlags.NonPublic)!;
+        Type work = typeof(SvgOpenedRenderWork);
         FieldInfo[] fields = work.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         Assert.DoesNotContain(fields, field => field.FieldType == typeof(byte[]) ||
             field.FieldType == typeof(Memory<byte>) || field.FieldType == typeof(ReadOnlyMemory<byte>) ||
@@ -41,7 +41,7 @@ public sealed class ImagePublicationCarrierContractTests
     [Fact]
     public void PendingRenderDisposalPreventsConsumptionAndRetiresOnce()
     {
-        ImageBox.SvgOpenedRenderOwnership ownership = default;
+        SvgOpenedRenderOwnership ownership = default;
         Assert.False(ownership.TryCompleteConsumed());
         Assert.True(ownership.TryDisposePending());
         Assert.False(ownership.TryDisposePending());
@@ -52,7 +52,7 @@ public sealed class ImagePublicationCarrierContractTests
     [Fact]
     public void ConsumedRenderCannotBeDisposedBeforeActualCompletion()
     {
-        ImageBox.SvgOpenedRenderOwnership ownership = default;
+        SvgOpenedRenderOwnership ownership = default;
         Assert.True(ownership.TryConsume());
         Assert.False(ownership.TryConsume());
         Assert.False(ownership.TryDisposePending());

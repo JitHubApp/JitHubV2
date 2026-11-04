@@ -170,4 +170,18 @@ internal static partial class RasterNativeWicInterop
             nint destinationColorContext,
             Guid* destinationFormat);
     }
+
+    [LibraryImport("ole32.dll", EntryPoint = "CoInitializeEx")]
+    internal static partial int CoInitializeEx(nint reserved, uint coInitialize);
+
+    [LibraryImport("ole32.dll", EntryPoint = "CoUninitialize")]
+    internal static partial void CoUninitialize();
+
+    [LibraryImport("ole32.dll", EntryPoint = "CoCreateInstance")]
+    internal static unsafe partial int CoCreateInstance(
+        Guid* classId,
+        nint outer,
+        uint classContext,
+        Guid* interfaceId,
+        nint* instance);
 }

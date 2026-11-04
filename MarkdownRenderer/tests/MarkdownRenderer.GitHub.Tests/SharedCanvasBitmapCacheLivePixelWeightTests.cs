@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Threading.Tasks;
 using MarkdownRenderer.Layout.Boxes;
 using Microsoft.Graphics.Canvas;
@@ -17,12 +16,12 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
     public void CommittedBitmapOutputReservationTransfersOnceAcrossAllCacheFactories()
     {
         using var device = new CanvasDevice();
-        long baseline = BitmapOutputAdmission.Shared.GetSnapshot().ChargedBytes;
+        long baseline = ImageResourceScope.Shared.BitmapOutput.GetSnapshot().ChargedBytes;
         string identity = $"admitted-factory-{Guid.NewGuid():N}";
 
         for (int factory = 0; factory < 4; factory++)
         {
-            int activeBaseline = BitmapOutputAdmission.Shared.GetSnapshot().ActiveReservationCount;
+            int activeBaseline = ImageResourceScope.Shared.BitmapOutput.GetSnapshot().ActiveReservationCount;
             BitmapOutputAdmission.Reservation reservation = CreateCommittedReservation(16);
             CanvasBitmap? bitmap = CreateBitmap(device, width: 2, height: 1);
             SharedCanvasBitmapCache.Lease? owner = null;
@@ -31,13 +30,13 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
             {
                 owner = factory switch
                 {
-                    0 => SharedCanvasBitmapCache.StoreAndAcquire(
+                    0 => ImageResourceScope.Shared.BitmapCache.StoreAndAcquire(
                         device,
                         identity + "-raster",
                         bitmap,
                         new Size(4, 2),
                         bitmapReservation: reservation),
-                    1 => SharedCanvasBitmapCache.StoreSvgAndAcquire(
+                    1 => ImageResourceScope.Shared.BitmapCache.StoreSvgAndAcquire(
                         device,
                         identity + "-svg",
                         bitmap,
@@ -48,10 +47,10 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
                         svgSourceBytes: 0,
                         svgTargetPixels: 0,
                         bitmapReservation: reservation),
-                    2 => SharedCanvasBitmapCache.CreateUncachedLease(
+                    2 => ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(
                         bitmap,
                         bitmapReservation: reservation),
-                    _ => SharedCanvasBitmapCache.CreateUncachedLease(
+                    _ => ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(
                         bitmap,
                         pixelWidth: 2,
                         pixelHeight: 1,
@@ -64,30 +63,30 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
                 Assert.Equal(8L, reservation.Bytes);
                 Assert.True(owner.IsBitmapOutputAdmitted);
                 Assert.Equal(8L, owner.BitmapOutputAdmissionBytes);
-                Assert.Equal(baseline + 8, BitmapOutputAdmission.Shared.GetSnapshot().ChargedBytes);
-                Assert.Equal(activeBaseline + 1, BitmapOutputAdmission.Shared.GetSnapshot().ActiveReservationCount);
+                Assert.Equal(baseline + 8, ImageResourceScope.Shared.BitmapOutput.GetSnapshot().ChargedBytes);
+                Assert.Equal(activeBaseline + 1, ImageResourceScope.Shared.BitmapOutput.GetSnapshot().ActiveReservationCount);
 
                 clone = owner.TryClone();
                 Assert.NotNull(clone);
                 Assert.True(clone.IsBitmapOutputAdmitted);
                 Assert.Equal(8L, clone.BitmapOutputAdmissionBytes);
-                Assert.Equal(baseline + 8, BitmapOutputAdmission.Shared.GetSnapshot().ChargedBytes);
+                Assert.Equal(baseline + 8, ImageResourceScope.Shared.BitmapOutput.GetSnapshot().ChargedBytes);
 
                 // Cached factories lose only their cache reference here; the
                 // clone remains the final native owner in every case.
-                SharedCanvasBitmapCache.ReleaseDevice(device);
+                ImageResourceScope.Shared.BitmapCache.ReleaseDevice(device);
                 owner.Dispose();
                 owner = null;
-                Assert.Equal(baseline + 8, BitmapOutputAdmission.Shared.GetSnapshot().ChargedBytes);
+                Assert.Equal(baseline + 8, ImageResourceScope.Shared.BitmapOutput.GetSnapshot().ChargedBytes);
 
                 clone.Dispose();
                 clone = null;
-                Assert.Equal(baseline, BitmapOutputAdmission.Shared.GetSnapshot().ChargedBytes);
-                Assert.Equal(activeBaseline, BitmapOutputAdmission.Shared.GetSnapshot().ActiveReservationCount);
+                Assert.Equal(baseline, ImageResourceScope.Shared.BitmapOutput.GetSnapshot().ChargedBytes);
+                Assert.Equal(activeBaseline, ImageResourceScope.Shared.BitmapOutput.GetSnapshot().ActiveReservationCount);
             }
             finally
             {
-                SharedCanvasBitmapCache.ReleaseDevice(device);
+                ImageResourceScope.Shared.BitmapCache.ReleaseDevice(device);
                 owner?.Dispose();
                 clone?.Dispose();
                 if (bitmap is not null)
@@ -104,12 +103,12 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
     public async Task LegacyBitmapEntryAdmissionIsAtomicAcrossClonedLeases()
     {
         using var device = new CanvasDevice();
-        long baseline = BitmapOutputAdmission.Shared.GetSnapshot().ChargedBytes;
+        long baseline = ImageResourceScope.Shared.BitmapOutput.GetSnapshot().ChargedBytes;
         var leases = new List<SharedCanvasBitmapCache.Lease>();
         SharedCanvasBitmapCache.Lease? owner = null;
         try
         {
-            owner = SharedCanvasBitmapCache.CreateUncachedLease(
+            owner = ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(
                 CreateBitmap(device, width: 2, height: 1),
                 pixelWidth: 2,
                 pixelHeight: 1);
@@ -131,11 +130,11 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
             Assert.True(owner.IsBitmapOutputAdmitted);
             Assert.Equal(8L, owner.BitmapOutputAdmissionBytes);
             Assert.All(leases, lease => Assert.True(lease.IsBitmapOutputAdmitted));
-            Assert.Equal(baseline + 8, BitmapOutputAdmission.Shared.GetSnapshot().ChargedBytes);
+            Assert.Equal(baseline + 8, ImageResourceScope.Shared.BitmapOutput.GetSnapshot().ChargedBytes);
 
             owner.Dispose();
             owner = null;
-            Assert.Equal(baseline + 8, BitmapOutputAdmission.Shared.GetSnapshot().ChargedBytes);
+            Assert.Equal(baseline + 8, ImageResourceScope.Shared.BitmapOutput.GetSnapshot().ChargedBytes);
             SharedCanvasBitmapCache.Lease disposedLease = leases[0];
             disposedLease.Dispose();
             Assert.False(disposedLease.TryAdmitBitmapOutput(
@@ -148,7 +147,7 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
             foreach (SharedCanvasBitmapCache.Lease lease in leases)
                 lease.Dispose();
             leases.Clear();
-            Assert.Equal(baseline, BitmapOutputAdmission.Shared.GetSnapshot().ChargedBytes);
+            Assert.Equal(baseline, ImageResourceScope.Shared.BitmapOutput.GetSnapshot().ChargedBytes);
         }
         finally
         {
@@ -162,7 +161,7 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
     public void UndersizedBitmapReservationRemainsCallerOwnedUntilSuccessfulNativeCleanup()
     {
         using var device = new CanvasDevice();
-        long baseline = BitmapOutputAdmission.Shared.GetSnapshot().ChargedBytes;
+        long baseline = ImageResourceScope.Shared.BitmapOutput.GetSnapshot().ChargedBytes;
         BitmapOutputAdmission.Reservation reservation = CreateCommittedReservation(4);
         CanvasBitmap? bitmap = CreateBitmap(device, width: 2, height: 1);
             CanvasBitmap candidateBitmap = bitmap!;
@@ -171,7 +170,7 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
         {
             Assert.Throws<InvalidOperationException>(() =>
             {
-                owner = SharedCanvasBitmapCache.StoreSvgAndAcquire(
+                owner = ImageResourceScope.Shared.BitmapCache.StoreSvgAndAcquire(
                     device,
                     $"undersized-admission-{Guid.NewGuid():N}",
                     candidateBitmap,
@@ -189,12 +188,12 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
             Assert.Equal(2u, bitmap.SizeInPixels.Width);
             Assert.True(reservation.IsCommitted);
             Assert.False(reservation.IsTransferred);
-            Assert.Equal(baseline + 4, BitmapOutputAdmission.Shared.GetSnapshot().ChargedBytes);
+            Assert.Equal(baseline + 4, ImageResourceScope.Shared.BitmapOutput.GetSnapshot().ChargedBytes);
 
             bitmap.Dispose();
             bitmap = null;
             Assert.True(reservation.ReleaseAfterSuccessfulCleanup());
-            Assert.Equal(baseline, BitmapOutputAdmission.Shared.GetSnapshot().ChargedBytes);
+            Assert.Equal(baseline, ImageResourceScope.Shared.BitmapOutput.GetSnapshot().ChargedBytes);
         }
         finally
         {
@@ -211,8 +210,8 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
     public async Task ReservationTokenCannotBeReusedByASecondBitmapFactory()
     {
         using var device = new CanvasDevice();
-        long baseline = BitmapOutputAdmission.Shared.GetSnapshot().ChargedBytes;
-        long livePixelBaseline = SharedCanvasBitmapCache.LiveBitmapPixelWeightBytesForTests;
+        long baseline = ImageResourceScope.Shared.BitmapOutput.GetSnapshot().ChargedBytes;
+        long livePixelBaseline = ImageResourceScope.Shared.BitmapCache.GetSnapshot().LivePixelWeightBytes;
         BitmapOutputAdmission.Reservation reservation = CreateCommittedReservation(16);
         CanvasBitmap? firstBitmap = CreateBitmap(device, width: 2, height: 1);
         CanvasBitmap? secondBitmap = CreateBitmap(device, width: 1, height: 1);
@@ -228,7 +227,7 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
             {
                 try
                 {
-                    return (SharedCanvasBitmapCache.StoreAndAcquire(
+                    return (ImageResourceScope.Shared.BitmapCache.StoreAndAcquire(
                         device,
                         identity,
                         firstCandidate,
@@ -248,7 +247,7 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
             {
                 try
                 {
-                    return (SharedCanvasBitmapCache.CreateUncachedLease(
+                    return (ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(
                         secondCandidate,
                         pixelWidth: 1,
                         pixelHeight: 1,
@@ -285,8 +284,8 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
             Assert.True(reservation.IsTransferred);
             Assert.Equal(winningPixelWeight, reservation.Bytes);
             Assert.Equal(winningPixelWeight, winner.BitmapOutputAdmissionBytes);
-            Assert.Equal(baseline + winningPixelWeight, BitmapOutputAdmission.Shared.GetSnapshot().ChargedBytes);
-            Assert.Equal(livePixelBaseline + winningPixelWeight, SharedCanvasBitmapCache.LiveBitmapPixelWeightBytesForTests);
+            Assert.Equal(baseline + winningPixelWeight, ImageResourceScope.Shared.BitmapOutput.GetSnapshot().ChargedBytes);
+            Assert.Equal(livePixelBaseline + winningPixelWeight, ImageResourceScope.Shared.BitmapCache.GetSnapshot().LivePixelWeightBytes);
             Assert.Equal(losingWidth, losingBitmap.SizeInPixels.Width);
 
             losingBitmap.Dispose();
@@ -294,16 +293,16 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
                 secondBitmap = null;
             else
                 firstBitmap = null;
-            SharedCanvasBitmapCache.ReleaseDevice(device);
+            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(device);
             firstLease?.Dispose();
             firstLease = null;
             secondLease?.Dispose();
             secondLease = null;
-            Assert.Equal(baseline, BitmapOutputAdmission.Shared.GetSnapshot().ChargedBytes);
+            Assert.Equal(baseline, ImageResourceScope.Shared.BitmapOutput.GetSnapshot().ChargedBytes);
         }
         finally
         {
-            SharedCanvasBitmapCache.ReleaseDevice(device);
+            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(device);
             firstLease?.Dispose();
             secondLease?.Dispose();
             if (firstBitmap is not null)
@@ -320,7 +319,15 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
     public void PrecommitCacheInsertionFailureReturnsAdmittedUncachedLeasesForRasterAndSvg()
     {
         using var device = new CanvasDevice();
-        long baseline = BitmapOutputAdmission.Shared.GetSnapshot().ChargedBytes;
+        BitmapOutputAdmission admission = BitmapOutputAdmission.CreateDefault();
+        bool failWeighing = false;
+        var cache = new SharedCanvasBitmapCache(
+            admission,
+            SharedCanvasBitmapCache.DefaultBudgetBytes,
+            entry => failWeighing
+                ? throw new InvalidOperationException("Injected precommit cache weighing failure.")
+                : entry.WeightBytes);
+        long baseline = admission.GetSnapshot().ChargedBytes;
         string incumbentIdentity = $"cache-failure-incumbent-{Guid.NewGuid():N}";
         string rasterIdentity = $"cache-failure-raster-{Guid.NewGuid():N}";
         string svgIdentity = $"cache-failure-svg-{Guid.NewGuid():N}";
@@ -335,40 +342,28 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
         CanvasBitmap? rasterBitmap = null;
         CanvasBitmap? svgBitmap = null;
 
-        FieldInfo cacheField = typeof(SharedCanvasBitmapCache).GetField(
-            "Cache",
-            BindingFlags.NonPublic | BindingFlags.Static)!;
-        object cache = cacheField.GetValue(null)!;
-        FieldInfo weightSelectorField = cache.GetType().GetField(
-            "_weightSelector",
-            BindingFlags.NonPublic | BindingFlags.Instance)!;
-        object originalWeightSelector = weightSelectorField.GetValue(cache)!;
-
         try
         {
-            incumbent = SharedCanvasBitmapCache.StoreAndAcquire(
+            incumbent = cache.StoreAndAcquire(
                 device,
                 incumbentIdentity,
                 CreateBitmap(device, width: 1, height: 1));
-            long retainedWithIncumbent = SharedCanvasBitmapCache.RetainedBytesForTests;
+            long retainedWithIncumbent = cache.GetSnapshot().RetainedBytes;
 
-            rasterReservation = CreateCommittedReservation(16);
-            svgReservation = CreateCommittedReservation(16);
+            rasterReservation = CreateCommittedReservation(admission, 16);
+            svgReservation = CreateCommittedReservation(admission, 16);
             rasterBitmap = CreateBitmap(device, width: 2, height: 1);
             svgBitmap = CreateBitmap(device, width: 2, height: 1);
-            weightSelectorField.SetValue(
-                cache,
-                new Func<SharedCanvasBitmapCache.Entry, long>(static _ =>
-                    throw new InvalidOperationException("Injected precommit cache weighing failure.")));
+            failWeighing = true;
             try
             {
-                raster = SharedCanvasBitmapCache.StoreAndAcquire(
+                raster = cache.StoreAndAcquire(
                     device,
                     rasterIdentity,
                     rasterBitmap,
                     bitmapReservation: rasterReservation);
                 rasterBitmap = null;
-                svg = SharedCanvasBitmapCache.StoreSvgAndAcquire(
+                svg = cache.StoreSvgAndAcquire(
                     device,
                     svgIdentity,
                     svgBitmap,
@@ -383,9 +378,9 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
             }
             finally
             {
-                // Restore the process-wide cache before any cleanup or asserts
-                // that might themselves consult its normal value selector.
-                weightSelectorField.SetValue(cache, originalWeightSelector);
+                // Restore the normal selector before any cleanup or asserts
+                // that might themselves consult it.
+                failWeighing = false;
             }
 
             Assert.True(rasterReservation.IsTransferred);
@@ -396,11 +391,11 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
             Assert.True(svg.IsBitmapOutputAdmitted);
             Assert.Equal(8L, raster.BitmapOutputAdmissionBytes);
             Assert.Equal(8L, svg.BitmapOutputAdmissionBytes);
-            Assert.Equal(retainedWithIncumbent, SharedCanvasBitmapCache.RetainedBytesForTests);
-            Assert.False(SharedCanvasBitmapCache.TryAcquire(device, rasterIdentity, out _));
-            Assert.False(SharedCanvasBitmapCache.TryAcquire(device, svgIdentity, out _));
+            Assert.Equal(retainedWithIncumbent, cache.GetSnapshot().RetainedBytes);
+            Assert.False(cache.TryAcquire(device, rasterIdentity, out _));
+            Assert.False(cache.TryAcquire(device, svgIdentity, out _));
             Assert.NotNull(incumbent);
-            Assert.True(SharedCanvasBitmapCache.TryAcquire(device, incumbentIdentity, out incumbentLookup));
+            Assert.True(cache.TryAcquire(device, incumbentIdentity, out incumbentLookup));
             Assert.NotNull(incumbentLookup);
             Assert.Same(incumbent.Bitmap, incumbentLookup!.Bitmap);
 
@@ -408,9 +403,9 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
             svgClone = svg.TryClone();
             Assert.NotNull(rasterClone);
             Assert.NotNull(svgClone);
-            Assert.Equal(baseline + 16, BitmapOutputAdmission.Shared.GetSnapshot().ChargedBytes);
+            Assert.Equal(baseline + 16, admission.GetSnapshot().ChargedBytes);
 
-            SharedCanvasBitmapCache.ReleaseDevice(device);
+            cache.ReleaseDevice(device);
             incumbentLookup.Dispose();
             incumbentLookup = null;
             incumbent.Dispose();
@@ -419,18 +414,18 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
             raster = null;
             svg.Dispose();
             svg = null;
-            Assert.Equal(baseline + 16, BitmapOutputAdmission.Shared.GetSnapshot().ChargedBytes);
+            Assert.Equal(baseline + 16, admission.GetSnapshot().ChargedBytes);
 
             rasterClone.Dispose();
             rasterClone = null;
             svgClone.Dispose();
             svgClone = null;
-            Assert.Equal(baseline, BitmapOutputAdmission.Shared.GetSnapshot().ChargedBytes);
+            Assert.Equal(baseline, admission.GetSnapshot().ChargedBytes);
         }
         finally
         {
-            weightSelectorField.SetValue(cache, originalWeightSelector);
-            SharedCanvasBitmapCache.ReleaseDevice(device);
+            failWeighing = false;
+            cache.ReleaseDevice(device);
             incumbentLookup?.Dispose();
             incumbent?.Dispose();
             raster?.Dispose();
@@ -456,61 +451,61 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
     public void CachedBitmapPixelWeightCountsOneEntryAcrossCloneEvictionAndFinalRelease()
     {
         using var device = new CanvasDevice();
-        long before = SharedCanvasBitmapCache.LiveBitmapPixelWeightBytesForTests;
+        long before = ImageResourceScope.Shared.BitmapCache.GetSnapshot().LivePixelWeightBytes;
         SharedCanvasBitmapCache.Lease? owner = null;
         SharedCanvasBitmapCache.Lease? clone = null;
         try
         {
-            owner = SharedCanvasBitmapCache.StoreAndAcquire(
+            owner = ImageResourceScope.Shared.BitmapCache.StoreAndAcquire(
                 device,
                 $"live-pixel-weight-{Guid.NewGuid():N}",
                 CreateBitmap(device, width: 2, height: 1));
             clone = owner.TryClone();
 
             Assert.NotNull(clone);
-            Assert.Equal(before + 8, SharedCanvasBitmapCache.LiveBitmapPixelWeightBytesForTests);
+            Assert.Equal(before + 8, ImageResourceScope.Shared.BitmapCache.GetSnapshot().LivePixelWeightBytes);
 
             // Removing the LRU reference must not remove the unique Entry
             // charge while either independent lease still owns that Entry.
-            SharedCanvasBitmapCache.ReleaseDevice(device);
-            Assert.Equal(before + 8, SharedCanvasBitmapCache.LiveBitmapPixelWeightBytesForTests);
+            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(device);
+            Assert.Equal(before + 8, ImageResourceScope.Shared.BitmapCache.GetSnapshot().LivePixelWeightBytes);
             owner.Dispose();
             owner = null;
-            Assert.Equal(before + 8, SharedCanvasBitmapCache.LiveBitmapPixelWeightBytesForTests);
+            Assert.Equal(before + 8, ImageResourceScope.Shared.BitmapCache.GetSnapshot().LivePixelWeightBytes);
         }
         finally
         {
-            SharedCanvasBitmapCache.ReleaseDevice(device);
+            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(device);
             owner?.Dispose();
             clone?.Dispose();
         }
 
-        Assert.Equal(before, SharedCanvasBitmapCache.LiveBitmapPixelWeightBytesForTests);
+        Assert.Equal(before, ImageResourceScope.Shared.BitmapCache.GetSnapshot().LivePixelWeightBytes);
     }
 
     [Fact]
     public void UncachedBitmapPixelWeightCountsOneEntryAcrossClones()
     {
         using var device = new CanvasDevice();
-        long before = SharedCanvasBitmapCache.LiveBitmapPixelWeightBytesForTests;
-        long cacheBefore = SharedCanvasBitmapCache.RetainedBytesForTests;
+        long before = ImageResourceScope.Shared.BitmapCache.GetSnapshot().LivePixelWeightBytes;
+        long cacheBefore = ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes;
         SharedCanvasBitmapCache.Lease? owner = null;
         SharedCanvasBitmapCache.Lease? clone = null;
         try
         {
-            owner = SharedCanvasBitmapCache.CreateUncachedLease(
+            owner = ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(
                 CreateBitmap(device, width: 2, height: 1),
                 pixelWidth: 2,
                 pixelHeight: 1);
             clone = owner.TryClone();
 
             Assert.NotNull(clone);
-            Assert.Equal(before + 8, SharedCanvasBitmapCache.LiveBitmapPixelWeightBytesForTests);
-            Assert.Equal(cacheBefore, SharedCanvasBitmapCache.RetainedBytesForTests);
+            Assert.Equal(before + 8, ImageResourceScope.Shared.BitmapCache.GetSnapshot().LivePixelWeightBytes);
+            Assert.Equal(cacheBefore, ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes);
 
             owner.Dispose();
             owner = null;
-            Assert.Equal(before + 8, SharedCanvasBitmapCache.LiveBitmapPixelWeightBytesForTests);
+            Assert.Equal(before + 8, ImageResourceScope.Shared.BitmapCache.GetSnapshot().LivePixelWeightBytes);
             Assert.Equal(2u, clone.Bitmap.SizeInPixels.Width);
         }
         finally
@@ -519,8 +514,8 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
             clone?.Dispose();
         }
 
-        Assert.Equal(before, SharedCanvasBitmapCache.LiveBitmapPixelWeightBytesForTests);
-        Assert.Equal(cacheBefore, SharedCanvasBitmapCache.RetainedBytesForTests);
+        Assert.Equal(before, ImageResourceScope.Shared.BitmapCache.GetSnapshot().LivePixelWeightBytes);
+        Assert.Equal(cacheBefore, ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes);
     }
 
     [Fact]
@@ -528,12 +523,12 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
     {
         using var device = new CanvasDevice();
         using var bitmap = CreateBitmap(device, width: 2, height: 1);
-        long before = SharedCanvasBitmapCache.LiveBitmapPixelWeightBytesForTests;
+        long before = ImageResourceScope.Shared.BitmapCache.GetSnapshot().LivePixelWeightBytes;
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            SharedCanvasBitmapCache.CreateUncachedLease(bitmap, 0, 1));
+            ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(bitmap, 0, 1));
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            SharedCanvasBitmapCache.CreateUncachedLease(bitmap, 2, -1));
-        Assert.Equal(before, SharedCanvasBitmapCache.LiveBitmapPixelWeightBytesForTests);
+            ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(bitmap, 2, -1));
+        Assert.Equal(before, ImageResourceScope.Shared.BitmapCache.GetSnapshot().LivePixelWeightBytes);
         Assert.Equal(2u, bitmap.SizeInPixels.Width);
     }
 
@@ -542,16 +537,16 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
     {
         using var device = new CanvasDevice();
         using var bitmap = CreateBitmap(device, width: 2, height: 1);
-        long before = SharedCanvasBitmapCache.LiveBitmapPixelWeightBytesForTests;
+        long before = ImageResourceScope.Shared.BitmapCache.GetSnapshot().LivePixelWeightBytes;
         var lease = new SharedCanvasBitmapCache.Lease();
-        var entry = new SharedCanvasBitmapCache.Entry(bitmap, 2, 1);
+        var entry = new SharedCanvasBitmapCacheEntry(ImageResourceScope.Shared.BitmapCache, bitmap, 2, 1);
         lease.Attach(entry);
         entry.AddCacheReference();
-        Assert.Equal(before + 8, SharedCanvasBitmapCache.LiveBitmapPixelWeightBytesForTests);
+        Assert.Equal(before + 8, ImageResourceScope.Shared.BitmapCache.GetSnapshot().LivePixelWeightBytes);
         lease.AbandonUnpublishedOwnership();
         lease.AbandonUnpublishedOwnership();
         lease.Dispose();
-        Assert.Equal(before, SharedCanvasBitmapCache.LiveBitmapPixelWeightBytesForTests);
+        Assert.Equal(before, ImageResourceScope.Shared.BitmapCache.GetSnapshot().LivePixelWeightBytes);
         Assert.Equal(2u, bitmap.SizeInPixels.Width);
         Assert.False(entry.TryAcquire());
     }
@@ -560,7 +555,7 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
     public void UncachedDisplaySizedBitmapPreservesOriginalIntrinsicGeometry()
     {
         using var device = new CanvasDevice();
-        using SharedCanvasBitmapCache.Lease lease = SharedCanvasBitmapCache.CreateUncachedLease(
+        using SharedCanvasBitmapCache.Lease lease = ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(
             CreateBitmap(device, width: 2, height: 1), 2, 1, new Size(800, 400));
         Assert.Equal(new Size(800, 400), lease.IntrinsicSize);
         Assert.Equal(2u, lease.Bitmap.SizeInPixels.Width);
@@ -570,7 +565,7 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
     [Fact]
     public void FailedBitmapDisposeRetainsChargeAsUncertainWithoutRetainingTheResource()
     {
-        var ledger = new SharedCanvasBitmapCache.LiveBitmapPixelWeightLedger();
+        var ledger = new LiveBitmapPixelWeightLedger();
         const long weight = 64;
         ledger.Register(weight);
         var failure = new InvalidOperationException("unknown native disposal state");
@@ -588,9 +583,13 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
         Assert.Equal(1, resource.DisposeCount);
     }
 
-    private static BitmapOutputAdmission.Reservation CreateCommittedReservation(long bytes)
+    private static BitmapOutputAdmission.Reservation CreateCommittedReservation(long bytes) =>
+        CreateCommittedReservation(ImageResourceScope.Shared.BitmapOutput, bytes);
+
+    private static BitmapOutputAdmission.Reservation CreateCommittedReservation(
+        BitmapOutputAdmission admission, long bytes)
     {
-        if (!BitmapOutputAdmission.Shared.TryReserve(
+        if (!admission.TryReserve(
                 bytes,
                 isVisible: true,
                 isReplacement: true,

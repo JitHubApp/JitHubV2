@@ -24,9 +24,9 @@ public sealed class RasterDecoderImageBoxTests : IAsyncLifetime
 
     private static Task WaitForAdmissionIdleAsync() =>
         DisplaySizedRasterDecodeTests.WaitUntilAsync(() =>
-            MarkdownImagePreparationAdmission.Shared.ActiveCount == 0 &&
-            MarkdownImagePreparationAdmission.Shared.ActiveBytes == 0 &&
-            MarkdownImagePreparationAdmission.Shared.PendingRequests == 0);
+            ImageResourceScope.Shared.Preparation.ActiveCount == 0 &&
+            ImageResourceScope.Shared.Preparation.ActiveBytes == 0 &&
+            ImageResourceScope.Shared.Preparation.PendingRequests == 0);
 
     [Fact]
     public async Task RegisteredProviderGetsExactDisplayPlanAndPixelOwnerIsDisposedAfterUpload()
@@ -320,8 +320,8 @@ public sealed class RasterDecoderImageBoxTests : IAsyncLifetime
         {
             image.EnsureLoading();
             await decoder.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            Assert.Equal(1, MarkdownImagePreparationAdmission.Shared.ActiveCount);
-            Assert.True(MarkdownImagePreparationAdmission.Shared.ActiveBytes > 0);
+            Assert.Equal(1, ImageResourceScope.Shared.Preparation.ActiveCount);
+            Assert.True(ImageResourceScope.Shared.Preparation.ActiveBytes > 0);
 
             image.Dispose();
             MarkdownRaster lateRaster = decoder.CreateRaster(decoder.LastRequest!);
@@ -347,7 +347,7 @@ public sealed class RasterDecoderImageBoxTests : IAsyncLifetime
         byte[] replacementBytes = DisplaySizedRasterDecodeTests.CreatePng(71, 37);
         string replacementSource = "data:image/png;base64," + Convert.ToBase64String(replacementBytes);
         var warmImage = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver: null!, session: null, scale: 1),
+            DisplaySizedRasterDecodeTests.CreateContext(resolver: null!, session: null, scale: 1), ImageResourceScope.Shared,
             replacementSource,
             "Current document local image");
         try
@@ -387,15 +387,15 @@ public sealed class RasterDecoderImageBoxTests : IAsyncLifetime
             oldImage.Measure(71);
             oldImage.EnsureLoading();
             await oldDecoder.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            Assert.True(MarkdownImagePreparationAdmission.Shared.ActiveCount > 0);
-            Assert.True(MarkdownImagePreparationAdmission.Shared.ActiveBytes > 0);
+            Assert.True(ImageResourceScope.Shared.Preparation.ActiveCount > 0);
+            Assert.True(ImageResourceScope.Shared.Preparation.ActiveBytes > 0);
 
             // Replacing the document retires the old image box before the
             // uncooperative decoder completes. The replacement is an admitted
             // local source (a warm device-cache lease), not a network fixture.
             oldImage.Dispose();
             currentImage = new ImageBox(
-                DisplaySizedRasterDecodeTests.CreateContext(resolver: null!, session: null, scale: 1),
+                DisplaySizedRasterDecodeTests.CreateContext(resolver: null!, session: null, scale: 1), ImageResourceScope.Shared,
                 replacementSource,
                 "Current document local image");
             currentImage.Measure(71);
@@ -418,7 +418,7 @@ public sealed class RasterDecoderImageBoxTests : IAsyncLifetime
             Assert.Equal(MarkdownImageAccessibilityState.Loaded, currentImage.AccessibilityState);
             Assert.Equal(0, Volatile.Read(ref unavailableNotifications));
             Assert.Equal(0, Volatile.Read(ref oldPublications));
-            Assert.Equal(0, MarkdownImagePreparationAdmission.Shared.PendingRequests);
+            Assert.Equal(0, ImageResourceScope.Shared.Preparation.PendingRequests);
         }
         finally
         {
@@ -446,7 +446,7 @@ public sealed class RasterDecoderImageBoxTests : IAsyncLifetime
         var resolver = new RasterResolver(source, cacheKey ?? $"raster-provider-{Guid.NewGuid():N}");
         MarkdownLayoutContext context = DisplaySizedRasterDecodeTests.CreateContext(
             resolver, session, scale, imageUnavailable: imageUnavailable, rasterDecoder: decoder);
-        return new ImageBox(context, "https://images.example/asset", string.Empty);
+        return new ImageBox(context, ImageResourceScope.Shared, "https://images.example/asset", string.Empty);
     }
 
     private static byte[] CreateWebP(int width, int height)

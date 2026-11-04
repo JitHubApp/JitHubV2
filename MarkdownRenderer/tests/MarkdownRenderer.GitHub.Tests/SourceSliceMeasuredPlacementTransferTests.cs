@@ -42,7 +42,7 @@ public sealed class SourceSliceMeasuredPlacementTransferTests
             string imageUri = new Uri($"ms-appx:///source-slice-placement-{Guid.NewGuid():N}.png").AbsoluteUri;
             Assert.True(MarkdownBuiltInImageSourcePolicy.TryResolve(
                 imageUri, null, out MarkdownBuiltInImageSource resolved));
-            using (SharedCanvasBitmapCache.StoreAndAcquire(
+            using (ImageResourceScope.Shared.BitmapCache.StoreAndAcquire(
                        device,
                        resolved.CacheKey,
                        CreateBitmap(device, 64, 32),
@@ -174,7 +174,7 @@ public sealed class SourceSliceMeasuredPlacementTransferTests
                     await imageRun.Image.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
             }
 
-            SharedCanvasBitmapCache.ReleaseDevice(device);
+            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(device);
             device.Dispose();
         }
     }

@@ -101,7 +101,7 @@ internal sealed class CompletedImageRootCapture
     internal bool TryCaptureClonesNoLock(CompletedImageRelayoutBatch batch, int imageCount)
     {
         var capturedSources = new List<RasterPlacementSourceFence>(imageCount);
-        var capturedTransfers = new List<ImageBox.MeasuredPlacementTransfer>(imageCount);
+        var capturedTransfers = new List<ImageMeasuredPlacementTransfer>(imageCount);
         for (int index = 0; index < batch.Count; index++)
         {
             batch.CancellationToken.ThrowIfCancellationRequested();
@@ -162,7 +162,7 @@ internal sealed class CompletedImageRootCapture
         int index,
         ImageBox image,
         List<RasterPlacementSourceFence> capturedSources,
-        List<ImageBox.MeasuredPlacementTransfer> capturedTransfers)
+        List<ImageMeasuredPlacementTransfer> capturedTransfers)
     {
         if (!image.TryCreateCompletedRasterPlacementClone(batch.Context!, out ImageBox? clone,
                 out SharedCanvasBitmapCache.Lease? lease, out var svgFence) ||
@@ -179,7 +179,7 @@ internal sealed class CompletedImageRootCapture
         int index,
         InlineContainerBox inline,
         List<RasterPlacementSourceFence> capturedSources,
-        List<ImageBox.MeasuredPlacementTransfer> capturedTransfers)
+        List<ImageMeasuredPlacementTransfer> capturedTransfers)
     {
         float contentWidth = batch.ContentWidth;
         if (!inline.TryCreatePrivateInlinePlacementCloneWithMeasuredVectorPlacement(batch.Context!, contentWidth,
@@ -212,7 +212,7 @@ internal sealed class CompletedImageRootCapture
         int index,
         TableBox table,
         List<RasterPlacementSourceFence> capturedSources,
-        List<ImageBox.MeasuredPlacementTransfer> capturedTransfers)
+        List<ImageMeasuredPlacementTransfer> capturedTransfers)
     {
         float contentWidth = batch.ContentWidth;
         bool created = PrivateRasterPlacementTree.TryCreateCloneWithMeasuredVectorPlacement(table, batch.SourceContext!, batch.Context!,
@@ -256,7 +256,7 @@ internal sealed class CompletedImageRootCapture
         int index,
         BlockBox root,
         List<RasterPlacementSourceFence> capturedSources,
-        List<ImageBox.MeasuredPlacementTransfer> capturedTransfers)
+        List<ImageMeasuredPlacementTransfer> capturedTransfers)
     {
         float contentWidth = batch.ContentWidth;
         bool created = PrivateRasterPlacementTree.TryCreateCloneWithMeasuredVectorPlacement(root, batch.SourceContext!, batch.Context!,

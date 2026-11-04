@@ -19,19 +19,19 @@ public sealed class SvgHostAdmissionCoordinatorTests
     [Fact]
     public async Task ReservedOwnerPopulationIsHardBoundedAndReturnedSlotsAreReusable()
     {
-        var domain = new SvgHostAdmissionCoordinator.DomainState();
+        var domain = new SvgHostAdmissionDomain();
         var identity = new object();
-        var slots = new List<SvgHostAdmissionCoordinator.OwnerSlot>();
+        var slots = new List<SvgHostOwnerSlot>();
         try
         {
             for (int i = 0; i < 512; i++)
-                slots.Add(Assert.IsType<SvgHostAdmissionCoordinator.OwnerSlot>(
+                slots.Add(Assert.IsType<SvgHostOwnerSlot>(
                     Reserve(domain, identity, out _)));
 
             Assert.Null(Reserve(domain, identity, out long deniedVersion));
             Assert.Equal(512, ReservedCount(domain));
             Assert.Equal(0, OwnerCount(domain));
-            Task changed = domain.WaitForOwnerVersionChangeAsync(deniedVersion, CancellationToken.None);
+            Task changed = domain.Owners.WaitForOwnerVersionChangeAsync(deniedVersion, CancellationToken.None);
             Assert.False(changed.IsCompleted);
 
             slots[173].Dispose();
@@ -39,15 +39,15 @@ public sealed class SvgHostAdmissionCoordinatorTests
             await changed.WaitAsync(TimeSpan.FromSeconds(5));
 
             Assert.Equal(511, ReservedCount(domain));
-            using SvgHostAdmissionCoordinator.OwnerSlot replacement =
-                Assert.IsType<SvgHostAdmissionCoordinator.OwnerSlot>(
+            using SvgHostOwnerSlot replacement =
+                Assert.IsType<SvgHostOwnerSlot>(
                     Reserve(domain, identity, out long admittedVersion));
             Assert.True(admittedVersion > deniedVersion);
             Assert.Null(Reserve(domain, identity, out _));
         }
         finally
         {
-            foreach (SvgHostAdmissionCoordinator.OwnerSlot slot in slots)
+            foreach (SvgHostOwnerSlot slot in slots)
                 slot.Dispose();
         }
         Assert.Equal(0, ReservedCount(domain));
@@ -57,24 +57,24 @@ public sealed class SvgHostAdmissionCoordinatorTests
     [Fact]
     public async Task ReleaseBetweenDenialAndSubscriptionCannotLoseTheCapacityWakeup()
     {
-        var domain = new SvgHostAdmissionCoordinator.DomainState();
+        var domain = new SvgHostAdmissionDomain();
         var identity = new object();
-        var slots = new List<SvgHostAdmissionCoordinator.OwnerSlot>();
+        var slots = new List<SvgHostOwnerSlot>();
         try
         {
             for (int i = 0; i < 512; i++)
-                slots.Add(Assert.IsType<SvgHostAdmissionCoordinator.OwnerSlot>(
+                slots.Add(Assert.IsType<SvgHostOwnerSlot>(
                     Reserve(domain, identity, out _)));
             Assert.Null(Reserve(domain, identity, out long deniedVersion));
 
             slots[0].Dispose();
-            Task changed = domain.WaitForOwnerVersionChangeAsync(deniedVersion, CancellationToken.None);
+            Task changed = domain.Owners.WaitForOwnerVersionChangeAsync(deniedVersion, CancellationToken.None);
             Assert.True(changed.IsCompletedSuccessfully);
             await changed;
         }
         finally
         {
-            foreach (SvgHostAdmissionCoordinator.OwnerSlot slot in slots)
+            foreach (SvgHostOwnerSlot slot in slots)
                 slot.Dispose();
         }
     }
@@ -82,16 +82,16 @@ public sealed class SvgHostAdmissionCoordinatorTests
     [Fact]
     public async Task CommittingAndDisposingTheSameSlotCannotLeaveAPublishedOwnerBehind()
     {
-        var domain = new SvgHostAdmissionCoordinator.DomainState();
-        using SvgHostAdmissionCoordinator.OwnerSlot slot =
-            Assert.IsType<SvgHostAdmissionCoordinator.OwnerSlot>(
+        var domain = new SvgHostAdmissionDomain();
+        using SvgHostOwnerSlot slot =
+            Assert.IsType<SvgHostOwnerSlot>(
                 Reserve(domain, new object(), out _));
         ImageBox owner = BareBox();
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
-        var plan = new ImageBox.SvgTileRenderPlan(
+        var plan = new SvgTileRenderPlan(
             new RegistryDocument(), "registry-race", 2048, 2048, 1,
             demand, sourceReservationBytes: 128, ownerSlot: slot);
-        object domainGate = Field<object>(domain, "_gate");
+        object domainGate = Field<object>(domain.Owners, "_gate");
         object slotGate = Field<object>(slot, "_sync");
         Task commit;
         Task dispose;
@@ -99,7 +99,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
         try
         {
             commit = Task.Run(() => slot.Commit(owner, plan, demand, 128));
-            // Holding the domain gate pauses Commit after it has acquired the
+            // Holding the owner registry gate pauses Commit after it has acquired the
             // slot gate but before it publishes the owner entry. A concurrent
             // Dispose must not observe a half-committed slot in this window.
             Assert.True(SpinWait.SpinUntil(() =>
@@ -130,14 +130,14 @@ public sealed class SvgHostAdmissionCoordinatorTests
     [InlineData(true)]
     public async Task PruningADeadWeakOwnerOrPlanSignalsExistingCapacityWaiters(bool collectPlan)
     {
-        var domain = new SvgHostAdmissionCoordinator.DomainState();
-        using SvgHostAdmissionCoordinator.OwnerSlot slot =
-            Assert.IsType<SvgHostAdmissionCoordinator.OwnerSlot>(
+        var domain = new SvgHostAdmissionDomain();
+        using SvgHostOwnerSlot slot =
+            Assert.IsType<SvgHostOwnerSlot>(
                 Reserve(domain, new object(), out _));
         (WeakReference weak, object retained) = CommitWeakOwner(domain, slot, collectPlan);
         Assert.Equal(1, OwnerCount(domain));
-        long observed = domain.OwnerVersion;
-        Task changed = domain.WaitForOwnerVersionChangeAsync(observed, CancellationToken.None);
+        long observed = domain.Owners.OwnerVersion;
+        Task changed = domain.Owners.WaitForOwnerVersionChangeAsync(observed, CancellationToken.None);
         Assert.False(changed.IsCompleted);
 
         for (int i = 0; i < 10 && weak.IsAlive; i++)
@@ -148,11 +148,11 @@ public sealed class SvgHostAdmissionCoordinatorTests
         }
         Assert.False(weak.IsAlive);
         // Admission prunes dead entries before consulting its hard slot cap.
-        using SvgHostAdmissionCoordinator.OwnerSlot next =
-            Assert.IsType<SvgHostAdmissionCoordinator.OwnerSlot>(
+        using SvgHostOwnerSlot next =
+            Assert.IsType<SvgHostOwnerSlot>(
                 Reserve(domain, new object(), out _));
         await changed.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.True(domain.OwnerVersion > observed);
+        Assert.True(domain.Owners.OwnerVersion > observed);
         Assert.Equal(0, OwnerCount(domain));
         Assert.Equal(1, ReservedCount(domain));
         GC.KeepAlive(retained);
@@ -161,17 +161,17 @@ public sealed class SvgHostAdmissionCoordinatorTests
     [Fact]
     public void DisposedReservationCannotBeCommittedOrReturnAnotherOwnersCapacity()
     {
-        var domain = new SvgHostAdmissionCoordinator.DomainState();
-        using SvgHostAdmissionCoordinator.OwnerSlot retired =
-            Assert.IsType<SvgHostAdmissionCoordinator.OwnerSlot>(
+        var domain = new SvgHostAdmissionDomain();
+        using SvgHostOwnerSlot retired =
+            Assert.IsType<SvgHostOwnerSlot>(
                 Reserve(domain, new object(), out _));
-        using SvgHostAdmissionCoordinator.OwnerSlot active =
-            Assert.IsType<SvgHostAdmissionCoordinator.OwnerSlot>(
+        using SvgHostOwnerSlot active =
+            Assert.IsType<SvgHostOwnerSlot>(
                 Reserve(domain, new object(), out _));
         retired.Dispose();
         ImageBox owner = BareBox();
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Visible);
-        var plan = new ImageBox.SvgTileRenderPlan(new RegistryDocument(), "retired", 2048, 2048, 1);
+        var plan = new SvgTileRenderPlan(new RegistryDocument(), "retired", 2048, 2048, 1);
         Assert.Throws<InvalidOperationException>(() => retired.Commit(owner, plan, demand, 128));
         retired.Dispose();
         Assert.Equal(1, ReservedCount(domain));
@@ -182,37 +182,37 @@ public sealed class SvgHostAdmissionCoordinatorTests
     [Fact]
     public void RetirementOfCommittedAndReservedOwnersDoesNotAllocateWithoutWaiters()
     {
-        var domain = new SvgHostAdmissionCoordinator.DomainState();
+        var domain = new SvgHostAdmissionDomain();
         var identity = new object();
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
-        using (SvgHostAdmissionCoordinator.OwnerSlot warm =
-            Assert.IsType<SvgHostAdmissionCoordinator.OwnerSlot>(Reserve(domain, identity, out _)))
+        using (SvgHostOwnerSlot warm =
+            Assert.IsType<SvgHostOwnerSlot>(Reserve(domain, identity, out _)))
         {
             ImageBox owner = BareBox();
-            var plan = new ImageBox.SvgTileRenderPlan(new RegistryDocument(), "warm-release", 2048, 2048, 1);
+            var plan = new SvgTileRenderPlan(new RegistryDocument(), "warm-release", 2048, 2048, 1);
             warm.Commit(owner, plan, demand, 64);
             warm.Dispose();
             GC.KeepAlive(owner);
             GC.KeepAlive(plan);
         }
 
-        var slots = new SvgHostAdmissionCoordinator.OwnerSlot[512];
+        var slots = new SvgHostOwnerSlot[512];
         var owners = new ImageBox[256];
-        var plans = new ImageBox.SvgTileRenderPlan[256];
+        var plans = new SvgTileRenderPlan[256];
         try
         {
             for (int i = 0; i < slots.Length; i++)
             {
-                slots[i] = Assert.IsType<SvgHostAdmissionCoordinator.OwnerSlot>(Reserve(domain, identity, out _));
+                slots[i] = Assert.IsType<SvgHostOwnerSlot>(Reserve(domain, identity, out _));
                 if (i < owners.Length)
                 {
                     owners[i] = BareBox();
-                    plans[i] = new ImageBox.SvgTileRenderPlan(new RegistryDocument(), "release", 2048, 2048, 1);
+                    plans[i] = new SvgTileRenderPlan(new RegistryDocument(), "release", 2048, 2048, 1);
                     slots[i].Commit(owners[i], plans[i], demand, 64);
                 }
             }
             long before = GC.GetAllocatedBytesForCurrentThread();
-            foreach (SvgHostAdmissionCoordinator.OwnerSlot slot in slots)
+            foreach (SvgHostOwnerSlot slot in slots)
                 slot.Dispose();
             long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
             Assert.Equal(0, allocated);
@@ -221,7 +221,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
         }
         finally
         {
-            foreach (SvgHostAdmissionCoordinator.OwnerSlot? slot in slots)
+            foreach (SvgHostOwnerSlot? slot in slots)
                 slot?.Dispose();
             GC.KeepAlive(owners);
             GC.KeepAlive(plans);
@@ -231,26 +231,26 @@ public sealed class SvgHostAdmissionCoordinatorTests
     [Fact]
     public void CapturedVictimRecencyRemainsStableAfterLiveOwnerTouches()
     {
-        var domain = new SvgHostAdmissionCoordinator.DomainState();
-        using SvgHostAdmissionCoordinator.OwnerSlot slot =
-            Assert.IsType<SvgHostAdmissionCoordinator.OwnerSlot>(Reserve(domain, new object(), out _));
+        var domain = new SvgHostAdmissionDomain();
+        using SvgHostOwnerSlot slot =
+            Assert.IsType<SvgHostOwnerSlot>(Reserve(domain, new object(), out _));
         ImageBox owner = BareBox();
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
-        var plan = new ImageBox.SvgTileRenderPlan(new RegistryDocument(), "recency", 2048, 2048, 1);
-        var older = new SvgHostAdmissionCoordinator.OwnerEntry(owner, plan, demand, 64, slot, 10);
-        var newer = new SvgHostAdmissionCoordinator.OwnerEntry(owner, plan, demand, 64, slot, 20);
+        var plan = new SvgTileRenderPlan(new RegistryDocument(), "recency", 2048, 2048, 1);
+        var older = new SvgHostOwnerEntry(owner, plan, demand, 64, slot, 10);
+        var newer = new SvgHostOwnerEntry(owner, plan, demand, 64, slot, 20);
         long capturedOlder = older.LastUse;
         long capturedNewer = newer.LastUse;
         older.LastUse = 30;
         newer.LastUse = 0;
 
-        Assert.True(SvgHostAdmissionCoordinator.DomainState.CompareParkCandidateOrder(
+        Assert.True(SvgHostOwnerRegistry.CompareParkCandidateOrder(
             0, capturedOlder, 0, capturedNewer) < 0);
-        Assert.True(SvgHostAdmissionCoordinator.DomainState.CompareParkCandidateOrder(
+        Assert.True(SvgHostOwnerRegistry.CompareParkCandidateOrder(
             0, older.LastUse, 0, newer.LastUse) > 0);
-        Assert.True(SvgHostAdmissionCoordinator.DomainState.CompareParkCandidateOrder(
+        Assert.True(SvgHostOwnerRegistry.CompareParkCandidateOrder(
             0, long.MaxValue, 1, long.MinValue) < 0);
-        Assert.Equal(0, SvgHostAdmissionCoordinator.DomainState.CompareParkCandidateOrder(1, 20, 1, 20));
+        Assert.Equal(0, SvgHostOwnerRegistry.CompareParkCandidateOrder(1, 20, 1, 20));
 
         GC.KeepAlive(owner);
         GC.KeepAlive(plan);
@@ -259,22 +259,21 @@ public sealed class SvgHostAdmissionCoordinatorTests
     [Fact]
     public void LateFinishedWaiterCannotClearAReplacementForTheSameDemandAndGeneration()
     {
-        ImageBox owner = BareBox();
-        SetField(owner, "_svgHostDeferredSync", new object());
-        var domain = new SvgHostAdmissionCoordinator.DomainState();
+        SvgHostLoadDeferral owner = TestSvgHostDeferralHost.CreateDeferral();
+        var domain = new SvgHostAdmissionDomain();
         var admission = new RegistryAdmission();
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         const int generation = 41;
-        SetField(owner, "_svgLoadDemandTicket", demand);
-        SetField(owner, "_svgLoadDemandGeneration", generation);
+        TestSvgHostDeferralHost.Of(owner).LoadDemand = demand;
+        TestSvgHostDeferralHost.Of(owner).LoadDemandGeneration = generation;
         SetField(owner, "_svgHostDeferred", 1);
         using var lifetime = new CancellationTokenSource();
-        var oldEntry = new SvgHostAdmissionCoordinator.PendingEntry(
+        var oldEntry = new SvgHostPendingEntry(
             owner, admission, demand, generation, 0, 128, false, 0, 0, 0, lifetime.Token);
-        var replacementEntry = new SvgHostAdmissionCoordinator.PendingEntry(
+        var replacementEntry = new SvgHostPendingEntry(
             owner, admission, demand, generation, 0, 128, false, 0, 0, 0, lifetime.Token);
-        using var oldWaiter = new SvgHostAdmissionCoordinator.PendingWaiter(domain, oldEntry);
-        using var replacement = new SvgHostAdmissionCoordinator.PendingWaiter(domain, replacementEntry);
+        using var oldWaiter = new SvgHostPendingWaiter(domain, oldEntry);
+        using var replacement = new SvgHostPendingWaiter(domain, replacementEntry);
         try
         {
             object oldAttempt = new();
@@ -314,9 +313,9 @@ public sealed class SvgHostAdmissionCoordinatorTests
     [Fact]
     public async Task DuplicateThresholdIncreaseWaitsForTheLatestRequirementBeforeClaim()
     {
-        var domain = new SvgHostAdmissionCoordinator.DomainState();
+        var domain = new SvgHostAdmissionDomain();
         var admission = new ThresholdAdmission();
-        var owner = BareBox();
+        var owner = TestSvgHostDeferralHost.CreateDeferral();
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using var lifetime = new CancellationTokenSource();
         var firstAttempt = new object();
@@ -328,10 +327,10 @@ public sealed class SvgHostAdmissionCoordinatorTests
             return true;
         }));
 
-        SvgHostAdmissionCoordinator.PendingWaiter first = Assert.IsType<SvgHostAdmissionCoordinator.PendingWaiter>(
+        SvgHostPendingWaiter first = Assert.IsType<SvgHostPendingWaiter>(
             domain.Defer(owner, admission, demand, 1, admission.CapacityVersion, 128, false,
-                domain.OwnerVersion, demand.Version, 0, firstAttempt, lifetime.Token));
-        SvgHostAdmissionCoordinator.PendingEntry entry = PendingEntryOf(first);
+                domain.Owners.OwnerVersion, demand.Version, 0, firstAttempt, lifetime.Token));
+        SvgHostPendingEntry entry = PendingEntryOf(first);
         Assert.True(SpinWait.SpinUntil(() => admission.WaitCalls.Length == 1, TimeSpan.FromSeconds(5)));
         Assert.Equal(128, admission.WaitCalls[0].RequiredBytes);
         Assert.Equal(0, admission.CapacityVersion);
@@ -339,9 +338,9 @@ public sealed class SvgHostAdmissionCoordinatorTests
         var secondAttempt = new object();
         lock (Field<object>(owner, "_svgHostDeferredSync"))
             SetField(owner, "_svgHostDeferredRegistrationAttempt", secondAttempt);
-        SvgHostAdmissionCoordinator.PendingWaiter second = Assert.IsType<SvgHostAdmissionCoordinator.PendingWaiter>(
+        SvgHostPendingWaiter second = Assert.IsType<SvgHostPendingWaiter>(
             domain.Defer(owner, admission, demand, 1, admission.CapacityVersion, 512, false,
-                domain.OwnerVersion, demand.Version, 0, secondAttempt, lifetime.Token));
+                domain.Owners.OwnerVersion, demand.Version, 0, secondAttempt, lifetime.Token));
         Assert.Same(first.Identity, second.Identity);
         Assert.Equal(512, entry.RequiredSourceReservationBytes);
 
@@ -352,7 +351,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
         Assert.True(SpinWait.SpinUntil(() => admission.WaitCalls.Length == 2, TimeSpan.FromSeconds(5)));
         Assert.Equal(512, admission.WaitCalls[1].RequiredBytes);
         Assert.Equal(0, Volatile.Read(ref entry.Claimed));
-        Assert.Contains(entry, Field<ICollection>(domain, "_pending").Cast<SvgHostAdmissionCoordinator.PendingEntry>());
+        Assert.Contains(entry, Field<ICollection>(domain, "_pending").Cast<SvgHostPendingEntry>());
         Assert.Empty(queued);
 
         admission.SetAvailableBytes(512);
@@ -370,9 +369,9 @@ public sealed class SvgHostAdmissionCoordinatorTests
     [Fact]
     public async Task RejectedDuplicateRegistrationCannotRaiseAnAcceptedWaitersThreshold()
     {
-        var domain = new SvgHostAdmissionCoordinator.DomainState();
+        var domain = new SvgHostAdmissionDomain();
         var admission = new ThresholdAdmission();
-        var owner = BareBox();
+        var owner = TestSvgHostDeferralHost.CreateDeferral();
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using var lifetime = new CancellationTokenSource();
         var firstAttempt = new object();
@@ -384,24 +383,24 @@ public sealed class SvgHostAdmissionCoordinatorTests
             return true;
         }));
 
-        SvgHostAdmissionCoordinator.PendingWaiter first = Assert.IsType<
-            SvgHostAdmissionCoordinator.PendingWaiter>(domain.Defer(
+        SvgHostPendingWaiter first = Assert.IsType<
+            SvgHostPendingWaiter>(domain.Defer(
                 owner, admission, demand, 1, admission.CapacityVersion, 128, false,
-                domain.OwnerVersion, demand.Version, 0, firstAttempt, lifetime.Token));
-        SvgHostAdmissionCoordinator.PendingEntry entry = PendingEntryOf(first);
+                domain.Owners.OwnerVersion, demand.Version, 0, firstAttempt, lifetime.Token));
+        SvgHostPendingEntry entry = PendingEntryOf(first);
         Assert.True(SpinWait.SpinUntil(() => admission.WaitCalls.Length == 1, TimeSpan.FromSeconds(5)));
 
         object hostGate = Field<object>(owner, "_svgHostDeferredSync");
         var rejectedAttempt = new object();
         var replacementAttempt = new object();
-        Task<SvgHostAdmissionCoordinator.PendingWaiter?> rejectedRegistration;
+        Task<SvgHostPendingWaiter?> rejectedRegistration;
         Monitor.Enter(hostGate);
         try
         {
             SetField(owner, "_svgHostDeferredRegistrationAttempt", rejectedAttempt);
             rejectedRegistration = Task.Run(() => domain.Defer(
                 owner, admission, demand, 1, admission.CapacityVersion, 512, false,
-                domain.OwnerVersion, demand.Version, 0, rejectedAttempt, lifetime.Token));
+                domain.Owners.OwnerVersion, demand.Version, 0, rejectedAttempt, lifetime.Token));
             Assert.True(SpinWait.SpinUntil(() =>
                 Volatile.Read(ref entry.RegistrationsInFlight) == 1,
                 TimeSpan.FromSeconds(5)));
@@ -430,9 +429,9 @@ public sealed class SvgHostAdmissionCoordinatorTests
     [Fact]
     public async Task FirstRejectedRegistrationDoesNotSeedAcceptedDuplicateMetadataOrStrandWaiter()
     {
-        var domain = new SvgHostAdmissionCoordinator.DomainState();
+        var domain = new SvgHostAdmissionDomain();
         var admission = new ThresholdAdmission();
-        ImageBox owner = BareBox();
+        SvgHostLoadDeferral owner = TestSvgHostDeferralHost.CreateDeferral();
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using var lifetime = new CancellationTokenSource();
         var rejectedAttempt = new object();
@@ -446,21 +445,21 @@ public sealed class SvgHostAdmissionCoordinatorTests
         }));
 
         object hostGate = Field<object>(owner, "_svgHostDeferredSync");
-        Task<SvgHostAdmissionCoordinator.PendingWaiter?> rejectedTask;
-        Task<SvgHostAdmissionCoordinator.PendingWaiter?> acceptedTask;
-        SvgHostAdmissionCoordinator.PendingEntry entry;
+        Task<SvgHostPendingWaiter?> rejectedTask;
+        Task<SvgHostPendingWaiter?> acceptedTask;
+        SvgHostPendingEntry entry;
         Monitor.Enter(hostGate);
         try
         {
             SetField(owner, "_svgHostDeferredRegistrationAttempt", rejectedAttempt);
             rejectedTask = Task.Run(() => domain.Defer(
                 owner, admission, demand, 1, admission.CapacityVersion, 1024, false,
-                domain.OwnerVersion, demand.Version, 0, rejectedAttempt, lifetime.Token));
+                domain.Owners.OwnerVersion, demand.Version, 0, rejectedAttempt, lifetime.Token));
             Assert.True(SpinWait.SpinUntil(() =>
                 Field<ICollection>(domain, "_pending").Count == 1,
                 TimeSpan.FromSeconds(5)));
             entry = Field<ICollection>(domain, "_pending")
-                .Cast<SvgHostAdmissionCoordinator.PendingEntry>()
+                .Cast<SvgHostPendingEntry>()
                 .Single();
             Assert.True(SpinWait.SpinUntil(() =>
                 Volatile.Read(ref entry.RegistrationsInFlight) == 1,
@@ -472,7 +471,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
             SetField(owner, "_svgHostDeferredRegistrationAttempt", acceptedAttempt);
             acceptedTask = Task.Run(() => domain.Defer(
                 owner, admission, demand, 1, admission.CapacityVersion, 256, false,
-                domain.OwnerVersion, demand.Version, 0, acceptedAttempt, lifetime.Token));
+                domain.Owners.OwnerVersion, demand.Version, 0, acceptedAttempt, lifetime.Token));
             Assert.True(SpinWait.SpinUntil(() =>
                 Volatile.Read(ref entry.RegistrationsInFlight) == 2,
                 TimeSpan.FromSeconds(5)));
@@ -483,8 +482,8 @@ public sealed class SvgHostAdmissionCoordinatorTests
         }
 
         Assert.Null(await rejectedTask.WaitAsync(TimeSpan.FromSeconds(5)));
-        using SvgHostAdmissionCoordinator.PendingWaiter accepted = Assert.IsType<
-            SvgHostAdmissionCoordinator.PendingWaiter>(
+        using SvgHostPendingWaiter accepted = Assert.IsType<
+            SvgHostPendingWaiter>(
                 await acceptedTask.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.Same(entry.Identity, accepted.Identity);
         Assert.True(entry.HasAcceptedRegistration);
@@ -503,9 +502,9 @@ public sealed class SvgHostAdmissionCoordinatorTests
     [Fact]
     public async Task AlreadyReadyThresholdSignalsWithoutCapacityVersionAdvance()
     {
-        var domain = new SvgHostAdmissionCoordinator.DomainState();
+        var domain = new SvgHostAdmissionDomain();
         var admission = new ThresholdAdmission(initialAvailableBytes: 1024);
-        var owner = BareBox();
+        var owner = TestSvgHostDeferralHost.CreateDeferral();
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using var lifetime = new CancellationTokenSource();
         var attempt = new object();
@@ -517,10 +516,10 @@ public sealed class SvgHostAdmissionCoordinatorTests
             return true;
         }));
 
-        using SvgHostAdmissionCoordinator.PendingWaiter waiter = Assert.IsType<
-            SvgHostAdmissionCoordinator.PendingWaiter>(domain.Defer(
+        using SvgHostPendingWaiter waiter = Assert.IsType<
+            SvgHostPendingWaiter>(domain.Defer(
                 owner, admission, demand, 1, admission.CapacityVersion, 768, false,
-                domain.OwnerVersion, demand.Version, 0, attempt, lifetime.Token));
+                domain.Owners.OwnerVersion, demand.Version, 0, attempt, lifetime.Token));
         Assert.True(SpinWait.SpinUntil(() => waiter.IsFinished, TimeSpan.FromSeconds(5)));
 
         Assert.Equal(0, admission.CapacityVersion);
@@ -534,9 +533,9 @@ public sealed class SvgHostAdmissionCoordinatorTests
     [Fact]
     public async Task PromotionClaimsDeferredRetryWhenOverscanThresholdWaitRemainsPending()
     {
-        var domain = new SvgHostAdmissionCoordinator.DomainState();
+        var domain = new SvgHostAdmissionDomain();
         var admission = new NeverReadyAdmission();
-        var owner = BareBox();
+        var owner = TestSvgHostDeferralHost.CreateDeferral();
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using var lifetime = new CancellationTokenSource();
         var attempt = new object();
@@ -548,12 +547,12 @@ public sealed class SvgHostAdmissionCoordinatorTests
             return true;
         }));
 
-        SvgHostAdmissionCoordinator.PendingWaiter waiter = Assert.IsType<
-            SvgHostAdmissionCoordinator.PendingWaiter>(domain.Defer(
+        SvgHostPendingWaiter waiter = Assert.IsType<
+            SvgHostPendingWaiter>(domain.Defer(
                 owner, admission, demand, 1, admission.CapacityVersion, 768, false,
-                domain.OwnerVersion, demand.Version, 0, attempt, lifetime.Token));
+                domain.Owners.OwnerVersion, demand.Version, 0, attempt, lifetime.Token));
         SetField(owner, "_svgHostDeferredWaiter", waiter);
-        SvgHostAdmissionCoordinator.PendingEntry entry = PendingEntryOf(waiter);
+        SvgHostPendingEntry entry = PendingEntryOf(waiter);
         try
         {
             Task capacityWait = await admission.WaitStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -580,8 +579,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
         finally
         {
             waiter.Dispose();
-            typeof(ImageBox).GetMethod("ClearSvgHostDeferral",
-                BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(owner, null);
+            owner.ClearSvgHostDeferral();
             lifetime.Cancel();
         }
         GC.KeepAlive(owner);
@@ -591,9 +589,9 @@ public sealed class SvgHostAdmissionCoordinatorTests
     [Fact]
     public async Task DuplicateRegistrationBarrierPreventsClaimUntilIdentityIsAccepted()
     {
-        var domain = new SvgHostAdmissionCoordinator.DomainState();
+        var domain = new SvgHostAdmissionDomain();
         var admission = new ThresholdAdmission();
-        var owner = BareBox();
+        var owner = TestSvgHostDeferralHost.CreateDeferral();
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using var lifetime = new CancellationTokenSource();
         var firstAttempt = new object();
@@ -605,22 +603,22 @@ public sealed class SvgHostAdmissionCoordinatorTests
             return true;
         }));
 
-        SvgHostAdmissionCoordinator.PendingWaiter first = Assert.IsType<SvgHostAdmissionCoordinator.PendingWaiter>(
+        SvgHostPendingWaiter first = Assert.IsType<SvgHostPendingWaiter>(
             domain.Defer(owner, admission, demand, 1, admission.CapacityVersion, 128, false,
-                domain.OwnerVersion, demand.Version, 0, firstAttempt, lifetime.Token));
-        SvgHostAdmissionCoordinator.PendingEntry entry = PendingEntryOf(first);
+                domain.Owners.OwnerVersion, demand.Version, 0, firstAttempt, lifetime.Token));
+        SvgHostPendingEntry entry = PendingEntryOf(first);
         Assert.True(SpinWait.SpinUntil(() => admission.WaitCalls.Length == 1, TimeSpan.FromSeconds(5)));
 
         object hostGate = Field<object>(owner, "_svgHostDeferredSync");
         var secondAttempt = new object();
-        Task<SvgHostAdmissionCoordinator.PendingWaiter?> secondTask;
+        Task<SvgHostPendingWaiter?> secondTask;
         Monitor.Enter(hostGate);
         try
         {
             SetField(owner, "_svgHostDeferredRegistrationAttempt", secondAttempt);
             secondTask = Task.Run(() => domain.Defer(
                 owner, admission, demand, 1, admission.CapacityVersion, 512, false,
-                domain.OwnerVersion, demand.Version, 0, secondAttempt, lifetime.Token));
+                domain.Owners.OwnerVersion, demand.Version, 0, secondAttempt, lifetime.Token));
             Assert.True(SpinWait.SpinUntil(() =>
                 Volatile.Read(ref entry.RegistrationsInFlight) == 1,
                 TimeSpan.FromSeconds(5)));
@@ -638,8 +636,8 @@ public sealed class SvgHostAdmissionCoordinatorTests
             Monitor.Exit(hostGate);
         }
 
-        SvgHostAdmissionCoordinator.PendingWaiter second = Assert.IsType<
-            SvgHostAdmissionCoordinator.PendingWaiter>(
+        SvgHostPendingWaiter second = Assert.IsType<
+            SvgHostPendingWaiter>(
                 await secondTask.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.Same(first.Identity, second.Identity);
         Assert.True(SpinWait.SpinUntil(() => admission.WaitCalls.Length == 2, TimeSpan.FromSeconds(5)));
@@ -659,30 +657,30 @@ public sealed class SvgHostAdmissionCoordinatorTests
     [Fact]
     public async Task CancellationWaitsForInFlightRegistrationBeforeDisposingEntryTokenSource()
     {
-        var domain = new SvgHostAdmissionCoordinator.DomainState();
+        var domain = new SvgHostAdmissionDomain();
         var admission = new ThresholdAdmission();
-        var owner = BareBox();
+        var owner = TestSvgHostDeferralHost.CreateDeferral();
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using var lifetime = new CancellationTokenSource();
         var firstAttempt = new object();
         InitializeSourceDeferredOwner(owner, demand, firstAttempt, admission, requiredBytes: 128);
 
-        SvgHostAdmissionCoordinator.PendingWaiter first = Assert.IsType<SvgHostAdmissionCoordinator.PendingWaiter>(
+        SvgHostPendingWaiter first = Assert.IsType<SvgHostPendingWaiter>(
             domain.Defer(owner, admission, demand, 1, admission.CapacityVersion, 128, false,
-                domain.OwnerVersion, demand.Version, 0, firstAttempt, lifetime.Token));
-        SvgHostAdmissionCoordinator.PendingEntry entry = PendingEntryOf(first);
+                domain.Owners.OwnerVersion, demand.Version, 0, firstAttempt, lifetime.Token));
+        SvgHostPendingEntry entry = PendingEntryOf(first);
         Assert.True(SpinWait.SpinUntil(() => admission.WaitCalls.Length == 1, TimeSpan.FromSeconds(5)));
 
         object hostGate = Field<object>(owner, "_svgHostDeferredSync");
         var secondAttempt = new object();
-        Task<SvgHostAdmissionCoordinator.PendingWaiter?> secondTask;
+        Task<SvgHostPendingWaiter?> secondTask;
         Monitor.Enter(hostGate);
         try
         {
             SetField(owner, "_svgHostDeferredRegistrationAttempt", secondAttempt);
             secondTask = Task.Run(() => domain.Defer(
                 owner, admission, demand, 1, admission.CapacityVersion, 256, false,
-                domain.OwnerVersion, demand.Version, 0, secondAttempt, lifetime.Token));
+                domain.Owners.OwnerVersion, demand.Version, 0, secondAttempt, lifetime.Token));
             Assert.True(SpinWait.SpinUntil(() =>
                 Volatile.Read(ref entry.RegistrationsInFlight) == 1,
                 TimeSpan.FromSeconds(5)));
@@ -713,16 +711,16 @@ public sealed class SvgHostAdmissionCoordinatorTests
     [Fact]
     public async Task UnstartedWaiterRetirementWaitsForRegistrationDrainBeforeDisposingTokenSource()
     {
-        var domain = new SvgHostAdmissionCoordinator.DomainState();
+        var domain = new SvgHostAdmissionDomain();
         var admission = new RegistryAdmission();
-        ImageBox owner = BareBox();
+        SvgHostLoadDeferral owner = TestSvgHostDeferralHost.CreateDeferral();
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using var lifetime = new CancellationTokenSource();
         var attempt = new object();
         InitializeDeferredOwner(owner, demand, attempt);
-        var entry = new SvgHostAdmissionCoordinator.PendingEntry(
+        var entry = new SvgHostPendingEntry(
             owner, admission, demand, 1, 0, 256, false, 0, demand.Version, 0, lifetime.Token);
-        var waiter = new SvgHostAdmissionCoordinator.PendingWaiter(domain, entry);
+        var waiter = new SvgHostPendingWaiter(domain, entry);
         Assert.True(owner.OnSvgHostAdmissionWaiterRegistered(demand, 1, attempt, waiter));
         SetField(owner, "_svgHostDeferredWaiter", waiter);
 
@@ -760,16 +758,16 @@ public sealed class SvgHostAdmissionCoordinatorTests
     {
         const int ownerCount = 10;
         const long ownerWeight = 100;
-        var domain = new SvgHostAdmissionCoordinator.DomainState();
+        var domain = new SvgHostAdmissionDomain();
         var admission = new ThresholdAdmission();
         var owners = new ImageBox[ownerCount];
-        var plans = new ImageBox.SvgTileRenderPlan[ownerCount];
+        var plans = new SvgTileRenderPlan[ownerCount];
         var documents = new PressureDocument[ownerCount];
-        var ownerSlots = new SvgHostAdmissionCoordinator.OwnerSlot[ownerCount];
+        var ownerSlots = new SvgHostOwnerSlot[ownerCount];
         var ownerDemand = new MarkdownSvgRenderDemand[ownerCount];
         using var lifetime = new CancellationTokenSource();
-        var waiters = new List<SvgHostAdmissionCoordinator.PendingWaiter>(4);
-        var knownEntries = new List<SvgHostAdmissionCoordinator.PendingEntry>(1);
+        var waiters = new List<SvgHostPendingWaiter>(4);
+        var knownEntries = new List<SvgHostPendingEntry>(1);
         bool cleanupDrained = true;
         try
         {
@@ -777,56 +775,56 @@ public sealed class SvgHostAdmissionCoordinatorTests
             {
                 documents[i] = new PressureDocument();
                 ownerDemand[i] = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
-                ownerSlots[i] = Assert.IsType<SvgHostAdmissionCoordinator.OwnerSlot>(
-                    domain.TryReserveOwnerSlot(admission.AdmissionDomain, out _));
-                plans[i] = new ImageBox.SvgTileRenderPlan(
+                ownerSlots[i] = Assert.IsType<SvgHostOwnerSlot>(
+                    domain.Owners.TryReserveOwnerSlot(admission.AdmissionDomain, out _));
+                plans[i] = new SvgTileRenderPlan(
                     documents[i], $"pressure-owner-{i}", 2048, 2048, i + 1,
                     ownerDemand[i], sourceReservationBytes: ownerWeight, ownerSlot: ownerSlots[i]);
                 owners[i] = CreatePressureParkBox(plans[i]);
                 ownerSlots[i].Commit(owners[i], plans[i], ownerDemand[i], ownerWeight);
             }
 
-            var requester = BareBox();
+            var requester = TestSvgHostDeferralHost.CreateDeferral();
             var requestDemand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
             var attempts = new object[] { new(), new(), new(), new() };
             InitializeSourceDeferredOwner(requester, requestDemand, attempts[0], admission, requiredBytes: 100);
-            SvgHostAdmissionCoordinator.PendingWaiter? firstCandidate =
+            SvgHostPendingWaiter? firstCandidate =
                 domain.Defer(requester, admission, requestDemand, 1, admission.CapacityVersion, 100, false,
-                    domain.OwnerVersion, requestDemand.Version, 0, attempts[0], lifetime.Token);
+                    domain.Owners.OwnerVersion, requestDemand.Version, 0, attempts[0], lifetime.Token);
             CapturePendingEntries(domain, knownEntries);
-            SvgHostAdmissionCoordinator.PendingWaiter first = Assert.IsType<
-                SvgHostAdmissionCoordinator.PendingWaiter>(firstCandidate);
+            SvgHostPendingWaiter first = Assert.IsType<
+                SvgHostPendingWaiter>(firstCandidate);
             waiters.Add(first);
-            SvgHostAdmissionCoordinator.PendingEntry entry = PendingEntryOf(first);
+            SvgHostPendingEntry entry = PendingEntryOf(first);
             AddPendingEntry(entry, knownEntries);
             Assert.Equal(1, entry.ParkedVictims);
             Assert.Equal(100, entry.ParkedSourceBytes);
 
-            SvgHostAdmissionCoordinator.PendingWaiter? secondCandidate =
+            SvgHostPendingWaiter? secondCandidate =
                 DeferDuplicate(domain, requester, admission, requestDemand, attempts[1], 250, lifetime.Token);
             CapturePendingEntries(domain, knownEntries);
-            SvgHostAdmissionCoordinator.PendingWaiter second = Assert.IsType<
-                SvgHostAdmissionCoordinator.PendingWaiter>(secondCandidate);
+            SvgHostPendingWaiter second = Assert.IsType<
+                SvgHostPendingWaiter>(secondCandidate);
             waiters.Add(second);
             Assert.Same(first.Identity, second.Identity);
             Assert.Equal(3, entry.ParkedVictims);
             Assert.Equal(300, entry.ParkedSourceBytes);
 
-            SvgHostAdmissionCoordinator.PendingWaiter? thirdCandidate =
+            SvgHostPendingWaiter? thirdCandidate =
                 DeferDuplicate(domain, requester, admission, requestDemand, attempts[2], 800, lifetime.Token);
             CapturePendingEntries(domain, knownEntries);
-            SvgHostAdmissionCoordinator.PendingWaiter third = Assert.IsType<
-                SvgHostAdmissionCoordinator.PendingWaiter>(thirdCandidate);
+            SvgHostPendingWaiter third = Assert.IsType<
+                SvgHostPendingWaiter>(thirdCandidate);
             waiters.Add(third);
             Assert.Same(first.Identity, third.Identity);
             Assert.Equal(8, entry.ParkedVictims);
             Assert.Equal(800, entry.ParkedSourceBytes);
 
-            SvgHostAdmissionCoordinator.PendingWaiter? fourthCandidate =
+            SvgHostPendingWaiter? fourthCandidate =
                 DeferDuplicate(domain, requester, admission, requestDemand, attempts[3], 900, lifetime.Token);
             CapturePendingEntries(domain, knownEntries);
-            SvgHostAdmissionCoordinator.PendingWaiter fourth = Assert.IsType<
-                SvgHostAdmissionCoordinator.PendingWaiter>(fourthCandidate);
+            SvgHostPendingWaiter fourth = Assert.IsType<
+                SvgHostPendingWaiter>(fourthCandidate);
             waiters.Add(fourth);
             Assert.Same(first.Identity, fourth.Identity);
             Assert.Equal(8, entry.ParkedVictims);
@@ -854,13 +852,13 @@ public sealed class SvgHostAdmissionCoordinatorTests
             }
             finally
             {
-                foreach (SvgHostAdmissionCoordinator.PendingWaiter waiter in waiters)
+                foreach (SvgHostPendingWaiter waiter in waiters)
                 {
-                    SvgHostAdmissionCoordinator.PendingEntry? waiterEntry = TryPendingEntryOf(waiter);
+                    SvgHostPendingEntry? waiterEntry = TryPendingEntryOf(waiter);
                     if (waiterEntry is not null && !knownEntries.Contains(waiterEntry))
                         knownEntries.Add(waiterEntry);
                 }
-                foreach (SvgHostAdmissionCoordinator.PendingWaiter waiter in waiters)
+                foreach (SvgHostPendingWaiter waiter in waiters)
                     waiter.Dispose();
                 CapturePendingEntries(domain, knownEntries);
                 cleanupDrained = SpinWait.SpinUntil(
@@ -875,7 +873,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
                     if (!document.Disposed.Task.IsCompleted)
                         document.Dispose();
                 }
-                foreach (SvgHostAdmissionCoordinator.OwnerSlot? slot in ownerSlots)
+                foreach (SvgHostOwnerSlot? slot in ownerSlots)
                     slot?.Dispose();
                 GC.KeepAlive(owners);
                 GC.KeepAlive(plans);
@@ -889,30 +887,30 @@ public sealed class SvgHostAdmissionCoordinatorTests
     {
         const int existingReservationCount = 510;
         const int eligibleOwnerCount = 2;
-        var domain = new SvgHostAdmissionCoordinator.DomainState();
+        var domain = new SvgHostAdmissionDomain();
         object identity = new();
-        var reservedSlots = new List<SvgHostAdmissionCoordinator.OwnerSlot>(existingReservationCount + 1);
-        var ownerSlots = new List<SvgHostAdmissionCoordinator.OwnerSlot>(eligibleOwnerCount);
+        var reservedSlots = new List<SvgHostOwnerSlot>(existingReservationCount + 1);
+        var ownerSlots = new List<SvgHostOwnerSlot>(eligibleOwnerCount);
         var owners = new List<ImageBox>(eligibleOwnerCount);
-        var plans = new List<ImageBox.SvgTileRenderPlan>(eligibleOwnerCount);
+        var plans = new List<SvgTileRenderPlan>(eligibleOwnerCount);
         var documents = new List<PressureDocument>(eligibleOwnerCount);
         var demands = new List<MarkdownSvgRenderDemand>(eligibleOwnerCount);
         try
         {
             for (int i = 0; i < existingReservationCount; i++)
             {
-                reservedSlots.Add(Assert.IsType<SvgHostAdmissionCoordinator.OwnerSlot>(
-                    domain.TryReserveOwnerSlot(identity, out _)));
+                reservedSlots.Add(Assert.IsType<SvgHostOwnerSlot>(
+                    domain.Owners.TryReserveOwnerSlot(identity, out _)));
             }
 
             for (int i = 0; i < eligibleOwnerCount; i++)
             {
-                SvgHostAdmissionCoordinator.OwnerSlot slot = Assert.IsType<
-                    SvgHostAdmissionCoordinator.OwnerSlot>(domain.TryReserveOwnerSlot(identity, out _));
+                SvgHostOwnerSlot slot = Assert.IsType<
+                    SvgHostOwnerSlot>(domain.Owners.TryReserveOwnerSlot(identity, out _));
                 ownerSlots.Add(slot);
                 var document = new PressureDocument();
                 var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
-                var plan = new ImageBox.SvgTileRenderPlan(
+                var plan = new SvgTileRenderPlan(
                     document, $"single-owner-slot-victim-{i}", 2048, 2048, i + 1,
                     demand, sourceReservationBytes: 100, ownerSlot: slot);
                 ImageBox owner = CreatePressureParkBox(plan);
@@ -941,8 +939,8 @@ public sealed class SvgHostAdmissionCoordinatorTests
                 .WaitAsync(TimeSpan.FromSeconds(5));
             Assert.Equal(1, documents.Count(document => document.Disposed.Task.IsCompletedSuccessfully));
             Assert.Equal(existingReservationCount, ReservedCount(domain));
-            reservedSlots.Add(Assert.IsType<SvgHostAdmissionCoordinator.OwnerSlot>(
-                domain.TryReserveOwnerSlot(identity, out _)));
+            reservedSlots.Add(Assert.IsType<SvgHostOwnerSlot>(
+                domain.Owners.TryReserveOwnerSlot(identity, out _)));
             Assert.Equal(1, OwnerCount(domain));
             Assert.Equal(512, OwnerCount(domain) + ReservedCount(domain));
         }
@@ -953,9 +951,9 @@ public sealed class SvgHostAdmissionCoordinatorTests
                 if (!documents[i].Disposed.Task.IsCompleted)
                     _ = owners[i].TryParkSvgDocument(plans[i], demands[i].Version, maximumTier: 0);
             }
-            foreach (SvgHostAdmissionCoordinator.OwnerSlot slot in ownerSlots)
+            foreach (SvgHostOwnerSlot slot in ownerSlots)
                 slot.Dispose();
-            foreach (SvgHostAdmissionCoordinator.OwnerSlot slot in reservedSlots)
+            foreach (SvgHostOwnerSlot slot in reservedSlots)
                 slot.Dispose();
             await Task.WhenAll(documents.Select(document => document.Disposed.Task))
                 .WaitAsync(TimeSpan.FromSeconds(5));
@@ -965,23 +963,22 @@ public sealed class SvgHostAdmissionCoordinatorTests
     [Fact]
     public async Task SourceFreePendingPopulationIsBoundedAndCancellationDrainsEveryRow()
     {
-        var domain = new SvgHostAdmissionCoordinator.DomainState();
+        var domain = new SvgHostAdmissionDomain();
         var admission = new WaitingAdmission();
-        var boxes = new ImageBox[129];
+        var boxes = new SvgHostLoadDeferral[129];
         var demands = new MarkdownSvgRenderDemand[129];
         var attempts = new object[129];
-        var handles = new SvgHostAdmissionCoordinator.PendingWaiter?[129];
+        var handles = new SvgHostPendingWaiter?[129];
         using var lifetime = new CancellationTokenSource();
         try
         {
             for (int i = 0; i < boxes.Length; i++)
             {
-                boxes[i] = BareBox();
+                boxes[i] = TestSvgHostDeferralHost.CreateDeferral();
                 demands[i] = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
                 attempts[i] = new object();
-                SetField(boxes[i], "_svgHostDeferredSync", new object());
-                SetField(boxes[i], "_svgLoadDemandTicket", demands[i]);
-                SetField(boxes[i], "_svgLoadDemandGeneration", 1);
+                TestSvgHostDeferralHost.Of(boxes[i]).LoadDemand = demands[i];
+                TestSvgHostDeferralHost.Of(boxes[i]).LoadDemandGeneration = 1;
                 SetField(boxes[i], "_svgHostDeferred", 1);
                 SetField(boxes[i], "_svgHostDeferredRegistrationAttempt", attempts[i]);
                 handles[i] = domain.Defer(boxes[i], admission, demands[i], 1,
@@ -992,7 +989,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
                     Assert.Null(handles[i]);
             }
             Assert.Equal(128, Field<ICollection>(domain, "_pending").Count);
-            foreach (SvgHostAdmissionCoordinator.PendingWaiter? handle in handles)
+            foreach (SvgHostPendingWaiter? handle in handles)
                 handle?.Dispose();
             Assert.Empty(Field<ICollection>(domain, "_pending"));
             Assert.True(await Task.Run(() => SpinWait.SpinUntil(() =>
@@ -1001,7 +998,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
         }
         finally
         {
-            foreach (SvgHostAdmissionCoordinator.PendingWaiter? handle in handles)
+            foreach (SvgHostPendingWaiter? handle in handles)
                 handle?.Dispose();
             await lifetime.CancelAsync();
             GC.KeepAlive(boxes);
@@ -1012,10 +1009,10 @@ public sealed class SvgHostAdmissionCoordinatorTests
     [Fact]
     public async Task DeadWeakPendingOwnersCannotPermanentlyExhaustTheDeferredRegistry()
     {
-        var domain = new SvgHostAdmissionCoordinator.DomainState();
+        var domain = new SvgHostAdmissionDomain();
         var admission = new WaitingAdmission();
         using var lifetime = new CancellationTokenSource();
-        (WeakReference[] weakOwners, SvgHostAdmissionCoordinator.PendingWaiter[] handles) =
+        (WeakReference[] weakOwners, SvgHostPendingWaiter[] handles) =
             CreateWeakPendingOwners(domain, admission, lifetime.Token);
         try
         {
@@ -1026,12 +1023,12 @@ public sealed class SvgHostAdmissionCoordinatorTests
                 GC.Collect();
             }
             Assert.All(weakOwners, weak => Assert.False(weak.IsAlive));
-            ImageBox replacementOwner = BareBox();
+            SvgHostLoadDeferral replacementOwner = TestSvgHostDeferralHost.CreateDeferral();
             var replacementDemand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
             object attempt = new();
             InitializeDeferredOwner(replacementOwner, replacementDemand, attempt);
-            using SvgHostAdmissionCoordinator.PendingWaiter replacement =
-                Assert.IsType<SvgHostAdmissionCoordinator.PendingWaiter>(domain.Defer(
+            using SvgHostPendingWaiter replacement =
+                Assert.IsType<SvgHostPendingWaiter>(domain.Defer(
                     replacementOwner, admission, replacementDemand, 1, 0, 128,
                     false, 0, 0, 0, attempt, lifetime.Token));
             Assert.Single(Field<ICollection>(domain, "_pending"));
@@ -1041,7 +1038,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
         }
         finally
         {
-            foreach (SvgHostAdmissionCoordinator.PendingWaiter handle in handles)
+            foreach (SvgHostPendingWaiter handle in handles)
                 handle.Dispose();
             await lifetime.CancelAsync();
             GC.KeepAlive(admission);
@@ -1051,7 +1048,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
     [Fact]
     public void FailedPromotionSubscriptionCannotLeaveAPendingRowOrRetainItsWeakOwner()
     {
-        var domain = new SvgHostAdmissionCoordinator.DomainState();
+        var domain = new SvgHostAdmissionDomain();
         var admission = new WaitingAdmission();
         using var lifetime = new CancellationTokenSource();
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Visible,
@@ -1073,10 +1070,10 @@ public sealed class SvgHostAdmissionCoordinatorTests
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static WeakReference CreateRejectedPendingOwner(
-        SvgHostAdmissionCoordinator.DomainState domain, IMarkdownSvgAdmission admission,
+        SvgHostAdmissionDomain domain, IMarkdownSvgAdmission admission,
         MarkdownSvgRenderDemand demand, CancellationToken lifetime)
     {
-        ImageBox owner = BareBox();
+        SvgHostLoadDeferral owner = TestSvgHostDeferralHost.CreateDeferral();
         object attempt = new();
         InitializeDeferredOwner(owner, demand, attempt);
         Assert.Null(domain.Defer(owner, admission, demand, 1, 0, 128,
@@ -1085,22 +1082,22 @@ public sealed class SvgHostAdmissionCoordinatorTests
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static (WeakReference[], SvgHostAdmissionCoordinator.PendingWaiter[]) CreateWeakPendingOwners(
-        SvgHostAdmissionCoordinator.DomainState domain,
+    private static (WeakReference[], SvgHostPendingWaiter[]) CreateWeakPendingOwners(
+        SvgHostAdmissionDomain domain,
         IMarkdownSvgAdmission admission,
         CancellationToken lifetime)
     {
         var weakOwners = new WeakReference[128];
-        var handles = new SvgHostAdmissionCoordinator.PendingWaiter[128];
-        var owners = new ImageBox[128];
+        var handles = new SvgHostPendingWaiter[128];
+        var owners = new SvgHostLoadDeferral[128];
         for (int i = 0; i < weakOwners.Length; i++)
         {
-            ImageBox owner = BareBox();
+            SvgHostLoadDeferral owner = TestSvgHostDeferralHost.CreateDeferral();
             owners[i] = owner;
             var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
             object attempt = new();
             InitializeDeferredOwner(owner, demand, attempt);
-            handles[i] = Assert.IsType<SvgHostAdmissionCoordinator.PendingWaiter>(
+            handles[i] = Assert.IsType<SvgHostPendingWaiter>(
                 domain.Defer(owner, admission, demand, 1, 0, 128, false, 0, 0, 0, attempt, lifetime));
             weakOwners[i] = new WeakReference(owner);
         }
@@ -1112,17 +1109,16 @@ public sealed class SvgHostAdmissionCoordinatorTests
         return (weakOwners, handles);
     }
 
-    private static void InitializeDeferredOwner(ImageBox owner, MarkdownSvgRenderDemand demand, object attempt)
+    private static void InitializeDeferredOwner(SvgHostLoadDeferral owner, MarkdownSvgRenderDemand demand, object attempt)
     {
-        SetField(owner, "_svgHostDeferredSync", new object());
-        SetField(owner, "_svgLoadDemandTicket", demand);
-        SetField(owner, "_svgLoadDemandGeneration", 1);
+        TestSvgHostDeferralHost.Of(owner).LoadDemand = demand;
+        TestSvgHostDeferralHost.Of(owner).LoadDemandGeneration = 1;
         SetField(owner, "_svgHostDeferred", 1);
         SetField(owner, "_svgHostDeferredRegistrationAttempt", attempt);
     }
 
     private static void InitializeSourceDeferredOwner(
-        ImageBox owner,
+        SvgHostLoadDeferral owner,
         MarkdownSvgRenderDemand demand,
         object attempt,
         IMarkdownSvgAdmission admission,
@@ -1140,9 +1136,9 @@ public sealed class SvgHostAdmissionCoordinatorTests
         SetField(owner, "_svgHostDeferredCapacityReady", false);
     }
 
-    private static SvgHostAdmissionCoordinator.PendingWaiter? DeferDuplicate(
-        SvgHostAdmissionCoordinator.DomainState domain,
-        ImageBox owner,
+    private static SvgHostPendingWaiter? DeferDuplicate(
+        SvgHostAdmissionDomain domain,
+        SvgHostLoadDeferral owner,
         IMarkdownSvgAdmission admission,
         MarkdownSvgRenderDemand demand,
         object attempt,
@@ -1159,36 +1155,36 @@ public sealed class SvgHostAdmissionCoordinatorTests
             admission.CapacityVersion,
             requiredBytes,
             requiresOwnerSlot: false,
-            ownerVersionAtDenial: domain.OwnerVersion,
+            ownerVersionAtDenial: domain.Owners.OwnerVersion,
             demandVersionAtDenial: demand.Version,
             visualDemandEpochAtDenial: 0,
             registrationAttempt: attempt,
             cancellationToken: lifetime);
     }
 
-    private static SvgHostAdmissionCoordinator.PendingEntry PendingEntryOf(
-        SvgHostAdmissionCoordinator.PendingWaiter waiter) =>
-        Field<SvgHostAdmissionCoordinator.PendingEntry>(waiter, "_entry");
+    private static SvgHostPendingEntry PendingEntryOf(
+        SvgHostPendingWaiter waiter) =>
+        Field<SvgHostPendingEntry>(waiter, "_entry");
 
-    private static SvgHostAdmissionCoordinator.PendingEntry? TryPendingEntryOf(
-        SvgHostAdmissionCoordinator.PendingWaiter waiter) =>
+    private static SvgHostPendingEntry? TryPendingEntryOf(
+        SvgHostPendingWaiter waiter) =>
         waiter.GetType().GetField("_entry", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(waiter)
-            as SvgHostAdmissionCoordinator.PendingEntry;
+            as SvgHostPendingEntry;
 
     private static void CapturePendingEntries(
-        SvgHostAdmissionCoordinator.DomainState domain,
-        List<SvgHostAdmissionCoordinator.PendingEntry> entries)
+        SvgHostAdmissionDomain domain,
+        List<SvgHostPendingEntry> entries)
     {
-        foreach (SvgHostAdmissionCoordinator.PendingEntry entry in
-            Field<ICollection>(domain, "_pending").Cast<SvgHostAdmissionCoordinator.PendingEntry>())
+        foreach (SvgHostPendingEntry entry in
+            Field<ICollection>(domain, "_pending").Cast<SvgHostPendingEntry>())
         {
             AddPendingEntry(entry, entries);
         }
     }
 
     private static void AddPendingEntry(
-        SvgHostAdmissionCoordinator.PendingEntry entry,
-        List<SvgHostAdmissionCoordinator.PendingEntry> entries)
+        SvgHostPendingEntry entry,
+        List<SvgHostPendingEntry> entries)
     {
         if (!entries.Contains(entry))
             entries.Add(entry);
@@ -1207,44 +1203,25 @@ public sealed class SvgHostAdmissionCoordinatorTests
         }
     }
 
-    private static ImageBox CreatePressureParkBox(ImageBox.SvgTileRenderPlan plan)
+    private static ImageBox CreatePressureParkBox(SvgTileRenderPlan plan)
     {
-        ImageBox box = BareBox();
-        SetField(box, "_svgWorkSync", new object());
-        SetField(box, "_svgPublicationSync", new object());
-        SetField(box, "_svgTileLock", new object());
-        SetField(box, "_svgTiles", new Dictionary<(int X, int Y, int Width, int Height), SharedCanvasBitmapCache.Lease>());
-        SetField(box, "_svgTilesInFlight", new Dictionary<(int X, int Y, int Width, int Height), CancellationTokenSource>());
-        SetField(box, "_svgTileWorkOwners", CreatePressureWorkOwnerMap());
-        SetField(box, "_svgTileCacheTransitionToken", null);
-        SetField(box, "_svgFallbackTiles", null);
-        SetField(box, "_svgTileCacheIdentityPrefix", null);
-        SetField(box, "_svgTileCacheWidthPixels", 0);
-        SetField(box, "_svgTileCacheHeightPixels", 0);
-        SetField(box, "_svgVisibleTileRangeKnown", false);
-        SetField(box, "_svgCurrentViewportVisible", -1);
+        var box = new ImageBox(
+            new MarkdownLayoutContext(
+                resourceCreator: null!,
+                themeSnapshot: null!,
+                sourceMap: null!,
+                registry: null!,
+                flowDirection: FlowDirection.LeftToRight),
+            ImageResourceScope.Shared,
+            "https://example.test/pressure-park.svg",
+            "pressure park svg");
         SetField(box, "_svgTileRenderPlan", plan);
         SetField(box, "_svgDocument", plan.Document);
         SetField(box, "_svgLoadDemandTicket", plan.Demand);
         SetField(box, "_svgRenderGeneration", plan.RenderGeneration);
         SetField(box, "_svgUsesTiles", true);
-        SetField(box, "_resourcesSuspended", false);
-        SetField(box, "_disposed", false);
-        SetField(box, "Context", new MarkdownLayoutContext(
-            resourceCreator: null!,
-            themeSnapshot: null!,
-            sourceMap: null!,
-            registry: null!,
-            flowDirection: FlowDirection.LeftToRight));
         return box;
     }
-
-    private static IDictionary CreatePressureWorkOwnerMap() =>
-        (IDictionary)(Activator.CreateInstance(
-            typeof(Dictionary<,>).MakeGenericType(
-                typeof(ValueTuple<int, int, int, int>),
-                typeof(ImageBox).GetNestedType("SvgTileWorkOwner", BindingFlags.NonPublic)!))
-            ?? throw new Xunit.Sdk.XunitException("Could not create ImageBox SVG work-owner map."));
 
     private sealed class ThresholdAdmission(long initialAvailableBytes = 0) : IMarkdownSvgAdmission
     {
@@ -1352,27 +1329,27 @@ public sealed class SvgHostAdmissionCoordinatorTests
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static (WeakReference, object) CommitWeakOwner(
-        SvgHostAdmissionCoordinator.DomainState domain,
-        SvgHostAdmissionCoordinator.OwnerSlot slot,
+        SvgHostAdmissionDomain domain,
+        SvgHostOwnerSlot slot,
         bool collectPlan)
     {
         ImageBox owner = BareBox();
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
-        var plan = new ImageBox.SvgTileRenderPlan(new RegistryDocument(), "weak", 2048, 2048, 1);
+        var plan = new SvgTileRenderPlan(new RegistryDocument(), "weak", 2048, 2048, 1);
         slot.Commit(owner, plan, demand, 64);
         return collectPlan ? (new WeakReference(plan), owner) : (new WeakReference(owner), plan);
     }
 
-    private static SvgHostAdmissionCoordinator.OwnerSlot? Reserve(
-        SvgHostAdmissionCoordinator.DomainState domain, object identity, out long version) =>
-        domain.TryReserveOwnerSlot(identity, out version);
+    private static SvgHostOwnerSlot? Reserve(
+        SvgHostAdmissionDomain domain, object identity, out long version) =>
+        domain.Owners.TryReserveOwnerSlot(identity, out version);
 
     private static ImageBox BareBox() =>
         (ImageBox)RuntimeHelpers.GetUninitializedObject(typeof(ImageBox));
-    private static int OwnerCount(SvgHostAdmissionCoordinator.DomainState domain) =>
-        Field<ICollection>(domain, "_owners").Count;
-    private static int ReservedCount(SvgHostAdmissionCoordinator.DomainState domain) =>
-        Field<int>(domain, "_reservedOwnerSlots");
+    private static int OwnerCount(SvgHostAdmissionDomain domain) =>
+        Field<ICollection>(domain.Owners, "_owners").Count;
+    private static int ReservedCount(SvgHostAdmissionDomain domain) =>
+        Field<int>(domain.Owners, "_reservedOwnerSlots");
     private static T Field<T>(object owner, string name) =>
         (T)(owner.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(owner)
             ?? throw new InvalidOperationException($"Missing registry field {name}."));

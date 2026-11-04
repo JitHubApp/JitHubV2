@@ -2,28 +2,6 @@ using System;
 
 namespace MarkdownRenderer.Images;
 
-internal enum MarkdownBuiltInImageSourceKind
-{
-    Data,
-    Local,
-    RemoteHttps,
-    InsecureHttp,
-    Unsupported,
-}
-
-internal readonly struct MarkdownBuiltInImageSource(
-    Uri Uri,
-    string CacheKey,
-    MarkdownBuiltInImageSourceKind Kind)
-{
-    public readonly Uri Uri = Uri;
-    public readonly string CacheKey = CacheKey;
-    public readonly MarkdownBuiltInImageSourceKind Kind = Kind;
-
-    public bool CanLoadWithoutResolver =>
-        Kind is MarkdownBuiltInImageSourceKind.Data or MarkdownBuiltInImageSourceKind.Local;
-}
-
 /// <summary>
 /// Resolves public image sources without granting network access. The returned
 /// absolute URI is also the only safe built-in cache identity for a relative

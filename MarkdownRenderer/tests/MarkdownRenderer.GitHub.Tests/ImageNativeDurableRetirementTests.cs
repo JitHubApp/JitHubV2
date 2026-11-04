@@ -112,40 +112,40 @@ public sealed class ImageNativeDurableRetirementTests
         using var harness = new Harness();
         var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new LayoutDisposalProbe();
-        var image = new ImageBox(harness.CreateContext(), string.Empty, "inline failure", retirement, disposer.Dispose);
+        var image = new ImageBox(harness.CreateContext(), ImageResourceScope.Shared, string.Empty, "inline failure", retirement, disposer.Dispose);
 
         _ = image.MeasureInline(180f, 22f);
-        CanvasTextLayout original = Assert.IsType<CanvasTextLayout>(image.PlaceholderLayoutForTests);
+        CanvasTextLayout original = Assert.IsType<CanvasTextLayout>(image.MeasureCustody.GetLayoutState().Placeholder);
         NativeResourceRetirementRecord originalRecord = Assert.IsType<NativeResourceRetirementRecord>(
-            image.PlaceholderRetirementRecordForTests);
+            image.MeasureCustody.GetLayoutState().PlaceholderRecord);
 
-        ImageBox.InlineMeasureCheckpoint rollback = image.BeginInlineCheckpoint();
+        InlineMeasureCheckpoint rollback = image.BeginInlineCheckpoint();
         _ = image.MeasureInline(100f, 22f, rollback);
-        CanvasTextLayout rolledBackCandidate = Assert.IsType<CanvasTextLayout>(image.PlaceholderLayoutForTests);
+        CanvasTextLayout rolledBackCandidate = Assert.IsType<CanvasTextLayout>(image.MeasureCustody.GetLayoutState().Placeholder);
         NativeResourceRetirementRecord rolledBackRecord = Assert.IsType<NativeResourceRetirementRecord>(
-            image.PlaceholderRetirementRecordForTests);
+            image.MeasureCustody.GetLayoutState().PlaceholderRecord);
         Assert.NotSame(original, rolledBackCandidate);
         Assert.NotSame(originalRecord, rolledBackRecord);
         rollback.Rollback();
 
-        Assert.Same(original, image.PlaceholderLayoutForTests);
-        Assert.Same(originalRecord, image.PlaceholderRetirementRecordForTests);
-        Assert.True(image.HasNativeLayoutCustodyForTests);
+        Assert.Same(original, image.MeasureCustody.GetLayoutState().Placeholder);
+        Assert.Same(originalRecord, image.MeasureCustody.GetLayoutState().PlaceholderRecord);
+        Assert.True(image.MeasureCustody.GetLayoutState().HasValidCustody);
         Assert.Equal(1, retirement.PendingResourceCount);
         Assert.True(retirement.DrainOnce());
 
-        ImageBox.InlineMeasureCheckpoint commit = image.BeginInlineCheckpoint();
+        InlineMeasureCheckpoint commit = image.BeginInlineCheckpoint();
         _ = image.MeasureInline(80f, 22f, commit);
-        CanvasTextLayout committed = Assert.IsType<CanvasTextLayout>(image.PlaceholderLayoutForTests);
+        CanvasTextLayout committed = Assert.IsType<CanvasTextLayout>(image.MeasureCustody.GetLayoutState().Placeholder);
         NativeResourceRetirementRecord committedRecord = Assert.IsType<NativeResourceRetirementRecord>(
-            image.PlaceholderRetirementRecordForTests);
+            image.MeasureCustody.GetLayoutState().PlaceholderRecord);
         Assert.NotSame(original, committed);
         Assert.NotSame(originalRecord, committedRecord);
         commit.Commit();
         Assert.Equal(1, retirement.PendingResourceCount);
         Assert.True(retirement.DrainOnce());
-        Assert.Same(committed, image.PlaceholderLayoutForTests);
-        Assert.Same(committedRecord, image.PlaceholderRetirementRecordForTests);
+        Assert.Same(committed, image.MeasureCustody.GetLayoutState().Placeholder);
+        Assert.Same(committedRecord, image.MeasureCustody.GetLayoutState().PlaceholderRecord);
 
         image.Dispose();
         await image.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
@@ -161,7 +161,7 @@ public sealed class ImageNativeDurableRetirementTests
         var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new LayoutDisposalProbe();
         ImageBox source = new(
-            fixture.SourceContext,
+            fixture.SourceContext, ImageResourceScope.Shared,
             fixture.RasterSource,
             "Placement custody",
             retirement,
@@ -185,12 +185,12 @@ public sealed class ImageNativeDurableRetirementTests
             Assert.NotNull(prepared);
             Assert.NotNull(expectedLease);
 
-            CanvasTextLayout? sourcePlaceholder = source.PlaceholderLayoutForTests;
-            NativeResourceRetirementRecord? sourcePlaceholderRecord = source.PlaceholderRetirementRecordForTests;
-            CanvasTextLayout sourceCaption = Assert.IsType<CanvasTextLayout>(source.CaptionLayoutForTests);
+            CanvasTextLayout? sourcePlaceholder = source.MeasureCustody.GetLayoutState().Placeholder;
+            NativeResourceRetirementRecord? sourcePlaceholderRecord = source.MeasureCustody.GetLayoutState().PlaceholderRecord;
+            CanvasTextLayout sourceCaption = Assert.IsType<CanvasTextLayout>(source.MeasureCustody.GetLayoutState().Caption);
             NativeResourceRetirementRecord sourceCaptionRecord = Assert.IsType<NativeResourceRetirementRecord>(
-                source.CaptionRetirementRecordForTests);
-            var transfer = new ImageBox.MeasuredPlacementTransfer(
+                source.MeasureCustody.GetLayoutState().CaptionRecord);
+            var transfer = new ImageMeasuredPlacementTransfer(
                 source,
                 prepared,
                 expectedLease,
@@ -209,11 +209,11 @@ public sealed class ImageNativeDurableRetirementTests
             Assert.True(prepared.TryCaptureNativeLayoutPlacementFence(out var preparedFence));
             transfer = transfer with { ExpectedPreparedNativeLayouts = preparedFence };
 
-            CanvasTextLayout? preparedPlaceholder = prepared.PlaceholderLayoutForTests;
-            NativeResourceRetirementRecord? preparedPlaceholderRecord = prepared.PlaceholderRetirementRecordForTests;
-            CanvasTextLayout preparedCaption = Assert.IsType<CanvasTextLayout>(prepared.CaptionLayoutForTests);
+            CanvasTextLayout? preparedPlaceholder = prepared.MeasureCustody.GetLayoutState().Placeholder;
+            NativeResourceRetirementRecord? preparedPlaceholderRecord = prepared.MeasureCustody.GetLayoutState().PlaceholderRecord;
+            CanvasTextLayout preparedCaption = Assert.IsType<CanvasTextLayout>(prepared.MeasureCustody.GetLayoutState().Caption);
             NativeResourceRetirementRecord preparedRecord = Assert.IsType<NativeResourceRetirementRecord>(
-                prepared.CaptionRetirementRecordForTests);
+                prepared.MeasureCustody.GetLayoutState().CaptionRecord);
             Assert.Same(preparedPlaceholder, preparedFence.Placeholder);
             Assert.Same(preparedPlaceholderRecord, preparedFence.PlaceholderRetirementRecord);
             Assert.Same(preparedCaption, preparedFence.Caption);
@@ -221,7 +221,7 @@ public sealed class ImageNativeDurableRetirementTests
 
             // A same-reference owner mutation still advances the native
             // generation. The stale source fence must not authorize a swap.
-            source.SetCaptionRetirementRecordForTests(sourceCaptionRecord);
+            source.MeasureCustody.ReplaceCaptionRecord(sourceCaptionRecord);
             Assert.True(source.TryCaptureNativeLayoutPlacementFence(out var currentSourceFence));
             Assert.True(snapshot.TryBeginInteraction());
             try
@@ -235,7 +235,7 @@ public sealed class ImageNativeDurableRetirementTests
             }
             transfer = transfer with { ExpectedSourceNativeLayouts = currentSourceFence };
 
-            prepared.SetCaptionRetirementRecordForTests(preparedRecord);
+            prepared.MeasureCustody.ReplaceCaptionRecord(preparedRecord);
             Assert.True(prepared.TryCaptureNativeLayoutPlacementFence(out var currentPreparedFence));
             Assert.True(snapshot.TryBeginInteraction());
             try
@@ -262,20 +262,20 @@ public sealed class ImageNativeDurableRetirementTests
                 snapshot.EndInteraction();
             }
 
-            Assert.Same(preparedPlaceholder, source.PlaceholderLayoutForTests);
-            Assert.Same(preparedPlaceholderRecord, source.PlaceholderRetirementRecordForTests);
-            Assert.Same(sourcePlaceholder, prepared.PlaceholderLayoutForTests);
-            Assert.Same(sourcePlaceholderRecord, prepared.PlaceholderRetirementRecordForTests);
-            Assert.Same(preparedCaption, source.CaptionLayoutForTests);
-            Assert.Same(preparedRecord, source.CaptionRetirementRecordForTests);
-            Assert.Same(sourceCaption, prepared.CaptionLayoutForTests);
-            Assert.Same(sourceCaptionRecord, prepared.CaptionRetirementRecordForTests);
-            Assert.True(source.HasNativeLayoutCustodyForTests);
-            Assert.True(prepared.HasNativeLayoutCustodyForTests);
+            Assert.Same(preparedPlaceholder, source.MeasureCustody.GetLayoutState().Placeholder);
+            Assert.Same(preparedPlaceholderRecord, source.MeasureCustody.GetLayoutState().PlaceholderRecord);
+            Assert.Same(sourcePlaceholder, prepared.MeasureCustody.GetLayoutState().Placeholder);
+            Assert.Same(sourcePlaceholderRecord, prepared.MeasureCustody.GetLayoutState().PlaceholderRecord);
+            Assert.Same(preparedCaption, source.MeasureCustody.GetLayoutState().Caption);
+            Assert.Same(preparedRecord, source.MeasureCustody.GetLayoutState().CaptionRecord);
+            Assert.Same(sourceCaption, prepared.MeasureCustody.GetLayoutState().Caption);
+            Assert.Same(sourceCaptionRecord, prepared.MeasureCustody.GetLayoutState().CaptionRecord);
+            Assert.True(source.MeasureCustody.GetLayoutState().HasValidCustody);
+            Assert.True(prepared.MeasureCustody.GetLayoutState().HasValidCustody);
         }
         finally
         {
-            if (prepared is not null && !prepared.ImageLifetimeDisposedForTests)
+            if (prepared is not null && !prepared.GetWorkState().LifetimeDisposed)
             {
                 targetContext.DiscardConstructionBlock(prepared);
                 await prepared.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
@@ -295,7 +295,7 @@ public sealed class ImageNativeDurableRetirementTests
         var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new LayoutDisposalProbe();
         ImageBox source = new(
-            fixture.SourceContext,
+            fixture.SourceContext, ImageResourceScope.Shared,
             fixture.RasterSource,
             "Record alias",
             retirement,
@@ -323,11 +323,11 @@ public sealed class ImageNativeDurableRetirementTests
             candidate.Arrange(0, 0, Width);
 
             NativeResourceRetirementRecord sharedRecord = Assert.IsType<NativeResourceRetirementRecord>(
-                source.CaptionRetirementRecordForTests);
+                source.MeasureCustody.GetLayoutState().CaptionRecord);
             originalPreparedRecord = Assert.IsType<NativeResourceRetirementRecord>(
-                candidate.CaptionRetirementRecordForTests);
-            candidate.SetCaptionRetirementRecordForTests(sharedRecord);
-            var transfer = new ImageBox.MeasuredPlacementTransfer(
+                candidate.MeasureCustody.GetLayoutState().CaptionRecord);
+            candidate.MeasureCustody.ReplaceCaptionRecord(sharedRecord);
+            var transfer = new ImageMeasuredPlacementTransfer(
                 source,
                 candidate,
                 expectedLease,
@@ -349,14 +349,14 @@ public sealed class ImageNativeDurableRetirementTests
                 snapshot.EndInteraction();
             }
 
-            Assert.Same(sharedRecord, source.CaptionRetirementRecordForTests);
-            Assert.Same(sharedRecord, candidate.CaptionRetirementRecordForTests);
+            Assert.Same(sharedRecord, source.MeasureCustody.GetLayoutState().CaptionRecord);
+            Assert.Same(sharedRecord, candidate.MeasureCustody.GetLayoutState().CaptionRecord);
         }
         finally
         {
             if (prepared is not null && originalPreparedRecord is not null)
-                prepared.SetCaptionRetirementRecordForTests(originalPreparedRecord);
-            if (prepared is not null && !prepared.ImageLifetimeDisposedForTests)
+                prepared.MeasureCustody.ReplaceCaptionRecord(originalPreparedRecord);
+            if (prepared is not null && !prepared.GetWorkState().LifetimeDisposed)
             {
                 targetContext.DiscardConstructionBlock(prepared);
                 await prepared.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
@@ -377,7 +377,7 @@ public sealed class ImageNativeDurableRetirementTests
         MarkdownLayoutContext context = harness.CreateContext();
         int optionsCalls = 0;
         var image = new ImageBox(
-            context,
+            context, ImageResourceScope.Shared,
             string.Empty,
             "caption failure",
             retirement,
@@ -390,13 +390,13 @@ public sealed class ImageNativeDurableRetirementTests
 
         InvalidOperationException failure = Assert.Throws<InvalidOperationException>(() => image.Measure(Width));
         Assert.Equal("Injected caption Options failure.", failure.Message);
-        Assert.NotNull(image.PlaceholderLayoutForTests);
-        Assert.NotNull(image.PlaceholderRetirementRecordForTests);
-        Assert.Null(image.CaptionLayoutForTests);
-        Assert.True(image.HasNativeLayoutCustodyForTests);
+        Assert.NotNull(image.MeasureCustody.GetLayoutState().Placeholder);
+        Assert.NotNull(image.MeasureCustody.GetLayoutState().PlaceholderRecord);
+        Assert.Null(image.MeasureCustody.GetLayoutState().Caption);
+        Assert.True(image.MeasureCustody.GetLayoutState().HasValidCustody);
         Assert.Equal(1, retirement.PendingRecordCount);
         Assert.Equal(1, retirement.PendingResourceCount);
-        bool placeholderRecordWasReserved = image.PlaceholderRetirementRecordForTests is not null;
+        bool placeholderRecordWasReserved = image.MeasureCustody.GetLayoutState().PlaceholderRecord is not null;
 
         image.Dispose();
         await image.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
@@ -416,10 +416,10 @@ public sealed class ImageNativeDurableRetirementTests
         LayoutDisposalProbe disposer)
     {
         MarkdownLayoutContext context = harness.CreateContext();
-        var image = new ImageBox(context, string.Empty, "terminal failure", retirement, disposer.Dispose);
+        var image = new ImageBox(context, ImageResourceScope.Shared, string.Empty, "terminal failure", retirement, disposer.Dispose);
         _ = image.Measure(Width);
-        Assert.NotNull(image.PlaceholderLayoutForTests);
-        Assert.NotNull(image.CaptionLayoutForTests);
+        Assert.NotNull(image.MeasureCustody.GetLayoutState().Placeholder);
+        Assert.NotNull(image.MeasureCustody.GetLayoutState().Caption);
         var imageReference = new WeakReference<ImageBox>(image);
         var contextReference = new WeakReference<MarkdownLayoutContext>(context);
 
@@ -437,12 +437,12 @@ public sealed class ImageNativeDurableRetirementTests
         LayoutDisposalProbe disposer)
     {
         MarkdownLayoutContext context = harness.CreateContext();
-        var image = new ImageBox(context, string.Empty, "disposed checkpoint", retirement, disposer.Dispose);
+        var image = new ImageBox(context, ImageResourceScope.Shared, string.Empty, "disposed checkpoint", retirement, disposer.Dispose);
         _ = image.MeasureInline(180f, 22f);
-        CanvasTextLayout original = Assert.IsType<CanvasTextLayout>(image.PlaceholderLayoutForTests);
-        ImageBox.InlineMeasureCheckpoint checkpoint = image.BeginInlineCheckpoint();
+        CanvasTextLayout original = Assert.IsType<CanvasTextLayout>(image.MeasureCustody.GetLayoutState().Placeholder);
+        InlineMeasureCheckpoint checkpoint = image.BeginInlineCheckpoint();
         _ = image.MeasureInline(100f, 22f, checkpoint);
-        CanvasTextLayout candidate = Assert.IsType<CanvasTextLayout>(image.PlaceholderLayoutForTests);
+        CanvasTextLayout candidate = Assert.IsType<CanvasTextLayout>(image.MeasureCustody.GetLayoutState().Placeholder);
         Assert.NotSame(original, candidate);
         var imageReference = new WeakReference<ImageBox>(image);
         var contextReference = new WeakReference<MarkdownLayoutContext>(context);
@@ -537,7 +537,7 @@ public sealed class ImageNativeDurableRetirementTests
 
         public void Dispose()
         {
-            SharedCanvasBitmapCache.ReleaseDevice(Device);
+            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(Device);
             Device.Dispose();
         }
     }

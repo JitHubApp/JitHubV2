@@ -167,7 +167,7 @@ public sealed class SemanticNodeIndexConstructionTests
         var images = new ImageBox[32];
         for (int index = 0; index < images.Length; index++)
         {
-            images[index] = new ImageBox(context, string.Empty, $"image {index}")
+            images[index] = new ImageBox(context, ImageResourceScope.Shared, string.Empty, $"image {index}")
             {
                 BlockIndex = context.NextBlockIndex(),
             };
@@ -219,7 +219,7 @@ public sealed class SemanticNodeIndexConstructionTests
         codeChunk.Add(new TextRun("var x = 1;"));
         codeBlock.AddChunk(codeChunk);
 
-        var poster = new ImageBox(context, string.Empty, "poster")
+        var poster = new ImageBox(context, ImageResourceScope.Shared, string.Empty, "poster")
         {
             BlockIndex = context.NextBlockIndex(),
         };

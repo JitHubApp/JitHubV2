@@ -21,7 +21,7 @@ public sealed class SemanticRangeIndexTests
     public void ImageRangesMatchLinearOracleIncludingEmptyAltAndInlineImages()
     {
         MarkdownLayoutContext context = CreateContext();
-        var blockImage = new ImageBox(context, string.Empty, "block");
+        var blockImage = new ImageBox(context, ImageResourceScope.Shared, string.Empty, "block");
         var inlineImage = new InlineImageRun(context, "inline", string.Empty);
         try
         {
@@ -155,7 +155,7 @@ public sealed class SemanticRangeIndexTests
             MarkdownAccessibilityRole.Diagram);
         var vector = new VectorSceneBox(context, Assert.Single(contentBuilder.Build().Items),
             MarkdownElementKeys.Diagram) { BlockIndex = context.NextBlockIndex() };
-        BlockBox[] blocks = [Paragraph("first"), new ImageBox(context, string.Empty, string.Empty),
+        BlockBox[] blocks = [Paragraph("first"), new ImageBox(context, ImageResourceScope.Shared, string.Empty, string.Empty),
             group, table, vector, Paragraph("last\n\n")];
         using var snapshot = new LayoutSnapshot(blocks, context.SourceMap, 200, 400);
         MarkdownSemanticDocument document = snapshot.SemanticDocument;

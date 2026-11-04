@@ -26,8 +26,8 @@ public sealed class ImageFailureNotificationTests
         var resolver = new ByteResolver(bytes, key);
         var context = DisplaySizedRasterDecodeTests.CreateContext(resolver, session, 1,
             imageUnavailable: (_, reason, _) => reports.Enqueue(reason));
-        var first = new ImageBox(context, "https://images.example/broken.png", "Banner");
-        var cached = new ImageBox(context, "https://images.example/broken.png", "Banner");
+        var first = new ImageBox(context, ImageResourceScope.Shared, "https://images.example/broken.png", "Banner");
+        var cached = new ImageBox(context, ImageResourceScope.Shared, "https://images.example/broken.png", "Banner");
         try
         {
             first.Measure(100);
@@ -61,7 +61,7 @@ public sealed class ImageFailureNotificationTests
         var reports = new ConcurrentQueue<MarkdownImageUnavailableReason>();
         var context = DisplaySizedRasterDecodeTests.CreateContext(new BlockedResolver(reason), null, 1,
             imageUnavailable: (_, value, _) => reports.Enqueue(value));
-        var image = new ImageBox(context, "https://images.example/blocked.png", "Banner");
+        var image = new ImageBox(context, ImageResourceScope.Shared, "https://images.example/blocked.png", "Banner");
         try
         {
             image.Measure(100);
@@ -80,8 +80,8 @@ public sealed class ImageFailureNotificationTests
         var context = DisplaySizedRasterDecodeTests.CreateContext(
             new BlockedResolver(MarkdownImageUnavailableReason.Offline), null, 1,
             imageUnavailable: (_, value, _) => reports.Enqueue(value));
-        var image = new ImageBox(context, string.Empty, "Missing source");
-        var retired = new ImageBox(context, string.Empty, "Retired source");
+        var image = new ImageBox(context, ImageResourceScope.Shared, string.Empty, "Missing source");
+        var retired = new ImageBox(context, ImageResourceScope.Shared, string.Empty, "Retired source");
         try
         {
             Assert.Empty(reports);

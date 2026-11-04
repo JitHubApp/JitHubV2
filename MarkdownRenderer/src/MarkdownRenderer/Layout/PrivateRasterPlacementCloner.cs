@@ -90,7 +90,7 @@ internal sealed class PrivateRasterPlacementCloner
         try
         {
             SharedCanvasBitmapCache.Lease? expectedSourceLease;
-            ImageBox.CompletedSvgPlacementMetadataFence? svgMetadataFence;
+            CompletedSvgPlacementMetadataFence? svgMetadataFence;
             bool isIdle = false;
             int idleGeneration = 0;
             bool created = _allowIdleImagePlacements

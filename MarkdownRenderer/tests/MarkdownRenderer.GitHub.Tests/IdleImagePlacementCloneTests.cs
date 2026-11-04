@@ -36,12 +36,12 @@ public sealed class IdleImagePlacementCloneTests
             {
                 Assert.Null(run.Image.Bitmap);
                 Assert.False(GetField<bool>(run.Image, "_loadStarted"));
-                Assert.Equal(0, run.Image.ActiveImageWorkCountForTests);
+                Assert.Equal(0, run.Image.GetWorkState().ActiveWorkCount);
             });
 
             Assert.True(MarkdownBuiltInImageSourcePolicy.TryResolve(
                 builtinUrl, null, out MarkdownBuiltInImageSource builtIn));
-            using (SharedCanvasBitmapCache.Lease ignoredSeedReference = SharedCanvasBitmapCache.StoreAndAcquire(
+            using (SharedCanvasBitmapCache.Lease ignoredSeedReference = ImageResourceScope.Shared.BitmapCache.StoreAndAcquire(
                        seed.Device,
                        builtIn.CacheKey,
                        CreateBitmap(seed.Device, 3, 2),
@@ -51,7 +51,7 @@ public sealed class IdleImagePlacementCloneTests
                 // existed. A private idle clone must not adopt it as a hit.
             }
 
-            Assert.True(SharedCanvasBitmapCache.TryAcquire(seed.Device, builtIn.CacheKey, out cacheProbe));
+            Assert.True(ImageResourceScope.Shared.BitmapCache.TryAcquire(seed.Device, builtIn.CacheKey, out cacheProbe));
             int cacheReferencesBefore = GetEntryReferenceCount(cacheProbe!);
 
             Assert.False(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
@@ -125,13 +125,13 @@ public sealed class IdleImagePlacementCloneTests
                     GetCancellationSource(cloneImage));
                 Assert.Null(cloneImage.Bitmap);
                 Assert.False(GetField<bool>(cloneImage, "_loadStarted"));
-                Assert.Equal(0, cloneImage.ActiveImageWorkCountForTests);
+                Assert.Equal(0, cloneImage.GetWorkState().ActiveWorkCount);
             }
 
             Assert.True(clonedRuns[1].Image.IsSvg); // A .svg URI hint is not accepted SVG state.
             Assert.Null(GetNullableField<WeakReference<byte[]>>(clonedRuns[1].Image, "_svgSourceIdentity"));
             Assert.Equal(cacheReferencesBefore, GetEntryReferenceCount(cacheProbe!));
-            Assert.All(fixture.ImageRuns, static run => Assert.Equal(0, run.Image.ActiveImageWorkCountForTests));
+            Assert.All(fixture.ImageRuns, static run => Assert.Equal(0, run.Image.GetWorkState().ActiveWorkCount));
 
             CancellationTokenSource sourceLifetime = GetCancellationSource(fixture.ImageRuns[0].Image);
             CancellationTokenSource cloneLifetime = GetCancellationSource(clonedRuns[0].Image);
@@ -140,7 +140,7 @@ public sealed class IdleImagePlacementCloneTests
             Assert.False(sourceLifetime.IsCancellationRequested);
             await fixture.RetireCandidateAsync(targetContext, clone);
             candidate = null;
-            Assert.True(clonedRuns[0].Image.ImageLifetimeDisposedForTests);
+            Assert.True(clonedRuns[0].Image.GetWorkState().LifetimeDisposed);
             Assert.False(sourceLifetime.IsCancellationRequested);
         }
         finally
@@ -207,7 +207,7 @@ public sealed class IdleImagePlacementCloneTests
             Assert.Equal(1, resolver.ResolveCount);
             cloneImage.EnsureLoading();
             Assert.Equal(1, resolver.ResolveCount);
-            Assert.True(cloneImage.ActiveImageWorkCountForTests > 0);
+            Assert.True(cloneImage.GetWorkState().ActiveWorkCount > 0);
             Assert.False(cloneImage.IsCurrentIdleImagePlacement(0));
 
             // Starting the original source after candidate capture invalidates
@@ -286,7 +286,7 @@ public sealed class IdleImagePlacementCloneTests
             Assert.False(canceledTargetImage.TryCreatePrivateImagePlacementClone(
                 canceledTarget, out _, out _, out _, out _, out _));
 
-            Assert.All(fixture.ImageRuns, static run => Assert.Equal(0, run.Image.ActiveImageWorkCountForTests));
+            Assert.All(fixture.ImageRuns, static run => Assert.Equal(0, run.Image.GetWorkState().ActiveWorkCount));
             Assert.All(fixture.ImageRuns, static run => Assert.Null(run.Image.Bitmap));
         }
         finally
@@ -334,7 +334,7 @@ public sealed class IdleImagePlacementCloneTests
 
         try
         {
-            completedLease = SharedCanvasBitmapCache.StoreAndAcquire(
+            completedLease = ImageResourceScope.Shared.BitmapCache.StoreAndAcquire(
                 seed.Device,
                 $"idle-preflight-completed-{Guid.NewGuid():N}",
                 CreateBitmap(seed.Device, 8, 4),
@@ -358,7 +358,7 @@ public sealed class IdleImagePlacementCloneTests
             pendingRun.Image.EnsureLoading();
             await resolver.WaitForCallAsync(1).WaitAsync(TimeSpan.FromSeconds(10));
             pendingResolveStarted = true;
-            Assert.True(pendingRun.Image.ActiveImageWorkCountForTests > 0);
+            Assert.True(pendingRun.Image.GetWorkState().ActiveWorkCount > 0);
             Assert.False(pendingRun.Image.IsCurrentIdleImagePlacement(0));
 
             var capture = new PrivateRasterPlacementTree.CaptureState(allowIdleImagePlacements: true);
@@ -393,7 +393,7 @@ public sealed class IdleImagePlacementCloneTests
             Assert.NotNull(candidateContext);
             Assert.Equal(referenceCountBefore, GetEntryReferenceCount(sourceLease));
             Assert.Same(sourceLease, GetImageLease(completedImage));
-            Assert.True(pendingRun.Image.ActiveImageWorkCountForTests > 0);
+            Assert.True(pendingRun.Image.GetWorkState().ActiveWorkCount > 0);
         }
         finally
         {
@@ -453,8 +453,8 @@ public sealed class IdleImagePlacementCloneTests
     {
         FieldInfo entryField = typeof(SharedCanvasBitmapCache.Lease).GetField(
             "_entry", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        object entry = Assert.IsAssignableFrom<SharedCanvasBitmapCache.Entry>(entryField.GetValue(lease));
-        FieldInfo countField = typeof(SharedCanvasBitmapCache.Entry).GetField(
+        object entry = Assert.IsAssignableFrom<SharedCanvasBitmapCacheEntry>(entryField.GetValue(lease));
+        FieldInfo countField = typeof(SharedCanvasBitmapCacheEntry).GetField(
             "_referenceCount", BindingFlags.Instance | BindingFlags.NonPublic)!;
         return Assert.IsType<int>(countField.GetValue(entry));
     }
@@ -637,7 +637,7 @@ public sealed class IdleImagePlacementCloneTests
             foreach ((MarkdownLayoutContext context, InlineContainerBox root) in _candidates.ToArray())
                 await RetireCandidateAsync(context, root);
             await RetireSourceAsync();
-            SharedCanvasBitmapCache.ReleaseDevice(_seed.Device);
+            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(_seed.Device);
         }
     }
 

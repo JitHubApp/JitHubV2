@@ -14,9 +14,9 @@ public sealed class MarkdownRasterDecodeAdmissionTests
     public void SharedAdmissionUsesTheArchitectureCapacityCeiling()
     {
         Assert.Equal(IntPtr.Size == 4 ? 64L * 1024 * 1024 : 128L * 1024 * 1024,
-            MarkdownImagePreparationAdmission.Shared.CapacityBytes);
+            MarkdownRenderer.Layout.Boxes.ImageResourceScope.Shared.Preparation.CapacityBytes);
         Assert.Equal(IntPtr.Size == 4 ? 1 : 2,
-            MarkdownImagePreparationAdmission.Shared.MaxConcurrency);
+            MarkdownRenderer.Layout.Boxes.ImageResourceScope.Shared.Preparation.MaxConcurrency);
     }
 
     [Fact]

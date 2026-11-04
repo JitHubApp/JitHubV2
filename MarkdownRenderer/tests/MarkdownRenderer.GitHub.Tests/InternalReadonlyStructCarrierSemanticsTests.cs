@@ -54,13 +54,13 @@ public sealed class InternalReadonlyStructCarrierSemanticsTests
     [Fact]
     public void MeasuredPlacementTransfer_PreservesNamedConstructorAndWithUpdates()
     {
-        ImageBox.MeasuredPlacementTransfer transfer = new(
+        ImageMeasuredPlacementTransfer transfer = new(
             Source: null!,
             Prepared: null!,
             ExpectedSourceLease: null!,
             ExpectedSvgMetadataFence: null,
             ExpectedAvailableWidth: 160f);
-        ImageBox.NativeLayoutPlacementFence nativeFence = new(
+        NativeLayoutPlacementFence nativeFence = new(
             Placeholder: null,
             PlaceholderRetirementRecord: null,
             Caption: null,
@@ -68,11 +68,11 @@ public sealed class InternalReadonlyStructCarrierSemanticsTests
             Generation: 3,
             IsValid: true);
 
-        ImageBox.MeasuredPlacementTransfer withNativeFence = transfer with
+        ImageMeasuredPlacementTransfer withNativeFence = transfer with
         {
             ExpectedPreparedNativeLayouts = nativeFence,
         };
-        ImageBox.MeasuredPlacementTransfer withPreparedWidth = withNativeFence with
+        ImageMeasuredPlacementTransfer withPreparedWidth = withNativeFence with
         {
             ExpectedPreparedAvailableWidth = 240f,
         };
