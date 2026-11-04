@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Hosting;
 
 namespace MarkdownRenderer.Controls;
 
@@ -45,6 +46,15 @@ internal sealed class RendererLocalization
     /// falling back to the built-in localized string.
     /// </summary>
     internal string Resolve(string key, string fallback) => Resolve(key, fallback, GetEffective());
+
+    /// <summary>
+    /// The code block copy button's label: <paramref name="configured"/> when
+    /// the host set one, otherwise the localized copy or copied default.
+    /// </summary>
+    internal string ResolveCodeBlockCopyLabel(string? configured, bool copied) =>
+        !string.IsNullOrWhiteSpace(configured) ? configured!
+        : copied ? Resolve(MarkdownStringKeys.CodeCopied, MarkdownLocalizedStrings.CodeBlockCopied)
+        : Resolve(MarkdownStringKeys.CopyCode, MarkdownLocalizedStrings.CodeBlockCopyAutomationName);
 
     /// <summary>
     /// Resolves and formats <paramref name="key"/>; a host format that does

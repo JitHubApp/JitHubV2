@@ -9,11 +9,12 @@ namespace MarkdownRenderer.Controls;
 /// syntax highlighting, and selection overlays follow the page or workspace
 /// scroll surface that already owns navigation.
 /// </remarks>
+// Partial because the CsWinRT AOT generator emits this class's WinRT vtable.
 public sealed partial class MarkdownDocumentView : MarkdownRendererControl
 {
     /// <summary>Initializes a non-scrolling markdown document view.</summary>
     public MarkdownDocumentView()
-        : base(ownsScrollViewport: false)
+        : base(ownsScrollViewport: false, MarkdownRendererDiagnosticOptions.None)
     {
         Engine = MarkdownEngine.Default;
     }

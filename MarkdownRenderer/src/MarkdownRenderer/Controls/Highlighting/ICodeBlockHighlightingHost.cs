@@ -8,11 +8,13 @@ using Microsoft.UI.Dispatching;
 namespace MarkdownRenderer.Controls.Highlighting;
 
 /// <summary>
-/// What code block highlighting needs from the control. The control is also
-/// the document owner the performance session admits scene work for.
+/// What code block highlighting needs from the control.
 /// </summary>
 internal interface ICodeBlockHighlightingHost
 {
+    /// <summary>The document owner the performance session admits scene work for: the control.</summary>
+    object DocumentOwner { get; }
+
     /// <summary>The control's dispatcher; read on the UI thread only.</summary>
     DispatcherQueue? DispatcherQueue { get; }
 

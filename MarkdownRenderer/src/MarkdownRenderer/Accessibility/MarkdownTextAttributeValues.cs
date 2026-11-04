@@ -24,7 +24,7 @@ internal static class MarkdownTextAttributeValues
     {
         return attribute switch
         {
-            AutomationTextAttributesEnum.CultureAttribute => peer.OwnerControl.AutomationCultureLcid,
+            AutomationTextAttributesEnum.CultureAttribute => peer.OwnerControl.AutomationHost.CultureLcid,
             AutomationTextAttributesEnum.IsActiveAttribute => peer.IsTextCaretActive,
             AutomationTextAttributesEnum.IsHiddenAttribute => false,
             AutomationTextAttributesEnum.IsReadOnlyAttribute => true,
@@ -47,7 +47,7 @@ internal static class MarkdownTextAttributeValues
         return attribute switch
         {
             AutomationTextAttributesEnum.BackgroundColorAttribute => ToColorRef(
-                style.Background ?? peer.OwnerControl.CurrentThemeSnapshot?.SurfaceColor ?? Microsoft.UI.Colors.Transparent),
+                style.Background ?? peer.OwnerControl.AutomationHost.Theme?.SurfaceColor ?? Microsoft.UI.Colors.Transparent),
             AutomationTextAttributesEnum.FontNameAttribute => style.FontFamily,
             AutomationTextAttributesEnum.FontSizeAttribute => (double)style.FontSize,
             AutomationTextAttributesEnum.FontWeightAttribute => (int)style.FontWeight.Weight,

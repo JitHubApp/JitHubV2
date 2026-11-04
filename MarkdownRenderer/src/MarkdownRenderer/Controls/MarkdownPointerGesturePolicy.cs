@@ -46,18 +46,3 @@ internal static class MarkdownPointerGesturePolicy
             : MarkdownPanGestureDecision.YieldToAncestor;
     }
 }
-
-internal enum MarkdownPointerModality
-{
-    Unknown,
-    Mouse,
-    Touch,
-    Pen,
-}
-
-internal enum MarkdownPanGestureDecision
-{
-    Pending,
-    YieldToAncestor,
-    CaptureHorizontal,
-}

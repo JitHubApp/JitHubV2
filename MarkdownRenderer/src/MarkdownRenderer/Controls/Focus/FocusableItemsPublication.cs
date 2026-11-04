@@ -69,6 +69,10 @@ internal sealed class FocusableItemsPublication
     /// the items were published; false leaves the request for the recovery
     /// clock, a rebuild, or a newer request.
     /// </summary>
+    /// <remarks>
+    /// Kept as one ordered fence sequence: the pre-lease targeting reassigns the
+    /// request and captures the generations and revision every later check compares.
+    /// </remarks>
     internal bool TryPublishPending()
     {
         var request = _refresh.Pending;
@@ -169,23 +173,56 @@ internal sealed class FocusableItemsPublication
 
         if (!collectedSuccessfully)
         {
-            if (snapshot.IsRetiringOrDisposed || snapshot.GeometryRecoveryRequired)
-                _refresh.Clear(request.RequestVersion);
-            else if (!ReferenceEquals(snapshot, _published.Snapshot) || generation != _published.Generation)
-                return false;
-            else if (revisionBefore != snapshot.LayoutRevision)
-            {
-                _refresh.Retarget(
-                    generation, automationGeneration, snapshot.LayoutRevision, request.RequestVersion);
-            }
-            else
-            {
-                _refresh.Clear(request.RequestVersion);
-                _host.RequestFullRebuild();
-            }
+            RecoverFailedCollection(request, snapshot, generation, automationGeneration, revisionBefore);
             return false;
         }
 
+        if (RetargetIfChangedDuringCollection(
+                request, snapshot, generation, automationGeneration, revisionBefore, revisionUnderLease))
+            return false;
+
+        _focus.ReplaceItems(collected);
+        _refresh.Clear(request.RequestVersion);
+        _host.InvalidateAutomationLayout();
+        return true;
+    }
+
+    // A failed collection clears a request whose snapshot is retiring, keeps
+    // it for a newer layout revision, or clears it and rebuilds.
+    private void RecoverFailedCollection(
+        FocusableItemsRefreshTicket request,
+        LayoutSnapshot snapshot,
+        long generation,
+        long automationGeneration,
+        long revisionBefore)
+    {
+        if (snapshot.IsRetiringOrDisposed || snapshot.GeometryRecoveryRequired)
+            _refresh.Clear(request.RequestVersion);
+        else if (!ReferenceEquals(snapshot, _published.Snapshot) || generation != _published.Generation)
+            return;
+        else if (revisionBefore != snapshot.LayoutRevision)
+        {
+            _refresh.Retarget(
+                generation, automationGeneration, snapshot.LayoutRevision, request.RequestVersion);
+        }
+        else
+        {
+            _refresh.Clear(request.RequestVersion);
+            _host.RequestFullRebuild();
+        }
+    }
+
+    // True when the snapshot, generation or layout revision moved, or a newer
+    // request arrived, while the items were collected. A request that is still
+    // current is kept for the new layout revision.
+    private bool RetargetIfChangedDuringCollection(
+        FocusableItemsRefreshTicket request,
+        LayoutSnapshot snapshot,
+        long generation,
+        long automationGeneration,
+        long revisionBefore,
+        long revisionUnderLease)
+    {
         long revisionAfter = snapshot.LayoutRevision;
         if (!ReferenceEquals(snapshot, _published.Snapshot) ||
             generation != _published.Generation ||
@@ -210,12 +247,9 @@ internal sealed class FocusableItemsPublication
                 _refresh.Retarget(
                     generation, automationGeneration, revisionAfter, request.RequestVersion);
             }
-            return false;
+            return true;
         }
 
-        _focus.ReplaceItems(collected);
-        _refresh.Clear(request.RequestVersion);
-        _host.InvalidateAutomationLayout();
-        return true;
+        return false;
     }
 }

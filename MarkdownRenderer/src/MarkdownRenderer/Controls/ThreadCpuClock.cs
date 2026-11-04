@@ -8,6 +8,7 @@ namespace MarkdownRenderer.Controls;
 /// Comparing this with wall time distinguishes work from descheduling or waits
 /// without collecting document text or sampling a process-wide workload.
 /// </summary>
+// Partial for the LibraryImport source generator.
 internal static partial class ThreadCpuClock
 {
     internal static long ReadCurrentThreadTicks()

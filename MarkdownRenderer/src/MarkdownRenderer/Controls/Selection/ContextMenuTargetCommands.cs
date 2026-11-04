@@ -53,16 +53,8 @@ internal sealed class ContextMenuTargetCommands
             bool isEnabled = CanExecuteOrDefault(action, hasDefault: true);
             if (!_isCurrentMenu(menu))
                 return added;
-            var item = new MenuFlyoutItem
-            {
-                Text = _host.ResolveLocalizedString(
-                    MarkdownStringKeys.CopyLink,
-                    MarkdownLocalizedStrings.ContextMenuCopyLink),
-                IsEnabled = isEnabled,
-            };
-            AutomationProperties.SetAutomationId(item, "MarkdownContextCopyLink");
-            Attach(item, action, target);
-            menu.Items.Add(item);
+            AddItem(menu, action, target, isEnabled, MarkdownStringKeys.CopyLink,
+                static () => MarkdownLocalizedStrings.ContextMenuCopyLink, "MarkdownContextCopyLink");
             added = true;
             if (!_isCurrentMenu(menu))
                 return added;
@@ -80,16 +72,8 @@ internal sealed class ContextMenuTargetCommands
                             target.ImageBitmapLease is not null);
             if (!_isCurrentMenu(menu))
                 return added;
-            var item = new MenuFlyoutItem
-            {
-                Text = _host.ResolveLocalizedString(
-                    MarkdownStringKeys.CopyImage,
-                    MarkdownLocalizedStrings.ContextMenuCopyImage),
-                IsEnabled = isEnabled,
-            };
-            AutomationProperties.SetAutomationId(item, "MarkdownContextCopyImage");
-            Attach(item, action, target);
-            menu.Items.Add(item);
+            AddItem(menu, action, target, isEnabled, MarkdownStringKeys.CopyImage,
+                static () => MarkdownLocalizedStrings.ContextMenuCopyImage, "MarkdownContextCopyImage");
             added = true;
             if (!_isCurrentMenu(menu))
                 return added;
@@ -106,16 +90,8 @@ internal sealed class ContextMenuTargetCommands
                 hasDefault: target.CodeText.Length > 0);
             if (!_isCurrentMenu(menu))
                 return added;
-            var item = new MenuFlyoutItem
-            {
-                Text = _host.ResolveLocalizedString(
-                    MarkdownStringKeys.CopyCode,
-                    MarkdownLocalizedStrings.ContextMenuCopyCode),
-                IsEnabled = isEnabled,
-            };
-            AutomationProperties.SetAutomationId(item, "MarkdownContextCopyCode");
-            Attach(item, action, target);
-            menu.Items.Add(item);
+            AddItem(menu, action, target, isEnabled, MarkdownStringKeys.CopyCode,
+                static () => MarkdownLocalizedStrings.ContextMenuCopyCode, "MarkdownContextCopyCode");
             added = true;
             if (!_isCurrentMenu(menu))
                 return added;
@@ -131,20 +107,35 @@ internal sealed class ContextMenuTargetCommands
                 hasDefault: tableSnapshot.HasText);
             if (!_isCurrentMenu(menu))
                 return added;
-            var item = new MenuFlyoutItem
-            {
-                Text = _host.ResolveLocalizedString(
-                    MarkdownStringKeys.CopyTable,
-                    MarkdownLocalizedStrings.ContextMenuCopyTable),
-                IsEnabled = isEnabled,
-            };
-            AutomationProperties.SetAutomationId(item, "MarkdownContextCopyTable");
-            Attach(item, action, target);
-            menu.Items.Add(item);
+            AddItem(menu, action, target, isEnabled, MarkdownStringKeys.CopyTable,
+                static () => MarkdownLocalizedStrings.ContextMenuCopyTable, "MarkdownContextCopyTable");
             added = true;
         }
 
         return added;
+    }
+
+    // Resolves the item's text after it is constructed, as the inline
+    // initializers did, then attaches its command and adds it.
+    private void AddItem(
+        MenuFlyout menu,
+        MarkdownTargetCommand action,
+        ContextMenuTarget target,
+        bool isEnabled,
+        string textKey,
+        Func<string> fallbackText,
+        string automationId)
+    {
+        var item = new MenuFlyoutItem
+        {
+            Text = _host.ResolveLocalizedString(
+                textKey,
+                fallbackText()),
+            IsEnabled = isEnabled,
+        };
+        AutomationProperties.SetAutomationId(item, automationId);
+        Attach(item, action, target);
+        menu.Items.Add(item);
     }
 
     /// <summary>Detaches the target items of <paramref name="menu"/> and disposes their target leases.</summary>

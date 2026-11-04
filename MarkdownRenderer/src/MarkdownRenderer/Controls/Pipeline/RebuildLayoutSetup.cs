@@ -26,6 +26,7 @@ internal sealed class RebuildLayoutSetup
     private static readonly MarkdownExtensionRegistry s_defaultRegistry = new();
 
     private readonly IRebuildLayoutSetupHost _host;
+    private readonly MarkdownRendererDiagnosticOptions _diagnostics;
     private readonly SnapshotRetirementTracker _retirements;
     private readonly ImageSourcePrefetch _imagePrefetch;
     private readonly CompletedImageCarryLedger _completedImageCarry;
@@ -36,6 +37,7 @@ internal sealed class RebuildLayoutSetup
 
     internal RebuildLayoutSetup(
         IRebuildLayoutSetupHost host,
+        MarkdownRendererDiagnosticOptions diagnostics,
         SnapshotRetirementTracker retirements,
         ImageSourcePrefetch imagePrefetch,
         CompletedImageCarryLedger completedImageCarry,
@@ -45,6 +47,7 @@ internal sealed class RebuildLayoutSetup
         object imagePreparationOwner)
     {
         _host = host;
+        _diagnostics = diagnostics;
         _retirements = retirements;
         _imagePrefetch = imagePrefetch;
         _completedImageCarry = completedImageCarry;
@@ -94,7 +97,7 @@ internal sealed class RebuildLayoutSetup
         var device = CanvasDevice.GetSharedDevice();
         MarkdownLayoutDiagnostics? layoutDiagnostics =
             performanceSession?.IsLayoutDiagnosticCaptureEnabled == true ||
-            _host.EnableStandaloneLayoutDiagnostics
+            _diagnostics.CaptureLayoutStages
                 ? new MarkdownLayoutDiagnostics()
                 : null;
         MarkdownLayoutContext context = CreateContext(

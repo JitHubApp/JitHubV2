@@ -33,7 +33,7 @@ internal sealed class MarkdownAutomationScreenGeometry
         double scale = _owner.XamlRoot?.RasterizationScale ?? 1.0;
         return new Rect(
             ownerScreen.X + docRect.X * scale,
-            ownerScreen.Y + (_owner.CurrentContentOffsetY + docRect.Y - _owner.CurrentScrollOffsetY) * scale,
+            ownerScreen.Y + (docRect.Y - _owner.AutomationHost.ScrollOffsetY) * scale,
             docRect.Width * scale,
             docRect.Height * scale);
     }
@@ -53,7 +53,7 @@ internal sealed class MarkdownAutomationScreenGeometry
         if (scale <= 0) scale = 1.0;
         documentPoint = new Point(
             (screenLocation.X - ownerScreen.X) / scale,
-            (screenLocation.Y - ownerScreen.Y) / scale - _owner.CurrentContentOffsetY + _owner.CurrentScrollOffsetY);
+            (screenLocation.Y - ownerScreen.Y) / scale + _owner.AutomationHost.ScrollOffsetY);
         return true;
     }
 

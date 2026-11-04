@@ -710,13 +710,12 @@ internal sealed class PerformanceWindow : Window
             long sequence = _events.CurrentSequence;
             if (captureStageProfile)
                 _events.BeginStageProfilePresentation(sequence, sourceBytes);
-            var renderer = new MarkdownScrollView
+            // The sidecar is explicitly diagnostic-only and quick-run-only.
+            // Enable stage counters before Markdown starts the initial build;
+            // regular quick/release measurements retain the uninstrumented path.
+            var renderer = new MarkdownScrollView(new MarkdownRendererDiagnosticOptions(captureStageProfile))
             {
                 Engine = engine,
-                // The sidecar is explicitly diagnostic-only and quick-run-only.
-                // Enable stage counters before Markdown starts the initial build;
-                // regular quick/release measurements retain the uninstrumented path.
-                EnableStandaloneLayoutDiagnostics = captureStageProfile,
                 Markdown = source,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 VerticalAlignment = VerticalAlignment.Stretch,

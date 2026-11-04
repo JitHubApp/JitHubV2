@@ -89,6 +89,18 @@ internal sealed class MarkdownViewport
         return false;
     }
 
+    /// <summary>
+    /// The visible document band as a rectangle at the document's left edge.
+    /// Returns false, with the same estimate as <see cref="TryGet"/>, when no
+    /// viewport is known yet.
+    /// </summary>
+    internal bool TryGetRect(out Rect rect)
+    {
+        bool hasViewport = TryGet(out double top, out double height, out double width);
+        rect = new Rect(0, top, width, height);
+        return hasViewport;
+    }
+
     /// <summary>The band the current viewport makes visible, with no overscan.</summary>
     internal LazyLayoutBand GetVisibleBand()
     {

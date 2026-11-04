@@ -44,7 +44,7 @@ internal sealed class MarkdownAutomationProjection
                 _peerCache.Clear();
                 _nodePeerCache = new Dictionary<MarkdownSemanticNode, MarkdownNodePeer>();
                 _vectorPeerCache.Clear();
-                _owner.InvalidateAutomationChildPeerCaches();
+                _owner.AutomationHost.InvalidateChildPeerCaches();
                 _textFormatCacheStore.Invalidate();
             }
 
@@ -58,7 +58,7 @@ internal sealed class MarkdownAutomationProjection
             _peerCache.Clear();
             _nodePeerCache = new Dictionary<MarkdownSemanticNode, MarkdownNodePeer>();
             _vectorPeerCache.Clear();
-            _owner.InvalidateAutomationChildPeerCaches();
+            _owner.AutomationHost.InvalidateChildPeerCaches();
             _textFormatCacheStore.Invalidate();
         }
 
@@ -68,7 +68,7 @@ internal sealed class MarkdownAutomationProjection
     internal MarkdownTextFormatCache GetTextFormatCache(MarkdownSemanticDocument document) =>
         _textFormatCacheStore.GetOrCreate(
             document,
-            _owner.CurrentThemeSnapshot);
+            _owner.AutomationHost.Theme);
 
     internal void InvalidateTextFormats() => _textFormatCacheStore.Invalidate();
 
@@ -119,7 +119,7 @@ internal sealed class MarkdownAutomationProjection
             node.InlineRun is LinkRun link)
         {
             var blockPeer = GetOrCreateBlockPeer(inline);
-            peer = _owner.GetOrCreateLinkPeer(blockPeer, link);
+            peer = _owner.AutomationHost.GetOrCreateLinkPeer(blockPeer, link);
             return true;
         }
 
@@ -128,7 +128,7 @@ internal sealed class MarkdownAutomationProjection
             node.InlineRun is InlineImageRun { IsLinked: true } linkedImage)
         {
             var blockPeer = GetOrCreateBlockPeer(imageInline);
-            peer = _owner.GetOrCreateLinkedImagePeer(blockPeer, linkedImage);
+            peer = _owner.AutomationHost.GetOrCreateLinkedImagePeer(blockPeer, linkedImage);
             return true;
         }
 
@@ -174,7 +174,7 @@ internal sealed class MarkdownAutomationProjection
         {
             if (ReferenceEquals(node.ImageBox, image) &&
                 node.InlineRun is InlineImageRun { IsLinked: true } linkedRun &&
-                _owner.TryGetLinkedImagePeer(linkedRun, out MarkdownLinkedImagePeer linkedPeer))
+                _owner.AutomationHost.TryGetLinkedImagePeer(linkedRun, out MarkdownLinkedImagePeer linkedPeer))
             {
                 linkedPeer.NotifyImageStatusChanged();
             }
@@ -361,7 +361,7 @@ internal sealed class MarkdownAutomationProjection
     {
         LayoutSnapshot? currentSnapshot = _owner.CurrentSnapshot;
         long currentGeneration = currentSnapshot?.AutomationDocumentGeneration ??
-            _owner.CurrentAutomationDocumentGeneration;
+            _owner.AutomationHost.DocumentGeneration;
         if (expectedDocumentGeneration is { } expectedGeneration)
             MarkdownAutomationDocumentGeneration.EnsureCurrent(expectedGeneration, currentGeneration);
 

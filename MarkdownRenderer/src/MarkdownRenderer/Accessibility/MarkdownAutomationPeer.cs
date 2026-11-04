@@ -48,16 +48,16 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
         string hostId = AutomationProperties.GetAutomationId(_owner);
         return string.IsNullOrWhiteSpace(hostId) ? MarkdownAutomationIdentity.Document : hostId;
     }
-    protected override int GetCultureCore() => _owner.AutomationCultureLcid;
+    protected override int GetCultureCore() => _owner.AutomationHost.CultureLcid;
     protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.Document;
     protected override bool IsControlElementCore() => true;
     protected override bool IsContentElementCore() => true;
     protected override bool HasKeyboardFocusCore() =>
-        !_owner.HasKeyboardFocusOnVirtualChild && base.HasKeyboardFocusCore();
+        !_owner.AutomationHost.HasKeyboardFocusOnVirtualChild && base.HasKeyboardFocusCore();
 
     protected override void SetFocusCore()
     {
-        _owner.FocusDocumentFromAutomation();
+        _owner.AutomationHost.FocusDocument();
     }
 
     public ITextRangeProvider DocumentRange => _text.DocumentRange;
@@ -130,7 +130,7 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
         IList<AutomationPeer> children = doc is null
             ? new List<AutomationPeer>()
             : GetChildPeersForSemanticNode(doc.Root);
-        _owner.AppendVisibleSelectionHandleAutomationPeers(children);
+        _owner.AutomationHost.AppendVisibleSelectionHandlePeers(children);
         return children;
     }
 
@@ -177,7 +177,7 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
     internal bool IsTextCaretActive => IsCaretActive(
         _owner.FocusState,
         _owner.IsSelectionEnabled,
-        _owner.HasKeyboardFocusOnVirtualChild);
+        _owner.AutomationHost.HasKeyboardFocusOnVirtualChild);
 
     internal static bool IsCaretActive(
         FocusState focusState,
@@ -196,7 +196,7 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
     internal MarkdownSemanticDocument GetCurrentTextRangeDocument(out long generation)
     {
         LayoutSnapshot? snapshot = _owner.CurrentSnapshot;
-        generation = snapshot?.AutomationDocumentGeneration ?? _owner.CurrentAutomationDocumentGeneration;
+        generation = snapshot?.AutomationDocumentGeneration ?? _owner.AutomationHost.DocumentGeneration;
         return GetSemanticDocumentOrNull(snapshot) ?? MarkdownSemanticDocument.Empty;
     }
 
@@ -206,7 +206,7 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
         MarkdownSemanticDocument? document = GetSemanticDocumentOrNull(snapshot);
         MarkdownAutomationDocumentGeneration.EnsureCurrent(
             expectedGeneration,
-            snapshot?.AutomationDocumentGeneration ?? _owner.CurrentAutomationDocumentGeneration);
+            snapshot?.AutomationDocumentGeneration ?? _owner.AutomationHost.DocumentGeneration);
         return document ?? MarkdownSemanticDocument.Empty;
     }
 
@@ -259,14 +259,14 @@ internal sealed partial class MarkdownAutomationPeer : FrameworkElementAutomatio
     internal void RaiseFocusForLink(InlineContainerBox inline, LinkRun link)
     {
         var blockPeer = _projection.GetOrCreateBlockPeer(inline);
-        var linkPeer = _owner.GetOrCreateLinkPeer(blockPeer, link);
+        var linkPeer = _owner.AutomationHost.GetOrCreateLinkPeer(blockPeer, link);
         linkPeer.RaiseAutomationFocusChanged();
     }
 
     internal void RaiseFocusForLinkedImage(InlineContainerBox inline, InlineImageRun image)
     {
         var blockPeer = _projection.GetOrCreateBlockPeer(inline);
-        var imagePeer = _owner.GetOrCreateLinkedImagePeer(blockPeer, image);
+        var imagePeer = _owner.AutomationHost.GetOrCreateLinkedImagePeer(blockPeer, image);
         imagePeer.RaiseAutomationFocusChanged();
     }
 

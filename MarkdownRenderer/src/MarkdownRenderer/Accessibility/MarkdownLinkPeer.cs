@@ -70,7 +70,7 @@ internal sealed partial class MarkdownLinkPeer : FrameworkElementAutomationPeer,
     protected override int GetCultureCore()
     {
         EnsureCurrentDocument();
-        return _owner.AutomationCultureLcid;
+        return _owner.AutomationHost.CultureLcid;
     }
 
     protected override bool IsKeyboardFocusableCore()
@@ -82,7 +82,7 @@ internal sealed partial class MarkdownLinkPeer : FrameworkElementAutomationPeer,
     protected override bool HasKeyboardFocusCore()
     {
         EnsureCurrentDocument();
-        return _owner.IsKeyboardFocusOnLink(_run);
+        return _owner.AutomationHost.IsKeyboardFocusOnLink(_run);
     }
 
     protected override System.Collections.Generic.IList<AutomationPeer> GetChildrenCore()
@@ -98,7 +98,7 @@ internal sealed partial class MarkdownLinkPeer : FrameworkElementAutomationPeer,
     protected override void SetFocusCore()
     {
         EnsureCurrentDocument();
-        _owner.FocusLinkFromAutomation(_run);
+        _owner.AutomationHost.FocusLinkedAtomic(_run);
     }
 
     protected override object GetPatternCore(PatternInterface patternIinterface)
@@ -117,7 +117,7 @@ internal sealed partial class MarkdownLinkPeer : FrameworkElementAutomationPeer,
         EnsureCurrentDocument();
         // Route through the renderer's public link click pipeline so external
         // subscribers and keyboard / assistive-tech activation behave the same.
-        _owner.RaiseLinkClickFromAutomation(_run);
+        _owner.AutomationHost.ActivateLinkedAtomic(_run);
     }
 
     public ExpandCollapseState ExpandCollapseState

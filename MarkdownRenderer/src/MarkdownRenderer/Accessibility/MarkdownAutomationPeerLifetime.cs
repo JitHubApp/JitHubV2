@@ -45,7 +45,7 @@ internal sealed class MarkdownAutomationPeerLifetime
     {
         LayoutSnapshot? snapshot = _owner.CurrentSnapshot;
         long currentGeneration = snapshot?.AutomationDocumentGeneration ??
-            _owner.CurrentAutomationDocumentGeneration;
+            _owner.AutomationHost.DocumentGeneration;
         return IsCurrentSnapshot(
             _documentGeneration,
             currentGeneration,
@@ -57,7 +57,7 @@ internal sealed class MarkdownAutomationPeerLifetime
     {
         LayoutSnapshot? snapshot = _owner.CurrentSnapshot;
         long currentGeneration = snapshot?.AutomationDocumentGeneration ??
-            _owner.CurrentAutomationDocumentGeneration;
+            _owner.AutomationHost.DocumentGeneration;
         MarkdownAutomationDocumentGeneration.EnsureCurrent(_documentGeneration, currentGeneration);
         if (!IsCurrentSnapshot(
                 _documentGeneration,

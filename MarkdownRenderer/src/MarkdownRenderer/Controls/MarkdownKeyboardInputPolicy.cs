@@ -2,12 +2,6 @@ using MarkdownRenderer.Layout;
 
 namespace MarkdownRenderer.Controls;
 
-internal enum HorizontalArrowHandlingOrder
-{
-    SpatialThenOverflow,
-    OverflowThenSpatial,
-}
-
 /// <summary>
 /// Pure keyboard-routing decisions shared by the WinUI event handler and
 /// platform-independent contract tests.

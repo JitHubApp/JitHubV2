@@ -64,7 +64,7 @@ internal sealed partial class MarkdownBlockPeer : FrameworkElementAutomationPeer
     protected override int GetCultureCore()
     {
         EnsureCurrentDocument();
-        return _owner.AutomationCultureLcid;
+        return _owner.AutomationHost.CultureLcid;
     }
 
     protected override bool IsControlElementCore()

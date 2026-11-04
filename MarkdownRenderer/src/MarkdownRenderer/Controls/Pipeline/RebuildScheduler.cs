@@ -130,26 +130,7 @@ internal sealed class RebuildScheduler
         var dispatcher = _host.DispatcherQueue;
         if (dispatcher is not null && !dispatcher.HasThreadAccess)
         {
-            bool enqueued;
-            try
-            {
-                enqueued = dispatcher.TryEnqueue(() => Request(reason));
-            }
-            catch (Exception exception)
-            {
-                enqueued = false;
-                MarkdownDiagnostics.WriteLine(
-                    $"[MarkdownRendererControl] Dispatcher rejected cross-thread rebuild request: {exception.Message}");
-            }
-
-            if (!enqueued)
-            {
-                if (!_lifetime.IsDisposed && !_lifetime.IsUnloaded)
-                {
-                    RecordRejectedCrossThread(reason);
-                    MarkdownDiagnostics.WriteLine("[MarkdownRendererControl] Dispatcher rejected cross-thread rebuild request.");
-                }
-            }
+            MarshalRequest(dispatcher, reason);
             return;
         }
 
@@ -196,6 +177,33 @@ internal sealed class RebuildScheduler
             _host.AdvanceDeferredSceneGeneration();
         }
 
+        SupersedeActiveGeneration(performance);
+        QueuePending();
+    }
+
+    private void MarshalRequest(Microsoft.UI.Dispatching.DispatcherQueue dispatcher, RebuildReason reason)
+    {
+        bool enqueued;
+        try
+        {
+            enqueued = dispatcher.TryEnqueue(() => Request(reason));
+        }
+        catch (Exception exception)
+        {
+            enqueued = false;
+            MarkdownDiagnostics.WriteLine(
+                $"[MarkdownRendererControl] Dispatcher rejected cross-thread rebuild request: {exception.Message}");
+        }
+
+        if (!enqueued && !_lifetime.IsDisposed && !_lifetime.IsUnloaded)
+        {
+            RecordRejectedCrossThread(reason);
+            MarkdownDiagnostics.WriteLine("[MarkdownRendererControl] Dispatcher rejected cross-thread rebuild request.");
+        }
+    }
+
+    private void SupersedeActiveGeneration(MarkdownPerformanceEventSource performance)
+    {
         // Fence the currently active generation at request time, before the
         // queued rebuild callback can be delayed by UI work. This makes a
         // superseded pipeline unable to publish even while its parse worker is
@@ -223,7 +231,6 @@ internal sealed class RebuildScheduler
             supersededTask,
             supersededGeneration,
             supersessionTimestamp);
-        QueuePending();
     }
 
     /// <summary>Remembers the strongest request whose cross-thread dispatch was rejected.</summary>

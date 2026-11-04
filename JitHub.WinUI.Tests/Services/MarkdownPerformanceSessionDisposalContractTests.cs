@@ -15,9 +15,10 @@ public sealed class MarkdownPerformanceSessionDisposalContractTests
             "src",
             "MarkdownRenderer",
             "Controls",
-            "MarkdownRendererControl.cs"));
-        int handlerStart = source.IndexOf("private void OnPerformanceSessionDisposed", StringComparison.Ordinal);
-        int handlerEnd = source.IndexOf("private void OnSvgRendererChanged", handlerStart, StringComparison.Ordinal);
+            "Providers",
+            "PerformanceSessionSubscription.cs"));
+        int handlerStart = source.IndexOf("private void OnDisposed(", StringComparison.Ordinal);
+        int handlerEnd = source.LastIndexOf('}');
 
         Assert.True(handlerStart >= 0 && handlerEnd > handlerStart);
         string handler = source[handlerStart..handlerEnd];
@@ -25,9 +26,9 @@ public sealed class MarkdownPerformanceSessionDisposalContractTests
 
         Assert.True(enqueue >= 0);
         string queuedCallback = handler[enqueue..];
-        Assert.Contains("ReferenceEquals(sender, Volatile.Read(ref _subscribedPerformanceSession))", queuedCallback, StringComparison.Ordinal);
+        Assert.Contains("ReferenceEquals(sender, Volatile.Read(ref _subscribed))", queuedCallback, StringComparison.Ordinal);
         Assert.Contains("!_lifetime.IsDisposed && !_lifetime.IsUnloaded", queuedCallback, StringComparison.Ordinal);
-        Assert.Contains("RequestRebuild(RebuildReason.Full);", queuedCallback, StringComparison.Ordinal);
+        Assert.Contains("_rebuild.Request(RebuildReason.Full);", queuedCallback, StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()

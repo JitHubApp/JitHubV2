@@ -1,4 +1,3 @@
-using System;
 using MarkdownRenderer.Controls.Selection;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout;
@@ -14,9 +13,10 @@ namespace MarkdownRenderer.Controls.Input;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This class owns the captured pointer session, the drag anchor, the click
-/// mode and the multi-click sequence. Other components end or reset them
-/// only through its methods.
+/// This class owns the captured pointer session, the drag anchor, the
+/// multi-click sequence and the <see cref="ClickUnitSelection"/> that holds
+/// the click mode. Other components end or reset them only through its
+/// methods.
 /// </para>
 /// <para>
 /// Every method runs while the renderer holds the snapshot interaction
@@ -56,12 +56,9 @@ internal sealed class DocumentPointerInteraction
     // events arrive out of order or are routed through the drag shield.
     private PointerSession _session;
     private DocumentPosition? _anchor;
-    private ClickSelectionMode _clickMode;
-    // When _clickMode is Word or Block, these hold the start/end of the initially
-    // selected word/block so that backward drag can correctly extend to the
-    // start of the word/block under the pointer rather than always to the end.
-    private DocumentPosition _dragAnchorStart;
-    private DocumentPosition _dragAnchorEnd;
+    // The unit (character, word or block) the press selects and drags by.
+    private readonly ClickUnitSelection _clickUnits;
+    private readonly TouchSelectionHitTest _touchHitTest;
 
     internal DocumentPointerInteraction(
         IPointerInteractionHost host,
@@ -97,6 +94,8 @@ internal sealed class DocumentPointerInteraction
         _hoverTracker = hoverTracker;
         _cursor = cursor;
         _abbreviationTooltip = abbreviationTooltip;
+        _clickUnits = new ClickUnitSelection(host, published, selection);
+        _touchHitTest = new TouchSelectionHitTest(host);
     }
 
     /// <summary>True while a primary pointer session holds the canvas capture.</summary>
@@ -123,7 +122,7 @@ internal sealed class DocumentPointerInteraction
     internal void ForgetDragAnchor()
     {
         _anchor = null;
-        _clickMode = ClickSelectionMode.Single;
+        _clickUnits.ResetToSingle();
     }
 
     /// <summary>Starts the next press as a new click sequence.</summary>
@@ -134,9 +133,7 @@ internal sealed class DocumentPointerInteraction
     {
         _session = default;
         _anchor = null;
-        _clickMode = ClickSelectionMode.Single;
-        _dragAnchorStart = default;
-        _dragAnchorEnd = default;
+        _clickUnits.Reset();
         _clicks.Reset();
     }
 
@@ -252,7 +249,7 @@ internal sealed class DocumentPointerInteraction
             // item must still receive a complete press/release gesture, but it must
             // not become a text-selection anchor.
             _clicks.AcceptPress(pt, nowMs);
-            _clickMode = ClickSelectionMode.Single;
+            _clickUnits.ResetToSingle();
             _session = new PointerSession(e.Pointer.PointerId, IsPrimary: true);
             _anchor = null;
             _selection.Clear();
@@ -306,7 +303,7 @@ internal sealed class DocumentPointerInteraction
             e.Handled = true;
 
             _abbreviationTooltip.Hide();
-            ExtendDragSelection(_autoScroll.PrepareDragPoint(pt));
+            _clickUnits.ExtendDragSelection(_autoScroll.PrepareDragPoint(pt));
             // Do NOT update hover state during an active selection drag.
             // Calling SetColor on the CanvasTextLayout (which ApplyHoverColor
             // does whenever HoveredRun changes) causes DirectWrite to
@@ -401,7 +398,7 @@ internal sealed class DocumentPointerInteraction
         // Click handling for links: if no real selection occurred, raise LinkClick
         // when the click lands on a LinkRun.
         if (e.InteractionSnapshot is not { } snapshot) return;
-        if (_clickMode != ClickSelectionMode.Single) return; // double/triple-click: selection intent, not link-click
+        if (_clickUnits.Mode != ClickSelectionMode.Single) return; // double/triple-click: selection intent, not link-click
         if (!_selection.Range.Normalized().IsEmpty) return; // text was dragged — not a click
         var pt = e.Point.Position;
         if (LinkTargets.TryCreateActivationIntent(
@@ -454,7 +451,7 @@ internal sealed class DocumentPointerInteraction
         _session = default;
         _anchor = null;
         _autoScroll.Reset();
-        _clickMode = ClickSelectionMode.Single;
+        _clickUnits.ResetToSingle();
         _dragShield.SetActive(false);
         if (!_selection.Range.Normalized().IsEmpty)
             _adorner.Invalidate();
@@ -551,7 +548,7 @@ internal sealed class DocumentPointerInteraction
     {
         if (!_host.IsSelectionEnabled ||
             !_host.IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision) ||
-            !TryHitTestTouchSelection(point, snapshot, capturedContact, out DocumentPosition position))
+            !_touchHitTest.TryHitTestTouchSelection(point, snapshot, capturedContact, out DocumentPosition position))
         {
             return false;
         }
@@ -562,9 +559,8 @@ internal sealed class DocumentPointerInteraction
 
         _clicks.Reset();
         _anchor = null;
-        _clickMode = ClickSelectionMode.Word;
-        (_dragAnchorStart, _dragAnchorEnd) = ExpandSelectionToWord(
-            snapshot, position, snapshotGeneration, layoutRevision);
+        _clickUnits.SelectUnit(
+            snapshot, position, ClickSelectionMode.Word, snapshotGeneration, layoutRevision);
         if (!_host.IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
             return false;
 
@@ -618,10 +614,10 @@ internal sealed class DocumentPointerInteraction
         {
             // Selection is disabled but links must still work: capture the pointer
             // so the release arrives and can raise LinkClick.
-            // Also ensure _clickMode is reset so the link-click guard in
+            // Also ensure the click mode is reset so the link-click guard in
             // ProcessReleased is not stale from a previous double/triple-click
             // sequence made while IsSelectionEnabled was true.
-            _clickMode = ClickSelectionMode.Single;
+            _clickUnits.ResetToSingle();
             if (!PointerInputClassification.CapturePointerForInput(_surface.Canvas!, e)) _session = default;
             else e.Handled = true;
             return;
@@ -644,7 +640,7 @@ internal sealed class DocumentPointerInteraction
             SelectClickUnit(ref e, snapshot, pos, ClickSelectionMode.Word, snapshotGeneration, layoutRevision);
             return;
         }
-        _clickMode = ClickSelectionMode.Single;
+        _clickUnits.ResetToSingle();
         _selection.SetAnchor(pos);
         if (!_host.IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
             return;
@@ -663,16 +659,13 @@ internal sealed class DocumentPointerInteraction
         long snapshotGeneration,
         long layoutRevision)
     {
-        _clickMode = mode;
-        (_dragAnchorStart, _dragAnchorEnd) = mode == ClickSelectionMode.Block
-            ? ExpandSelectionToBlock(snapshot, pos, snapshotGeneration, layoutRevision)
-            : ExpandSelectionToWord(snapshot, pos, snapshotGeneration, layoutRevision);
+        _clickUnits.SelectUnit(snapshot, pos, mode, snapshotGeneration, layoutRevision);
         if (!_host.IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
             return;
-        _selection.SetAnchor(_dragAnchorStart);
+        _selection.SetAnchor(_clickUnits.AnchorStart);
         if (!_host.IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
             return;
-        _selection.ExtendTo(_dragAnchorEnd);
+        _selection.ExtendTo(_clickUnits.AnchorEnd);
         if (!_host.IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
             return;
         // Selection is rendered by the XAML overlay; do not dirty canvas
@@ -682,164 +675,13 @@ internal sealed class DocumentPointerInteraction
         else e.Handled = true;
     }
 
-    private void ExtendDragSelection(Point dragPoint)
-    {
-        // Atomic embed inclusion: when the pointer is inside an inline
-        // embed rect during a drag, snap the position to either the
-        // start or end of the InlineEmbedRun (whichever side the pointer
-        // is closer to).  This treats the embed as a single, indivisible
-        // unit of selectable content — the user can never have a
-        // selection that ends *halfway through* an embedded button or
-        // textbox, which matches how browsers handle <input> /
-        // <textarea> inside contenteditable text.
-        if (_host.TryHitTestEmbed(dragPoint, out var embedPos))
-        {
-            _selection.ExtendTo(embedPos);
-            // No canvas Invalidate(): selection is on the XAML overlay.
-        }
-        else if (_published.Snapshot!.HitTestSelectionEndpoint(dragPoint, out var pos))
-        {
-            // For word/block click modes extend selection snapped to the
-            // appropriate boundary so dragging after double/triple-click
-            // produces word-by-word or block-by-block selection, matching
-            // browser / native text editor behaviour.
-            if (_clickMode == ClickSelectionMode.Word)
-            {
-                var icb = DocumentHitTesting.FindInlineContainerAt(_published.Snapshot, pos.BlockIndex);
-                if (icb is not null)
-                {
-                    var (ws, we) = icb.GetWordBoundaries(pos);
-                    // Backward drag: anchor at initial-word end, extend to current-word start.
-                    // Forward drag: anchor at initial-word start, extend to current-word end.
-                    if (pos.CompareTo(_dragAnchorStart) < 0)
-                    { _selection.SetAnchor(_dragAnchorEnd); _selection.ExtendTo(ws); }
-                    else
-                    { _selection.SetAnchor(_dragAnchorStart); _selection.ExtendTo(we); }
-                }
-                else
-                    _selection.ExtendTo(pos); // no ICB (code block/embed) — fall back to char selection
-            }
-            else if (_clickMode == ClickSelectionMode.Block)
-            {
-                var icb = DocumentHitTesting.FindInlineContainerAt(_published.Snapshot, pos.BlockIndex);
-                if (icb is not null)
-                {
-                    var (bs, be) = icb.GetBlockBoundaries();
-                    if (pos.CompareTo(_dragAnchorStart) < 0)
-                    { _selection.SetAnchor(_dragAnchorEnd); _selection.ExtendTo(bs); }
-                    else
-                    { _selection.SetAnchor(_dragAnchorStart); _selection.ExtendTo(be); }
-                }
-                else
-                    _selection.ExtendTo(pos); // no ICB — fall back to char selection
-            }
-            else
-                _selection.ExtendTo(pos);
-            // No canvas Invalidate(): selection is on the XAML overlay.
-        }
-    }
-
     private bool IsActiveSessionEvent(PointerInput e)
         => _session.IsActive && _session.PointerId == e.Pointer.PointerId;
-
-    private bool TryHitTestTouchSelection(
-        Point gesturePoint,
-        LayoutSnapshot snapshot,
-        TouchContactGeometry? capturedContact,
-        out DocumentPosition position)
-    {
-        position = default;
-        if (IsSelectableTouchPoint(gesturePoint, snapshot, out position))
-            return true;
-
-        if (capturedContact is not { } contact ||
-            !GestureHitTestBands.IsBoundedGestureContact(gesturePoint, contact))
-            return false;
-
-        double left = contact.X;
-        double top = contact.Y;
-        double right = contact.X + contact.Width;
-        double bottom = contact.Y + contact.Height;
-        Point center = new(contact.CenterX, contact.CenterY);
-        double insetX = Math.Min(4, contact.Width / 4);
-        double insetY = Math.Min(4, contact.Height / 4);
-        return IsSelectableTouchPoint(center, snapshot, out position) ||
-               IsSelectableTouchPoint(new Point(left + insetX, center.Y), snapshot, out position) ||
-               IsSelectableTouchPoint(new Point(right - insetX, center.Y), snapshot, out position) ||
-               IsSelectableTouchPoint(new Point(center.X, top + insetY), snapshot, out position) ||
-               IsSelectableTouchPoint(new Point(center.X, bottom - insetY), snapshot, out position);
-    }
 
     /// <summary>
     /// True when <paramref name="point"/> hits selectable text that is not
     /// under a hosted embed or a code block action.
     /// </summary>
     internal bool IsSelectableTouchPoint(Point point, LayoutSnapshot snapshot, out DocumentPosition position)
-    {
-        position = default;
-        return !_host.IsPointOverEmbed(point) &&
-               !_host.IsPointOverCodeBlockAction(point) &&
-               snapshot.HitTest(point, out position);
-    }
-
-    /// <summary>
-    /// Selects the word containing <paramref name="pos"/> in its inline
-    /// container and returns its start and end.
-    /// </summary>
-    private (DocumentPosition Start, DocumentPosition End) ExpandSelectionToWord(
-        LayoutSnapshot snapshot,
-        DocumentPosition pos,
-        long snapshotGeneration,
-        long layoutRevision)
-    {
-        var icb = DocumentHitTesting.FindInlineContainerAt(snapshot, pos.BlockIndex);
-        if (icb is null)
-            return AnchorWithoutInlineContainer(snapshot, pos, snapshotGeneration, layoutRevision);
-        var (start, end) = icb.GetWordBoundaries(pos);
-        _selection.SetAnchor(start);
-        if (!_host.IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
-            return (start, end);
-        _selection.ExtendTo(end);
-        // No canvas Invalidate(): selection is rendered on the XAML overlay only.
-        return (start, end);
-    }
-
-    /// <summary>
-    /// Selects the whole inline container (paragraph or heading line) that
-    /// contains <paramref name="pos"/> and returns its start and end.
-    /// </summary>
-    private (DocumentPosition Start, DocumentPosition End) ExpandSelectionToBlock(
-        LayoutSnapshot snapshot,
-        DocumentPosition pos,
-        long snapshotGeneration,
-        long layoutRevision)
-    {
-        var icb = DocumentHitTesting.FindInlineContainerAt(snapshot, pos.BlockIndex);
-        if (icb is null)
-            return AnchorWithoutInlineContainer(snapshot, pos, snapshotGeneration, layoutRevision);
-        var (start, end) = icb.GetBlockBoundaries();
-        _selection.SetAnchor(start);
-        if (!_host.IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
-            return (start, end);
-        _selection.ExtendTo(end);
-        // No canvas Invalidate(): selection is rendered on the XAML overlay only.
-        return (start, end);
-    }
-
-    private (DocumentPosition Start, DocumentPosition End) AnchorWithoutInlineContainer(
-        LayoutSnapshot snapshot,
-        DocumentPosition pos,
-        long snapshotGeneration,
-        long layoutRevision)
-    {
-        // Block has no inline container (code block, embed row, etc.).
-        // Set anchor at the click position so subsequent drag ExtendTo calls
-        // always have a valid anchor; this makes the selection empty (start==end)
-        // while allowing drag to extend from this point.
-        _selection.SetAnchor(pos);
-        if (!_host.IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))
-            return (pos, pos);
-        // No canvas Invalidate(): selection is rendered on the XAML overlay only.
-        return (pos, pos);
-    }
+        => _touchHitTest.IsSelectableTouchPoint(point, snapshot, out position);
 }

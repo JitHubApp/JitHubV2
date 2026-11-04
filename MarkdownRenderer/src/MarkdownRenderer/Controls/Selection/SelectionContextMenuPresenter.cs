@@ -84,10 +84,10 @@ internal sealed class SelectionContextMenuPresenter
     /// <param name="requiredSnapshotGeneration">The generation that goes with <paramref name="requiredSnapshot"/>.</param>
     /// <param name="requiredLayoutRevision">The layout revision that goes with <paramref name="requiredSnapshot"/>.</param>
     /// <remarks>
-    /// Kept whole: building the target, attaching its commands and opening
-    /// the flyout can each reenter XAML, and every exit path must dispose the
-    /// target it created, so the currency checks and disposals stay in one
-    /// method.
+    /// Item construction lives in its own methods. The rest stays whole:
+    /// building the target, attaching its commands and opening the flyout can
+    /// each reenter XAML, and every exit path must dispose the target it
+    /// created, so the currency checks and disposals stay in one method.
     /// </remarks>
     internal bool Show(
         Point placementPoint,
@@ -153,33 +153,7 @@ internal sealed class SelectionContextMenuPresenter
 
             bool hasSelectionItems = _selection.IsActive;
             if (hasSelectionItems)
-            {
-                var copyItem = new MenuFlyoutItem
-                {
-                    Text = _host.ResolveLocalizedString(
-                        MarkdownStringKeys.Copy,
-                        MarkdownLocalizedStrings.ContextMenuCopy),
-                    IsEnabled = _commands.CanExecuteOrDefault(
-                        MarkdownCommandKind.CopyRendered),
-                };
-                AutomationProperties.SetAutomationId(copyItem, "MarkdownContextCopy");
-                copyItem.Click += (_, _) =>
-                    _commands.Execute(MarkdownCommandKind.CopyRendered);
-                menu.Items.Add(copyItem);
-
-                var copyMarkdownItem = new MenuFlyoutItem
-                {
-                    Text = _host.ResolveLocalizedString(
-                        MarkdownStringKeys.CopyMarkdown,
-                        MarkdownLocalizedStrings.ContextMenuCopyMarkdown),
-                    IsEnabled = _commands.CanExecuteOrDefault(
-                        MarkdownCommandKind.CopyMarkdown),
-                };
-                AutomationProperties.SetAutomationId(copyMarkdownItem, "MarkdownContextCopyMarkdown");
-                copyMarkdownItem.Click += (_, _) =>
-                    _commands.Execute(MarkdownCommandKind.CopyMarkdown);
-                menu.Items.Add(copyMarkdownItem);
-            }
+                AddSelectionItems(menu);
 
             if (!ReferenceEquals(_menu, menu) ||
                 !IsCurrentSnapshot(
@@ -197,25 +171,7 @@ internal sealed class SelectionContextMenuPresenter
             if ((hasSelectionItems || hasTargetItems) && menu.Items.Count > 0)
                 menu.Items.Add(new MenuFlyoutSeparator());
 
-            var selectAllItem = new MenuFlyoutItem
-            {
-                Text = _host.ResolveLocalizedString(
-                    MarkdownStringKeys.SelectAll,
-                    MarkdownLocalizedStrings.ContextMenuSelectAll),
-                IsEnabled = _host.IsSelectionEnabled,
-            };
-            AutomationProperties.SetAutomationId(selectAllItem, "MarkdownContextSelectAll");
-            selectAllItem.Click += (_, _) =>
-            {
-                if (!_host.IsSelectionEnabled) return;
-                if (_handles.HasCaptureTarget)
-                    _handles.ResetDrag();
-                _touchTapSuppression.Reset();
-                _touchSelection.Reset();
-                _selection.SetAnchor(DocumentPosition.Zero);
-                _selection.ExtendTo(new DocumentPosition(int.MaxValue, int.MaxValue, int.MaxValue));
-            };
-            menu.Items.Add(selectAllItem);
+            AddSelectAllItem(menu);
 
             if (!ReferenceEquals(_menu, menu) || !_isOpen ||
                 !IsCurrentSnapshot(
@@ -256,6 +212,58 @@ internal sealed class SelectionContextMenuPresenter
                 $"[MarkdownRendererControl] context menu failed: {ex.Message}");
             return false;
         }
+    }
+
+    private void AddSelectionItems(MenuFlyout menu)
+    {
+        var copyItem = new MenuFlyoutItem
+        {
+            Text = _host.ResolveLocalizedString(
+                MarkdownStringKeys.Copy,
+                MarkdownLocalizedStrings.ContextMenuCopy),
+            IsEnabled = _commands.CanExecuteOrDefault(
+                MarkdownCommandKind.CopyRendered),
+        };
+        AutomationProperties.SetAutomationId(copyItem, "MarkdownContextCopy");
+        copyItem.Click += (_, _) =>
+            _commands.Execute(MarkdownCommandKind.CopyRendered);
+        menu.Items.Add(copyItem);
+
+        var copyMarkdownItem = new MenuFlyoutItem
+        {
+            Text = _host.ResolveLocalizedString(
+                MarkdownStringKeys.CopyMarkdown,
+                MarkdownLocalizedStrings.ContextMenuCopyMarkdown),
+            IsEnabled = _commands.CanExecuteOrDefault(
+                MarkdownCommandKind.CopyMarkdown),
+        };
+        AutomationProperties.SetAutomationId(copyMarkdownItem, "MarkdownContextCopyMarkdown");
+        copyMarkdownItem.Click += (_, _) =>
+            _commands.Execute(MarkdownCommandKind.CopyMarkdown);
+        menu.Items.Add(copyMarkdownItem);
+    }
+
+    private void AddSelectAllItem(MenuFlyout menu)
+    {
+        var selectAllItem = new MenuFlyoutItem
+        {
+            Text = _host.ResolveLocalizedString(
+                MarkdownStringKeys.SelectAll,
+                MarkdownLocalizedStrings.ContextMenuSelectAll),
+            IsEnabled = _host.IsSelectionEnabled,
+        };
+        AutomationProperties.SetAutomationId(selectAllItem, "MarkdownContextSelectAll");
+        selectAllItem.Click += (_, _) =>
+        {
+            if (!_host.IsSelectionEnabled) return;
+            if (_handles.HasCaptureTarget)
+                _handles.ResetDrag();
+            _touchTapSuppression.Reset();
+            _touchSelection.Reset();
+            _selection.SetAnchor(DocumentPosition.Zero);
+            _selection.ExtendTo(new DocumentPosition(int.MaxValue, int.MaxValue, int.MaxValue));
+        };
+        menu.Items.Add(selectAllItem);
     }
 
     private void OnClosed(MenuFlyout menu, bool touchSelection)

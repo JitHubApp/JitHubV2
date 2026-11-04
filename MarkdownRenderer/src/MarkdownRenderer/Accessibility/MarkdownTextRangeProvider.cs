@@ -351,7 +351,7 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
     public void RemoveFromSelection()
     {
         _ = GetCurrentDocument();
-        _peer.OwnerControl.ClearAutomationSelection();
+        _peer.OwnerControl.AutomationHost.ClearSelection();
     }
 
     public void ScrollIntoView(bool alignToTop)
@@ -392,7 +392,7 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
     {
         var doc = GetCurrentDocument();
         if (doc.TryGetDocumentRange(_start, _end, out var range))
-            _peer.OwnerControl.SelectAutomationRange(range);
+            _peer.OwnerControl.AutomationHost.Select(range);
     }
 
     internal int Start
@@ -507,7 +507,7 @@ internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
         _peer.GetTextFormatCache();
 
     private ElementStyle GetStyle(string elementKey) =>
-        _peer.OwnerControl.CurrentThemeSnapshot?.GetStyle(elementKey) ?? new ElementStyle();
+        _peer.OwnerControl.AutomationHost.Theme?.GetStyle(elementKey) ?? new ElementStyle();
 
     private void SetEndpoint(TextPatternRangeEndpoint endpoint, int value)
     {

@@ -19,6 +19,10 @@ internal static class LazyLayoutWork
     /// scenes when the scene graph needs rebinding, then stages one weak
     /// completion with <paramref name="handoff"/> and dispatches it.
     /// </summary>
+    /// <remarks>
+    /// Kept whole apart from the staging: the layout closure captures the snapshot in this
+    /// frame, and the finally must clear it here so a retained delegate cannot hold it.
+    /// </remarks>
     internal static async Task RunAsync(
         LayoutSnapshot snapshot,
         LazyLayoutBand band,
@@ -89,7 +93,7 @@ internal static class LazyLayoutWork
 
         try
         {
-            var publication = CreateCompletionPublication(
+            StageAndDispatchCompletion(
                 snapshot,
                 receiver,
                 result,
@@ -98,27 +102,9 @@ internal static class LazyLayoutWork
                 pipelineGeneration,
                 realizationGeneration,
                 canceled,
-                operationToken);
-
-            if (handoff.TryStage(realizationGeneration, publication) &&
-                dispatcher is not null)
-            {
-                try
-                {
-                    dispatcher.TryEnqueue(
-                        Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-                        CreateCompletionDispatchCallback(
-                            receiver,
-                            realizationGeneration));
-                }
-                catch (Exception exception)
-                {
-                    // The UI recovery timer owns the retained weak handoff.
-                    MarkdownDiagnostics.WriteLine(
-                        $"[MarkdownRendererControl] lazy layout completion dispatch failed: " +
-                        $"{exception.GetType().Name} (0x{exception.HResult:X8}).");
-                }
-            }
+                operationToken,
+                dispatcher,
+                handoff);
         }
         finally
         {
@@ -126,6 +112,51 @@ internal static class LazyLayoutWork
             // method completes. Clear graph-bearing locals before that signal.
             layoutWork = null;
             snapshot = null!;
+        }
+    }
+
+    private static void StageAndDispatchCompletion(
+        LayoutSnapshot snapshot,
+        WeakReference<LazyLayoutRealization> receiver,
+        LazyLayoutWorkResult result,
+        Exception? failure,
+        double? anchorOffset,
+        long pipelineGeneration,
+        long realizationGeneration,
+        bool canceled,
+        CancellationToken operationToken,
+        Microsoft.UI.Dispatching.DispatcherQueue? dispatcher,
+        WeakSnapshotPublicationDrainFence<LayoutSnapshot> handoff)
+    {
+        var publication = CreateCompletionPublication(
+            snapshot,
+            receiver,
+            result,
+            failure,
+            anchorOffset,
+            pipelineGeneration,
+            realizationGeneration,
+            canceled,
+            operationToken);
+
+        if (handoff.TryStage(realizationGeneration, publication) &&
+            dispatcher is not null)
+        {
+            try
+            {
+                dispatcher.TryEnqueue(
+                    Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                    CreateCompletionDispatchCallback(
+                        receiver,
+                        realizationGeneration));
+            }
+            catch (Exception exception)
+            {
+                // The UI recovery timer owns the retained weak handoff.
+                MarkdownDiagnostics.WriteLine(
+                    $"[MarkdownRendererControl] lazy layout completion dispatch failed: " +
+                    $"{exception.GetType().Name} (0x{exception.HResult:X8}).");
+            }
         }
     }
 

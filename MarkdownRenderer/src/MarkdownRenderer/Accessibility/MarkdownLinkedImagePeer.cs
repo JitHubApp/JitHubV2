@@ -81,7 +81,7 @@ internal sealed partial class MarkdownLinkedImagePeer : FrameworkElementAutomati
     protected override int GetCultureCore()
     {
         EnsureCurrentDocument();
-        return _owner.AutomationCultureLcid;
+        return _owner.AutomationHost.CultureLcid;
     }
 
     protected override AutomationLiveSetting GetLiveSettingCore()
@@ -99,7 +99,7 @@ internal sealed partial class MarkdownLinkedImagePeer : FrameworkElementAutomati
     protected override bool HasKeyboardFocusCore()
     {
         EnsureCurrentDocument();
-        return _owner.IsKeyboardFocusOnLinkedImage(_run);
+        return _owner.AutomationHost.IsKeyboardFocusOnLinkedImage(_run);
     }
 
     protected override System.Collections.Generic.IList<AutomationPeer> GetChildrenCore()
@@ -114,7 +114,7 @@ internal sealed partial class MarkdownLinkedImagePeer : FrameworkElementAutomati
     protected override void SetFocusCore()
     {
         EnsureCurrentDocument();
-        _owner.FocusLinkedImageFromAutomation(_run);
+        _owner.AutomationHost.FocusLinkedAtomic(_run);
     }
 
     protected override object GetPatternCore(PatternInterface patternInterface)
@@ -128,7 +128,7 @@ internal sealed partial class MarkdownLinkedImagePeer : FrameworkElementAutomati
     public void Invoke()
     {
         EnsureCurrentDocument();
-        _owner.RaiseLinkedImageClickFromAutomation(_run);
+        _owner.AutomationHost.ActivateLinkedAtomic(_run);
     }
 
     protected override Windows.Foundation.Rect GetBoundingRectangleCore()
