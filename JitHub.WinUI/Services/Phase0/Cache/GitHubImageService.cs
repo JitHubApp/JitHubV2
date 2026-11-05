@@ -5,7 +5,6 @@ using System.Net.Http;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.WinUI.Helpers;
 using MarkdownRenderer.Images;
 
 namespace JitHub.Services;
@@ -37,9 +36,7 @@ public sealed partial class GitHubImageService : IGitHubImageService, IGitHubLea
     private readonly GitHubImageRequestFlights _misses = new();
     private readonly GitHubImageRequestFlights _refreshes = new();
     private readonly GitHubLeasedImageSource _leased;
-    private readonly EventHandler<object> _memoryPressureHandler;
-    private readonly Action<EventHandler<object>>? _memoryPressureUnsubscribe;
-    private bool _memoryPressureSubscribed;
+    private readonly GitHubImageMemoryPressureSubscription _memoryPressure;
     private bool _observableCacheSubscribed;
 
     public GitHubImageService(
@@ -65,9 +62,10 @@ public sealed partial class GitHubImageService : IGitHubImageService, IGitHubLea
         Action<EventHandler<object>>? subscribeMemoryPressure = null,
         Action<EventHandler<object>>? unsubscribeMemoryPressure = null)
     {
-        if ((subscribeMemoryPressure is null) != (unsubscribeMemoryPressure is null))
-            throw new ArgumentException("Memory-pressure subscription callbacks must be supplied as a pair.");
-
+        _memoryPressure = new GitHubImageMemoryPressureSubscription(
+            new GitHubImageMemoryPressureRelay(this).OnAppMemoryUsageIncreased,
+            subscribeMemoryPressure,
+            unsubscribeMemoryPressure);
         _accounts = new GitHubImageAccountScope(partitionProvider, accountWork);
         _cache = new GitHubImageCacheTier(cacheStore);
         // The production client validates every physical connection in ConnectCallback.
@@ -80,12 +78,10 @@ public sealed partial class GitHubImageService : IGitHubImageService, IGitHubLea
             ownsHttpClient,
             !ownsHttpClient ? hostAddressResolver : null);
         _leased = new GitHubLeasedImageSource(_accounts, _cache, _lifetime);
-        _memoryPressureHandler = new GitHubImageMemoryPressureRelay(this).OnAppMemoryUsageIncreased;
-        _memoryPressureUnsubscribe = unsubscribeMemoryPressure;
 
         try
         {
-            SubscribeMemoryPressure(subscribeMemoryPressure);
+            _memoryPressure.Subscribe();
             if (_cache.AdmittedStore is { } observableStore)
             {
                 // Mark before invoking add so the rollback also attempts
@@ -221,8 +217,8 @@ public sealed partial class GitHubImageService : IGitHubImageService, IGitHubLea
         if (!_lifetime.TryRetire())
             return;
 
-        Exception? memoryPressureUnsubscribeFailure = _memoryPressureSubscribed
-            ? TryUnsubscribeMemoryPressure()
+        Exception? memoryPressureUnsubscribeFailure = _memoryPressure.IsSubscribed
+            ? _memoryPressure.TryUnsubscribe()
             : null;
 
         if (_observableCacheSubscribed && _cache.AdmittedStore is { } observableStore)
@@ -238,7 +234,7 @@ public sealed partial class GitHubImageService : IGitHubImageService, IGitHubLea
         _http.Dispose();
 
         if (memoryPressureUnsubscribeFailure is not null &&
-            !IsMemoryPressureUnavailable(memoryPressureUnsubscribeFailure))
+            !GitHubImageMemoryPressureSubscription.IsUnavailable(memoryPressureUnsubscribeFailure))
         {
             ExceptionDispatchInfo.Capture(memoryPressureUnsubscribeFailure).Throw();
         }
@@ -433,27 +429,6 @@ public sealed partial class GitHubImageService : IGitHubImageService, IGitHubLea
         }
     }
 
-    private void SubscribeMemoryPressure(Action<EventHandler<object>>? subscribeMemoryPressure)
-    {
-        try
-        {
-            if (subscribeMemoryPressure is not null)
-                subscribeMemoryPressure(_memoryPressureHandler);
-            else
-                Windows.System.MemoryManager.AppMemoryUsageIncreased += _memoryPressureHandler;
-            _memoryPressureSubscribed = true;
-        }
-        catch (Exception exception) when (IsMemoryPressureUnavailable(exception))
-        {
-            // An event add may partially register before the projection
-            // reports that notifications are unavailable. Remove any such
-            // registration, then retain the ordinary bounded LRU behavior.
-            Exception? rollbackFailure = TryUnsubscribeMemoryPressure();
-            if (rollbackFailure is not null)
-                HandledFailureReporter.Report(rollbackFailure, "github-image-memory-pressure-rollback");
-        }
-    }
-
     /// <summary>
     /// Undoes a partially completed registration. Rethrows the original failure
     /// unless cleanup also failed, in which case every failure is aggregated.
@@ -461,7 +436,7 @@ public sealed partial class GitHubImageService : IGitHubImageService, IGitHubLea
     private void RollBackRegistration(Exception registrationFailure)
     {
         List<Exception> cleanupFailures = [];
-        if (TryUnsubscribeMemoryPressure() is { } memoryPressureFailure)
+        if (_memoryPressure.TryUnsubscribe() is { } memoryPressureFailure)
             cleanupFailures.Add(memoryPressureFailure);
         if (_observableCacheSubscribed && _cache.AdmittedStore is { } observableStore)
         {
@@ -495,28 +470,6 @@ public sealed partial class GitHubImageService : IGitHubImageService, IGitHubLea
     }
 
     private void ClearMemoryCache() => _cache.Memory.Clear();
-
-    private static bool IsMemoryPressureUnavailable(Exception exception) =>
-        exception is System.Runtime.InteropServices.COMException or
-            PlatformNotSupportedException or TypeInitializationException;
-
-    private Exception? TryUnsubscribeMemoryPressure()
-    {
-        try
-        {
-            if (_memoryPressureUnsubscribe is not null)
-                _memoryPressureUnsubscribe(_memoryPressureHandler);
-            else
-                Windows.System.MemoryManager.AppMemoryUsageIncreased -= _memoryPressureHandler;
-            _memoryPressureSubscribed = false;
-            return null;
-        }
-        catch (Exception exception)
-        {
-            _memoryPressureSubscribed = false;
-            return exception;
-        }
-    }
 
     private static GitHubCachedImage ToResult(GitHubImageCacheRead read, bool isFromCache) =>
         new(read.Entry.FilePath, read.Bytes, read.Entry.ContentType, isFromCache);
