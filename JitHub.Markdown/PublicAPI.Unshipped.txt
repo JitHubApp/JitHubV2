@@ -22,6 +22,7 @@ JitHub.Markdown.GitHubMarkdownImageReference.Repository.init -> void
 JitHub.Markdown.GitHubMarkdownImageReference.SourceUri.get -> System.Uri!
 JitHub.Markdown.GitHubMarkdownImageReference.SourceUri.init -> void
 JitHub.Markdown.GitHubMarkdownImageUrlResolver
+JitHub.Markdown.GitLfsPointer
 JitHub.Markdown.IMarkdownRemoteImagePolicy
 JitHub.Markdown.IMarkdownRemoteImagePolicy.Evaluate(System.Uri! uri, bool userInitiated) -> JitHub.Markdown.MarkdownRemoteImageDecision
 JitHub.Markdown.MarkdownGitHubRoute
@@ -89,6 +90,7 @@ static JitHub.Markdown.GitHubMarkdownImageUrlResolver.CreateGitHubRawRouteUri(Ji
 static JitHub.Markdown.GitHubMarkdownImageUrlResolver.CreateRawUri(JitHub.Markdown.GitHubMarkdownImageReference reference) -> System.Uri!
 static JitHub.Markdown.GitHubMarkdownImageUrlResolver.TryResolve(string! source, MarkdownRenderer.Images.MarkdownDocumentSource? documentSource, out JitHub.Markdown.GitHubMarkdownImageReference reference) -> bool
 static JitHub.Markdown.GitHubMarkdownImageUrlResolver.TryResolve(string! source, System.Uri? baseUri, string? documentPath, out JitHub.Markdown.GitHubMarkdownImageReference reference) -> bool
+static JitHub.Markdown.GitLfsPointer.IsPointer(System.ReadOnlySpan<byte> bytes) -> bool
 static JitHub.Markdown.MarkdownGitHubRoute.NotInternal.get -> JitHub.Markdown.MarkdownGitHubRoute
 static JitHub.Markdown.MarkdownGitHubRoute.operator !=(JitHub.Markdown.MarkdownGitHubRoute left, JitHub.Markdown.MarkdownGitHubRoute right) -> bool
 static JitHub.Markdown.MarkdownGitHubRoute.operator ==(JitHub.Markdown.MarkdownGitHubRoute left, JitHub.Markdown.MarkdownGitHubRoute right) -> bool
