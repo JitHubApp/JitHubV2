@@ -181,7 +181,7 @@ internal sealed class RebuildLayoutSetup
             enableDeclarativeHostedElements: inputs.HostedElementFactory is not null,
             plan.Parse.SemanticDocument,
             _embeds.CopyHostedElementFallbacks(),
-            engine,
+            engine?.LayoutMetrics,
             sharedLayoutMetricsKey);
     }
 

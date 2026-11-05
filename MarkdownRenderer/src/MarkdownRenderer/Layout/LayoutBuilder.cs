@@ -19,7 +19,7 @@ namespace MarkdownRenderer.Layout;
 internal sealed class LayoutBuilder : ILayoutBlockDispatcher
 {
     private readonly MarkdownLayoutContext _context;
-    private readonly MarkdownEngine? _sharedLayoutEngine;
+    private readonly SharedLayoutMetricsCache? _sharedLayoutMetrics;
     private readonly SharedLayoutMetricsKey? _sharedLayoutMetricsKey;
     private readonly LayoutConstructionTracker _tracker;
     private readonly MaterializedSceneScope _materializedScenes;
@@ -33,11 +33,11 @@ internal sealed class LayoutBuilder : ILayoutBlockDispatcher
         bool enableDeclarativeHostedElements = false,
         MarkdownRenderer.Document.MarkdownDocument? semanticDocument = null,
         IReadOnlySet<HostedElementFallbackKey>? hostedElementFallbacks = null,
-        MarkdownEngine? sharedLayoutEngine = null,
+        SharedLayoutMetricsCache? sharedLayoutMetrics = null,
         SharedLayoutMetricsKey? sharedLayoutMetricsKey = null)
     {
         _context = context;
-        _sharedLayoutEngine = sharedLayoutEngine;
+        _sharedLayoutMetrics = sharedLayoutMetrics;
         _sharedLayoutMetricsKey = sharedLayoutMetricsKey;
         IReadOnlySet<HostedElementFallbackKey> fallbacks =
             hostedElementFallbacks ?? new HashSet<HostedElementFallbackKey>();
@@ -411,10 +411,10 @@ internal sealed class LayoutBuilder : ILayoutBlockDispatcher
         if (_sharedLayoutMetricsKey is null)
             return null;
 
-        return SharedLayoutMetricsCache.Acquire(
-            _sharedLayoutEngine,
-            _sharedLayoutMetricsKey,
-            topLevelBlockCount);
+        // Without an owning cache the build still records heights, but in a
+        // private buffer no other view can reuse.
+        return _sharedLayoutMetrics?.GetOrCreate(_sharedLayoutMetricsKey, topLevelBlockCount) ??
+            new SharedLayoutMetrics(topLevelBlockCount, _sharedLayoutMetricsKey.EstimatedKeyWeightBytes);
     }
 
     private void DisposePreservingBuildFailure(IDisposable resource)

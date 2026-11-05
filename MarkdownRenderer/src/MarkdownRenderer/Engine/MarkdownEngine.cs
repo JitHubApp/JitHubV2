@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Markdig;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Layout;
 
 namespace MarkdownRenderer;
 
@@ -59,6 +60,12 @@ public sealed class MarkdownEngine : IDisposable
     }
 
     /// <summary>Gets an engine configured for strict CommonMark.</summary>
+    /// <remarks>
+    /// Views that are not given an engine use this one. Like any engine it is
+    /// the scope of its caches: its completed-document cache and layout hints
+    /// are shared by every view that uses it, and a view given a different
+    /// engine uses only that engine's caches. Disposing it has no effect.
+    /// </remarks>
     public static MarkdownEngine Default { get; } = new MarkdownEngineBuilder().BuildShared();
 
     /// <summary>Gets the immutable parsing profile used by this engine.</summary>
@@ -78,6 +85,13 @@ public sealed class MarkdownEngine : IDisposable
     /// WinUI or layout types from MarkdownRenderer.Core.
     /// </summary>
     internal IMarkdownPresentationConfiguration? PresentationConfiguration { get; }
+
+    /// <summary>
+    /// Gets the measured-height hints for documents this engine parsed. The
+    /// engine is their scope: views that share this engine share the hints,
+    /// and views given a different engine never see them.
+    /// </summary>
+    internal SharedLayoutMetricsCache LayoutMetrics { get; } = new();
 
     /// <summary>
     /// Creates a reusable builder initialized from this engine. Opaque

@@ -93,6 +93,29 @@ public sealed class SharedLayoutMetricsCacheTests
     }
 
     [Fact]
+    public void EachEngineOwnsItsLayoutMetrics()
+    {
+        using MarkdownEngine first = new MarkdownEngineBuilder().Build();
+        using MarkdownEngine second = new MarkdownEngineBuilder().Build();
+        var styleSheet = new object();
+        var registry = new object();
+
+        SharedLayoutMetrics fromFirst = first.LayoutMetrics.GetOrCreate(
+            CreateKey("# shared", styleSheet, registry), topLevelBlockCount: 1);
+        fromFirst.RecordHeight(0, 40f);
+        SharedLayoutMetrics fromFirstAgain = first.LayoutMetrics.GetOrCreate(
+            CreateKey("# shared", styleSheet, registry), topLevelBlockCount: 1);
+        SharedLayoutMetrics fromSecond = second.LayoutMetrics.GetOrCreate(
+            CreateKey("# shared", styleSheet, registry), topLevelBlockCount: 1);
+
+        Assert.Same(fromFirst, fromFirstAgain);
+        Assert.NotSame(fromFirst, fromSecond);
+        Assert.False(fromSecond.TryGetHeight(0, out _));
+        Assert.Equal(1, first.LayoutMetrics.Statistics.Count);
+        Assert.Equal(1, second.LayoutMetrics.Statistics.Count);
+    }
+
+    [Fact]
     public void InvalidHeight_IsNeverPublished()
     {
         var metrics = new SharedLayoutMetrics(2, 1);
