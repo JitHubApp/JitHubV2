@@ -172,18 +172,14 @@ public static class MathMarkdownExtensions
             string original = context.Node.Literal ?? string.Empty;
             if (!TryReadContentRange(context.Node, original.Length, out int contentOffset, out int contentLength))
             {
-                string diagnosticMessage = await ResolveDiagnosticAsync(
-                    MathStringKeys.ProcessingFailed,
-                    context.CancellationToken).ConfigureAwait(false);
-                context.CancellationToken.ThrowIfCancellationRequested();
-                AddFallback(
+                await AddLocalizedFallbackAsync(
                     context,
                     content,
                     original,
                     displayMode,
+                    MathStringKeys.ProcessingFailed,
                     "MATH199",
-                    diagnosticMessage,
-                    context.Node.SourceSpan);
+                    context.Node.SourceSpan).ConfigureAwait(false);
                 return;
             }
 
@@ -192,18 +188,14 @@ public static class MathMarkdownExtensions
                 !string.Equals(closed, "true", StringComparison.Ordinal))
             {
                 int delimiterLength = System.Math.Min(2, context.Node.SourceSpan.Length);
-                string diagnosticMessage = await ResolveDiagnosticAsync(
-                    MathStringKeys.UnmatchedDisplayDelimiter,
-                    context.CancellationToken).ConfigureAwait(false);
-                context.CancellationToken.ThrowIfCancellationRequested();
-                AddFallback(
+                await AddLocalizedFallbackAsync(
                     context,
                     content,
                     original,
                     displayMode,
+                    MathStringKeys.UnmatchedDisplayDelimiter,
                     "MATH002",
-                    diagnosticMessage,
-                    new SourceSpan(context.Node.SourceSpan.Start, delimiterLength));
+                    new SourceSpan(context.Node.SourceSpan.Start, delimiterLength)).ConfigureAwait(false);
                 return;
             }
 
@@ -255,6 +247,29 @@ public static class MathMarkdownExtensions
                 accessibleName,
                 accessibility.HelpText,
                 accessibility.CopyText);
+        }
+
+        private async ValueTask AddLocalizedFallbackAsync(
+            MarkdownExtensionContext context,
+            MarkdownContentBuilder content,
+            string original,
+            MathFormulaDisplayMode displayMode,
+            string stringKey,
+            string diagnosticCode,
+            SourceSpan diagnosticSpan)
+        {
+            string diagnosticMessage = await ResolveDiagnosticAsync(
+                stringKey,
+                context.CancellationToken).ConfigureAwait(false);
+            context.CancellationToken.ThrowIfCancellationRequested();
+            AddFallback(
+                context,
+                content,
+                original,
+                displayMode,
+                diagnosticCode,
+                diagnosticMessage,
+                diagnosticSpan);
         }
 
         private async ValueTask<string> ResolveDiagnosticAsync(
