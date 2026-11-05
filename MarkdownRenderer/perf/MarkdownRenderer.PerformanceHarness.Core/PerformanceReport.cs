@@ -87,7 +87,7 @@ public sealed class PerformanceReport
             }
         });
 
-        return new JsonSerializerOptions
+        var options = new JsonSerializerOptions
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             WriteIndented = true,
@@ -97,6 +97,10 @@ public sealed class PerformanceReport
             AllowDuplicateProperties = false,
             TypeInfoResolver = resolver,
         };
+        // The options are process-wide, so freeze them: no caller can change
+        // the evidence schema after the first report is read or written.
+        options.MakeReadOnly();
+        return options;
     }
 
     private static bool HasNonNullReferenceElements(PerformanceReport report)
