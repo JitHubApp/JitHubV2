@@ -8,27 +8,6 @@ using MarkdownRenderer.Images;
 
 namespace JitHub.Services.Markdown;
 
-internal enum GitHubRawImageFetchOutcomeKind
-{
-    Success,
-    NullResult,
-    HttpStatus,
-    InvalidPayload,
-    CallerCanceled,
-    SourceDeferred,
-    TransportFailure,
-    OtherFailure,
-}
-
-/// <summary>
-/// Fixed, privacy-safe outcome for one raw GitHub image-service operation,
-/// which may be fulfilled from cache or include internal transport retries. It intentionally
-/// carries no URL, exception message, response body, or credential data.
-/// </summary>
-internal readonly record struct GitHubRawImageFetchOutcome(
-    GitHubRawImageFetchOutcomeKind Kind,
-    int? HttpStatusCode = null);
-
 /// <summary>
 /// Tries GitHub's credential-free raw CDN before a repository image consumes
 /// an authenticated Contents API request. A miss remains eligible for the
