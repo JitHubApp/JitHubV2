@@ -1,3 +1,5 @@
+using static MarkdownRenderer.PerformanceHarness.EvidenceValueRules;
+
 namespace MarkdownRenderer.PerformanceHarness;
 
 public static class RegressionEvaluator
@@ -8,6 +10,55 @@ public static class RegressionEvaluator
     public static RegressionResult Evaluate(
         PerformanceReport candidate,
         PerformanceOptions options)
+    {
+        if (CreateUncomparedResult(options) is RegressionResult uncompared)
+            return uncompared;
+
+        string referencePath = options.ReferencePath!;
+        PerformanceReportEvidence referenceEvidence =
+            PerformanceReport.ReadEvidence(referencePath);
+        PerformanceReport reference = referenceEvidence.Report;
+        string referenceReportSha256 = referenceEvidence.Sha256;
+        bool referenceEligible = IsEligibleReference(candidate, reference);
+        bool candidateEvidenceComplete =
+            PerformanceReleaseEvidenceValidator.HasCompleteCurrentMeasurementPayload(candidate);
+        bool machineComparable = candidateEvidenceComplete &&
+            MachineEvidenceValidator.IsMachineComparable(
+                candidate.Machine,
+                reference.Machine) &&
+            FirstViewportEvidenceValidator.HasSameFirstViewportExecutionEnvironment(
+                candidate.FirstUsableViewport,
+                reference.FirstUsableViewport) &&
+            SourceLookupEvidenceValidator.HasSameExecutionEnvironment(
+                candidate.SourceLookup,
+                reference.SourceLookup);
+        var comparisons = new List<RegressionComparison>();
+        AddFirstViewportComparisons(comparisons, candidate, reference);
+        AddSteadyStateComparisons(comparisons, candidate, reference);
+
+        int latencyCount = comparisons.Count(item => item.Kind == "latency");
+        int allocationCount = comparisons.Count(item => item.Kind == "allocation");
+        bool complete = latencyCount == 11 && allocationCount == 1;
+        return new RegressionResult
+        {
+            Mode = "candidate",
+            ReferencePath = referencePath,
+            ReferenceReportSha256 = referenceReportSha256,
+            ReferenceBuildIdentity = reference.BuildIdentity,
+            ReferenceEligible = referenceEligible,
+            MachineComparable = machineComparable,
+            ComparedLatencyMetrics = latencyCount,
+            ComparedAllocationMetrics = allocationCount,
+            Comparisons = comparisons,
+            Passed = referenceEligible &&
+                     candidateEvidenceComplete &&
+                     machineComparable &&
+                     complete &&
+                     comparisons.All(static item => item.Passed),
+        };
+    }
+
+    private static RegressionResult? CreateUncomparedResult(PerformanceOptions options)
     {
         if (options.EstablishBaseline)
         {
@@ -40,10 +91,13 @@ public static class RegressionEvaluator
             };
         }
 
-        PerformanceReportEvidence referenceEvidence =
-            PerformanceReport.ReadEvidence(options.ReferencePath);
-        PerformanceReport reference = referenceEvidence.Report;
-        string referenceReportSha256 = referenceEvidence.Sha256;
+        return null;
+    }
+
+    private static bool IsEligibleReference(
+        PerformanceReport candidate,
+        PerformanceReport reference)
+    {
         bool sameBuildIdentity =
             !string.IsNullOrWhiteSpace(candidate.BuildIdentity) &&
             string.Equals(candidate.BuildIdentity, reference.BuildIdentity, StringComparison.Ordinal);
@@ -55,23 +109,15 @@ public static class RegressionEvaluator
         // five hashes when another private runtime dependency changed.
         bool buildIdentityMatchesArtifacts =
             !sameBuildIdentity || sameBuildArtifacts;
-        bool referenceEligible =
-            PerformanceReleaseEvidenceValidator.IsEligibleBaselineReference(reference) &&
+        return PerformanceReleaseEvidenceValidator.IsEligibleBaselineReference(reference) &&
             buildIdentityMatchesArtifacts;
-        bool candidateEvidenceComplete =
-            PerformanceReleaseEvidenceValidator.HasCompleteCurrentMeasurementPayload(candidate);
-        bool machineComparable = candidateEvidenceComplete &&
-            MachineEvidenceValidator.IsMachineComparable(
-                candidate.Machine,
-                reference.Machine) &&
-            FirstViewportEvidenceValidator.HasSameFirstViewportExecutionEnvironment(
-                candidate.FirstUsableViewport,
-                reference.FirstUsableViewport) &&
-            SourceLookupEvidenceValidator.HasSameExecutionEnvironment(
-                candidate.SourceLookup,
-                reference.SourceLookup);
-        var comparisons = new List<RegressionComparison>();
+    }
 
+    private static void AddFirstViewportComparisons(
+        List<RegressionComparison> comparisons,
+        PerformanceReport candidate,
+        PerformanceReport reference)
+    {
         foreach (FirstViewportResult candidateResult in candidate.FirstUsableViewport)
         {
             FirstViewportResult? referenceResult = reference.FirstUsableViewport.FirstOrDefault(
@@ -96,7 +142,13 @@ public static class RegressionEvaluator
                 referenceResult.StationarityEvaluated && referenceResult.StationarityPassed,
                 candidateResult.StationarityEvaluated && candidateResult.StationarityPassed));
         }
+    }
 
+    private static void AddSteadyStateComparisons(
+        List<RegressionComparison> comparisons,
+        PerformanceReport candidate,
+        PerformanceReport reference)
+    {
         AddLatency(
             comparisons,
             "scroll.uiThreadWorkP95Ms.hodgesLehmann",
@@ -154,27 +206,6 @@ public static class RegressionEvaluator
             AllocationBudgetPercent,
             PerformanceMeasurementContract.RendererOwnedAllocationNoiseFloorBytes,
             PerformanceMeasurementContract.AllocationDispersionBudgetPercent));
-
-        int latencyCount = comparisons.Count(item => item.Kind == "latency");
-        int allocationCount = comparisons.Count(item => item.Kind == "allocation");
-        bool complete = latencyCount == 11 && allocationCount == 1;
-        return new RegressionResult
-        {
-            Mode = "candidate",
-            ReferencePath = options.ReferencePath,
-            ReferenceReportSha256 = referenceReportSha256,
-            ReferenceBuildIdentity = reference.BuildIdentity,
-            ReferenceEligible = referenceEligible,
-            MachineComparable = machineComparable,
-            ComparedLatencyMetrics = latencyCount,
-            ComparedAllocationMetrics = allocationCount,
-            Comparisons = comparisons,
-            Passed = referenceEligible &&
-                     candidateEvidenceComplete &&
-                     machineComparable &&
-                     complete &&
-                     comparisons.All(static item => item.Passed),
-        };
     }
 
     private static void AddLatency(
@@ -259,13 +290,5 @@ public static class RegressionEvaluator
                 : withinAllowance ? "pass" : "regression",
             Passed = withinAllowance,
         };
-    }
-
-    private static bool NearlyEqual(double left, double right)
-    {
-        if (!double.IsFinite(left) || !double.IsFinite(right))
-            return false;
-        double scale = Math.Max(1, Math.Max(Math.Abs(left), Math.Abs(right)));
-        return Math.Abs(left - right) <= scale * 1e-12;
     }
 }
