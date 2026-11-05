@@ -66,6 +66,9 @@ internal sealed class RebuildPipeline
     /// <summary>The stage timings of the committed snapshot's pipeline.</summary>
     internal MarkdownPipelineTimingSnapshot LastTimings => _timings.Last;
 
+    /// <summary>Forgets this control's cached theme resource-key discovery.</summary>
+    internal void InvalidateThemeResourceKeys() => _layoutSetup.InvalidateThemeResourceKeys();
+
     /// <summary>Parses with the legacy parser through this control's parse cache.</summary>
     internal Task<ParsedMarkdown?> ParseLegacyMarkdownAsync(
         string source,

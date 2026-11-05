@@ -33,6 +33,9 @@ internal sealed class RebuildLayoutSetup
     private readonly FocusableItemsPublication _focusableItems;
     private readonly object _imagePreparationOwner;
     private readonly MarkdownExtensionRegistry _fallbackRegistry;
+    // The control's resource-key discovery, reused across its theme snapshots.
+    private readonly RelevantResourceKeyCache<Microsoft.UI.Xaml.ResourceDictionary> _themeResourceKeys =
+        ThemeResourceLookup.CreateRelevantResourceKeyCache();
 
     internal RebuildLayoutSetup(
         IRebuildLayoutSetupHost host,
@@ -57,6 +60,12 @@ internal sealed class RebuildLayoutSetup
         _focusableItems = focusableItems;
         _imagePreparationOwner = imagePreparationOwner;
     }
+
+    /// <summary>
+    /// Forgets this control's cached resource-key discovery so the next theme
+    /// snapshot rediscovers same-count key substitutions.
+    /// </summary>
+    internal void InvalidateThemeResourceKeys() => _themeResourceKeys.Invalidate();
 
     /// <summary>
     /// Creates the plan for laying out <paramref name="parse"/> at
@@ -258,7 +267,7 @@ internal sealed class RebuildLayoutSetup
         }
 
         long themeSnapshotStarted = Stopwatch.GetTimestamp();
-        var themeResolver = new ThemeResolver(_host.ThemeHost, inputs.Theme);
+        var themeResolver = new ThemeResolver(_host.ThemeHost, inputs.Theme, _themeResourceKeys);
         var themeSnapshot = themeResolver.CreateSnapshot(
             inputs.StyleSheet,
             inputs.TextScaleFactor,

@@ -956,8 +956,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private void RequestRebuild(RebuildReason reason) => _rebuild.Request(reason);
 
     /// <summary>
-    /// Clears cached WinUI resource-key discovery and rebuilds the current
-    /// presentation. Call this after replacing resource dictionary keys without
+    /// Clears this control's cached WinUI resource-key discovery and rebuilds
+    /// its presentation. Call this after replacing resource dictionary keys without
     /// changing the dictionary's count; ordinary value replacement, theme
     /// properties, and override mutations do not require it.
     /// </summary>
@@ -966,7 +966,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         if (_lifetime.IsDisposed)
             return;
 
-        ThemeResolver.InvalidateResourceKeyCache();
+        _pipeline.InvalidateThemeResourceKeys();
         RequestRebuild(RebuildReason.Restyle);
     }
 
