@@ -31,6 +31,7 @@ public sealed partial class MainWindow : Window
     private const string DiagnosticsNotificationActivityId = "RendererDiagnostics";
     private readonly MarkdownEngine _engine = CreateFullEngine();
     private readonly ResvgMarkdownSvgRenderer _svgRenderer = new();
+    private readonly SampleStrings _strings = SampleStrings.Load();
     private readonly SampleCatalog _catalog = new();
     private readonly RendererDisposalEvidence _disposalEvidence = RendererDisposalEvidence.FromEnvironment();
     private MarkdownPerformanceSession? _performanceSession;
@@ -64,7 +65,7 @@ public sealed partial class MainWindow : Window
 
     public MainWindow()
     {
-        Title = SampleStrings.Get("AppTitle", "MarkdownRenderer — Feature Showcase");
+        Title = _strings.Get("AppTitle", "MarkdownRenderer — Feature Showcase");
 
         var navigationView = new NavigationView
         {
@@ -72,13 +73,13 @@ public sealed partial class MainWindow : Window
             IsBackButtonVisible = NavigationViewBackButtonVisible.Collapsed,
             IsSettingsVisible = false,
             PaneDisplayMode = NavigationViewPaneDisplayMode.Auto,
-            PaneTitle = SampleStrings.Get("NavigationPaneTitle", "Sample pages"),
+            PaneTitle = _strings.Get("NavigationPaneTitle", "Sample pages"),
         };
         MarkdownSystemIntegration.SetUseSystemFlowDirection(navigationView, true);
         AutomationProperties.SetAutomationId(navigationView, "SampleNavigation");
         AutomationProperties.SetName(
             navigationView,
-            SampleStrings.Get("NavigationAutomationName", "Markdown renderer feature pages"));
+            _strings.Get("NavigationAutomationName", "Markdown renderer feature pages"));
 
         var pageHeader = new Grid
         {
@@ -93,7 +94,7 @@ public sealed partial class MainWindow : Window
         _pageTitle = new TextBlock
         {
             Style = (Style)Application.Current.Resources["TitleTextBlockStyle"],
-            Text = SampleStrings.Get("PageFullDemo", "Full demo"),
+            Text = _strings.Get("PageFullDemo", "Full demo"),
             TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Center,
         };
@@ -109,12 +110,12 @@ public sealed partial class MainWindow : Window
         AutomationProperties.SetAutomationId(displayControls, "SampleDisplayControls");
         AutomationProperties.SetName(
             displayControls,
-            SampleStrings.Get("DisplayControlsAutomationName", "Preview display controls"));
+            _strings.Get("DisplayControlsAutomationName", "Preview display controls"));
 
         var themeToggle = new AppBarToggleButton
         {
             Icon = new FontIcon { Glyph = "\uE706" },
-            Label = SampleStrings.Get("CommandTheme", "Dark theme"),
+            Label = _strings.Get("CommandTheme", "Dark theme"),
             // The shell initially inherits the application's startup theme.
             // Initialize before subscribing so the toggle represents that
             // appearance without issuing a theme change during construction.
@@ -123,7 +124,7 @@ public sealed partial class MainWindow : Window
         AutomationProperties.SetAutomationId(themeToggle, "ThemeToggle");
         AutomationProperties.SetName(
             themeToggle,
-            SampleStrings.Get("CommandThemeAutomationName", "Use dark theme"));
+            _strings.Get("CommandThemeAutomationName", "Use dark theme"));
         themeToggle.Checked   += (_, _) => SetTheme(ElementTheme.Dark);
         themeToggle.Unchecked += (_, _) => SetTheme(ElementTheme.Light);
         displayControls.PrimaryCommands.Add(themeToggle);
@@ -131,13 +132,13 @@ public sealed partial class MainWindow : Window
         var rtlToggle = new AppBarToggleButton
         {
             Icon = new FontIcon { Glyph = "\uE8C0" },
-            Label = SampleStrings.Get("CommandRtl", "Right-to-left"),
+            Label = _strings.Get("CommandRtl", "Right-to-left"),
             Name = "RtlToggle",
         };
         AutomationProperties.SetAutomationId(rtlToggle, "RtlToggle");
         AutomationProperties.SetName(
             rtlToggle,
-            SampleStrings.Get("CommandRtlAutomationName", "Use right-to-left preview flow"));
+            _strings.Get("CommandRtlAutomationName", "Use right-to-left preview flow"));
         rtlToggle.Checked   += (_, _) => { if (_renderer is not null) { _renderer.FlowDirection = FlowDirection.RightToLeft; UpdateFlowDirectionStatus(); } };
         rtlToggle.Unchecked += (_, _) => { if (_renderer is not null) { _renderer.FlowDirection = FlowDirection.LeftToRight; UpdateFlowDirectionStatus(); } };
         displayControls.PrimaryCommands.Add(rtlToggle);
@@ -145,13 +146,13 @@ public sealed partial class MainWindow : Window
         var forcedHighContrastToggle = new AppBarToggleButton
         {
             Icon = new FontIcon { Glyph = "\uE793" },
-            Label = SampleStrings.Get("CommandHighContrast", "Forced contrast"),
+            Label = _strings.Get("CommandHighContrast", "Forced contrast"),
             Name = "ForcedHighContrastToggle",
         };
         AutomationProperties.SetAutomationId(forcedHighContrastToggle, "ForcedHighContrastToggle");
         AutomationProperties.SetName(
             forcedHighContrastToggle,
-            SampleStrings.Get("CommandHighContrastAutomationName", "Force high contrast preview colors"));
+            _strings.Get("CommandHighContrastAutomationName", "Force high contrast preview colors"));
         forcedHighContrastToggle.Checked += (_, _) =>
         {
             MarkThemeStatusPending();
@@ -189,13 +190,13 @@ public sealed partial class MainWindow : Window
         var textScaleToggle = new AppBarToggleButton
         {
             Icon = new FontIcon { Glyph = "\uE8E9" },
-            Label = SampleStrings.Get("CommandTextScale", "200% text"),
+            Label = _strings.Get("CommandTextScale", "200% text"),
             Name = "TextScaleToggle",
         };
         AutomationProperties.SetAutomationId(textScaleToggle, "TextScaleToggle");
         AutomationProperties.SetName(
             textScaleToggle,
-            SampleStrings.Get("CommandTextScaleAutomationName", "Use two hundred percent preview text scale"));
+            _strings.Get("CommandTextScaleAutomationName", "Use two hundred percent preview text scale"));
         textScaleToggle.Checked += (_, _) => ApplyTextScale(2f);
         textScaleToggle.Unchecked += (_, _) => ApplyTextScale(1f);
         displayControls.PrimaryCommands.Add(textScaleToggle);
@@ -203,13 +204,13 @@ public sealed partial class MainWindow : Window
         _taskEditingToggle = new AppBarToggleButton
         {
             Icon = new FontIcon { Glyph = "\uE73E" },
-            Label = SampleStrings.Get("CommandTaskEditing", "Edit tasks"),
+            Label = _strings.Get("CommandTaskEditing", "Edit tasks"),
             Visibility = Visibility.Collapsed,
         };
         AutomationProperties.SetAutomationId(_taskEditingToggle, "TaskEditingToggle");
         AutomationProperties.SetName(
             _taskEditingToggle,
-            SampleStrings.Get("CommandTaskEditingAutomationName", "Enable task-list editing"));
+            _strings.Get("CommandTaskEditingAutomationName", "Enable task-list editing"));
         _taskEditingToggle.Checked += (_, _) =>
         {
             if (_renderer is not null)
@@ -225,13 +226,13 @@ public sealed partial class MainWindow : Window
         _viewportOwnershipToggle = new AppBarToggleButton
         {
             Icon = new FontIcon { Glyph = "\uE7F8" },
-            Label = SampleStrings.Get("CommandAncestorViewport", "Ancestor viewport"),
+            Label = _strings.Get("CommandAncestorViewport", "Ancestor viewport"),
             Visibility = Visibility.Collapsed,
         };
         AutomationProperties.SetAutomationId(_viewportOwnershipToggle, "TouchViewportOwnershipToggle");
         AutomationProperties.SetName(
             _viewportOwnershipToggle,
-            SampleStrings.Get(
+            _strings.Get(
                 "CommandAncestorViewportAutomationName",
                 "Use a page-owned ScrollViewer for the touch sample"));
         _viewportOwnershipToggle.Checked += (_, _) => ReplaceRenderer(ownsViewport: false);
@@ -265,7 +266,7 @@ public sealed partial class MainWindow : Window
         };
         AutomationProperties.SetName(
             diagnosticsScroller,
-            SampleStrings.Get("DiagnosticsDetailsAutomationName", "Diagnostic details"));
+            _strings.Get("DiagnosticsDetailsAutomationName", "Diagnostic details"));
 
         _diagnosticsBar = new InfoBar
         {
@@ -278,7 +279,7 @@ public sealed partial class MainWindow : Window
         AutomationProperties.SetAutomationId(_diagnosticsBar, "SampleDiagnostics");
         AutomationProperties.SetName(
             _diagnosticsBar,
-            SampleStrings.Get("DiagnosticsAutomationName", "Renderer diagnostics"));
+            _strings.Get("DiagnosticsAutomationName", "Renderer diagnostics"));
         AutomationProperties.SetLiveSetting(_diagnosticsBar, AutomationLiveSetting.Polite);
 
         // ── editor + renderer split ─────────────────────────────────────────────
@@ -330,7 +331,7 @@ public sealed partial class MainWindow : Window
         AutomationProperties.SetAutomationId(_editor, "MarkdownEditor");
         AutomationProperties.SetName(
             _editor,
-            SampleStrings.Get("EditorAutomationName", "Markdown source editor"));
+            _strings.Get("EditorAutomationName", "Markdown source editor"));
         ScrollViewer.SetHorizontalScrollBarVisibility(_editor, ScrollBarVisibility.Auto);
         ScrollViewer.SetVerticalScrollBarVisibility(_editor, ScrollBarVisibility.Auto);
         _editor.TextChanged += (_, _) =>
@@ -523,12 +524,12 @@ public sealed partial class MainWindow : Window
         {
             navigationView.MenuItems.Add(new NavigationViewItemHeader
             {
-                Content = SampleStrings.Get(group.TitleResourceKey, group.FallbackTitle),
+                Content = _strings.Get(group.TitleResourceKey, group.FallbackTitle),
             });
 
             foreach (SampleDefinition page in group.Pages)
             {
-                string title = SampleStrings.Get(page.TitleResourceKey, page.FallbackTitle);
+                string title = _strings.Get(page.TitleResourceKey, page.FallbackTitle);
                 var item = new NavigationViewItem
                 {
                     Content = title,
@@ -606,7 +607,7 @@ public sealed partial class MainWindow : Window
         AutomationProperties.SetAutomationId(renderer, "MarkdownRenderer");
         AutomationProperties.SetName(
             renderer,
-            SampleStrings.Get("RendererAutomationName", "Rendered markdown preview"));
+            _strings.Get("RendererAutomationName", "Rendered markdown preview"));
         renderer.LinkClick += OnRendererLinkClick;
         renderer.EmbedsRealizationChanged += (_, _) =>
         {
@@ -663,7 +664,7 @@ public sealed partial class MainWindow : Window
         AutomationProperties.SetAutomationId(pageViewport, "TouchSelectionAncestorViewport");
         AutomationProperties.SetName(
             pageViewport,
-            SampleStrings.Get("AncestorViewportAutomationName", "Page-owned markdown viewport"));
+            _strings.Get("AncestorViewportAutomationName", "Page-owned markdown viewport"));
         _rendererHost.Children.Add(pageViewport);
     }
 
@@ -730,7 +731,7 @@ public sealed partial class MainWindow : Window
         else
             _touchContactObservation.Detach();
 
-        _currentPageTitle = SampleStrings.Get(page.TitleResourceKey, page.FallbackTitle);
+        _currentPageTitle = _strings.Get(page.TitleResourceKey, page.FallbackTitle);
         UpdatePageTitle(modified: false);
 
         string status = "page:" + page.Key;
@@ -774,7 +775,7 @@ public sealed partial class MainWindow : Window
     private void UpdatePageTitle(bool modified)
     {
         string title = modified
-            ? _currentPageTitle + SampleStrings.Get("ModifiedSuffix", " — modified")
+            ? _currentPageTitle + _strings.Get("ModifiedSuffix", " — modified")
             : _currentPageTitle;
         _pageTitle.Text = title;
         AutomationProperties.SetName(_pageTitle, title);
@@ -786,7 +787,7 @@ public sealed partial class MainWindow : Window
             !string.IsNullOrEmpty(_lastAnnouncedDiagnosticSummary);
         if (hadAnnouncedDiagnostics)
         {
-            string notification = SampleStrings.Get(
+            string notification = _strings.Get(
                 "DiagnosticsClearedNotification",
                 "No renderer diagnostics.");
             AutomationPeer? peer =
@@ -806,7 +807,7 @@ public sealed partial class MainWindow : Window
         AutomationProperties.SetName(_diagnosticsMessage, string.Empty);
         AutomationProperties.SetName(
             _diagnosticsBar,
-            SampleStrings.Get("DiagnosticsAutomationName", "Renderer diagnostics"));
+            _strings.Get("DiagnosticsAutomationName", "Renderer diagnostics"));
     }
 
     private async void OnRendererLinkClick(object? sender, MarkdownLinkClickEventArgs e)
@@ -921,13 +922,13 @@ public sealed partial class MainWindow : Window
             message.AppendLine()
                 .Append(string.Format(
                     System.Globalization.CultureInfo.CurrentUICulture,
-                    SampleStrings.Get("DiagnosticsRemainingFormat", "Additional diagnostics not shown: {0}"),
+                    _strings.Get("DiagnosticsRemainingFormat", "Additional diagnostics not shown: {0}"),
                     diagnostics.Count - displayedCount));
         }
 
         string title = string.Format(
             System.Globalization.CultureInfo.CurrentUICulture,
-            SampleStrings.Get("DiagnosticsTitleFormat", "Renderer diagnostics ({0})"),
+            _strings.Get("DiagnosticsTitleFormat", "Renderer diagnostics ({0})"),
             diagnostics.Count);
         _diagnosticsBar.Title = title;
         _diagnosticsBar.Severity = highestSeverity switch
@@ -943,7 +944,7 @@ public sealed partial class MainWindow : Window
 
         OpenDiagnostics(string.Format(
             System.Globalization.CultureInfo.CurrentUICulture,
-            SampleStrings.Get("DiagnosticsAutomationSummaryFormat", "{0}. {1}"),
+            _strings.Get("DiagnosticsAutomationSummaryFormat", "{0}. {1}"),
             title,
             FormatDiagnosticLine(summaryDiagnostic)));
     }
@@ -951,19 +952,19 @@ public sealed partial class MainWindow : Window
     private void ShowRenderFailure(Exception exception)
     {
         ArgumentNullException.ThrowIfNull(exception);
-        string title = SampleStrings.Get("RenderFailedTitle", "Render failed");
+        string title = _strings.Get("RenderFailedTitle", "Render failed");
         _diagnosticsBar.Title = title;
         _diagnosticsBar.Severity = InfoBarSeverity.Error;
         string message = string.Format(
             System.Globalization.CultureInfo.CurrentUICulture,
-            SampleStrings.Get("RenderFailureMessageFormat", "{0}: {1}"),
+            _strings.Get("RenderFailureMessageFormat", "{0}: {1}"),
             exception.GetType().Name,
             exception.Message);
         _diagnosticsMessage.Text = message;
         AutomationProperties.SetName(_diagnosticsMessage, message);
         OpenDiagnostics(string.Format(
             System.Globalization.CultureInfo.CurrentUICulture,
-            SampleStrings.Get("DiagnosticsAutomationSummaryFormat", "{0}. {1}"),
+            _strings.Get("DiagnosticsAutomationSummaryFormat", "{0}. {1}"),
             title,
             message));
     }
@@ -987,20 +988,20 @@ public sealed partial class MainWindow : Window
         peer?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
     }
 
-    private static string FormatDiagnosticLine(MarkdownDiagnostic diagnostic) => string.Format(
+    private string FormatDiagnosticLine(MarkdownDiagnostic diagnostic) => string.Format(
         System.Globalization.CultureInfo.CurrentUICulture,
-        SampleStrings.Get("DiagnosticLineFormat", "{0} {1} [{2}..{3}): {4}"),
+        _strings.Get("DiagnosticLineFormat", "{0} {1} [{2}..{3}): {4}"),
         GetDiagnosticSeverityLabel(diagnostic.Severity),
         diagnostic.Code,
         diagnostic.SourceSpan.Start.ToString(System.Globalization.CultureInfo.InvariantCulture),
         diagnostic.SourceSpan.End.ToString(System.Globalization.CultureInfo.InvariantCulture),
         diagnostic.Message);
 
-    private static string GetDiagnosticSeverityLabel(MarkdownDiagnosticSeverity severity) => severity switch
+    private string GetDiagnosticSeverityLabel(MarkdownDiagnosticSeverity severity) => severity switch
     {
-        MarkdownDiagnosticSeverity.Error => SampleStrings.Get("DiagnosticsError", "Error"),
-        MarkdownDiagnosticSeverity.Warning => SampleStrings.Get("DiagnosticsWarning", "Warning"),
-        _ => SampleStrings.Get("DiagnosticsInformation", "Information"),
+        MarkdownDiagnosticSeverity.Error => _strings.Get("DiagnosticsError", "Error"),
+        MarkdownDiagnosticSeverity.Warning => _strings.Get("DiagnosticsWarning", "Warning"),
+        _ => _strings.Get("DiagnosticsInformation", "Information"),
     };
 
     private void UpdateThemeStatus()

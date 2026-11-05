@@ -79,12 +79,12 @@ public sealed partial class MainWindow
         AutomationProperties.SetAutomationId(controls, "ProviderControls");
         AutomationProperties.SetName(
             controls,
-            SampleStrings.Get("ProviderControlsAutomationName", "Provider configuration controls"));
+            _strings.Get("ProviderControlsAutomationName", "Provider configuration controls"));
 
         _replaceEngineButton = new AppBarButton
         {
             Icon = new FontIcon { Glyph = "" },
-            Label = SampleStrings.Get("CommandReplaceEngine", "Replace engine"),
+            Label = _strings.Get("CommandReplaceEngine", "Replace engine"),
         };
         AutomationProperties.SetAutomationId(_replaceEngineButton, "ProviderReplaceEngine");
         _replaceEngineButton.Click += (_, _) => ReplaceEngine();
@@ -93,12 +93,12 @@ public sealed partial class MainWindow
         _withoutCSharpGrammarToggle = new AppBarToggleButton
         {
             Icon = new FontIcon { Glyph = "" },
-            Label = SampleStrings.Get("CommandWithoutCSharpGrammar", "No C# grammar"),
+            Label = _strings.Get("CommandWithoutCSharpGrammar", "No C# grammar"),
         };
         AutomationProperties.SetAutomationId(_withoutCSharpGrammarToggle, "ProviderWithoutCSharpGrammar");
         AutomationProperties.SetName(
             _withoutCSharpGrammarToggle,
-            SampleStrings.Get("CommandWithoutCSharpGrammarAutomationName", "Replace the grammar provider with one that has no C# grammar"));
+            _strings.Get("CommandWithoutCSharpGrammarAutomationName", "Replace the grammar provider with one that has no C# grammar"));
         _withoutCSharpGrammarToggle.Checked += (_, _) => ReplaceHighlighter(withoutCSharp: true);
         _withoutCSharpGrammarToggle.Unchecked += (_, _) => ReplaceHighlighter(withoutCSharp: false);
         controls.PrimaryCommands.Add(_withoutCSharpGrammarToggle);
@@ -106,12 +106,12 @@ public sealed partial class MainWindow
         _alternateFactoryToggle = new AppBarToggleButton
         {
             Icon = new FontIcon { Glyph = "" },
-            Label = SampleStrings.Get("CommandAlternateFactory", "Alternate controls"),
+            Label = _strings.Get("CommandAlternateFactory", "Alternate controls"),
         };
         AutomationProperties.SetAutomationId(_alternateFactoryToggle, "ProviderAlternateFactory");
         AutomationProperties.SetName(
             _alternateFactoryToggle,
-            SampleStrings.Get("CommandAlternateFactoryAutomationName", "Replace the hosted control factory"));
+            _strings.Get("CommandAlternateFactoryAutomationName", "Replace the hosted control factory"));
         _alternateFactoryToggle.Checked += (_, _) => SetAlternateHostedFactory(true);
         _alternateFactoryToggle.Unchecked += (_, _) => SetAlternateHostedFactory(false);
         controls.PrimaryCommands.Add(_alternateFactoryToggle);
@@ -119,12 +119,12 @@ public sealed partial class MainWindow
         _minimalProvidersToggle = new AppBarToggleButton
         {
             Icon = new FontIcon { Glyph = "" },
-            Label = SampleStrings.Get("CommandMinimalProviders", "Minimal providers"),
+            Label = _strings.Get("CommandMinimalProviders", "Minimal providers"),
         };
         AutomationProperties.SetAutomationId(_minimalProvidersToggle, "ProviderMinimal");
         AutomationProperties.SetName(
             _minimalProvidersToggle,
-            SampleStrings.Get("CommandMinimalProvidersAutomationName", "Use strict GFM without optional providers"));
+            _strings.Get("CommandMinimalProvidersAutomationName", "Use strict GFM without optional providers"));
         _minimalProvidersToggle.Checked += (_, _) => SetMinimalProviders(true);
         _minimalProvidersToggle.Unchecked += (_, _) => SetMinimalProviders(false);
         controls.PrimaryCommands.Add(_minimalProvidersToggle);
@@ -132,12 +132,12 @@ public sealed partial class MainWindow
         _secondViewToggle = new AppBarToggleButton
         {
             Icon = new FontIcon { Glyph = "" },
-            Label = SampleStrings.Get("CommandSecondView", "Second view"),
+            Label = _strings.Get("CommandSecondView", "Second view"),
         };
         AutomationProperties.SetAutomationId(_secondViewToggle, "ProviderSecondView");
         AutomationProperties.SetName(
             _secondViewToggle,
-            SampleStrings.Get("CommandSecondViewAutomationName", "Show a second view that shares the providers"));
+            _strings.Get("CommandSecondViewAutomationName", "Show a second view that shares the providers"));
         _secondViewToggle.Checked += (_, _) => SetSecondView(true);
         _secondViewToggle.Unchecked += (_, _) => SetSecondView(false);
         controls.PrimaryCommands.Add(_secondViewToggle);
@@ -331,7 +331,7 @@ public sealed partial class MainWindow
             AutomationProperties.SetAutomationId(second, "SecondMarkdownRenderer");
             AutomationProperties.SetName(
                 second,
-                SampleStrings.Get("SecondRendererAutomationName", "Second rendered markdown preview"));
+                _strings.Get("SecondRendererAutomationName", "Second rendered markdown preview"));
             second.Theme = _renderer?.Theme ?? new MarkdownTheme();
             second.FlowDirection = _renderer?.FlowDirection ?? FlowDirection.LeftToRight;
             _secondRenderer = second;

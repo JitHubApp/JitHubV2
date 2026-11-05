@@ -7,16 +7,32 @@ namespace MarkdownRenderer.Sample;
 /// <summary>
 /// Resolves sample-shell strings from MRT while retaining an English fallback
 /// for isolated development hosts that do not have an application resource map.
+/// The window loads one instance and passes it to the parts it composes.
 /// </summary>
-internal static class SampleStrings
+internal sealed class SampleStrings
 {
-    private static readonly Lazy<ResourceAccessor?> Accessor = new(CreateAccessor);
+    private readonly ResourceAccessor? _accessor;
 
-    public static string Get(string key, string fallback)
+    private SampleStrings(ResourceAccessor? accessor) => _accessor = accessor;
+
+    internal static SampleStrings Load()
     {
         try
         {
-            string? value = Accessor.Value?.Get(key);
+            return new SampleStrings(CreateAccessor());
+        }
+        catch
+        {
+            // Without a resource map every lookup uses its English fallback.
+            return new SampleStrings(accessor: null);
+        }
+    }
+
+    public string Get(string key, string fallback)
+    {
+        try
+        {
+            string? value = _accessor?.Get(key);
             return string.IsNullOrWhiteSpace(value) ? fallback : value;
         }
         catch
