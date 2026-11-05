@@ -112,7 +112,7 @@ public sealed class RootLocalContainerImageRelayoutTests
         SharedCanvasBitmapCache.Lease[] leasesBefore = images.Select(GetBitmapLease).ToArray();
         int[] leaseReferenceCountsBefore = leasesBefore.Select(GetLeaseReferenceCount).ToArray();
         ImageBox svgImage = Assert.Single(images, image => image.Url == optimizedResolver.SvgUrl);
-        MarkdownSvgDocumentInfo svgInfoBefore = GetPrivateField<MarkdownSvgDocumentInfo>(svgImage, "_svgInfo");
+        MarkdownSvgDocumentInfo svgInfoBefore = Assert.IsType<MarkdownSvgDocumentInfo>(svgImage.Svg.Info);
         Size sizeBefore = snapshot.Size;
         long revisionBefore = snapshot.LayoutRevision;
         MarkdownSourceMap sourceMapBefore = snapshot.SourceMap;
@@ -205,7 +205,7 @@ public sealed class RootLocalContainerImageRelayoutTests
                 Assert.Equal(LayoutPlacementTestGeometry.ToLogical(fallback.Snapshot, fallbackImages[index]),
                     LayoutPlacementTestGeometry.ToLogical(snapshot, imagesAfter[index]));
             }
-            Assert.Same(svgInfoBefore, GetPrivateField<MarkdownSvgDocumentInfo>(svgImage, "_svgInfo"));
+            Assert.Same(svgInfoBefore, svgImage.Svg.Info);
 
             Assert.Equal(resolveCountsBefore, optimizedResolver.CaptureResolveCounts());
             Assert.Equal(svgOpenCountBefore, optimizedSvgRenderer.OpenCount);
@@ -1550,29 +1550,14 @@ public sealed class RootLocalContainerImageRelayoutTests
 
     private static SharedCanvasBitmapCache.Lease GetBitmapLease(ImageBox image)
     {
-        FieldInfo field = typeof(ImageBox).GetField("_bitmapLease", BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Missing ImageBox bitmap lease field.");
-        return Assert.IsType<SharedCanvasBitmapCache.Lease>(field.GetValue(image));
+        return Assert.IsType<SharedCanvasBitmapCache.Lease>(image.Presentation.Lease);
     }
 
     private static int GetLeaseReferenceCount(SharedCanvasBitmapCache.Lease lease)
     {
-        FieldInfo entryField = typeof(SharedCanvasBitmapCache.Lease).GetField("_entry",
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Missing shared bitmap cache entry field.");
-        object entry = Assert.IsAssignableFrom<SharedCanvasBitmapCacheEntry>(entryField.GetValue(lease));
-        FieldInfo countField = typeof(SharedCanvasBitmapCacheEntry).GetField("_referenceCount",
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Missing shared bitmap reference count.");
-        return Assert.IsType<int>(countField.GetValue(entry));
-    }
-
-    private static T GetPrivateField<T>(object instance, string name) where T : class
-    {
-        FieldInfo field = instance.GetType().GetField(name,
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException($"Missing private field {name}.");
-        return Assert.IsType<T>(field.GetValue(instance));
+        int? count = lease.EntryReferenceCount;
+        Assert.True(count.HasValue, "The lease no longer holds a cache entry.");
+        return count.Value;
     }
 
     public enum ContainerMutation

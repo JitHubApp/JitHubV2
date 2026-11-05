@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Document;
@@ -26,7 +25,7 @@ public sealed class ImageRetirementBarrierTests
     {
         var image = new ImageBox(CreateContext(renderer: null), ImageResourceScope.Shared, "", "ready image");
         var document = new BlockingReadySvgDocument(throwOnDispose);
-        SetPrivateField(image, "_svgDocument", document);
+        image.SvgDocuments.SetCurrentNoLock(document);
         var callerReturned = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var callerContext = new TrackingSynchronizationContext();
@@ -152,9 +151,13 @@ public sealed class ImageRetirementBarrierTests
     {
         var image = new ImageBox(CreateContext(renderer: null), ImageResourceScope.Shared, CreateSvgDataUri(), "queued publication");
         byte[] rawBytes = [1, 2, 3, 4];
-        SetPrivateField(image, "_svgSourceIdentity", new WeakReference<byte[]>(rawBytes));
-        SetPrivateField(image, "_svgTitle", "accessible title");
-        SetPrivateField(image, "_svgDesc", "accessible description");
+        // The box has no SVG renderer; accepted metadata never reads it.
+        ImageBoxTestState.AdoptSvgMetadata(
+            image,
+            renderer: null!,
+            sourceIdentity: new WeakReference<byte[]>(rawBytes),
+            title: "accessible title",
+            description: "accessible description");
         Action? queuedPublication = null;
         int published = 0;
         int dropped = 0;
@@ -172,7 +175,7 @@ public sealed class ImageRetirementBarrierTests
         Task retirement = image.RetirementTask;
         Assert.False(retirement.IsCompleted);
         Assert.Equal(0, Volatile.Read(ref dropped));
-        Assert.NotNull(GetPrivateField(image, "_svgSourceIdentity"));
+        Assert.NotNull(image.Svg.SourceIdentity);
 
         Action delivery = Assert.IsType<Action>(queuedPublication);
         delivery();
@@ -181,7 +184,7 @@ public sealed class ImageRetirementBarrierTests
 
         Assert.Equal(0, Volatile.Read(ref published));
         Assert.Equal(1, Volatile.Read(ref dropped));
-        Assert.Null(GetPrivateField(image, "_svgSourceIdentity"));
+        Assert.Null(image.Svg.SourceIdentity);
         Assert.Equal("queued publication", image.Alt);
         Assert.Equal("accessible title", image.SvgTitle);
         Assert.Equal("accessible description", image.SvgDesc);
@@ -414,24 +417,6 @@ public sealed class ImageRetirementBarrierTests
     {
         const string svg = "<svg xmlns='http://www.w3.org/2000/svg' width='24' height='12'><rect width='24' height='12'/></svg>";
         return "data:image/svg+xml," + Uri.EscapeDataString(svg);
-    }
-
-    private static void SetPrivateField<T>(ImageBox image, string name, T value)
-    {
-        FieldInfo field = typeof(ImageBox).GetField(
-            name,
-            BindingFlags.Instance | BindingFlags.NonPublic) ??
-            throw new MissingFieldException(typeof(ImageBox).FullName, name);
-        field.SetValue(image, value);
-    }
-
-    private static object? GetPrivateField(ImageBox image, string name)
-    {
-        FieldInfo field = typeof(ImageBox).GetField(
-            name,
-            BindingFlags.Instance | BindingFlags.NonPublic) ??
-            throw new MissingFieldException(typeof(ImageBox).FullName, name);
-        return field.GetValue(image);
     }
 
     private sealed class TrackingSynchronizationContext : SynchronizationContext

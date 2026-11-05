@@ -18,6 +18,12 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// <see cref="ISvgTileCacheHost"/>; the box's publication and image-work
 /// locks are taken before this lock, never while holding it.
 /// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because the current grid, the fallback
+/// grid, in-flight work and viewport observation all change together under
+/// the one tile lock. The fallback grid is the next split, once it can be
+/// handed over without a second lock.
+/// </remarks>
 internal sealed class SvgTileCache : ISvgTileGapFill
 {
     internal const int SvgTileSizePixels = 1024;
@@ -43,6 +49,12 @@ internal sealed class SvgTileCache : ISvgTileGapFill
     {
         _host = host ?? throw new ArgumentNullException(nameof(host));
     }
+
+    /// <summary>
+    /// The tile lock guarding every field here. Callers that also take the
+    /// box's publication or image-work locks take those first.
+    /// </summary>
+    internal object Sync => _svgTileLock;
 
     /// <summary>Whether a tile from the current grid has been published since the last reset.</summary>
     internal bool HasRenderedTile => _svgHasRenderedTile;

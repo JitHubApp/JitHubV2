@@ -1,4 +1,3 @@
-using System.Reflection;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout;
@@ -212,10 +211,7 @@ public sealed class SingleRasterLayoutCandidateTests
                 DirectXPixelFormat.B8G8R8A8UIntNormalized);
             SharedCanvasBitmapCache.Lease replacementLease =
                 ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(replacementBitmap);
-            MethodInfo replaceBitmap = typeof(ImageBox).GetMethod(
-                "ReplaceBitmap",
-                BindingFlags.Instance | BindingFlags.NonPublic)!;
-            _ = replaceBitmap.Invoke(fixture.ImageRun.Image, [replacementBitmap, replacementLease, null]);
+            fixture.ImageRun.Image.Presentation.Replace(replacementBitmap, replacementLease);
 
             Assert.False(candidate.HasCurrentSourceRaster());
             Assert.Same(replacementBitmap, fixture.ImageRun.Image.Bitmap);

@@ -6,6 +6,7 @@ Set-StrictMode -Version Latest
 
 $script:RunnerPath = Join-Path $PSScriptRoot 'Invoke-MarkdownCorrectnessUiTests.ps1'
 $script:ImageBoxPath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Layout\Boxes\ImageBox.cs'
+$script:ImagePainterPath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Layout\Boxes\ImagePainter.cs'
 $script:LayoutBuilderPath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Layout\LayoutBlockBuilder.cs'
 $script:ThemeDefaultStylesPath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Theming\ThemeDefaultStyles.cs'
 $script:ElementStylePath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Theming\ElementStyle.cs'
@@ -216,8 +217,10 @@ Assert-Throws -Name 'image helper rejects artwork not wholly visible in renderer
 
 # Source guards are explicitly static wiring checks: they prove the harness's
 # placement constants still match ImageBox's current source contract, not that
-# a live WinUI visual was rendered or touch-tested.
+# a live WinUI visual was rendered or touch-tested. ImageBox owns its alignment
+# defaults; the ImagePainter it composes owns content placement and paint.
 $imageBoxSource = [System.IO.File]::ReadAllText($script:ImageBoxPath)
+$imagePainterSource = [System.IO.File]::ReadAllText($script:ImagePainterPath)
 $layoutBuilderSource = [System.IO.File]::ReadAllText($script:LayoutBuilderPath)
 $themeDefaultStylesSource = [System.IO.File]::ReadAllText($script:ThemeDefaultStylesPath)
 $elementStyleSource = [System.IO.File]::ReadAllText($script:ElementStylePath)
@@ -268,9 +271,9 @@ Assert-Check -Name 'source guard: controlled sample Body defaults match the artw
      -not $sampleAppSource.Contains('MarkdownRenderer.Body.Margin') -and
      -not $sampleAppSource.Contains('MarkdownRenderer.Body.LineHeightMultiplier'))
 Assert-Check -Name 'source guard: automation destination and paint share ImageBox content placement' -Condition `
-    ($imageBoxSource.Contains('new Rect(GetContentX(), GetContentY(), _measure.ImageWidth, _measure.ImageHeight)') -and
-     $imageBoxSource.Contains('var imageRect = new Rect(x, y, _measure.ImageWidth, _measure.ImageHeight);') -and
-     $imageBoxSource.Contains('float x = GetContentX();') -and $imageBoxSource.Contains('float y = GetContentY();'))
+    ($imagePainterSource.Contains('new Rect(GetContentX(), GetContentY(), _measure.ImageWidth, _measure.ImageHeight)') -and
+     $imagePainterSource.Contains('var imageRect = new Rect(x, y, _measure.ImageWidth, _measure.ImageHeight);') -and
+     $imagePainterSource.Contains('float x = GetContentX();') -and $imagePainterSource.Contains('float y = GetContentY();'))
 
 $runCases = $runnerAst.Find({
     param($node)

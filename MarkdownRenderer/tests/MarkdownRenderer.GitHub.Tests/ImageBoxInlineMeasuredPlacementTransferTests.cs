@@ -91,7 +91,7 @@ public sealed class ImageBoxInlineMeasuredPlacementTransferTests
             Assert.Equal(preparedAvailableWidth, committedWidth);
             Assert.True(source.IsDirty);
             Assert.True(prepared.IsDirty);
-            Assert.Same(expectedSourceLease, GetField<SharedCanvasBitmapCache.Lease>(source, "_bitmapLease"));
+            Assert.Same(expectedSourceLease, source.Presentation.Lease);
             Assert.Same(expectedSourceLease.Bitmap, source.Bitmap);
         }
         finally
@@ -207,13 +207,4 @@ public sealed class ImageBoxInlineMeasuredPlacementTransferTests
         }
     }
 
-    private static T GetField<T>(object instance, string name)
-    {
-        var field = instance.GetType().GetField(
-            name,
-            System.Reflection.BindingFlags.Instance |
-            System.Reflection.BindingFlags.NonPublic);
-        Assert.NotNull(field);
-        return Assert.IsType<T>(field!.GetValue(instance));
-    }
 }

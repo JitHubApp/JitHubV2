@@ -4,14 +4,15 @@ using System.Threading;
 namespace MarkdownRenderer.Layout.Boxes;
 
 /// <summary>
-/// One unit of an image box's counted image work and its cancellation token.
+/// One unit of an image box's counted image work, admitted by its
+/// <see cref="ImageWorkLifetime"/>, and its cancellation token.
 /// Disposing it completes the work exactly once.
 /// </summary>
 internal sealed class ImageWorkLease : IDisposable
 {
-    private ImageBox? _owner;
+    private ImageWorkLifetime? _owner;
 
-    internal ImageWorkLease(ImageBox owner, CancellationToken token)
+    internal ImageWorkLease(ImageWorkLifetime owner, CancellationToken token)
     {
         _owner = owner;
         Token = token;
@@ -20,5 +21,5 @@ internal sealed class ImageWorkLease : IDisposable
     internal readonly CancellationToken Token;
 
     public void Dispose() =>
-        Interlocked.Exchange(ref _owner, null)?.CompleteImageWork();
+        Interlocked.Exchange(ref _owner, null)?.CompleteWork();
 }

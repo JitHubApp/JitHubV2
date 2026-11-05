@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -304,7 +303,7 @@ public sealed class SvgFallbackTileResidencyTests
             renderGeneration: 90);
         ImageBox box = CreateBareBox(previous, renderer);
         SvgTileCache cache = box.SvgTileCache;
-        void Accept(SvgTileRenderPlan? accepted) => SetField(box, "_svgTileRenderPlan", accepted);
+        void Accept(SvgTileRenderPlan? accepted) => box.Svg.SetAcceptedPlanNoLock(accepted);
         try
         {
             // The previous good grid becomes the fallback when the next plan is adopted.
@@ -398,29 +397,14 @@ public sealed class SvgFallbackTileResidencyTests
             SvgRenderer = renderer,
         };
         var box = new ImageBox(context, ImageResourceScope.Shared, "https://example.test/tiled.svg", "tiled svg");
-        SetField(box, "_svgTileRenderPlan", plan);
-        SetField(box, "_svgDocument", plan.Document);
-        SetField(box, "_svgLoadDemandTicket", plan.Demand);
-        SetField(box, "_svgRenderGeneration", plan.RenderGeneration);
-        SetField(box, "_svgUsesTiles", true);
-        SetField(box, "_svgRendererIdentity", GetRendererIdentity(renderer));
-        SetField(box, "_svgProviderCacheGeneration", renderer.CacheGeneration);
-        SetField(box, "_svgInfo", plan.Document.Info);
+        ImageBoxTestState.AcceptTiledPlan(box, plan);
+        ImageBoxTestState.AdoptSvgMetadata(
+            box,
+            renderer,
+            rendererIdentity: GetRendererIdentity(renderer),
+            providerCacheGeneration: renderer.CacheGeneration,
+            info: plan.Document.Info);
         return box;
-    }
-
-    private static void SetField(object target, string name, object? value)
-    {
-        FieldInfo field = target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-            ?? throw new Xunit.Sdk.XunitException($"Missing field '{name}' on '{target.GetType().Name}'.");
-        field.SetValue(target, value);
-    }
-
-    private static T GetField<T>(object target, string name)
-    {
-        FieldInfo field = target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-            ?? throw new Xunit.Sdk.XunitException($"Missing field '{name}' on '{target.GetType().Name}'.");
-        return (T)field.GetValue(target)!;
     }
 
     private static long GetRendererIdentity(IMarkdownSvgRenderer renderer) =>

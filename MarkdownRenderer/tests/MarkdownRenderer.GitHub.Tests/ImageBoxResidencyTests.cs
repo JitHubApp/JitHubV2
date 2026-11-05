@@ -1,7 +1,6 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Accessibility;
@@ -519,21 +518,21 @@ public sealed class ImageBoxResidencyTests
 
         try
         {
-            Assert.True((bool)(InvokePrivate(image, "TryAdoptSvgDocument", oldDocument) ?? false));
+            Assert.True(image.SvgDocuments.TryAdopt(oldDocument));
             queuedOldUse = Assert.IsAssignableFrom<IDisposable>(
-                InvokePrivate(image, "TryAcquireSvgDocumentUse", oldDocument));
+                image.SvgDocuments.TryAcquireUse(oldDocument));
 
             // Replacement retires the old document while an already-admitted
             // tile remains queued before provider admission.
-            Assert.True((bool)(InvokePrivate(image, "TryAdoptSvgDocument", newDocument) ?? false));
+            Assert.True(image.SvgDocuments.TryAdopt(newDocument));
             newDocumentUse = Assert.IsAssignableFrom<IDisposable>(
-                InvokePrivate(image, "TryAcquireSvgDocumentUse", newDocument));
+                image.SvgDocuments.TryAcquireUse(newDocument));
 
             // Model that queued tile entering native RenderAsync after the old
             // document has been retired. The child use must be allowed only
             // because the queued parent still owns the old document.
             nativeOldUse = Assert.IsAssignableFrom<IDisposable>(
-                InvokePrivate(image, "TryAcquireNestedSvgDocumentUse", queuedOldUse));
+                image.SvgDocuments.TryAcquireNestedUse(Assert.IsType<SvgDocumentUseLease>(queuedOldUse)));
             queuedOldUse.Dispose();
             queuedOldUse = null;
             Assert.Equal(0, oldDocument.DisposeCount);
@@ -547,7 +546,7 @@ public sealed class ImageBoxResidencyTests
             Assert.Equal(1, oldDocument.DisposeCount);
             Assert.Equal(0, newDocument.DisposeCount);
 
-            _ = InvokePrivate(image, "ReleaseSvgDocument", newDocument);
+            image.SvgDocuments.Release(newDocument);
             Assert.Equal(0, newDocument.DisposeCount);
             newDocumentUse.Dispose();
             newDocumentUse = null;
@@ -715,14 +714,6 @@ public sealed class ImageBoxResidencyTests
             await Task.Delay(1, timeout.Token);
     }
 
-    private static object? InvokePrivate(ImageBox image, string methodName, params object?[] arguments)
-    {
-        MethodInfo method = typeof(ImageBox).GetMethod(
-            methodName,
-            BindingFlags.Instance | BindingFlags.NonPublic) ??
-            throw new MissingMethodException(typeof(ImageBox).FullName, methodName);
-        return method.Invoke(image, arguments);
-    }
 
     private static MarkdownPerformanceSession CreateResidencySession(bool displaySized = true) =>
         new(MarkdownPerformanceOptions.Progressive with

@@ -1,6 +1,5 @@
 using System.Buffers;
 using System.Collections.Concurrent;
-using System.Reflection;
 using System.Text;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Document;
@@ -583,9 +582,9 @@ public sealed class RootLocalTableImageRelayoutTests
         float[] imageWidthsBefore = images.Select(static image => image.MeasuredImageWidth).ToArray();
         float[] imageHeightsBefore = images.Select(static image => image.MeasuredImageHeight).ToArray();
         MarkdownSvgDocumentInfo[] infoBefore = images.Select(image =>
-            GetPrivateField<MarkdownSvgDocumentInfo>(image, "_svgInfo")).ToArray();
-        long[] providerGenerationsBefore = images.Select(image => GetPrivateField<long>(image, "_svgProviderCacheGeneration")).ToArray();
-        long[] rendererIdentitiesBefore = images.Select(image => GetPrivateField<long>(image, "_svgRendererIdentity")).ToArray();
+            Assert.IsType<MarkdownSvgDocumentInfo>(image.Svg.Info)).ToArray();
+        long[] providerGenerationsBefore = images.Select(image => image.Svg.ProviderCacheGeneration).ToArray();
+        long[] rendererIdentitiesBefore = images.Select(image => image.Svg.RendererIdentity).ToArray();
         Assert.Equal<double?>(480d, infoBefore[0].IntrinsicWidthDips);
         Assert.Equal<double?>(96d, infoBefore[0].IntrinsicHeightDips);
         Assert.Equal<double?>(96d, infoBefore[1].IntrinsicWidthDips);
@@ -671,12 +670,11 @@ public sealed class RootLocalTableImageRelayoutTests
                 Assert.Same(images[imageIndex], imagesAfter[imageIndex]);
                 Assert.Same(bitmapsBefore[imageIndex], imagesAfter[imageIndex].Bitmap);
                 Assert.Same(leasesBefore[imageIndex], GetBitmapLease(imagesAfter[imageIndex]));
-                Assert.Same(infoBefore[imageIndex], GetPrivateField<MarkdownSvgDocumentInfo>(
-                    imagesAfter[imageIndex], "_svgInfo"));
+                Assert.Same(infoBefore[imageIndex], imagesAfter[imageIndex].Svg.Info);
                 Assert.Equal(providerGenerationsBefore[imageIndex],
-                    GetPrivateField<long>(imagesAfter[imageIndex], "_svgProviderCacheGeneration"));
+                    imagesAfter[imageIndex].Svg.ProviderCacheGeneration);
                 Assert.Equal(rendererIdentitiesBefore[imageIndex],
-                    GetPrivateField<long>(imagesAfter[imageIndex], "_svgRendererIdentity"));
+                    imagesAfter[imageIndex].Svg.RendererIdentity);
                 Assert.Equal(rasterSizesBefore[imageIndex], imagesAfter[imageIndex].SvgRasterPixelSize);
                 Assert.Equal(titlesBefore[imageIndex], imagesAfter[imageIndex].SvgTitle);
                 Assert.Equal(descriptionsBefore[imageIndex], imagesAfter[imageIndex].SvgDesc);
@@ -747,8 +745,8 @@ public sealed class RootLocalTableImageRelayoutTests
         SharedCanvasBitmapCache.Lease[] leasesBefore = images.Select(GetBitmapLease).ToArray();
         int[] leaseCountsBefore = leasesBefore.Select(GetLeaseReferenceCount).ToArray();
         MarkdownSvgDocumentInfo[] infoBefore = images.Select(image =>
-            GetPrivateField<MarkdownSvgDocumentInfo>(image, "_svgInfo")).ToArray();
-        long[] providerGenerationsBefore = images.Select(image => GetPrivateField<long>(image, "_svgProviderCacheGeneration")).ToArray();
+            Assert.IsType<MarkdownSvgDocumentInfo>(image.Svg.Info)).ToArray();
+        long[] providerGenerationsBefore = images.Select(image => image.Svg.ProviderCacheGeneration).ToArray();
         MarkdownSourceMap sourceMapBefore = snapshot.SourceMap;
         MarkdownSemanticDocument semanticsBefore = snapshot.SemanticDocument;
         long revisionBefore = snapshot.LayoutRevision;
@@ -790,10 +788,9 @@ public sealed class RootLocalTableImageRelayoutTests
                 Assert.Same(images[imageIndex], EnumerateTableImages(table).ElementAt(imageIndex));
                 Assert.Same(bitmapsBefore[imageIndex], images[imageIndex].Bitmap);
                 Assert.Same(leasesBefore[imageIndex], GetBitmapLease(images[imageIndex]));
-                Assert.Same(infoBefore[imageIndex], GetPrivateField<MarkdownSvgDocumentInfo>(
-                    images[imageIndex], "_svgInfo"));
+                Assert.Same(infoBefore[imageIndex], images[imageIndex].Svg.Info);
                 Assert.Equal(providerGenerationsBefore[imageIndex],
-                    GetPrivateField<long>(images[imageIndex], "_svgProviderCacheGeneration"));
+                    images[imageIndex].Svg.ProviderCacheGeneration);
             }
             Assert.Equal(opensBefore, renderer.OpenCount);
             Assert.Equal(rendersBefore, renderer.FullRenderCount);
@@ -1744,29 +1741,14 @@ public sealed class RootLocalTableImageRelayoutTests
 
     private static SharedCanvasBitmapCache.Lease GetBitmapLease(ImageBox image)
     {
-        FieldInfo field = typeof(ImageBox).GetField("_bitmapLease",
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Missing ImageBox bitmap lease field.");
-        return Assert.IsType<SharedCanvasBitmapCache.Lease>(field.GetValue(image));
+        return Assert.IsType<SharedCanvasBitmapCache.Lease>(image.Presentation.Lease);
     }
 
     private static int GetLeaseReferenceCount(SharedCanvasBitmapCache.Lease lease)
     {
-        FieldInfo entryField = typeof(SharedCanvasBitmapCache.Lease).GetField("_entry",
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Missing cache lease entry field.");
-        object entry = Assert.IsAssignableFrom<object>(entryField.GetValue(lease));
-        FieldInfo referencesField = entry.GetType().GetField("_referenceCount",
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Missing cache entry reference counter.");
-        return Assert.IsType<int>(referencesField.GetValue(entry));
-    }
-
-    private static T GetPrivateField<T>(object instance, string name)
-    {
-        FieldInfo field = instance.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException($"Missing private field {name} on {instance.GetType().Name}.");
-        return Assert.IsType<T>(field.GetValue(instance));
+        int? count = lease.EntryReferenceCount;
+        Assert.True(count.HasValue, "The lease no longer holds a cache entry.");
+        return count.Value;
     }
 
     private static string CreateSvgTableSource(SvgTableResolver resolver) =>

@@ -1,10 +1,10 @@
 using System.Collections;
-using System.Reflection;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
@@ -42,20 +42,14 @@ public sealed class ImageBoxSvgPublicationCommitTests
             object workOwner = SvgTileCacheTestOperations.AdmitWork(
                 image.SvgTileCache, (SvgTileRenderPlan)plan, key, tileCancellation);
 
-            InvokePrivate(
-                image,
-                "PublishSvgTileFailure",
-                plan,
-                key,
-                workOwner,
-                new MarkdownSvgException(
+            image.TileHost.PublishSvgTileFailure((SvgTileRenderPlan)plan, key, (SvgTileWorkOwner)workOwner, new MarkdownSvgException(
                     MarkdownSvgFailureReason.WorkerFailure,
                     "Deterministic test failure."));
 
-            object useState = DocumentUseState(image, document);
-            Assert.True(Field<bool>(useState, "Retired"));
-            Assert.False(Field<bool>(useState, "DisposalScheduled"));
-            Assert.NotNull(Field<object?>(useState, "ReservedDisposalWork"));
+            SvgDocumentUseState useState = DocumentUseState(image, document);
+            Assert.True(useState.Retired);
+            Assert.False(useState.DisposalScheduled);
+            Assert.NotNull(useState.ReservedDisposalWork);
             Assert.Null(CurrentDocument(image));
             Assert.Equal(0, document.DisposeCount);
 
@@ -63,8 +57,8 @@ public sealed class ImageBoxSvgPublicationCommitTests
             documentUse = null;
             await document.DisposeCompleted.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
-            Assert.True(Field<bool>(useState, "DisposalScheduled"));
-            Assert.Null(Field<object?>(useState, "ReservedDisposalWork"));
+            Assert.True(useState.DisposalScheduled);
+            Assert.Null(useState.ReservedDisposalWork);
             Assert.Equal(1, document.DisposeCount);
             Assert.False(document.DisposeWhileWorkLockHeld);
         }
@@ -109,7 +103,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
                 });
 
             Assert.Same(acceptedDocument, CurrentDocument(image));
-            Assert.Same(acceptedDocument, Field<object>(Plan(image)!, "Document"));
+            Assert.Same(acceptedDocument, ((SvgTileRenderPlan)Plan(image)!).Document);
             Assert.True(IsCurrentTilePlan(image, acceptedPlan));
             Assert.Equal(0, acceptedDocument.DisposeCount);
             Assert.Equal(0, candidateDocument.DisposeCount);
@@ -119,14 +113,14 @@ public sealed class ImageBoxSvgPublicationCommitTests
             queuedPublication = null;
 
             Assert.Same(candidateDocument, CurrentDocument(image));
-            Assert.Same(candidateDocument, Field<object>(Plan(image)!, "Document"));
+            Assert.Same(candidateDocument, ((SvgTileRenderPlan)Plan(image)!).Document);
             Assert.False(IsCurrentTilePlan(image, acceptedPlan));
             Assert.Equal(
-                Field<int>(image, "_svgRenderGeneration"),
-                Field<int>(Plan(image)!, "RenderGeneration"));
-            Assert.Equal("candidate", Field<string>(Plan(image)!, "IdentityPrefix"));
-            Assert.Equal(2048, Field<int>(Plan(image)!, "FullWidthPixels"));
-            Assert.Equal(1024, Field<int>(Plan(image)!, "FullHeightPixels"));
+                image.Svg.RenderGeneration,
+                ((SvgTileRenderPlan)Plan(image)!).RenderGeneration);
+            Assert.Equal("candidate", ((SvgTileRenderPlan)Plan(image)!).IdentityPrefix);
+            Assert.Equal(2048, ((SvgTileRenderPlan)Plan(image)!).FullWidthPixels);
+            Assert.Equal(1024, ((SvgTileRenderPlan)Plan(image)!).FullHeightPixels);
 
             // The accepted document's outstanding tile use keeps it alive after
             // replacement commits, until that exact use drains.
@@ -169,7 +163,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
                 _ => false);
 
             Assert.Same(acceptedDocument, CurrentDocument(image));
-            Assert.Same(acceptedDocument, Field<object>(Plan(image)!, "Document"));
+            Assert.Same(acceptedDocument, ((SvgTileRenderPlan)Plan(image)!).Document);
             Assert.True(IsCurrentTilePlan(image, acceptedPlan));
             Assert.Equal(0, acceptedDocument.DisposeCount);
             await candidateDocument.DisposeCompleted.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -218,7 +212,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
             queuedPublication = null;
 
             Assert.Same(acceptedDocument, CurrentDocument(image));
-            Assert.Same(acceptedDocument, Field<object>(Plan(image)!, "Document"));
+            Assert.Same(acceptedDocument, ((SvgTileRenderPlan)Plan(image)!).Document);
             Assert.True(IsCurrentTilePlan(image, acceptedPlan));
             Assert.Equal(0, acceptedDocument.DisposeCount);
             await candidateDocument.DisposeCompleted.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -273,7 +267,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
             olderPublication = null;
 
             Assert.Same(newerDocument, CurrentDocument(image));
-            Assert.Same(newerDocument, Field<object>(Plan(image)!, "Document"));
+            Assert.Same(newerDocument, ((SvgTileRenderPlan)Plan(image)!).Document);
             Assert.False(IsCurrentTilePlan(image, originalPlan));
             await olderCandidateDocument.DisposeCompleted.Task.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.Equal(1, olderCandidateDocument.DisposeCount);
@@ -331,29 +325,19 @@ public sealed class ImageBoxSvgPublicationCommitTests
 
             // A terminal failure of the older fallback plan detaches only that
             // plan. It must not advance the newer candidate's publication epoch.
-            Assert.True(Assert.IsType<bool>(InvokePrivate(
-                image,
-                "TryInvalidateFailedSvgTile",
-                acceptedPlan,
-                key,
-                oldTileOwner,
-                null)));
-            Assert.Equal(candidateGeneration, Field<int>(image, "_svgRenderGeneration"));
+            Assert.True(image.TileHost.TryInvalidateFailedSvgTile((SvgTileRenderPlan)acceptedPlan, key, (SvgTileWorkOwner)oldTileOwner, null));
+            Assert.Equal(candidateGeneration, image.Svg.RenderGeneration);
             Assert.Null(Plan(image));
-            Assert.False(Field<bool>(image, "_svgUsesTiles"));
+            Assert.False(image.Svg.UsesTiles);
             RemoveTileFailureOwner(image, key, oldTileOwner);
             oldTileWork.Dispose();
             oldTileWork = null;
 
-            Assert.True(Assert.IsType<bool>(InvokePrivate(
-                image,
-                "TryCommitSvgPublication",
-                metadata,
-                candidatePlan)));
+            Assert.True(image.SvgPublication.TryCommit((SvgPublicationMetadata)metadata, (SvgTileRenderPlan?)candidatePlan));
             candidateUse.Dispose();
             candidateUse = null;
             Assert.Same(candidateDocument, CurrentDocument(image));
-            Assert.Same(candidateDocument, Field<object>(Plan(image)!, "Document"));
+            Assert.Same(candidateDocument, ((SvgTileRenderPlan)Plan(image)!).Document);
 
             // A delayed callback from the retired plan cannot invalidate or
             // otherwise disturb the just-committed candidate. The commit
@@ -366,16 +350,10 @@ public sealed class ImageBoxSvgPublicationCommitTests
             {
                 State = 1,
             };
-            Assert.False(Assert.IsType<bool>(InvokePrivate(
-                image,
-                "TryInvalidateFailedSvgTile",
-                acceptedPlan,
-                key,
-                lateOldTileOwner,
-                null)));
-            Assert.Equal(candidateGeneration, Field<int>(image, "_svgRenderGeneration"));
+            Assert.False(image.TileHost.TryInvalidateFailedSvgTile((SvgTileRenderPlan)acceptedPlan, key, (SvgTileWorkOwner)lateOldTileOwner, null));
+            Assert.Equal(candidateGeneration, image.Svg.RenderGeneration);
             Assert.Same(candidateDocument, CurrentDocument(image));
-            Assert.Same(candidateDocument, Field<object>(Plan(image)!, "Document"));
+            Assert.Same(candidateDocument, ((SvgTileRenderPlan)Plan(image)!).Document);
             RemoveTileFailureOwner(image, key, lateOldTileOwner);
             lateOldTileWork.Dispose();
             lateOldTileWork = null;
@@ -435,14 +413,8 @@ public sealed class ImageBoxSvgPublicationCommitTests
 
             tileWork = new CancellationTokenSource();
             tileWorkOwner = RegisterTileFailureOwner(image, failedPlan, key, tileWork);
-            Assert.True(Assert.IsType<bool>(InvokePrivate(
-                image,
-                "TryInvalidateFailedSvgTile",
-                failedPlan,
-                key,
-                tileWorkOwner,
-                null)));
-            Assert.Equal(candidateGeneration, Field<int>(image, "_svgRenderGeneration"));
+            Assert.True(image.TileHost.TryInvalidateFailedSvgTile((SvgTileRenderPlan)failedPlan, key, (SvgTileWorkOwner)tileWorkOwner, null));
+            Assert.Equal(candidateGeneration, image.Svg.RenderGeneration);
             RemoveTileFailureOwner(image, key, tileWorkOwner);
             tileWork.Dispose();
             tileWork = null;
@@ -450,15 +422,11 @@ public sealed class ImageBoxSvgPublicationCommitTests
             // The real failure publication releases the failed current handle
             // after detaching its plan. A candidate reservation for this same
             // handle cannot resurrect an already-retired provider document.
-            InvokePrivate(image, "ReleaseSvgDocument", document);
+            image.SvgDocuments.Release(document);
             Assert.Null(CurrentDocument(image));
-            Assert.False(Assert.IsType<bool>(InvokePrivate(
-                image,
-                "TryCommitSvgPublication",
-                metadata,
-                candidatePlan)));
+            Assert.False(image.SvgPublication.TryCommit((SvgPublicationMetadata)metadata, (SvgTileRenderPlan?)candidatePlan));
 
-            InvokePrivate(image, "RetireUncommittedSvgDocument", document);
+            image.SvgDocuments.RetireUncommitted(document);
             candidateUse.Dispose();
             candidateUse = null;
             await document.DisposeCompleted.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -494,9 +462,9 @@ public sealed class ImageBoxSvgPublicationCommitTests
             image.PublishOnUiThread(candidate.Publish, candidate.OnDropped, _ => false);
 
             Assert.Same(currentDocument, CurrentDocument(image));
-            Assert.Same(currentDocument, Field<object>(Plan(image)!, "Document"));
+            Assert.Same(currentDocument, ((SvgTileRenderPlan)Plan(image)!).Document);
             Assert.Equal(0, currentDocument.DisposeCount);
-            Assert.False(Field<bool>(DocumentUseState(image, currentDocument), "CandidateReserved"));
+            Assert.False(DocumentUseState(image, currentDocument).CandidateReserved);
         }
         finally
         {
@@ -533,12 +501,12 @@ public sealed class ImageBoxSvgPublicationCommitTests
                 });
 
             Assert.Same(currentDocument, CurrentDocument(image));
-            Assert.Same(currentDocument, Field<object>(Plan(image)!, "Document"));
+            Assert.Same(currentDocument, ((SvgTileRenderPlan)Plan(image)!).Document);
             Assert.NotSame(previousPlan, Plan(image));
             Assert.False(IsCurrentTilePlan(image, previousPlan));
-            Assert.Equal("same-current-after-reopen", Field<string>(Plan(image)!, "IdentityPrefix"));
+            Assert.Equal("same-current-after-reopen", ((SvgTileRenderPlan)Plan(image)!).IdentityPrefix);
             Assert.Equal(0, currentDocument.DisposeCount);
-            Assert.False(Field<bool>(DocumentUseState(image, currentDocument), "CandidateReserved"));
+            Assert.False(DocumentUseState(image, currentDocument).CandidateReserved);
         }
         finally
         {
@@ -559,14 +527,14 @@ public sealed class ImageBoxSvgPublicationCommitTests
         {
             TrackDisposalsUnderWorkLock(image, candidateDocument);
             firstUse = AcquireCandidate(image, candidateDocument);
-            object?[] duplicateArgs = [candidateDocument, null];
-            object? duplicate = InvokePrivate(image, "TryAcquireCandidateSvgDocumentUse", duplicateArgs);
+            SvgDocumentUseLease? duplicate = image.SvgDocuments.TryAcquireCandidateUse(
+                candidateDocument, out bool ownershipConflict);
 
             Assert.Null(duplicate);
-            Assert.True(Assert.IsType<bool>(duplicateArgs[1]));
+            Assert.True(ownershipConflict);
             Assert.Equal(0, candidateDocument.DisposeCount);
 
-            InvokePrivate(image, "RetireUncommittedSvgDocument", candidateDocument);
+            image.SvgDocuments.RetireUncommitted(candidateDocument);
             firstUse.Dispose();
             firstUse = null;
             await candidateDocument.DisposeCompleted.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -603,13 +571,9 @@ public sealed class ImageBoxSvgPublicationCommitTests
                 Height(metadata),
                 generation);
 
-            Assert.False(Assert.IsType<bool>(InvokePrivate(
-                image,
-                "TryCommitSvgPublication",
-                metadata,
-                mismatchedPlan)));
+            Assert.False(image.SvgPublication.TryCommit((SvgPublicationMetadata)metadata, (SvgTileRenderPlan?)mismatchedPlan));
             Assert.Same(acceptedDocument, CurrentDocument(image));
-            Assert.Same(acceptedDocument, Field<object>(Plan(image)!, "Document"));
+            Assert.Same(acceptedDocument, ((SvgTileRenderPlan)Plan(image)!).Document);
 
             var otherRenderer = new TestSvgRenderer();
             object wrongProviderMetadata = CreateMetadata(
@@ -623,14 +587,10 @@ public sealed class ImageBoxSvgPublicationCommitTests
                 Width(wrongProviderMetadata),
                 Height(wrongProviderMetadata),
                 generation);
-            Assert.False(Assert.IsType<bool>(InvokePrivate(
-                image,
-                "TryCommitSvgPublication",
-                wrongProviderMetadata,
-                matchingPlan)));
+            Assert.False(image.SvgPublication.TryCommit((SvgPublicationMetadata)wrongProviderMetadata, (SvgTileRenderPlan?)matchingPlan));
             Assert.Same(acceptedDocument, CurrentDocument(image));
 
-            InvokePrivate(image, "RetireUncommittedSvgDocument", candidateDocument);
+            image.SvgDocuments.RetireUncommitted(candidateDocument);
             candidateUse.Dispose();
             candidateUse = null;
             await candidateDocument.DisposeCompleted.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -649,7 +609,14 @@ public sealed class ImageBoxSvgPublicationCommitTests
     public async Task SuspendedImageRejectsCandidateAndPreservesAcceptedDocument()
     {
         var renderer = new TestSvgRenderer();
-        var image = CreateImage(renderer);
+        // Offscreen release is what lets an image's residency be suspended.
+        using var session = new MarkdownPerformanceSession(
+            MarkdownPerformanceOptions.Progressive with
+            {
+                PrefetchDocumentImages = false,
+                ReleaseOffscreenImageResources = true,
+            });
+        var image = CreateImage(renderer, session);
         var acceptedDocument = new TestSvgDocument();
         var candidateDocument = new TestSvgDocument();
         IDisposable? candidateUse = null;
@@ -667,17 +634,19 @@ public sealed class ImageBoxSvgPublicationCommitTests
                 Width(metadata),
                 Height(metadata),
                 generation);
-            SetField(image, "_resourcesSuspended", true);
+            // Close admission only, as the first step of SuspendResources does,
+            // so the candidate's render generation stays current and the
+            // suspension alone must reject it.
+            Assert.True(image.Lifetime.TrySuspend(
+                out CancellationTokenSource? _,
+                out ImageWorkLease? suspensionWork));
+            suspensionWork?.Dispose();
 
-            Assert.False(Assert.IsType<bool>(InvokePrivate(
-                image,
-                "TryCommitSvgPublication",
-                metadata,
-                plan)));
+            Assert.False(image.SvgPublication.TryCommit((SvgPublicationMetadata)metadata, (SvgTileRenderPlan?)plan));
             Assert.Same(acceptedDocument, CurrentDocument(image));
-            Assert.Same(acceptedDocument, Field<object>(Plan(image)!, "Document"));
+            Assert.Same(acceptedDocument, ((SvgTileRenderPlan)Plan(image)!).Document);
 
-            InvokePrivate(image, "RetireUncommittedSvgDocument", candidateDocument);
+            image.SvgDocuments.RetireUncommitted(candidateDocument);
             candidateUse.Dispose();
             candidateUse = null;
             await candidateDocument.DisposeCompleted.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -706,15 +675,11 @@ public sealed class ImageBoxSvgPublicationCommitTests
             int generation = AdvanceGeneration(image);
             object metadata = CreateMetadata(image, renderer, generation, "full-bitmap");
 
-            Assert.True(Assert.IsType<bool>(InvokePrivate(
-                image,
-                "TryCommitSvgPublication",
-                metadata,
-                null)));
+            Assert.True(image.SvgPublication.TryCommit((SvgPublicationMetadata)metadata, (SvgTileRenderPlan?)null));
 
             Assert.Null(CurrentDocument(image));
             Assert.Null(Plan(image));
-            Assert.False(Field<bool>(image, "_svgUsesTiles"));
+            Assert.False(image.Svg.UsesTiles);
             await acceptedDocument.DisposeCompleted.Task.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.Equal(1, acceptedDocument.DisposeCount);
         }
@@ -740,11 +705,10 @@ public sealed class ImageBoxSvgPublicationCommitTests
         double candidateHeight,
         bool expected)
     {
-        bool actual = Assert.IsType<bool>(InvokePrivateStatic(
-            "ShouldInvalidateSvgGeometry",
+        bool actual = SvgPublicationCommit.ShouldInvalidateSvgGeometry(
             metadataWasKnown,
             new Size(previousWidth, previousHeight),
-            new Size(candidateWidth, candidateHeight)));
+            new Size(candidateWidth, candidateHeight));
 
         Assert.Equal(expected, actual);
     }
@@ -793,7 +757,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
             Assert.True(layoutInvalidated.HasValue);
             Assert.True(layoutInvalidated.Value);
             Assert.Same(candidateDocument, CurrentDocument(image));
-            Assert.Same(candidateDocument, Field<object>(Plan(image)!, "Document"));
+            Assert.Same(candidateDocument, ((SvgTileRenderPlan)Plan(image)!).Document);
         }
         finally
         {
@@ -819,19 +783,19 @@ public sealed class ImageBoxSvgPublicationCommitTests
             CommitTiled(image, renderer, acceptedDocument, "accepted-before-fallback-miss");
 
             object acceptedPlan = Plan(image)!;
-            Size acceptedIntrinsic = Field<Size>(image, "_svgIntrinsicSize");
-            string? acceptedTitle = Field<string?>(image, "_svgTitle");
-            string? acceptedDescription = Field<string?>(image, "_svgDesc");
-            string? acceptedContentHash = Field<string?>(image, "_svgContentHash");
-            string? acceptedPartitionHash = Field<string?>(image, "_svgSecurityPartitionHash");
-            object? acceptedInfo = Field<object?>(image, "_svgInfo");
-            object? acceptedSourceIdentity = Field<object?>(image, "_svgSourceIdentity");
-            long acceptedSourceByteLength = Field<long>(image, "_svgSourceByteLength");
-            long acceptedRendererIdentity = Field<long>(image, "_svgRendererIdentity");
-            long acceptedProviderGeneration = Field<long>(image, "_svgProviderCacheGeneration");
-            int acceptedWidth = Field<int>(image, "_svgBitmapWidthPixels");
-            int acceptedHeight = Field<int>(image, "_svgBitmapHeightPixels");
-            int acceptedGeneration = Field<int>(image, "_svgRenderGeneration");
+            Size acceptedIntrinsic = image.Svg.IntrinsicSize;
+            string? acceptedTitle = image.Svg.Title;
+            string? acceptedDescription = image.Svg.Description;
+            string? acceptedContentHash = image.Svg.ContentHash;
+            string? acceptedPartitionHash = image.Svg.SecurityPartitionHash;
+            object? acceptedInfo = image.Svg.Info;
+            object? acceptedSourceIdentity = image.Svg.SourceIdentity;
+            long acceptedSourceByteLength = image.Svg.SourceByteLength;
+            long acceptedRendererIdentity = image.Svg.RendererIdentity;
+            long acceptedProviderGeneration = image.Svg.ProviderCacheGeneration;
+            int acceptedWidth = image.Svg.BitmapWidthPixels;
+            int acceptedHeight = image.Svg.BitmapHeightPixels;
+            int acceptedGeneration = image.Svg.RenderGeneration;
 
             // A very large intrinsic variant is deterministically classified as
             // tiled before any CanvasDevice access. It cannot use an exact whole-
@@ -862,28 +826,28 @@ public sealed class ImageBoxSvgPublicationCommitTests
             ImageResourceScope.Shared.SvgSources.Set(cacheKey, entry);
 
             var sourceLoader = new ImageSourceLoader(
-                image, image.Context, ImageResourceScope.Shared, image.OutputAdmission, image.OutputDeferral,
+                image.SourceLoadHost, image.Context, ImageResourceScope.Shared, image.OutputAdmission, image.OutputDeferral,
                 image.SvgHostDeferral, image.Url, requestedWidth: null, requestedHeight: null);
             Assert.False(sourceLoader.TryLoadFallbackFromProcessCache(cacheKey, expectedWork: null));
 
-            Assert.True(Field<bool>(image, "_isSvg"));
-            Assert.Equal(acceptedIntrinsic, Field<Size>(image, "_svgIntrinsicSize"));
-            Assert.Equal(acceptedTitle, Field<string?>(image, "_svgTitle"));
-            Assert.Equal(acceptedDescription, Field<string?>(image, "_svgDesc"));
-            Assert.Equal(acceptedContentHash, Field<string?>(image, "_svgContentHash"));
-            Assert.Equal(acceptedPartitionHash, Field<string?>(image, "_svgSecurityPartitionHash"));
-            Assert.Equal(acceptedInfo, Field<object?>(image, "_svgInfo"));
-            Assert.Same(acceptedSourceIdentity, Field<object?>(image, "_svgSourceIdentity"));
-            Assert.Equal(acceptedSourceByteLength, Field<long>(image, "_svgSourceByteLength"));
-            Assert.Equal(acceptedRendererIdentity, Field<long>(image, "_svgRendererIdentity"));
-            Assert.Equal(acceptedProviderGeneration, Field<long>(image, "_svgProviderCacheGeneration"));
-            Assert.Equal(acceptedWidth, Field<int>(image, "_svgBitmapWidthPixels"));
-            Assert.Equal(acceptedHeight, Field<int>(image, "_svgBitmapHeightPixels"));
-            Assert.Equal(acceptedGeneration, Field<int>(image, "_svgRenderGeneration"));
+            Assert.True(image.LoadState.IsSvg);
+            Assert.Equal(acceptedIntrinsic, image.Svg.IntrinsicSize);
+            Assert.Equal(acceptedTitle, image.Svg.Title);
+            Assert.Equal(acceptedDescription, image.Svg.Description);
+            Assert.Equal(acceptedContentHash, image.Svg.ContentHash);
+            Assert.Equal(acceptedPartitionHash, image.Svg.SecurityPartitionHash);
+            Assert.Equal(acceptedInfo, image.Svg.Info);
+            Assert.Same(acceptedSourceIdentity, image.Svg.SourceIdentity);
+            Assert.Equal(acceptedSourceByteLength, image.Svg.SourceByteLength);
+            Assert.Equal(acceptedRendererIdentity, image.Svg.RendererIdentity);
+            Assert.Equal(acceptedProviderGeneration, image.Svg.ProviderCacheGeneration);
+            Assert.Equal(acceptedWidth, image.Svg.BitmapWidthPixels);
+            Assert.Equal(acceptedHeight, image.Svg.BitmapHeightPixels);
+            Assert.Equal(acceptedGeneration, image.Svg.RenderGeneration);
             Assert.Same(acceptedDocument, CurrentDocument(image));
             Assert.Same(acceptedPlan, Plan(image));
-            Assert.Same(acceptedDocument, Field<object>(Plan(image)!, "Document"));
-            Assert.True(Field<bool>(image, "_svgUsesTiles"));
+            Assert.Same(acceptedDocument, ((SvgTileRenderPlan)Plan(image)!).Document);
+            Assert.True(image.Svg.UsesTiles);
             Assert.Equal(0, acceptedDocument.DisposeCount);
         }
         finally
@@ -895,19 +859,23 @@ public sealed class ImageBoxSvgPublicationCommitTests
         }
     }
 
-    private static ImageBox CreateImage(TestSvgRenderer renderer) => new(
-        CreateContext(renderer), ImageResourceScope.Shared,
+    private static ImageBox CreateImage(
+        TestSvgRenderer renderer,
+        MarkdownPerformanceSession? session = null) => new(
+        CreateContext(renderer, session), ImageResourceScope.Shared,
         "data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%3E%3C%2Fsvg%3E",
         "Publication commit test");
 
     private static void TrackDisposalsUnderWorkLock(ImageBox image, params TestSvgDocument[] documents)
     {
-        object workLock = Field<object>(image, "_svgWorkSync");
+        object workLock = image.Lifetime.Sync;
         foreach (TestSvgDocument document in documents)
             document.WorkLock = workLock;
     }
 
-    private static MarkdownLayoutContext CreateContext(TestSvgRenderer renderer)
+    private static MarkdownLayoutContext CreateContext(
+        TestSvgRenderer renderer,
+        MarkdownPerformanceSession? session)
     {
         var body = new ElementStyle { Foreground = Color.FromArgb(255, 12, 34, 56) };
         var theme = new ThemeSnapshot(
@@ -937,6 +905,8 @@ public sealed class ImageBoxSvgPublicationCommitTests
             SvgRenderer = renderer,
             ImageCancellationToken = CancellationToken.None,
             RasterizationScale = 1,
+            PerformanceSession = session,
+            PerformanceDocumentOwner = session is null ? null : new object(),
         };
     }
 
@@ -956,11 +926,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
             Height(metadata),
             generation);
 
-        Assert.True(Assert.IsType<bool>(InvokePrivate(
-            image,
-            "TryCommitSvgPublication",
-            metadata,
-            plan)));
+        Assert.True(image.SvgPublication.TryCommit((SvgPublicationMetadata)metadata, (SvgTileRenderPlan?)plan));
         Assert.Same(document, CurrentDocument(image));
     }
 
@@ -998,29 +964,20 @@ public sealed class ImageBoxSvgPublicationCommitTests
             identity,
             metadataWasKnown,
             intrinsic);
-        object publication = InvokePrivate(
-            image,
-            "CreateTiledSvgPublication",
-            metadata,
-            document,
-            candidateUse,
-            0L)!;
+        object publication = image.SvgPublication.CreateTiledPublication((SvgPublicationMetadata)metadata, document, (SvgDocumentUseLease)candidateUse, 0L)!;
         return Assert.IsType<ValueTuple<Action, Action?>>(publication);
     }
 
     private static IDisposable AcquireCandidate(ImageBox image, TestSvgDocument document)
     {
-        object?[] args = [document, null];
-        object? lease = InvokePrivate(image, "TryAcquireCandidateSvgDocumentUse", args);
-        Assert.False(Assert.IsType<bool>(args[1]));
+        SvgDocumentUseLease? lease = image.SvgDocuments.TryAcquireCandidateUse(
+            document, out bool ownershipConflict);
+        Assert.False(ownershipConflict);
         return Assert.IsAssignableFrom<IDisposable>(lease);
     }
 
     private static IDisposable AcquireCurrentUse(ImageBox image, TestSvgDocument document) =>
-        Assert.IsAssignableFrom<IDisposable>(InvokePrivate(
-            image,
-            "TryAcquireSvgDocumentUse",
-            document));
+        Assert.IsAssignableFrom<IDisposable>(image.SvgDocuments.TryAcquireUse(document));
 
     private static object CreateMetadata(
         ImageBox image,
@@ -1075,80 +1032,27 @@ public sealed class ImageBoxSvgPublicationCommitTests
         int height,
         int generation)
     {
-        Type type = typeof(SvgTileRenderPlan);
-        ConstructorInfo constructor = type.GetConstructors(
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-            .Single();
-        return constructor.Invoke([document, identity, width, height, generation, null, null, 0L, null, null]);
+        return new SvgTileRenderPlan(document, identity, width, height, generation);
     }
 
-    private static int AdvanceGeneration(ImageBox image) =>
-        Assert.IsType<int>(InvokePrivate(image, "AdvanceSvgRenderGeneration"));
+    private static int AdvanceGeneration(ImageBox image) => image.Svg.AdvanceRenderGeneration();
 
     private static bool IsCurrentTilePlan(ImageBox image, object plan) =>
         image.SvgTileCache.IsCurrentSvgTilePlan((SvgTileRenderPlan)plan);
 
-    private static object? CurrentDocument(ImageBox image) => Field<object?>(image, "_svgDocument");
+    private static object? CurrentDocument(ImageBox image) => image.SvgDocuments.Current;
 
-    private static object? Plan(ImageBox image) => Field<object?>(image, "_svgTileRenderPlan");
+    private static object? Plan(ImageBox image) => image.Svg.AcceptedPlan;
 
-    private static object DocumentUseState(ImageBox image, TestSvgDocument document)
+    private static SvgDocumentUseState DocumentUseState(ImageBox image, TestSvgDocument document)
     {
-        object table = Field<object>(image, "_svgDocumentUses")!;
-        MethodInfo tryGetValue = table.GetType().GetMethod("TryGetValue")!;
-        object?[] args = [document, null];
-        Assert.True(Assert.IsType<bool>(tryGetValue.Invoke(table, args)));
-        return Assert.IsAssignableFrom<object>(args[1]);
+        lock (image.Lifetime.Sync)
+            return image.SvgDocuments.GetUseStateNoLock(document);
     }
 
-    private static int Width(object metadata) => Field<int>(metadata, "TargetWidthPixels");
+    private static int Width(object metadata) => ((SvgPublicationMetadata)metadata).TargetWidthPixels;
 
-    private static int Height(object metadata) => Field<int>(metadata, "TargetHeightPixels");
-
-    private static T Field<T>(object instance, string name)
-    {
-        FieldInfo field = instance.GetType().GetField(
-                name,
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-            ?? throw new MissingFieldException(instance.GetType().FullName, name);
-        return (T)field.GetValue(instance)!;
-    }
-
-    private static T FieldStatic<T>(Type declaringType, string name)
-    {
-        FieldInfo field = declaringType.GetField(
-                name,
-                BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
-            ?? throw new MissingFieldException(declaringType.FullName, name);
-        return (T)field.GetValue(null)!;
-    }
-
-    private static void SetField(object instance, string name, object value)
-    {
-        FieldInfo field = instance.GetType().GetField(
-                name,
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-            ?? throw new MissingFieldException(instance.GetType().FullName, name);
-        field.SetValue(instance, value);
-    }
-
-    private static object? InvokePrivate(object target, string name, params object?[] args)
-    {
-        MethodInfo method = target.GetType().GetMethod(
-                name,
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-            ?? throw new MissingMethodException(target.GetType().FullName, name);
-        return method.Invoke(target, args);
-    }
-
-    private static object? InvokePrivateStatic(string name, params object?[] args)
-    {
-        MethodInfo method = typeof(ImageBox).GetMethod(
-                name,
-                BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
-            ?? throw new MissingMethodException(typeof(ImageBox).FullName, name);
-        return method.Invoke(null, args);
-    }
+    private static int Height(object metadata) => ((SvgPublicationMetadata)metadata).TargetHeightPixels;
 
     private sealed class TestSvgRenderer : IMarkdownSvgRenderer
     {

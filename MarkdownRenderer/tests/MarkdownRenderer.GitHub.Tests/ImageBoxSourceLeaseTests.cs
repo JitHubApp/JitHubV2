@@ -57,16 +57,10 @@ public sealed class ImageBoxSourceLeaseTests
             Assert.Equal(sourceTemplate.Length, renderer.RetainedDocumentSourceBytes);
             Assert.Equal(0, renderer.DocumentDisposeCount);
 
-            FieldInfo? obsoleteStrongSource = typeof(ImageBox).GetField(
-                "_svgRawBytes",
-                BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert.Null(obsoleteStrongSource);
-            FieldInfo sourceIdentityField = typeof(ImageBox).GetField(
-                "_svgSourceIdentity",
-                BindingFlags.Instance | BindingFlags.NonPublic)!;
-            Assert.Equal(typeof(WeakReference<byte[]>), sourceIdentityField.FieldType);
-            var sourceIdentity = Assert.IsType<WeakReference<byte[]>>(
-                sourceIdentityField.GetValue(image));
+            // The accepted source is held only weakly; the collection check
+            // below proves no other box state pins the source array.
+            WeakReference<byte[]> sourceIdentity = Assert.IsType<WeakReference<byte[]>>(
+                image.Svg.SourceIdentity);
             Assert.True(IsAlive(sourceIdentity));
 
             // The fake provider document owns a sanitized OpenAsync snapshot.
@@ -84,17 +78,17 @@ public sealed class ImageBoxSourceLeaseTests
             await renderer.DocumentDisposeCompleted.Task.WaitAsync(TimeSpan.FromSeconds(5));
             await WaitUntilAsync(() =>
                 renderer.RetainedDocumentSourceBytes == 0 &&
-                GetPrivateField<int>(image, "_svgWorkCount") == 0);
+                image.GetWorkState().ActiveWorkCount == 0);
             Assert.Equal(1, renderer.DocumentDisposeCount);
 
             // Release the old exact raster/document and re-enter the same box.
             // With the source entry evicted, reopening must use the existing
             // authorized resolver path rather than a box-owned byte[] pin.
             image.SuspendResources();
-            await WaitUntilAsync(() => GetPrivateField<int>(image, "_svgWorkCount") == 0);
+            await WaitUntilAsync(() => image.GetWorkState().ActiveWorkCount == 0);
             if (!image.TryReleaseSuspendedResources())
             {
-                await WaitUntilAsync(() => GetPrivateField<int>(image, "_svgWorkCount") == 0);
+                await WaitUntilAsync(() => image.GetWorkState().ActiveWorkCount == 0);
                 Assert.True(image.TryReleaseSuspendedResources());
             }
             Assert.True(image.TryResumeResources());
@@ -110,7 +104,7 @@ public sealed class ImageBoxSourceLeaseTests
             await WaitUntilAsync(() =>
                 session.GetSnapshot().InFlightSourceBytes == 0 &&
                 renderer.RetainedDocumentSourceBytes == 0 &&
-                GetPrivateField<int>(image, "_svgWorkCount") == 0);
+                image.GetWorkState().ActiveWorkCount == 0);
 
             Assert.Equal(2, resolver.BufferAllocationCount);
             Assert.Equal(2, renderer.DocumentDisposeCount);
@@ -143,22 +137,19 @@ public sealed class ImageBoxSourceLeaseTests
 
         try
         {
-            SetPrivateField(image, "_svgSourceIdentity", new WeakReference<byte[]>(source));
-            SetPrivateField(image, "_svgInfo", new MarkdownSvgDocumentInfo(24, 12, 2));
-            SetPrivateField(
+            ImageBoxTestState.AdoptSvgMetadata(
                 image,
-                "_svgSecurityPartitionHash",
-                HashSecurityPartition("https://example.test/trust-domain-a"));
+                image.Context.SvgRenderer!,
+                info: new MarkdownSvgDocumentInfo(24, 12, 2),
+                sourceIdentity: new WeakReference<byte[]>(source),
+                securityPartitionHash: HashSecurityPartition("https://example.test/trust-domain-a"));
 
-            MethodInfo isKnownSource = typeof(ImageBox).GetMethod(
-                "IsKnownSvgSource",
-                BindingFlags.Instance | BindingFlags.NonPublic)!;
-            Assert.True(Assert.IsType<bool>(isKnownSource.Invoke(image, [
+            Assert.True(image.Svg.IsKnownSource(
                 source,
-                HashSecurityPartition("https://example.test/trust-domain-a")])));
-            Assert.False(Assert.IsType<bool>(isKnownSource.Invoke(image, [
+                HashSecurityPartition("https://example.test/trust-domain-a")));
+            Assert.False(image.Svg.IsKnownSource(
                 source,
-                HashSecurityPartition("https://example.test/trust-domain-b")])));
+                HashSecurityPartition("https://example.test/trust-domain-b")));
         }
         finally
         {
@@ -184,11 +175,11 @@ public sealed class ImageBoxSourceLeaseTests
 
         foreach (string methodName in new[]
         {
-            "CreateTiledSvgPublication",
-            "CreateBitmapSvgPublication",
+            nameof(SvgPublicationCommit.CreateTiledPublication),
+            nameof(SvgPublicationCommit.CreateBitmapPublication),
         })
         {
-            MethodInfo method = typeof(ImageBox).GetMethod(
+            MethodInfo method = typeof(SvgPublicationCommit).GetMethod(
                 methodName,
                 BindingFlags.Instance | BindingFlags.NonPublic)!;
             Assert.DoesNotContain(method.GetParameters(), parameter =>
@@ -196,8 +187,8 @@ public sealed class ImageBoxSourceLeaseTests
                 parameter.ParameterType.Name.Contains("SvgCacheEntry", StringComparison.Ordinal));
         }
 
-        MethodInfo bitmapPublication = typeof(ImageBox).GetMethod(
-            "CreateBitmapSvgPublication",
+        MethodInfo bitmapPublication = typeof(SvgPublicationCommit).GetMethod(
+            nameof(SvgPublicationCommit.CreateBitmapPublication),
             BindingFlags.Instance | BindingFlags.NonPublic)!;
         Assert.DoesNotContain(bitmapPublication.GetParameters(), parameter =>
             typeof(IMarkdownSvgDocument).IsAssignableFrom(parameter.ParameterType));
@@ -205,7 +196,7 @@ public sealed class ImageBoxSourceLeaseTests
         Type metadataType = typeof(SvgPublicationMetadata);
         Type bitmapLeaseType = Assert.Single(bitmapPublication.GetParameters(), parameter =>
             parameter.ParameterType.Name == "Lease").ParameterType;
-        Type[] bitmapPublicationClosures = typeof(ImageBox)
+        Type[] bitmapPublicationClosures = typeof(SvgPublicationCommit)
             .GetNestedTypes(BindingFlags.NonPublic)
             .Where(type =>
             {
@@ -214,7 +205,7 @@ public sealed class ImageBoxSourceLeaseTests
                 // Inspect the queued publication callback owner, not the
                 // separate Render state machine which must own a live document.
                 return type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-                    .Any(method => method.Name.StartsWith("<CreateBitmapSvgPublication>", StringComparison.Ordinal)) &&
+                    .Any(method => method.Name.StartsWith("<CreateBitmapPublication>", StringComparison.Ordinal)) &&
                     closureFields.Any(field => field.FieldType == metadataType) &&
                     closureFields.Any(field => field.FieldType == bitmapLeaseType);
             })
@@ -531,7 +522,7 @@ public sealed class ImageBoxSourceLeaseTests
         try
         {
             image.Measure(80);
-            var opener = new SvgSourceOpener(image, image.Context, ImageResourceScope.Shared,
+            var opener = new SvgSourceOpener(image.SourceLoadHost, image.Context, ImageResourceScope.Shared,
                 image.OutputAdmission, image.OutputDeferral, image.Url);
             SvgOpenStageResult result = await opener.OpenAsync(CreateSvgBytes("unconsumed-handoff"),
                     default, image.Url, null,
@@ -723,29 +714,13 @@ public sealed class ImageBoxSourceLeaseTests
             await Task.Delay(10, timeout.Token);
     }
 
-    private static T GetPrivateField<T>(ImageBox image, string name)
-    {
-        FieldInfo field = typeof(ImageBox).GetField(
-            name,
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return Assert.IsType<T>(field.GetValue(image));
-    }
-
-    private static void SetPrivateField(ImageBox image, string name, object value)
-    {
-        FieldInfo field = typeof(ImageBox).GetField(
-            name,
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        field.SetValue(image, value);
-    }
-
     private static string HashSecurityPartition(string partition) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(partition)));
 
     private static int RemoveSvgCacheEntries(ImageBox image)
     {
-        string activeCacheKey = GetPrivateField<string>(image, "_activeCacheKey");
-        string contentHash = GetPrivateField<string>(image, "_svgContentHash");
+        string activeCacheKey = Assert.IsType<string>(image.LoadState.ActiveCacheKey);
+        string contentHash = Assert.IsType<string>(image.Svg.ContentHash);
         return ImageResourceScope.Shared.SvgSources.RemoveWhere(key =>
             string.Equals(key, activeCacheKey, StringComparison.Ordinal) ||
             key.Contains($":content={contentHash}:", StringComparison.Ordinal));

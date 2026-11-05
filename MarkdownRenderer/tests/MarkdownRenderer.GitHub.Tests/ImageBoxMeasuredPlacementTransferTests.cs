@@ -40,15 +40,14 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             Assert.NotNull(expectedLease);
             PrepareAtDifferentOrigin(source, prepared);
 
-            SharedCanvasBitmapCache.Lease sourceLease = GetField<SharedCanvasBitmapCache.Lease>(source, "_bitmapLease");
-            SharedCanvasBitmapCache.Lease preparedLease = GetField<SharedCanvasBitmapCache.Lease>(prepared, "_bitmapLease");
+            SharedCanvasBitmapCache.Lease sourceLease = Assert.IsType<SharedCanvasBitmapCache.Lease>(source.Presentation.Lease);
+            SharedCanvasBitmapCache.Lease preparedLease = Assert.IsType<SharedCanvasBitmapCache.Lease>(prepared.Presentation.Lease);
             CanvasBitmap sourceBitmap = Assert.IsType<CanvasBitmap>(source.Bitmap);
             CanvasTextLayout sourceCaption = Assert.IsType<CanvasTextLayout>(source.MeasureCustody.GetLayoutState().Caption);
             CanvasTextLayout preparedCaption = Assert.IsType<CanvasTextLayout>(prepared.MeasureCustody.GetLayoutState().Caption);
             Rect sourceBounds = source.Bounds;
             Rect preparedBounds = prepared.Bounds;
-            CancellationTokenSource sourceImageLifetime = GetAssignableField<CancellationTokenSource>(
-                source, "_imageLifetimeCancellation");
+            CancellationTokenSource sourceImageLifetime = source.Lifetime.LifetimeCancellation;
             CanvasTextLayout? sourcePlaceholder = source.MeasureCustody.GetLayoutState().Placeholder;
             CanvasTextLayout? preparedPlaceholder = prepared.MeasureCustody.GetLayoutState().Placeholder;
 
@@ -73,9 +72,9 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             }
 
             Assert.Same(source, Assert.IsType<ImageBox>(Assert.Single(snapshot.Blocks)));
-            Assert.Same(sourceLease, GetField<SharedCanvasBitmapCache.Lease>(source, "_bitmapLease"));
-            Assert.Same(preparedLease, GetField<SharedCanvasBitmapCache.Lease>(prepared, "_bitmapLease"));
-            Assert.Same(sourceImageLifetime, GetField<CancellationTokenSource>(source, "_imageLifetimeCancellation"));
+            Assert.Same(sourceLease, source.Presentation.Lease);
+            Assert.Same(preparedLease, prepared.Presentation.Lease);
+            Assert.Same(sourceImageLifetime, source.Lifetime.LifetimeCancellation);
             Assert.Same(sourceBitmap, source.Bitmap);
             Assert.Same(sourceBitmap, prepared.Bitmap);
             Assert.Equal(preparedBounds, source.Bounds);
@@ -299,8 +298,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
         fixture.TransferSourceOwnershipToSnapshot(source);
         ImageBox sourceImage = fixture.ImageRun.Image;
         CanvasBitmap retainedBitmap = Assert.IsType<CanvasBitmap>(sourceImage.Bitmap);
-        SharedCanvasBitmapCache.Lease retainedLease = GetField<SharedCanvasBitmapCache.Lease>(
-            sourceImage, "_bitmapLease");
+        SharedCanvasBitmapCache.Lease retainedLease = Assert.IsType<SharedCanvasBitmapCache.Lease>(sourceImage.Presentation.Lease);
         SingleRasterLayoutCandidate? candidate = null;
         MarkdownLayoutContext? constructionContext = null;
 
@@ -343,8 +341,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
                 // The rejected candidate must not disturb the retained preview or
                 // its lease; only the live waiter/deferral state invalidates reuse.
                 Assert.Same(retainedBitmap, sourceImage.Bitmap);
-                Assert.Same(retainedLease, GetField<SharedCanvasBitmapCache.Lease>(
-                    sourceImage, "_bitmapLease"));
+                Assert.Same(retainedLease, sourceImage.Presentation.Lease);
             }
             finally
             {
@@ -387,10 +384,10 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             PrepareAtDifferentOrigin(source1, prepared1);
             PrepareAtDifferentOrigin(source2, prepared2);
 
-            SharedCanvasBitmapCache.Lease sourceLease1 = GetField<SharedCanvasBitmapCache.Lease>(source1, "_bitmapLease");
-            SharedCanvasBitmapCache.Lease sourceLease2 = GetField<SharedCanvasBitmapCache.Lease>(source2, "_bitmapLease");
-            SharedCanvasBitmapCache.Lease preparedLease1 = GetField<SharedCanvasBitmapCache.Lease>(prepared1, "_bitmapLease");
-            SharedCanvasBitmapCache.Lease preparedLease2 = GetField<SharedCanvasBitmapCache.Lease>(prepared2, "_bitmapLease");
+            SharedCanvasBitmapCache.Lease sourceLease1 = Assert.IsType<SharedCanvasBitmapCache.Lease>(source1.Presentation.Lease);
+            SharedCanvasBitmapCache.Lease sourceLease2 = Assert.IsType<SharedCanvasBitmapCache.Lease>(source2.Presentation.Lease);
+            SharedCanvasBitmapCache.Lease preparedLease1 = Assert.IsType<SharedCanvasBitmapCache.Lease>(prepared1.Presentation.Lease);
+            SharedCanvasBitmapCache.Lease preparedLease2 = Assert.IsType<SharedCanvasBitmapCache.Lease>(prepared2.Presentation.Lease);
             CanvasTextLayout sourceCaption1 = Assert.IsType<CanvasTextLayout>(source1.MeasureCustody.GetLayoutState().Caption);
             CanvasTextLayout sourceCaption2 = Assert.IsType<CanvasTextLayout>(source2.MeasureCustody.GetLayoutState().Caption);
             CanvasTextLayout preparedCaption1 = Assert.IsType<CanvasTextLayout>(prepared1.MeasureCustody.GetLayoutState().Caption);
@@ -429,10 +426,10 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             Assert.Same(preparedCaption2, Assert.IsType<CanvasTextLayout>(source2.MeasureCustody.GetLayoutState().Caption));
             Assert.Same(sourceCaption1, Assert.IsType<CanvasTextLayout>(prepared1.MeasureCustody.GetLayoutState().Caption));
             Assert.Same(sourceCaption2, Assert.IsType<CanvasTextLayout>(prepared2.MeasureCustody.GetLayoutState().Caption));
-            Assert.Same(sourceLease1, GetField<SharedCanvasBitmapCache.Lease>(source1, "_bitmapLease"));
-            Assert.Same(sourceLease2, GetField<SharedCanvasBitmapCache.Lease>(source2, "_bitmapLease"));
-            Assert.Same(preparedLease1, GetField<SharedCanvasBitmapCache.Lease>(prepared1, "_bitmapLease"));
-            Assert.Same(preparedLease2, GetField<SharedCanvasBitmapCache.Lease>(prepared2, "_bitmapLease"));
+            Assert.Same(sourceLease1, source1.Presentation.Lease);
+            Assert.Same(sourceLease2, source2.Presentation.Lease);
+            Assert.Same(preparedLease1, prepared1.Presentation.Lease);
+            Assert.Same(preparedLease2, prepared2.Presentation.Lease);
         }
         finally
         {
@@ -490,8 +487,8 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             CanvasTextLayout sourceCaption2 = Assert.IsType<CanvasTextLayout>(source2.MeasureCustody.GetLayoutState().Caption);
             CanvasTextLayout preparedCaption1 = Assert.IsType<CanvasTextLayout>(prepared1.MeasureCustody.GetLayoutState().Caption);
             CanvasTextLayout preparedCaption2 = Assert.IsType<CanvasTextLayout>(prepared2.MeasureCustody.GetLayoutState().Caption);
-            SharedCanvasBitmapCache.Lease sourceLease1 = GetField<SharedCanvasBitmapCache.Lease>(source1, "_bitmapLease");
-            SharedCanvasBitmapCache.Lease sourceLease2 = GetField<SharedCanvasBitmapCache.Lease>(source2, "_bitmapLease");
+            SharedCanvasBitmapCache.Lease sourceLease1 = Assert.IsType<SharedCanvasBitmapCache.Lease>(source1.Presentation.Lease);
+            SharedCanvasBitmapCache.Lease sourceLease2 = Assert.IsType<SharedCanvasBitmapCache.Lease>(source2.Presentation.Lease);
 
             Assert.True(snapshot1.TryBeginInteraction());
             Assert.True(snapshot2.TryBeginInteraction());
@@ -522,8 +519,8 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             Assert.Same(sourceCaption2, Assert.IsType<CanvasTextLayout>(source2.MeasureCustody.GetLayoutState().Caption));
             Assert.Same(preparedCaption1, Assert.IsType<CanvasTextLayout>(prepared1.MeasureCustody.GetLayoutState().Caption));
             Assert.Same(preparedCaption2, Assert.IsType<CanvasTextLayout>(prepared2.MeasureCustody.GetLayoutState().Caption));
-            Assert.Same(sourceLease1, GetField<SharedCanvasBitmapCache.Lease>(source1, "_bitmapLease"));
-            Assert.Same(sourceLease2, GetField<SharedCanvasBitmapCache.Lease>(source2, "_bitmapLease"));
+            Assert.Same(sourceLease1, source1.Presentation.Lease);
+            Assert.Same(sourceLease2, source2.Presentation.Lease);
         }
         finally
         {
@@ -728,10 +725,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
 
     private static void InvokeReplaceBitmap(ImageBox image, SharedCanvasBitmapCache.Lease lease)
     {
-        MethodInfo method = typeof(ImageBox).GetMethod(
-            "ReplaceBitmap",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        method.Invoke(image, new object?[] { lease.Bitmap, lease, null });
+        image.Presentation.Replace(lease.Bitmap, lease);
     }
 
     private static CanvasBitmap CreateBitmap(CanvasDevice device, int width, int height)
@@ -745,20 +739,6 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             DirectXPixelFormat.B8G8R8A8UIntNormalized);
     }
 
-    private static T GetField<T>(object instance, string name)
-    {
-        FieldInfo field = instance.GetType().GetField(name,
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return Assert.IsType<T>(field.GetValue(instance));
-    }
-
-    private static T? GetNullableField<T>(object instance, string name) where T : class
-    {
-        FieldInfo field = instance.GetType().GetField(name,
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return field.GetValue(instance) as T;
-    }
-
     private static void SetField(object instance, string name, object? value)
     {
         FieldInfo field = instance.GetType().GetField(name,
@@ -766,12 +746,6 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
         field.SetValue(instance, value);
     }
 
-    private static T GetAssignableField<T>(object instance, string name) where T : class
-    {
-        FieldInfo field = instance.GetType().GetField(name,
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return Assert.IsAssignableFrom<T>(field.GetValue(instance));
-    }
 }
 
 [Collection(ProcessRasterDecodeCollection.CollectionName)]
@@ -814,14 +788,14 @@ public sealed class ImageBoxMeasuredSvgPlacementTransferTests
             PrepareAtDifferentOrigin(source, prepared);
             snapshot = CreateSnapshot(source, sourceContext.SourceMap);
 
-            SharedCanvasBitmapCache.Lease sourceLease = GetField<SharedCanvasBitmapCache.Lease>(source, "_bitmapLease");
+            SharedCanvasBitmapCache.Lease sourceLease = Assert.IsType<SharedCanvasBitmapCache.Lease>(source.Presentation.Lease);
             CanvasTextLayout sourceCaption = Assert.IsType<CanvasTextLayout>(source.MeasureCustody.GetLayoutState().Caption);
             CanvasTextLayout preparedCaption = Assert.IsType<CanvasTextLayout>(prepared.MeasureCustody.GetLayoutState().Caption);
             Rect sourceBounds = source.Bounds;
             Rect preparedBounds = prepared.Bounds;
             CanvasBitmap sourceBitmap = Assert.IsType<CanvasBitmap>(source.Bitmap);
 
-            Assert.NotSame(sourceLease, GetField<SharedCanvasBitmapCache.Lease>(prepared, "_bitmapLease"));
+            Assert.NotSame(sourceLease, prepared.Presentation.Lease);
             Assert.True(snapshot.TryBeginInteraction());
             try
             {
@@ -1017,16 +991,9 @@ public sealed class ImageBoxMeasuredSvgPlacementTransferTests
 
     private static byte[] RetainSvgSourceIdentity(ImageBox image)
     {
-        WeakReference<byte[]> weak = GetField<WeakReference<byte[]>>(image, "_svgSourceIdentity");
+        WeakReference<byte[]> weak = Assert.IsType<WeakReference<byte[]>>(image.Svg.SourceIdentity);
         Assert.True(weak.TryGetTarget(out byte[]? source));
         return Assert.IsType<byte[]>(source);
-    }
-
-    private static T GetField<T>(object instance, string name)
-    {
-        FieldInfo field = instance.GetType().GetField(name,
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return Assert.IsType<T>(field.GetValue(instance));
     }
 
     private sealed class TransferSvgRenderer(bool hasText) : IMarkdownSvgRenderer

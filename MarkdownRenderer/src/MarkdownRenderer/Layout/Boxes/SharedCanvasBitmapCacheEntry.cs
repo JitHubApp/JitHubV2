@@ -169,6 +169,9 @@ internal sealed class SharedCanvasBitmapCacheEntry
 
     internal void AddCacheReference() => Interlocked.Increment(ref _referenceCount);
 
+    /// <summary>Owners still holding the bitmap: the cache's reference plus each live lease.</summary>
+    internal int ReferenceCount => Volatile.Read(ref _referenceCount);
+
     private void ConfigureBitmapOutputReservation(
         BitmapOutputAdmission.Reservation? bitmapReservation)
     {

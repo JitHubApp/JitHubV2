@@ -33,16 +33,16 @@ public sealed class CompletedSvgPlacementCloneTests
         InlineImageRun sourceRun = fixture.ImageRun;
         ImageBox sourceImage = sourceRun.Image;
         CanvasBitmap bitmap = Assert.IsType<CanvasBitmap>(sourceImage.Bitmap);
-        SharedCanvasBitmapCache.Lease sourceLease = GetField<SharedCanvasBitmapCache.Lease>(sourceImage, "_bitmapLease");
-        MarkdownSvgDocumentInfo sourceInfo = GetField<MarkdownSvgDocumentInfo>(sourceImage, "_svgInfo");
-        var sourceIntrinsic = GetField<Size>(sourceImage, "_svgIntrinsicSize");
+        SharedCanvasBitmapCache.Lease sourceLease = Assert.IsType<SharedCanvasBitmapCache.Lease>(sourceImage.Presentation.Lease);
+        MarkdownSvgDocumentInfo sourceInfo = Assert.IsType<MarkdownSvgDocumentInfo>(sourceImage.Svg.Info);
+        var sourceIntrinsic = sourceImage.Svg.IntrinsicSize;
         int sourceWidth = sourceImage.SvgRasterPixelSize.Width;
         int sourceHeight = sourceImage.SvgRasterPixelSize.Height;
         string? sourceTitle = sourceImage.SvgTitle;
         string? sourceDescription = sourceImage.SvgDesc;
         string semanticText = sourceSnapshot.SemanticDocument.Text;
         var layoutLock = sourceSnapshot.Geometry.Gate;
-        var imageLock = GetField<object>(sourceImage, "_svgWorkSync");
+        var imageLock = sourceImage.Lifetime.Sync;
         fixture.Renderer.GenerationReadHook = () =>
         {
             Assert.False(Monitor.IsEntered(layoutLock));
@@ -72,7 +72,7 @@ public sealed class CompletedSvgPlacementCloneTests
         InlineContainerBox privateRoot = Assert.IsType<InlineContainerBox>(candidate.Snapshot.Blocks[0]);
         InlineImageRun privateRun = Assert.Single(privateRoot.Runs.OfType<InlineImageRun>());
         ImageBox privateImage = privateRun.Image;
-        SharedCanvasBitmapCache.Lease privateLease = GetField<SharedCanvasBitmapCache.Lease>(privateImage, "_bitmapLease");
+        SharedCanvasBitmapCache.Lease privateLease = Assert.IsType<SharedCanvasBitmapCache.Lease>(privateImage.Presentation.Lease);
 
         Assert.NotSame(sourceRun, privateRun);
         Assert.Equal(sourceRun.SourceSpan, privateRun.SourceSpan);
@@ -80,28 +80,28 @@ public sealed class CompletedSvgPlacementCloneTests
         Assert.NotSame(sourceImage, privateImage);
         Assert.NotSame(sourceLease, privateLease);
         Assert.Same(bitmap, privateImage.Bitmap);
-        Assert.Equal(GetField<MarkdownSvgPhysicalViewport>(sourceImage, "_svgPhysicalViewport"),
-            GetField<MarkdownSvgPhysicalViewport>(privateImage, "_svgPhysicalViewport"));
-        Assert.Equal(GetField<MarkdownSvgPhysicalViewport>(sourceImage, "_bitmapPhysicalViewport"),
-            GetField<MarkdownSvgPhysicalViewport>(privateImage, "_bitmapPhysicalViewport"));
+        Assert.Equal(sourceImage.Svg.PhysicalViewport,
+            privateImage.Svg.PhysicalViewport);
+        Assert.Equal(sourceImage.Presentation.PhysicalViewport,
+            privateImage.Presentation.PhysicalViewport);
         Assert.True(privateLease.IsBitmapOutputAdmitted);
         Assert.True(privateImage.IsSvg);
         Assert.Equal(sourceTitle, privateImage.SvgTitle);
         Assert.Equal(sourceDescription, privateImage.SvgDesc);
-        Assert.Equal(sourceInfo, GetField<MarkdownSvgDocumentInfo>(privateImage, "_svgInfo"));
-        Assert.Equal(sourceIntrinsic, GetField<Size>(privateImage, "_svgIntrinsicSize"));
+        Assert.Equal(sourceInfo, privateImage.Svg.Info);
+        Assert.Equal(sourceIntrinsic, privateImage.Svg.IntrinsicSize);
         Assert.Equal((sourceWidth, sourceHeight), privateImage.SvgRasterPixelSize);
         Assert.Equal(MarkdownImageAccessibilityState.Loaded, privateImage.AccessibilityState);
         Assert.NotSame(
-            GetField<CancellationTokenSource>(sourceImage, "_imageLifetimeCancellation"),
-            GetField<CancellationTokenSource>(privateImage, "_imageLifetimeCancellation"));
+            sourceImage.Lifetime.LifetimeCancellation,
+            privateImage.Lifetime.LifetimeCancellation);
 
         // Only accepted immutable placement metadata and a cloned bitmap lease
         // cross the COW boundary. The provider document, tile state, and any
         // image work/old lifetime do not.
-        Assert.Null(GetField(privateImage, "_svgDocument"));
-        Assert.Null(GetField(privateImage, "_svgTileRenderPlan"));
-        Assert.Null(GetField(privateImage, "_svgParkingPlan"));
+        Assert.Null(privateImage.SvgDocuments.Current);
+        Assert.Null(privateImage.Svg.AcceptedPlan);
+        Assert.Null(privateImage.Svg.ParkingPlan);
         Assert.True(privateImage.SvgTileCache.IsClear());
         Assert.Equal(0, privateImage.GetWorkState().ActiveWorkCount);
 
@@ -183,7 +183,7 @@ public sealed class CompletedSvgPlacementCloneTests
         await using var fixture = await SvgPlacementFixture.CreateReadyAsync(hasText: true);
         LayoutSnapshot snapshot = Assert.IsType<LayoutSnapshot>(fixture.Snapshot);
         object layoutLock = snapshot.Geometry.Gate;
-        object imageLock = GetField<object>(fixture.Image, "_svgWorkSync");
+        object imageLock = fixture.Image.Lifetime.Sync;
         fixture.Renderer.GenerationReadHook = () =>
         {
             Assert.False(Monitor.IsEntered(layoutLock));
@@ -246,9 +246,10 @@ public sealed class CompletedSvgPlacementCloneTests
         Assert.NotNull(metadataFence);
         try
         {
-            Assert.Same(GetField<SharedCanvasBitmapCache.Lease>(fixture.Image, "_bitmapLease"), expectedLease);
-            SetField(fixture.Image, "_svgDesc", "mutated without replacing the bitmap lease");
-            Assert.Same(expectedLease, GetField<SharedCanvasBitmapCache.Lease>(fixture.Image, "_bitmapLease"));
+            Assert.Same(fixture.Image.Presentation.Lease, expectedLease);
+            ImageBoxTestState.ReplaceSvgText(
+                fixture.Image, fixture.Image.Svg.Title, "mutated without replacing the bitmap lease");
+            Assert.Same(expectedLease, fixture.Image.Presentation.Lease);
             Assert.False(fixture.Image.IsCurrentCompletedRasterPlacement(
                 expectedLease!, metadataFence, fixture.Renderer.CacheGeneration));
         }
@@ -271,12 +272,13 @@ public sealed class CompletedSvgPlacementCloneTests
                 out MarkdownLayoutContext? candidateContext));
         fixture.SetCandidate(candidate, Assert.IsType<MarkdownLayoutContext>(candidateContext));
         object layoutLock = snapshot.Geometry.Gate;
-        object imageLock = GetField<object>(fixture.Image, "_svgWorkSync");
+        object imageLock = fixture.Image.Lifetime.Sync;
         fixture.Renderer.GenerationReadHook = () =>
         {
             Assert.False(Monitor.IsEntered(layoutLock));
             Assert.False(Monitor.IsEntered(imageLock));
-            SetField(fixture.Image, "_svgTitle", "changed during provider callback");
+            ImageBoxTestState.ReplaceSvgText(
+                fixture.Image, "changed during provider callback", fixture.Image.Svg.Description);
         };
 
         Assert.False(candidate.HasCurrentSourceProviders());
@@ -324,23 +326,23 @@ public sealed class CompletedSvgPlacementCloneTests
         SvgTileRenderPlan previous = TestSvgTileCacheHost.Plan("svg-cache-prefix:previous-good", 1024, 1024);
         SvgTileRenderPlan replacement = TestSvgTileCacheHost.Plan(
             "svg-cache-prefix:replacement", 1024, 1024, document: previous.Document);
-        object? acceptedPlan = GetField(image, "_svgTileRenderPlan");
-        object? acceptedDocument = GetField(image, "_svgDocument");
-        bool usesTiles = GetField<bool>(image, "_svgUsesTiles");
+        SvgTileRenderPlan? acceptedPlan = image.Svg.AcceptedPlan;
+        IMarkdownSvgDocument? acceptedDocument = image.SvgDocuments.Current;
+        bool usesTiles = image.Svg.UsesTiles;
 
         // A previous good grid is left behind as the fallback through the
         // cache's own transitions; the box's full-bitmap state is then
         // restored so that only the tile cache differs.
-        void Accept(SvgTileRenderPlan? plan) => SetField(image, "_svgTileRenderPlan", plan);
-        SetField(image, "_svgDocument", previous.Document);
-        SetField(image, "_svgUsesTiles", true);
+        void Accept(SvgTileRenderPlan? plan) => image.Svg.SetAcceptedPlanNoLock(plan);
+        image.SvgDocuments.SetCurrentNoLock(previous.Document);
+        image.Svg.SetUsesTilesNoLock(true);
         SvgTileCacheTestOperations.Adopt(cache, previous, Accept);
         SvgTileCacheTestOperations.PublishTile(
             cache, previous, (0, 0, 1024, 1024), new SharedCanvasBitmapCache.Lease(null!));
         SvgTileCacheTestOperations.Adopt(cache, replacement, Accept);
-        SetField(image, "_svgTileRenderPlan", acceptedPlan);
-        SetField(image, "_svgDocument", acceptedDocument);
-        SetField(image, "_svgUsesTiles", usesTiles);
+        image.Svg.SetAcceptedPlanNoLock(acceptedPlan);
+        image.SvgDocuments.SetCurrentNoLock(acceptedDocument);
+        image.Svg.SetUsesTilesNoLock(usesTiles);
         Assert.NotNull(cache.CaptureSnapshot().FallbackTiles);
 
         try
@@ -482,12 +484,6 @@ public sealed class CompletedSvgPlacementCloneTests
     {
         FieldInfo field = owner.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!;
         return field.GetValue(owner);
-    }
-
-    private static void SetField(object owner, string name, object? value)
-    {
-        FieldInfo field = owner.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!;
-        field.SetValue(owner, value);
     }
 
     private sealed class SvgPlacementFixture : IAsyncDisposable

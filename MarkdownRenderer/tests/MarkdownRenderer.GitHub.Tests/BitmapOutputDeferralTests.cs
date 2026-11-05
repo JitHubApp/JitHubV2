@@ -140,7 +140,7 @@ public sealed class BitmapOutputDeferralTests
             {
                 Assert.Equal(0, item.Image.GetWorkState().ActiveWorkCount);
                 Assert.Null(item.Image.Bitmap);
-                Assert.False(GetField<bool>(item.Image, "_loadFailed"));
+                Assert.False(item.Image.LoadState.IsFailed);
                 Assert.Equal(MarkdownImageAccessibilityState.Loading, item.Image.AccessibilityState);
             });
             Assert.All(initiallyAdmitted, item =>
@@ -174,7 +174,7 @@ public sealed class BitmapOutputDeferralTests
             {
                 Assert.True(item.Resolver.ResolveCount >= 1);
                 Assert.True(item.SuccessfulPublications > 0);
-                Assert.False(GetField<bool>(item.Image, "_loadFailed"));
+                Assert.False(item.Image.LoadState.IsFailed);
                 Assert.Equal((uint)outputWidth, item.FirstPublishedWidth);
                 Assert.Equal((uint)outputHeight, item.FirstPublishedHeight);
             });
@@ -728,10 +728,10 @@ public sealed class BitmapOutputDeferralTests
             string state =
                 $"{image.OutputDeferral.GetState()}, " +
                 $"activeWork={image.GetWorkState().ActiveWorkCount}, " +
-                $"loadStarted={GetField<bool>(image, "_loadStarted")}, " +
-                $"loadFailed={GetField<bool>(image, "_loadFailed")}, " +
-                $"disposed={GetField<bool>(image, "_disposed")}, " +
-                $"suspended={GetField<bool>(image, "_resourcesSuspended")}, " +
+                $"loadStarted={image.LoadState.IsStarted}, " +
+                $"loadFailed={image.LoadState.IsFailed}, " +
+                $"disposed={image.Lifetime.IsDisposed}, " +
+                $"suspended={image.Lifetime.IsSuspended}, " +
                 $"resolverCount={resolverCount?.Invoke().ToString() ?? "n/a"}, " +
                 $"bitmap={image.Bitmap is not null}, " +
                 $"charged={capacity.ChargedBytes}/{capacity.CapacityBytes}, " +
