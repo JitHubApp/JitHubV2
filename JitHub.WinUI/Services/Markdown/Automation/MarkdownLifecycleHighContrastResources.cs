@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using JitHub.Services.Markdown.Hosting;
 using MarkdownRenderer;
 using MarkdownRenderer.Theming;
@@ -15,6 +16,57 @@ namespace JitHub.Services.Markdown.Automation;
 /// </summary>
 internal static class MarkdownLifecycleHighContrastResources
 {
+    private static readonly string[] WindowBackgroundRoles =
+    [
+        MarkdownElementKeys.Body,
+        MarkdownElementKeys.CodeInline,
+        MarkdownElementKeys.CodeBlock,
+        MarkdownElementKeys.CodeBlockHeader,
+        MarkdownElementKeys.CodeBlockGutter,
+        MarkdownElementKeys.Marked,
+        MarkdownElementKeys.DefinitionDescription,
+        MarkdownElementKeys.Figure,
+        MarkdownElementKeys.FigureCaption,
+        MarkdownElementKeys.Diagram,
+        MarkdownElementKeys.Table,
+        MarkdownElementKeys.TableHeader,
+        MarkdownElementKeys.TableCell,
+        MarkdownElementKeys.AlertNote,
+        MarkdownElementKeys.AlertTip,
+        MarkdownElementKeys.AlertImportant,
+        MarkdownElementKeys.AlertWarning,
+        MarkdownElementKeys.AlertCaution,
+    ];
+
+    private static readonly string[] TextBorderRoles =
+    [
+        MarkdownElementKeys.CodeBlock,
+        MarkdownElementKeys.CodeBlockHeader,
+        MarkdownElementKeys.Diagram,
+        MarkdownElementKeys.Table,
+        MarkdownElementKeys.TableHeader,
+        MarkdownElementKeys.TableCell,
+    ];
+
+    private static readonly string[] MonospaceRoles =
+    [
+        MarkdownElementKeys.CodeInline,
+        MarkdownElementKeys.CodeBlock,
+        MarkdownElementKeys.CodeBlockGutter,
+        MarkdownElementKeys.CodeBlockLineNumber,
+        MarkdownElementKeys.Diagram,
+    ];
+
+    private static readonly string[] LinkAccentRoles =
+    [
+        MarkdownElementKeys.Quote,
+        MarkdownElementKeys.AlertNote,
+        MarkdownElementKeys.AlertTip,
+        MarkdownElementKeys.AlertImportant,
+        MarkdownElementKeys.AlertWarning,
+        MarkdownElementKeys.AlertCaution,
+    ];
+
     /// <summary>Writes the fixed High Contrast palette into a renderer's local overrides.</summary>
     /// <param name="resources">The renderer's resource dictionary.</param>
     public static void Apply(ResourceDictionary resources)
@@ -30,70 +82,12 @@ internal static class MarkdownLifecycleHighContrastResources
         resources[MarkdownResourceKeys.FocusVisualBrush] = focus;
         resources[MarkdownResourceKeys.OverflowIndicatorBrush] = text;
 
-        foreach (string roleName in MarkdownRendererResources.StyledRoles)
-        {
-            resources[MarkdownResourceKeys.ForRole(
-                MarkdownStyleRole.FromElementKey(roleName),
-                MarkdownStyleProperty.ForegroundBrush)] = text;
-        }
-
-        foreach (string roleName in new[]
-        {
-            MarkdownElementKeys.Body,
-            MarkdownElementKeys.CodeInline,
-            MarkdownElementKeys.CodeBlock,
-            MarkdownElementKeys.CodeBlockHeader,
-            MarkdownElementKeys.CodeBlockGutter,
-            MarkdownElementKeys.Marked,
-            MarkdownElementKeys.DefinitionDescription,
-            MarkdownElementKeys.Figure,
-            MarkdownElementKeys.FigureCaption,
-            MarkdownElementKeys.Diagram,
-            MarkdownElementKeys.Table,
-            MarkdownElementKeys.TableHeader,
-            MarkdownElementKeys.TableCell,
-            MarkdownElementKeys.AlertNote,
-            MarkdownElementKeys.AlertTip,
-            MarkdownElementKeys.AlertImportant,
-            MarkdownElementKeys.AlertWarning,
-            MarkdownElementKeys.AlertCaution,
-        })
-        {
-            resources[MarkdownResourceKeys.ForRole(
-                MarkdownStyleRole.FromElementKey(roleName),
-                MarkdownStyleProperty.BackgroundBrush)] = window;
-        }
-
-        foreach (string roleName in new[]
-        {
-            MarkdownElementKeys.CodeBlock,
-            MarkdownElementKeys.CodeBlockHeader,
-            MarkdownElementKeys.Diagram,
-            MarkdownElementKeys.Table,
-            MarkdownElementKeys.TableHeader,
-            MarkdownElementKeys.TableCell,
-        })
-        {
-            resources[MarkdownResourceKeys.ForRole(
-                MarkdownStyleRole.FromElementKey(roleName),
-                MarkdownStyleProperty.BorderBrush)] = text;
-        }
-
+        SetForRoles(resources, MarkdownRendererResources.StyledRoles, MarkdownStyleProperty.ForegroundBrush, text);
+        SetForRoles(resources, WindowBackgroundRoles, MarkdownStyleProperty.BackgroundBrush, window);
+        SetForRoles(resources, TextBorderRoles, MarkdownStyleProperty.BorderBrush, text);
         if (MarkdownRendererResources.TryResolveAppResource("AppHighContrastMonoFontFamily", out object? monoFont))
         {
-            foreach (string roleName in new[]
-            {
-                MarkdownElementKeys.CodeInline,
-                MarkdownElementKeys.CodeBlock,
-                MarkdownElementKeys.CodeBlockGutter,
-                MarkdownElementKeys.CodeBlockLineNumber,
-                MarkdownElementKeys.Diagram,
-            })
-            {
-                resources[MarkdownResourceKeys.ForRole(
-                    MarkdownStyleRole.FromElementKey(roleName),
-                    MarkdownStyleProperty.FontFamily)] = monoFont;
-            }
+            SetForRoles(resources, MonospaceRoles, MarkdownStyleProperty.FontFamily, monoFont);
         }
 
         MarkdownStyleRole linkRole = MarkdownStyleRole.FromElementKey(MarkdownElementKeys.Link);
@@ -101,19 +95,18 @@ internal static class MarkdownLifecycleHighContrastResources
         resources[MarkdownResourceKeys.ForRole(linkRole, MarkdownStyleProperty.HoverForegroundBrush)] = link;
         resources[MarkdownResourceKeys.ForRole(linkRole, MarkdownStyleProperty.FocusForegroundBrush)] = focus;
 
-        foreach (string roleName in new[]
+        SetForRoles(resources, LinkAccentRoles, MarkdownStyleProperty.AccentBrush, link);
+    }
+
+    private static void SetForRoles(
+        ResourceDictionary resources,
+        IEnumerable<string> roleNames,
+        MarkdownStyleProperty property,
+        object? value)
+    {
+        foreach (string roleName in roleNames)
         {
-            MarkdownElementKeys.Quote,
-            MarkdownElementKeys.AlertNote,
-            MarkdownElementKeys.AlertTip,
-            MarkdownElementKeys.AlertImportant,
-            MarkdownElementKeys.AlertWarning,
-            MarkdownElementKeys.AlertCaution,
-        })
-        {
-            resources[MarkdownResourceKeys.ForRole(
-                MarkdownStyleRole.FromElementKey(roleName),
-                MarkdownStyleProperty.AccentBrush)] = link;
+            resources[MarkdownResourceKeys.ForRole(MarkdownStyleRole.FromElementKey(roleName), property)] = value;
         }
     }
 }
