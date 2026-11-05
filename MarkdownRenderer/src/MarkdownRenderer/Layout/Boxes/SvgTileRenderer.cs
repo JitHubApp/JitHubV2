@@ -643,7 +643,7 @@ internal sealed class SvgTileRenderer
         ref CanvasBitmap? ownedBitmap,
         ref BitmapOutputAdmission.Reservation? bitmapReservation)
     {
-        ImageBox.ValidateSvgRaster(raster, key.Width, key.Height);
+        SvgRasterUpload.Validate(raster, key.Width, key.Height);
         {
             using var stageTrace = MarkdownSvgStageTrace.Measure(
                 svgWorkId,

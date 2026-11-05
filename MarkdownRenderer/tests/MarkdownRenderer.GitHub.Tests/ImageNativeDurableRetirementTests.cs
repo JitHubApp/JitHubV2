@@ -169,8 +169,9 @@ public sealed class ImageNativeDurableRetirementTests
         {
             BlockIndex = fixture.Source.BlockIndex,
         };
-        source.SetCompletedBitmapForTests(Assert.IsType<SharedCanvasBitmapCache.Lease>(
-            fixture.ImageRun.Image.AcquireBitmapLease()));
+        // The fixture stored the raster for this built-in source, so the
+        // constructor's synchronous cache probe completes the image.
+        Assert.NotNull(source.Bitmap);
         _ = source.Measure(Width);
         source.Arrange(0, 0, Width);
         LayoutSnapshot snapshot = new(new BlockBox[] { source }, fixture.SourceContext.SourceMap,
@@ -303,8 +304,9 @@ public sealed class ImageNativeDurableRetirementTests
         {
             BlockIndex = fixture.Source.BlockIndex,
         };
-        source.SetCompletedBitmapForTests(Assert.IsType<SharedCanvasBitmapCache.Lease>(
-            fixture.ImageRun.Image.AcquireBitmapLease()));
+        // The fixture stored the raster for this built-in source, so the
+        // constructor's synchronous cache probe completes the image.
+        Assert.NotNull(source.Bitmap);
         _ = source.Measure(Width);
         source.Arrange(0, 0, Width);
         LayoutSnapshot snapshot = new(new BlockBox[] { source }, fixture.SourceContext.SourceMap,

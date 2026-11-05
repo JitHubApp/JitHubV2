@@ -1,55 +1,70 @@
 using System;
-using System.IO;
+using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
-using System.Runtime.CompilerServices;
-using System.Text.RegularExpressions;
 using System.Threading;
+using MarkdownRenderer.Document;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Performance;
+using MarkdownRenderer.Theming;
+using Microsoft.Graphics.Canvas;
+using Microsoft.UI.Xaml;
+using Windows.UI;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
-public sealed class ImageBoxActivationResetTests
+public sealed class ImageBoxActivationResetTests : IDisposable
 {
-    private const BindingFlags InstancePrivate = BindingFlags.Instance | BindingFlags.NonPublic;
+    // Offscreen release lets a box suspend and resume its resources.
+    private readonly MarkdownPerformanceSession _session = new(
+        MarkdownPerformanceOptions.Progressive with
+        {
+            PrefetchDocumentImages = false,
+            ReleaseOffscreenImageResources = true,
+        });
+
+    public void Dispose() => _session.Dispose();
 
     [Fact]
     public void CurrentUnstartedActivationClearsItsOwnLoadStartedState()
     {
         MarkdownSvgRenderDemand demand = OverscanDemand();
-        ImageBox box = BareBox(demand, loadGeneration: 41);
+        ImageBox box = StartedBox(demand, out int loadGeneration);
 
-        ResetUnstartedActivation(box, demand, 41, CancellationToken.None);
+        box.Activation.ResetLoadStartedAfterUnstartedActivation(demand, loadGeneration, CancellationToken.None);
 
-        Assert.False(GetField<bool>(box, "_loadStarted"));
+        Assert.False(box.LoadState.IsStarted);
     }
 
     [Fact]
     public void StaleDemandOrGenerationCannotClearCurrentLoadStartedState()
     {
         MarkdownSvgRenderDemand current = OverscanDemand();
-        ImageBox box = BareBox(current, loadGeneration: 42);
+        ImageBox box = StartedBox(current, out int loadGeneration);
 
-        ResetUnstartedActivation(box, OverscanDemand(), 42, CancellationToken.None);
-        Assert.True(GetField<bool>(box, "_loadStarted"));
+        box.Activation.ResetLoadStartedAfterUnstartedActivation(
+            OverscanDemand(), loadGeneration, CancellationToken.None);
+        Assert.True(box.LoadState.IsStarted);
 
-        ResetUnstartedActivation(box, current, 41, CancellationToken.None);
-        Assert.True(GetField<bool>(box, "_loadStarted"));
+        box.Activation.ResetLoadStartedAfterUnstartedActivation(
+            current, loadGeneration - 1, CancellationToken.None);
+        Assert.True(box.LoadState.IsStarted);
     }
 
     [Fact]
     public void CanceledQueuedActivationCannotClearLoadStartedState()
     {
         MarkdownSvgRenderDemand demand = OverscanDemand();
-        ImageBox box = BareBox(demand, loadGeneration: 43);
+        ImageBox box = StartedBox(demand, out int loadGeneration);
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 
-        ResetUnstartedActivation(box, demand, 43, cancellation.Token);
+        box.Activation.ResetLoadStartedAfterUnstartedActivation(demand, loadGeneration, cancellation.Token);
 
-        Assert.True(GetField<bool>(box, "_loadStarted"));
+        Assert.True(box.LoadState.IsStarted);
     }
 
     [Theory]
@@ -60,63 +75,89 @@ public sealed class ImageBoxActivationResetTests
         bool suspended)
     {
         MarkdownSvgRenderDemand demand = OverscanDemand();
-        ImageBox box = BareBox(demand, loadGeneration: 44);
-        SetField(box, "_disposed", disposed);
-        SetField(box, "_resourcesSuspended", suspended);
+        ImageBox box = StartedBox(demand, out int loadGeneration);
+        if (suspended)
+            box.SuspendResources();
+        if (disposed)
+            box.Dispose();
+        Assert.Equal(disposed, box.Lifetime.IsDisposed);
+        Assert.Equal(suspended, box.Lifetime.IsSuspended);
 
-        ResetUnstartedActivation(box, demand, 44, CancellationToken.None);
+        box.Activation.ResetLoadStartedAfterUnstartedActivation(demand, loadGeneration, CancellationToken.None);
 
-        Assert.True(GetField<bool>(box, "_loadStarted"));
+        Assert.True(box.LoadState.IsStarted);
     }
 
     [Fact]
     public void OldCanceledActivationCannotResetResumedLoadWithSameDemandAndGeneration()
     {
         MarkdownSvgRenderDemand demand = OverscanDemand();
-        ImageBox box = BareBox(demand, loadGeneration: 45);
+        ImageBox box = StartedBox(demand, out int loadGeneration);
         using var oldResidencyCancellation = new CancellationTokenSource();
         oldResidencyCancellation.Cancel();
 
         // Model a resume that deliberately reuses the load identity while a
         // late callback from the canceled pre-suspend activation is delivered.
-        SetField(box, "_resourcesSuspended", false);
-        SetField(box, "_loadStarted", true);
-        ResetUnstartedActivation(box, demand, 45, oldResidencyCancellation.Token);
+        box.SuspendResources();
+        Assert.True(box.TryResumeResources());
+        Assert.False(box.Lifetime.IsSuspended);
+        box.LoadState.IsStarted = true;
+        Assert.Same(demand, box.LoadState.Demand);
+        Assert.Equal(loadGeneration, box.LoadState.DemandGeneration);
+        box.Activation.ResetLoadStartedAfterUnstartedActivation(
+            demand, loadGeneration, oldResidencyCancellation.Token);
 
-        Assert.True(GetField<bool>(box, "_loadStarted"));
+        Assert.True(box.LoadState.IsStarted);
     }
 
-    private static ImageBox BareBox(MarkdownSvgRenderDemand demand, int loadGeneration)
+    // A real box whose current load demand is demand and whose load has
+    // started, without running any load.
+    private ImageBox StartedBox(MarkdownSvgRenderDemand demand, out int loadGeneration)
     {
-        var box = (ImageBox)RuntimeHelpers.GetUninitializedObject(typeof(ImageBox));
-        SetField(box, "_svgHostDeferral", new SvgHostLoadDeferral(box, ImageResourceScope.Shared));
-        SetField(box, "_svgLoadDemandTicket", demand);
-        SetField(box, "_svgLoadDemandGeneration", loadGeneration);
-        SetField(box, "_disposed", false);
-        SetField(box, "_resourcesSuspended", false);
-        SetField(box, "_loadStarted", true);
+        var box = new ImageBox(
+            CreateContext(),
+            new ImageResourceScope(),
+            $"https://example.test/activation-{Guid.NewGuid():N}.svg",
+            "Activation");
+        Assert.False(box.LoadState.IsStarted);
+        loadGeneration = box.LoadState.BeginDemand(demand);
+        box.LoadState.IsStarted = true;
         return box;
     }
 
     private static MarkdownSvgRenderDemand OverscanDemand() =>
         new(MarkdownSvgRenderPriority.Overscan);
 
-    private static T GetField<T>(object target, string name) =>
-        (T)(target.GetType().GetField(name, InstancePrivate)
-            ?? throw new Xunit.Sdk.XunitException($"Missing field '{name}'."))
-            .GetValue(target)!;
-
-    private static void SetField(object target, string name, object? value)
+    private MarkdownLayoutContext CreateContext()
     {
-        FieldInfo field = target.GetType().GetField(name, InstancePrivate)
-            ?? throw new Xunit.Sdk.XunitException($"Missing field '{name}'.");
-        field.SetValue(target, value);
+        var style = new ElementStyle();
+        string[] keys =
+        [
+            MarkdownElementKeys.Body,
+            MarkdownElementKeys.ImageCaption,
+        ];
+        var styles = keys.ToDictionary(static key => key, _ => style, StringComparer.Ordinal);
+        Color transparent = Color.FromArgb(0, 0, 0, 0);
+        var theme = new ThemeSnapshot(
+            styles,
+            new Dictionary<string, ElementStyleOverride>(),
+            transparent,
+            transparent,
+            transparent,
+            transparent,
+            isDark: false,
+            isHighContrast: false,
+            textScaleFactor: 1);
+        return new MarkdownLayoutContext(
+            CanvasDevice.GetSharedDevice(),
+            theme,
+            new MarkdownSourceMap(new string(' ', 64)),
+            new MarkdownExtensionRegistry(),
+            FlowDirection.LeftToRight,
+            language: "en-US")
+        {
+            PerformanceSession = _session,
+            PerformanceDocumentOwner = new object(),
+        };
     }
-
-    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "ResetLoadStartedAfterUnstartedActivation")]
-    private static extern void ResetUnstartedActivation(
-        ImageBox box,
-        MarkdownSvgRenderDemand demand,
-        int loadGeneration,
-        CancellationToken activationCancellation);
 }

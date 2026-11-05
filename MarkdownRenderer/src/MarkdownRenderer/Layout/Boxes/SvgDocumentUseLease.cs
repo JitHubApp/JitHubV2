@@ -9,9 +9,9 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// </summary>
 internal sealed class SvgDocumentUseLease : IDisposable
 {
-    private ImageBox? _owner;
+    private SvgDocumentCustody? _owner;
 
-    internal SvgDocumentUseLease(ImageBox owner, SvgDocumentUseState state, bool candidate = false)
+    internal SvgDocumentUseLease(SvgDocumentCustody owner, SvgDocumentUseState state, bool candidate = false)
     {
         _owner = owner;
         State = state;
@@ -20,8 +20,8 @@ internal sealed class SvgDocumentUseLease : IDisposable
 
     internal readonly SvgDocumentUseState State;
     internal readonly bool IsCandidate;
-    internal bool IsOwnedBy(ImageBox owner) => ReferenceEquals(Volatile.Read(ref _owner), owner);
+    internal bool IsOwnedBy(SvgDocumentCustody owner) => ReferenceEquals(Volatile.Read(ref _owner), owner);
 
     public void Dispose() =>
-        Interlocked.Exchange(ref _owner, null)?.CompleteSvgDocumentUse(State, IsCandidate);
+        Interlocked.Exchange(ref _owner, null)?.CompleteUse(State, IsCandidate);
 }

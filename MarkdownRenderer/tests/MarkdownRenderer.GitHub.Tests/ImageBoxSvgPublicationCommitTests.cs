@@ -862,7 +862,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
             ImageResourceScope.Shared.SvgSources.Set(cacheKey, entry);
 
             var sourceLoader = new ImageSourceLoader(
-                image, image.Context, ImageResourceScope.Shared, image.OutputAdmission, image.OutputDeferral,
+                image.SourceLoadHost, image.Context, ImageResourceScope.Shared, image.OutputAdmission, image.OutputDeferral,
                 image.SvgHostDeferral, image.Url, requestedWidth: null, requestedHeight: null);
             Assert.False(sourceLoader.TryLoadFallbackFromProcessCache(cacheKey, expectedWork: null));
 

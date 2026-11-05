@@ -13,7 +13,7 @@ public sealed class ImageBoxSvgAwaitTests
     {
         var resource = new DisposableProbe();
 
-        DisposableProbe result = await ImageBox.AwaitSvgResultAsync(
+        DisposableProbe result = await SvgResultRetirement.AwaitAsync(
             new ValueTask<DisposableProbe>(resource),
             CancellationToken.None);
 
@@ -30,7 +30,7 @@ public sealed class ImageBoxSvgAwaitTests
         var completion = new TaskCompletionSource<DisposableProbe>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         using var cancellation = new CancellationTokenSource();
-        Task<DisposableProbe> wait = ImageBox.AwaitSvgResultAsync(
+        Task<DisposableProbe> wait = SvgResultRetirement.AwaitAsync(
             new ValueTask<DisposableProbe>(completion.Task),
             cancellation.Token);
 
@@ -50,7 +50,7 @@ public sealed class ImageBoxSvgAwaitTests
         var resource = new DisposableProbe();
         Task<DisposableProbe> completed = Task.FromResult(resource);
 
-        Task retirement = ImageBox.RetireUnclaimedSvgResult(completed);
+        Task retirement = SvgResultRetirement.RetireUnclaimed(completed);
 
         await retirement.WaitAsync(TimeSpan.FromSeconds(5));
         await resource.Disposed.WaitAsync(TimeSpan.FromSeconds(5));
@@ -62,7 +62,7 @@ public sealed class ImageBoxSvgAwaitTests
     {
         var completion = new TaskCompletionSource<DisposableProbe>(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        Task retirement = ImageBox.RetireUnclaimedSvgResult(completion.Task);
+        Task retirement = SvgResultRetirement.RetireUnclaimed(completion.Task);
 
         completion.SetException(new InvalidOperationException("provider failed after cancellation"));
 

@@ -531,7 +531,7 @@ public sealed class ImageBoxSourceLeaseTests
         try
         {
             image.Measure(80);
-            var opener = new SvgSourceOpener(image, image.Context, ImageResourceScope.Shared,
+            var opener = new SvgSourceOpener(image.SourceLoadHost, image.Context, ImageResourceScope.Shared,
                 image.OutputAdmission, image.OutputDeferral, image.Url);
             SvgOpenStageResult result = await opener.OpenAsync(CreateSvgBytes("unconsumed-handoff"),
                     default, image.Url, null,
