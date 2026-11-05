@@ -51,9 +51,12 @@ public sealed partial class MainWindow
 
     private MarkdownEngine ActiveEngine => _replacementEngine ?? _engine;
 
+    private readonly SampleHostedElementFactory _defaultHostedFactory = SampleHostedElementFactory.CreateDefault();
+    private readonly SampleHostedElementFactory _alternateHostedFactoryInstance = SampleHostedElementFactory.CreateAlternate();
+
     private SampleHostedElementFactory ActiveHostedFactory => _alternateHostedFactory
-        ? SampleHostedElementFactory.Alternate
-        : SampleHostedElementFactory.Instance;
+        ? _alternateHostedFactoryInstance
+        : _defaultHostedFactory;
 
     private static MarkdownEngine CreateFullEngine()
         => new MarkdownEngineBuilder()
@@ -61,7 +64,7 @@ public sealed partial class MainWindow
             .UseMarkdownExtra()
             .UseMathematics()
             .UseMermaid()
-            .UseExtension(SampleHostedElementExtension.Instance)
+            .UseExtension(new SampleHostedElementExtension())
             .Build();
 
     private CommandBar CreateProviderControls()

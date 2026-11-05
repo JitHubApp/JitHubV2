@@ -1,118 +1,12 @@
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
-using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Hosting;
-using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Sample;
-
-internal sealed class SampleHostedElementExtension : IMarkdownExtension
-{
-    internal const string StyleRoleName = "SampleExtensionCallout";
-
-    internal static SampleHostedElementExtension Instance { get; } = new();
-
-    public string Id => "MarkdownRenderer.Sample.HostedElements";
-
-    public void Configure(MarkdownExtensionBuilder builder)
-        => builder
-            .AddFeature("sample-hosted-elements")
-            .RegisterBlock(MarkdownSyntaxKinds.Block.FencedCode, RenderFence);
-
-    private static void RenderFence(
-        MarkdownExtensionContext context,
-        MarkdownContentBuilder content)
-    {
-        context.CancellationToken.ThrowIfCancellationRequested();
-        if (!context.Node.Attributes.TryGetValue("info", out string? info))
-            return;
-
-        if (info.StartsWith("styled:", StringComparison.OrdinalIgnoreCase))
-        {
-            string styledText = NormalizeLabel(
-                info["styled:".Length..],
-                "Ancestor-scoped extension style");
-            content.AddText(
-                styledText,
-                context.Node.SourceSpan,
-                new MarkdownStyleRole(StyleRoleName),
-                MarkdownAccessibilityRole.Paragraph);
-            return;
-        }
-
-        string factoryKey;
-        string label;
-        string semanticText;
-        double desiredHeight;
-        if (info.StartsWith("button:", StringComparison.OrdinalIgnoreCase))
-        {
-            factoryKey = SampleHostedElementFactory.ButtonKey;
-            label = NormalizeLabel(info["button:".Length..], "Native action");
-            semanticText = label;
-            desiredHeight = 48;
-        }
-        else if (info.StartsWith("panel:", StringComparison.OrdinalIgnoreCase))
-        {
-            factoryKey = SampleHostedElementFactory.PanelKey;
-            label = NormalizeLabel(info["panel:".Length..], "Composite action");
-            semanticText = $"{label}; editable sample value; apply";
-            desiredHeight = 56;
-        }
-        else if (info.StartsWith("unsupported:", StringComparison.OrdinalIgnoreCase))
-        {
-            factoryKey = SampleHostedElementFactory.UnsupportedKey;
-            label = NormalizeLabel(info["unsupported:".Length..], "Fallback probe");
-            semanticText = label;
-            desiredHeight = 72;
-        }
-        else if (info.StartsWith("throw:", StringComparison.OrdinalIgnoreCase))
-        {
-            // Hosted-element failure probe: the factory throws.
-            factoryKey = SampleHostedElementFactory.ThrowingKey;
-            label = NormalizeLabel(info["throw:".Length..], "Throwing factory probe");
-            semanticText = label;
-            desiredHeight = 48;
-        }
-        else if (info.StartsWith("attach-failed:", StringComparison.OrdinalIgnoreCase))
-        {
-            // Hosted-element failure probe: the factory returns an element that
-            // already has a parent, so attaching it fails.
-            factoryKey = SampleHostedElementFactory.AttachFailedKey;
-            label = NormalizeLabel(info["attach-failed:".Length..], "Attach-failed factory probe");
-            semanticText = label;
-            desiredHeight = 48;
-        }
-        else
-        {
-            return;
-        }
-
-        content.AddHostedElement(
-            factoryKey,
-            context.Node.SourceSpan,
-            MarkdownStyleRole.Body,
-            MarkdownAccessibilityRole.Group,
-            new Dictionary<string, string>
-            {
-                [MarkdownHostedElementAttributes.DesiredHeight] =
-                    desiredHeight.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                ["label"] = label,
-            },
-            accessibilityName: label,
-            accessibilityDescription: "Native viewport-realized Markdown sample content",
-            semanticText: semanticText);
-    }
-
-    private static string NormalizeLabel(string value, string fallback)
-        => string.IsNullOrWhiteSpace(value)
-            ? fallback
-            : value.Trim().Replace('_', ' ');
-}
 
 internal sealed class SampleHostedElementFactory : IMarkdownHostedElementFactory
 {
@@ -126,10 +20,14 @@ internal sealed class SampleHostedElementFactory : IMarkdownHostedElementFactory
     // The alternate factory marks every control it creates, so replacing the
     // factory on a live document is observable in each control's name.
     private readonly string _labelSuffix;
-    internal static SampleHostedElementFactory Instance { get; } = new(string.Empty);
-    internal static SampleHostedElementFactory Alternate { get; } = new(" (alternate)");
 
     private SampleHostedElementFactory(string labelSuffix) => _labelSuffix = labelSuffix;
+
+    /// <summary>Creates the standard factory a window installs by default.</summary>
+    internal static SampleHostedElementFactory CreateDefault() => new(string.Empty);
+
+    /// <summary>Creates the replacement factory the Providers page swaps in.</summary>
+    internal static SampleHostedElementFactory CreateAlternate() => new(" (alternate)");
 
     public ValueTask<FrameworkElement?> CreateAsync(
         MarkdownHostedElementRequest request,
