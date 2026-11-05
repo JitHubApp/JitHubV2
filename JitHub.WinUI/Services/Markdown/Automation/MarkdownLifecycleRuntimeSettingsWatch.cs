@@ -1,4 +1,5 @@
 using System;
+using JitHub.Markdown;
 using Microsoft.UI.Dispatching;
 
 namespace JitHub.Services.Markdown.Automation;

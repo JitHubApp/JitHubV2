@@ -2,10 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
-using JitHub.Services.Markdown;
 using Xunit;
 
-namespace JitHub.WinUI.Tests.Services;
+namespace JitHub.Markdown.Tests;
 
 public sealed class MarkdownLifecycleAutomationBridgeTests : IDisposable
 {

@@ -2,14 +2,14 @@ using System;
 using System.IO;
 using System.Text;
 
-namespace JitHub.Services.Markdown.Automation;
+namespace JitHub.Markdown.Automation;
 
 /// <summary>
 /// Composes the Markdown a lifecycle-automation host renders: a harness corpus
 /// file when one is configured, otherwise the lifecycle fixture prepended to the
 /// host's own content.
 /// </summary>
-internal sealed class MarkdownLifecycleFixtureDocument
+public sealed class MarkdownLifecycleFixtureDocument
 {
     private const string Marker = "Markdown host lifecycle fixture";
     private const int MaxCorpusBytes = 4 * 1024 * 1024;

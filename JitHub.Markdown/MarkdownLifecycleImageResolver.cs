@@ -6,13 +6,13 @@ using System.Threading.Tasks;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Performance;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 /// <summary>
 /// Keeps lifecycle automation deterministic without changing production image resolution.
 /// Every source except the fixture's repository-relative image uses the real resolver.
 /// </summary>
-internal class MarkdownLifecycleImageResolver(IMarkdownImageResolver inner) :
+public class MarkdownLifecycleImageResolver :
     IMarkdownImageSourceByteAdmittedResolver,
     IMarkdownImagePrefetcher
 {
@@ -22,7 +22,17 @@ internal class MarkdownLifecycleImageResolver(IMarkdownImageResolver inner) :
     private static readonly byte[] RelativeFixtureBytes = Convert.FromBase64String(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAFAgI/azstAAAAAElFTkSuQmCC");
 
-    internal static IMarkdownImageResolver Create(IMarkdownImageResolver inner)
+    private readonly IMarkdownImageResolver _inner;
+
+    /// <param name="inner">The real resolver every other source goes to.</param>
+    internal MarkdownLifecycleImageResolver(IMarkdownImageResolver inner)
+    {
+        _inner = inner;
+    }
+
+    /// <summary>Wraps <paramref name="inner"/>, keeping its source-lease capability when it has one.</summary>
+    /// <param name="inner">The real resolver every other source goes to.</param>
+    public static IMarkdownImageResolver Create(IMarkdownImageResolver inner)
     {
         ArgumentNullException.ThrowIfNull(inner);
         return inner is IMarkdownLeasedImageResolver leased
@@ -42,7 +52,7 @@ internal class MarkdownLifecycleImageResolver(IMarkdownImageResolver inner) :
         MarkdownImageResolveContext context,
         CancellationToken cancellationToken)
     {
-        if (inner is not IMarkdownImagePrefetcher prefetcher)
+        if (_inner is not IMarkdownImagePrefetcher prefetcher)
         {
             return ValueTask.CompletedTask;
         }
@@ -91,10 +101,10 @@ internal class MarkdownLifecycleImageResolver(IMarkdownImageResolver inner) :
                 MarkdownImageUnavailableReason.RemoteContentBlocked));
         }
 
-        return admission is not null && inner is IMarkdownImageSourceByteAdmittedResolver admitted
+        return admission is not null && _inner is IMarkdownImageSourceByteAdmittedResolver admitted
             ? admitted.ResolveWithSourceByteAdmissionAsync(
                 source, context, admission, cancellationToken)
-            : inner.ResolveAsync(source, context, cancellationToken);
+            : _inner.ResolveAsync(source, context, cancellationToken);
     }
 
     private sealed class LeasedLifecycleImageResolver(IMarkdownLeasedImageResolver leasedInner) :

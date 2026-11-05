@@ -2,7 +2,7 @@ using System;
 using System.Linq;
 using System.Text;
 
-namespace JitHub.Services.Markdown.Automation;
+namespace JitHub.Markdown.Automation;
 
 /// <summary>
 /// The Markdown documents the lifecycle automation harness prepends to a real

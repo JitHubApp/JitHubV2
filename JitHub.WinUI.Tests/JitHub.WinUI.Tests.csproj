@@ -137,21 +137,15 @@
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownImageFallbackPipeline.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GloballyRoutableAddressPolicy.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownDocumentSourceFactory.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownLifecycleAutomationBridge.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownLifecycleImageResolver.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\IMarkdownHostObserver.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownViewerTelemetry.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\IMarkdownViewerNoticePresenter.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownViewerFeedback.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\IMarkdownRouteNavigator.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownLinkActivator.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\Automation\MarkdownLifecycleFixtureText.cs" Link="Services\Markdown\Automation\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\Automation\MarkdownLifecycleFixtureDocument.cs" Link="Services\Markdown\Automation\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubRawImageFetchOutcome.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubRawImageFetchOutcomeKind.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubMarkdownImageResolverProvider.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownLifecycleJsonContext.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\Automation\MarkdownLifecycleTextScale.cs" Link="Services\Markdown\Automation\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownFormAutomationIdentity.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownFormPeerAutomationIds.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\JitHubMarkdownStringProvider.cs" Link="Services\Markdown\%(Filename)%(Extension)" />

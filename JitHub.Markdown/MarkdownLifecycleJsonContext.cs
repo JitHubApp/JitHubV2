@@ -1,7 +1,7 @@
 using System;
 using System.Text.Json.Serialization;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 /// <summary>
 /// AOT-safe JSON metadata for the files <see cref="MarkdownLifecycleAutomationBridge"/>

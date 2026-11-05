@@ -4,7 +4,7 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 /// <summary>
 /// File-backed lifecycle coordination used only by isolated Markdown automation runs.
@@ -16,7 +16,7 @@ namespace JitHub.Services.Markdown;
 /// query, as the harness may set them after launch; the reader is injectable so
 /// the behavior can be checked without touching the process environment.
 /// </remarks>
-internal sealed class MarkdownLifecycleAutomationBridge
+public sealed class MarkdownLifecycleAutomationBridge
 {
     private const string FixtureVariable = "JITHUB_MARKDOWN_LIFECYCLE_FIXTURE";
     private const string TargetHostVariable = "JITHUB_MARKDOWN_LIFECYCLE_HOST";
@@ -41,7 +41,7 @@ internal sealed class MarkdownLifecycleAutomationBridge
     /// <summary>Creates a bridge that reads the process environment.</summary>
     /// <param name="launchFixtureEnabled">Whether the launch arguments enabled the lifecycle fixture.</param>
     /// <param name="launchTargetHost">The host prefix named by the launch arguments, if any.</param>
-    internal MarkdownLifecycleAutomationBridge(bool launchFixtureEnabled, string? launchTargetHost)
+    public MarkdownLifecycleAutomationBridge(bool launchFixtureEnabled, string? launchTargetHost)
         : this(launchFixtureEnabled, launchTargetHost, Environment.GetEnvironmentVariable, Environment.ProcessId)
     {
     }

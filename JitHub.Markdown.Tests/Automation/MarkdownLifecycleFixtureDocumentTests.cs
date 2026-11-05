@@ -1,10 +1,10 @@
 using System;
 using System.IO;
 using System.Text;
-using JitHub.Services.Markdown.Automation;
+using JitHub.Markdown.Automation;
 using Xunit;
 
-namespace JitHub.WinUI.Tests.Services;
+namespace JitHub.Markdown.Tests.Automation;
 
 public sealed class MarkdownLifecycleFixtureDocumentTests : IDisposable
 {

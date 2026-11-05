@@ -1,9 +1,8 @@
-using JitHub.Services.Markdown;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Performance;
 using Xunit;
 
-namespace JitHub.WinUI.Tests.Services;
+namespace JitHub.Markdown.Tests;
 
 public sealed class MarkdownImageResolverAdmissionTests
 {

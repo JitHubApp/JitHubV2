@@ -1,12 +1,12 @@
 using System;
 
-namespace JitHub.Services.Markdown.Automation;
+namespace JitHub.Markdown.Automation;
 
 /// <summary>
 /// Converts the lifecycle harness's requested text scale into the factor applied
 /// to the renderer's font-size tokens.
 /// </summary>
-internal static class MarkdownLifecycleTextScale
+public static class MarkdownLifecycleTextScale
 {
     /// <summary>
     /// Returns the token factor that yields <paramref name="requestedScale"/> once

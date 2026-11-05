@@ -1,5 +1,6 @@
 using System;
 using JitHub.Markdown;
+using JitHub.Markdown.Automation;
 using JitHub.Services.Markdown.Hosting;
 using MarkdownRenderer.Images;
 using Microsoft.UI.Dispatching;

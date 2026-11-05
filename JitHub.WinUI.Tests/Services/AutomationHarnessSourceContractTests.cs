@@ -266,7 +266,10 @@ public sealed class AutomationHarnessSourceContractTests
         // The security lifecycle case looks for this image in the fixture the app renders.
         Assert.Contains(
             "Lifecycle oversized SVG",
-            JitHub.Services.Markdown.Automation.MarkdownLifecycleFixtureText.BuildSecurityLifecycleFixtureMarkdown(),
+            new JitHub.Markdown.Automation.MarkdownLifecycleFixtureDocument(
+                targetHost: null,
+                corpusPath: null,
+                includeSecurityFixture: true).Compose(string.Empty, "MarkdownHost"),
             StringComparison.Ordinal);
     }
 
