@@ -5,7 +5,7 @@ using Xunit;
 
 namespace MarkdownRenderer.Math.Tests;
 
-// Both classes assert wall-clock processing deadlines; one collection keeps
+// These classes assert wall-clock processing deadlines; one collection keeps
 // them from running against each other.
 [Collection("Math deadline timing")]
 public sealed class MathEngineIntegrationTests
