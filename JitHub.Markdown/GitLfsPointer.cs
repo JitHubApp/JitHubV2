@@ -1,14 +1,14 @@
 using System;
 using System.Text;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 /// <summary>
 /// Recognizes the small text pointer returned by GitHub's Contents and raw
 /// content endpoints for a Git LFS object. The repository raw route resolves
 /// that pointer to the immutable media object users see on github.com.
 /// </summary>
-internal static class GitLfsPointer
+public static class GitLfsPointer
 {
     private const int MaximumPointerBytes = 4 * 1024;
     private const string VersionLine = "version https://git-lfs.github.com/spec/v1";

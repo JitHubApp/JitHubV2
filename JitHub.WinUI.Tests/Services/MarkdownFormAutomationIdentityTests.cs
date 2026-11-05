@@ -1,4 +1,5 @@
 using System;
+using JitHub.Markdown;
 using JitHub.Services.Markdown;
 using Xunit;
 

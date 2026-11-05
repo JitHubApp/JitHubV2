@@ -120,7 +120,6 @@
     <Compile Include="..\JitHub.WinUI\Services\Settings\SettingsPreferencesContracts.cs" Link="Services\Settings\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Settings\SettingsActionGate.cs" Link="Services\Settings\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Settings\SettingsSourceNavigationContracts.cs" Link="Services\Settings\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubMarkdownImageReference.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubMarkdownImageCandidate.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubLeasedImageDownloadTransfer.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\IGitHubMarkdownImageResolverProvider.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
@@ -133,19 +132,11 @@
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubRepositoryImageContentFetch.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubMarkdownImageAssets.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubRenderedReadmeImageMaps.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\GitLfsPointer.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubMarkdownImageUrlResolver.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubRootRelativeRawRoute.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubRootRelativeRawRouteResolution.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubRepositoryImageFetchPipeline.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubCamoImageMapParser.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownImageFallbackPipeline.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GloballyRoutableAddressPolicy.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownRemoteContentConsent.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\RuntimeEventSubscription.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownLinkNavigationPolicy.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownRemoteImagePolicy.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\DenyAllMarkdownImageResolver.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownDocumentSourceFactory.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownLifecycleAutomationBridge.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownLifecycleImageResolver.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
@@ -167,15 +158,6 @@
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownReadingRegionLayout.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\Automation\MarkdownLifecycleFixtureText.cs" Link="Services\Markdown\Automation\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\Automation\MarkdownLifecycleFixtureDocument.cs" Link="Services\Markdown\Automation\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownHostContract.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownHostKind.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownGitHubRoute.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownGitHubRouteKind.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownRemoteImageAccess.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownRemoteImageDecision.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\IMarkdownRemoteImagePolicy.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\IMarkdownNetworkState.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\WindowsMarkdownNetworkState.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubRawImageFetchOutcome.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubRawImageFetchOutcomeKind.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubMarkdownImageResolverProvider.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
@@ -210,6 +192,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\JitHub.Markdown\JitHub.Markdown.csproj" />
     <ProjectReference Include="..\MarkdownRenderer\src\MarkdownRenderer\MarkdownRenderer.csproj" />
   </ItemGroup>
 

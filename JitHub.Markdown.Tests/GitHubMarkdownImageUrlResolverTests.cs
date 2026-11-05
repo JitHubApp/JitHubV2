@@ -1,8 +1,7 @@
 using System;
-using JitHub.Services.Markdown;
 using Xunit;
 
-namespace JitHub.WinUI.Tests.Services;
+namespace JitHub.Markdown.Tests;
 
 public class GitHubMarkdownImageUrlResolverTests
 {

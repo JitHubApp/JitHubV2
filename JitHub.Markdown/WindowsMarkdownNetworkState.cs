@@ -1,7 +1,7 @@
 using System;
 using Windows.Networking.Connectivity;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 internal sealed class WindowsMarkdownNetworkState : IMarkdownNetworkState
 {

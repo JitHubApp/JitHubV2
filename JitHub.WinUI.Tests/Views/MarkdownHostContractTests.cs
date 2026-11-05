@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Xml;
 using System.Xml.Linq;
+using JitHub.Markdown;
 using JitHub.Services.Markdown;
 using Xunit;
 
@@ -124,34 +125,6 @@ public sealed class MarkdownHostContractTests
 
         Assert.True(failures.Count == 0,
             "Repository-backed Markdown hosts without DocumentSource: " + string.Join(", ", failures));
-    }
-
-    [Fact]
-    public void HostKinds_ResolveStableThemeAndAutomationMetadata()
-    {
-        HashSet<string> automationIds = new(StringComparer.Ordinal);
-        foreach (MarkdownHostKind kind in Enum.GetValues<MarkdownHostKind>())
-        {
-            string value = kind.ToString();
-            Assert.False(string.IsNullOrWhiteSpace(MarkdownHostContract.GetSurfaceColorToken(value)));
-            Assert.StartsWith("#", MarkdownHostContract.GetSurfaceFallback(value, dark: false));
-            Assert.StartsWith("#", MarkdownHostContract.GetSurfaceFallback(value, dark: true));
-            Assert.Contains("Markdown", MarkdownHostContract.GetAutomationName(value), StringComparison.Ordinal);
-            Assert.StartsWith("MarkdownHost_", MarkdownHostContract.GetAutomationId(value), StringComparison.Ordinal);
-            Assert.True(automationIds.Add(MarkdownHostContract.GetAutomationId(value)),
-                $"Duplicate Markdown host automation id for {value}.");
-        }
-    }
-
-    [Fact]
-    public void AutomationIdentity_NormalizesAndSeparatesHostInstances()
-    {
-        Assert.Equal(
-            "MarkdownHost_Comment_IssueComment_42",
-            MarkdownHostContract.GetAutomationId(MarkdownHostContract.Comment, "IssueComment:42"));
-        Assert.NotEqual(
-            MarkdownHostContract.GetAutomationId(MarkdownHostContract.Comment, "IssueComment:42"),
-            MarkdownHostContract.GetAutomationId(MarkdownHostContract.Comment, "IssueComment:43"));
     }
 
     [Fact]

@@ -11,6 +11,8 @@ on:
       - MarkdownRenderer/**
       - JitHub.WinUI/**
       - JitHub.WinUI.Tests/**
+      - JitHub.Markdown/**
+      - JitHub.Markdown.Tests/**
       - docs/markdown-renderer/**
       - JitHub.slnx
       - .github/workflows/markdown-renderer-preview.yml
@@ -26,6 +28,8 @@ on:
       - MarkdownRenderer/**
       - JitHub.WinUI/**
       - JitHub.WinUI.Tests/**
+      - JitHub.Markdown/**
+      - JitHub.Markdown.Tests/**
       - docs/markdown-renderer/**
       - JitHub.slnx
       - .github/workflows/markdown-renderer-preview.yml
@@ -444,7 +448,8 @@ jobs:
         run: |
           $app = '.\JitHub.WinUI\JitHub.WinUI.csproj'
           $tests = '.\JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj'
-          foreach ($project in @($tests, $app)) {
+          $markdownTests = '.\JitHub.Markdown.Tests\JitHub.Markdown.Tests.csproj'
+          foreach ($project in @($markdownTests, $tests, $app)) {
             & dotnet restore $project `
               -p:Configuration=$env:CONFIGURATION `
               -p:Platform=$env:PLATFORM `
@@ -460,6 +465,14 @@ jobs:
             --no-restore `
             --disable-build-servers
           if ($LASTEXITCODE -ne 0) { throw 'JitHub consumer tests failed to build.' }
+
+          & dotnet build $markdownTests `
+            --configuration $env:CONFIGURATION `
+            -p:Platform=$env:PLATFORM `
+            -p:UseSharedCompilation=false `
+            --no-restore `
+            --disable-build-servers
+          if ($LASTEXITCODE -ne 0) { throw 'JitHub.Markdown tests failed to build.' }
 
           & dotnet build $app `
             --configuration $env:CONFIGURATION `
@@ -481,6 +494,16 @@ jobs:
             --results-directory $results `
             --logger 'trx;LogFileName=jithub-consumer.trx'
           if ($LASTEXITCODE -ne 0) { throw 'JitHub consumer tests failed.' }
+
+          & dotnet test $markdownTests `
+            --configuration $env:CONFIGURATION `
+            -p:Platform=$env:PLATFORM `
+            --no-build `
+            --no-restore `
+            --disable-build-servers `
+            --results-directory $results `
+            --logger 'trx;LogFileName=jithub-markdown.trx'
+          if ($LASTEXITCODE -ne 0) { throw 'JitHub.Markdown tests failed.' }
 
       - name: Run executable benchmark and allocation gates
         run: |

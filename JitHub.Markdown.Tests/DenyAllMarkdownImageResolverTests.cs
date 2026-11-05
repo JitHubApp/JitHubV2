@@ -1,11 +1,10 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Services.Markdown;
 using MarkdownRenderer.Images;
 using Xunit;
 
-namespace JitHub.WinUI.Tests.Services;
+namespace JitHub.Markdown.Tests;
 
 /// <summary>
 /// Covers how MarkdownViewer obtains its image resolver: it always ends with a

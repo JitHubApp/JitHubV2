@@ -324,6 +324,12 @@
           "xunit.extensibility.core": "[2.9.2]"
         }
       },
+      "jithub.markdown": {
+        "type": "Project",
+        "dependencies": {
+          "MarkdownRenderer": "[1.0.0-preview.1, )"
+        }
+      },
       "markdownrenderer": {
         "type": "Project",
         "dependencies": {

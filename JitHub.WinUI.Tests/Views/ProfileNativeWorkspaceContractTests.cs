@@ -281,9 +281,7 @@ public sealed class ProfileNativeWorkspaceContractTests
             "MarkdownLinkActivator.cs"));
         string policy = File.ReadAllText(Path.Combine(
             root,
-            "JitHub.WinUI",
-            "Services",
-            "Markdown",
+            "JitHub.Markdown",
             "MarkdownLinkNavigationPolicy.cs"));
 
         Assert.Contains("MarkdownGitHubRouteKind.Issue", policy, StringComparison.Ordinal);

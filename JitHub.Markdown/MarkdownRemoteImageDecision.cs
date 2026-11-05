@@ -1,6 +1,6 @@
 using MarkdownRenderer.Images;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 public readonly record struct MarkdownRemoteImageDecision(
     MarkdownRemoteImageAccess Access,
