@@ -9,6 +9,10 @@ namespace JitHub.Services.Markdown;
 /// are isolated to one representation, while document/navigation cancellation
 /// stops the pipeline immediately.
 /// </summary>
+/// <remarks>
+/// <c>partial</c> only because its nested <see cref="CandidateCancellation"/> is partial
+/// so CsWinRT can generate its ABI projection of IDisposable.
+/// </remarks>
 internal static partial class MarkdownImageFallbackPipeline
 {
     internal static async Task<T?> FirstSuccessfulAsync<T>(
@@ -277,6 +281,7 @@ internal static partial class MarkdownImageFallbackPipeline
     /// A linked CTS would run resolver registrations on the caller's Cancel()
     /// stack and lose its callback task when CancelAsync is called a second time.
     /// Relay cancellation explicitly, retaining its first task through retirement.
+    /// <c>partial</c> only so CsWinRT can generate its ABI projection of IDisposable.
     /// </summary>
     private sealed partial class CandidateCancellation : IDisposable
     {
