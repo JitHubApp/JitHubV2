@@ -1,5 +1,6 @@
 using System;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using JitHub.Markdown;
 using MarkdownRenderer;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Controls;
@@ -17,6 +18,10 @@ namespace JitHub.Services.Markdown.Hosting;
 internal static class MarkdownRendererConfigurator
 {
     private static readonly Uri DefaultBaseUri = new("https://github.com/", UriKind.Absolute);
+
+    // Holds no state; LocalizedResourceText owns the resource lookup.
+    private static readonly JitHubMarkdownStringProvider StringProvider =
+        new(LocalizedMarkdownResourceText.Instance);
 
     private static MarkdownPerformanceSession GetSharedPerformanceSession(JitHubMarkdownRuntime runtime) =>
         runtime.GetPerformanceSession(
@@ -51,7 +56,7 @@ internal static class MarkdownRendererConfigurator
                         Margin = MarkdownRendererResources.ResolveThickness("AppMarkdownBodyMargin", new Thickness(0, 0, 0, 8)),
                     }),
             });
-        renderer.StringProvider = JitHubMarkdownStringProvider.Instance;
+        renderer.StringProvider = StringProvider;
     }
 
     /// <summary>Applies the host settings to a renderer that has not received Markdown yet.</summary>

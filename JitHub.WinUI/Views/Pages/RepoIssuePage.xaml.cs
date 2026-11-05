@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Markdown;
 using JitHub.Models.GitHub;
 using JitHub.Models.NavArgs;
 using JitHub.Services.Layout;

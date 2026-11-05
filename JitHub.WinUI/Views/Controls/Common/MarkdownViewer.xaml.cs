@@ -278,7 +278,11 @@ public sealed partial class MarkdownViewer :
         _hostObserver = ResolveService<IMarkdownHostObserver>() ?? NoMarkdownHostObserver.Instance;
         _automation = ResolveService<IMarkdownViewerAutomationHooks>() ?? NoMarkdownViewerAutomationHooks.Instance;
         var telemetry = new MarkdownViewerTelemetry(ResolveTelemetryService(), () => HostKind);
-        _feedback = new MarkdownViewerFeedback(this, _hostObserver, telemetry);
+        _feedback = new MarkdownViewerFeedback(
+            this,
+            _hostObserver,
+            telemetry,
+            LocalizedMarkdownResourceText.Instance);
         // Links launch through Windows directly. The DI launcher can be a
         // sign-in automation substitute that must not handle document links.
         _links = new MarkdownLinkActivator(

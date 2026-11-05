@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using JitHub.Markdown;
 using JitHub.Services;
 using JitHub.Services.Markdown;
 using MarkdownRenderer.Images;
@@ -83,6 +86,22 @@ public sealed class MarkdownViewerFeedbackTests
 
         Assert.Equal(2, harness.Presenter.Count("open-remote"));
         Assert.False(harness.Presenter.LastOfferedLoadImages);
+    }
+
+    [Fact]
+    public void ImageUnavailable_NoticeTextComesFromTheAppResources()
+    {
+        var harness = new FeedbackHarness { AllowsByDefault = false, HostKind = "RepositoryReadme" };
+        harness.Text.Localized["Markdown.RemoteImage.ProtectedTitle"] = "Localized title";
+        harness.Text.Localized["Markdown.RemoteImage.InsecureMessage"] = "Localized message";
+
+        harness.Feedback.OnImageUnavailable("a", MarkdownImageUnavailableReason.InsecureRemoteContent);
+
+        Assert.Equal("Localized title", harness.Presenter.LastTitle);
+        Assert.Equal("Localized message", harness.Presenter.LastMessage);
+        Assert.Equal(
+            ["Markdown.RemoteImage.InsecureMessage", "Markdown.RemoteImage.ProtectedTitle"],
+            harness.Text.Requested.Order(StringComparer.Ordinal));
     }
 
     [Fact]
@@ -261,8 +280,11 @@ public sealed class MarkdownViewerFeedbackTests
             Feedback = new MarkdownViewerFeedback(
                 Presenter,
                 Observer,
-                new MarkdownViewerTelemetry(telemetry, () => HostKind));
+                new MarkdownViewerTelemetry(telemetry, () => HostKind),
+                Text);
         }
+
+        public RecordingResourceText Text { get; } = new();
 
         public bool AllowsByDefault { get; set; } = true;
 
@@ -280,6 +302,21 @@ public sealed class MarkdownViewerFeedbackTests
     }
 
     private sealed record RecordedEvent(string Name, Dictionary<string, string?> Properties);
+
+    /// <summary>Returns canonical text, as the app does without a resource map, unless a key is localized.</summary>
+    private sealed class RecordingResourceText : IMarkdownResourceText
+    {
+        public Dictionary<string, string> Localized { get; } = new(StringComparer.Ordinal);
+
+        public List<string> Requested { get; } = [];
+
+        public string GetString(string resourceKey, string fallback, CultureInfo? culture)
+        {
+            Assert.Null(culture);
+            Requested.Add(resourceKey);
+            return Localized.TryGetValue(resourceKey, out string? value) ? value : fallback;
+        }
+    }
 
     private sealed class RecordingPresenter : IMarkdownViewerNoticePresenter
     {

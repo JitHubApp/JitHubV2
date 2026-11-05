@@ -1,21 +1,22 @@
 using System;
 using System.Globalization;
-using JitHub.WinUI.Helpers;
 using MarkdownRenderer.Hosting;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 /// <summary>
 /// Bridges MarkdownRenderer's stable localization keys to JitHub's MRT
-/// resources. The provider is stateless; the underlying lookup serializes
-/// access to culture-qualified ResourceContext instances.
+/// resources. The provider holds no state of its own; the app's resource
+/// lookup serializes access to culture-qualified ResourceContext instances.
 /// </summary>
-internal sealed class JitHubMarkdownStringProvider : IMarkdownStringProvider
+public sealed class JitHubMarkdownStringProvider : IMarkdownStringProvider
 {
-    public static JitHubMarkdownStringProvider Instance { get; } = new();
+    private readonly IMarkdownResourceText _text;
 
-    private JitHubMarkdownStringProvider()
+    /// <param name="text">The app's localized resource lookup.</param>
+    public JitHubMarkdownStringProvider(IMarkdownResourceText text)
     {
+        _text = text ?? throw new ArgumentNullException(nameof(text));
     }
 
     public string? GetString(string key, CultureInfo culture)
@@ -26,7 +27,7 @@ internal sealed class JitHubMarkdownStringProvider : IMarkdownStringProvider
         string? fallback = GetFallback(key);
         return fallback is null
             ? null
-            : LocalizedResourceText.GetString(
+            : _text.GetString(
                 "MarkdownRenderer." + key,
                 fallback,
                 culture);

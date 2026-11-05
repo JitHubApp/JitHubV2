@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using JitHub.Markdown;
 using JitHub.Services.Markdown;
 using JitHub.WinUI.Helpers;
 using MarkdownRenderer.Hosting;
@@ -17,6 +18,9 @@ namespace JitHub.WinUI.Tests.Services;
 /// <remarks><c>partial</c> only for the generated placeholder regex.</remarks>
 public sealed partial class MarkdownLocalizationContractTests
 {
+    // The provider over the app's MRT lookup, as MarkdownRendererConfigurator installs it.
+    private static readonly JitHubMarkdownStringProvider Provider = new(new AppResourceText());
+
     [Fact]
     public void JitHubProvider_ResolvesEveryStableRendererStringKeyFromItsCatalogEntry()
     {
@@ -31,7 +35,7 @@ public sealed partial class MarkdownLocalizationContractTests
 
         foreach (string key in StableStringKeys())
         {
-            string? value = JitHubMarkdownStringProvider.Instance.GetString(key, CultureInfo.GetCultureInfo("en-US"));
+            string? value = Provider.GetString(key, CultureInfo.GetCultureInfo("en-US"));
 
             Assert.False(string.IsNullOrWhiteSpace(value), $"The provider has no string for {key}.");
             Assert.Equal(english[ToResourceKey(key)], value);
@@ -47,8 +51,8 @@ public sealed partial class MarkdownLocalizationContractTests
 
         Assert.All(StableStringKeys(), key =>
             Assert.False(string.IsNullOrWhiteSpace(
-                JitHubMarkdownStringProvider.Instance.GetString(key, CultureInfo.InvariantCulture))));
-        Assert.Null(JitHubMarkdownStringProvider.Instance.GetString("Not.A.Renderer.Key", CultureInfo.InvariantCulture));
+                Provider.GetString(key, CultureInfo.InvariantCulture))));
+        Assert.Null(Provider.GetString("Not.A.Renderer.Key", CultureInfo.InvariantCulture));
     }
 
     [Fact]
@@ -173,4 +177,11 @@ public sealed partial class MarkdownLocalizationContractTests
         "(?<!\\{)\\{\\d+(?:,\\s*-?\\d+)?(?::[^{}]+)?\\}(?!\\})",
         RegexOptions.CultureInvariant)]
     private static partial Regex CompositePlaceholderPattern();
+
+    /// <summary>Forwards to the app's resource lookup, like the app's LocalizedMarkdownResourceText.</summary>
+    private sealed class AppResourceText : IMarkdownResourceText
+    {
+        public string GetString(string resourceKey, string fallback, CultureInfo? culture) =>
+            LocalizedResourceText.GetString(resourceKey, fallback, culture);
+    }
 }

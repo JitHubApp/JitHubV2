@@ -1,20 +1,19 @@
 using System;
 using System.Collections.Generic;
-using JitHub.Markdown;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 /// <summary>
 /// Emits a Markdown host's telemetry events with the shared property schema.
 /// </summary>
-internal sealed class MarkdownViewerTelemetry
+public sealed class MarkdownViewerTelemetry
 {
-    private readonly ITelemetryService? _telemetryService;
+    private readonly IMarkdownTelemetrySink? _telemetryService;
     private readonly Func<string?> _getHostKind;
 
     /// <param name="telemetryService">The telemetry sink, or <see langword="null"/> to emit nothing.</param>
     /// <param name="getHostKind">Reads the host kind at the time of each event.</param>
-    public MarkdownViewerTelemetry(ITelemetryService? telemetryService, Func<string?> getHostKind)
+    public MarkdownViewerTelemetry(IMarkdownTelemetrySink? telemetryService, Func<string?> getHostKind)
     {
         _telemetryService = telemetryService;
         _getHostKind = getHostKind ?? throw new ArgumentNullException(nameof(getHostKind));
@@ -35,7 +34,7 @@ internal sealed class MarkdownViewerTelemetry
         string? resource = null,
         string? policy = null,
         string? errorKind = null,
-        string source = TelemetryTaxonomy.Sources.User)
+        string source = MarkdownTelemetryValues.Sources.User)
     {
         if (_telemetryService is null)
         {

@@ -1,11 +1,11 @@
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 /// <summary>
 /// What <see cref="MarkdownViewerFeedback"/> needs from the Markdown host that
 /// shows its notices. Notices overlay the reading region; presenting one never
 /// resizes it.
 /// </summary>
-internal interface IMarkdownViewerNoticePresenter
+public interface IMarkdownViewerNoticePresenter
 {
     /// <summary>Gets the host kind, which selects compact notice titles.</summary>
     string? HostKind { get; }

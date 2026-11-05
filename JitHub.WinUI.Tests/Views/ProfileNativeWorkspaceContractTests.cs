@@ -275,9 +275,7 @@ public sealed class ProfileNativeWorkspaceContractTests
             "ShellMarkdownRouteNavigator.cs"));
         string activator = File.ReadAllText(Path.Combine(
             root,
-            "JitHub.WinUI",
-            "Services",
-            "Markdown",
+            "JitHub.Markdown",
             "MarkdownLinkActivator.cs"));
         string policy = File.ReadAllText(Path.Combine(
             root,

@@ -1,4 +1,4 @@
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 /// <summary>The automation ids of a Markdown form's interactive peers.</summary>
 /// <param name="Mode">The Write/Preview mode selector.</param>
@@ -6,7 +6,7 @@ namespace JitHub.Services.Markdown;
 /// <param name="PreviewMode">The Preview mode item.</param>
 /// <param name="Editor">The Markdown text editor.</param>
 /// <param name="Preview">The preview viewer.</param>
-internal readonly record struct MarkdownFormPeerAutomationIds(
+public readonly record struct MarkdownFormPeerAutomationIds(
     string Mode,
     string WriteMode,
     string PreviewMode,

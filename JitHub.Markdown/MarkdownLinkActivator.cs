@@ -1,18 +1,17 @@
 using System;
 using System.Threading.Tasks;
-using JitHub.Markdown;
 using MarkdownRenderer.Images;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 /// <summary>
 /// Routes a clicked Markdown link: rejects unsafe targets, opens supported
 /// GitHub routes in the app, and launches everything else externally.
 /// </summary>
-internal sealed class MarkdownLinkActivator
+public sealed class MarkdownLinkActivator
 {
     private readonly IMarkdownRouteNavigator _navigator;
-    private readonly IExternalUriLauncher _launcher;
+    private readonly IMarkdownLinkLauncher _launcher;
     private readonly IMarkdownHostObserver _observer;
     private readonly MarkdownViewerTelemetry _telemetry;
 
@@ -22,7 +21,7 @@ internal sealed class MarkdownLinkActivator
     /// <param name="telemetry">The host's telemetry.</param>
     public MarkdownLinkActivator(
         IMarkdownRouteNavigator navigator,
-        IExternalUriLauncher launcher,
+        IMarkdownLinkLauncher launcher,
         IMarkdownHostObserver observer,
         MarkdownViewerTelemetry telemetry)
     {
@@ -51,7 +50,7 @@ internal sealed class MarkdownLinkActivator
                 out Uri? uri,
                 out bool mayNavigateInternally) || uri is null)
         {
-            _telemetry.TrackMarkdownEvent("markdown.action.executed", TelemetryTaxonomy.Actions.OpenLink, TelemetryTaxonomy.Results.Rejected, resource: "link");
+            _telemetry.TrackMarkdownEvent("markdown.action.executed", MarkdownTelemetryValues.Actions.OpenLink, MarkdownTelemetryValues.Results.Rejected, resource: "link");
             return;
         }
 
@@ -59,24 +58,24 @@ internal sealed class MarkdownLinkActivator
         string disposition = mayNavigateInternally && route.Kind is (MarkdownGitHubRouteKind.User or MarkdownGitHubRouteKind.Repository or MarkdownGitHubRouteKind.Issue or MarkdownGitHubRouteKind.PullRequest) ? route.Kind.ToString().ToLowerInvariant() : "external-browser";
         if (_observer.TryCaptureLinkRoute(automationId, uri, disposition))
         {
-            _telemetry.TrackMarkdownEvent("markdown.action.executed", TelemetryTaxonomy.Actions.OpenLink, TelemetryTaxonomy.Results.Success, resource: "link");
+            _telemetry.TrackMarkdownEvent("markdown.action.executed", MarkdownTelemetryValues.Actions.OpenLink, MarkdownTelemetryValues.Results.Success, resource: "link");
             return;
         }
 
         if (mayNavigateInternally && _navigator.TryOpen(uri))
         {
-            _telemetry.TrackMarkdownEvent("markdown.action.executed", TelemetryTaxonomy.Actions.OpenLink, TelemetryTaxonomy.Results.Success, resource: "link");
+            _telemetry.TrackMarkdownEvent("markdown.action.executed", MarkdownTelemetryValues.Actions.OpenLink, MarkdownTelemetryValues.Results.Success, resource: "link");
             return;
         }
 
         try
         {
             bool launched = await _launcher.LaunchAsync(uri);
-            _telemetry.TrackMarkdownEvent("markdown.action.executed", TelemetryTaxonomy.Actions.OpenLink, launched ? TelemetryTaxonomy.Results.Launched : TelemetryTaxonomy.Results.Failed, resource: "link");
+            _telemetry.TrackMarkdownEvent("markdown.action.executed", MarkdownTelemetryValues.Actions.OpenLink, launched ? MarkdownTelemetryValues.Results.Launched : MarkdownTelemetryValues.Results.Failed, resource: "link");
         }
         catch (Exception)
         {
-            _telemetry.TrackMarkdownEvent("markdown.error", TelemetryTaxonomy.Actions.OpenLink, TelemetryTaxonomy.Results.Failed, resource: "link", errorKind: TelemetryTaxonomy.ErrorKinds.Launch);
+            _telemetry.TrackMarkdownEvent("markdown.error", MarkdownTelemetryValues.Actions.OpenLink, MarkdownTelemetryValues.Results.Failed, resource: "link", errorKind: MarkdownTelemetryValues.ErrorKinds.Launch);
         }
     }
 }

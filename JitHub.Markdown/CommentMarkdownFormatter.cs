@@ -1,7 +1,7 @@
 using System;
 using System.Linq;
 
-namespace JitHub.WinUI.Helpers;
+namespace JitHub.Markdown;
 
 public static class CommentMarkdownFormatter
 {

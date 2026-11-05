@@ -1,8 +1,6 @@
 using System;
-using JitHub.Markdown;
-using JitHub.WinUI.Helpers;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 /// <summary>
 /// Resolves the UI Automation identities of one Markdown form: the prefix every
@@ -13,10 +11,10 @@ namespace JitHub.Services.Markdown;
 /// attached automation id gets a fallback that is unique to the form instance,
 /// so two anonymous forms on one page never share peer ids.
 /// </remarks>
-internal sealed class MarkdownFormAutomationIdentity
+public sealed class MarkdownFormAutomationIdentity
 {
     /// <summary>Creates the identity of a new form with a fresh fallback scope.</summary>
-    internal MarkdownFormAutomationIdentity()
+    public MarkdownFormAutomationIdentity()
         : this(Guid.NewGuid())
     {
     }
@@ -24,7 +22,7 @@ internal sealed class MarkdownFormAutomationIdentity
     /// <param name="instance">The form instance's identity, used only for the fallback scope.</param>
     internal MarkdownFormAutomationIdentity(Guid instance)
     {
-        FallbackInstanceId = AutomationIdentity.CreateScopedId("MarkdownForm", $"runtime:{instance:N}");
+        FallbackInstanceId = AutomationScopedId.Create("MarkdownForm", $"runtime:{instance:N}");
     }
 
     /// <summary>Gets the prefix used when the form has no explicit or attached automation id.</summary>
@@ -34,7 +32,7 @@ internal sealed class MarkdownFormAutomationIdentity
     /// Returns the prefix for the form's peers: the explicit instance id, then the
     /// attached automation id, then the fallback.
     /// </summary>
-    internal string ResolvePrefix(string? automationInstanceId, string? attachedAutomationId)
+    public string ResolvePrefix(string? automationInstanceId, string? attachedAutomationId)
     {
         if (!string.IsNullOrWhiteSpace(automationInstanceId))
         {
@@ -47,14 +45,14 @@ internal sealed class MarkdownFormAutomationIdentity
     }
 
     /// <summary>Returns the preview viewer's automation instance id for a prefix.</summary>
-    internal static string GetPreviewInstanceId(string prefix) => $"{prefix}_Preview";
+    public static string GetPreviewInstanceId(string prefix) => $"{prefix}_Preview";
 
     /// <summary>Returns the preview viewer's Markdown host automation id for a prefix.</summary>
-    internal static string GetPreviewHostId(string prefix) =>
+    public static string GetPreviewHostId(string prefix) =>
         MarkdownHostContract.GetAutomationId(MarkdownHostContract.EditorPreview, GetPreviewInstanceId(prefix));
 
     /// <summary>Returns the automation ids of the form's interactive peers for a prefix.</summary>
-    internal static MarkdownFormPeerAutomationIds GetPeerIds(string prefix) => new(
+    public static MarkdownFormPeerAutomationIds GetPeerIds(string prefix) => new(
         Mode: $"{prefix}_Mode",
         WriteMode: $"{prefix}_Mode_Write",
         PreviewMode: $"{prefix}_Mode_Preview",

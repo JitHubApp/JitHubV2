@@ -1,10 +1,10 @@
 using System;
 using MarkdownRenderer.Images;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 /// <summary>The product host observer: it records nothing and captures no links.</summary>
-internal sealed class NoMarkdownHostObserver : IMarkdownHostObserver
+public sealed class NoMarkdownHostObserver : IMarkdownHostObserver
 {
     public static NoMarkdownHostObserver Instance { get; } = new();
 

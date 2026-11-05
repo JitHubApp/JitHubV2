@@ -1,14 +1,14 @@
 using System;
 using MarkdownRenderer.Images;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 /// <summary>
 /// Observes Markdown host milestones. Product builds register
 /// <see cref="NoMarkdownHostObserver"/>; the lifecycle automation host registers
 /// an observer that writes evidence for the out-of-process UI harness.
 /// </summary>
-internal interface IMarkdownHostObserver
+public interface IMarkdownHostObserver
 {
     /// <summary>Called when a host has created and named its renderer.</summary>
     /// <param name="automationId">The host's automation id.</param>
