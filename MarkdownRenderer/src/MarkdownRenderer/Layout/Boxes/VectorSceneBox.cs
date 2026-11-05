@@ -176,7 +176,7 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox, ISelect
     /// </summary>
     internal bool IsCapacityFallbackPaintable =>
         IsCapacityPreparationStatus(NativePreparationStatus) && HasCapacityFallbackText &&
-        VectorSceneCapacityFallback.TryGetFormat(LayoutContext.FlowDirection, out _);
+        VectorSceneCapacityFallback.TryGetFormat(NativeAdmission, LayoutContext.FlowDirection, out _);
 
     /// <summary>
     /// Recreates this scene's device resources before paint. Callers must do
@@ -195,7 +195,7 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox, ISelect
         return prepared;
     }
 
-    /// <summary>Warms the borrowed process-wide fallback descriptor off the paint path.</summary>
+    /// <summary>Warms the admission-owned fallback descriptor off the paint path.</summary>
     internal bool PrepareCapacityFallback(CancellationToken cancellationToken)
         => PrepareCapacityFallback(cancellationToken, _drawing.NativeResourceAdmission);
 
@@ -210,7 +210,7 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox, ISelect
         // A DirectWrite/Win2D descriptor creation failure must escape through
         // the existing device/native-resource recovery path; swallowing it
         // would publish an unpaintable scene as a settled capacity fallback.
-        return VectorSceneCapacityFallback.PrepareFormat(LayoutContext.FlowDirection);
+        return nativeAdmission.CapacityFallbackFormats.PrepareFormat(LayoutContext.FlowDirection);
     }
 
     /// <summary>Releases only device resources; the immutable scene stays owned by this box.</summary>
@@ -252,7 +252,7 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox, ISelect
     internal bool HasDetachedFallback =>
         (_detachedFallbackLayout is not null && !_detachedFallbackCleanupPending) ||
         (NativeAdmission is not null && IsGraphDetached && HasCapacityFallbackText &&
-            VectorSceneCapacityFallback.TryGetFormat(LayoutContext.FlowDirection, out _));
+            VectorSceneCapacityFallback.TryGetFormat(NativeAdmission, LayoutContext.FlowDirection, out _));
 
     /// <summary>Transfers a staged layout; the caller disposes any rejected candidate.</summary>
     internal bool TryAdoptDetachedFallback(
@@ -324,7 +324,8 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox, ISelect
                 VectorNativePreparationStatus.TooLarge) &&
             replacement.NativeResourceAdmission is not null &&
             HasCapacityFallbackText &&
-            VectorSceneCapacityFallback.TryGetFormat(LayoutContext.FlowDirection, out _);
+            VectorSceneCapacityFallback.TryGetFormat(
+                replacement.NativeResourceAdmission, LayoutContext.FlowDirection, out _);
         if (ReferenceEquals(replacement, _drawing) || !replacement.HasScene ||
             (!replacementPrepared && !replacementCapacityFallbackReady))
         {

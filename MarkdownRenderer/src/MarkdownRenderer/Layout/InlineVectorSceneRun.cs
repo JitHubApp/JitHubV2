@@ -232,7 +232,7 @@ internal sealed class InlineVectorSceneRun : InlineRun, IDisposable
         _capacityFallbackText.Length > 0 &&
         (NativePreparationStatus is VectorNativePreparationStatus.DeferredCapacity or
             VectorNativePreparationStatus.TooLarge) &&
-        VectorSceneCapacityFallback.TryGetFormat(_flowDirection, out _);
+        VectorSceneCapacityFallback.TryGetFormat(NativeAdmission, _flowDirection, out _);
 
     internal void PrepareNativeResources(CancellationToken cancellationToken)
     {
@@ -265,7 +265,7 @@ internal sealed class InlineVectorSceneRun : InlineRun, IDisposable
         // Keep capacity/size denial as the typed fallback result. A real text
         // descriptor/device failure is not capacity pressure; let the existing
         // renderer recovery path observe it instead of settling an unpaintable run.
-        return VectorSceneCapacityFallback.PrepareFormat(_flowDirection);
+        return _drawing.NativeResourceAdmission.CapacityFallbackFormats.PrepareFormat(_flowDirection);
     }
 
     internal void ReleaseNativeResources()
@@ -348,7 +348,7 @@ internal sealed class InlineVectorSceneRun : InlineRun, IDisposable
         }
 
         if (!IsCapacityFallbackPaintable || bounds.Width <= 0 || bounds.Height <= 0 ||
-            !VectorSceneCapacityFallback.TryGetFormat(_flowDirection, out CanvasTextFormat format))
+            !VectorSceneCapacityFallback.TryGetFormat(NativeAdmission, _flowDirection, out CanvasTextFormat format))
         {
             return;
         }
