@@ -1,9 +1,12 @@
 using System.Globalization;
+using MarkdownRenderer.Math.Internal;
 using Xunit;
 
 namespace MarkdownRenderer.Math.Tests;
 
-[Collection("Math host callback gate")]
+// Both classes assert wall-clock processing deadlines; one collection keeps
+// them from running against each other.
+[Collection("Math deadline timing")]
 public sealed class MathContractsTests
 {
     [Theory]
@@ -554,7 +557,10 @@ public sealed class MathContractsTests
     [Fact]
     public async Task Processor_SaturatedHostCallbackAdmissionTimesOutWithoutSpawningAnotherCallback()
     {
-        const int admissionCapacity = 4;
+        const int admissionCapacity = MathHostCallbackGate.MaximumConcurrentCallbacks;
+        // Every processor here shares one gate, as the processors and the
+        // engine extension of one math owner do.
+        var gate = new MathHostCallbackGate();
         BlockingFirstCallStringProvider[] blockers = Enumerable.Range(0, admissionCapacity)
             .Select(_ => new BlockingFirstCallStringProvider())
             .ToArray();
@@ -565,7 +571,7 @@ public sealed class MathContractsTests
             MathFormulaRequest request = Assert.Single(MathDelimiterScanner.Scan("$x$").Formulas);
             foreach (BlockingFirstCallStringProvider blocker in blockers)
             {
-                operations.Add(new MathFormulaProcessor(strings: blocker).ProcessAsync(
+                operations.Add(new MathFormulaProcessor(strings: blocker, callbackGate: gate).ProcessAsync(
                     request,
                     new MathProcessingOptions(
                         maximumProcessingTime: TimeSpan.FromSeconds(10))).AsTask());
@@ -577,7 +583,7 @@ public sealed class MathContractsTests
 
             var waitingStrings = new CountingStringProvider();
             var timer = System.Diagnostics.Stopwatch.StartNew();
-            MathFormulaResult saturated = await new MathFormulaProcessor(strings: waitingStrings)
+            MathFormulaResult saturated = await new MathFormulaProcessor(strings: waitingStrings, callbackGate: gate)
                 .ProcessAsync(
                     request,
                     new MathProcessingOptions(
@@ -620,9 +626,69 @@ public sealed class MathContractsTests
     }
 
     [Fact]
+    public async Task Processor_SaturatedGateDoesNotDelayAnotherOwnersCallbacks()
+    {
+        var saturatedGate = new MathHostCallbackGate();
+        BlockingFirstCallStringProvider[] blockers = Enumerable
+            .Range(0, MathHostCallbackGate.MaximumConcurrentCallbacks)
+            .Select(_ => new BlockingFirstCallStringProvider())
+            .ToArray();
+        var operations = new List<Task<MathFormulaResult>>(blockers.Length);
+        MathFormulaRequest request = Assert.Single(MathDelimiterScanner.Scan("$x$").Formulas);
+
+        try
+        {
+            foreach (BlockingFirstCallStringProvider blocker in blockers)
+            {
+                operations.Add(new MathFormulaProcessor(strings: blocker, callbackGate: saturatedGate).ProcessAsync(
+                    request,
+                    new MathProcessingOptions(
+                        maximumProcessingTime: TimeSpan.FromSeconds(10))).AsTask());
+            }
+
+            Assert.All(blockers, blocker => Assert.True(
+                blocker.FirstCallStarted.Wait(TimeSpan.FromSeconds(2)),
+                "A callback worker did not acquire its admission slot."));
+
+            // A processor with its own gate is another owner: the saturated
+            // gate neither admits nor delays its callbacks.
+            var independentStrings = new CountingStringProvider();
+            MathFormulaResult independent = await new MathFormulaProcessor(strings: independentStrings)
+                .ProcessAsync(
+                    request,
+                    new MathProcessingOptions(
+                        maximumProcessingTime: TimeSpan.FromSeconds(5)))
+                .AsTask()
+                .WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.True(independent.IsAccepted, independent.Diagnostic?.Message);
+            Assert.True(independentStrings.CallCount > 0);
+        }
+        finally
+        {
+            foreach (BlockingFirstCallStringProvider blocker in blockers)
+                blocker.ReleaseFirstCall();
+
+            try
+            {
+                await Task.WhenAll(operations).WaitAsync(TimeSpan.FromSeconds(10));
+            }
+            catch
+            {
+                // Preserve the primary assertion while ensuring every blocked
+                // callback is released and its admission lease can retire.
+            }
+
+            foreach (BlockingFirstCallStringProvider blocker in blockers)
+                blocker.Dispose();
+        }
+    }
+
+    [Fact]
     public async Task Processor_AsyncFormattersRetainAdmissionUntilIgnoredCancellationWorkCompletes()
     {
-        const int admissionCapacity = 4;
+        const int admissionCapacity = MathHostCallbackGate.MaximumConcurrentCallbacks;
+        var gate = new MathHostCallbackGate();
         var formatters = Enumerable.Range(0, admissionCapacity)
             .Select(_ => new AsyncBlockingAccessibilityFormatter())
             .ToArray();
@@ -638,7 +704,7 @@ public sealed class MathContractsTests
         {
             foreach (AsyncBlockingAccessibilityFormatter formatter in formatters)
             {
-                operations.Add(new MathFormulaProcessor(formatter).ProcessAsync(
+                operations.Add(new MathFormulaProcessor(formatter, callbackGate: gate).ProcessAsync(
                     request,
                     new MathProcessingOptions(
                         maximumProcessingTime: TimeSpan.FromMilliseconds(500))).AsTask());
@@ -657,7 +723,7 @@ public sealed class MathContractsTests
             });
 
             var saturatedFormatter = new CountingAccessibilityFormatter();
-            MathFormulaResult saturated = await new MathFormulaProcessor(saturatedFormatter)
+            MathFormulaResult saturated = await new MathFormulaProcessor(saturatedFormatter, callbackGate: gate)
                 .ProcessAsync(
                     request,
                     new MathProcessingOptions(
@@ -675,7 +741,7 @@ public sealed class MathContractsTests
                 "An async formatter did not complete after release."));
 
             var probeFormatter = new CountingAccessibilityFormatter();
-            MathFormulaResult probe = await new MathFormulaProcessor(probeFormatter)
+            MathFormulaResult probe = await new MathFormulaProcessor(probeFormatter, callbackGate: gate)
                 .ProcessAsync(
                     request,
                     new MathProcessingOptions(

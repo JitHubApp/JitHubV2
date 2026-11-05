@@ -33,6 +33,7 @@ public static class MathMarkdownExtensions
     {
         private readonly MathProcessingOptions _options;
         private readonly MathFormulaProcessor _processor;
+        private readonly MathHostCallbackGate _callbackGate = new();
         private readonly IMathStringProvider? _strings;
         private readonly string _languageTag;
 
@@ -46,7 +47,7 @@ public static class MathMarkdownExtensions
             CultureInfo localizationCulture = MathStringResolver.SnapshotCulture(
                 options.LocalizationCulture);
             _languageTag = MathStringResolver.GetLanguageTag(localizationCulture);
-            _processor = new MathFormulaProcessor(accessibilityFormatter, strings);
+            _processor = new MathFormulaProcessor(accessibilityFormatter, strings, _callbackGate);
         }
 
         public string Id => MathFeature.PackageId;
@@ -274,7 +275,7 @@ public static class MathMarkdownExtensions
 
             try
             {
-                Task<string> callbackTask = await MathHostCallbackGate.StartAsync(
+                Task<string> callbackTask = await _callbackGate.StartAsync(
                     token =>
                     {
                         token.ThrowIfCancellationRequested();
