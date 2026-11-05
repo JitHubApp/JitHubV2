@@ -280,7 +280,7 @@ public sealed class SvgRendererShutdownTests
         var admission = new GatedAdmissionObserver(WorkerOperation.Open);
         using var renderer = new ResvgMarkdownSvgRenderer(
             new ResvgMarkdownSvgRendererOptions(),
-            SvgProcessSnapshotAdmission.Process,
+            SvgSnapshotAdmission.CreateDefault(),
             admissionObserver: admission);
         byte[] source = "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='8'/>"u8.ToArray();
         Task<IMarkdownSvgDocument>? open = null;

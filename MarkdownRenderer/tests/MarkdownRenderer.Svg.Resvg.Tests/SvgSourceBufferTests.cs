@@ -159,7 +159,7 @@ public sealed class SvgSourceBufferTests
     [Fact]
     public void SnapshotAdmissionStaysChargedUntilOwnerAndLastLeaseRetire()
     {
-        var admission = new SvgProcessSnapshotAdmission(capacityBytes: 128, visibleHeadroomBytes: 16);
+        var admission = new SvgSnapshotAdmission(capacityBytes: 128, visibleHeadroomBytes: 16);
         Assert.True(admission.TryReserve(64, MarkdownSvgRenderPriority.Visible, out var reservation, out _));
         SvgSourceBuffer source = SvgSourceBuffer.CopyFrom(new byte[SvgSourceBuffer.NativeMemoryThresholdBytes + 1]);
         SvgSourceReadLease lease = source.AcquireReadLease();
@@ -179,7 +179,7 @@ public sealed class SvgSourceBufferTests
     [Fact]
     public void SnapshotAdmissionStaysChargedWhenLeaseRetiresBeforeOwner()
     {
-        var admission = new SvgProcessSnapshotAdmission(capacityBytes: 128, visibleHeadroomBytes: 16);
+        var admission = new SvgSnapshotAdmission(capacityBytes: 128, visibleHeadroomBytes: 16);
         Assert.True(admission.TryReserve(64, MarkdownSvgRenderPriority.Visible, out var reservation, out _));
         SvgSourceBuffer source = SvgSourceBuffer.CopyFrom(new byte[SvgSourceBuffer.NativeMemoryThresholdBytes + 1]);
         SvgSourceReadLease lease = source.AcquireReadLease();
@@ -199,7 +199,7 @@ public sealed class SvgSourceBufferTests
     [Fact]
     public async Task ConcurrentOwnerAndLeaseRetirementReleaseReservationExactlyOnce()
     {
-        var admission = new SvgProcessSnapshotAdmission(capacityBytes: 128, visibleHeadroomBytes: 16);
+        var admission = new SvgSnapshotAdmission(capacityBytes: 128, visibleHeadroomBytes: 16);
         Assert.True(admission.TryReserve(64, MarkdownSvgRenderPriority.Visible, out var reservation, out _));
         SvgSourceBuffer source = SvgSourceBuffer.CopyFrom(new byte[SvgSourceBuffer.NativeMemoryThresholdBytes + 1]);
         SvgSourceReadLease lease = source.AcquireReadLease();
@@ -215,7 +215,7 @@ public sealed class SvgSourceBufferTests
     [Fact]
     public async Task IndependentReadLeasesKeepNativeBytesAndAdmissionUntilTheLastReaderDrains()
     {
-        var admission = new SvgProcessSnapshotAdmission(capacityBytes: 128, visibleHeadroomBytes: 16);
+        var admission = new SvgSnapshotAdmission(capacityBytes: 128, visibleHeadroomBytes: 16);
         Assert.True(admission.TryReserve(64, MarkdownSvgRenderPriority.Visible, out var reservation, out _));
         byte[] bytes = new byte[SvgSourceBuffer.NativeMemoryThresholdBytes + 19];
         bytes.AsSpan().Fill(0x4d);
@@ -242,7 +242,7 @@ public sealed class SvgSourceBufferTests
     [Fact]
     public void PreflightResultDefersSnapshotReservationRefundUntilActiveReadEnds()
     {
-        var admission = new SvgProcessSnapshotAdmission(capacityBytes: 128, visibleHeadroomBytes: 16);
+        var admission = new SvgSnapshotAdmission(capacityBytes: 128, visibleHeadroomBytes: 16);
         Assert.True(admission.TryReserve(64, MarkdownSvgRenderPriority.Visible, out var reservation, out _));
         SvgSourceBuffer source = SvgSourceBuffer.CopyFrom(new byte[SvgSourceBuffer.NativeMemoryThresholdBytes + 1]);
         source.Seal();
@@ -307,7 +307,7 @@ public sealed class SvgSourceBufferTests
     [Fact]
     public void EmptySnapshotCannotCaptureAReservationThatWouldNeverRetire()
     {
-        var admission = new SvgProcessSnapshotAdmission(capacityBytes: 128, visibleHeadroomBytes: 16);
+        var admission = new SvgSnapshotAdmission(capacityBytes: 128, visibleHeadroomBytes: 16);
         Assert.True(admission.TryReserve(64, MarkdownSvgRenderPriority.Visible, out var reservation, out _));
 
         Assert.Throws<InvalidOperationException>(() => SvgSourceBuffer.Empty.AttachRetirementResource(reservation!));
@@ -320,7 +320,7 @@ public sealed class SvgSourceBufferTests
     [Fact]
     public void RetirementContinuesReleasingCreditsWhenOneDisposerThrows()
     {
-        var admission = new SvgProcessSnapshotAdmission(capacityBytes: 128, visibleHeadroomBytes: 16);
+        var admission = new SvgSnapshotAdmission(capacityBytes: 128, visibleHeadroomBytes: 16);
         Assert.True(admission.TryReserve(64, MarkdownSvgRenderPriority.Visible, out var reservation, out _));
         SvgSourceBuffer source = SvgSourceBuffer.CopyFrom(new byte[SvgSourceBuffer.NativeMemoryThresholdBytes + 1]);
         source.Seal();
@@ -337,7 +337,7 @@ public sealed class SvgSourceBufferTests
     [Fact]
     public void RetiredPreflightCannotReattachAReservationToTheImmortalEmptySentinel()
     {
-        var admission = new SvgProcessSnapshotAdmission(capacityBytes: 128, visibleHeadroomBytes: 16);
+        var admission = new SvgSnapshotAdmission(capacityBytes: 128, visibleHeadroomBytes: 16);
         Assert.True(admission.TryReserve(64, MarkdownSvgRenderPriority.Visible, out var reservation, out _));
         var result = new SvgPreflightResult(
             SvgSourceBuffer.CopyFrom(new byte[SvgSourceBuffer.NativeMemoryThresholdBytes + 1]),
@@ -366,7 +366,7 @@ public sealed class SvgSourceBufferTests
         preamble.CopyTo(sourceBytes, 0);
         encoded.CopyTo(sourceBytes, preamble.Length);
 
-        var admission = new SvgProcessSnapshotAdmission(capacityBytes: 1024 * 1024, visibleHeadroomBytes: 64 * 1024);
+        var admission = new SvgSnapshotAdmission(capacityBytes: 1024 * 1024, visibleHeadroomBytes: 64 * 1024);
         Assert.True(admission.TryReserve(sourceBytes.Length, MarkdownSvgRenderPriority.Visible, out var reservation, out _));
         using var cancellation = new CancellationTokenSource();
         int allocationCallbacks = 0;

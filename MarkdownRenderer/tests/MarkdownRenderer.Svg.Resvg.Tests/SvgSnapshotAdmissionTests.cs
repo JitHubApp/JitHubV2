@@ -6,17 +6,17 @@ using Xunit;
 
 namespace MarkdownRenderer.Svg.Resvg.Tests;
 
-public sealed class SvgProcessSnapshotAdmissionTests
+public sealed class SvgSnapshotAdmissionTests
 {
     [Fact]
     public async Task PreflightReservesBeforeTheFirstProviderOwnedSourceClone()
     {
-        var owner = new SvgProcessSnapshotAdmission(capacityBytes: 4096, visibleHeadroomBytes: 512);
+        var owner = new SvgSnapshotAdmission(capacityBytes: 4096, visibleHeadroomBytes: 512);
         var options = new ResvgMarkdownSvgRendererOptions(maxSourceBytes: 256);
         byte[] bytes = Encoding.UTF8.GetBytes(
             "<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'><rect width='1' height='1'/></svg>");
         Assert.True(owner.TryReserve(options.MaxSourceBytes, MarkdownSvgRenderPriority.Visible,
-            out SvgProcessSnapshotAdmission.Lease? reservation, out _));
+            out SvgSnapshotAdmission.Lease? reservation, out _));
         bool observedReservationAtClone = false;
         using var memory = new AdmissionObservingMemoryManager(bytes,
             () => observedReservationAtClone = owner.ReservedBytes >= options.MaxSourceBytes);
@@ -41,7 +41,7 @@ public sealed class SvgProcessSnapshotAdmissionTests
     [Fact]
     public async Task ReservationShrinksToNormalizedDtdFreeSnapshotAndPreservesCallerSource()
     {
-        var owner = new SvgProcessSnapshotAdmission(capacityBytes: 128 * 1024, visibleHeadroomBytes: 16 * 1024);
+        var owner = new SvgSnapshotAdmission(capacityBytes: 128 * 1024, visibleHeadroomBytes: 16 * 1024);
         var options = new ResvgMarkdownSvgRendererOptions(maxSourceBytes: 4096);
         string authored = "<?xml version='1.0' encoding='iso-8859-1'?>" +
             "<svg xmlns='http://www.w3.org/2000/svg'><desc>" + new string('é', 32) + "</desc></svg>";
@@ -50,7 +50,7 @@ public sealed class SvgProcessSnapshotAdmissionTests
         string expectedNormalized = "<?xml version=\"1.0\" encoding=\"utf-8\"?>" +
             "<svg xmlns=\"http://www.w3.org/2000/svg\"><desc>" + new string('é', 32) + "</desc></svg>";
         Assert.True(owner.TryReserve(options.MaxSourceBytes, MarkdownSvgRenderPriority.Visible,
-            out SvgProcessSnapshotAdmission.Lease? reservation, out _));
+            out SvgSnapshotAdmission.Lease? reservation, out _));
 
         SvgPreflightResult preflight = await SvgPreflight.InspectAsync(
             new MarkdownSvgOpenRequest(callerBytes),
@@ -73,11 +73,11 @@ public sealed class SvgProcessSnapshotAdmissionTests
     [Fact]
     public async Task MalformedPreflightReturnsItsTentativeReservationExactlyOnce()
     {
-        var owner = new SvgProcessSnapshotAdmission(capacityBytes: 4096, visibleHeadroomBytes: 512);
+        var owner = new SvgSnapshotAdmission(capacityBytes: 4096, visibleHeadroomBytes: 512);
         var options = new ResvgMarkdownSvgRendererOptions(maxSourceBytes: 1024);
         byte[] malformed = Encoding.UTF8.GetBytes("<svg xmlns='http://www.w3.org/2000/svg'");
         Assert.True(owner.TryReserve(options.MaxSourceBytes, MarkdownSvgRenderPriority.Visible,
-            out SvgProcessSnapshotAdmission.Lease? reservation, out _));
+            out SvgSnapshotAdmission.Lease? reservation, out _));
 
         await Assert.ThrowsAsync<MarkdownSvgException>(async () =>
             await SvgPreflight.InspectAsync(
@@ -95,7 +95,7 @@ public sealed class SvgProcessSnapshotAdmissionTests
     public async Task SmallInputReservesItsExactCloneBeforePreflightRatherThanThePerDocumentCeiling()
     {
         byte[] malformed = Encoding.UTF8.GetBytes("<svg xmlns='http://www.w3.org/2000/svg'");
-        var owner = new SvgProcessSnapshotAdmission(capacityBytes: malformed.Length, visibleHeadroomBytes: 0);
+        var owner = new SvgSnapshotAdmission(capacityBytes: malformed.Length, visibleHeadroomBytes: 0);
         using var renderer = new ResvgMarkdownSvgRenderer(new ResvgMarkdownSvgRendererOptions(), owner);
         long observedReservation = 0;
         using var memory = new AdmissionObservingMemoryManager(malformed,
@@ -116,10 +116,10 @@ public sealed class SvgProcessSnapshotAdmissionTests
     [Fact]
     public async Task HostCapacityDenialIsTypedAndDoesNotCloneOrRetainTheRequest()
     {
-        var owner = new SvgProcessSnapshotAdmission(capacityBytes: 512, visibleHeadroomBytes: 128);
+        var owner = new SvgSnapshotAdmission(capacityBytes: 512, visibleHeadroomBytes: 128);
         var options = new ResvgMarkdownSvgRendererOptions(maxSourceBytes: 256);
         Assert.True(owner.TryReserve(384, MarkdownSvgRenderPriority.Overscan,
-            out SvgProcessSnapshotAdmission.Lease? overscan, out long observedVersion));
+            out SvgSnapshotAdmission.Lease? overscan, out long observedVersion));
         using (overscan)
         using (var renderer = new ResvgMarkdownSvgRenderer(options, owner))
         using (var memory = new AdmissionObservingMemoryManager(
@@ -151,13 +151,13 @@ public sealed class SvgProcessSnapshotAdmissionTests
     [Fact]
     public async Task DocumentRetirementReturnsSourceReservationOnlyAfterAdmittedRendersDrain()
     {
-        var owner = new SvgProcessSnapshotAdmission(capacityBytes: 4096, visibleHeadroomBytes: 512);
+        var owner = new SvgSnapshotAdmission(capacityBytes: 4096, visibleHeadroomBytes: 512);
         var options = new ResvgMarkdownSvgRendererOptions(maxSourceBytes: 1024);
         byte[] bytes = Encoding.UTF8.GetBytes(
             "<svg xmlns='http://www.w3.org/2000/svg' width='2' height='1'/> ");
         var request = new MarkdownSvgOpenRequest(bytes);
         Assert.True(owner.TryReserve(options.MaxSourceBytes, MarkdownSvgRenderPriority.Visible,
-            out SvgProcessSnapshotAdmission.Lease? reservation, out _));
+            out SvgSnapshotAdmission.Lease? reservation, out _));
         SvgPreflightResult preflight = await SvgPreflight.InspectAsync(
             request, options, CancellationToken.None, snapshotAdmission: reservation)
             .WaitAsync(TimeSpan.FromSeconds(5));
@@ -182,7 +182,7 @@ public sealed class SvgProcessSnapshotAdmissionTests
     [Fact]
     public async Task CompletedOpenWrappersDoNotRetainBorrowedSourceBytes()
     {
-        var owner = new SvgProcessSnapshotAdmission(capacityBytes: 4096, visibleHeadroomBytes: 512);
+        var owner = new SvgSnapshotAdmission(capacityBytes: 4096, visibleHeadroomBytes: 512);
         var options = new ResvgMarkdownSvgRendererOptions(maxSourceBytes: 1024);
         using var renderer = new ResvgMarkdownSvgRenderer(options, owner);
 
@@ -210,10 +210,10 @@ public sealed class SvgProcessSnapshotAdmissionTests
     [Fact]
     public async Task CompletedHostCapacityDenialTaskDoesNotRetainBorrowedSourceBytes()
     {
-        var owner = new SvgProcessSnapshotAdmission(capacityBytes: 512, visibleHeadroomBytes: 128);
+        var owner = new SvgSnapshotAdmission(capacityBytes: 512, visibleHeadroomBytes: 128);
         var options = new ResvgMarkdownSvgRendererOptions(maxSourceBytes: 256);
         Assert.True(owner.TryReserve(384, MarkdownSvgRenderPriority.Overscan,
-            out SvgProcessSnapshotAdmission.Lease? overscan, out _));
+            out SvgSnapshotAdmission.Lease? overscan, out _));
         using (overscan)
         using (var renderer = new ResvgMarkdownSvgRenderer(options, owner))
         {
@@ -234,28 +234,46 @@ public sealed class SvgProcessSnapshotAdmissionTests
     }
 
     [Fact]
-    public void RendererInstancesShareTheProcessAdmissionDomain()
+    public void EachDefaultRendererOwnsItsAdmissionDomain()
     {
         using var first = new ResvgMarkdownSvgRenderer();
         using var second = new ResvgMarkdownSvgRenderer();
-        IMarkdownSvgAdmission firstAdmission = (IMarkdownSvgAdmission)first;
-        IMarkdownSvgAdmission secondAdmission = (IMarkdownSvgAdmission)second;
+        IMarkdownSvgAdmission firstAdmission = first;
+        IMarkdownSvgAdmission secondAdmission = second;
 
+        Assert.NotSame(firstAdmission.AdmissionDomain, secondAdmission.AdmissionDomain);
+    }
+
+    [Fact]
+    public void RenderersGivenOneAdmissionShareItsDomainAndCapacity()
+    {
+        SvgSnapshotAdmission shared = SvgSnapshotAdmission.CreateDefault();
+        var options = new ResvgMarkdownSvgRendererOptions();
+        using var first = new ResvgMarkdownSvgRenderer(options, shared);
+        using var second = new ResvgMarkdownSvgRenderer(options, shared);
+        IMarkdownSvgAdmission firstAdmission = first;
+        IMarkdownSvgAdmission secondAdmission = second;
         Assert.Same(firstAdmission.AdmissionDomain, secondAdmission.AdmissionDomain);
+
+        Assert.True(shared.TryReserve(64, MarkdownSvgRenderPriority.Visible,
+            out SvgSnapshotAdmission.Lease? lease, out long initialVersion));
+        lease!.Dispose();
+
+        Assert.True(firstAdmission.CapacityVersion > initialVersion);
         Assert.Equal(firstAdmission.CapacityVersion, secondAdmission.CapacityVersion);
     }
 
     [Fact]
     public async Task ImpossibleOverscanWaitIsCancellableAndVisibleWaitUsesRealCapacity()
     {
-        var owner = new SvgProcessSnapshotAdmission(capacityBytes: 100, visibleHeadroomBytes: 20);
+        var owner = new SvgSnapshotAdmission(capacityBytes: 100, visibleHeadroomBytes: 20);
         var options = new ResvgMarkdownSvgRendererOptions(maxSourceBytes: 10);
         using var renderer = new ResvgMarkdownSvgRenderer(options, owner);
         IMarkdownSvgAdmission admission = renderer;
         using var cancellation = new CancellationTokenSource();
         Assert.True(owner.TryReserve(100, MarkdownSvgRenderPriority.Visible,
-            out SvgProcessSnapshotAdmission.Lease? blocker, out _));
-        using SvgProcessSnapshotAdmission.Lease? blockerOwner = blocker;
+            out SvgSnapshotAdmission.Lease? blocker, out _));
+        using SvgSnapshotAdmission.Lease? blockerOwner = blocker;
 
         // 81 bytes can never fit in the 80-byte overscan tier, even after the
         // blocker releases. The host bridge must remain pending for promotion
@@ -270,8 +288,8 @@ public sealed class SvgProcessSnapshotAdmissionTests
             await impossibleOverscanWait.WaitAsync(TimeSpan.FromSeconds(1)));
 
         Assert.True(owner.TryReserve(100, MarkdownSvgRenderPriority.Visible,
-            out SvgProcessSnapshotAdmission.Lease? visibleBlocker, out _));
-        using SvgProcessSnapshotAdmission.Lease? visibleBlockerOwner = visibleBlocker;
+            out SvgSnapshotAdmission.Lease? visibleBlocker, out _));
+        using SvgSnapshotAdmission.Lease? visibleBlockerOwner = visibleBlocker;
         Task visibleWait = admission.WaitForCapacityAsync(
             81, MarkdownSvgRenderPriority.Visible, CancellationToken.None);
         Assert.False(visibleWait.IsCompleted);
@@ -287,7 +305,7 @@ public sealed class SvgProcessSnapshotAdmissionTests
     [Fact]
     public async Task HostPreparationAdmissionRejectsInvalidDemandAndVisibleImpossibleWait()
     {
-        var owner = new SvgProcessSnapshotAdmission(capacityBytes: 100, visibleHeadroomBytes: 20);
+        var owner = new SvgSnapshotAdmission(capacityBytes: 100, visibleHeadroomBytes: 20);
         using var renderer = new ResvgMarkdownSvgRenderer(
             new ResvgMarkdownSvgRendererOptions(maxSourceBytes: 10), owner);
         IMarkdownSvgPreparationAdmission preparation = renderer;
@@ -318,7 +336,7 @@ public sealed class SvgProcessSnapshotAdmissionTests
     {
         long capacityBytes = capacityMiB * 1024L * 1024L;
         long headroomBytes = headroomMiB * 1024L * 1024L;
-        var owner = new SvgProcessSnapshotAdmission(capacityBytes, headroomBytes);
+        var owner = new SvgSnapshotAdmission(capacityBytes, headroomBytes);
         var options = new ResvgMarkdownSvgRendererOptions();
         using var renderer = new ResvgMarkdownSvgRenderer(options, owner);
         IMarkdownSvgAdmission host = renderer;
@@ -344,7 +362,7 @@ public sealed class SvgProcessSnapshotAdmissionTests
         Assert.Equal(maximumSourceBytes, owner.ReservedBytes);
 
         Assert.True(owner.TryReserve(maximumSourceBytes, MarkdownSvgRenderPriority.Overscan,
-            out SvgProcessSnapshotAdmission.Lease? providerLease, out _));
+            out SvgSnapshotAdmission.Lease? providerLease, out _));
         using (providerLease)
         {
             bool providerPeakAdmitted = providerLease!.TryGrow(

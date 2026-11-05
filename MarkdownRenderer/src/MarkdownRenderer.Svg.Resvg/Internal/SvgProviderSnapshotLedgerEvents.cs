@@ -7,9 +7,17 @@ internal sealed class SvgProviderSnapshotLedgerEvents : EventSource
 {
     internal static readonly SvgProviderSnapshotLedgerEvents Log = new();
 
+    // Scope ids correlate SnapshotChanged events from every ledger that
+    // publishes through this provider, so the provider instance owns them.
+    private long _nextScopeId;
+
     private SvgProviderSnapshotLedgerEvents()
     {
     }
+
+    /// <summary>Allocates a positive scope id that no other ledger on this provider uses.</summary>
+    [NonEvent]
+    internal long AllocateScopeId() => Interlocked.Increment(ref _nextScopeId);
 
     [Event(1, Level = EventLevel.Verbose)]
     public void SnapshotChanged(

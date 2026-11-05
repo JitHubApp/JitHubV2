@@ -9,39 +9,27 @@ namespace MarkdownRenderer.Svg.Resvg.Internal;
 /// </summary>
 internal sealed class SvgProviderSnapshotLedger
 {
-    // Scope ids correlate SnapshotChanged events from every ledger in the
-    // process, so the id counter is process-wide by contract. Zero is
-    // reserved for the process admission domain's aggregate.
-    private static long s_nextScopeId;
-
     private readonly object _gate = new();
     private readonly SvgProviderSnapshotLedger? _aggregate;
     private Counters _counters;
 
     /// <summary>
-    /// Creates the scope-zero aggregate owned by the process admission domain
-    /// (<see cref="SvgProcessSnapshotAdmission.SourceLedger"/>).
+    /// Creates an independent numeric scope, optionally contributing to an
+    /// aggregate. The scope id comes from the event provider that publishes
+    /// this ledger's changes, so ids from every ledger stay distinct in one
+    /// event stream.
     /// </summary>
-    internal static SvgProviderSnapshotLedger CreateProcessAggregate() =>
-        new(scopeId: 0, aggregate: null);
-
-    /// <summary>Creates an independent numeric scope, optionally contributing to an aggregate.</summary>
     internal SvgProviderSnapshotLedger(SvgProviderSnapshotLedger? aggregateLedger = null)
-        : this(Interlocked.Increment(ref s_nextScopeId), aggregateLedger)
     {
-    }
-
-    private SvgProviderSnapshotLedger(long scopeId, SvgProviderSnapshotLedger? aggregate)
-    {
-        if (aggregate?._aggregate is not null)
+        if (aggregateLedger?._aggregate is not null)
         {
             throw new ArgumentException(
                 "An aggregate ledger cannot itself contribute to another aggregate.",
-                nameof(aggregate));
+                nameof(aggregateLedger));
         }
 
-        ScopeId = scopeId;
-        _aggregate = aggregate;
+        ScopeId = SvgProviderSnapshotLedgerEvents.Log.AllocateScopeId();
+        _aggregate = aggregateLedger;
     }
 
     /// <summary>A content-free numeric identity for diagnostic correlation.</summary>

@@ -19,7 +19,7 @@ internal sealed class SvgDocumentOpenOperation
     private readonly ResvgMarkdownSvgRendererOptions _options;
     private readonly WorkerPool _workers;
     private readonly SvgContentQuarantine _quarantine;
-    private readonly SvgProcessSnapshotAdmission _snapshotAdmission;
+    private readonly SvgSnapshotAdmission _snapshotAdmission;
     private readonly SvgProviderSnapshotLedger _sourceOwnership;
     private readonly SvgDocumentLifetime _openOperations;
     private readonly SvgResourceInspectionWorkspacePool _preflightWorkspaces = new();
@@ -29,7 +29,7 @@ internal sealed class SvgDocumentOpenOperation
         ResvgMarkdownSvgRendererOptions options,
         WorkerPool workers,
         SvgContentQuarantine quarantine,
-        SvgProcessSnapshotAdmission snapshotAdmission,
+        SvgSnapshotAdmission snapshotAdmission,
         SvgProviderSnapshotLedger sourceOwnership,
         SvgDocumentLifetime openOperations)
     {
@@ -270,7 +270,7 @@ internal sealed class SvgDocumentOpenOperation
 
         throw new MarkdownSvgException(
             MarkdownSvgFailureReason.ResourceLimitExceeded,
-            "The process-wide SVG source snapshot capacity is currently full.");
+            "The renderer's SVG source snapshot capacity is currently full.");
     }
 
     /// <summary>
@@ -290,7 +290,7 @@ internal sealed class SvgDocumentOpenOperation
 
         throw new MarkdownSvgException(
             MarkdownSvgFailureReason.ResourceLimitExceeded,
-            "The process-wide SVG source normalization capacity is currently full.",
+            "The renderer's SVG source normalization capacity is currently full.",
             exception);
     }
 
