@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Reflection;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Svg.Resvg.Internal;
 using Xunit;
@@ -136,7 +135,12 @@ public sealed class WorkerFontWaitPoolTests
         // Force checked visible-counter preparation to fail after creating a
         // local reservation wrapper. Rollback must not publish set membership
         // or the active-lease transfer marker.
-        var visibleTicket = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Visible);
+        // A visible ticket queues every new promotion registration at once,
+        // so its queue-admission probe observes each registration made.
+        int visibleRegistrationAttempts = 0;
+        var visibleTicket = new MarkdownSvgRenderDemand(
+            MarkdownSvgRenderPriority.Visible,
+            () => Interlocked.Increment(ref visibleRegistrationAttempts) > 0);
         using IDisposable visibleRender = await GetLeaseAsync(Acquire(
             pool,
             CancellationToken.None,
@@ -147,13 +151,17 @@ public sealed class WorkerFontWaitPoolTests
         // API. The seed is the only registered reservation.
         var seed = new WorkerFontWaitReservation(static () => { });
         fontWaits.Publish(seed, new DetachedFontWaitCounts(0, int.MaxValue, 0));
+        // Admission registered the lease's own promotion, which proves the
+        // probe sees registrations on this ticket.
+        int registrationsBeforeReserve = Volatile.Read(ref visibleRegistrationAttempts);
+        Assert.Equal(1, registrationsBeforeReserve);
         try
         {
             Assert.Throws<OverflowException>(() => Reserve(pool, visibleRender));
             Assert.Equal(0, fontWaits.Count);
             Assert.Equal(1, fontWaits.ReservationCount);
             Assert.False(((WorkerLease)visibleRender).Pending.HasDetachedFontWaitReservation);
-            Assert.Equal(0, GetDemandRegistrationCount(visibleTicket));
+            Assert.Equal(registrationsBeforeReserve, Volatile.Read(ref visibleRegistrationAttempts));
         }
         finally
         {
@@ -321,9 +329,4 @@ public sealed class WorkerFontWaitPoolTests
 
     private static void Rebind(WorkerScheduler pool, IDisposable active, CancellationToken caller, CancellationToken readiness) =>
         pool.RebindLeaseCancellation((WorkerLease)active, caller, readiness);
-
-    private static int GetDemandRegistrationCount(MarkdownSvgRenderDemand ticket) =>
-        (int)typeof(MarkdownSvgRenderDemand).GetField(
-            "_activeRegistrations",
-            BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(ticket)!;
 }
