@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Reflection;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
@@ -245,11 +244,7 @@ public sealed class MultiRootInlinePlacementCloneTests
         public override string Text => _text;
     }
 
-    private static Thickness GetBaseMargin(BlockBox box)
-    {
-        FieldInfo field = typeof(BlockBox).GetField("_margin", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return Assert.IsType<Thickness>(field.GetValue(box));
-    }
+    private static Thickness GetBaseMargin(BlockBox box) => box.RawPlacementMargin;
 
     private static SharedCanvasBitmapCache.Lease GetImageLease(ImageBox image)
     {
@@ -258,18 +253,9 @@ public sealed class MultiRootInlinePlacementCloneTests
 
     private static int GetEntryReferenceCount(SharedCanvasBitmapCache.Lease lease)
     {
-        FieldInfo entryField = typeof(SharedCanvasBitmapCache.Lease).GetField(
-            "_entry", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        object entry = Assert.IsAssignableFrom<SharedCanvasBitmapCacheEntry>(entryField.GetValue(lease));
-        FieldInfo countField = typeof(SharedCanvasBitmapCacheEntry).GetField(
-            "_referenceCount", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return Assert.IsType<int>(countField.GetValue(entry));
-    }
-
-    private static T GetField<T>(object instance, string name)
-    {
-        FieldInfo field = instance.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return Assert.IsType<T>(field.GetValue(instance));
+        int? count = lease.EntryReferenceCount;
+        Assert.True(count.HasValue, "The lease no longer holds a cache entry.");
+        return count.Value;
     }
 
     private enum InlinePlacementKind

@@ -741,11 +741,9 @@ public sealed class RootLocalTableVectorImageRelayoutTests
 
     private static int GetLeaseReferenceCount(SharedCanvasBitmapCache.Lease lease)
     {
-        object entry = Assert.IsAssignableFrom<object>(GetRawField(lease, "_entry"));
-        FieldInfo references = entry.GetType().GetField("_referenceCount",
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Missing bitmap cache reference counter.");
-        return Assert.IsType<int>(references.GetValue(entry));
+        int? count = lease.EntryReferenceCount;
+        Assert.True(count.HasValue, "The lease no longer holds a cache entry.");
+        return count.Value;
     }
 
     private static void AssertSemanticTextAndSpanGeometryEqual(

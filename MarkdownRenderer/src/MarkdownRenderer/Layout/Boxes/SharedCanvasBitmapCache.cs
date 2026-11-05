@@ -580,6 +580,9 @@ internal sealed class SharedCanvasBitmapCache
 
         internal Size? IntrinsicSize => Volatile.Read(ref _entry)?.IntrinsicSize;
 
+        /// <summary>The held entry's owner count, or null once this lease let go of it.</summary>
+        internal int? EntryReferenceCount => Volatile.Read(ref _entry)?.ReferenceCount;
+
         internal bool IsBitmapOutputAdmitted =>
             Volatile.Read(ref _entry)?.IsBitmapOutputAdmitted ?? false;
 

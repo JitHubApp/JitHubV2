@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Reflection;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
@@ -1419,14 +1418,9 @@ public sealed class RootLocalImageRelayoutTests
 
     private static int GetEntryReferenceCount(SharedCanvasBitmapCache.Lease lease)
     {
-        FieldInfo entryField = typeof(SharedCanvasBitmapCache.Lease).GetField(
-            "_entry", BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Missing shared bitmap entry field.");
-        object entry = Assert.IsAssignableFrom<SharedCanvasBitmapCacheEntry>(entryField.GetValue(lease));
-        FieldInfo countField = typeof(SharedCanvasBitmapCacheEntry).GetField(
-            "_referenceCount", BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Missing shared bitmap reference count.");
-        return Assert.IsType<int>(countField.GetValue(entry));
+        int? count = lease.EntryReferenceCount;
+        Assert.True(count.HasValue, "The lease no longer holds a cache entry.");
+        return count.Value;
     }
 
     private static (MarkdownSemanticRole Role, int Start, int End, int HeadingLevel,

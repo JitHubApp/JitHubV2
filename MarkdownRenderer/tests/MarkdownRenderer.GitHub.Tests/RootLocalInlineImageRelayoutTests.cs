@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Buffers;
-using System.Reflection;
 using System.Text;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Document;
@@ -1044,19 +1043,6 @@ public sealed class RootLocalInlineImageRelayoutTests
     private static SharedCanvasBitmapCache.Lease GetBitmapLease(ImageBox image)
     {
         return Assert.IsType<SharedCanvasBitmapCache.Lease>(image.Presentation.Lease);
-    }
-
-    private static T ReadField<T>(object instance, string name)
-    {
-        return Assert.IsType<T>(ReadRawField(instance, name));
-    }
-
-    private static object? ReadRawField(object instance, string name)
-    {
-        FieldInfo field = instance.GetType().GetField(name,
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException($"Missing test field {name}.");
-        return field.GetValue(instance);
     }
 
     private static Color[] Paint(LayoutSnapshot snapshot, CanvasDevice device, float rasterizationScale)

@@ -1,4 +1,3 @@
-using System.Reflection;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout;

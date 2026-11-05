@@ -1,4 +1,3 @@
-using System.Reflection;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
@@ -447,12 +446,9 @@ public sealed class IdleImagePlacementCloneTests
 
     private static int GetEntryReferenceCount(SharedCanvasBitmapCache.Lease lease)
     {
-        FieldInfo entryField = typeof(SharedCanvasBitmapCache.Lease).GetField(
-            "_entry", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        object entry = Assert.IsAssignableFrom<SharedCanvasBitmapCacheEntry>(entryField.GetValue(lease));
-        FieldInfo countField = typeof(SharedCanvasBitmapCacheEntry).GetField(
-            "_referenceCount", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return Assert.IsType<int>(countField.GetValue(entry));
+        int? count = lease.EntryReferenceCount;
+        Assert.True(count.HasValue, "The lease no longer holds a cache entry.");
+        return count.Value;
     }
 
     private static SharedCanvasBitmapCache.Lease GetImageLease(ImageBox image)
@@ -463,20 +459,6 @@ public sealed class IdleImagePlacementCloneTests
     private static CancellationTokenSource GetCancellationSource(ImageBox image)
     {
         return Assert.IsAssignableFrom<CancellationTokenSource>(image.Lifetime.LifetimeCancellation);
-    }
-
-    private static T GetField<T>(object instance, string name)
-    {
-        FieldInfo field = instance.GetType().GetField(
-            name, BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return Assert.IsType<T>(field.GetValue(instance));
-    }
-
-    private static T GetBaseField<T>(BlockBox instance, string name)
-    {
-        FieldInfo field = typeof(BlockBox).GetField(
-            name, BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return Assert.IsType<T>(field.GetValue(instance));
     }
 
     private sealed class ImagePlacementFixture : IAsyncDisposable

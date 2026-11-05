@@ -1,5 +1,4 @@
 using System.Collections;
-using System.Reflection;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout;
@@ -342,14 +341,6 @@ public sealed class CompletedRasterPlacementCloneTests
             DirectXPixelFormat.B8G8R8A8UIntNormalized);
     }
 
-
-    private static T GetField<T>(object instance, string name)
-    {
-        FieldInfo field = instance.GetType().GetField(
-            name,
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return Assert.IsType<T>(field.GetValue(instance));
-    }
 
     internal sealed class PlacementFixture : IAsyncDisposable
     {

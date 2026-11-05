@@ -1,6 +1,5 @@
 using System.Buffers;
 using System.Collections.Concurrent;
-using System.Reflection;
 using System.Text;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Document;
@@ -1747,14 +1746,9 @@ public sealed class RootLocalTableImageRelayoutTests
 
     private static int GetLeaseReferenceCount(SharedCanvasBitmapCache.Lease lease)
     {
-        FieldInfo entryField = typeof(SharedCanvasBitmapCache.Lease).GetField("_entry",
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Missing cache lease entry field.");
-        object entry = Assert.IsAssignableFrom<object>(entryField.GetValue(lease));
-        FieldInfo referencesField = entry.GetType().GetField("_referenceCount",
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Missing cache entry reference counter.");
-        return Assert.IsType<int>(referencesField.GetValue(entry));
+        int? count = lease.EntryReferenceCount;
+        Assert.True(count.HasValue, "The lease no longer holds a cache entry.");
+        return count.Value;
     }
 
     private static string CreateSvgTableSource(SvgTableResolver resolver) =>

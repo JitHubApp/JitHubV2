@@ -784,9 +784,6 @@ public sealed class SvgTileQueuePlanTests
         Assert.Equal(expected, (T)field.GetValue(plan)!);
     }
 
-    private static T PlanMember<T>(SvgTileRenderPlan plan, string memberName)
-        => (T)FindPlanField(memberName).GetValue(plan)!;
-
     private static FieldInfo FindPlanField(string memberName)
         => typeof(SvgTileRenderPlan)
             .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)

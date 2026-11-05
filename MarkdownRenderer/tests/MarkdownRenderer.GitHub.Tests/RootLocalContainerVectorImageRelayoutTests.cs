@@ -886,9 +886,9 @@ public sealed class RootLocalContainerVectorImageRelayoutTests
 
     private static int GetLeaseReferenceCount(SharedCanvasBitmapCache.Lease lease)
     {
-        object entry = Assert.IsAssignableFrom<SharedCanvasBitmapCacheEntry>(
-            ReadRawField(lease, "_entry"));
-        return Assert.IsType<int>(ReadRawField(entry, "_referenceCount"));
+        int? count = lease.EntryReferenceCount;
+        Assert.True(count.HasValue, "The lease no longer holds a cache entry.");
+        return count.Value;
     }
 
     private static VectorSceneDrawing GetVectorDrawing(InlineVectorSceneRun run) =>

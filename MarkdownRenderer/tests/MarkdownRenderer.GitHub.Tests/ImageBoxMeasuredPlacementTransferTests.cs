@@ -739,13 +739,6 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             DirectXPixelFormat.B8G8R8A8UIntNormalized);
     }
 
-    private static T GetField<T>(object instance, string name)
-    {
-        FieldInfo field = instance.GetType().GetField(name,
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return Assert.IsType<T>(field.GetValue(instance));
-    }
-
     private static void SetField(object instance, string name, object? value)
     {
         FieldInfo field = instance.GetType().GetField(name,
@@ -1001,13 +994,6 @@ public sealed class ImageBoxMeasuredSvgPlacementTransferTests
         WeakReference<byte[]> weak = Assert.IsType<WeakReference<byte[]>>(image.Svg.SourceIdentity);
         Assert.True(weak.TryGetTarget(out byte[]? source));
         return Assert.IsType<byte[]>(source);
-    }
-
-    private static T GetField<T>(object instance, string name)
-    {
-        FieldInfo field = instance.GetType().GetField(name,
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return Assert.IsType<T>(field.GetValue(instance));
     }
 
     private sealed class TransferSvgRenderer(bool hasText) : IMarkdownSvgRenderer

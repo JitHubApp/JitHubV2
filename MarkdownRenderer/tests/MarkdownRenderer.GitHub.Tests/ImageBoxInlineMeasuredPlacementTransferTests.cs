@@ -207,13 +207,4 @@ public sealed class ImageBoxInlineMeasuredPlacementTransferTests
         }
     }
 
-    private static T GetField<T>(object instance, string name)
-    {
-        var field = instance.GetType().GetField(
-            name,
-            System.Reflection.BindingFlags.Instance |
-            System.Reflection.BindingFlags.NonPublic);
-        Assert.NotNull(field);
-        return Assert.IsType<T>(field!.GetValue(instance));
-    }
 }
