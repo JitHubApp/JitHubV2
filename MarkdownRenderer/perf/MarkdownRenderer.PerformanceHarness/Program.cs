@@ -7,12 +7,9 @@ namespace MarkdownRenderer.PerformanceHarness;
 
 public static class Program
 {
-    internal static string[] Arguments { get; private set; } = [];
-
     [STAThread]
     private static void Main(string[] args)
     {
-        Arguments = args;
         Application.Start((ApplicationInitializationCallbackParams p) =>
         {
             try
@@ -21,24 +18,24 @@ public static class Program
                 SynchronizationContext.SetSynchronizationContext(
                     new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread()));
                 Debug.WriteLine("[PerfHarness] synchronization context installed");
-                _ = new App();
+                _ = new App(args);
                 Debug.WriteLine("[PerfHarness] application constructed");
             }
             catch (Exception exception)
             {
                 Debug.WriteLine($"[PerfHarness] application construction failure: {exception}");
-                TryWriteStartupFailureReport(exception);
+                TryWriteStartupFailureReport(args, exception);
                 Environment.ExitCode = 3;
                 Application.Current?.Exit();
             }
         });
     }
 
-    internal static bool TryWriteStartupFailureReport(Exception exception)
+    internal static bool TryWriteStartupFailureReport(string[] arguments, Exception exception)
     {
         try
         {
-            PerformanceOptions options = PerformanceOptions.Parse(Arguments);
+            PerformanceOptions options = PerformanceOptions.Parse(arguments);
             var clock = new MonotonicUtcClock();
             DateTimeOffset startedUtc = clock.GetUtcNow();
             var report = new PerformanceReport
