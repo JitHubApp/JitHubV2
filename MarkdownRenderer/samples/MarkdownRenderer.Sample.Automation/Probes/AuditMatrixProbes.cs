@@ -33,6 +33,18 @@ internal static class AuditMatrixProbes
         Assert(stopwatch.Elapsed < TimeSpan.FromSeconds(8),
             $"audit matrix first render exceeded the interaction budget: {stopwatch.Elapsed.TotalMilliseconds:0} ms");
 
+        AssertHostileContentStaysNative(renderer);
+        CaptureAuditScreenshot(renderer, "audit-matrix-hostile-content.png");
+        AutomationElement diagnosticsBar = AssertAuditDiagnostics(window);
+        AssertDiagnosticsResolveOnValidDocument(window, diagnosticsBar);
+    }
+
+    /// <summary>
+    /// Checks that every hostile block kept its native semantics or exact
+    /// fallback source and that no text geometry escaped the viewport.
+    /// </summary>
+    private static void AssertHostileContentStaysNative(AutomationElement renderer)
+    {
         string documentText = GetRendererDocumentText(renderer);
         Assert(documentText.Contains("Completed audit task", StringComparison.Ordinal),
             "audit matrix task-list content is missing from TextPattern");
@@ -64,9 +76,14 @@ internal static class AuditMatrixProbes
         var finalRects = finalMarker.GetBoundingRectangles();
         Assert(finalRects.Length > 0 && finalRects.All(r => r.Width <= renderer.BoundingRectangle.Width + 2),
             "hostile SVG/HTML caused text geometry to escape the renderer viewport");
+    }
 
-        CaptureAuditScreenshot(renderer, "audit-matrix-hostile-content.png");
-
+    /// <summary>
+    /// Checks the Math and Mermaid diagnostics' severity, code and source span,
+    /// and returns the open diagnostics InfoBar.
+    /// </summary>
+    private static AutomationElement AssertAuditDiagnostics(Window window)
+    {
         AutomationElement diagnostics = WaitForDiagnostics(window, "MATH100");
         string diagnosticText = GetAutomationElementText(diagnostics);
         Assert(diagnosticText.Contains("Error MATH100", StringComparison.Ordinal),
@@ -92,7 +109,15 @@ internal static class AuditMatrixProbes
             ?? throw new InvalidOperationException("open diagnostics InfoBar not found");
         Assert(NameOrEmpty(diagnosticsBar).Contains("MATH100", StringComparison.Ordinal),
             "diagnostics live-region summary must include the actionable diagnostic code");
+        return diagnosticsBar;
+    }
 
+    /// <summary>
+    /// Navigates to a valid page and checks that the InfoBar announces the
+    /// resolution and the diagnostics text clears.
+    /// </summary>
+    private static void AssertDiagnosticsResolveOnValidDocument(Window window, AutomationElement diagnosticsBar)
+    {
         using var diagnosticsResolved = new ManualResetEventSlim(false);
         string resolutionNotification = string.Empty;
         var notificationHandler = diagnosticsBar.RegisterNotificationEvent(

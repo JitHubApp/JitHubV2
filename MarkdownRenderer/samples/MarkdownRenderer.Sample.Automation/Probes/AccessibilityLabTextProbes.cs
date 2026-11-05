@@ -31,6 +31,19 @@ internal static class AccessibilityLabTextProbes
         Assert(text.Contains("native hosted fallback marker", StringComparison.Ordinal),
             "a declined hosted factory key must restore the original native markdown block");
 
+        AssertWordRangeGeometryAndEndpoints(renderer, textPattern);
+        AssertParagraphPeerTextPattern(renderer, textPattern);
+        AssertWordMovementAndVisibleRanges(renderer, textPattern);
+
+        var descendants = renderer.FindAllDescendants();
+        Assert(descendants.Any(e => e.ControlType == ControlType.Hyperlink),
+            "Accessibility lab must expose hyperlink descendants for TextPattern clients");
+    }
+
+    private static void AssertWordRangeGeometryAndEndpoints(
+        AutomationElement renderer,
+        FlaUI.Core.Patterns.ITextPattern textPattern)
+    {
         var word = textPattern.DocumentRange.FindText("quick", backward: false, ignoreCase: true)
                    ?? throw new InvalidOperationException("TextPattern FindText('quick') returned null");
         word.ExpandToEnclosingUnit(TextUnit.Word);
@@ -49,7 +62,12 @@ internal static class AccessibilityLabTextProbes
         Assert(endpointMoved == 1, $"MoveEndpointByUnit(Start, Word, 1) from a collapsed range should move one word, moved={endpointMoved}");
         Assert(endpointRange.CompareEndpoints(TextPatternRangeEndpoint.Start, endpointRange, TextPatternRangeEndpoint.End) == 0,
             "MoveEndpointByUnit must keep the range valid by collapsing the opposite endpoint when Start crosses End");
+    }
 
+    private static void AssertParagraphPeerTextPattern(
+        AutomationElement renderer,
+        FlaUI.Core.Patterns.ITextPattern textPattern)
+    {
         var blockTextPeer = renderer.FindAllDescendants(cf => cf.ByControlType(ControlType.Text))
             .FirstOrDefault(e => (e.Name ?? string.Empty).Contains("quick brown fox", StringComparison.OrdinalIgnoreCase))
             ?? throw new InvalidOperationException("Accessibility lab paragraph text peer not found");
@@ -76,7 +94,12 @@ internal static class AccessibilityLabTextProbes
         Assert(
             page.Compare(textPattern.DocumentRange),
             "unsupported TextUnit.Page must promote to the supported Document unit");
+    }
 
+    private static void AssertWordMovementAndVisibleRanges(
+        AutomationElement renderer,
+        FlaUI.Core.Patterns.ITextPattern textPattern)
+    {
         var movedWord = textPattern.DocumentRange.Clone();
         int moved = movedWord.Move(TextUnit.Word, 1);
         Assert(moved == 1, $"TextPattern Move(Word, 1) should move by one word, moved={moved}");
@@ -103,10 +126,6 @@ internal static class AccessibilityLabTextProbes
         var offscreenRects = offscreen.GetBoundingRectangles();
         Assert(offscreenRects.Any(r => r.Width > 0 && r.Height > 0 && renderer.BoundingRectangle.IntersectsWith(r)),
             "TextPattern.ScrollIntoView must bring the requested offscreen range into the renderer viewport");
-
-        var descendants = renderer.FindAllDescendants();
-        Assert(descendants.Any(e => e.ControlType == ControlType.Hyperlink),
-            "Accessibility lab must expose hyperlink descendants for TextPattern clients");
     }
 
     internal static void ProbeAccessibilityLabSemanticRoles(Window window)
@@ -163,6 +182,28 @@ internal static class AccessibilityLabTextProbes
         var descendants = renderer.FindAllDescendants();
 
         var hyperlink = descendants.First(e => e.ControlType == ControlType.Hyperlink);
+        AssertChildRanges(textPattern, descendants, hyperlink);
+        AssertCustomStyleAttributes(textPattern, attributes);
+        object underline = AssertLinkCodeAndReadOnlyAttributes(textPattern, attributes);
+
+        var findUnderline = textPattern.DocumentRange.FindAttribute(attributes.UnderlineStyle, underline, backward: false)
+                            ?? throw new InvalidOperationException("FindAttribute(UnderlineStyle) returned null");
+        Assert(findUnderline.GetText(-1).Contains("painted link", StringComparison.Ordinal) ||
+               findUnderline.GetText(-1).Contains("second painted link", StringComparison.Ordinal),
+            "FindAttribute(UnderlineStyle) must return an underlined markdown link range");
+
+        AssertCaretActivityFollowsChildFocus(renderer, hyperlink, attributes);
+    }
+
+    /// <summary>
+    /// Checks RangeFromChild for a hyperlink, an image and a hosted button, and
+    /// that GetChildren returns only immediate inline children.
+    /// </summary>
+    private static void AssertChildRanges(
+        FlaUI.Core.Patterns.ITextPattern textPattern,
+        AutomationElement[] descendants,
+        AutomationElement hyperlink)
+    {
         var hyperlinkRange = textPattern.RangeFromChild(hyperlink);
         Assert(hyperlinkRange.GetText(-1).Contains(hyperlink.Name ?? string.Empty, StringComparison.Ordinal),
             "TextPattern.RangeFromChild(hyperlink) must return the hyperlink text range");
@@ -198,6 +239,17 @@ internal static class AccessibilityLabTextProbes
         Assert(imageRange.GetText(-1).Contains("Accessibility lab blue square", StringComparison.Ordinal),
             "TextPattern.RangeFromChild(image) must return image alt text");
 
+        var hostedButton = descendants.First(e => e.ControlType == ControlType.Button &&
+            (e.Name ?? string.Empty).Contains("Native action", StringComparison.Ordinal));
+        var hostedButtonRange = textPattern.RangeFromChild(hostedButton);
+        Assert(hostedButtonRange.GetText(-1).Length > 0,
+            "TextPattern.RangeFromChild(hosted native button) must return its embedded-object placeholder range");
+    }
+
+    private static void AssertCustomStyleAttributes(
+        FlaUI.Core.Patterns.ITextPattern textPattern,
+        FlaUI.Core.ITextAttributeLibrary attributes)
+    {
         var customStyleRange = textPattern.DocumentRange.FindText(
             "Ancestor-scoped extension style",
             backward: false,
@@ -216,13 +268,16 @@ internal static class AccessibilityLabTextProbes
         Assert(
             ToColorRefValue(customStyleRange.GetAttributeValue(attributes.ForegroundColor)) == ColorRef(0x8A, 0x2B, 0xE2),
             "ancestor-scoped custom role foreground was not applied");
+    }
 
-        var hostedButton = descendants.First(e => e.ControlType == ControlType.Button &&
-            (e.Name ?? string.Empty).Contains("Native action", StringComparison.Ordinal));
-        var hostedButtonRange = textPattern.RangeFromChild(hostedButton);
-        Assert(hostedButtonRange.GetText(-1).Length > 0,
-            "TextPattern.RangeFromChild(hosted native button) must return its embedded-object placeholder range");
-
+    /// <summary>
+    /// Checks link underline and style, code font and read-only attributes,
+    /// and returns the painted link's UnderlineStyle value.
+    /// </summary>
+    private static object AssertLinkCodeAndReadOnlyAttributes(
+        FlaUI.Core.Patterns.ITextPattern textPattern,
+        FlaUI.Core.ITextAttributeLibrary attributes)
+    {
         var paintedLinkRange = textPattern.DocumentRange.FindText("painted link", backward: false, ignoreCase: false)
                                ?? throw new InvalidOperationException("painted link range not found");
         var underline = paintedLinkRange.GetAttributeValue(attributes.UnderlineStyle);
@@ -250,13 +305,14 @@ internal static class AccessibilityLabTextProbes
                          ?? throw new InvalidOperationException("quick range not found");
         Assert(IsTrueAttribute(quickRange.GetAttributeValue(attributes.IsReadOnly)),
             "TextPattern ranges must expose IsReadOnly=true");
+        return underline;
+    }
 
-        var findUnderline = textPattern.DocumentRange.FindAttribute(attributes.UnderlineStyle, underline, backward: false)
-                            ?? throw new InvalidOperationException("FindAttribute(UnderlineStyle) returned null");
-        Assert(findUnderline.GetText(-1).Contains("painted link", StringComparison.Ordinal) ||
-               findUnderline.GetText(-1).Contains("second painted link", StringComparison.Ordinal),
-            "FindAttribute(UnderlineStyle) must return an underlined markdown link range");
-
+    private static void AssertCaretActivityFollowsChildFocus(
+        AutomationElement renderer,
+        AutomationElement hyperlink,
+        FlaUI.Core.ITextAttributeLibrary attributes)
+    {
         var text2 = renderer.Patterns.Text2.PatternOrDefault
                     ?? throw new InvalidOperationException("MarkdownRenderer must expose UIA TextPattern2");
         renderer.Focus();

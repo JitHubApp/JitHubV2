@@ -3,6 +3,7 @@ using FlaUI.Core.Definitions;
 using FlaUI.Core.Input;
 using FlaUI.Core.Tools;
 using FlaUI.Core.WindowsAPI;
+using MarkdownRenderer.Sample.Automation.Uia;
 using static MarkdownRenderer.Sample.Automation.Native.NativeMouse;
 using static MarkdownRenderer.Sample.Automation.Uia.AutomationElementText;
 using static MarkdownRenderer.Sample.Automation.Uia.ProbeAssert;
@@ -16,15 +17,43 @@ namespace MarkdownRenderer.Sample.Automation.Probes;
 /// </summary>
 internal static class MermaidProbes
 {
+    private const string LinkName = "Invokable Mermaid node";
+
     internal static void ProbeMermaidVectorScene(Window window)
     {
-        const int ExpectedDiagramCount = 17;
         SelectSample(window, "Mermaid");
         var renderer = FindRenderer(window);
+        WaitForMermaidLink(renderer);
+        AutomationElement[] pageDescendants = AssertMermaidPageCommitted(window, renderer);
+
+        AutomationElement link = pageDescendants
+            .First(element => element.ControlType == ControlType.Hyperlink &&
+                (element.Name ?? string.Empty).Contains(LinkName, StringComparison.Ordinal));
+        Assert(link.Patterns.Invoke.IsSupported, "Mermaid hyperlink must expose InvokePattern");
+        (double normalDiagramFontSize, System.Drawing.Rectangle linkBounds) = AssertLinkTextSemantics(renderer, link);
+        AssertTextScaleResizesVectorScene(window, renderer, normalDiagramFontSize, linkBounds);
+
+        link = FindMermaidLink(renderer)
+               ?? throw new InvalidOperationException("Mermaid hyperlink disappeared after text-scale rebuild");
+        AssertLinkActivationPaths(window, link);
+
+        string documentText = GetRendererDocumentText(renderer);
+        Assert(documentText.Contains(LinkName, StringComparison.Ordinal),
+            "Mermaid semantic labels must contribute to TextPattern");
+        Assert(!documentText.Contains("layout: elk", StringComparison.Ordinal),
+            "the primary Mermaid page must not contain the unsupported-layout diagnostics fixture");
+        Assert(renderer.FindAllDescendants().Any(element => element.ControlType == ControlType.Image),
+            "Mermaid diagram root must expose an image/diagram UIA peer");
+
+        ProbeMermaidHighContrastPixelsAndTextAttributes(window);
+    }
+
+    private static void WaitForMermaidLink(AutomationElement renderer)
+    {
         bool ready = Retry.WhileFalse(
             () => renderer.FindAllDescendants().Any(element =>
                 element.ControlType == ControlType.Hyperlink &&
-                (element.Name ?? string.Empty).Contains("Invokable Mermaid node", StringComparison.Ordinal)),
+                (element.Name ?? string.Empty).Contains(LinkName, StringComparison.Ordinal)),
             timeout: TimeSpan.FromSeconds(10),
             interval: TimeSpan.FromMilliseconds(100)).Result;
         Assert(
@@ -34,7 +63,15 @@ internal static class MermaidProbes
             "; descendants=" +
             string.Join(" | ", renderer.FindAllDescendants().Select(static element =>
                 $"{element.ControlType}/{NameOrEmpty(element)}/id={AutomationIdOrEmpty(element)}/class={ClassNameOrEmpty(element)}")));
+    }
 
+    /// <summary>
+    /// Checks that the page committed without diagnostics and with every
+    /// diagram, and returns the renderer's descendants for the link lookup.
+    /// </summary>
+    private static AutomationElement[] AssertMermaidPageCommitted(Window window, AutomationElement renderer)
+    {
+        const int ExpectedDiagramCount = 17;
         AutomationElement? diagnostics = window.FindFirstDescendant(
             cf => cf.ByAutomationId("SampleDiagnosticsMessage"));
         Assert(diagnostics is null ||
@@ -54,12 +91,16 @@ internal static class MermaidProbes
             initialDocumentText.Contains("XY chart", StringComparison.Ordinal) &&
             initialDocumentText.Contains("Kanban", StringComparison.Ordinal),
             "Mermaid page is missing representative standard or beta grammar families");
+        return pageDescendants;
+    }
 
-        AutomationElement link = pageDescendants
-            .First(element => element.ControlType == ControlType.Hyperlink &&
-                (element.Name ?? string.Empty).Contains("Invokable Mermaid node", StringComparison.Ordinal));
-        Assert(link.Patterns.Invoke.IsSupported, "Mermaid hyperlink must expose InvokePattern");
-
+    /// <summary>
+    /// Checks the link's child-granular TextPattern range, its Diagram style
+    /// attributes and point hit testing, and returns its unscaled font size
+    /// and bounds.
+    /// </summary>
+    private static (double FontSize, System.Drawing.Rectangle Bounds) AssertLinkTextSemantics(AutomationElement renderer, AutomationElement link)
+    {
         var linkBounds = link.BoundingRectangle;
         Assert(linkBounds.Width > 1 && linkBounds.Height > 1,
             $"Mermaid hyperlink must expose non-empty hit-test bounds, got {FormatRect(linkBounds)}");
@@ -68,7 +109,7 @@ internal static class MermaidProbes
         var attributes = renderer.Automation.TextAttributeLibrary;
         var linkRange = textPattern.RangeFromChild(link);
         Assert(
-            string.Equals(linkRange.GetText(-1).Trim(), "Invokable Mermaid node", StringComparison.Ordinal),
+            string.Equals(linkRange.GetText(-1).Trim(), LinkName, StringComparison.Ordinal),
             $"Mermaid RangeFromChild must be child-granular, got '{linkRange.GetText(-1)}'");
         Assert(
             (linkRange.GetAttributeValue(attributes.StyleName)?.ToString() ?? string.Empty)
@@ -84,7 +125,7 @@ internal static class MermaidProbes
         var formatRange = linkRange.Clone();
         formatRange.ExpandToEnclosingUnit(TextUnit.Format);
         Assert(
-            formatRange.GetText(-1).Contains("Invokable Mermaid node", StringComparison.Ordinal) &&
+            formatRange.GetText(-1).Contains(LinkName, StringComparison.Ordinal) &&
             !formatRange.GetText(-1).Contains("Native scene", StringComparison.Ordinal),
             "TextUnit.Format must stop at the semantic vector-child boundary");
         var pointRange = textPattern.RangeFromPoint(new System.Drawing.Point(
@@ -92,9 +133,23 @@ internal static class MermaidProbes
             linkBounds.Top + linkBounds.Height / 2));
         pointRange.ExpandToEnclosingUnit(TextUnit.Format);
         Assert(
-            pointRange.GetText(-1).Contains("Invokable Mermaid node", StringComparison.Ordinal),
+            pointRange.GetText(-1).Contains(LinkName, StringComparison.Ordinal),
             "TextPattern.RangeFromPoint must resolve linked-only Mermaid semantics");
+        return (normalDiagramFontSize, linkBounds);
+    }
 
+    /// <summary>
+    /// Turns on 200% text scale and waits for the link's font size and bounds
+    /// to grow, then turns it off and waits for the theme commit that ends the
+    /// rebuild, so later pointer probes read settled bounds.
+    /// </summary>
+    private static void AssertTextScaleResizesVectorScene(
+        Window window,
+        AutomationElement renderer,
+        double normalDiagramFontSize,
+        System.Drawing.Rectangle linkBounds)
+    {
+        var attributes = renderer.Automation.TextAttributeLibrary;
         var textScaleToggle = window.FindFirstDescendant(cf => cf.ByAutomationId("TextScaleToggle"))?.AsToggleButton()
                               ?? throw new InvalidOperationException("TextScaleToggle not found");
         string committedThemeStatus =
@@ -141,10 +196,15 @@ internal static class MermaidProbes
                     "text-scale reset did not commit before pointer bounds were reacquired");
             }
         }
+    }
 
-        link = FindMermaidLink(renderer)
-               ?? throw new InvalidOperationException("Mermaid hyperlink disappeared after text-scale rebuild");
-        linkBounds = link.BoundingRectangle;
+    /// <summary>
+    /// Activates the link by pointer, by UIA Invoke and by keyboard, and checks
+    /// that each reaches the host LinkClick event with its own input kind.
+    /// </summary>
+    private static void AssertLinkActivationPaths(Window window, AutomationElement link)
+    {
+        var linkBounds = link.BoundingRectangle;
         var linkPoint = new System.Drawing.Point(
             // Stay inside the first text half. The vector text hit-test changes
             // its insertion position at the exact horizontal midpoint, so a
@@ -156,11 +216,7 @@ internal static class MermaidProbes
         window.FocusNative();
         PositionPointerOnWritableInputDesktop(linkPoint);
         Mouse.Click(linkPoint, FlaUI.Core.Input.MouseButton.Left);
-        bool pointerActivated = Retry.WhileFalse(
-            () => (FindFirstRawDescendantByAutomationId(window, "LinkActivationStatus")?.Name ?? string.Empty)
-                .Contains("link:Mouse:https://example.invalid/mermaid-node", StringComparison.Ordinal),
-            timeout: TimeSpan.FromSeconds(5),
-            interval: TimeSpan.FromMilliseconds(50)).Result;
+        bool pointerActivated = WaitForLinkActivation(window, "Mouse");
         Assert(
             pointerActivated,
             "pointer hit testing did not raise the renderer's host LinkClick event; " +
@@ -168,11 +224,7 @@ internal static class MermaidProbes
 
         link.Patterns.Invoke.Pattern.Invoke();
 
-        bool activated = Retry.WhileFalse(
-            () => (FindFirstRawDescendantByAutomationId(window, "LinkActivationStatus")?.Name ?? string.Empty)
-                .Contains("link:Automation:https://example.invalid/mermaid-node", StringComparison.Ordinal),
-            timeout: TimeSpan.FromSeconds(5),
-            interval: TimeSpan.FromMilliseconds(50)).Result;
+        bool activated = WaitForLinkActivation(window, "Automation");
         Assert(activated, "UIA Invoke did not raise the renderer's host LinkClick event");
 
         link.Focus();
@@ -182,23 +234,16 @@ internal static class MermaidProbes
             interval: TimeSpan.FromMilliseconds(50)).Result;
         Assert(focused, "UIA SetFocus did not report keyboard focus on the Mermaid semantic hyperlink");
         Keyboard.Press(VirtualKeyShort.RETURN);
-        bool keyboardActivated = Retry.WhileFalse(
+        bool keyboardActivated = WaitForLinkActivation(window, "Keyboard");
+        Assert(keyboardActivated, "keyboard activation did not use the same Mermaid link path as pointer/UIA");
+    }
+
+    private static bool WaitForLinkActivation(Window window, string inputKind) =>
+        Retry.WhileFalse(
             () => (FindFirstRawDescendantByAutomationId(window, "LinkActivationStatus")?.Name ?? string.Empty)
-                .Contains("link:Keyboard:https://example.invalid/mermaid-node", StringComparison.Ordinal),
+                .Contains($"link:{inputKind}:https://example.invalid/mermaid-node", StringComparison.Ordinal),
             timeout: TimeSpan.FromSeconds(5),
             interval: TimeSpan.FromMilliseconds(50)).Result;
-        Assert(keyboardActivated, "keyboard activation did not use the same Mermaid link path as pointer/UIA");
-
-        string documentText = GetRendererDocumentText(renderer);
-        Assert(documentText.Contains("Invokable Mermaid node", StringComparison.Ordinal),
-            "Mermaid semantic labels must contribute to TextPattern");
-        Assert(!documentText.Contains("layout: elk", StringComparison.Ordinal),
-            "the primary Mermaid page must not contain the unsupported-layout diagnostics fixture");
-        Assert(renderer.FindAllDescendants().Any(element => element.ControlType == ControlType.Image),
-            "Mermaid diagram root must expose an image/diagram UIA peer");
-
-        ProbeMermaidHighContrastPixelsAndTextAttributes(window);
-    }
 
     private static void ProbeMermaidHighContrastPixelsAndTextAttributes(Window window)
     {
@@ -238,34 +283,7 @@ internal static class MermaidProbes
                                        ?? throw new InvalidOperationException("High Contrast Mermaid link not found");
             AutomationElement plain = FindMermaidSemantic(renderer, "Native scene")
                                       ?? throw new InvalidOperationException("High Contrast Mermaid non-link node not found");
-            var textPattern = renderer.Patterns.Text.PatternOrDefault
-                              ?? throw new InvalidOperationException("MarkdownRenderer must expose UIA TextPattern");
-            var attributes = renderer.Automation.TextAttributeLibrary;
-            var linkedRange = textPattern.RangeFromChild(linked);
-            var plainRange = textPattern.RangeFromChild(plain);
-
-            Assert(
-                (linkedRange.GetAttributeValue(attributes.StyleName)?.ToString() ?? string.Empty)
-                    .Contains("Diagram", StringComparison.Ordinal),
-                "linked vector text must retain its Diagram semantic style context");
-            Assert(
-                (plainRange.GetAttributeValue(attributes.StyleName)?.ToString() ?? string.Empty)
-                    .Contains("Diagram", StringComparison.Ordinal),
-                "non-linked vector text must retain its Diagram semantic style context");
-            Assert(
-                ToColorRefValue(linkedRange.GetAttributeValue(attributes.ForegroundColor)) ==
-                ColorRef(0x00, 0xFF, 0xFF),
-                "linked High Contrast vector text must expose the draw-time Hotlight foreground");
-            Assert(
-                ToColorRefValue(plainRange.GetAttributeValue(attributes.ForegroundColor)) ==
-                ColorRef(0xFF, 0xFF, 0xFF),
-                "non-linked High Contrast vector text must expose the draw-time WindowText foreground");
-            Assert(
-                ToColorRefValue(linkedRange.GetAttributeValue(attributes.BackgroundColor)) ==
-                ColorRef(0x00, 0x00, 0x00) &&
-                ToColorRefValue(plainRange.GetAttributeValue(attributes.BackgroundColor)) ==
-                ColorRef(0x00, 0x00, 0x00),
-                "High Contrast vector TextPattern backgrounds must expose the Window surface");
+            AssertHighContrastTextAttributes(renderer, linked, plain);
 
             AssertHighContrastVectorPixels(
                 linked,
@@ -284,6 +302,41 @@ internal static class MermaidProbes
                 Thread.Sleep(800);
             }
         }
+    }
+
+    private static void AssertHighContrastTextAttributes(
+        AutomationElement renderer,
+        AutomationElement linked,
+        AutomationElement plain)
+    {
+        var textPattern = renderer.Patterns.Text.PatternOrDefault
+                          ?? throw new InvalidOperationException("MarkdownRenderer must expose UIA TextPattern");
+        var attributes = renderer.Automation.TextAttributeLibrary;
+        var linkedRange = textPattern.RangeFromChild(linked);
+        var plainRange = textPattern.RangeFromChild(plain);
+
+        Assert(
+            (linkedRange.GetAttributeValue(attributes.StyleName)?.ToString() ?? string.Empty)
+                .Contains("Diagram", StringComparison.Ordinal),
+            "linked vector text must retain its Diagram semantic style context");
+        Assert(
+            (plainRange.GetAttributeValue(attributes.StyleName)?.ToString() ?? string.Empty)
+                .Contains("Diagram", StringComparison.Ordinal),
+            "non-linked vector text must retain its Diagram semantic style context");
+        Assert(
+            ToColorRefValue(linkedRange.GetAttributeValue(attributes.ForegroundColor)) ==
+            ColorRef(0x00, 0xFF, 0xFF),
+            "linked High Contrast vector text must expose the draw-time Hotlight foreground");
+        Assert(
+            ToColorRefValue(plainRange.GetAttributeValue(attributes.ForegroundColor)) ==
+            ColorRef(0xFF, 0xFF, 0xFF),
+            "non-linked High Contrast vector text must expose the draw-time WindowText foreground");
+        Assert(
+            ToColorRefValue(linkedRange.GetAttributeValue(attributes.BackgroundColor)) ==
+            ColorRef(0x00, 0x00, 0x00) &&
+            ToColorRefValue(plainRange.GetAttributeValue(attributes.BackgroundColor)) ==
+            ColorRef(0x00, 0x00, 0x00),
+            "High Contrast vector TextPattern backgrounds must expose the Window surface");
     }
 
     private static AutomationElement? FindMermaidSemantic(
@@ -310,103 +363,33 @@ internal static class MermaidProbes
         Assert(bitmap.Width > 2 && bitmap.Height > 2,
             $"High Contrast vector capture is empty: {bitmap.Width}x{bitmap.Height}");
 
-        // Ignore the outer focus-border band even after focus has been cleared.
-        // Requiring Hotlight/WindowText pixels in this interior makes a cyan
-        // perimeter alone insufficient to pass the rendered-paint gate.
-        int interiorInset = Math.Min(
-            4,
-            Math.Max(1, (Math.Min(bitmap.Width, bitmap.Height) - 1) / 4));
-        int interiorWidth = bitmap.Width - (interiorInset * 2);
-        int interiorHeight = bitmap.Height - (interiorInset * 2);
-        Assert(interiorWidth > 0 && interiorHeight > 0,
+        var interior = HighContrastVectorPixels.Measure(bitmap, expectHotlight);
+        Assert(interior.Width > 0 && interior.Height > 0,
             $"High Contrast vector capture has no testable interior: {bitmap.Width}x{bitmap.Height}");
 
-        int surfacePixels = 0;
-        int semanticPixels = 0;
-        long surfaceRed = 0;
-        long surfaceGreen = 0;
-        long surfaceBlue = 0;
-        long semanticRed = 0;
-        long semanticGreen = 0;
-        long semanticBlue = 0;
-        for (int y = interiorInset; y < bitmap.Height - interiorInset; y++)
-        {
-            for (int x = interiorInset; x < bitmap.Width - interiorInset; x++)
-            {
-                System.Drawing.Color pixel = bitmap.GetPixel(x, y);
-                if (pixel.R <= 48 && pixel.G <= 48 && pixel.B <= 48)
-                {
-                    surfacePixels++;
-                    surfaceRed += pixel.R;
-                    surfaceGreen += pixel.G;
-                    surfaceBlue += pixel.B;
-                    continue;
-                }
-
-                bool isSemantic = expectHotlight
-                    ? pixel.R <= 80 && pixel.G >= 160 && pixel.B >= 160
-                    : pixel.R >= 160 && pixel.G >= 160 && pixel.B >= 160;
-                if (!isSemantic)
-                    continue;
-                semanticPixels++;
-                semanticRed += pixel.R;
-                semanticGreen += pixel.G;
-                semanticBlue += pixel.B;
-            }
-        }
-
-        int interiorPixels = interiorWidth * interiorHeight;
-        Assert(surfacePixels >= Math.Max(16, interiorPixels / 5),
+        int interiorPixels = interior.PixelCount;
+        Assert(interior.SurfacePixels >= Math.Max(16, interiorPixels / 5),
             $"High Contrast vector surface is not visibly present in the capture interior; " +
-            $"black-like={surfacePixels}/{interiorPixels}. " +
+            $"black-like={interior.SurfacePixels}/{interiorPixels}. " +
             "A solid foreground rectangle must fail this rendered-pixel gate.");
-        Assert(semanticPixels >= Math.Max(8, (interiorWidth + interiorHeight) / 8),
+        Assert(interior.SemanticPixels >= Math.Max(8, (interior.Width + interior.Height) / 8),
             $"High Contrast vector {(expectHotlight ? "Hotlight" : "WindowText")} glyph paint is not visibly present " +
-            $"inside the focus-border mask; semantic={semanticPixels}/{interiorPixels}");
+            $"inside the focus-border mask; semantic={interior.SemanticPixels}/{interiorPixels}");
 
-        System.Drawing.Color surface = System.Drawing.Color.FromArgb(
-            (int)(surfaceRed / surfacePixels),
-            (int)(surfaceGreen / surfacePixels),
-            (int)(surfaceBlue / surfacePixels));
-        System.Drawing.Color foreground = System.Drawing.Color.FromArgb(
-            (int)(semanticRed / semanticPixels),
-            (int)(semanticGreen / semanticPixels),
-            (int)(semanticBlue / semanticPixels));
-        double contrast = ContrastRatio(surface, foreground);
+        System.Drawing.Color surface = interior.AverageSurface;
+        System.Drawing.Color foreground = interior.AverageSemantic;
+        double contrast = ColorContrast.Ratio(surface, foreground);
         Assert(contrast >= 4.5,
             $"Rendered High Contrast vector contrast {contrast:F2}:1 is below 4.5:1; " +
             $"surface={surface}, foreground={foreground}");
         Console.WriteLine(
-            $"[automation] rendered HC vector interior pixels: {fileName}; inset={interiorInset}; " +
-            $"surface={surfacePixels}/{interiorPixels}; semantic={semanticPixels}/{interiorPixels}; " +
+            $"[automation] rendered HC vector interior pixels: {fileName}; inset={interior.Inset}; " +
+            $"surface={interior.SurfacePixels}/{interiorPixels}; semantic={interior.SemanticPixels}/{interiorPixels}; " +
             $"contrast={contrast:F2}:1; screenshot={path}");
-    }
-
-    private static double ContrastRatio(System.Drawing.Color first, System.Drawing.Color second)
-    {
-        double firstLuminance = RelativeLuminance(first);
-        double secondLuminance = RelativeLuminance(second);
-        return (Math.Max(firstLuminance, secondLuminance) + 0.05) /
-               (Math.Min(firstLuminance, secondLuminance) + 0.05);
-    }
-
-    private static double RelativeLuminance(System.Drawing.Color color)
-    {
-        static double Linearize(byte channel)
-        {
-            double value = channel / 255d;
-            return value <= 0.04045
-                ? value / 12.92
-                : Math.Pow((value + 0.055) / 1.055, 2.4);
-        }
-
-        return 0.2126 * Linearize(color.R) +
-               0.7152 * Linearize(color.G) +
-               0.0722 * Linearize(color.B);
     }
 
     private static AutomationElement? FindMermaidLink(AutomationElement renderer) =>
         renderer.FindAllDescendants().FirstOrDefault(element =>
             element.ControlType == ControlType.Hyperlink &&
-            (element.Name ?? string.Empty).Contains("Invokable Mermaid node", StringComparison.Ordinal));
+            (element.Name ?? string.Empty).Contains(LinkName, StringComparison.Ordinal));
 }
