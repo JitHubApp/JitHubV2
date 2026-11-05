@@ -1,3 +1,5 @@
+using static MarkdownRenderer.PerformanceHarness.EvidenceValueRules;
+
 namespace MarkdownRenderer.PerformanceHarness;
 
 /// <summary>
@@ -46,43 +48,8 @@ public static class CancellationEvidenceValidator
         for (int ordinal = 0; ordinal < requiredTrials; ordinal++)
         {
             CancellationTrialResult trial = result.Trials[ordinal];
-            IReadOnlyList<CancellationMeasurementIteration> expectedPlan;
-            try
-            {
-                expectedPlan = CancellationMeasurementPlan.CreateTrial(
-                    ordinal,
-                    iterationsPerTrial);
-            }
-            catch (ArgumentOutOfRangeException)
-            {
+            if (!IsCompleteTrial(trial, ordinal, iterationsPerTrial))
                 return false;
-            }
-            catch (OverflowException)
-            {
-                return false;
-            }
-
-            if (trial.Ordinal != ordinal ||
-                trial.WarmupSourceSeed != expectedPlan[0].SourceSeed ||
-                trial.FirstRecordedSourceSeed != expectedPlan[1].SourceSeed ||
-                trial.RequestedIterations != iterationsPerTrial ||
-                trial.ObservedCancellations != iterationsPerTrial ||
-                trial.SamplesMilliseconds.Count != iterationsPerTrial ||
-                !double.IsFinite(trial.WarmupElapsedMilliseconds) ||
-                trial.WarmupElapsedMilliseconds < 0 ||
-                trial.WarmupStaleCommits < 0 ||
-                trial.SamplesMilliseconds.Any(
-                    static value => !double.IsFinite(value) || value < 0) ||
-                !double.IsFinite(trial.P95Milliseconds) ||
-                trial.P95Milliseconds < 0 ||
-                !NearlyEqual(
-                    trial.P95Milliseconds,
-                    PerformanceStatistics.Percentile(trial.SamplesMilliseconds, 0.95)) ||
-                trial.StaleCommits < 0 ||
-                !trial.Complete)
-            {
-                return false;
-            }
 
             warmupSamples.Add(trial.WarmupElapsedMilliseconds);
             warmupStaleCommits += trial.WarmupStaleCommits;
@@ -116,11 +83,44 @@ public static class CancellationEvidenceValidator
         return true;
     }
 
-    private static bool NearlyEqual(double left, double right)
+    private static bool IsCompleteTrial(
+        CancellationTrialResult trial,
+        int ordinal,
+        int iterationsPerTrial)
     {
-        if (!double.IsFinite(left) || !double.IsFinite(right))
+        IReadOnlyList<CancellationMeasurementIteration> expectedPlan;
+        try
+        {
+            expectedPlan = CancellationMeasurementPlan.CreateTrial(
+                ordinal,
+                iterationsPerTrial);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
             return false;
-        double scale = Math.Max(1, Math.Max(Math.Abs(left), Math.Abs(right)));
-        return Math.Abs(left - right) <= scale * 1e-12;
+        }
+        catch (OverflowException)
+        {
+            return false;
+        }
+
+        return trial.Ordinal == ordinal &&
+               trial.WarmupSourceSeed == expectedPlan[0].SourceSeed &&
+               trial.FirstRecordedSourceSeed == expectedPlan[1].SourceSeed &&
+               trial.RequestedIterations == iterationsPerTrial &&
+               trial.ObservedCancellations == iterationsPerTrial &&
+               trial.SamplesMilliseconds.Count == iterationsPerTrial &&
+               double.IsFinite(trial.WarmupElapsedMilliseconds) &&
+               trial.WarmupElapsedMilliseconds >= 0 &&
+               trial.WarmupStaleCommits >= 0 &&
+               !trial.SamplesMilliseconds.Any(
+                   static value => !double.IsFinite(value) || value < 0) &&
+               double.IsFinite(trial.P95Milliseconds) &&
+               trial.P95Milliseconds >= 0 &&
+               NearlyEqual(
+                   trial.P95Milliseconds,
+                   PerformanceStatistics.Percentile(trial.SamplesMilliseconds, 0.95)) &&
+               trial.StaleCommits >= 0 &&
+               trial.Complete;
     }
 }

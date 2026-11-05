@@ -88,9 +88,12 @@ public static class FirstViewportEvidenceValidator
         var chronologicalTrials = new List<(FirstViewportTrialResult Trial, int Condition)>(
             checked((warmupTrialCount + measuredTrialCount) *
                     PerformanceMeasurementContract.FirstViewportConditionCount));
+        var shape = new ProtocolShape(
+            iterationsPerTrial,
+            warmupTrialCount,
+            measuredTrialCount,
+            quick);
         MeasurementThread? sharedThread = null;
-        int measuredFirstGlobalOrdinal = checked(
-            warmupTrialCount * PerformanceMeasurementContract.FirstViewportConditionCount);
 
         int condition = 0;
         foreach (int sourceBytes in requiredSizes)
@@ -100,39 +103,15 @@ public static class FirstViewportEvidenceValidator
                 FirstViewportResult[] matches = results.Where(result =>
                         result.SourceUtf16Bytes == sourceBytes && result.Mode == mode)
                     .ToArray();
-                if (matches.Length != 1)
-                    return false;
-
-                FirstViewportResult result = matches[0];
-                if (!HasSharedPinnedThread(result, ref sharedThread) ||
-                    !HasConditionPolicy(
-                        result,
+                if (matches.Length != 1 ||
+                    !HasValidCondition(
+                        matches[0],
                         sourceBytes,
                         mode,
-                        warmupTrialCount,
-                        measuredTrialCount,
-                        quick) ||
-                    !TryAddScheduledTrials(
-                        result.WarmupTrials,
-                        mode,
-                        iterationsPerTrial,
                         condition,
-                        firstGlobalOrdinal: 0,
-                        chronologicalTrials) ||
-                    !TryAddScheduledTrials(
-                        result.Trials,
-                        mode,
-                        iterationsPerTrial,
-                        condition,
-                        measuredFirstGlobalOrdinal,
-                        chronologicalTrials) ||
-                    !FirstViewportSummaryEvidence.HasRecomputedSummary(
-                        result,
-                        sourceBytes,
-                        mode,
-                        iterationsPerTrial,
-                        measuredTrialCount,
-                        quick))
+                        shape,
+                        ref sharedThread,
+                        chronologicalTrials))
                 {
                     return false;
                 }
@@ -145,6 +124,42 @@ public static class FirstViewportEvidenceValidator
             chronologicalTrials,
             warmupTrialCount,
             measuredTrialCount);
+    }
+
+    private static bool HasValidCondition(
+        FirstViewportResult result,
+        int sourceBytes,
+        string mode,
+        int condition,
+        ProtocolShape shape,
+        ref MeasurementThread? sharedThread,
+        List<(FirstViewportTrialResult Trial, int Condition)> chronologicalTrials)
+    {
+        int measuredFirstGlobalOrdinal = checked(
+            shape.WarmupTrialCount * PerformanceMeasurementContract.FirstViewportConditionCount);
+        return HasSharedPinnedThread(result, ref sharedThread) &&
+            HasConditionPolicy(result, sourceBytes, mode, shape) &&
+            TryAddScheduledTrials(
+                result.WarmupTrials,
+                mode,
+                shape.IterationsPerTrial,
+                condition,
+                firstGlobalOrdinal: 0,
+                chronologicalTrials) &&
+            TryAddScheduledTrials(
+                result.Trials,
+                mode,
+                shape.IterationsPerTrial,
+                condition,
+                measuredFirstGlobalOrdinal,
+                chronologicalTrials) &&
+            FirstViewportSummaryEvidence.HasRecomputedSummary(
+                result,
+                sourceBytes,
+                mode,
+                shape.IterationsPerTrial,
+                shape.MeasuredTrialCount,
+                shape.Quick);
     }
 
     private static bool HasSharedPinnedThread(
@@ -174,10 +189,9 @@ public static class FirstViewportEvidenceValidator
         FirstViewportResult result,
         int sourceBytes,
         string mode,
-        int warmupTrialCount,
-        int measuredTrialCount,
-        bool quick)
+        ProtocolShape shape)
     {
+        bool quick = shape.Quick;
         long expectedCacheBudget =
             mode == PerformanceMeasurementContract.FirstViewportCacheHitMode
                 ? Math.Max(0, sourceBytes * 8L)
@@ -201,8 +215,8 @@ public static class FirstViewportEvidenceValidator
             result.Trials is not null &&
             result.SamplesMilliseconds is not null &&
             result.PublicationSamplesMilliseconds is not null &&
-            result.WarmupTrials.Count == warmupTrialCount &&
-            result.Trials.Count == measuredTrialCount;
+            result.WarmupTrials.Count == shape.WarmupTrialCount &&
+            result.Trials.Count == shape.MeasuredTrialCount;
     }
 
     private static bool TryAddScheduledTrials(
@@ -385,6 +399,12 @@ public static class FirstViewportEvidenceValidator
                    result.MeasurementProcessorNumber == expected.ProcessorNumber &&
                    result.MeasurementThreadPriority == expected.Priority);
     }
+
+    private readonly record struct ProtocolShape(
+        int IterationsPerTrial,
+        int WarmupTrialCount,
+        int MeasuredTrialCount,
+        bool Quick);
 
     private readonly record struct MeasurementThread(
         string AffinityMask,
