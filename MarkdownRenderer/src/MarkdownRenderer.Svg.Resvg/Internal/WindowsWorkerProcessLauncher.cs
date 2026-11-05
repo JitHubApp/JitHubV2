@@ -110,7 +110,8 @@ internal sealed class WindowsWorkerProcessLauncher(
                 nonceHigh,
                 workerExecutableSha256,
                 options.QueueCapacity,
-                objectSecurity);
+                objectSecurity,
+                ResvgEventSource.Log.AllocateWorkerInstanceId());
             process = null;
             objectSecurity = null;
             pipe = null!;

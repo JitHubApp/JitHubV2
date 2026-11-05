@@ -15,9 +15,13 @@ internal sealed class ResvgEventSource : EventSource
 
     internal static ResvgEventSource Log { get; } = new();
 
-    // Work ids correlate stage events from every pool in the process, so the
-    // id counter is process-wide by contract. It holds no other state.
-    private static long _nextWorkId;
+    // Work ids correlate stage events from every pool that reports through
+    // this provider, so the provider instance owns the counter.
+    private long _nextWorkId;
+
+    // Worker instance ids name a worker in this provider's events and in its
+    // pool, so they must stay distinct across every pool that reports here.
+    private long _nextWorkerInstanceId;
 
     private ResvgEventSource()
     {
@@ -39,6 +43,13 @@ internal sealed class ResvgEventSource : EventSource
     internal long BeginWork() => IsWorkerStageMeasurementEnabled()
         ? Interlocked.Increment(ref _nextWorkId)
         : 0;
+
+    /// <summary>
+    /// Allocates the positive instance id of one adopted worker process. Ids
+    /// are never reused while this provider lives.
+    /// </summary>
+    [NonEvent]
+    internal long AllocateWorkerInstanceId() => Interlocked.Increment(ref _nextWorkerInstanceId);
 
     /// <summary>
     /// Correlated worker substage evidence. Payload fields are numeric only:

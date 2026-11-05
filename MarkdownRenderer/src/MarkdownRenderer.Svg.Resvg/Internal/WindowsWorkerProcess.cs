@@ -25,7 +25,6 @@ namespace MarkdownRenderer.Svg.Resvg.Internal;
 /// </remarks>
 internal sealed class WindowsWorkerProcess : IAsyncDisposable, IDisposable, IWorkerFontCatalogHost
 {
-    private static long s_nextInstanceId;
     private readonly SafeProcessHandle _process;
     private readonly NamedPipeServerStream _pipe;
     private WorkerObjectSecurity.WorkerObjectSecurityContext? _objectSecurity;
@@ -46,6 +45,7 @@ internal sealed class WindowsWorkerProcess : IAsyncDisposable, IDisposable, IWor
     // The optional factory composes the font-catalog supplier around this
     // worker as its host; the default supplies the catalog directly. The
     // optional frames are the reusable exchange buffers; the default is new.
+    // The caller allocates the instance id (see ResvgEventSource).
     internal WindowsWorkerProcess(
         SafeProcessHandle process,
         NamedPipeServerStream pipe,
@@ -54,6 +54,7 @@ internal sealed class WindowsWorkerProcess : IAsyncDisposable, IDisposable, IWor
         string? workerExecutableSha256,
         int queueCapacity,
         WorkerObjectSecurity.WorkerObjectSecurityContext objectSecurity,
+        long instanceId,
         Func<IWorkerFontCatalogHost, WorkerFontCatalogSupplier>? fontCatalogSupplierFactory = null,
         WorkerExchangeFrames? exchangeFrames = null)
     {
@@ -67,7 +68,8 @@ internal sealed class WindowsWorkerProcess : IAsyncDisposable, IDisposable, IWor
         NonceHigh = nonceHigh;
         WorkerExecutableSha256 = workerExecutableSha256;
         _queueCapacity = queueCapacity;
-        InstanceId = Interlocked.Increment(ref s_nextInstanceId);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(instanceId);
+        InstanceId = instanceId;
         _fontCatalogSupplier = fontCatalogSupplierFactory?.Invoke(this) ?? new WorkerFontCatalogSupplier(this);
     }
 
