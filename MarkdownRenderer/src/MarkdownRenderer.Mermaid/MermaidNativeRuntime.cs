@@ -9,64 +9,12 @@ public static class MermaidNativeRuntime
 {
     public static MermaidNativeRuntimeInfo Probe() => ProbeCore(null);
 
-    internal static unsafe MermaidNativeRuntimeInfo ProbeCore(string? explicitLibraryPath)
+    internal static MermaidNativeRuntimeInfo ProbeCore(string? explicitLibraryPath)
     {
         nint library = 0;
         try
         {
-            if (explicitLibraryPath is not null && File.Exists(explicitLibraryPath) &&
-                TryReadMachine(explicitLibraryPath, out Architecture architecture) &&
-                architecture != RuntimeInformation.ProcessArchitecture)
-            {
-                return new MermaidNativeRuntimeInfo(
-                    MermaidNativeRuntimeStatus.IncompatibleArchitecture,
-                    default,
-                    $"The native Mermaid engine targets {architecture}, but the process targets {RuntimeInformation.ProcessArchitecture}.");
-            }
-
-            const DllImportSearchPath searchPath = DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.SafeDirectories;
-            bool loaded = explicitLibraryPath is null
-                ? NativeLibrary.TryLoad(NativeMethods.LibraryName, typeof(MermaidNativeRuntime).Assembly, searchPath, out library)
-                : NativeLibrary.TryLoad(explicitLibraryPath, out library);
-            if (!loaded)
-            {
-                return new MermaidNativeRuntimeInfo(
-                    explicitLibraryPath is not null && File.Exists(explicitLibraryPath)
-                        ? MermaidNativeRuntimeStatus.LoadFailure
-                        : MermaidNativeRuntimeStatus.NotInstalled,
-                    default,
-                    explicitLibraryPath is not null && File.Exists(explicitLibraryPath)
-                        ? "The selected native Mermaid library is present but cannot be loaded."
-                        : "The optional native Mermaid engine is not installed for this process architecture.");
-            }
-
-            foreach (string export in NativeMethods.RequiredExports)
-            {
-                if (!NativeLibrary.TryGetExport(library, export, out _))
-                {
-                    return new MermaidNativeRuntimeInfo(
-                        MermaidNativeRuntimeStatus.MissingExport,
-                        default,
-                        $"The native Mermaid engine does not export {export}.");
-                }
-            }
-
-            NativeLibrary.TryGetExport(library, "mmir_get_abi_version", out nint versionAddress);
-            var getVersion = (delegate* unmanaged[Cdecl]<uint>)versionAddress;
-            uint packedVersion = getVersion();
-            var version = new MermaidNativeAbiVersion((ushort)(packedVersion >> 16), (ushort)(packedVersion & 0xffff));
-            if (version.Major != NativeMethods.AbiMajor || version.Minor < NativeMethods.AbiMinor)
-            {
-                return new MermaidNativeRuntimeInfo(
-                    MermaidNativeRuntimeStatus.IncompatibleAbi,
-                    version,
-                    $"Native Mermaid ABI {version.Major}.{version.Minor} is incompatible with required ABI {NativeMethods.AbiMajor}.{NativeMethods.AbiMinor}.");
-            }
-
-            return new MermaidNativeRuntimeInfo(
-                MermaidNativeRuntimeStatus.Available,
-                version,
-                "The native Mermaid engine is available.");
+            return TryLoad(explicitLibraryPath, out library) ?? InspectLoadedLibrary(library);
         }
         catch (BadImageFormatException)
         {
@@ -89,6 +37,74 @@ public static class MermaidNativeRuntime
                 NativeLibrary.Free(library);
             }
         }
+    }
+
+    /// <summary>
+    /// Loads the selected or bundled native library. Returns the probe result
+    /// when the library is for another architecture or cannot be loaded, and
+    /// <see langword="null"/> once <paramref name="library"/> is loaded.
+    /// </summary>
+    private static MermaidNativeRuntimeInfo? TryLoad(string? explicitLibraryPath, out nint library)
+    {
+        library = 0;
+        if (explicitLibraryPath is not null && File.Exists(explicitLibraryPath) &&
+            TryReadMachine(explicitLibraryPath, out Architecture architecture) &&
+            architecture != RuntimeInformation.ProcessArchitecture)
+        {
+            return new MermaidNativeRuntimeInfo(
+                MermaidNativeRuntimeStatus.IncompatibleArchitecture,
+                default,
+                $"The native Mermaid engine targets {architecture}, but the process targets {RuntimeInformation.ProcessArchitecture}.");
+        }
+
+        const DllImportSearchPath searchPath = DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.SafeDirectories;
+        bool loaded = explicitLibraryPath is null
+            ? NativeLibrary.TryLoad(NativeMethods.LibraryName, typeof(MermaidNativeRuntime).Assembly, searchPath, out library)
+            : NativeLibrary.TryLoad(explicitLibraryPath, out library);
+        if (loaded)
+            return null;
+
+        bool selectedLibraryExists = explicitLibraryPath is not null && File.Exists(explicitLibraryPath);
+        return new MermaidNativeRuntimeInfo(
+            selectedLibraryExists
+                ? MermaidNativeRuntimeStatus.LoadFailure
+                : MermaidNativeRuntimeStatus.NotInstalled,
+            default,
+            selectedLibraryExists
+                ? "The selected native Mermaid library is present but cannot be loaded."
+                : "The optional native Mermaid engine is not installed for this process architecture.");
+    }
+
+    /// <summary>Checks a loaded library's exports and ABI version without running parser or layout work.</summary>
+    private static unsafe MermaidNativeRuntimeInfo InspectLoadedLibrary(nint library)
+    {
+        foreach (string export in NativeMethods.RequiredExports)
+        {
+            if (!NativeLibrary.TryGetExport(library, export, out _))
+            {
+                return new MermaidNativeRuntimeInfo(
+                    MermaidNativeRuntimeStatus.MissingExport,
+                    default,
+                    $"The native Mermaid engine does not export {export}.");
+            }
+        }
+
+        NativeLibrary.TryGetExport(library, "mmir_get_abi_version", out nint versionAddress);
+        var getVersion = (delegate* unmanaged[Cdecl]<uint>)versionAddress;
+        uint packedVersion = getVersion();
+        var version = new MermaidNativeAbiVersion((ushort)(packedVersion >> 16), (ushort)(packedVersion & 0xffff));
+        if (version.Major != NativeMethods.AbiMajor || version.Minor < NativeMethods.AbiMinor)
+        {
+            return new MermaidNativeRuntimeInfo(
+                MermaidNativeRuntimeStatus.IncompatibleAbi,
+                version,
+                $"Native Mermaid ABI {version.Major}.{version.Minor} is incompatible with required ABI {NativeMethods.AbiMajor}.{NativeMethods.AbiMinor}.");
+        }
+
+        return new MermaidNativeRuntimeInfo(
+            MermaidNativeRuntimeStatus.Available,
+            version,
+            "The native Mermaid engine is available.");
     }
 
     private static bool TryReadMachine(string path, out Architecture architecture)

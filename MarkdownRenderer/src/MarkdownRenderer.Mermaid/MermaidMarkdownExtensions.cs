@@ -97,27 +97,9 @@ public static class MermaidMarkdownExtensions
         {
             context.CancellationToken.ThrowIfCancellationRequested();
 
-            MermaidRenderResult result;
-            try
+            MermaidRenderResult? result = await TryRenderAsync(context, source).ConfigureAwait(false);
+            if (result is null)
             {
-                result = await _renderer.RenderOnWorkerAsync(source, context.CancellationToken)
-                    .ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (ObjectDisposedException)
-            {
-                ReportDiagnostic(
-                    context,
-                    "MMR0006",
-                    MarkdownDiagnosticSeverity.Error,
-                        _renderer.ResolveString(
-                            MermaidStringKeys.RendererUnavailable,
-                            _renderer.DiagnosticCulture,
-                        "The native Mermaid renderer is unavailable."),
-                    context.Node.SourceSpan);
                 AddFallbackContent(context, content, source);
                 return;
             }
@@ -143,26 +125,9 @@ public static class MermaidMarkdownExtensions
                 return;
             }
 
-            MarkdownVectorScene scene;
-            try
+            MarkdownVectorScene? scene = TryConvertScene(context, source, result.Scene);
+            if (scene is null)
             {
-                scene = MermaidVectorSceneAdapter.Convert(
-                    result.Scene,
-                    context.Node,
-                    source,
-                    context.CancellationToken);
-            }
-            catch (Exception exception) when (exception is ArgumentException or OverflowException)
-            {
-                ReportDiagnostic(
-                    context,
-                    "MMR0009",
-                    MarkdownDiagnosticSeverity.Error,
-                    _renderer.ResolveString(
-                        MermaidStringKeys.SceneRepresentationFailed,
-                        _renderer.DiagnosticCulture,
-                        "The Mermaid scene could not be represented safely."),
-                    context.Node.SourceSpan);
                 AddFallbackContent(context, content, source);
                 return;
             }
@@ -180,6 +145,71 @@ public static class MermaidMarkdownExtensions
                 semanticText: MermaidVectorSceneAdapter.GetSemanticText(
                     result.Scene,
                     context.CancellationToken));
+        }
+
+        /// <summary>
+        /// Renders on the caller's worker. Returns <see langword="null"/>
+        /// after reporting MMR0006 when the renderer was disposed.
+        /// </summary>
+        private async ValueTask<MermaidRenderResult?> TryRenderAsync(
+            MarkdownExtensionContext context,
+            string source)
+        {
+            try
+            {
+                return await _renderer.RenderOnWorkerAsync(source, context.CancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (ObjectDisposedException)
+            {
+                ReportDiagnostic(
+                    context,
+                    "MMR0006",
+                    MarkdownDiagnosticSeverity.Error,
+                    _renderer.ResolveString(
+                        MermaidStringKeys.RendererUnavailable,
+                        _renderer.DiagnosticCulture,
+                        "The native Mermaid renderer is unavailable."),
+                    context.Node.SourceSpan);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Converts the decoded scene for the host. Returns
+        /// <see langword="null"/> after reporting MMR0009 when the scene cannot
+        /// be represented safely.
+        /// </summary>
+        private MarkdownVectorScene? TryConvertScene(
+            MarkdownExtensionContext context,
+            string source,
+            MermaidScene scene)
+        {
+            try
+            {
+                return MermaidVectorSceneAdapter.Convert(
+                    scene,
+                    context.Node,
+                    source,
+                    context.CancellationToken);
+            }
+            catch (Exception exception) when (exception is ArgumentException or OverflowException)
+            {
+                ReportDiagnostic(
+                    context,
+                    "MMR0009",
+                    MarkdownDiagnosticSeverity.Error,
+                    _renderer.ResolveString(
+                        MermaidStringKeys.SceneRepresentationFailed,
+                        _renderer.DiagnosticCulture,
+                        "The Mermaid scene could not be represented safely."),
+                    context.Node.SourceSpan);
+                return null;
+            }
         }
 
         private static void AddFallbackContent(
