@@ -1,91 +1,21 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Images;
 
 namespace JitHub.Services;
 
-public sealed record GitHubImageCacheEntry(
-    string CacheKey,
-    string FilePath,
-    long ByteLength,
-    DateTimeOffset CachedAt,
-    DateTimeOffset LastAccessedAt,
-    string? ETag = null,
-    DateTimeOffset? LastModified = null,
-    string? ContentType = null);
-
-public sealed record GitHubImageCacheWriteMetadata(
-    string? ETag,
-    DateTimeOffset? LastModified,
-    string? ContentType);
-
-public sealed record GitHubImageCacheRead(
-    GitHubImageCacheEntry Entry,
-    byte[] Bytes);
-
-internal sealed partial record AdmittedGitHubImageCacheRead(
-    GitHubImageCacheRead Value,
-    IDisposable Lease) : IDisposable
-{
-    public void Dispose() => Lease.Dispose();
-}
-
-internal sealed record GitHubImageCacheManifest(
-    string? PayloadFileName,
-    GitHubImageCacheWriteMetadata Metadata,
-    string? AccountPartition = null);
-
-public interface IGitHubImageCacheStore
-{
-    Task<GitHubImageCacheEntry?> TryGetAsync(string cacheKey, CancellationToken cancellationToken = default);
-
-    Task<GitHubImageCacheRead?> TryReadAsync(string cacheKey, CancellationToken cancellationToken = default);
-
-    Task<GitHubImageCacheEntry> PutAsync(
-        string cacheKey,
-        byte[] bytes,
-        string extension,
-        CancellationToken cancellationToken = default);
-
-    Task<GitHubImageCacheEntry> PutAsync(
-        string cacheKey,
-        byte[] bytes,
-        string extension,
-        GitHubImageCacheWriteMetadata metadata,
-        CancellationToken cancellationToken = default);
-
-    Task MarkFreshAsync(string cacheKey, CancellationToken cancellationToken = default);
-
-    Task InvalidateAsync(string cacheKey, CancellationToken cancellationToken = default);
-
-    Task ClearAllAsync(CancellationToken cancellationToken = default);
-
-    Task ClearPartitionAsync(string accountPartition, CancellationToken cancellationToken = default) =>
-        Task.FromException(new NotSupportedException(
-            "This image cache store does not support account-partition removal."));
-
-    Task EnforceCapAsync(CancellationToken cancellationToken = default);
-
-    Task<long> GetTotalBytesAsync(CancellationToken cancellationToken = default);
-
-    Task<CacheStoreInspection> InspectAsync(CancellationToken cancellationToken = default) =>
-        Task.FromResult(CacheStoreInspection.Unavailable("Integrity inspection is not implemented by this image cache store."));
-}
-
 public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
 {
-    private const int GateStripeCount = 64;
     private readonly string _imageRootPath;
     private readonly GitHubCachePolicy _policy;
-    private readonly SemaphoreSlim[] _gateStripes = CreateGateStripes();
-    private readonly object _estimatedPayloadBytesGate = new();
-    private long _estimatedPayloadBytes = -1;
+    private readonly GitHubImageCacheGates _gates = new();
+    private readonly GitHubImageCacheManifestFile _manifests;
+    private readonly GitHubImageCachePayloadEstimate _estimate;
+    private readonly GitHubImageCacheInspector _inspector;
+    private readonly GitHubImageCacheEviction _eviction;
 
     internal event Action? CacheContentInvalidated;
 
@@ -98,6 +28,10 @@ public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
     {
         _imageRootPath = imageRootPath;
         _policy = policy;
+        _manifests = new GitHubImageCacheManifestFile(imageRootPath);
+        _estimate = new GitHubImageCachePayloadEstimate(imageRootPath);
+        _inspector = new GitHubImageCacheInspector(imageRootPath, _manifests);
+        _eviction = new GitHubImageCacheEviction(imageRootPath, policy, _manifests);
         Directory.CreateDirectory(_imageRootPath);
     }
 
@@ -106,7 +40,7 @@ public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        SemaphoreSlim gate = GetGate(cacheKey);
+        SemaphoreSlim gate = _gates.ForKey(cacheKey);
         await gate.WaitAsync(cancellationToken);
         try
         {
@@ -142,66 +76,20 @@ public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
         ArgumentException.ThrowIfNullOrWhiteSpace(cacheKey);
         ArgumentNullException.ThrowIfNull(bytes);
 
-        _ = NormalizeExtension(extension);
-        string prefix = HashKey(cacheKey);
-        string generation = Guid.NewGuid().ToString("N");
-        string payloadFileName = $"{prefix}.{generation}.img";
-        string filePath = Path.Combine(_imageRootPath, payloadFileName);
-        string temporaryPath = filePath + ".tmp";
+        _ = GitHubImageCacheFiles.NormalizeExtension(extension);
+        string prefix = GitHubImageCacheFiles.HashKey(cacheKey);
         GitHubImageCacheEntry stored;
         bool enforceCap;
 
-        SemaphoreSlim gate = GetGateForPrefix(prefix);
+        SemaphoreSlim gate = _gates.ForPrefix(prefix);
         await gate.WaitAsync(cancellationToken);
         try
         {
-            _ = GetOrInitializeEstimatedPayloadBytes();
-            bool manifestCommitted = false;
-            try
-            {
-                await using (FileStream stream = new(
-                    temporaryPath,
-                    FileMode.CreateNew,
-                    FileAccess.Write,
-                    FileShare.None,
-                    81920,
-                    FileOptions.Asynchronous | FileOptions.SequentialScan))
-                {
-                    await stream.WriteAsync(bytes, cancellationToken).ConfigureAwait(false);
-                    await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
-                }
-
-                cancellationToken.ThrowIfCancellationRequested();
-                File.Move(temporaryPath, filePath);
-                DateTime now = DateTime.UtcNow;
-                File.SetCreationTimeUtc(filePath, now);
-                File.SetLastWriteTimeUtc(filePath, now);
-                File.SetLastAccessTimeUtc(filePath, now);
-
-                // The manifest is the atomic commit point. Until its replace succeeds, readers
-                // continue to resolve the prior generation and its matching validators.
-                await WriteManifestAtomicallyAsync(
-                        prefix,
-                        new GitHubImageCacheManifest(
-                            payloadFileName,
-                            metadata,
-                            ExtractAccountPartition(cacheKey)),
-                        cancellationToken)
-                    .ConfigureAwait(false);
-                manifestCommitted = true;
-                AddEstimatedPayloadBytes(bytes.LongLength);
-            }
-            finally
-            {
-                TryDelete(temporaryPath);
-                if (!manifestCommitted)
-                {
-                    TryDelete(filePath);
-                }
-            }
-
+            _ = _estimate.GetOrInitialize();
+            string filePath = await WriteGenerationAsync(cacheKey, prefix, bytes, metadata, cancellationToken)
+                .ConfigureAwait(false);
             stored = CreateEntry(cacheKey, new FileInfo(filePath), metadata);
-            enforceCap = GetEstimatedPayloadBytes() > _policy.AvatarImageSoftCapBytes;
+            enforceCap = _estimate.Current > _policy.AvatarImageSoftCapBytes;
         }
         finally
         {
@@ -219,16 +107,76 @@ public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
         return stored;
     }
 
+    /// <summary>
+    /// Writes a new immutable payload generation and commits it through the
+    /// manifest. The caller holds the key's stripe gate. Returns the payload path.
+    /// </summary>
+    private async Task<string> WriteGenerationAsync(
+        string cacheKey,
+        string prefix,
+        byte[] bytes,
+        GitHubImageCacheWriteMetadata metadata,
+        CancellationToken cancellationToken)
+    {
+        string payloadFileName = $"{prefix}.{Guid.NewGuid():N}.img";
+        string filePath = Path.Combine(_imageRootPath, payloadFileName);
+        string temporaryPath = filePath + ".tmp";
+        bool manifestCommitted = false;
+        try
+        {
+            await using (FileStream stream = new(
+                temporaryPath,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                81920,
+                FileOptions.Asynchronous | FileOptions.SequentialScan))
+            {
+                await stream.WriteAsync(bytes, cancellationToken).ConfigureAwait(false);
+                await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            File.Move(temporaryPath, filePath);
+            DateTime now = DateTime.UtcNow;
+            File.SetCreationTimeUtc(filePath, now);
+            File.SetLastWriteTimeUtc(filePath, now);
+            File.SetLastAccessTimeUtc(filePath, now);
+
+            // The manifest is the atomic commit point. Until its replace succeeds, readers
+            // continue to resolve the prior generation and its matching validators.
+            await _manifests.WriteAtomicallyAsync(
+                    prefix,
+                    new GitHubImageCacheManifest(
+                        payloadFileName,
+                        metadata,
+                        GitHubImageCacheFiles.ExtractAccountPartition(cacheKey)),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            manifestCommitted = true;
+            _estimate.Add(bytes.LongLength);
+            return filePath;
+        }
+        finally
+        {
+            GitHubImageCacheFiles.TryDelete(temporaryPath);
+            if (!manifestCommitted)
+            {
+                GitHubImageCacheFiles.TryDelete(filePath);
+            }
+        }
+    }
+
     public async Task MarkFreshAsync(string cacheKey, CancellationToken cancellationToken = default)
     {
-        SemaphoreSlim gate = GetGate(cacheKey);
+        SemaphoreSlim gate = _gates.ForKey(cacheKey);
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            string prefix = HashKey(cacheKey);
-            GitHubImageCacheManifest manifest = await ReadManifestAsync(prefix, cancellationToken)
+            string prefix = GitHubImageCacheFiles.HashKey(cacheKey);
+            GitHubImageCacheManifest manifest = await _manifests.ReadAsync(prefix, cancellationToken)
                 .ConfigureAwait(false);
-            string? filePath = ResolvePayloadPath(prefix, manifest);
+            string? filePath = _manifests.ResolvePayloadPath(prefix, manifest);
             if (filePath is null)
             {
                 return;
@@ -249,7 +197,7 @@ public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        SemaphoreSlim gate = GetGate(cacheKey);
+        SemaphoreSlim gate = _gates.ForKey(cacheKey);
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -283,23 +231,23 @@ public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
 
     public async Task InvalidateAsync(string cacheKey, CancellationToken cancellationToken = default)
     {
-        SemaphoreSlim gate = GetGate(cacheKey);
+        SemaphoreSlim gate = _gates.ForKey(cacheKey);
         await gate.WaitAsync(cancellationToken);
         try
         {
-            string prefix = HashKey(cacheKey);
+            string prefix = GitHubImageCacheFiles.HashKey(cacheKey);
             long removedPayloadBytes = 0;
             foreach (string existing in Directory.EnumerateFiles(_imageRootPath, $"{prefix}.*"))
             {
-                if (IsPayloadPath(existing))
+                if (GitHubImageCacheFiles.IsPayloadPath(existing))
                 {
-                    removedPayloadBytes += TryGetLength(existing);
+                    removedPayloadBytes += GitHubImageCacheFiles.TryGetLength(existing);
                 }
 
-                TryDelete(existing);
+                GitHubImageCacheFiles.TryDelete(existing);
             }
 
-            AddEstimatedPayloadBytes(-removedPayloadBytes);
+            _estimate.Add(-removedPayloadBytes);
             CacheContentInvalidated?.Invoke();
         }
         finally
@@ -351,7 +299,7 @@ public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
         GitHubImageCacheEntry expected,
         CancellationToken cancellationToken)
     {
-        SemaphoreSlim gate = GetGate(cacheKey);
+        SemaphoreSlim gate = _gates.ForKey(cacheKey);
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -391,7 +339,7 @@ public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
 
     public async Task ClearAllAsync(CancellationToken cancellationToken = default)
     {
-        int acquiredGates = await AcquireAllGatesAsync(cancellationToken).ConfigureAwait(false);
+        int acquiredGates = await _gates.AcquireAllAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             if (!Directory.Exists(_imageRootPath))
@@ -399,99 +347,52 @@ public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
                 return;
             }
 
-            List<CacheClearResidual> residuals = [];
-            string[] files;
-            try
-            {
-                files = Directory.EnumerateFiles(_imageRootPath, "*", SearchOption.TopDirectoryOnly).ToArray();
-            }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-            {
-                throw new CacheClearPostconditionException(
-                    CacheOwnerIds.GitHubImages,
-                    (CacheClearResidual[])[new CacheClearResidual(_imageRootPath, $"{exception.GetType().Name}: {exception.Message}")]);
-            }
-
-            foreach (string existing in files)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                try
-                {
-                    File.Delete(existing);
-                }
-                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-                {
-                    residuals.Add(new CacheClearResidual(
-                        existing,
-                        $"{exception.GetType().Name}: {exception.Message}"));
-                }
-            }
-
-            try
-            {
-                foreach (string existing in Directory.EnumerateFiles(_imageRootPath, "*", SearchOption.TopDirectoryOnly))
-                {
-                    if (!residuals.Any(residual => string.Equals(
-                            residual.Identity,
-                            existing,
-                            StringComparison.OrdinalIgnoreCase)))
-                    {
-                        residuals.Add(new CacheClearResidual(existing, "The image cache file still exists after clear."));
-                    }
-                }
-            }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-            {
-                residuals.Add(new CacheClearResidual(
-                    _imageRootPath,
-                    $"Postcondition verification failed: {exception.GetType().Name}: {exception.Message}"));
-            }
-
+            List<CacheClearResidual> residuals = _eviction.DeleteAll(cancellationToken);
             if (residuals.Count > 0)
             {
-                SetEstimatedPayloadBytes(-1);
+                _estimate.Invalidate();
                 throw new CacheClearPostconditionException(CacheOwnerIds.GitHubImages, residuals);
             }
 
-            SetEstimatedPayloadBytes(0);
+            _estimate.Set(0);
             CacheContentInvalidated?.Invoke();
         }
         finally
         {
-            ReleaseGates(acquiredGates);
+            _gates.Release(acquiredGates);
         }
     }
 
     public async Task EnforceCapAsync(CancellationToken cancellationToken = default)
     {
-        int acquiredGates = await AcquireAllGatesAsync(cancellationToken).ConfigureAwait(false);
+        int acquiredGates = await _gates.AcquireAllAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (GetOrInitializeEstimatedPayloadBytes() > _policy.AvatarImageSoftCapBytes)
+            if (_estimate.GetOrInitialize() > _policy.AvatarImageSoftCapBytes)
             {
-                await EnforceCapCoreAsync(cancellationToken);
-                SetEstimatedPayloadBytes(CalculatePayloadBytes());
+                await _eviction.EnforceSoftCapAsync(cancellationToken).ConfigureAwait(false);
+                _estimate.Set(GitHubImageCacheFiles.CalculatePayloadBytes(_imageRootPath));
             }
         }
         finally
         {
-            ReleaseGates(acquiredGates);
+            _gates.Release(acquiredGates);
         }
     }
 
     public async Task<long> GetTotalBytesAsync(CancellationToken cancellationToken = default)
     {
-        int acquiredGates = await AcquireAllGatesAsync(cancellationToken).ConfigureAwait(false);
+        int acquiredGates = await _gates.AcquireAllAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            long total = CalculatePayloadBytes();
-            SetEstimatedPayloadBytes(total);
+            long total = GitHubImageCacheFiles.CalculatePayloadBytes(_imageRootPath);
+            _estimate.Set(total);
             return total;
         }
         finally
         {
-            ReleaseGates(acquiredGates);
+            _gates.Release(acquiredGates);
         }
     }
 
@@ -500,7 +401,7 @@ public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
         CancellationToken cancellationToken = default)
     {
         string partition = GitHubAccountPartition.Require(accountPartition);
-        int acquiredGates = await AcquireAllGatesAsync(cancellationToken).ConfigureAwait(false);
+        int acquiredGates = await _gates.AcquireAllAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             if (!Directory.Exists(_imageRootPath))
@@ -508,329 +409,32 @@ public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
                 return;
             }
 
-            List<CacheClearResidual> residuals = [];
-            foreach (string manifestPath in Directory.EnumerateFiles(
-                         _imageRootPath,
-                         "*.meta",
-                         SearchOption.TopDirectoryOnly))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                GitHubImageCacheManifest manifest;
-                try
-                {
-                    manifest = await ReadManifestStrictAsync(manifestPath, cancellationToken)
-                        .ConfigureAwait(false);
-                }
-                catch (Exception exception) when (exception is IOException or FormatException or InvalidDataException)
-                {
-                    residuals.Add(new CacheClearResidual(
-                        manifestPath,
-                        $"The manifest could not be classified safely: {exception.GetType().Name}."));
-                    continue;
-                }
-
-                if (!string.Equals(manifest.AccountPartition, partition, StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                string prefix = Path.GetFileNameWithoutExtension(manifestPath);
-                foreach (string path in Directory.EnumerateFiles(
-                             _imageRootPath,
-                             $"{prefix}.*",
-                             SearchOption.TopDirectoryOnly))
-                {
-                    TryDeleteStrict(path, residuals);
-                }
-            }
-
+            List<CacheClearResidual> residuals = await _eviction.DeletePartitionAsync(partition, cancellationToken)
+                .ConfigureAwait(false);
+            _estimate.Invalidate();
             if (residuals.Count > 0)
             {
-                SetEstimatedPayloadBytes(-1);
                 throw new CacheClearPostconditionException(CacheOwnerIds.GitHubImages, residuals);
             }
 
-            SetEstimatedPayloadBytes(-1);
             CacheContentInvalidated?.Invoke();
         }
         finally
         {
-            ReleaseGates(acquiredGates);
+            _gates.Release(acquiredGates);
         }
     }
 
     public async Task<CacheStoreInspection> InspectAsync(CancellationToken cancellationToken = default)
     {
-        int acquiredGates = await AcquireAllGatesAsync(cancellationToken).ConfigureAwait(false);
+        int acquiredGates = await _gates.AcquireAllAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (!Directory.Exists(_imageRootPath))
-            {
-                return new CacheStoreInspection(
-                    CacheOwnerHealth.Healthy,
-                    PhysicalBytes: 0,
-                    LogicalBytes: 0,
-                    OrphanBytes: 0,
-                    new Dictionary<string, long>());
-            }
-
-            HashSet<string> activeFiles = new(StringComparer.OrdinalIgnoreCase);
-            List<string> integrityProblems = [];
-            long activePayloadBytes = 0;
-            long manifestBytes = 0;
-
-            foreach (string manifestPath in Directory.EnumerateFiles(_imageRootPath, "*.meta", SearchOption.TopDirectoryOnly))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                manifestBytes += TryGetLength(manifestPath);
-                activeFiles.Add(manifestPath);
-                string prefix = Path.GetFileNameWithoutExtension(manifestPath);
-                try
-                {
-                    GitHubImageCacheManifest manifest = await ReadManifestStrictAsync(manifestPath, cancellationToken)
-                        .ConfigureAwait(false);
-                    if (manifest.PayloadFileName is not null &&
-                        !IsSafePayloadFileName(prefix, manifest.PayloadFileName))
-                    {
-                        integrityProblems.Add("An image manifest contains an unsafe payload identity.");
-                        continue;
-                    }
-
-                    string? payloadPath = ResolvePayloadPath(prefix, manifest);
-                    if (payloadPath is null || !File.Exists(payloadPath))
-                    {
-                        integrityProblems.Add("An image manifest references a missing payload.");
-                        continue;
-                    }
-
-                    activeFiles.Add(payloadPath);
-                    activePayloadBytes += TryGetLength(payloadPath);
-                }
-                catch (Exception exception) when (exception is IOException or FormatException or InvalidDataException)
-                {
-                    integrityProblems.Add("An image manifest is corrupt.");
-                }
-            }
-
-            long physicalBytes = 0;
-            long orphanBytes = 0;
-            foreach (string path in Directory.EnumerateFiles(_imageRootPath, "*", SearchOption.TopDirectoryOnly))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                long length = TryGetLength(path);
-                physicalBytes += length;
-                if (!activeFiles.Contains(path))
-                {
-                    orphanBytes += length;
-                }
-            }
-
-            CacheOwnerHealth health = integrityProblems.Count > 0
-                ? CacheOwnerHealth.Unhealthy
-                : orphanBytes > 0
-                    ? CacheOwnerHealth.Degraded
-                    : CacheOwnerHealth.Healthy;
-            string? detail = CacheInspectionDetail.Format(
-                integrityProblems.Concat(
-                    orphanBytes > 0
-                        ? (string[])["Unreferenced image generations are awaiting cleanup."]
-                        : (string[])[]));
-
-            return new CacheStoreInspection(
-                health,
-                physicalBytes,
-                activePayloadBytes,
-                orphanBytes,
-                new Dictionary<string, long>
-                {
-                    [CacheMetricKeys.ActivePayloadBytes] = activePayloadBytes,
-                    [CacheMetricKeys.ManifestBytes] = manifestBytes,
-                    [CacheMetricKeys.OrphanBytes] = orphanBytes
-                },
-                detail);
+            return await _inspector.InspectAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
         {
-            ReleaseGates(acquiredGates);
-        }
-    }
-
-    private static SemaphoreSlim[] CreateGateStripes()
-    {
-        SemaphoreSlim[] gates = new SemaphoreSlim[GateStripeCount];
-        for (int index = 0; index < gates.Length; index++)
-        {
-            gates[index] = new SemaphoreSlim(1, 1);
-        }
-
-        return gates;
-    }
-
-    private SemaphoreSlim GetGate(string cacheKey) => GetGateForPrefix(HashKey(cacheKey));
-
-    private SemaphoreSlim GetGateForPrefix(string prefix)
-    {
-        int stripe = ((GetHexValue(prefix[0]) << 4) | GetHexValue(prefix[1])) % GateStripeCount;
-        return _gateStripes[stripe];
-    }
-
-    private async Task<int> AcquireAllGatesAsync(CancellationToken cancellationToken)
-    {
-        int acquired = 0;
-        try
-        {
-            for (; acquired < _gateStripes.Length; acquired++)
-            {
-                await _gateStripes[acquired].WaitAsync(cancellationToken).ConfigureAwait(false);
-            }
-
-            return acquired;
-        }
-        catch
-        {
-            ReleaseGates(acquired);
-            throw;
-        }
-    }
-
-    private void ReleaseGates(int acquired)
-    {
-        for (int index = acquired - 1; index >= 0; index--)
-        {
-            _gateStripes[index].Release();
-        }
-    }
-
-    private static int GetHexValue(char value) => value <= '9' ? value - '0' : value - 'a' + 10;
-
-    private static long TryGetLength(string path)
-    {
-        try
-        {
-            return new FileInfo(path).Length;
-        }
-        catch (FileNotFoundException)
-        {
-            return 0;
-        }
-    }
-
-    private long GetOrInitializeEstimatedPayloadBytes()
-    {
-        lock (_estimatedPayloadBytesGate)
-        {
-            if (_estimatedPayloadBytes < 0)
-            {
-                _estimatedPayloadBytes = CalculatePayloadBytes();
-            }
-
-            return _estimatedPayloadBytes;
-        }
-    }
-
-    private long GetEstimatedPayloadBytes()
-    {
-        lock (_estimatedPayloadBytesGate)
-        {
-            return _estimatedPayloadBytes;
-        }
-    }
-
-    private void AddEstimatedPayloadBytes(long delta)
-    {
-        lock (_estimatedPayloadBytesGate)
-        {
-            if (_estimatedPayloadBytes < 0)
-            {
-                return;
-            }
-
-            if (delta > 0 && _estimatedPayloadBytes > long.MaxValue - delta)
-            {
-                _estimatedPayloadBytes = long.MaxValue;
-                return;
-            }
-
-            _estimatedPayloadBytes = Math.Max(0, _estimatedPayloadBytes + delta);
-        }
-    }
-
-    private void SetEstimatedPayloadBytes(long value)
-    {
-        lock (_estimatedPayloadBytesGate)
-        {
-            _estimatedPayloadBytes = value;
-        }
-    }
-
-    private long CalculatePayloadBytes() => Directory.Exists(_imageRootPath)
-        ? Directory
-            .EnumerateFiles(_imageRootPath, "*", SearchOption.TopDirectoryOnly)
-            .Where(static path => IsPayloadPath(path))
-            .Sum(static path => TryGetLength(path))
-        : 0;
-
-    private async Task EnforceCapCoreAsync(CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        Dictionary<string, string> manifestByActivePayload = new(StringComparer.OrdinalIgnoreCase);
-        foreach (string manifestPath in Directory.EnumerateFiles(_imageRootPath, "*.meta", SearchOption.TopDirectoryOnly))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            string prefix = Path.GetFileNameWithoutExtension(manifestPath);
-            GitHubImageCacheManifest manifest = await ReadManifestAsync(prefix, cancellationToken).ConfigureAwait(false);
-            string? payloadPath = ResolvePayloadPath(prefix, manifest);
-            if (payloadPath is not null && File.Exists(payloadPath))
-            {
-                manifestByActivePayload[payloadPath] = manifestPath;
-            }
-            else
-            {
-                TryDelete(manifestPath);
-            }
-        }
-
-        List<FileInfo> files = Directory
-            .EnumerateFiles(_imageRootPath)
-            .Where(static path => IsPayloadPath(path))
-            .Select(static path => new FileInfo(path))
-            .OrderBy(static file => file.LastAccessTimeUtc)
-            .ToList();
-        long totalBytes = files.Sum(static file => file.Length);
-
-        // Superseded or interrupted generations have no active manifest. Reclaim them before
-        // evicting a current entry, but only when the cache is over its soft cap so a control
-        // still finishing an old file load is not disturbed during ordinary refresh.
-        foreach (FileInfo file in files.Where(file => !manifestByActivePayload.ContainsKey(file.FullName)))
-        {
-            if (totalBytes <= _policy.AvatarImageSoftCapBytes)
-            {
-                break;
-            }
-
-            totalBytes -= file.Length;
-            TryDelete(file.FullName);
-            await Task.Yield();
-        }
-
-        int activeEntryCount = manifestByActivePayload.Count;
-        foreach (FileInfo file in files)
-        {
-            if (totalBytes <= _policy.AvatarImageSoftCapBytes || activeEntryCount <= 1)
-            {
-                break;
-            }
-
-            if (!manifestByActivePayload.TryGetValue(file.FullName, out string? manifestPath))
-            {
-                continue;
-            }
-
-            totalBytes -= file.Length;
-            TryDelete(file.FullName);
-            TryDelete(manifestPath);
-            activeEntryCount--;
-            await Task.Yield();
+            _gates.Release(acquiredGates);
         }
     }
 
@@ -838,10 +442,10 @@ public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
         string cacheKey,
         CancellationToken cancellationToken)
     {
-        string prefix = HashKey(cacheKey);
-        GitHubImageCacheManifest manifest = await ReadManifestAsync(prefix, cancellationToken)
+        string prefix = GitHubImageCacheFiles.HashKey(cacheKey);
+        GitHubImageCacheManifest manifest = await _manifests.ReadAsync(prefix, cancellationToken)
             .ConfigureAwait(false);
-        string? filePath = ResolvePayloadPath(prefix, manifest);
+        string? filePath = _manifests.ResolvePayloadPath(prefix, manifest);
         if (filePath is null || !File.Exists(filePath))
         {
             return null;
@@ -867,255 +471,4 @@ public sealed class GitHubImageCacheStore : IGitHubImageCacheStore
             metadata.ETag,
             metadata.LastModified,
             metadata.ContentType);
-
-    private async Task<GitHubImageCacheManifest> ReadManifestAsync(
-        string prefix,
-        CancellationToken cancellationToken)
-    {
-        string path = Path.Combine(_imageRootPath, $"{prefix}.meta");
-        if (!File.Exists(path))
-        {
-            return new GitHubImageCacheManifest(null, new GitHubImageCacheWriteMetadata(null, null, null));
-        }
-
-        try
-        {
-            string[] lines = await File.ReadAllLinesAsync(path, cancellationToken).ConfigureAwait(false);
-            if (string.Equals(lines.ElementAtOrDefault(0), "v3", StringComparison.Ordinal))
-            {
-                string? payloadFileName = Decode(lines.ElementAtOrDefault(1));
-                return new GitHubImageCacheManifest(
-                    IsSafePayloadFileName(prefix, payloadFileName) ? payloadFileName : null,
-                    new GitHubImageCacheWriteMetadata(
-                        Decode(lines.ElementAtOrDefault(2)),
-                        DateTimeOffset.TryParse(lines.ElementAtOrDefault(3), out DateTimeOffset modified) ? modified : null,
-                        Decode(lines.ElementAtOrDefault(4))),
-                    Decode(lines.ElementAtOrDefault(5)));
-            }
-
-            if (string.Equals(lines.ElementAtOrDefault(0), "v2", StringComparison.Ordinal))
-            {
-                string? payloadFileName = Decode(lines.ElementAtOrDefault(1));
-                return new GitHubImageCacheManifest(
-                    IsSafePayloadFileName(prefix, payloadFileName) ? payloadFileName : null,
-                    new GitHubImageCacheWriteMetadata(
-                        Decode(lines.ElementAtOrDefault(2)),
-                        DateTimeOffset.TryParse(lines.ElementAtOrDefault(3), out DateTimeOffset modified) ? modified : null,
-                        Decode(lines.ElementAtOrDefault(4))));
-            }
-
-            // Legacy v1 sidecars did not include a payload pointer. Keep them readable while
-            // new writes move to generation manifests.
-            return new GitHubImageCacheManifest(
-                null,
-                new GitHubImageCacheWriteMetadata(
-                    Decode(lines.ElementAtOrDefault(0)),
-                    DateTimeOffset.TryParse(lines.ElementAtOrDefault(1), out DateTimeOffset legacyModified) ? legacyModified : null,
-                    Decode(lines.ElementAtOrDefault(2))));
-        }
-        catch (IOException)
-        {
-            return new GitHubImageCacheManifest(null, new GitHubImageCacheWriteMetadata(null, null, null));
-        }
-        catch (FormatException)
-        {
-            return new GitHubImageCacheManifest(null, new GitHubImageCacheWriteMetadata(null, null, null));
-        }
-    }
-
-    private static async Task<GitHubImageCacheManifest> ReadManifestStrictAsync(
-        string manifestPath,
-        CancellationToken cancellationToken)
-    {
-        string[] lines = await File.ReadAllLinesAsync(manifestPath, cancellationToken).ConfigureAwait(false);
-        if (string.Equals(lines.ElementAtOrDefault(0), "v3", StringComparison.Ordinal))
-        {
-            if (lines.Length < 6)
-            {
-                throw new InvalidDataException("The partitioned image manifest is incomplete.");
-            }
-
-            return new GitHubImageCacheManifest(
-                Decode(lines[1]),
-                new GitHubImageCacheWriteMetadata(
-                    Decode(lines[2]),
-                    DateTimeOffset.TryParse(lines[3], out DateTimeOffset modified) ? modified : null,
-                    Decode(lines[4])),
-                Decode(lines[5]));
-        }
-
-        if (string.Equals(lines.ElementAtOrDefault(0), "v2", StringComparison.Ordinal))
-        {
-            if (lines.Length < 5)
-            {
-                throw new InvalidDataException("The image manifest is incomplete.");
-            }
-
-            return new GitHubImageCacheManifest(
-                Decode(lines[1]),
-                new GitHubImageCacheWriteMetadata(
-                    Decode(lines[2]),
-                    DateTimeOffset.TryParse(lines[3], out DateTimeOffset modified) ? modified : null,
-                    Decode(lines[4])));
-        }
-
-        if (lines.Length < 3)
-        {
-            throw new InvalidDataException("The legacy image manifest is incomplete.");
-        }
-
-        return new GitHubImageCacheManifest(
-            null,
-            new GitHubImageCacheWriteMetadata(
-                Decode(lines[0]),
-                DateTimeOffset.TryParse(lines[1], out DateTimeOffset legacyModified) ? legacyModified : null,
-                Decode(lines[2])));
-    }
-
-    private async Task WriteManifestAtomicallyAsync(
-        string prefix,
-        GitHubImageCacheManifest manifest,
-        CancellationToken cancellationToken)
-    {
-        string path = Path.Combine(_imageRootPath, $"{prefix}.meta");
-        string temporaryPath = Path.Combine(_imageRootPath, $"{prefix}.{Guid.NewGuid():N}.meta.tmp");
-        string[] lines =
-        [
-            "v3",
-            Encode(manifest.PayloadFileName),
-            Encode(manifest.Metadata.ETag),
-            manifest.Metadata.LastModified?.ToString("O") ?? string.Empty,
-            Encode(manifest.Metadata.ContentType),
-            Encode(manifest.AccountPartition)
-        ];
-        try
-        {
-            await using (FileStream stream = new(
-                temporaryPath,
-                FileMode.CreateNew,
-                FileAccess.Write,
-                FileShare.None,
-                4096,
-                FileOptions.Asynchronous | FileOptions.SequentialScan))
-            await using (StreamWriter writer = new(stream, Encoding.UTF8))
-            {
-                foreach (string line in lines)
-                {
-                    await writer.WriteLineAsync(line.AsMemory(), cancellationToken).ConfigureAwait(false);
-                }
-
-                await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
-                await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
-            }
-
-            cancellationToken.ThrowIfCancellationRequested();
-            File.Move(temporaryPath, path, overwrite: true);
-        }
-        finally
-        {
-            TryDelete(temporaryPath);
-        }
-    }
-
-    private static bool IsPayloadPath(string path) =>
-        !path.EndsWith(".meta", StringComparison.OrdinalIgnoreCase) &&
-        !path.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase);
-
-    private string? ResolvePayloadPath(string prefix, GitHubImageCacheManifest manifest)
-    {
-        if (IsSafePayloadFileName(prefix, manifest.PayloadFileName))
-        {
-            return Path.Combine(_imageRootPath, manifest.PayloadFileName!);
-        }
-
-        string stablePath = Path.Combine(_imageRootPath, $"{prefix}.img");
-        if (File.Exists(stablePath))
-        {
-            return stablePath;
-        }
-
-        return Directory
-            .EnumerateFiles(_imageRootPath, $"{prefix}.*", SearchOption.TopDirectoryOnly)
-            .FirstOrDefault(path =>
-                IsPayloadPath(path) &&
-                string.Equals(Path.GetFileNameWithoutExtension(path), prefix, StringComparison.OrdinalIgnoreCase));
-    }
-
-    private static bool IsSafePayloadFileName(string prefix, string? payloadFileName) =>
-        !string.IsNullOrWhiteSpace(payloadFileName) &&
-        string.Equals(Path.GetFileName(payloadFileName), payloadFileName, StringComparison.Ordinal) &&
-        payloadFileName.StartsWith(prefix + ".", StringComparison.OrdinalIgnoreCase) &&
-        payloadFileName.EndsWith(".img", StringComparison.OrdinalIgnoreCase);
-
-    private static string Encode(string? value) => string.IsNullOrWhiteSpace(value)
-        ? string.Empty
-        : Convert.ToBase64String(Encoding.UTF8.GetBytes(value));
-
-    private static string? Decode(string? value) => string.IsNullOrWhiteSpace(value)
-        ? null
-        : Encoding.UTF8.GetString(Convert.FromBase64String(value));
-
-    private static string? ExtractAccountPartition(string cacheKey)
-    {
-        int separator = cacheKey.IndexOf(':');
-        return separator > 0 ? cacheKey[..separator] : null;
-    }
-
-    private static void TryDeleteStrict(string path, List<CacheClearResidual> residuals)
-    {
-        try
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-
-            if (File.Exists(path))
-            {
-                residuals.Add(new CacheClearResidual(path, "The file still exists after deletion."));
-            }
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            residuals.Add(new CacheClearResidual(
-                path,
-                $"{exception.GetType().Name}: {exception.Message}"));
-        }
-    }
-
-    private static string NormalizeExtension(string extension)
-    {
-        if (string.IsNullOrWhiteSpace(extension))
-        {
-            return ".img";
-        }
-
-        string normalized = extension.Trim();
-        if (!normalized.StartsWith(".", StringComparison.Ordinal))
-        {
-            normalized = "." + normalized;
-        }
-
-        return normalized.Length > 12 ? ".img" : normalized.ToLowerInvariant();
-    }
-
-    private static string HashKey(string cacheKey)
-    {
-        byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(cacheKey));
-        return Convert.ToHexString(hash).ToLowerInvariant();
-    }
-
-    private static void TryDelete(string path)
-    {
-        try
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-        catch
-        {
-        }
-    }
 }
