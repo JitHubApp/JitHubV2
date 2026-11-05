@@ -214,13 +214,27 @@ public static class MathMarkdownExtensions
                 .ProcessOnWorkerAsync(request, _options, context.CancellationToken)
                 .ConfigureAwait(false);
             context.CancellationToken.ThrowIfCancellationRequested();
+            AddResult(context, content, original, displayMode, request.ContentRange, result);
+        }
 
+        /// <summary>
+        /// Adds an accepted formula's scene, or the fallback source and
+        /// diagnostic the processor chose for a rejected one.
+        /// </summary>
+        private void AddResult(
+            MarkdownExtensionContext context,
+            MarkdownContentBuilder content,
+            string original,
+            MathFormulaDisplayMode displayMode,
+            MathSourceRange contentRange,
+            MathFormulaResult result)
+        {
             if (!result.IsAccepted || result.Scene is null || result.Accessibility is null)
             {
                 MathFormulaDiagnostic diagnostic = result.Diagnostic ?? new MathFormulaDiagnostic(
                     "MATH199",
                     MathStringResolver.GetEnglishString(MathStringKeys.ProcessingFailed),
-                    request.ContentRange);
+                    contentRange);
                 AddFallback(
                     context,
                     content,
