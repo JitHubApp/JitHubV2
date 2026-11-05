@@ -374,38 +374,41 @@ public sealed class AutomationHarnessSourceContractTests
     [Fact]
     public void MarkdownImageTerminalFailureRelayoutsOnlyUnconstrainedInlineFallbacks()
     {
-        string source = File.ReadAllText(Path.Combine(
+        string publisher = ReadImageBoxOwnerSource("ImageFailurePublisher.cs");
+        string placeholder = ReadImageBoxOwnerSource("ImagePlaceholderLayout.cs");
+        int publishFailure = publisher.IndexOf("internal void PublishFailure(", StringComparison.Ordinal);
+
+        Assert.True(publishFailure >= 0);
+        string failureImplementation = publisher[publishFailure..];
+        Assert.Contains("_placeholder.UpdateForFailure();", failureImplementation, StringComparison.Ordinal);
+        Assert.Contains("layoutInvalidated: _placeholder.ShouldExpandInlineFailure", failureImplementation, StringComparison.Ordinal);
+        string updateForFailure = Regex.Match(placeholder,
+            @"internal void UpdateForFailure\(\)[\s\S]*?\n    }").Value;
+        Assert.Contains("UpdatePlaceholder(maxWidth, _measure.ImageHeight)", updateForFailure, StringComparison.Ordinal);
+        Assert.Contains("_requestedWidth is null", placeholder, StringComparison.Ordinal);
+        Assert.Contains("_requestedHeight is null", placeholder, StringComparison.Ordinal);
+    }
+
+    // ImageBox composes its placeholder layout, painter, measurer and failure
+    // publisher; each guarded behavior lives in the owner named here.
+    private static string ReadImageBoxOwnerSource(string fileName) =>
+        File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "MarkdownRenderer",
             "src",
             "MarkdownRenderer",
             "Layout",
             "Boxes",
-            "ImageBox.cs"));
-        int publishFailure = source.IndexOf("private void PublishFailure", StringComparison.Ordinal);
-
-        Assert.True(publishFailure >= 0);
-        string failureImplementation = source[publishFailure..];
-        Assert.Contains("UpdatePlaceholder(maxWidth, _measure.ImageHeight)", failureImplementation, StringComparison.Ordinal);
-        Assert.Contains("layoutInvalidated: ShouldExpandInlineFailure", failureImplementation, StringComparison.Ordinal);
-        Assert.Contains("_requestedWidth is null", source, StringComparison.Ordinal);
-        Assert.Contains("_requestedHeight is null", source, StringComparison.Ordinal);
-    }
+            fileName));
 
     [Fact]
     public void MarkdownImagePlaceholderUsesThemeTypographyAndPaintsInlineAltText()
     {
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "src",
-            "MarkdownRenderer",
-            "Layout",
-            "Boxes",
-            "ImageBox.cs"));
+        string painter = ReadImageBoxOwnerSource("ImagePainter.cs");
+        string source = ReadImageBoxOwnerSource("ImagePlaceholderLayout.cs");
 
-        Assert.Contains("PaintPlaceholder(ds, destination);", source, StringComparison.Ordinal);
-        Assert.Contains("EnsureLoading();", source, StringComparison.Ordinal);
+        Assert.Contains("PaintPlaceholder(ds, destination);", painter, StringComparison.Ordinal);
+        Assert.Contains("EnsureLoading();", painter, StringComparison.Ordinal);
         string sourceLoader = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(), "MarkdownRenderer", "src", "MarkdownRenderer", "Layout", "Boxes",
             "ImageSourceLoader.cs"));
@@ -418,7 +421,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("CanvasWordWrapping.NoWrap", source, StringComparison.Ordinal);
         Assert.Contains("GetStyle(MarkdownElementKeys.ImageCaption)", source, StringComparison.Ordinal);
         string placeholder = Regex.Match(source,
-            @"private void UpdatePlaceholder\([\s\S]*?private bool ShouldExpandInlineFailure").Value;
+            @"internal void UpdatePlaceholder\([\s\S]*?\n    }").Value;
         Assert.NotEmpty(placeholder);
         Assert.Matches(
             @"SharedCanvasTextFormatCache\.Acquire\(\s*style,\s*compactInlineFailure \? CanvasWordWrapping\.NoWrap : CanvasWordWrapping\.Wrap,\s*CanvasHorizontalAlignment\.Center,\s*Context\.FlowDirection,\s*Context\.Language,\s*true,\s*CanvasVerticalAlignment\.Center\)",
@@ -431,6 +434,7 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("format.FontFamily = key.FontFamily", formatSource, StringComparison.Ordinal);
         Assert.Contains("format.FontSize = key.FontSize", formatSource, StringComparison.Ordinal);
         Assert.DoesNotContain("FontFamily = \"Segoe UI Variable\"", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("FontFamily = \"Segoe UI Variable\"", painter, StringComparison.Ordinal);
     }
 
     [Fact]
