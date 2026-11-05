@@ -141,19 +141,60 @@ internal static class AdmittedImageContentReader
             int total = checked(length + 1);
             ThrowIfBeyondLimits(total, maximumBytes, admission);
 
-            string temporaryPath = Path.Combine(Path.GetTempPath(), $"jithub-image-{Guid.NewGuid():N}.tmp");
-            // BufferSize=1 disables FileStream's private write buffer. Otherwise
-            // small writes could retain admitted payload bytes while final admission waits.
-            await using FileStream spool = new(
-                temporaryPath,
-                FileMode.CreateNew,
-                FileAccess.ReadWrite,
-                FileShare.None,
-                1,
-                FileOptions.Asynchronous | FileOptions.DeleteOnClose);
+            await using FileStream spool = CreateSpool();
             await spool.WriteAsync(buffer, cancellationToken).ConfigureAwait(false);
             await spool.WriteAsync(one, cancellationToken).ConfigureAwait(false);
+            total = await SpoolRemainderAsync(input, spool, buffer, total, maximumBytes, admission, cancellationToken)
+                .ConfigureAwait(false);
 
+            // Do not keep scratch payloads alive while waiting for exact admission.
+            buffer = Array.Empty<byte>();
+            one = Array.Empty<byte>();
+            initialLease.Dispose();
+            initialLease = null;
+            return await ReadSpoolAdmittedAsync(spool, total, admission, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            // The reader task may remain referenced after completion. Clear the
+            // scratch fields before releasing their reservation so a completed
+            // or faulted async state machine cannot keep source bytes unaccounted.
+            buffer = Array.Empty<byte>();
+            one = Array.Empty<byte>();
+            initialLease?.Dispose();
+        }
+    }
+
+    private static FileStream CreateSpool()
+    {
+        string temporaryPath = Path.Combine(Path.GetTempPath(), $"jithub-image-{Guid.NewGuid():N}.tmp");
+        // BufferSize=1 disables FileStream's private write buffer. Otherwise
+        // small writes could retain admitted payload bytes while final admission waits.
+        return new FileStream(
+            temporaryPath,
+            FileMode.CreateNew,
+            FileAccess.ReadWrite,
+            FileShare.None,
+            1,
+            FileOptions.Asynchronous | FileOptions.DeleteOnClose);
+    }
+
+    /// <summary>
+    /// Copies the rest of <paramref name="input"/> to <paramref name="spool"/> through the
+    /// admitted scratch <paramref name="buffer"/>, failing as soon as the total passes a limit.
+    /// </summary>
+    /// <returns>The total byte count spooled so far plus the bytes copied here.</returns>
+    private static async Task<int> SpoolRemainderAsync(
+        Stream input,
+        FileStream spool,
+        byte[] buffer,
+        int total,
+        int maximumBytes,
+        IMarkdownImageSourceByteAdmission admission,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
             while (true)
             {
                 long effectiveMaximum = Math.Min(maximumBytes, admission.MaximumReservationBytes);
@@ -179,46 +220,45 @@ internal static class AdmittedImageContentReader
                 }
 
                 if (buffered == 0)
-                    break;
+                    return total;
                 await spool.WriteAsync(buffer.AsMemory(0, buffered), cancellationToken).ConfigureAwait(false);
                 total += buffered;
                 if (reachedEof)
-                    break;
-            }
-
-            // Do not keep scratch payloads alive while waiting for exact admission.
-            buffer = Array.Empty<byte>();
-            one = Array.Empty<byte>();
-            initialLease.Dispose();
-            initialLease = null;
-            IDisposable? finalLease = await admission.ReserveAsync(total, cancellationToken)
-                .ConfigureAwait(false);
-            byte[] bytes = Array.Empty<byte>();
-            try
-            {
-                bytes = new byte[total];
-                spool.Position = 0;
-                await spool.ReadExactlyAsync(bytes, cancellationToken).ConfigureAwait(false);
-                byte[] result = bytes;
-                bytes = Array.Empty<byte>();
-                IDisposable transferred = finalLease;
-                finalLease = null;
-                return (result, transferred);
-            }
-            finally
-            {
-                bytes = Array.Empty<byte>();
-                finalLease?.Dispose();
+                    return total;
             }
         }
         finally
         {
-            // The reader task may remain referenced after completion. Clear the
-            // scratch fields before releasing their reservation so a completed
-            // or faulted async state machine cannot keep source bytes unaccounted.
+            // Like the caller, drop the scratch reference before its reservation ends.
             buffer = Array.Empty<byte>();
-            one = Array.Empty<byte>();
-            initialLease?.Dispose();
+        }
+    }
+
+    /// <summary>Reserves exactly <paramref name="total"/> bytes, then reads the spool into one array.</summary>
+    private static async Task<(byte[] Bytes, IDisposable Lease)> ReadSpoolAdmittedAsync(
+        FileStream spool,
+        int total,
+        IMarkdownImageSourceByteAdmission admission,
+        CancellationToken cancellationToken)
+    {
+        IDisposable? finalLease = await admission.ReserveAsync(total, cancellationToken)
+            .ConfigureAwait(false);
+        byte[] bytes = Array.Empty<byte>();
+        try
+        {
+            bytes = new byte[total];
+            spool.Position = 0;
+            await spool.ReadExactlyAsync(bytes, cancellationToken).ConfigureAwait(false);
+            byte[] result = bytes;
+            bytes = Array.Empty<byte>();
+            IDisposable transferred = finalLease;
+            finalLease = null;
+            return (result, transferred);
+        }
+        finally
+        {
+            bytes = Array.Empty<byte>();
+            finalLease?.Dispose();
         }
     }
 

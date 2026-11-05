@@ -53,14 +53,9 @@ internal static partial class MarkdownImageFallbackPipeline
         }
         finally
         {
-            firstCancellation?.RequestCancellation();
-            secondCancellation?.RequestCancellation();
-            Task firstRetirement = RetireCandidateAsync(firstTask ?? Task.FromResult<T?>(null), selected, disposeAbandonedResult,
-                reportFailure, 0, firstCancellation);
-            Task secondRetirement = secondCancellation is null ? Task.CompletedTask :
-                RetireCandidateAsync(secondTask ?? Task.FromResult<T?>(null), selected, disposeAbandonedResult,
-                    reportFailure, 1, secondCancellation);
-            _ = CompleteRetirementAsync(retirement, firstRetirement, secondRetirement);
+            RetireCandidates(
+                retirement, firstTask, firstCancellation, secondTask, secondCancellation,
+                selected, disposeAbandonedResult, reportFailure);
         }
     }
 
@@ -143,18 +138,38 @@ internal static partial class MarkdownImageFallbackPipeline
         finally
         {
             delayCancellation.Cancel();
-            firstCancellation?.RequestCancellation();
-            secondCancellation?.RequestCancellation();
-            // The winning result must not wait for an unresponsive loser.
-            // Keep both candidate sources alive until their registrations and
-            // operations retire, observing any late failures in the background.
-            Task firstRetirement = RetireCandidateAsync(firstTask ?? Task.FromResult<T?>(null), selected, disposeAbandonedResult,
-                reportFailure, 0, firstCancellation);
-            Task secondRetirement = secondCancellation is null ? Task.CompletedTask :
-                RetireCandidateAsync(secondTask ?? Task.FromResult<T?>(null), selected, disposeAbandonedResult,
-                    reportFailure, 1, secondCancellation);
-            _ = CompleteRetirementAsync(retirement, firstRetirement, secondRetirement);
+            RetireCandidates(
+                retirement, firstTask, firstCancellation, secondTask, secondCancellation,
+                selected, disposeAbandonedResult, reportFailure);
         }
+    }
+
+    /// <summary>
+    /// Cancels both candidates and retires them in the background, keeping the
+    /// selected result and disposing any other.
+    /// </summary>
+    private static void RetireCandidates<T>(
+        TaskCompletionSource? retirement,
+        Task<T?>? firstTask,
+        CandidateCancellation? firstCancellation,
+        Task<T?>? secondTask,
+        CandidateCancellation? secondCancellation,
+        Task<T?>? selected,
+        Action<T>? disposeAbandonedResult,
+        Action<int, Exception> reportFailure)
+        where T : class
+    {
+        firstCancellation?.RequestCancellation();
+        secondCancellation?.RequestCancellation();
+        // The winning result must not wait for an unresponsive loser.
+        // Keep both candidate sources alive until their registrations and
+        // operations retire, observing any late failures in the background.
+        Task firstRetirement = RetireCandidateAsync(firstTask ?? Task.FromResult<T?>(null), selected, disposeAbandonedResult,
+            reportFailure, 0, firstCancellation);
+        Task secondRetirement = secondCancellation is null ? Task.CompletedTask :
+            RetireCandidateAsync(secondTask ?? Task.FromResult<T?>(null), selected, disposeAbandonedResult,
+                reportFailure, 1, secondCancellation);
+        _ = CompleteRetirementAsync(retirement, firstRetirement, secondRetirement);
     }
 
     private static TaskCompletionSource? RegisterRetirement(Action<Task>? observer)
