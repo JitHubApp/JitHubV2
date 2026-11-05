@@ -8,7 +8,7 @@ namespace MarkdownRenderer.Svg.Resvg.Tests;
 
 public sealed class SvgWorkerPolicyTraceTests
 {
-    // This test stays one method of about 100 lines: it scripts one decision's
+    // This method stays whole because it scripts one decision's
     // five-phase lifecycle through a single trace and then asserts each emitted
     // event against the phase that produced it, so its records and assertions
     // read as one sequence.
