@@ -1272,7 +1272,6 @@ MarkdownRenderer.MarkdownProfile.Features.get -> System.Collections.Generic.IRea
 MarkdownRenderer.MarkdownProfile.Id.get -> string!
 MarkdownRenderer.MarkdownProfile.Specification.get -> string?
 MarkdownRenderer.MarkdownProfiles
-MarkdownRenderer.MarkdownRendererRuntime
 MarkdownRenderer.Performance.IMarkdownImageSourceWorkTracker
 MarkdownRenderer.Performance.IMarkdownImageSourceWorkTracker.TrackWork(System.Threading.Tasks.Task! completion) -> void
 MarkdownRenderer.Performance.IMarkdownLeasedImageResolver
@@ -1756,9 +1755,6 @@ static MarkdownRenderer.MarkdownProfiles.CommonMark.get -> MarkdownRenderer.Mark
 static MarkdownRenderer.MarkdownProfiles.GfmStrict.get -> MarkdownRenderer.MarkdownProfile!
 static MarkdownRenderer.MarkdownProfiles.GitHubReadme.get -> MarkdownRenderer.MarkdownProfile!
 static MarkdownRenderer.MarkdownProfiles.MarkdownExtra.get -> MarkdownRenderer.MarkdownProfile!
-static MarkdownRenderer.MarkdownRendererRuntime.BeginShutdown() -> void
-static MarkdownRenderer.MarkdownRendererRuntime.IsShutdownInProgress.get -> bool
-static MarkdownRenderer.MarkdownRendererRuntime.Shutdown(System.TimeSpan? timeout = null) -> void
 static MarkdownRenderer.Performance.MarkdownPerformanceOptions.operator !=(MarkdownRenderer.Performance.MarkdownPerformanceOptions? left, MarkdownRenderer.Performance.MarkdownPerformanceOptions? right) -> bool
 static MarkdownRenderer.Performance.MarkdownPerformanceOptions.operator ==(MarkdownRenderer.Performance.MarkdownPerformanceOptions? left, MarkdownRenderer.Performance.MarkdownPerformanceOptions? right) -> bool
 static MarkdownRenderer.Performance.MarkdownPerformanceOptions.Progressive.get -> MarkdownRenderer.Performance.MarkdownPerformanceOptions!
