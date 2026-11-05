@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using System.Security.Cryptography;
 using System.Text;
 using System.Xml;
@@ -11,11 +12,10 @@ namespace MarkdownRenderer.Svg.Resvg.Internal;
 /// </summary>
 internal static class SvgColorSchemeUsage
 {
-    internal static readonly HashSet<string> CurrentColorPresentationAttributes = new(StringComparer.OrdinalIgnoreCase)
-    {
+    private static readonly FrozenSet<string> CurrentColorPresentationAttributes = FrozenSet.Create(
+        StringComparer.OrdinalIgnoreCase,
         "color", "fill", "flood-color", "lighting-color", "stop-color", "stroke",
-        "text-decoration", "text-decoration-color",
-    };
+        "text-decoration", "text-decoration-color");
 
     internal static bool IsCurrentColorPresentationAttribute(string attributeName) =>
         CurrentColorPresentationAttributes.Contains(attributeName);

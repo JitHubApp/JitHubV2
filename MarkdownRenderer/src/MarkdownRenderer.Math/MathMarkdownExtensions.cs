@@ -33,6 +33,7 @@ public static class MathMarkdownExtensions
     {
         private readonly MathProcessingOptions _options;
         private readonly MathFormulaProcessor _processor;
+        private readonly MathHostCallbackGate _callbackGate = new();
         private readonly IMathStringProvider? _strings;
         private readonly string _languageTag;
 
@@ -46,7 +47,7 @@ public static class MathMarkdownExtensions
             CultureInfo localizationCulture = MathStringResolver.SnapshotCulture(
                 options.LocalizationCulture);
             _languageTag = MathStringResolver.GetLanguageTag(localizationCulture);
-            _processor = new MathFormulaProcessor(accessibilityFormatter, strings);
+            _processor = new MathFormulaProcessor(accessibilityFormatter, strings, _callbackGate);
         }
 
         public string Id => MathFeature.PackageId;
@@ -171,18 +172,14 @@ public static class MathMarkdownExtensions
             string original = context.Node.Literal ?? string.Empty;
             if (!TryReadContentRange(context.Node, original.Length, out int contentOffset, out int contentLength))
             {
-                string diagnosticMessage = await ResolveDiagnosticAsync(
-                    MathStringKeys.ProcessingFailed,
-                    context.CancellationToken).ConfigureAwait(false);
-                context.CancellationToken.ThrowIfCancellationRequested();
-                AddFallback(
+                await AddLocalizedFallbackAsync(
                     context,
                     content,
                     original,
                     displayMode,
+                    MathStringKeys.ProcessingFailed,
                     "MATH199",
-                    diagnosticMessage,
-                    context.Node.SourceSpan);
+                    context.Node.SourceSpan).ConfigureAwait(false);
                 return;
             }
 
@@ -191,18 +188,14 @@ public static class MathMarkdownExtensions
                 !string.Equals(closed, "true", StringComparison.Ordinal))
             {
                 int delimiterLength = System.Math.Min(2, context.Node.SourceSpan.Length);
-                string diagnosticMessage = await ResolveDiagnosticAsync(
-                    MathStringKeys.UnmatchedDisplayDelimiter,
-                    context.CancellationToken).ConfigureAwait(false);
-                context.CancellationToken.ThrowIfCancellationRequested();
-                AddFallback(
+                await AddLocalizedFallbackAsync(
                     context,
                     content,
                     original,
                     displayMode,
+                    MathStringKeys.UnmatchedDisplayDelimiter,
                     "MATH002",
-                    diagnosticMessage,
-                    new SourceSpan(context.Node.SourceSpan.Start, delimiterLength));
+                    new SourceSpan(context.Node.SourceSpan.Start, delimiterLength)).ConfigureAwait(false);
                 return;
             }
 
@@ -221,13 +214,27 @@ public static class MathMarkdownExtensions
                 .ProcessOnWorkerAsync(request, _options, context.CancellationToken)
                 .ConfigureAwait(false);
             context.CancellationToken.ThrowIfCancellationRequested();
+            AddResult(context, content, original, displayMode, request.ContentRange, result);
+        }
 
+        /// <summary>
+        /// Adds an accepted formula's scene, or the fallback source and
+        /// diagnostic the processor chose for a rejected one.
+        /// </summary>
+        private void AddResult(
+            MarkdownExtensionContext context,
+            MarkdownContentBuilder content,
+            string original,
+            MathFormulaDisplayMode displayMode,
+            MathSourceRange contentRange,
+            MathFormulaResult result)
+        {
             if (!result.IsAccepted || result.Scene is null || result.Accessibility is null)
             {
                 MathFormulaDiagnostic diagnostic = result.Diagnostic ?? new MathFormulaDiagnostic(
                     "MATH199",
                     MathStringResolver.GetEnglishString(MathStringKeys.ProcessingFailed),
-                    request.ContentRange);
+                    contentRange);
                 AddFallback(
                     context,
                     content,
@@ -256,6 +263,29 @@ public static class MathMarkdownExtensions
                 accessibility.CopyText);
         }
 
+        private async ValueTask AddLocalizedFallbackAsync(
+            MarkdownExtensionContext context,
+            MarkdownContentBuilder content,
+            string original,
+            MathFormulaDisplayMode displayMode,
+            string stringKey,
+            string diagnosticCode,
+            SourceSpan diagnosticSpan)
+        {
+            string diagnosticMessage = await ResolveDiagnosticAsync(
+                stringKey,
+                context.CancellationToken).ConfigureAwait(false);
+            context.CancellationToken.ThrowIfCancellationRequested();
+            AddFallback(
+                context,
+                content,
+                original,
+                displayMode,
+                diagnosticCode,
+                diagnosticMessage,
+                diagnosticSpan);
+        }
+
         private async ValueTask<string> ResolveDiagnosticAsync(
             string stringKey,
             CancellationToken cancellationToken)
@@ -274,7 +304,7 @@ public static class MathMarkdownExtensions
 
             try
             {
-                Task<string> callbackTask = await MathHostCallbackGate.StartAsync(
+                Task<string> callbackTask = await _callbackGate.StartAsync(
                     token =>
                     {
                         token.ThrowIfCancellationRequested();

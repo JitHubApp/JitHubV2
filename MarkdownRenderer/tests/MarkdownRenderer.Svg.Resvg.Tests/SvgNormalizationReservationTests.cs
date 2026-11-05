@@ -18,9 +18,9 @@ public sealed class SvgNormalizationReservationTests
     public async Task NormalizationGrowsReservationBeforeFirstOutputAndShrinksAfterSeal()
     {
         var options = new ResvgMarkdownSvgRendererOptions(maxSourceBytes: 512);
-        var owner = new SvgProcessSnapshotAdmission(capacityBytes: 128 * 1024, visibleHeadroomBytes: 16 * 1024);
+        var owner = new SvgSnapshotAdmission(capacityBytes: 128 * 1024, visibleHeadroomBytes: 16 * 1024);
         Assert.True(owner.TryReserve(options.MaxSourceBytes, MarkdownSvgRenderPriority.Visible,
-            out SvgProcessSnapshotAdmission.Lease? reservation, out _));
+            out SvgSnapshotAdmission.Lease? reservation, out _));
         long requiredPeak = 2L * options.MaxSourceBytes + SvgSourceBuffer.SegmentSize;
         long reservationAtFirstOutput = 0;
         int observerCalls = 0;
@@ -57,9 +57,9 @@ public sealed class SvgNormalizationReservationTests
     public async Task NormalizationCapacityDenialIsTypedBeforeAnyOutputSegmentAndReleasesReservation()
     {
         var options = new ResvgMarkdownSvgRendererOptions(maxSourceBytes: 512);
-        var owner = new SvgProcessSnapshotAdmission(capacityBytes: 4096, visibleHeadroomBytes: 512);
+        var owner = new SvgSnapshotAdmission(capacityBytes: 4096, visibleHeadroomBytes: 512);
         Assert.True(owner.TryReserve(options.MaxSourceBytes, MarkdownSvgRenderPriority.Visible,
-            out SvgProcessSnapshotAdmission.Lease? reservation, out long initialVersion));
+            out SvgSnapshotAdmission.Lease? reservation, out long initialVersion));
         int observerCalls = 0;
         long requiredPeak = 2L * options.MaxSourceBytes + SvgSourceBuffer.SegmentSize;
 
@@ -85,9 +85,9 @@ public sealed class SvgNormalizationReservationTests
         var options = new ResvgMarkdownSvgRendererOptions(maxSourceBytes: 512);
         // Overscan's available tier is smaller than the normalization peak,
         // while visible demand can fit the same peak.
-        var owner = new SvgProcessSnapshotAdmission(capacityBytes: 96 * 1024, visibleHeadroomBytes: 32 * 1024);
+        var owner = new SvgSnapshotAdmission(capacityBytes: 96 * 1024, visibleHeadroomBytes: 32 * 1024);
         Assert.True(owner.TryReserve(options.MaxSourceBytes, MarkdownSvgRenderPriority.Overscan,
-            out SvgProcessSnapshotAdmission.Lease? reservation, out _));
+            out SvgSnapshotAdmission.Lease? reservation, out _));
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using var memory = new AdmissionObservingMemoryManager(
             CreateLatin1Svg(),
@@ -119,9 +119,9 @@ public sealed class SvgNormalizationReservationTests
     public async Task CancellationAtFirstNormalizedOutputAllocationReturnsPeakReservation()
     {
         var options = new ResvgMarkdownSvgRendererOptions(maxSourceBytes: 512);
-        var owner = new SvgProcessSnapshotAdmission(capacityBytes: 128 * 1024, visibleHeadroomBytes: 16 * 1024);
+        var owner = new SvgSnapshotAdmission(capacityBytes: 128 * 1024, visibleHeadroomBytes: 16 * 1024);
         Assert.True(owner.TryReserve(options.MaxSourceBytes, MarkdownSvgRenderPriority.Visible,
-            out SvgProcessSnapshotAdmission.Lease? reservation, out _));
+            out SvgSnapshotAdmission.Lease? reservation, out _));
         using var cancellation = new CancellationTokenSource();
         long reservationAtFirstOutput = 0;
 
@@ -147,9 +147,9 @@ public sealed class SvgNormalizationReservationTests
     public async Task NormalizationScratchPressureRemainsTransientAndReleasesHostSource()
     {
         var options = new ResvgMarkdownSvgRendererOptions(maxSourceBytes: 512);
-        var owner = new SvgProcessSnapshotAdmission(capacityBytes: 128 * 1024, visibleHeadroomBytes: 16 * 1024);
+        var owner = new SvgSnapshotAdmission(capacityBytes: 128 * 1024, visibleHeadroomBytes: 16 * 1024);
         Assert.True(owner.TryReserve(60 * 1024, MarkdownSvgRenderPriority.Overscan,
-            out SvgProcessSnapshotAdmission.Lease? competingOwner, out _));
+            out SvgSnapshotAdmission.Lease? competingOwner, out _));
         using var renderer = new ResvgMarkdownSvgRenderer(options, owner);
         long requiredPeak = 2L * options.MaxSourceBytes + SvgSourceBuffer.SegmentSize;
         Assert.True(requiredPeak <= owner.CapacityBytes - owner.VisibleHeadroomBytes);
@@ -185,7 +185,7 @@ public sealed class SvgNormalizationReservationTests
     public async Task DirectNormalizationScratchDenialUsesTypedResourceLimitFailure()
     {
         var options = new ResvgMarkdownSvgRendererOptions(maxSourceBytes: 512);
-        var owner = new SvgProcessSnapshotAdmission(capacityBytes: 4096, visibleHeadroomBytes: 512);
+        var owner = new SvgSnapshotAdmission(capacityBytes: 4096, visibleHeadroomBytes: 512);
         using var renderer = new ResvgMarkdownSvgRenderer(options, owner);
 
         MarkdownSvgException directFailure = await Assert.ThrowsAsync<MarkdownSvgException>(async () =>

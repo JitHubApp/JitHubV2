@@ -76,8 +76,29 @@ internal static class MathStringResolver
         CancellationToken cancellationToken,
         out string result)
     {
+        if (!TryMeasureSingleTexPlaceholder(format, tex.Length, cancellationToken, out long outputLength))
+        {
+            result = string.Empty;
+            return false;
+        }
+
+        result = FormatMeasuredSingleTexPlaceholder(format, tex, maximumLength, outputLength, cancellationToken);
+        return true;
+    }
+
+    /// <summary>
+    /// Validates that <paramref name="format"/> has exactly one <c>{0}</c> and
+    /// only doubled braces otherwise, and measures the formatted length
+    /// without building it.
+    /// </summary>
+    private static bool TryMeasureSingleTexPlaceholder(
+        string format,
+        int texLength,
+        CancellationToken cancellationToken,
+        out long outputLength)
+    {
         int placeholderCount = 0;
-        long outputLength = 0;
+        outputLength = 0;
         for (int index = 0; index < format.Length; index++)
         {
             if ((index & 0x3f) == 0)
@@ -97,27 +118,20 @@ internal static class MathStringResolver
                     format[index + 1] != '0' ||
                     format[index + 2] != '}')
                 {
-                    result = string.Empty;
                     return false;
                 }
 
                 placeholderCount++;
                 if (placeholderCount != 1)
-                {
-                    result = string.Empty;
                     return false;
-                }
 
-                outputLength += tex.Length;
+                outputLength += texLength;
                 index += 2;
             }
             else if (value == '}')
             {
                 if (index + 1 >= format.Length || format[index + 1] != '}')
-                {
-                    result = string.Empty;
                     return false;
-                }
 
                 outputLength++;
                 index++;
@@ -126,15 +140,23 @@ internal static class MathStringResolver
             {
                 outputLength++;
             }
-
         }
 
-        if (placeholderCount != 1)
-        {
-            result = string.Empty;
-            return false;
-        }
+        return placeholderCount == 1;
+    }
 
+    /// <summary>
+    /// Formats a <paramref name="format"/> that
+    /// <see cref="TryMeasureSingleTexPlaceholder"/> accepted, truncating to
+    /// <paramref name="maximumLength"/> with an ellipsis.
+    /// </summary>
+    private static string FormatMeasuredSingleTexPlaceholder(
+        string format,
+        string tex,
+        int maximumLength,
+        long outputLength,
+        CancellationToken cancellationToken)
+    {
         bool truncated = outputLength > maximumLength;
         int contentLimit = truncated
             ? maximumLength - 1
@@ -180,8 +202,7 @@ internal static class MathStringResolver
             output.Append('\u2026');
 
         cancellationToken.ThrowIfCancellationRequested();
-        result = output.ToString();
-        return true;
+        return output.ToString();
     }
 
     private static bool AppendBounded(

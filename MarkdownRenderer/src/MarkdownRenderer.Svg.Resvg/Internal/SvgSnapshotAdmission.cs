@@ -5,7 +5,7 @@ namespace MarkdownRenderer.Svg.Resvg.Internal;
 
 /// <summary>
 /// Bounds provider-owned input-clone and normalized-source byte-array capacity
-/// across all renderer instances in this process, including the admitted peak
+/// for the renderer that owns this admission, including the admitted peak
 /// where the clone, segmented output and compacted tail overlap. It also backs
 /// opt-in host-preparation output byte buffers when the host explicitly obtains
 /// a preparation lease before calling <c>PrepareSource</c>; unleased/default
@@ -14,10 +14,12 @@ namespace MarkdownRenderer.Svg.Resvg.Internal;
 /// other preflight temporaries, worker mappings, decoded images, parsed
 /// resources, GPU allocations, and RSS remain outside this reservation.
 /// </summary>
-internal sealed class SvgProcessSnapshotAdmission
+/// <remarks>
+/// Each <see cref="ResvgMarkdownSvgRenderer"/> owns one admission. A host that
+/// wants several renderers to share one budget shares one renderer.
+/// </remarks>
+internal sealed class SvgSnapshotAdmission
 {
-    private static readonly object ProcessDomainToken = new();
-
     private readonly object _gate = new();
     private readonly long _capacityBytes;
     private readonly long _visibleHeadroomBytes;
@@ -30,18 +32,7 @@ internal sealed class SvgProcessSnapshotAdmission
     private long _reservedBytes;
     private long _capacityVersion;
 
-    internal static SvgProcessSnapshotAdmission Process { get; } = CreateProcessOwner();
-
-    internal SvgProcessSnapshotAdmission(long capacityBytes, long visibleHeadroomBytes)
-        : this(capacityBytes, visibleHeadroomBytes, new object(), new SvgProviderSnapshotLedger())
-    {
-    }
-
-    private SvgProcessSnapshotAdmission(
-        long capacityBytes,
-        long visibleHeadroomBytes,
-        object domain,
-        SvgProviderSnapshotLedger sourceLedger)
+    internal SvgSnapshotAdmission(long capacityBytes, long visibleHeadroomBytes)
     {
         if (capacityBytes <= 0)
             throw new ArgumentOutOfRangeException(nameof(capacityBytes));
@@ -50,8 +41,21 @@ internal sealed class SvgProcessSnapshotAdmission
 
         _capacityBytes = capacityBytes;
         _visibleHeadroomBytes = visibleHeadroomBytes;
-        _domain = domain;
-        _sourceLedger = sourceLedger;
+        _domain = new object();
+        _sourceLedger = new SvgProviderSnapshotLedger();
+    }
+
+    /// <summary>
+    /// Creates an admission with the default capacity for the current process
+    /// architecture: 64 MiB with 16 MiB of visible headroom on 64-bit
+    /// processes, half that on 32-bit processes.
+    /// </summary>
+    internal static SvgSnapshotAdmission CreateDefault()
+    {
+        bool wideProcess = RuntimeInformation.ProcessArchitecture is Architecture.X64 or Architecture.Arm64;
+        long capacityBytes = wideProcess ? 64L * 1024 * 1024 : 32L * 1024 * 1024;
+        long visibleHeadroomBytes = wideProcess ? 16L * 1024 * 1024 : 8L * 1024 * 1024;
+        return new SvgSnapshotAdmission(capacityBytes, visibleHeadroomBytes);
     }
 
     internal object AdmissionDomain => _domain;
@@ -98,7 +102,7 @@ internal sealed class SvgProcessSnapshotAdmission
             }
 
             // Construct the lease before publishing its weight. If allocation
-            // fails, the process-wide counter remains unchanged.
+            // fails, the admission counter remains unchanged.
             Lease created = new(this, bytes);
             checked { _reservedBytes += bytes; }
             lease = created;
@@ -205,7 +209,7 @@ internal sealed class SvgProcessSnapshotAdmission
                 return false;
 
             // The caller holds the lease gate, so its weight cannot be
-            // concurrently shrunk/disposed while this process-wide delta is
+            // concurrently shrunk/disposed while this admission-wide delta is
             // published. Growth consumes capacity and does not advance or
             // signal the release version.
             _reservedBytes = checked(_reservedBytes + additionalBytes);
@@ -258,25 +262,13 @@ internal sealed class SvgProcessSnapshotAdmission
         return previous;
     }
 
-    private static SvgProcessSnapshotAdmission CreateProcessOwner()
-    {
-        bool wideProcess = RuntimeInformation.ProcessArchitecture is Architecture.X64 or Architecture.Arm64;
-        long capacityBytes = wideProcess ? 64L * 1024 * 1024 : 32L * 1024 * 1024;
-        long visibleHeadroomBytes = wideProcess ? 16L * 1024 * 1024 : 8L * 1024 * 1024;
-        return new SvgProcessSnapshotAdmission(
-            capacityBytes,
-            visibleHeadroomBytes,
-            ProcessDomainToken,
-            SvgProviderSnapshotLedger.CreateProcessAggregate());
-    }
-
     internal sealed class Lease : IDisposable, IMarkdownSvgPreparationLease
     {
         private readonly object _gate = new();
-        private SvgProcessSnapshotAdmission? _owner;
+        private SvgSnapshotAdmission? _owner;
         private long _bytes;
 
-        internal Lease(SvgProcessSnapshotAdmission owner, long bytes)
+        internal Lease(SvgSnapshotAdmission owner, long bytes)
         {
             _owner = owner;
             _bytes = bytes;
@@ -304,7 +296,7 @@ internal sealed class SvgProcessSnapshotAdmission
 
             lock (_gate)
             {
-                SvgProcessSnapshotAdmission owner = _owner ?? throw new ObjectDisposedException(nameof(Lease));
+                SvgSnapshotAdmission owner = _owner ?? throw new ObjectDisposedException(nameof(Lease));
                 long previous = _bytes;
                 if (targetBytes < previous)
                     throw new ArgumentOutOfRangeException(nameof(targetBytes), "TryGrow cannot shrink a reservation.");
@@ -323,7 +315,7 @@ internal sealed class SvgProcessSnapshotAdmission
             TaskCompletionSource? signal;
             lock (_gate)
             {
-                SvgProcessSnapshotAdmission owner = _owner ?? throw new ObjectDisposedException(nameof(Lease));
+                SvgSnapshotAdmission owner = _owner ?? throw new ObjectDisposedException(nameof(Lease));
                 long previous = _bytes;
                 if (bytes > previous)
                     throw new InvalidOperationException("A normalized SVG source cannot exceed its preflight reservation.");
@@ -345,7 +337,7 @@ internal sealed class SvgProcessSnapshotAdmission
             TaskCompletionSource? signal;
             lock (_gate)
             {
-                SvgProcessSnapshotAdmission? owner = _owner;
+                SvgSnapshotAdmission? owner = _owner;
                 if (owner is null)
                     return;
 

@@ -12,16 +12,26 @@ internal sealed class MathFormulaProcessor
 {
     private readonly IMathAccessibilityFormatter _accessibilityFormatter;
     private readonly IMathStringProvider? _strings;
+    private readonly MathHostCallbackGate _callbackGate;
     private readonly CultureInfo _localizationCulture;
     private readonly bool _hasReplacementAccessibilityFormatter;
 
     /// <summary>Creates a processor with optional localized accessibility services.</summary>
+    /// <param name="accessibilityFormatter">A host formatter that replaces the default one.</param>
+    /// <param name="strings">Host localized strings.</param>
+    /// <param name="callbackGate">
+    /// The gate that bounds host callbacks. An owner that runs several
+    /// processors or its own callbacks passes one shared gate; by default the
+    /// processor owns a gate of its own.
+    /// </param>
     public MathFormulaProcessor(
         IMathAccessibilityFormatter? accessibilityFormatter = null,
-        IMathStringProvider? strings = null)
+        IMathStringProvider? strings = null,
+        MathHostCallbackGate? callbackGate = null)
     {
         _localizationCulture = MathStringResolver.SnapshotCulture();
         _strings = strings;
+        _callbackGate = callbackGate ?? new MathHostCallbackGate();
         _hasReplacementAccessibilityFormatter = accessibilityFormatter is not null;
         _accessibilityFormatter = accessibilityFormatter ??
             new DefaultMathAccessibilityFormatter(strings, _localizationCulture);
@@ -132,7 +142,7 @@ internal sealed class MathFormulaProcessor
     {
         string texPreview = english.TexPreview;
         Task<MathEmergencyLocalizationSnapshot> localizationTask =
-            await MathHostCallbackGate.StartAsync(
+            await _callbackGate.StartAsync(
                 token => ValueTask.FromResult(MathEmergencyLocalization.CreateLocalizedEmergencySnapshot(
                     _strings,
                     request,
@@ -180,7 +190,7 @@ internal sealed class MathFormulaProcessor
         if (hasHostCallbacks)
         {
             Task<MathFormulaResult> coreTask =
-                await MathHostCallbackGate.StartAsync(
+                await _callbackGate.StartAsync(
                     token => ProcessCoreAsync(
                         request,
                         options,

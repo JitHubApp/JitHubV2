@@ -10,7 +10,7 @@ namespace MarkdownRenderer.Svg.Resvg.Tests;
 /// headroom, growth and shrink accounting, capacity versions, threshold
 /// waits, and the allocation-free release path.
 /// </summary>
-public sealed class SvgProcessSnapshotCapacityTests
+public sealed class SvgSnapshotCapacityTests
 {
     [Theory]
     [InlineData(32, 8)]
@@ -21,14 +21,14 @@ public sealed class SvgProcessSnapshotCapacityTests
     {
         long capacity = capacityMiB * 1024L * 1024L;
         long headroom = headroomMiB * 1024L * 1024L;
-        var owner = new SvgProcessSnapshotAdmission(capacity, headroom);
+        var owner = new SvgSnapshotAdmission(capacity, headroom);
         Assert.True(owner.TryReserve(capacity - headroom, MarkdownSvgRenderPriority.Overscan,
-            out SvgProcessSnapshotAdmission.Lease? overscan, out long firstVersion));
+            out SvgSnapshotAdmission.Lease? overscan, out long firstVersion));
         Assert.Equal(0L, firstVersion);
         Assert.False(owner.TryReserve(1, MarkdownSvgRenderPriority.Overscan, out _, out long deniedVersion));
         Assert.Equal(firstVersion, deniedVersion);
         Assert.True(owner.TryReserve(headroom, MarkdownSvgRenderPriority.Visible,
-            out SvgProcessSnapshotAdmission.Lease? visible, out _));
+            out SvgSnapshotAdmission.Lease? visible, out _));
         Assert.Equal(capacity, owner.ReservedBytes);
         Assert.False(owner.TryReserve(1, MarkdownSvgRenderPriority.Visible, out _, out _));
 
@@ -40,9 +40,9 @@ public sealed class SvgProcessSnapshotCapacityTests
     [Fact]
     public async Task ShrinkAndReleaseAdvanceCapacityVersionWithoutLostWakeups()
     {
-        var owner = new SvgProcessSnapshotAdmission(capacityBytes: 100, visibleHeadroomBytes: 20);
+        var owner = new SvgSnapshotAdmission(capacityBytes: 100, visibleHeadroomBytes: 20);
         Assert.True(owner.TryReserve(80, MarkdownSvgRenderPriority.Overscan,
-            out SvgProcessSnapshotAdmission.Lease? lease, out long observedVersion));
+            out SvgSnapshotAdmission.Lease? lease, out long observedVersion));
 
         lease!.SetLength(40);
         Assert.Equal(40, lease.Bytes);
@@ -65,9 +65,9 @@ public sealed class SvgProcessSnapshotCapacityTests
     [Fact]
     public void TryGrowUsesCurrentTierAndPublishesLeaseAndOwnerWeightsTogether()
     {
-        var owner = new SvgProcessSnapshotAdmission(capacityBytes: 100, visibleHeadroomBytes: 20);
+        var owner = new SvgSnapshotAdmission(capacityBytes: 100, visibleHeadroomBytes: 20);
         Assert.True(owner.TryReserve(60, MarkdownSvgRenderPriority.Overscan,
-            out SvgProcessSnapshotAdmission.Lease? lease, out long initialVersion));
+            out SvgSnapshotAdmission.Lease? lease, out long initialVersion));
 
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             lease!.TryGrow(0, MarkdownSvgRenderPriority.Visible, out _));
@@ -112,9 +112,9 @@ public sealed class SvgProcessSnapshotCapacityTests
     [Fact]
     public async Task TryGrowSerializesWithLeaseDisposal()
     {
-        var owner = new SvgProcessSnapshotAdmission(capacityBytes: 1024, visibleHeadroomBytes: 128);
+        var owner = new SvgSnapshotAdmission(capacityBytes: 1024, visibleHeadroomBytes: 128);
         Assert.True(owner.TryReserve(128, MarkdownSvgRenderPriority.Visible,
-            out SvgProcessSnapshotAdmission.Lease? lease, out _));
+            out SvgSnapshotAdmission.Lease? lease, out _));
         using var start = new ManualResetEventSlim(initialState: false);
 
         Task<bool> grow = Task.Run(() =>
@@ -145,11 +145,11 @@ public sealed class SvgProcessSnapshotCapacityTests
     [Fact]
     public async Task ThresholdWaitIgnoresAnInsufficientSelfReleaseThenWakesWhenCapacityFits()
     {
-        var owner = new SvgProcessSnapshotAdmission(capacityBytes: 100, visibleHeadroomBytes: 20);
+        var owner = new SvgSnapshotAdmission(capacityBytes: 100, visibleHeadroomBytes: 20);
         Assert.True(owner.TryReserve(40, MarkdownSvgRenderPriority.Visible,
-            out SvgProcessSnapshotAdmission.Lease? otherOwner, out _));
+            out SvgSnapshotAdmission.Lease? otherOwner, out _));
         Assert.True(owner.TryReserve(30, MarkdownSvgRenderPriority.Visible,
-            out SvgProcessSnapshotAdmission.Lease? attempt, out _));
+            out SvgSnapshotAdmission.Lease? attempt, out _));
         Assert.False(attempt!.TryGrow(65, MarkdownSvgRenderPriority.Visible, out _));
 
         Task wait = owner.WaitForCapacityAsync(65, MarkdownSvgRenderPriority.Visible, CancellationToken.None);
@@ -171,9 +171,9 @@ public sealed class SvgProcessSnapshotCapacityTests
     [Fact]
     public async Task ThresholdWaitUsesTheRequestedPriorityTier()
     {
-        var owner = new SvgProcessSnapshotAdmission(capacityBytes: 100, visibleHeadroomBytes: 20);
+        var owner = new SvgSnapshotAdmission(capacityBytes: 100, visibleHeadroomBytes: 20);
         Assert.True(owner.TryReserve(30, MarkdownSvgRenderPriority.Visible,
-            out SvgProcessSnapshotAdmission.Lease? lease, out _));
+            out SvgSnapshotAdmission.Lease? lease, out _));
 
         Task overscanWait = owner.WaitForCapacityAsync(60, MarkdownSvgRenderPriority.Overscan,
             CancellationToken.None);
@@ -190,9 +190,9 @@ public sealed class SvgProcessSnapshotCapacityTests
     [Fact]
     public async Task ThresholdWaitHandlesPreCanceledAndAlreadySatisfiedSubscriptions()
     {
-        var owner = new SvgProcessSnapshotAdmission(capacityBytes: 100, visibleHeadroomBytes: 20);
+        var owner = new SvgSnapshotAdmission(capacityBytes: 100, visibleHeadroomBytes: 20);
         Assert.True(owner.TryReserve(80, MarkdownSvgRenderPriority.Visible,
-            out SvgProcessSnapshotAdmission.Lease? lease, out _));
+            out SvgSnapshotAdmission.Lease? lease, out _));
         lease!.Dispose();
 
         // Capacity released before subscription is not lost.
@@ -210,9 +210,9 @@ public sealed class SvgProcessSnapshotCapacityTests
     [Fact]
     public async Task PendingThresholdWaitCanBeCanceledWithoutChangingReservations()
     {
-        var owner = new SvgProcessSnapshotAdmission(capacityBytes: 100, visibleHeadroomBytes: 20);
+        var owner = new SvgSnapshotAdmission(capacityBytes: 100, visibleHeadroomBytes: 20);
         Assert.True(owner.TryReserve(90, MarkdownSvgRenderPriority.Visible,
-            out SvgProcessSnapshotAdmission.Lease? lease, out _));
+            out SvgSnapshotAdmission.Lease? lease, out _));
         using var canceled = new CancellationTokenSource();
         Task wait = owner.WaitForCapacityAsync(20, MarkdownSvgRenderPriority.Visible, canceled.Token);
         Assert.False(wait.IsCompleted);
@@ -230,7 +230,7 @@ public sealed class SvgProcessSnapshotCapacityTests
     [Fact]
     public void ShrinkAndReleaseDoNotAllocateWhenNoHostWaiterExists()
     {
-        var owner = new SvgProcessSnapshotAdmission(capacityBytes: 4096, visibleHeadroomBytes: 512);
+        var owner = new SvgSnapshotAdmission(capacityBytes: 4096, visibleHeadroomBytes: 512);
 
         _ = MeasureShrinkAndReleaseAllocations(owner); // JIT and warm the exact measured path.
         long allocatedBytes = MeasureShrinkAndReleaseAllocations(owner);
@@ -240,10 +240,10 @@ public sealed class SvgProcessSnapshotCapacityTests
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static long MeasureShrinkAndReleaseAllocations(SvgProcessSnapshotAdmission owner)
+    private static long MeasureShrinkAndReleaseAllocations(SvgSnapshotAdmission owner)
     {
         if (!owner.TryReserve(512, MarkdownSvgRenderPriority.Visible,
-                out SvgProcessSnapshotAdmission.Lease? lease, out _))
+                out SvgSnapshotAdmission.Lease? lease, out _))
             throw new InvalidOperationException("The local admission fixture could not reserve its measured lease.");
 
         long before = GC.GetAllocatedBytesForCurrentThread();

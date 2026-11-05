@@ -1,41 +1,44 @@
-using System.Collections.Concurrent;
-
 namespace MarkdownRenderer.Math.Internal;
 
 /// <summary>
-/// Bounds synchronous or cancellation-ignoring host callbacks across all math
-/// processors and engine extensions in the process.
+/// Bounds synchronous or cancellation-ignoring host callbacks for the math
+/// extension or processor that owns this gate.
 /// </summary>
-internal static class MathHostCallbackGate
+/// <remarks>
+/// A callback that ignores cancellation keeps its admission slot until it
+/// returns, so at most <see cref="MaximumConcurrentCallbacks"/> stuck callbacks
+/// can hold threads for one owner. A saturated gate makes later formulas wait
+/// for admission within their own processing deadline instead of starting
+/// another callback.
+/// </remarks>
+internal sealed class MathHostCallbackGate
 {
-    private const int MaximumConcurrentWorkers = 4;
-    private static readonly SemaphoreSlim Admission = new(
-        MaximumConcurrentWorkers,
-        MaximumConcurrentWorkers);
-    private static readonly TaskScheduler CallbackScheduler =
-        new DedicatedTaskScheduler(MaximumConcurrentWorkers);
+    internal const int MaximumConcurrentCallbacks = 4;
 
-    internal static async ValueTask<Task<T>> StartAsync<T>(
+    private readonly SemaphoreSlim _admission = new(
+        MaximumConcurrentCallbacks,
+        MaximumConcurrentCallbacks);
+    private readonly MathHostCallbackScheduler _scheduler = new(MaximumConcurrentCallbacks);
+
+    internal async ValueTask<Task<T>> StartAsync<T>(
         Func<CancellationToken, ValueTask<T>> callback,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(callback);
-        await Admission.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await _admission.WaitAsync(cancellationToken).ConfigureAwait(false);
 
         bool leaseTransferred = false;
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            // A host callback may block synchronously and ignore cancellation.
-            // Keep that entry point off the shared thread pool: saturating the
-            // callback gate must not also starve the timer callback that enforces
-            // MaximumProcessingTime. The fixed scheduler avoids creating a new
-            // operating-system thread for every localized formula.
+            // A host callback may block synchronously and ignore cancellation,
+            // so its entry point runs on the dedicated scheduler rather than on
+            // the shared thread pool.
             Task<T> callbackTask = Task.Factory.StartNew(
                     () => InvokeAsync(callback, cancellationToken),
                     CancellationToken.None,
                     TaskCreationOptions.DenyChildAttach,
-                    CallbackScheduler)
+                    _scheduler)
                 .Unwrap();
             leaseTransferred = true;
             ObserveFault(callbackTask);
@@ -44,11 +47,11 @@ internal static class MathHostCallbackGate
         finally
         {
             if (!leaseTransferred)
-                Admission.Release();
+                _admission.Release();
         }
     }
 
-    private static async Task<T> InvokeAsync<T>(
+    private async Task<T> InvokeAsync<T>(
         Func<CancellationToken, ValueTask<T>> callback,
         CancellationToken cancellationToken)
     {
@@ -59,7 +62,7 @@ internal static class MathHostCallbackGate
         }
         finally
         {
-            Admission.Release();
+            _admission.Release();
         }
     }
 
@@ -77,40 +80,5 @@ internal static class MathHostCallbackGate
             TaskContinuationOptions.ExecuteSynchronously |
                 TaskContinuationOptions.OnlyOnFaulted,
             TaskScheduler.Default);
-    }
-
-    private sealed class DedicatedTaskScheduler : TaskScheduler
-    {
-        private readonly BlockingCollection<Task> _tasks = new();
-
-        internal DedicatedTaskScheduler(int concurrency)
-        {
-            MaximumConcurrencyLevel = concurrency;
-            for (int index = 0; index < concurrency; index++)
-            {
-                var worker = new Thread(ConsumeTasks)
-                {
-                    IsBackground = true,
-                    Name = $"Markdown math host callback {index + 1}",
-                };
-                worker.Start();
-            }
-        }
-
-        public override int MaximumConcurrencyLevel { get; }
-
-        protected override IEnumerable<Task> GetScheduledTasks() => _tasks.ToArray();
-
-        protected override void QueueTask(Task task) => _tasks.Add(task);
-
-        protected override bool TryExecuteTaskInline(
-            Task task,
-            bool taskWasPreviouslyQueued) => false;
-
-        private void ConsumeTasks()
-        {
-            foreach (Task task in _tasks.GetConsumingEnumerable())
-                _ = TryExecuteTask(task);
-        }
     }
 }

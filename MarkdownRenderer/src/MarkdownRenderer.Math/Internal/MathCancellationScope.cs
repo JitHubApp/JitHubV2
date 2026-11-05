@@ -1,119 +1,51 @@
 namespace MarkdownRenderer.Math.Internal;
 
 /// <summary>
-/// Carries the current synchronous compilation token through the pinned parser
-/// and typesetter, and bounds native parser recursion without adding either
-/// concern to renderer-owned contracts.
-/// Compilation is synchronous on one worker thread, so thread-local scope is
-/// deterministic and avoids an allocation per checkpoint.
+/// Bridges the vendored CSharpMath and Typography code to the
+/// <see cref="MathCompilationScope"/> of the compilation running on the
+/// current thread.
 /// </summary>
+/// <remarks>
+/// This is the one ambient context in the math pack, kept on purpose. The
+/// vendored snapshot under <c>ThirdParty/</c> is pinned by
+/// <c>ThirdParty/PROVENANCE.json</c> (<c>patchedAggregateSha256</c>), and its
+/// patch points call these static members from deep inside the parser, the
+/// typesetter and the font reader, none of which can take the scope as a
+/// parameter without re-patching that snapshot. The only state here is one
+/// thread-static reference to the current scope; the scope's token and
+/// recursion depth live on the instance the compiler owns. Compilation is
+/// synchronous on one worker thread, so the reference is deterministic.
+/// Removal plan: when the vendored snapshot is next re-patched, pass the scope
+/// through the parser, typesetter and font loading and delete this bridge.
+/// </remarks>
 internal static class MathCancellationScope
 {
     [ThreadStatic]
-    private static CancellationToken s_token;
+    private static MathCompilationScope? s_current;
 
-    [ThreadStatic]
-    private static bool s_hasToken;
+    internal static CancellationToken CurrentToken =>
+        s_current?.Token ?? CancellationToken.None;
 
-    [ThreadStatic]
-    private static int s_parserRecursionDepth;
-
-    [ThreadStatic]
-    private static int s_maximumParserRecursionDepth;
-
-    [ThreadStatic]
-    private static bool s_hasParserRecursionLimit;
-
-    internal static Registration Enter(
-        CancellationToken token,
-        int maximumParserRecursionDepth)
+    /// <summary>Makes <paramref name="scope"/> current until the result is disposed.</summary>
+    internal static Registration Enter(MathCompilationScope scope)
     {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumParserRecursionDepth);
-
-        var registration = new Registration(
-            s_token,
-            s_hasToken,
-            s_parserRecursionDepth,
-            s_maximumParserRecursionDepth,
-            s_hasParserRecursionLimit);
-        s_token = token;
-        s_hasToken = true;
-        s_parserRecursionDepth = 0;
-        s_maximumParserRecursionDepth = maximumParserRecursionDepth;
-        s_hasParserRecursionLimit = true;
+        ArgumentNullException.ThrowIfNull(scope);
+        var registration = new Registration(s_current);
+        s_current = scope;
         return registration;
     }
 
-    internal static ParserRecursionRegistration EnterParserRecursion()
-    {
-        Checkpoint();
-        if (!s_hasParserRecursionLimit)
-            return default;
+    internal static MathCompilationScope.ParserRecursion EnterParserRecursion() =>
+        s_current?.EnterParserRecursion() ?? default;
 
-        if (s_parserRecursionDepth >= s_maximumParserRecursionDepth)
-            throw new MathParserRecursionLimitException();
-
-        int previousDepth = s_parserRecursionDepth;
-        s_parserRecursionDepth++;
-        return new ParserRecursionRegistration(previousDepth, hasLimit: true);
-    }
-
-    internal static void Checkpoint()
-    {
-        if (s_hasToken)
-            s_token.ThrowIfCancellationRequested();
-    }
-
-    internal static CancellationToken CurrentToken =>
-        s_hasToken ? s_token : CancellationToken.None;
+    internal static void Checkpoint() => s_current?.Checkpoint();
 
     internal readonly struct Registration : IDisposable
     {
-        private readonly CancellationToken _previousToken;
-        private readonly bool _hadPreviousToken;
-        private readonly int _previousParserRecursionDepth;
-        private readonly int _previousMaximumParserRecursionDepth;
-        private readonly bool _hadPreviousParserRecursionLimit;
+        private readonly MathCompilationScope? _previous;
 
-        internal Registration(
-            CancellationToken previousToken,
-            bool hadPreviousToken,
-            int previousParserRecursionDepth,
-            int previousMaximumParserRecursionDepth,
-            bool hadPreviousParserRecursionLimit)
-        {
-            _previousToken = previousToken;
-            _hadPreviousToken = hadPreviousToken;
-            _previousParserRecursionDepth = previousParserRecursionDepth;
-            _previousMaximumParserRecursionDepth = previousMaximumParserRecursionDepth;
-            _hadPreviousParserRecursionLimit = hadPreviousParserRecursionLimit;
-        }
+        internal Registration(MathCompilationScope? previous) => _previous = previous;
 
-        public void Dispose()
-        {
-            s_token = _previousToken;
-            s_hasToken = _hadPreviousToken;
-            s_parserRecursionDepth = _previousParserRecursionDepth;
-            s_maximumParserRecursionDepth = _previousMaximumParserRecursionDepth;
-            s_hasParserRecursionLimit = _hadPreviousParserRecursionLimit;
-        }
-    }
-
-    internal readonly struct ParserRecursionRegistration : IDisposable
-    {
-        private readonly int _previousDepth;
-        private readonly bool _hasLimit;
-
-        internal ParserRecursionRegistration(int previousDepth, bool hasLimit)
-        {
-            _previousDepth = previousDepth;
-            _hasLimit = hasLimit;
-        }
-
-        public void Dispose()
-        {
-            if (_hasLimit)
-                s_parserRecursionDepth = _previousDepth;
-        }
+        public void Dispose() => s_current = _previous;
     }
 }

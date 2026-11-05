@@ -214,67 +214,25 @@ public sealed class TextMateSharpGrammarProvider : ITextMateGrammarProvider, IDi
             if (cancellationToken.IsCancellationRequested)
                 return null;
 
-            ITokenizeLineResult result;
-            var lineStopwatch = Stopwatch.StartNew();
-            while (true)
+            LineOutcome outcome = TokenizeLine(
+                grammar,
+                line.Memory,
+                state,
+                lineIndex,
+                maximumLineProcessingTime,
+                checkpointObserver,
+                cancellationToken,
+                out ITokenizeLineResult? result);
+            if (outcome == LineOutcome.Completed)
             {
-                if (cancellationToken.IsCancellationRequested)
-                    return null;
-
-                TimeSpan remaining = maximumLineProcessingTime - lineStopwatch.Elapsed;
-                if (remaining <= TimeSpan.Zero)
-                    return [];
-
-                TimeSpan slice = remaining < MaximumTokenizationSlice
-                    ? remaining
-                    : MaximumTokenizationSlice;
-                result = grammar.TokenizeLine(
-                    line.Memory,
-                    state ?? StateStack.NULL,
-                    slice);
-                checkpointObserver?.Invoke(
-                    TextMateProviderCheckpoint.AfterLineTokenizationSlice,
-                    lineIndex);
-                if (cancellationToken.IsCancellationRequested)
-                    return null;
-
-                if (result is not TextMateSharp.Internal.Grammars.TokenizeLineResult
-                    { StoppedEarly: true })
-                {
-                    break;
-                }
+                state = result!.RuleStack;
+                outcome = AppendLineSpans(spans, line.Memory, line.Offset, result, theme, maximumSpanCount, cancellationToken);
             }
 
-            state = result.RuleStack;
-
-            foreach (var token in result.Tokens)
-            {
-                if (cancellationToken.IsCancellationRequested)
-                    return null;
-
-                // TextMate grammars can expose the synthetic end-of-line
-                // sentinel as one extra UTF-16 unit. Never let that internal
-                // sentinel escape the provider's exact source-coordinate API.
-                int relativeStart = token.StartIndex;
-                if (relativeStart < 0 || relativeStart > line.Memory.Length)
-                    return [];
-
-                int length = Math.Min(token.Length, line.Memory.Length - relativeStart);
-                if (length <= 0)
-                    continue;
-
-                var color = ResolveColor(theme, token.Scopes);
-                if (color is null)
-                    continue;
-
-                if (spans.Count >= maximumSpanCount)
-                    return [];
-
-                spans.Add(new TextMateGrammarHighlightSpan(
-                    line.Offset + relativeStart,
-                    length,
-                    color.Value));
-            }
+            if (outcome == LineOutcome.Canceled)
+                return null;
+            if (outcome == LineOutcome.Rejected)
+                return [];
 
             checkpointObserver?.Invoke(TextMateProviderCheckpoint.AfterLineTokenization, lineIndex);
             if (cancellationToken.IsCancellationRequested)
@@ -283,6 +241,97 @@ public sealed class TextMateSharpGrammarProvider : ITextMateGrammarProvider, IDi
         }
 
         return spans;
+    }
+
+    /// <summary>
+    /// Tokenizes one line in time slices until it completes, the line budget
+    /// runs out, or cancellation is requested.
+    /// </summary>
+    private static LineOutcome TokenizeLine(
+        IGrammar grammar,
+        ReadOnlyMemory<char> line,
+        IStateStack? state,
+        int lineIndex,
+        TimeSpan maximumLineProcessingTime,
+        Action<TextMateProviderCheckpoint, int>? checkpointObserver,
+        CancellationToken cancellationToken,
+        out ITokenizeLineResult? result)
+    {
+        result = null;
+        var lineStopwatch = Stopwatch.StartNew();
+        while (true)
+        {
+            if (cancellationToken.IsCancellationRequested)
+                return LineOutcome.Canceled;
+
+            TimeSpan remaining = maximumLineProcessingTime - lineStopwatch.Elapsed;
+            if (remaining <= TimeSpan.Zero)
+                return LineOutcome.Rejected;
+
+            TimeSpan slice = remaining < MaximumTokenizationSlice
+                ? remaining
+                : MaximumTokenizationSlice;
+            result = grammar.TokenizeLine(
+                line,
+                state ?? StateStack.NULL,
+                slice);
+            checkpointObserver?.Invoke(
+                TextMateProviderCheckpoint.AfterLineTokenizationSlice,
+                lineIndex);
+            if (cancellationToken.IsCancellationRequested)
+                return LineOutcome.Canceled;
+
+            if (result is not TextMateSharp.Internal.Grammars.TokenizeLineResult
+                { StoppedEarly: true })
+            {
+                return LineOutcome.Completed;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Appends the colored spans of one tokenized line in source coordinates,
+    /// within the span budget.
+    /// </summary>
+    private static LineOutcome AppendLineSpans(
+        List<TextMateGrammarHighlightSpan> spans,
+        ReadOnlyMemory<char> line,
+        int lineOffset,
+        ITokenizeLineResult result,
+        TextMateSharp.Themes.Theme theme,
+        int maximumSpanCount,
+        CancellationToken cancellationToken)
+    {
+        foreach (var token in result.Tokens)
+        {
+            if (cancellationToken.IsCancellationRequested)
+                return LineOutcome.Canceled;
+
+            // TextMate grammars can expose the synthetic end-of-line
+            // sentinel as one extra UTF-16 unit. Never let that internal
+            // sentinel escape the provider's exact source-coordinate API.
+            int relativeStart = token.StartIndex;
+            if (relativeStart < 0 || relativeStart > line.Length)
+                return LineOutcome.Rejected;
+
+            int length = Math.Min(token.Length, line.Length - relativeStart);
+            if (length <= 0)
+                continue;
+
+            var color = ResolveColor(theme, token.Scopes);
+            if (color is null)
+                continue;
+
+            if (spans.Count >= maximumSpanCount)
+                return LineOutcome.Rejected;
+
+            spans.Add(new TextMateGrammarHighlightSpan(
+                lineOffset + relativeStart,
+                length,
+                color.Value));
+        }
+
+        return LineOutcome.Completed;
     }
 
     private bool IsWithinInputBudget(string code)
@@ -357,6 +406,15 @@ public sealed class TextMateSharpGrammarProvider : ITextMateGrammarProvider, IDi
         }
 
         return false;
+    }
+
+    /// <summary>How tokenizing one line ended.</summary>
+    private enum LineOutcome
+    {
+        Completed,
+        Canceled,
+        /// <summary>The line ran out of time or span budget or produced an out-of-range token; the whole block falls back.</summary>
+        Rejected,
     }
 
     private static IEnumerable<(ReadOnlyMemory<char> Memory, int Offset)> EnumerateLines(string code)

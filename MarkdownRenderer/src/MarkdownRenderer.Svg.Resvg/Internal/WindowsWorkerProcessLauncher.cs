@@ -62,46 +62,20 @@ internal sealed class WindowsWorkerProcessLauncher(
             // Keep the newly created pipe inside the same ownership scope as
             // startup so a label failure cannot leak its server handle.
             WorkerObjectSecurity.SetLowIntegrityLabel(pipe.SafePipeHandle);
-            FileStream? identityFile = null;
-            try
-            {
-                // This is diagnostic-only work. Keep the read handle open until
-                // CreateProcess has loaded the image so the recorded digest
-                // cannot silently refer to a replacement file at the same path.
-                if (WorkerTimeoutEvents.Log.IsEnabled())
-                {
-                    (identityFile, workerExecutableSha256) =
-                        await OpenExecutableIdentityAsync(executablePath, cancellationToken).ConfigureAwait(false);
-                }
-
-                processStartedTimestamp = Stopwatch.GetTimestamp();
-                process = WorkerProcessSandbox.StartRestrictedSuspended(
-                    executablePath,
-                    pipeName,
-                    nonce,
-                    Path.GetDirectoryName(executablePath) ?? AppContext.BaseDirectory,
-                    job,
-                    sourceToken,
-                    objectSecurity);
-            }
-            finally
-            {
-                identityFile?.Dispose();
-            }
-
-            using var startup = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            startup.CancelAfter(WorkerSchedulingPolicy.InitializationDeadline);
-            try
-            {
-                await WorkerStartupWait.WaitForConnectionAsync(
-                    token => pipe.WaitForConnectionAsync(token),
-                    process,
-                    startup.Token).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
-            {
-                throw ReportInitializationDeadline(processStartedTimestamp, workerExecutableSha256, exception);
-            }
+            (process, workerExecutableSha256, processStartedTimestamp) = await StartSuspendedAsync(
+                executablePath,
+                pipeName,
+                nonce,
+                job,
+                sourceToken,
+                objectSecurity,
+                cancellationToken).ConfigureAwait(false);
+            await WaitForConnectionAsync(
+                pipe,
+                process,
+                processStartedTimestamp,
+                workerExecutableSha256,
+                cancellationToken).ConfigureAwait(false);
 
             var worker = new WindowsWorkerProcess(
                 process,
@@ -110,7 +84,8 @@ internal sealed class WindowsWorkerProcessLauncher(
                 nonceHigh,
                 workerExecutableSha256,
                 options.QueueCapacity,
-                objectSecurity);
+                objectSecurity,
+                ResvgEventSource.Log.AllocateWorkerInstanceId());
             process = null;
             objectSecurity = null;
             pipe = null!;
@@ -122,6 +97,77 @@ internal sealed class WindowsWorkerProcessLauncher(
                 TerminateUnadoptedProcess(process);
             pipe?.Dispose();
             objectSecurity?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Starts the restricted worker suspended in <paramref name="job"/>. The
+    /// created process handle is the last step, so a failure leaves nothing for
+    /// the caller to terminate.
+    /// </summary>
+    /// <returns>The suspended process, the executable digest when timeout events are enabled, and the start timestamp.</returns>
+    private static async Task<(SafeProcessHandle Process, string? ExecutableSha256, long StartedTimestamp)> StartSuspendedAsync(
+        string executablePath,
+        string pipeName,
+        string nonce,
+        WorkerJob job,
+        SafeTokenHandle sourceToken,
+        WorkerObjectSecurity.WorkerObjectSecurityContext objectSecurity,
+        CancellationToken cancellationToken)
+    {
+        FileStream? identityFile = null;
+        string? workerExecutableSha256 = null;
+        try
+        {
+            // This is diagnostic-only work. Keep the read handle open until
+            // CreateProcess has loaded the image so the recorded digest
+            // cannot silently refer to a replacement file at the same path.
+            if (WorkerTimeoutEvents.Log.IsEnabled())
+            {
+                (identityFile, workerExecutableSha256) =
+                    await OpenExecutableIdentityAsync(executablePath, cancellationToken).ConfigureAwait(false);
+            }
+
+            long processStartedTimestamp = Stopwatch.GetTimestamp();
+            SafeProcessHandle process = WorkerProcessSandbox.StartRestrictedSuspended(
+                executablePath,
+                pipeName,
+                nonce,
+                Path.GetDirectoryName(executablePath) ?? AppContext.BaseDirectory,
+                job,
+                sourceToken,
+                objectSecurity);
+            return (process, workerExecutableSha256, processStartedTimestamp);
+        }
+        finally
+        {
+            identityFile?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Waits for the started worker to connect to <paramref name="pipe"/>
+    /// within the initialization deadline, reporting a deadline miss.
+    /// </summary>
+    private static async Task WaitForConnectionAsync(
+        NamedPipeServerStream pipe,
+        SafeProcessHandle process,
+        long processStartedTimestamp,
+        string? workerExecutableSha256,
+        CancellationToken cancellationToken)
+    {
+        using var startup = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        startup.CancelAfter(WorkerSchedulingPolicy.InitializationDeadline);
+        try
+        {
+            await WorkerStartupWait.WaitForConnectionAsync(
+                token => pipe.WaitForConnectionAsync(token),
+                process,
+                startup.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw ReportInitializationDeadline(processStartedTimestamp, workerExecutableSha256, exception);
         }
     }
 

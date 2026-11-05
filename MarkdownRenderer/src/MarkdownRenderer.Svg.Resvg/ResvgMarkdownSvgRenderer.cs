@@ -23,7 +23,7 @@ public sealed class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMarkdownRa
     private readonly ResvgMarkdownSvgRendererOptions _options;
     private readonly WorkerPool _workers;
     private readonly SvgRendererDocumentRegistry _documents = new();
-    private readonly SvgProcessSnapshotAdmission _snapshotAdmission;
+    private readonly SvgSnapshotAdmission _snapshotAdmission;
     private readonly SvgDocumentOpenOperation _opener;
     private readonly SvgRasterDecodeOperation _rasterDecoder;
     // This separate lifetime borrows in-flight opens, including background
@@ -88,7 +88,7 @@ public sealed class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMarkdownRa
         bool admitted = _snapshotAdmission.TryReserve(
             requiredFreeBytes,
             priority,
-            out SvgProcessSnapshotAdmission.Lease? snapshotLease,
+            out SvgSnapshotAdmission.Lease? snapshotLease,
             out observedCapacityVersion);
         if (!admitted && priority == MarkdownSvgRenderPriority.Overscan &&
             demand.Priority == MarkdownSvgRenderPriority.Visible)
@@ -168,13 +168,13 @@ public sealed class ResvgMarkdownSvgRenderer : IMarkdownSvgRenderer, IMarkdownRa
 
     /// <summary>Creates a renderer with ceilings no greater than the immutable defaults.</summary>
     public ResvgMarkdownSvgRenderer(ResvgMarkdownSvgRendererOptions options)
-        : this(options, SvgProcessSnapshotAdmission.Process)
+        : this(options, SvgSnapshotAdmission.CreateDefault())
     {
     }
 
     internal ResvgMarkdownSvgRenderer(
         ResvgMarkdownSvgRendererOptions options,
-        SvgProcessSnapshotAdmission snapshotAdmission,
+        SvgSnapshotAdmission snapshotAdmission,
         IWorkerProcessLauncher? workerLauncher = null,
         IWorkerAdmissionObserver? admissionObserver = null)
     {

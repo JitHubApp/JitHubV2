@@ -19,7 +19,7 @@ internal sealed class SvgDocumentOpenOperation
     private readonly ResvgMarkdownSvgRendererOptions _options;
     private readonly WorkerPool _workers;
     private readonly SvgContentQuarantine _quarantine;
-    private readonly SvgProcessSnapshotAdmission _snapshotAdmission;
+    private readonly SvgSnapshotAdmission _snapshotAdmission;
     private readonly SvgProviderSnapshotLedger _sourceOwnership;
     private readonly SvgDocumentLifetime _openOperations;
     private readonly SvgResourceInspectionWorkspacePool _preflightWorkspaces = new();
@@ -29,7 +29,7 @@ internal sealed class SvgDocumentOpenOperation
         ResvgMarkdownSvgRendererOptions options,
         WorkerPool workers,
         SvgContentQuarantine quarantine,
-        SvgProcessSnapshotAdmission snapshotAdmission,
+        SvgSnapshotAdmission snapshotAdmission,
         SvgProviderSnapshotLedger sourceOwnership,
         SvgDocumentLifetime openOperations)
     {
@@ -52,7 +52,7 @@ internal sealed class SvgDocumentOpenOperation
     /// <param name="cancellationToken">Cancels the open.</param>
     /// <returns>The opened document, or a capacity-unavailable result.</returns>
     /// <remarks>
-    /// This stays one method of about 85 lines. Its body is the open's
+    /// This method stays whole because its body is the open's
     /// ownership sequence (enter, reserve, preflight, worker open), and each
     /// await keeps its own catch for the failure class only that stage can
     /// raise. The owners struct is passed by reference to every synchronous
@@ -270,7 +270,7 @@ internal sealed class SvgDocumentOpenOperation
 
         throw new MarkdownSvgException(
             MarkdownSvgFailureReason.ResourceLimitExceeded,
-            "The process-wide SVG source snapshot capacity is currently full.");
+            "The renderer's SVG source snapshot capacity is currently full.");
     }
 
     /// <summary>
@@ -290,7 +290,7 @@ internal sealed class SvgDocumentOpenOperation
 
         throw new MarkdownSvgException(
             MarkdownSvgFailureReason.ResourceLimitExceeded,
-            "The process-wide SVG source normalization capacity is currently full.",
+            "The renderer's SVG source normalization capacity is currently full.",
             exception);
     }
 

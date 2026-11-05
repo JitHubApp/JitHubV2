@@ -63,16 +63,3 @@ public static class SmokeRasterValidation
             pixels[index + 2] <= 80 && pixels[index + 3] >= 240;
     }
 }
-
-[Flags]
-public enum SmokeRasterFailure
-{
-    None = 0,
-    Dimensions = 1,
-    FirstEmbeddedImage = 2,
-    RepeatedEmbeddedImage = 4,
-    RtlBounds = 8,
-    UniqueEmbeddedImages = 16,
-}
-
-public readonly record struct SmokeRasterResult(SmokeRasterFailure Failures, int TextLeft, int TextRight);

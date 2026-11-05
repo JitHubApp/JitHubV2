@@ -187,11 +187,6 @@
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
-      "path": "tests/MarkdownRenderer.Math.Tests/MathContractsTests.cs",
-      "lines": 1414,
-      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
-    },
-    {
       "path": "tests/MarkdownRenderer.Tests/MarkdownEngineTests.cs",
       "lines": 1378,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."

@@ -12,7 +12,7 @@ namespace MarkdownRenderer.Svg.Resvg.Internal;
 /// the serialized exchange over that pipe, and its termination.
 /// </summary>
 /// <remarks>
-/// This file stays near 600 lines on purpose. The exchange and termination
+/// This file is longer than 500 lines because the exchange and termination
 /// paths share the process handle, the pipe, the disposed flag, the
 /// registered termination wait and the object security, and disposal must
 /// close the pipe and handle under the dispose gate while an exchange may
@@ -25,7 +25,6 @@ namespace MarkdownRenderer.Svg.Resvg.Internal;
 /// </remarks>
 internal sealed class WindowsWorkerProcess : IAsyncDisposable, IDisposable, IWorkerFontCatalogHost
 {
-    private static long s_nextInstanceId;
     private readonly SafeProcessHandle _process;
     private readonly NamedPipeServerStream _pipe;
     private WorkerObjectSecurity.WorkerObjectSecurityContext? _objectSecurity;
@@ -46,6 +45,7 @@ internal sealed class WindowsWorkerProcess : IAsyncDisposable, IDisposable, IWor
     // The optional factory composes the font-catalog supplier around this
     // worker as its host; the default supplies the catalog directly. The
     // optional frames are the reusable exchange buffers; the default is new.
+    // The caller allocates the instance id (see ResvgEventSource).
     internal WindowsWorkerProcess(
         SafeProcessHandle process,
         NamedPipeServerStream pipe,
@@ -54,6 +54,7 @@ internal sealed class WindowsWorkerProcess : IAsyncDisposable, IDisposable, IWor
         string? workerExecutableSha256,
         int queueCapacity,
         WorkerObjectSecurity.WorkerObjectSecurityContext objectSecurity,
+        long instanceId,
         Func<IWorkerFontCatalogHost, WorkerFontCatalogSupplier>? fontCatalogSupplierFactory = null,
         WorkerExchangeFrames? exchangeFrames = null)
     {
@@ -67,7 +68,8 @@ internal sealed class WindowsWorkerProcess : IAsyncDisposable, IDisposable, IWor
         NonceHigh = nonceHigh;
         WorkerExecutableSha256 = workerExecutableSha256;
         _queueCapacity = queueCapacity;
-        InstanceId = Interlocked.Increment(ref s_nextInstanceId);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(instanceId);
+        InstanceId = instanceId;
         _fontCatalogSupplier = fontCatalogSupplierFactory?.Invoke(this) ?? new WorkerFontCatalogSupplier(this);
     }
 
@@ -102,12 +104,12 @@ internal sealed class WindowsWorkerProcess : IAsyncDisposable, IDisposable, IWor
     // pool clears its state machine (request, mapping and execution context)
     // when consumed; source/raster ownership is never pooled here. Callers that
     // need Task semantics must convert once with AsTask before sharing it.
-    // Only the awaits stay in this method; its synchronous steps share one
-    // WorkerExchangeTrace local by reference and allocate nothing. The rest is
-    // one ownership region: the transaction gate, the linked deadline, the
-    // duplicated mapping and the three pipe awaits must share the finally that
-    // scrubs the shared frames and releases the gate, and an async step cannot
-    // take the trace by reference.
+    // This method stays whole because it is one ownership region: the
+    // transaction gate, the linked deadline, the duplicated mapping and the
+    // three pipe awaits must share the finally that scrubs the shared frames
+    // and releases the gate. Its synchronous steps are already outside and
+    // share one WorkerExchangeTrace local by reference, which an async step
+    // cannot take.
     [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
     public async ValueTask<WorkerResponse> ExchangeAsync(
         WorkerRequest request,

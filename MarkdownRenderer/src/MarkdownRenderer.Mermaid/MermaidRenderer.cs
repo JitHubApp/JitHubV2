@@ -25,7 +25,24 @@ public sealed class MermaidRenderer : IDisposable
     private readonly MermaidRenderDiagnostics _diagnostics;
     private readonly MermaidNativeEngine _nativeEngine;
     private readonly string? _validationError;
+
     public MermaidRenderer(MermaidRenderOptions? options = null, MermaidFontCatalog? fontCatalog = null)
+        : this(options, fontCatalog, renderGate: null)
+    {
+    }
+
+    /// <summary>Creates a renderer around a caller-supplied render admission gate.</summary>
+    /// <param name="options">The render options.</param>
+    /// <param name="fontCatalog">The font catalog.</param>
+    /// <param name="renderGate">
+    /// The gate that admits concurrent native renders, or <see langword="null"/>
+    /// to create one sized by <see cref="MermaidRenderBudgets.MaxConcurrentRenders"/>.
+    /// The renderer owns the gate and disposes it after its last render.
+    /// </param>
+    internal MermaidRenderer(
+        MermaidRenderOptions? options,
+        MermaidFontCatalog? fontCatalog,
+        SemaphoreSlim? renderGate)
     {
         MermaidRenderOptions configured = options ?? MermaidRenderOptions.Default;
         _diagnosticCulture = CultureInfo.ReadOnly(
@@ -41,7 +58,7 @@ public sealed class MermaidRenderer : IDisposable
         _options.TryValidate(out _validationError);
         MermaidRenderBudgets budgets = _options.Budgets ?? MermaidRenderBudgets.Default;
         int concurrency = Math.Clamp(budgets.MaxConcurrentRenders, 1, 64);
-        _renderGate = new SemaphoreSlim(concurrency, concurrency);
+        _renderGate = renderGate ?? new SemaphoreSlim(concurrency, concurrency);
         long cacheBudget = _options.SceneCacheBudgetBytes is >= 0 and <= MermaidRenderOptions.AbsoluteMaxSceneCacheBudgetBytes
             ? _options.SceneCacheBudgetBytes
             : 0;

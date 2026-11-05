@@ -7,23 +7,22 @@ namespace MarkdownRenderer.Svg.Resvg.Tests;
 public sealed class SvgProviderSnapshotLedgerTests
 {
     [Fact]
-    public void ProcessAggregateUsesZeroAndRendererScopesAreNumeric()
+    public void AdmissionAggregatesAndRendererScopesGetDistinctPositiveIds()
     {
-        Assert.Equal(0, SvgProcessSnapshotAdmission.Process.SourceLedger.ScopeId);
-        Assert.Equal(0, SvgProviderSnapshotLedger.CreateProcessAggregate().ScopeId);
+        SvgProviderSnapshotLedger aggregate = SvgSnapshotAdmission.CreateDefault().SourceLedger;
+        var first = new SvgProviderSnapshotLedger(aggregate);
+        var second = new SvgProviderSnapshotLedger(aggregate);
 
-        var first = new SvgProviderSnapshotLedger();
-        var second = new SvgProviderSnapshotLedger();
-
-        Assert.True(first.ScopeId > 0);
+        Assert.True(aggregate.ScopeId > 0);
+        Assert.True(first.ScopeId > aggregate.ScopeId);
         Assert.True(second.ScopeId > first.ScopeId);
     }
 
     [Fact]
     public void IndependentAdmissionDomainsOwnIndependentAggregates()
     {
-        var firstDomain = new SvgProcessSnapshotAdmission(1024, 256);
-        var secondDomain = new SvgProcessSnapshotAdmission(1024, 256);
+        var firstDomain = new SvgSnapshotAdmission(1024, 256);
+        var secondDomain = new SvgSnapshotAdmission(1024, 256);
         Assert.NotSame(firstDomain.SourceLedger, secondDomain.SourceLedger);
         Assert.True(firstDomain.SourceLedger.ScopeId > 0);
 

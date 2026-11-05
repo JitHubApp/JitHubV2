@@ -57,7 +57,7 @@ public sealed class ResvgDocumentReattachmentTests
     {
         var options = new ResvgMarkdownSvgRendererOptions();
         var launcher = new RecordingWorkerLauncher(options);
-        await using var renderer = new ResvgMarkdownSvgRenderer(options, SvgProcessSnapshotAdmission.Process, launcher);
+        await using var renderer = new ResvgMarkdownSvgRenderer(options, SvgSnapshotAdmission.CreateDefault(), launcher);
         using IMarkdownSvgDocument textDocument = await renderer.OpenAsync(new MarkdownSvgOpenRequest(Svg(
             "<svg xmlns='http://www.w3.org/2000/svg' width='96' height='24'><text x='2' y='18' font-size='16'>Font generation</text></svg>")));
         using IMarkdownSvgDocument geometryDocument = await renderer.OpenAsync(new MarkdownSvgOpenRequest(Svg(

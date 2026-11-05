@@ -23,7 +23,7 @@ internal sealed class SvgPreflightResult(
     int FilterPrimitives)
 {
     private SvgSourceBuffer? _source = Source;
-    private SvgProcessSnapshotAdmission.Lease? _snapshotAdmission;
+    private SvgSnapshotAdmission.Lease? _snapshotAdmission;
     private SvgProviderSnapshotLedger.Lease? _ownership;
 
     internal void AttachOwnership(SvgProviderSnapshotLedger.Lease ownership)
@@ -44,7 +44,7 @@ internal sealed class SvgPreflightResult(
 
     internal long SourceReservationBytes => Volatile.Read(ref _snapshotAdmission)?.Bytes ?? 0;
 
-    internal void AttachSnapshotAdmission(SvgProcessSnapshotAdmission.Lease admission)
+    internal void AttachSnapshotAdmission(SvgSnapshotAdmission.Lease admission)
     {
         ArgumentNullException.ThrowIfNull(admission);
         if (Interlocked.CompareExchange(ref _snapshotAdmission, admission, null) is not null)

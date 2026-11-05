@@ -584,17 +584,35 @@ $consumerProject = @'
   </ItemGroup>
 </Project>
 '@.Replace('__VERSION__', $packageVersion)
+# The evidence is only meaningful if the package consumer keeps AOT publish on
+# and trim and compiler warnings fatal; refuse to run with a weaker project.
+$consumerProjectXml = [xml] $consumerProject
+foreach ($property in @('TreatWarningsAsErrors', 'ILLinkTreatWarningsAsErrors', 'PublishAot')) {
+    $node = $consumerProjectXml.SelectSingleNode("/Project/PropertyGroup/$property")
+    if ($null -eq $node -or $node.InnerText -cne 'true') {
+        throw "The resvg package consumer must set $property to true."
+    }
+}
 [IO.File]::WriteAllText(
     (Join-Path $consumerDirectory 'SvgResvgPackageConsumer.csproj'),
     $consumerProject,
     [Text.UTF8Encoding]::new($false))
-[IO.File]::Copy((Join-Path $markdownRoot 'tests\aot\MarkdownRenderer.Svg.Resvg.AotSmoke\Program.cs'), (Join-Path $consumerDirectory 'Program.cs'))
-[IO.File]::Copy((Join-Path $markdownRoot 'tests\aot\MarkdownRenderer.Svg.Resvg.AotSmoke\WorkerIsolationProbe.cs'), (Join-Path $consumerDirectory 'WorkerIsolationProbe.cs'))
-# The package-only consumer compiles the shared smoke fixtures as sources: a
-# ProjectReference to the test-support library would bring the renderer back in
-# as a project instead of as the packed package under test.
-[IO.File]::Copy((Join-Path $markdownRoot 'tests\MarkdownRenderer.Svg.Resvg.TestSupport\SmokeRasterValidation.cs'), (Join-Path $consumerDirectory 'SmokeRasterValidation.cs'))
-[IO.File]::Copy((Join-Path $markdownRoot 'tests\MarkdownRenderer.Svg.Resvg.TestSupport\SmokeRasterDecodeFixture.cs'), (Join-Path $consumerDirectory 'SmokeRasterDecodeFixture.cs'))
+# The package-only consumer compiles every smoke source and every shared smoke
+# fixture as sources: a ProjectReference to the test-support library would
+# bring the renderer back in as a project instead of as the packed package
+# under test. Copy whole directories so a fixture added later is never missed.
+foreach ($sourceDirectory in @(
+    'tests\aot\MarkdownRenderer.Svg.Resvg.AotSmoke',
+    'tests\MarkdownRenderer.Svg.Resvg.TestSupport'
+)) {
+    $sources = @(Get-ChildItem -LiteralPath (Join-Path $markdownRoot $sourceDirectory) -Filter '*.cs' -File)
+    if ($sources.Count -eq 0) { throw "No smoke sources were found in '$sourceDirectory'." }
+    foreach ($source in $sources) {
+        $destination = Join-Path $consumerDirectory $source.Name
+        if (Test-Path -LiteralPath $destination) { throw "Smoke source name '$($source.Name)' is not unique." }
+        [IO.File]::Copy($source.FullName, $destination)
+    }
+}
 $consumerProjectPath = Join-Path $consumerDirectory 'SvgResvgPackageConsumer.csproj'
 
 Push-Location $repositoryRoot

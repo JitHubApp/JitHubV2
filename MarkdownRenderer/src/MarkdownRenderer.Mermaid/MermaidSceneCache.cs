@@ -89,48 +89,17 @@ internal sealed class MermaidSceneCache : IDisposable
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            InFlightRender? pending = null;
-            bool isProducer = false;
-            bool admissionRejected = false;
-            lock (_sync)
-            {
-                ObjectDisposedException.ThrowIf(_disposed, this);
-                if (_scenes.TryGetValue(key, out CachedScene? cached))
-                {
-                    Touch(cached);
-                    return Success(cached.Scene, originalSource);
-                }
-
-                if (!_inFlight.TryGetValue(key, out pending))
-                {
-                    int sourceByteLength = key.SourceByteLength;
-                    if (_outstandingRenderCount >= _maxOutstandingRenders ||
-                        sourceByteLength > _maxOutstandingSourceBytes - _outstandingSourceBytes)
-                    {
-                        admissionRejected = true;
-                    }
-                    else
-                    {
-                        pending = new InFlightRender(sourceByteLength, producerDeadlineTimestamp);
-                        _inFlight.Add(key, pending);
-                        _outstandingRenderCount++;
-                        _outstandingSourceBytes += sourceByteLength;
-                        isProducer = true;
-                    }
-                }
-
-                if (!admissionRejected)
-                {
-                    checked
-                    {
-                        pending!.WaiterCount++;
-                    }
-                }
-            }
-
-            if (admissionRejected)
+            Admission admission = Admit(
+                key,
+                producerDeadlineTimestamp,
+                out MermaidScene? cachedScene,
+                out InFlightRender? pending);
+            if (admission == Admission.Cached)
+                return Success(cachedScene!, originalSource);
+            if (admission == Admission.Rejected)
                 return admissionRejectedResultFactory();
 
+            bool isProducer = admission == Admission.Started;
             if (isProducer)
             {
                 _ = CompleteProducerAsync(
@@ -162,6 +131,56 @@ internal sealed class MermaidSceneCache : IDisposable
             }
 
             return result;
+        }
+    }
+
+    /// <summary>
+    /// Under the cache lock, returns a cached scene, joins the in-flight render
+    /// for <paramref name="key"/>, or admits a new one within the outstanding
+    /// render and source-byte limits. A joined or started render counts this
+    /// caller as a waiter.
+    /// </summary>
+    private Admission Admit(
+        MermaidSceneCacheKey key,
+        long producerDeadlineTimestamp,
+        out MermaidScene? cachedScene,
+        out InFlightRender? pending)
+    {
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            cachedScene = null;
+            if (_scenes.TryGetValue(key, out CachedScene? cached))
+            {
+                Touch(cached);
+                cachedScene = cached.Scene;
+                pending = null;
+                return Admission.Cached;
+            }
+
+            Admission admission = Admission.Joined;
+            if (!_inFlight.TryGetValue(key, out pending))
+            {
+                int sourceByteLength = key.SourceByteLength;
+                if (_outstandingRenderCount >= _maxOutstandingRenders ||
+                    sourceByteLength > _maxOutstandingSourceBytes - _outstandingSourceBytes)
+                {
+                    return Admission.Rejected;
+                }
+
+                pending = new InFlightRender(sourceByteLength, producerDeadlineTimestamp);
+                _inFlight.Add(key, pending);
+                _outstandingRenderCount++;
+                _outstandingSourceBytes += sourceByteLength;
+                admission = Admission.Started;
+            }
+
+            checked
+            {
+                pending.WaiterCount++;
+            }
+
+            return admission;
         }
     }
 
@@ -332,6 +351,14 @@ internal sealed class MermaidSceneCache : IDisposable
 
     private static void RequestCancellation(InFlightRender pending)
         => pending.RequestCancellation();
+
+    private enum Admission
+    {
+        Cached,
+        Rejected,
+        Joined,
+        Started,
+    }
 
     private sealed record CachedScene(
         MermaidScene Scene,

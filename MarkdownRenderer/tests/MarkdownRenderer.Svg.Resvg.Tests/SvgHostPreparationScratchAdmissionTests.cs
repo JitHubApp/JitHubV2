@@ -13,7 +13,7 @@ public sealed class SvgHostPreparationScratchAdmissionTests
     [Fact]
     public void HostPreparationScratchReservesTwiceConfiguredSourceLimitAcrossRendererInstances()
     {
-        var owner = new SvgProcessSnapshotAdmission(capacityBytes: 128, visibleHeadroomBytes: 32);
+        var owner = new SvgSnapshotAdmission(capacityBytes: 128, visibleHeadroomBytes: 32);
         var options = new ResvgMarkdownSvgRendererOptions(maxSourceBytes: 48);
         using var first = new ResvgMarkdownSvgRenderer(options, owner);
         using var second = new ResvgMarkdownSvgRenderer(options, owner);
@@ -51,13 +51,13 @@ public sealed class SvgHostPreparationScratchAdmissionTests
     [Fact]
     public void HostPreparationScratchUsesDemandTierAndCanRetryAfterPromotion()
     {
-        var owner = new SvgProcessSnapshotAdmission(capacityBytes: 100, visibleHeadroomBytes: 20);
+        var owner = new SvgSnapshotAdmission(capacityBytes: 100, visibleHeadroomBytes: 20);
         var options = new ResvgMarkdownSvgRendererOptions(maxSourceBytes: 30);
         using var renderer = new ResvgMarkdownSvgRenderer(options, owner);
         IMarkdownSvgPreparationAdmission preparation = renderer;
         Assert.True(owner.TryReserve(30, MarkdownSvgRenderPriority.Overscan,
-            out SvgProcessSnapshotAdmission.Lease? blocker, out long initialVersion));
-        using SvgProcessSnapshotAdmission.Lease? blockerOwner = blocker;
+            out SvgSnapshotAdmission.Lease? blocker, out long initialVersion));
+        using SvgSnapshotAdmission.Lease? blockerOwner = blocker;
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
 
         // 60 bytes do not fit in the overscan remainder (50), but do fit in
@@ -89,7 +89,7 @@ public sealed class SvgHostPreparationScratchAdmissionTests
     [Fact]
     public async Task HostPreparationScratchLeaseShrinksSignalsAndDisposesExactlyOnce()
     {
-        var owner = new SvgProcessSnapshotAdmission(capacityBytes: 100, visibleHeadroomBytes: 20);
+        var owner = new SvgSnapshotAdmission(capacityBytes: 100, visibleHeadroomBytes: 20);
         var options = new ResvgMarkdownSvgRendererOptions(maxSourceBytes: 20);
         using var renderer = new ResvgMarkdownSvgRenderer(options, owner);
         IMarkdownSvgPreparationAdmission preparation = renderer;
@@ -130,7 +130,7 @@ public sealed class SvgHostPreparationScratchAdmissionTests
     [Fact]
     public async Task HostPreparationScratchShrinkRacingDisposeCannotUnderflow()
     {
-        var owner = new SvgProcessSnapshotAdmission(capacityBytes: 256, visibleHeadroomBytes: 32);
+        var owner = new SvgSnapshotAdmission(capacityBytes: 256, visibleHeadroomBytes: 32);
         var options = new ResvgMarkdownSvgRendererOptions(maxSourceBytes: 64);
         using var renderer = new ResvgMarkdownSvgRenderer(options, owner);
         IMarkdownSvgPreparationAdmission preparation = renderer;

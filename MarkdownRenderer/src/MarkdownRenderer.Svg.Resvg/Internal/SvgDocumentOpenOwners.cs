@@ -15,7 +15,7 @@ internal struct SvgDocumentOpenOwners
     internal CancellationTokenSource? OpenCancellation;
 
     /// <summary>The initial snapshot reservation until preflight accepts it.</summary>
-    internal SvgProcessSnapshotAdmission.Lease? SnapshotAdmission;
+    internal SvgSnapshotAdmission.Lease? SnapshotAdmission;
 
     /// <summary>The accepted preflight until the returned document owns its source.</summary>
     internal SvgPreflightResult? Preflight;

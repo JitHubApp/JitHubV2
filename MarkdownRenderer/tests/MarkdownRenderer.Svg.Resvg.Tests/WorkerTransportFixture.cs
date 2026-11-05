@@ -166,6 +166,7 @@ internal sealed class WorkerTransportFixture : IAsyncDisposable
                 workerExecutableSha256: null,
                 queueCapacity: 4,
                 objectSecurity,
+                ResvgEventSource.Log.AllocateWorkerInstanceId(),
                 fontCatalogSupplierFactory,
                 frames);
         }

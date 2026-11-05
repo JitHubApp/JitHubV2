@@ -16,7 +16,7 @@ internal static class SvgPreflight
         ResvgMarkdownSvgRendererOptions options,
         CancellationToken cancellationToken
         , SvgProviderSnapshotLedger? ownershipLedger = null
-        , SvgProcessSnapshotAdmission.Lease? snapshotAdmission = null
+        , SvgSnapshotAdmission.Lease? snapshotAdmission = null
         , MarkdownSvgRenderDemand? demand = null
         , Action? beforeFirstNormalizedSegmentAllocation = null
         , SvgResourceInspectionWorkspacePool? inspectionWorkspaces = null
@@ -126,7 +126,7 @@ internal static class SvgPreflight
         ResvgMarkdownSvgRendererOptions options,
         CancellationToken cancellationToken
         , SvgProviderSnapshotLedger.Lease? ownership = null
-        , SvgProcessSnapshotAdmission.Lease? snapshotAdmission = null
+        , SvgSnapshotAdmission.Lease? snapshotAdmission = null
         , MarkdownSvgRenderDemand? demand = null
         , MarkdownSvgRenderPriority sourcePriority = MarkdownSvgRenderPriority.Visible
         , Action? beforeFirstNormalizedSegmentAllocation = null
@@ -147,9 +147,9 @@ internal static class SvgPreflight
             , inspectionWorkspaces).ConfigureAwait(false);
     }
 
-    // This stays one method of about 85 lines, a third of them its parameter
-    // list and comments. The try/finally is the single ownership region for
-    // the source snapshot, ledger lease and snapshot reservation; the
+    // This method stays whole because its try/finally is the single ownership
+    // region for the source snapshot, ledger lease and snapshot reservation (a
+    // third of its lines are the parameter list and comments); the
     // normalization await swaps the snapshot inside it in a fixed order
     // (detach the normalized buffer, retire the original, then dispose the
     // producer), and an async step could not take those locals by reference.
@@ -158,7 +158,7 @@ internal static class SvgPreflight
         ResvgMarkdownSvgRendererOptions options,
         CancellationToken cancellationToken
         , SvgProviderSnapshotLedger.Lease? ownership = null
-        , SvgProcessSnapshotAdmission.Lease? snapshotAdmission = null
+        , SvgSnapshotAdmission.Lease? snapshotAdmission = null
         , MarkdownSvgRenderDemand? demand = null
         , MarkdownSvgRenderPriority sourcePriority = MarkdownSvgRenderPriority.Visible
         , Action? beforeFirstNormalizedSegmentAllocation = null
@@ -249,7 +249,7 @@ internal static class SvgPreflight
     /// <param name="cancellationToken">Observed before reporting capacity pressure.</param>
     /// <exception cref="SvgPreflightCapacityUnavailableException">The process capacity cannot cover the peak.</exception>
     private static void ReserveNormalizationPeak(
-        SvgProcessSnapshotAdmission.Lease snapshotAdmission,
+        SvgSnapshotAdmission.Lease snapshotAdmission,
         ResvgMarkdownSvgRendererOptions options,
         MarkdownSvgRenderDemand? demand,
         MarkdownSvgRenderPriority sourcePriority,
@@ -301,7 +301,7 @@ internal static class SvgPreflight
         ref SvgSourceBuffer? sourceBuffer,
         in SvgPreflightScan scan,
         ref SvgProviderSnapshotLedger.Lease? ownership,
-        ref SvgProcessSnapshotAdmission.Lease? snapshotAdmission)
+        ref SvgSnapshotAdmission.Lease? snapshotAdmission)
     {
         SvgSourceBuffer finalSource = sourceBuffer ??
             throw new InvalidOperationException("The SVG source snapshot was not produced.");

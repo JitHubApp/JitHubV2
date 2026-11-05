@@ -8,11 +8,7 @@ namespace MarkdownRenderer.Svg.Resvg.Tests;
 
 public sealed class SvgWorkerPolicyTraceTests
 {
-    // Keep test-generated identities outside the small positive range used by
-    // live worker pools, while Interlocked guarantees uniqueness across tests.
-    private static long _nextTestPrimaryWorkerInstanceId = 8_000_000_000_000_000L;
-
-    // This test stays one method of about 100 lines: it scripts one decision's
+    // This method stays whole because it scripts one decision's
     // five-phase lifecycle through a single trace and then asserts each emitted
     // event against the phase that produced it, so its records and assertions
     // read as one sequence.
@@ -189,8 +185,10 @@ public sealed class SvgWorkerPolicyTraceTests
             SecondaryFontCatalogReady: 0,
             ShouldStartSecondary: shouldStartSecondary);
 
+    // The provider allocates every worker identity in the process, so a test
+    // identity can never match a live worker pool's events.
     private static long NextTestPrimaryWorkerInstanceId() =>
-        Interlocked.Increment(ref _nextTestPrimaryWorkerInstanceId);
+        ResvgEventSource.Log.AllocateWorkerInstanceId();
 
     private sealed class WorkerPolicyListener : EventListener
     {

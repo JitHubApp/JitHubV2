@@ -11,10 +11,15 @@ namespace MarkdownRenderer.Svg.Resvg.Internal;
 /// retirement and canceled-work preemption) are called only under
 /// <c>_stateLock</c>, and timed steps re-enter through the host interfaces.
 /// Nothing here calls out while holding the lock except the synchronous lease
-/// completion it has always run. The file stays near 1,000 lines because
-/// admission, dispatch and startup all read and write the same locked slot
-/// state; splitting them further would share the lock across classes.
+/// completion it has always run.
 /// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because admission, dispatch, startup
+/// and secondary-worker policy all read and write the same slot state under
+/// <c>_stateLock</c>. The lock-free parts already live in the collaborators
+/// above; splitting the locked parts further would hand the lock and the slot
+/// fields to another class.
+/// </remarks>
 internal sealed class WorkerScheduler :
     ISecondaryWorkerWarmupHost,
     ISecondaryIdleRetirementHost,

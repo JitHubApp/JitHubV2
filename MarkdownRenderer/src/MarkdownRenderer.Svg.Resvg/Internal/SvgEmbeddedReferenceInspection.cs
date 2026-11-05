@@ -59,7 +59,26 @@ internal static class SvgEmbeddedReferenceInspection
             out byte[]? ownedPayload);
         string mediaType = ResolveEmbeddedMediaType(
             decoded, declaredMediaType, ref ownedPayload, options, cancellationToken);
+        InspectDecodedResource(
+            decoded, mediaType, ownedPayload, options, resources, ref scan, cancellationToken, embeddedSvgDepth);
+        if (mediaType != "image/svg+xml" && memoizeRaster)
+            resources.RememberRaster(referenceKey);
+    }
 
+    /// <summary>
+    /// Charges a decoded embedded resource once per distinct payload and
+    /// inspects a nested SVG once per depth.
+    /// </summary>
+    private static void InspectDecodedResource(
+        scoped ReadOnlySpan<byte> decoded,
+        string mediaType,
+        byte[]? ownedPayload,
+        ResvgMarkdownSvgRendererOptions options,
+        SvgResourceInspectionContext resources,
+        ref SvgPreflightScan scan,
+        CancellationToken cancellationToken,
+        int embeddedSvgDepth)
+    {
         // Keep the complete digest in the per-inspection value-key set. A
         // byte[] digest plus a 64-character hex string per image needlessly
         // expands transient host memory on contributor grids. This keeps the
@@ -88,8 +107,6 @@ internal static class SvgEmbeddedReferenceInspection
                 nestedSvgDepth);
             resources.MarkNestedSvgValidated(identity, nestedSvgDepth);
         }
-        if (!isSvg && memoizeRaster)
-            resources.RememberRaster(referenceKey);
     }
 
     /// <summary>
