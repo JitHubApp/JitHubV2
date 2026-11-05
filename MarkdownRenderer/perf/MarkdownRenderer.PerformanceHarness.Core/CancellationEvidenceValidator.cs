@@ -124,11 +124,3 @@ public static class CancellationEvidenceValidator
         return Math.Abs(left - right) <= scale * 1e-12;
     }
 }
-
-public sealed record CancellationEvidenceStatistics(
-    double WarmupP95Milliseconds,
-    double PooledP95Milliseconds,
-    double RegressionP95Milliseconds,
-    double RegressionDispersionPercent,
-    int WarmupStaleCommits,
-    int StaleCommits);

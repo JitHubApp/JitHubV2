@@ -61,8 +61,3 @@ public static class CancellationMeasurementPlan
            elapsedMilliseconds <= AbsoluteBudgetMilliseconds &&
            staleCommits == 0;
 }
-
-public readonly record struct CancellationMeasurementIteration(
-    bool IsRecorded,
-    int SourceSeed,
-    int WinnerOrdinal);

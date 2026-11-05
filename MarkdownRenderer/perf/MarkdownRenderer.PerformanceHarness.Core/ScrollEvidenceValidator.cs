@@ -201,27 +201,3 @@ public static class ScrollEvidenceValidator
         return Math.Abs(left - right) <= scale * 1e-12;
     }
 }
-
-public sealed record ScrollEvidenceStatistics(
-    IReadOnlyList<ScrollTrialEvidenceStatistics> Trials,
-    double UiThreadWorkP95Milliseconds,
-    double UiThreadWorkP99Milliseconds,
-    double FrameTimeP95Milliseconds,
-    double FramesOver16_7Percent,
-    double MaximumFrameStallMilliseconds,
-    double RendererOwnedAllocatedBytesPerFrameP95,
-    long MaximumRendererOwnedAllocatedBytesPerFrame,
-    bool RendererOwnedLohAllocationPossible,
-    double RegressionUiThreadWorkP95Milliseconds,
-    double RegressionUiThreadWorkP99Milliseconds,
-    double RegressionFrameTimeP95Milliseconds,
-    double RegressionRendererOwnedAllocatedBytesPerFrameP95);
-
-public readonly record struct ScrollTrialEvidenceStatistics(
-    double UiThreadWorkP95Milliseconds,
-    double UiThreadWorkP99Milliseconds,
-    double FrameTimeP95Milliseconds,
-    double FramesOver16_7Percent,
-    double MaximumFrameStallMilliseconds,
-    double RendererOwnedAllocatedBytesPerFrameP95,
-    long MaximumRendererOwnedAllocatedBytesPerFrame);
