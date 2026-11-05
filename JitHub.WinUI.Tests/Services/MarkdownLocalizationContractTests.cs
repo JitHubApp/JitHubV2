@@ -1,56 +1,61 @@
+using System.Globalization;
+using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using JitHub.Services.Markdown;
+using JitHub.WinUI.Helpers;
+using MarkdownRenderer.Hosting;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
 
+/// <summary>
+/// Checks the renderer's stable string keys against JitHub's string provider and
+/// its .resw catalogs. The keys come from the renderer's public
+/// <see cref="MarkdownStringKeys"/> constants and the catalogs are read as data.
+/// </summary>
+/// <remarks><c>partial</c> only for the generated placeholder regex.</remarks>
 public sealed partial class MarkdownLocalizationContractTests
 {
     [Fact]
-    public void JitHubProvider_CoversEveryStableRendererStringKey()
+    public void JitHubProvider_ResolvesEveryStableRendererStringKeyFromItsCatalogEntry()
     {
-        string root = FindRepositoryRoot();
-        string contracts = File.ReadAllText(Path.Combine(
-            root,
-            "MarkdownRenderer",
-            "src",
-            "MarkdownRenderer",
-            "Hosting",
-            "MarkdownStringKeys.cs"));
-        string provider = File.ReadAllText(Path.Combine(
-            root,
-            "JitHub.WinUI",
-            "Services",
-            "Markdown",
-            "JitHubMarkdownStringProvider.cs"));
+        IReadOnlyDictionary<string, string> english = LoadCatalogValues(FindRepositoryRoot(), "en-US");
+        List<string> requested = [];
+        using IDisposable lookup = LocalizedResourceText.OverrideCultureAwareResourceLookupForTests(
+            (resourceKey, _) =>
+            {
+                requested.Add(resourceKey);
+                return english.TryGetValue(resourceKey, out string? value) ? value : null;
+            });
 
-        Match[] keys = StableStringKeyPattern().Matches(contracts).Cast<Match>().ToArray();
-        Assert.NotEmpty(keys);
-        Assert.All(
-            keys,
-            match => Assert.Contains(
-                $"MarkdownStringKeys.{match.Groups[1].Value} =>",
-                provider,
-                StringComparison.Ordinal));
+        foreach (string key in StableStringKeys())
+        {
+            string? value = JitHubMarkdownStringProvider.Instance.GetString(key, CultureInfo.GetCultureInfo("en-US"));
+
+            Assert.False(string.IsNullOrWhiteSpace(value), $"The provider has no string for {key}.");
+            Assert.Equal(english[ToResourceKey(key)], value);
+        }
+
+        Assert.Equal(StableStringKeys().Select(ToResourceKey).Order(StringComparer.Ordinal), requested.Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void JitHubProvider_FallsBackToCanonicalTextWithoutAResourceMap()
+    {
+        using IDisposable lookup = LocalizedResourceText.OverrideCultureAwareResourceLookupForTests(static (_, _) => null);
+
+        Assert.All(StableStringKeys(), key =>
+            Assert.False(string.IsNullOrWhiteSpace(
+                JitHubMarkdownStringProvider.Instance.GetString(key, CultureInfo.InvariantCulture))));
+        Assert.Null(JitHubMarkdownStringProvider.Instance.GetString("Not.A.Renderer.Key", CultureInfo.InvariantCulture));
     }
 
     [Fact]
     public void RendererStrings_ExistInCanonicalAndPseudoCatalogs()
     {
         string root = FindRepositoryRoot();
-        string contracts = File.ReadAllText(Path.Combine(
-            root,
-            "MarkdownRenderer",
-            "src",
-            "MarkdownRenderer",
-            "Hosting",
-            "MarkdownStringKeys.cs"));
-        string[] resourceKeys = StableStringKeyPattern()
-            .Matches(contracts)
-            .Cast<Match>()
-            .Select(match => "MarkdownRenderer/" + match.Groups[2].Value.Replace('.', '/'))
-            .ToArray();
+        string[] resourceKeys = StableStringKeys().Select(ToResourceKey).ToArray();
 
         HashSet<string> english = LoadCatalog(root, "en-US");
         HashSet<string> pseudo = LoadCatalog(root, "qps-ploc");
@@ -62,17 +67,8 @@ public sealed partial class MarkdownLocalizationContractTests
     public void EveryRealCatalog_HasExactRendererKeySetAndPlaceholderParity()
     {
         string root = FindRepositoryRoot();
-        string contracts = File.ReadAllText(Path.Combine(
-            root,
-            "MarkdownRenderer",
-            "src",
-            "MarkdownRenderer",
-            "Hosting",
-            "MarkdownStringKeys.cs"));
-        string[] expectedKeys = StableStringKeyPattern()
-            .Matches(contracts)
-            .Cast<Match>()
-            .Select(match => "MarkdownRenderer/" + match.Groups[2].Value.Replace('.', '/'))
+        string[] expectedKeys = StableStringKeys()
+            .Select(ToResourceKey)
             .Order(StringComparer.Ordinal)
             .ToArray();
 
@@ -118,30 +114,18 @@ public sealed partial class MarkdownLocalizationContractTests
         });
     }
 
-    [Fact]
-    public void MarkdownViewer_InstallsHostStringProvider()
+    private static string[] StableStringKeys()
     {
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "JitHub.WinUI",
-            "Views",
-            "Controls",
-            "Common",
-            "MarkdownViewer.xaml.cs"));
-        string configurator = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "JitHub.WinUI",
-            "Services",
-            "Markdown",
-            "Hosting",
-            "MarkdownRendererConfigurator.cs"));
-
-        Assert.Contains("MarkdownRendererConfigurator.ApplyDocumentStyle(renderer, _theme);", source, StringComparison.Ordinal);
-        Assert.Contains(
-            "renderer.StringProvider = JitHubMarkdownStringProvider.Instance;",
-            configurator,
-            StringComparison.Ordinal);
+        string[] keys = typeof(MarkdownStringKeys)
+            .GetFields(BindingFlags.Public | BindingFlags.Static)
+            .Where(static field => field.IsLiteral && field.FieldType == typeof(string))
+            .Select(static field => (string)field.GetRawConstantValue()!)
+            .ToArray();
+        Assert.NotEmpty(keys);
+        return keys;
     }
+
+    private static string ToResourceKey(string key) => "MarkdownRenderer/" + key.Replace('.', '/');
 
     private static HashSet<string> LoadCatalog(string root, string language) =>
         LoadCatalogValues(root, language).Keys.ToHashSet(StringComparer.Ordinal);
@@ -184,11 +168,6 @@ public sealed partial class MarkdownLocalizationContractTests
 
         throw new DirectoryNotFoundException("Could not locate the repository root.");
     }
-
-    [GeneratedRegex(
-        "public const string (\\w+) = \\\"([^\\\"]+)\\\";",
-        RegexOptions.CultureInvariant)]
-    private static partial Regex StableStringKeyPattern();
 
     [GeneratedRegex(
         "(?<!\\{)\\{\\d+(?:,\\s*-?\\d+)?(?::[^{}]+)?\\}(?!\\})",

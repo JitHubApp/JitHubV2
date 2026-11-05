@@ -177,6 +177,7 @@
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubRawImageFetchOutcome.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubRawImageFetchOutcomeKind.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubMarkdownImageResolverProvider.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Markdown\JitHubMarkdownStringProvider.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Helpers\RepositoryLanguageColorPalette.cs" Link="Helpers\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\ViewModels\Pages\SettingsPageViewModel.cs" Link="ViewModels\Pages\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\ViewModels\Pages\LoginPageViewModel.cs" Link="ViewModels\Pages\%(Filename)%(Extension)" />
