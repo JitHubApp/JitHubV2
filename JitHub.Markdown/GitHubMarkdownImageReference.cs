@@ -1,6 +1,6 @@
 using System;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 public readonly record struct GitHubMarkdownImageReference(
     string Owner,

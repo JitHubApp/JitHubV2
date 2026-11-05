@@ -450,6 +450,12 @@
           "Onigwrap": "1.0.10"
         }
       },
+      "jithub.markdown": {
+        "type": "Project",
+        "dependencies": {
+          "MarkdownRenderer": "[1.0.0-preview.1, )"
+        }
+      },
       "markdownrenderer": {
         "type": "Project",
         "dependencies": {

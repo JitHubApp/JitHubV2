@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using JitHub.Markdown;
 using JitHub.Models;
 using JitHub.Models.NavArgs;
 using JitHub.Services;

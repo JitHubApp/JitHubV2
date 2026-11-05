@@ -1,0 +1,114 @@
+#nullable enable
+const JitHub.Markdown.MarkdownHostContract.Comment = "Comment" -> string!
+const JitHub.Markdown.MarkdownHostContract.Conversation = "Conversation" -> string!
+const JitHub.Markdown.MarkdownHostContract.EditorPreview = "EditorPreview" -> string!
+const JitHub.Markdown.MarkdownHostContract.ProfileReadme = "ProfileReadme" -> string!
+const JitHub.Markdown.MarkdownHostContract.RepositoryReadme = "RepositoryReadme" -> string!
+JitHub.Markdown.DenyAllMarkdownImageResolver
+JitHub.Markdown.DenyAllMarkdownImageResolver.ResolveAsync(string! source, MarkdownRenderer.Images.MarkdownImageResolveContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.MarkdownImageResolution>
+JitHub.Markdown.GitHubMarkdownImageReference
+JitHub.Markdown.GitHubMarkdownImageReference.Deconstruct(out string! Owner, out string! Repository, out string! Ref, out string! Path, out System.Uri! SourceUri) -> void
+JitHub.Markdown.GitHubMarkdownImageReference.Equals(JitHub.Markdown.GitHubMarkdownImageReference other) -> bool
+JitHub.Markdown.GitHubMarkdownImageReference.GitHubMarkdownImageReference() -> void
+JitHub.Markdown.GitHubMarkdownImageReference.GitHubMarkdownImageReference(string! Owner, string! Repository, string! Ref, string! Path, System.Uri! SourceUri) -> void
+JitHub.Markdown.GitHubMarkdownImageReference.Owner.get -> string!
+JitHub.Markdown.GitHubMarkdownImageReference.Owner.init -> void
+JitHub.Markdown.GitHubMarkdownImageReference.Path.get -> string!
+JitHub.Markdown.GitHubMarkdownImageReference.Path.init -> void
+JitHub.Markdown.GitHubMarkdownImageReference.Ref.get -> string!
+JitHub.Markdown.GitHubMarkdownImageReference.Ref.init -> void
+JitHub.Markdown.GitHubMarkdownImageReference.Repository.get -> string!
+JitHub.Markdown.GitHubMarkdownImageReference.Repository.init -> void
+JitHub.Markdown.GitHubMarkdownImageReference.SourceUri.get -> System.Uri!
+JitHub.Markdown.GitHubMarkdownImageReference.SourceUri.init -> void
+JitHub.Markdown.GitHubMarkdownImageUrlResolver
+JitHub.Markdown.IMarkdownRemoteImagePolicy
+JitHub.Markdown.IMarkdownRemoteImagePolicy.Evaluate(System.Uri! uri, bool userInitiated) -> JitHub.Markdown.MarkdownRemoteImageDecision
+JitHub.Markdown.MarkdownGitHubRoute
+JitHub.Markdown.MarkdownGitHubRoute.Deconstruct(out JitHub.Markdown.MarkdownGitHubRouteKind Kind, out string? Owner, out string? Repository, out int? Number) -> void
+JitHub.Markdown.MarkdownGitHubRoute.Equals(JitHub.Markdown.MarkdownGitHubRoute other) -> bool
+JitHub.Markdown.MarkdownGitHubRoute.Kind.get -> JitHub.Markdown.MarkdownGitHubRouteKind
+JitHub.Markdown.MarkdownGitHubRoute.Kind.init -> void
+JitHub.Markdown.MarkdownGitHubRoute.MarkdownGitHubRoute() -> void
+JitHub.Markdown.MarkdownGitHubRoute.MarkdownGitHubRoute(JitHub.Markdown.MarkdownGitHubRouteKind Kind, string? Owner, string? Repository, int? Number = null) -> void
+JitHub.Markdown.MarkdownGitHubRoute.Number.get -> int?
+JitHub.Markdown.MarkdownGitHubRoute.Number.init -> void
+JitHub.Markdown.MarkdownGitHubRoute.Owner.get -> string?
+JitHub.Markdown.MarkdownGitHubRoute.Owner.init -> void
+JitHub.Markdown.MarkdownGitHubRoute.Repository.get -> string?
+JitHub.Markdown.MarkdownGitHubRoute.Repository.init -> void
+JitHub.Markdown.MarkdownGitHubRouteKind
+JitHub.Markdown.MarkdownGitHubRouteKind.ExternalGitHub = 5 -> JitHub.Markdown.MarkdownGitHubRouteKind
+JitHub.Markdown.MarkdownGitHubRouteKind.Issue = 3 -> JitHub.Markdown.MarkdownGitHubRouteKind
+JitHub.Markdown.MarkdownGitHubRouteKind.NotInternal = 0 -> JitHub.Markdown.MarkdownGitHubRouteKind
+JitHub.Markdown.MarkdownGitHubRouteKind.PullRequest = 4 -> JitHub.Markdown.MarkdownGitHubRouteKind
+JitHub.Markdown.MarkdownGitHubRouteKind.Repository = 2 -> JitHub.Markdown.MarkdownGitHubRouteKind
+JitHub.Markdown.MarkdownGitHubRouteKind.User = 1 -> JitHub.Markdown.MarkdownGitHubRouteKind
+JitHub.Markdown.MarkdownHostContract
+JitHub.Markdown.MarkdownHostKind
+JitHub.Markdown.MarkdownHostKind.Comment = 1 -> JitHub.Markdown.MarkdownHostKind
+JitHub.Markdown.MarkdownHostKind.Conversation = 0 -> JitHub.Markdown.MarkdownHostKind
+JitHub.Markdown.MarkdownHostKind.EditorPreview = 4 -> JitHub.Markdown.MarkdownHostKind
+JitHub.Markdown.MarkdownHostKind.ProfileReadme = 3 -> JitHub.Markdown.MarkdownHostKind
+JitHub.Markdown.MarkdownHostKind.RepositoryReadme = 2 -> JitHub.Markdown.MarkdownHostKind
+JitHub.Markdown.MarkdownLinkNavigationPolicy
+JitHub.Markdown.MarkdownRemoteContentConsent
+JitHub.Markdown.MarkdownRemoteContentConsent.Activate(MarkdownRenderer.Images.MarkdownDocumentSource? source) -> void
+JitHub.Markdown.MarkdownRemoteContentConsent.CurrentIdentity.get -> string!
+JitHub.Markdown.MarkdownRemoteContentConsent.Grant() -> void
+JitHub.Markdown.MarkdownRemoteContentConsent.IsGranted.get -> bool
+JitHub.Markdown.MarkdownRemoteContentConsent.MarkdownRemoteContentConsent() -> void
+JitHub.Markdown.MarkdownRemoteContentConsent.ResetForHostReuse() -> void
+JitHub.Markdown.MarkdownRemoteContentConsent.Revoke() -> void
+JitHub.Markdown.MarkdownRemoteImageAccess
+JitHub.Markdown.MarkdownRemoteImageAccess.AllowNetwork = 0 -> JitHub.Markdown.MarkdownRemoteImageAccess
+JitHub.Markdown.MarkdownRemoteImageAccess.Block = 2 -> JitHub.Markdown.MarkdownRemoteImageAccess
+JitHub.Markdown.MarkdownRemoteImageAccess.CacheOnly = 1 -> JitHub.Markdown.MarkdownRemoteImageAccess
+JitHub.Markdown.MarkdownRemoteImageDecision
+JitHub.Markdown.MarkdownRemoteImageDecision.Access.get -> JitHub.Markdown.MarkdownRemoteImageAccess
+JitHub.Markdown.MarkdownRemoteImageDecision.Access.init -> void
+JitHub.Markdown.MarkdownRemoteImageDecision.Deconstruct(out JitHub.Markdown.MarkdownRemoteImageAccess Access, out MarkdownRenderer.Images.MarkdownImageUnavailableReason UnavailableReason, out bool IsThirdParty) -> void
+JitHub.Markdown.MarkdownRemoteImageDecision.Equals(JitHub.Markdown.MarkdownRemoteImageDecision other) -> bool
+JitHub.Markdown.MarkdownRemoteImageDecision.IsThirdParty.get -> bool
+JitHub.Markdown.MarkdownRemoteImageDecision.IsThirdParty.init -> void
+JitHub.Markdown.MarkdownRemoteImageDecision.MarkdownRemoteImageDecision() -> void
+JitHub.Markdown.MarkdownRemoteImageDecision.MarkdownRemoteImageDecision(JitHub.Markdown.MarkdownRemoteImageAccess Access, MarkdownRenderer.Images.MarkdownImageUnavailableReason UnavailableReason, bool IsThirdParty) -> void
+JitHub.Markdown.MarkdownRemoteImageDecision.UnavailableReason.get -> MarkdownRenderer.Images.MarkdownImageUnavailableReason
+JitHub.Markdown.MarkdownRemoteImageDecision.UnavailableReason.init -> void
+JitHub.Markdown.MarkdownRemoteImagePolicy
+JitHub.Markdown.MarkdownRemoteImagePolicy.Evaluate(System.Uri! uri, bool userInitiated) -> JitHub.Markdown.MarkdownRemoteImageDecision
+JitHub.Markdown.MarkdownRemoteImagePolicy.MarkdownRemoteImagePolicy() -> void
+override JitHub.Markdown.GitHubMarkdownImageReference.GetHashCode() -> int
+override JitHub.Markdown.MarkdownGitHubRoute.GetHashCode() -> int
+override JitHub.Markdown.MarkdownRemoteImageDecision.GetHashCode() -> int
+static JitHub.Markdown.DenyAllMarkdownImageResolver.CreateOrDenyAll(System.Func<MarkdownRenderer.Images.IMarkdownImageResolver?>! createResolver) -> MarkdownRenderer.Images.IMarkdownImageResolver!
+static JitHub.Markdown.DenyAllMarkdownImageResolver.Instance.get -> JitHub.Markdown.DenyAllMarkdownImageResolver!
+static JitHub.Markdown.GitHubMarkdownImageReference.operator !=(JitHub.Markdown.GitHubMarkdownImageReference left, JitHub.Markdown.GitHubMarkdownImageReference right) -> bool
+static JitHub.Markdown.GitHubMarkdownImageReference.operator ==(JitHub.Markdown.GitHubMarkdownImageReference left, JitHub.Markdown.GitHubMarkdownImageReference right) -> bool
+static JitHub.Markdown.GitHubMarkdownImageUrlResolver.CreateGitHubRawRouteUri(JitHub.Markdown.GitHubMarkdownImageReference reference) -> System.Uri!
+static JitHub.Markdown.GitHubMarkdownImageUrlResolver.CreateRawUri(JitHub.Markdown.GitHubMarkdownImageReference reference) -> System.Uri!
+static JitHub.Markdown.GitHubMarkdownImageUrlResolver.TryResolve(string! source, MarkdownRenderer.Images.MarkdownDocumentSource? documentSource, out JitHub.Markdown.GitHubMarkdownImageReference reference) -> bool
+static JitHub.Markdown.GitHubMarkdownImageUrlResolver.TryResolve(string! source, System.Uri? baseUri, string? documentPath, out JitHub.Markdown.GitHubMarkdownImageReference reference) -> bool
+static JitHub.Markdown.MarkdownGitHubRoute.NotInternal.get -> JitHub.Markdown.MarkdownGitHubRoute
+static JitHub.Markdown.MarkdownGitHubRoute.operator !=(JitHub.Markdown.MarkdownGitHubRoute left, JitHub.Markdown.MarkdownGitHubRoute right) -> bool
+static JitHub.Markdown.MarkdownGitHubRoute.operator ==(JitHub.Markdown.MarkdownGitHubRoute left, JitHub.Markdown.MarkdownGitHubRoute right) -> bool
+static JitHub.Markdown.MarkdownHostContract.GetAutomationId(string? value) -> string!
+static JitHub.Markdown.MarkdownHostContract.GetAutomationId(string? value, string? instanceId) -> string!
+static JitHub.Markdown.MarkdownHostContract.GetAutomationName(string? value) -> string!
+static JitHub.Markdown.MarkdownHostContract.GetSurfaceColorToken(string? value) -> string!
+static JitHub.Markdown.MarkdownHostContract.GetSurfaceFallback(string? value, bool dark) -> string!
+static JitHub.Markdown.MarkdownHostContract.GetTelemetrySection(string? value) -> string!
+static JitHub.Markdown.MarkdownHostContract.Parse(string? value) -> JitHub.Markdown.MarkdownHostKind
+static JitHub.Markdown.MarkdownLinkNavigationPolicy.ClassifyGitHubRoute(System.Uri? uri) -> JitHub.Markdown.MarkdownGitHubRoute
+static JitHub.Markdown.MarkdownLinkNavigationPolicy.IsAllowedLaunchUri(System.Uri? uri) -> bool
+static JitHub.Markdown.MarkdownLinkNavigationPolicy.TryResolveLaunchUri(string? value, System.Uri! baseUri, MarkdownRenderer.Images.MarkdownDocumentSource? documentSource, out System.Uri? uri, out bool mayNavigateInternally) -> bool
+static JitHub.Markdown.MarkdownLinkNavigationPolicy.TryResolveLaunchUri(string? value, System.Uri! baseUri, out System.Uri? uri) -> bool
+static JitHub.Markdown.MarkdownRemoteImageDecision.operator !=(JitHub.Markdown.MarkdownRemoteImageDecision left, JitHub.Markdown.MarkdownRemoteImageDecision right) -> bool
+static JitHub.Markdown.MarkdownRemoteImageDecision.operator ==(JitHub.Markdown.MarkdownRemoteImageDecision left, JitHub.Markdown.MarkdownRemoteImageDecision right) -> bool
+static JitHub.Markdown.MarkdownRemoteImagePolicy.IsTrustedGitHubHost(string? host) -> bool
+~override JitHub.Markdown.GitHubMarkdownImageReference.Equals(object obj) -> bool
+~override JitHub.Markdown.GitHubMarkdownImageReference.ToString() -> string
+~override JitHub.Markdown.MarkdownGitHubRoute.Equals(object obj) -> bool
+~override JitHub.Markdown.MarkdownGitHubRoute.ToString() -> string
+~override JitHub.Markdown.MarkdownRemoteImageDecision.Equals(object obj) -> bool
+~override JitHub.Markdown.MarkdownRemoteImageDecision.ToString() -> string

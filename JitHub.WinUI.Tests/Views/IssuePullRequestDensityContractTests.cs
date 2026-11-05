@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Xml.Linq;
-using JitHub.Services.Markdown;
+using JitHub.Markdown;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Views;

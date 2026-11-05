@@ -1,6 +1,6 @@
+using JitHub.Markdown;
 using JitHub.Models;
 using JitHub.Services;
-using JitHub.Services.Markdown;
 using System.Xml.Linq;
 using Xunit;
 

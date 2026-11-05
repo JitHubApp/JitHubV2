@@ -1,8 +1,8 @@
 using System;
 using System.Globalization;
+using JitHub.Markdown;
 using JitHub.Models.CodeViewer;
 using JitHub.Services;
-using JitHub.Services.Markdown;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.ViewModels.CodeViewer;
 using Microsoft.UI.Xaml;

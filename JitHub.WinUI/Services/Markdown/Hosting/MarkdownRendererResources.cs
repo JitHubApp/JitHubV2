@@ -1,3 +1,4 @@
+using JitHub.Markdown;
 using MarkdownRenderer;
 using MarkdownRenderer.Theming;
 using Microsoft.UI.Xaml;

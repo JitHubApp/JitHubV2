@@ -3,7 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Images;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 /// <summary>
 /// Fail-closed image resolver used when the authenticated resolver cannot be resolved.
@@ -22,7 +22,7 @@ public sealed class DenyAllMarkdownImageResolver : IMarkdownImageResolver
     /// when the provider is missing, returns nothing or throws.
     /// </summary>
     /// <param name="createResolver">Resolves the provider and creates its resolver.</param>
-    internal static IMarkdownImageResolver CreateOrDenyAll(Func<IMarkdownImageResolver?> createResolver)
+    public static IMarkdownImageResolver CreateOrDenyAll(Func<IMarkdownImageResolver?> createResolver)
     {
         ArgumentNullException.ThrowIfNull(createResolver);
         try

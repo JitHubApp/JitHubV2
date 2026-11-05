@@ -1,0 +1,30 @@
+is_global = true
+
+# Public API tracking for JitHub.Markdown. PublicAPI.Shipped.txt and
+# PublicAPI.Unshipped.txt sit next to the project file. These rules are errors
+# whatever TreatWarningsAsErrors says. Update the files with the RS0016 code fix.
+
+# One of the two API files is missing.
+dotnet_diagnostic.RS0048.severity = error
+
+# A public or protected symbol that no API file declares.
+dotnet_diagnostic.RS0016.severity = error
+
+# An API file entry whose symbol no longer exists.
+dotnet_diagnostic.RS0017.severity = error
+
+# A *REMOVED* entry whose symbol still exists.
+dotnet_diagnostic.RS0050.severity = error
+
+# Malformed API files, and a symbol listed more than once.
+dotnet_diagnostic.RS0024.severity = error
+dotnet_diagnostic.RS0025.severity = error
+
+# Nullability is part of the tracked signature.
+dotnet_diagnostic.RS0036.severity = error
+dotnet_diagnostic.RS0037.severity = error
+dotnet_diagnostic.RS0041.severity = error
+
+# At most one public overload may take optional parameters.
+dotnet_diagnostic.RS0026.severity = error
+dotnet_diagnostic.RS0027.severity = error

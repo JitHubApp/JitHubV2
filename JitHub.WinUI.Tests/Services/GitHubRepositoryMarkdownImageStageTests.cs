@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Markdown;
 using JitHub.Models.GitHub;
 using JitHub.Services;
 using JitHub.Services.Markdown;

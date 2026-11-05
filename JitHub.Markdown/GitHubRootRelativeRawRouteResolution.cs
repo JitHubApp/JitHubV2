@@ -1,4 +1,4 @@
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 /// <summary>The outcome of reading an image source as GitHub's root-relative raw route.</summary>
 internal enum GitHubRootRelativeRawRouteResolution

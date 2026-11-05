@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 /// <summary>
 /// Resolves GitHub's root-relative raw image route,

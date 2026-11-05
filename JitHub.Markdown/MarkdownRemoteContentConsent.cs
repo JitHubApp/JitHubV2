@@ -1,7 +1,7 @@
 using System;
 using MarkdownRenderer.Images;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 /// <summary>
 /// Tracks third-party image permission for exactly one logical Markdown document.

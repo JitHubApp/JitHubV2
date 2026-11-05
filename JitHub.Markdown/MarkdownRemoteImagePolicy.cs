@@ -1,7 +1,7 @@
 using System;
 using MarkdownRenderer.Images;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 public sealed class MarkdownRemoteImagePolicy : IMarkdownRemoteImagePolicy
 {

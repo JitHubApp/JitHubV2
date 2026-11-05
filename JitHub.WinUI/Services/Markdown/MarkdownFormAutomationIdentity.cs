@@ -1,4 +1,5 @@
 using System;
+using JitHub.Markdown;
 using JitHub.WinUI.Helpers;
 
 namespace JitHub.Services.Markdown;

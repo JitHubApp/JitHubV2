@@ -1,4 +1,4 @@
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 internal interface IMarkdownNetworkState
 {

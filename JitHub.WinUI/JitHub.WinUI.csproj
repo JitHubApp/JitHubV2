@@ -164,6 +164,7 @@
 
   <ItemGroup>
     <AdditionalFiles Include="..\eng\BannedSymbols.txt" />
+    <ProjectReference Include="..\JitHub.Markdown\JitHub.Markdown.csproj" />
     <ProjectReference Include="..\MarkdownRenderer\src\MarkdownRenderer\MarkdownRenderer.csproj" />
     <ProjectReference Include="..\MarkdownRenderer\src\MarkdownRenderer.Math\MarkdownRenderer.Math.csproj" />
     <ProjectReference Include="..\MarkdownRenderer\src\MarkdownRenderer.Mermaid\MarkdownRenderer.Mermaid.csproj" />

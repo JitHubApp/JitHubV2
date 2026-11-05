@@ -1,10 +1,8 @@
 using System;
-using JitHub.Services;
-using JitHub.Services.Markdown;
 using MarkdownRenderer.Images;
 using Xunit;
 
-namespace JitHub.WinUI.Tests.Services;
+namespace JitHub.Markdown.Tests;
 
 public sealed class MarkdownRemoteImagePolicyTests
 {

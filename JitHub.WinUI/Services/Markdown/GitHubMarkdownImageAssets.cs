@@ -3,6 +3,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Markdown;
 using MarkdownRenderer.Images;
 
 namespace JitHub.Services.Markdown;
