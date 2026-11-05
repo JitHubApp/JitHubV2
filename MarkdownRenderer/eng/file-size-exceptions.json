@@ -17,11 +17,6 @@
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
-      "path": "samples/MarkdownRenderer.Sample.Automation/Program.cs",
-      "lines": 2940,
-      "reason": "Predates the size rule; split by responsibility in a later structure step."
-    },
-    {
       "path": "samples/MarkdownRenderer.Sample/MainWindow.xaml.cs",
       "lines": 1162,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
