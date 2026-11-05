@@ -3,7 +3,6 @@ using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using JitHub.Markdown;
-using JitHub.Services.Markdown;
 using JitHub.WinUI.Helpers;
 using MarkdownRenderer.Hosting;
 using Xunit;

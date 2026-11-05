@@ -3,7 +3,6 @@ using System.Globalization;
 using System.Net;
 using JitHub.Markdown;
 using JitHub.Markdown.Images;
-using JitHub.Services.Markdown;
 
 namespace JitHub.Services;
 

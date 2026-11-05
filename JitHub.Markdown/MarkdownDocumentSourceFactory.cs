@@ -1,10 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using JitHub.Services.CodeViewer;
 using MarkdownRenderer.Images;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 /// <summary>Creates stable Markdown identity and repository context without URL guessing in views.</summary>
 public static class MarkdownDocumentSourceFactory
@@ -44,7 +43,7 @@ public static class MarkdownDocumentSourceFactory
         // context. A per-navigation revision is only a fallback when that
         // authoritative snapshot is unavailable; including both would make
         // identical reads of the same tree acquire different identities.
-        if (!GitReferencePolicy.IsImmutableObjectId(repositoryTreeSha) &&
+        if (!GitObjectIdPolicy.IsImmutableObjectId(repositoryTreeSha) &&
             !string.IsNullOrWhiteSpace(reloadRevision))
         {
             identityComponents.Add($"reload-{Uri.EscapeDataString(reloadRevision.Trim())}");
@@ -152,7 +151,7 @@ public static class MarkdownDocumentSourceFactory
     {
         // A root tree object ID identifies the relative-asset context. It is
         // not a commit ID.
-        if (GitReferencePolicy.IsImmutableObjectId(repositoryTreeSha))
+        if (GitObjectIdPolicy.IsImmutableObjectId(repositoryTreeSha))
         {
             return $"tree-{repositoryTreeSha!.ToLowerInvariant()}";
         }

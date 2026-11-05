@@ -2,7 +2,6 @@ using System;
 using JitHub.Markdown;
 using JitHub.Models.GitHub;
 using JitHub.Models.NavArgs;
-using JitHub.Services.Markdown;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace JitHub.WinUI.ViewModels.Pages;

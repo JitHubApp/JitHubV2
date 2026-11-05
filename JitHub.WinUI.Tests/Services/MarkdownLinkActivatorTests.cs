@@ -4,7 +4,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Markdown;
 using JitHub.Services;
-using JitHub.Services.Markdown;
 using MarkdownRenderer.Images;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;

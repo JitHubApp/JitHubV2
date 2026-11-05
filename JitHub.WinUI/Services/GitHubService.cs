@@ -4,7 +4,6 @@ using JitHub.Models.Base;
 using JitHub.Models.PRConversation;
 using JitHub.WinUI.Helpers;
 using JitHub.Models.LegacyGitHub;
-using JitHub.Services.Markdown;
 using ApiOptions = JitHub.Models.LegacyGitHub.ApiOptions;
 using CommitRequest = JitHub.Models.LegacyGitHub.CommitRequest;
 using IssueFilter = JitHub.Models.LegacyGitHub.IssueFilter;

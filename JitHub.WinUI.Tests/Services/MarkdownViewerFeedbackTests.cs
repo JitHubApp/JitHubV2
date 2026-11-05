@@ -4,7 +4,6 @@ using System.Globalization;
 using System.Linq;
 using JitHub.Markdown;
 using JitHub.Services;
-using JitHub.Services.Markdown;
 using MarkdownRenderer.Images;
 using NSubstitute;
 using Xunit;

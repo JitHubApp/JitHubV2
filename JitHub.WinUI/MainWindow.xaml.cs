@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using JitHub.Markdown;
 using JitHub.Models;
 using JitHub.Services;
-using JitHub.Services.Markdown;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.Performance;
 using JitHub.WinUI.Views.Controls.Common;

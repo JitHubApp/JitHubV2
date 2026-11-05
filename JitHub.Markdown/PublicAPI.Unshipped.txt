@@ -12,6 +12,7 @@
 ~override JitHub.Markdown.MarkdownRemoteImageDecision.Equals(object obj) -> bool
 ~override JitHub.Markdown.MarkdownRemoteImageDecision.ToString() -> string
 const JitHub.Markdown.Images.GitHubImageLimits.MaxImageBytes = 33554432 -> int
+const JitHub.Markdown.MarkdownDocumentSourceFactory.RepositoryRootDocumentPath = "README.md" -> string!
 const JitHub.Markdown.MarkdownHostContract.Comment = "Comment" -> string!
 const JitHub.Markdown.MarkdownHostContract.Conversation = "Conversation" -> string!
 const JitHub.Markdown.MarkdownHostContract.EditorPreview = "EditorPreview" -> string!
@@ -42,6 +43,7 @@ JitHub.Markdown.GitHubMarkdownImageReference.SourceUri.get -> System.Uri!
 JitHub.Markdown.GitHubMarkdownImageReference.SourceUri.init -> void
 JitHub.Markdown.GitHubMarkdownImageUrlResolver
 JitHub.Markdown.GitLfsPointer
+JitHub.Markdown.GitObjectIdPolicy
 JitHub.Markdown.Images.GitHubCachedImage
 JitHub.Markdown.Images.GitHubCachedImage.<Clone>$() -> JitHub.Markdown.Images.GitHubCachedImage!
 JitHub.Markdown.Images.GitHubCachedImage.Bytes.get -> byte[]!
@@ -148,6 +150,7 @@ JitHub.Markdown.Images.GitHubRawImageFetchOutcomeKind.SourceDeferred = 5 -> JitH
 JitHub.Markdown.Images.GitHubRawImageFetchOutcomeKind.Success = 0 -> JitHub.Markdown.Images.GitHubRawImageFetchOutcomeKind
 JitHub.Markdown.Images.GitHubRawImageFetchOutcomeKind.TransportFailure = 6 -> JitHub.Markdown.Images.GitHubRawImageFetchOutcomeKind
 JitHub.Markdown.Images.GitHubRepositoryImageFetchPipeline
+JitHub.Markdown.Images.GloballyRoutableAddressPolicy
 JitHub.Markdown.Images.IGitHubLeasedImageService
 JitHub.Markdown.Images.IGitHubLeasedImageService.GetLeasedAsync(string! sourceUrl, JitHub.Markdown.Images.GitHubImageFetchScope scope, MarkdownRenderer.Images.IMarkdownImageSourceByteAdmission! admission, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<JitHub.Markdown.Images.GitHubImageSourceLease?>!
 JitHub.Markdown.Images.IGitHubLeasedImageService.GetOrFetchLeasedAsync(string! sourceUrl, JitHub.Markdown.Images.GitHubImageFetcher! fetcher, MarkdownRenderer.Images.IMarkdownImageSourceByteAdmission! admission, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<JitHub.Markdown.Images.GitHubImageSourceLease?>!
@@ -216,6 +219,7 @@ JitHub.Markdown.IMarkdownViewerNoticePresenter.UpdateRemoteImageNotice(string! t
 JitHub.Markdown.JitHubMarkdownStringProvider
 JitHub.Markdown.JitHubMarkdownStringProvider.GetString(string! key, System.Globalization.CultureInfo! culture) -> string?
 JitHub.Markdown.JitHubMarkdownStringProvider.JitHubMarkdownStringProvider(JitHub.Markdown.IMarkdownResourceText! text) -> void
+JitHub.Markdown.MarkdownDocumentSourceFactory
 JitHub.Markdown.MarkdownFontChangeCoalescer
 JitHub.Markdown.MarkdownFontChangeCoalescer.Cancel() -> void
 JitHub.Markdown.MarkdownFontChangeCoalescer.MarkdownFontChangeCoalescer(object! gate) -> void
@@ -406,6 +410,7 @@ static JitHub.Markdown.GitHubMarkdownImageUrlResolver.CreateRawUri(JitHub.Markdo
 static JitHub.Markdown.GitHubMarkdownImageUrlResolver.TryResolve(string! source, MarkdownRenderer.Images.MarkdownDocumentSource? documentSource, out JitHub.Markdown.GitHubMarkdownImageReference reference) -> bool
 static JitHub.Markdown.GitHubMarkdownImageUrlResolver.TryResolve(string! source, System.Uri? baseUri, string? documentPath, out JitHub.Markdown.GitHubMarkdownImageReference reference) -> bool
 static JitHub.Markdown.GitLfsPointer.IsPointer(System.ReadOnlySpan<byte> bytes) -> bool
+static JitHub.Markdown.GitObjectIdPolicy.IsImmutableObjectId(string? value) -> bool
 static JitHub.Markdown.Images.GitHubCachedImage.operator !=(JitHub.Markdown.Images.GitHubCachedImage? left, JitHub.Markdown.Images.GitHubCachedImage? right) -> bool
 static JitHub.Markdown.Images.GitHubCachedImage.operator ==(JitHub.Markdown.Images.GitHubCachedImage? left, JitHub.Markdown.Images.GitHubCachedImage? right) -> bool
 static JitHub.Markdown.Images.GitHubImageCacheEntry.operator !=(JitHub.Markdown.Images.GitHubImageCacheEntry? left, JitHub.Markdown.Images.GitHubImageCacheEntry? right) -> bool
@@ -421,6 +426,12 @@ static JitHub.Markdown.Images.GitHubRawImageFetchOutcome.operator ==(JitHub.Mark
 static JitHub.Markdown.Images.GitHubRepositoryImageFetchPipeline.TryGetRawAsync(JitHub.Markdown.Images.IGitHubMarkdownImageCache! imageService, System.Uri! rawUri, System.Action<System.Exception!>! reportUnexpectedFailure, MarkdownRenderer.Images.IMarkdownImageSourceByteAdmission? admission, System.Threading.CancellationToken cancellationToken, System.Action<JitHub.Markdown.Images.GitHubRawImageFetchOutcome>? observeOutcome = null) -> System.Threading.Tasks.Task<JitHub.Markdown.Images.GitHubCachedImage?>!
 static JitHub.Markdown.Images.GitHubRepositoryImageFetchPipeline.TryGetRawAsync(JitHub.Markdown.Images.IGitHubMarkdownImageCache! imageService, System.Uri! rawUri, System.Action<System.Exception!>! reportUnexpectedFailure, System.Threading.CancellationToken cancellationToken, System.Action<JitHub.Markdown.Images.GitHubRawImageFetchOutcome>? observeOutcome) -> System.Threading.Tasks.Task<JitHub.Markdown.Images.GitHubCachedImage?>!
 static JitHub.Markdown.Images.GitHubRepositoryImageFetchPipeline.TryGetRawLeasedAsync(JitHub.Markdown.Images.IGitHubLeasedImageService! imageService, System.Uri! rawUri, System.Action<System.Exception!>! reportUnexpectedFailure, MarkdownRenderer.Images.IMarkdownImageSourceByteAdmission! admission, System.Threading.CancellationToken cancellationToken, System.Action<JitHub.Markdown.Images.GitHubRawImageFetchOutcome>? observeOutcome = null) -> System.Threading.Tasks.Task<JitHub.Markdown.Images.GitHubImageSourceLease?>!
+static JitHub.Markdown.Images.GloballyRoutableAddressPolicy.IsGloballyRoutable(System.Net.IPAddress? address) -> bool
+static JitHub.Markdown.Images.GloballyRoutableAddressPolicy.IsSpecialUseHost(string? host) -> bool
+static JitHub.Markdown.MarkdownDocumentSourceFactory.CreateRepositoryDocument(string! kind, string! stableId, string! owner, string! repository, string? gitRef = null, string? path = null, string? repositoryTreeSha = null, string? reloadRevision = null) -> MarkdownRenderer.Images.MarkdownDocumentSource!
+static JitHub.Markdown.MarkdownDocumentSourceFactory.TryCreateFromGitHubUrl(string! kind, string! stableId, string? githubUrl, string? gitRef = null, string? path = null, string? repositoryTreeSha = null, string? reloadRevision = null) -> MarkdownRenderer.Images.MarkdownDocumentSource?
+static JitHub.Markdown.MarkdownDocumentSourceFactory.TryCreateRepositoryFile(string! stableId, string? githubBlobUrl, string? documentPath, string? repositoryTreeSha = null, string? reloadRevision = null) -> MarkdownRenderer.Images.MarkdownDocumentSource?
+static JitHub.Markdown.MarkdownDocumentSourceFactory.TryGetRepository(string? githubUrl, out string! owner, out string! repository) -> bool
 static JitHub.Markdown.MarkdownFormAutomationIdentity.GetPeerIds(string! prefix) -> JitHub.Markdown.MarkdownFormPeerAutomationIds
 static JitHub.Markdown.MarkdownFormAutomationIdentity.GetPreviewHostId(string! prefix) -> string!
 static JitHub.Markdown.MarkdownFormAutomationIdentity.GetPreviewInstanceId(string! prefix) -> string!

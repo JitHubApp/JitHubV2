@@ -2,7 +2,6 @@ using CommunityToolkit.WinUI.Controls;
 using JitHub.Markdown;
 using JitHub.WinUI.ViewModels;
 using JitHub.WinUI.Helpers;
-using JitHub.Services.Markdown;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Automation;

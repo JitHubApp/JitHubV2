@@ -10,7 +10,6 @@ using JitHub.Models.GitHub;
 using JitHub.Models.NavArgs;
 using JitHub.Services;
 using JitHub.Services.Layout;
-using JitHub.Services.Markdown;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.Performance;
 using JitHub.WinUI.ViewModels.Pages;

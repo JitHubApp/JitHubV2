@@ -2,14 +2,14 @@ using System;
 using System.Net;
 using System.Net.Sockets;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown.Images;
 
 /// <summary>
 /// Allows only globally routable unicast destinations for remote Markdown assets.
 /// This deliberately rejects every private, local, documentation, benchmarking,
 /// transition, multicast, reserved, and other special-use range.
 /// </summary>
-internal static class GloballyRoutableAddressPolicy
+public static class GloballyRoutableAddressPolicy
 {
     public static bool IsGloballyRoutable(IPAddress? address)
     {

@@ -1,7 +1,7 @@
 using System;
 using System.Text.Json.Serialization;
+using JitHub.Markdown;
 using JitHub.Services;
-using JitHub.Services.Markdown;
 using MarkdownRenderer.Images;
 
 namespace JitHub.Models.GitHub;

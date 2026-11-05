@@ -9,11 +9,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using JitHub.Markdown;
 using JitHub.Models.GitHub;
 using JitHub.Models.NavArgs;
 using JitHub.Services;
 using JitHub.WinUI.ViewModels.Common;
-using JitHub.Services.Markdown;
 using MarkdownRenderer.Images;
 
 namespace JitHub.WinUI.ViewModels.Pages;

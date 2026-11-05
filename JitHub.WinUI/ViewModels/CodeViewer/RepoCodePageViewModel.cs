@@ -12,10 +12,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using JitHub.Markdown;
 using JitHub.Models.CodeViewer;
 using JitHub.Services;
 using JitHub.Services.CodeViewer;
-using JitHub.Services.Markdown;
 using JitHub.WinUI.Helpers;
 using Microsoft.UI.Dispatching;
 
