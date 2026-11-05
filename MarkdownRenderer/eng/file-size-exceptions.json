@@ -170,11 +170,6 @@
       "path": "tests/MarkdownRenderer.Tests/MarkdownEngineTests.cs",
       "lines": 1378,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
-    },
-    {
-      "path": "tests/MarkdownRenderer.Tests/PerformanceRegressionEvaluatorTests.cs",
-      "lines": 1738,
-      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     }
   ]
 }
