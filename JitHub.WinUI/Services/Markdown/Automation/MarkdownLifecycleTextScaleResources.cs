@@ -1,4 +1,3 @@
-using System;
 using JitHub.Services.Markdown.Hosting;
 using MarkdownRenderer;
 using MarkdownRenderer.Theming;
@@ -58,11 +57,16 @@ internal static class MarkdownLifecycleTextScaleResources
 
     /// <summary>Scales the renderer's font-size overrides to the harness's requested text scale, if any.</summary>
     /// <param name="resources">The renderer's resource dictionary.</param>
-    public static void Apply(ResourceDictionary resources)
+    /// <param name="bridge">The app's lifecycle automation bridge, which reports the requested scale.</param>
+    /// <param name="runtimeEvents">The app's best-effort Windows runtime event helper.</param>
+    public static void Apply(
+        ResourceDictionary resources,
+        MarkdownLifecycleAutomationBridge bridge,
+        RuntimeEventSubscription runtimeEvents)
     {
-        if (MarkdownLifecycleAutomationBridge.GetTextScaleFactor() is double requestedScale)
+        if (bridge.GetTextScaleFactor() is double requestedScale)
         {
-            double tokenScale = GetLifecycleTokenScaleFactor(requestedScale);
+            double tokenScale = GetLifecycleTokenScaleFactor(requestedScale, runtimeEvents);
             foreach ((string role, string token, double fallback) in ScalableRoleFonts)
             {
                 resources[MarkdownResourceKeys.ForRole(
@@ -73,27 +77,22 @@ internal static class MarkdownLifecycleTextScaleResources
         }
     }
 
-    private static double GetLifecycleTokenScaleFactor(double requestedScale)
+    private static double GetLifecycleTokenScaleFactor(double requestedScale, RuntimeEventSubscription runtimeEvents)
     {
-        // The lifecycle fixture asks for a final effective scale. Divide out
-        // the real Windows scale because MarkdownEnvironmentMonitor applies it
-        // after resolving these test-only font resources.
-        double systemScale = 1;
-        UISettings? settings = RuntimeEventSubscription.TryCreate(
+        UISettings? settings = runtimeEvents.TryCreate(
             static () => new UISettings(),
             nameof(UISettings));
+        double? observedScale;
         try
         {
-            double observedScale = settings?.TextScaleFactor ?? 1;
-            systemScale = double.IsFinite(observedScale) && observedScale > 0
-                ? Math.Clamp(observedScale, 1, 3)
-                : 1;
+            observedScale = settings?.TextScaleFactor;
         }
         catch (System.Runtime.InteropServices.COMException)
         {
-            systemScale = 1;
+            // An unreadable Windows scale counts as 1, as before.
+            observedScale = null;
         }
 
-        return Math.Clamp(requestedScale, 1, 3) / systemScale;
+        return MarkdownLifecycleTextScale.ToTokenScale(requestedScale, observedScale);
     }
 }

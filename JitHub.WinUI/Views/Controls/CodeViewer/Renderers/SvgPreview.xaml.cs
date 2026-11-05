@@ -39,7 +39,7 @@ public sealed partial class SvgPreview : UserControl
     {
         InitializeComponent();
         _dispatcher = DispatcherQueue.GetForCurrentThread();
-        _svgRenderer = JitHubMarkdownRuntime.SvgRenderer;
+        _svgRenderer = ((global::JitHub.WinUI.App)Application.Current).MarkdownRuntime.SvgRenderer;
         _rasterizer = new RepositorySvgRasterizer(_svgRenderer);
         SvgViewport.RenderFailed += SvgViewport_RenderFailed;
         SvgViewport.ZoomSettled += SvgViewport_ZoomSettled;

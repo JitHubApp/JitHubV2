@@ -184,7 +184,7 @@ public sealed partial class ShellPage : Page
             page,
             () => page.IsLoaded,
             () => UiTaskGuard.Observe(
-                JitHubMarkdownRuntime.WarmUpSvgRendererAsync(),
+                ((App)Application.Current).MarkdownRuntime.WarmUpSvgRendererAsync(),
                 "ui-markdown-svg-warmup"));
     }
 
@@ -626,7 +626,7 @@ public sealed partial class ShellPage : Page
 
     private async Task OpenLaunchRepositoryPageAsync()
     {
-        if (!MarkdownLifecycleAutomationBridge.IsEnabled)
+        if (!((App)Application.Current).MarkdownAutomation.IsEnabled)
         {
             await Task.Delay(350);
         }

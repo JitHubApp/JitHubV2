@@ -15,11 +15,20 @@ namespace JitHub.Services.Markdown.Automation;
 internal sealed class MarkdownLifecycleViewerHooks : IMarkdownViewerAutomationHooks
 {
     private readonly MarkdownLifecycleFixtureDocument _document;
+    private readonly MarkdownLifecycleAutomationBridge _bridge;
+    private readonly RuntimeEventSubscription _runtimeEvents;
 
     /// <param name="document">The fixture document hosts render.</param>
-    public MarkdownLifecycleViewerHooks(MarkdownLifecycleFixtureDocument document)
+    /// <param name="bridge">The app's lifecycle automation bridge.</param>
+    /// <param name="runtimeEvents">The app's best-effort Windows runtime event helper.</param>
+    public MarkdownLifecycleViewerHooks(
+        MarkdownLifecycleFixtureDocument document,
+        MarkdownLifecycleAutomationBridge bridge,
+        RuntimeEventSubscription runtimeEvents)
     {
         _document = document ?? throw new ArgumentNullException(nameof(document));
+        _bridge = bridge ?? throw new ArgumentNullException(nameof(bridge));
+        _runtimeEvents = runtimeEvents ?? throw new ArgumentNullException(nameof(runtimeEvents));
     }
 
     public bool RequiresRemoteImageConsent => true;
@@ -32,14 +41,14 @@ internal sealed class MarkdownLifecycleViewerHooks : IMarkdownViewerAutomationHo
 
     public void ApplyRendererResources(ResourceDictionary resources)
     {
-        MarkdownLifecycleTextScaleResources.Apply(resources);
+        MarkdownLifecycleTextScaleResources.Apply(resources, _bridge, _runtimeEvents);
 
-        if (MarkdownLifecycleAutomationBridge.IsHighContrastEnabled)
+        if (_bridge.IsHighContrastEnabled)
         {
             MarkdownLifecycleHighContrastResources.Apply(resources);
         }
     }
 
     public IDisposable? WatchRuntimeSettings(DispatcherQueue dispatcherQueue, Action onChanged) =>
-        new MarkdownLifecycleRuntimeSettingsWatch(dispatcherQueue, onChanged);
+        new MarkdownLifecycleRuntimeSettingsWatch(dispatcherQueue, _bridge, onChanged);
 }

@@ -17,6 +17,25 @@ public sealed class DenyAllMarkdownImageResolver : IMarkdownImageResolver
     {
     }
 
+    /// <summary>
+    /// Creates the host's image resolver, failing closed to <see cref="Instance"/>
+    /// when the provider is missing, returns nothing or throws.
+    /// </summary>
+    /// <param name="createResolver">Resolves the provider and creates its resolver.</param>
+    internal static IMarkdownImageResolver CreateOrDenyAll(Func<IMarkdownImageResolver?> createResolver)
+    {
+        ArgumentNullException.ThrowIfNull(createResolver);
+        try
+        {
+            return createResolver() ?? Instance;
+        }
+        catch (Exception)
+        {
+            // A broken resolver registration must never fall back to URI loading.
+            return Instance;
+        }
+    }
+
     public ValueTask<MarkdownImageResolution> ResolveAsync(
         string source,
         MarkdownImageResolveContext context,

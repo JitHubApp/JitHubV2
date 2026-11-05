@@ -327,7 +327,7 @@ public sealed class NativeAotSourceContractTests
 
         int drain = window.IndexOf("private async Task DrainDiagnosticsAndCloseAsync()", StringComparison.Ordinal);
         int unloadViews = window.IndexOf("await UnloadPageContentBeforeMarkdownShutdownAsync();", drain, StringComparison.Ordinal);
-        int shutdown = window.IndexOf("await JitHubMarkdownRuntime.ShutdownAsync();", drain, StringComparison.Ordinal);
+        int shutdown = window.IndexOf(".MarkdownRuntime.ShutdownAsync();", drain, StringComparison.Ordinal);
         int allowClose = window.IndexOf("_allowCloseAfterDiagnostics = true;", shutdown, StringComparison.Ordinal);
         int close = window.IndexOf("Close();", allowClose, StringComparison.Ordinal);
         Assert.True(drain >= 0);
