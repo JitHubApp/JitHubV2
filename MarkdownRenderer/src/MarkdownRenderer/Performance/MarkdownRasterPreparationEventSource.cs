@@ -13,7 +13,9 @@ internal sealed class MarkdownRasterPreparationEventSource : EventSource
 {
     internal static MarkdownRasterPreparationEventSource Log { get; } = new();
 
-    private static long _nextPreparationId;
+    // Instance state of the one provider, which EventSource makes a process
+    // singleton; never a free static.
+    private long _nextPreparationId;
 
     private MarkdownRasterPreparationEventSource()
     {
