@@ -172,11 +172,6 @@
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
-      "path": "tests/MarkdownRenderer.Tests/PerformanceExternalGateFixtureTests.cs",
-      "lines": 3390,
-      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
-    },
-    {
       "path": "tests/MarkdownRenderer.Tests/PerformanceMeasurementContractTests.cs",
       "lines": 1132,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
