@@ -2,11 +2,6 @@
   "$comment": "Files over 1,000 lines that eng/Test-ProjectStructure.ps1 allows (MRS0008). Each cap is the file's current length: a listed file may not grow (MRS0009), and an entry must be lowered or removed as the file shrinks (MRS0010). Do not add entries; split the file instead.",
   "files": [
     {
-      "path": "perf/MarkdownRenderer.PerformanceHarness.Core/MeasurementVisibilityEvidence.cs",
-      "lines": 1071,
-      "reason": "Predates the size rule; split by responsibility in a later structure step."
-    },
-    {
       "path": "perf/MarkdownRenderer.PerformanceHarness.Core/PerformanceReleaseEvidenceValidator.cs",
       "lines": 1102,
       "reason": "Predates the size rule; split by responsibility in a later structure step."
