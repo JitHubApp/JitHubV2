@@ -32,6 +32,7 @@ public sealed partial class MainWindow : Window
     private readonly MarkdownEngine _engine = CreateFullEngine();
     private readonly ResvgMarkdownSvgRenderer _svgRenderer = new();
     private readonly SampleCatalog _catalog = new();
+    private readonly RendererDisposalEvidence _disposalEvidence = RendererDisposalEvidence.FromEnvironment();
     private MarkdownPerformanceSession? _performanceSession;
 
     private readonly Grid _shellRoot;
@@ -601,7 +602,7 @@ public sealed partial class MainWindow : Window
         renderer.Margin = new Thickness(0);
         renderer.Padding = (Thickness)Application.Current.Resources["SampleRendererPadding"];
         ConfigureRendererProviders(renderer);
-        RendererDisposalEvidence.Attach(renderer);
+        _disposalEvidence.Attach(renderer);
         AutomationProperties.SetAutomationId(renderer, "MarkdownRenderer");
         AutomationProperties.SetName(
             renderer,

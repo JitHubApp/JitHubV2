@@ -7,17 +7,28 @@ using MarkdownRenderer.Controls;
 
 namespace MarkdownRenderer.Sample;
 
-internal static class RendererDisposalEvidence
+/// <summary>
+/// Writes, for the UI automation driver, whether every renderer view a window
+/// created has been disposed. The window owns one instance and attaches each
+/// view it creates; nothing is recorded unless the driver set the output path.
+/// </summary>
+internal sealed class RendererDisposalEvidence
 {
     internal const string OutputEnvironmentVariable = "MARKDOWN_RENDERER_DISPOSAL_EVIDENCE";
-    private static int _attached;
-    private static int _disposed;
+    private readonly string? _outputPath;
+    private int _attached;
+    private int _disposed;
 
-    internal static void Attach(MarkdownRendererControl view)
+    private RendererDisposalEvidence(string? outputPath) => _outputPath = outputPath;
+
+    internal static RendererDisposalEvidence FromEnvironment()
+        => new(Environment.GetEnvironmentVariable(OutputEnvironmentVariable));
+
+    internal void Attach(MarkdownRendererControl view)
     {
-        string? path = Environment.GetEnvironmentVariable(OutputEnvironmentVariable);
-        if (string.IsNullOrWhiteSpace(path))
+        if (string.IsNullOrWhiteSpace(_outputPath))
             return;
+        string path = _outputPath;
         _attached++;
         view.Disposed += (_, _) => File.WriteAllText(path, JsonSerializer.Serialize(new
         {
