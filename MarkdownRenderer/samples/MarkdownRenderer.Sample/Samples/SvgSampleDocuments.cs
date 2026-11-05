@@ -3,7 +3,7 @@ using System.Text;
 
 namespace MarkdownRenderer.Sample;
 
-internal static partial class SampleDocuments
+internal static class SvgSampleDocuments
 {
     internal static string SvgStressSample
     {

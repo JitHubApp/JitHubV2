@@ -31,6 +31,7 @@ public sealed partial class MainWindow : Window
     private const string DiagnosticsNotificationActivityId = "RendererDiagnostics";
     private readonly MarkdownEngine _engine = CreateFullEngine();
     private readonly ResvgMarkdownSvgRenderer _svgRenderer = new();
+    private readonly SampleCatalog _catalog = new();
     private MarkdownPerformanceSession? _performanceSession;
 
     private readonly Grid _shellRoot;
@@ -517,7 +518,7 @@ public sealed partial class MainWindow : Window
 
         NavigationViewItem? initialItem = null;
         SampleDefinition? initialPage = null;
-        foreach (SampleGroup group in SampleCatalog.Groups)
+        foreach (SampleGroup group in _catalog.Groups)
         {
             navigationView.MenuItems.Add(new NavigationViewItemHeader
             {

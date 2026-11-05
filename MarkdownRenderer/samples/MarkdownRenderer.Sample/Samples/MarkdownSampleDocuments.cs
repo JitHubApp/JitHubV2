@@ -1,6 +1,6 @@
 namespace MarkdownRenderer.Sample;
 
-internal static partial class SampleDocuments
+internal static class MarkdownSampleDocuments
 {
     internal const string TypographySample = """
         # Heading 1 — The quick brown fox

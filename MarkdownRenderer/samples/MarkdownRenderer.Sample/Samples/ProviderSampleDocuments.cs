@@ -1,6 +1,6 @@
 namespace MarkdownRenderer.Sample;
 
-internal static partial class SampleDocuments
+internal static class ProviderSampleDocuments
 {
     // One section per optional provider. The Providers page swaps the engine,
     // grammar provider, hosted-control factory and optional providers while

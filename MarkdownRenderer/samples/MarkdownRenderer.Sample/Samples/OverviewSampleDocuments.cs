@@ -1,6 +1,6 @@
 namespace MarkdownRenderer.Sample;
 
-internal static partial class SampleDocuments
+internal static class OverviewSampleDocuments
 {
     internal const string FullDemoSample = """
         # MarkdownRenderer

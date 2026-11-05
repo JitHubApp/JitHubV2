@@ -1,12 +1,12 @@
-using System;
-using System.Threading;
-
 namespace MarkdownRenderer.Sample;
 
-internal static partial class SampleDocuments
+/// <summary>
+/// Diagnostics and scale pages. The generated pages are built on demand;
+/// <see cref="SampleCatalog"/> keeps one copy of each for the window that owns it.
+/// </summary>
+internal static class DiagnosticsSampleDocuments
 {
-    private static readonly Lazy<string> VirtualizationSampleValue = new(
-        static () => """
+    internal static string CreateVirtualizationSample() => """
             # Embed virtualization
 
             This sample renders a long document with many hosted WinUI button
@@ -19,10 +19,7 @@ internal static partial class SampleDocuments
             the de-realisation band ±1200 px, providing hysteresis so embeds
             near the edge don't thrash.
 
-            """ + GenerateVirtualizationButtons(300),
-        LazyThreadSafetyMode.ExecutionAndPublication);
-
-    internal static string VirtualizationSample => VirtualizationSampleValue.Value;
+            """ + GenerateVirtualizationButtons(300);
 
     private static string GenerateVirtualizationButtons(int count)
     {
@@ -35,19 +32,7 @@ internal static partial class SampleDocuments
         return sb.ToString();
     }
 
-    private static readonly Lazy<string> StressSampleValue = new(
-        GenerateStressSample,
-        LazyThreadSafetyMode.ExecutionAndPublication);
-
-    internal static string StressSample => StressSampleValue.Value;
-
-    private static readonly Lazy<string> ProgressiveScenesSampleValue = new(
-        GenerateProgressiveScenesSample,
-        LazyThreadSafetyMode.ExecutionAndPublication);
-
-    internal static string ProgressiveScenesSample => ProgressiveScenesSampleValue.Value;
-
-    private static string GenerateProgressiveScenesSample()
+    internal static string CreateProgressiveScenesSample()
     {
         var sb = new System.Text.StringBuilder();
         sb.AppendLine("# Progressive scene preparation");
@@ -93,7 +78,7 @@ internal static partial class SampleDocuments
         return sb.ToString();
     }
 
-    private static string GenerateStressSample()
+    internal static string CreateStressSample()
     {
         var sb = new System.Text.StringBuilder(800_000);
         sb.AppendLine("# Long Document Stress");

@@ -1,6 +1,6 @@
 namespace MarkdownRenderer.Sample;
 
-internal static partial class SampleDocuments
+internal static class InteractionSampleDocuments
 {
     internal const string SelectionSample = """
         ## DOM-Style Text Selection
