@@ -330,21 +330,18 @@ public sealed class MarkdownRendererControlBuilder
 
     private T Configure<T>(T control) where T : MarkdownRendererControl
     {
-        MarkdownEngine? unassignedDerivedEngine = null;
         try
         {
-            if (_derivedEngineBuilder is not null)
+            MarkdownEngine engine = CreateEffectiveEngine(control.Engine, out bool controlOwnsEngine);
+            if (controlOwnsEngine)
             {
-                unassignedDerivedEngine = _derivedEngineBuilder.Build();
-                MarkdownEngine derivedEngine = unassignedDerivedEngine;
-                unassignedDerivedEngine = null;
-                control.SetOwnedEngine(derivedEngine);
+                control.SetOwnedEngine(engine);
             }
             else
             {
                 // Engines supplied through WithEngine are borrowed. The
                 // control never disposes them.
-                control.Engine = _engine ?? control.Engine ?? MarkdownEngine.Default;
+                control.Engine = engine;
             }
 
             control.Markdown = _markdown;
@@ -377,18 +374,30 @@ public sealed class MarkdownRendererControlBuilder
         }
         catch
         {
-            unassignedDerivedEngine?.Dispose();
             control.Dispose();
             throw;
         }
     }
 
     /// <summary>
-    /// Materializes the effective engine for headless helper tests. The caller
-    /// owns the returned value when this builder contains derived configuration.
+    /// Resolves the engine a configured view parses with. Derived configuration
+    /// builds a new engine that the caller owns; otherwise the result is the
+    /// borrowed <see cref="WithEngine"/> engine, then <paramref name="fallback"/>,
+    /// then <see cref="MarkdownEngine.Default"/>.
     /// </summary>
-    internal MarkdownEngine CreateEngineSnapshotForTesting()
-        => _derivedEngineBuilder?.Build() ?? _engine ?? MarkdownEngine.Default;
+    /// <param name="fallback">The engine the view already has, if any.</param>
+    /// <param name="callerOwnsEngine">True when the caller must dispose the result.</param>
+    internal MarkdownEngine CreateEffectiveEngine(MarkdownEngine? fallback, out bool callerOwnsEngine)
+    {
+        if (_derivedEngineBuilder is not null)
+        {
+            callerOwnsEngine = true;
+            return _derivedEngineBuilder.Build();
+        }
+
+        callerOwnsEngine = false;
+        return _engine ?? fallback ?? MarkdownEngine.Default;
+    }
 
     private MarkdownEngineBuilder GetOrCreateDerivedEngineBuilder()
         => _derivedEngineBuilder ??= (_engine ?? MarkdownEngine.Default).ToBuilder();
