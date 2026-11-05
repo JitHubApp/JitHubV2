@@ -15,6 +15,11 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// which restart or reset a load.
 /// </summary>
 /// <remarks>
+/// This file is longer than 500 lines because activation, its resets and the
+/// box's side of both deferrals all keep the one demand-ticket rule below;
+/// splitting them would spread that lock rule across types. It splits once
+/// the deferral callbacks own their tickets.
+///
 /// A load's demand ticket and generation change only under the SVG host
 /// deferral lock, after the load's setup work unit is admitted, so a late
 /// reset can never clear a newer activation even when a resumed box reuses

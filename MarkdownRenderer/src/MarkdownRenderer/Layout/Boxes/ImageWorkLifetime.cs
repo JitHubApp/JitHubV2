@@ -13,6 +13,11 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// bounded failure list.
 /// </summary>
 /// <remarks>
+/// This file is longer than 500 lines because admission, drain, both
+/// cancellation sources and the retirement barrier read the same counters
+/// under one lock; splitting them would split that lock. The barrier moves to
+/// its own type once it can own a separate lock.
+///
 /// The box's SVG state, document custody and residency take
 /// <see cref="Sync"/> for their own lock sections, so one lock orders every
 /// image lifecycle change exactly as before. Members ending in NoLock expect
@@ -210,51 +215,7 @@ internal sealed class ImageWorkLifetime
             return;
         }
 
-        ImageWorkLease? lease = null;
-        TaskCompletionSource? lateWorkCompletion = null;
-        bool lateRetirementWork = false;
-        bool retirementAlreadyCompleted = false;
-        lock (Sync)
-        {
-            if (_completed)
-            {
-                retirementAlreadyCompleted = true;
-            }
-            else
-            {
-                // A child operation normally registers while its parent lease
-                // is still active. If a future caller violates that ordering,
-                // reopen the drain before finalization or add a task-only late
-                // barrier while native cleanup is finalizing. Never silently
-                // report successful retirement with detached work outstanding.
-                if (_disposed && _workCount == 0)
-                {
-                    RecordFailureNoLock(new InvalidOperationException(
-                        "Detached image work escaped its parent retirement lease."));
-                    if (_finalizing)
-                    {
-                        lateWorkCompletion = new TaskCompletionSource(
-                            TaskCreationOptions.RunContinuationsAsynchronously);
-                        (_lateWork ??= []).Add(lateWorkCompletion.Task);
-                        lateRetirementWork = true;
-                    }
-                }
-
-                if (!lateRetirementWork)
-                {
-                    if (_workCount == 0)
-                    {
-                        _workDrained = new TaskCompletionSource(
-                            TaskCreationOptions.RunContinuationsAsynchronously);
-                    }
-
-                    _workCount++;
-                    lease = new ImageWorkLease(this, CancellationToken.None);
-                }
-            }
-        }
-
-        if (retirementAlreadyCompleted)
+        if (!TryAdmitDetachedWork(out ImageWorkLease? lease, out TaskCompletionSource? lateWorkCompletion))
         {
             TaskFaultObservation.ObserveFault(detachedOperation);
             var escapedWork = new InvalidOperationException(
@@ -264,25 +225,77 @@ internal sealed class ImageWorkLifetime
         }
 
         _ = detachedOperation.ContinueWith(
-            static (completed, state) =>
-            {
-                var tracking = ((ImageWorkLifetime Owner, ImageWorkLease? Lease, bool FailRetirement, TaskCompletionSource? LateWorkCompletion))state!;
-                if (completed.IsFaulted)
-                {
-                    if (tracking.FailRetirement)
-                        tracking.Owner.RecordFailure(
-                            completed.Exception!.GetBaseException());
-                    else
-                        _ = completed.Exception;
-                }
-
-                tracking.Lease?.Dispose();
-                tracking.LateWorkCompletion?.TrySetResult();
-            },
+            static (completed, state) => CompleteDetachedWork(
+                completed,
+                ((ImageWorkLifetime Owner, ImageWorkLease? Lease, bool FailRetirement, TaskCompletionSource? LateWorkCompletion))state!),
             (this, lease, failRetirementOnFault, lateWorkCompletion),
             CancellationToken.None,
             TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default);
+    }
+
+    /// <summary>
+    /// Opens a work lease for a detached operation, or a task-only late
+    /// barrier while native cleanup is finalizing. False once retirement has
+    /// completed, when nothing can hold it open any more.
+    /// </summary>
+    private bool TryAdmitDetachedWork(
+        out ImageWorkLease? lease,
+        out TaskCompletionSource? lateWorkCompletion)
+    {
+        lease = null;
+        lateWorkCompletion = null;
+        lock (Sync)
+        {
+            if (_completed)
+                return false;
+
+            // A child operation normally registers while its parent lease
+            // is still active. If a future caller violates that ordering,
+            // reopen the drain before finalization or add a task-only late
+            // barrier while native cleanup is finalizing. Never silently
+            // report successful retirement with detached work outstanding.
+            if (_disposed && _workCount == 0)
+            {
+                RecordFailureNoLock(new InvalidOperationException(
+                    "Detached image work escaped its parent retirement lease."));
+                if (_finalizing)
+                {
+                    lateWorkCompletion = new TaskCompletionSource(
+                        TaskCreationOptions.RunContinuationsAsynchronously);
+                    (_lateWork ??= []).Add(lateWorkCompletion.Task);
+                    return true;
+                }
+            }
+
+            if (_workCount == 0)
+            {
+                _workDrained = new TaskCompletionSource(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+            }
+
+            _workCount++;
+            lease = new ImageWorkLease(this, CancellationToken.None);
+            return true;
+        }
+    }
+
+    /// <summary>Records a tracked operation's fault, then releases what held retirement open.</summary>
+    private static void CompleteDetachedWork(
+        Task completed,
+        (ImageWorkLifetime Owner, ImageWorkLease? Lease, bool FailRetirement, TaskCompletionSource? LateWorkCompletion) tracking)
+    {
+        if (completed.IsFaulted)
+        {
+            if (tracking.FailRetirement)
+                tracking.Owner.RecordFailure(
+                    completed.Exception!.GetBaseException());
+            else
+                _ = completed.Exception;
+        }
+
+        tracking.Lease?.Dispose();
+        tracking.LateWorkCompletion?.TrySetResult();
     }
 
     /// <summary>Records a cleanup or callback failure with the retirement barrier.</summary>

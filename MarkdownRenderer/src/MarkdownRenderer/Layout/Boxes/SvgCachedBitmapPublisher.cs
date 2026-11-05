@@ -136,31 +136,9 @@ internal sealed class SvgCachedBitmapPublisher
             }
 
             int generation = expectedRenderGeneration ?? _svg.AdvanceRenderGeneration();
-            SvgPublicationMetadata metadata = new(
-                sourceEntry is null
-                    ? _svg.SourceIdentity ?? new WeakReference<byte[]>(Array.Empty<byte>())
-                    : new WeakReference<byte[]>(sourceEntry.RawBytes),
-                sourceEntry?.RawBytes.LongLength ?? _svg.SourceByteLength,
-                cached.Renderer,
-                cached.RendererIdentity,
-                cached.ProviderCacheGeneration,
-                generation,
-                !layoutInvalidated,
-                publicationCacheKey,
-                publicationCacheKey,
-                cached.Intrinsic,
-                sourceEntry is null ? _svg.Title : sourceEntry.Title,
-                sourceEntry is null ? _svg.Description : sourceEntry.Desc,
-                contentHash,
-                partitionHash,
-                info,
-                cached.Plan.Width,
-                cached.Plan.Height,
-                cached.Identity,
-                0,
-                0,
-                (long)cached.Plan.Width * cached.Plan.Height,
-                PhysicalViewport: cached.Plan.PhysicalViewport);
+            SvgPublicationMetadata metadata = CreateMetadata(
+                sourceEntry, cached, generation, layoutInvalidated, publicationCacheKey,
+                info, contentHash, partitionHash);
             var publication = _box.SvgPublication.CreateBitmapPublication(metadata, unclaimedLease);
             unclaimedLease = null;
             try
@@ -195,6 +173,42 @@ internal sealed class SvgCachedBitmapPublisher
                 _box.Lifetime.TryCleanup(unclaimedLease.Dispose);
         }
     }
+
+    // Describes a cache-hit publication: the source and text come from
+    // sourceEntry when given, else from the accepted SVG.
+    private SvgPublicationMetadata CreateMetadata(
+        SvgCacheEntry? sourceEntry,
+        CachedSvgBitmap cached,
+        int generation,
+        bool layoutInvalidated,
+        string publicationCacheKey,
+        MarkdownSvgDocumentInfo info,
+        string contentHash,
+        string partitionHash) => new(
+            sourceEntry is null
+                ? _svg.SourceIdentity ?? new WeakReference<byte[]>(Array.Empty<byte>())
+                : new WeakReference<byte[]>(sourceEntry.RawBytes),
+            sourceEntry?.RawBytes.LongLength ?? _svg.SourceByteLength,
+            cached.Renderer,
+            cached.RendererIdentity,
+            cached.ProviderCacheGeneration,
+            generation,
+            !layoutInvalidated,
+            publicationCacheKey,
+            publicationCacheKey,
+            cached.Intrinsic,
+            sourceEntry is null ? _svg.Title : sourceEntry.Title,
+            sourceEntry is null ? _svg.Description : sourceEntry.Desc,
+            contentHash,
+            partitionHash,
+            info,
+            cached.Plan.Width,
+            cached.Plan.Height,
+            cached.Identity,
+            0,
+            0,
+            (long)cached.Plan.Width * cached.Plan.Height,
+            PhysicalViewport: cached.Plan.PhysicalViewport);
 
     // Acquires the admitted device bitmap of the current whole-bitmap plan.
     // The caller describes the publication once the lease is held.

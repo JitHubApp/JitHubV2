@@ -28,6 +28,11 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// transforms, clipping, bidi, and text paths are preserved.
 /// </summary>
 /// <remarks>
+/// This file is longer than 500 lines because the composition root keeps the
+/// constructor graph, the clone constructors, disposal ordering and every
+/// forwarder of the box's existing internal API in one place; no behavior is
+/// implemented here. The forwarders go once callers reach the owners directly.
+///
 /// The box is a composition root. Its state lives in the work lifetime, load
 /// state, presentation, SVG state and document custody; its behavior lives
 /// in the owners built over them: load activation and source loading,

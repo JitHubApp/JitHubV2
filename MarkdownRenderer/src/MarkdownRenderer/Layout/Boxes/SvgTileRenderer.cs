@@ -19,6 +19,11 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// document leases, image-work leases and failure publication stay with the
 /// image box and are reached through <see cref="ISvgTileRendererHost"/>.
 /// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because it came out of ImageBox whole,
+/// with range planning, admission and tile rendering in one type. Range
+/// planning is the next split.
+/// </remarks>
 internal sealed class SvgTileRenderer
 {
     private const int SvgTileSizePixels = SvgTileCache.SvgTileSizePixels;
@@ -455,6 +460,10 @@ internal sealed class SvgTileRenderer
         }
     }
 
+    // This method stays whole because its provider admission, decode gate,
+    // bitmap reservation, owned bitmap and lease are taken in sequence and all
+    // released by one finally; splitting it would pass them between methods by
+    // ref and scatter that release order.
     private async Task RenderSvgTileAsync(
         SvgTileRenderPlan plan,
         SvgTileKey key,
@@ -552,6 +561,7 @@ internal sealed class SvgTileRenderer
             lifetimeWork.Token.IsCancellationRequested ||
             workCancellation.IsCancellationRequested)
         {
+            // The box or this tile's work was canceled; the finally retires it.
         }
         catch (OperationCanceledException)
         {
@@ -564,6 +574,7 @@ internal sealed class SvgTileRenderer
             (lifetimeWork.Token.IsCancellationRequested ||
              workCancellation.IsCancellationRequested))
         {
+            // The provider saw the same cancellation; the finally retires it.
         }
         catch (MarkdownSvgException ex) when (ex.Reason == MarkdownSvgFailureReason.Canceled)
         {
