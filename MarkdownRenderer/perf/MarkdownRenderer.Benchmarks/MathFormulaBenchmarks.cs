@@ -3,12 +3,6 @@ using MarkdownRenderer.Math;
 
 namespace MarkdownRenderer.Benchmarks;
 
-public enum MathFormulaCorpus
-{
-    Inline,
-    Display,
-}
-
 /// <summary>
 /// Measures the complete UI-independent Math stage: TeX parse, typesetting,
 /// outline extraction, and immutable vector-scene construction. Font loading is
