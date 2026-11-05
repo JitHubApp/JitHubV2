@@ -7,9 +7,6 @@ using Xunit;
 
 namespace MarkdownRenderer.Svg.Resvg.Tests;
 
-[CollectionDefinition("Process resource measurements", DisableParallelization = true)]
-public sealed class ProcessResourceMeasurementsCollection;
-
 [Collection("Process resource measurements")]
 public sealed partial class WorkerObjectSecurityTests
 {
