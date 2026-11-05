@@ -61,13 +61,13 @@ public static class RegressionEvaluator
         bool candidateEvidenceComplete =
             PerformanceReleaseEvidenceValidator.HasCompleteCurrentMeasurementPayload(candidate);
         bool machineComparable = candidateEvidenceComplete &&
-            PerformanceReleaseEvidenceValidator.IsMachineComparable(
+            MachineEvidenceValidator.IsMachineComparable(
                 candidate.Machine,
                 reference.Machine) &&
-            PerformanceReleaseEvidenceValidator.HasSameFirstViewportExecutionEnvironment(
+            FirstViewportEvidenceValidator.HasSameFirstViewportExecutionEnvironment(
                 candidate.FirstUsableViewport,
                 reference.FirstUsableViewport) &&
-            PerformanceReleaseEvidenceValidator.HasSameSourceLookupExecutionEnvironment(
+            SourceLookupEvidenceValidator.HasSameExecutionEnvironment(
                 candidate.SourceLookup,
                 reference.SourceLookup);
         var comparisons = new List<RegressionComparison>();

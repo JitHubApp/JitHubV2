@@ -187,7 +187,7 @@ internal static class PerformanceGateReportFactory
             ConfiguredRefreshRateHz = 120,
             ObservedRefreshRateHz = completion
                 ? 0
-                : PerformanceReleaseEvidenceValidator.CalculateObservedRefreshRateHz(scroll),
+                : MachineEvidenceValidator.CalculateObservedRefreshRateHz(scroll),
             IsAtLeast120Hz = !completion,
             GpuAdapterLuid = "00000001:00000002",
             GpuAdapterIdentitySha256 = new string('C', 64),

@@ -34,15 +34,15 @@ public sealed class PerformanceMeasurementContractTests
     {
         Assert.Equal(
             expectedQualified,
-            PerformanceReleaseEvidenceValidator.IsConfiguredRefreshRateQualified(
+            MachineEvidenceValidator.IsConfiguredRefreshRateQualified(
                 configuredRefreshRateHz));
     }
 
     [Fact]
     public void ReleasePreflightRejectsNonFiniteConfiguredRefreshRates()
     {
-        Assert.False(PerformanceReleaseEvidenceValidator.IsConfiguredRefreshRateQualified(double.NaN));
-        Assert.False(PerformanceReleaseEvidenceValidator.IsConfiguredRefreshRateQualified(double.PositiveInfinity));
+        Assert.False(MachineEvidenceValidator.IsConfiguredRefreshRateQualified(double.NaN));
+        Assert.False(MachineEvidenceValidator.IsConfiguredRefreshRateQualified(double.PositiveInfinity));
     }
 
     [Fact]

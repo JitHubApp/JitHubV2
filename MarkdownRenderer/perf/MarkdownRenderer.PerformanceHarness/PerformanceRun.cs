@@ -216,7 +216,7 @@ internal sealed class PerformanceRun
             configureProcessPowerThrottling: true);
 
         if (!_options.Quick &&
-            !PerformanceReleaseEvidenceValidator.IsConfiguredRefreshRateQualified(
+            !MachineEvidenceValidator.IsConfiguredRefreshRateQualified(
                 _report.Machine.ConfiguredRefreshRateHz))
         {
             throw new InvalidOperationException(
@@ -259,10 +259,10 @@ internal sealed class PerformanceRun
     private void RecordObservedRefreshRate()
     {
         _report.Machine.ObservedRefreshRateHz =
-            PerformanceReleaseEvidenceValidator.CalculateObservedRefreshRateHz(
+            MachineEvidenceValidator.CalculateObservedRefreshRateHz(
                 _report.Scroll);
         _report.Machine.IsAtLeast120Hz =
-            PerformanceReleaseEvidenceValidator.IsConfiguredRefreshRateQualified(
+            MachineEvidenceValidator.IsConfiguredRefreshRateQualified(
                 _report.Machine.ConfiguredRefreshRateHz) &&
             _report.Machine.ObservedRefreshRateHz >= Math.Max(
                 115,

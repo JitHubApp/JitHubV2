@@ -22,13 +22,13 @@ public static class QuickPerformanceSmokeValidator
             failures.Add("Quick smoke build artifacts did not include the frozen runtimeconfig evidence.");
         if (!PerformanceRuntimeContract.IsValid(report.RuntimeConfiguration))
             failures.Add("Quick smoke runtime configuration violated the frozen non-tiered runtime contract.");
-        if (!PerformanceReleaseEvidenceValidator.HasRequiredQuickFirstViewportProtocol(
+        if (!FirstViewportEvidenceValidator.HasRequiredQuickFirstViewportProtocol(
                 report.FirstUsableViewport))
         {
             failures.Add(
                 "Quick smoke did not produce the structural first-Williams-row warmup and measured evidence for all six first-viewport conditions.");
         }
-        if (!PerformanceReleaseEvidenceValidator.AreFirstViewportTrialsWithinReportInterval(
+        if (!FirstViewportEvidenceValidator.AreFirstViewportTrialsWithinReportInterval(
                 report.FirstUsableViewport,
                 report.StartedUtc,
                 report.CompletedUtc))

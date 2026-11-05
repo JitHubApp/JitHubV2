@@ -27,9 +27,9 @@ public sealed class PerformanceRegressionEvaluatorTests
         using PerformanceArtifactDirectory artifacts = PerformanceArtifactDirectory.Create("complete-machine");
         PerformanceReport report = CreateReport(artifacts.Hashes, "complete-machine");
 
-        Assert.True(PerformanceReleaseEvidenceValidator.IsEnvironmentSnapshotComplete(report.Machine));
-        Assert.True(PerformanceReleaseEvidenceValidator.IsEnvironmentSnapshotComplete(report.CompletionMachine));
-        Assert.True(PerformanceReleaseEvidenceValidator.IsSameRunEnvironment(report.Machine, report.CompletionMachine));
+        Assert.True(MachineEvidenceValidator.IsEnvironmentSnapshotComplete(report.Machine));
+        Assert.True(MachineEvidenceValidator.IsEnvironmentSnapshotComplete(report.CompletionMachine));
+        Assert.True(MachineEvidenceValidator.IsSameRunEnvironment(report.Machine, report.CompletionMachine));
         Assert.True(PerformanceReleaseEvidenceValidator.HasCompleteMeasurementPayload(report));
     }
 

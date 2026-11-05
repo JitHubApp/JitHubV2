@@ -63,7 +63,7 @@ internal sealed class PerformanceReportSelfCheck
 
     private void ValidateReleaseGates()
     {
-        if (!PerformanceReleaseEvidenceValidator.HasRequiredFirstViewportProtocol(
+        if (!FirstViewportEvidenceValidator.HasRequiredFirstViewportProtocol(
                 _report.FirstUsableViewport))
         {
             _report.Failures.Add(
@@ -82,7 +82,7 @@ internal sealed class PerformanceReportSelfCheck
         if (!RegressionResultCheck.IsCompleteAndPassing(_report, _options))
             _report.Failures.Add(
                 "The same-machine hybrid >5% latency/>2% allocation regression gate failed, was noisy, or lacked a reference.");
-        if (!PerformanceReleaseEvidenceValidator.HasQualifiedRefresh(_report.Machine))
+        if (!MachineEvidenceValidator.HasQualifiedRefresh(_report.Machine))
         {
             _report.Failures.Add(
                 $"The active display did not provide measured 120 Hz evidence " +
@@ -207,18 +207,18 @@ internal sealed class PerformanceReportSelfCheck
 
     private void ValidateMachineMetadata()
     {
-        if (!PerformanceReleaseEvidenceValidator.IsMachineMetadataComplete(_report.Machine))
+        if (!MachineEvidenceValidator.IsMachineMetadataComplete(_report.Machine))
         {
             _report.Failures.Add(
                 "Machine fingerprint/GPU/driver/power/scheduler/GC/display metadata was incomplete or inconsistent.");
         }
-        if (!PerformanceReleaseEvidenceValidator.IsEnvironmentSnapshotComplete(
+        if (!MachineEvidenceValidator.IsEnvironmentSnapshotComplete(
                 _report.CompletionMachine))
         {
             _report.Failures.Add(
                 "Completion machine/environment metadata was incomplete or inconsistent.");
         }
-        if (!PerformanceReleaseEvidenceValidator.IsSameRunEnvironment(
+        if (!MachineEvidenceValidator.IsSameRunEnvironment(
                 _report.Machine,
                 _report.CompletionMachine))
         {
@@ -226,7 +226,7 @@ internal sealed class PerformanceReportSelfCheck
                 "The display, graphics, power, scheduler, GC, DPI, or viewport environment changed during measurement.");
         }
         if (!_options.Quick &&
-            !PerformanceReleaseEvidenceValidator.IsReleasePowerEnvironment(_report.Machine))
+            !MachineEvidenceValidator.IsReleasePowerEnvironment(_report.Machine))
         {
             _report.Failures.Add(
                 "Release evidence requires AC power with energy saver disabled.");
