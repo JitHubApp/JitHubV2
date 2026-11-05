@@ -358,7 +358,7 @@ internal sealed class LayoutBlockBuilder
                     MarkdownElementKeys.Body,
                     _context.CreateStyleContextSnapshot(),
                     _context.CreateStyleAliasSnapshot());
-                var img = new ImageBox(_context, ImageResourceScope.Shared, url, alt)
+                var img = new ImageBox(_context, _context.ImageResources, url, alt)
                 {
                     // This block represents the entire image-only paragraph, not
                     // only its image element. Reuse paragraph-flow margins while

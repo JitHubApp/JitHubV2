@@ -396,6 +396,13 @@ internal sealed class MarkdownLayoutContext
         ImagePreparationOwner ?? PerformanceDocumentOwner;
 
     /// <summary>
+    /// The image caches, budgets and admission gates that this layout's image
+    /// boxes share. Builders take the scope from here rather than naming one.
+    /// It defaults to the process scope until an engine or device scope owns it.
+    /// </summary>
+    internal ImageResourceScope ImageResources { get; init; } = ImageResourceScope.Shared;
+
+    /// <summary>
     /// Shared static-SVG provider borrowed from the host control. Image boxes
     /// may own documents opened from it, but never the renderer itself.
     /// </summary>
