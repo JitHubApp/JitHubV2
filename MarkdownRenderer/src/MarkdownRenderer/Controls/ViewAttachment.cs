@@ -201,7 +201,6 @@ internal sealed class ViewAttachment
         _windowDestroying.Attach(_control.XamlRoot);
         _canvasEvents.AttachRenderHandlers();
         _imageLifetime.Renew();
-        MarkdownSelectionCoordinator.Register(_control);
         _selectionDismissal.Register();
         _environment.Acquire();
         _width.Attach();
@@ -262,7 +261,6 @@ internal sealed class ViewAttachment
         _svgRenderer.Detach();
         _environment.Release();
         _selectionDismissal.Unregister();
-        MarkdownSelectionCoordinator.Unregister(_control);
         _rebuild.Retire();
         _lazyLayout.Cancel();
         _layoutCommit.ClearPending();

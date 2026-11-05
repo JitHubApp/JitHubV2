@@ -1,64 +1,74 @@
 using System;
 using System.Collections.Generic;
-using MarkdownRenderer.Controls;
 
 namespace MarkdownRenderer.Selection;
 
-internal static class MarkdownSelectionCoordinator
+/// <summary>
+/// Keeps at most one rendered-text selection among the peers that share one
+/// XamlRoot: when a peer selects, the others clear theirs. The root's
+/// <see cref="Controls.MarkdownXamlRootServices"/> owns one coordinator, so
+/// selections in different windows or islands never clear each other.
+/// </summary>
+/// <remarks>
+/// Peers are held weakly, so a renderer that is collected without unloading
+/// drops out on the next registration or clear.
+/// </remarks>
+internal sealed class MarkdownSelectionCoordinator
 {
-    private static readonly object Gate = new();
-    private static readonly List<WeakReference<MarkdownRendererControl>> Controls = new();
+    private readonly object _gate = new();
+    private readonly List<WeakReference<ISelectionPeer>> _peers = new();
 
-    public static void Register(MarkdownRendererControl control)
+    public void Register(ISelectionPeer peer)
     {
-        lock (Gate)
+        ArgumentNullException.ThrowIfNull(peer);
+        lock (_gate)
         {
             PruneLocked();
-            foreach (var weak in Controls)
+            foreach (var weak in _peers)
             {
-                if (weak.TryGetTarget(out var existing) && ReferenceEquals(existing, control))
+                if (weak.TryGetTarget(out var existing) && ReferenceEquals(existing, peer))
                     return;
             }
 
-            Controls.Add(new WeakReference<MarkdownRendererControl>(control));
+            _peers.Add(new WeakReference<ISelectionPeer>(peer));
         }
     }
 
-    public static void Unregister(MarkdownRendererControl control)
+    public void Unregister(ISelectionPeer peer)
     {
-        lock (Gate)
+        lock (_gate)
         {
-            Controls.RemoveAll(weak =>
+            _peers.RemoveAll(weak =>
                 !weak.TryGetTarget(out var existing) ||
-                ReferenceEquals(existing, control));
+                ReferenceEquals(existing, peer));
         }
     }
 
-    public static void ClearSelectionsExcept(MarkdownRendererControl? owner)
+    public void ClearSelectionsExcept(ISelectionPeer? owner)
     {
-        MarkdownRendererControl[] snapshot;
-        lock (Gate)
+        ISelectionPeer[] snapshot;
+        lock (_gate)
         {
             PruneLocked();
-            var live = new List<MarkdownRendererControl>(Controls.Count);
-            foreach (var weak in Controls)
+            var live = new List<ISelectionPeer>(_peers.Count);
+            foreach (var weak in _peers)
             {
-                if (weak.TryGetTarget(out var control) &&
-                    !ReferenceEquals(control, owner))
+                if (weak.TryGetTarget(out var peer) &&
+                    !ReferenceEquals(peer, owner))
                 {
-                    live.Add(control);
+                    live.Add(peer);
                 }
             }
 
             snapshot = live.ToArray();
         }
 
-        foreach (var control in snapshot)
-            control.ClearSelectionFromCoordinator();
+        foreach (var peer in snapshot)
+            peer.ClearSelectionFromCoordinator();
     }
 
-    private static void PruneLocked()
+    private void PruneLocked()
     {
-        Controls.RemoveAll(static weak => !weak.TryGetTarget(out _));
+        _peers.RemoveAll(static weak => !weak.TryGetTarget(out _));
     }
 }

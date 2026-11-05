@@ -39,7 +39,7 @@ namespace MarkdownRenderer.Controls.Selection;
 /// </summary>
 internal sealed class SelectionChangeHandling
 {
-    private readonly MarkdownRendererControl _control;
+    private readonly SelectionDismissalHook _selectionPeer;
     private readonly PointerCursorPresenter _cursor;
     private readonly RebuildScheduler _rebuild;
     private readonly InteractiveTextAdorner _textAdorner;
@@ -50,7 +50,7 @@ internal sealed class SelectionChangeHandling
     private readonly InteractionReset _interactionReset;
 
     internal SelectionChangeHandling(
-        MarkdownRendererControl control,
+        SelectionDismissalHook selectionPeer,
         PointerCursorPresenter cursor,
         RebuildScheduler rebuild,
         InteractiveTextAdorner textAdorner,
@@ -60,7 +60,7 @@ internal sealed class SelectionChangeHandling
         TouchTapSuppressionPolicy touchTapSuppression,
         InteractionReset interactionReset)
     {
-        _control = control;
+        _selectionPeer = selectionPeer;
         _cursor = cursor;
         _rebuild = rebuild;
         _textAdorner = textAdorner;
@@ -76,7 +76,7 @@ internal sealed class SelectionChangeHandling
         _touchRestore.OnSelectionChanged();
 
         if (_selection.IsActive)
-            MarkdownSelectionCoordinator.ClearSelectionsExcept(_control);
+            _selectionPeer.ClearOtherSelections();
 
         _textAdorner.UpdateSelectionOverlay();
         _automation.QueueSelectionChanged();

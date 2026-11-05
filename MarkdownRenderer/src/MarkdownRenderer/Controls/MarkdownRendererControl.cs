@@ -810,7 +810,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
             events, _documentInputs, _automation, imageLifetime, imageRelayout, _lazyLayout, _pipeline,
             _touchRestore, _interactionReset, _performanceSession, _environment));
         _focusEvents = new RendererFocusEvents(this, contextMenu, document, focus, focusEntry, focusRing);
-        _selectionChanges = new SelectionChangeHandling(this, cursor, _rebuild, textAdorner, _automation, _selection, _touchRestore, _touchTapSuppression, _interactionReset);
+        _selectionChanges = new SelectionChangeHandling(selectionDismissal, cursor, _rebuild, textAdorner, _automation, _selection, _touchRestore, _touchTapSuppression, _interactionReset);
         _attachment = new ViewAttachment(this, _surface, _lifetime, _published, cursor, abbreviationTooltip, _adorner, _deviceRecovery, selectionDismissal, _dragShield, _handles, contextMenu, horizontalOverflowDrag, pointerInput, _embeds, _windowDestroying, _snapshotRetirements, _rebuild, _painter, _canvasEvents, geometryRecovery, _recoveryWork, _scrolling, _deferredScenes, _blockScroll, _automation, imageLifetime, _automationDocumentGenerations, _layoutCommit, imageRelayout, vectorCapacity, _lazyLayout, width, _touchSelection, _touchRestore, _touchTapSuppression, _overflowScroll, focusRing, _performanceSession, _svgRenderer, _theme, _environment, imagePlans, imageSubscriptions, imageResidency, imagePrefetch, _highlighting);
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
