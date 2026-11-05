@@ -1,129 +1,46 @@
 using System;
-using System.Buffers.Binary;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
-using System.Globalization;
-using System.Linq;
 using System.Net;
 using System.Net.Http;
-using System.Net.Http.Headers;
-using System.Net.Sockets;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Xml;
-using JitHub.Services.Markdown;
 using JitHub.WinUI.Helpers;
 using MarkdownRenderer.Images;
 
 namespace JitHub.Services;
 
-public sealed record GitHubImageDownload(
-    byte[]? Bytes,
-    string? ContentType,
-    string? ETag = null,
-    DateTimeOffset? LastModified = null,
-    bool IsNotModified = false,
-    IDisposable? SourceByteLease = null);
-
-public sealed record GitHubCachedImage(
-    string FilePath,
-    byte[] Bytes,
-    string? ContentType,
-    bool IsFromCache,
-    bool IsStale = false,
-    Task<GitHubCachedImage?>? RefreshTask = null);
-
-public delegate Task<GitHubImageDownload?> GitHubImageFetcher(
-    GitHubImageCacheEntry? cachedEntry,
-    CancellationToken cancellationToken);
-
-public enum GitHubImageFetchScope
-{
-    TrustedGitHub,
-    UserApprovedHttps,
-}
-
-public interface IGitHubImageService
-{
-    Task<GitHubCachedImage?> GetAsync(string sourceUrl, CancellationToken cancellationToken = default);
-
-    Task<GitHubCachedImage?> GetAsync(
-        string sourceUrl,
-        GitHubImageFetchScope scope,
-        CancellationToken cancellationToken = default);
-
-    Task<GitHubCachedImage?> GetAsync(
-        string sourceUrl,
-        GitHubImageFetchScope scope,
-        IMarkdownImageSourceByteAdmission admission,
-        CancellationToken cancellationToken = default);
-
-    Task<GitHubCachedImage?> TryGetCachedAsync(
-        string sourceUrl,
-        GitHubImageFetchScope scope,
-        CancellationToken cancellationToken = default);
-
-    Task<GitHubCachedImage?> TryGetCachedAsync(
-        string sourceUrl,
-        GitHubImageFetchScope scope,
-        IMarkdownImageSourceByteAdmission admission,
-        CancellationToken cancellationToken = default);
-
-    Task<GitHubCachedImage?> GetOrFetchAsync(
-        string sourceUrl,
-        GitHubImageFetcher fetcher,
-        CancellationToken cancellationToken = default);
-
-    Task<GitHubCachedImage?> GetOrFetchAsync(
-        string sourceUrl,
-        GitHubImageFetcher fetcher,
-        IMarkdownImageSourceByteAdmission admission,
-        CancellationToken cancellationToken = default);
-
-    Task InvalidateAsync(string sourceUrl, CancellationToken cancellationToken = default);
-}
-
-public sealed partial class GitHubImageService : IGitHubImageService, IDisposable
+/// <summary>
+/// Resolves GitHub and user-approved HTTPS images through an account-partitioned
+/// memory and disk cache, deduplicating concurrent fetches and serving stale
+/// entries while they revalidate.
+/// </summary>
+/// <remarks>
+/// The service composes its parts: <see cref="GitHubImageHttpFetcher"/> downloads,
+/// <see cref="GitHubImageCacheTier"/> caches, <see cref="GitHubImageRequestFlights"/>
+/// deduplicates and <see cref="GitHubLeasedImageSource"/> serves the leased path.
+/// It owns their shared lifetime and the memory-pressure subscription. The class is
+/// <c>partial</c> only so CsWinRT can generate its ABI projection of IDisposable.
+/// </remarks>
+public sealed partial class GitHubImageService : IGitHubImageService, IGitHubLeasedImageService, IDisposable
 {
     // Large project READMEs commonly contain optimized screenshots and animated
     // demonstrations above 10 MiB. Compressed bytes remain bounded here while
     // RasterImageResourceBudget independently caps dimensions, frames, pixels,
     // and decoded memory before the renderer admits the payload.
     internal const int MaxImageBytes = 32 * 1024 * 1024;
-    // Two consecutive CDN/HTTP2 stream failures were observed on real README
-    // images. A third idempotent GET is bounded and only reached for
-    // errors classified as transient; policy and permanent responses fail fast.
-    private const int MaxHttpAttempts = 3;
-    // Shields/Camo badges are small; let the isolated SVG worker own full
-    // validation of large documents instead of parsing them twice on fetch.
-    private const int MaxEarlySvgValidationBytes = 64 * 1024;
-    private const long MemoryCacheByteBudget = 64L * 1024 * 1024;
-    private const int MemoryCacheEntryBudget = 2048;
-    private static readonly TimeSpan TransientRetryDelay = TimeSpan.FromMilliseconds(125);
-    private static readonly TimeSpan Freshness =
-        GitHubCachePolicy.TtlForResource(GitHubCachePolicy.AvatarImageResource);
 
-    private readonly IGitHubImageCacheStore _cacheStore;
-    private readonly HttpClient _httpClient;
-    private readonly Func<long> _partitionProvider;
-    private readonly Func<string, CancellationToken, Task<IPAddress[]>> _hostAddressResolver;
-    private readonly bool _validateDnsBeforeRequest;
-    private readonly bool _ownsHttpClient;
-    private readonly IAccountWorkQuiescence? _accountWork;
+    private readonly GitHubImageAccountScope _accounts;
+    private readonly GitHubImageCacheTier _cache;
+    private readonly GitHubImageHttpFetcher _http;
+    private readonly GitHubImageServiceLifetime _lifetime = new();
+    private readonly GitHubImageRequestFlights _misses = new();
+    private readonly GitHubImageRequestFlights _refreshes = new();
+    private readonly GitHubLeasedImageSource _leased;
     private readonly EventHandler<object> _memoryPressureHandler;
     private readonly Action<EventHandler<object>>? _memoryPressureUnsubscribe;
-    private int _disposed;
     private bool _memoryPressureSubscribed;
     private bool _observableCacheSubscribed;
-    private readonly MemoryImageCache _memoryCache = new(
-        MemoryCacheByteBudget,
-        MemoryCacheEntryBudget);
-    private readonly GitHubImageCacheStore? _observableCacheStore;
-    private readonly ConcurrentDictionary<string, SharedImageRequest> _misses =
-        new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, SharedImageRequest> _refreshes =
-        new(StringComparer.Ordinal);
 
     public GitHubImageService(
         IGitHubImageCacheStore cacheStore,
@@ -131,7 +48,7 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
         IAccountWorkQuiescence accountWork)
         : this(
             cacheStore,
-            CreateHttpClient(),
+            GitHubImageHttpFetcher.CreateHttpClient(),
             ownsHttpClient: true,
             accountService.GetUser,
             accountWork: accountWork)
@@ -151,87 +68,35 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
         if ((subscribeMemoryPressure is null) != (unsubscribeMemoryPressure is null))
             throw new ArgumentException("Memory-pressure subscription callbacks must be supplied as a pair.");
 
-        _cacheStore = cacheStore;
-        _httpClient = httpClient;
-        _ownsHttpClient = ownsHttpClient;
-        _partitionProvider = partitionProvider ?? (() => 0);
-        _hostAddressResolver = hostAddressResolver ?? ResolveHostAddressesAsync;
+        _accounts = new GitHubImageAccountScope(partitionProvider, accountWork);
+        _cache = new GitHubImageCacheTier(cacheStore);
         // The production client validates every physical connection in ConnectCallback.
         // Resolving the same host again before every logical HTTP/2 stream adds hundreds
         // of redundant DNS calls on avatar-heavy READMEs without improving rebinding
         // protection. Injected handlers still use the request-level validator when one is
         // supplied because they do not own the connection callback.
-        _validateDnsBeforeRequest = !ownsHttpClient && hostAddressResolver is not null;
-        _accountWork = accountWork;
-        _observableCacheStore = cacheStore as GitHubImageCacheStore;
-        _memoryPressureHandler = new MemoryPressureRelay(this).OnAppMemoryUsageIncreased;
+        _http = new GitHubImageHttpFetcher(
+            httpClient,
+            ownsHttpClient,
+            !ownsHttpClient ? hostAddressResolver : null);
+        _leased = new GitHubLeasedImageSource(_accounts, _cache, _lifetime);
+        _memoryPressureHandler = new GitHubImageMemoryPressureRelay(this).OnAppMemoryUsageIncreased;
         _memoryPressureUnsubscribe = unsubscribeMemoryPressure;
 
         try
         {
-            try
+            SubscribeMemoryPressure(subscribeMemoryPressure);
+            if (_cache.AdmittedStore is { } observableStore)
             {
-                if (subscribeMemoryPressure is not null)
-                    subscribeMemoryPressure(_memoryPressureHandler);
-                else
-                    Windows.System.MemoryManager.AppMemoryUsageIncreased += _memoryPressureHandler;
-                _memoryPressureSubscribed = true;
-            }
-            catch (Exception exception) when (IsMemoryPressureUnavailable(exception))
-            {
-                // An event add may partially register before the projection
-                // reports that notifications are unavailable. Remove any such
-                // registration, then retain the ordinary bounded LRU behavior.
-                Exception? rollbackFailure = TryUnsubscribeMemoryPressure();
-                if (rollbackFailure is not null)
-                    HandledFailureReporter.Report(rollbackFailure, "github-image-memory-pressure-rollback");
-            }
-
-            if (_observableCacheStore is not null)
-            {
-                // Mark before invoking add so the outer rollback also attempts
+                // Mark before invoking add so the rollback also attempts
                 // removal if an event accessor throws after partial registration.
                 _observableCacheSubscribed = true;
-                _observableCacheStore.CacheContentInvalidated += ClearMemoryCache;
+                observableStore.CacheContentInvalidated += ClearMemoryCache;
             }
         }
         catch (Exception registrationFailure)
         {
-            List<Exception> cleanupFailures = [];
-            if (TryUnsubscribeMemoryPressure() is { } memoryPressureFailure)
-                cleanupFailures.Add(memoryPressureFailure);
-            if (_observableCacheSubscribed && _observableCacheStore is not null)
-            {
-                try
-                {
-                    _observableCacheStore.CacheContentInvalidated -= ClearMemoryCache;
-                    _observableCacheSubscribed = false;
-                }
-                catch (Exception cacheUnsubscribeFailure)
-                {
-                    cleanupFailures.Add(cacheUnsubscribeFailure);
-                }
-            }
-            if (_ownsHttpClient)
-            {
-                try
-                {
-                    _httpClient.Dispose();
-                }
-                catch (Exception clientDisposeFailure)
-                {
-                    cleanupFailures.Add(clientDisposeFailure);
-                }
-            }
-
-            if (cleanupFailures.Count > 0)
-            {
-                cleanupFailures.Insert(0, registrationFailure);
-                throw new AggregateException(
-                    "GitHub image service subscription failed and rollback was incomplete.",
-                    cleanupFailures);
-            }
-
+            RollBackRegistration(registrationFailure);
             throw;
         }
     }
@@ -247,7 +112,7 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
         CancellationToken cancellationToken = default) =>
         GetOrFetchCoreAsync(
             sourceUrl,
-            (cached, token) => FetchHttpAsync(sourceUrl, cached, scope, null, token),
+            (cached, token) => _http.FetchAsync(sourceUrl, cached, scope, null, token),
             scope,
             null,
             cancellationToken);
@@ -261,7 +126,7 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
         ArgumentNullException.ThrowIfNull(admission);
         return GetOrFetchCoreAsync(
             sourceUrl,
-            (cached, token) => FetchHttpAsync(sourceUrl, cached, scope, admission, token),
+            (cached, token) => _http.FetchAsync(sourceUrl, cached, scope, admission, token),
             scope,
             admission,
             cancellationToken);
@@ -283,51 +148,13 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
         return TryGetCachedCoreAsync(sourceUrl, scope, admission, cancellationToken);
     }
 
-    private async Task<GitHubCachedImage?> TryGetCachedCoreAsync(
-        string sourceUrl,
-        GitHubImageFetchScope scope,
-        IMarkdownImageSourceByteAdmission? admission,
-        CancellationToken cancellationToken)
-    {
-        if (!IsAllowedSource(sourceUrl, scope))
-        {
-            return null;
-        }
-
-        long accountId = _partitionProvider();
-        using IAccountWorkLease? lease = EnterAccountWork(accountId, cancellationToken);
-        CancellationToken operationToken = lease?.CancellationToken ?? cancellationToken;
-        string cacheKey = GetCacheKey(accountId, sourceUrl);
-        GitHubImageCacheRead? cached;
-        if (!_memoryCache.TryGet(cacheKey, out cached))
-        {
-            cached = await ReadCachedForResolutionAsync(cacheKey, admission, operationToken)
-                .ConfigureAwait(false);
-            if (cached is not null)
-            {
-                _memoryCache.Set(cacheKey, cached);
-            }
-        }
-        else if (cached is not null)
-        {
-            cached = RefreshCachedTimestamp(cached);
-        }
-        if (cached is null)
-        {
-            return null;
-        }
-
-        bool isStale = DateTimeOffset.UtcNow - cached.Entry.CachedAt > Freshness;
-        return ToResult(cached, isFromCache: true) with { IsStale = isStale };
-    }
-
     public async Task<GitHubCachedImage?> GetOrFetchAsync(
         string sourceUrl,
         GitHubImageFetcher fetcher,
         CancellationToken cancellationToken = default)
         => await GetOrFetchCoreAsync(
             sourceUrl,
-            (cached, token) => FetchWithRetryAsync(fetcher, cached, token),
+            (cached, token) => GitHubImageFetchRetryPolicy.FetchWithRetryAsync(fetcher, cached, token),
             GitHubImageFetchScope.UserApprovedHttps,
             null,
             cancellationToken).ConfigureAwait(false);
@@ -341,10 +168,111 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
         ArgumentNullException.ThrowIfNull(admission);
         return await GetOrFetchCoreAsync(
             sourceUrl,
-            (cached, token) => FetchWithRetryAsync(fetcher, cached, token),
+            (cached, token) => GitHubImageFetchRetryPolicy.FetchWithRetryAsync(fetcher, cached, token),
             GitHubImageFetchScope.UserApprovedHttps,
             admission,
             cancellationToken).ConfigureAwait(false);
+    }
+
+    Task<GitHubImageSourceLease?> IGitHubLeasedImageService.GetLeasedAsync(
+        string sourceUrl,
+        GitHubImageFetchScope scope,
+        IMarkdownImageSourceByteAdmission admission,
+        CancellationToken cancellationToken) =>
+        _leased.GetOrFetchAsync(
+            sourceUrl,
+            (cached, token) => _http.FetchAsync(sourceUrl, cached, scope, admission, token),
+            scope,
+            admission,
+            cancellationToken);
+
+    Task<GitHubImageSourceLease?> IGitHubLeasedImageService.TryGetCachedLeasedAsync(
+        string sourceUrl,
+        GitHubImageFetchScope scope,
+        IMarkdownImageSourceByteAdmission admission,
+        CancellationToken cancellationToken) =>
+        _leased.TryGetCachedAsync(sourceUrl, scope, admission, cancellationToken);
+
+    Task<GitHubImageSourceLease?> IGitHubLeasedImageService.GetOrFetchLeasedAsync(
+        string sourceUrl,
+        GitHubImageFetcher fetcher,
+        IMarkdownImageSourceByteAdmission admission,
+        CancellationToken cancellationToken) =>
+        _leased.GetOrFetchAsync(
+            sourceUrl,
+            (cached, token) => GitHubImageFetchRetryPolicy.FetchWithRetryAsync(fetcher, cached, token),
+            GitHubImageFetchScope.UserApprovedHttps,
+            admission,
+            cancellationToken);
+
+    public async Task InvalidateAsync(string sourceUrl, CancellationToken cancellationToken = default)
+    {
+        long accountId = _accounts.CurrentAccountId();
+        using IAccountWorkLease? lease = _accounts.Enter(accountId, cancellationToken);
+        string cacheKey = GitHubImageAccountScope.GetCacheKey(accountId, sourceUrl);
+        _cache.Memory.Remove(cacheKey);
+        await _cache.Store.InvalidateAsync(
+            cacheKey,
+            lease?.CancellationToken ?? cancellationToken).ConfigureAwait(false);
+    }
+
+    public void Dispose()
+    {
+        if (!_lifetime.TryRetire())
+            return;
+
+        Exception? memoryPressureUnsubscribeFailure = _memoryPressureSubscribed
+            ? TryUnsubscribeMemoryPressure()
+            : null;
+
+        if (_observableCacheSubscribed && _cache.AdmittedStore is { } observableStore)
+        {
+            observableStore.CacheContentInvalidated -= ClearMemoryCache;
+            _observableCacheSubscribed = false;
+        }
+
+        _cache.Memory.Clear();
+        _misses.CancelAll();
+        _refreshes.CancelAll();
+        _leased.CancelAll();
+        _http.Dispose();
+
+        if (memoryPressureUnsubscribeFailure is not null &&
+            !IsMemoryPressureUnavailable(memoryPressureUnsubscribeFailure))
+        {
+            ExceptionDispatchInfo.Capture(memoryPressureUnsubscribeFailure).Throw();
+        }
+    }
+
+    internal void OnAppMemoryUsageIncreased(object? sender, object args)
+    {
+        if (!_lifetime.IsDisposed)
+            ClearMemoryCache();
+    }
+
+    private async Task<GitHubCachedImage?> TryGetCachedCoreAsync(
+        string sourceUrl,
+        GitHubImageFetchScope scope,
+        IMarkdownImageSourceByteAdmission? admission,
+        CancellationToken cancellationToken)
+    {
+        if (!GitHubImageSourcePolicy.IsAllowedSource(sourceUrl, scope))
+        {
+            return null;
+        }
+
+        long accountId = _accounts.CurrentAccountId();
+        using IAccountWorkLease? lease = _accounts.Enter(accountId, cancellationToken);
+        CancellationToken operationToken = lease?.CancellationToken ?? cancellationToken;
+        string cacheKey = GitHubImageAccountScope.GetCacheKey(accountId, sourceUrl);
+        GitHubImageCacheRead? cached = await _cache.ReadAsync(cacheKey, admission, operationToken)
+            .ConfigureAwait(false);
+        if (cached is null)
+        {
+            return null;
+        }
+
+        return ToResult(cached, isFromCache: true) with { IsStale = !GitHubImageCacheTier.IsFresh(cached.Entry.CachedAt) };
     }
 
     private async Task<GitHubCachedImage?> GetOrFetchCoreAsync(
@@ -355,108 +283,218 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(fetcher);
-        if (!IsAllowedSource(sourceUrl, scope))
+        if (!GitHubImageSourcePolicy.IsAllowedSource(sourceUrl, scope))
         {
             return null;
         }
 
-        long accountId = _partitionProvider();
-        using IAccountWorkLease? readLease = EnterAccountWork(accountId, cancellationToken);
+        long accountId = _accounts.CurrentAccountId();
+        using IAccountWorkLease? readLease = _accounts.Enter(accountId, cancellationToken);
         CancellationToken readToken = readLease?.CancellationToken ?? cancellationToken;
-        string cacheKey = GetCacheKey(accountId, sourceUrl);
+        string cacheKey = GitHubImageAccountScope.GetCacheKey(accountId, sourceUrl);
         // Distinct in-flight identities keep a speculative or unbudgeted
         // downloader from blocking a visible admitted request. Successful
         // downloads still share the same account-partitioned cache entry.
         string flightKey = admission is null
             ? cacheKey
             : admission.IsSpeculative ? cacheKey + "#source-speculative" : cacheKey + "#source-visible";
-        GitHubImageCacheRead? cached;
-        if (!_memoryCache.TryGet(cacheKey, out cached))
-        {
-            cached = await ReadCachedForResolutionAsync(cacheKey, admission, readToken)
-                .ConfigureAwait(false);
-            if (cached is not null)
-            {
-                _memoryCache.Set(cacheKey, cached);
-            }
-        }
-        else if (cached is not null)
-        {
-            cached = RefreshCachedTimestamp(cached);
-        }
+        GitHubImageCacheRead? cached = await _cache.ReadAsync(cacheKey, admission, readToken)
+            .ConfigureAwait(false);
         if (cached is not null)
         {
-            if (DateTimeOffset.UtcNow - cached.Entry.CachedAt <= Freshness)
+            if (GitHubImageCacheTier.IsFresh(cached.Entry.CachedAt))
             {
                 return ToResult(cached, isFromCache: true);
             }
 
-            Task<GitHubCachedImage?> refreshTask = GetSharedTask(
-                _refreshes,
+            return await ServeStaleAsync(
+                    accountId, cacheKey, flightKey, sourceUrl, cached, fetcher, admission, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return await _misses.JoinAsync(
                 flightKey,
-                token => FetchAndStoreWithLeaseAsync(
+                token => FetchAndStoreWithAccountLeaseAsync(
                     accountId,
                     cacheKey,
                     sourceUrl,
-                    cached,
+                    null,
                     fetcher,
                     admission,
                     token),
-                cancellationToken);
-            if (admission is not null)
-            {
-                // The admission is scoped to the renderer's active resolution.
-                // A detached stale-while-revalidate task could outlive that
-                // scope and continue downloading after account/session
-                // retirement. Keep admitted refreshes inside the caller's
-                // tracked lifetime until a separately owned refresh budget
-                // exists. FetchAndStoreAsync preserves the stale asset if
-                // revalidation fails.
-                GitHubCachedImage? refreshed = await refreshTask.ConfigureAwait(false);
-                return refreshed ?? (ToResult(cached, isFromCache: true) with { IsStale = true });
-            }
-            return new GitHubCachedImage(
-                cached.Entry.FilePath,
-                cached.Bytes,
-                cached.Entry.ContentType,
-                IsFromCache: true,
-                IsStale: true,
-                RefreshTask: refreshTask);
-        }
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
 
-        Task<GitHubCachedImage?> missTask = GetSharedTask(
-            _misses,
+    private async Task<GitHubCachedImage?> ServeStaleAsync(
+        long accountId,
+        string cacheKey,
+        string flightKey,
+        string sourceUrl,
+        GitHubImageCacheRead cached,
+        GitHubImageFetcher fetcher,
+        IMarkdownImageSourceByteAdmission? admission,
+        CancellationToken cancellationToken)
+    {
+        Task<GitHubCachedImage?> refreshTask = _refreshes.JoinAsync(
             flightKey,
-            token => FetchAndStoreWithLeaseAsync(
+            token => FetchAndStoreWithAccountLeaseAsync(
                 accountId,
                 cacheKey,
                 sourceUrl,
-                null,
+                cached,
                 fetcher,
                 admission,
                 token),
             cancellationToken);
-        return await missTask.ConfigureAwait(false);
+        if (admission is not null)
+        {
+            // The admission is scoped to the renderer's active resolution.
+            // A detached stale-while-revalidate task could outlive that
+            // scope and continue downloading after account/session
+            // retirement. Keep admitted refreshes inside the caller's
+            // tracked lifetime until a separately owned refresh budget
+            // exists. FetchAndStoreAsync preserves the stale asset if
+            // revalidation fails.
+            GitHubCachedImage? refreshed = await refreshTask.ConfigureAwait(false);
+            return refreshed ?? (ToResult(cached, isFromCache: true) with { IsStale = true });
+        }
+
+        return new GitHubCachedImage(
+            cached.Entry.FilePath,
+            cached.Bytes,
+            cached.Entry.ContentType,
+            IsFromCache: true,
+            IsStale: true,
+            RefreshTask: refreshTask);
     }
 
-    public async Task InvalidateAsync(string sourceUrl, CancellationToken cancellationToken = default)
+    private async Task<GitHubCachedImage?> FetchAndStoreWithAccountLeaseAsync(
+        long accountId,
+        string cacheKey,
+        string sourceUrl,
+        GitHubImageCacheRead? cached,
+        GitHubImageFetcher fetcher,
+        IMarkdownImageSourceByteAdmission? admission,
+        CancellationToken cancellationToken)
     {
-        long accountId = _partitionProvider();
-        using IAccountWorkLease? lease = EnterAccountWork(accountId, cancellationToken);
-        string cacheKey = GetCacheKey(accountId, sourceUrl);
-        _memoryCache.Remove(cacheKey);
-        await _cacheStore.InvalidateAsync(
+        using IAccountWorkLease? lease = _accounts.Enter(accountId, cancellationToken);
+        return await FetchAndStoreAsync(
             cacheKey,
+            sourceUrl,
+            cached,
+            fetcher,
+            admission,
             lease?.CancellationToken ?? cancellationToken).ConfigureAwait(false);
     }
 
-    private void ClearMemoryCache() => _memoryCache.Clear();
-
-    private void OnAppMemoryUsageIncreased(object? sender, object args)
+    private async Task<GitHubCachedImage?> FetchAndStoreAsync(
+        string cacheKey,
+        string sourceUrl,
+        GitHubImageCacheRead? cached,
+        GitHubImageFetcher fetcher,
+        IMarkdownImageSourceByteAdmission? admission,
+        CancellationToken cancellationToken)
     {
-        if (Volatile.Read(ref _disposed) == 0)
-            ClearMemoryCache();
+        try
+        {
+            GitHubImageDownload? download = await fetcher(cached?.Entry, cancellationToken).ConfigureAwait(false);
+            using IDisposable? sourceByteLease = download?.SourceByteLease;
+            if (download?.IsNotModified == true && cached is not null)
+            {
+                await _cache.Store.MarkFreshAsync(cacheKey, cancellationToken).ConfigureAwait(false);
+                GitHubImageCacheRead? refreshed = await _cache.ReadStoreAsync(
+                    cacheKey, admission, cancellationToken)
+                    .ConfigureAwait(false);
+                if (refreshed is not null)
+                {
+                    _cache.Memory.Set(cacheKey, refreshed);
+                }
+                return refreshed is null ? null : ToResult(refreshed, isFromCache: true);
+            }
+
+            GitHubValidatedImage image = GitHubValidatedImage.From(download);
+            GitHubImageCacheEntry stored = await _cache.StoreAsync(
+                    cacheKey,
+                    sourceUrl,
+                    image,
+                    download!,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return new GitHubCachedImage(stored.FilePath, image.Bytes, stored.ContentType, IsFromCache: false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch when (cached is not null)
+        {
+            return ToResult(cached, isFromCache: true) with { IsStale = true };
+        }
     }
+
+    private void SubscribeMemoryPressure(Action<EventHandler<object>>? subscribeMemoryPressure)
+    {
+        try
+        {
+            if (subscribeMemoryPressure is not null)
+                subscribeMemoryPressure(_memoryPressureHandler);
+            else
+                Windows.System.MemoryManager.AppMemoryUsageIncreased += _memoryPressureHandler;
+            _memoryPressureSubscribed = true;
+        }
+        catch (Exception exception) when (IsMemoryPressureUnavailable(exception))
+        {
+            // An event add may partially register before the projection
+            // reports that notifications are unavailable. Remove any such
+            // registration, then retain the ordinary bounded LRU behavior.
+            Exception? rollbackFailure = TryUnsubscribeMemoryPressure();
+            if (rollbackFailure is not null)
+                HandledFailureReporter.Report(rollbackFailure, "github-image-memory-pressure-rollback");
+        }
+    }
+
+    /// <summary>
+    /// Undoes a partially completed registration. Rethrows the original failure
+    /// unless cleanup also failed, in which case every failure is aggregated.
+    /// </summary>
+    private void RollBackRegistration(Exception registrationFailure)
+    {
+        List<Exception> cleanupFailures = [];
+        if (TryUnsubscribeMemoryPressure() is { } memoryPressureFailure)
+            cleanupFailures.Add(memoryPressureFailure);
+        if (_observableCacheSubscribed && _cache.AdmittedStore is { } observableStore)
+        {
+            try
+            {
+                observableStore.CacheContentInvalidated -= ClearMemoryCache;
+                _observableCacheSubscribed = false;
+            }
+            catch (Exception cacheUnsubscribeFailure)
+            {
+                cleanupFailures.Add(cacheUnsubscribeFailure);
+            }
+        }
+
+        try
+        {
+            _http.Dispose();
+        }
+        catch (Exception clientDisposeFailure)
+        {
+            cleanupFailures.Add(clientDisposeFailure);
+        }
+
+        if (cleanupFailures.Count > 0)
+        {
+            cleanupFailures.Insert(0, registrationFailure);
+            throw new AggregateException(
+                "GitHub image service subscription failed and rollback was incomplete.",
+                cleanupFailures);
+        }
+    }
+
+    private void ClearMemoryCache() => _cache.Memory.Clear();
 
     private static bool IsMemoryPressureUnavailable(Exception exception) =>
         exception is System.Runtime.InteropServices.COMException or
@@ -480,987 +518,6 @@ public sealed partial class GitHubImageService : IGitHubImageService, IDisposabl
         }
     }
 
-    private async Task<GitHubImageCacheRead?> ReadCachedForResolutionAsync(
-        string cacheKey,
-        IMarkdownImageSourceByteAdmission? admission,
-        CancellationToken cancellationToken)
-    {
-        if (admission is null)
-            return await _cacheStore.TryReadAsync(cacheKey, cancellationToken).ConfigureAwait(false);
-
-        if (_cacheStore is GitHubImageCacheStore concreteStore)
-        {
-            using AdmittedGitHubImageCacheRead? admitted = await concreteStore.TryReadAdmittedAsync(
-                cacheKey, admission, MaxImageBytes, cancellationToken).ConfigureAwait(false);
-            return admitted?.Value;
-        }
-
-        // Injected stores may not support an atomic metadata/read operation.
-        // Reserve their reported size before asking them to materialize bytes;
-        // the production store above also rechecks the immutable generation
-        // under its stripe gate before allocating the exact-size array.
-        GitHubImageCacheEntry? entry = await _cacheStore.TryGetAsync(cacheKey, cancellationToken)
-            .ConfigureAwait(false);
-        if (entry is null || entry.ByteLength <= 0 || entry.ByteLength > MaxImageBytes)
-            return null;
-        using IDisposable lease = await admission.ReserveAsync(entry.ByteLength, cancellationToken)
-            .ConfigureAwait(false);
-        GitHubImageCacheRead? read = await _cacheStore.TryReadAsync(cacheKey, cancellationToken)
-            .ConfigureAwait(false);
-        if (read is not null && read.Bytes.Length > entry.ByteLength)
-            throw new InvalidDataException("The image cache entry changed during its admitted read.");
-        return read;
-    }
-
-    private static GitHubImageCacheRead RefreshCachedTimestamp(GitHubImageCacheRead cached)
-    {
-        try
-        {
-            DateTime lastWrite = File.GetLastWriteTimeUtc(cached.Entry.FilePath);
-            if (lastWrite != DateTime.MinValue)
-            {
-                return cached with
-                {
-                    Entry = cached.Entry with { CachedAt = new DateTimeOffset(lastWrite) }
-                };
-            }
-        }
-        catch (IOException)
-        {
-        }
-        catch (UnauthorizedAccessException)
-        {
-        }
-
-        return cached;
-    }
-
-    public void Dispose()
-    {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
-            return;
-
-        Exception? memoryPressureUnsubscribeFailure = _memoryPressureSubscribed
-            ? TryUnsubscribeMemoryPressure()
-            : null;
-
-        if (_observableCacheSubscribed && _observableCacheStore is not null)
-        {
-            _observableCacheStore.CacheContentInvalidated -= ClearMemoryCache;
-            _observableCacheSubscribed = false;
-        }
-
-        _memoryCache.Clear();
-        foreach (SharedImageRequest request in _misses.Values)
-        {
-            request.Cancel();
-        }
-
-        foreach (SharedImageRequest request in _refreshes.Values)
-        {
-            request.Cancel();
-        }
-
-        CancelLeasedRequests();
-
-        if (_ownsHttpClient)
-        {
-            _httpClient.Dispose();
-        }
-
-        if (memoryPressureUnsubscribeFailure is not null &&
-            !IsMemoryPressureUnavailable(memoryPressureUnsubscribeFailure))
-        {
-            System.Runtime.ExceptionServices.ExceptionDispatchInfo
-                .Capture(memoryPressureUnsubscribeFailure)
-                .Throw();
-        }
-    }
-
-    private async Task<GitHubCachedImage?> FetchAndStoreAsync(
-        string cacheKey,
-        string sourceUrl,
-        GitHubImageCacheRead? cached,
-        GitHubImageFetcher fetcher,
-        IMarkdownImageSourceByteAdmission? admission,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            GitHubImageDownload? download = await fetcher(cached?.Entry, cancellationToken).ConfigureAwait(false);
-            using IDisposable? sourceByteLease = download?.SourceByteLease;
-            if (download?.IsNotModified == true && cached is not null)
-            {
-                await _cacheStore.MarkFreshAsync(cacheKey, cancellationToken).ConfigureAwait(false);
-                GitHubImageCacheRead? refreshed = await ReadCachedForResolutionAsync(
-                    cacheKey, admission, cancellationToken)
-                    .ConfigureAwait(false);
-                if (refreshed is not null)
-                {
-                    _memoryCache.Set(cacheKey, refreshed);
-                }
-                return refreshed is null ? null : ToResult(refreshed, isFromCache: true);
-            }
-
-            if (download?.Bytes is not { Length: > 0 } bytes ||
-                bytes.Length > MaxImageBytes ||
-                !TryDetectSupportedImageContentType(bytes, download.ContentType, out string contentType))
-            {
-                throw new InvalidDataException("Remote content is not a supported image.");
-            }
-
-            // GitHub's image CDN occasionally returns raster bytes under a stale or
-            // incorrect image media type. The decoder and cache must follow the
-            // validated signature, not the untrusted response label.
-            string extension = GetExtension(contentType, sourceUrl);
-            GitHubImageCacheEntry stored = await _cacheStore.PutAsync(
-                    cacheKey,
-                    bytes,
-                    extension,
-                    new GitHubImageCacheWriteMetadata(download.ETag, download.LastModified, contentType),
-                    cancellationToken)
-                .ConfigureAwait(false);
-            _memoryCache.Set(cacheKey, new GitHubImageCacheRead(stored, bytes));
-            return ToResult(stored, bytes, isFromCache: false);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch when (cached is not null)
-        {
-            return ToResult(cached, isFromCache: true) with { IsStale = true };
-        }
-    }
-
-    private async Task<GitHubCachedImage?> FetchAndStoreWithLeaseAsync(
-        long accountId,
-        string cacheKey,
-        string sourceUrl,
-        GitHubImageCacheRead? cached,
-        GitHubImageFetcher fetcher,
-        IMarkdownImageSourceByteAdmission? admission,
-        CancellationToken cancellationToken)
-    {
-        using IAccountWorkLease? lease = EnterAccountWork(accountId, cancellationToken);
-        return await FetchAndStoreAsync(
-            cacheKey,
-            sourceUrl,
-            cached,
-            fetcher,
-            admission,
-            lease?.CancellationToken ?? cancellationToken).ConfigureAwait(false);
-    }
-
-    private async Task<GitHubImageDownload?> FetchHttpAsync(
-        string sourceUrl,
-        GitHubImageCacheEntry? cached,
-        GitHubImageFetchScope scope,
-        IMarkdownImageSourceByteAdmission? admission,
-        CancellationToken cancellationToken)
-    {
-        for (int attempt = 1; attempt <= MaxHttpAttempts; attempt++)
-        {
-            try
-            {
-                return await FetchHttpAttemptAsync(
-                    sourceUrl,
-                    cached,
-                    scope,
-                    admission,
-                    cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception exception) when (
-                attempt < MaxHttpAttempts &&
-                !cancellationToken.IsCancellationRequested &&
-                IsTransientHttpFailure(exception))
-            {
-                // Only transient failures reach this point. Back off the second
-                // retry to avoid immediately repeating a throttled CDN request.
-                await Task.Delay(TransientRetryDelay * attempt, cancellationToken)
-                    .ConfigureAwait(false);
-            }
-        }
-
-        throw new InvalidOperationException("The bounded image retry loop completed unexpectedly.");
-    }
-
-    private static async Task<GitHubImageDownload?> FetchWithRetryAsync(
-        GitHubImageFetcher fetcher,
-        GitHubImageCacheEntry? cached,
-        CancellationToken cancellationToken)
-    {
-        for (int attempt = 1; attempt <= MaxHttpAttempts; attempt++)
-        {
-            try
-            {
-                return await fetcher(cached, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception exception) when (
-                attempt < MaxHttpAttempts &&
-                !cancellationToken.IsCancellationRequested &&
-                IsTransientFetchFailure(exception))
-            {
-                // Repository-relative images use an authenticated GitHub API
-                // fetcher rather than FetchHttpAsync. Give that idempotent GET
-                // the same single bounded recovery opportunity as CDN images.
-                await Task.Delay(TransientRetryDelay * attempt, cancellationToken)
-                    .ConfigureAwait(false);
-            }
-        }
-
-        throw new InvalidOperationException("The bounded image fetch retry loop completed unexpectedly.");
-    }
-
-    private async Task<GitHubImageDownload?> FetchHttpAttemptAsync(
-        string sourceUrl,
-        GitHubImageCacheEntry? cached,
-        GitHubImageFetchScope scope,
-        IMarkdownImageSourceByteAdmission? admission,
-        CancellationToken cancellationToken)
-    {
-        Uri currentUri = new(sourceUrl, UriKind.Absolute);
-        const int maxRedirects = 3;
-        for (int redirectCount = 0; redirectCount <= maxRedirects; redirectCount++)
-        {
-            if (_validateDnsBeforeRequest)
-            {
-                await EnsurePublicNetworkDestinationAsync(currentUri, cancellationToken).ConfigureAwait(false);
-            }
-
-            using HttpRequestMessage request = new(HttpMethod.Get, currentUri);
-            if (redirectCount == 0 &&
-                !string.IsNullOrWhiteSpace(cached?.ETag) &&
-                EntityTagHeaderValue.TryParse(cached.ETag, out EntityTagHeaderValue? entityTag))
-            {
-                request.Headers.IfNoneMatch.Add(entityTag);
-            }
-
-            if (redirectCount == 0 && cached?.LastModified is DateTimeOffset lastModified)
-            {
-                request.Headers.IfModifiedSince = lastModified;
-            }
-
-            using HttpResponseMessage response = await _httpClient.SendAsync(
-                request,
-                HttpCompletionOption.ResponseHeadersRead,
-                cancellationToken).ConfigureAwait(false);
-            if (response.StatusCode == HttpStatusCode.NotModified)
-            {
-                return new GitHubImageDownload(null, cached?.ContentType, IsNotModified: true);
-            }
-
-            if (IsRedirect(response.StatusCode))
-            {
-                if (redirectCount == maxRedirects || response.Headers.Location is not Uri location)
-                {
-                    throw new InvalidDataException("Remote image exceeded the redirect limit.");
-                }
-
-                Uri nextUri = location.IsAbsoluteUri ? location : new Uri(currentUri, location);
-                if (!IsAllowedRedirect(currentUri, nextUri, scope))
-                {
-                    throw new InvalidDataException("Remote image redirect violates the source policy.");
-                }
-
-                currentUri = nextUri;
-                continue;
-            }
-
-            response.EnsureSuccessStatusCode();
-            string? contentType = response.Content.Headers.ContentType?.MediaType;
-            (byte[] bytes, IDisposable? sourceByteLease) = await AdmittedImageContentReader.ReadAsync(
-                response.Content, MaxImageBytes, admission, cancellationToken).ConfigureAwait(false);
-            try
-            {
-                // Camo can briefly return a truncated SVG with HTTP 200 and
-                // image/svg+xml. Reject it before it poisons the source cache;
-                // the existing bounded GET retry then has a chance to obtain
-                // the complete badge. Raster bytes with a stale SVG media type
-                // still follow their validated signature below.
-                if (bytes.Length <= MaxEarlySvgValidationBytes &&
-                    TryDetectSupportedImageContentType(bytes, contentType, out string detectedType) &&
-                    detectedType == "image/svg+xml" &&
-                    !IsWellFormedSvg(bytes))
-                {
-                    if (currentUri.Host.Equals("camo.githubusercontent.com", StringComparison.OrdinalIgnoreCase))
-                        throw new TransientCamoSvgPayloadException();
-
-                    throw new InvalidDataException("Remote SVG is not well-formed XML.");
-                }
-
-                GitHubImageDownload download = new(
-                    bytes,
-                    contentType,
-                    response.Headers.ETag?.ToString(),
-                    response.Content.Headers.LastModified,
-                    SourceByteLease: sourceByteLease);
-                sourceByteLease = null;
-                return download;
-            }
-            finally
-            {
-                // Rejecting a downloaded SVG must release its buffer reference
-                // before returning the quota, even if its task is retained.
-                bytes = Array.Empty<byte>();
-                sourceByteLease?.Dispose();
-            }
-        }
-
-        throw new InvalidDataException("Remote image exceeded the redirect limit.");
-    }
-
-    private static bool IsTransientHttpFailure(Exception exception)
-    {
-        if (exception is TransientCamoSvgPayloadException)
-            return true;
-
-        if (exception is OperationCanceledException)
-        {
-            // The caller token is checked by the catch filter. Reaching this path
-            // therefore means HttpClient's own per-attempt timeout elapsed.
-            return true;
-        }
-
-        if (exception is IOException)
-        {
-            return true;
-        }
-
-        if (exception is not HttpRequestException requestException)
-        {
-            return false;
-        }
-
-        if (requestException.StatusCode is not HttpStatusCode statusCode)
-        {
-            // Connection resets, DNS races, and HTTP/2 stream failures do not
-            // carry a response status but are safe to retry for an idempotent GET.
-            return true;
-        }
-
-        int status = (int)statusCode;
-        return status is 408 or 425 or 429 ||
-            (status >= 500 && status <= 599 && status is not (501 or 505));
-    }
-
-    private static bool IsTransientFetchFailure(Exception exception)
-    {
-        if (IsTransientHttpFailure(exception))
-        {
-            return true;
-        }
-
-        if (exception is not GitHubApiException apiException ||
-            exception is GitHubAuthenticationException or GitHubRateLimitException)
-        {
-            return false;
-        }
-
-        int status = (int)apiException.StatusCode;
-        return status is 408 or 425 or 429 ||
-            (status >= 500 && status <= 599 && status is not (501 or 505));
-    }
-
-    private static Task<GitHubCachedImage?> GetSharedTask(
-        ConcurrentDictionary<string, SharedImageRequest> tasks,
-        string cacheKey,
-        Func<CancellationToken, Task<GitHubCachedImage?>> taskFactory,
-        CancellationToken callerCancellationToken)
-    {
-        while (true)
-        {
-            SharedImageRequest request = tasks.GetOrAdd(cacheKey, _ => new SharedImageRequest(taskFactory));
-            if (request.TryAddWaiter())
-            {
-                return AwaitSharedAsync(tasks, cacheKey, request, callerCancellationToken);
-            }
-
-            tasks.TryRemove(new KeyValuePair<string, SharedImageRequest>(cacheKey, request));
-        }
-    }
-
-    private static async Task<GitHubCachedImage?> AwaitSharedAsync(
-        ConcurrentDictionary<string, SharedImageRequest> tasks,
-        string cacheKey,
-        SharedImageRequest request,
-        CancellationToken callerCancellationToken)
-    {
-        Task<GitHubCachedImage?> task = request.Task;
-        try
-        {
-            return await task.WaitAsync(callerCancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            SharedImageRequestRelease release = request.ReleaseWaiter(task.IsCompleted);
-            if (release.ShouldCancel)
-            {
-                request.Cancel();
-            }
-
-            if (release.ShouldRetire)
-            {
-                tasks.TryRemove(new KeyValuePair<string, SharedImageRequest>(cacheKey, request));
-                request.DisposeWhenComplete();
-            }
-        }
-    }
-
-    private IAccountWorkLease? EnterAccountWork(long accountId, CancellationToken cancellationToken) =>
-        accountId > 0
-            ? _accountWork?.Enter(accountId.ToString(CultureInfo.InvariantCulture), cancellationToken)
-            : null;
-
-    private static string GetCacheKey(long accountId, string sourceUrl) =>
-        $"{accountId.ToString(CultureInfo.InvariantCulture)}:{NormalizeCacheIdentity(sourceUrl)}";
-
-    internal static string NormalizeCacheIdentity(string sourceUrl)
-    {
-        if (!Uri.TryCreate(sourceUrl, UriKind.Absolute, out Uri? uri))
-        {
-            return sourceUrl.Trim();
-        }
-
-        UriBuilder builder = new(uri)
-        {
-            Scheme = uri.Scheme.ToLowerInvariant(),
-            Host = uri.IdnHost.ToLowerInvariant(),
-            Fragment = string.Empty,
-            Port = uri.IsDefaultPort ? -1 : uri.Port
-        };
-        return builder.Uri.GetComponents(
-            UriComponents.SchemeAndServer | UriComponents.PathAndQuery,
-            UriFormat.UriEscaped);
-    }
-
-    private static bool IsAllowedSource(string sourceUrl, GitHubImageFetchScope scope)
-    {
-        if (!Uri.TryCreate(sourceUrl, UriKind.Absolute, out Uri? sourceUri) ||
-            sourceUri.Scheme != Uri.UriSchemeHttps ||
-            !string.IsNullOrEmpty(sourceUri.UserInfo) ||
-            !IsGloballyRoutableDestination(sourceUri))
-        {
-            return false;
-        }
-
-        return scope == GitHubImageFetchScope.UserApprovedHttps ||
-            MarkdownRemoteImagePolicy.IsTrustedGitHubHost(sourceUri.Host);
-    }
-
-    private static bool IsAllowedRedirect(
-        Uri currentUri,
-        Uri nextUri,
-        GitHubImageFetchScope scope)
-    {
-        if (IsAllowedSource(nextUri.ToString(), scope))
-            return true;
-
-        // GitHub serves README user attachments through a short-lived,
-        // query-signed S3 URL. Keep the normal trusted-host boundary intact
-        // and admit only this exact GitHub-owned transition; subsequent
-        // redirects are evaluated independently and cannot inherit it.
-        return scope == GitHubImageFetchScope.TrustedGitHub &&
-            currentUri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase) &&
-            IsGitHubUserAssetPath(currentUri.AbsolutePath) &&
-            nextUri.Scheme == Uri.UriSchemeHttps &&
-            string.IsNullOrEmpty(nextUri.UserInfo) &&
-            nextUri.Host.Equals(
-                "github-production-user-asset-6210df.s3.amazonaws.com",
-                StringComparison.OrdinalIgnoreCase) &&
-            nextUri.Query.Contains("X-Amz-Credential=", StringComparison.OrdinalIgnoreCase) &&
-            nextUri.Query.Contains("X-Amz-Signature=", StringComparison.OrdinalIgnoreCase) &&
-            IsGloballyRoutableDestination(nextUri);
-    }
-
-    private static bool IsGitHubUserAssetPath(string absolutePath)
-    {
-        if (absolutePath.StartsWith(
-                "/user-attachments/assets/",
-                StringComparison.OrdinalIgnoreCase))
-        {
-            return Guid.TryParse(absolutePath["/user-attachments/assets/".Length..], out _);
-        }
-
-        // GitHub's legacy README attachment form is
-        // /{owner}/{repository}/assets/{numeric-user-id}/{asset-id}. It is
-        // still used by many high-traffic repositories and redirects through
-        // the same query-signed, GitHub-owned S3 endpoint as the newer form.
-        string[] segments = absolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        return segments.Length == 5 &&
-            segments[0].Length > 0 &&
-            segments[1].Length > 0 &&
-            segments[2].Equals("assets", StringComparison.OrdinalIgnoreCase) &&
-            long.TryParse(segments[3], NumberStyles.None, CultureInfo.InvariantCulture, out _) &&
-            Guid.TryParse(segments[4], out _);
-    }
-
-    private static bool IsGloballyRoutableDestination(Uri uri)
-    {
-        string host = uri.Host.TrimEnd('.');
-        if (uri.IsLoopback || GloballyRoutableAddressPolicy.IsSpecialUseHost(host))
-        {
-            return false;
-        }
-
-        return !IPAddress.TryParse(host, out IPAddress? address) ||
-            GloballyRoutableAddressPolicy.IsGloballyRoutable(address);
-    }
-
-    private async Task EnsurePublicNetworkDestinationAsync(Uri uri, CancellationToken cancellationToken)
-    {
-        IPAddress[] addresses;
-        try
-        {
-            addresses = await _hostAddressResolver(uri.DnsSafeHost, cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is SocketException or ArgumentException)
-        {
-            throw new InvalidDataException("Remote image host could not be resolved safely.", ex);
-        }
-
-        if (addresses.Length == 0 || addresses.Any(static address => !GloballyRoutableAddressPolicy.IsGloballyRoutable(address)))
-        {
-            throw new InvalidDataException("Remote image host does not resolve exclusively to globally routable destinations.");
-        }
-    }
-
-    private static bool IsRedirect(HttpStatusCode statusCode) =>
-        statusCode is HttpStatusCode.MovedPermanently or
-            HttpStatusCode.Redirect or
-            HttpStatusCode.RedirectMethod or
-            HttpStatusCode.TemporaryRedirect or
-            HttpStatusCode.PermanentRedirect;
-
     private static GitHubCachedImage ToResult(GitHubImageCacheRead read, bool isFromCache) =>
         new(read.Entry.FilePath, read.Bytes, read.Entry.ContentType, isFromCache);
-
-    private static GitHubCachedImage ToResult(
-        GitHubImageCacheEntry entry,
-        byte[] bytes,
-        bool isFromCache) =>
-        new(entry.FilePath, bytes, entry.ContentType, isFromCache);
-
-    private static bool TryDetectSupportedImageContentType(
-        byte[] bytes,
-        string? declaredContentType,
-        out string contentType)
-    {
-        if (bytes.Length >= 8 &&
-            bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47 &&
-            bytes[4] == 0x0D && bytes[5] == 0x0A && bytes[6] == 0x1A && bytes[7] == 0x0A)
-        {
-            contentType = "image/png";
-            return true;
-        }
-
-        if (bytes.Length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF)
-        {
-            contentType = "image/jpeg";
-            return true;
-        }
-
-        if (bytes.Length >= 6 &&
-            bytes[0] == (byte)'G' && bytes[1] == (byte)'I' && bytes[2] == (byte)'F' &&
-            bytes[3] == (byte)'8' && (bytes[4] == (byte)'7' || bytes[4] == (byte)'9') &&
-            bytes[5] == (byte)'a')
-        {
-            contentType = "image/gif";
-            return true;
-        }
-
-        if (bytes.Length >= 12 &&
-            bytes[0] == (byte)'R' && bytes[1] == (byte)'I' && bytes[2] == (byte)'F' && bytes[3] == (byte)'F' &&
-            bytes[8] == (byte)'W' && bytes[9] == (byte)'E' && bytes[10] == (byte)'B' && bytes[11] == (byte)'P')
-        {
-            contentType = "image/webp";
-            return true;
-        }
-
-        if (IsStillAvif(bytes))
-        {
-            contentType = "image/avif";
-            return true;
-        }
-
-        if (bytes.Length >= 2 && bytes[0] == (byte)'B' && bytes[1] == (byte)'M')
-        {
-            contentType = "image/bmp";
-            return true;
-        }
-
-        if (bytes.Length >= 4 && bytes[0] == 0 && bytes[1] == 0 && bytes[2] == 1 && bytes[3] == 0)
-        {
-            contentType = "image/x-icon";
-            return true;
-        }
-
-        if (bytes.Length >= 4 &&
-            ((bytes[0] == (byte)'I' && bytes[1] == (byte)'I' && bytes[2] == 0x2A && bytes[3] == 0) ||
-             (bytes[0] == (byte)'M' && bytes[1] == (byte)'M' && bytes[2] == 0 && bytes[3] == 0x2A)))
-        {
-            contentType = "image/tiff";
-            return true;
-        }
-
-        // XML is not self-identifying enough to admit under an arbitrary image
-        // label. SVG retains the stricter declared-type check before its existing
-        // sandboxed parser and resource policy run.
-        if (string.Equals(declaredContentType, "image/svg+xml", StringComparison.OrdinalIgnoreCase))
-        {
-            string prefix = System.Text.Encoding.UTF8.GetString(bytes, 0, Math.Min(bytes.Length, 4096));
-            if (prefix.Contains("<svg", StringComparison.OrdinalIgnoreCase))
-            {
-                contentType = "image/svg+xml";
-                return true;
-            }
-        }
-
-        contentType = string.Empty;
-        return false;
-    }
-
-    private static bool IsWellFormedSvg(byte[] bytes)
-    {
-        var settings = new XmlReaderSettings
-        {
-            // Match the SVG preflight's inert legacy external DOCTYPE support.
-            // This check only detects incomplete downloads; the renderer's
-            // preflight remains authoritative for forbidden DTD content.
-            DtdProcessing = DtdProcessing.Parse,
-            XmlResolver = null,
-            MaxCharactersInDocument = MaxImageBytes,
-            MaxCharactersFromEntities = 1,
-        };
-        try
-        {
-            using var input = new MemoryStream(bytes, writable: false);
-            using XmlReader reader = XmlReader.Create(input, settings);
-            if (reader.MoveToContent() != XmlNodeType.Element ||
-                !reader.LocalName.Equals("svg", StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-
-            while (reader.Read()) { }
-            return true;
-        }
-        catch (XmlException)
-        {
-            return false;
-        }
-    }
-
-    private sealed class TransientCamoSvgPayloadException()
-        : IOException("GitHub Camo returned an incomplete SVG payload.");
-
-    private static bool IsStillAvif(ReadOnlySpan<byte> bytes)
-    {
-        if (bytes.Length < 16 || !bytes.Slice(4, 4).SequenceEqual("ftyp"u8))
-        {
-            return false;
-        }
-
-        uint boxSize = BinaryPrimitives.ReadUInt32BigEndian(bytes);
-        if (boxSize < 16 || boxSize > bytes.Length || (boxSize & 3) != 0)
-        {
-            return false;
-        }
-
-        bool hasStillBrand = false;
-        for (int offset = 8; offset <= boxSize - 4; offset += 4)
-        {
-            ReadOnlySpan<byte> brand = bytes.Slice(offset, 4);
-            if (brand.SequenceEqual("avis"u8))
-            {
-                // Animated AVIF has a different resource and decode budget. Do
-                // not admit it through the bounded still-image path.
-                return false;
-            }
-
-            hasStillBrand |= brand.SequenceEqual("avif"u8);
-        }
-
-        return hasStillBrand;
-    }
-
-    private static HttpClient CreateHttpClient()
-    {
-        SocketsHttpHandler handler = new()
-        {
-            AllowAutoRedirect = false,
-            ConnectCallback = ConnectValidatedAsync,
-            PooledConnectionLifetime = TimeSpan.FromMinutes(2)
-        };
-        HttpClient client = new(handler)
-        {
-            Timeout = TimeSpan.FromSeconds(20),
-            DefaultRequestVersion = HttpVersion.Version20,
-            DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower
-        };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("JitHub/1.0");
-        return client;
-    }
-
-    private static async ValueTask<Stream> ConnectValidatedAsync(
-        SocketsHttpConnectionContext context,
-        CancellationToken cancellationToken)
-    {
-        IPAddress[] addresses = await ResolveHostAddressesAsync(context.DnsEndPoint.Host, cancellationToken).ConfigureAwait(false);
-        if (addresses.Length == 0 || addresses.Any(static address => !GloballyRoutableAddressPolicy.IsGloballyRoutable(address)))
-        {
-            throw new InvalidDataException("Remote image host does not resolve exclusively to globally routable destinations.");
-        }
-
-        Exception? lastError = null;
-        foreach (IPAddress address in addresses)
-        {
-            Socket socket = new(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-            try
-            {
-                await socket.ConnectAsync(new IPEndPoint(address, context.DnsEndPoint.Port), cancellationToken).ConfigureAwait(false);
-                return new NetworkStream(socket, ownsSocket: true);
-            }
-            catch (Exception ex) when (ex is SocketException or OperationCanceledException)
-            {
-                socket.Dispose();
-                lastError = ex;
-                if (ex is OperationCanceledException)
-                {
-                    throw;
-                }
-            }
-        }
-
-        throw new HttpRequestException("Remote image host could not be reached through a validated address.", lastError);
-    }
-
-    private static Task<IPAddress[]> ResolveHostAddressesAsync(string host, CancellationToken cancellationToken) =>
-        Dns.GetHostAddressesAsync(host, cancellationToken);
-
-    private static string GetExtension(string mediaType, string sourceUrl)
-    {
-        string? extension = mediaType.ToLowerInvariant() switch
-        {
-            "image/png" => ".png",
-            "image/jpeg" => ".jpg",
-            "image/gif" => ".gif",
-            "image/webp" => ".webp",
-            "image/avif" => ".avif",
-            "image/svg+xml" => ".svg",
-            "image/bmp" => ".bmp",
-            "image/x-icon" or "image/vnd.microsoft.icon" => ".ico",
-            "image/tiff" => ".tiff",
-            _ => null
-        };
-
-        if (extension is not null)
-        {
-            return extension;
-        }
-
-        string pathExtension = Path.GetExtension(new Uri(sourceUrl).AbsolutePath);
-        return string.IsNullOrWhiteSpace(pathExtension) || pathExtension.Length > 12
-            ? ".img"
-            : pathExtension;
-    }
-
-    internal readonly record struct SharedImageRequestRelease(bool ShouldRetire, bool ShouldCancel);
-
-    private sealed class MemoryPressureRelay(GitHubImageService owner)
-    {
-        private readonly WeakReference<GitHubImageService> _owner = new(owner);
-
-        internal void OnAppMemoryUsageIncreased(object? sender, object args)
-        {
-            if (_owner.TryGetTarget(out GitHubImageService? service))
-                service.OnAppMemoryUsageIncreased(sender, args);
-        }
-    }
-
-    private sealed class MemoryImageCache
-    {
-        private readonly long _byteBudget;
-        private readonly int _entryBudget;
-        private readonly object _gate = new();
-        private readonly Dictionary<string, LinkedListNode<Entry>> _entries = new(StringComparer.Ordinal);
-        private readonly LinkedList<Entry> _lru = new();
-        private long _bytes;
-
-        public MemoryImageCache(long byteBudget, int entryBudget)
-        {
-            _byteBudget = Math.Max(1, byteBudget);
-            _entryBudget = Math.Max(1, entryBudget);
-        }
-
-        public bool TryGet(string key, out GitHubImageCacheRead? value)
-        {
-            lock (_gate)
-            {
-                if (!_entries.TryGetValue(key, out LinkedListNode<Entry>? node))
-                {
-                    value = null;
-                    return false;
-                }
-
-                _lru.Remove(node);
-                _lru.AddFirst(node);
-                value = node.Value.Value;
-                return true;
-            }
-        }
-
-        public void Set(string key, GitHubImageCacheRead value)
-        {
-            long byteLength = value.Bytes.LongLength;
-            if (byteLength <= 0 || byteLength > _byteBudget)
-            {
-                return;
-            }
-
-            lock (_gate)
-            {
-                if (_entries.Remove(key, out LinkedListNode<Entry>? existing))
-                {
-                    _lru.Remove(existing);
-                    _bytes -= existing.Value.ByteLength;
-                }
-
-                LinkedListNode<Entry> node = new(new Entry(key, value, byteLength));
-                _lru.AddFirst(node);
-                _entries[key] = node;
-                _bytes += byteLength;
-                while (_entries.Count > _entryBudget || _bytes > _byteBudget)
-                {
-                    LinkedListNode<Entry>? tail = _lru.Last;
-                    if (tail is null)
-                    {
-                        break;
-                    }
-
-                    _lru.RemoveLast();
-                    _entries.Remove(tail.Value.Key);
-                    _bytes -= tail.Value.ByteLength;
-                }
-            }
-        }
-
-        public void Remove(string key)
-        {
-            lock (_gate)
-            {
-                if (_entries.Remove(key, out LinkedListNode<Entry>? node))
-                {
-                    _lru.Remove(node);
-                    _bytes -= node.Value.ByteLength;
-                }
-            }
-        }
-
-        public void Clear()
-        {
-            lock (_gate)
-            {
-                _entries.Clear();
-                _lru.Clear();
-                _bytes = 0;
-            }
-        }
-
-        private sealed record Entry(string Key, GitHubImageCacheRead Value, long ByteLength);
-    }
-
-    internal sealed class SharedImageRequest
-    {
-        private readonly object _gate = new();
-        private readonly CancellationTokenSource _cancellationTokenSource = new();
-        private readonly Lazy<Task<GitHubCachedImage?>> _task;
-        private int _waiterCount;
-        private int _disposeScheduled;
-        private bool _retired;
-
-        public SharedImageRequest(Func<CancellationToken, Task<GitHubCachedImage?>> taskFactory)
-        {
-            _task = new Lazy<Task<GitHubCachedImage?>>(
-                () => taskFactory(_cancellationTokenSource.Token),
-                LazyThreadSafetyMode.ExecutionAndPublication);
-        }
-
-        public Task<GitHubCachedImage?> Task => _task.Value;
-
-        public bool TryAddWaiter()
-        {
-            lock (_gate)
-            {
-                if (_retired)
-                {
-                    return false;
-                }
-
-                _waiterCount++;
-                return true;
-            }
-        }
-
-        public SharedImageRequestRelease ReleaseWaiter(bool taskCompleted)
-        {
-            lock (_gate)
-            {
-                if (_waiterCount <= 0)
-                {
-                    throw new InvalidOperationException("Shared image request waiter count is already zero.");
-                }
-
-                _waiterCount--;
-                if (_waiterCount > 0)
-                {
-                    return new SharedImageRequestRelease(ShouldRetire: false, ShouldCancel: false);
-                }
-
-                // Retire while holding the same lock used by TryAddWaiter. A late caller can no
-                // longer join this transfer between the zero-count decision and cancellation.
-                _retired = true;
-                return new SharedImageRequestRelease(
-                    ShouldRetire: true,
-                    ShouldCancel: !taskCompleted);
-            }
-        }
-
-        public void Cancel()
-        {
-            try
-            {
-                _cancellationTokenSource.Cancel();
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-        }
-
-        public void DisposeWhenComplete()
-        {
-            if (Interlocked.Exchange(ref _disposeScheduled, 1) != 0)
-            {
-                return;
-            }
-
-            _ = DisposeRequestWhenCompleteAsync();
-        }
-
-        private async Task DisposeRequestWhenCompleteAsync()
-        {
-            try
-            {
-                await Task.ConfigureAwait(false);
-            }
-            catch
-            {
-                // Waiters own user-visible failures; disposal only observes completion.
-            }
-            finally
-            {
-                _cancellationTokenSource.Dispose();
-            }
-        }
-    }
 }

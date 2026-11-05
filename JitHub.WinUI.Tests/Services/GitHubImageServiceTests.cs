@@ -699,7 +699,7 @@ public sealed class GitHubImageServiceTests : IDisposable
         Assert.True(result.IsComplete);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fetch);
         await handler.CancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(2));
-        string cacheKey = $"101:{GitHubImageService.NormalizeCacheIdentity(source)}";
+        string cacheKey = $"101:{GitHubImageAccountScope.NormalizeCacheIdentity(source)}";
         Assert.Null(await store.TryGetAsync(cacheKey));
         Assert.Empty(Directory.GetFiles(_root, "*.tmp", SearchOption.TopDirectoryOnly));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.GetAsync(source));
@@ -814,9 +814,9 @@ public sealed class GitHubImageServiceTests : IDisposable
     [Fact]
     public void CacheIdentity_CanonicalizesEquivalentHttpsUrlsAndDropsFragments()
     {
-        string first = GitHubImageService.NormalizeCacheIdentity(
+        string first = GitHubImageAccountScope.NormalizeCacheIdentity(
             "HTTPS://AVATARS.GITHUBUSERCONTENT.COM:443/u/1.png?size=80#fragment");
-        string second = GitHubImageService.NormalizeCacheIdentity(
+        string second = GitHubImageAccountScope.NormalizeCacheIdentity(
             "https://avatars.githubusercontent.com/u/1.png?size=80");
 
         Assert.Equal(second, first);
@@ -923,11 +923,11 @@ public sealed class GitHubImageServiceTests : IDisposable
     [Fact]
     public void SharedRequest_RetiresAtomicallyBeforeLateWaiterCanJoin()
     {
-        GitHubImageService.SharedImageRequest request = new(
+        SharedImageRequest request = new(
             _ => Task.FromResult<GitHubCachedImage?>(null));
 
         Assert.True(request.TryAddWaiter());
-        GitHubImageService.SharedImageRequestRelease release = request.ReleaseWaiter(taskCompleted: false);
+        SharedImageRequestRelease release = request.ReleaseWaiter(taskCompleted: false);
 
         Assert.True(release.ShouldRetire);
         Assert.True(release.ShouldCancel);

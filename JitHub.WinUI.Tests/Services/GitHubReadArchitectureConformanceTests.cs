@@ -23,7 +23,7 @@ public sealed partial class GitHubReadArchitectureConformanceTests
             "GitHubGraphQlTransport.cs",
             "GitHubProfileQueryService.cs",
             // Remote image traffic is separately constrained by MarkdownRemoteImagePolicy.
-            "GitHubImageService.cs"
+            "GitHubImageHttpFetcher.cs"
             ,"GitHubDeviceFlowClient.cs"
         };
 
