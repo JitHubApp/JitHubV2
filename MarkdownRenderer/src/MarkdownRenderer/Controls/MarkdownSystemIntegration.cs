@@ -1,5 +1,4 @@
 using System;
-using System.Runtime.CompilerServices;
 using Microsoft.UI.Xaml;
 using Windows.ApplicationModel.Resources.Core;
 using Windows.Foundation.Collections;
@@ -19,7 +18,15 @@ public static class MarkdownSystemIntegration
             typeof(MarkdownSystemIntegration),
             new PropertyMetadata(false, OnUseSystemFlowDirectionChanged));
 
-    private static readonly ConditionalWeakTable<FrameworkElement, LayoutDirectionSubscription> _subscriptions = new();
+    // Each opted-in element keeps its own subscription in this private attached
+    // property, so the element owns the subscription's lifetime and no
+    // process-wide table maps elements to subscriptions.
+    private static readonly DependencyProperty LayoutDirectionSubscriptionProperty =
+        DependencyProperty.RegisterAttached(
+            "LayoutDirectionSubscription",
+            typeof(object),
+            typeof(MarkdownSystemIntegration),
+            new PropertyMetadata(null));
 
     /// <summary>Gets whether an element tracks the system flow direction.</summary>
     public static bool GetUseSystemFlowDirection(FrameworkElement element) =>
@@ -80,13 +87,18 @@ public static class MarkdownSystemIntegration
 
         if (e.NewValue is true)
         {
-            var subscription = _subscriptions.GetValue(element, static key => new LayoutDirectionSubscription(key));
+            if (element.GetValue(LayoutDirectionSubscriptionProperty) is not LayoutDirectionSubscription subscription)
+            {
+                subscription = new LayoutDirectionSubscription(element);
+                element.SetValue(LayoutDirectionSubscriptionProperty, subscription);
+            }
+
             subscription.Attach();
         }
-        else if (_subscriptions.TryGetValue(element, out var subscription))
+        else if (element.GetValue(LayoutDirectionSubscriptionProperty) is LayoutDirectionSubscription subscription)
         {
             subscription.Detach();
-            _subscriptions.Remove(element);
+            element.ClearValue(LayoutDirectionSubscriptionProperty);
         }
     }
 
