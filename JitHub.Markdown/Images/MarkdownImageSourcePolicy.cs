@@ -1,6 +1,6 @@
 using System;
 
-namespace JitHub.Services;
+namespace JitHub.Markdown.Images;
 
 internal static class MarkdownImageSourcePolicy
 {

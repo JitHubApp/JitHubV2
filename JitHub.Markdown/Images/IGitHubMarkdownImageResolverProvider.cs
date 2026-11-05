@@ -3,13 +3,13 @@ using System.Threading;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Performance;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown.Images;
 
 /// <summary>
 /// Lets a GitHub service expose only the image-resolver capabilities its configured
 /// image source can actually honor.
 /// </summary>
-internal interface IGitHubMarkdownImageResolverProvider
+public interface IGitHubMarkdownImageResolverProvider
 {
     IMarkdownImageResolver CreateMarkdownImageResolver();
 }

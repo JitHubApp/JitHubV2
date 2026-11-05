@@ -1,13 +1,9 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Markdown;
-using JitHub.Markdown.Images;
 using MarkdownRenderer.Images;
-using RestGitHubBlob = JitHub.Models.GitHub.GitHubBlob;
-using RestGitHubRepositoryContent = JitHub.Models.GitHub.GitHubRepositoryContent;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown.Images;
 
 /// <summary>
 /// The authenticated read for one repository image, used as the image cache's
@@ -18,7 +14,8 @@ namespace JitHub.Services.Markdown;
 /// </summary>
 internal sealed class GitHubRepositoryImageContentFetch
 {
-    private readonly IGitHubClientService _gitHubClientService;
+    private readonly IGitHubMarkdownContentClient _contentClient;
+    private readonly IGitHubRepositoryImageClient? _rawImageClient;
     private readonly GitHubMarkdownImageFetch _fetch;
     private readonly Func<string> _getAccessToken;
     private readonly GitHubMarkdownImageReference _imageReference;
@@ -26,14 +23,16 @@ internal sealed class GitHubRepositoryImageContentFetch
     private readonly bool _useLeasedSources;
 
     public GitHubRepositoryImageContentFetch(
-        IGitHubClientService gitHubClientService,
+        IGitHubMarkdownContentClient contentClient,
+        IGitHubRepositoryImageClient? rawImageClient,
         GitHubMarkdownImageFetch fetch,
         Func<string> getAccessToken,
         GitHubMarkdownImageReference imageReference,
         IMarkdownImageSourceByteAdmission? admission,
         bool useLeasedSources)
     {
-        _gitHubClientService = gitHubClientService;
+        _contentClient = contentClient;
+        _rawImageClient = rawImageClient;
         _fetch = fetch;
         _getAccessToken = getAccessToken;
         _imageReference = imageReference;
@@ -52,7 +51,7 @@ internal sealed class GitHubRepositoryImageContentFetch
         // full image ceiling here would leave no room for the reader's
         // own reservation and can deadlock a constrained session.
         if (_useLeasedSources &&
-            _gitHubClientService is IGitHubRepositoryImageClient repositoryImageClient)
+            _rawImageClient is { } repositoryImageClient)
         {
             return await FetchRawContentAsync(repositoryImageClient, accessToken, token).ConfigureAwait(false);
         }
@@ -138,10 +137,10 @@ internal sealed class GitHubRepositoryImageContentFetch
         IDisposable? sourceLease = _admission is null
             ? null
             : await _admission.ReserveAsync(
-                GitHubImageService.MaxImageBytes, token).ConfigureAwait(false);
+                GitHubImageLimits.MaxImageBytes, token).ConfigureAwait(false);
         try
         {
-            RestGitHubRepositoryContent file = await _gitHubClientService.GetRepositoryContentAsync(
+            GitHubMarkdownEncodedContent file = await _contentClient.GetRepositoryFileAsync(
                 accessToken,
                 _imageReference.Owner,
                 _imageReference.Repository,
@@ -152,7 +151,7 @@ internal sealed class GitHubRepositoryImageContentFetch
 
             if (fileBytes.Length == 0 && !string.IsNullOrWhiteSpace(file.Sha))
             {
-                RestGitHubBlob blob = await _gitHubClientService.GetBlobAsync(
+                GitHubMarkdownEncodedContent blob = await _contentClient.GetBlobAsync(
                     accessToken,
                     _imageReference.Owner,
                     _imageReference.Repository,

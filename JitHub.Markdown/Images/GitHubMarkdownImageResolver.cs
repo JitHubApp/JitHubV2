@@ -2,52 +2,66 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Markdown;
-using JitHub.Markdown.Images;
-using JitHub.WinUI.Helpers;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Performance;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown.Images;
 
 /// <summary>
 /// Resolves Markdown image sources for JitHub: repository-relative and raw GitHub
 /// assets, authenticated Contents and Blob reads, Git LFS media, public HTTPS
-/// images and GitHub Camo fallbacks. Bytes come from <see cref="IGitHubImageService"/>,
+/// images and GitHub Camo fallbacks. Bytes come from <see cref="IGitHubMarkdownImageCache"/>,
 /// which owns the cache and the transport; this class owns the GitHub-specific
 /// mapping, the remote-image policy decisions and the fallback order, split
 /// into <see cref="GitHubPublicMarkdownImageStage"/> and
 /// <see cref="GitHubRepositoryMarkdownImageStage"/>.
 /// </summary>
-internal sealed class GitHubMarkdownImageResolver :
+public sealed class GitHubMarkdownImageResolver :
     IMarkdownImageSourceByteAdmittedResolver,
     IMarkdownImagePrefetcher,
     IGitHubMarkdownImageResolverProvider
 {
-    private readonly IGitHubImageService _gitHubImageService;
+    private readonly IGitHubMarkdownImageCache _gitHubImageService;
     private readonly IGitHubMarkdownImageResolverProvider _markdownImageResolverProvider;
     private readonly GitHubRenderedReadmeImageMaps _renderedReadmeImageMaps;
     private readonly GitHubPublicMarkdownImageStage _publicImages;
     private readonly GitHubRepositoryMarkdownImageStage _repositoryImages;
+    private readonly Action<Exception, string> _reportFailure;
     private string? _accessToken;
 
+    /// <param name="contentClient">The authenticated GitHub REST reads.</param>
+    /// <param name="rawImageClient">
+    /// The raw repository Contents capability of the same client, or <see langword="null"/>
+    /// when the client only offers the JSON Contents and Blob APIs.
+    /// </param>
+    /// <param name="gitHubImageService">The image cache that owns the cache and the transport.</param>
+    /// <param name="markdownRemoteImagePolicy">The remote-image policy.</param>
+    /// <param name="reportFailure">Receives handled failures and their category.</param>
     public GitHubMarkdownImageResolver(
-        IGitHubClientService gitHubClientService,
-        IGitHubImageService gitHubImageService,
-        IMarkdownRemoteImagePolicy markdownRemoteImagePolicy)
+        IGitHubMarkdownContentClient contentClient,
+        IGitHubRepositoryImageClient? rawImageClient,
+        IGitHubMarkdownImageCache gitHubImageService,
+        IMarkdownRemoteImagePolicy markdownRemoteImagePolicy,
+        Action<Exception, string> reportFailure)
     {
+        ArgumentNullException.ThrowIfNull(reportFailure);
         _gitHubImageService = gitHubImageService;
-        _renderedReadmeImageMaps = new GitHubRenderedReadmeImageMaps(gitHubClientService, GetAccessTokenOrThrow);
+        _reportFailure = reportFailure;
+        _renderedReadmeImageMaps = new GitHubRenderedReadmeImageMaps(contentClient, GetAccessTokenOrThrow);
         var fetch = new GitHubMarkdownImageFetch(gitHubImageService);
         _publicImages = new GitHubPublicMarkdownImageStage(
             markdownRemoteImagePolicy,
             fetch,
-            new GitHubMarkdownCamoImageFallbacks(markdownRemoteImagePolicy, _renderedReadmeImageMaps, fetch));
+            new GitHubMarkdownCamoImageFallbacks(
+                markdownRemoteImagePolicy, _renderedReadmeImageMaps, fetch, reportFailure),
+            reportFailure);
         _repositoryImages = new GitHubRepositoryMarkdownImageStage(
-            gitHubClientService,
+            contentClient,
+            rawImageClient,
             markdownRemoteImagePolicy,
             fetch,
-            GetAccessTokenOrThrow);
+            GetAccessTokenOrThrow,
+            reportFailure);
         _markdownImageResolverProvider = new GitHubMarkdownImageResolverProvider(
             this,
             gitHubImageService is IGitHubLeasedImageService,
@@ -142,7 +156,7 @@ internal sealed class GitHubMarkdownImageResolver :
                 }
                 catch (Exception exception)
                 {
-                    HandledFailureReporter.Report(
+                    _reportFailure(
                         exception,
                         "markdown-image-prefetch-item");
                 }

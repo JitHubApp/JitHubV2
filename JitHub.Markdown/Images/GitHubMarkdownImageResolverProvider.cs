@@ -3,7 +3,7 @@ using System.Threading;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Performance;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown.Images;
 
 internal sealed class GitHubMarkdownImageResolverProvider : IGitHubMarkdownImageResolverProvider
 {

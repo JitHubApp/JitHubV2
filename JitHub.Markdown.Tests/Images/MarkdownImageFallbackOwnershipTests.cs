@@ -1,7 +1,7 @@
-using JitHub.Services.Markdown;
+using JitHub.Markdown.Images;
 using Xunit;
 
-namespace JitHub.WinUI.Tests.Services;
+namespace JitHub.Markdown.Tests.Images;
 
 public sealed class MarkdownImageFallbackOwnershipTests
 {

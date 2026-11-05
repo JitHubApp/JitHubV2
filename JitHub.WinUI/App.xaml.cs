@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using JitHub.Markdown;
 using JitHub.Markdown.Automation;
+using JitHub.Markdown.Images;
 using JitHub.Models;
 using JitHub.Models.NavArgs;
 using JitHub.Services;
@@ -250,7 +251,16 @@ public partial class App : Application
         services.AddSingleton<IDashboardWidgetLayoutService, DashboardWidgetLayoutService>();
         services.AddSingleton<ISettingsDiagnosticsService, SettingsDiagnosticsService>();
         services.AddSingleton<ISettingsSourceNavigationService, SettingsSourceNavigationService>();
-        services.AddSingleton<GitHubMarkdownImageResolver>();
+        services.AddSingleton(static provider =>
+        {
+            IGitHubClientService client = provider.GetRequiredService<IGitHubClientService>();
+            return new GitHubMarkdownImageResolver(
+                new GitHubMarkdownContentClient(client),
+                client as IGitHubRepositoryImageClient,
+                provider.GetRequiredService<IGitHubImageService>(),
+                provider.GetRequiredService<IMarkdownRemoteImagePolicy>(),
+                HandledFailureReporter.Report);
+        });
         services.AddSingleton<IGitHubMarkdownImageResolverProvider>(
             static provider => provider.GetRequiredService<GitHubMarkdownImageResolver>());
         services.AddSingleton<IGitHubService>(static provider => new GitHubService(

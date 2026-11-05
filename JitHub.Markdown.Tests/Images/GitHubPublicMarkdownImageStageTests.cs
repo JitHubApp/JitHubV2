@@ -4,15 +4,12 @@ using System.Net.Http;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Markdown;
 using JitHub.Markdown.Images;
-using JitHub.Services;
-using JitHub.Services.Markdown;
 using MarkdownRenderer.Images;
 using NSubstitute;
 using Xunit;
 
-namespace JitHub.WinUI.Tests.Services;
+namespace JitHub.Markdown.Tests.Images;
 
 public sealed class GitHubPublicMarkdownImageStageTests
 {
@@ -26,8 +23,8 @@ public sealed class GitHubPublicMarkdownImageStageTests
         Ref: "main",
         Path: "README.md");
 
-    private readonly IGitHubImageService _images = Substitute.For<IGitHubImageService>();
-    private readonly IGitHubClientService _client = Substitute.For<IGitHubClientService>();
+    private readonly IGitHubMarkdownImageCache _images = Substitute.For<IGitHubMarkdownImageCache>();
+    private readonly IGitHubMarkdownContentClient _client = Substitute.For<IGitHubMarkdownContentClient>();
     private readonly IMarkdownRemoteImagePolicy _policy = Substitute.For<IMarkdownRemoteImagePolicy>();
 
     [Theory]
@@ -210,7 +207,13 @@ public sealed class GitHubPublicMarkdownImageStageTests
         return new GitHubPublicMarkdownImageStage(
             _policy,
             fetch,
-            new GitHubMarkdownCamoImageFallbacks(_policy, maps, fetch));
+            new GitHubMarkdownCamoImageFallbacks(_policy, maps, fetch, IgnoreFailure),
+            IgnoreFailure);
+    }
+
+    /// <summary>The app reports these to its handled-failure sink; these tests do not observe it.</summary>
+    private static void IgnoreFailure(Exception exception, string category)
+    {
     }
 
     private void Decide(

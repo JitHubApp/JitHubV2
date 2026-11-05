@@ -5,7 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Images;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown.Images;
 
 /// <summary>
 /// Caches GitHub's server-rendered README source-to-Camo image maps for the
@@ -13,16 +13,16 @@ namespace JitHub.Services.Markdown;
 /// </summary>
 internal sealed class GitHubRenderedReadmeImageMaps
 {
-    private readonly IGitHubClientService _gitHubClientService;
+    private readonly IGitHubMarkdownContentClient _contentClient;
     private readonly Func<string> _getAccessToken;
     private readonly ConcurrentDictionary<string, Task<IReadOnlyDictionary<string, string>>>
         _renderedReadmeImageMaps = new(StringComparer.Ordinal);
 
     internal GitHubRenderedReadmeImageMaps(
-        IGitHubClientService gitHubClientService,
+        IGitHubMarkdownContentClient contentClient,
         Func<string> getAccessToken)
     {
-        _gitHubClientService = gitHubClientService;
+        _contentClient = contentClient;
         _getAccessToken = getAccessToken;
     }
 
@@ -56,7 +56,7 @@ internal sealed class GitHubRenderedReadmeImageMaps
         MarkdownDocumentSource document,
         CancellationToken cancellationToken)
     {
-        string html = await _gitHubClientService.GetRenderedReadmeHtmlAsync(
+        string html = await _contentClient.GetRenderedReadmeHtmlAsync(
             _getAccessToken(),
             document.Owner!,
             document.Repository!,

@@ -1,12 +1,9 @@
-using JitHub.Markdown;
 using JitHub.Markdown.Images;
-using JitHub.Services;
-using JitHub.Services.Markdown;
 using MarkdownRenderer.Images;
 using NSubstitute;
 using Xunit;
 
-namespace JitHub.WinUI.Tests.Services;
+namespace JitHub.Markdown.Tests.Images;
 
 public sealed class GitHubMarkdownImageResolverTests
 {
@@ -20,14 +17,16 @@ public sealed class GitHubMarkdownImageResolverTests
     [Fact]
     public async Task CamoFallbackReusesOneAccountsRenderedReadmeMapAndDropsItWhenTheCredentialChanges()
     {
-        IGitHubClientService client = Substitute.For<IGitHubClientService>();
+        IGitHubMarkdownContentClient client = Substitute.For<IGitHubMarkdownContentClient>();
         client.GetRenderedReadmeHtmlAsync(
                 Arg.Any<string>(), "octo", "repo", "main", Arg.Any<CancellationToken>())
             .Returns("<p>No mapped images.</p>");
         var resolver = new GitHubMarkdownImageResolver(
             client,
-            Substitute.For<IGitHubImageService>(),
-            Substitute.For<IMarkdownRemoteImagePolicy>());
+            rawImageClient: null,
+            Substitute.For<IGitHubMarkdownImageCache>(),
+            Substitute.For<IMarkdownRemoteImagePolicy>(),
+            IgnoreFailure);
         var context = new MarkdownImageResolveContext(
             new Uri("https://github.com/octo/repo/blob/main/"),
             "README.md",
@@ -53,13 +52,14 @@ public sealed class GitHubMarkdownImageResolverTests
     public async Task RepositoryImageIsRoutedToTheRepositoryStageAndOtherSourcesToThePublicStage()
     {
         const string rawUrl = "https://raw.githubusercontent.com/octo/repo/main/docs/logo.png";
-        IGitHubImageService images = Substitute.For<IGitHubImageService>();
+        IGitHubMarkdownImageCache images = Substitute.For<IGitHubMarkdownImageCache>();
         images.GetAsync(rawUrl, GitHubImageFetchScope.TrustedGitHub, Arg.Any<CancellationToken>())
             .Returns(new GitHubCachedImage("cache://raw", [1, 2, 3], "image/png", IsFromCache: false));
         IMarkdownRemoteImagePolicy policy = Substitute.For<IMarkdownRemoteImagePolicy>();
         policy.Evaluate(Arg.Any<Uri>(), Arg.Any<bool>()).Returns(new MarkdownRemoteImageDecision(
             MarkdownRemoteImageAccess.AllowNetwork, MarkdownImageUnavailableReason.None, IsThirdParty: false));
-        var resolver = new GitHubMarkdownImageResolver(Substitute.For<IGitHubClientService>(), images, policy);
+        var resolver = new GitHubMarkdownImageResolver(
+            Substitute.For<IGitHubMarkdownContentClient>(), rawImageClient: null, images, policy, IgnoreFailure);
 
         MarkdownImageResolution repositoryImage = await resolver.ResolveAsync(
             "docs/logo.png",
@@ -78,13 +78,20 @@ public sealed class GitHubMarkdownImageResolverTests
     public void ProviderReusesOneResolverFacadeForEveryView()
     {
         var resolver = new GitHubMarkdownImageResolver(
-            Substitute.For<IGitHubClientService>(),
-            Substitute.For<IGitHubImageService>(),
-            Substitute.For<IMarkdownRemoteImagePolicy>());
+            Substitute.For<IGitHubMarkdownContentClient>(),
+            rawImageClient: null,
+            Substitute.For<IGitHubMarkdownImageCache>(),
+            Substitute.For<IMarkdownRemoteImagePolicy>(),
+            IgnoreFailure);
 
         IMarkdownImageResolver first = resolver.CreateMarkdownImageResolver();
 
         Assert.Same(resolver, first);
         Assert.Same(first, resolver.CreateMarkdownImageResolver());
+    }
+
+    /// <summary>The app reports these to its handled-failure sink; these tests do not observe it.</summary>
+    private static void IgnoreFailure(Exception exception, string category)
+    {
     }
 }

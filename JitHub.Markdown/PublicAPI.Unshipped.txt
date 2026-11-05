@@ -1,6 +1,8 @@
 #nullable enable
 ~override JitHub.Markdown.GitHubMarkdownImageReference.Equals(object obj) -> bool
 ~override JitHub.Markdown.GitHubMarkdownImageReference.ToString() -> string
+~override JitHub.Markdown.Images.GitHubRawImageFetchOutcome.Equals(object obj) -> bool
+~override JitHub.Markdown.Images.GitHubRawImageFetchOutcome.ToString() -> string
 ~override JitHub.Markdown.MarkdownFormPeerAutomationIds.Equals(object obj) -> bool
 ~override JitHub.Markdown.MarkdownFormPeerAutomationIds.ToString() -> string
 ~override JitHub.Markdown.MarkdownGitHubRoute.Equals(object obj) -> bool
@@ -105,10 +107,55 @@ JitHub.Markdown.Images.GitHubImageSourceLease.Dispose() -> void
 JitHub.Markdown.Images.GitHubImageSourceLease.GitHubImageSourceLease(JitHub.Markdown.Images.GitHubCachedImage! image, System.IDisposable! sourceReservation) -> void
 JitHub.Markdown.Images.GitHubImageSourceLease.Image.get -> JitHub.Markdown.Images.GitHubCachedImage!
 JitHub.Markdown.Images.GitHubImageSourceLease.Retain() -> JitHub.Markdown.Images.GitHubImageSourceLease!
+JitHub.Markdown.Images.GitHubMarkdownEncodedContent
+JitHub.Markdown.Images.GitHubMarkdownEncodedContent.<Clone>$() -> JitHub.Markdown.Images.GitHubMarkdownEncodedContent!
+JitHub.Markdown.Images.GitHubMarkdownEncodedContent.Content.get -> string?
+JitHub.Markdown.Images.GitHubMarkdownEncodedContent.Content.init -> void
+JitHub.Markdown.Images.GitHubMarkdownEncodedContent.Deconstruct(out string? Content, out string? Encoding, out string? Sha) -> void
+JitHub.Markdown.Images.GitHubMarkdownEncodedContent.Encoding.get -> string?
+JitHub.Markdown.Images.GitHubMarkdownEncodedContent.Encoding.init -> void
+JitHub.Markdown.Images.GitHubMarkdownEncodedContent.Equals(JitHub.Markdown.Images.GitHubMarkdownEncodedContent? other) -> bool
+JitHub.Markdown.Images.GitHubMarkdownEncodedContent.GitHubMarkdownEncodedContent(string? Content, string? Encoding, string? Sha) -> void
+JitHub.Markdown.Images.GitHubMarkdownEncodedContent.Sha.get -> string?
+JitHub.Markdown.Images.GitHubMarkdownEncodedContent.Sha.init -> void
+JitHub.Markdown.Images.GitHubMarkdownImageCandidate
+JitHub.Markdown.Images.GitHubMarkdownImageCandidate.DetachLease() -> MarkdownRenderer.Performance.MarkdownImageResolutionLease!
+JitHub.Markdown.Images.GitHubMarkdownImageCandidate.Dispose() -> void
+JitHub.Markdown.Images.GitHubMarkdownImageCandidate.Resolution.get -> MarkdownRenderer.Images.MarkdownImageResolution
+JitHub.Markdown.Images.GitHubMarkdownImageResolver
+JitHub.Markdown.Images.GitHubMarkdownImageResolver.CreateMarkdownImageResolver() -> MarkdownRenderer.Images.IMarkdownImageResolver!
+JitHub.Markdown.Images.GitHubMarkdownImageResolver.GitHubMarkdownImageResolver(JitHub.Markdown.Images.IGitHubMarkdownContentClient! contentClient, JitHub.Markdown.Images.IGitHubRepositoryImageClient? rawImageClient, JitHub.Markdown.Images.IGitHubMarkdownImageCache! gitHubImageService, JitHub.Markdown.IMarkdownRemoteImagePolicy! markdownRemoteImagePolicy, System.Action<System.Exception!, string!>! reportFailure) -> void
+JitHub.Markdown.Images.GitHubMarkdownImageResolver.PrefetchAsync(System.Collections.Generic.IReadOnlyList<string!>! sources, MarkdownRenderer.Images.MarkdownImageResolveContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask
+JitHub.Markdown.Images.GitHubMarkdownImageResolver.ResolveAsync(string! source, MarkdownRenderer.Images.MarkdownImageResolveContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.MarkdownImageResolution>
+JitHub.Markdown.Images.GitHubMarkdownImageResolver.ResolveWithSourceByteAdmissionAsync(string! source, MarkdownRenderer.Images.MarkdownImageResolveContext! context, MarkdownRenderer.Images.IMarkdownImageSourceByteAdmission! admission, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.MarkdownImageResolution>
+JitHub.Markdown.Images.GitHubMarkdownImageResolver.SetAccessToken(string? token) -> void
+JitHub.Markdown.Images.GitHubRawImageFetchOutcome
+JitHub.Markdown.Images.GitHubRawImageFetchOutcome.Deconstruct(out JitHub.Markdown.Images.GitHubRawImageFetchOutcomeKind Kind, out int? HttpStatusCode) -> void
+JitHub.Markdown.Images.GitHubRawImageFetchOutcome.Equals(JitHub.Markdown.Images.GitHubRawImageFetchOutcome other) -> bool
+JitHub.Markdown.Images.GitHubRawImageFetchOutcome.GitHubRawImageFetchOutcome() -> void
+JitHub.Markdown.Images.GitHubRawImageFetchOutcome.GitHubRawImageFetchOutcome(JitHub.Markdown.Images.GitHubRawImageFetchOutcomeKind Kind, int? HttpStatusCode = null) -> void
+JitHub.Markdown.Images.GitHubRawImageFetchOutcome.HttpStatusCode.get -> int?
+JitHub.Markdown.Images.GitHubRawImageFetchOutcome.HttpStatusCode.init -> void
+JitHub.Markdown.Images.GitHubRawImageFetchOutcome.Kind.get -> JitHub.Markdown.Images.GitHubRawImageFetchOutcomeKind
+JitHub.Markdown.Images.GitHubRawImageFetchOutcome.Kind.init -> void
+JitHub.Markdown.Images.GitHubRawImageFetchOutcomeKind
+JitHub.Markdown.Images.GitHubRawImageFetchOutcomeKind.CallerCanceled = 4 -> JitHub.Markdown.Images.GitHubRawImageFetchOutcomeKind
+JitHub.Markdown.Images.GitHubRawImageFetchOutcomeKind.HttpStatus = 2 -> JitHub.Markdown.Images.GitHubRawImageFetchOutcomeKind
+JitHub.Markdown.Images.GitHubRawImageFetchOutcomeKind.InvalidPayload = 3 -> JitHub.Markdown.Images.GitHubRawImageFetchOutcomeKind
+JitHub.Markdown.Images.GitHubRawImageFetchOutcomeKind.NullResult = 1 -> JitHub.Markdown.Images.GitHubRawImageFetchOutcomeKind
+JitHub.Markdown.Images.GitHubRawImageFetchOutcomeKind.OtherFailure = 7 -> JitHub.Markdown.Images.GitHubRawImageFetchOutcomeKind
+JitHub.Markdown.Images.GitHubRawImageFetchOutcomeKind.SourceDeferred = 5 -> JitHub.Markdown.Images.GitHubRawImageFetchOutcomeKind
+JitHub.Markdown.Images.GitHubRawImageFetchOutcomeKind.Success = 0 -> JitHub.Markdown.Images.GitHubRawImageFetchOutcomeKind
+JitHub.Markdown.Images.GitHubRawImageFetchOutcomeKind.TransportFailure = 6 -> JitHub.Markdown.Images.GitHubRawImageFetchOutcomeKind
+JitHub.Markdown.Images.GitHubRepositoryImageFetchPipeline
 JitHub.Markdown.Images.IGitHubLeasedImageService
 JitHub.Markdown.Images.IGitHubLeasedImageService.GetLeasedAsync(string! sourceUrl, JitHub.Markdown.Images.GitHubImageFetchScope scope, MarkdownRenderer.Images.IMarkdownImageSourceByteAdmission! admission, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<JitHub.Markdown.Images.GitHubImageSourceLease?>!
 JitHub.Markdown.Images.IGitHubLeasedImageService.GetOrFetchLeasedAsync(string! sourceUrl, JitHub.Markdown.Images.GitHubImageFetcher! fetcher, MarkdownRenderer.Images.IMarkdownImageSourceByteAdmission! admission, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<JitHub.Markdown.Images.GitHubImageSourceLease?>!
 JitHub.Markdown.Images.IGitHubLeasedImageService.TryGetCachedLeasedAsync(string! sourceUrl, JitHub.Markdown.Images.GitHubImageFetchScope scope, MarkdownRenderer.Images.IMarkdownImageSourceByteAdmission! admission, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<JitHub.Markdown.Images.GitHubImageSourceLease?>!
+JitHub.Markdown.Images.IGitHubMarkdownContentClient
+JitHub.Markdown.Images.IGitHubMarkdownContentClient.GetBlobAsync(string! token, string! owner, string! name, string! sha, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<JitHub.Markdown.Images.GitHubMarkdownEncodedContent!>!
+JitHub.Markdown.Images.IGitHubMarkdownContentClient.GetRenderedReadmeHtmlAsync(string! token, string! owner, string! name, string? gitRef, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<string!>!
+JitHub.Markdown.Images.IGitHubMarkdownContentClient.GetRepositoryFileAsync(string! token, string! owner, string! name, string! path, string? gitRef, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<JitHub.Markdown.Images.GitHubMarkdownEncodedContent!>!
 JitHub.Markdown.Images.IGitHubMarkdownImageCache
 JitHub.Markdown.Images.IGitHubMarkdownImageCache.GetAsync(string! sourceUrl, JitHub.Markdown.Images.GitHubImageFetchScope scope, MarkdownRenderer.Images.IMarkdownImageSourceByteAdmission! admission, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<JitHub.Markdown.Images.GitHubCachedImage?>!
 JitHub.Markdown.Images.IGitHubMarkdownImageCache.GetAsync(string! sourceUrl, JitHub.Markdown.Images.GitHubImageFetchScope scope, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<JitHub.Markdown.Images.GitHubCachedImage?>!
@@ -116,6 +163,8 @@ JitHub.Markdown.Images.IGitHubMarkdownImageCache.GetOrFetchAsync(string! sourceU
 JitHub.Markdown.Images.IGitHubMarkdownImageCache.GetOrFetchAsync(string! sourceUrl, JitHub.Markdown.Images.GitHubImageFetcher! fetcher, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<JitHub.Markdown.Images.GitHubCachedImage?>!
 JitHub.Markdown.Images.IGitHubMarkdownImageCache.TryGetCachedAsync(string! sourceUrl, JitHub.Markdown.Images.GitHubImageFetchScope scope, MarkdownRenderer.Images.IMarkdownImageSourceByteAdmission! admission, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<JitHub.Markdown.Images.GitHubCachedImage?>!
 JitHub.Markdown.Images.IGitHubMarkdownImageCache.TryGetCachedAsync(string! sourceUrl, JitHub.Markdown.Images.GitHubImageFetchScope scope, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<JitHub.Markdown.Images.GitHubCachedImage?>!
+JitHub.Markdown.Images.IGitHubMarkdownImageResolverProvider
+JitHub.Markdown.Images.IGitHubMarkdownImageResolverProvider.CreateMarkdownImageResolver() -> MarkdownRenderer.Images.IMarkdownImageResolver!
 JitHub.Markdown.Images.IGitHubRepositoryImageClient
 JitHub.Markdown.Images.IGitHubRepositoryImageClient.GetRepositoryImageContentAsync(string! token, string! owner, string! name, string! path, string? gitRef, MarkdownRenderer.Images.IMarkdownImageSourceByteAdmission! admission, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<JitHub.Markdown.Images.GitHubImageDownload?>!
 JitHub.Markdown.IMarkdownHostObserver
@@ -337,6 +386,10 @@ override JitHub.Markdown.Images.GitHubImageCacheEntry.ToString() -> string!
 override JitHub.Markdown.Images.GitHubImageDownload.Equals(object? obj) -> bool
 override JitHub.Markdown.Images.GitHubImageDownload.GetHashCode() -> int
 override JitHub.Markdown.Images.GitHubImageDownload.ToString() -> string!
+override JitHub.Markdown.Images.GitHubMarkdownEncodedContent.Equals(object? obj) -> bool
+override JitHub.Markdown.Images.GitHubMarkdownEncodedContent.GetHashCode() -> int
+override JitHub.Markdown.Images.GitHubMarkdownEncodedContent.ToString() -> string!
+override JitHub.Markdown.Images.GitHubRawImageFetchOutcome.GetHashCode() -> int
 override JitHub.Markdown.MarkdownFormPeerAutomationIds.GetHashCode() -> int
 override JitHub.Markdown.MarkdownGitHubRoute.GetHashCode() -> int
 override JitHub.Markdown.MarkdownReadingRegionSize.GetHashCode() -> int
@@ -359,6 +412,15 @@ static JitHub.Markdown.Images.GitHubImageCacheEntry.operator !=(JitHub.Markdown.
 static JitHub.Markdown.Images.GitHubImageCacheEntry.operator ==(JitHub.Markdown.Images.GitHubImageCacheEntry? left, JitHub.Markdown.Images.GitHubImageCacheEntry? right) -> bool
 static JitHub.Markdown.Images.GitHubImageDownload.operator !=(JitHub.Markdown.Images.GitHubImageDownload? left, JitHub.Markdown.Images.GitHubImageDownload? right) -> bool
 static JitHub.Markdown.Images.GitHubImageDownload.operator ==(JitHub.Markdown.Images.GitHubImageDownload? left, JitHub.Markdown.Images.GitHubImageDownload? right) -> bool
+static JitHub.Markdown.Images.GitHubMarkdownEncodedContent.operator !=(JitHub.Markdown.Images.GitHubMarkdownEncodedContent? left, JitHub.Markdown.Images.GitHubMarkdownEncodedContent? right) -> bool
+static JitHub.Markdown.Images.GitHubMarkdownEncodedContent.operator ==(JitHub.Markdown.Images.GitHubMarkdownEncodedContent? left, JitHub.Markdown.Images.GitHubMarkdownEncodedContent? right) -> bool
+static JitHub.Markdown.Images.GitHubMarkdownImageCandidate.Resolved(MarkdownRenderer.Images.MarkdownImageAsset! asset, System.IDisposable? sourceOwner) -> JitHub.Markdown.Images.GitHubMarkdownImageCandidate!
+static JitHub.Markdown.Images.GitHubMarkdownImageCandidate.Unowned(MarkdownRenderer.Images.MarkdownImageResolution resolution) -> JitHub.Markdown.Images.GitHubMarkdownImageCandidate!
+static JitHub.Markdown.Images.GitHubRawImageFetchOutcome.operator !=(JitHub.Markdown.Images.GitHubRawImageFetchOutcome left, JitHub.Markdown.Images.GitHubRawImageFetchOutcome right) -> bool
+static JitHub.Markdown.Images.GitHubRawImageFetchOutcome.operator ==(JitHub.Markdown.Images.GitHubRawImageFetchOutcome left, JitHub.Markdown.Images.GitHubRawImageFetchOutcome right) -> bool
+static JitHub.Markdown.Images.GitHubRepositoryImageFetchPipeline.TryGetRawAsync(JitHub.Markdown.Images.IGitHubMarkdownImageCache! imageService, System.Uri! rawUri, System.Action<System.Exception!>! reportUnexpectedFailure, MarkdownRenderer.Images.IMarkdownImageSourceByteAdmission? admission, System.Threading.CancellationToken cancellationToken, System.Action<JitHub.Markdown.Images.GitHubRawImageFetchOutcome>? observeOutcome = null) -> System.Threading.Tasks.Task<JitHub.Markdown.Images.GitHubCachedImage?>!
+static JitHub.Markdown.Images.GitHubRepositoryImageFetchPipeline.TryGetRawAsync(JitHub.Markdown.Images.IGitHubMarkdownImageCache! imageService, System.Uri! rawUri, System.Action<System.Exception!>! reportUnexpectedFailure, System.Threading.CancellationToken cancellationToken, System.Action<JitHub.Markdown.Images.GitHubRawImageFetchOutcome>? observeOutcome) -> System.Threading.Tasks.Task<JitHub.Markdown.Images.GitHubCachedImage?>!
+static JitHub.Markdown.Images.GitHubRepositoryImageFetchPipeline.TryGetRawLeasedAsync(JitHub.Markdown.Images.IGitHubLeasedImageService! imageService, System.Uri! rawUri, System.Action<System.Exception!>! reportUnexpectedFailure, MarkdownRenderer.Images.IMarkdownImageSourceByteAdmission! admission, System.Threading.CancellationToken cancellationToken, System.Action<JitHub.Markdown.Images.GitHubRawImageFetchOutcome>? observeOutcome = null) -> System.Threading.Tasks.Task<JitHub.Markdown.Images.GitHubImageSourceLease?>!
 static JitHub.Markdown.MarkdownFormAutomationIdentity.GetPeerIds(string! prefix) -> JitHub.Markdown.MarkdownFormPeerAutomationIds
 static JitHub.Markdown.MarkdownFormAutomationIdentity.GetPreviewHostId(string! prefix) -> string!
 static JitHub.Markdown.MarkdownFormAutomationIdentity.GetPreviewInstanceId(string! prefix) -> string!

@@ -2,12 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Markdown;
-using JitHub.Markdown.Images;
-using JitHub.WinUI.Helpers;
 using MarkdownRenderer.Images;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown.Images;
 
 /// <summary>
 /// GitHub's Camo-based alternatives for an image the authored URL cannot
@@ -19,18 +16,22 @@ internal sealed class GitHubMarkdownCamoImageFallbacks
     private readonly IMarkdownRemoteImagePolicy _markdownRemoteImagePolicy;
     private readonly GitHubRenderedReadmeImageMaps _renderedReadmeImageMaps;
     private readonly GitHubMarkdownImageFetch _fetch;
+    private readonly Action<Exception, string> _reportFailure;
 
     /// <param name="markdownRemoteImagePolicy">The remote-image policy for decoded origins.</param>
     /// <param name="renderedReadmeImageMaps">The credential-scoped rendered README maps.</param>
     /// <param name="fetch">The image fetch helper.</param>
+    /// <param name="reportFailure">Receives handled failures and their category.</param>
     public GitHubMarkdownCamoImageFallbacks(
         IMarkdownRemoteImagePolicy markdownRemoteImagePolicy,
         GitHubRenderedReadmeImageMaps renderedReadmeImageMaps,
-        GitHubMarkdownImageFetch fetch)
+        GitHubMarkdownImageFetch fetch,
+        Action<Exception, string> reportFailure)
     {
         _markdownRemoteImagePolicy = markdownRemoteImagePolicy;
         _renderedReadmeImageMaps = renderedReadmeImageMaps;
         _fetch = fetch;
+        _reportFailure = reportFailure;
     }
 
     public async Task<GitHubMarkdownImageCandidate?> TryResolveViaGitHubCamoAsync(
@@ -95,10 +96,10 @@ internal sealed class GitHubMarkdownCamoImageFallbacks
                 admission,
                 useLeasedSources,
                 token),
-            static (attempt, exception) =>
+            (attempt, exception) =>
             {
                 if (exception is not MarkdownImageSourceDeferredException)
-                    HandledFailureReporter.Report(
+                    _reportFailure(
                         exception,
                         attempt == 0
                             ? "markdown-image-camo-origin-fallback"

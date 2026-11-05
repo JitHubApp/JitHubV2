@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Performance;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown.Images;
 
 /// <summary>
 /// Adds the leased-resolution capability only when the configured GitHub image service

@@ -4,19 +4,18 @@ using System.Net;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Markdown.Images;
 using MarkdownRenderer.Images;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown.Images;
 
 /// <summary>
 /// Tries GitHub's credential-free raw CDN before a repository image consumes
 /// an authenticated Contents API request. A miss remains eligible for the
 /// caller's authenticated private/LFS fallback.
 /// </summary>
-internal static class GitHubRepositoryImageFetchPipeline
+public static class GitHubRepositoryImageFetchPipeline
 {
-    internal static async Task<GitHubImageSourceLease?> TryGetRawLeasedAsync(
+    public static async Task<GitHubImageSourceLease?> TryGetRawLeasedAsync(
         IGitHubLeasedImageService imageService,
         Uri rawUri,
         Action<Exception> reportUnexpectedFailure,
@@ -41,17 +40,21 @@ internal static class GitHubRepositoryImageFetchPipeline
             cancellationToken).ConfigureAwait(false);
     }
 
-    internal static Task<GitHubCachedImage?> TryGetRawAsync(
-        IGitHubImageService imageService,
+    /// <remarks>
+    /// Only the overload that takes an admission has an optional outcome observer,
+    /// because the public API analyzer rejects overload sets with optional parameters.
+    /// </remarks>
+    public static Task<GitHubCachedImage?> TryGetRawAsync(
+        IGitHubMarkdownImageCache imageService,
         Uri rawUri,
         Action<Exception> reportUnexpectedFailure,
         CancellationToken cancellationToken,
-        Action<GitHubRawImageFetchOutcome>? observeOutcome = null) =>
+        Action<GitHubRawImageFetchOutcome>? observeOutcome) =>
         TryGetRawAsync(
             imageService, rawUri, reportUnexpectedFailure, null, cancellationToken, observeOutcome);
 
-    internal static async Task<GitHubCachedImage?> TryGetRawAsync(
-        IGitHubImageService imageService,
+    public static async Task<GitHubCachedImage?> TryGetRawAsync(
+        IGitHubMarkdownImageCache imageService,
         Uri rawUri,
         Action<Exception> reportUnexpectedFailure,
         IMarkdownImageSourceByteAdmission? admission,

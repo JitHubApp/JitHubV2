@@ -1,12 +1,9 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Markdown;
-using JitHub.Markdown.Images;
-using JitHub.WinUI.Helpers;
 using MarkdownRenderer.Images;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown.Images;
 
 /// <summary>
 /// Resolves a Markdown image that belongs to a GitHub repository: the
@@ -15,25 +12,33 @@ namespace JitHub.Services.Markdown;
 /// </summary>
 internal sealed class GitHubRepositoryMarkdownImageStage
 {
-    private readonly IGitHubClientService _gitHubClientService;
+    private readonly IGitHubMarkdownContentClient _contentClient;
+    private readonly IGitHubRepositoryImageClient? _rawImageClient;
     private readonly IMarkdownRemoteImagePolicy _markdownRemoteImagePolicy;
     private readonly GitHubMarkdownImageFetch _fetch;
     private readonly Func<string> _getAccessToken;
+    private readonly Action<Exception, string> _reportFailure;
 
-    /// <param name="gitHubClientService">The client for authenticated repository reads.</param>
+    /// <param name="contentClient">The client for authenticated repository reads.</param>
+    /// <param name="rawImageClient">The raw Contents capability of that client, if it has one.</param>
     /// <param name="markdownRemoteImagePolicy">The remote-image policy.</param>
     /// <param name="fetch">The image fetch helper.</param>
     /// <param name="getAccessToken">Returns the account credential, or throws when signed out.</param>
+    /// <param name="reportFailure">Receives handled failures and their category.</param>
     public GitHubRepositoryMarkdownImageStage(
-        IGitHubClientService gitHubClientService,
+        IGitHubMarkdownContentClient contentClient,
+        IGitHubRepositoryImageClient? rawImageClient,
         IMarkdownRemoteImagePolicy markdownRemoteImagePolicy,
         GitHubMarkdownImageFetch fetch,
-        Func<string> getAccessToken)
+        Func<string> getAccessToken,
+        Action<Exception, string> reportFailure)
     {
-        _gitHubClientService = gitHubClientService;
+        _contentClient = contentClient;
+        _rawImageClient = rawImageClient;
         _markdownRemoteImagePolicy = markdownRemoteImagePolicy;
         _fetch = fetch;
         _getAccessToken = getAccessToken;
+        _reportFailure = reportFailure;
     }
 
     /// <summary>Resolves a repository image.</summary>
@@ -102,7 +107,7 @@ internal sealed class GitHubRepositoryMarkdownImageStage
         }
         catch (Exception ex)
         {
-            HandledFailureReporter.Report(ex, "markdown-image-github-fetch");
+            _reportFailure(ex, "markdown-image-github-fetch");
             return GitHubMarkdownImageCandidate.Unowned(MarkdownImageResolution.Unavailable);
         }
     }
@@ -125,7 +130,7 @@ internal sealed class GitHubRepositoryMarkdownImageStage
                 .TryGetRawLeasedAsync(
                     _fetch.LeasedImageService,
                     rawUri,
-                    static exception => HandledFailureReporter.Report(
+                    exception => _reportFailure(
                         exception, "markdown-image-raw-cdn-fallback"),
                     admission!,
                     cancellationToken).ConfigureAwait(false);
@@ -136,7 +141,7 @@ internal sealed class GitHubRepositoryMarkdownImageStage
         GitHubCachedImage? rawImage = await GitHubRepositoryImageFetchPipeline.TryGetRawAsync(
             _fetch.ImageService,
             rawUri,
-            static exception => HandledFailureReporter.Report(
+            exception => _reportFailure(
                 exception, "markdown-image-raw-cdn-fallback"),
             admission,
             cancellationToken).ConfigureAwait(false);
@@ -155,7 +160,8 @@ internal sealed class GitHubRepositoryMarkdownImageStage
         try
         {
             GitHubImageFetcher fetcher = new GitHubRepositoryImageContentFetch(
-                _gitHubClientService,
+                _contentClient,
+                _rawImageClient,
                 _fetch,
                 _getAccessToken,
                 imageReference,

@@ -3,13 +3,11 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Markdown.Images;
-using JitHub.Services;
-using JitHub.Services.Markdown;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Performance;
 using Xunit;
 
-namespace JitHub.WinUI.Tests.Services;
+namespace JitHub.Markdown.Tests.Images;
 
 public sealed class GitHubMarkdownImageResolverLeaseTests
 {

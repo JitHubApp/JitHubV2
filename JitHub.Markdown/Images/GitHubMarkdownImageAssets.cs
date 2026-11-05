@@ -3,11 +3,9 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Markdown;
-using JitHub.Markdown.Images;
 using MarkdownRenderer.Images;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown.Images;
 
 /// <summary>
 /// Stateless source classification and byte/asset conversions used by
@@ -139,18 +137,18 @@ internal static class GitHubMarkdownImageAssets
                 if (character is not (' ' or '\t' or '\r' or '\n'))
                     encodedCharacters++;
             }
-            if ((encodedCharacters / 4) * 3 > GitHubImageService.MaxImageBytes + 2L)
+            if ((encodedCharacters / 4) * 3 > GitHubImageLimits.MaxImageBytes + 2L)
                 throw new InvalidDataException("Repository image exceeds the bounded source limit.");
             // FromBase64String already ignores Base64 whitespace. Avoid an
             // additional full-length normalized string alongside the API
             // response and decoded image bytes.
             byte[] decoded = Convert.FromBase64String(content);
-            if (decoded.Length > GitHubImageService.MaxImageBytes)
+            if (decoded.Length > GitHubImageLimits.MaxImageBytes)
                 throw new InvalidDataException("Repository image exceeds the bounded source limit.");
             return decoded;
         }
 
-        if (Encoding.UTF8.GetByteCount(content) > GitHubImageService.MaxImageBytes)
+        if (Encoding.UTF8.GetByteCount(content) > GitHubImageLimits.MaxImageBytes)
             throw new InvalidDataException("Repository image exceeds the bounded source limit.");
         return Encoding.UTF8.GetBytes(content);
     }

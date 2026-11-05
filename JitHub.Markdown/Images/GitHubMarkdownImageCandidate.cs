@@ -2,14 +2,14 @@ using System;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Performance;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown.Images;
 
 /// <summary>
 /// One selected GitHub image result together with the owner for its borrowed source bytes.
 /// Candidates are disposed when abandoned and detached only when transferred to the renderer.
 /// <c>partial</c> only so CsWinRT can generate its ABI projection of IDisposable.
 /// </summary>
-internal sealed partial class GitHubMarkdownImageCandidate : IDisposable
+public sealed partial class GitHubMarkdownImageCandidate : IDisposable
 {
     private MarkdownImageResolution? _resolution;
     private IDisposable? _sourceOwner;
@@ -22,18 +22,18 @@ internal sealed partial class GitHubMarkdownImageCandidate : IDisposable
         _sourceOwner = sourceOwner;
     }
 
-    internal MarkdownImageResolution Resolution => _resolution ?? throw new ObjectDisposedException(
+    public MarkdownImageResolution Resolution => _resolution ?? throw new ObjectDisposedException(
         nameof(GitHubMarkdownImageCandidate));
 
-    internal static GitHubMarkdownImageCandidate Unowned(MarkdownImageResolution resolution) =>
+    public static GitHubMarkdownImageCandidate Unowned(MarkdownImageResolution resolution) =>
         new(resolution, sourceOwner: null);
 
-    internal static GitHubMarkdownImageCandidate Resolved(
+    public static GitHubMarkdownImageCandidate Resolved(
         MarkdownImageAsset asset,
         IDisposable? sourceOwner) =>
         new(MarkdownImageResolution.Resolved(asset), sourceOwner);
 
-    internal MarkdownImageResolutionLease DetachLease()
+    public MarkdownImageResolutionLease DetachLease()
     {
         MarkdownImageResolution resolution = Resolution;
         IDisposable? owner = _sourceOwner;

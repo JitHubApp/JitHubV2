@@ -1,12 +1,9 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Markdown;
-using JitHub.Markdown.Images;
-using JitHub.WinUI.Helpers;
 using MarkdownRenderer.Images;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown.Images;
 
 /// <summary>
 /// Resolves a Markdown image that does not belong to a GitHub repository:
@@ -19,18 +16,22 @@ internal sealed class GitHubPublicMarkdownImageStage
     private readonly IMarkdownRemoteImagePolicy _markdownRemoteImagePolicy;
     private readonly GitHubMarkdownImageFetch _fetch;
     private readonly GitHubMarkdownCamoImageFallbacks _camo;
+    private readonly Action<Exception, string> _reportFailure;
 
     /// <param name="markdownRemoteImagePolicy">The remote-image policy.</param>
     /// <param name="fetch">The image fetch helper.</param>
     /// <param name="camo">The Camo fallbacks.</param>
+    /// <param name="reportFailure">Receives handled failures and their category.</param>
     public GitHubPublicMarkdownImageStage(
         IMarkdownRemoteImagePolicy markdownRemoteImagePolicy,
         GitHubMarkdownImageFetch fetch,
-        GitHubMarkdownCamoImageFallbacks camo)
+        GitHubMarkdownCamoImageFallbacks camo,
+        Action<Exception, string> reportFailure)
     {
         _markdownRemoteImagePolicy = markdownRemoteImagePolicy;
         _fetch = fetch;
         _camo = camo;
+        _reportFailure = reportFailure;
     }
 
     /// <summary>Resolves an image source that is not a repository image.</summary>
@@ -93,7 +94,7 @@ internal sealed class GitHubPublicMarkdownImageStage
         }
         catch (Exception ex)
         {
-            HandledFailureReporter.Report(ex, "markdown-image-http-camo-fallback");
+            _reportFailure(ex, "markdown-image-http-camo-fallback");
         }
 
         return GitHubMarkdownImageCandidate.Unowned(MarkdownImageResolution.Blocked(
@@ -143,7 +144,7 @@ internal sealed class GitHubPublicMarkdownImageStage
         }
         catch (Exception ex)
         {
-            HandledFailureReporter.Report(ex, "markdown-image-public-fetch");
+            _reportFailure(ex, "markdown-image-public-fetch");
             GitHubMarkdownImageCandidate? fallbackCandidate = await _camo.TryResolvePublicImageFallbacksAsync(
                 publicUri,
                 source,
@@ -180,10 +181,10 @@ internal sealed class GitHubPublicMarkdownImageStage
                     token),
                 token => _camo.TryResolveViaGitHubCamoOriginAsync(
                     publicUri, context, admission, useLeasedSources, token),
-                static (attempt, exception) =>
+                (attempt, exception) =>
                 {
                     if (exception is not MarkdownImageSourceDeferredException)
-                        HandledFailureReporter.Report(
+                        _reportFailure(
                             exception,
                             attempt == 0
                                 ? "markdown-image-camo-fetch"

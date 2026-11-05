@@ -1,9 +1,7 @@
 using System;
 using System.Threading.Tasks;
-using JitHub.Markdown.Images;
-using JitHub.Services;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown.Images;
 
 /// <summary>
 /// Transfers an LFS-media source lease through the image-service cache write without

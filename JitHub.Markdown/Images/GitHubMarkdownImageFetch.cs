@@ -1,28 +1,27 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Markdown.Images;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Performance;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown.Images;
 
 /// <summary>
-/// Reads Markdown image bytes through <see cref="IGitHubImageService"/>, choosing
+/// Reads Markdown image bytes through <see cref="IGitHubMarkdownImageCache"/>, choosing
 /// the admitted, cache-only or leased overload a resolver stage asks for.
 /// </summary>
 internal sealed class GitHubMarkdownImageFetch
 {
-    private readonly IGitHubImageService _gitHubImageService;
+    private readonly IGitHubMarkdownImageCache _gitHubImageService;
 
     /// <param name="gitHubImageService">The image service that owns the cache and transport.</param>
-    public GitHubMarkdownImageFetch(IGitHubImageService gitHubImageService)
+    public GitHubMarkdownImageFetch(IGitHubMarkdownImageCache gitHubImageService)
     {
         _gitHubImageService = gitHubImageService;
     }
 
     /// <summary>Gets the image service.</summary>
-    public IGitHubImageService ImageService => _gitHubImageService;
+    public IGitHubMarkdownImageCache ImageService => _gitHubImageService;
 
     /// <summary>Gets the image service as a leased service; throws when it is not one.</summary>
     public IGitHubLeasedImageService LeasedImageService => (IGitHubLeasedImageService)_gitHubImageService;

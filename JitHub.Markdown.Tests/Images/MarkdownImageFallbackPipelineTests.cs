@@ -5,14 +5,11 @@ using System.Net.Http;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Services;
-using JitHub.Services.Markdown;
+using JitHub.Markdown.Images;
 using MarkdownRenderer.Images;
 using Xunit;
-using static JitHub.WinUI.Tests.Services.GitHubImageServiceHttpDoubles;
-using static JitHub.WinUI.Tests.Services.GitHubImageServiceAdmissionDoubles;
 
-namespace JitHub.WinUI.Tests.Services;
+namespace JitHub.Markdown.Tests.Images;
 
 /// <summary>
 /// Ordered and hedged fallback between independent image representations.

@@ -57,9 +57,8 @@ public sealed class NativeAotSourceContractTests
         string root = FindRepositoryRoot();
         string candidate = File.ReadAllText(Path.Combine(
             root,
-            "JitHub.WinUI",
-            "Services",
-            "Markdown",
+            "JitHub.Markdown",
+            "Images",
             "GitHubMarkdownImageCandidate.cs"));
         string lease = File.ReadAllText(Path.Combine(
             root,
@@ -68,12 +67,11 @@ public sealed class NativeAotSourceContractTests
             "GitHubImageSourceLease.cs"));
         string fallback = File.ReadAllText(Path.Combine(
             root,
-            "JitHub.WinUI",
-            "Services",
-            "Markdown",
+            "JitHub.Markdown",
+            "Images",
             "MarkdownImageFallbackPipeline.cs"));
 
-        Assert.Contains("internal sealed partial class GitHubMarkdownImageCandidate : IDisposable", candidate, StringComparison.Ordinal);
+        Assert.Contains("public sealed partial class GitHubMarkdownImageCandidate : IDisposable", candidate, StringComparison.Ordinal);
         Assert.Contains("public sealed partial class GitHubImageSourceLease : IDisposable", lease, StringComparison.Ordinal);
         Assert.Contains("internal static partial class MarkdownImageFallbackPipeline", fallback, StringComparison.Ordinal);
         Assert.Contains("private sealed partial class CandidateCancellation : IDisposable", fallback, StringComparison.Ordinal);

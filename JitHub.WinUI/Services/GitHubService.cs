@@ -1,3 +1,4 @@
+using JitHub.Markdown.Images;
 using JitHub.Models;
 using JitHub.Models.Base;
 using JitHub.Models.PRConversation;

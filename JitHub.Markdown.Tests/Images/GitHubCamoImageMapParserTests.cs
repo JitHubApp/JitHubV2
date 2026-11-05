@@ -1,67 +1,16 @@
 using System;
-using System.IO;
-using System.Net;
-using System.Net.Http;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using JitHub.Services;
-using JitHub.Services.Markdown;
-using MarkdownRenderer.Images;
+using System.Collections.Generic;
+using JitHub.Markdown.Images;
 using Xunit;
-using static JitHub.WinUI.Tests.Services.GitHubImageServiceHttpDoubles;
-using static JitHub.WinUI.Tests.Services.GitHubImageServiceAdmissionDoubles;
 
-namespace JitHub.WinUI.Tests.Services;
+namespace JitHub.Markdown.Tests.Images;
 
 /// <summary>
-/// Rendered README fetches and GitHub Camo image map parsing.
+/// How GitHub's rendered README source-to-Camo map and Camo's encoded canonical
+/// origin are parsed for Markdown image fallbacks.
 /// </summary>
-public sealed class GitHubImageServiceReadmeAndCamoTests
+public sealed class GitHubCamoImageMapParserTests
 {
-    [Fact]
-    public async Task GetRenderedReadmeHtmlAsync_RequestsGitHubRenderedRepresentation()
-    {
-        const string html = "<article><img src=\"rendered.png\"></article>";
-        var handler = new RenderedReadmeHandler(html);
-        using HttpClient client = new(handler);
-        var service = new GitHubClientService(client);
-
-        string result = await service.GetRenderedReadmeHtmlAsync(
-            "token",
-            "owner",
-            "repository",
-            "immutable-sha");
-
-        Assert.Equal(html, result);
-        Assert.Equal(
-            "https://api.github.com/repos/owner/repository/readme?ref=immutable-sha",
-            handler.RequestUri);
-        Assert.Contains("application/vnd.github.html+json", handler.Accept);
-    }
-
-    [Fact]
-    public async Task GetRenderedReadmeHtmlAsync_PublicReadmeRetriesWithoutTokenAfterPolicyForbidden()
-    {
-        const string html = "<article><img src=\"camo.png\"></article>";
-        var handler = new AuthPolicyRenderedReadmeHandler(html);
-        using HttpClient client = new(handler);
-        var service = new GitHubClientService(client);
-
-        string result = await service.GetRenderedReadmeHtmlAsync(
-            "installation-token",
-            "public-owner",
-            "public-repository",
-            "immutable-sha");
-
-        Assert.Equal(html, result);
-        Assert.Equal(2, handler.AuthorizationSchemes.Count);
-        Assert.Equal("Bearer", handler.AuthorizationSchemes[0]);
-        Assert.Null(handler.AuthorizationSchemes[1]);
-        Assert.All(handler.AcceptValues, static accept =>
-            Assert.Contains("application/vnd.github.html+json", accept));
-    }
-
     [Fact]
     public void ParseGitHubCamoImageMap_AdmitsHttpOrHttpsOriginalOnlyThroughCanonicalHttpsCamo()
     {

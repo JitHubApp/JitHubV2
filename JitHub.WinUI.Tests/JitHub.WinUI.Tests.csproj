@@ -119,26 +119,8 @@
     <Compile Include="..\JitHub.WinUI\Services\Settings\SettingsPreferencesContracts.cs" Link="Services\Settings\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Settings\SettingsActionGate.cs" Link="Services\Settings\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Settings\SettingsSourceNavigationContracts.cs" Link="Services\Settings\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubMarkdownImageCandidate.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubLeasedImageDownloadTransfer.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\IGitHubMarkdownImageResolverProvider.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\LeasedGitHubMarkdownImageResolver.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubMarkdownImageResolver.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubMarkdownImageFetch.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubMarkdownCamoImageFallbacks.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubPublicMarkdownImageStage.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubRepositoryMarkdownImageStage.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubRepositoryImageContentFetch.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubMarkdownImageAssets.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubRenderedReadmeImageMaps.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubRepositoryImageFetchPipeline.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubCamoImageMapParser.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownImageFallbackPipeline.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GloballyRoutableAddressPolicy.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownDocumentSourceFactory.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubRawImageFetchOutcome.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubRawImageFetchOutcomeKind.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubMarkdownImageResolverProvider.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Helpers\RepositoryLanguageColorPalette.cs" Link="Helpers\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\ViewModels\Pages\SettingsPageViewModel.cs" Link="ViewModels\Pages\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\ViewModels\Pages\LoginPageViewModel.cs" Link="ViewModels\Pages\%(Filename)%(Extension)" />

@@ -1,4 +1,4 @@
-namespace JitHub.Services;
+namespace JitHub.Markdown.Images;
 
 internal enum MarkdownImageSourceDisposition
 {

@@ -4,16 +4,12 @@ using System.Net.Http;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Markdown;
 using JitHub.Markdown.Images;
-using JitHub.Models.GitHub;
-using JitHub.Services;
-using JitHub.Services.Markdown;
 using MarkdownRenderer.Images;
 using NSubstitute;
 using Xunit;
 
-namespace JitHub.WinUI.Tests.Services;
+namespace JitHub.Markdown.Tests.Images;
 
 public sealed class GitHubRepositoryMarkdownImageStageTests
 {
@@ -33,8 +29,8 @@ public sealed class GitHubRepositoryMarkdownImageStageTests
         Ref: "main",
         Path: "README.md");
 
-    private readonly IGitHubImageService _images = Substitute.For<IGitHubImageService>();
-    private readonly IGitHubClientService _client = Substitute.For<IGitHubClientService>();
+    private readonly IGitHubMarkdownImageCache _images = Substitute.For<IGitHubMarkdownImageCache>();
+    private readonly IGitHubMarkdownContentClient _client = Substitute.For<IGitHubMarkdownContentClient>();
     private readonly IMarkdownRemoteImagePolicy _policy = Substitute.For<IMarkdownRemoteImagePolicy>();
     private string? _token = "token";
 
@@ -85,7 +81,7 @@ public sealed class GitHubRepositoryMarkdownImageStageTests
         using GitHubMarkdownImageCandidate candidate = await ResolveAsync(RelativeSource);
 
         AssertResolved(candidate, "contents", "image/png", RawUrl);
-        await _client.Received(1).GetRepositoryContentAsync(
+        await _client.Received(1).GetRepositoryFileAsync(
             "token", "octo", "repo", "docs/logo.png", "main", Arg.Any<CancellationToken>());
         await _client.DidNotReceiveWithAnyArgs().GetBlobAsync(default!, default!, default!, default!, default);
     }
@@ -96,7 +92,7 @@ public sealed class GitHubRepositoryMarkdownImageStageTests
         Decide(MarkdownRemoteImageAccess.AllowNetwork);
         Contents(content: null, sha: "abc123");
         _client.GetBlobAsync("token", "octo", "repo", "abc123", Arg.Any<CancellationToken>())
-            .Returns(new GitHubBlob { Sha = "abc123", Content = Base64("blob"), Encoding = "base64" });
+            .Returns(new GitHubMarkdownEncodedContent(Base64("blob"), "base64", "abc123"));
 
         using GitHubMarkdownImageCandidate candidate = await ResolveAsync(RelativeSource);
 
@@ -200,9 +196,11 @@ public sealed class GitHubRepositoryMarkdownImageStageTests
         Assert.True(GitHubMarkdownImageUrlResolver.TryResolve(source, Readme, out GitHubMarkdownImageReference reference));
         var stage = new GitHubRepositoryMarkdownImageStage(
             _client,
+            rawImageClient: null,
             _policy,
             new GitHubMarkdownImageFetch(_images),
-            () => _token ?? throw new InvalidOperationException("GitHub access token is not available."));
+            () => _token ?? throw new InvalidOperationException("GitHub access token is not available."),
+            static (_, _) => { });
         return stage.ResolveAsync(
             source,
             reference,
@@ -219,8 +217,8 @@ public sealed class GitHubRepositoryMarkdownImageStageTests
             .Returns(new MarkdownRemoteImageDecision(access, reason, IsThirdParty: false));
 
     private void Contents(string? content, string sha = "") =>
-        _client.GetRepositoryContentAsync("token", "octo", "repo", "docs/logo.png", "main", Arg.Any<CancellationToken>())
-            .Returns(new GitHubRepositoryContent { Content = content, Encoding = "base64", Sha = sha });
+        _client.GetRepositoryFileAsync("token", "octo", "repo", "docs/logo.png", "main", Arg.Any<CancellationToken>())
+            .Returns(new GitHubMarkdownEncodedContent(content, "base64", sha));
 
     private static async Task<GitHubCachedImage?> RunFetcherAsync(string sourceUrl, GitHubImageFetcher fetcher)
     {
