@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Globalization;
-using System.Reflection;
 using MarkdownRenderer.Mermaid;
 using System.Runtime.InteropServices;
 
@@ -232,8 +231,9 @@ public sealed class MermaidContractsTests
             Deadline = TimeSpan.FromMilliseconds(75),
             MaxConcurrentRenders = 1,
         };
-        using var renderer = new MermaidRenderer(new MermaidRenderOptions { Budgets = budgets });
-        SemaphoreSlim gate = GetRenderGate(renderer);
+        // Hold the renderer's only admission slot so the request queues.
+        var gate = new SemaphoreSlim(1, 1);
+        using var renderer = new MermaidRenderer(new MermaidRenderOptions { Budgets = budgets }, fontCatalog: null, gate);
         Assert.True(gate.Wait(0));
 
         try
@@ -262,8 +262,8 @@ public sealed class MermaidContractsTests
             Deadline = TimeSpan.FromSeconds(1),
             MaxConcurrentRenders = 1,
         };
-        using var renderer = new MermaidRenderer(new MermaidRenderOptions { Budgets = budgets });
-        SemaphoreSlim gate = GetRenderGate(renderer);
+        var gate = new SemaphoreSlim(1, 1);
+        using var renderer = new MermaidRenderer(new MermaidRenderOptions { Budgets = budgets }, fontCatalog: null, gate);
         Assert.True(gate.Wait(0));
         using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
 
@@ -327,14 +327,6 @@ public sealed class MermaidContractsTests
 
         await Assert.ThrowsAsync<ObjectDisposedException>(async () =>
             await renderer.RenderAsync("flowchart LR\nA-->B"));
-    }
-
-    private static SemaphoreSlim GetRenderGate(MermaidRenderer renderer)
-    {
-        FieldInfo field = typeof(MermaidRenderer).GetField(
-            "_renderGate",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return Assert.IsType<SemaphoreSlim>(field.GetValue(renderer));
     }
 
     private sealed class RecordingStringProvider : IMermaidStringProvider
