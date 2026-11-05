@@ -60,7 +60,10 @@ internal static class TextAttributeValues
                     return true;
             }
         }
-        catch { }
+        catch
+        {
+            // A value that cannot convert to a number is reported as not numeric below.
+        }
 
         number = 0;
         return false;

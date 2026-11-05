@@ -78,7 +78,10 @@ internal static class SampleWindowQueries
         if (item.Patterns.ScrollItem.IsSupported)
         {
             try { item.Patterns.ScrollItem.Pattern.ScrollIntoView(); }
-            catch { }
+            catch
+            {
+                // Scrolling the item into view is best effort; selecting it below works off screen too.
+            }
         }
 
         if (item.Patterns.SelectionItem.IsSupported)
