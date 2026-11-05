@@ -2,7 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Threading.Tasks;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 /// <summary>
 /// Owns one Markdown host's renderer from creation until its retired resources
@@ -12,7 +12,7 @@ namespace JitHub.Services.Markdown;
 /// returned drain completes, and refuses to reattach a renderer whose teardown failed.
 /// </summary>
 /// <typeparam name="TRenderer">The renderer control type.</typeparam>
-internal sealed class MarkdownRendererSlot<TRenderer>
+public sealed class MarkdownRendererSlot<TRenderer>
     where TRenderer : class, IAsyncDisposable
 {
     private readonly MarkdownRendererLifetimeRegistry _registry;

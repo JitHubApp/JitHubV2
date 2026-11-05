@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 /// <summary>
 /// App-scoped ledger of Markdown renderer borrowers. Markdown hosts borrow the
@@ -10,7 +10,7 @@ namespace JitHub.Services.Markdown;
 /// window close path uses this ledger to wait for every borrowed renderer to
 /// finish retiring before those shared providers shut down.
 /// </summary>
-internal sealed class MarkdownRendererLifetimeRegistry
+public sealed class MarkdownRendererLifetimeRegistry
 {
     private const int PruneInterval = 64;
 

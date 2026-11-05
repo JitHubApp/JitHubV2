@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
+using JitHub.Markdown;
 using JitHub.Models;
 using JitHub.Services;
 using JitHub.Services.Markdown;

@@ -1,10 +1,10 @@
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 /// <summary>
 /// A Markdown host that borrows a renderer and must release it before the
 /// application retires the shared Markdown providers.
 /// </summary>
-internal interface IMarkdownRendererShutdownParticipant
+public interface IMarkdownRendererShutdownParticipant
 {
     /// <summary>
     /// Stops renderer creation and retires the host's renderer now, even when

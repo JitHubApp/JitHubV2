@@ -1,12 +1,12 @@
 using System;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 /// <summary>
 /// What a <see cref="MarkdownRendererSlot{TRenderer}"/> needs from the host whose renderer it owns.
 /// </summary>
 /// <typeparam name="TRenderer">The renderer control type.</typeparam>
-internal interface IMarkdownRendererSlotHost<in TRenderer>
+public interface IMarkdownRendererSlotHost<in TRenderer>
     where TRenderer : class
 {
     /// <summary>Gets the host's UI dispatcher, or <see langword="null"/> when it has none.</summary>

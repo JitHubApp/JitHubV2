@@ -1,7 +1,7 @@
 using System;
 using System.Threading.Tasks;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 /// <summary>
 /// Coalesces system font-change notifications into one background dispatch.
@@ -15,13 +15,13 @@ namespace JitHub.Services.Markdown;
 /// <see cref="Request"/> and <see cref="Cancel"/>; the dispatch takes the same
 /// gate before it publishes.
 /// </remarks>
-internal sealed class MarkdownFontChangeCoalescer
+public sealed class MarkdownFontChangeCoalescer
 {
     private readonly object _gate;
     private Task? _pending;
 
     /// <param name="gate">The owner's lock, shared with the state the publish callback reads.</param>
-    internal MarkdownFontChangeCoalescer(object gate)
+    public MarkdownFontChangeCoalescer(object gate)
     {
         _gate = gate ?? throw new ArgumentNullException(nameof(gate));
     }
@@ -34,7 +34,7 @@ internal sealed class MarkdownFontChangeCoalescer
     /// <see langword="false"/> the owner was shut down or replaced and nothing is published.
     /// </param>
     /// <param name="publish">Publishes the new font generation, under the gate.</param>
-    internal Task Request(Func<bool> isCurrent, Action publish)
+    public Task Request(Func<bool> isCurrent, Action publish)
     {
         ArgumentNullException.ThrowIfNull(isCurrent);
         ArgumentNullException.ThrowIfNull(publish);
@@ -60,5 +60,5 @@ internal sealed class MarkdownFontChangeCoalescer
     }
 
     /// <summary>Forgets the pending dispatch so shutdown never waits on it. The caller holds the gate.</summary>
-    internal void Cancel() => _pending = null;
+    public void Cancel() => _pending = null;
 }

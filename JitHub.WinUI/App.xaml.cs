@@ -711,7 +711,7 @@ public partial class App : Application
         Program.CurrentLaunchOptions.MarkdownLifecycleHost);
 
     /// <summary>Gets the best-effort Windows runtime event helper shared by Markdown hosts.</summary>
-    internal RuntimeEventSubscription MarkdownRuntimeEvents { get; } = new();
+    internal RuntimeEventSubscription MarkdownRuntimeEvents { get; } = new(HandledFailureReporter.Report);
 
     private static string FormatActivationError(Exception ex)
     {

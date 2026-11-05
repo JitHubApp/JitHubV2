@@ -1,13 +1,13 @@
 using System;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 /// <summary>
 /// What a <see cref="MarkdownRendererAttachment{TRenderer}"/> needs from the
 /// host that shows its renderer.
 /// </summary>
 /// <typeparam name="TRenderer">The renderer control type.</typeparam>
-internal interface IMarkdownRendererAttachmentHost<TRenderer>
+public interface IMarkdownRendererAttachmentHost<TRenderer>
     where TRenderer : class
 {
     /// <summary>Gets whether application shutdown has asked the host to stop creating renderers.</summary>

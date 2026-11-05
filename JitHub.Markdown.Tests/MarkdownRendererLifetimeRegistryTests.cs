@@ -1,11 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using JitHub.Services.Markdown;
 using Microsoft.Extensions.Time.Testing;
 using Xunit;
 
-namespace JitHub.WinUI.Tests.Services;
+namespace JitHub.Markdown.Tests;
 
 public sealed class MarkdownRendererLifetimeRegistryTests
 {

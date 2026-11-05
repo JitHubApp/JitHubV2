@@ -1,7 +1,7 @@
 using System;
 using System.Threading.Tasks;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 internal static class MarkdownRendererDisposalCommit
 {

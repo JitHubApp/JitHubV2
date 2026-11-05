@@ -136,26 +136,15 @@
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubCamoImageMapParser.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownImageFallbackPipeline.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GloballyRoutableAddressPolicy.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\RuntimeEventSubscription.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownDocumentSourceFactory.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownLifecycleAutomationBridge.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownLifecycleImageResolver.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownRendererDisposalCommit.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\IMarkdownRendererShutdownParticipant.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownRendererLifetimeRegistry.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\IMarkdownUiDispatcher.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\IMarkdownRendererSlotHost.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownRendererSlot.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\IMarkdownRendererAttachmentHost.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownRendererAttachment.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\IMarkdownHostObserver.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownViewerTelemetry.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\IMarkdownViewerNoticePresenter.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownViewerFeedback.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\IMarkdownRouteNavigator.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownLinkActivator.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownReadingRegionSize.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownReadingRegionLayout.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\Automation\MarkdownLifecycleFixtureText.cs" Link="Services\Markdown\Automation\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\Automation\MarkdownLifecycleFixtureDocument.cs" Link="Services\Markdown\Automation\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubRawImageFetchOutcome.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
@@ -163,7 +152,6 @@
     <Compile Include="..\JitHub.WinUI\Services\Markdown\GitHubMarkdownImageResolverProvider.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownLifecycleJsonContext.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\Automation\MarkdownLifecycleTextScale.cs" Link="Services\Markdown\Automation\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownFontChangeCoalescer.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownFormAutomationIdentity.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\MarkdownFormPeerAutomationIds.cs" Link="Services\Markdown\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Markdown\JitHubMarkdownStringProvider.cs" Link="Services\Markdown\%(Filename)%(Extension)" />

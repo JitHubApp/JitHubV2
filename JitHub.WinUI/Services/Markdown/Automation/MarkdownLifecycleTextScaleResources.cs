@@ -1,3 +1,4 @@
+using JitHub.Markdown;
 using JitHub.Services.Markdown.Hosting;
 using MarkdownRenderer;
 using MarkdownRenderer.Theming;

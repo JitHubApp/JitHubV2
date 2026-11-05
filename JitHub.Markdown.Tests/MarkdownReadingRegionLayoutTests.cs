@@ -1,8 +1,7 @@
-using JitHub.Services.Markdown;
 using Microsoft.UI.Xaml;
 using Xunit;
 
-namespace JitHub.WinUI.Tests.Services;
+namespace JitHub.Markdown.Tests;
 
 public sealed class MarkdownReadingRegionLayoutTests
 {

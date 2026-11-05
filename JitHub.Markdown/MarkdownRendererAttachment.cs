@@ -1,6 +1,6 @@
 using System;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 /// <summary>
 /// Decides when a Markdown host creates, queues or reattaches the renderer in
@@ -9,7 +9,7 @@ namespace JitHub.Services.Markdown;
 /// shutdown was requested or while the host is unloaded.
 /// </summary>
 /// <typeparam name="TRenderer">The renderer control type.</typeparam>
-internal sealed class MarkdownRendererAttachment<TRenderer>
+public sealed class MarkdownRendererAttachment<TRenderer>
     where TRenderer : class, IAsyncDisposable
 {
     private readonly MarkdownRendererSlot<TRenderer> _slot;

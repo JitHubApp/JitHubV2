@@ -1,13 +1,13 @@
 using Microsoft.UI.Xaml;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 /// <summary>
 /// Sizes a Markdown host's reading region from the host's own width. The
 /// result depends only on the host and its settings, never on the document,
 /// so content and notices cannot change the page width.
 /// </summary>
-internal static class MarkdownReadingRegionLayout
+public static class MarkdownReadingRegionLayout
 {
     private static readonly MarkdownReadingRegionSize Stretch =
         new(double.NaN, double.PositiveInfinity, HorizontalAlignment.Stretch);

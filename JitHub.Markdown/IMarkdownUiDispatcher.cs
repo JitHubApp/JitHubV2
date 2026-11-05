@@ -1,11 +1,11 @@
 using System;
 
-namespace JitHub.Services.Markdown;
+namespace JitHub.Markdown;
 
 /// <summary>
 /// The UI thread a Markdown host lives on.
 /// </summary>
-internal interface IMarkdownUiDispatcher
+public interface IMarkdownUiDispatcher
 {
     /// <summary>Gets whether the caller is already on the UI thread.</summary>
     bool HasThreadAccess { get; }
