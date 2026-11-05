@@ -12,6 +12,34 @@ public sealed partial class WorkerStartupTokenPolicyTests
     [Fact]
     public async Task WorkerRefusesUnrestrictedDirectLaunchBeforeOpeningAnInputPipe()
     {
+        // A well-shaped command line must not let a normally launched worker
+        // open IPC before establishing the required restricted primary context.
+        // The pipe does not exist, so reaching the pipe open would report a
+        // pipe failure instead of the startup guard.
+        await AssertStartupGuardRefusesLaunchAsync(
+            "--pipe",
+            $"MarkdownRenderer.StartupGuard.{Guid.NewGuid():N}",
+            "--nonce",
+            new string('0', 32));
+    }
+
+    // The worker checks its startup context before it parses arguments, opens
+    // IPC or starts its font-catalog thread. An unrestricted launch with no or
+    // malformed arguments must still fail on the startup guard: an argument
+    // error would mean arguments were read first, and the guard exits before
+    // any later step can run.
+    [Theory]
+    [InlineData("")]
+    [InlineData("--pipe")]
+    [InlineData("--unexpected value")]
+    public async Task WorkerChecksStartupContextBeforeReadingArguments(string commandLine)
+    {
+        await AssertStartupGuardRefusesLaunchAsync(
+            commandLine.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    private static async Task AssertStartupGuardRefusesLaunchAsync(params string[] arguments)
+    {
         var start = new ProcessStartInfo(Path.Combine(AppContext.BaseDirectory, "MarkdownRenderer.Svg.Resvg.Worker.exe"))
         {
             UseShellExecute = false,
@@ -19,12 +47,9 @@ public sealed partial class WorkerStartupTokenPolicyTests
             RedirectStandardError = true,
             RedirectStandardOutput = true,
         };
-        // A well-shaped command line must not let a normally launched worker
-        // open IPC before establishing the required restricted primary context.
-        start.ArgumentList.Add("--pipe");
-        start.ArgumentList.Add($"MarkdownRenderer.StartupGuard.{Guid.NewGuid():N}");
-        start.ArgumentList.Add("--nonce");
-        start.ArgumentList.Add(new string('0', 32));
+        foreach (string argument in arguments)
+            start.ArgumentList.Add(argument);
+
         using Process process = Process.Start(start) ?? throw new InvalidOperationException("The worker did not start.");
         Task<string> errors = process.StandardError.ReadToEndAsync();
         Task<string> output = process.StandardOutput.ReadToEndAsync();
@@ -33,7 +58,11 @@ public sealed partial class WorkerStartupTokenPolicyTests
         {
             await process.WaitForExitAsync(deadline.Token);
             Assert.Equal(70, process.ExitCode);
-            Assert.Contains("process primary token is not low integrity", await errors, StringComparison.Ordinal);
+            string error = await errors;
+            Assert.Contains("process primary token is not low integrity", error, StringComparison.Ordinal);
+            Assert.DoesNotContain("expected --", error, StringComparison.Ordinal);
+            Assert.DoesNotContain("invalid arguments", error, StringComparison.Ordinal);
+            Assert.DoesNotContain("pipe open failed", error, StringComparison.Ordinal);
             Assert.Empty(await output);
         }
         finally
@@ -119,32 +148,6 @@ public sealed partial class WorkerStartupTokenPolicyTests
             if (step == failAt)
                 throw new InvalidOperationException(step);
         }
-    }
-
-    [Fact]
-    public void WorkerDropsStartupContextBeforeArgumentsIpcAndBackgroundThreads()
-    {
-        string main = ReadSource("native", "src", "main.rs").Replace("\r\n", "\n");
-        Assert.Contains("fn run() -> Result<(), String> {\n    sandbox_startup::enter_restricted_execution()?;",
-            main, StringComparison.Ordinal);
-        int guard = main.IndexOf("    sandbox_startup::enter_restricted_execution()?;", StringComparison.Ordinal);
-        int mitigation = main.IndexOf("    apply_process_mitigations()?;", StringComparison.Ordinal);
-        int args = main.IndexOf("    let (pipe_name,", StringComparison.Ordinal);
-        int pipe = main.IndexOf("    let mut pipe = OpenOptions::new()", StringComparison.Ordinal);
-        int fonts = main.IndexOf("    let font_catalog = FontCatalogCoordinator::start()?;", StringComparison.Ordinal);
-        Assert.True(guard >= 0 && guard < mitigation && mitigation < args && args < pipe && pipe < fonts);
-    }
-
-    private static string ReadSource(params string[] path)
-    {
-        for (DirectoryInfo? directory = new(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
-        {
-            string provider = Path.Combine(directory.FullName, "MarkdownRenderer", "src", "MarkdownRenderer.Svg.Resvg");
-            string fullPath = Path.Combine([provider, .. path]);
-            if (File.Exists(fullPath))
-                return File.ReadAllText(fullPath);
-        }
-        throw new FileNotFoundException("The worker startup source contract was not found.");
     }
 
     [LibraryImport("advapi32.dll")]
