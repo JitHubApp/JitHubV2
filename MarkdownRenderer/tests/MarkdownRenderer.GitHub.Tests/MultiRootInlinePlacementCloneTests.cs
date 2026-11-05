@@ -253,8 +253,7 @@ public sealed class MultiRootInlinePlacementCloneTests
 
     private static SharedCanvasBitmapCache.Lease GetImageLease(ImageBox image)
     {
-        FieldInfo field = typeof(ImageBox).GetField("_bitmapLease", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return Assert.IsType<SharedCanvasBitmapCache.Lease>(field.GetValue(image));
+        return Assert.IsType<SharedCanvasBitmapCache.Lease>(image.Presentation.Lease);
     }
 
     private static int GetEntryReferenceCount(SharedCanvasBitmapCache.Lease lease)

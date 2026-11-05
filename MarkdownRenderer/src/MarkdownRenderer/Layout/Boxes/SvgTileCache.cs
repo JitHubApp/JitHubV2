@@ -44,6 +44,12 @@ internal sealed class SvgTileCache : ISvgTileGapFill
         _host = host ?? throw new ArgumentNullException(nameof(host));
     }
 
+    /// <summary>
+    /// The tile lock guarding every field here. Callers that also take the
+    /// box's publication or image-work locks take those first.
+    /// </summary>
+    internal object Sync => _svgTileLock;
+
     /// <summary>Whether a tile from the current grid has been published since the last reset.</summary>
     internal bool HasRenderedTile => _svgHasRenderedTile;
 

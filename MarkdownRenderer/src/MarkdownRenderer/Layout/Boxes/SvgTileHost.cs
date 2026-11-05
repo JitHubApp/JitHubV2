@@ -242,10 +242,14 @@ internal sealed class SvgTileHost : ISvgTileRendererHost
         }
     }
 
-    // Claims terminal ownership under the tile lock, then invalidates under
-    // the work lock. State 3 prevents the completion callback from
-    // removing/reassigning this map entry between those two locks.
-    private bool TryInvalidateFailedSvgTile(
+    /// <summary>
+    /// Detaches <paramref name="plan"/> after its tile failed terminally,
+    /// while the failed work still owns the tile. Claims terminal ownership
+    /// under the tile lock, then invalidates under the work lock; state 3
+    /// prevents the completion callback from removing or reassigning the map
+    /// entry between those two locks.
+    /// </summary>
+    internal bool TryInvalidateFailedSvgTile(
         SvgTileRenderPlan plan,
         SvgTileKey key,
         SvgTileWorkOwner workOwner,

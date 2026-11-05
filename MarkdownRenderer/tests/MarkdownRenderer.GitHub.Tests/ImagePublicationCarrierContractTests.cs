@@ -63,11 +63,11 @@ public sealed class ImagePublicationCarrierContractTests
     }
 
     [Theory]
-    [InlineData("CreateTiledSvgPublication")]
-    [InlineData("CreateBitmapSvgPublication")]
+    [InlineData(nameof(SvgPublicationCommit.CreateTiledPublication))]
+    [InlineData(nameof(SvgPublicationCommit.CreateBitmapPublication))]
     public void SvgPublicationReturnsAnAllocationFreeCallbackPair(string methodName)
     {
-        Type carrier = typeof(ImageBox).GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic)!.ReturnType;
+        Type carrier = typeof(SvgPublicationCommit).GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic)!.ReturnType;
         Assert.True(carrier.IsValueType);
         Assert.Equal(typeof(ValueTuple<Action, Action>), carrier);
         FieldInfo[] fields = carrier.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);

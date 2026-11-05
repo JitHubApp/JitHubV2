@@ -87,6 +87,41 @@ internal static class ImageBoxTestState
             box.Svg.ApplyPublicationNoLock(metadata);
     }
 
+    /// <summary>
+    /// Re-applies the box's accepted SVG metadata with a new title and
+    /// description, as a publication that changed only the SVG text would.
+    /// Every other accepted value, and the presented bitmap lease, stay.
+    /// </summary>
+    internal static void ReplaceSvgText(ImageBox box, string? title, string? description)
+    {
+        SvgImageState svg = box.Svg;
+        var metadata = new SvgPublicationMetadata(
+            svg.SourceIdentity!,
+            svg.SourceByteLength,
+            box.Context.SvgRenderer!,
+            svg.RendererIdentity,
+            svg.ProviderCacheGeneration,
+            svg.RenderGeneration,
+            MetadataWasKnown: true,
+            ResolvedCacheKey: string.Empty,
+            SvgFailureCacheKey: string.Empty,
+            svg.IntrinsicSize,
+            title,
+            description,
+            svg.ContentHash!,
+            svg.SecurityPartitionHash!,
+            svg.Info!,
+            svg.BitmapWidthPixels,
+            svg.BitmapHeightPixels,
+            BitmapIdentity: string.Empty,
+            WorkId: 0,
+            PublishRequestedAt: 0,
+            TargetPixels: 0,
+            PhysicalViewport: svg.PhysicalViewport);
+        lock (box.Lifetime.Sync)
+            svg.ApplyPublicationNoLock(metadata);
+    }
+
     /// <summary>Waits until no admitted image work remains.</summary>
     internal static async Task WaitForImageWorkDrainAsync(ImageBox box, TimeSpan timeout)
     {

@@ -77,11 +77,11 @@ public sealed class MultiRasterPlacementCloneTests
             Assert.Same(sourceImage.Bitmap, cloneImage.Bitmap);
             Assert.Equal(sourceLease.IntrinsicSize, cloneLease.IntrinsicSize);
             Assert.Equal(
-                GetField<Size>(sourceImage, "_rasterIntrinsicSize"),
-                GetField<Size>(cloneImage, "_rasterIntrinsicSize"));
+                sourceImage.Presentation.RasterIntrinsicSize,
+                cloneImage.Presentation.RasterIntrinsicSize);
             Assert.NotSame(
-                GetField<CancellationTokenSource>(sourceImage, "_imageLifetimeCancellation"),
-                GetField<CancellationTokenSource>(cloneImage, "_imageLifetimeCancellation"));
+                sourceImage.Lifetime.LifetimeCancellation,
+                cloneImage.Lifetime.LifetimeCancellation);
             Assert.Equal(sourceRun.Url, cloneRun.Url);
             Assert.Equal(sourceRun.AltText, cloneRun.AltText);
             Assert.Equal(sourceRun.LinkUrl, cloneRun.LinkUrl);
@@ -377,9 +377,9 @@ public sealed class MultiRasterPlacementCloneTests
         Assert.Equal(flowDirection, cloned.Context.FlowDirection);
         Assert.Equal(fixture.ImageBoxes.Count, expectedSources!.Length);
         Assert.Equal(
-            fixture.ImageBoxes.Select(static image => GetField<Size>(image, "_rasterIntrinsicSize")),
+            fixture.ImageBoxes.Select(static image => image.Presentation.RasterIntrinsicSize),
             cloned.Runs.OfType<InlineImageRun>()
-                .Select(static run => GetField<Size>(run.Image, "_rasterIntrinsicSize")));
+                .Select(static run => run.Image.Presentation.RasterIntrinsicSize));
 
         float measuredHeight = cloned.Measure(280f);
         cloned.Arrange(0f, 0f, 280f);
@@ -438,8 +438,7 @@ public sealed class MultiRasterPlacementCloneTests
 
     private static SharedCanvasBitmapCache.Lease GetImageLease(ImageBox image)
     {
-        FieldInfo field = typeof(ImageBox).GetField("_bitmapLease", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return Assert.IsType<SharedCanvasBitmapCache.Lease>(field.GetValue(image));
+        return Assert.IsType<SharedCanvasBitmapCache.Lease>(image.Presentation.Lease);
     }
 
     private static int GetEntryReferenceCount(SharedCanvasBitmapCache.Lease lease)

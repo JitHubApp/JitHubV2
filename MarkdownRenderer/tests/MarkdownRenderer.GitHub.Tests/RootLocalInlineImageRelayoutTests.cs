@@ -55,14 +55,14 @@ public sealed class RootLocalInlineImageRelayoutTests
         Assert.Same(bitmap, lease.Bitmap);
         Assert.True(lease.IsBitmapOutputAdmitted);
         long leaseWeight = lease.PixelWeightBytes;
-        MarkdownSvgDocumentInfo info = ReadField<MarkdownSvgDocumentInfo>(image, "_svgInfo");
-        Size intrinsic = ReadField<Size>(image, "_svgIntrinsicSize");
+        MarkdownSvgDocumentInfo info = Assert.IsType<MarkdownSvgDocumentInfo>(image.Svg.Info);
+        Size intrinsic = image.Svg.IntrinsicSize;
         string? title = image.SvgTitle;
         string? description = image.SvgDesc;
         (int Width, int Height) rasterSize = image.SvgRasterPixelSize;
         Assert.True(rasterSize.Width > 0 && rasterSize.Height > 0);
-        Assert.Null(ReadRawField(image, "_svgDocument"));
-        Assert.Null(ReadRawField(image, "_svgTileRenderPlan"));
+        Assert.Null(image.SvgDocuments.Current);
+        Assert.Null(image.Svg.AcceptedPlan);
         Assert.Empty(image.SvgTileCache.CaptureSnapshot().Tiles);
         Assert.True(renderer.FullRenderCount > 0);
         Assert.Equal(0, renderer.TiledRenderCount);
@@ -70,7 +70,7 @@ public sealed class RootLocalInlineImageRelayoutTests
         fallback.Snapshot.RelayoutChangedBlocks(
             [fallbackInline.BlockIndex], LayoutWidth, CancellationToken.None);
         object layoutLock = optimized.Snapshot.Geometry.Gate;
-        object imageLock = ReadField<object>(image, "_svgWorkSync");
+        object imageLock = image.Lifetime.Sync;
         int providerReadsUnderSourceGate = 0;
         renderer.GenerationReadHook = () =>
         {
@@ -100,8 +100,8 @@ public sealed class RootLocalInlineImageRelayoutTests
             Assert.Same(run, inline.Runs.OfType<InlineImageRun>().Single());
             Assert.Same(image, inline.Runs.OfType<InlineImageRun>().Single().Image);
             Assert.Same(bitmap, image.Bitmap);
-            Assert.Equal(info, ReadField<MarkdownSvgDocumentInfo>(image, "_svgInfo"));
-            Assert.Equal(intrinsic, ReadField<Size>(image, "_svgIntrinsicSize"));
+            Assert.Equal(info, image.Svg.Info);
+            Assert.Equal(intrinsic, image.Svg.IntrinsicSize);
             Assert.Equal(title, image.SvgTitle);
             Assert.Equal(description, image.SvgDesc);
             Assert.Equal(rasterSize, image.SvgRasterPixelSize);
@@ -138,14 +138,14 @@ public sealed class RootLocalInlineImageRelayoutTests
         ImageBox image = run.Image;
         await LoadImageAsync(image);
         Assert.True(image.IsSvg);
-        Assert.True(ReadField<MarkdownSvgDocumentInfo>(image, "_svgInfo").HasText);
+        Assert.True(Assert.IsType<MarkdownSvgDocumentInfo>(image.Svg.Info).HasText);
 
         BlockBox[] rootsBefore = document.Snapshot.Blocks.ToArray();
         Rect[] boundsBefore = rootsBefore.Select(static root => root.Bounds).ToArray();
         Rect imageBoundsBefore = image.Bounds;
         CanvasBitmap bitmapBefore = Assert.IsType<CanvasBitmap>(image.Bitmap);
         SharedCanvasBitmapCache.Lease leaseBefore = GetBitmapLease(image);
-        MarkdownSvgDocumentInfo infoBefore = ReadField<MarkdownSvgDocumentInfo>(image, "_svgInfo");
+        MarkdownSvgDocumentInfo infoBefore = Assert.IsType<MarkdownSvgDocumentInfo>(image.Svg.Info);
         long revisionBefore = document.Snapshot.LayoutRevision;
         Size sizeBefore = document.Snapshot.Size;
         int providerReadsBefore = renderer.CacheGenerationReadCount;
@@ -169,7 +169,7 @@ public sealed class RootLocalInlineImageRelayoutTests
             Assert.Equal(imageBoundsBefore, image.Bounds);
             Assert.Same(bitmapBefore, image.Bitmap);
             Assert.Same(leaseBefore, GetBitmapLease(image));
-            Assert.Equal(infoBefore, ReadField<MarkdownSvgDocumentInfo>(image, "_svgInfo"));
+            Assert.Equal(infoBefore, image.Svg.Info);
         }
         finally
         {
@@ -1043,10 +1043,7 @@ public sealed class RootLocalInlineImageRelayoutTests
 
     private static SharedCanvasBitmapCache.Lease GetBitmapLease(ImageBox image)
     {
-        FieldInfo field = typeof(ImageBox).GetField("_bitmapLease",
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Missing ImageBox bitmap lease field.");
-        return Assert.IsType<SharedCanvasBitmapCache.Lease>(field.GetValue(image));
+        return Assert.IsType<SharedCanvasBitmapCache.Lease>(image.Presentation.Lease);
     }
 
     private static T ReadField<T>(object instance, string name)

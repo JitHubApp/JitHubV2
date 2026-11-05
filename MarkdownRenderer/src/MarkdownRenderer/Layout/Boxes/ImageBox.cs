@@ -330,6 +330,7 @@ internal sealed class ImageBox : BlockBox, ISelectionBackgroundGeometrySource, I
     internal SvgTileRenderer SvgTileRenderer { get; }
     internal ImageSourceLoader SourceLoader { get; }
     internal ImageSourceLoadHost SourceLoadHost => _loadHost;
+    internal SvgTileHost TileHost => _tileHost;
     internal ImageLoadActivation Activation => _activation;
     internal ImageFailurePublisher FailurePublisher { get; }
     internal ImagePlaceholderLayout Placeholder => _placeholder;

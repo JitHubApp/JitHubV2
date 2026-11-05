@@ -1262,11 +1262,11 @@ public sealed class RootLocalImageRelayoutTests
             bool sourceHasNoLiveWaiterWork = sourceWaiter.HasNoLiveWork;
             bool preparedWaiterStateIsClear = prepared.OutputDeferral.GetState().HasNoLiveWork;
             bool sourcePlacementIsCoherent =
-                InvokePrivateBool(source, "HasCoherentMeasuredPlacementNoLock", availableWidth, false);
+                source.MeasuredPlacement.HasCoherentMeasuredPlacementNoLock(availableWidth, false);
             bool preparedPlacementIsCoherent =
-                InvokePrivateBool(prepared, "HasCoherentMeasuredPlacementNoLock", availableWidth, false);
-            bool inputsMatch = InvokePrivateBool(source, "HasMatchingPlacementInputs", prepared);
-            bool transferEligible = InvokePrivateBool(source, "IsTransferSourceEligibleNoLock",
+                prepared.MeasuredPlacement.HasCoherentMeasuredPlacementNoLock(availableWidth, false);
+            bool inputsMatch = source.MeasuredPlacement.HasMatchingPlacementInputs(prepared);
+            bool transferEligible = source.MeasuredPlacement.IsTransferSourceEligibleNoLock(
                 prepared, expectedLease, svgFence, 0L, availableWidth, false);
             long sourceWaiterEpoch = sourceWaiter.WaiterEpoch;
 
@@ -1299,15 +1299,6 @@ public sealed class RootLocalImageRelayoutTests
         }
     }
 
-    private static bool InvokePrivateBool(ImageBox image, string methodName, params object?[] arguments)
-    {
-        MethodInfo method = typeof(ImageBox).GetMethod(
-            methodName,
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException($"Missing private placement predicate {methodName}.");
-        return Assert.IsType<bool>(method.Invoke(image, arguments));
-    }
-
     private static CanvasBitmap CreateBitmap(CanvasDevice device, int width, int height)
     {
         byte[] pixels = new byte[checked(width * height * 4)];
@@ -1321,14 +1312,7 @@ public sealed class RootLocalImageRelayoutTests
 
     private static void InvokeReplaceBitmap(ImageBox image, SharedCanvasBitmapCache.Lease lease)
     {
-        MethodInfo method = typeof(ImageBox).GetMethod(
-            "ReplaceBitmap",
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Missing private bitmap replacement method.");
-        // Reflection does not apply optional defaults; supply the optional
-        // SVG viewport explicitly so the source-lease retry tests continue to
-        // exercise the current replacement contract.
-        method.Invoke(image, [lease.Bitmap, lease, null]);
+        image.Presentation.Replace(lease.Bitmap, lease);
     }
 
     private static async Task StartPendingSiblingAsync(ImageDocument document)
@@ -1430,10 +1414,7 @@ public sealed class RootLocalImageRelayoutTests
 
     private static SharedCanvasBitmapCache.Lease GetImageLease(ImageBox image)
     {
-        FieldInfo field = typeof(ImageBox).GetField("_bitmapLease",
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Missing ImageBox bitmap lease field.");
-        return Assert.IsType<SharedCanvasBitmapCache.Lease>(field.GetValue(image));
+        return Assert.IsType<SharedCanvasBitmapCache.Lease>(image.Presentation.Lease);
     }
 
     private static int GetEntryReferenceCount(SharedCanvasBitmapCache.Lease lease)

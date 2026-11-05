@@ -233,7 +233,12 @@ internal sealed class ImageMeasuredPlacement
                !NativeLayoutsAlias(_measure.Caption, preparedMeasure.Placeholder);
     }
 
-    private bool HasMatchingPlacementInputs(ImageBox other)
+    /// <summary>
+    /// Whether <paramref name="other"/> was built from the same source,
+    /// requested size and placement inputs, so a measured placement can move
+    /// between the two boxes.
+    /// </summary>
+    internal bool HasMatchingPlacementInputs(ImageBox other)
     {
         if (_box.BuiltInSource.HasValue != other.BuiltInSource.HasValue)
         {

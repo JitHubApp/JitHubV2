@@ -1215,11 +1215,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
             ImageResourceScope.Shared,
             "https://example.test/pressure-park.svg",
             "pressure park svg");
-        SetField(box, "_svgTileRenderPlan", plan);
-        SetField(box, "_svgDocument", plan.Document);
-        SetField(box, "_svgLoadDemandTicket", plan.Demand);
-        SetField(box, "_svgRenderGeneration", plan.RenderGeneration);
-        SetField(box, "_svgUsesTiles", true);
+        ImageBoxTestState.AcceptTiledPlan(box, plan);
         return box;
     }
 
@@ -1344,8 +1340,18 @@ public sealed class SvgHostAdmissionCoordinatorTests
         SvgHostAdmissionDomain domain, object identity, out long version) =>
         domain.Owners.TryReserveOwnerSlot(identity, out version);
 
-    private static ImageBox BareBox() =>
-        (ImageBox)RuntimeHelpers.GetUninitializedObject(typeof(ImageBox));
+    // An owner identity only: the box never loads, so it needs no device,
+    // theme or dispatcher.
+    private static ImageBox BareBox() => new(
+        new MarkdownLayoutContext(
+            resourceCreator: null!,
+            themeSnapshot: null!,
+            sourceMap: null!,
+            registry: null!,
+            flowDirection: FlowDirection.LeftToRight),
+        ImageResourceScope.Shared,
+        "https://example.test/owner.svg",
+        "owner svg");
     private static int OwnerCount(SvgHostAdmissionDomain domain) =>
         Field<ICollection>(domain.Owners, "_owners").Count;
     private static int ReservedCount(SvgHostAdmissionDomain domain) =>

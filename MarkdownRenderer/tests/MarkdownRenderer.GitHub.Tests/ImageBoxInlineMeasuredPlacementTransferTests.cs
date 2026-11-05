@@ -91,7 +91,7 @@ public sealed class ImageBoxInlineMeasuredPlacementTransferTests
             Assert.Equal(preparedAvailableWidth, committedWidth);
             Assert.True(source.IsDirty);
             Assert.True(prepared.IsDirty);
-            Assert.Same(expectedSourceLease, GetField<SharedCanvasBitmapCache.Lease>(source, "_bitmapLease"));
+            Assert.Same(expectedSourceLease, source.Presentation.Lease);
             Assert.Same(expectedSourceLease.Bitmap, source.Bitmap);
         }
         finally

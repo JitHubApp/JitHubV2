@@ -35,7 +35,7 @@ public sealed class IdleImagePlacementCloneTests
             Assert.All(fixture.ImageRuns, static run =>
             {
                 Assert.Null(run.Image.Bitmap);
-                Assert.False(GetField<bool>(run.Image, "_loadStarted"));
+                Assert.False(run.Image.LoadState.IsStarted);
                 Assert.Equal(0, run.Image.GetWorkState().ActiveWorkCount);
             });
 
@@ -114,8 +114,8 @@ public sealed class IdleImagePlacementCloneTests
                 Assert.Equal(sourceImage.BlockIndex, cloneImage.BlockIndex);
                 Assert.Equal(sourceImage.SafeHtmlInlineFlowScopeId, cloneImage.SafeHtmlInlineFlowScopeId);
                 Assert.Equal(sourceImage.Margin, cloneImage.Margin);
-                Assert.Equal(GetBaseField<Thickness>(sourceImage, "_margin"),
-                    GetBaseField<Thickness>(cloneImage, "_margin"));
+                Assert.Equal(sourceImage.RawPlacementMargin,
+                    cloneImage.RawPlacementMargin);
                 Assert.Equal(sourceImage.CollapsedTopMargin, cloneImage.CollapsedTopMargin);
                 Assert.Equal(sourceImage.SuppressTopMargin, cloneImage.SuppressTopMargin);
                 Assert.Equal(sourceImage.SuppressBottomMargin, cloneImage.SuppressBottomMargin);
@@ -124,12 +124,12 @@ public sealed class IdleImagePlacementCloneTests
                     GetCancellationSource(sourceImage),
                     GetCancellationSource(cloneImage));
                 Assert.Null(cloneImage.Bitmap);
-                Assert.False(GetField<bool>(cloneImage, "_loadStarted"));
+                Assert.False(cloneImage.LoadState.IsStarted);
                 Assert.Equal(0, cloneImage.GetWorkState().ActiveWorkCount);
             }
 
             Assert.True(clonedRuns[1].Image.IsSvg); // A .svg URI hint is not accepted SVG state.
-            Assert.Null(GetNullableField<WeakReference<byte[]>>(clonedRuns[1].Image, "_svgSourceIdentity"));
+            Assert.Null(clonedRuns[1].Image.Svg.SourceIdentity);
             Assert.Equal(cacheReferencesBefore, GetEntryReferenceCount(cacheProbe!));
             Assert.All(fixture.ImageRuns, static run => Assert.Equal(0, run.Image.GetWorkState().ActiveWorkCount));
 
@@ -269,8 +269,7 @@ public sealed class IdleImagePlacementCloneTests
             ImageBox canceledTargetImage = fixture.ImageRuns[4].Image;
 
             byte[] acceptedBytes = [1, 2, 3, 4];
-            SetField(svgImage, "_svgSourceIdentity", new WeakReference<byte[]>(acceptedBytes));
-            SetField(svgImage, "_svgSourceByteLength", (long)acceptedBytes.Length);
+            svgImage.Svg.RememberSource(acceptedBytes);
             suspendedImage.SuspendResources();
             disposedImage.Dispose();
 
@@ -341,7 +340,7 @@ public sealed class IdleImagePlacementCloneTests
                 new Size(8, 4));
             InvokeReplaceBitmap(completedImage, completedLease);
             completedLease = null; // Ownership transferred to the source ImageBox.
-            SetField(completedImage, "_loadStarted", true);
+            completedImage.LoadState.IsStarted = true;
 
             sourceSnapshot = new LayoutSnapshot(
                 new BlockBox[] { fixture.Source, pendingRoot },
@@ -443,10 +442,7 @@ public sealed class IdleImagePlacementCloneTests
         ImageBox image,
         SharedCanvasBitmapCache.Lease replacementLease)
     {
-        MethodInfo method = typeof(ImageBox).GetMethod(
-            "ReplaceBitmap",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        _ = method.Invoke(image, [replacementLease.Bitmap, replacementLease, null]);
+        image.Presentation.Replace(replacementLease.Bitmap, replacementLease);
     }
 
     private static int GetEntryReferenceCount(SharedCanvasBitmapCache.Lease lease)
@@ -461,16 +457,12 @@ public sealed class IdleImagePlacementCloneTests
 
     private static SharedCanvasBitmapCache.Lease GetImageLease(ImageBox image)
     {
-        FieldInfo field = typeof(ImageBox).GetField(
-            "_bitmapLease", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return Assert.IsType<SharedCanvasBitmapCache.Lease>(field.GetValue(image));
+        return Assert.IsType<SharedCanvasBitmapCache.Lease>(image.Presentation.Lease);
     }
 
     private static CancellationTokenSource GetCancellationSource(ImageBox image)
     {
-        FieldInfo field = typeof(ImageBox).GetField(
-            "_imageLifetimeCancellation", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return Assert.IsAssignableFrom<CancellationTokenSource>(field.GetValue(image));
+        return Assert.IsAssignableFrom<CancellationTokenSource>(image.Lifetime.LifetimeCancellation);
     }
 
     private static T GetField<T>(object instance, string name)
@@ -485,20 +477,6 @@ public sealed class IdleImagePlacementCloneTests
         FieldInfo field = typeof(BlockBox).GetField(
             name, BindingFlags.Instance | BindingFlags.NonPublic)!;
         return Assert.IsType<T>(field.GetValue(instance));
-    }
-
-    private static T? GetNullableField<T>(object instance, string name) where T : class
-    {
-        FieldInfo field = instance.GetType().GetField(
-            name, BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return field.GetValue(instance) is { } value ? Assert.IsType<T>(value) : null;
-    }
-
-    private static void SetField<T>(object instance, string name, T value)
-    {
-        FieldInfo field = instance.GetType().GetField(
-            name, BindingFlags.Instance | BindingFlags.NonPublic)!;
-        field.SetValue(instance, value);
     }
 
     private sealed class ImagePlacementFixture : IAsyncDisposable

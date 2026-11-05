@@ -882,7 +882,7 @@ public sealed class RootLocalContainerVectorImageRelayoutTests
         Assert.IsType<CanvasTextLayout>(inline.TextLayout);
 
     private static SharedCanvasBitmapCache.Lease GetBitmapLease(ImageBox image) =>
-        Assert.IsType<SharedCanvasBitmapCache.Lease>(ReadRawField(image, "_bitmapLease"));
+        Assert.IsType<SharedCanvasBitmapCache.Lease>(image.Presentation.Lease);
 
     private static int GetLeaseReferenceCount(SharedCanvasBitmapCache.Lease lease)
     {

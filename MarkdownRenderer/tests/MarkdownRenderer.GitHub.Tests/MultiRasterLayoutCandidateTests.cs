@@ -386,10 +386,7 @@ public sealed class MultiRasterLayoutCandidateTests
         SharedCanvasBitmapCache.Lease lease = ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(bitmap);
         try
         {
-            MethodInfo replaceBitmap = typeof(ImageBox).GetMethod(
-                "ReplaceBitmap",
-                BindingFlags.Instance | BindingFlags.NonPublic)!;
-            _ = replaceBitmap.Invoke(image, [bitmap, lease, null]);
+            image.Presentation.Replace(bitmap, lease);
             lease = null!;
         }
         finally

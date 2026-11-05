@@ -506,8 +506,8 @@ public sealed class CompositeRasterLayoutCandidateTests
             Assert.Equal(sourceImageRun.DesiredWidth, replacementImage.DesiredWidth);
             Assert.Equal(sourceImageRun.DesiredHeight, replacementImage.DesiredHeight);
             Assert.Equal(
-                GetField<Size>(sourceImageRun.Image, "_rasterIntrinsicSize"),
-                GetField<Size>(replacementImage.Image, "_rasterIntrinsicSize"));
+                sourceImageRun.Image.Presentation.RasterIntrinsicSize,
+                replacementImage.Image.Presentation.RasterIntrinsicSize);
             Assert.Equal("https://example.test/table-image", replacementImage.LinkUrl);
             Assert.NotSame(imageCell.Runs.OfType<InlineImageRun>().Single().Image, replacementImage.Image);
             Assert.NotNull(replacementImage.Image.Bitmap);

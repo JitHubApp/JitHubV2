@@ -58,7 +58,7 @@ public sealed class CompletedRasterPlacementCloneTests
         InlineContainerBox clonedContainer = Assert.IsType<InlineContainerBox>(candidate);
         Assert.False(clonedContainer.HasMeasuredLayout);
         Assert.Same(expectedSourceImage, fixture.ImageRun.Image);
-        Assert.Same(GetField<SharedCanvasBitmapCache.Lease>(fixture.ImageRun.Image, "_bitmapLease"), expectedSourceLease);
+        Assert.Same(fixture.ImageRun.Image.Presentation.Lease, expectedSourceLease);
         Assert.True(fixture.ImageRun.Image.IsCurrentCompletedRasterPlacement(
             Assert.IsType<SharedCanvasBitmapCache.Lease>(expectedSourceLease)));
         Assert.Same(candidateContext, clonedContainer.Context);
@@ -89,15 +89,15 @@ public sealed class CompletedRasterPlacementCloneTests
         Assert.Same(fixture.ImageRun.Image.Bitmap, clonedImageRun.Image.Bitmap);
         Size expectedIntrinsicSize = expectedSourceLease!.IntrinsicSize.GetValueOrDefault();
         Assert.Equal(new Size(96, 48), expectedIntrinsicSize);
-        Assert.Equal(expectedIntrinsicSize, GetField<Size>(clonedImageRun.Image, "_rasterIntrinsicSize"));
+        Assert.Equal(expectedIntrinsicSize, clonedImageRun.Image.Presentation.RasterIntrinsicSize);
         Assert.Equal(fixture.ImageRun.DesiredWidth, clonedImageRun.DesiredWidth);
         Assert.Equal(fixture.ImageRun.DesiredHeight, clonedImageRun.DesiredHeight);
         Assert.NotSame(
-            GetField<CancellationTokenSource>(fixture.ImageRun.Image, "_imageLifetimeCancellation"),
-            GetField<CancellationTokenSource>(clonedImageRun.Image, "_imageLifetimeCancellation"));
+            fixture.ImageRun.Image.Lifetime.LifetimeCancellation,
+            clonedImageRun.Image.Lifetime.LifetimeCancellation);
         Assert.Equal(0, clonedImageRun.Image.GetWorkState().ActiveWorkCount);
-        Assert.Null(GetNullableField<IMarkdownSvgDocument>(clonedImageRun.Image, "_svgDocument"));
-        Assert.Null(GetNullableField<WeakReference<byte[]>>(clonedImageRun.Image, "_svgSourceIdentity"));
+        Assert.Null(clonedImageRun.Image.SvgDocuments.Current);
+        Assert.Null(clonedImageRun.Image.Svg.SourceIdentity);
         Assert.True(clonedImageRun.Image.SvgTileCache.IsClear());
 
         float measuredHeight = clonedContainer.Measure(320f);
@@ -122,7 +122,7 @@ public sealed class CompletedRasterPlacementCloneTests
             CreateBitmap(fixture.Device, 40, 20));
         InvokeReplaceBitmap(fixture.ImageRun.Image, uncached);
         Assert.Null(uncached.IntrinsicSize);
-        Size resolvedIntrinsic = GetField<Size>(fixture.ImageRun.Image, "_rasterIntrinsicSize");
+        Size resolvedIntrinsic = fixture.ImageRun.Image.Presentation.RasterIntrinsicSize;
         MarkdownLayoutContext targetContext = fixture.CreateContext();
 
         Assert.True(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
@@ -133,10 +133,10 @@ public sealed class CompletedRasterPlacementCloneTests
         ImageBox clonedImage = Assert.Single(clone.Runs.OfType<InlineImageRun>()).Image;
 
         Assert.Same(uncached.Bitmap, clonedImage.Bitmap);
-        Assert.Equal(resolvedIntrinsic, GetField<Size>(clonedImage, "_rasterIntrinsicSize"));
+        Assert.Equal(resolvedIntrinsic, clonedImage.Presentation.RasterIntrinsicSize);
         clone.Measure(320f);
         clone.Arrange(0, 0, 320f);
-        Assert.Equal(resolvedIntrinsic, GetField<Size>(clonedImage, "_rasterIntrinsicSize"));
+        Assert.Equal(resolvedIntrinsic, clonedImage.Presentation.RasterIntrinsicSize);
         Assert.Equal(MarkdownRenderer.Accessibility.MarkdownImageAccessibilityState.Loaded,
             clonedImage.AccessibilityState);
     }
@@ -228,12 +228,8 @@ public sealed class CompletedRasterPlacementCloneTests
         fixture.SetCandidate(candidateContext, candidate);
         InlineContainerBox clone = Assert.IsType<InlineContainerBox>(candidate);
         InlineImageRun cloneRun = clone.Runs.OfType<InlineImageRun>().Single();
-        CancellationTokenSource originalLifetime = GetCancellationSource(
-            fixture.ImageRun.Image,
-            "_imageLifetimeCancellation");
-        CancellationTokenSource clonedLifetime = GetCancellationSource(
-            cloneRun.Image,
-            "_imageLifetimeCancellation");
+        CancellationTokenSource originalLifetime = fixture.ImageRun.Image.Lifetime.LifetimeCancellation;
+        CancellationTokenSource clonedLifetime = cloneRun.Image.Lifetime.LifetimeCancellation;
 
         Assert.NotSame(originalLifetime, clonedLifetime);
         candidateImageLifetime.Cancel();
@@ -324,22 +320,15 @@ public sealed class CompletedRasterPlacementCloneTests
 
     private static IDisposable BeginImageWork(ImageBox image)
     {
-        MethodInfo method = typeof(ImageBox).GetMethod(
-            "TryBeginImageWork",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        object?[] arguments = [null];
-        Assert.True(Assert.IsType<bool>(method.Invoke(image, arguments)));
-        return Assert.IsAssignableFrom<IDisposable>(arguments[0]);
+        Assert.True(image.Lifetime.TryBeginWork(out ImageWorkLease? work));
+        return Assert.IsAssignableFrom<IDisposable>(work);
     }
 
     private static void InvokeReplaceBitmap(
         ImageBox image,
         SharedCanvasBitmapCache.Lease replacementLease)
     {
-        MethodInfo method = typeof(ImageBox).GetMethod(
-            "ReplaceBitmap",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        _ = method.Invoke(image, [replacementLease.Bitmap, replacementLease, null]);
+        image.Presentation.Replace(replacementLease.Bitmap, replacementLease);
     }
 
     private static CanvasBitmap CreateBitmap(CanvasDevice device, int width, int height)
@@ -353,13 +342,6 @@ public sealed class CompletedRasterPlacementCloneTests
             DirectXPixelFormat.B8G8R8A8UIntNormalized);
     }
 
-    private static CancellationTokenSource GetCancellationSource(object instance, string name)
-    {
-        FieldInfo field = instance.GetType().GetField(name,
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        // CreateLinkedTokenSource intentionally returns an internal CTS subtype.
-        return Assert.IsAssignableFrom<CancellationTokenSource>(field.GetValue(instance));
-    }
 
     private static T GetField<T>(object instance, string name)
     {
@@ -367,15 +349,6 @@ public sealed class CompletedRasterPlacementCloneTests
             name,
             BindingFlags.Instance | BindingFlags.NonPublic)!;
         return Assert.IsType<T>(field.GetValue(instance));
-    }
-
-    private static T? GetNullableField<T>(object instance, string name) where T : class
-    {
-        FieldInfo field = instance.GetType().GetField(
-            name,
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        object? value = field.GetValue(instance);
-        return value is null ? null : Assert.IsType<T>(value);
     }
 
     internal sealed class PlacementFixture : IAsyncDisposable

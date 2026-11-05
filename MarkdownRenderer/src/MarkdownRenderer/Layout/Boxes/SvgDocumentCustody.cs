@@ -278,7 +278,12 @@ internal sealed class SvgDocumentCustody
             ScheduleDisposal(document, cleanupWork);
     }
 
-    private SvgDocumentUseLease? TryAcquireNestedUse(SvgDocumentUseLease parent)
+    /// <summary>
+    /// A native use nested in <paramref name="parent"/>, an already-admitted
+    /// use of this custody's document, or null once that use drained or its
+    /// document's disposal was scheduled.
+    /// </summary>
+    internal SvgDocumentUseLease? TryAcquireNestedUse(SvgDocumentUseLease parent)
     {
         if (!parent.IsOwnedBy(this))
             return null;
