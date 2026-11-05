@@ -14,10 +14,11 @@ internal static class CSharpMathSceneCompiler
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        using MathCancellationScope.Registration cancellationScope =
-            MathCancellationScope.Enter(
-                cancellationToken,
-                options.MaximumParserRecursionDepth);
+        var compilationScope = new MathCompilationScope(
+            cancellationToken,
+            options.MaximumParserRecursionDepth);
+        using MathCancellationScope.Registration currentScope =
+            MathCancellationScope.Enter(compilationScope);
         int maximumCompilerSourceLength = MathWorkingMemoryBudget.GetMaximumSourceLength(
             options.MaximumWorkingMemoryBytes);
         if (maximumCompilerSourceLength <= 0)
