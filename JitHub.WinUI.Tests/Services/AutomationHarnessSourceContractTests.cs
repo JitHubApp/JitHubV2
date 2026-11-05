@@ -263,13 +263,11 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("RetainedMemoryBudget", source, StringComparison.Ordinal);
         Assert.Contains("AssertAndRecordMarkdownMemoryBudget", source, StringComparison.Ordinal);
         Assert.Contains("RunMarkdownSecurityPolicyLifecycleCase", source, StringComparison.Ordinal);
-        Assert.Contains("Lifecycle oversized SVG", File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "JitHub.WinUI",
-            "Views",
-            "Controls",
-            "Common",
-            "MarkdownViewer.xaml.cs")), StringComparison.Ordinal);
+        // The security lifecycle case looks for this image in the fixture the app renders.
+        Assert.Contains(
+            "Lifecycle oversized SVG",
+            JitHub.Services.Markdown.Automation.MarkdownLifecycleFixtureText.BuildSecurityLifecycleFixtureMarkdown(),
+            StringComparison.Ordinal);
     }
 
     [Fact]

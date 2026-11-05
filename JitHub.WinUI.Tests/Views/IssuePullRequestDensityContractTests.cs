@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Xml.Linq;
-using JitHub.WinUI.Views.Controls.Common;
+using JitHub.Services.Markdown;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Views;
@@ -216,8 +216,15 @@ public sealed class IssuePullRequestDensityContractTests
             "Controls",
             "Common",
             "MarkdownViewer.xaml.cs"));
+        string rendererResources = File.ReadAllText(SourcePath(
+            "JitHub.WinUI",
+            "Services",
+            "Markdown",
+            "Hosting",
+            "MarkdownRendererResources.cs"));
         Assert.Contains("SurfaceColorTokenProperty", viewerSource, StringComparison.Ordinal);
-        Assert.Contains("SurfaceColorToken.Trim()", viewerSource, StringComparison.Ordinal);
+        Assert.Contains("ApplyHostSurface(resources, SurfaceColorToken, HostKind)", viewerSource, StringComparison.Ordinal);
+        Assert.Contains("surfaceColorToken.Trim()", rendererResources, StringComparison.Ordinal);
     }
 
     [Theory]

@@ -1,7 +1,7 @@
 using System;
 using System.Text;
 
-namespace JitHub.WinUI.Views.Controls.Common;
+namespace JitHub.Services.Markdown;
 
 public enum MarkdownHostKind
 {

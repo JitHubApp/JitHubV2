@@ -4,7 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Xml;
 using System.Xml.Linq;
-using JitHub.WinUI.Views.Controls.Common;
+using JitHub.Services.Markdown;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Views;
@@ -168,13 +168,22 @@ public sealed class MarkdownHostContractTests
         Assert.DoesNotContain("AppThemeSettingsMonitor", source, StringComparison.Ordinal);
         Assert.DoesNotContain("ThemeSettingsHelper", source, StringComparison.Ordinal);
         Assert.DoesNotContain("ActualThemeChanged", source, StringComparison.Ordinal);
-        Assert.Contains("MarkdownEnvironmentMonitor applies it", source, StringComparison.Ordinal);
-        Assert.Contains("GetLifecycleTokenScaleFactor", source, StringComparison.Ordinal);
-        Assert.Contains("Math.Clamp(requestedScale, 1, 3) / systemScale", source, StringComparison.Ordinal);
-        Assert.Contains("QueueRendererResourceRefresh", source, StringComparison.Ordinal);
-        Assert.Contains("MarkdownLifecycleAutomationBridge.GetRuntimeSettingsRevision()", source, StringComparison.Ordinal);
-        Assert.Contains("LifecycleRuntimeSettingsTimer_Tick", source, StringComparison.Ordinal);
-        Assert.Contains("_lifecycleRuntimeSettingsTimer.Stop()", source, StringComparison.Ordinal);
+        // Harness text scale and its runtime-settings poll live in the
+        // automation-only hooks; the viewer only reapplies resources on change.
+        string automationRoot = Path.Combine(FindRepositoryRoot(), "JitHub.WinUI", "Services", "Markdown", "Automation");
+        string textScale = File.ReadAllText(Path.Combine(automationRoot, "MarkdownLifecycleTextScaleResources.cs"));
+        string watch = File.ReadAllText(Path.Combine(automationRoot, "MarkdownLifecycleRuntimeSettingsWatch.cs"));
+        Assert.Contains("MarkdownEnvironmentMonitor applies it", textScale, StringComparison.Ordinal);
+        Assert.Contains("GetLifecycleTokenScaleFactor", textScale, StringComparison.Ordinal);
+        Assert.Contains("Math.Clamp(requestedScale, 1, 3) / systemScale", textScale, StringComparison.Ordinal);
+        Assert.Contains("_automation.WatchRuntimeSettings(DispatcherQueue, QueueRendererResourceRefresh)", source, StringComparison.Ordinal);
+        Assert.Contains("_runtimeSettingsWatch?.Dispose()", source, StringComparison.Ordinal);
+        Assert.Contains("_automation.ApplyRendererResources(resources)", source, StringComparison.Ordinal);
+        Assert.Contains("MarkdownLifecycleAutomationBridge.GetRuntimeSettingsRevision()", watch, StringComparison.Ordinal);
+        Assert.Contains("Timer_Tick", watch, StringComparison.Ordinal);
+        Assert.Contains("_timer.Stop()", watch, StringComparison.Ordinal);
+        Assert.DoesNotContain("MarkdownLifecycleAutomationBridge", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("Colors.", source, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -197,17 +206,20 @@ public sealed class MarkdownHostContractTests
         Assert.Contains("MarkdownRenderer.TableCell.Padding", resources, StringComparison.Ordinal);
         Assert.Contains("ResourceKey=\"AppMarkdownHeading1Margin\"", resources, StringComparison.Ordinal);
         Assert.Contains("ResourceKey=\"AppMarkdownStandaloneParagraphMargin\"", resources, StringComparison.Ordinal);
-        Assert.Contains("MarkdownResourceKeys.DocumentSurfaceBrush", source, StringComparison.Ordinal);
-        Assert.Contains("new MarkdownStyleSelector(MarkdownStyleRole.Body, minimumNestingDepth: 1)", source, StringComparison.Ordinal);
-        Assert.Contains("Margin = ResolveThickness(\"AppMarkdownBodyMargin\"", source, StringComparison.Ordinal);
+        string hostingRoot = Path.Combine(root, "JitHub.WinUI", "Services", "Markdown", "Hosting");
+        string rendererResources = File.ReadAllText(Path.Combine(hostingRoot, "MarkdownRendererResources.cs"));
+        string configurator = File.ReadAllText(Path.Combine(hostingRoot, "MarkdownRendererConfigurator.cs"));
+        Assert.Contains("MarkdownResourceKeys.DocumentSurfaceBrush", rendererResources, StringComparison.Ordinal);
+        Assert.Contains("new MarkdownStyleSelector(MarkdownStyleRole.Body, minimumNestingDepth: 1)", configurator, StringComparison.Ordinal);
+        Assert.Contains("Margin = MarkdownRendererResources.ResolveThickness(\"AppMarkdownBodyMargin\"", configurator, StringComparison.Ordinal);
         Assert.DoesNotContain("_theme.Overrides", source, StringComparison.Ordinal);
-        Assert.Contains("_renderer.RenderCompleted += OnRendererRenderCompleted", source, StringComparison.Ordinal);
-        Assert.Contains("_renderer.RenderFailed += OnRendererRenderFailed", source, StringComparison.Ordinal);
-        Assert.Contains("MarkdownLifecycleAutomationBridge.RecordRenderFailure", source, StringComparison.Ordinal);
-        Assert.Contains("\"markdown.error\"", source, StringComparison.Ordinal);
-        Assert.Contains("TelemetryTaxonomy.Actions.Retry", source, StringComparison.Ordinal);
-        Assert.Contains("e.Reason == MarkdownImageUnavailableReason.RemoteContentBlocked", source, StringComparison.Ordinal);
-        Assert.Contains("ShouldAllowThirdPartyRemoteImages()", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("_theme.Overrides", configurator, StringComparison.Ordinal);
+        Assert.Contains("renderer.RenderCompleted += OnRendererRenderCompleted", source, StringComparison.Ordinal);
+        Assert.Contains("renderer.RenderFailed += OnRendererRenderFailed", source, StringComparison.Ordinal);
+        // Render-failure reporting, retry telemetry and blocked-image filtering
+        // moved to MarkdownViewerFeedback and are covered by MarkdownViewerFeedbackTests.
+        Assert.Contains("_feedback.OnRenderFailed(e.Exception)", source, StringComparison.Ordinal);
+        Assert.Contains("_feedback.OnImageUnavailable(e.Source, e.Reason)", source, StringComparison.Ordinal);
         Assert.DoesNotContain("e.Exception.Message", source, StringComparison.Ordinal);
     }
 
@@ -250,9 +262,12 @@ public sealed class MarkdownHostContractTests
             (string?)element.Attributes().FirstOrDefault(attribute => attribute.Name.LocalName == "Name") == "RemoteImageInfoBar");
         Assert.Equal("True", (string?)remoteNotice.Attribute("IsClosable"));
         Assert.Equal("RemoteImageInfoBar_Closed", (string?)remoteNotice.Attribute("Closed"));
-        Assert.Contains("args.Reason == InfoBarCloseReason.CloseButton", source, StringComparison.Ordinal);
-        Assert.Contains("if (!_remoteImageNoticeDismissed)", source, StringComparison.Ordinal);
-        Assert.Equal(3, source.Split("_remoteImageNoticeDismissed = false;").Length);
+        Assert.Contains(
+            "_feedback.OnRemoteImageNoticeClosed(args.Reason == InfoBarCloseReason.CloseButton)",
+            source,
+            StringComparison.Ordinal);
+        // Dismissal lasting for the document, and resetting for a new document
+        // or host reuse, is covered by MarkdownViewerFeedbackTests.
     }
 
     [Fact]
@@ -289,10 +304,9 @@ public sealed class MarkdownHostContractTests
         Assert.Contains("IExpandCollapseProvider", peer, StringComparison.Ordinal);
         Assert.Contains("PatternInterface.ExpandCollapse", peer, StringComparison.Ordinal);
         Assert.Contains("AutomationControlType.Button", peer, StringComparison.Ordinal);
-        Assert.Contains("_renderer.DisclosureToggled += OnRendererDisclosureToggled", viewer, StringComparison.Ordinal);
-        Assert.Contains("TelemetryTaxonomy.Actions.ToggleDetails", viewer, StringComparison.Ordinal);
-        Assert.Contains("TelemetryTaxonomy.Results.Expanded", viewer, StringComparison.Ordinal);
-        Assert.Contains("TelemetryTaxonomy.Results.Collapsed", viewer, StringComparison.Ordinal);
+        Assert.Contains("renderer.DisclosureToggled += OnRendererDisclosureToggled", viewer, StringComparison.Ordinal);
+        Assert.Contains("_feedback.OnDisclosureToggled(e.IsExpanded)", viewer, StringComparison.Ordinal);
+        // Disclosure telemetry results are covered by MarkdownViewerFeedbackTests.
     }
 
     [Fact]
@@ -353,6 +367,8 @@ public sealed class MarkdownHostContractTests
             root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Selection", "SelectionCommands.cs"));
         string viewer = File.ReadAllText(Path.Combine(
             root, "JitHub.WinUI", "Views", "Controls", "Common", "MarkdownViewer.xaml.cs"));
+        string configurator = File.ReadAllText(Path.Combine(
+            root, "JitHub.WinUI", "Services", "Markdown", "Hosting", "MarkdownRendererConfigurator.cs"));
 
         Assert.Contains("CodeBlockCopyButtonStyle", control, StringComparison.Ordinal);
         Assert.Contains("CopyCompleted?.Invoke", control, StringComparison.Ordinal);
@@ -360,10 +376,10 @@ public sealed class MarkdownHostContractTests
             root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Embeds", "CodeBlockClipboard.cs"));
         Assert.Contains("MarkdownCopyKind.CodeBlock", codeBlockClipboard, StringComparison.Ordinal);
         Assert.Contains("_host.RaiseCopyCompleted(MarkdownCopyKind.Selection", selectionCommands, StringComparison.Ordinal);
-        Assert.Contains("_renderer.CopyCompleted += OnRendererCopyCompleted", viewer, StringComparison.Ordinal);
-        Assert.Contains("AppToolbarButtonStyle", viewer, StringComparison.Ordinal);
-        Assert.Contains("TelemetryTaxonomy.Actions.CopyCode", viewer, StringComparison.Ordinal);
-        Assert.Contains("TelemetryTaxonomy.Actions.CopySelection", viewer, StringComparison.Ordinal);
+        Assert.Contains("renderer.CopyCompleted += OnRendererCopyCompleted", viewer, StringComparison.Ordinal);
+        Assert.Contains("AppToolbarButtonStyle", configurator, StringComparison.Ordinal);
+        Assert.Contains("_feedback.OnCopyCompleted(e.Kind == MarkdownCopyKind.CodeBlock, e.Succeeded)", viewer, StringComparison.Ordinal);
+        // Copy telemetry results are covered by MarkdownViewerFeedbackTests.
     }
 
     [Fact]
@@ -376,27 +392,32 @@ public sealed class MarkdownHostContractTests
             "Controls",
             "Common",
             "MarkdownViewer.xaml.cs"));
+        string configurator = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "JitHub.WinUI",
+            "Services",
+            "Markdown",
+            "Hosting",
+            "MarkdownRendererConfigurator.cs"));
 
-        Assert.Contains("MarkdownRemoteContentConsent", source, StringComparison.Ordinal);
+        // Per-document consent (default policy or explicit grant) and closing a
+        // stale prompt on policy promotion are covered by MarkdownViewerFeedbackTests.
         Assert.Contains("DocumentSourceProperty", source, StringComparison.Ordinal);
-        Assert.Contains("_renderer.ImageDocumentSource = documentSource", source, StringComparison.Ordinal);
-        Assert.Contains("_remoteContentConsent.Grant()", source, StringComparison.Ordinal);
+        Assert.Contains("renderer.ImageDocumentSource = settings.DocumentSource", configurator, StringComparison.Ordinal);
+        Assert.Contains("_feedback.GrantRemoteImages()", source, StringComparison.Ordinal);
         Assert.Contains("AllowThirdPartyRemoteImagesByDefaultProperty", source, StringComparison.Ordinal);
         Assert.Contains("new PropertyMetadata(true, OnRendererPropertyChanged)", source, StringComparison.Ordinal);
-        Assert.Contains(
-            "AllowThirdPartyRemoteImagesByDefault || _remoteContentConsent.IsGranted",
-            source,
-            StringComparison.Ordinal);
         Assert.Contains("AllowThirdPartyRemoteImagesByDefault = false", source, StringComparison.Ordinal);
+        Assert.Contains("_feedback.AllowsThirdPartyRemoteImages);", source, StringComparison.Ordinal);
         Assert.Contains(
-            "_renderer.AllowThirdPartyRemoteImages = ShouldAllowThirdPartyRemoteImages();",
-            source,
+            "renderer.AllowThirdPartyRemoteImages = settings.AllowThirdPartyRemoteImages;",
+            configurator,
             StringComparison.Ordinal);
         Assert.Contains(
             "e.Property == AllowThirdPartyRemoteImagesByDefaultProperty",
             source,
             StringComparison.Ordinal);
-        Assert.Contains("viewer.RemoteImageInfoBar.IsOpen = false;", source, StringComparison.Ordinal);
+        Assert.Contains("viewer._feedback.OnRemoteImagePolicyChanged();", source, StringComparison.Ordinal);
         Assert.DoesNotContain("_allowRemoteImagesForDocument", source, StringComparison.Ordinal);
     }
 
@@ -418,6 +439,13 @@ public sealed class MarkdownHostContractTests
             "Controls",
             "Common",
             "MarkdownViewer.xaml.cs"));
+        string configurator = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Services",
+            "Markdown",
+            "Hosting",
+            "MarkdownRendererConfigurator.cs"));
         string shell = File.ReadAllText(Path.Combine(
             root,
             "JitHub.WinUI",
@@ -444,12 +472,13 @@ public sealed class MarkdownHostContractTests
         Assert.Contains(".UseMermaid()", runtime, StringComparison.Ordinal);
         Assert.Contains("new CommonTextMateGrammarProvider()", runtime, StringComparison.Ordinal);
         Assert.Contains("ownsProvider: true", runtime, StringComparison.Ordinal);
-        Assert.Contains("JitHubMarkdownRuntime.CodeHighlighter", viewer, StringComparison.Ordinal);
-        Assert.Contains("JitHubMarkdownRuntime.SvgRenderer", viewer, StringComparison.Ordinal);
-        Assert.Contains("_renderer.RasterDecoder = JitHubMarkdownRuntime.RasterDecoder;", viewer, StringComparison.Ordinal);
+        Assert.Contains("JitHubMarkdownRuntime.CodeHighlighter", configurator, StringComparison.Ordinal);
+        Assert.Contains("JitHubMarkdownRuntime.SvgRenderer", configurator, StringComparison.Ordinal);
+        Assert.Contains("renderer.RasterDecoder = JitHubMarkdownRuntime.RasterDecoder;", configurator, StringComparison.Ordinal);
         Assert.Contains("internal static IMarkdownRasterDecoder RasterDecoder", runtime, StringComparison.Ordinal);
-        Assert.Contains("_renderer.ImageResolver = _imageResolver", viewer, StringComparison.Ordinal);
-        Assert.Contains("_renderer.AllowThirdPartyRemoteImages = ShouldAllowThirdPartyRemoteImages()", viewer, StringComparison.Ordinal);
+        Assert.Contains("renderer.ImageResolver = settings.ImageResolver", configurator, StringComparison.Ordinal);
+        Assert.Contains("_imageResolver,", viewer, StringComparison.Ordinal);
+        Assert.Contains("renderer.AllowThirdPartyRemoteImages = settings.AllowThirdPartyRemoteImages", configurator, StringComparison.Ordinal);
         Assert.Contains("new ResvgMarkdownSvgRenderer()", runtime, StringComparison.Ordinal);
         Assert.Contains("DeferredFrameAction.Schedule", shell, StringComparison.Ordinal);
         Assert.Contains("WarmUpSvgRendererAsync", shell, StringComparison.Ordinal);
@@ -771,12 +800,18 @@ public sealed class MarkdownHostContractTests
         Assert.Contains("new PropertyMetadata(false, OnViewportOwnershipChanged)", source, StringComparison.Ordinal);
         Assert.Contains("ResetOwnedViewportForNewDocument();", source, StringComparison.Ordinal);
         Assert.Contains("oldSource?.DocumentId, newSource?.DocumentId", source, StringComparison.Ordinal);
-        Assert.Contains("if (!OwnsScrollViewport || _renderer is null)", source, StringComparison.Ordinal);
-        Assert.Contains("viewport.ChangeView(null, 0, null, disableAnimation: true)", source, StringComparison.Ordinal);
+        Assert.Contains("if (!OwnsScrollViewport || _rendererSlot.Current is null)", source, StringComparison.Ordinal);
+        Assert.Contains("MarkdownRendererViewport.ScrollToTop(_rendererSlot.Current);", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "viewport.ChangeView(null, 0, null, disableAnimation: true)",
+            File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "Services", "Markdown", "Hosting", "MarkdownRendererViewport.cs")),
+            StringComparison.Ordinal);
         Assert.DoesNotContain(viewer.Descendants(), element => element.Name.LocalName == "ScrollViewer");
         Assert.DoesNotContain("DesiredSize", source, StringComparison.Ordinal);
-        Assert.Contains("RendererHost.Width = double.NaN", source, StringComparison.Ordinal);
-        Assert.Contains("RendererHost.HorizontalAlignment = HorizontalAlignment.Stretch", source, StringComparison.Ordinal);
+        // The reading-region sizing rules are covered by MarkdownReadingRegionLayoutTests.
+        Assert.Contains("MarkdownReadingRegionLayout.Compute(", source, StringComparison.Ordinal);
+        Assert.Contains("RendererHost.Width = region.Width", source, StringComparison.Ordinal);
+        Assert.Contains("RendererHost.HorizontalAlignment = region.HorizontalAlignment", source, StringComparison.Ordinal);
 
         string renderer = File.ReadAllText(Path.Combine(
             root,

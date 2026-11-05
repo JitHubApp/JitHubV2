@@ -164,7 +164,7 @@ public sealed class VNextLocalizationContractTests
         string contributionGraph = File.ReadAllText(Path.Combine(
             root, "JitHub.WinUI", "Views", "Controls", "Profile", "ProfileContributionGraph.xaml.cs"));
         string markdown = File.ReadAllText(Path.Combine(
-            root, "JitHub.WinUI", "Views", "Controls", "Common", "MarkdownViewer.xaml.cs"));
+            root, "JitHub.WinUI", "Services", "Markdown", "MarkdownViewerFeedback.cs"));
 
         Assert.Contains("ShellText($\"Command.", shell, StringComparison.Ordinal);
         Assert.Contains("ShellFormat(\"RepositoryStatus.", shell, StringComparison.Ordinal);
