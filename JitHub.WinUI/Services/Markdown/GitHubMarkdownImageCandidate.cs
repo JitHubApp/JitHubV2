@@ -7,6 +7,7 @@ namespace JitHub.Services.Markdown;
 /// <summary>
 /// One selected GitHub image result together with the owner for its borrowed source bytes.
 /// Candidates are disposed when abandoned and detached only when transferred to the renderer.
+/// <c>partial</c> only so CsWinRT can generate its ABI projection of IDisposable.
 /// </summary>
 internal sealed partial class GitHubMarkdownImageCandidate : IDisposable
 {

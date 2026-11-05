@@ -190,23 +190,3 @@ public static class MarkdownLinkNavigationPolicy
             .Split('/', StringSplitOptions.RemoveEmptyEntries)
             .Select(Uri.EscapeDataString));
 }
-
-public enum MarkdownGitHubRouteKind
-{
-    NotInternal,
-    User,
-    Repository,
-    Issue,
-    PullRequest,
-    ExternalGitHub,
-}
-
-public readonly record struct MarkdownGitHubRoute(
-    MarkdownGitHubRouteKind Kind,
-    string? Owner,
-    string? Repository,
-    int? Number = null)
-{
-    public static MarkdownGitHubRoute NotInternal =>
-        new(MarkdownGitHubRouteKind.NotInternal, null, null);
-}

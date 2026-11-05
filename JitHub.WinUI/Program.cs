@@ -35,9 +35,6 @@ internal static class Program
             CurrentLaunchOptions = LaunchOptions.Parse(args, GetLaunchArgumentText(activationArguments));
             JitHub.Services.RepositoryActionAutomationScenario.ConfigureWebsiteShowcase(
                 CurrentLaunchOptions.WebsiteShowcase);
-            MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(
-                CurrentLaunchOptions.MarkdownLifecycleFixture,
-                CurrentLaunchOptions.MarkdownLifecycleHost);
             ConfigureAutomationLanguageOverride();
             LogStartupPhase("main.launch-options-ready");
 

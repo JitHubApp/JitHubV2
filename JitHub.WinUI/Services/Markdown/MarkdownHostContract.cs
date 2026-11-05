@@ -3,15 +3,6 @@ using System.Text;
 
 namespace JitHub.Services.Markdown;
 
-public enum MarkdownHostKind
-{
-    Conversation,
-    Comment,
-    RepositoryReadme,
-    ProfileReadme,
-    EditorPreview,
-}
-
 public static class MarkdownHostContract
 {
     public const string Conversation = nameof(MarkdownHostKind.Conversation);

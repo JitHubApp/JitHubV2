@@ -27,6 +27,18 @@ using Windows.System;
 
 namespace JitHub.WinUI.Views.Controls.Common;
 
+/// <summary>
+/// JitHub's one Markdown host control. It owns a renderer slot and forwards the
+/// renderer's events to the feedback, link and layout owners.
+/// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because a WinUI control's fifteen dependency
+/// properties, their CLR wrappers and its explicit implementations of five host
+/// interfaces must be declared on the control itself. The behavior behind them
+/// already lives in <see cref="MarkdownViewerFeedback"/>, <see cref="MarkdownLinkActivator"/>,
+/// <see cref="MarkdownRendererSlot{TRenderer}"/>, <see cref="MarkdownRendererAttachment{TRenderer}"/>
+/// and <see cref="MarkdownRendererInitialLayoutGate"/>.
+/// </remarks>
 [WinRT.GeneratedBindableCustomProperty]
 public sealed partial class MarkdownViewer :
     UserControl,
@@ -36,7 +48,8 @@ public sealed partial class MarkdownViewer :
     IMarkdownViewerNoticePresenter,
     IMarkdownRendererLayoutGateHost
 {
-    private static MarkdownEngine SharedGitHubEngine => JitHubMarkdownRuntime.Engine;
+    private readonly JitHubMarkdownRuntime _runtime;
+    private readonly RuntimeEventSubscription _runtimeEvents;
     private readonly MarkdownTheme _theme = new();
     private readonly IMarkdownImageResolver _imageResolver;
     private readonly IMarkdownHostObserver _hostObserver;
@@ -249,7 +262,10 @@ public sealed partial class MarkdownViewer :
     public MarkdownViewer()
     {
         InitializeComponent();
-        MarkdownRendererLifetimeRegistry renderers = ((global::JitHub.WinUI.App)Application.Current).MarkdownRenderers;
+        global::JitHub.WinUI.App app = (global::JitHub.WinUI.App)Application.Current;
+        _runtime = app.MarkdownRuntime;
+        _runtimeEvents = app.MarkdownRuntimeEvents;
+        MarkdownRendererLifetimeRegistry renderers = app.MarkdownRenderers;
         _shutdownRequested = renderers.Register(this);
         _rendererSlot = new MarkdownRendererSlot<MarkdownRendererControl>(
             renderers,
@@ -320,18 +336,9 @@ public sealed partial class MarkdownViewer :
         _rendererSlot.Retire();
     }
 
-    private static IMarkdownImageResolver ResolveImageResolver()
-    {
-        try
-        {
-            return Ioc.Default.GetService<IGitHubMarkdownImageResolverProvider>()?.CreateMarkdownImageResolver()
-                ?? DenyAllMarkdownImageResolver.Instance;
-        }
-        catch
-        {
-            return DenyAllMarkdownImageResolver.Instance;
-        }
-    }
+    private static IMarkdownImageResolver ResolveImageResolver() =>
+        DenyAllMarkdownImageResolver.CreateOrDenyAll(static () =>
+            Ioc.Default.GetService<IGitHubMarkdownImageResolverProvider>()?.CreateMarkdownImageResolver());
 
     private static void OnViewportOwnershipChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
@@ -419,7 +426,7 @@ public sealed partial class MarkdownViewer :
     {
         if (!_paletteSubscribed)
         {
-            _paletteSubscribed = RuntimeEventSubscription.TrySubscribe(
+            _paletteSubscribed = _runtimeEvents.TrySubscribe(
                 () => ThemePaletteRuntime.PaletteChanged += ThemePaletteRuntime_PaletteChanged,
                 nameof(ThemePaletteRuntime.PaletteChanged));
         }
@@ -428,8 +435,8 @@ public sealed partial class MarkdownViewer :
 
     private void UnsubscribeRuntimeSettings()
     {
-        RuntimeEventSubscription.TryUnsubscribe(
-            () => ThemePaletteRuntime.PaletteChanged -= ThemePaletteRuntime_PaletteChanged,
+        _runtimeEvents.TryUnsubscribe(
+            () => ThemePaletteRuntime.PaletteChanged -=ThemePaletteRuntime_PaletteChanged,
             _paletteSubscribed,
             nameof(ThemePaletteRuntime.PaletteChanged));
 
@@ -538,17 +545,17 @@ public sealed partial class MarkdownViewer :
     {
         if (OwnsScrollViewport)
         {
-            return new MarkdownScrollView().UseGitHubReadme(SharedGitHubEngine);
+            return new MarkdownScrollView().UseGitHubReadme(_runtime.Engine);
         }
 
-        return new MarkdownDocumentView().UseGitHubReadme(SharedGitHubEngine);
+        return new MarkdownDocumentView().UseGitHubReadme(_runtime.Engine);
     }
 
     void IMarkdownRendererAttachmentHost<MarkdownRendererControl>.ConfigureNewRenderer(MarkdownRendererControl renderer)
     {
         MarkdownRendererConfigurator.ApplyDocumentStyle(renderer, _theme);
         ApplyRendererResources();
-        MarkdownRendererConfigurator.ApplyInitialSettings(renderer, CreateRendererSettings());
+        MarkdownRendererConfigurator.ApplyInitialSettings(renderer, CreateRendererSettings(), _runtime);
         renderer.LinkClick += OnRendererLinkClick;
         renderer.DisclosureToggled += OnRendererDisclosureToggled;
         renderer.CopyCompleted += OnRendererCopyCompleted;
@@ -672,17 +679,25 @@ public sealed partial class MarkdownViewer :
         RendererHost.HorizontalAlignment = region.HorizontalAlignment;
     }
 
+    /// <summary>
+    /// Returns the document this viewer shows: the atomic payload when a host set
+    /// one, otherwise the bound dependency properties. Rendering and link activation
+    /// both read it, so a link always resolves against the rendered document's context.
+    /// </summary>
+    private MarkdownViewerDocumentPayload CurrentDocument() =>
+        _documentPayload ?? new MarkdownViewerDocumentPayload(Text ?? string.Empty, BaseUrl, DocumentPath, DocumentSource);
+
     private MarkdownRendererSettings CreateRendererSettings()
     {
-        MarkdownViewerDocumentPayload? documentPayload = _documentPayload;
+        MarkdownViewerDocumentPayload document = CurrentDocument();
         return new MarkdownRendererSettings(
             IsSelectionEnabled,
             IsCodeBlockCopyEnabled,
             IsSyntaxHighlightingEnabled,
             _imageResolver,
-            MarkdownRendererConfigurator.ResolveImageBaseUri(documentPayload is null ? BaseUrl : documentPayload.BaseUrl),
-            documentPayload is null ? DocumentPath : documentPayload.DocumentPath,
-            documentPayload is null ? DocumentSource : documentPayload.DocumentSource,
+            MarkdownRendererConfigurator.ResolveImageBaseUri(document.BaseUrl),
+            document.DocumentPath,
+            document.DocumentSource,
             _feedback.AllowsThirdPartyRemoteImages);
     }
     private void ApplyRendererSettings()
@@ -705,15 +720,14 @@ public sealed partial class MarkdownViewer :
             return;
         }
 
-        MarkdownViewerDocumentPayload? documentPayload = _documentPayload;
-        string markdown = GetEffectiveMarkdown(documentPayload is null ? Text : documentPayload.Markdown);
+        string markdown = GetEffectiveMarkdown(CurrentDocument().Markdown);
         bool markdownChanged = !string.Equals(renderer.Markdown, markdown, StringComparison.Ordinal);
         if (markdownChanged)
         {
             _feedback.OnMarkdownChanged();
         }
 
-        MarkdownRendererConfigurator.ApplySettings(renderer, CreateRendererSettings(), markdown);
+        MarkdownRendererConfigurator.ApplySettings(renderer, CreateRendererSettings(), markdown, _runtime);
         AutomationProperties.SetName(renderer, MarkdownHostContract.GetAutomationName(HostKind));
         AutomationProperties.SetAutomationId(
             renderer,
@@ -746,26 +760,17 @@ public sealed partial class MarkdownViewer :
 
     private void LoadRemoteImagesButton_Click(object sender, RoutedEventArgs e) =>
         _feedback.GrantRemoteImages();
-    private Uri GetEffectiveBaseUri()
+    private void OnRendererLinkClick(object? sender, MarkdownLinkClickEventArgs e)
     {
-        MarkdownViewerDocumentPayload? documentPayload = _documentPayload;
-        return MarkdownRendererConfigurator.ResolveImageBaseUri(documentPayload is null ? BaseUrl : documentPayload.BaseUrl);
-    }
-
-    private MarkdownDocumentSource? GetEffectiveDocumentSource()
-    {
-        MarkdownViewerDocumentPayload? documentPayload = _documentPayload;
-        return documentPayload is null ? DocumentSource : documentPayload.DocumentSource;
-    }
-
-    private void OnRendererLinkClick(object? sender, MarkdownLinkClickEventArgs e) =>
+        MarkdownViewerDocumentPayload document = CurrentDocument();
         UiTaskGuard.Run(
             () => _links.ActivateAsync(
                 e.Url,
-                GetEffectiveBaseUri(),
-                GetEffectiveDocumentSource(),
+                MarkdownRendererConfigurator.ResolveImageBaseUri(document.BaseUrl),
+                document.DocumentSource,
                 MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId)),
             "ui-markdown-viewer");
+    }
     private void ApplyRendererResources()
     {
         if (_rendererSlot.Current is null)

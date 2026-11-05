@@ -6,6 +6,11 @@ using System.Text.RegularExpressions;
 
 namespace JitHub.Services.Markdown;
 
+/// <summary>
+/// Reads GitHub's rendered README HTML for Camo-proxied images and decodes their
+/// canonical HTTPS origins.
+/// </summary>
+/// <remarks><c>partial</c> only for its generated regular expressions.</remarks>
 internal static partial class GitHubCamoImageMapParser
 {
     private const int MaximumEncodedOriginLength = 32 * 1024;

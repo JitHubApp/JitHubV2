@@ -790,7 +790,7 @@ public sealed partial class MainWindow : Window
             {
                 try
                 {
-                    await JitHubMarkdownRuntime.ShutdownAsync();
+                    await ((App)Application.Current).MarkdownRuntime.ShutdownAsync();
                 }
                 catch (Exception exception)
                 {
@@ -992,7 +992,7 @@ public sealed partial class MainWindow : Window
         if (message == WmFontChange)
         {
             UiTaskGuard.Observe(
-                JitHubMarkdownRuntime.NotifyFontsChangedAsync(),
+                ((App)Application.Current).MarkdownRuntime.NotifyFontsChangedAsync(),
                 "ui-markdown-svg-font-change");
         }
 

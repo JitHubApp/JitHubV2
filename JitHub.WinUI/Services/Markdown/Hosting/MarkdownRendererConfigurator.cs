@@ -18,8 +18,8 @@ internal static class MarkdownRendererConfigurator
 {
     private static readonly Uri DefaultBaseUri = new("https://github.com/", UriKind.Absolute);
 
-    private static MarkdownPerformanceSession SharedPerformanceSession =>
-        JitHubMarkdownRuntime.GetPerformanceSession(
+    private static MarkdownPerformanceSession GetSharedPerformanceSession(JitHubMarkdownRuntime runtime) =>
+        runtime.GetPerformanceSession(
             Ioc.Default.GetService<IAccountService>()?.GetUser() ?? 0);
 
     /// <summary>Resolves a document's base URL, defaulting to github.com.</summary>
@@ -57,16 +57,20 @@ internal static class MarkdownRendererConfigurator
     /// <summary>Applies the host settings to a renderer that has not received Markdown yet.</summary>
     /// <param name="renderer">The new renderer.</param>
     /// <param name="settings">The host settings.</param>
-    public static void ApplyInitialSettings(MarkdownRendererControl renderer, MarkdownRendererSettings settings)
+    /// <param name="runtime">The app's shared Markdown providers.</param>
+    public static void ApplyInitialSettings(
+        MarkdownRendererControl renderer,
+        MarkdownRendererSettings settings,
+        JitHubMarkdownRuntime runtime)
     {
         renderer.IsSelectionEnabled = settings.IsSelectionEnabled;
         renderer.CodeBlockChromeMode = CodeBlockChromeMode.Enhanced;
         renderer.CodeBlockLineNumberMode = CodeBlockLineNumberMode.AutoMultiline;
         renderer.IsCodeBlockCopyEnabled = settings.IsCodeBlockCopyEnabled;
         renderer.ImageResolver = settings.ImageResolver;
-        renderer.SvgRenderer = JitHubMarkdownRuntime.SvgRenderer;
-        renderer.RasterDecoder = JitHubMarkdownRuntime.RasterDecoder;
-        renderer.PerformanceSession = SharedPerformanceSession;
+        renderer.SvgRenderer = runtime.SvgRenderer;
+        renderer.RasterDecoder = runtime.RasterDecoder;
+        renderer.PerformanceSession = GetSharedPerformanceSession(runtime);
         renderer.ImageBaseUri = settings.ImageBaseUri;
         renderer.ImageDocumentPath = settings.DocumentPath;
         renderer.ImageDocumentSource = settings.DocumentSource;
@@ -80,10 +84,12 @@ internal static class MarkdownRendererConfigurator
     /// <param name="renderer">A loaded renderer that has completed its first layout.</param>
     /// <param name="settings">The host settings.</param>
     /// <param name="markdown">The Markdown to render.</param>
+    /// <param name="runtime">The app's shared Markdown providers.</param>
     public static void ApplySettings(
         MarkdownRendererControl renderer,
         MarkdownRendererSettings settings,
-        string markdown)
+        string markdown,
+        JitHubMarkdownRuntime runtime)
     {
         // Apply every renderer setting before assigning Markdown. Several of
         // these properties request a rebuild and advance the pipeline
@@ -105,7 +111,7 @@ internal static class MarkdownRendererConfigurator
         if (!ReferenceEquals(renderer.CodeBlockCopyButtonStyle, copyButtonStyle))
             renderer.CodeBlockCopyButtonStyle = copyButtonStyle;
         var codeHighlighter = settings.IsSyntaxHighlightingEnabled
-            ? JitHubMarkdownRuntime.CodeHighlighter
+            ? runtime.CodeHighlighter
             : null;
         if (!ReferenceEquals(renderer.CodeHighlighter, codeHighlighter))
             renderer.CodeHighlighter = codeHighlighter;
@@ -114,10 +120,10 @@ internal static class MarkdownRendererConfigurator
 
         if (!ReferenceEquals(renderer.ImageResolver, settings.ImageResolver))
             renderer.ImageResolver = settings.ImageResolver;
-        IMarkdownSvgRenderer svgRenderer = JitHubMarkdownRuntime.SvgRenderer;
+        IMarkdownSvgRenderer svgRenderer = runtime.SvgRenderer;
         if (!ReferenceEquals(renderer.SvgRenderer, svgRenderer))
             renderer.SvgRenderer = svgRenderer;
-        MarkdownPerformanceSession performanceSession = SharedPerformanceSession;
+        MarkdownPerformanceSession performanceSession = GetSharedPerformanceSession(runtime);
         if (!ReferenceEquals(renderer.PerformanceSession, performanceSession))
             renderer.PerformanceSession = performanceSession;
         if (!Equals(renderer.ImageBaseUri, settings.ImageBaseUri))

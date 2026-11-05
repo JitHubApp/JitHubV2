@@ -173,14 +173,10 @@ public sealed class PullRequestMarkdownFormIdentityContractTests
     }
 
     [Fact]
-    public void MarkdownFormRescopesEveryInteractivePeerAndHasUniqueNullFallback()
+    public void ReviewCommentBlockResetsItsReplyFormIdentityOnRecycle()
     {
-        string source = File.ReadAllText(ReadPath(
-            "JitHub.WinUI",
-            "Views",
-            "Controls",
-            "Common",
-            "MarkdownForm.xaml.cs"));
+        // MarkdownForm's own peer rescoping and unique anonymous fallback are covered
+        // behaviorally by MarkdownFormAutomationIdentityTests.
         string reviewBlock = File.ReadAllText(ReadPath(
             "JitHub.WinUI",
             "Views",
@@ -188,14 +184,6 @@ public sealed class PullRequestMarkdownFormIdentityContractTests
             "PullRequest",
             "Conversation",
             "ReviewCommentBlock.xaml.cs"));
-
-        Assert.Contains("Interlocked.Increment(ref _nextFallbackAutomationIdentity)", source, StringComparison.Ordinal);
-        Assert.Contains("OnAutomationInstanceIdChanged", source, StringComparison.Ordinal);
-        Assert.Contains("form.ApplyAutomationIdentity();", source, StringComparison.Ordinal);
-        foreach (string suffix in new[] { "_Mode", "_Mode_Write", "_Mode_Preview", "_Editor", "_Preview" })
-        {
-            Assert.Contains($"{{prefix}}{suffix}", source, StringComparison.Ordinal);
-        }
 
         Assert.Contains("oldViewModel.ReplyBoxRequested -= self.OnReplyBoxRequested", reviewBlock, StringComparison.Ordinal);
         Assert.Contains("viewModel.ReplyBoxRequested += self.OnReplyBoxRequested", reviewBlock, StringComparison.Ordinal);

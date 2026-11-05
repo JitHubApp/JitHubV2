@@ -121,7 +121,7 @@ public sealed class MainWindowLaunchContractTests
             StringComparison.Ordinal);
         int drainCall = closeFlow.IndexOf("await UnloadPageContentBeforeMarkdownShutdownAsync()", StringComparison.Ordinal);
         int providerRetirement = closeFlow.IndexOf(
-            "await JitHubMarkdownRuntime.ShutdownAsync()",
+            ".MarkdownRuntime.ShutdownAsync()",
             StringComparison.Ordinal);
         Assert.True(forcedDisposal > rendererWait);
         Assert.True(drainCall >= 0 && providerRetirement > drainCall);

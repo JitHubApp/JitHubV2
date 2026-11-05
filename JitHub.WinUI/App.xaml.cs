@@ -53,6 +53,7 @@ public partial class App : Application
         AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
         AppDomain.CurrentDomain.ProcessExit += CurrentDomain_ProcessExit;
         TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
+        AuthService.AuthenticationCleared += MarkdownRuntime.ResetPerformanceSession;
         InitializeComponent();
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
         ThemeService initialThemeService = new(new SettingService());
@@ -168,14 +169,14 @@ public partial class App : Application
         Program.LogStartupPhase("activation.core.navigation-targets-ready");
         mainWindow.ProcessActivation();
         Program.LogStartupPhase("activation.core.window-activated");
-        MarkdownLifecycleAutomationBridge.SignalAppReady();
-        if (MarkdownLifecycleAutomationBridge.IsResourceMapForcedAbsent)
+        MarkdownAutomation.SignalAppReady();
+        if (MarkdownAutomation.IsResourceMapForcedAbsent)
         {
             const string fallback = "Resource map fallback active";
             string value = LocalizedResourceText.GetString("Automation.ResourceMapAbsentProbe", fallback);
             if (string.Equals(value, fallback, StringComparison.Ordinal))
             {
-                MarkdownLifecycleAutomationBridge.SignalResourceMapFallback(value);
+                MarkdownAutomation.SignalResourceMapFallback(value);
             }
         }
 
@@ -292,23 +293,27 @@ public partial class App : Application
         return serviceProvider;
     }
 
-    private static void RegisterMarkdownHostBoundaries(ServiceCollection services)
+    private void RegisterMarkdownHostBoundaries(ServiceCollection services)
     {
         services.AddSingleton<IMarkdownRouteNavigator>(static provider => new ShellMarkdownRouteNavigator(provider));
-        if (MarkdownLifecycleAutomationBridge.IsEnabled)
+        MarkdownLifecycleAutomationBridge automation = MarkdownAutomation;
+        if (automation.IsEnabled)
         {
+            RuntimeEventSubscription runtimeEvents = MarkdownRuntimeEvents;
             // Lifecycle automation reads host evidence out of process.
-            services.AddSingleton<IMarkdownHostObserver, MarkdownLifecycleHostObserver>();
+            services.AddSingleton<IMarkdownHostObserver>(new MarkdownLifecycleHostObserver(automation));
             // Fixture inputs are fixed for the process once launch options are parsed.
-            services.AddSingleton<IMarkdownViewerAutomationHooks>(static _ => new MarkdownLifecycleViewerHooks(
+            services.AddSingleton<IMarkdownViewerAutomationHooks>(_ => new MarkdownLifecycleViewerHooks(
                 new MarkdownLifecycleFixtureDocument(
-                    MarkdownLifecycleAutomationBridge.TargetHost,
+                    automation.TargetHost,
                     Program.CurrentLaunchOptions.MarkdownCorpusPath ??
                         Environment.GetEnvironmentVariable("JITHUB_MARKDOWN_CORPUS_PATH"),
                     string.Equals(
                         Environment.GetEnvironmentVariable("JITHUB_MARKDOWN_SECURITY_LIVE_FIXTURE"),
                         "1",
-                        StringComparison.Ordinal))));
+                        StringComparison.Ordinal)),
+                automation,
+                runtimeEvents));
             return;
         }
 
@@ -691,6 +696,22 @@ public partial class App : Application
     /// </summary>
     internal MarkdownRendererLifetimeRegistry MarkdownRenderers { get; } = new();
 
+    /// <summary>
+    /// Gets the Markdown engine, syntax highlighter, SVG worker and preparation
+    /// session shared by every Markdown surface. Like <see cref="MarkdownRenderers"/>
+    /// it outlives the service provider; the window close path shuts it down after
+    /// every renderer has drained.
+    /// </summary>
+    internal JitHubMarkdownRuntime MarkdownRuntime { get; } = new();
+
+    /// <summary>Gets the lifecycle automation bridge configured from this process's launch options.</summary>
+    internal MarkdownLifecycleAutomationBridge MarkdownAutomation { get; } = new(
+        Program.CurrentLaunchOptions.MarkdownLifecycleFixture,
+        Program.CurrentLaunchOptions.MarkdownLifecycleHost);
+
+    /// <summary>Gets the best-effort Windows runtime event helper shared by Markdown hosts.</summary>
+    internal RuntimeEventSubscription MarkdownRuntimeEvents { get; } = new();
+
     private static string FormatActivationError(Exception ex)
     {
         return UserFacingError.For(ex, UserFacingErrorKind.Activation, "activation");
@@ -802,7 +823,7 @@ public partial class App : Application
             LogUnhandledException(exception, "diagnostics-shutdown");
         }
 
-        JitHubMarkdownRuntime.ShutdownForProcessExit();
+        MarkdownRuntime.ShutdownForProcessExit();
         MarkdownRenderer.MarkdownRendererRuntime.Shutdown(TimeSpan.FromSeconds(1));
     }
 

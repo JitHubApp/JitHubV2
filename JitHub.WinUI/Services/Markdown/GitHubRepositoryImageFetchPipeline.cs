@@ -8,27 +8,6 @@ using MarkdownRenderer.Images;
 
 namespace JitHub.Services.Markdown;
 
-internal enum GitHubRawImageFetchOutcomeKind
-{
-    Success,
-    NullResult,
-    HttpStatus,
-    InvalidPayload,
-    CallerCanceled,
-    SourceDeferred,
-    TransportFailure,
-    OtherFailure,
-}
-
-/// <summary>
-/// Fixed, privacy-safe outcome for one raw GitHub image-service operation,
-/// which may be fulfilled from cache or include internal transport retries. It intentionally
-/// carries no URL, exception message, response body, or credential data.
-/// </summary>
-internal readonly record struct GitHubRawImageFetchOutcome(
-    GitHubRawImageFetchOutcomeKind Kind,
-    int? HttpStatusCode = null);
-
 /// <summary>
 /// Tries GitHub's credential-free raw CDN before a repository image consumes
 /// an authenticated Contents API request. A miss remains eligible for the
@@ -50,72 +29,15 @@ internal static class GitHubRepositoryImageFetchPipeline
         ArgumentNullException.ThrowIfNull(admission);
         ValidateRawUri(rawUri);
 
-        try
-        {
-            GitHubImageSourceLease? result = await imageService.GetLeasedAsync(
+        return await FetchAsync(
+            () => imageService.GetLeasedAsync(
                 rawUri.AbsoluteUri,
                 GitHubImageFetchScope.TrustedGitHub,
                 admission,
-                cancellationToken).ConfigureAwait(false);
-            ObserveOutcome(
-                observeOutcome,
-                new GitHubRawImageFetchOutcome(
-                    result is null
-                        ? GitHubRawImageFetchOutcomeKind.NullResult
-                        : GitHubRawImageFetchOutcomeKind.Success));
-            return result;
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            ObserveOutcome(
-                observeOutcome,
-                new GitHubRawImageFetchOutcome(GitHubRawImageFetchOutcomeKind.CallerCanceled));
-            throw;
-        }
-        catch (HttpRequestException exception)
-        {
-            ObserveOutcome(observeOutcome, CreateHttpOutcome(exception));
-            if (IsExpectedRawMiss(exception.StatusCode))
-            {
-                // Private assets and missing public objects are expected misses.
-                return null;
-            }
-
-            reportUnexpectedFailure(exception);
-            return null;
-        }
-        catch (InvalidDataException)
-        {
-            // The raw endpoint can return an LFS pointer, not image bytes.
-            ObserveOutcome(
-                observeOutcome,
-                new GitHubRawImageFetchOutcome(GitHubRawImageFetchOutcomeKind.InvalidPayload));
-            return null;
-        }
-        catch (MarkdownImageSourceDeferredException)
-        {
-            ObserveOutcome(
-                observeOutcome,
-                new GitHubRawImageFetchOutcome(GitHubRawImageFetchOutcomeKind.SourceDeferred));
-            throw;
-        }
-        catch (OperationCanceledException exception)
-        {
-            // A non-caller cancellation from HttpClient is usually its request timeout.
-            ObserveOutcome(
-                observeOutcome,
-                new GitHubRawImageFetchOutcome(GitHubRawImageFetchOutcomeKind.TransportFailure));
-            reportUnexpectedFailure(exception);
-            return null;
-        }
-        catch (Exception exception)
-        {
-            ObserveOutcome(
-                observeOutcome,
-                new GitHubRawImageFetchOutcome(GitHubRawImageFetchOutcomeKind.OtherFailure));
-            reportUnexpectedFailure(exception);
-            return null;
-        }
+                cancellationToken),
+            reportUnexpectedFailure,
+            observeOutcome,
+            cancellationToken).ConfigureAwait(false);
     }
 
     internal static Task<GitHubCachedImage?> TryGetRawAsync(
@@ -140,18 +62,37 @@ internal static class GitHubRepositoryImageFetchPipeline
         ArgumentNullException.ThrowIfNull(reportUnexpectedFailure);
         ValidateRawUri(rawUri);
 
-        try
-        {
-            GitHubCachedImage? result = admission is null
-                ? await imageService.GetAsync(
+        return await FetchAsync(
+            () => admission is null
+                ? imageService.GetAsync(
                     rawUri.AbsoluteUri,
                     GitHubImageFetchScope.TrustedGitHub,
-                    cancellationToken).ConfigureAwait(false)
-                : await imageService.GetAsync(
+                    cancellationToken)
+                : imageService.GetAsync(
                     rawUri.AbsoluteUri,
                     GitHubImageFetchScope.TrustedGitHub,
                     admission,
-                    cancellationToken).ConfigureAwait(false);
+                    cancellationToken),
+            reportUnexpectedFailure,
+            observeOutcome,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Runs one raw CDN fetch and maps its failures: expected misses and bad payloads
+    /// return <see langword="null"/>, caller cancellation and deferral propagate, and
+    /// anything else is reported and returns <see langword="null"/>.
+    /// </summary>
+    private static async Task<TResult?> FetchAsync<TResult>(
+        Func<Task<TResult?>> fetch,
+        Action<Exception> reportUnexpectedFailure,
+        Action<GitHubRawImageFetchOutcome>? observeOutcome,
+        CancellationToken cancellationToken)
+        where TResult : class
+    {
+        try
+        {
+            TResult? result = await fetch().ConfigureAwait(false);
             ObserveOutcome(
                 observeOutcome,
                 new GitHubRawImageFetchOutcome(

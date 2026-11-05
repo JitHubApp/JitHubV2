@@ -86,26 +86,7 @@ internal sealed class MarkdownViewerFeedback
 
         if (_reportedImageUnavailableReasons.Add(reason))
         {
-            _telemetry.TrackMarkdownEvent(
-                "markdown.resource.unavailable",
-                action: null,
-                result: reason switch
-                {
-                    MarkdownImageUnavailableReason.RemoteContentBlocked or
-                    MarkdownImageUnavailableReason.InsecureRemoteContent => TelemetryTaxonomy.Results.Rejected,
-                    MarkdownImageUnavailableReason.Offline or
-                    MarkdownImageUnavailableReason.MeteredConnection => TelemetryTaxonomy.Results.Deferred,
-                    _ => TelemetryTaxonomy.Results.Unavailable,
-                },
-                resource: "remote_image",
-                policy: reason switch
-                {
-                    MarkdownImageUnavailableReason.Offline or
-                    MarkdownImageUnavailableReason.MeteredConnection => "deferred",
-                    MarkdownImageUnavailableReason.RemoteContentBlocked or
-                    MarkdownImageUnavailableReason.InsecureRemoteContent => "suppressed",
-                    _ => null,
-                });
+            TrackImageUnavailable(reason);
         }
 
         if (reason is not (MarkdownImageUnavailableReason.RemoteContentBlocked or
@@ -117,7 +98,47 @@ internal sealed class MarkdownViewerFeedback
         }
 
         bool compactNotice = MarkdownHostContract.Parse(_presenter.HostKind) == MarkdownHostKind.EditorPreview;
-        string message = reason switch
+        string message = GetRemoteImageNoticeMessage(reason);
+        string title = GetRemoteImageNoticeTitle(reason, compactNotice);
+        _presenter.UpdateRemoteImageNotice(
+            title,
+            compactNotice ? string.Empty : message,
+            offerLoadImages: reason is MarkdownImageUnavailableReason.RemoteContentBlocked or
+                MarkdownImageUnavailableReason.MeteredConnection);
+        // The notice overlays the top of the reading region; once the reader
+        // closes it, later images in the same document do not reopen it.
+        if (!_remoteImageNoticeDismissed)
+        {
+            _presenter.OpenRemoteImageNotice();
+        }
+    }
+
+    private void TrackImageUnavailable(MarkdownImageUnavailableReason reason)
+    {
+        _telemetry.TrackMarkdownEvent(
+            "markdown.resource.unavailable",
+            action: null,
+            result: reason switch
+            {
+                MarkdownImageUnavailableReason.RemoteContentBlocked or
+                MarkdownImageUnavailableReason.InsecureRemoteContent => TelemetryTaxonomy.Results.Rejected,
+                MarkdownImageUnavailableReason.Offline or
+                MarkdownImageUnavailableReason.MeteredConnection => TelemetryTaxonomy.Results.Deferred,
+                _ => TelemetryTaxonomy.Results.Unavailable,
+            },
+            resource: "remote_image",
+            policy: reason switch
+            {
+                MarkdownImageUnavailableReason.Offline or
+                MarkdownImageUnavailableReason.MeteredConnection => "deferred",
+                MarkdownImageUnavailableReason.RemoteContentBlocked or
+                MarkdownImageUnavailableReason.InsecureRemoteContent => "suppressed",
+                _ => null,
+            });
+    }
+
+    private static string GetRemoteImageNoticeMessage(MarkdownImageUnavailableReason reason) =>
+        reason switch
         {
             MarkdownImageUnavailableReason.InsecureRemoteContent =>
                 LocalizedResourceText.GetString(
@@ -135,7 +156,9 @@ internal sealed class MarkdownViewerFeedback
                 "Markdown.RemoteImage.PrivacyMessage",
                 "External images can reveal your IP address and request timing to another site."),
         };
-        string title = compactNotice
+
+    private static string GetRemoteImageNoticeTitle(MarkdownImageUnavailableReason reason, bool compactNotice) =>
+        compactNotice
             ? reason switch
             {
                 MarkdownImageUnavailableReason.Offline => LocalizedResourceText.GetString(
@@ -154,18 +177,6 @@ internal sealed class MarkdownViewerFeedback
             : LocalizedResourceText.GetString(
                 "Markdown.RemoteImage.ProtectedTitle",
                 "Remote images are protected");
-        _presenter.UpdateRemoteImageNotice(
-            title,
-            compactNotice ? string.Empty : message,
-            offerLoadImages: reason is MarkdownImageUnavailableReason.RemoteContentBlocked or
-                MarkdownImageUnavailableReason.MeteredConnection);
-        // The notice overlays the top of the reading region; once the reader
-        // closes it, later images in the same document do not reopen it.
-        if (!_remoteImageNoticeDismissed)
-        {
-            _presenter.OpenRemoteImageNotice();
-        }
-    }
 
     /// <summary>Called when the remote-image notice closed.</summary>
     /// <param name="closedByReader">Whether the reader closed it with its close button.</param>

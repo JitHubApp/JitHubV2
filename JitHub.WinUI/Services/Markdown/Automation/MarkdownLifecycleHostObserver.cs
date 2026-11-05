@@ -10,15 +10,23 @@ namespace JitHub.Services.Markdown.Automation;
 /// </summary>
 internal sealed class MarkdownLifecycleHostObserver : IMarkdownHostObserver
 {
+    private readonly MarkdownLifecycleAutomationBridge _bridge;
+
+    /// <param name="bridge">The app's lifecycle automation bridge.</param>
+    public MarkdownLifecycleHostObserver(MarkdownLifecycleAutomationBridge bridge)
+    {
+        _bridge = bridge ?? throw new ArgumentNullException(nameof(bridge));
+    }
+
     public void OnHostReady(string automationId) =>
-        MarkdownLifecycleAutomationBridge.SignalHostReady(automationId);
+        _bridge.SignalHostReady(automationId);
 
     public void OnImageUnavailable(string automationId, string source, MarkdownImageUnavailableReason reason) =>
-        MarkdownLifecycleAutomationBridge.RecordImageUnavailable(automationId, source, reason);
+        _bridge.RecordImageUnavailable(automationId, source, reason);
 
     public void OnRenderFailed(string automationId, Exception exception) =>
-        MarkdownLifecycleAutomationBridge.RecordRenderFailure(automationId, exception);
+        _bridge.RecordRenderFailure(automationId, exception);
 
     public bool TryCaptureLinkRoute(string automationId, Uri uri, string disposition) =>
-        MarkdownLifecycleAutomationBridge.RecordLinkRoute(automationId, uri, disposition);
+        _bridge.RecordLinkRoute(automationId, uri, disposition);
 }

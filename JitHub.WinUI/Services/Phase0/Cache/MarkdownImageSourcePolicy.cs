@@ -2,13 +2,6 @@ using System;
 
 namespace JitHub.Services;
 
-internal enum MarkdownImageSourceDisposition
-{
-    NotHandled,
-    SharedHttps,
-    BlockedInsecureRemote
-}
-
 internal static class MarkdownImageSourcePolicy
 {
     public static MarkdownImageSourceDisposition ClassifyUnownedSource(
