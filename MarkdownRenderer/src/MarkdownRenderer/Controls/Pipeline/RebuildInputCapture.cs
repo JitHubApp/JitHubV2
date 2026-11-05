@@ -20,6 +20,7 @@ internal sealed class RebuildInputCapture
     private readonly DocumentInputs _documentInputs;
     private readonly RendererLocalization _localization;
     private readonly EnvironmentSubscription _environment;
+    private readonly MarkdownExtensionRegistry _fallbackRegistry;
     // The theme used while Theme is null. A MarkdownTheme is a thread-affine
     // DependencyObject, so each control owns one rather than sharing a static.
     private readonly MarkdownTheme _defaultTheme = new();
@@ -30,8 +31,10 @@ internal sealed class RebuildInputCapture
         object imagePreparationOwner,
         DocumentInputs documentInputs,
         RendererLocalization localization,
-        EnvironmentSubscription environment)
+        EnvironmentSubscription environment,
+        MarkdownExtensionRegistry fallbackRegistry)
     {
+        _fallbackRegistry = fallbackRegistry;
         _control = control;
         _published = published;
         _imagePreparationOwner = imagePreparationOwner;
@@ -43,7 +46,7 @@ internal sealed class RebuildInputCapture
     internal RebuildSourceInputs CaptureSource()
     {
         MarkdownExtensionRegistry? extensionRegistry = _control.ExtensionRegistry;
-        MarkdownExtensionRegistry legacyRegistry = extensionRegistry ?? RebuildLayoutSetup.DefaultRegistry;
+        MarkdownExtensionRegistry legacyRegistry = extensionRegistry ?? _fallbackRegistry;
         IMarkdownPerformanceSessionInternal? performanceSession =
             _control.PerformanceSession as IMarkdownPerformanceSessionInternal;
         if (performanceSession?.IsDisposed == true)

@@ -23,8 +23,6 @@ namespace MarkdownRenderer.Controls.Pipeline;
 /// </summary>
 internal sealed class RebuildLayoutSetup
 {
-    private static readonly MarkdownExtensionRegistry s_defaultRegistry = new();
-
     private readonly IRebuildLayoutSetupHost _host;
     private readonly MarkdownRendererDiagnosticOptions _diagnostics;
     private readonly SnapshotRetirementTracker _retirements;
@@ -34,6 +32,7 @@ internal sealed class RebuildLayoutSetup
     private readonly EmbedRealization _embeds;
     private readonly FocusableItemsPublication _focusableItems;
     private readonly object _imagePreparationOwner;
+    private readonly MarkdownExtensionRegistry _fallbackRegistry;
 
     internal RebuildLayoutSetup(
         IRebuildLayoutSetupHost host,
@@ -44,8 +43,10 @@ internal sealed class RebuildLayoutSetup
         ImagePlanSet imagePlans,
         EmbedRealization embeds,
         FocusableItemsPublication focusableItems,
-        object imagePreparationOwner)
+        object imagePreparationOwner,
+        MarkdownExtensionRegistry fallbackRegistry)
     {
+        _fallbackRegistry = fallbackRegistry;
         _host = host;
         _diagnostics = diagnostics;
         _retirements = retirements;
@@ -56,9 +57,6 @@ internal sealed class RebuildLayoutSetup
         _focusableItems = focusableItems;
         _imagePreparationOwner = imagePreparationOwner;
     }
-
-    /// <summary>The fallback presentation registry when neither the document nor the engine carries one.</summary>
-    internal static MarkdownExtensionRegistry DefaultRegistry => s_defaultRegistry;
 
     /// <summary>
     /// Creates the plan for laying out <paramref name="parse"/> at
@@ -82,7 +80,7 @@ internal sealed class RebuildLayoutSetup
         MarkdownExtensionRegistry baseRegistry =
             semanticDocument.PresentationConfiguration as MarkdownExtensionRegistry ??
             source.Engine?.PresentationConfiguration as MarkdownExtensionRegistry ??
-            s_defaultRegistry;
+            _fallbackRegistry;
         MarkdownExtensionRegistry layoutRegistry =
             MarkdownExtensionRegistry.ComposePresentation(baseRegistry, source.ExtensionRegistry);
 

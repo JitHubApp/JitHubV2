@@ -739,7 +739,9 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         // box, or native resource alive while a geometry lease is busy.
         var focusRefresh = new FocusableItemsRefreshRequest(_published);
         var focusableItems = new FocusableItemsPublication(layoutHosts, _lifetime, _published, focusRefresh, focus, recoveryClock);
-        var layoutSetup = new RebuildLayoutSetup(pipelineHosts, diagnostics, _snapshotRetirements, imagePrefetch, completedImageCarry, imagePlans, _embeds, focusableItems, imagePreparationOwnerToken);
+        // Used when neither the control, document nor engine supplies a registry.
+        var fallbackRegistry = new MarkdownExtensionRegistry();
+        var layoutSetup = new RebuildLayoutSetup(pipelineHosts, diagnostics, _snapshotRetirements, imagePrefetch, completedImageCarry, imagePlans, _embeds, focusableItems, imagePreparationOwnerToken, fallbackRegistry);
         var hostedFocus = new HostedElementFocus(focusHosts, _lifetime, _published, focus, hostedFocusPlan, _embeds, focusRing);
         _overflowScroll = new HorizontalOverflowScrollVisuals(focusHosts, _surface, _lifetime, _published, _selection, focus, _embeds, DispatcherQueue);
         var reveal = new FocusedItemReveal(focusHosts, _surface, _lifetime, _published, _viewport, focus, _overflowScroll, DispatcherQueue);
@@ -775,7 +777,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _environment = new EnvironmentSubscription(this, _lifetime, _rebuild);
         var replacementPublisher = new ReplacementPublisher(this, _published, _surface, _rebuild, _touchRestore, _automationDocumentGenerations, _selection, _lazyLayout, _layoutCommit, _scrolling, _painter, _localization, focusRefresh, vectorCapacity, geometryRecovery, imageSubscriptions, imageRelayout, _blockScroll, imagePlans, focus);
         var width = new LayoutWidthWatch(this, _rebuild);
-        var inputCapture = new RebuildInputCapture(this, _published, imagePreparationOwnerToken, _documentInputs, _localization, _environment);
+        var inputCapture = new RebuildInputCapture(this, _published, imagePreparationOwnerToken, _documentInputs, _localization, _environment, fallbackRegistry);
         var replacementPresentation = new ReplacementPresentation(_surface, _snapshotRetirements, _rebuild, _layoutCommit, layoutPublisher, _documentInputs, extent, _scrolling, _hover, _selection, _touchRestore, contextMenu, _dragShield, _adorner, textAdorner, _handles, _embeds, imageSubscriptions, imagePlans, imageResidency, focus, focusRing, focusCommit, _highlighting, _visibleWork, _canvasInvalidation, _automation, _deferredScenes);
         _pipeline = new RebuildPipeline(this, this, _lifetime, _surface, _viewport, _rebuild, inputCapture, layoutSetup, width, imagePrefetch, _automation, replacementPublisher, replacementPresentation);
         _codeBlockClipboard = new CodeBlockClipboard(this, _embeds, events);
