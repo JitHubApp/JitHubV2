@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using MarkdownRenderer.Document;
-using MarkdownRenderer.Utilities;
 
 namespace MarkdownRenderer.Layout.Boxes;
 
@@ -236,13 +236,15 @@ internal struct InlineRunSequence
 
     private void Build(MarkdownLayoutContext context)
     {
-        var sb = StringBuilderPool.Rent();
+        // Size the builder to the runs' known total so the buffer is built in
+        // one character allocation without a per-thread pooled builder.
+        var sb = new StringBuilder(Math.Max(0, _runTextLength));
         foreach (var run in _runs)
         {
             context.CancellationToken.ThrowIfCancellationRequested();
             run.AppendLayoutTextTo(sb);
         }
-        _buffer = StringBuilderPool.ToStringAndReturn(sb);
+        _buffer = sb.ToString();
         _bufferDirty = false;
     }
 
