@@ -12,6 +12,11 @@ namespace MarkdownRenderer.Gfm;
 public static class GfmMarkdownRenderer
 {
     /// <summary>Gets a reusable immutable strict-GFM engine.</summary>
+    /// <remarks>
+    /// Like any engine it is the scope of its caches: every view given this
+    /// engine shares its completed-document cache and layout hints. Disposing it
+    /// has no effect.
+    /// </remarks>
     public static MarkdownEngine SharedEngine { get; } = new MarkdownEngineBuilder()
         .UseGitHubFlavoredMarkdown()
         .BuildShared();
