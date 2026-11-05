@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Markdown;
+using JitHub.Markdown.Images;
 using JitHub.Services;
 using JitHub.Services.Markdown;
 using MarkdownRenderer.Images;

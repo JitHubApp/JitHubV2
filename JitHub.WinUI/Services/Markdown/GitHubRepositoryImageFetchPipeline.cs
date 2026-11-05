@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Markdown.Images;
 using MarkdownRenderer.Images;
 
 namespace JitHub.Services.Markdown;

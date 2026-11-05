@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Markdown;
+using JitHub.Markdown.Images;
 using JitHub.WinUI.Helpers;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Performance;

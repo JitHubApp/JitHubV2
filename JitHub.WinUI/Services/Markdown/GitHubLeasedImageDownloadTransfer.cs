@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using JitHub.Markdown.Images;
 using JitHub.Services;
 
 namespace JitHub.Services.Markdown;

@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Markdown;
+using JitHub.Markdown.Images;
 using MarkdownRenderer.Images;
 using RestGitHubBlob = JitHub.Models.GitHub.GitHubBlob;
 using RestGitHubRepositoryContent = JitHub.Models.GitHub.GitHubRepositoryContent;

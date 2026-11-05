@@ -1,4 +1,5 @@
 using JitHub.Markdown;
+using JitHub.Markdown.Images;
 using JitHub.Services;
 using JitHub.Services.Markdown;
 using MarkdownRenderer.Images;

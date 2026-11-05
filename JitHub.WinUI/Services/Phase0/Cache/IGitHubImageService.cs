@@ -1,45 +1,16 @@
 using System.Threading;
 using System.Threading.Tasks;
-using MarkdownRenderer.Images;
+using JitHub.Markdown.Images;
 
 namespace JitHub.Services;
 
-public interface IGitHubImageService
+/// <summary>
+/// The app's GitHub image service: the Markdown cache operations plus the
+/// unscoped read used by avatars and other app images, and invalidation.
+/// </summary>
+public interface IGitHubImageService : IGitHubMarkdownImageCache
 {
     Task<GitHubCachedImage?> GetAsync(string sourceUrl, CancellationToken cancellationToken = default);
-
-    Task<GitHubCachedImage?> GetAsync(
-        string sourceUrl,
-        GitHubImageFetchScope scope,
-        CancellationToken cancellationToken = default);
-
-    Task<GitHubCachedImage?> GetAsync(
-        string sourceUrl,
-        GitHubImageFetchScope scope,
-        IMarkdownImageSourceByteAdmission admission,
-        CancellationToken cancellationToken = default);
-
-    Task<GitHubCachedImage?> TryGetCachedAsync(
-        string sourceUrl,
-        GitHubImageFetchScope scope,
-        CancellationToken cancellationToken = default);
-
-    Task<GitHubCachedImage?> TryGetCachedAsync(
-        string sourceUrl,
-        GitHubImageFetchScope scope,
-        IMarkdownImageSourceByteAdmission admission,
-        CancellationToken cancellationToken = default);
-
-    Task<GitHubCachedImage?> GetOrFetchAsync(
-        string sourceUrl,
-        GitHubImageFetcher fetcher,
-        CancellationToken cancellationToken = default);
-
-    Task<GitHubCachedImage?> GetOrFetchAsync(
-        string sourceUrl,
-        GitHubImageFetcher fetcher,
-        IMarkdownImageSourceByteAdmission admission,
-        CancellationToken cancellationToken = default);
 
     Task InvalidateAsync(string sourceUrl, CancellationToken cancellationToken = default);
 }

@@ -3,7 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Images;
 
-namespace JitHub.Services;
+namespace JitHub.Markdown.Images;
 
 /// <summary>
 /// A retained handle to image bytes produced by <see cref="IGitHubLeasedImageService"/>.
@@ -18,7 +18,7 @@ namespace JitHub.Services;
 /// Every returned handle must be disposed deterministically. The class is <c>partial</c>
 /// only so CsWinRT can generate its ABI projection of IDisposable.
 /// </remarks>
-internal sealed partial class GitHubImageSourceLease : IDisposable
+public sealed partial class GitHubImageSourceLease : IDisposable
 {
     private readonly object _handleGate = new();
     private SharedOwner? _owner;
@@ -26,7 +26,7 @@ internal sealed partial class GitHubImageSourceLease : IDisposable
     /// <summary>
     /// Takes ownership of the source reservation only if validation and construction succeed.
     /// </summary>
-    internal GitHubImageSourceLease(GitHubCachedImage image, IDisposable sourceReservation)
+    public GitHubImageSourceLease(GitHubCachedImage image, IDisposable sourceReservation)
     {
         ArgumentNullException.ThrowIfNull(image);
         ArgumentNullException.ThrowIfNull(sourceReservation);
@@ -51,7 +51,7 @@ internal sealed partial class GitHubImageSourceLease : IDisposable
 
     /// <summary>Gets image metadata and borrowed bytes while this handle is live.</summary>
     /// <exception cref="ObjectDisposedException">This handle has been disposed.</exception>
-    internal GitHubCachedImage Image
+    public GitHubCachedImage Image
     {
         get
         {
@@ -66,7 +66,7 @@ internal sealed partial class GitHubImageSourceLease : IDisposable
 
     /// <summary>Creates an independently disposable handle to the same borrowed bytes.</summary>
     /// <exception cref="ObjectDisposedException">This handle has been disposed.</exception>
-    internal GitHubImageSourceLease Retain()
+    public GitHubImageSourceLease Retain()
     {
         lock (_handleGate)
         {

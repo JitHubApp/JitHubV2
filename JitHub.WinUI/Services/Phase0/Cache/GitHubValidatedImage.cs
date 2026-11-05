@@ -1,4 +1,5 @@
 using System.IO;
+using JitHub.Markdown.Images;
 
 namespace JitHub.Services;
 

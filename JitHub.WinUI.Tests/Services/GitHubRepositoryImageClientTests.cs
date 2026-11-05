@@ -10,6 +10,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Markdown.Images;
 using JitHub.Services;
 using JitHub.Services.Markdown;
 using MarkdownRenderer.Images;

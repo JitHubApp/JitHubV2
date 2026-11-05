@@ -12,6 +12,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Markdown.Images;
 using JitHub.Models.GitHub;
 using System.Linq;
 using MarkdownRenderer.Images;

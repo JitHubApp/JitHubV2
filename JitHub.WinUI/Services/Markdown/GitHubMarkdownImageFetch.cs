@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Markdown.Images;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Performance;
 

@@ -1,6 +1,6 @@
 using System.Threading.Tasks;
 
-namespace JitHub.Services;
+namespace JitHub.Markdown.Images;
 
 public sealed record GitHubCachedImage(
     string FilePath,

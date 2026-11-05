@@ -2,7 +2,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Images;
 
-namespace JitHub.Services;
+namespace JitHub.Markdown.Images;
 
 /// <summary>
 /// Optional host capability for resolving GitHub image bytes with ownership that
@@ -12,10 +12,10 @@ namespace JitHub.Services;
 /// Implementations must reserve source bytes before allocating or materializing
 /// them and transfer the reservation into the returned lease. Cache retention is
 /// a separate bounded owner and is not covered by this reservation. This capability
-/// is intentionally separate from <see cref="IGitHubImageService"/> so legacy
+/// is intentionally separate from <see cref="IGitHubMarkdownImageCache"/> so legacy
 /// providers do not appear to support source-lifetime leases.
 /// </remarks>
-internal interface IGitHubLeasedImageService
+public interface IGitHubLeasedImageService
 {
     Task<GitHubImageSourceLease?> GetLeasedAsync(
         string sourceUrl,

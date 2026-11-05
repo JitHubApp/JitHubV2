@@ -1,6 +1,6 @@
 using System;
 
-namespace JitHub.Services;
+namespace JitHub.Markdown.Images;
 
 public sealed record GitHubImageDownload(
     byte[]? Bytes,
