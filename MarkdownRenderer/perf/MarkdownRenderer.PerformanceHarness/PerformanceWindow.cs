@@ -17,11 +17,13 @@ internal sealed class PerformanceWindow : Window
 
     internal PerformanceWindow(PerformanceOptions options)
     {
-        _run = new PerformanceRun(this, _host, options);
         Title = "MarkdownRenderer pinned-machine performance harness";
         AppWindow.Resize(new SizeInt32(1100, 760));
         Content = _host;
         _host.Loaded += OnHostLoaded;
+        // The run stamps the report's start time and hashes the build after
+        // the window is sized, as the harness always has.
+        _run = new PerformanceRun(this, _host, options);
     }
 
     internal bool TryWriteFatalReport(Exception exception)
