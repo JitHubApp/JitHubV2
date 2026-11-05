@@ -12,11 +12,6 @@
       "reason": "Predates the size rule; split by responsibility in a later structure step."
     },
     {
-      "path": "perf/MarkdownRenderer.PerformanceHarness/PerformanceWindow.cs",
-      "lines": 2703,
-      "reason": "Predates the size rule; split by responsibility in a later structure step."
-    },
-    {
       "path": "src/MarkdownRenderer.Math/ThirdParty/CSharpMath.Core/Atom/LaTeXSettings.cs",
       "lines": 1160,
       "reason": "Vendored third-party source, kept as upstream wrote it so it can be compared with its release."
