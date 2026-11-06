@@ -1,5 +1,4 @@
 using System;
-using System.Globalization;
 using System.Threading;
 using MarkdownRenderer.Diagnostics;
 using Microsoft.Graphics.Canvas;
@@ -15,6 +14,15 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// <see cref="ImageResourceScope"/> and charges lazy output admission to
 /// that scope's <see cref="BitmapOutputAdmission"/>.
 /// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because it holds the cache's whole
+/// ownership protocol: the lease acquisition paths, the cached and uncached
+/// factories that each move a committed reservation onto exactly one entry,
+/// the reference release paths the LRU's eviction callback runs, and the
+/// nested <see cref="Lease"/> that every holder of a cached bitmap uses.
+/// Preview matching lives in <see cref="RasterPreviewVariantMatch"/> and the
+/// pressure trim in <see cref="BitmapOutputPressureTrim"/>.
+/// </remarks>
 internal sealed class SharedCanvasBitmapCache
 {
     internal static readonly long DefaultBudgetBytes = Environment.Is64BitProcess
@@ -25,8 +33,6 @@ internal sealed class SharedCanvasBitmapCache
     private readonly BitmapOutputAdmission _outputAdmission;
     private int _cacheDisposalFailureCount;
     private int _lastCacheDisposalFailureHResult;
-    private int _bitmapOutputPressureTrimRequested;
-    private int _bitmapOutputPressureTrimQueued;
     // Numeric pixel-weight by unique owner lifetime, not driver heap size or
     // an admission cap. Cloning a lease never adds another bitmap charge.
     private readonly LiveBitmapPixelWeightLedger _bitmapWeightLedger = new();
@@ -43,6 +49,9 @@ internal sealed class SharedCanvasBitmapCache
 
     // Releases this cache's partition when one of its devices is lost.
     private readonly SharedCanvasBitmapCacheDeviceWatch _deviceWatch;
+
+    // Clears this cache off-thread when bitmap output admission is short.
+    private readonly BitmapOutputPressureTrim _pressureTrim;
 
     /// <summary>Creates a cache that charges lazy admission to <paramref name="outputAdmission"/>.</summary>
     /// <param name="outputAdmission">The scope's bitmap output admission.</param>
@@ -64,6 +73,7 @@ internal sealed class SharedCanvasBitmapCache
             weightSelector ?? (static entry => entry.WeightBytes),
             static entry => entry.ReleaseCacheReference(),
             keyWeightSelector: static key => EstimateCacheKeyWeightBytes(key.Identity));
+        _pressureTrim = new BitmapOutputPressureTrim(_cache.Clear);
     }
 
     internal bool TryAcquire(CanvasDevice device, string identity, out Lease? lease)
@@ -91,42 +101,6 @@ internal sealed class SharedCanvasBitmapCache
         return false;
     }
 
-    private static bool IsExactDisplayVariantKey(string identity, string prefix)
-    {
-        if (!identity.StartsWith(prefix, StringComparison.Ordinal))
-            return false;
-
-        ReadOnlySpan<char> dimensions = identity.AsSpan(prefix.Length);
-        int requestSeparator = dimensions.IndexOf('\u001F');
-        if (requestSeparator <= 0)
-            return false;
-        if (requestSeparator >= 0)
-        {
-            ReadOnlySpan<char> request = dimensions[(requestSeparator + 1)..];
-            const string requestPrefix = "request:";
-            if (!request.StartsWith(requestPrefix, StringComparison.Ordinal))
-                return false;
-            request = request[requestPrefix.Length..];
-            int scaleSeparator = request.IndexOf('@');
-            if (scaleSeparator <= 0 ||
-                !double.TryParse(request[..scaleSeparator], NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint | NumberStyles.AllowExponent,
-                    CultureInfo.InvariantCulture, out double available) ||
-                !double.TryParse(request[(scaleSeparator + 1)..], NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint | NumberStyles.AllowExponent,
-                    CultureInfo.InvariantCulture, out double scale) ||
-                !double.IsFinite(available) || available < 1 ||
-                !double.IsFinite(scale) || scale <= 0)
-                return false;
-            dimensions = dimensions[..requestSeparator];
-        }
-        int separator = dimensions.IndexOf('x');
-        if (separator is <= 0 || separator == dimensions.Length - 1)
-            return false;
-        return int.TryParse(dimensions[..separator], NumberStyles.None,
-                CultureInfo.InvariantCulture, out int width) && width > 0 &&
-            int.TryParse(dimensions[(separator + 1)..], NumberStyles.None,
-                CultureInfo.InvariantCulture, out int height) && height > 0;
-    }
-
     internal bool TryAcquireBestRasterPreview(
         CanvasDevice device,
         string cacheFamily,
@@ -144,8 +118,8 @@ internal sealed class SharedCanvasBitmapCache
         // sizing request. Never query Win2D or live layout under the LRU lock.
         if (!_cache.TryGetBestMatch(
                 (key, entry) => ReferenceEquals(key.Device, device) &&
-                    IsExactDisplayVariantKey(key.Identity, variantPrefix) &&
-                    IsCompatibleRasterPreview(entry, sizingRequest),
+                    RasterPreviewVariantMatch.IsExactDisplayVariantKey(key.Identity, variantPrefix) &&
+                    RasterPreviewVariantMatch.IsCompatibleRasterPreview(entry, sizingRequest),
                 static entry => (long)entry.PixelWidth * entry.PixelHeight,
                 out SharedCanvasBitmapCacheEntry? preview) || preview is null)
             return false;
@@ -155,32 +129,6 @@ internal sealed class SharedCanvasBitmapCache
         owner.Attach(preview);
         lease = owner;
         return true;
-    }
-
-    private static bool TryGetOrientedTarget(
-        SharedCanvasBitmapCacheEntry entry, RasterImageSizingRequest sizingRequest,
-        out (int Width, int Height) target)
-    {
-        target = default;
-        if (sizingRequest.MaximumPixels <= 0 ||
-            entry.IntrinsicSize is not { } intrinsic ||
-            !double.IsFinite(intrinsic.Width) || !double.IsFinite(intrinsic.Height) ||
-            intrinsic.Width < 1 || intrinsic.Height < 1 ||
-            intrinsic.Width > int.MaxValue || intrinsic.Height > int.MaxValue ||
-            intrinsic.Width != Math.Truncate(intrinsic.Width) ||
-            intrinsic.Height != Math.Truncate(intrinsic.Height))
-            return false;
-        target = sizingRequest.GetSize((int)intrinsic.Width, (int)intrinsic.Height);
-        return true;
-    }
-
-    private static bool IsCompatibleRasterPreview(SharedCanvasBitmapCacheEntry entry, RasterImageSizingRequest sizingRequest)
-    {
-        return entry.PixelWidth > 0 && entry.PixelHeight > 0 &&
-            (long)entry.PixelWidth * entry.PixelHeight <= sizingRequest.MaximumPixels &&
-            TryGetOrientedTarget(entry, sizingRequest, out var target) &&
-            entry.PixelWidth <= target.Width && entry.PixelHeight <= target.Height &&
-            (entry.PixelWidth < target.Width || entry.PixelHeight < target.Height);
     }
 
     internal Lease StoreAndAcquire(
@@ -283,34 +231,72 @@ internal sealed class SharedCanvasBitmapCache
         }
         else
         {
-            // A committed reservation belongs to exactly one output. Serialize
-            // its dimension shrink and one-way transfer so concurrent misuse
-            // cannot attach the same token to two distinct Entries.
-            lock (bitmapReservation)
-            {
-                if (bitmapReservation.IsTransferred)
-                    throw new InvalidOperationException("The bitmap output reservation already belongs to an Entry.");
-
-                entry = new SharedCanvasBitmapCacheEntry(
-                    this,
-                    bitmap,
-                    intrinsicSize,
-                    knownPixelWidth,
-                    knownPixelHeight
-                    , svgWorkId,
-                    svgSourceBytes,
-                    svgTargetPixels
-                    , bitmapReservation
-                );
-                lease.Attach(entry);
-                entry.AddCacheReference();
-                if (!entry.TransferBitmapOutputReservationToEntry())
-                {
-                    lease.AbandonUnpublishedOwnership();
-                    throw new InvalidOperationException("The bitmap output reservation could not be transferred to the cache entry.");
-                }
-            }
+            entry = CreateReservedCacheEntry(
+                lease,
+                bitmap,
+                intrinsicSize,
+                knownPixelWidth,
+                knownPixelHeight,
+                svgWorkId,
+                svgSourceBytes,
+                svgTargetPixels,
+                bitmapReservation);
         }
+        return InsertOrKeepUncached(device, identity, lease, entry, svgWorkId, svgSourceBytes, svgTargetPixels);
+    }
+
+    // Creates the entry that takes over a committed reservation, attaches it
+    // to the lease with its cache reference, and transfers the reservation.
+    private SharedCanvasBitmapCacheEntry CreateReservedCacheEntry(
+        Lease lease,
+        CanvasBitmap bitmap,
+        Size? intrinsicSize,
+        int? knownPixelWidth,
+        int? knownPixelHeight,
+        long svgWorkId,
+        long svgSourceBytes,
+        long svgTargetPixels,
+        BitmapOutputAdmission.Reservation bitmapReservation)
+    {
+        // A committed reservation belongs to exactly one output. Serialize
+        // its dimension shrink and one-way transfer so concurrent misuse
+        // cannot attach the same token to two distinct Entries.
+        lock (bitmapReservation)
+        {
+            if (bitmapReservation.IsTransferred)
+                throw new InvalidOperationException("The bitmap output reservation already belongs to an Entry.");
+
+            var entry = new SharedCanvasBitmapCacheEntry(
+                this,
+                bitmap,
+                intrinsicSize,
+                knownPixelWidth,
+                knownPixelHeight
+                , svgWorkId,
+                svgSourceBytes,
+                svgTargetPixels
+                , bitmapReservation
+            );
+            lease.Attach(entry);
+            entry.AddCacheReference();
+            if (!entry.TransferBitmapOutputReservationToEntry())
+            {
+                lease.AbandonUnpublishedOwnership();
+                throw new InvalidOperationException("The bitmap output reservation could not be transferred to the cache entry.");
+            }
+            return entry;
+        }
+    }
+
+    private Lease InsertOrKeepUncached(
+        CanvasDevice device,
+        string identity,
+        Lease lease,
+        SharedCanvasBitmapCacheEntry entry,
+        long svgWorkId,
+        long svgSourceBytes,
+        long svgTargetPixels)
+    {
         bool insertionCompleted = false;
         try
         {
@@ -412,64 +398,9 @@ internal sealed class SharedCanvasBitmapCache
 
     /// <summary>
     /// Requests a best-effort cache-only trim without making the rejection
-    /// path synchronously dispose Win2D resources (which may run on the UI
-    /// thread). The worker owns no ImageBox, lease, or bitmap references.
+    /// path synchronously dispose Win2D resources.
     /// </summary>
-    internal void RequestBitmapOutputPressureTrim()
-    {
-        Interlocked.Exchange(ref _bitmapOutputPressureTrimRequested, 1);
-        QueueBitmapOutputPressureTrim();
-    }
-
-    private void QueueBitmapOutputPressureTrim()
-    {
-        if (Interlocked.CompareExchange(ref _bitmapOutputPressureTrimQueued, 1, 0) != 0)
-            return;
-
-        try
-        {
-            // Reclamation has no document work or caller identity to inherit.
-            // Do not retain ambient host AsyncLocal state for this source-free
-            // maintenance job, and never run its native cleanup inline.
-            if (ThreadPool.UnsafeQueueUserWorkItem(
-                    static state => ((SharedCanvasBitmapCache)state!).DrainBitmapOutputPressureTrim(), this))
-                return;
-        }
-        catch (Exception)
-        {
-            // Cache reclamation is opportunistic. A later rejection can retry
-            // queueing; never fall back to native disposal on this caller.
-        }
-
-        Interlocked.Exchange(ref _bitmapOutputPressureTrimQueued, 0);
-    }
-
-    private void DrainBitmapOutputPressureTrim()
-    {
-        try
-        {
-            do
-            {
-                Interlocked.Exchange(ref _bitmapOutputPressureTrimRequested, 0);
-                try
-                {
-                    _cache.Clear();
-                }
-                catch (Exception)
-                {
-                    // The trim is best-effort; a failed worker must not escape
-                    // to the ThreadPool or alter the rejected bitmap path.
-                }
-            }
-            while (Volatile.Read(ref _bitmapOutputPressureTrimRequested) != 0);
-        }
-        finally
-        {
-            Interlocked.Exchange(ref _bitmapOutputPressureTrimQueued, 0);
-            if (Volatile.Read(ref _bitmapOutputPressureTrimRequested) != 0)
-                QueueBitmapOutputPressureTrim();
-        }
-    }
+    internal void RequestBitmapOutputPressureTrim() => _pressureTrim.Request();
 
     internal SemaphoreSlim GetDecodeGate(CanvasDevice device, string identity)
     {
@@ -631,7 +562,7 @@ internal sealed class SharedCanvasBitmapCache
         {
             SharedCanvasBitmapCacheEntry? entry = Volatile.Read(ref _entry);
             return entry is not null &&
-                TryGetOrientedTarget(entry, sizingRequest, out var target) &&
+                RasterPreviewVariantMatch.TryGetOrientedTarget(entry, sizingRequest, out var target) &&
                 entry.PixelWidth == target.Width && entry.PixelHeight == target.Height;
         }
 
