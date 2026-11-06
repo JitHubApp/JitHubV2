@@ -1,49 +1,55 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using JitHub.Markdown.Svg;
 using Microsoft.Graphics.Canvas;
 
 namespace JitHub.Services.CodeViewer;
 
 /// <summary>
-/// Process-wide, device-partitioned cache for standalone SVG preview tiles.
+/// Device-partitioned cache for standalone SVG preview tiles.
 /// Reservations include in-flight uploads and transition leases in the same
 /// architecture-specific budget.
 /// </summary>
-internal static partial class RepositorySvgGpuCache
+/// <remarks>
+/// <c>JitHubMarkdownRuntime</c> owns the app's one instance, hands it to
+/// every SVG preview, and disposes it when it retires the SVG renderer.
+/// </remarks>
+internal sealed partial class RepositorySvgGpuCache : IDisposable
 {
     internal static readonly long MaximumBytes =
         RuntimeInformation.ProcessArchitecture == Architecture.X86
             ? 32L * 1024 * 1024
             : 64L * 1024 * 1024;
 
-    private static readonly StrictResourceLeaseCache<DeviceTileKey, CanvasBitmap> Cache =
+    private readonly StrictResourceLeaseCache<DeviceTileKey, CanvasBitmap> _cache =
         new(MaximumBytes);
-    private static readonly bool MemoryPressureSubscribed;
+    private readonly bool _memoryPressureSubscribed;
+    private int _disposed;
 
-    static RepositorySvgGpuCache()
+    internal RepositorySvgGpuCache()
     {
         try
         {
             Windows.System.MemoryManager.AppMemoryUsageIncreased += OnAppMemoryUsageIncreased;
-            MemoryPressureSubscribed = true;
+            _memoryPressureSubscribed = true;
         }
         catch (COMException)
         {
             // This WinRT event is unavailable in some unpackaged/test hosts.
-            // The app runtime still trims the cache explicitly on shutdown.
+            // The app runtime still disposes the cache explicitly on shutdown.
         }
     }
 
-    internal static bool TryAcquire(
+    internal bool TryAcquire(
         CanvasDevice device,
         string identity,
         out Lease? lease)
     {
         ArgumentNullException.ThrowIfNull(device);
         ArgumentException.ThrowIfNullOrEmpty(identity);
-        if (Cache.TryAcquire(new DeviceTileKey(device, identity), out var inner))
+        if (_cache.TryAcquire(new DeviceTileKey(device, identity), out var inner))
         {
             lease = new Lease(inner!);
             return true;
@@ -53,9 +59,9 @@ internal static partial class RepositorySvgGpuCache
         return false;
     }
 
-    internal static bool TryReserve(long byteCount, out Reservation? reservation)
+    internal bool TryReserve(long byteCount, out Reservation? reservation)
     {
-        if (Cache.TryReserve(byteCount, out var inner))
+        if (_cache.TryReserve(byteCount, out var inner))
         {
             reservation = new Reservation(inner!);
             return true;
@@ -65,7 +71,7 @@ internal static partial class RepositorySvgGpuCache
         return false;
     }
 
-    internal static Lease StoreAndAcquire(
+    internal Lease StoreAndAcquire(
         CanvasDevice device,
         string identity,
         CanvasBitmap bitmap,
@@ -76,24 +82,30 @@ internal static partial class RepositorySvgGpuCache
         ArgumentException.ThrowIfNullOrEmpty(identity);
         ArgumentNullException.ThrowIfNull(bitmap);
         ArgumentNullException.ThrowIfNull(reservation);
-        return new Lease(Cache.StoreAndAcquire(
+        return new Lease(_cache.StoreAndAcquire(
             new DeviceTileKey(device, identity),
             bitmap,
             byteCount,
             reservation.Inner));
     }
 
-    internal static void ReleaseDevice(CanvasDevice device)
+    internal void ReleaseDevice(CanvasDevice device)
     {
         ArgumentNullException.ThrowIfNull(device);
-        Cache.RemoveWhere(key => ReferenceEquals(key.Device, device));
+        _cache.RemoveWhere(key => ReferenceEquals(key.Device, device));
     }
 
-    internal static void Trim() => Cache.Trim();
+    internal void Trim() => _cache.Trim();
 
-    internal static void Shutdown()
+    /// <summary>Stops trimming on memory pressure and releases every cached tile.</summary>
+    public void Dispose()
     {
-        if (MemoryPressureSubscribed)
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
+        if (_memoryPressureSubscribed)
         {
             try
             {
@@ -104,14 +116,14 @@ internal static partial class RepositorySvgGpuCache
             }
         }
 
-        Cache.Dispose();
+        _cache.Dispose();
     }
 
-    private static void OnAppMemoryUsageIncreased(object? sender, object args)
+    private void OnAppMemoryUsageIncreased(object? sender, object args)
     {
         try
         {
-            Cache.Trim();
+            _cache.Trim();
         }
         catch
         {

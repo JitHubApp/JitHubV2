@@ -43,6 +43,7 @@ public sealed partial class SvgPreview : UserControl
             ((global::JitHub.WinUI.App)Application.Current).MarkdownRuntime;
         _svgRenderer = runtime.SvgRenderer;
         _rasterizer = runtime.SvgPreviewRasterizer;
+        SvgViewport.AttachTileCache(runtime.SvgPreviewTileCache);
         SvgViewport.RenderFailed += SvgViewport_RenderFailed;
         SvgViewport.ZoomSettled += SvgViewport_ZoomSettled;
         DataContextChanged += OnDataContextChanged;

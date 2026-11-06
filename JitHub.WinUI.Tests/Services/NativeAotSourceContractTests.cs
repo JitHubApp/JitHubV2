@@ -192,7 +192,7 @@ public sealed class NativeAotSourceContractTests
         Assert.Contains("CanvasBitmap.CreateFromBytes", viewport, StringComparison.Ordinal);
         Assert.Contains("Task.Run(", viewport, StringComparison.Ordinal);
         Assert.Contains("() => UploadTile(device, rendered)", viewport, StringComparison.Ordinal);
-        Assert.Contains("RepositorySvgGpuCache.TryReserve", viewport, StringComparison.Ordinal);
+        Assert.Contains("tileCache.TryReserve", viewport, StringComparison.Ordinal);
         Assert.Contains("DetachPublishedPlan(plan)", viewport, StringComparison.Ordinal);
         Assert.Contains("device.ForceSoftwareRenderer", viewport, StringComparison.Ordinal);
         Assert.Contains("device.IsPixelFormatSupported", viewport, StringComparison.Ordinal);
@@ -324,8 +324,8 @@ public sealed class NativeAotSourceContractTests
         Assert.Contains("64L * 1024 * 1024", cache, StringComparison.Ordinal);
         Assert.Contains("StrictResourceLeaseCache<DeviceTileKey, CanvasBitmap>", cache, StringComparison.Ordinal);
         Assert.Contains("AppMemoryUsageIncreased += OnAppMemoryUsageIncreased", cache, StringComparison.Ordinal);
-        Assert.Contains("Cache.Trim();", cache, StringComparison.Ordinal);
-        Assert.Contains("RepositorySvgGpuCache.Shutdown();", runtime, StringComparison.Ordinal);
+        Assert.Contains("_cache.Trim();", cache, StringComparison.Ordinal);
+        Assert.Contains("retired.SvgPreviewTileCache?.Dispose();", runtime, StringComparison.Ordinal);
     }
 
     [Fact]

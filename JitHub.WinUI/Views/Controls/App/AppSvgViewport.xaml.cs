@@ -28,6 +28,7 @@ public sealed partial class AppSvgViewport : UserControl
     private readonly DispatcherQueueTimer _settleTimer;
     private readonly SettledZoomTracker _zoomTracker = new();
     private IRepositorySvgRasterizer? _rasterizer;
+    private RepositorySvgGpuCache? _tileCache;
     private RepositorySvgDocument? _document;
     private ScrollViewer? _scrollHost;
     private CancellationTokenSource? _renderCancellation;
@@ -72,6 +73,17 @@ public sealed partial class AppSvgViewport : UserControl
         _lastReportedZoomPercent = scrollHost.ZoomFactor * 100;
         AttachEvents();
         UpdateSurfaceSize();
+    }
+
+    /// <summary>
+    /// Gives the viewport the tile cache its owner shares across previews. The
+    /// owner attaches it before the viewport loads, so every render and every
+    /// device change uses it.
+    /// </summary>
+    internal void AttachTileCache(RepositorySvgGpuCache tileCache)
+    {
+        ArgumentNullException.ThrowIfNull(tileCache);
+        _tileCache = tileCache;
     }
 
     internal void SetDocument(
@@ -248,12 +260,14 @@ public sealed partial class AppSvgViewport : UserControl
     {
         RepositorySvgDocument? document = _document;
         IRepositorySvgRasterizer? rasterizer = _rasterizer;
+        RepositorySvgGpuCache? tileCache = _tileCache;
         CanvasDevice? device = _canvasDevice;
         SvgRenderPlan? plan = document is null || device is null
             ? null
             : CreateRenderPlan(document, SelectPixelFormat(device));
         if (document is null ||
             rasterizer is null ||
+            tileCache is null ||
             device is null ||
             plan is null ||
             plan.Tiles.Count == 0)
@@ -262,13 +276,13 @@ public sealed partial class AppSvgViewport : UserControl
         }
 
         CancelRender();
-        if (!SvgRenderWork.TryCreate(plan, device, out SvgRenderWork? work))
+        if (!SvgRenderWork.TryCreate(plan, tileCache, device, out SvgRenderWork? work))
         {
             // A retained transition bitmap is allowed only while it fits in the
             // same aggregate budget as the replacement. Release it and retry
             // before reporting a typed resource-limit failure.
             ReplacePublishedPlan(null);
-            if (!SvgRenderWork.TryCreate(plan, device, out work))
+            if (!SvgRenderWork.TryCreate(plan, tileCache, device, out work))
             {
                 SetRenderStatus("failed");
                 RenderFailed?.Invoke(
@@ -286,6 +300,7 @@ public sealed partial class AppSvgViewport : UserControl
             RenderAndPublishAsync(
                 document,
                 rasterizer,
+                tileCache,
                 device,
                 plan,
                 work!,
@@ -297,6 +312,7 @@ public sealed partial class AppSvgViewport : UserControl
     private async Task RenderAndPublishAsync(
         RepositorySvgDocument document,
         IRepositorySvgRasterizer rasterizer,
+        RepositorySvgGpuCache tileCache,
         CanvasDevice device,
         SvgRenderPlan plan,
         SvgRenderWork work,
@@ -321,7 +337,7 @@ public sealed partial class AppSvgViewport : UserControl
                 try
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    lease = RepositorySvgGpuCache.StoreAndAcquire(
+                    lease = tileCache.StoreAndAcquire(
                         device,
                         presentation.Key.CacheIdentity,
                         bitmap,
@@ -376,7 +392,7 @@ public sealed partial class AppSvgViewport : UserControl
             work.Dispose();
             if (!ReferenceEquals(device, Volatile.Read(ref _canvasDevice)))
             {
-                RepositorySvgGpuCache.ReleaseDevice(device);
+                tileCache.ReleaseDevice(device);
             }
         }
     }
@@ -455,7 +471,7 @@ public sealed partial class AppSvgViewport : UserControl
         CancelRender();
         if (previousDevice is not null)
         {
-            RepositorySvgGpuCache.ReleaseDevice(previousDevice);
+            _tileCache?.ReleaseDevice(previousDevice);
         }
 
         ReplacePublishedPlan(null);
@@ -740,6 +756,7 @@ public sealed partial class AppSvgViewport : UserControl
 
         internal static bool TryCreate(
             SvgRenderPlan plan,
+            RepositorySvgGpuCache tileCache,
             CanvasDevice device,
             out SvgRenderWork? work)
         {
@@ -750,7 +767,7 @@ public sealed partial class AppSvgViewport : UserControl
             {
                 foreach (SvgTilePresentation presentation in plan.Tiles)
                 {
-                    if (RepositorySvgGpuCache.TryAcquire(
+                    if (tileCache.TryAcquire(
                         device,
                         presentation.Key.CacheIdentity,
                         out RepositorySvgGpuCache.Lease? lease))
@@ -768,7 +785,7 @@ public sealed partial class AppSvgViewport : UserControl
                     }
                 }
 
-                if (!RepositorySvgGpuCache.TryReserve(
+                if (!tileCache.TryReserve(
                     missingBytes,
                     out RepositorySvgGpuCache.Reservation? reservation))
                 {
