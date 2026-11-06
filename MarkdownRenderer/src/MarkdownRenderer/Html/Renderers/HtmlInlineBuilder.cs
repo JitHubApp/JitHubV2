@@ -251,7 +251,7 @@ internal sealed class HtmlInlineBuilder
             childContext = childContext with { InsideLink = true };
         }
 
-        string? styleKey = SafeHtmlInlineState.GetStyleKey(element.Name);
+        string? styleKey = SafeHtmlInlineElementNames.GetStyleKey(element.Name);
         if (!string.IsNullOrEmpty(styleKey))
         {
             childContext = childContext with { StyleKey = styleKey };

@@ -137,7 +137,7 @@ internal static class GfmChildInlineBuilder
         {
             box.Context.RegisterMarkdownAttributes(i, box.BlockIndex);
             string emphasisKey = MarkdownInlineSyntax.GetEmphasisElementKey(emphasis);
-            using SafeHtmlInlineState.ScriptStyleScope scriptScope =
+            using SafeHtmlScriptStyleScope scriptScope =
                 htmlState.PushMarkdownScript(emphasisKey);
             AddInlines(
                 box,

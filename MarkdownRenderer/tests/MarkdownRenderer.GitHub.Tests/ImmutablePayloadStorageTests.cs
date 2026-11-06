@@ -45,7 +45,7 @@ public sealed class ImmutablePayloadStorageTests
             typeof(SharedLayoutMetricsKey), typeof(MarkdownExtensionRegistration), typeof(MarkdownTextFormatCache),
             typeof(MarkdownTextStyleRun), typeof(MarkdownSemanticNode), typeof(MarkdownSemanticDocument),
             typeof(InlineEmbedRun), typeof(InlineEmbedAutomationMetadata), typeof(DeclarativeHostedElementBox),
-            typeof(MarkdownLayoutContext), typeof(SafeHtmlInlineState.Scope), typeof(ViewportRange),
+            typeof(MarkdownLayoutContext), typeof(SafeHtmlInlineScope), typeof(ViewportRange),
             typeof(LazyLayoutBand), typeof(VectorViewportTransform), typeof(PlatformThemeColorOverrides),
             typeof(PlatformThemeColors), typeof(EmbedBox), typeof(MarkdownLocalizationSnapshot),
             typeof(HostedElementRealizationGate<>.Operation), typeof(SafeHtmlRenderPolicy), typeof(ThemeSnapshot),
@@ -685,8 +685,8 @@ public sealed class ImmutablePayloadStorageTests
         Assert.Null(context.Dispatcher);
 
         string[] aliases = ["safe-class", "compact"];
-        var scriptToken = new SafeHtmlInlineState.ScriptStyleAncestryToken("subscript");
-        var inlineScope = new SafeHtmlInlineState.Scope(
+        var scriptToken = new SafeHtmlScriptStyleAncestryToken("subscript");
+        var inlineScope = new SafeHtmlInlineScope(
             "a", "Link", "https://example.test", "safe link", true, aliases, scriptToken);
         Assert.Equal("a", inlineScope.Name);
         Assert.Equal("Link", inlineScope.StyleKey);

@@ -306,6 +306,6 @@ internal sealed class SafeHtmlStyleRoleDemandWalker
             return false;
         return tag.Kind is SafeHtmlTagKind.Comment or SafeHtmlTagKind.Declaration ||
             SafeHtmlParser.IsSuppressedElement(tag.Name) ||
-            !SafeHtmlInlineState.IsSupportedElement(tag.Name);
+            !SafeHtmlInlineElementNames.IsSupportedElement(tag.Name);
     }
 }

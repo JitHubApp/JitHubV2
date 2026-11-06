@@ -186,7 +186,7 @@ internal sealed class InlineRunBuilder
             return false;
 
         _context.RegisterMarkdownAttributes(emphasis, box.BlockIndex);
-        using SafeHtmlInlineState.ScriptStyleScope scriptScope =
+        using SafeHtmlScriptStyleScope scriptScope =
             htmlState.PushMarkdownScript(emphasisKey);
         AddInlines(
             box,
