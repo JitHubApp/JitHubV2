@@ -382,7 +382,7 @@ public sealed class AutomationHarnessSourceContractTests
             StringComparison.Ordinal);
         Assert.Contains(
             "imageSubscriptions.LoadCompleted += imageLoadCompletion.OnLoadCompleted;",
-            ReadRendererSource("Controls", "MarkdownRendererControl.cs"),
+            ReadRendererSource("Controls", "Composition", "MarkdownRendererComposition.cs"),
             StringComparison.Ordinal);
         Assert.Contains(
             "_imageSubscriptions.UnsubscribeAll();",
@@ -489,6 +489,10 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.DoesNotContain("retryImageBlockIndices", completion, StringComparison.Ordinal);
         Assert.Contains("rootMeasureCommitted &&\n                        (canceled || capturedScrollOffset != _host.VerticalScrollOffset) ? null : anchor", completion, StringComparison.Ordinal);
         Assert.DoesNotContain("Initial load / intrinsic-size change", controlSource, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "Initial load / intrinsic-size change",
+            ReadRendererSource("Controls", "Composition", "MarkdownRendererComposition.cs"),
+            StringComparison.Ordinal);
     }
 
     [Fact]
