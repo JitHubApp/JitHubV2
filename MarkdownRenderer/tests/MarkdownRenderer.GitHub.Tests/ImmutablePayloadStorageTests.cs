@@ -26,12 +26,23 @@ using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
+/// <remarks>
+/// This file is longer than 500 lines because it is one inventory: every
+/// compact internal payload carrier's readonly storage and constructor values
+/// are listed here so a new carrier is added beside the others.
+/// </remarks>
 public sealed class ImmutablePayloadStorageTests
 {
     private readonly MarkdownRenderResources _renderResources = new();
 
     [Fact]
     public void InternalPayloadCompactionPreservesReadonlyStorage()
+    {
+        AssertKeyContextAndCachePayloadsAreReadonly();
+        AssertDocumentRunBoxAndParsePayloadsAreReadonly();
+    }
+
+    private static void AssertKeyContextAndCachePayloadsAreReadonly()
     {
         AssertReadonly(typeof(SharedLayoutMetricsKey),
             "DocumentIdentity WidthInSixtyFourthDips TypographyFingerprint FlowDirection CodeWrappingMode " +
@@ -87,6 +98,10 @@ public sealed class ImmutablePayloadStorageTests
         AssertReadonly(Nested(typeof(DeferredInputQueue<>), "Entry"), "Value PointerId Coalescible");
         AssertReadonly(Nested(typeof(BlockBoxCleanupScope), "AggregateFailureCursor"), "InnerExceptions NextIndex Depth");
         AssertReadonly(Nested(typeof(WeightedLruCache<,>), "Entry"), "Key Value Weight");
+    }
+
+    private static void AssertDocumentRunBoxAndParsePayloadsAreReadonly()
+    {
         AssertReadonly(typeof(MarkdownLayoutRetirementFailureSummary),
             "ExceptionType HResultCode OmittedFailureCount");
         AssertReadonly(Nested(typeof(Gfm029Compatibility), "PreparedSource"), "Text HasChanges _insertions _maskedSeparators");
@@ -620,53 +635,8 @@ public sealed class ImmutablePayloadStorageTests
     [Fact]
     public void CompactImmutablePayloadsPreserveValuesAndBehavior()
     {
-        MarkdownNodeRenderer synchronous = static (_, _) => { };
-        MarkdownAsyncNodeRenderer asynchronous = static (_, _) => ValueTask.CompletedTask;
-        var factory = new MarkdownOwnedExtensionFactory("owned", static () => null!);
-
-        MarkdownExtensionRegistration extension = MarkdownExtensionRegistration.Extension("gfm");
-        Assert.Equal(MarkdownExtensionRegistrationKind.Extension, Field(extension, "Kind"));
-        Assert.Equal("gfm", Field(extension, "Identifier"));
-        Assert.Null(Field(extension, "SynchronousRenderer"));
-        Assert.Null(Field(extension, "AsynchronousRenderer"));
-        Assert.Null(Field(extension, "OwnedFactory"));
-
-        MarkdownExtensionRegistration sync = MarkdownExtensionRegistration.SynchronousInline(
-            "inline", synchronous);
-        Assert.Equal(MarkdownExtensionRegistrationKind.SynchronousInline, Field(sync, "Kind"));
-        Assert.Equal("inline", Field(sync, "Identifier"));
-        Assert.Same(synchronous, Field(sync, "SynchronousRenderer"));
-
-        MarkdownExtensionRegistration asynchronousRegistration = MarkdownExtensionRegistration.AsynchronousBlock(
-            "async", asynchronous);
-        Assert.Equal(MarkdownExtensionRegistrationKind.AsynchronousBlock,
-            Field(asynchronousRegistration, "Kind"));
-        Assert.Equal("async", Field(asynchronousRegistration, "Identifier"));
-        Assert.Same(asynchronous, Field(asynchronousRegistration, "AsynchronousRenderer"));
-
-        MarkdownExtensionRegistration owned = MarkdownExtensionRegistration.Owned(factory);
-        Assert.Equal(MarkdownExtensionRegistrationKind.OwnedFactory, Field(owned, "Kind"));
-        Assert.Same(factory, Field(owned, "OwnedFactory"));
-
-        MarkdownSemanticDocument document = MarkdownSemanticDocument.Empty;
-        Assert.Same(document.Root, Field(document, "Root"));
-        Assert.Equal(document.Text, Field(document, "Text"));
-        Assert.Equal(document.TextProjectionFingerprint, Field(document, "TextProjectionFingerprint"));
-        Assert.Equal(document.SemanticRangeFingerprint, Field(document, "SemanticRangeFingerprint"));
-        Assert.Same(document.TextElementBoundaries, Field(document, "TextElementBoundaries"));
-        Assert.Same(document.TextSpans, Field(document, "TextSpans"));
-        Assert.Equal(MarkdownSemanticRole.Document, Field(document.Root, "Role"));
-        Assert.Null(Field(document.Root, "Box"));
-        MarkdownTextFormatCache formatCache = MarkdownTextFormatCache.Create(document, theme: null);
-        Assert.Same(document, Field(formatCache, "Document"));
-        Assert.Null(Field(formatCache, "Theme"));
-
-        var style = new ElementStyle();
-        var styleRun = new MarkdownTextStyleRun(2, 9, "Emphasis", true, false, style);
-        Assert.Equal("Emphasis", Field(styleRun, "ElementKey"));
-        Assert.Equal(true, Field(styleRun, "IsSubscript"));
-        Assert.Equal(false, Field(styleRun, "IsSuperscript"));
-        Assert.Same(style, Field(styleRun, "Style"));
+        AssertExtensionRegistrationsKeepTheirPayloads();
+        AssertSemanticDocumentFormatCacheAndStyleRunPayloads();
 
         var metadata = new InlineEmbedAutomationMetadata(
             "checked", "unchecked", "read-only", "toggle", "task-item", isChecked: false,
@@ -700,7 +670,60 @@ public sealed class ImmutablePayloadStorageTests
         Assert.Equal(24f, Field(inlineRun, "DesiredWidth"));
         Assert.Equal(18f, Field(inlineRun, "DesiredHeight"));
         Assert.Same(elementFactory, Field(inlineRun, "ElementFactory"));
+    }
 
+    private static void AssertExtensionRegistrationsKeepTheirPayloads()
+    {
+        MarkdownNodeRenderer synchronous = static (_, _) => { };
+        MarkdownAsyncNodeRenderer asynchronous = static (_, _) => ValueTask.CompletedTask;
+        var factory = new MarkdownOwnedExtensionFactory("owned", static () => null!);
+
+        MarkdownExtensionRegistration extension = MarkdownExtensionRegistration.Extension("gfm");
+        Assert.Equal(MarkdownExtensionRegistrationKind.Extension, Field(extension, "Kind"));
+        Assert.Equal("gfm", Field(extension, "Identifier"));
+        Assert.Null(Field(extension, "SynchronousRenderer"));
+        Assert.Null(Field(extension, "AsynchronousRenderer"));
+        Assert.Null(Field(extension, "OwnedFactory"));
+
+        MarkdownExtensionRegistration sync = MarkdownExtensionRegistration.SynchronousInline(
+            "inline", synchronous);
+        Assert.Equal(MarkdownExtensionRegistrationKind.SynchronousInline, Field(sync, "Kind"));
+        Assert.Equal("inline", Field(sync, "Identifier"));
+        Assert.Same(synchronous, Field(sync, "SynchronousRenderer"));
+
+        MarkdownExtensionRegistration asynchronousRegistration = MarkdownExtensionRegistration.AsynchronousBlock(
+            "async", asynchronous);
+        Assert.Equal(MarkdownExtensionRegistrationKind.AsynchronousBlock,
+            Field(asynchronousRegistration, "Kind"));
+        Assert.Equal("async", Field(asynchronousRegistration, "Identifier"));
+        Assert.Same(asynchronous, Field(asynchronousRegistration, "AsynchronousRenderer"));
+
+        MarkdownExtensionRegistration owned = MarkdownExtensionRegistration.Owned(factory);
+        Assert.Equal(MarkdownExtensionRegistrationKind.OwnedFactory, Field(owned, "Kind"));
+        Assert.Same(factory, Field(owned, "OwnedFactory"));
+    }
+
+    private static void AssertSemanticDocumentFormatCacheAndStyleRunPayloads()
+    {
+        MarkdownSemanticDocument document = MarkdownSemanticDocument.Empty;
+        Assert.Same(document.Root, Field(document, "Root"));
+        Assert.Equal(document.Text, Field(document, "Text"));
+        Assert.Equal(document.TextProjectionFingerprint, Field(document, "TextProjectionFingerprint"));
+        Assert.Equal(document.SemanticRangeFingerprint, Field(document, "SemanticRangeFingerprint"));
+        Assert.Same(document.TextElementBoundaries, Field(document, "TextElementBoundaries"));
+        Assert.Same(document.TextSpans, Field(document, "TextSpans"));
+        Assert.Equal(MarkdownSemanticRole.Document, Field(document.Root, "Role"));
+        Assert.Null(Field(document.Root, "Box"));
+        MarkdownTextFormatCache formatCache = MarkdownTextFormatCache.Create(document, theme: null);
+        Assert.Same(document, Field(formatCache, "Document"));
+        Assert.Null(Field(formatCache, "Theme"));
+
+        var style = new ElementStyle();
+        var styleRun = new MarkdownTextStyleRun(2, 9, "Emphasis", true, false, style);
+        Assert.Equal("Emphasis", Field(styleRun, "ElementKey"));
+        Assert.Equal(true, Field(styleRun, "IsSubscript"));
+        Assert.Equal(false, Field(styleRun, "IsSuperscript"));
+        Assert.Same(style, Field(styleRun, "Style"));
     }
 
     [Fact]

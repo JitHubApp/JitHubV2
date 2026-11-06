@@ -8,6 +8,12 @@ using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
+/// <remarks>
+/// This file is longer than 500 lines because it is the unit contract for one
+/// type, <see cref="BitmapOutputAdmission"/>: its byte tiers, bounded waiter
+/// queue, slot and capacity versions and notification scheduling are each
+/// asserted against the same small budgets and recording waiters.
+/// </remarks>
 public sealed class BitmapOutputAdmissionTests
 {
     private readonly MarkdownRenderResources _renderResources = new();
@@ -253,15 +259,8 @@ public sealed class BitmapOutputAdmissionTests
             held.Add(thirdCharge!);
 
             long capacityVersion = admission.GetSnapshot().CapacityVersion;
-            for (int index = 0; index < 248; index++)
-            {
-                var owner = new RecordingWaiter(_ => { });
-                owners.Add(owner);
-                Assert.True(admission.TryRegisterWaiter(
-                    owner, 16, isVisible: false, isReplacement: false,
-                    capacityVersion, out var registration));
-                registrations.Add(registration!);
-            }
+            RegisterNonReplacementWaiters(
+                admission, owners, registrations, count: 248, requiredBytes: 16, isVisible: false, capacityVersion);
 
             Assert.False(admission.TryRegisterWaiter(
                 new RecordingWaiter(_ => { }), 16, isVisible: false,
@@ -269,18 +268,8 @@ public sealed class BitmapOutputAdmissionTests
             Assert.Null(speculativeOverflow);
             Assert.Equal(248, admission.GetSnapshot().WaiterCount);
 
-            RecordingWaiter? firstVisible = null;
-            for (int index = 0; index < 8; index++)
-            {
-                var owner = new RecordingWaiter(_ => { });
-                owners.Add(owner);
-                if (index == 0)
-                    firstVisible = owner;
-                Assert.True(admission.TryRegisterWaiter(
-                    owner, 8, isVisible: true, isReplacement: false,
-                    capacityVersion, out var registration));
-                registrations.Add(registration!);
-            }
+            RecordingWaiter? firstVisible = RegisterNonReplacementWaiters(
+                admission, owners, registrations, count: 8, requiredBytes: 8, isVisible: true, capacityVersion);
 
             // WaiterEntry deliberately weakly references its owner. Force a
             // collection while this fixture's owner list is still strongly
@@ -433,14 +422,8 @@ public sealed class BitmapOutputAdmissionTests
             BitmapOutputAdmission.Snapshot beforeOverflow = admission.GetSnapshot();
             var overflow = new RecordingWaiter(_ => { });
             Assert.False(admission.TryRegisterWaiter(
-                overflow,
-                16,
-                isVisible: true,
-                isReplacement: true,
-                beforeOverflow.CapacityVersion,
-                out _,
-                out long capacityAtFailure,
-                out long slotAtFailure));
+                overflow, 16, isVisible: true, isReplacement: true, beforeOverflow.CapacityVersion,
+                out _, out long capacityAtFailure, out long slotAtFailure));
             Assert.Equal(beforeOverflow.CapacityVersion, capacityAtFailure);
             Assert.Equal(beforeOverflow.WaiterSlotVersion, slotAtFailure);
             Assert.Equal(1, admission.GetSnapshot().WaiterCount);
@@ -449,47 +432,26 @@ public sealed class BitmapOutputAdmissionTests
             // dormant rather than retrying registration every frame.
             for (int i = 0; i < 100; i++)
             {
-                Assert.False(BitmapOutputAdmission.ShouldRetryWaiterRegistration(
-                    registrationFailed: true,
-                    waiterPresent: false,
-                    observedCapacityVersion: capacityAtFailure,
-                    currentCapacityVersion: beforeOverflow.CapacityVersion,
-                    observedWaiterSlotVersion: slotAtFailure,
-                    currentWaiterSlotVersion: beforeOverflow.WaiterSlotVersion,
-                    visibilityPromoted: false));
+                Assert.False(ShouldRetryFailedRegistration(
+                    capacityAtFailure, beforeOverflow.CapacityVersion,
+                    slotAtFailure, beforeOverflow.WaiterSlotVersion, visibilityPromoted: false));
             }
-            Assert.True(BitmapOutputAdmission.ShouldRetryWaiterRegistration(
-                registrationFailed: true,
-                waiterPresent: false,
-                observedCapacityVersion: capacityAtFailure,
-                currentCapacityVersion: beforeOverflow.CapacityVersion,
-                observedWaiterSlotVersion: slotAtFailure,
-                currentWaiterSlotVersion: beforeOverflow.WaiterSlotVersion,
-                visibilityPromoted: true));
+            Assert.True(ShouldRetryFailedRegistration(
+                capacityAtFailure, beforeOverflow.CapacityVersion,
+                slotAtFailure, beforeOverflow.WaiterSlotVersion, visibilityPromoted: true));
 
             firstRegistration!.Dispose(); // Cancellation frees only a waiter slot.
             BitmapOutputAdmission.Snapshot afterCancellation = admission.GetSnapshot();
             Assert.Equal(beforeOverflow.CapacityVersion, afterCancellation.CapacityVersion);
             Assert.Equal(beforeOverflow.ChargedBytes, afterCancellation.ChargedBytes);
             Assert.NotEqual(slotAtFailure, afterCancellation.WaiterSlotVersion);
-            Assert.True(BitmapOutputAdmission.ShouldRetryWaiterRegistration(
-                registrationFailed: true,
-                waiterPresent: false,
-                observedCapacityVersion: capacityAtFailure,
-                currentCapacityVersion: afterCancellation.CapacityVersion,
-                observedWaiterSlotVersion: slotAtFailure,
-                currentWaiterSlotVersion: afterCancellation.WaiterSlotVersion,
-                visibilityPromoted: false));
+            Assert.True(ShouldRetryFailedRegistration(
+                capacityAtFailure, afterCancellation.CapacityVersion,
+                slotAtFailure, afterCancellation.WaiterSlotVersion, visibilityPromoted: false));
 
             Assert.True(admission.TryRegisterWaiter(
-                overflow,
-                16,
-                isVisible: true,
-                isReplacement: true,
-                afterCancellation.CapacityVersion,
-                out overflowRegistration,
-                out long retryCapacityVersion,
-                out long retrySlotVersion));
+                overflow, 16, isVisible: true, isReplacement: true, afterCancellation.CapacityVersion,
+                out overflowRegistration, out long retryCapacityVersion, out long retrySlotVersion));
             Assert.Equal(afterCancellation.CapacityVersion, retryCapacityVersion);
             Assert.Equal(afterCancellation.WaiterSlotVersion, retrySlotVersion);
             Assert.Equal(1, admission.GetSnapshot().WaiterCount);
@@ -916,6 +878,46 @@ public sealed class BitmapOutputAdmissionTests
         held.Add(fourth!);
         return held;
     }
+
+    // Registers count fresh non-replacement waiters, keeping each owner
+    // strongly rooted in owners, and returns the first one registered.
+    private static RecordingWaiter RegisterNonReplacementWaiters(
+        BitmapOutputAdmission admission,
+        List<RecordingWaiter> owners,
+        List<BitmapOutputAdmission.WaiterRegistration> registrations,
+        int count,
+        long requiredBytes,
+        bool isVisible,
+        long capacityVersion)
+    {
+        RecordingWaiter? first = null;
+        for (int index = 0; index < count; index++)
+        {
+            var owner = new RecordingWaiter(_ => { });
+            owners.Add(owner);
+            first ??= owner;
+            Assert.True(admission.TryRegisterWaiter(
+                owner, requiredBytes, isVisible: isVisible, isReplacement: false,
+                capacityVersion, out var registration));
+            registrations.Add(registration!);
+        }
+        return first!;
+    }
+
+    private static bool ShouldRetryFailedRegistration(
+        long observedCapacityVersion,
+        long currentCapacityVersion,
+        long observedWaiterSlotVersion,
+        long currentWaiterSlotVersion,
+        bool visibilityPromoted) =>
+        BitmapOutputAdmission.ShouldRetryWaiterRegistration(
+            registrationFailed: true,
+            waiterPresent: false,
+            observedCapacityVersion: observedCapacityVersion,
+            currentCapacityVersion: currentCapacityVersion,
+            observedWaiterSlotVersion: observedWaiterSlotVersion,
+            currentWaiterSlotVersion: currentWaiterSlotVersion,
+            visibilityPromoted: visibilityPromoted);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static (WeakReference<IBitmapOutputWaiter>, BitmapOutputAdmission.WaiterRegistration)

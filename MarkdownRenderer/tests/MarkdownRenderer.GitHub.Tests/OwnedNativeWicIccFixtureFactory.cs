@@ -11,10 +11,9 @@ namespace MarkdownRenderer.GitHub.Tests;
 /// not production color use.
 /// </summary>
 /// <remarks>
-/// The profile fields and required tags follow ICC.1:2022-05, especially
-/// clauses 7.2–7.4, 8.2, 8.4.3, 9.2, 10.15, 10.18, 10.31, and F.3:
-/// https://www.color.org/specification/ICC.1-2022-05.pdf
-/// PNG iCCP/gAMA/cHRM/sRGB chunk ordering and CRC follow the W3C PNG Third
+/// <see cref="OwnedNativeWicIccProfile"/> authors the ICC.1:2022-05 profile and
+/// <see cref="OwnedNativeWicPngChunks"/> frames PNG chunks. PNG
+/// iCCP/gAMA/cHRM/sRGB chunk ordering follows the W3C PNG Third
 /// Edition; JPEG APP2 segmentation follows the ICC-in-JPEG marker convention;
 /// WebP VP8X/ICCP framing follows the extended WebP container specification:
 /// https://www.w3.org/TR/png-3/
@@ -25,58 +24,13 @@ namespace MarkdownRenderer.GitHub.Tests;
 /// </remarks>
 internal static class OwnedNativeWicIccFixtureFactory
 {
-    private const int IccHeaderSize = 128;
-    private const int IccTagRecordSize = 12;
-    private const int IccTagCount = 9;
-    private const int MaximumPngBytes = 16 * 1024 * 1024;
+    private const int MaximumPngBytes = OwnedNativeWicPngChunks.MaximumPngBytes;
     private const int MaximumProfileBytes = 1024 * 1024;
-    private const double Gamma = 1.8;
 
-    private static readonly byte[] PngSignature = [137, 80, 78, 71, 13, 10, 26, 10];
+    private static readonly byte[] PngSignature = OwnedNativeWicPngChunks.PngSignature;
     private static readonly byte[] IccProfileName = Encoding.ASCII.GetBytes("JitHub-Gamma18");
 
-    internal static byte[] CreateGamma18MatrixTrcProfile()
-    {
-        double[][] colorants = ComputeD50WhiteRgbPrimaryColorants();
-        var tags = new[]
-        {
-            new ProfileTag("bXYZ", CreateXyzTag(colorants[2])),
-            new ProfileTag("bTRC", CreateGammaTag()),
-            new ProfileTag("cprt", CreateMlucTag("Copyright 2026 JitHub test fixture authors.")),
-            new ProfileTag("desc", CreateMlucTag("JitHub Test RGB Matrix Gamma 1.8")),
-            new ProfileTag("gXYZ", CreateXyzTag(colorants[1])),
-            new ProfileTag("gTRC", CreateGammaTag()),
-            new ProfileTag("rXYZ", CreateXyzTag(colorants[0])),
-            new ProfileTag("rTRC", CreateGammaTag()),
-            new ProfileTag("wtpt", CreateXyzTag([0.9642, 1.0, 0.8249])),
-        };
-
-        int tagTableEnd = checked(IccHeaderSize + sizeof(uint) + IccTagRecordSize * tags.Length);
-        int[] offsets = new int[tags.Length];
-        int profileSize = tagTableEnd;
-        for (int index = 0; index < tags.Length; index++)
-        {
-            profileSize = Align4(profileSize);
-            offsets[index] = profileSize;
-            profileSize = checked(profileSize + Align4(tags[index].Data.Length));
-        }
-
-        byte[] profile = new byte[profileSize];
-        WriteHeader(profile, profileSize);
-        WriteUInt32(profile, IccHeaderSize, checked((uint)tags.Length));
-
-        for (int index = 0; index < tags.Length; index++)
-        {
-            int recordOffset = checked(IccHeaderSize + sizeof(uint) + index * IccTagRecordSize);
-            WriteAscii(profile, recordOffset, tags[index].Signature);
-            WriteUInt32(profile, recordOffset + 4, checked((uint)offsets[index]));
-            WriteUInt32(profile, recordOffset + 8, checked((uint)tags[index].Data.Length));
-            tags[index].Data.CopyTo(profile, offsets[index]);
-        }
-
-        ValidateConstructedProfile(profile, tags, offsets, tagTableEnd);
-        return profile;
-    }
+    internal static byte[] CreateGamma18MatrixTrcProfile() => OwnedNativeWicIccProfile.CreateGamma18MatrixTrc();
 
     internal static async Task<byte[]> CreatePatternedPngWithGamma18ProfileAsync(
         int width = 37,
@@ -104,14 +58,14 @@ internal static class OwnedNativeWicIccFixtureFactory
             throw new ArgumentOutOfRangeException(nameof(profile), "ICC fixture exceeds the bounded profile size.");
         }
 
-        ValidateConstructedProfile(profile, expectedTagCount: IccTagCount);
-        List<PngChunk> chunks = ParsePngChunks(png);
+        OwnedNativeWicIccProfile.Validate(profile);
+        List<OwnedNativeWicPngChunks.PngChunk> chunks = OwnedNativeWicPngChunks.Parse(png);
         byte[] iccpChunk = CreateIccpChunk(profile);
 
         using var output = new MemoryStream(checked(png.Length + iccpChunk.Length));
         output.Write(PngSignature);
         bool insertedProfile = false;
-        foreach (PngChunk chunk in chunks)
+        foreach (OwnedNativeWicPngChunks.PngChunk chunk in chunks)
         {
             if (IsCompetingColorMetadata(chunk.Type))
             {
@@ -146,7 +100,7 @@ internal static class OwnedNativeWicIccFixtureFactory
         // Pair it with the standard D65/sRGB primary chromaticities, but do
         // not add iCCP or sRGB: the test must exercise these chunks alone.
         byte[] gamma = new byte[sizeof(uint)];
-        WriteUInt32(gamma, 0, 55_555);
+        BinaryPrimitives.WriteUInt32BigEndian(gamma, 55_555);
         byte[] chromaticities = new byte[8 * sizeof(uint)];
         uint[] values =
         [
@@ -156,7 +110,7 @@ internal static class OwnedNativeWicIccFixtureFactory
             15_000, 6_000,  // blue x/y
         ];
         for (int index = 0; index < values.Length; index++)
-            WriteUInt32(chromaticities, index * sizeof(uint), values[index]);
+            BinaryPrimitives.WriteUInt32BigEndian(chromaticities.AsSpan(index * sizeof(uint), sizeof(uint)), values[index]);
 
         return EmbedPngColorChunks(png, ("cHRM", chromaticities), ("gAMA", gamma));
     }
@@ -179,7 +133,7 @@ internal static class OwnedNativeWicIccFixtureFactory
     {
         ArgumentNullException.ThrowIfNull(jpeg);
         ArgumentNullException.ThrowIfNull(profile);
-        ValidateConstructedProfile(profile, expectedTagCount: IccTagCount);
+        OwnedNativeWicIccProfile.Validate(profile);
         if (jpeg.Length < 4 || jpeg[0] != 0xFF || jpeg[1] != 0xD8)
             throw new InvalidDataException("Input does not have a JPEG SOI marker.");
 
@@ -220,7 +174,7 @@ internal static class OwnedNativeWicIccFixtureFactory
     {
         ArgumentNullException.ThrowIfNull(webp);
         ArgumentNullException.ThrowIfNull(profile);
-        ValidateConstructedProfile(profile, expectedTagCount: IccTagCount);
+        OwnedNativeWicIccProfile.Validate(profile);
         if (webp.Length < 25 || !webp.AsSpan(0, 4).SequenceEqual("RIFF"u8) ||
             !webp.AsSpan(8, 4).SequenceEqual("WEBP"u8) ||
             BinaryPrimitives.ReadUInt32LittleEndian(webp.AsSpan(4, sizeof(uint))) != checked((uint)(webp.Length - 8)) ||
@@ -287,11 +241,11 @@ internal static class OwnedNativeWicIccFixtureFactory
         // parsing for this operation permits the chunk while still validating
         // its bounded framing and CRC. EmbedProfileInPng keeps rejecting an
         // existing iCCP to prevent accidental duplicate profiles.
-        List<PngChunk> chunks = ParsePngChunks(png, allowExistingIccp: true);
+        List<OwnedNativeWicPngChunks.PngChunk> chunks = OwnedNativeWicPngChunks.Parse(png, allowExistingIccp: true);
         using var output = new MemoryStream(png.Length + metadata.Sum(static item => item.Data.Length + 12));
         output.Write(PngSignature);
         bool inserted = false;
-        foreach (PngChunk chunk in chunks)
+        foreach (OwnedNativeWicPngChunks.PngChunk chunk in chunks)
         {
             if (IsCompetingColorMetadata(chunk.Type))
                 continue;
@@ -299,7 +253,7 @@ internal static class OwnedNativeWicIccFixtureFactory
             if (chunk.Type == "IHDR" && !inserted)
             {
                 foreach ((string type, byte[] data) in metadata)
-                    output.Write(CreatePngChunk(type, data));
+                    output.Write(OwnedNativeWicPngChunks.CreateChunk(type, data));
                 inserted = true;
             }
         }
@@ -375,150 +329,6 @@ internal static class OwnedNativeWicIccFixtureFactory
         destination[offset + 2] = (byte)(value >> 16);
     }
 
-    private static void WriteHeader(byte[] profile, int profileSize)
-    {
-        WriteUInt32(profile, 0, checked((uint)profileSize));
-        // Bytes 4-7: no preferred CMM. Version 4.4.0.0 is BCD: 04 40 00 00.
-        profile[8] = 0x04;
-        profile[9] = 0x40;
-        WriteAscii(profile, 12, "mntr");
-        WriteAscii(profile, 16, "RGB ");
-        WriteAscii(profile, 20, "XYZ ");
-
-        // Stable valid calendar fields keep the fixture byte-for-byte repeatable.
-        WriteUInt16(profile, 24, 2026);
-        WriteUInt16(profile, 26, 1);
-        WriteUInt16(profile, 28, 1);
-        WriteUInt16(profile, 30, 0);
-        WriteUInt16(profile, 32, 0);
-        WriteUInt16(profile, 34, 0);
-
-        WriteAscii(profile, 36, "acsp");
-        WriteAscii(profile, 40, "MSFT");
-        // Profile flags, device manufacturer/model/attributes, creator, ID,
-        // and reserved fields stay zero. A zero Profile ID means uncomputed.
-        WriteUInt32(profile, 64, 0); // perceptual rendering intent
-        WriteS15Fixed16(profile, 68, 0.9642);
-        WriteS15Fixed16(profile, 72, 1.0);
-        WriteS15Fixed16(profile, 76, 0.8249);
-    }
-
-    private static byte[] CreateXyzTag(double[] xyz)
-    {
-        if (xyz.Length != 3)
-        {
-            throw new ArgumentException("XYZ values must have exactly three components.", nameof(xyz));
-        }
-
-        byte[] tag = new byte[20];
-        WriteAscii(tag, 0, "XYZ ");
-        WriteS15Fixed16(tag, 8, xyz[0]);
-        WriteS15Fixed16(tag, 12, xyz[1]);
-        WriteS15Fixed16(tag, 16, xyz[2]);
-        return tag;
-    }
-
-    private static byte[] CreateGammaTag()
-    {
-        // parametricCurveType, function 0: y = x^gamma.
-        byte[] tag = new byte[16];
-        WriteAscii(tag, 0, "para");
-        WriteUInt16(tag, 8, 0);
-        WriteS15Fixed16(tag, 12, Gamma);
-        return tag;
-    }
-
-    private static byte[] CreateMlucTag(string value)
-    {
-        byte[] stringBytes = Encoding.BigEndianUnicode.GetBytes(value);
-        byte[] tag = new byte[checked(28 + stringBytes.Length)];
-        WriteAscii(tag, 0, "mluc");
-        WriteUInt32(tag, 8, 1); // one language/region record
-        WriteUInt32(tag, 12, 12); // fixed record size
-        WriteUInt16(tag, 16, PackLanguageOrCountryCode("en"));
-        WriteUInt16(tag, 18, PackLanguageOrCountryCode("US"));
-        WriteUInt32(tag, 20, checked((uint)stringBytes.Length));
-        WriteUInt32(tag, 24, 28); // string data starts after header + one record
-        stringBytes.CopyTo(tag, 28);
-        return tag;
-    }
-
-    private static double[][] ComputeD50WhiteRgbPrimaryColorants()
-    {
-        // This fixture models a fictional RGB device using sRGB-like primary
-        // chromaticities but a native D50 white. The scale solution makes its
-        // columns sum to D50; it is not Bradford adaptation of an sRGB profile,
-        // and no chad tag is needed because the device white is already D50.
-        double[,] primaryMatrix =
-        {
-            { 0.64 / 0.33, 0.30 / 0.60, 0.15 / 0.06 },
-            { 1.0, 1.0, 1.0 },
-            { (1.0 - 0.64 - 0.33) / 0.33, (1.0 - 0.30 - 0.60) / 0.60, (1.0 - 0.15 - 0.06) / 0.06 },
-        };
-        double[] scale = Solve3x3(primaryMatrix, [0.9642, 1.0, 0.8249]);
-        var colorants = new double[3][];
-        for (int channel = 0; channel < 3; channel++)
-        {
-            colorants[channel] =
-            [
-                primaryMatrix[0, channel] * scale[channel],
-                primaryMatrix[1, channel] * scale[channel],
-                primaryMatrix[2, channel] * scale[channel],
-            ];
-
-            if (colorants[channel].Any(value => !double.IsFinite(value) || value < 0 || value > 1.2))
-            {
-                throw new InvalidOperationException("Generated D50 colorant fell outside the expected range.");
-            }
-        }
-
-        return colorants;
-    }
-
-    private static double[] Solve3x3(double[,] matrix, double[] rhs)
-    {
-        double[,] augmented = new double[3, 4];
-        for (int row = 0; row < 3; row++)
-        {
-            for (int column = 0; column < 3; column++)
-            {
-                augmented[row, column] = matrix[row, column];
-            }
-
-            augmented[row, 3] = rhs[row];
-        }
-
-        for (int pivot = 0; pivot < 3; pivot++)
-        {
-            double divisor = augmented[pivot, pivot];
-            if (!double.IsFinite(divisor) || System.Math.Abs(divisor) < 1e-12)
-            {
-                throw new InvalidOperationException("RGB primary matrix is singular.");
-            }
-
-            for (int column = pivot; column < 4; column++)
-            {
-                augmented[pivot, column] /= divisor;
-            }
-
-            for (int row = 0; row < 3; row++)
-            {
-                if (row == pivot)
-                {
-                    continue;
-                }
-
-                double factor = augmented[row, pivot];
-                for (int column = pivot; column < 4; column++)
-                {
-                    augmented[row, column] -= factor * augmented[pivot, column];
-                }
-            }
-        }
-
-        return [augmented[0, 3], augmented[1, 3], augmented[2, 3]];
-    }
-
     private static byte[] CreateIccpChunk(byte[] profile)
     {
         using var compressed = new MemoryStream();
@@ -533,354 +343,10 @@ internal static class OwnedNativeWicIccFixtureFactory
         data[IccProfileName.Length] = 0;
         data[IccProfileName.Length + 1] = 0; // PNG compression method 0 (zlib)
         compressedProfile.CopyTo(data, IccProfileName.Length + 2);
-        return CreatePngChunk("iCCP", data);
-    }
-
-    private static byte[] CreatePngChunk(string type, byte[] data)
-    {
-        byte[] typeBytes = Encoding.ASCII.GetBytes(type);
-        if (typeBytes.Length != 4)
-        {
-            throw new ArgumentException("PNG chunk type must be four ASCII bytes.", nameof(type));
-        }
-
-        byte[] chunk = new byte[checked(data.Length + 12)];
-        WriteUInt32(chunk, 0, checked((uint)data.Length));
-        typeBytes.CopyTo(chunk, 4);
-        data.CopyTo(chunk, 8);
-        WriteUInt32(chunk, chunk.Length - sizeof(uint), ComputePngCrc(typeBytes, data));
-        return chunk;
-    }
-
-    private static List<PngChunk> ParsePngChunks(byte[] png, bool allowExistingIccp = false)
-    {
-        if (png.Length < PngSignature.Length || !png.AsSpan(0, PngSignature.Length).SequenceEqual(PngSignature))
-        {
-            throw new InvalidDataException("Input does not have the PNG signature.");
-        }
-
-        var chunks = new List<PngChunk>();
-        int offset = PngSignature.Length;
-        bool sawHeader = false;
-        bool sawImageData = false;
-        bool imageDataEnded = false;
-        bool sawEnd = false;
-
-        while (offset < png.Length)
-        {
-            if (sawEnd || png.Length - offset < 12)
-            {
-                throw new InvalidDataException("PNG has truncated data or bytes after IEND.");
-            }
-
-            uint unsignedLength = ReadUInt32(png, offset);
-            if (unsignedLength > MaximumPngBytes || unsignedLength > int.MaxValue)
-            {
-                throw new InvalidDataException("PNG chunk exceeds the bounded input size.");
-            }
-
-            int dataLength = checked((int)unsignedLength);
-            int totalLength = checked(dataLength + 12);
-            if (totalLength > png.Length - offset)
-            {
-                throw new InvalidDataException("PNG chunk length extends beyond the input.");
-            }
-
-            string type = Encoding.ASCII.GetString(png, offset + 4, 4);
-            int dataOffset = offset + 8;
-            uint expectedCrc = ReadUInt32(png, dataOffset + dataLength);
-            uint actualCrc = ComputePngCrc(png.AsSpan(offset + 4, 4), png.AsSpan(dataOffset, dataLength));
-            if (expectedCrc != actualCrc)
-            {
-                throw new InvalidDataException($"PNG chunk {type} has an invalid CRC.");
-            }
-
-            if (chunks.Count == 0 && (type != "IHDR" || dataLength != 13))
-            {
-                throw new InvalidDataException("PNG must begin with one 13-byte IHDR chunk.");
-            }
-
-            if (type == "IHDR")
-            {
-                if (sawHeader || chunks.Count != 0)
-                {
-                    throw new InvalidDataException("PNG contains duplicate or misplaced IHDR chunks.");
-                }
-
-                byte bitDepth = png[dataOffset + 8];
-                byte colorType = png[dataOffset + 9];
-                if (ReadUInt32(png, dataOffset) == 0 || ReadUInt32(png, dataOffset + 4) == 0 ||
-                    colorType is not (2 or 3 or 6) ||
-                    png[dataOffset + 10] != 0 || png[dataOffset + 11] != 0 || png[dataOffset + 12] > 1 ||
-                    !IsAllowedBitDepth(colorType, bitDepth))
-                {
-                    throw new InvalidDataException("PNG IHDR is invalid for an embedded RGB profile.");
-                }
-
-                sawHeader = true;
-            }
-            else if (!sawHeader)
-            {
-                throw new InvalidDataException("PNG is missing its IHDR chunk.");
-            }
-
-            if (type == "iCCP" && !allowExistingIccp)
-            {
-                throw new InvalidDataException("PNG already has an iCCP profile.");
-            }
-
-            if (type == "IDAT")
-            {
-                if (imageDataEnded)
-                {
-                    throw new InvalidDataException("PNG IDAT chunks must be consecutive.");
-                }
-
-                sawImageData = true;
-            }
-            else if (sawImageData && type != "IEND")
-            {
-                imageDataEnded = true;
-            }
-
-            if (type == "IEND")
-            {
-                if (dataLength != 0 || !sawImageData || offset + totalLength != png.Length)
-                {
-                    throw new InvalidDataException("PNG IEND is malformed or out of order.");
-                }
-
-                sawEnd = true;
-            }
-
-            chunks.Add(new PngChunk(offset, totalLength, type));
-            offset = checked(offset + totalLength);
-        }
-
-        if (!sawHeader || !sawImageData || !sawEnd)
-        {
-            throw new InvalidDataException("PNG is missing a required IHDR, IDAT, or IEND chunk.");
-        }
-
-        return chunks;
+        return OwnedNativeWicPngChunks.CreateChunk("iCCP", data);
     }
 
     private static bool IsCompetingColorMetadata(string type) =>
         type is "iCCP" or "sRGB" or "cICP" or "gAMA" or "cHRM";
 
-    private static bool IsAllowedBitDepth(byte colorType, byte bitDepth) => colorType switch
-    {
-        2 => bitDepth is 8 or 16,
-        3 => bitDepth is 1 or 2 or 4 or 8,
-        6 => bitDepth is 8 or 16,
-        _ => false,
-    };
-
-    private static uint ComputePngCrc(ReadOnlySpan<byte> type, ReadOnlySpan<byte> data)
-    {
-        uint crc = uint.MaxValue;
-        foreach (byte value in type)
-        {
-            crc = UpdatePngCrc(crc, value);
-        }
-
-        foreach (byte value in data)
-        {
-            crc = UpdatePngCrc(crc, value);
-        }
-
-        return ~crc;
-    }
-
-    private static uint ComputePngCrc(ReadOnlySpan<byte> type, byte[] data) => ComputePngCrc(type, data.AsSpan());
-
-    private static uint UpdatePngCrc(uint crc, byte value)
-    {
-        crc ^= value;
-        for (int bit = 0; bit < 8; bit++)
-        {
-            crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320u : crc >> 1;
-        }
-
-        return crc;
-    }
-
-    private static void ValidateConstructedProfile(
-        byte[] profile,
-        ProfileTag[] tags,
-        int[] offsets,
-        int tagTableEnd)
-    {
-        ValidateConstructedProfile(profile, tags.Length);
-        int expectedOffset = tagTableEnd;
-        for (int index = 0; index < tags.Length; index++)
-        {
-            expectedOffset = Align4(expectedOffset);
-            if (offsets[index] != expectedOffset || offsets[index] % 4 != 0)
-            {
-                throw new InvalidOperationException("ICC tag data is not contiguous and four-byte aligned.");
-            }
-
-            expectedOffset = checked(expectedOffset + Align4(tags[index].Data.Length));
-        }
-
-        if (expectedOffset != profile.Length)
-        {
-            throw new InvalidOperationException("ICC profile size does not match its padded tag data.");
-        }
-    }
-
-    private static void ValidateConstructedProfile(byte[] profile, int expectedTagCount)
-    {
-        if (profile.Length < IccHeaderSize + 4 || ReadUInt32(profile, 0) != checked((uint)profile.Length) ||
-            !MatchesAscii(profile, 36, "acsp") || !MatchesAscii(profile, 12, "mntr") ||
-            !MatchesAscii(profile, 16, "RGB ") || !MatchesAscii(profile, 20, "XYZ ") ||
-            profile[8] != 0x04 || profile[9] != 0x40 || profile[10] != 0 || profile[11] != 0)
-        {
-            throw new InvalidOperationException("Generated ICC header is invalid.");
-        }
-
-        uint tagCount = ReadUInt32(profile, IccHeaderSize);
-        if (tagCount != checked((uint)expectedTagCount))
-        {
-            throw new InvalidOperationException("Generated ICC tag count is invalid.");
-        }
-
-        int count = checked((int)tagCount);
-        int tableEnd = checked(IccHeaderSize + 4 + count * IccTagRecordSize);
-        if (tableEnd > profile.Length)
-        {
-            throw new InvalidOperationException("Generated ICC tag table extends beyond the profile.");
-        }
-
-        var signatures = new HashSet<string>(StringComparer.Ordinal);
-        var ranges = new List<(int Offset, int PaddedEnd)>();
-        for (int index = 0; index < count; index++)
-        {
-            int recordOffset = checked(IccHeaderSize + 4 + index * IccTagRecordSize);
-            string signature = Encoding.ASCII.GetString(profile, recordOffset, 4);
-            int offset = checked((int)ReadUInt32(profile, recordOffset + 4));
-            int size = checked((int)ReadUInt32(profile, recordOffset + 8));
-            if (!signatures.Add(signature) || offset < tableEnd || offset % 4 != 0 || size < 8 ||
-                offset > profile.Length || size > profile.Length - offset ||
-                Align4(size) > profile.Length - offset)
-            {
-                throw new InvalidOperationException("Generated ICC tag table is invalid.");
-            }
-
-            int tagEnd = checked(offset + size);
-            int paddedEnd = checked(offset + Align4(size));
-            string dataType = Encoding.ASCII.GetString(profile, offset, 4);
-            bool validTypeAndSize = signature switch
-            {
-                "desc" or "cprt" => dataType == "mluc" && IsSingleMlucRecordValid(profile, offset, size),
-                "wtpt" or "rXYZ" or "gXYZ" or "bXYZ" => dataType == "XYZ " && size == 20,
-                "rTRC" or "gTRC" or "bTRC" =>
-                    dataType == "para" && size == 16 &&
-                    BinaryPrimitives.ReadUInt16BigEndian(profile.AsSpan(offset + 8, 2)) == 0 &&
-                    BinaryPrimitives.ReadInt32BigEndian(profile.AsSpan(offset + 12, 4)) ==
-                    checked((int)System.Math.Round(Gamma * 65536.0, MidpointRounding.AwayFromZero)),
-                _ => false,
-            };
-            if (!validTypeAndSize)
-            {
-                throw new InvalidOperationException($"Generated ICC tag {signature} has invalid data.");
-            }
-
-            for (int padOffset = tagEnd; padOffset < paddedEnd; padOffset++)
-            {
-                if (profile[padOffset] != 0)
-                {
-                    throw new InvalidOperationException("ICC tag padding must be zero-filled.");
-                }
-            }
-
-            ranges.Add((offset, paddedEnd));
-        }
-
-        var requiredSignatures = new HashSet<string>(
-            ["desc", "cprt", "wtpt", "rXYZ", "gXYZ", "bXYZ", "rTRC", "gTRC", "bTRC"],
-            StringComparer.Ordinal);
-        if (!signatures.SetEquals(requiredSignatures))
-        {
-            throw new InvalidOperationException("Generated ICC profile omits a required matrix/TRC tag.");
-        }
-
-        ranges.Sort(static (left, right) => left.Offset.CompareTo(right.Offset));
-        int expectedOffset = tableEnd;
-        foreach ((int offset, int paddedEnd) in ranges)
-        {
-            expectedOffset = Align4(expectedOffset);
-            if (offset != expectedOffset || paddedEnd > profile.Length)
-            {
-                throw new InvalidOperationException("Generated ICC tag ranges overlap or have gaps.");
-            }
-
-            expectedOffset = paddedEnd;
-        }
-
-        if (expectedOffset != profile.Length)
-        {
-            throw new InvalidOperationException("Generated ICC tag padding does not end at the profile boundary.");
-        }
-    }
-
-    private static bool MatchesAscii(byte[] bytes, int offset, string value) =>
-        bytes.AsSpan(offset, value.Length).SequenceEqual(Encoding.ASCII.GetBytes(value));
-
-    private static bool IsSingleMlucRecordValid(byte[] profile, int offset, int size)
-    {
-        if (size < 28 || ReadUInt32(profile, offset + 8) != 1 || ReadUInt32(profile, offset + 12) != 12)
-        {
-            return false;
-        }
-
-        uint stringLength = ReadUInt32(profile, offset + 20);
-        uint stringOffset = ReadUInt32(profile, offset + 24);
-        uint unsignedSize = checked((uint)size);
-        return stringLength > 0 && (stringLength & 1) == 0 && stringOffset >= 28 &&
-            stringOffset <= unsignedSize && stringLength <= unsignedSize - stringOffset;
-    }
-
-    private static int Align4(int value) => checked((value + 3) & ~3);
-
-    private static uint ReadUInt32(byte[] bytes, int offset) =>
-        BinaryPrimitives.ReadUInt32BigEndian(bytes.AsSpan(offset, sizeof(uint)));
-
-    private static void WriteAscii(byte[] bytes, int offset, string value)
-    {
-        byte[] encoded = Encoding.ASCII.GetBytes(value);
-        encoded.CopyTo(bytes, offset);
-    }
-
-    private static void WriteUInt16(byte[] bytes, int offset, int value) =>
-        BinaryPrimitives.WriteUInt16BigEndian(bytes.AsSpan(offset, sizeof(ushort)), checked((ushort)value));
-
-    private static void WriteUInt32(byte[] bytes, int offset, uint value) =>
-        BinaryPrimitives.WriteUInt32BigEndian(bytes.AsSpan(offset, sizeof(uint)), value);
-
-    private static void WriteS15Fixed16(byte[] bytes, int offset, double value)
-    {
-        double scaled = System.Math.Round(value * 65536.0, MidpointRounding.AwayFromZero);
-        if (!double.IsFinite(scaled) || scaled < int.MinValue || scaled > int.MaxValue)
-        {
-            throw new ArgumentOutOfRangeException(nameof(value), "Value does not fit s15Fixed16Number.");
-        }
-
-        BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(offset, sizeof(int)), checked((int)scaled));
-    }
-
-    private static ushort PackLanguageOrCountryCode(string value)
-    {
-        if (value.Length != 2 || value.Any(character => character > 0x7F))
-        {
-            throw new ArgumentException("Language and region codes must contain two ASCII characters.", nameof(value));
-        }
-
-        return checked((ushort)((value[0] << 8) | value[1]));
-    }
-
-    private readonly record struct ProfileTag(string Signature, byte[] Data);
-
-    private readonly record struct PngChunk(int Offset, int TotalLength, string Type);
 }

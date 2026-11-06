@@ -17,16 +17,30 @@ using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using Xunit;
+using static MarkdownRenderer.GitHub.Tests.MultiRootCandidateAssertions;
+using static MarkdownRenderer.GitHub.Tests.ProgressiveRasterCandidateAssertions;
+using RootSpecification = MarkdownRenderer.GitHub.Tests.MultiRootDocumentFixture.RootSpecification;
+using RunKind = MarkdownRenderer.GitHub.Tests.MultiRootDocumentFixture.RunKind;
+using RunSpecification = MarkdownRenderer.GitHub.Tests.MultiRootDocumentFixture.RunSpecification;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
+/// <summary>
+/// Single-raster layout candidates built over several top-level roots.
+/// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because it keeps every admission and
+/// lifetime scenario for <c>CreateSingleRasterCandidate</c> over multiple roots
+/// together: the lazy progressive clone, mixed-root semantics, the exact and
+/// one-over root, run, image, text and semantic caps, the failed late clone and
+/// cancellation. Fixtures and oracles live in <see cref="MultiRootDocumentFixture"/>,
+/// <see cref="MultiRootCandidateAssertions"/> and
+/// <see cref="ProgressiveRasterCandidateAssertions"/>.
+/// </remarks>
 [Collection(SharedCanvasBitmapCacheTestCollection.Name)]
 public sealed class MultiRootRasterLayoutCandidateTests
 {
-
-    private const float Width = 320f;
-    private static readonly Thickness DocumentPadding = new(9, 11, 13, 15);
-    private const double BlockSpacing = 7.5;
+    private const float Width = MultiRootDocumentFixture.Width;
 
     [Theory]
     [InlineData(1f, false)]
@@ -39,35 +53,13 @@ public sealed class MultiRootRasterLayoutCandidateTests
         await using var seed = new CompletedRasterPlacementCloneTests.PlacementFixture();
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
         var resolver = new PrivatePlacementRasterResolver(DisplaySizedRasterDecodeTests.CreatePng(400, 200));
-        string sourceText = "![front alt](https://images.example/private-placement.png)\n\n" +
-            "Measured `code`, **bold**, *emphasis*, [link](https://example.test/measured), and  \n" +
-            "a hard line break.\n\n" +
-            string.Join("\n\n", Enumerable.Range(0, 18).Select(index =>
-                $"Tail {index}: `code-{index}`, **bold-{index}**, *emphasis-{index}*, " +
-                $"[link-{index}](https://example.test/tail/{index}), and  \ncontinued-{index}."));
+        string sourceText = CreateProgressiveSourceText();
         MarkdownExtensionRegistry registry = new MarkdownExtensionRegistry().ConfigureGitHubReadmeRegistry();
         Markdig.Syntax.MarkdownDocument parsed = Markdown.Parse(sourceText, registry.BuildPipeline());
         MarkdownDocument parsedDocument = MarkdownDocument.FromParsed(sourceText, parsed);
         var sourceMap = new MarkdownSourceMap(sourceText);
-        var documentOwner = new object();
-        var sourceContext = new MarkdownLayoutContext(
-            seed.Device,
-            seed.SourceContext.ThemeSnapshot,
-            sourceMap,
-            registry,
-            rightToLeft ? FlowDirection.RightToLeft : FlowDirection.LeftToRight,
-            language: "en-US")
-        {
-            CancellationToken = CancellationToken.None,
-            ImageCancellationToken = CancellationToken.None,
-            ImagePreparationOwner = seed.ImagePreparationOwnerToken,
-            PerformanceDocumentOwner = documentOwner,
-            PerformanceSession = session,
-            RenderResources = seed.SourceContext.RenderResources,
-            RasterizationScale = rasterizationScale,
-            ImageResolver = resolver,
-            AllowThirdPartyRemoteImages = true,
-        };
+        MarkdownLayoutContext sourceContext = CreateProgressiveSourceContext(
+            seed, session, resolver, registry, sourceMap, rightToLeft, rasterizationScale);
 
         LayoutSnapshot? source = null;
         SingleRasterLayoutCandidate? candidate = null;
@@ -82,50 +74,12 @@ public sealed class MultiRootRasterLayoutCandidateTests
                 overscan: 0,
                 CancellationToken.None);
             source.AssignAutomationDocumentGeneration(2_407);
-
-            Assert.True(source.IsLazyLayoutEnabled);
-            Assert.True(MarkdownVectorSceneResidencyPolicy.CanOmitForPrivatePlacement(source.Blocks),
-                string.Join("; ", source.Blocks.Select(block => block is InlineContainerBox inline
-                    ? $"{inline.ElementKey}: index={inline.BlockIndex}, text={inline.PrivateRasterPlacementTextLength}, " +
-                      $"runs={inline.Runs.Count}, html={inline.SafeHtmlInlineFlowScopeId}, " +
-                      $"types={string.Join(',', inline.Runs.Select(run => run.GetType().Name))}"
-                    : block.GetType().Name)));
-            Assert.Null(source.VectorSceneResidencyPolicy);
-            Assert.InRange(source.MeasuredTopLevelBlockCount, 1, source.TopLevelBlockCount - 1);
-            Assert.Same(sourceMap, source.SourceMap);
+            AssertLazyProgressiveSource(source, sourceMap);
             MarkdownSemanticDocument sourceSemantic = source.SemanticDocument;
 
-            ImageBox sourceImage = Assert.IsType<ImageBox>(source.Blocks[0]);
-            InlineContainerBox[] sourceRoots = source.Blocks.Skip(1)
-                .Select(static block => Assert.IsType<InlineContainerBox>(block))
-                .ToArray();
-            Assert.Null(sourceImage.Bitmap);
-            Assert.True(source.IsTopLevelBlockMeasured(sourceImage));
-            Assert.True(sourceRoots.Sum(root => root.Runs.Count) <= InlineContainerBox.MaximumPrivateRasterPlacementRuns);
-            Rect imageBoundsBeforeCompletion = sourceImage.Bounds;
-            Rect sourceFarBounds = sourceRoots[^1].Bounds;
-            await DisplaySizedRasterDecodeTests.WaitForLoadAsync(sourceImage);
-            await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-                () => sourceImage.GetWorkState().ActiveWorkCount == 0);
-            Assert.NotNull(sourceImage.Bitmap);
-            Assert.Equal(1, resolver.ResolveCount);
-            Assert.Equal(imageBoundsBeforeCompletion, sourceImage.Bounds);
-
-            InlineContainerBox measuredTextRoot = sourceRoots[0];
-            Assert.True(measuredTextRoot.HasMeasuredLayout);
-            Assert.Contains(measuredTextRoot.Runs, static run => run is CodeInlineRun);
-            Assert.Contains(measuredTextRoot.Runs, static run => run is StrongRun);
-            Assert.Contains(measuredTextRoot.Runs, static run => run is EmphasisRun);
-            Assert.Contains(measuredTextRoot.Runs, static run => run is LinkRun);
-            Assert.Contains(measuredTextRoot.Runs, static run => run is LineBreakRun);
-
-            InlineContainerBox sourceFarRoot = sourceRoots[^1];
-            Assert.False(sourceFarRoot.HasMeasuredLayout);
-            Assert.Contains(sourceFarRoot.Runs, static run => run is CodeInlineRun);
-            Assert.Contains(sourceFarRoot.Runs, static run => run is StrongRun);
-            Assert.Contains(sourceFarRoot.Runs, static run => run is EmphasisRun);
-            Assert.Contains(sourceFarRoot.Runs, static run => run is LinkRun);
-            Assert.Contains(sourceFarRoot.Runs, static run => run is LineBreakRun);
+            ProgressiveSource completed = await CompleteProgressiveSourceImageAsync(source, resolver);
+            ImageBox sourceImage = completed.Image;
+            InlineContainerBox[] sourceRoots = completed.Roots;
 
             long sourceRevision = source.LayoutRevision;
             int sourceMeasuredCount = source.MeasuredTopLevelBlockCount;
@@ -147,110 +101,29 @@ public sealed class MultiRootRasterLayoutCandidateTests
             InlineContainerBox[] replacementRoots = replacement.Blocks.Skip(1)
                 .Select(static block => Assert.IsType<InlineContainerBox>(block))
                 .ToArray();
+            AssertLazyReplacementPreservesSourceIdentity(source, replacement, sourceSemantic, sourceMeasuredCount);
+            AssertReplacementImageReusesSourceRaster(sourceImage, replacementImage, rasterizationScale);
+            AssertClonedRootsKeepMeasurementState(
+                ownedCandidate, sourceImage, replacementImage, sourceRoots, replacementRoots);
 
-            Assert.True(replacement.IsLazyLayoutEnabled);
-            Assert.Null(replacement.VectorSceneResidencyPolicy);
-            Assert.Equal(source.TopLevelBlockCount, replacement.TopLevelBlockCount);
-            Assert.Equal(sourceMeasuredCount, replacement.MeasuredTopLevelBlockCount);
-            Assert.Equal(
-                source.GeneratedBlockIndexUpperBound,
-                replacement.GeneratedBlockIndexUpperBound);
-            IReadOnlyDictionary<int, int> sourceOrdinalIndex = source.Geometry.TopLevelOrdinalByBlockIndex;
-            IReadOnlyDictionary<int, int> replacementOrdinalIndex = replacement.Geometry.TopLevelOrdinalByBlockIndex;
-            Assert.Equal(
-                GetField<int>(Assert.IsType<BlockOrdinalIndex>(sourceOrdinalIndex), "_denseGeneratedUpperBound"),
-                GetField<int>(Assert.IsType<BlockOrdinalIndex>(replacementOrdinalIndex), "_denseGeneratedUpperBound"));
-            Assert.Equal(
-                sourceOrdinalIndex.OrderBy(static pair => pair.Key),
-                replacementOrdinalIndex.OrderBy(static pair => pair.Key));
-            Assert.Equal(2_407, replacement.AutomationDocumentGeneration);
-            Assert.Same(sourceMap, replacement.SourceMap);
-            Assert.Equal(sourceSemantic.TextProjectionFingerprint, replacement.SemanticDocument.TextProjectionFingerprint);
-            Assert.Equal(sourceSemantic.SemanticRangeFingerprint, replacement.SemanticDocument.SemanticRangeFingerprint);
-            Assert.Same(sourceSemantic.Text, replacement.SemanticDocument.Text);
-            Assert.Same(sourceSemantic.TextElementBoundaries, replacement.SemanticDocument.TextElementBoundaries);
-            Assert.Equal(source.LayoutRevision + 1, replacement.LayoutRevision);
-            Assert.NotSame(sourceImage, replacementImage);
-            Assert.Same(sourceImage.Bitmap, replacementImage.Bitmap);
-            Assert.NotEqual(sourceImage.Bounds.Height, replacementImage.Bounds.Height);
-            Assert.Equal(sourceImage.Bounds.Width, replacementImage.Bounds.Width);
-            Assert.Equal(replacementImage.MeasuredImageWidth, replacementImage.AutomationRenderDestination.Width);
-            Assert.Equal(replacementImage.MeasuredImageHeight, replacementImage.AutomationRenderDestination.Height);
-            Assert.True(replacementImage.Bounds.Height > replacementImage.AutomationRenderDestination.Height);
-            Assert.Equal(sourceImage.Alt, replacementImage.Alt);
-            Assert.Equal(sourceImage.BlockIndex, replacementImage.BlockIndex);
-            Assert.Equal(sourceImage.Context.FlowDirection, replacementImage.Context.FlowDirection);
-            Assert.Equal(rasterizationScale, replacementImage.Context.RasterizationScale);
-            var imagePlan = new RasterPlacementImagePlan(replacement.Blocks, ownedCandidate.SourceImageCount);
-            Assert.Same(replacementImage, Assert.Single(imagePlan.Images));
-            Assert.True(ownedCandidate.MatchesSourceImages([sourceImage], new HashSet<ImageBox> { sourceImage }));
-            Assert.All(sourceRoots.Zip(replacementRoots), pair => Assert.NotSame(pair.First, pair.Second));
-            Assert.True(replacementRoots[0].HasMeasuredLayout);
-            Assert.False(replacementRoots[^1].HasMeasuredLayout);
-            Assert.Contains(replacementRoots[0].Runs, static run => run is CodeInlineRun);
-            Assert.Contains(replacementRoots[0].Runs, static run => run is StrongRun);
-            Assert.Contains(replacementRoots[0].Runs, static run => run is EmphasisRun);
-            Assert.Contains(replacementRoots[0].Runs, static run => run is LinkRun);
-            Assert.Contains(replacementRoots[0].Runs, static run => run is LineBreakRun);
-            Assert.Contains(replacementRoots[^1].Runs, static run => run is CodeInlineRun);
-            Assert.Contains(replacementRoots[^1].Runs, static run => run is LineBreakRun);
+            PaintAtDeviceDpi(seed.Device, source.Blocks[0]);
 
-            using (var target = new CanvasRenderTarget(seed.Device, Width, 180, 96))
-            using (CanvasDrawingSession drawing = target.CreateDrawingSession())
-                source.Blocks[0].Paint(drawing, new Rect(0, 0, Width, 180));
+            AssertReplacementMeasuresFarRootPrivately(replacement, replacementRoots[^1]);
 
-            int replacementMeasuredCount = replacement.MeasuredTopLevelBlockCount;
-            LazyLayoutCommit farCommit = replacement.EnsureMeasuredViewport(
-                replacementRoots[^1].Bounds.Top,
-                System.Math.Max(48, replacementRoots[^1].Bounds.Height),
-                overscan: 0,
-                CancellationToken.None);
-            Assert.True(farCommit.Changed);
-            Assert.True(replacementRoots[^1].HasMeasuredLayout);
-            Assert.True(replacement.MeasuredTopLevelBlockCount > replacementMeasuredCount);
-
-            // The candidate owns only its private measurements. The source's
-            // far paragraph remains an estimated, unmeasured root.
-            Assert.Equal(sourceRevision, source.LayoutRevision);
-            Assert.Equal(sourceMeasuredCount, source.MeasuredTopLevelBlockCount);
-            Assert.False(sourceFarRoot.HasMeasuredLayout);
-            Assert.Equal(sourceFarBounds, sourceFarRoot.Bounds);
-            Assert.Equal(imageBoundsBeforeCompletion, sourceImage.Bounds);
-            Assert.Equal(1, resolver.ResolveCount);
-            Assert.NotNull(sourceImage.Bitmap);
-            Assert.NotNull(replacementImage.Bitmap);
+            AssertSourceKeptOnlyItsOwnMeasurements(
+                source, completed, sourceRevision, sourceMeasuredCount, resolver, replacementImage);
 
             await source.Retire().WaitAsync(TimeSpan.FromSeconds(10));
             Assert.Null(sourceImage.Bitmap);
             Assert.NotNull(replacementImage.Bitmap);
             Assert.False(ownedCandidate.HasCurrentSourceRaster());
-            using (var target = new CanvasRenderTarget(seed.Device, Width, 180, 96))
-            using (CanvasDrawingSession drawing = target.CreateDrawingSession())
-                replacementImage.Paint(drawing, new Rect(0, 0, Width, 180));
+            PaintAtDeviceDpi(seed.Device, replacementImage);
 
             _ = ownedCandidateContext;
         }
         finally
         {
-            try
-            {
-                candidate?.Dispose();
-            }
-            finally
-            {
-                if (candidateContext is not null)
-                    await candidateContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
-            }
-
-            try
-            {
-                if (source is not null)
-                    await source.Retire().WaitAsync(TimeSpan.FromSeconds(10));
-            }
-            finally
-            {
-                await sourceContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
-            }
+            await DisposeCandidateAndRetireSourceAsync(candidate, candidateContext, source, sourceContext);
         }
     }
 
@@ -316,116 +189,13 @@ public sealed class MultiRootRasterLayoutCandidateTests
             Assert.Equal(0, source.LayoutRevision);
 
             for (int index = 0; index < sourceRoots.Length; index++)
-            {
-                InlineContainerBox original = sourceRoots[index];
-                InlineContainerBox clone = replacementRoots[index];
-                Assert.NotSame(original, clone);
-                Assert.Equal(original.BlockIndex, clone.BlockIndex);
-                Assert.Equal(original.ElementKey, clone.ElementKey);
-                Assert.True(clone.HasMeasuredLayout);
-                Assert.False(clone.IsDirty);
-                Assert.NotSame(sourceLayouts[index], clone.TextLayout!);
-                Assert.Equal(sourceBounds[index], original.Bounds);
-                Assert.Equal(sourceLayouts[index], original.TextLayout!);
+                AssertRootCloneMatchesSource(sourceRoots[index], replacementRoots[index],
+                    sourceLayouts[index], sourceBounds[index], sourceSlices[index], replacement.SourceMap);
 
-                // The private tree keeps both the raw margin inputs and the
-                // effective, measured margin state rather than reconstructing
-                // a collapsed margin from its public getter.
-                Assert.Equal(original.Margin, clone.Margin);
-                Assert.Equal(original.CollapsedTopMargin, clone.CollapsedTopMargin);
-                Assert.Equal(original.SuppressTopMargin, clone.SuppressTopMargin);
-                Assert.Equal(original.SuppressBottomMargin, clone.SuppressBottomMargin);
-                Assert.Equal(original.Bounds.Height, clone.Bounds.Height, precision: 3);
-                Assert.True(double.IsFinite(clone.Bounds.X));
-                Assert.True(double.IsFinite(clone.Bounds.Y));
-                Assert.True(double.IsFinite(clone.Bounds.Width));
-                Assert.True(double.IsFinite(clone.Bounds.Height));
-                Assert.Equal(sourceSlices[index], replacement.SourceMap.Slice(WholeBlockRange(clone)));
-
-                InlineRun[] originalRuns = original.Runs.ToArray();
-                InlineRun[] clonedRuns = clone.Runs.ToArray();
-                Assert.Equal(originalRuns.Length, clonedRuns.Length);
-                for (int runIndex = 0; runIndex < originalRuns.Length; runIndex++)
-                {
-                    Assert.NotSame(originalRuns[runIndex], clonedRuns[runIndex]);
-                    Assert.Equal(originalRuns[runIndex].InlineIndex, clonedRuns[runIndex].InlineIndex);
-                    Assert.Equal(originalRuns[runIndex].RenderedLength, clonedRuns[runIndex].RenderedLength);
-                    Assert.Equal(originalRuns[runIndex].SourceSpan, clonedRuns[runIndex].SourceSpan);
-                    Assert.Equal(originalRuns[runIndex].ElementKey, clonedRuns[runIndex].ElementKey);
-                    Assert.Equal(originalRuns[runIndex].StyleAliases, clonedRuns[runIndex].StyleAliases);
-                    Assert.Equal(originalRuns[runIndex].StyleModifierKeys, clonedRuns[runIndex].StyleModifierKeys);
-                    Assert.Equal(originalRuns[runIndex].SemanticHeadingKey, clonedRuns[runIndex].SemanticHeadingKey);
-                    if (originalRuns[runIndex] is LinkRun originalLink)
-                    {
-                        LinkRun clonedLink = Assert.IsType<LinkRun>(clonedRuns[runIndex]);
-                        Assert.Equal(originalLink.Url, clonedLink.Url);
-                        Assert.Equal(originalLink.Title, clonedLink.Title);
-                        Assert.Equal(originalLink.AccessibilityName, clonedLink.AccessibilityName);
-                        Assert.Equal(originalLink.IsSuperscript, clonedLink.IsSuperscript);
-                        Assert.False(clonedLink.IsDisclosure);
-                        Assert.False(clonedLink.IsExpanded);
-                    }
-                    else if (originalRuns[runIndex] is InlineImageRun originalImageRun)
-                    {
-                        InlineImageRun clonedImageRun = Assert.IsType<InlineImageRun>(clonedRuns[runIndex]);
-                        Assert.NotSame(originalImageRun.Image, clonedImageRun.Image);
-                        Assert.Same(originalImageRun.Image.Bitmap, clonedImageRun.Image.Bitmap);
-                        Assert.Equal(originalImageRun.Url, clonedImageRun.Url);
-                        Assert.Equal(originalImageRun.AltText, clonedImageRun.AltText);
-                        Assert.Equal(originalImageRun.LinkUrl, clonedImageRun.LinkUrl);
-                    }
-                }
-            }
-
-            Assert.Equal(MarkdownElementKeys.Body, replacementRoots[0].ElementKey);
-            Assert.Equal(MarkdownElementKeys.Heading2, replacementRoots[1].ElementKey);
-            Assert.Equal(MarkdownElementKeys.Heading3, replacementRoots[2].ElementKey);
-            Assert.Equal(
-                new[] { 2, 3 },
-                MarkdownSemanticDocument.EnumerateDepthFirst(replacement.SemanticDocument.Root)
-                    .Where(static node => node.Role == MarkdownSemanticRole.Heading)
-                    .Select(static node => node.HeadingLevel));
-
-            InlineImageRun[] candidateImageRuns = replacementRoots
-                .SelectMany(static root => root.Runs.OfType<InlineImageRun>())
-                .ToArray();
-            Assert.Equal(sourceImages.Length, candidateImageRuns.Length);
-            ImageBox[] candidateImages = candidateImageRuns.Select(static run => run.Image).ToArray();
-            Assert.Equal(
-                sourceRoots.SelectMany(static root => root.Runs.OfType<InlineImageRun>())
-                    .Select(static run => run.Url),
-                candidateImageRuns.Select(static run => run.Url));
-            for (int index = 0; index < sourceImages.Length; index++)
-                Assert.NotSame(sourceImages[index], candidateImages[index]);
-            var subscriptions = new HashSet<ImageBox>(sourceImages, ReferenceEqualityComparer.Instance);
-            Assert.True(owner.MatchesSourceImages(sourceImages, subscriptions));
-            Assert.True(owner.HasCurrentSourceRaster());
-
-            MarkdownSemanticNode[] sourceImageNodes = MarkdownSemanticDocument
-                .EnumerateDepthFirst(sourceSemantic.Root)
-                .Where(static node => node.Role == MarkdownSemanticRole.Image)
-                .ToArray();
-            MarkdownSemanticNode[] candidateImageNodes = MarkdownSemanticDocument
-                .EnumerateDepthFirst(replacement.SemanticDocument.Root)
-                .Where(static node => node.Role == MarkdownSemanticRole.Image)
-                .ToArray();
-            Assert.Equal(3, sourceImageNodes.Length);
-            Assert.Equal(3, candidateImageNodes.Length);
-            for (int index = 0; index < candidateImageNodes.Length; index++)
-            {
-                Assert.Same(candidateImageRuns[index].Image, candidateImageNodes[index].ImageBox);
-                Assert.Same(candidateImageRuns[index], candidateImageNodes[index].InlineRun);
-                InlineContainerBox imageRoot = replacementRoots.Single(
-                    root => root.Runs.Contains(candidateImageRuns[index]));
-                Assert.Same(imageRoot, candidateImageNodes[index].InlineBox);
-                Assert.Equal(sourceImageNodes[index].HelpText, candidateImageNodes[index].HelpText);
-            }
-
-            Assert.All(sourceImages.Select((image, index) => (image, index)), entry =>
-            {
-                Assert.Same(sourceBitmaps[entry.index], entry.image.Bitmap);
-                Assert.False(entry.image.GetWorkState().LifetimeDisposed);
-            });
+            AssertMixedHeadingRootsAndSemantics(replacement, replacementRoots);
+            AssertCandidateImagesAreDistinctClonesWithSemanticOwners(
+                owner, sourceSemantic, sourceRoots, replacementRoots, sourceImages);
+            AssertSourceRastersRetained(sourceImages, sourceBitmaps);
         }
         finally
         {
@@ -840,300 +610,6 @@ public sealed class MultiRootRasterLayoutCandidateTests
         finally
         {
             await DisposeCandidateAndDrainAsync(candidate, constructionContext);
-        }
-    }
-
-    private static RootSpecification[] CreateMixedRoots()
-        =>
-        [
-            new RootSpecification(MarkdownElementKeys.Body,
-                [
-                    RunSpecification.PlainText("body before e\u0301 👩‍👩‍👧 "),
-                    RunSpecification.Link("linked paragraph", "https://example.test/body") with
-                    {
-                        AccessibilityName = "body link",
-                    },
-                    RunSpecification.PlainText(" after אבג"),
-                ]),
-            new RootSpecification(MarkdownElementKeys.Heading2,
-                [
-                    RunSpecification.PlainText("heading two "),
-                    RunSpecification.Image(0),
-                    RunSpecification.Link("heading link", "https://example.test/heading") with
-                    {
-                        AccessibilityName = "heading resource",
-                    },
-                ]),
-            new RootSpecification(MarkdownElementKeys.Heading3,
-                [
-                    RunSpecification.Image(1),
-                    RunSpecification.PlainText(" between rasters "),
-                    RunSpecification.Image(2),
-                ]),
-        ];
-
-    private static DocumentRange WholeBlockRange(InlineContainerBox block)
-    {
-        Assert.NotEmpty(block.Runs);
-        InlineRun last = block.Runs[^1];
-        return new DocumentRange(
-            new DocumentPosition(block.BlockIndex, 0, 0),
-            new DocumentPosition(block.BlockIndex, last.InlineIndex, last.Text.Length));
-    }
-
-    private static async Task AssertRejectedWithoutLeaseLeakAsync(
-        MultiRasterPlacementCloneTests.MultiRasterFixture seed,
-        RootSpecification[] specs)
-    {
-        await using var document = new MultiRootDocumentFixture(seed, specs);
-        Assert.NotEmpty(document.Images);
-        ImageBox sourceImage = document.Images[0];
-        int referencesBefore = GetEntryReferenceCount(GetImageLease(sourceImage));
-        SingleRasterLayoutCandidate? candidate = null;
-        MarkdownLayoutContext? constructionContext = null;
-        try
-        {
-            candidate = document.Snapshot.CreateSingleRasterCandidate(
-                document.ImageBearingBlockIndices,
-                Width,
-                CancellationToken.None,
-                CancellationToken.None,
-                document.ImagePreparationOwner,
-                retirementSink: null,
-                imageUnavailable: null,
-                out constructionContext);
-            Assert.Null(candidate);
-        }
-        finally
-        {
-            await DisposeCandidateAndDrainAsync(candidate, constructionContext);
-        }
-
-        Assert.Equal(referencesBefore, GetEntryReferenceCount(GetImageLease(sourceImage)));
-        Assert.Equal(0, document.Snapshot.LayoutRevision);
-    }
-
-    private static async Task AssertUnsupportedLaterRootWasPreflightedAsync(
-        MultiRasterPlacementCloneTests.MultiRasterFixture seed,
-        RootSpecification[] specs)
-    {
-        await using var document = new MultiRootDocumentFixture(seed, specs);
-        ImageBox firstImage = Assert.Single(document.Images);
-        int referencesBefore = GetEntryReferenceCount(GetImageLease(firstImage));
-        MarkdownLayoutContext probeContext = document.SourceContext.CreateRasterPlacementContext(
-            CancellationToken.None,
-            document.ImagePreparationOwner,
-            retirementSink: null,
-            imageUnavailable: null);
-        try
-        {
-            Assert.True(document.Roots[0].TryGetPrivateRasterPlacementCounts(
-                probeContext, Width - (float)(DocumentPadding.Left + DocumentPadding.Right),
-                out _, out int firstRootImages));
-            Assert.Equal(1, firstRootImages);
-            Assert.False(document.Roots[1].TryGetPrivateRasterPlacementCounts(
-                probeContext, Width - (float)(DocumentPadding.Left + DocumentPadding.Right),
-                out _, out _));
-        }
-        finally
-        {
-            await probeContext.DrainOwnedRetirementsAsync();
-        }
-
-        await AssertRejectedWithoutLeaseLeakAsync(seed, specs);
-        Assert.Equal(referencesBefore, GetEntryReferenceCount(GetImageLease(firstImage)));
-    }
-
-    private static async Task DisposeCandidateAndDrainAsync(
-        SingleRasterLayoutCandidate? candidate,
-        MarkdownLayoutContext? constructionContext)
-    {
-        try
-        {
-            candidate?.Dispose();
-        }
-        finally
-        {
-            if (constructionContext is not null)
-                await constructionContext.DrainOwnedRetirementsAsync();
-        }
-    }
-
-    private static SharedCanvasBitmapCache.Lease GetImageLease(ImageBox image)
-    {
-        return Assert.IsType<SharedCanvasBitmapCache.Lease>(image.Presentation.Lease);
-    }
-
-    private static int GetEntryReferenceCount(SharedCanvasBitmapCache.Lease lease)
-    {
-        int? count = lease.EntryReferenceCount;
-        Assert.True(count.HasValue, "The lease no longer holds a cache entry.");
-        return count.Value;
-    }
-
-    private static T GetField<T>(object instance, string name)
-    {
-        FieldInfo field = instance.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return Assert.IsType<T>(field.GetValue(instance));
-    }
-
-    private enum RunKind
-    {
-        Text,
-        Link,
-        Image,
-        DisclosureLink,
-    }
-
-    private readonly record struct RunSpecification(
-        RunKind Kind,
-        string Text,
-        string? Url = null,
-        int ImageIndex = 0,
-        string? AccessibilityName = null)
-    {
-        internal static RunSpecification PlainText(string text) => new(RunKind.Text, text);
-        internal static RunSpecification Link(string text, string url) => new(RunKind.Link, text, url);
-        internal static RunSpecification Image(int imageIndex) => new(RunKind.Image, $"raster-{imageIndex}", ImageIndex: imageIndex);
-        internal static RunSpecification DisclosureLink(string text) =>
-            new(RunKind.DisclosureLink, text, "https://example.test/disclosure");
-    }
-
-    private sealed record RootSpecification(string ElementKey, RunSpecification[] Runs);
-
-    private sealed class MultiRootDocumentFixture : IAsyncDisposable
-    {
-        private readonly MarkdownLayoutContext _sourceContext;
-        private bool _retired;
-
-        internal MultiRootDocumentFixture(
-            MultiRasterPlacementCloneTests.MultiRasterFixture seed,
-            RootSpecification[] specifications)
-        {
-            ArgumentNullException.ThrowIfNull(seed);
-            ArgumentNullException.ThrowIfNull(specifications);
-            if (specifications.Length == 0)
-                throw new ArgumentException("The multi-root fixture needs at least one block.", nameof(specifications));
-
-            var sourceText = new StringBuilder();
-            foreach (RootSpecification root in specifications)
-            foreach (RunSpecification run in root.Runs)
-                sourceText.Append(run.Kind == RunKind.Image ? "!" : run.Text);
-
-            var sourceMap = new MarkdownSourceMap(sourceText.ToString());
-            _sourceContext = new MarkdownLayoutContext(
-                seed.SourceContext.ResourceCreator,
-                seed.SourceContext.ThemeSnapshot,
-                sourceMap,
-                seed.SourceContext.Registry,
-                seed.SourceContext.FlowDirection,
-                seed.SourceContext.Dispatcher,
-                seed.SourceContext.Language)
-            {
-                ImageCancellationToken = seed.SourceContext.ImageCancellationToken,
-                RasterizationScale = seed.SourceContext.RasterizationScale,
-                ImagePreparationOwner = seed.SourceContext.ImagePreparationOwner,
-                DisclosureStates = seed.SourceContext.DisclosureStates,
-                RenderResources = seed.SourceContext.RenderResources,
-            };
-
-            var roots = new InlineContainerBox[specifications.Length];
-            var allImages = new List<ImageBox>();
-            int sourceOffset = 0;
-            float contentWidth = (float)(Width - DocumentPadding.Left - DocumentPadding.Right);
-            float y = (float)DocumentPadding.Top;
-            for (int rootIndex = 0; rootIndex < specifications.Length; rootIndex++)
-            {
-                RootSpecification specification = specifications[rootIndex];
-                var root = new InlineContainerBox(_sourceContext, specification.ElementKey)
-                {
-                    BlockIndex = rootIndex + 1,
-                    UseContainerMargin = false,
-                    Margin = new Thickness(2 + rootIndex, 5 + rootIndex, 3 + rootIndex, 7 + rootIndex),
-                    CollapsedTopMargin = rootIndex % 2 == 0 ? 0 : 1.25 + rootIndex,
-                    SuppressTopMargin = rootIndex % 3 == 1,
-                    SuppressBottomMargin = rootIndex % 3 == 2,
-                };
-
-                foreach (RunSpecification runSpecification in specification.Runs)
-                {
-                    string sourceValue = runSpecification.Kind == RunKind.Image ? "!" : runSpecification.Text;
-                    var sourceSpan = new SourceSpan(sourceOffset, sourceValue.Length);
-                    InlineRun run = runSpecification.Kind switch
-                    {
-                        RunKind.Text => new TextRun(runSpecification.Text)
-                        {
-                            ElementKey = MarkdownElementKeys.Strong,
-                            StyleAliases = ["multi-root-text"],
-                            SourceSpan = sourceSpan,
-                        },
-                        RunKind.Link => new LinkRun(runSpecification.Text, runSpecification.Url!, "fixture link")
-                        {
-                            AccessibilityName = runSpecification.AccessibilityName ?? "accessible fixture link",
-                            SourceSpan = sourceSpan,
-                            StyleAliases = ["multi-root-link"],
-                        },
-                        RunKind.DisclosureLink => new LinkRun(runSpecification.Text, runSpecification.Url!)
-                        {
-                            DisclosureId = "fixture-disclosure",
-                            SourceSpan = sourceSpan,
-                        },
-                        RunKind.Image => new InlineImageRun(
-                            _sourceContext,
-                            runSpecification.Text,
-                            seed.ImageRuns[runSpecification.ImageIndex].Url,
-                            title: $"title-{runSpecification.ImageIndex}",
-                            linkUrl: $"https://example.test/image/{runSpecification.ImageIndex}")
-                        {
-                            ElementKey = MarkdownElementKeys.Link,
-                            SourceSpan = sourceSpan,
-                            StyleAliases = ["multi-root-image"],
-                        },
-                        _ => throw new ArgumentOutOfRangeException(nameof(specifications)),
-                    };
-                    root.Add(run);
-                    if (run is InlineImageRun imageRun)
-                        allImages.Add(imageRun.Image);
-                    sourceOffset += sourceValue.Length;
-                }
-
-                float height = root.Measure(contentWidth);
-                root.Arrange((float)DocumentPadding.Left, y, contentWidth);
-                y += height + (float)BlockSpacing;
-                roots[rootIndex] = root;
-            }
-
-            Roots = roots;
-            Images = allImages;
-            ImageBearingBlockIndices = roots
-                .Where(static root => root.Runs.Any(static run => run is InlineImageRun))
-                .Select(static root => root.BlockIndex)
-                .ToArray();
-            Source = new LayoutSnapshot(
-                roots,
-                sourceMap,
-                Width,
-                y - (float)BlockSpacing + (float)DocumentPadding.Bottom,
-                documentPadding: DocumentPadding,
-                blockSpacing: BlockSpacing);
-        }
-
-        internal LayoutSnapshot Source { get; }
-        internal LayoutSnapshot Snapshot => Source;
-        internal InlineContainerBox[] Roots { get; }
-        internal IReadOnlyList<ImageBox> Images { get; }
-        internal int[] ImageBearingBlockIndices { get; }
-        internal MarkdownLayoutContext SourceContext => _sourceContext;
-        internal object ImagePreparationOwner =>
-            Assert.IsAssignableFrom<object>(_sourceContext.ImagePreparationOwner);
-
-        public async ValueTask DisposeAsync()
-        {
-            if (_retired)
-                return;
-            _retired = true;
-            await Source.Retire().WaitAsync(TimeSpan.FromSeconds(10));
-            await _sourceContext.DrainOwnedRetirementsAsync();
         }
     }
 }

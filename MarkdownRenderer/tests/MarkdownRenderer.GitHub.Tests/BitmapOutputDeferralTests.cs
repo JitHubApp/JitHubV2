@@ -1,5 +1,3 @@
-using System.Buffers;
-using System.Diagnostics.Tracing;
 using System.Reflection;
 using System.Text;
 using MarkdownRenderer.Accessibility;
@@ -19,6 +17,12 @@ using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
+/// <remarks>
+/// This file is longer than 500 lines because every case drives the same
+/// saturated bitmap output ledger through a real <see cref="ImageBox"/>, and
+/// they share the saturation, drained-deferral wait, storm and disposal
+/// helpers that keep each case's cleanup ordered.
+/// </remarks>
 [Collection(SharedCanvasBitmapCacheTestCollection.Name)]
 public sealed class BitmapOutputDeferralTests
 {
@@ -94,7 +98,7 @@ public sealed class BitmapOutputDeferralTests
         List<BitmapOutputAdmission.Reservation> blockers = await SaturateAdmissionAsync(admission);
         var items = new List<RasterStormItem>(imageCount);
         MarkdownPerformanceSession? session = null;
-        RasterAdmissionTrace? rasterTrace = null;
+        RasterPreparationChargeTrace? rasterTrace = null;
 
         try
         {
@@ -107,61 +111,20 @@ public sealed class BitmapOutputDeferralTests
                 "The fixture must exceed the background/speculative tier as well as total capacity.");
 
             session = CreateProgressiveSession();
-            rasterTrace = new RasterAdmissionTrace(admission);
-            byte[] png = DisplaySizedRasterDecodeTests.CreatePng(outputWidth, outputHeight);
-            for (int index = 0; index < imageCount; index++)
-            {
-                var resolver = new CountingResolver(
-                    png,
-                    $"bitmap-output-storm-{index}-{Guid.NewGuid():N}",
-                    "image/png");
-                var image = new ImageBox(
-                    DisplaySizedRasterDecodeTests.CreateContext(_renderResources, resolver, session, scale: 1), _renderResources.Images,
-                    $"https://images.example/storm/{index}.png",
-                    $"storm image {index}");
-                var item = new RasterStormItem(image, resolver);
-                items.Add(item);
-
-                image.Measure(outputWidth);
-                image.EnsureLoading();
-            }
+            rasterTrace = new RasterPreparationChargeTrace(admission);
+            StartRasterStorm(items, session, imageCount, outputWidth, outputHeight);
 
             await WaitUntilAsync(
-                () => items.All(IsSettled),
+                () => items.All(IsStormItemSettled),
                 TimeSpan.FromMinutes(2));
 
-            RasterStormItem[] initiallyDeferred = items
-                .Where(item => item.Image.OutputDeferral.GetState().Deferred)
-                .ToArray();
-            RasterStormItem[] initiallyAdmitted = items
-                .Where(item => item.Image.Bitmap is not null)
-                .ToArray();
-            Assert.NotEmpty(initiallyDeferred);
-            Assert.NotEmpty(initiallyAdmitted);
-            Assert.All(initiallyDeferred, item =>
-            {
-                Assert.Equal(0, item.Image.GetWorkState().ActiveWorkCount);
-                Assert.Null(item.Image.Bitmap);
-                Assert.False(item.Image.LoadState.IsFailed);
-                Assert.Equal(MarkdownImageAccessibilityState.Loading, item.Image.AccessibilityState);
-            });
-            Assert.All(initiallyAdmitted, item =>
-            {
-                Assert.Equal(MarkdownImageAccessibilityState.Loaded, item.Image.AccessibilityState);
-                Assert.Equal((uint)outputWidth, item.Image.Bitmap!.SizeInPixels.Width);
-                Assert.Equal((uint)outputHeight, item.Image.Bitmap.SizeInPixels.Height);
-            });
+            (RasterStormItem[] initiallyDeferred, RasterStormItem[] initiallyAdmitted) =
+                AssertInitialStormSplitsIntoDeferredAndAdmitted(items, outputWidth, outputHeight);
 
             // Release the first admitted cohort as offscreen residency work.
             // Their cache-only references are then trimmed so capacity can
             // advance the source-free denied cohort.
-            foreach (RasterStormItem item in initiallyAdmitted)
-                item.Image.SuspendResources();
-
-            await WaitUntilAsync(
-                () => initiallyAdmitted.All(item => item.Image.GetWorkState().ActiveWorkCount == 0),
-                TimeSpan.FromSeconds(30));
-            Assert.All(initiallyAdmitted, item => Assert.True(item.Image.TryReleaseSuspendedResources()));
+            await SuspendAndReleaseStormResourcesAsync(initiallyAdmitted);
             Assert.All(initiallyAdmitted, item => Assert.Null(item.Image.Bitmap));
             _renderResources.Images.BitmapCache.Clear();
 
@@ -172,60 +135,143 @@ public sealed class BitmapOutputDeferralTests
                     item.Image.GetWorkState().ActiveWorkCount == 0),
                 TimeSpan.FromMinutes(2));
 
-            Assert.All(items, item =>
-            {
-                Assert.True(item.Resolver.ResolveCount >= 1);
-                Assert.True(item.SuccessfulPublications > 0);
-                Assert.False(item.Image.LoadState.IsFailed);
-                Assert.Equal((uint)outputWidth, item.FirstPublishedWidth);
-                Assert.Equal((uint)outputHeight, item.FirstPublishedHeight);
-            });
-            Assert.Contains(initiallyDeferred, item => item.Resolver.ResolveCount >= 2);
-            Assert.True(rasterTrace!.WicPixelDecodeCount >= imageCount);
-            Assert.True(rasterTrace.Win2DBitmapUploadCount >= imageCount);
-            Assert.Equal(0, rasterTrace.CapacityViolationCount);
-            Assert.True(rasterTrace.MaximumChargedBytes <= empty.CapacityBytes);
+            AssertStormPublishedWithinLedger(
+                items, initiallyDeferred, rasterTrace, empty, imageCount, outputWidth, outputHeight);
 
             // Explicitly release the final wave too; successful publication
             // and cleanup are both part of this exercise.
-            foreach (RasterStormItem item in items)
-                item.Image.SuspendResources();
-            await WaitUntilAsync(
-                () => items.All(item => item.Image.GetWorkState().ActiveWorkCount == 0),
-                TimeSpan.FromSeconds(30));
-            Assert.All(items, item => Assert.True(item.Image.TryReleaseSuspendedResources()));
+            await SuspendAndReleaseStormResourcesAsync(items);
             _renderResources.Images.BitmapCache.Clear();
             await WaitUntilAsync(() => admission.GetSnapshot().ChargedBytes == 0);
             Assert.All(items, item => Assert.Null(item.Image.Bitmap));
-
-            bool IsSettled(RasterStormItem item) => item.Resolver.ResolveCount > 0 &&
-                (item.Image.Bitmap is not null ||
-                 (item.Image.OutputDeferral.GetState().Deferred &&
-                  item.Image.OutputDeferral.GetState().HasWaiter &&
-                  item.Image.GetWorkState().ActiveWorkCount == 0));
         }
         finally
         {
+            await DisposeRasterStormAsync(items, rasterTrace, session, blockers);
+        }
+    }
+
+    private void StartRasterStorm(
+        List<RasterStormItem> items,
+        MarkdownPerformanceSession session,
+        int imageCount,
+        int outputWidth,
+        int outputHeight)
+    {
+        byte[] png = DisplaySizedRasterDecodeTests.CreatePng(outputWidth, outputHeight);
+        for (int index = 0; index < imageCount; index++)
+        {
+            var resolver = new CountingResolver(
+                png,
+                $"bitmap-output-storm-{index}-{Guid.NewGuid():N}",
+                "image/png");
+            var image = new ImageBox(
+                DisplaySizedRasterDecodeTests.CreateContext(_renderResources, resolver, session, scale: 1), _renderResources.Images,
+                $"https://images.example/storm/{index}.png",
+                $"storm image {index}");
+            var item = new RasterStormItem(image, resolver);
+            items.Add(item);
+
+            image.Measure(outputWidth);
+            image.EnsureLoading();
+        }
+    }
+
+    private static bool IsStormItemSettled(RasterStormItem item) => item.Resolver.ResolveCount > 0 &&
+        (item.Image.Bitmap is not null ||
+         (item.Image.OutputDeferral.GetState().Deferred &&
+          item.Image.OutputDeferral.GetState().HasWaiter &&
+          item.Image.GetWorkState().ActiveWorkCount == 0));
+
+    private static (RasterStormItem[] Deferred, RasterStormItem[] Admitted)
+        AssertInitialStormSplitsIntoDeferredAndAdmitted(
+            List<RasterStormItem> items,
+            int outputWidth,
+            int outputHeight)
+    {
+        RasterStormItem[] initiallyDeferred = items
+            .Where(item => item.Image.OutputDeferral.GetState().Deferred)
+            .ToArray();
+        RasterStormItem[] initiallyAdmitted = items
+            .Where(item => item.Image.Bitmap is not null)
+            .ToArray();
+        Assert.NotEmpty(initiallyDeferred);
+        Assert.NotEmpty(initiallyAdmitted);
+        Assert.All(initiallyDeferred, item =>
+        {
+            Assert.Equal(0, item.Image.GetWorkState().ActiveWorkCount);
+            Assert.Null(item.Image.Bitmap);
+            Assert.False(item.Image.LoadState.IsFailed);
+            Assert.Equal(MarkdownImageAccessibilityState.Loading, item.Image.AccessibilityState);
+        });
+        Assert.All(initiallyAdmitted, item =>
+        {
+            Assert.Equal(MarkdownImageAccessibilityState.Loaded, item.Image.AccessibilityState);
+            Assert.Equal((uint)outputWidth, item.Image.Bitmap!.SizeInPixels.Width);
+            Assert.Equal((uint)outputHeight, item.Image.Bitmap.SizeInPixels.Height);
+        });
+        return (initiallyDeferred, initiallyAdmitted);
+    }
+
+    private static async Task SuspendAndReleaseStormResourcesAsync(IReadOnlyCollection<RasterStormItem> items)
+    {
+        foreach (RasterStormItem item in items)
+            item.Image.SuspendResources();
+        await WaitUntilAsync(
+            () => items.All(item => item.Image.GetWorkState().ActiveWorkCount == 0),
+            TimeSpan.FromSeconds(30));
+        Assert.All(items, item => Assert.True(item.Image.TryReleaseSuspendedResources()));
+    }
+
+    private static void AssertStormPublishedWithinLedger(
+        List<RasterStormItem> items,
+        RasterStormItem[] initiallyDeferred,
+        RasterPreparationChargeTrace rasterTrace,
+        BitmapOutputAdmission.Snapshot empty,
+        int imageCount,
+        int outputWidth,
+        int outputHeight)
+    {
+        Assert.All(items, item =>
+        {
+            Assert.True(item.Resolver.ResolveCount >= 1);
+            Assert.True(item.SuccessfulPublications > 0);
+            Assert.False(item.Image.LoadState.IsFailed);
+            Assert.Equal((uint)outputWidth, item.FirstPublishedWidth);
+            Assert.Equal((uint)outputHeight, item.FirstPublishedHeight);
+        });
+        Assert.Contains(initiallyDeferred, item => item.Resolver.ResolveCount >= 2);
+        Assert.True(rasterTrace.WicPixelDecodeCount >= imageCount);
+        Assert.True(rasterTrace.Win2DBitmapUploadCount >= imageCount);
+        Assert.Equal(0, rasterTrace.CapacityViolationCount);
+        Assert.True(rasterTrace.MaximumChargedBytes <= empty.CapacityBytes);
+    }
+
+    private async Task DisposeRasterStormAsync(
+        List<RasterStormItem> items,
+        RasterPreparationChargeTrace? rasterTrace,
+        MarkdownPerformanceSession? session,
+        List<BitmapOutputAdmission.Reservation> blockers)
+    {
+        foreach (RasterStormItem item in items)
+            item.Detach();
+        try
+        {
             foreach (RasterStormItem item in items)
-                item.Detach();
+                await DisposeImageAsync(item.Image);
+        }
+        finally
+        {
             try
             {
-                foreach (RasterStormItem item in items)
-                    await DisposeImageAsync(item.Image);
+                rasterTrace?.Dispose();
+                if (session is not null)
+                    await session.DisposeAsync();
             }
             finally
             {
-                try
-                {
-                    rasterTrace?.Dispose();
-                    if (session is not null)
-                        await session.DisposeAsync();
-                }
-                finally
-                {
-                    try { _renderResources.Images.BitmapCache.Clear(); }
-                    finally { ReleaseReservations(blockers); }
-                }
+                try { _renderResources.Images.BitmapCache.Clear(); }
+                finally { ReleaseReservations(blockers); }
             }
         }
     }
@@ -328,11 +374,7 @@ public sealed class BitmapOutputDeferralTests
             try
             {
                 using var target = new CanvasRenderTarget(CanvasDevice.GetSharedDevice(), 256, 256, 96);
-                using (CanvasDrawingSession drawing = target.CreateDrawingSession())
-                {
-                    drawing.Clear(Color.FromArgb(0, 0, 0, 0));
-                    image.Paint(drawing, new Rect(0, 0, 256, 256));
-                }
+                PaintTileViewport(image, target);
 
                 await WaitForDeferredAndDrainedAsync(image, () => resolver.ResolveCount);
                 Assert.Equal(0, renderer.RenderCount);
@@ -353,11 +395,7 @@ public sealed class BitmapOutputDeferralTests
                 // The capacity notification only invalidates the accepted tile
                 // tree. Rendering resumes on a later paint; without one, no
                 // source-free waiter or active work should remain stranded.
-                using (CanvasDrawingSession drawing = target.CreateDrawingSession())
-                {
-                    drawing.Clear(Color.FromArgb(0, 0, 0, 0));
-                    image.Paint(drawing, new Rect(0, 0, 256, 256));
-                }
+                PaintTileViewport(image, target);
 
                 await WaitUntilAsync(() => renderer.RenderCount > 0);
                 await WaitUntilAsync(() => image.GetWorkState().ActiveWorkCount == 0);
@@ -499,24 +537,8 @@ public sealed class BitmapOutputDeferralTests
         try
         {
             CanvasDevice device = CanvasDevice.GetSharedDevice();
-            CanvasBitmap createdBitmap = CanvasBitmap.CreateFromBytes(
-                device,
-                new byte[checked((int)oversizedBytes)],
-                side,
-                side,
-                DirectXPixelFormat.B8G8R8A8UIntNormalized);
-            CanvasBitmap? unownedBitmap = createdBitmap;
-            SharedCanvasBitmapCache.Lease seed;
-            try
-            {
-                seed = _renderResources.Images.BitmapCache.StoreAndAcquire(device, cacheKey, createdBitmap);
-                unownedBitmap = null;
-                cacheSeeded = true;
-            }
-            finally
-            {
-                unownedBitmap?.Dispose();
-            }
+            SharedCanvasBitmapCache.Lease seed = StoreOversizedBitmap(device, cacheKey, side, oversizedBytes);
+            cacheSeeded = true;
             seed.Dispose(); // Leave the oversized, unadmitted Entry cache-only.
 
             Assert.True(_renderResources.Images.BitmapCache.TryAcquire(device, cacheKey, out survivor));
@@ -526,22 +548,10 @@ public sealed class BitmapOutputDeferralTests
             Assert.Equal(livePixelsBefore + oversizedBytes,
                 _renderResources.Images.BitmapCache.GetSnapshot().LivePixelWeightBytes);
 
-            bool admitted = rejectionPath switch
-            {
-                "admission" => InvokeCachedAdmission(image, liveSurvivor),
-                "source-sized" => InvokeSourceSizedCacheLookup(image, cacheKey),
-                "raster-sized" => InvokeRasterSizedCacheLookup(image, device, cacheKey),
-                _ => throw new ArgumentOutOfRangeException(nameof(rejectionPath)),
-            };
+            bool admitted = InvokeRejectionPath(rejectionPath, image, liveSurvivor, device, cacheKey);
             Assert.False(admitted);
 
-            await WaitUntilAsync(() =>
-            {
-                if (!_renderResources.Images.BitmapCache.TryAcquire(device, cacheKey, out var probe))
-                    return true;
-                probe?.Dispose();
-                return false;
-            });
+            await WaitUntilCacheKeyEvictedAsync(device, cacheKey);
 
             // Cache.Clear has dropped only its own reference. The legacy lease
             // remains usable, and the opted-in governor never charged it.
@@ -554,27 +564,83 @@ public sealed class BitmapOutputDeferralTests
         }
         finally
         {
-            try
-            {
-                survivor?.Dispose();
-            }
-            finally
-            {
-                try
-                {
-                    await DisposeImageAsync(image);
-                }
-                finally
-                {
-                    if (cacheSeeded)
-                        _renderResources.Images.BitmapCache.Clear();
-                }
-            }
+            await DisposeOversizedCacheFixtureAsync(survivor, image, cacheSeeded);
         }
 
         await WaitUntilAsync(() =>
             _renderResources.Images.BitmapCache.GetSnapshot().LivePixelWeightBytes == livePixelsBefore);
         Assert.Equal(admittedBytesBefore, admission.GetSnapshot().ChargedBytes);
+    }
+
+    private SharedCanvasBitmapCache.Lease StoreOversizedBitmap(
+        CanvasDevice device,
+        string cacheKey,
+        int side,
+        long oversizedBytes)
+    {
+        CanvasBitmap createdBitmap = CanvasBitmap.CreateFromBytes(
+            device,
+            new byte[checked((int)oversizedBytes)],
+            side,
+            side,
+            DirectXPixelFormat.B8G8R8A8UIntNormalized);
+        CanvasBitmap? unownedBitmap = createdBitmap;
+        try
+        {
+            SharedCanvasBitmapCache.Lease seed =
+                _renderResources.Images.BitmapCache.StoreAndAcquire(device, cacheKey, createdBitmap);
+            unownedBitmap = null;
+            return seed;
+        }
+        finally
+        {
+            unownedBitmap?.Dispose();
+        }
+    }
+
+    private static bool InvokeRejectionPath(
+        string rejectionPath,
+        ImageBox image,
+        SharedCanvasBitmapCache.Lease liveSurvivor,
+        CanvasDevice device,
+        string cacheKey) => rejectionPath switch
+    {
+        "admission" => InvokeCachedAdmission(image, liveSurvivor),
+        "source-sized" => InvokeSourceSizedCacheLookup(image, cacheKey),
+        "raster-sized" => InvokeRasterSizedCacheLookup(image, device, cacheKey),
+        _ => throw new ArgumentOutOfRangeException(nameof(rejectionPath)),
+    };
+
+    private Task WaitUntilCacheKeyEvictedAsync(CanvasDevice device, string cacheKey) =>
+        WaitUntilAsync(() =>
+        {
+            if (!_renderResources.Images.BitmapCache.TryAcquire(device, cacheKey, out var probe))
+                return true;
+            probe?.Dispose();
+            return false;
+        });
+
+    private async Task DisposeOversizedCacheFixtureAsync(
+        SharedCanvasBitmapCache.Lease? survivor,
+        ImageBox image,
+        bool cacheSeeded)
+    {
+        try
+        {
+            survivor?.Dispose();
+        }
+        finally
+        {
+            try
+            {
+                await DisposeImageAsync(image);
+            }
+            finally
+            {
+                if (cacheSeeded)
+                    _renderResources.Images.BitmapCache.Clear();
+            }
+        }
     }
 
     private static bool InvokeCachedAdmission(
@@ -601,6 +667,13 @@ public sealed class BitmapOutputDeferralTests
             requestedHeight: null,
             maximumPixels: 1);
         return image.OutputAdmission.TryAcquireRasterBitmap(device, cacheKey, request, transformed: false, out _);
+    }
+
+    private static void PaintTileViewport(ImageBox image, CanvasRenderTarget target)
+    {
+        using CanvasDrawingSession drawing = target.CreateDrawingSession();
+        drawing.Clear(Color.FromArgb(0, 0, 0, 0));
+        image.Paint(drawing, new Rect(0, 0, 256, 256));
     }
 
     private static MarkdownPerformanceSession CreateProgressiveSession() =>
@@ -864,112 +937,5 @@ public sealed class BitmapOutputDeferralTests
         }
 
         internal void Detach() => Image.LoadCompleted -= Handler;
-    }
-
-    private sealed class RasterAdmissionTrace(BitmapOutputAdmission admission) : EventListener
-    {
-        private long _maximumChargedBytes;
-        private int _wicPixelDecodeCount;
-        private int _win2DBitmapUploadCount;
-        private int _capacityViolationCount;
-
-        internal long MaximumChargedBytes => Interlocked.Read(ref _maximumChargedBytes);
-        internal int WicPixelDecodeCount => Volatile.Read(ref _wicPixelDecodeCount);
-        internal int Win2DBitmapUploadCount => Volatile.Read(ref _win2DBitmapUploadCount);
-        internal int CapacityViolationCount => Volatile.Read(ref _capacityViolationCount);
-
-        protected override void OnEventSourceCreated(EventSource eventSource)
-        {
-            if (eventSource.Name == "MarkdownRenderer-RasterPreparation")
-                EnableEvents(eventSource, EventLevel.Informational);
-        }
-
-        protected override void OnEventWritten(EventWrittenEventArgs eventData)
-        {
-            if (eventData.EventSource.Name != "MarkdownRenderer-RasterPreparation" ||
-                eventData.EventId != 2 ||
-                eventData.Payload is not { Count: 3 } payload ||
-                payload[1] is not long stage)
-            {
-                return;
-            }
-
-            if (stage == (long)MarkdownRasterPreparationStage.WicPixelDecode)
-                Interlocked.Increment(ref _wicPixelDecodeCount);
-            else if (stage == (long)MarkdownRasterPreparationStage.Win2DBitmapUpload)
-                Interlocked.Increment(ref _win2DBitmapUploadCount);
-            else if (stage != (long)MarkdownRasterPreparationStage.Win2DDirectLoad &&
-                     stage != (long)MarkdownRasterPreparationStage.CachePublication)
-                return;
-
-            BitmapOutputAdmission.Snapshot snapshot = admission.GetSnapshot();
-            long observed;
-            while (snapshot.ChargedBytes > (observed = Interlocked.Read(ref _maximumChargedBytes)) &&
-                   Interlocked.CompareExchange(
-                       ref _maximumChargedBytes,
-                       snapshot.ChargedBytes,
-                       observed) != observed)
-            {
-            }
-
-            if (snapshot.ChargedBytes > snapshot.CapacityBytes)
-                Interlocked.Increment(ref _capacityViolationCount);
-        }
-    }
-
-    private sealed class CountingSvgRenderer(MarkdownSvgDocumentInfo info) : IMarkdownSvgRenderer
-    {
-        private int _openCount;
-        private int _renderCount;
-
-        internal int OpenCount => Volatile.Read(ref _openCount);
-        internal int RenderCount => Volatile.Read(ref _renderCount);
-
-        public MarkdownSvgSourcePreparation PrepareSource(
-            byte[] source,
-            CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            return MarkdownSvgSourcePreparation.Admit(source);
-        }
-
-        public ValueTask<IMarkdownSvgDocument> OpenAsync(
-            MarkdownSvgOpenRequest request,
-            CancellationToken cancellationToken = default)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            Interlocked.Increment(ref _openCount);
-            return ValueTask.FromResult<IMarkdownSvgDocument>(new CountingSvgDocument(this, info));
-        }
-
-        private sealed class CountingSvgDocument(
-            CountingSvgRenderer renderer,
-            MarkdownSvgDocumentInfo info) : IMarkdownSvgDocument
-        {
-            public MarkdownSvgDocumentInfo Info { get; } = info;
-
-            public ValueTask<MarkdownSvgRaster> RenderAsync(
-                MarkdownSvgRenderRequest request,
-                CancellationToken cancellationToken = default)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                Interlocked.Increment(ref renderer._renderCount);
-                int width = request.TileRegion?.Width ?? request.TargetWidthPixels;
-                int height = request.TileRegion?.Height ?? request.TargetHeightPixels;
-                int stride = checked(width * 4);
-                int length = checked(stride * height);
-                IMemoryOwner<byte> owner = MemoryPool<byte>.Shared.Rent(length);
-                owner.Memory.Span[..length].Clear();
-                return ValueTask.FromResult(new MarkdownSvgRaster(
-                    owner,
-                    length,
-                    width,
-                    height,
-                    stride,
-                    request.PixelFormat));
-            }
-
-            public void Dispose() { }
-        }
     }
 }

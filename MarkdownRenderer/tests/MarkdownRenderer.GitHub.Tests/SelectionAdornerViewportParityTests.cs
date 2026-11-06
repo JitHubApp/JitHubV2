@@ -15,6 +15,17 @@ using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
+/// <summary>
+/// Compares viewport-clipped selection adorner geometry with the legacy
+/// full-tree and DirectWrite oracles across tables, code blocks and flow
+/// directions.
+/// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because its fourteen parity scenarios
+/// share one set of clipping, DirectWrite and hit-test oracles, and splitting
+/// those oracles away from the scenarios would separate each check from its
+/// only callers. It remains listed in file-size-exceptions.json.
+/// </remarks>
 public sealed class SelectionAdornerViewportParityTests
 {
     private readonly MarkdownRenderResources _renderResources = new();
@@ -399,8 +410,9 @@ public sealed class SelectionAdornerViewportParityTests
     {
         using var device = new CanvasDevice(forceSoftwareRenderer: true);
         Assert.True(device.ForceSoftwareRenderer);
-        await using NativeOverflowFixture fixture = CreateNativeOverflowFixture(
+        await using NativeOverflowFixture fixture = NativeOverflowFixture.Create(
             device,
+            _renderResources,
             flowDirection,
             rasterizationScale);
 
@@ -440,8 +452,9 @@ public sealed class SelectionAdornerViewportParityTests
     {
         using var device = new CanvasDevice(forceSoftwareRenderer: true);
         Assert.True(device.ForceSoftwareRenderer);
-        await using RtlNativeCodeFixture fixture = CreateRtlNativeCodeFixture(
+        await using RtlNativeCodeFixture fixture = RtlNativeCodeFixture.Create(
             device,
+            _renderResources,
             rasterizationScale,
             CanvasWordWrapping.NoWrap,
             includeUnbreakableToken: true);
@@ -470,8 +483,9 @@ public sealed class SelectionAdornerViewportParityTests
     {
         using var device = new CanvasDevice(forceSoftwareRenderer: true);
         Assert.True(device.ForceSoftwareRenderer);
-        await using RtlNativeCodeFixture fixture = CreateRtlNativeCodeFixture(
+        await using RtlNativeCodeFixture fixture = RtlNativeCodeFixture.Create(
             device,
+            _renderResources,
             rasterizationScale,
             CanvasWordWrapping.NoWrap,
             includeUnbreakableToken: true,
@@ -505,8 +519,9 @@ public sealed class SelectionAdornerViewportParityTests
     {
         using var device = new CanvasDevice(forceSoftwareRenderer: true);
         Assert.True(device.ForceSoftwareRenderer);
-        await using RtlNativeCodeFixture fixture = CreateRtlNativeCodeFixture(
+        await using RtlNativeCodeFixture fixture = RtlNativeCodeFixture.Create(
             device,
+            _renderResources,
             rasterizationScale,
             CanvasWordWrapping.Wrap,
             includeUnbreakableToken);
@@ -868,20 +883,7 @@ public sealed class SelectionAdornerViewportParityTests
     {
         CodeBlockBox code = fixture.Code;
         Rect viewport = code.HorizontalViewportBounds;
-        float horizontalDirection = code.IsRightToLeft ? 1f : -1f;
-        float expectedChunkX = (float)viewport.Left + horizontalDirection * (float)code.HorizontalOffset;
-        Assert.All(code.Chunks, chunk =>
-        {
-            Assert.InRange(global::System.Math.Abs((float)chunk.Bounds.X - expectedChunkX), 0, 0.01f);
-            Assert.Equal(default(Thickness), chunk.Margin);
-
-            // The ordinary inline hit-test remains constrained by its own X
-            // bounds; CodeBlockBox alone may route clipped overflow hits.
-            var outsideInlineBounds = new Point(
-                chunk.Bounds.Right + global::System.Math.Max(1, 1 / rasterizationScale),
-                chunk.Bounds.Top + chunk.Bounds.Height / 2);
-            Assert.False(chunk.HitTest(outsideInlineBounds, out _));
-        });
+        AssertChunksStartAtTheScrolledViewportEdge(code, viewport, rasterizationScale);
 
         Rect[] directWriteOracle = GetDirectWriteCodeSelectionRects(fixture, rasterizationScale);
         Rect[] actualCodeRects = code.GetSelectionRects(fixture.Selection.Range).ToArray();
@@ -926,6 +928,35 @@ public sealed class SelectionAdornerViewportParityTests
             rasterizationScale);
         Assert.Contains(foregroundOnly, pixel => pixel.A != 0);
 
+        AssertDirectWriteRectanglesHitTestToFiniteCarets(fixture, directWriteOracle);
+    }
+
+    private static void AssertChunksStartAtTheScrolledViewportEdge(
+        CodeBlockBox code,
+        Rect viewport,
+        float rasterizationScale)
+    {
+        float horizontalDirection = code.IsRightToLeft ? 1f : -1f;
+        float expectedChunkX = (float)viewport.Left + horizontalDirection * (float)code.HorizontalOffset;
+        Assert.All(code.Chunks, chunk =>
+        {
+            Assert.InRange(global::System.Math.Abs((float)chunk.Bounds.X - expectedChunkX), 0, 0.01f);
+            Assert.Equal(default(Thickness), chunk.Margin);
+
+            // The ordinary inline hit-test remains constrained by its own X
+            // bounds; CodeBlockBox alone may route clipped overflow hits.
+            var outsideInlineBounds = new Point(
+                chunk.Bounds.Right + global::System.Math.Max(1, 1 / rasterizationScale),
+                chunk.Bounds.Top + chunk.Bounds.Height / 2);
+            Assert.False(chunk.HitTest(outsideInlineBounds, out _));
+        });
+    }
+
+    private static void AssertDirectWriteRectanglesHitTestToFiniteCarets(
+        RtlNativeCodeFixture fixture,
+        Rect[] directWriteOracle)
+    {
+        CodeBlockBox code = fixture.Code;
         Assert.True(fixture.Snapshot.TryBeginInteraction());
         try
         {
@@ -1069,117 +1100,6 @@ public sealed class SelectionAdornerViewportParityTests
         }
     }
 
-    private RtlNativeCodeFixture CreateRtlNativeCodeFixture(
-        CanvasDevice device,
-        float rasterizationScale,
-        CanvasWordWrapping wrapping,
-        bool includeUnbreakableToken,
-        FlowDirection flowDirection = FlowDirection.RightToLeft)
-    {
-        const float width = 208.25f;
-        string longToken = new('W', 220);
-        string[] lines = includeUnbreakableToken
-            ?
-            [
-                "x",
-                "var mediumName = 17;",
-                "var bidiValue = \"שלום אבג 123\";",
-                "var token = " + longToken + ";",
-                "tail;",
-            ]
-            :
-            [
-                "var firstValue = \"ordinary words wrap within the view\";",
-                "var secondValue = \"more words for a natural wrap\";",
-                "int finalColumn = 42;",
-            ];
-        string codeText = string.Join("\n", lines);
-        var codeStyle = new ElementStyle
-        {
-            FontFamily = "Consolas",
-            FontSize = 13,
-            Foreground = Color.FromArgb(255, 24, 25, 26),
-            Background = Color.FromArgb(255, 246, 247, 249),
-            Padding = new Thickness(4, 2, 6, 2),
-        };
-        var lineNumberStyle = new ElementStyle
-        {
-            FontFamily = "Consolas",
-            FontSize = 11,
-            Foreground = Color.FromArgb(255, 86, 93, 101),
-        };
-        Color transparent = Color.FromArgb(0, 0, 0, 0);
-        var theme = new ThemeSnapshot(
-            new Dictionary<string, ElementStyle>
-            {
-                [MarkdownElementKeys.Body] = codeStyle,
-                [MarkdownElementKeys.CodeBlock] = codeStyle,
-                [MarkdownElementKeys.CodeBlockHeader] = new ElementStyle(),
-                [MarkdownElementKeys.CodeBlockLanguage] = codeStyle,
-                [MarkdownElementKeys.CodeBlockGutter] = new ElementStyle(),
-                [MarkdownElementKeys.CodeBlockLineNumber] = lineNumberStyle,
-            },
-            new Dictionary<string, ElementStyleOverride>(),
-            transparent,
-            transparent,
-            transparent,
-            transparent,
-            isDark: false,
-            isHighContrast: false,
-            textScaleFactor: 1);
-        var context = new MarkdownLayoutContext(
-            device,
-            theme,
-            new MarkdownSourceMap(codeText),
-            new MarkdownExtensionRegistry(),
-            flowDirection,
-            language: "en-US")
-        {
-            RenderResources = _renderResources,
-            RasterizationScale = rasterizationScale,
-            IsCodeBlockCopyEnabled = true,
-        };
-        var metadata = CodeBlockMetadata.FromDeclarative(
-            new SourceSpan(0, codeText.Length),
-            codeText,
-            "csharp",
-            new Dictionary<string, string> { ["startline"] = "7" });
-        var code = new CodeBlockBox(context, metadata, codeText, isCopyButtonEnabled: true, showLineNumbers: true)
-        {
-            BlockIndex = 0,
-        };
-        int nextBlockIndex = 1;
-        int textOffset = 0;
-        foreach (string line in lines)
-        {
-            string chunkText = textOffset + line.Length < codeText.Length ? line + "\n" : line;
-            var chunk = new InlineContainerBox(context, MarkdownElementKeys.CodeBlock)
-            {
-                BlockIndex = nextBlockIndex++,
-                CodeLanguage = metadata.Language,
-                CodeBlockTextOffset = textOffset,
-                CodeBlockTextLength = chunkText.Length,
-                WordWrapping = wrapping,
-            };
-            chunk.Add(new TextRun(chunkText));
-            code.AddChunk(chunk);
-            textOffset += chunkText.Length;
-        }
-        Assert.Equal(codeText.Length, textOffset);
-
-        code.Measure(width);
-        code.Arrange(11.25f, 37.375f, width);
-        var snapshot = new LayoutSnapshot(
-            new BlockBox[] { code },
-            context.SourceMap,
-            width,
-            (float)code.Bounds.Bottom + 12);
-        var selection = new SelectionController();
-        selection.SetAnchor(new DocumentPosition(code.Chunks[0].BlockIndex, 0, 0));
-        selection.ExtendTo(new DocumentPosition(code.Chunks[^1].BlockIndex, 0, int.MaxValue));
-        return new RtlNativeCodeFixture(device, context, snapshot, code, selection);
-    }
-
     private static Color[] RasterizeSelectionRects(
         CanvasDevice device,
         IReadOnlyList<Rect> rectangles,
@@ -1220,155 +1140,6 @@ public sealed class SelectionAdornerViewportParityTests
         {
             snapshot.EndPaint();
         }
-    }
-
-    private NativeOverflowFixture CreateNativeOverflowFixture(
-        CanvasDevice device,
-        FlowDirection flowDirection,
-        float rasterizationScale)
-    {
-        const float width = 176;
-        var codeStyle = new ElementStyle
-        {
-            FontFamily = "Consolas",
-            FontSize = 13,
-            Foreground = Color.FromArgb(255, 24, 25, 26),
-            Background = Color.FromArgb(255, 246, 247, 249),
-        };
-        var bodyStyle = new ElementStyle
-        {
-            FontFamily = "Segoe UI",
-            FontSize = 13,
-            Foreground = Color.FromArgb(255, 25, 28, 31),
-        };
-        var tableStyle = new ElementStyle { Padding = new Thickness(2) };
-        var styles = new Dictionary<string, ElementStyle>
-        {
-            [MarkdownElementKeys.Body] = bodyStyle,
-            [MarkdownElementKeys.Table] = tableStyle,
-            [MarkdownElementKeys.TableHeader] = bodyStyle,
-            [MarkdownElementKeys.TableCell] = bodyStyle,
-            [MarkdownElementKeys.CodeBlock] = codeStyle,
-            [MarkdownElementKeys.CodeBlockHeader] = new ElementStyle(),
-            [MarkdownElementKeys.CodeBlockLanguage] = bodyStyle,
-            [MarkdownElementKeys.CodeBlockGutter] = new ElementStyle(),
-            [MarkdownElementKeys.CodeBlockLineNumber] = new ElementStyle(),
-        };
-        Color transparent = Color.FromArgb(0, 0, 0, 0);
-        var theme = new ThemeSnapshot(
-            styles,
-            new Dictionary<string, ElementStyleOverride>(),
-            transparent,
-            transparent,
-            transparent,
-            transparent,
-            isDark: false,
-            isHighContrast: false,
-            textScaleFactor: 1);
-        string code = string.Join(
-            "\n",
-            Enumerable.Range(0, 36).Select(index =>
-                $"var horizontalColumn_{index:D2} = sourceValue_{index:D2} + additionalOverflowPayload_{index:D2};"));
-        string source = "wide table and code selection\n" + code;
-        var context = new MarkdownLayoutContext(
-            device,
-            theme,
-            new MarkdownSourceMap(source),
-            new MarkdownExtensionRegistry(),
-            flowDirection,
-            language: "en-US")
-        {
-            RenderResources = _renderResources,
-            RasterizationScale = rasterizationScale,
-            IsCodeBlockCopyEnabled = true,
-        };
-
-        InlineContainerBox MakeCell(int blockIndex, string text)
-        {
-            var cell = new InlineContainerBox(context, MarkdownElementKeys.TableCell)
-            {
-                BlockIndex = blockIndex,
-            };
-            cell.Add(new TextRun(text));
-            return cell;
-        }
-
-        InlineContainerBox[][] headers =
-        [
-            [
-                MakeCell(1, "header-column-with-long-content-one"),
-                MakeCell(2, "header-column-with-long-content-two"),
-                MakeCell(3, "header-column-with-long-content-three"),
-            ],
-        ];
-        InlineContainerBox[][] rows =
-        [
-            [
-                MakeCell(4, "body-column-with-long-content-alpha"),
-                MakeCell(5, "body-column-with-long-content-bravo"),
-                MakeCell(6, "body-column-with-long-content-charlie"),
-            ],
-            [
-                MakeCell(7, "second-row-long-content-delta"),
-                MakeCell(8, "second-row-long-content-echo"),
-                MakeCell(9, "second-row-long-content-foxtrot"),
-            ],
-        ];
-        var table = new TableBox(context, headers, rows) { BlockIndex = 0 };
-        table.Measure(width);
-        table.Arrange(0, 8, width);
-
-        CodeBlockMetadata metadata = CodeBlockMetadata.FromDeclarative(
-            new SourceSpan(0, code.Length),
-            code,
-            "csharp",
-            new Dictionary<string, string> { ["startline"] = "1" });
-        var codeBlock = new CodeBlockBox(
-            context,
-            metadata,
-            code,
-            isCopyButtonEnabled: true,
-            showLineNumbers: true)
-        {
-            BlockIndex = 10,
-        };
-        string canonicalCode = codeBlock.CodeText;
-        string[] lines = canonicalCode.Split('\n');
-        int nextLine = 0;
-        int chunkIndex = 11;
-        int textOffset = 0;
-        const int linesPerChunk = 9;
-        while (nextLine < lines.Length)
-        {
-            int count = global::System.Math.Min(linesPerChunk, lines.Length - nextLine);
-            string chunkText = string.Join("\n", lines.Skip(nextLine).Take(count));
-            if (nextLine + count < lines.Length)
-                chunkText += "\n";
-            var chunk = new InlineContainerBox(context, MarkdownElementKeys.CodeBlock)
-            {
-                BlockIndex = chunkIndex++,
-                CodeLanguage = metadata.Language,
-                CodeBlockTextOffset = textOffset,
-                CodeBlockTextLength = chunkText.Length,
-                WordWrapping = CanvasWordWrapping.NoWrap,
-            };
-            chunk.Add(new TextRun(chunkText));
-            codeBlock.AddChunk(chunk);
-            textOffset += chunkText.Length;
-            nextLine += count;
-        }
-
-        codeBlock.Measure(width);
-        codeBlock.Arrange(0, (float)table.Bounds.Bottom + 20, width);
-        var snapshot = new LayoutSnapshot(
-            new BlockBox[] { table, codeBlock },
-            context.SourceMap,
-            width,
-            (float)codeBlock.Bounds.Bottom + 16);
-        var selection = new SelectionController();
-        selection.SetAnchor(new DocumentPosition(1, 0, 0));
-        selection.ExtendTo(new DocumentPosition(chunkIndex - 1, 0, int.MaxValue));
-        return new NativeOverflowFixture(device, context, snapshot, table, codeBlock, selection, width);
     }
 
     private MarkdownLayoutContext CreateEndpointContext(CanvasDevice device)
@@ -1447,49 +1218,4 @@ public sealed class SelectionAdornerViewportParityTests
         LayoutSnapshot snapshot,
         Rect viewport,
         List<Rect> destination);
-
-    private sealed class RtlNativeCodeFixture(
-        CanvasDevice device,
-        MarkdownLayoutContext context,
-        LayoutSnapshot snapshot,
-        CodeBlockBox code,
-        SelectionController selection) : IAsyncDisposable
-    {
-        internal CanvasDevice Device { get; } = device;
-        internal MarkdownLayoutContext Context { get; } = context;
-        internal LayoutSnapshot Snapshot { get; } = snapshot;
-        internal CodeBlockBox Code { get; } = code;
-        internal SelectionController Selection { get; } = selection;
-
-        public async ValueTask DisposeAsync()
-        {
-            await Snapshot.Retire().WaitAsync(TimeSpan.FromSeconds(10));
-            await Context.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
-        }
-    }
-
-    private sealed class NativeOverflowFixture(
-        CanvasDevice device,
-        MarkdownLayoutContext context,
-        LayoutSnapshot snapshot,
-        TableBox table,
-        CodeBlockBox code,
-        SelectionController selection,
-        float width) : IAsyncDisposable
-    {
-        internal CanvasDevice Device { get; } = device;
-        internal MarkdownLayoutContext Context { get; } = context;
-        internal LayoutSnapshot Snapshot { get; } = snapshot;
-        internal TableBox Table { get; } = table;
-        internal CodeBlockBox Code { get; } = code;
-        internal SelectionController Selection { get; } = selection;
-        internal float Width { get; } = width;
-        internal Rect CodeViewportBounds => Code.HorizontalViewportBounds;
-
-        public async ValueTask DisposeAsync()
-        {
-            await Snapshot.Retire().WaitAsync(TimeSpan.FromSeconds(10));
-            await Context.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
-        }
-    }
 }

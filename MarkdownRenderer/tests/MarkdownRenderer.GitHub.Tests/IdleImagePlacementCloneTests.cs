@@ -23,7 +23,7 @@ public sealed class IdleImagePlacementCloneTests
         await using var seed = new MultiRasterPlacementCloneTests.MultiRasterFixture(imageCount: 0);
         string builtinUrl = $"ms-appx:///idle-placement-{Guid.NewGuid():N}.png";
         string svgHintUrl = $"https://images.example.test/idle-placement-{Guid.NewGuid():N}.svg";
-        await using var fixture = new ImagePlacementFixture(seed, [builtinUrl, svgHintUrl], resolver: null);
+        await using var fixture = new IdleImagePlacementFixture(seed, [builtinUrl, svgHintUrl], resolver: null);
         using var targetImageLifetime = new CancellationTokenSource();
         MarkdownLayoutContext targetContext = fixture.CreateTargetContext(targetImageLifetime.Token);
         InlineContainerBox? candidate = null;
@@ -38,19 +38,9 @@ public sealed class IdleImagePlacementCloneTests
                 Assert.Equal(0, run.Image.GetWorkState().ActiveWorkCount);
             });
 
-            Assert.True(MarkdownBuiltInImageSourcePolicy.TryResolve(
-                builtinUrl, null, out MarkdownBuiltInImageSource builtIn));
-            using (SharedCanvasBitmapCache.Lease ignoredSeedReference = fixture.RenderResources.Images.BitmapCache.StoreAndAcquire(
-                       seed.Device,
-                       builtIn.CacheKey,
-                       CreateBitmap(seed.Device, 3, 2),
-                       new Size(3, 2)))
-            {
-                // The source ImageBox was constructed before this cache entry
-                // existed. A private idle clone must not adopt it as a hit.
-            }
+            string builtInCacheKey = StoreLateBuiltInCacheEntry(fixture, seed.Device, builtinUrl);
 
-            Assert.True(fixture.RenderResources.Images.BitmapCache.TryAcquire(seed.Device, builtIn.CacheKey, out cacheProbe));
+            Assert.True(fixture.RenderResources.Images.BitmapCache.TryAcquire(seed.Device, builtInCacheKey, out cacheProbe));
             int cacheReferencesBefore = GetEntryReferenceCount(cacheProbe!);
 
             Assert.False(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
@@ -78,54 +68,7 @@ public sealed class IdleImagePlacementCloneTests
             InlineImageRun[] clonedRuns = clone.Runs.OfType<InlineImageRun>().ToArray();
             Assert.Equal(fixture.ImageRuns.Count, clonedRuns.Length);
             for (int index = 0; index < clonedRuns.Length; index++)
-            {
-                InlineImageRun sourceRun = fixture.ImageRuns[index];
-                InlineImageRun cloneRun = clonedRuns[index];
-                RasterPlacementSourceFence fence = fences[index];
-                ImageBox sourceImage = sourceRun.Image;
-                ImageBox cloneImage = cloneRun.Image;
-
-                Assert.True(fence.IsIdleDescriptor);
-                Assert.Equal(0, fence.IdleLoadDemandGeneration);
-                Assert.Null(fence.Lease);
-                Assert.Null(fence.SvgMetadata);
-                Assert.Same(sourceImage, fence.Image);
-                Assert.NotSame(sourceRun, cloneRun);
-                Assert.NotSame(sourceImage, cloneImage);
-                Assert.Equal(sourceRun.Url, cloneRun.Url);
-                Assert.Equal(sourceRun.Title, cloneRun.Title);
-                Assert.Equal(sourceRun.LinkUrl, cloneRun.LinkUrl);
-                Assert.Equal(sourceRun.LinkTitle, cloneRun.LinkTitle);
-                Assert.Equal(sourceRun.AltText, cloneRun.AltText);
-                Assert.Equal(sourceRun.SourceSpan, cloneRun.SourceSpan);
-                Assert.Equal(sourceRun.InlineIndex, cloneRun.InlineIndex);
-                Assert.Equal(sourceRun.RenderedLength, cloneRun.RenderedLength);
-                Assert.Equal(sourceRun.ElementKey, cloneRun.ElementKey);
-                Assert.Equal(sourceRun.StyleAliases, cloneRun.StyleAliases);
-                Assert.NotSame(sourceRun.StyleAliases, cloneRun.StyleAliases);
-                Assert.Equal(sourceRun.StyleModifierKeys, cloneRun.StyleModifierKeys);
-                Assert.NotSame(sourceRun.StyleModifierKeys, cloneRun.StyleModifierKeys);
-                Assert.Equal(sourceRun.SemanticHeadingKey, cloneRun.SemanticHeadingKey);
-                Assert.Equal(sourceRun.DesiredWidth, cloneRun.DesiredWidth);
-                Assert.Equal(sourceRun.DesiredHeight, cloneRun.DesiredHeight);
-                Assert.Equal(sourceImage.Url, cloneImage.Url);
-                Assert.Equal(sourceImage.Alt, cloneImage.Alt);
-                Assert.Equal(sourceImage.BlockIndex, cloneImage.BlockIndex);
-                Assert.Equal(sourceImage.SafeHtmlInlineFlowScopeId, cloneImage.SafeHtmlInlineFlowScopeId);
-                Assert.Equal(sourceImage.Margin, cloneImage.Margin);
-                Assert.Equal(sourceImage.RawPlacementMargin,
-                    cloneImage.RawPlacementMargin);
-                Assert.Equal(sourceImage.CollapsedTopMargin, cloneImage.CollapsedTopMargin);
-                Assert.Equal(sourceImage.SuppressTopMargin, cloneImage.SuppressTopMargin);
-                Assert.Equal(sourceImage.SuppressBottomMargin, cloneImage.SuppressBottomMargin);
-                Assert.Same(targetContext, cloneImage.Context);
-                Assert.NotSame(
-                    GetCancellationSource(sourceImage),
-                    GetCancellationSource(cloneImage));
-                Assert.Null(cloneImage.Bitmap);
-                Assert.False(cloneImage.LoadState.IsStarted);
-                Assert.Equal(0, cloneImage.GetWorkState().ActiveWorkCount);
-            }
+                AssertIdleRunCopiesAuthoredDescriptor(fixture.ImageRuns[index], clonedRuns[index], fences[index], targetContext);
 
             Assert.True(clonedRuns[1].Image.IsSvg); // A .svg URI hint is not accepted SVG state.
             Assert.Null(clonedRuns[1].Image.Svg.SourceIdentity);
@@ -144,27 +87,106 @@ public sealed class IdleImagePlacementCloneTests
         }
         finally
         {
+            await ReleaseIdleCloneAsync(fixture, targetContext, cacheProbe, candidate);
+        }
+    }
+
+    private static string StoreLateBuiltInCacheEntry(
+        IdleImagePlacementFixture fixture,
+        CanvasDevice device,
+        string builtinUrl)
+    {
+        Assert.True(MarkdownBuiltInImageSourcePolicy.TryResolve(
+            builtinUrl, null, out MarkdownBuiltInImageSource builtIn));
+        using (SharedCanvasBitmapCache.Lease ignoredSeedReference = fixture.RenderResources.Images.BitmapCache.StoreAndAcquire(
+                   device,
+                   builtIn.CacheKey,
+                   CreateBitmap(device, 3, 2),
+                   new Size(3, 2)))
+        {
+            // The source ImageBox was constructed before this cache entry
+            // existed. A private idle clone must not adopt it as a hit.
+        }
+        return builtIn.CacheKey;
+    }
+
+    private static void AssertIdleRunCopiesAuthoredDescriptor(
+        InlineImageRun sourceRun,
+        InlineImageRun cloneRun,
+        RasterPlacementSourceFence fence,
+        MarkdownLayoutContext targetContext)
+    {
+        ImageBox sourceImage = sourceRun.Image;
+        ImageBox cloneImage = cloneRun.Image;
+
+        Assert.True(fence.IsIdleDescriptor);
+        Assert.Equal(0, fence.IdleLoadDemandGeneration);
+        Assert.Null(fence.Lease);
+        Assert.Null(fence.SvgMetadata);
+        Assert.Same(sourceImage, fence.Image);
+        Assert.NotSame(sourceRun, cloneRun);
+        Assert.NotSame(sourceImage, cloneImage);
+        Assert.Equal(sourceRun.Url, cloneRun.Url);
+        Assert.Equal(sourceRun.Title, cloneRun.Title);
+        Assert.Equal(sourceRun.LinkUrl, cloneRun.LinkUrl);
+        Assert.Equal(sourceRun.LinkTitle, cloneRun.LinkTitle);
+        Assert.Equal(sourceRun.AltText, cloneRun.AltText);
+        Assert.Equal(sourceRun.SourceSpan, cloneRun.SourceSpan);
+        Assert.Equal(sourceRun.InlineIndex, cloneRun.InlineIndex);
+        Assert.Equal(sourceRun.RenderedLength, cloneRun.RenderedLength);
+        Assert.Equal(sourceRun.ElementKey, cloneRun.ElementKey);
+        Assert.Equal(sourceRun.StyleAliases, cloneRun.StyleAliases);
+        Assert.NotSame(sourceRun.StyleAliases, cloneRun.StyleAliases);
+        Assert.Equal(sourceRun.StyleModifierKeys, cloneRun.StyleModifierKeys);
+        Assert.NotSame(sourceRun.StyleModifierKeys, cloneRun.StyleModifierKeys);
+        Assert.Equal(sourceRun.SemanticHeadingKey, cloneRun.SemanticHeadingKey);
+        Assert.Equal(sourceRun.DesiredWidth, cloneRun.DesiredWidth);
+        Assert.Equal(sourceRun.DesiredHeight, cloneRun.DesiredHeight);
+        Assert.Equal(sourceImage.Url, cloneImage.Url);
+        Assert.Equal(sourceImage.Alt, cloneImage.Alt);
+        Assert.Equal(sourceImage.BlockIndex, cloneImage.BlockIndex);
+        Assert.Equal(sourceImage.SafeHtmlInlineFlowScopeId, cloneImage.SafeHtmlInlineFlowScopeId);
+        Assert.Equal(sourceImage.Margin, cloneImage.Margin);
+        Assert.Equal(sourceImage.RawPlacementMargin,
+            cloneImage.RawPlacementMargin);
+        Assert.Equal(sourceImage.CollapsedTopMargin, cloneImage.CollapsedTopMargin);
+        Assert.Equal(sourceImage.SuppressTopMargin, cloneImage.SuppressTopMargin);
+        Assert.Equal(sourceImage.SuppressBottomMargin, cloneImage.SuppressBottomMargin);
+        Assert.Same(targetContext, cloneImage.Context);
+        Assert.NotSame(
+            GetCancellationSource(sourceImage),
+            GetCancellationSource(cloneImage));
+        Assert.Null(cloneImage.Bitmap);
+        Assert.False(cloneImage.LoadState.IsStarted);
+        Assert.Equal(0, cloneImage.GetWorkState().ActiveWorkCount);
+    }
+
+    private static async Task ReleaseIdleCloneAsync(
+        IdleImagePlacementFixture fixture,
+        MarkdownLayoutContext targetContext,
+        SharedCanvasBitmapCache.Lease? cacheProbe,
+        InlineContainerBox? candidate)
+    {
+        try
+        {
+            cacheProbe?.Dispose();
+        }
+        finally
+        {
             try
             {
-                cacheProbe?.Dispose();
+                if (candidate is not null)
+                    await fixture.RetireCandidateAsync(targetContext, candidate);
             }
             finally
             {
                 try
                 {
-                    if (candidate is not null)
-                        await fixture.RetireCandidateAsync(targetContext, candidate);
+                    await fixture.RetireSourceAsync();
                 }
                 finally
                 {
-                    try
-                    {
-                        await fixture.RetireSourceAsync();
-                    }
-                    finally
-                    {
-                        await targetContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
-                    }
+                    await targetContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
                 }
             }
         }
@@ -174,8 +196,8 @@ public sealed class IdleImagePlacementCloneTests
     public async Task ResolverStartsOnlyAfterIdleCandidateActivationAndSourceIdleFenceExpiresOnLoad()
     {
         await using var seed = new MultiRasterPlacementCloneTests.MultiRasterFixture(imageCount: 0);
-        using var resolver = new BlockingResolver();
-        await using var fixture = new ImagePlacementFixture(
+        using var resolver = new IdleImageBlockingResolver();
+        await using var fixture = new IdleImagePlacementFixture(
             seed,
             [$"https://images.example.test/activation-{Guid.NewGuid():N}.png"],
             resolver);
@@ -243,7 +265,7 @@ public sealed class IdleImagePlacementCloneTests
     {
         await using var seed = new MultiRasterPlacementCloneTests.MultiRasterFixture(imageCount: 0);
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
-        await using var fixture = new ImagePlacementFixture(
+        await using var fixture = new IdleImagePlacementFixture(
             seed,
             [
                 "data:image/png;base64,AA==",
@@ -299,29 +321,14 @@ public sealed class IdleImagePlacementCloneTests
     public async Task SnapshotPreflightRejectsLaterActiveRootBeforeCloningEarlierCompletedImage()
     {
         await using var seed = new MultiRasterPlacementCloneTests.MultiRasterFixture(imageCount: 0);
-        using var resolver = new BlockingResolver();
-        await using var fixture = new ImagePlacementFixture(
+        using var resolver = new IdleImageBlockingResolver();
+        await using var fixture = new IdleImagePlacementFixture(
             seed,
             [$"https://images.example.test/completed-{Guid.NewGuid():N}.png"],
             resolver);
         MarkdownLayoutContext targetContext = fixture.CreateTargetContext();
         ImageBox completedImage = fixture.ImageRuns[0].Image;
-        var pendingRoot = new InlineContainerBox(fixture.SourceContext, MarkdownElementKeys.Body)
-        {
-            BlockIndex = fixture.SourceContext.NextBlockIndex(),
-            UseContainerMargin = false,
-        };
-        var pendingRun = new InlineImageRun(
-            fixture.SourceContext,
-            "pending-root-image",
-            $"https://images.example.test/pending-{Guid.NewGuid():N}.png")
-        {
-            ElementKey = MarkdownElementKeys.Link,
-            SourceSpan = new SourceSpan(0, 1),
-        };
-        pendingRoot.Add(pendingRun);
-        float pendingHeight = pendingRoot.Measure(320f);
-        pendingRoot.Arrange(0f, (float)fixture.Source.Bounds.Height, 320f);
+        (InlineContainerBox pendingRoot, InlineImageRun pendingRun, float pendingHeight) = fixture.CreatePendingRoot();
 
         SharedCanvasBitmapCache.Lease? completedLease = null;
         LayoutSnapshot? sourceSnapshot = null;
@@ -337,7 +344,7 @@ public sealed class IdleImagePlacementCloneTests
                 $"idle-preflight-completed-{Guid.NewGuid():N}",
                 CreateBitmap(seed.Device, 8, 4),
                 new Size(8, 4));
-            InvokeReplaceBitmap(completedImage, completedLease);
+            completedImage.Presentation.Replace(completedLease.Bitmap, completedLease);
             completedLease = null; // Ownership transferred to the source ImageBox.
             completedImage.LoadState.IsStarted = true;
 
@@ -359,33 +366,9 @@ public sealed class IdleImagePlacementCloneTests
             Assert.True(pendingRun.Image.GetWorkState().ActiveWorkCount > 0);
             Assert.False(pendingRun.Image.IsCurrentIdleImagePlacement(0));
 
-            var capture = new PrivateRasterPlacementTree.CaptureState(allowIdleImagePlacements: true);
-            Assert.True(capture.TryAddRoot(
-                fixture.Source,
-                fixture.SourceContext,
-                targetContext,
-                320f,
-                out PrivateRasterPlacementTree.RootCounts firstRootCounts));
-            Assert.Equal(1, firstRootCounts.ImageCount);
-            Assert.Equal(referenceCountBefore, GetEntryReferenceCount(sourceLease));
+            AssertCaptureRejectsLaterActiveRoot(fixture, targetContext, pendingRoot, sourceLease, referenceCountBefore);
 
-            Assert.False(capture.TryAddRoot(
-                pendingRoot,
-                fixture.SourceContext,
-                targetContext,
-                320f,
-                out _));
-            Assert.Equal(referenceCountBefore, GetEntryReferenceCount(sourceLease));
-
-            candidate = sourceSnapshot!.CreateSingleRasterCandidate(
-                new[] { fixture.Source.BlockIndex },
-                320f,
-                CancellationToken.None,
-                CancellationToken.None,
-                fixture.ImagePreparationOwner,
-                retirementSink: null,
-                imageUnavailable: null,
-                out candidateContext);
+            candidate = CreateSourceCandidate(sourceSnapshot!, fixture, out candidateContext);
 
             Assert.Null(candidate);
             Assert.NotNull(candidateContext);
@@ -398,35 +381,96 @@ public sealed class IdleImagePlacementCloneTests
             resolver.Release();
             try
             {
-                try
-                {
-                    candidate?.Dispose();
-                }
-                finally
-                {
-                    if (candidateContext is not null)
-                        await candidateContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
-                }
+                await DisposeCandidateAndDrainAsync(candidate, candidateContext);
             }
             finally
             {
                 try
                 {
-                    if (!snapshotOwnsPendingRoot)
-                    {
-                        fixture.SourceContext.DiscardConstructionBlock(pendingRoot);
-                        await pendingRun.Image.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
-                    }
-                    if (pendingResolveStarted)
-                        await resolver.WaitForAllReturnedAsync(1).WaitAsync(TimeSpan.FromSeconds(10));
-                    await fixture.RetireSourceAsync();
-                    await targetContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
+                    await RetirePendingRootAndSourceAsync(
+                        fixture, targetContext, resolver, pendingRoot, pendingRun,
+                        snapshotOwnsPendingRoot, pendingResolveStarted);
                 }
                 finally
                 {
                     completedLease?.Dispose();
                 }
             }
+        }
+    }
+
+    private static SingleRasterLayoutCandidate? CreateSourceCandidate(
+        LayoutSnapshot sourceSnapshot,
+        IdleImagePlacementFixture fixture,
+        out MarkdownLayoutContext? candidateContext) =>
+        sourceSnapshot.CreateSingleRasterCandidate(
+            new[] { fixture.Source.BlockIndex },
+            320f,
+            CancellationToken.None,
+            CancellationToken.None,
+            fixture.ImagePreparationOwner,
+            retirementSink: null,
+            imageUnavailable: null,
+            out candidateContext);
+
+    private static async Task RetirePendingRootAndSourceAsync(
+        IdleImagePlacementFixture fixture,
+        MarkdownLayoutContext targetContext,
+        IdleImageBlockingResolver resolver,
+        InlineContainerBox pendingRoot,
+        InlineImageRun pendingRun,
+        bool snapshotOwnsPendingRoot,
+        bool pendingResolveStarted)
+    {
+        if (!snapshotOwnsPendingRoot)
+        {
+            fixture.SourceContext.DiscardConstructionBlock(pendingRoot);
+            await pendingRun.Image.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        if (pendingResolveStarted)
+            await resolver.WaitForAllReturnedAsync(1).WaitAsync(TimeSpan.FromSeconds(10));
+        await fixture.RetireSourceAsync();
+        await targetContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    private static void AssertCaptureRejectsLaterActiveRoot(
+        IdleImagePlacementFixture fixture,
+        MarkdownLayoutContext targetContext,
+        InlineContainerBox pendingRoot,
+        SharedCanvasBitmapCache.Lease sourceLease,
+        int referenceCountBefore)
+    {
+        var capture = new PrivateRasterPlacementTree.CaptureState(allowIdleImagePlacements: true);
+        Assert.True(capture.TryAddRoot(
+            fixture.Source,
+            fixture.SourceContext,
+            targetContext,
+            320f,
+            out PrivateRasterPlacementTree.RootCounts firstRootCounts));
+        Assert.Equal(1, firstRootCounts.ImageCount);
+        Assert.Equal(referenceCountBefore, GetEntryReferenceCount(sourceLease));
+
+        Assert.False(capture.TryAddRoot(
+            pendingRoot,
+            fixture.SourceContext,
+            targetContext,
+            320f,
+            out _));
+        Assert.Equal(referenceCountBefore, GetEntryReferenceCount(sourceLease));
+    }
+
+    private static async Task DisposeCandidateAndDrainAsync(
+        SingleRasterLayoutCandidate? candidate,
+        MarkdownLayoutContext? candidateContext)
+    {
+        try
+        {
+            candidate?.Dispose();
+        }
+        finally
+        {
+            if (candidateContext is not null)
+                await candidateContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
         }
     }
 
@@ -437,13 +481,6 @@ public sealed class IdleImagePlacementCloneTests
             device, pixels, width, height, DirectXPixelFormat.B8G8R8A8UIntNormalized);
     }
 
-    private static void InvokeReplaceBitmap(
-        ImageBox image,
-        SharedCanvasBitmapCache.Lease replacementLease)
-    {
-        image.Presentation.Replace(replacementLease.Bitmap, replacementLease);
-    }
-
     private static int GetEntryReferenceCount(SharedCanvasBitmapCache.Lease lease)
     {
         int? count = lease.EntryReferenceCount;
@@ -451,211 +488,9 @@ public sealed class IdleImagePlacementCloneTests
         return count.Value;
     }
 
-    private static SharedCanvasBitmapCache.Lease GetImageLease(ImageBox image)
-    {
-        return Assert.IsType<SharedCanvasBitmapCache.Lease>(image.Presentation.Lease);
-    }
+    private static SharedCanvasBitmapCache.Lease GetImageLease(ImageBox image) =>
+        Assert.IsType<SharedCanvasBitmapCache.Lease>(image.Presentation.Lease);
 
-    private static CancellationTokenSource GetCancellationSource(ImageBox image)
-    {
-        return Assert.IsAssignableFrom<CancellationTokenSource>(image.Lifetime.LifetimeCancellation);
-    }
-
-    private sealed class ImagePlacementFixture : IAsyncDisposable
-    {
-        private readonly MarkdownRenderResources _renderResources = new();
-
-        internal MarkdownRenderResources RenderResources => _renderResources;
-
-        private readonly MultiRasterPlacementCloneTests.MultiRasterFixture _seed;
-        private readonly object _imagePreparationOwner = new();
-        private readonly List<(MarkdownLayoutContext Context, InlineContainerBox Root)> _candidates = new();
-        private bool _sourceRetired;
-        private LayoutSnapshot? _sourceSnapshot;
-
-        internal ImagePlacementFixture(
-            MultiRasterPlacementCloneTests.MultiRasterFixture seed,
-            IReadOnlyList<string> urls,
-            IMarkdownImageResolver? resolver,
-            MarkdownPerformanceSession? session = null)
-        {
-            _seed = seed;
-            string sourceText = new string('!', urls.Count);
-            SourceContext = new MarkdownLayoutContext(
-                seed.SourceContext.ResourceCreator,
-                seed.SourceContext.ThemeSnapshot,
-                new MarkdownSourceMap(sourceText),
-                seed.SourceContext.Registry,
-                seed.SourceContext.FlowDirection,
-                seed.SourceContext.Dispatcher,
-                seed.SourceContext.Language)
-            {
-                RenderResources = _renderResources,
-                CancellationToken = CancellationToken.None,
-                ImageCancellationToken = CancellationToken.None,
-                RasterizationScale = seed.SourceContext.RasterizationScale,
-                ImagePreparationOwner = _imagePreparationOwner,
-                DisclosureStates = seed.SourceContext.DisclosureStates,
-                ImageResolver = resolver,
-                PerformanceSession = session,
-                SvgRenderer = seed.SourceContext.SvgRenderer,
-                ImageBaseUri = seed.SourceContext.ImageBaseUri,
-                ImageDocumentPath = seed.SourceContext.ImageDocumentPath,
-                ImageDocumentSource = seed.SourceContext.ImageDocumentSource,
-                AllowThirdPartyRemoteImages = seed.SourceContext.AllowThirdPartyRemoteImages,
-            };
-
-            Source = new InlineContainerBox(SourceContext, MarkdownElementKeys.Body)
-            {
-                BlockIndex = SourceContext.NextBlockIndex(),
-                UseContainerMargin = false,
-            };
-            ImageRuns = new List<InlineImageRun>(urls.Count);
-            for (int index = 0; index < urls.Count; index++)
-            {
-                var run = new InlineImageRun(
-                    SourceContext,
-                    $"idle-alt-{index}",
-                    urls[index],
-                    title: $"idle-title-{index}",
-                    linkUrl: $"https://example.test/link-{index}",
-                    linkTitle: $"idle-link-title-{index}",
-                    requestedWidth: new SafeHtmlLength(37f + index, IsPercent: false),
-                    requestedHeight: new SafeHtmlLength(19f + index, IsPercent: false))
-                {
-                    ElementKey = MarkdownElementKeys.Link,
-                    SourceSpan = new SourceSpan(index, 1),
-                    StyleAliases = [$"idle-alias-{index}"],
-                    StyleModifierKeys = [$"idle-modifier-{index}"],
-                    SemanticHeadingKey = MarkdownElementKeys.Heading2,
-                };
-                Source.Add(run);
-                run.Image.Margin = new Thickness(2 + index, 3 + index, 4 + index, 5 + index);
-                run.Image.CollapsedTopMargin = 1 + index;
-                run.Image.SuppressTopMargin = index % 2 != 0;
-                run.Image.SuppressBottomMargin = index % 2 == 0;
-                run.Image.SafeHtmlInlineFlowScopeId = 70 + index;
-                ImageRuns.Add(run);
-            }
-
-            _ = Source.Measure(320f);
-            Source.Arrange(0f, 0f, 320f);
-        }
-
-        internal MarkdownLayoutContext SourceContext { get; }
-        internal InlineContainerBox Source { get; }
-        internal List<InlineImageRun> ImageRuns { get; }
-        internal object ImagePreparationOwner => _imagePreparationOwner;
-
-        internal MarkdownLayoutContext CreateTargetContext(CancellationToken imageCancellationToken = default) =>
-            SourceContext.CreateRasterPlacementContext(
-                imageCancellationToken,
-                _imagePreparationOwner,
-                retirementSink: null,
-                imageUnavailable: null);
-
-        internal void SetCandidate(MarkdownLayoutContext context, InlineContainerBox? candidate)
-        {
-            ArgumentNullException.ThrowIfNull(candidate);
-            _candidates.Add((context, candidate));
-        }
-
-        internal void TransferSourceOwnershipToSnapshot(LayoutSnapshot snapshot)
-        {
-            ArgumentNullException.ThrowIfNull(snapshot);
-            if (_sourceRetired || _sourceSnapshot is not null ||
-                !snapshot.Blocks.Any(block => ReferenceEquals(block, Source)))
-                throw new InvalidOperationException("The fixture source snapshot ownership is invalid.");
-            _sourceSnapshot = snapshot;
-        }
-
-        internal async Task RetireCandidateAsync(MarkdownLayoutContext context, InlineContainerBox candidate)
-        {
-            context.DiscardConstructionBlock(candidate);
-            await Task.WhenAll(candidate.Runs.OfType<InlineImageRun>()
-                    .Select(static run => run.Image.RetirementTask))
-                .WaitAsync(TimeSpan.FromSeconds(10));
-            await context.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
-            _candidates.RemoveAll(item => ReferenceEquals(item.Context, context) && ReferenceEquals(item.Root, candidate));
-        }
-
-        internal async Task RetireSourceAsync()
-        {
-            if (_sourceRetired)
-                return;
-            _sourceRetired = true;
-            if (_sourceSnapshot is { } snapshot)
-            {
-                await snapshot.Retire().WaitAsync(TimeSpan.FromSeconds(10));
-            }
-            else
-            {
-                SourceContext.DiscardConstructionBlock(Source);
-                await Task.WhenAll(ImageRuns.Select(static run => run.Image.RetirementTask))
-                    .WaitAsync(TimeSpan.FromSeconds(10));
-            }
-            await SourceContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            foreach ((MarkdownLayoutContext context, InlineContainerBox root) in _candidates.ToArray())
-                await RetireCandidateAsync(context, root);
-            await RetireSourceAsync();
-            _renderResources.Images.BitmapCache.ReleaseDevice(_seed.Device);
-        }
-    }
-
-    private sealed class BlockingResolver : IMarkdownImageResolver, IDisposable
-    {
-        private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private readonly TaskCompletionSource _firstCall = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private readonly TaskCompletionSource _secondCall = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private readonly TaskCompletionSource _firstReturned = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private readonly TaskCompletionSource _bothReturned = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private int _resolveCount;
-        private int _returnedCount;
-
-        internal int ResolveCount => Volatile.Read(ref _resolveCount);
-        internal Task WaitForCallAsync(int count) => count switch
-        {
-            1 => _firstCall.Task,
-            2 => _secondCall.Task,
-            _ => throw new ArgumentOutOfRangeException(nameof(count)),
-        };
-        internal Task WaitForAllReturnedAsync(int count) => count switch
-        {
-            1 => _firstReturned.Task,
-            2 => _bothReturned.Task,
-            _ => throw new ArgumentOutOfRangeException(nameof(count)),
-        };
-        internal void Release() => _release.TrySetResult();
-
-        public async ValueTask<MarkdownImageResolution> ResolveAsync(
-            string source,
-            MarkdownImageResolveContext context,
-            CancellationToken cancellationToken)
-        {
-            int call = Interlocked.Increment(ref _resolveCount);
-            if (call == 1)
-                _firstCall.TrySetResult();
-            else if (call == 2)
-                _secondCall.TrySetResult();
-            try
-            {
-                await _release.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
-                return MarkdownImageResolution.Blocked(MarkdownImageUnavailableReason.Offline);
-            }
-            finally
-            {
-                int returned = Interlocked.Increment(ref _returnedCount);
-                if (returned == 1)
-                    _firstReturned.TrySetResult();
-                else if (returned == 2)
-                    _bothReturned.TrySetResult();
-            }
-        }
-
-        public void Dispose() => Release();
-    }
+    private static CancellationTokenSource GetCancellationSource(ImageBox image) =>
+        Assert.IsAssignableFrom<CancellationTokenSource>(image.Lifetime.LifetimeCancellation);
 }

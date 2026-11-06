@@ -17,6 +17,7 @@ using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using Windows.UI;
 using Xunit;
+using static MarkdownRenderer.GitHub.Tests.SafeHtmlRenderingFixture;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
@@ -191,27 +192,7 @@ public sealed class SafeHtmlRenderingTests
             "  </p>\n" +
             "</p>";
 
-        // These are the canonical Primer profile's paragraph and h2 margins.
-        // The test checks the production path with unequal adjacent margins,
-        // where CSS normal flow keeps max(16px, 24px), not their 40px sum.
-        var bodyStyle = new ElementStyle
-        {
-            FontSize = 16,
-            LineHeightMultiplier = 1.5f,
-            Margin = new Thickness(0, 0, 0, 16),
-        };
-        var heading2Style = new ElementStyle
-        {
-            FontSize = 24,
-            FontWeight = new Windows.UI.Text.FontWeight { Weight = 600 },
-            LineHeightMultiplier = 1.25f,
-            Margin = new Thickness(0, 24, 0, 16),
-        };
-        var profileStyles = new Dictionary<string, ElementStyle>(StringComparer.Ordinal)
-        {
-            [MarkdownElementKeys.Body] = bodyStyle,
-            [MarkdownElementKeys.Heading2] = heading2Style,
-        };
+        IReadOnlyDictionary<string, ElementStyle> profileStyles = CreatePrimerParagraphAndHeading2Styles();
 
         // BuildGitHub runs Markdig's GFM pipeline and registered
         // HtmlBlockRenderer; this checks actual production boxes and margins.
@@ -644,14 +625,8 @@ public sealed class SafeHtmlRenderingTests
             FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
             static box => box.Runs.OfType<InlineImageRun>().Any());
         InlineImageRun image = Assert.Single(imageHost.Runs.OfType<InlineImageRun>());
-        InlineContainerBox heading = Assert.Single(
-            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
-            static box => box.Runs.OfType<TextRun>()
-                .Any(static run => run.Text.Contains("参与交流", StringComparison.Ordinal)));
-        InlineContainerBox prose = Assert.Single(
-            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
-            static box => box.Runs.OfType<TextRun>()
-                .Any(static run => run.Text.Contains("欢迎大家将珍藏已久的经典免费书籍共享出来", StringComparison.Ordinal)));
+        InlineContainerBox heading = FindInlineBoxContaining(snapshot, "参与交流");
+        InlineContainerBox prose = FindInlineBoxContaining(snapshot, "欢迎大家将珍藏已久的经典免费书籍共享出来");
         Rect initialImageRect = Assert.Single(imageHost.EnumerateInlineImageRects()).Rect;
         Assert.True(initialImageRect.Bottom <= heading.Bounds.Top + 0.5,
             "The initial lazy measurement must reserve the explicit 320-DIP image height.");
@@ -686,23 +661,7 @@ public sealed class SafeHtmlRenderingTests
                 hostBottomAtPublish <= headingTopAtPublish + 0.5,
                 $"At bitmap publication the image paragraph ends at y={hostBottomAtPublish:F2}, after the heading starts at y={headingTopAtPublish:F2}.");
 
-            // Exercise the same changed-block relayout requested by the host
-            // after the asynchronous publication.
-            snapshot.RelayoutChangedBlocks(
-                [imageHost.BlockIndex],
-                660,
-                CancellationToken.None);
-
-            Rect loadedImageRect = Assert.Single(imageHost.EnumerateInlineImageRects()).Rect;
-            Assert.NotNull(image.Image.Bitmap);
-            Assert.Equal(320d, loadedImageRect.Width, precision: 1);
-            Assert.Equal(320d, loadedImageRect.Height, precision: 1);
-            Assert.True(
-                loadedImageRect.Bottom <= heading.Bounds.Top + 0.5,
-                $"After async relayout the heading at y={heading.Bounds.Top:F2} overlaps the image ending at y={loadedImageRect.Bottom:F2}.");
-            Assert.True(
-                heading.Bounds.Bottom <= prose.Bounds.Top + 0.5,
-                $"The prose at y={prose.Bounds.Top:F2} overlaps the heading ending at y={heading.Bounds.Bottom:F2}.");
+            AssertChangedBlockRelayoutKeepsFollowingContentBelowImage(snapshot, imageHost, image, heading, prose);
         }
         finally
         {
@@ -1497,100 +1456,7 @@ public sealed class SafeHtmlRenderingTests
     [Fact]
     public async Task GitHubProfileResolvesNumericReferenceImagesInLongPresentationDiv()
     {
-        string source = """
-            <p align="center"><img src="https://massgrave.dev/img/logo_small.png" alt="MAS Logo"></p>
-
-            <h1 align="center">Microsoft  Activation  Scripts (MAS)</h1>
-
-            <p align="center">Open-source Windows and Office activator featuring HWID, Ohook, TSforge, and Online KMS activation methods, along with advanced troubleshooting.</p>
-
-            <hr>
-            {{SPACE2}}
-            ## How to Activate Windows / Office / Extended Security Updates (ESU)?
-
-            ### Method 1 - PowerShell ❤️
-
-            1. Click the **Start Menu**, type `PowerShell`, and open it.
-
-            2. Copy and paste the code below and press **Enter.**{{SPACE2}}
-               - For **Windows 8.1, 10 and 11**:
-                 ```
-                 irm https://get.activated.win | iex
-                 ```
-            {{TAB}} If the above is blocked (by ISP/DNS), try this (needs updated Windows 10 or 11):{{SPACE2}}
-            {{TAB}} ```
-            {{TAB}} iex (curl.exe -s --doh-url https://1.1.1.1/dns-query https://get.activated.win | Out-String)
-            {{TAB}} ```
-            {{TAB}}- **Script not launching? Use the below-listed Method 2.**
-
-            3. In the menu that appears, type the number corresponding to one of the **Green** options.
-
-            ---
-
-            ### Method 2 - Traditional (Windows Vista and later)
-
-            1.   Download the script:
-                  *   [**MAS_AIO.cmd**](https://dev.azure.com/massgrave/Microsoft-Activation-Scripts/_apis/git/repositories/Microsoft-Activation-Scripts/items?path=/MAS/All-In-One-Version-KL/MAS_AIO.cmd&download=true) (Direct script)
-                  *   [**MAS_AIO.zip**](https://dev.azure.com/massgrave/Microsoft-Activation-Scripts/_apis/git/repositories/Microsoft-Activation-Scripts/items?$format=zip) (If the direct script is blocked by your browser)
-            2.   Run the `MAS_AIO.cmd` file.
-            3.   In the menu that appears, type the number corresponding to one of the **Green** options.
-
-            ---
-
-            > [!TIP]
-            > - Some ISPs/DNS providers block access to our domains. You can bypass this by enabling [DNS-over-HTTPS (DoH)](https://developers.cloudflare.com/1.1.1.1/encryption/dns-over-https/encrypted-dns-browsers/) in your browser.{{SPACE1}}
-            > - **Having trouble**? Visit our [troubleshooting page](https://massgrave.dev/troubleshoot) or raise an issue on [GitHub](https://github.com/massgravel/Microsoft-Activation-Scripts/issues).
-
-            > [!NOTE]
-            >
-            > - The `irm` command in PowerShell downloads a script from a specified URL, and the `iex` command executes it.
-            > - Always double-check the URL before executing the command and verify the source is trustworthy when manually downloading files.
-            > - Be cautious of third parties spreading malware disguised as MAS by altering the URL in the PowerShell command.
-
-            ---
-
-            <div align="center">
-            {{TAB}}
-            ### Homepage - [https://massgrave.dev/](https://massgrave.dev/)
-            {{SPACE2}}
-            [![1.1]][1]
-            [![1.2]][2]
-            [![1.3]][3]
-            [![1.4]][4]
-            [![1.5]][5]
-            [![1.6]][6]
-            [![1.7]][7]
-
-            [1.1]: https://massgrave.dev/img/logo_discord.png (Chat with us without signup)
-            [1.2]: https://massgrave.dev/img/logo_reddit.png (Reddit)
-            [1.3]: https://massgrave.dev/img/logo_bluesky.png (Bluesky)
-            [1.4]: https://massgrave.dev/img/logo_x.png (Twitter)
-
-            [1.5]: https://massgrave.dev/img/logo_github.png (GitHub)
-            [1.6]: https://massgrave.dev/img/logo_azuredevops.png (AzureDevOps)
-            [1.7]: https://massgrave.dev/img/logo_gitea.png (Self-hosted Git)
-
-            [1]: https://discord.gg/j2yFsV5ZVC
-            [2]: https://www.reddit.com/r/MAS_Activator
-            [3]: https://bsky.app/profile/massgrave.dev
-            [4]: https://twitter.com/massgravel
-            [5]: https://github.com/massgravel/Microsoft-Activation-Scripts
-            [6]: https://dev.azure.com/massgrave/_git/Microsoft-Activation-Scripts
-            [7]: https://git.activated.win/Microsoft-Activation-Scripts
-
-            ---
-
-            Latest Version: 3.12{{SPACE2}}
-            Release date: 04-Jul-2026
-            """;
-
-        source = source
-            .Replace("{{TAB}}", "\t", StringComparison.Ordinal)
-            .Replace("{{SPACE1}}", " ", StringComparison.Ordinal)
-            .Replace("{{SPACE2}}", "  ", StringComparison.Ordinal)
-            .Replace("\r\n", "\n", StringComparison.Ordinal)
-            .Replace('\r', '\n')
-            .Replace("\n", "\r\n", StringComparison.Ordinal) + "\r\n";
+        string source = GitHubProfileReadmeSources.CreateMassgraveProfileSource();
         Assert.Equal(3559, System.Text.Encoding.UTF8.GetByteCount(source));
         Assert.Equal(
             "1C0839E4B5CFBC5E02C6192F81227BAA6B3DE334F0DEE32D727C37D3BC5F7B38",
@@ -1634,31 +1500,7 @@ public sealed class SafeHtmlRenderingTests
         Assert.Equal(5, headings.Length);
         Assert.Contains("How to Activate Windows / Office / Extended Security Updates (ESU)?", headings);
         Assert.Equal("https://massgrave.dev/img/logo_small.png", images[0].Url);
-        string[] expectedBadgeImages =
-        [
-            "https://massgrave.dev/img/logo_discord.png",
-            "https://massgrave.dev/img/logo_reddit.png",
-            "https://massgrave.dev/img/logo_bluesky.png",
-            "https://massgrave.dev/img/logo_x.png",
-            "https://massgrave.dev/img/logo_github.png",
-            "https://massgrave.dev/img/logo_azuredevops.png",
-            "https://massgrave.dev/img/logo_gitea.png",
-        ];
-        string[] expectedBadgeLinks =
-        [
-            "https://discord.gg/j2yFsV5ZVC",
-            "https://www.reddit.com/r/MAS_Activator",
-            "https://bsky.app/profile/massgrave.dev",
-            "https://twitter.com/massgravel",
-            "https://github.com/massgravel/Microsoft-Activation-Scripts",
-            "https://dev.azure.com/massgrave/_git/Microsoft-Activation-Scripts",
-            "https://git.activated.win/Microsoft-Activation-Scripts",
-        ];
-        for (int index = 0; index < 7; index++)
-        {
-            Assert.Equal(expectedBadgeImages[index], images[index + 1].Url);
-            Assert.Equal(expectedBadgeLinks[index], images[index + 1].LinkUrl);
-        }
+        AssertMassgraveBadgeImagesAndLinks(images);
 
         using LayoutSnapshot lazySnapshot = Build(
             source,
@@ -2317,231 +2159,89 @@ public sealed class SafeHtmlRenderingTests
         Assert.Equal(1, rendered.Split("localized budget notice").Length - 1);
     }
 
-    private static LayoutSnapshot Build(
-        string source,
-        SafeHtmlOptions options,
-        IMarkdownStringProvider? stringProvider = null,
-        float textScaleFactor = 1f)
+    private static Dictionary<string, ElementStyle> CreatePrimerParagraphAndHeading2Styles()
     {
-        var registry = new MarkdownExtensionRegistry().ConfigureSafeHtmlRegistry(options);
-        return Build(source, registry, stringProvider, textScaleFactor: textScaleFactor);
-    }
-
-    private static LayoutSnapshot Build(
-        string source,
-        MarkdownExtensionRegistry registry,
-        IMarkdownStringProvider? stringProvider = null,
-        Markdig.Syntax.MarkdownDocument? parsedDocument = null,
-        bool lazy = false,
-        float availableWidth = 800,
-        bool measureAllLazyViewports = true,
-        IMarkdownImageResolver? imageResolver = null,
-        ElementStyle? elementStyle = null,
-        IReadOnlyDictionary<string, ElementStyle>? keyedStyles = null,
-        float textScaleFactor = 1f)
-    {
-        Markdig.Syntax.MarkdownDocument document =
-            parsedDocument ?? Markdown.Parse(source, registry.BuildPipeline());
-        var style = elementStyle ?? new ElementStyle();
-        string[] keys =
-        [
-            MarkdownElementKeys.Body,
-            MarkdownElementKeys.Strong,
-            MarkdownElementKeys.Emphasis,
-            MarkdownElementKeys.Link,
-            MarkdownElementKeys.ImageCaption,
-            MarkdownElementKeys.CodeInline,
-            MarkdownElementKeys.CodeBlock,
-            MarkdownElementKeys.CodeBlockHeader,
-            MarkdownElementKeys.CodeBlockLanguage,
-            MarkdownElementKeys.CodeBlockLanguage,
-            MarkdownElementKeys.CodeBlockGutter,
-            MarkdownElementKeys.CodeBlockLineNumber,
-            MarkdownElementKeys.Strikethrough,
-            MarkdownElementKeys.Subscript,
-            MarkdownElementKeys.Superscript,
-            MarkdownElementKeys.Inserted,
-            MarkdownElementKeys.Marked,
-            MarkdownElementKeys.ThematicBreak,
-            MarkdownElementKeys.Quote,
-            MarkdownElementKeys.ListMarker,
-            MarkdownElementKeys.Table,
-            MarkdownElementKeys.TableHeader,
-            MarkdownElementKeys.TableCell,
-        ];
-        var styles = keys.Distinct(StringComparer.Ordinal)
-            .ToDictionary(static key => key, _ => style, StringComparer.Ordinal);
-        if (keyedStyles is not null)
+        // These are the canonical Primer profile's paragraph and h2 margins.
+        // The test checks the production path with unequal adjacent margins,
+        // where CSS normal flow keeps max(16px, 24px), not their 40px sum.
+        var bodyStyle = new ElementStyle
         {
-            foreach ((string key, ElementStyle keyedStyle) in keyedStyles)
-                styles[key] = keyedStyle;
-        }
-        Color transparent = Color.FromArgb(0, 0, 0, 0);
-        var theme = new ThemeSnapshot(
-            styles,
-            new Dictionary<string, ElementStyleOverride>(),
-            transparent,
-            transparent,
-            transparent,
-            transparent,
-            isDark: false,
-            isHighContrast: false,
-            textScaleFactor: textScaleFactor);
-        var context = new MarkdownLayoutContext(
-            CanvasDevice.GetSharedDevice(),
-            theme,
-            new MarkdownSourceMap(source),
-            registry,
-            FlowDirection.LeftToRight)
-        {
-            StringProvider = stringProvider,
-            ImageResolver = imageResolver,
+            FontSize = 16,
+            LineHeightMultiplier = 1.5f,
+            Margin = new Thickness(0, 0, 0, 16),
         };
-        var builder = new LayoutBuilder(context);
-        if (!lazy)
-            return builder.Build(document, availableWidth);
-
-        LayoutSnapshot snapshot = builder.BuildLazy(
-            document,
-            availableWidth,
-            viewportTop: 0,
-            viewportHeight: 499,
-            overscan: 0,
-            cancellationToken: CancellationToken.None);
-        if (!measureAllLazyViewports)
-            return snapshot;
-        for (int viewport = 0; viewport < 64; viewport++)
+        var heading2Style = new ElementStyle
         {
-            double top = viewport * 449;
-            if (top >= snapshot.Size.Height)
-                break;
-            snapshot.EnsureMeasuredViewport(top, 499, 0, CancellationToken.None);
-        }
-        return snapshot;
+            FontSize = 24,
+            FontWeight = new Windows.UI.Text.FontWeight { Weight = 600 },
+            LineHeightMultiplier = 1.25f,
+            Margin = new Thickness(0, 24, 0, 16),
+        };
+        return new Dictionary<string, ElementStyle>(StringComparer.Ordinal)
+        {
+            [MarkdownElementKeys.Body] = bodyStyle,
+            [MarkdownElementKeys.Heading2] = heading2Style,
+        };
     }
 
-    private static LayoutSnapshot BuildGitHub(
-        string source,
-        ElementStyle? elementStyle = null,
-        IReadOnlyDictionary<string, ElementStyle>? keyedStyles = null,
-        float availableWidth = 800,
-        float textScaleFactor = 1f)
+    private static InlineContainerBox FindInlineBoxContaining(LayoutSnapshot snapshot, string text) =>
+        Assert.Single(
+            FlattenBoxes(snapshot).OfType<InlineContainerBox>(),
+            box => box.Runs.OfType<TextRun>()
+                .Any(run => run.Text.Contains(text, StringComparison.Ordinal)));
+
+    private static void AssertChangedBlockRelayoutKeepsFollowingContentBelowImage(
+        LayoutSnapshot snapshot,
+        InlineContainerBox imageHost,
+        InlineImageRun image,
+        InlineContainerBox heading,
+        InlineContainerBox prose)
     {
-        using MarkdownEngine engine = new MarkdownEngineBuilder()
-            .UseGitHubReadme()
-            .Build();
-        var registry = Assert.IsType<MarkdownExtensionRegistry>(engine.PresentationConfiguration);
-        return Build(
-            source,
-            registry,
-            availableWidth: availableWidth,
-            elementStyle: elementStyle,
-            keyedStyles: keyedStyles,
-            textScaleFactor: textScaleFactor);
+        // Exercise the same changed-block relayout requested by the host
+        // after the asynchronous publication.
+        snapshot.RelayoutChangedBlocks(
+            [imageHost.BlockIndex],
+            660,
+            CancellationToken.None);
+
+        Rect loadedImageRect = Assert.Single(imageHost.EnumerateInlineImageRects()).Rect;
+        Assert.NotNull(image.Image.Bitmap);
+        Assert.Equal(320d, loadedImageRect.Width, precision: 1);
+        Assert.Equal(320d, loadedImageRect.Height, precision: 1);
+        Assert.True(
+            loadedImageRect.Bottom <= heading.Bounds.Top + 0.5,
+            $"After async relayout the heading at y={heading.Bounds.Top:F2} overlaps the image ending at y={loadedImageRect.Bottom:F2}.");
+        Assert.True(
+            heading.Bounds.Bottom <= prose.Bounds.Top + 0.5,
+            $"The prose at y={prose.Bounds.Top:F2} overlaps the heading ending at y={heading.Bounds.Bottom:F2}.");
     }
 
-    private static void AssertDisabledLinkAndImageFallback(LayoutSnapshot snapshot)
+    private static void AssertMassgraveBadgeImagesAndLinks(InlineImageRun[] images)
     {
-        InlineRun[] runs = FlattenRuns(snapshot).ToArray();
-        Assert.DoesNotContain(runs, static run => run is LinkRun);
-        Assert.DoesNotContain(runs, static run => run is InlineImageRun);
-        string rendered = string.Concat(runs.Select(static run => run.Text));
-        Assert.Contains("linked", rendered, StringComparison.Ordinal);
-        Assert.Contains("diagram", rendered, StringComparison.Ordinal);
-    }
-
-    private static IEnumerable<InlineRun> FlattenRuns(LayoutSnapshot snapshot)
-    {
-        foreach (BlockBox block in snapshot.Blocks)
+        string[] expectedBadgeImages =
+        [
+            "https://massgrave.dev/img/logo_discord.png",
+            "https://massgrave.dev/img/logo_reddit.png",
+            "https://massgrave.dev/img/logo_bluesky.png",
+            "https://massgrave.dev/img/logo_x.png",
+            "https://massgrave.dev/img/logo_github.png",
+            "https://massgrave.dev/img/logo_azuredevops.png",
+            "https://massgrave.dev/img/logo_gitea.png",
+        ];
+        string[] expectedBadgeLinks =
+        [
+            "https://discord.gg/j2yFsV5ZVC",
+            "https://www.reddit.com/r/MAS_Activator",
+            "https://bsky.app/profile/massgrave.dev",
+            "https://twitter.com/massgravel",
+            "https://github.com/massgravel/Microsoft-Activation-Scripts",
+            "https://dev.azure.com/massgrave/_git/Microsoft-Activation-Scripts",
+            "https://git.activated.win/Microsoft-Activation-Scripts",
+        ];
+        for (int index = 0; index < 7; index++)
         {
-            foreach (InlineRun run in FlattenRuns(block))
-                yield return run;
+            Assert.Equal(expectedBadgeImages[index], images[index + 1].Url);
+            Assert.Equal(expectedBadgeLinks[index], images[index + 1].LinkUrl);
         }
-    }
-
-    private static IEnumerable<BlockBox> FlattenBoxes(LayoutSnapshot snapshot)
-    {
-        foreach (BlockBox block in snapshot.Blocks)
-        {
-            yield return block;
-            if (block is StackBox stack)
-            {
-                foreach (BlockBox child in FlattenBoxes(stack))
-                    yield return child;
-            }
-            else if (block is TableBox table)
-            {
-                foreach (InlineContainerBox cell in table.GetCellBoxes())
-                    yield return cell;
-            }
-        }
-    }
-
-    private static IEnumerable<BlockBox> FlattenBoxes(StackBox stack)
-    {
-        foreach (BlockBox child in stack.Children)
-        {
-            yield return child;
-            if (child is StackBox nested)
-            {
-                foreach (BlockBox descendant in FlattenBoxes(nested))
-                    yield return descendant;
-            }
-            else if (child is TableBox table)
-            {
-                foreach (InlineContainerBox cell in table.GetCellBoxes())
-                    yield return cell;
-            }
-        }
-    }
-
-    private static IEnumerable<InlineRun> FlattenRuns(BlockBox block)
-    {
-        if (block is InlineContainerBox inline)
-        {
-            foreach (InlineRun run in inline.Runs)
-                yield return run;
-        }
-        else if (block is StackBox stack)
-        {
-            foreach (BlockBox child in stack.Children)
-            {
-                foreach (InlineRun run in FlattenRuns(child))
-                    yield return run;
-            }
-        }
-        else if (block is ListItemBox listItem)
-        {
-            foreach (InlineRun run in FlattenRuns(listItem.Marker))
-                yield return run;
-            foreach (InlineRun run in FlattenRuns(listItem.Content))
-                yield return run;
-        }
-    }
-
-    private sealed class TestStringProvider : IMarkdownStringProvider
-    {
-        public string? GetString(string key, System.Globalization.CultureInfo culture) =>
-            key == MarkdownStringKeys.HtmlBudgetExceeded ? "localized budget notice" : null;
-    }
-
-    private sealed class DeferredImageResolver : IMarkdownImageResolver
-    {
-        private readonly TaskCompletionSource<MarkdownImageResolution> _resolution = new(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public TaskCompletionSource ResolveStarted { get; } = new(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public ValueTask<MarkdownImageResolution> ResolveAsync(
-            string source,
-            MarkdownImageResolveContext context,
-            CancellationToken cancellationToken)
-        {
-            ResolveStarted.TrySetResult();
-            return new ValueTask<MarkdownImageResolution>(_resolution.Task.WaitAsync(cancellationToken));
-        }
-
-        public void Complete(MarkdownImageResolution resolution) => _resolution.TrySetResult(resolution);
     }
 }

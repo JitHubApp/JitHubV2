@@ -41,20 +41,7 @@ public sealed class ImageBoxVisibleArtworkSelectionEndpointTests
     {
         string alt = string.Join(" ", Enumerable.Repeat("caption", 80));
         MarkdownLayoutContext context = CreateContext(flowDirection, textScaleFactor, alt);
-        var image = new ImageBox(
-            context, context.ImageResources,
-            SvgDataUri,
-            alt,
-            new SafeHtmlLength(ImageSize, IsPercent: false),
-            new SafeHtmlLength(ImageSize, IsPercent: false))
-        {
-            BlockIndex = 7,
-            Margin = new Thickness(
-                HorizontalMargin,
-                VerticalMargin,
-                HorizontalMargin,
-                VerticalMargin),
-        };
+        ImageBox image = CreateMarginedImage(context, alt);
 
         try
         {
@@ -97,39 +84,59 @@ public sealed class ImageBoxVisibleArtworkSelectionEndpointTests
             Assert.True(image.HitTest(afterArtworkMidpoint, out DocumentPosition ordinary));
             Assert.Equal(new DocumentPosition(7, 0, 0), ordinary);
 
-            // A point immediately below the artwork still uses the previous
-            // full-block midpoint fallback; the margin probes below verify
-            // the outer portions of that same fallback region.
-            Point postArtworkPoint = new(
-                expectedArtwork.Left + expectedArtwork.Width / 2,
-                expectedArtwork.Bottom + 1);
-            Assert.True(image.Bounds.Contains(postArtworkPoint));
-            bool postArtworkIsAfterFullBoundsMidpoint =
-                postArtworkPoint.Y >= image.Bounds.Top + image.Bounds.Height / 2;
-            Assert.True(image.HitTestSelectionEndpoint(postArtworkPoint, out DocumentPosition postArtwork));
-            Assert.Equal(
-                new DocumentPosition(7, 0, postArtworkIsAfterFullBoundsMidpoint ? 1 : 0),
-                postArtwork);
-
-            Point topMarginPoint = new(
-                expectedArtwork.Left + expectedArtwork.Width / 2,
-                image.Bounds.Top + 1);
-            Assert.True(image.Bounds.Contains(topMarginPoint));
-            Assert.True(image.HitTestSelectionEndpoint(topMarginPoint, out DocumentPosition topMargin));
-            Assert.Equal(new DocumentPosition(7, 0, 0), topMargin);
-
-            Point bottomMarginPoint = new(
-                expectedArtwork.Left + expectedArtwork.Width / 2,
-                image.Bounds.Bottom - 1);
-            Assert.True(image.Bounds.Contains(bottomMarginPoint));
-            Assert.True(image.HitTestSelectionEndpoint(bottomMarginPoint, out DocumentPosition bottomMargin));
-            Assert.Equal(new DocumentPosition(7, 0, 1), bottomMargin);
+            AssertOutsideArtworkUsesFullBoundsMidpoint(image, expectedArtwork);
         }
         finally
         {
             image.Dispose();
             await image.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
         }
+    }
+
+    private static ImageBox CreateMarginedImage(MarkdownLayoutContext context, string alt) => new(
+        context, context.ImageResources,
+        SvgDataUri,
+        alt,
+        new SafeHtmlLength(ImageSize, IsPercent: false),
+        new SafeHtmlLength(ImageSize, IsPercent: false))
+    {
+        BlockIndex = 7,
+        Margin = new Thickness(
+            HorizontalMargin,
+            VerticalMargin,
+            HorizontalMargin,
+            VerticalMargin),
+    };
+
+    private static void AssertOutsideArtworkUsesFullBoundsMidpoint(ImageBox image, Rect expectedArtwork)
+    {
+        // A point immediately below the artwork still uses the previous
+        // full-block midpoint fallback; the margin probes below verify
+        // the outer portions of that same fallback region.
+        Point postArtworkPoint = new(
+            expectedArtwork.Left + expectedArtwork.Width / 2,
+            expectedArtwork.Bottom + 1);
+        Assert.True(image.Bounds.Contains(postArtworkPoint));
+        bool postArtworkIsAfterFullBoundsMidpoint =
+            postArtworkPoint.Y >= image.Bounds.Top + image.Bounds.Height / 2;
+        Assert.True(image.HitTestSelectionEndpoint(postArtworkPoint, out DocumentPosition postArtwork));
+        Assert.Equal(
+            new DocumentPosition(7, 0, postArtworkIsAfterFullBoundsMidpoint ? 1 : 0),
+            postArtwork);
+
+        Point topMarginPoint = new(
+            expectedArtwork.Left + expectedArtwork.Width / 2,
+            image.Bounds.Top + 1);
+        Assert.True(image.Bounds.Contains(topMarginPoint));
+        Assert.True(image.HitTestSelectionEndpoint(topMarginPoint, out DocumentPosition topMargin));
+        Assert.Equal(new DocumentPosition(7, 0, 0), topMargin);
+
+        Point bottomMarginPoint = new(
+            expectedArtwork.Left + expectedArtwork.Width / 2,
+            image.Bounds.Bottom - 1);
+        Assert.True(image.Bounds.Contains(bottomMarginPoint));
+        Assert.True(image.HitTestSelectionEndpoint(bottomMarginPoint, out DocumentPosition bottomMargin));
+        Assert.Equal(new DocumentPosition(7, 0, 1), bottomMargin);
     }
 
     private MarkdownLayoutContext CreateContext(

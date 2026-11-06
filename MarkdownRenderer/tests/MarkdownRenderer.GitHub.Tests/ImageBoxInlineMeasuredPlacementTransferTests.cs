@@ -51,11 +51,7 @@ public sealed class ImageBoxInlineMeasuredPlacementTransferTests
             Assert.Equal(sourceImageWidth, sourceBefore.Width);
             Assert.Equal(sourceImageHeight, sourceBefore.Height);
 
-            sourceSnapshot = new LayoutSnapshot(
-                new BlockBox[] { fixture.Source },
-                fixture.SourceContext.SourceMap,
-                Width,
-                (float)fixture.Source.Bounds.Height);
+            sourceSnapshot = CreateSourceSnapshot(fixture);
             fixture.TransferSourceOwnershipToSnapshot(sourceSnapshot);
             sourceSnapshotOwnsFixture = true;
 
@@ -69,21 +65,10 @@ public sealed class ImageBoxInlineMeasuredPlacementTransferTests
                 ExpectedPreparedAvailableWidth: preparedAvailableWidth == sourceAvailableWidth
                     ? 0f : preparedAvailableWidth);
 
-            Assert.True(sourceSnapshot.TryBeginInteraction());
-            try
-            {
-                // The batch fallback width is intentionally not the image's
-                // measured width: an inline batch validates each image's own
-                // captured width rather than treating it as a block width.
-                Assert.True(ImageBox.TryTransferMeasuredPlacementsFromCompletedClones(
-                    new[] { transfer },
-                    currentProviderCacheGeneration: 0,
-                    expectedAvailableWidth: Width + 1f));
-            }
-            finally
-            {
-                sourceSnapshot.EndInteraction();
-            }
+            // The batch fallback width is intentionally not the image's
+            // measured width: an inline batch validates each image's own
+            // captured width rather than treating it as a block width.
+            Assert.True(TryTransferInInteraction(sourceSnapshot, transfer, expectedAvailableWidth: Width + 1f));
 
             Assert.Equal(preparedBefore, source.Bounds);
             Assert.Equal(sourceBefore, prepared.Bounds);
@@ -96,15 +81,7 @@ public sealed class ImageBoxInlineMeasuredPlacementTransferTests
         }
         finally
         {
-            if (prepared is not null && !prepared.GetWorkState().LifetimeDisposed)
-            {
-                candidateContext.DiscardConstructionBlock(prepared);
-                await prepared.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
-            }
-            if (sourceSnapshot is not null)
-                await sourceSnapshot.Retire().WaitAsync(TimeSpan.FromSeconds(10));
-            else if (!sourceSnapshotOwnsFixture)
-                await fixture.RetireSourceAsync();
+            await RetireAsync(fixture, candidateContext, prepared, sourceSnapshot, sourceSnapshotOwnsFixture);
         }
     }
 
@@ -131,11 +108,7 @@ public sealed class ImageBoxInlineMeasuredPlacementTransferTests
             prepared.SetInlineBounds(new Windows.Foundation.Rect(
                 51d, 31d, prepared.Bounds.Width, prepared.Bounds.Height));
 
-            sourceSnapshot = new LayoutSnapshot(
-                new BlockBox[] { fixture.Source },
-                fixture.SourceContext.SourceMap,
-                Width,
-                (float)fixture.Source.Bounds.Height);
+            sourceSnapshot = CreateSourceSnapshot(fixture);
             fixture.TransferSourceOwnershipToSnapshot(sourceSnapshot);
             Windows.Foundation.Rect sourceBefore = source.Bounds;
             Windows.Foundation.Rect preparedBefore = prepared.Bounds;
@@ -143,45 +116,7 @@ public sealed class ImageBoxInlineMeasuredPlacementTransferTests
             Assert.True(sourceSnapshot.TryBeginInteraction());
             try
             {
-                // Existing/default callers remain block-only unless they
-                // explicitly opt into inline placement transfer.
-                var wrongMode = new ImageMeasuredPlacementTransfer(
-                    source, prepared, expectedSourceLease, null);
-                Assert.False(ImageBox.TryTransferMeasuredPlacementsFromCompletedClones(
-                    new[] { wrongMode }, 0, Width));
-
-                var wrongWidth = new ImageMeasuredPlacementTransfer(
-                    source, prepared, expectedSourceLease, null,
-                    ExpectedInlineLayout: true,
-                    ExpectedAvailableWidth: availableWidth + 1f);
-                Assert.False(ImageBox.TryTransferMeasuredPlacementsFromCompletedClones(
-                    new[] { wrongWidth }, 0, Width));
-
-                var wrongPreparedWidth = new ImageMeasuredPlacementTransfer(
-                    source, prepared, expectedSourceLease, null,
-                    ExpectedInlineLayout: true,
-                    ExpectedAvailableWidth: availableWidth,
-                    ExpectedPreparedAvailableWidth: availableWidth + 1f);
-                Assert.False(ImageBox.TryTransferMeasuredPlacementsFromCompletedClones(
-                    new[] { wrongPreparedWidth }, 0, Width));
-                Assert.False(ImageBox.TryTransferMeasuredPlacementsFromCompletedClones(
-                    new[] { wrongPreparedWidth with { ExpectedPreparedAvailableWidth = float.NaN } }, 0, Width));
-
-                InlineMeasureCheckpoint checkpoint = source.BeginInlineCheckpoint();
-                try
-                {
-                    var activeCheckpoint = new ImageMeasuredPlacementTransfer(
-                        source, prepared, expectedSourceLease, null,
-                        ExpectedInlineLayout: true,
-                        ExpectedAvailableWidth: availableWidth);
-                    Assert.False(ImageBox.TryTransferMeasuredPlacementsFromCompletedClones(
-                        new[] { activeCheckpoint }, 0, Width));
-                    Assert.False(source.TryGetCompletedInlinePlacementWidth(out _));
-                }
-                finally
-                {
-                    checkpoint.Rollback();
-                }
+                AssertInvalidInlineTransfersAreRejected(source, prepared, expectedSourceLease, availableWidth);
             }
             finally
             {
@@ -195,16 +130,97 @@ public sealed class ImageBoxInlineMeasuredPlacementTransferTests
         }
         finally
         {
-            if (prepared is not null && !prepared.GetWorkState().LifetimeDisposed)
-            {
-                candidateContext.DiscardConstructionBlock(prepared);
-                await prepared.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
-            }
-            if (sourceSnapshot is not null)
-                await sourceSnapshot.Retire().WaitAsync(TimeSpan.FromSeconds(10));
-            else
-                await fixture.RetireSourceAsync();
+            await RetireAsync(fixture, candidateContext, prepared, sourceSnapshot, sourceSnapshotOwnsFixture: false);
         }
     }
 
+    private static void AssertInvalidInlineTransfersAreRejected(
+        ImageBox source,
+        ImageBox prepared,
+        SharedCanvasBitmapCache.Lease expectedSourceLease,
+        float availableWidth)
+    {
+        // Existing/default callers remain block-only unless they
+        // explicitly opt into inline placement transfer.
+        var wrongMode = new ImageMeasuredPlacementTransfer(
+            source, prepared, expectedSourceLease, null);
+        Assert.False(ImageBox.TryTransferMeasuredPlacementsFromCompletedClones(
+            new[] { wrongMode }, 0, Width));
+
+        var wrongWidth = new ImageMeasuredPlacementTransfer(
+            source, prepared, expectedSourceLease, null,
+            ExpectedInlineLayout: true,
+            ExpectedAvailableWidth: availableWidth + 1f);
+        Assert.False(ImageBox.TryTransferMeasuredPlacementsFromCompletedClones(
+            new[] { wrongWidth }, 0, Width));
+
+        var wrongPreparedWidth = new ImageMeasuredPlacementTransfer(
+            source, prepared, expectedSourceLease, null,
+            ExpectedInlineLayout: true,
+            ExpectedAvailableWidth: availableWidth,
+            ExpectedPreparedAvailableWidth: availableWidth + 1f);
+        Assert.False(ImageBox.TryTransferMeasuredPlacementsFromCompletedClones(
+            new[] { wrongPreparedWidth }, 0, Width));
+        Assert.False(ImageBox.TryTransferMeasuredPlacementsFromCompletedClones(
+            new[] { wrongPreparedWidth with { ExpectedPreparedAvailableWidth = float.NaN } }, 0, Width));
+
+        InlineMeasureCheckpoint checkpoint = source.BeginInlineCheckpoint();
+        try
+        {
+            var activeCheckpoint = new ImageMeasuredPlacementTransfer(
+                source, prepared, expectedSourceLease, null,
+                ExpectedInlineLayout: true,
+                ExpectedAvailableWidth: availableWidth);
+            Assert.False(ImageBox.TryTransferMeasuredPlacementsFromCompletedClones(
+                new[] { activeCheckpoint }, 0, Width));
+            Assert.False(source.TryGetCompletedInlinePlacementWidth(out _));
+        }
+        finally
+        {
+            checkpoint.Rollback();
+        }
+    }
+
+    private static LayoutSnapshot CreateSourceSnapshot(CompletedRasterPlacementCloneTests.PlacementFixture fixture) =>
+        new(new BlockBox[] { fixture.Source },
+            fixture.SourceContext.SourceMap,
+            Width,
+            (float)fixture.Source.Bounds.Height);
+
+    private static bool TryTransferInInteraction(
+        LayoutSnapshot sourceSnapshot,
+        ImageMeasuredPlacementTransfer transfer,
+        float expectedAvailableWidth)
+    {
+        Assert.True(sourceSnapshot.TryBeginInteraction());
+        try
+        {
+            return ImageBox.TryTransferMeasuredPlacementsFromCompletedClones(
+                new[] { transfer },
+                currentProviderCacheGeneration: 0,
+                expectedAvailableWidth: expectedAvailableWidth);
+        }
+        finally
+        {
+            sourceSnapshot.EndInteraction();
+        }
+    }
+
+    private static async Task RetireAsync(
+        CompletedRasterPlacementCloneTests.PlacementFixture fixture,
+        MarkdownLayoutContext candidateContext,
+        ImageBox? prepared,
+        LayoutSnapshot? sourceSnapshot,
+        bool sourceSnapshotOwnsFixture)
+    {
+        if (prepared is not null && !prepared.GetWorkState().LifetimeDisposed)
+        {
+            candidateContext.DiscardConstructionBlock(prepared);
+            await prepared.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        if (sourceSnapshot is not null)
+            await sourceSnapshot.Retire().WaitAsync(TimeSpan.FromSeconds(10));
+        else if (!sourceSnapshotOwnsFixture)
+            await fixture.RetireSourceAsync();
+    }
 }

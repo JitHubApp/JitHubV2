@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Numerics;
 using System.Threading;
 using MarkdownRenderer.Document;
@@ -15,21 +14,13 @@ using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using Windows.UI;
 using Xunit;
+using static MarkdownRenderer.GitHub.Tests.VectorCapacityFallbackFixture;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
 [Collection("Shared Canvas text format cache")]
 public sealed class VectorSceneCapacityFallbackTests
 {
-    private static readonly Color ClearColor = Color.FromArgb(255, 255, 255, 255);
-    private static readonly Color SceneColor = Color.FromArgb(255, 18, 34, 50);
-    private static readonly Color SelectionColor = Color.FromArgb(255, 12, 220, 28);
-
-    private static int PreparedFallbackDescriptorCount(VectorNativeResourceAdmission admission) =>
-        (admission.CapacityFallbackFormats.TryGetFormat(FlowDirection.LeftToRight, out _) ? 1 : 0) +
-        (admission.CapacityFallbackFormats.TryGetFormat(FlowDirection.RightToLeft, out _) ? 1 : 0);
-    private static readonly Color SelectionBackgroundColor = Color.FromArgb(255, 0, 90, 190);
-
     [Fact]
     public void FallbackDescriptorsBelongToTheAdmissionThatPreparedThem()
     {
@@ -55,29 +46,18 @@ public sealed class VectorSceneCapacityFallbackTests
             capacityWeightUnits: 100_000,
             maximumSceneWeightUnits: 100_000);
         using VectorNativeResourceCredit blocker = ReserveEntireAdmission(admission);
-        var resourceCreator = new CountingResourceCreator(CanvasDevice.GetSharedDevice());
+        var resourceCreator = new DeviceRequestCountingResourceCreator(CanvasDevice.GetSharedDevice());
         MarkdownLayoutContext context = CreateContext(
             resourceCreator,
             session,
             "flowchart TD\n    A[review the release] --> B[ship safely]");
         const string semantic = "Review the release and ship safely.";
-        var content = new MarkdownContentBuilder();
-        content.AddVectorScene(
-            CreatePathScene(),
-            new SourceSpan(0, context.SourceMap.SourceText.Length),
-            MarkdownStyleRole.Diagram,
-            MarkdownAccessibilityRole.Diagram,
-            accessibilityName: "Release flow",
-            accessibilityDescription: "A two-step release flow.",
-            semanticText: semantic);
-        var box = new VectorSceneBox(
+        VectorSceneBox box = CreateDiagramBox(
             context,
-            Assert.Single(content.Build().Items),
-            MarkdownElementKeys.Diagram,
-            admission)
-        {
-            BlockIndex = 0,
-        };
+            admission,
+            semantic,
+            accessibilityName: "Release flow",
+            accessibilityDescription: "A two-step release flow.");
 
         try
         {
@@ -107,31 +87,7 @@ public sealed class VectorSceneCapacityFallbackTests
             Assert.Contains(normalPixels, pixel => pixel != ClearColor);
 
             Color[] selectedPixels = PaintBlock(box, height, selection);
-            Assert.Contains(SelectionBackgroundColor, selectedPixels);
-            Assert.DoesNotContain(selectedPixels, pixel =>
-                pixel.G > pixel.R + 40 && pixel.G > pixel.B + 40);
-
-            bool foundTranslucentBlueSelectionTint = false;
-            bool foundUnaffectedOpaqueFallbackGlyph = false;
-            for (int index = 0; index < selectedPixels.Length; index++)
-            {
-                Color normal = normalPixels[index];
-                Color selected = selectedPixels[index];
-                if (normal == ClearColor &&
-                    selected.B > selected.G + 12 &&
-                    selected.G > selected.R + 12)
-                {
-                    foundTranslucentBlueSelectionTint = true;
-                }
-
-                if (normal.R < 80 && normal.G < 90 && normal.B < 100 && selected == normal)
-                    foundUnaffectedOpaqueFallbackGlyph = true;
-            }
-
-            Assert.True(foundTranslucentBlueSelectionTint,
-                "Normal selection should tint visible fallback content with the theme's translucent blue background.");
-            Assert.True(foundUnaffectedOpaqueFallbackGlyph,
-                "The selected fallback should repaint at full opacity so opaque text remains legible.");
+            AssertSelectionTintsFallbackAndKeepsGlyphsOpaque(normalPixels, selectedPixels);
 
             var cacheBeforePaint = context.RenderResources.TextFormats.Statistics;
             for (int index = 0; index < 4; index++)
@@ -158,25 +114,14 @@ public sealed class VectorSceneCapacityFallbackTests
             maximumSceneWeightUnits: 100_000);
         using VectorNativeResourceCredit blocker = ReserveEntireAdmission(admission);
         MarkdownLayoutContext context = CreateContext(
-            new CountingResourceCreator(CanvasDevice.GetSharedDevice()),
+            new DeviceRequestCountingResourceCreator(CanvasDevice.GetSharedDevice()),
             session,
             "high contrast fallback",
             highContrast: true);
-        var content = new MarkdownContentBuilder();
-        content.AddVectorScene(
-            CreatePathScene(),
-            new SourceSpan(0, context.SourceMap.SourceText.Length),
-            MarkdownStyleRole.Diagram,
-            MarkdownAccessibilityRole.Diagram,
-            semanticText: "High contrast fallback text remains available.");
-        var box = new VectorSceneBox(
+        VectorSceneBox box = CreateDiagramBox(
             context,
-            Assert.Single(content.Build().Items),
-            MarkdownElementKeys.Diagram,
-            admission)
-        {
-            BlockIndex = 0,
-        };
+            admission,
+            "High contrast fallback text remains available.");
 
         try
         {
@@ -209,7 +154,7 @@ public sealed class VectorSceneCapacityFallbackTests
         var admission = new VectorNativeResourceAdmission(
             capacityWeightUnits: 10_000,
             maximumSceneWeightUnits: 1);
-        var resourceCreator = new CountingResourceCreator(CanvasDevice.GetSharedDevice());
+        var resourceCreator = new DeviceRequestCountingResourceCreator(CanvasDevice.GetSharedDevice());
         MarkdownLayoutContext context = CreateContext(resourceCreator, session, "inline math source");
         const string semantic = "An inline equation: x squared plus y squared.";
         var run = new InlineVectorSceneRun(
@@ -279,86 +224,7 @@ public sealed class VectorSceneCapacityFallbackTests
             foreach (int dpi in new[] { 96, 192 })
             {
                 foreach (double scale in new[] { 0.5d, 1d, 3d })
-                {
-                    using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
-                    var admission = new VectorNativeResourceAdmission(
-                        capacityWeightUnits: 10_000,
-                        maximumSceneWeightUnits: 1);
-                    MarkdownLayoutContext context = CreateContext(
-                        new CountingResourceCreator(CanvasDevice.GetSharedDevice()),
-                        session,
-                        "bounded text scale",
-                        scale,
-                        direction,
-                        highContrast: true);
-                    var run = new InlineVectorSceneRun(
-                        context,
-                        CreatePathScene(),
-                        "Scale",
-                        "Scale",
-                        null,
-                        MarkdownElementKeys.Math,
-                        admission);
-                    run.SetLocalBounds(new Rect(10, 10, 160, 54));
-
-                    try
-                    {
-                        Assert.False(run.TryPrepareNativeResources(CancellationToken.None, out VectorNativePreparationOutcome outcome));
-                        Assert.Equal(VectorNativePreparationStatus.TooLarge, outcome.Status);
-                        Assert.True(run.IsCapacityFallbackPaintable);
-
-                        using var target = new CanvasRenderTarget(
-                            CanvasDevice.GetSharedDevice(),
-                            190,
-                            80,
-                            dpi);
-                        using (CanvasDrawingSession drawing = target.CreateDrawingSession())
-                        {
-                            drawing.Clear(ClearColor);
-                            Matrix3x2 originalTransform = Matrix3x2.CreateTranslation(3, 5);
-                            drawing.Transform = originalTransform;
-                            var cacheBeforePaint = context.RenderResources.TextFormats.Statistics;
-                            run.Paint(
-                                new LayoutPlacementTransformContext(),
-                                drawing,
-                                0,
-                                0,
-                                SceneColor,
-                                highContrast: true,
-                                foregroundOverride: SelectionColor);
-                            Assert.Equal(originalTransform, drawing.Transform);
-
-                            Assert.True(admission.CapacityFallbackFormats.TryGetFormat(direction, out Microsoft.Graphics.Canvas.Text.CanvasTextFormat format));
-                            Matrix3x2 callerTransform = Matrix3x2.CreateTranslation(2, 3);
-                            drawing.Transform = callerTransform;
-                            VectorSceneCapacityFallback.DrawTextWithScale(
-                                drawing,
-                                "Scale",
-                                new Rect(20, 15, 120, 45),
-                                SelectionColor,
-                                format,
-                                scale);
-                            Assert.Equal(callerTransform, drawing.Transform);
-                            Assert.Equal(cacheBeforePaint, context.RenderResources.TextFormats.Statistics);
-                        }
-
-                        Windows.Graphics.Imaging.BitmapSize pixelSize = target.SizeInPixels;
-                        Color[] pixels = target.GetPixelColors();
-                        Assert.Equal((long)pixelSize.Width * pixelSize.Height, pixels.LongLength);
-                        InkBounds ink = FindSelectionInkBounds(pixels, checked((int)pixelSize.Width));
-                        Assert.True(ink.Width > 0 && ink.Height > 0);
-                        Assert.InRange(ink.Left, (int)System.Math.Floor(13d * dpi / 96d) - 1, (int)System.Math.Ceiling(173d * dpi / 96d));
-                        Assert.InRange(ink.Right, (int)System.Math.Floor(13d * dpi / 96d), (int)System.Math.Ceiling(173d * dpi / 96d) + 1);
-                        Assert.InRange(ink.Top, (int)System.Math.Floor(15d * dpi / 96d) - 1, (int)System.Math.Ceiling(69d * dpi / 96d));
-                        Assert.InRange(ink.Bottom, (int)System.Math.Floor(15d * dpi / 96d), (int)System.Math.Ceiling(69d * dpi / 96d) + 1);
-                        pixelHeights[(scale, dpi, direction)] = ink.Height * 96d / dpi;
-                        Assert.InRange(PreparedFallbackDescriptorCount(admission), 1, 2);
-                    }
-                    finally
-                    {
-                        run.Dispose();
-                    }
-                }
+                    pixelHeights[(scale, dpi, direction)] = MeasureHighContrastInlineFallbackInkHeight(scale, dpi, direction);
             }
         }
 
@@ -387,24 +253,13 @@ public sealed class VectorSceneCapacityFallbackTests
             capacityWeightUnits: 100_000,
             maximumSceneWeightUnits: 100_000);
         using VectorNativeResourceCredit blocker = ReserveEntireAdmission(admission);
-        var resourceCreator = new CountingResourceCreator(CanvasDevice.GetSharedDevice());
+        var resourceCreator = new DeviceRequestCountingResourceCreator(CanvasDevice.GetSharedDevice());
         MarkdownLayoutContext context = CreateContext(resourceCreator, session, "a readable source caption");
-        var content = new MarkdownContentBuilder();
-        content.AddVectorScene(
-            CreatePathScene(),
-            new SourceSpan(0, context.SourceMap.SourceText.Length),
-            MarkdownStyleRole.Diagram,
-            MarkdownAccessibilityRole.Diagram,
-            accessibilityName: "Capacity placeholder",
-            semanticText: "Semantic caption remains available.");
-        var box = new VectorSceneBox(
+        VectorSceneBox box = CreateDiagramBox(
             context,
-            Assert.Single(content.Build().Items),
-            MarkdownElementKeys.Diagram,
-            admission)
-        {
-            BlockIndex = 0,
-        };
+            admission,
+            "Semantic caption remains available.",
+            accessibilityName: "Capacity placeholder");
         try
         {
             float height = box.Measure(180);
@@ -460,7 +315,7 @@ public sealed class VectorSceneCapacityFallbackTests
     {
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
         MarkdownLayoutContext context = CreateContext(
-            new CountingResourceCreator(CanvasDevice.GetSharedDevice()),
+            new DeviceRequestCountingResourceCreator(CanvasDevice.GetSharedDevice()),
             session,
             string.Empty);
         string source = new string('x', 254) + "😀" + "tail";
@@ -472,93 +327,135 @@ public sealed class VectorSceneCapacityFallbackTests
         Assert.False(fallback.Length > 1 && char.IsHighSurrogate(fallback[^2]));
     }
 
-    private static VectorNativeResourceCredit ReserveEntireAdmission(VectorNativeResourceAdmission admission)
+    private static void AssertSelectionTintsFallbackAndKeepsGlyphsOpaque(Color[] normalPixels, Color[] selectedPixels)
     {
-        Assert.Equal(
-            VectorNativeAdmissionResult.Granted,
-            admission.TryReserve(100_000, out VectorNativeResourceCredit? credit, out _));
-        return Assert.IsType<VectorNativeResourceCredit>(credit);
-    }
+        Assert.Contains(SelectionBackgroundColor, selectedPixels);
+        Assert.DoesNotContain(selectedPixels, pixel =>
+            pixel.G > pixel.R + 40 && pixel.G > pixel.B + 40);
 
-    private static MarkdownLayoutContext CreateContext(
-        ICanvasResourceCreator resourceCreator,
-        MarkdownPerformanceSession session,
-        string source,
-        double textScaleFactor = 1,
-        FlowDirection flowDirection = FlowDirection.LeftToRight,
-        bool highContrast = false)
-    {
-        var body = new ElementStyle
+        bool foundTranslucentBlueSelectionTint = false;
+        bool foundUnaffectedOpaqueFallbackGlyph = false;
+        for (int index = 0; index < selectedPixels.Length; index++)
         {
-            FontFamily = "Segoe UI",
-            FontSize = 16,
-            Foreground = SceneColor,
-        };
-        var styles = new Dictionary<string, ElementStyle>(StringComparer.Ordinal)
-        {
-            [MarkdownElementKeys.Body] = body,
-            [MarkdownElementKeys.Diagram] = body,
-            [MarkdownElementKeys.Math] = body,
-            [MarkdownElementKeys.Link] = body,
-        };
-        var theme = new ThemeSnapshot(
-            styles,
-            new Dictionary<string, ElementStyleOverride>(StringComparer.Ordinal),
-            surfaceColor: ClearColor,
-            selectionHighlightColor: Color.FromArgb(255, 0, 90, 190),
-            selectionForegroundColor: SelectionColor,
-            focusVisualColor: SceneColor,
-            isDark: false,
-            isHighContrast: highContrast,
-            textScaleFactor: textScaleFactor);
-        return new MarkdownLayoutContext(
-            resourceCreator,
-            theme,
-            new MarkdownSourceMap(source),
-            new MarkdownExtensionRegistry(),
-            flowDirection)
-        {
-            PerformanceSession = session,
-            UseProgressiveNativeSceneResidency = true,
-        };
-    }
-
-    private static MarkdownVectorScene CreatePathScene()
-    {
-        MarkdownVectorPathOperation[] path =
-        [
-            MarkdownVectorPathOperation.MoveTo(new MarkdownVectorPoint(2, 2)),
-            MarkdownVectorPathOperation.LineTo(new MarkdownVectorPoint(70, 2)),
-            MarkdownVectorPathOperation.LineTo(new MarkdownVectorPoint(70, 38)),
-            MarkdownVectorPathOperation.LineTo(new MarkdownVectorPoint(2, 38)),
-            MarkdownVectorPathOperation.Close(),
-        ];
-        return new MarkdownVectorScene(
-            width: 100,
-            height: 48,
-            baseline: 48,
-            commands: [MarkdownVectorCommand.FillPath(path)]);
-    }
-
-    private static Color[] PaintBlock(
-        VectorSceneBox box,
-        float height,
-        DocumentRange? selection)
-    {
-        using var target = new CanvasRenderTarget(CanvasDevice.GetSharedDevice(), 200, 100, 96);
-        using (CanvasDrawingSession drawing = target.CreateDrawingSession())
-        {
-            drawing.Clear(ClearColor);
-            box.Paint(drawing, new Rect(0, 0, 200, 100));
-            if (selection is { } range)
+            Color normal = normalPixels[index];
+            Color selected = selectedPixels[index];
+            if (normal == ClearColor &&
+                selected.B > selected.G + 12 &&
+                selected.G > selected.R + 12)
             {
-                bool highContrast = box.LayoutContext.ThemeSnapshot.IsHighContrast;
-                foreach (SelectionBackgroundGeometry background in box.GetSelectionBackgroundGeometry(range))
-                    background.Paint(drawing, SelectionBackgroundColor, highContrast);
-                box.PaintSelectionForeground(drawing, range, SelectionColor, new Rect(0, 0, 200, 100));
+                foundTranslucentBlueSelectionTint = true;
             }
+
+            if (normal.R < 80 && normal.G < 90 && normal.B < 100 && selected == normal)
+                foundUnaffectedOpaqueFallbackGlyph = true;
         }
-        return target.GetPixelColors();
+
+        Assert.True(foundTranslucentBlueSelectionTint,
+            "Normal selection should tint visible fallback content with the theme's translucent blue background.");
+        Assert.True(foundUnaffectedOpaqueFallbackGlyph,
+            "The selected fallback should repaint at full opacity so opaque text remains legible.");
+    }
+
+    /// <summary>
+    /// Paints a too-large high-contrast inline vector's bounded fallback text
+    /// at one text scale, DPI and direction, checks the ink stays inside the
+    /// run's physical bounds, and returns the ink height in DIPs.
+    /// </summary>
+    private static double MeasureHighContrastInlineFallbackInkHeight(double scale, int dpi, FlowDirection direction)
+    {
+        using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
+        var admission = new VectorNativeResourceAdmission(
+            capacityWeightUnits: 10_000,
+            maximumSceneWeightUnits: 1);
+        MarkdownLayoutContext context = CreateContext(
+            new DeviceRequestCountingResourceCreator(CanvasDevice.GetSharedDevice()),
+            session,
+            "bounded text scale",
+            scale,
+            direction,
+            highContrast: true);
+        var run = new InlineVectorSceneRun(
+            context,
+            CreatePathScene(),
+            "Scale",
+            "Scale",
+            null,
+            MarkdownElementKeys.Math,
+            admission);
+        run.SetLocalBounds(new Rect(10, 10, 160, 54));
+
+        try
+        {
+            Assert.False(run.TryPrepareNativeResources(CancellationToken.None, out VectorNativePreparationOutcome outcome));
+            Assert.Equal(VectorNativePreparationStatus.TooLarge, outcome.Status);
+            Assert.True(run.IsCapacityFallbackPaintable);
+
+            using var target = new CanvasRenderTarget(
+                CanvasDevice.GetSharedDevice(),
+                190,
+                80,
+                dpi);
+            using (CanvasDrawingSession drawing = target.CreateDrawingSession())
+                PaintScaledFallbackPreservingTransforms(run, context, admission, drawing, direction, scale);
+
+            double inkHeight = AssertSelectionInkWithinRunBounds(target, dpi);
+            Assert.InRange(PreparedFallbackDescriptorCount(admission), 1, 2);
+            return inkHeight;
+        }
+        finally
+        {
+            run.Dispose();
+        }
+    }
+
+    private static void PaintScaledFallbackPreservingTransforms(
+        InlineVectorSceneRun run,
+        MarkdownLayoutContext context,
+        VectorNativeResourceAdmission admission,
+        CanvasDrawingSession drawing,
+        FlowDirection direction,
+        double scale)
+    {
+        drawing.Clear(ClearColor);
+        Matrix3x2 originalTransform = Matrix3x2.CreateTranslation(3, 5);
+        drawing.Transform = originalTransform;
+        var cacheBeforePaint = context.RenderResources.TextFormats.Statistics;
+        run.Paint(
+            new LayoutPlacementTransformContext(),
+            drawing,
+            0,
+            0,
+            SceneColor,
+            highContrast: true,
+            foregroundOverride: SelectionColor);
+        Assert.Equal(originalTransform, drawing.Transform);
+
+        Assert.True(admission.CapacityFallbackFormats.TryGetFormat(direction, out Microsoft.Graphics.Canvas.Text.CanvasTextFormat format));
+        Matrix3x2 callerTransform = Matrix3x2.CreateTranslation(2, 3);
+        drawing.Transform = callerTransform;
+        VectorSceneCapacityFallback.DrawTextWithScale(
+            drawing,
+            "Scale",
+            new Rect(20, 15, 120, 45),
+            SelectionColor,
+            format,
+            scale);
+        Assert.Equal(callerTransform, drawing.Transform);
+        Assert.Equal(cacheBeforePaint, context.RenderResources.TextFormats.Statistics);
+    }
+
+    private static double AssertSelectionInkWithinRunBounds(CanvasRenderTarget target, int dpi)
+    {
+        Windows.Graphics.Imaging.BitmapSize pixelSize = target.SizeInPixels;
+        Color[] pixels = target.GetPixelColors();
+        Assert.Equal((long)pixelSize.Width * pixelSize.Height, pixels.LongLength);
+        InkBounds ink = FindSelectionInkBounds(pixels, checked((int)pixelSize.Width));
+        Assert.True(ink.Width > 0 && ink.Height > 0);
+        Assert.InRange(ink.Left, (int)System.Math.Floor(13d * dpi / 96d) - 1, (int)System.Math.Ceiling(173d * dpi / 96d));
+        Assert.InRange(ink.Right, (int)System.Math.Floor(13d * dpi / 96d), (int)System.Math.Ceiling(173d * dpi / 96d) + 1);
+        Assert.InRange(ink.Top, (int)System.Math.Floor(15d * dpi / 96d) - 1, (int)System.Math.Ceiling(69d * dpi / 96d));
+        Assert.InRange(ink.Bottom, (int)System.Math.Floor(15d * dpi / 96d), (int)System.Math.Ceiling(69d * dpi / 96d) + 1);
+        return ink.Height * 96d / dpi;
     }
 
     private static InkBounds FindSelectionInkBounds(Color[] pixels, int pixelWidth)
@@ -591,21 +488,5 @@ public sealed class VectorSceneCapacityFallbackTests
         internal int Width => Right < Left ? 0 : Right - Left + 1;
 
         internal int Height => Bottom < Top ? 0 : Bottom - Top + 1;
-    }
-
-    private sealed class CountingResourceCreator(CanvasDevice device) : ICanvasResourceCreator
-    {
-        private int _deviceRequestCount;
-
-        internal int DeviceRequestCount => Volatile.Read(ref _deviceRequestCount);
-
-        public CanvasDevice Device
-        {
-            get
-            {
-                Interlocked.Increment(ref _deviceRequestCount);
-                return device;
-            }
-        }
     }
 }

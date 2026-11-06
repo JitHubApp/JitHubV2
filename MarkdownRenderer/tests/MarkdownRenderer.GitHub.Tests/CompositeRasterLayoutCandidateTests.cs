@@ -19,6 +19,8 @@ using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using Windows.UI;
 using Xunit;
+using static MarkdownRenderer.GitHub.Tests.CompositeRasterCandidateAssertions;
+using static MarkdownRenderer.GitHub.Tests.CompositeRasterCandidateFixtures;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
@@ -27,7 +29,6 @@ public sealed class CompositeRasterLayoutCandidateTests
 {
     private const float LayoutWidth = 120f;
     private const float NarrowLayoutWidth = 50f;
-    private const string RasterMarkdownTemplate = "![raster alt]({0})";
 
     [Fact]
     public Task ParsedGfmTableRasterRootBuildsPrivateCandidate()
@@ -47,37 +48,10 @@ public sealed class CompositeRasterLayoutCandidateTests
         string sourceText = CreateGitHubCompositeMarkdown(shape, fixture.RasterSource);
         var registry = new MarkdownExtensionRegistry().ConfigureGitHubReadmeRegistry();
         Markdig.Syntax.MarkdownDocument parsed = Markdown.Parse(sourceText, registry.BuildPipeline());
-        Assert.Single(parsed);
-        switch (shape)
-        {
-            case "table":
-                Assert.IsType<Table>(Assert.Single(parsed));
-                break;
-            case "nested-list":
-                Assert.IsType<Markdig.Syntax.ListBlock>(Assert.Single(parsed));
-                break;
-            case "quote":
-                Assert.IsType<Markdig.Syntax.QuoteBlock>(Assert.Single(parsed));
-                break;
-            default:
-                throw new ArgumentOutOfRangeException(nameof(shape), shape, "Unknown GFM fixture shape.");
-        }
+        AssertParsedShape(shape, parsed);
 
         var sourceMap = new MarkdownSourceMap(sourceText);
-        var context = new MarkdownLayoutContext(
-            fixture.Device,
-            fixture.SourceContext.ThemeSnapshot,
-            sourceMap,
-            registry,
-            FlowDirection.LeftToRight,
-            language: "en-US")
-        {
-            CancellationToken = CancellationToken.None,
-            ImageCancellationToken = CancellationToken.None,
-            ImagePreparationOwner = fixture.ImagePreparationOwnerToken,
-            PerformanceDocumentOwner = fixture.PerformanceDocumentOwner,
-            RenderResources = fixture.RenderResources,
-        };
+        MarkdownLayoutContext context = CreateParsedContext(fixture, sourceMap, registry);
         MarkdownDocument semanticDocument = MarkdownDocument.FromParsed(sourceText, parsed);
         LayoutSnapshot source = new LayoutBuilder(context, semanticDocument: semanticDocument)
             .Build(parsed, LayoutWidth);
@@ -87,17 +61,7 @@ public sealed class CompositeRasterLayoutCandidateTests
         try
         {
             BlockBox sourceRoot = Assert.Single(source.GetMeasuredTopLevelBlocks());
-            switch (shape)
-            {
-                case "table":
-                    Assert.IsType<TableBox>(sourceRoot);
-                    Assert.NotEmpty(Assert.IsType<TableBox>(sourceRoot).GetCellBoxes());
-                    break;
-                case "nested-list":
-                case "quote":
-                    Assert.IsType<StackBox>(sourceRoot);
-                    break;
-            }
+            AssertSourceRootShape(shape, sourceRoot);
 
             InlineImageRun sourceImageRun = Assert.Single(EnumerateInlineImageRuns(sourceRoot));
             Assert.NotNull(sourceImageRun.Image.Bitmap);
@@ -122,32 +86,7 @@ public sealed class CompositeRasterLayoutCandidateTests
             MarkdownLayoutContext ownedCandidateContext = Assert.IsType<MarkdownLayoutContext>(candidateContext);
             await ownedCandidate.DrainConstructionAsync().WaitAsync(TimeSpan.FromSeconds(10));
 
-            Assert.True(ownedCandidate.HasCurrentSourceRaster());
-            Assert.Equal(1, ownedCandidate.SourceImageCount);
-            BlockBox candidateRoot = Assert.Single(ownedCandidate.Snapshot.GetMeasuredTopLevelBlocks());
-            Assert.NotSame(sourceRoot, candidateRoot);
-            Assert.Equal(sourceRoot.GetType(), candidateRoot.GetType());
-            Assert.Equal(sourceRoot.BlockIndex, candidateRoot.BlockIndex);
-            Assert.Equal(sourceRoot.Bounds, candidateRoot.Bounds);
-            Assert.Equal(sourceSemantics.Text, ownedCandidate.Snapshot.SemanticDocument.Text);
-            Assert.Equal(
-                sourceSemantics.SemanticRangeFingerprint,
-                ownedCandidate.Snapshot.SemanticDocument.SemanticRangeFingerprint);
-
-            InlineImageRun candidateImageRun = Assert.Single(EnumerateInlineImageRuns(candidateRoot));
-            Assert.NotSame(sourceImageRun, candidateImageRun);
-            Assert.NotSame(sourceImageRun.Image, candidateImageRun.Image);
-            Assert.Same(sourceImageRun.Image.Bitmap, candidateImageRun.Image.Bitmap);
-            Assert.Equal(sourceImageRun.Text, candidateImageRun.Text);
-            Assert.Equal(sourceImageRun.SourceSpan, candidateImageRun.SourceSpan);
-            Assert.Equal(sourceImageRun.LinkUrl, candidateImageRun.LinkUrl);
-            Assert.Equal(sourceImageRun.LinkTitle, candidateImageRun.LinkTitle);
-            LinkRun candidateLinkRun = Assert.IsType<LinkRun>(
-                Assert.Single(EnumerateInlineRuns(candidateRoot), static run => run is LinkRun));
-            Assert.NotSame(sourceLinkRun, candidateLinkRun);
-            Assert.Equal(sourceLinkRun.Url, candidateLinkRun.Url);
-            Assert.Equal(sourceLinkRun.Title, candidateLinkRun.Title);
-            Assert.Equal(sourceLinkRun.SourceSpan, candidateLinkRun.SourceSpan);
+            AssertCandidateRootClonesSource(ownedCandidate, sourceRoot, sourceSemantics, sourceImageRun, sourceLinkRun);
             Assert.Equal(sourceBounds, sourceRoot.Bounds);
             Assert.NotNull(sourceImageRun.Image.Bitmap);
         }
@@ -203,45 +142,8 @@ public sealed class CompositeRasterLayoutCandidateTests
             TableBox candidateTable = Assert.IsType<TableBox>(
                 Assert.Single(ownedCandidate.Snapshot.GetMeasuredTopLevelBlocks()));
             InlineContainerBox[] candidateCells = candidateTable.GetCellBoxes().ToArray();
-            Assert.Equal(sourceCells.Length, candidateCells.Length);
-            for (int index = 0; index < sourceCells.Length; index++)
-            {
-                Assert.NotSame(sourceCells[index], candidateCells[index]);
-                Assert.Same(candidateContext, candidateCells[index].Context);
-                Assert.Equal(sourceCells[index].BlockIndex, candidateCells[index].BlockIndex);
-                Assert.Equal(sourceCells[index].ElementKey, candidateCells[index].ElementKey);
-                Assert.Equal(sourceCells[index].Runs.Count, candidateCells[index].Runs.Count);
-                for (int runIndex = 0; runIndex < sourceCells[index].Runs.Count; runIndex++)
-                {
-                    InlineRun sourceRun = sourceCells[index].Runs[runIndex];
-                    InlineRun candidateRun = candidateCells[index].Runs[runIndex];
-                    Assert.NotSame(sourceRun, candidateRun);
-                    Assert.Equal(sourceRun.InlineIndex, candidateRun.InlineIndex);
-                    Assert.Equal(sourceRun.SourceSpan, candidateRun.SourceSpan);
-                    Assert.Equal(sourceRun.Text, candidateRun.Text);
-                    Assert.Equal(sourceRun.ElementKey, candidateRun.ElementKey);
-                    Assert.Equal(sourceRun.StyleAliases, candidateRun.StyleAliases);
-                    Assert.Equal(sourceRun.StyleModifierKeys, candidateRun.StyleModifierKeys);
-                    Assert.Equal(sourceRun.SemanticHeadingKey, candidateRun.SemanticHeadingKey);
-                }
-            }
-
-            Assert.NotSame(sourceTable, candidateTable);
-            Assert.Equal(sourceTable.BlockIndex, candidateTable.BlockIndex);
-            Assert.Equal(sourceTable.HorizontalOffset, candidateTable.HorizontalOffset);
-            Assert.Equal(sourceTable.Margin, candidateTable.Margin);
-            Assert.Equal(sourceTable.CollapsedTopMargin, candidateTable.CollapsedTopMargin);
-            Assert.Equal(sourceTable.SuppressTopMargin, candidateTable.SuppressTopMargin);
-            Assert.Equal(sourceTable.SuppressBottomMargin, candidateTable.SuppressBottomMargin);
-            Assert.NotSame(GetReferenceField(sourceTable, "_headerCells"), GetReferenceField(candidateTable, "_headerCells"));
-            Assert.NotSame(GetReferenceField(sourceTable, "_bodyCells"), GetReferenceField(candidateTable, "_bodyCells"));
-            InlineContainerBox[][] sourceBodyRows = GetField<InlineContainerBox[][]>(sourceTable, "_bodyCells");
-            InlineContainerBox[][] candidateBodyRows = GetField<InlineContainerBox[][]>(candidateTable, "_bodyCells");
-            Assert.NotSame(sourceBodyRows[0], candidateBodyRows[0]);
-            Assert.NotSame(GetReferenceField(sourceTable, "_columnAlignments"), GetReferenceField(candidateTable, "_columnAlignments"));
-            Assert.NotSame(GetReferenceField(sourceTable, "_colWidths"), GetReferenceField(candidateTable, "_colWidths"));
-            Assert.NotSame(GetReferenceField(sourceTable, "_rowHeights"), GetReferenceField(candidateTable, "_rowHeights"));
-            Assert.NotSame(GetReferenceField(sourceTable, "_rowBottomEdges"), GetReferenceField(candidateTable, "_rowBottomEdges"));
+            AssertCellClonesMatchSource(sourceCells, candidateCells, candidateContext);
+            AssertTableShellIsPrivateCopy(sourceTable, candidateTable);
 
             InlineImageRun candidateImageRun = Assert.Single(candidateCells[0].Runs.OfType<InlineImageRun>());
             Assert.NotSame(fixture.ImageRun.Image, candidateImageRun.Image);
@@ -407,44 +309,8 @@ public sealed class CompositeRasterLayoutCandidateTests
     {
         await using var fixture = new CompletedRasterPlacementCloneTests.PlacementFixture();
         MarkdownLayoutContext sourceContext = CreateContext(fixture, rasterizationScale, flowDirection);
-        InlineContainerBox imageCell = new(sourceContext, MarkdownElementKeys.TableCell)
-        {
-            BlockIndex = sourceContext.NextBlockIndex(),
-        };
-        var textRun = new TextRun("caption ")
-        {
-            ElementKey = MarkdownElementKeys.Strong,
-            SourceSpan = new SourceSpan(0, 8),
-            StyleAliases = new[] { "table-caption" },
-            StyleModifierKeys = new[] { MarkdownElementKeys.Emphasis },
-            SemanticHeadingKey = MarkdownElementKeys.Heading2,
-        };
-        imageCell.Add(textRun);
-        var sourceImageRun = new InlineImageRun(
-            sourceContext,
-            "Raster alt",
-            fixture.RasterSource,
-            linkUrl: "https://example.test/table-image")
-        {
-            ElementKey = MarkdownElementKeys.Link,
-            SourceSpan = new SourceSpan(8, 1),
-            StyleAliases = new[] { "table-image" },
-            StyleModifierKeys = new[] { MarkdownElementKeys.Strong },
-            SemanticHeadingKey = MarkdownElementKeys.Heading3,
-        };
-        imageCell.Add(sourceImageRun);
-        InlineContainerBox emptyCell = new(sourceContext, MarkdownElementKeys.TableCell)
-        {
-            BlockIndex = sourceContext.NextBlockIndex(),
-        };
-        var sourceTable = new TableBox(
-            sourceContext,
-            Array.Empty<InlineContainerBox[]>(),
-            new[] { new[] { imageCell, emptyCell } },
-            new[] { TableBox.CellAlignment.Left, TableBox.CellAlignment.Right })
-        {
-            BlockIndex = sourceContext.NextBlockIndex(),
-        };
+        TableBox sourceTable = CreateStyledImageTable(
+            sourceContext, fixture.RasterSource, out InlineContainerBox imageCell, out InlineImageRun sourceImageRun);
         float sourceHeight = sourceTable.Measure(LayoutWidth);
         sourceTable.Arrange(0, 0, LayoutWidth);
         using var source = new LayoutSnapshot(
@@ -456,250 +322,43 @@ public sealed class CompositeRasterLayoutCandidateTests
 
         try
         {
-        InlineRun sourceTextRun = imageCell.Runs[0];
-        var selection = new DocumentRange(
-            new DocumentPosition(imageCell.BlockIndex, sourceTextRun.InlineIndex, 1),
-            new DocumentPosition(imageCell.BlockIndex, sourceTextRun.InlineIndex, 6));
-        Rect[] sourceSelection = imageCell.GetRangeRects(selection).ToArray();
-        Assert.NotEmpty(sourceSelection);
-        InlineContainerBox[] sourceCells = sourceTable.GetCellBoxes().ToArray();
-        Assert.Equal(
-            flowDirection == FlowDirection.RightToLeft,
-            sourceCells[0].Bounds.X > sourceCells[1].Bounds.X);
+            InlineRun sourceTextRun = imageCell.Runs[0];
+            var selection = new DocumentRange(
+                new DocumentPosition(imageCell.BlockIndex, sourceTextRun.InlineIndex, 1),
+                new DocumentPosition(imageCell.BlockIndex, sourceTextRun.InlineIndex, 6));
+            Rect[] sourceSelection = imageCell.GetRangeRects(selection).ToArray();
+            Assert.NotEmpty(sourceSelection);
+            InlineContainerBox[] sourceCells = sourceTable.GetCellBoxes().ToArray();
+            Assert.Equal(
+                flowDirection == FlowDirection.RightToLeft,
+                sourceCells[0].Bounds.X > sourceCells[1].Bounds.X);
 
-        SingleRasterLayoutCandidate? candidate = source.CreateSingleRasterCandidate(
-            new[] { sourceTable.BlockIndex },
-            LayoutWidth,
-            CancellationToken.None,
-            CancellationToken.None,
-            fixture.ImagePreparationOwnerToken,
-            retirementSink: null,
-            imageUnavailable: null,
-            out MarkdownLayoutContext? constructionContext);
-        SingleRasterLayoutCandidate ownedCandidate = Assert.IsType<SingleRasterLayoutCandidate>(candidate);
-        MarkdownLayoutContext candidateContext = Assert.IsType<MarkdownLayoutContext>(constructionContext);
-        try
-        {
-            await ownedCandidate.DrainConstructionAsync().WaitAsync(TimeSpan.FromSeconds(10));
-            TableBox replacement = Assert.IsType<TableBox>(
-                Assert.Single(ownedCandidate.Snapshot.GetMeasuredTopLevelBlocks()));
-            InlineContainerBox[] replacementCells = replacement.GetCellBoxes().ToArray();
-            InlineContainerBox replacementImageCell = replacementCells[0];
-
-            Assert.Equal(rasterizationScale, replacement.Context.RasterizationScale);
-            Assert.Equal(flowDirection, replacement.Context.FlowDirection);
-            Assert.Equal(flowDirection == FlowDirection.RightToLeft, replacement.IsRightToLeft);
-            Assert.Equal(sourceTable.ColumnCount, replacement.ColumnCount);
-            Assert.Equal(sourceCells[0].ElementKey, replacementImageCell.ElementKey);
-            Assert.Equal(sourceCells[0].BlockIndex, replacementImageCell.BlockIndex);
-            Assert.Equal(sourceCells[0].Runs.Select(static run => run.InlineIndex),
-                replacementImageCell.Runs.Select(static run => run.InlineIndex));
-            Assert.Equal(
-                sourceCells.Select(static cell => cell.Bounds).ToArray(),
-                replacementCells.Select(static cell => cell.Bounds).ToArray());
-            Assert.Equal(sourceTable.Bounds, replacement.Bounds);
-            Assert.Equal(sourceSelection, replacementImageCell.GetRangeRects(selection).ToArray());
-            Assert.Equal(source.SemanticDocument.Text, ownedCandidate.Snapshot.SemanticDocument.Text);
-            Assert.Equal(
-                source.SemanticDocument.SemanticRangeFingerprint,
-                ownedCandidate.Snapshot.SemanticDocument.SemanticRangeFingerprint);
-            InlineImageRun replacementImage = Assert.Single(replacementImageCell.Runs.OfType<InlineImageRun>());
-            Assert.Equal(sourceImageRun.DesiredWidth, replacementImage.DesiredWidth);
-            Assert.Equal(sourceImageRun.DesiredHeight, replacementImage.DesiredHeight);
-            Assert.Equal(
-                sourceImageRun.Image.Presentation.RasterIntrinsicSize,
-                replacementImage.Image.Presentation.RasterIntrinsicSize);
-            Assert.Equal("https://example.test/table-image", replacementImage.LinkUrl);
-            Assert.NotSame(imageCell.Runs.OfType<InlineImageRun>().Single().Image, replacementImage.Image);
-            Assert.NotNull(replacementImage.Image.Bitmap);
-            Assert.True(ownedCandidate.HasCurrentSourceRaster());
-        }
-        finally
-        {
-            ownedCandidate.Dispose();
-            await candidateContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
-        }
+            SingleRasterLayoutCandidate? candidate = source.CreateSingleRasterCandidate(
+                new[] { sourceTable.BlockIndex },
+                LayoutWidth,
+                CancellationToken.None,
+                CancellationToken.None,
+                fixture.ImagePreparationOwnerToken,
+                retirementSink: null,
+                imageUnavailable: null,
+                out MarkdownLayoutContext? constructionContext);
+            SingleRasterLayoutCandidate ownedCandidate = Assert.IsType<SingleRasterLayoutCandidate>(candidate);
+            MarkdownLayoutContext candidateContext = Assert.IsType<MarkdownLayoutContext>(constructionContext);
+            try
+            {
+                await ownedCandidate.DrainConstructionAsync().WaitAsync(TimeSpan.FromSeconds(10));
+                AssertDpiReplacementMatchesSource(ownedCandidate, source, sourceTable, sourceCells, imageCell,
+                    sourceImageRun, selection, sourceSelection, rasterizationScale, flowDirection);
+            }
+            finally
+            {
+                ownedCandidate.Dispose();
+                await candidateContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            }
         }
         finally
         {
             await source.Retire().WaitAsync(TimeSpan.FromSeconds(10));
         }
-    }
-
-    private static TableBox CreateTable(
-        CompletedRasterPlacementCloneTests.PlacementFixture fixture,
-        float width,
-        out InlineContainerBox emptyCell)
-    {
-        MarkdownLayoutContext context = fixture.SourceContext;
-        emptyCell = new InlineContainerBox(context, MarkdownElementKeys.TableCell)
-        {
-            BlockIndex = context.NextBlockIndex(),
-        };
-        _ = emptyCell.Measure(width);
-        emptyCell.Arrange(0, 0, width);
-
-        var table = new TableBox(
-            context,
-            Array.Empty<InlineContainerBox[]>(),
-            new[] { new[] { fixture.Source, emptyCell } },
-            new[] { TableBox.CellAlignment.Left, TableBox.CellAlignment.Right })
-        {
-            BlockIndex = context.NextBlockIndex(),
-        };
-        float height = table.Measure(width);
-        table.Arrange(0, 0, width);
-        return table;
-    }
-
-    private static string CreateGitHubCompositeMarkdown(string shape, string imageSource)
-    {
-        string image = string.Format(
-            System.Globalization.CultureInfo.InvariantCulture,
-            RasterMarkdownTemplate,
-            imageSource);
-        return shape switch
-        {
-            "table" => $"| Resource | Preview |\n| :--- | ---: |\n| [docs](https://example.test/docs) | {image} |",
-            "nested-list" => $"1. Outer [docs](https://example.test/docs)\n   - Inner preview: {image}",
-            "quote" => $"> Quoted [docs](https://example.test/docs).\n>\n> Preview: {image}",
-            _ => throw new ArgumentOutOfRangeException(nameof(shape), shape, "Unknown GFM fixture shape."),
-        };
-    }
-
-    private static IEnumerable<InlineRun> EnumerateInlineRuns(BlockBox root)
-    {
-        if (root is InlineContainerBox inline)
-        {
-            foreach (InlineRun run in inline.Runs)
-                yield return run;
-        }
-
-        foreach (BlockBox child in EnumerateChildBlocks(root))
-        {
-            foreach (InlineRun run in EnumerateInlineRuns(child))
-                yield return run;
-        }
-    }
-
-    private static IEnumerable<InlineImageRun> EnumerateInlineImageRuns(BlockBox root)
-    {
-        foreach (InlineRun run in EnumerateInlineRuns(root))
-        {
-            if (run is InlineImageRun image)
-                yield return image;
-        }
-    }
-
-    private static IEnumerable<BlockBox> EnumerateChildBlocks(BlockBox root)
-    {
-        switch (root)
-        {
-            case TableBox table:
-                foreach (InlineContainerBox cell in table.GetCellBoxes())
-                    yield return cell;
-                break;
-            case ListItemBox item:
-                yield return item.Marker;
-                yield return item.Content;
-                break;
-            case StackBox stack:
-                foreach (BlockBox child in stack.Children)
-                    yield return child;
-                break;
-        }
-    }
-
-    private static IEnumerable<BlockBox> EnumerateBlocks(BlockBox root)
-    {
-        yield return root;
-        foreach (BlockBox child in EnumerateChildBlocks(root))
-        {
-            foreach (BlockBox descendant in EnumerateBlocks(child))
-                yield return descendant;
-        }
-    }
-
-    private static MarkdownLayoutContext CreateContext(
-        CompletedRasterPlacementCloneTests.PlacementFixture fixture,
-        double rasterizationScale,
-        FlowDirection flowDirection)
-    {
-        MarkdownLayoutContext template = fixture.SourceContext;
-        return new MarkdownLayoutContext(
-            template.ResourceCreator,
-            template.ThemeSnapshot,
-            template.SourceMap,
-            template.Registry,
-            flowDirection,
-            template.Dispatcher,
-            template.Language)
-        {
-            CancellationToken = CancellationToken.None,
-            ImageCancellationToken = CancellationToken.None,
-            RetirementSink = template.RetirementSink,
-            RenderResources = template.RenderResources,
-            RasterizationScale = rasterizationScale,
-            IsCodeBlockCopyEnabled = template.IsCodeBlockCopyEnabled,
-            CodeBlockLineNumberMode = template.CodeBlockLineNumberMode,
-            CodeBlockWrappingMode = template.CodeBlockWrappingMode,
-            CodeBlockChromeMode = template.CodeBlockChromeMode,
-            IsTaskListEditingEnabled = template.IsTaskListEditingEnabled,
-            CommandProvider = template.CommandProvider,
-            StringProvider = template.StringProvider,
-            ImageResolver = template.ImageResolver,
-            PerformanceSession = template.PerformanceSession,
-            PerformanceDocumentOwner = fixture.PerformanceDocumentOwner,
-            ImagePreparationOwner = fixture.ImagePreparationOwnerToken,
-            SvgRenderer = template.SvgRenderer,
-            ImageBaseUri = template.ImageBaseUri,
-            ImageDocumentPath = template.ImageDocumentPath,
-            ImageDocumentSource = template.ImageDocumentSource,
-            AllowThirdPartyRemoteImages = template.AllowThirdPartyRemoteImages,
-            DisclosureStates = template.DisclosureStates,
-        };
-    }
-
-    private static LayoutSnapshot CreateSourceSnapshot(
-        CompletedRasterPlacementCloneTests.PlacementFixture fixture,
-        TableBox table,
-        float width,
-        long automationGeneration)
-    {
-        var snapshot = new LayoutSnapshot(
-            new BlockBox[] { table },
-            fixture.SourceContext.SourceMap,
-            width,
-            (float)table.Bounds.Height);
-        fixture.TransferSourceOwnershipToSnapshot(snapshot);
-        snapshot.AssignAutomationDocumentGeneration(automationGeneration);
-        return snapshot;
-    }
-
-    private static Color[] PaintTable(CanvasDevice device, TableBox table, float width)
-    {
-        float height = System.Math.Max(1, (float)System.Math.Ceiling(table.Bounds.Height + 4));
-        using var target = new CanvasRenderTarget(device, width, height, 96);
-        using (CanvasDrawingSession drawing = target.CreateDrawingSession())
-        {
-            drawing.Clear(Color.FromArgb(0, 0, 0, 0));
-            table.Paint(drawing, new Rect(0, 0, width, height));
-        }
-        return target.GetPixelColors();
-    }
-
-    private static Point Center(Rect bounds)
-        => new(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2);
-
-    private static T GetField<T>(object instance, string name)
-    {
-        FieldInfo field = instance.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return Assert.IsType<T>(field.GetValue(instance));
-    }
-
-    private static object GetReferenceField(object instance, string name)
-    {
-        FieldInfo field = instance.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return Assert.IsAssignableFrom<object>(field.GetValue(instance));
     }
 }

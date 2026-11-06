@@ -76,77 +76,124 @@ public sealed class PrivateRasterPlacementTreeTests
                 sourceImages,
                 new HashSet<ImageBox>(sourceImages, ReferenceEqualityComparer.Instance)));
 
-            LayoutSnapshot replacement = owner.Snapshot;
-            StackBox clonedRoot = Assert.IsType<StackBox>(Assert.Single(replacement.Blocks));
-            ListItemBox clonedItem = Assert.IsType<ListItemBox>(Assert.Single(clonedRoot.Children));
-            StackBox clonedContent = clonedItem.Content;
-            TableBox clonedTable = Assert.IsType<TableBox>(Assert.Single(clonedContent.Children));
-            InlineContainerBox[] clonedCells = clonedTable.GetCellBoxes().ToArray();
-            InlineContainerBox clonedLeaf = clonedCells[0];
-            InlineContainerBox clonedEmptyCell = clonedCells[1];
-            InlineContainerBox clonedMarker = clonedItem.Marker;
-            Assert.NotSame(sourceRoot, clonedRoot);
-            Assert.NotSame(sourceItem, clonedItem);
-            Assert.NotSame(content, clonedContent);
-            Assert.NotSame(sourceMarker, clonedMarker);
-            Assert.NotSame(sourceTable, clonedTable);
-            Assert.NotSame(sourceLeaf, clonedLeaf);
-            Assert.NotSame(sourceLeaf.Runs[0], clonedLeaf.Runs[0]);
-            Assert.NotSame(Assert.Single(sourceTable.GetCellBoxes().Skip(1)), clonedEmptyCell);
-            Assert.Same(fixture.SourceContext.SourceMap, targetContext.SourceMap);
-            Assert.Same(fixture.SourceContext.SourceMap, replacement.SourceMap);
-            Assert.Equal(sourceSnapshot.SemanticDocument.Text, replacement.SemanticDocument.Text);
-            Assert.Equal(
-                sourceSnapshot.SemanticDocument.SemanticRangeFingerprint,
-                replacement.SemanticDocument.SemanticRangeFingerprint);
-            Assert.Equal(sourceRoot.Margin, clonedRoot.Margin);
-            Assert.Equal(sourceItem.Margin, clonedItem.Margin);
-            Assert.True(clonedLeaf.HasMeasuredLayout);
-            Assert.Same(fixture.ImageBoxes[0].Bitmap, clonedLeaf.InlineImageRuns[0].Run.Image.Bitmap);
+            AssertReplacementClonesEveryMutableWrapper(
+                fixture, targetContext, sourceSnapshot, owner.Snapshot,
+                sourceRoot, content, sourceItem, sourceMarker, sourceTable, sourceLeaf);
             Assert.Equal(sourceBounds, sourceRoot.Bounds);
             Assert.Equal(sourceLeafBounds, sourceLeaf.Bounds);
         }
         finally
         {
+            await ReleaseCandidateTreeAsync(
+                fixture, targetContext, sourceRoot, sourceSnapshot, candidate, candidateContext);
+        }
+    }
+
+    private static void AssertReplacementClonesEveryMutableWrapper(
+        MultiRasterPlacementCloneTests.MultiRasterFixture fixture,
+        MarkdownLayoutContext targetContext,
+        LayoutSnapshot sourceSnapshot,
+        LayoutSnapshot replacement,
+        StackBox sourceRoot,
+        StackBox content,
+        ListItemBox sourceItem,
+        InlineContainerBox sourceMarker,
+        TableBox sourceTable,
+        InlineContainerBox sourceLeaf)
+    {
+        StackBox clonedRoot = Assert.IsType<StackBox>(Assert.Single(replacement.Blocks));
+        ListItemBox clonedItem = Assert.IsType<ListItemBox>(Assert.Single(clonedRoot.Children));
+        StackBox clonedContent = clonedItem.Content;
+        TableBox clonedTable = Assert.IsType<TableBox>(Assert.Single(clonedContent.Children));
+        InlineContainerBox[] clonedCells = clonedTable.GetCellBoxes().ToArray();
+        InlineContainerBox clonedLeaf = clonedCells[0];
+        InlineContainerBox clonedEmptyCell = clonedCells[1];
+        InlineContainerBox clonedMarker = clonedItem.Marker;
+        Assert.NotSame(sourceRoot, clonedRoot);
+        Assert.NotSame(sourceItem, clonedItem);
+        Assert.NotSame(content, clonedContent);
+        Assert.NotSame(sourceMarker, clonedMarker);
+        Assert.NotSame(sourceTable, clonedTable);
+        Assert.NotSame(sourceLeaf, clonedLeaf);
+        Assert.NotSame(sourceLeaf.Runs[0], clonedLeaf.Runs[0]);
+        Assert.NotSame(Assert.Single(sourceTable.GetCellBoxes().Skip(1)), clonedEmptyCell);
+        Assert.Same(fixture.SourceContext.SourceMap, targetContext.SourceMap);
+        Assert.Same(fixture.SourceContext.SourceMap, replacement.SourceMap);
+        Assert.Equal(sourceSnapshot.SemanticDocument.Text, replacement.SemanticDocument.Text);
+        Assert.Equal(
+            sourceSnapshot.SemanticDocument.SemanticRangeFingerprint,
+            replacement.SemanticDocument.SemanticRangeFingerprint);
+        Assert.Equal(sourceRoot.Margin, clonedRoot.Margin);
+        Assert.Equal(sourceItem.Margin, clonedItem.Margin);
+        Assert.True(clonedLeaf.HasMeasuredLayout);
+        Assert.Same(fixture.ImageBoxes[0].Bitmap, clonedLeaf.InlineImageRuns[0].Run.Image.Bitmap);
+    }
+
+    private static async Task ReleaseCandidateTreeAsync(
+        MultiRasterPlacementCloneTests.MultiRasterFixture fixture,
+        MarkdownLayoutContext targetContext,
+        StackBox? sourceRoot,
+        LayoutSnapshot? sourceSnapshot,
+        SingleRasterLayoutCandidate? candidate,
+        MarkdownLayoutContext? candidateContext)
+    {
+        try
+        {
+            if (candidate is not null)
+                candidate.Dispose();
+        }
+        finally
+        {
             try
             {
-                if (candidate is not null)
-                    candidate.Dispose();
+                if (candidateContext is not null)
+                    await candidateContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(30));
             }
             finally
             {
                 try
                 {
-                    if (candidateContext is not null)
-                        await candidateContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(30));
+                    if (sourceRoot is not null)
+                    {
+                        // The fixture owns the original; this tree contains
+                        // a separate private source-context clone.
+                        if (sourceSnapshot is not null)
+                            await sourceSnapshot.Retire().WaitAsync(TimeSpan.FromSeconds(30));
+                        else
+                            fixture.SourceContext.DiscardConstructionBlock(sourceRoot);
+                    }
                 }
                 finally
                 {
-                    try
-                    {
-                        if (sourceRoot is not null)
-                        {
-                            // The fixture owns the original; this tree contains
-                            // a separate private source-context clone.
-                            if (sourceSnapshot is not null)
-                                await sourceSnapshot.Retire().WaitAsync(TimeSpan.FromSeconds(30));
-                            else
-                                fixture.SourceContext.DiscardConstructionBlock(sourceRoot);
-                        }
-                    }
-                    finally
-                    {
-                        try
-                        {
-                            await fixture.SourceContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(30));
-                        }
-                        finally
-                        {
-                            await targetContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(30));
-                        }
-                    }
+                    await DrainSourceAndTargetAsync(fixture, targetContext);
                 }
             }
+        }
+    }
+
+    private static async Task DrainSourceAndTargetAsync(
+        MultiRasterPlacementCloneTests.MultiRasterFixture fixture,
+        MarkdownLayoutContext targetContext)
+    {
+        try
+        {
+            await fixture.SourceContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(30));
+        }
+        finally
+        {
+            await targetContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(30));
+        }
+    }
+
+    private static void DiscardChildrenExceptSource(
+        StackBox stack,
+        MultiRasterPlacementCloneTests.MultiRasterFixture fixture)
+    {
+        BlockBox[] detached = stack.DetachChildrenForTransfer();
+        foreach (BlockBox child in detached)
+        {
+            if (!ReferenceEquals(child, fixture.Source))
+                fixture.SourceContext.DiscardConstructionBlock(child);
         }
     }
 
@@ -180,12 +227,7 @@ public sealed class PrivateRasterPlacementTreeTests
                 targetContext,
                 Width,
                 out _));
-            BlockBox[] unsupportedChildren = unsupportedContent.DetachChildrenForTransfer();
-            foreach (BlockBox child in unsupportedChildren)
-            {
-                if (!ReferenceEquals(child, fixture.Source))
-                    fixture.SourceContext.DiscardConstructionBlock(child);
-            }
+            DiscardChildrenExceptSource(unsupportedContent, fixture);
             unsupportedContent = null;
 
             aliasRoot = new StackBox { BlockIndex = 0 };
@@ -221,50 +263,39 @@ public sealed class PrivateRasterPlacementTreeTests
         {
             try
             {
-                if (aliasRoot is not null)
-                {
-                    aliasRoot.DetachChildrenForTransfer();
-                    fixture.SourceContext.DiscardConstructionBlock(aliasRoot);
-                }
-                if (duplicateIndexRoot is not null)
-                {
-                    BlockBox[] detached = duplicateIndexRoot.DetachChildrenForTransfer();
-                    foreach (BlockBox child in detached)
-                    {
-                        if (!ReferenceEquals(child, fixture.Source))
-                            fixture.SourceContext.DiscardConstructionBlock(child);
-                    }
-                    fixture.SourceContext.DiscardConstructionBlock(duplicateIndexRoot);
-                }
-                if (unsupportedRoot is not null)
-                {
-                    if (unsupportedContent is not null)
-                    {
-                        BlockBox[] detached = unsupportedContent.DetachChildrenForTransfer();
-                        foreach (BlockBox child in detached)
-                        {
-                            if (!ReferenceEquals(child, fixture.Source))
-                                fixture.SourceContext.DiscardConstructionBlock(child);
-                        }
-                    }
-                    else
-                    {
-                        FindStackContainingSource(unsupportedRoot, fixture.Source)?.DetachChildrenForTransfer();
-                    }
-                    fixture.SourceContext.DiscardConstructionBlock(unsupportedRoot);
-                }
+                DiscardPreflightRoots(fixture, aliasRoot, duplicateIndexRoot, unsupportedRoot, unsupportedContent);
             }
             finally
             {
-                try
-                {
-                    await fixture.SourceContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(30));
-                }
-                finally
-                {
-                    await targetContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(30));
-                }
+                await DrainSourceAndTargetAsync(fixture, targetContext);
             }
+        }
+    }
+
+    private static void DiscardPreflightRoots(
+        MultiRasterPlacementCloneTests.MultiRasterFixture fixture,
+        StackBox? aliasRoot,
+        StackBox? duplicateIndexRoot,
+        StackBox? unsupportedRoot,
+        StackBox? unsupportedContent)
+    {
+        if (aliasRoot is not null)
+        {
+            aliasRoot.DetachChildrenForTransfer();
+            fixture.SourceContext.DiscardConstructionBlock(aliasRoot);
+        }
+        if (duplicateIndexRoot is not null)
+        {
+            DiscardChildrenExceptSource(duplicateIndexRoot, fixture);
+            fixture.SourceContext.DiscardConstructionBlock(duplicateIndexRoot);
+        }
+        if (unsupportedRoot is not null)
+        {
+            if (unsupportedContent is not null)
+                DiscardChildrenExceptSource(unsupportedContent, fixture);
+            else
+                FindStackContainingSource(unsupportedRoot, fixture.Source)?.DetachChildrenForTransfer();
+            fixture.SourceContext.DiscardConstructionBlock(unsupportedRoot);
         }
     }
 
@@ -289,11 +320,7 @@ public sealed class PrivateRasterPlacementTreeTests
 
             Assert.False(PrivateRasterPlacementTree.TryGetFirstInlineContext(deepRoot, out _));
             Assert.False(new PrivateRasterPlacementTree.CaptureState().TryAddRoot(
-                deepRoot,
-                fixture.SourceContext,
-                targetContext,
-                Width,
-                out _));
+                deepRoot, fixture.SourceContext, targetContext, Width, out _));
 
             wideRoot = new StackBox { BlockIndex = 0 };
             for (int index = 0; index < PrivateRasterPlacementTree.MaximumNodes; index++)
@@ -301,11 +328,7 @@ public sealed class PrivateRasterPlacementTreeTests
             wideRoot.Add(fixture.Source);
             Assert.False(PrivateRasterPlacementTree.TryGetFirstInlineContext(wideRoot, out _));
             Assert.False(new PrivateRasterPlacementTree.CaptureState().TryAddRoot(
-                wideRoot,
-                fixture.SourceContext,
-                targetContext,
-                Width,
-                out _));
+                wideRoot, fixture.SourceContext, targetContext, Width, out _));
         }
         finally
         {
@@ -324,14 +347,7 @@ public sealed class PrivateRasterPlacementTreeTests
             }
             finally
             {
-                try
-                {
-                    await fixture.SourceContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(30));
-                }
-                finally
-                {
-                    await targetContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(30));
-                }
+                await DrainSourceAndTargetAsync(fixture, targetContext);
             }
         }
     }

@@ -129,28 +129,7 @@ public sealed class InlineDecorativeImageFailureCollapseTests
             SourceMap = new MarkdownSourceMap(SourceText);
 
             _device = new CanvasDevice(forceSoftwareRenderer: true);
-            var style = new ElementStyle
-            {
-                FontFamily = "Segoe UI",
-                FontSize = 16,
-                LineHeightMultiplier = 1.5f,
-            };
-            var styles = new Dictionary<string, ElementStyle>(StringComparer.Ordinal)
-            {
-                [MarkdownElementKeys.Body] = style,
-                [MarkdownElementKeys.ImageCaption] = style,
-            };
-            Color transparent = Color.FromArgb(0, 0, 0, 0);
-            var theme = new ThemeSnapshot(
-                styles,
-                new Dictionary<string, ElementStyleOverride>(),
-                transparent,
-                transparent,
-                transparent,
-                transparent,
-                isDark: false,
-                isHighContrast: false,
-                textScaleFactor: 1);
+            ThemeSnapshot theme = CreateTheme();
             _context = new MarkdownLayoutContext(
                 _device,
                 theme,
@@ -216,6 +195,32 @@ public sealed class InlineDecorativeImageFailureCollapseTests
         internal InlineRun? SuffixRun { get; }
         internal DocumentRange ImageRange { get; }
         internal DocumentRange SuffixRange { get; }
+
+        private static ThemeSnapshot CreateTheme()
+        {
+            var style = new ElementStyle
+            {
+                FontFamily = "Segoe UI",
+                FontSize = 16,
+                LineHeightMultiplier = 1.5f,
+            };
+            var styles = new Dictionary<string, ElementStyle>(StringComparer.Ordinal)
+            {
+                [MarkdownElementKeys.Body] = style,
+                [MarkdownElementKeys.ImageCaption] = style,
+            };
+            Color transparent = Color.FromArgb(0, 0, 0, 0);
+            return new ThemeSnapshot(
+                styles,
+                new Dictionary<string, ElementStyleOverride>(),
+                transparent,
+                transparent,
+                transparent,
+                transparent,
+                isDark: false,
+                isHighContrast: false,
+                textScaleFactor: 1);
+        }
 
         internal async Task FailImageAsync()
         {

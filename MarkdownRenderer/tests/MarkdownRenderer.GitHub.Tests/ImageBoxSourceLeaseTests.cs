@@ -18,6 +18,13 @@ using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
+/// <summary>How an SVG image box holds, releases and re-acquires its resolver source bytes.</summary>
+/// <remarks>
+/// This file is longer than 500 lines because each source-lease rule (eviction and re-entry,
+/// partitioned metadata, release before an uncooperative render, admission before decode and
+/// open-handoff retirement) is its own gated-provider scenario with ordered waits, and the
+/// scenarios share one context, cleanup and wait toolkit kept at the end of the class.
+/// </remarks>
 [Collection(ProcessRasterDecodeCollection.CollectionName)]
 public sealed class ImageBoxSourceLeaseTests
 {
@@ -39,7 +46,7 @@ public sealed class ImageBoxSourceLeaseTests
             ((IMarkdownPerformanceSessionInternal)session).OpenDocument(
                 resolver,
                 new MarkdownImageResolveContext(null));
-        var renderer = new GatedSvgRenderer(blockDocumentDispose: true);
+        var renderer = new SourceLeaseGatedSvgRenderer(blockDocumentDispose: true);
         var image = new ImageBox(
             CreateContext(renderer, session, documentScope), _renderResources.Images,
             sourceUrl,
@@ -59,21 +66,7 @@ public sealed class ImageBoxSourceLeaseTests
             Assert.Equal(sourceTemplate.Length, renderer.RetainedDocumentSourceBytes);
             Assert.Equal(0, renderer.DocumentDisposeCount);
 
-            // The accepted source is held only weakly; the collection check
-            // below proves no other box state pins the source array.
-            WeakReference<byte[]> sourceIdentity = Assert.IsType<WeakReference<byte[]>>(
-                image.Svg.SourceIdentity);
-            Assert.True(IsAlive(sourceIdentity));
-
-            // The fake provider document owns a sanitized OpenAsync snapshot.
-            // Its copy remains alive during retirement but does not alias the
-            // ImageBox source array, which must be collectible after eviction.
-            int evicted = RemoveSvgCacheEntries(image);
-            // Resolver sources have one content entry, never a built-in alias.
-            Assert.Equal(1, evicted);
-            ForceCollection();
-            Assert.Equal(sourceTemplate.Length, renderer.RetainedDocumentSourceBytes);
-            Assert.False(IsAlive(sourceIdentity));
+            AssertEvictedSourceIsCollectible(image, renderer, sourceTemplate.Length);
 
             // Provider disposal clears its independent snapshot.
             renderer.ReleaseDocumentDisposals();
@@ -83,30 +76,7 @@ public sealed class ImageBoxSourceLeaseTests
                 image.GetWorkState().ActiveWorkCount == 0);
             Assert.Equal(1, renderer.DocumentDisposeCount);
 
-            // Release the old exact raster/document and re-enter the same box.
-            // With the source entry evicted, reopening must use the existing
-            // authorized resolver path rather than a box-owned byte[] pin.
-            image.SuspendResources();
-            await WaitUntilAsync(() => image.GetWorkState().ActiveWorkCount == 0);
-            if (!image.TryReleaseSuspendedResources())
-            {
-                await WaitUntilAsync(() => image.GetWorkState().ActiveWorkCount == 0);
-                Assert.True(image.TryReleaseSuspendedResources());
-            }
-            Assert.True(image.TryResumeResources());
-
-            // Measure a different target so the exact-size bitmap warm path
-            // cannot satisfy re-entry. WaitForLoadAsync then calls
-            // EnsureLoading against the evicted source cache entry.
-            image.Measure(12);
-            Task secondLoad = WaitForLoadAsync(image);
-            await renderer.SecondOpenStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            renderer.ReleaseSecondOpen.TrySetResult();
-            await secondLoad.WaitAsync(TimeSpan.FromSeconds(5));
-            await WaitUntilAsync(() =>
-                session.GetSnapshot().InFlightSourceBytes == 0 &&
-                renderer.RetainedDocumentSourceBytes == 0 &&
-                image.GetWorkState().ActiveWorkCount == 0);
+            await ReenterEvictedSourceAsync(image, renderer, session);
 
             Assert.Equal(2, resolver.BufferAllocationCount);
             Assert.Equal(2, renderer.DocumentDisposeCount);
@@ -127,13 +97,66 @@ public sealed class ImageBoxSourceLeaseTests
         }
     }
 
+    private void AssertEvictedSourceIsCollectible(
+        ImageBox image,
+        SourceLeaseGatedSvgRenderer renderer,
+        int sourceLength)
+    {
+        // The accepted source is held only weakly; the collection check
+        // below proves no other box state pins the source array.
+        WeakReference<byte[]> sourceIdentity = Assert.IsType<WeakReference<byte[]>>(
+            image.Svg.SourceIdentity);
+        Assert.True(IsAlive(sourceIdentity));
+
+        // The fake provider document owns a sanitized OpenAsync snapshot.
+        // Its copy remains alive during retirement but does not alias the
+        // ImageBox source array, which must be collectible after eviction.
+        int evicted = RemoveSvgCacheEntries(image);
+        // Resolver sources have one content entry, never a built-in alias.
+        Assert.Equal(1, evicted);
+        ForceCollection();
+        Assert.Equal(sourceLength, renderer.RetainedDocumentSourceBytes);
+        Assert.False(IsAlive(sourceIdentity));
+    }
+
+    private static async Task ReenterEvictedSourceAsync(
+        ImageBox image,
+        SourceLeaseGatedSvgRenderer renderer,
+        MarkdownPerformanceSession session)
+    {
+        // Release the old exact raster/document and re-enter the same box.
+        // With the source entry evicted, reopening must use the existing
+        // authorized resolver path rather than a box-owned byte[] pin.
+        image.SuspendResources();
+        await WaitUntilAsync(() => image.GetWorkState().ActiveWorkCount == 0);
+        if (!image.TryReleaseSuspendedResources())
+        {
+            await WaitUntilAsync(() => image.GetWorkState().ActiveWorkCount == 0);
+            Assert.True(image.TryReleaseSuspendedResources());
+        }
+        Assert.True(image.TryResumeResources());
+
+        // Measure a different target so the exact-size bitmap warm path
+        // cannot satisfy re-entry. WaitForLoadAsync then calls
+        // EnsureLoading against the evicted source cache entry.
+        image.Measure(12);
+        Task secondLoad = WaitForLoadAsync(image);
+        await renderer.SecondOpenStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        renderer.ReleaseSecondOpen.TrySetResult();
+        await secondLoad.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitUntilAsync(() =>
+            session.GetSnapshot().InFlightSourceBytes == 0 &&
+            renderer.RetainedDocumentSourceBytes == 0 &&
+            image.GetWorkState().ActiveWorkCount == 0);
+    }
+
     [Fact]
     public async Task SvgMetadataFastPathRequiresCurrentSecurityPartition()
     {
         byte[] source = CreateSvgBytes("partition-bound-metadata");
         var session = CreateSession(source.Length + 128L);
         var image = new ImageBox(
-            CreateContext(new GatedSvgRenderer(), session), _renderResources.Images,
+            CreateContext(new SourceLeaseGatedSvgRenderer(), session), _renderResources.Images,
             "https://example.test/partition.svg",
             "Partitioned SVG");
 
@@ -228,7 +251,7 @@ public sealed class ImageBoxSourceLeaseTests
         var resolveContext = new MarkdownImageResolveContext(null);
         IMarkdownPerformanceDocumentScope documentScope =
             ((IMarkdownPerformanceSessionInternal)session).OpenDocument(resolver, resolveContext);
-        var renderer = new GatedSvgRenderer();
+        var renderer = new SourceLeaseGatedSvgRenderer();
         var image = new ImageBox(
             CreateContext(renderer, session, documentScope), _renderResources.Images,
             "https://example.test/leased.svg",
@@ -294,7 +317,7 @@ public sealed class ImageBoxSourceLeaseTests
             ((IMarkdownPerformanceSessionInternal)session).OpenDocument(
                 new LeasedSvgResolver(MakeSource, sourceTemplate.Length), new MarkdownImageResolveContext(null));
         IMarkdownImageResolver resolver = scope ?? (IMarkdownImageResolver)new GeneratedSvgResolver(MakeSource);
-        var renderer = new GatedSvgRenderer(blockRender: true, distinctPreparation: true);
+        var renderer = new SourceLeaseGatedSvgRenderer(blockRender: true, distinctPreparation: true);
         var image = new ImageBox(CreateContext(renderer, session, resolver), _renderResources.Images,
             $"https://example.test/{Guid.NewGuid():N}.svg", "Source release before render");
         Exception? primaryFailure = null;
@@ -320,19 +343,8 @@ public sealed class ImageBoxSourceLeaseTests
             await renderer.FirstOpenContinuationReturned.Task.WaitAsync(TimeSpan.FromSeconds(5));
             if (session is not null)
                 Assert.Equal(0, session.GetSnapshot().InFlightSourceBytes);
-            ForceCollection();
-            int retainedSourceCount = originalSources.Count(IsAlive);
-            bool sourceRetained = retainedSourceCount != 0;
-            string retentionPath = sourceRetained
-                ? DescribeStrongSourceRetention(renderer.ReleaseRender.Task, renderer, image, resolver, originalSources)
-                : string.Empty;
-            Assert.False(sourceRetained,
-                "Original source must not remain in caller/Open async frames while Render is pending." +
-                (retentionPath.Length == 0 ? string.Empty :
-                    $" Retained source arrays: {retainedSourceCount}; resolver source creations: " +
-                    $"{Volatile.Read(ref sourceCreationCount)}; Open/PrepareSource/Render counts: " +
-                    $"{renderer.OpenCount}/{renderer.PrepareSourceCount}/{renderer.RenderCount}; " +
-                    $"retention path: {retentionPath}"));
+            AssertOriginalSourcesCollected(
+                renderer, image, resolver, originalSources, () => Volatile.Read(ref sourceCreationCount));
             Assert.Equal(1, renderer.RenderCount);
             Assert.Equal(0, renderer.DocumentDisposeCount);
             Assert.Equal(sourceTemplate.Length, renderer.RetainedDocumentSourceBytes);
@@ -363,6 +375,28 @@ public sealed class ImageBoxSourceLeaseTests
         }
     }
 
+    private static void AssertOriginalSourcesCollected(
+        SourceLeaseGatedSvgRenderer renderer,
+        ImageBox image,
+        IMarkdownImageResolver resolver,
+        List<WeakReference<byte[]>> originalSources,
+        Func<int> sourceCreationCount)
+    {
+        ForceCollection();
+        int retainedSourceCount = originalSources.Count(IsAlive);
+        bool sourceRetained = retainedSourceCount != 0;
+        string retentionPath = sourceRetained
+            ? StrongSourceRetentionScanner.Describe(renderer.ReleaseRender.Task, renderer, image, resolver, originalSources)
+            : string.Empty;
+        Assert.False(sourceRetained,
+            "Original source must not remain in caller/Open async frames while Render is pending." +
+            (retentionPath.Length == 0 ? string.Empty :
+                $" Retained source arrays: {retainedSourceCount}; resolver source creations: " +
+                $"{sourceCreationCount()}; Open/PrepareSource/Render counts: " +
+                $"{renderer.OpenCount}/{renderer.PrepareSourceCount}/{renderer.RenderCount}; " +
+                $"retention path: {retentionPath}"));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -374,7 +408,7 @@ public sealed class ImageBoxSourceLeaseTests
             : new Uri(FindStaticSvgFixture()).AbsoluteUri;
         long sourceLength = dataUri ? template.Length : new FileInfo(new Uri(source).LocalPath).Length;
         var session = CreateSession(sourceLength + 128L);
-        var renderer = new GatedSvgRenderer(blockRender: true, distinctPreparation: true);
+        var renderer = new SourceLeaseGatedSvgRenderer(blockRender: true, distinctPreparation: true);
         var image = new ImageBox(CreateContext(renderer, session), _renderResources.Images, source, "Built-in source release");
         Exception? primaryFailure = null;
         try
@@ -428,7 +462,7 @@ public sealed class ImageBoxSourceLeaseTests
         string dataUri = "data:image/svg+xml," + Uri.EscapeDataString(Encoding.UTF8.GetString(sourceBytes));
         int decodedLength = MarkdownDataUriDecoder.GetDecodedLength(dataUri, 1024 * 1024);
         var session = CreateSession(sourceBytes.Length + 128L);
-        var renderer = new GatedSvgRenderer();
+        var renderer = new SourceLeaseGatedSvgRenderer();
         var image = new ImageBox(
             CreateContext(renderer, session), _renderResources.Images,
             dataUri,
@@ -476,7 +510,7 @@ public sealed class ImageBoxSourceLeaseTests
         byte[] sourceBytes = CreateSvgBytes("local-source-capacity");
         await File.WriteAllBytesAsync(path, sourceBytes);
         var session = CreateSession(System.Math.Max(8, sourceBytes.Length / 2));
-        var renderer = new GatedSvgRenderer();
+        var renderer = new SourceLeaseGatedSvgRenderer();
         var image = new ImageBox(
             CreateContext(renderer, session), _renderResources.Images,
             new Uri(path).AbsoluteUri,
@@ -515,7 +549,7 @@ public sealed class ImageBoxSourceLeaseTests
     [Fact]
     public async Task UnconsumedOpenHandoffRetiresItsDocumentAndWorkExactlyOnce()
     {
-        var renderer = new GatedSvgRenderer();
+        var renderer = new SourceLeaseGatedSvgRenderer();
         renderer.ReleaseFirstOpen.TrySetResult();
         var image = new ImageBox(CreateContext(renderer, session: null), _renderResources.Images,
             $"https://example.test/pending-{Guid.NewGuid():N}.svg", "Pending SVG");
@@ -572,7 +606,7 @@ public sealed class ImageBoxSourceLeaseTests
         var resolveContext = new MarkdownImageResolveContext(null);
         IMarkdownPerformanceDocumentScope documentScope =
             ((IMarkdownPerformanceSessionInternal)session).OpenDocument(resolver, resolveContext);
-        var renderer = new GatedSvgRenderer();
+        var renderer = new SourceLeaseGatedSvgRenderer();
         var first = new ImageBox(
             CreateContext(renderer, session, documentScope), _renderResources.Images,
             "https://example.test/first.svg",
@@ -741,183 +775,6 @@ public sealed class ImageBoxSourceLeaseTests
     private static bool IsAlive(WeakReference<byte[]> sourceIdentity) =>
         sourceIdentity.TryGetTarget(out _);
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static string DescribeStrongSourceRetention(
-        Task renderReleaseTask,
-        GatedSvgRenderer renderer,
-        ImageBox image,
-        IMarkdownImageResolver resolver,
-        IReadOnlyList<WeakReference<byte[]>> sourceIdentities)
-    {
-        var liveTargets = new List<(int Index, byte[] Target)>();
-        for (int index = 0; index < sourceIdentities.Count; index++)
-        {
-            if (sourceIdentities[index].TryGetTarget(out byte[]? target) && target is not null)
-                liveTargets.Add((index, target));
-        }
-        if (liveTargets.Count == 0)
-            return "all targets collected before bounded scan";
-
-        const int maxDepth = 32;
-        const int maxNodes = 2_048;
-        var pending = new PriorityQueue<(object Value, int Depth, string Path), int>();
-        var visited = new HashSet<object>(ReferenceEqualityComparer.Instance);
-        pending.Enqueue((renderReleaseTask, 0, "$release-task:" + renderReleaseTask.GetType().Name), 0);
-        pending.Enqueue((renderer, 0, "$renderer:" + renderer.GetType().Name), 0);
-        pending.Enqueue((image, 0, "$image:" + image.GetType().Name), 0);
-        pending.Enqueue((resolver, 0, "$resolver:" + resolver.GetType().Name), -1);
-        int visitedCount = 0;
-
-        while (pending.Count > 0 && visitedCount < maxNodes)
-        {
-            (object value, int depth, string path) = pending.Dequeue();
-            int directTargetIndex = liveTargets.FindIndex(item => ReferenceEquals(value, item.Target));
-            if (directTargetIndex >= 0)
-            {
-                string foundPath = $"source[{liveTargets[directTargetIndex].Index}] via {path}";
-                foreach (var item in liveTargets)
-                    GC.KeepAlive(item.Target);
-                return foundPath;
-            }
-
-            if (depth >= maxDepth || value is string || value is Type || value is MemberInfo ||
-                value is Assembly || value is Module || value is byte[] || !IsAsyncOwnershipNode(value))
-            {
-                continue;
-            }
-
-            if (!value.GetType().IsValueType && !visited.Add(value))
-                continue;
-            visitedCount++;
-
-            if (value is Array array)
-            {
-                int take = System.Math.Min(array.Length,
-                    System.Math.Max(0, maxNodes - visitedCount - pending.Count));
-                for (int index = 0; index < take; index++)
-                {
-                    object? child;
-                    try { child = array.GetValue(index); }
-                    catch { continue; }
-                    if (child is null)
-                        continue;
-                    string childPath = $"{path}[{index}]:{child.GetType().Name}";
-                    int targetIndex = liveTargets.FindIndex(item => ReferenceEquals(child, item.Target));
-                    if (targetIndex >= 0)
-                    {
-                        string foundPath = $"source[{liveTargets[targetIndex].Index}] via {childPath}";
-                        foreach (var item in liveTargets)
-                            GC.KeepAlive(item.Target);
-                        return foundPath;
-                    }
-                    if (visitedCount + pending.Count < maxNodes)
-                        pending.Enqueue((child, depth + 1, childPath), GetNodePriority(child, $"[{index}]"));
-                }
-                continue;
-            }
-
-            for (Type? type = value.GetType(); type is not null &&
-                 visitedCount + pending.Count < maxNodes; type = type.BaseType)
-            {
-                FieldInfo[] fields;
-                try
-                {
-                    fields = type.GetFields(BindingFlags.Instance | BindingFlags.Public |
-                        BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
-                }
-                catch
-                {
-                    continue;
-                }
-
-                foreach (FieldInfo field in fields.OrderBy(static field => GetFieldPriority(field.Name)))
-                {
-                    object? child;
-                    try { child = field.GetValue(value); }
-                    catch { continue; }
-                    if (child is null)
-                        continue;
-
-                    string childPath = $"{path}.{type.Name}.{field.Name}:{child.GetType().Name}";
-                    int targetIndex = liveTargets.FindIndex(item => ReferenceEquals(child, item.Target));
-                    if (targetIndex >= 0)
-                    {
-                        string foundPath = $"source[{liveTargets[targetIndex].Index}] via {childPath}";
-                        foreach (var item in liveTargets)
-                            GC.KeepAlive(item.Target);
-                        return foundPath;
-                    }
-                    if (child is string || child is Type || child is MemberInfo || child is Assembly ||
-                        child is Module || child is byte[])
-                    {
-                        continue;
-                    }
-                    if (visitedCount + pending.Count < maxNodes)
-                        pending.Enqueue((child, depth + 1, childPath), GetNodePriority(child, field.Name));
-                }
-            }
-        }
-
-        foreach (var item in liveTargets)
-            GC.KeepAlive(item.Target);
-        return $"no direct path found from provided roots (visited {visitedCount} objects; " +
-            $"live targets {liveTargets.Count}; depth limit {maxDepth}; node limit {maxNodes})";
-    }
-
-    private static bool IsAsyncOwnershipNode(object value)
-    {
-        Type type = value.GetType();
-        if (value is Task or Delegate or Array || type.IsValueType ||
-            type == typeof(MarkdownImageResolution) || type == typeof(MarkdownImageAsset))
-        {
-            return true;
-        }
-
-        string? typeName = type.FullName;
-        return value is not MarkdownLayoutContext &&
-               typeName?.StartsWith("Microsoft.Graphics.Canvas.", StringComparison.Ordinal) != true &&
-               typeName?.StartsWith("Microsoft.UI.", StringComparison.Ordinal) != true &&
-               typeName?.StartsWith("Windows.", StringComparison.Ordinal) != true;
-    }
-
-    private static int GetNodePriority(object value, string fieldName)
-    {
-        int fieldPriority = GetFieldPriority(fieldName);
-        if (value is Delegate || value.GetType().IsDefined(typeof(CompilerGeneratedAttribute), inherit: false))
-            return 0;
-        if (value is Task or Delegate || value.GetType().IsValueType ||
-            value.GetType().IsDefined(typeof(CompilerGeneratedAttribute), inherit: false))
-        {
-            return fieldPriority;
-        }
-
-        return fieldPriority + 1;
-    }
-
-    private static int GetFieldPriority(string fieldName)
-    {
-        if (fieldName.Contains("result", StringComparison.OrdinalIgnoreCase) ||
-            fieldName.Contains("asset", StringComparison.OrdinalIgnoreCase) ||
-            fieldName.Contains("resolution", StringComparison.OrdinalIgnoreCase) ||
-            fieldName.Contains("source", StringComparison.OrdinalIgnoreCase) ||
-            fieldName.Contains("rawBytes", StringComparison.OrdinalIgnoreCase))
-        {
-            return 0;
-        }
-
-        if (fieldName.Contains("continuation", StringComparison.OrdinalIgnoreCase) ||
-            fieldName.Contains("action", StringComparison.OrdinalIgnoreCase) ||
-            fieldName.Contains("awaiter", StringComparison.OrdinalIgnoreCase) ||
-            fieldName.Contains("stateMachine", StringComparison.OrdinalIgnoreCase) ||
-            fieldName.Contains("stateObject", StringComparison.OrdinalIgnoreCase) ||
-            fieldName.Contains("u__", StringComparison.OrdinalIgnoreCase))
-        {
-            return 1;
-        }
-
-        return 4;
-    }
-
     private static async Task RetireImageAsync(ImageBox image)
     {
         try
@@ -962,360 +819,6 @@ public sealed class ImageBoxSourceLeaseTests
         if (cleanupFailures.Count == 1)
             ExceptionDispatchInfo.Capture(cleanupFailures[0]).Throw();
         throw new AggregateException("ImageBox test cleanup failed.", cleanupFailures);
-    }
-
-    private sealed class GatedSvgRenderer : IMarkdownSvgRenderer
-    {
-        private readonly bool _blockDocumentDispose;
-        private int _prepareSourceCount;
-        private int _openCount;
-        private int _documentDisposeCount;
-        private int _retainedDocumentSourceBytes;
-
-        private readonly bool _blockRender;
-        private readonly bool _distinctPreparation;
-        private int _renderCount;
-
-        internal GatedSvgRenderer(bool blockDocumentDispose = false, bool blockRender = false,
-            bool distinctPreparation = false)
-        {
-            _blockDocumentDispose = blockDocumentDispose;
-            _blockRender = blockRender;
-            _distinctPreparation = distinctPreparation;
-        }
-
-        internal TaskCompletionSource RenderStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        internal TaskCompletionSource RenderAwaitRegistered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        internal TaskCompletionSource RenderCanceled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        internal TaskCompletionSource ReleaseRender { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        internal int RenderCount => Volatile.Read(ref _renderCount);
-
-        internal TaskCompletionSource FirstOpenStarted { get; } = new(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        internal TaskCompletionSource FirstOpenCanceled { get; } = new(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        internal TaskCompletionSource FirstOpenReturned { get; } = new(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        internal TaskCompletionSource FirstOpenContinuationReturned { get; } = new(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        internal TaskCompletionSource SecondOpenStarted { get; } = new(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        internal TaskCompletionSource ReleaseFirstOpen { get; } = new(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        internal TaskCompletionSource ReleaseSecondOpen { get; } = new(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        internal TaskCompletionSource DocumentDisposeStarted { get; } = new(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        internal TaskCompletionSource DocumentDisposeCompleted { get; } = new(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        private TaskCompletionSource ReleaseDocumentDispose { get; } = new(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        internal int PrepareSourceCount => Volatile.Read(ref _prepareSourceCount);
-        internal int OpenCount => Volatile.Read(ref _openCount);
-        internal int DocumentDisposeCount => Volatile.Read(ref _documentDisposeCount);
-        internal int RetainedDocumentSourceBytes => Volatile.Read(ref _retainedDocumentSourceBytes);
-
-        public long CacheGeneration => 0;
-
-        public MarkdownSvgSourcePreparation PrepareSource(
-            byte[] source,
-            CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            Interlocked.Increment(ref _prepareSourceCount);
-            return MarkdownSvgSourcePreparation.Admit(_distinctPreparation ? (byte[])source.Clone() : source);
-        }
-
-        public ValueTask<IMarkdownSvgDocument> OpenAsync(
-            MarkdownSvgOpenRequest request,
-            CancellationToken cancellationToken = default)
-        {
-            int open = Interlocked.Increment(ref _openCount);
-            CancellationTokenRegistration registration = cancellationToken.Register(
-                () => FirstOpenCanceled.TrySetResult());
-            TaskCompletionSource release = open == 1 ? ReleaseFirstOpen : ReleaseSecondOpen;
-            if (open == 1)
-                FirstOpenStarted.TrySetResult();
-            else
-                SecondOpenStarted.TrySetResult();
-
-            // The provider deliberately ignores cancellation until its actual
-            // OpenAsync transaction returns; it may still be reading request bytes.
-            var pending = new PendingOpenValueTaskSource(
-                this, request, release.Task, registration, open);
-            return pending.AsValueTask();
-        }
-
-        private sealed class PendingOpenValueTaskSource :
-            System.Threading.Tasks.Sources.IValueTaskSource<IMarkdownSvgDocument>
-        {
-            private readonly GatedSvgRenderer _owner;
-            private System.Threading.Tasks.Sources.ManualResetValueTaskSourceCore<IMarkdownSvgDocument> _core;
-            private MarkdownSvgOpenRequest? _request;
-            private readonly Task _release;
-            private readonly TaskCompletionSource _consumerRegistered = new(
-                TaskCreationOptions.RunContinuationsAsynchronously);
-            private CancellationTokenRegistration _registration;
-            private readonly int _open;
-
-            internal PendingOpenValueTaskSource(
-                GatedSvgRenderer owner,
-                MarkdownSvgOpenRequest request,
-                Task release,
-                CancellationTokenRegistration registration,
-                int open)
-            {
-                _owner = owner;
-                _request = request;
-                _release = release;
-                _registration = registration;
-                _open = open;
-                _core = new System.Threading.Tasks.Sources.ManualResetValueTaskSourceCore<IMarkdownSvgDocument>
-                {
-                    RunContinuationsAsynchronously = true,
-                };
-                _ = CompleteAfterReleaseAsync();
-            }
-
-            internal ValueTask<IMarkdownSvgDocument> AsValueTask() => new(this, _core.Version);
-
-            public System.Threading.Tasks.Sources.ValueTaskSourceStatus GetStatus(short token) =>
-                _core.GetStatus(token);
-
-            public IMarkdownSvgDocument GetResult(short token) => _core.GetResult(token);
-
-            public void OnCompleted(
-                Action<object?> continuation,
-                object? state,
-                short token,
-                System.Threading.Tasks.Sources.ValueTaskSourceOnCompletedFlags flags)
-            {
-                var registration = new ContinuationRegistration(this, continuation, state);
-                _core.OnCompleted(
-                    static callbackState =>
-                    {
-                        var callback = (ContinuationRegistration)callbackState!;
-                        try
-                        {
-                            callback.Continuation(callback.State);
-                        }
-                        finally
-                        {
-                            if (callback.Owner._open == 1)
-                                callback.Owner._owner.FirstOpenContinuationReturned.TrySetResult();
-                        }
-                    },
-                    registration,
-                    token,
-                    flags);
-                _consumerRegistered.TrySetResult();
-            }
-
-            private async Task CompleteAfterReleaseAsync()
-            {
-                try
-                {
-                    await _release.ConfigureAwait(false);
-                    // ReleaseFirstOpen can race the caller's first await. Keep
-                    // the provider completion pending until the source-backed
-                    // ValueTask has a registered consumer callback, so the
-                    // callback-return barrier below cannot be skipped.
-                    await _consumerRegistered.Task.ConfigureAwait(false);
-                    MarkdownSvgOpenRequest? request = _request;
-                    if (request is null)
-                        throw new InvalidOperationException("The pending SVG open lost its request.");
-
-                    byte[] providerSnapshot = request.SanitizedSvgBytes.ToArray();
-                    // The provider owns only its independent copy after this
-                    // point. Clear both the field and this local before waking
-                    // any consumer continuation.
-                    _request = null;
-                    request = null;
-                    Interlocked.Add(ref _owner._retainedDocumentSourceBytes, providerSnapshot.Length);
-                    var document = new GatedSvgDocument(_owner, providerSnapshot);
-                    if (_open == 1)
-                        _owner.FirstOpenReturned.TrySetResult();
-                    _core.SetResult(document);
-                }
-                catch (Exception exception)
-                {
-                    _request = null;
-                    _core.SetException(exception);
-                }
-                finally
-                {
-                    _registration.Dispose();
-                    _registration = default;
-                }
-            }
-
-            private sealed record ContinuationRegistration(
-                PendingOpenValueTaskSource Owner,
-                Action<object?> Continuation,
-                object? State);
-        }
-
-        internal void ReleaseAllOpens()
-        {
-            ReleaseFirstOpen.TrySetResult();
-            ReleaseSecondOpen.TrySetResult();
-            ReleaseRender.TrySetResult();
-            ReleaseDocumentDisposals();
-        }
-
-        internal void ReleaseDocumentDisposals() => ReleaseDocumentDispose.TrySetResult();
-
-        private void RecordDocumentDisposal(int retainedBytes)
-        {
-            Interlocked.Add(ref _retainedDocumentSourceBytes, -retainedBytes);
-            Interlocked.Increment(ref _documentDisposeCount);
-            DocumentDisposeCompleted.TrySetResult();
-        }
-
-        private sealed class GatedSvgDocument(
-            GatedSvgRenderer owner,
-            byte[] sourceSnapshot) : IMarkdownSvgDocument
-        {
-            private byte[]? _sourceSnapshot = sourceSnapshot;
-
-            public MarkdownSvgDocumentInfo Info { get; } = new(
-                IntrinsicWidthDips: 24,
-                IntrinsicHeightDips: 12,
-                IntrinsicAspectRatio: 2);
-
-            public ValueTask<MarkdownSvgRaster> RenderAsync(
-                MarkdownSvgRenderRequest request,
-                CancellationToken cancellationToken = default)
-            {
-                Interlocked.Increment(ref owner._renderCount);
-                owner.RenderStarted.TrySetResult();
-                if (owner._blockRender)
-                {
-                    var pending = new PendingRenderValueTaskSource(owner, request, cancellationToken);
-                    return pending.AsValueTask();
-                }
-
-                using CancellationTokenRegistration registration = cancellationToken.Register(
-                    () => owner.RenderCanceled.TrySetResult());
-                cancellationToken.ThrowIfCancellationRequested();
-                int width = request.TileRegion?.Width ?? request.TargetWidthPixels;
-                int height = request.TileRegion?.Height ?? request.TargetHeightPixels;
-                int length = checked(width * height * 4);
-                IMemoryOwner<byte> memory = MemoryPool<byte>.Shared.Rent(length);
-                bool ownershipTransferred = false;
-                try
-                {
-                    memory.Memory.Span[..length].Clear();
-                    var raster = new MarkdownSvgRaster(
-                        memory,
-                        length,
-                        width,
-                        height,
-                        checked(width * 4),
-                        request.PixelFormat);
-                    ownershipTransferred = true;
-                    return ValueTask.FromResult(raster);
-                }
-                finally
-                {
-                    if (!ownershipTransferred)
-                        memory.Dispose();
-                }
-            }
-
-            private sealed class PendingRenderValueTaskSource :
-                System.Threading.Tasks.Sources.IValueTaskSource<MarkdownSvgRaster>
-            {
-                private readonly GatedSvgRenderer _owner;
-                private System.Threading.Tasks.Sources.ManualResetValueTaskSourceCore<MarkdownSvgRaster> _core;
-                private readonly CancellationTokenRegistration _registration;
-
-                internal PendingRenderValueTaskSource(
-                    GatedSvgRenderer owner,
-                    MarkdownSvgRenderRequest request,
-                    CancellationToken cancellationToken)
-                {
-                    _owner = owner;
-                    _core = new System.Threading.Tasks.Sources.ManualResetValueTaskSourceCore<MarkdownSvgRaster>
-                    {
-                        RunContinuationsAsynchronously = true,
-                    };
-                    _registration = cancellationToken.Register(
-                        static state => ((GatedSvgRenderer)state!).RenderCanceled.TrySetResult(),
-                        owner);
-                    _ = CompleteAfterReleaseAsync(request, cancellationToken);
-                }
-
-                internal ValueTask<MarkdownSvgRaster> AsValueTask() => new(this, _core.Version);
-
-                public System.Threading.Tasks.Sources.ValueTaskSourceStatus GetStatus(short token) =>
-                    _core.GetStatus(token);
-
-                public MarkdownSvgRaster GetResult(short token) => _core.GetResult(token);
-
-                public void OnCompleted(
-                    Action<object?> continuation,
-                    object? state,
-                    short token,
-                    System.Threading.Tasks.Sources.ValueTaskSourceOnCompletedFlags flags)
-                {
-                    _core.OnCompleted(continuation, state, token, flags);
-                    _owner.RenderAwaitRegistered.TrySetResult();
-                }
-
-                private async Task CompleteAfterReleaseAsync(
-                    MarkdownSvgRenderRequest request,
-                    CancellationToken cancellationToken)
-                {
-                    try
-                    {
-                        await _owner.ReleaseRender.Task.ConfigureAwait(false);
-                        cancellationToken.ThrowIfCancellationRequested();
-                        int width = request.TileRegion?.Width ?? request.TargetWidthPixels;
-                        int height = request.TileRegion?.Height ?? request.TargetHeightPixels;
-                        int length = checked(width * height * 4);
-                        IMemoryOwner<byte> memory = MemoryPool<byte>.Shared.Rent(length);
-                        bool ownershipTransferred = false;
-                        try
-                        {
-                            memory.Memory.Span[..length].Clear();
-                            var raster = new MarkdownSvgRaster(
-                                memory,
-                                length,
-                                width,
-                                height,
-                                checked(width * 4),
-                                request.PixelFormat);
-                            ownershipTransferred = true;
-                            _core.SetResult(raster);
-                        }
-                        finally
-                        {
-                            if (!ownershipTransferred)
-                                memory.Dispose();
-                        }
-                    }
-                    catch (Exception exception)
-                    {
-                        _core.SetException(exception);
-                    }
-                    finally
-                    {
-                        _registration.Dispose();
-                    }
-                }
-            }
-
-            public void Dispose()
-            {
-                owner.DocumentDisposeStarted.TrySetResult();
-                if (owner._blockDocumentDispose)
-                    owner.ReleaseDocumentDispose.Task.GetAwaiter().GetResult();
-
-                int retainedBytes = Interlocked.Exchange(ref _sourceSnapshot, null)?.Length ?? 0;
-                owner.RecordDocumentDisposal(retainedBytes);
-            }
-        }
     }
 
     private sealed class GeneratedSvgResolver(Func<byte[]> createBytes) : IMarkdownImageResolver

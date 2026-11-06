@@ -238,7 +238,43 @@ public sealed class MarkdownSceneProjectionSignatureTests
         bool linkExternal = true,
         bool emptyCommands = false)
     {
-        var paint = MarkdownVectorPaintStyle.CreateSemantic(
+        MarkdownVectorPaintStyle paint = CreatePaint(fillRole, highContrastFillRole, strokeWidth);
+        var textStyle = new MarkdownVectorTextStyle(
+            textFontFamily,
+            textFontSize,
+            textFontWeight,
+            textItalic,
+            textRightToLeft,
+            textAlignment,
+            fontRole);
+        MarkdownVectorPathOperation[] path = CreatePath(pathEndX);
+        var rectangle = new MarkdownVectorRectangle(2, 3, 10, 6);
+        IReadOnlyList<MarkdownVectorCommand> commands = emptyCommands
+            ? Array.Empty<MarkdownVectorCommand>()
+            : CreateCommands(path, rectangle, paint, textStyle, transform, isClosed, commandSemanticIndex, commandText);
+        MarkdownVectorSemanticItem[] semantics = CreateSemantics(
+            width, height, rectangle, semanticName, semanticDescription, semanticBounds, semanticFlags);
+        MarkdownVectorLinkAction[] links =
+        [
+            new MarkdownVectorLinkAction(1, linkTarget, linkAction, linkExternal),
+        ];
+
+        return new MarkdownVectorScene(
+            width,
+            height,
+            baseline,
+            commands,
+            referenceFontSize,
+            viewport ?? new MarkdownVectorRectangle(-2, -1, width + 4, height + 2),
+            semantics,
+            links);
+    }
+
+    private static MarkdownVectorPaintStyle CreatePaint(
+        MarkdownVectorPaintRole fillRole,
+        MarkdownVectorPaintRole highContrastFillRole,
+        float strokeWidth)
+        => MarkdownVectorPaintStyle.CreateSemantic(
                 fillRole,
                 MarkdownVectorPaintRole.Link,
                 fillArgb: 0xFF2468AC,
@@ -252,61 +288,70 @@ public sealed class MarkdownSceneProjectionSignatureTests
                 dashArray: [1f, 2f, 3f],
                 dashOffset: 0.5f)
             .WithHighContrastRoles(highContrastFillRole, MarkdownVectorPaintRole.Foreground);
-        var textStyle = new MarkdownVectorTextStyle(
-            textFontFamily,
-            textFontSize,
-            textFontWeight,
-            textItalic,
-            textRightToLeft,
-            textAlignment,
-            fontRole);
-        MarkdownVectorPathOperation[] path =
-        [
-            MarkdownVectorPathOperation.MoveTo(new MarkdownVectorPoint(1, 2)),
-            MarkdownVectorPathOperation.QuadraticBezierTo(
-                new MarkdownVectorPoint(4, 5),
-                new MarkdownVectorPoint(7, 6)),
-            MarkdownVectorPathOperation.CubicBezierTo(
-                new MarkdownVectorPoint(8, 7),
-                new MarkdownVectorPoint(10, 8),
-                new MarkdownVectorPoint(pathEndX, 9)),
-            MarkdownVectorPathOperation.Close(),
-        ];
-        var rectangle = new MarkdownVectorRectangle(2, 3, 10, 6);
-        IReadOnlyList<MarkdownVectorCommand> commands = emptyCommands
-            ? Array.Empty<MarkdownVectorCommand>()
-            : new MarkdownVectorCommand[]
-            {
-                MarkdownVectorCommand.BeginGroup(
-                    transform ?? new MarkdownVectorTransform(1.1f, 0.2f, -0.3f, 0.9f, 5, 6),
-                    semanticIndex: 0),
-                MarkdownVectorCommand.FillPath(path, 0xFF112233),
-                MarkdownVectorCommand.StrokePath(path, 1.25f, 0xFF334455),
-                MarkdownVectorCommand.FillRectangle(rectangle, 0xFF556677),
-                MarkdownVectorCommand.StrokeRectangle(rectangle, 0.75f, 0xFF778899),
-                MarkdownVectorCommand.StrokeLine(
-                    new MarkdownVectorPoint(3, 4),
-                    new MarkdownVectorPoint(8, 9),
-                    1.5f,
-                    0xFF99AABB),
-                MarkdownVectorCommand.DrawRectangle(rectangle, paint, semanticIndex: 1),
-                MarkdownVectorCommand.DrawPath(path, paint, isClosed, commandSemanticIndex),
-                MarkdownVectorCommand.DrawLine(
-                    new MarkdownVectorPoint(4, 5),
-                    new MarkdownVectorPoint(9, 10),
-                    paint,
-                    semanticIndex: 1),
-                MarkdownVectorCommand.DrawEllipse(rectangle, paint, semanticIndex: 1),
-                MarkdownVectorCommand.DrawText(
-                    commandText,
-                    new MarkdownVectorPoint(5, 11),
-                    textStyle,
-                    paint,
-                    semanticIndex: 1),
-                MarkdownVectorCommand.EndGroup(),
-                MarkdownVectorCommand.BeginClip(path),
-                MarkdownVectorCommand.EndClip(),
-            };
+
+    private static MarkdownVectorPathOperation[] CreatePath(float pathEndX) =>
+    [
+        MarkdownVectorPathOperation.MoveTo(new MarkdownVectorPoint(1, 2)),
+        MarkdownVectorPathOperation.QuadraticBezierTo(
+            new MarkdownVectorPoint(4, 5),
+            new MarkdownVectorPoint(7, 6)),
+        MarkdownVectorPathOperation.CubicBezierTo(
+            new MarkdownVectorPoint(8, 7),
+            new MarkdownVectorPoint(10, 8),
+            new MarkdownVectorPoint(pathEndX, 9)),
+        MarkdownVectorPathOperation.Close(),
+    ];
+
+    private static MarkdownVectorCommand[] CreateCommands(
+        MarkdownVectorPathOperation[] path,
+        MarkdownVectorRectangle rectangle,
+        MarkdownVectorPaintStyle paint,
+        MarkdownVectorTextStyle textStyle,
+        MarkdownVectorTransform? transform,
+        bool isClosed,
+        int commandSemanticIndex,
+        string commandText) =>
+    [
+        MarkdownVectorCommand.BeginGroup(
+            transform ?? new MarkdownVectorTransform(1.1f, 0.2f, -0.3f, 0.9f, 5, 6),
+            semanticIndex: 0),
+        MarkdownVectorCommand.FillPath(path, 0xFF112233),
+        MarkdownVectorCommand.StrokePath(path, 1.25f, 0xFF334455),
+        MarkdownVectorCommand.FillRectangle(rectangle, 0xFF556677),
+        MarkdownVectorCommand.StrokeRectangle(rectangle, 0.75f, 0xFF778899),
+        MarkdownVectorCommand.StrokeLine(
+            new MarkdownVectorPoint(3, 4),
+            new MarkdownVectorPoint(8, 9),
+            1.5f,
+            0xFF99AABB),
+        MarkdownVectorCommand.DrawRectangle(rectangle, paint, semanticIndex: 1),
+        MarkdownVectorCommand.DrawPath(path, paint, isClosed, commandSemanticIndex),
+        MarkdownVectorCommand.DrawLine(
+            new MarkdownVectorPoint(4, 5),
+            new MarkdownVectorPoint(9, 10),
+            paint,
+            semanticIndex: 1),
+        MarkdownVectorCommand.DrawEllipse(rectangle, paint, semanticIndex: 1),
+        MarkdownVectorCommand.DrawText(
+            commandText,
+            new MarkdownVectorPoint(5, 11),
+            textStyle,
+            paint,
+            semanticIndex: 1),
+        MarkdownVectorCommand.EndGroup(),
+        MarkdownVectorCommand.BeginClip(path),
+        MarkdownVectorCommand.EndClip(),
+    ];
+
+    private static MarkdownVectorSemanticItem[] CreateSemantics(
+        float width,
+        float height,
+        MarkdownVectorRectangle rectangle,
+        string semanticName,
+        string semanticDescription,
+        MarkdownVectorRectangle? semanticBounds,
+        MarkdownVectorSemanticFlags semanticFlags)
+    {
         MarkdownVectorSemanticFlags rootFlags =
             MarkdownVectorSemanticFlags.Focusable | MarkdownVectorSemanticFlags.Selectable;
         MarkdownVectorSemanticItem[] semantics =
@@ -330,19 +375,6 @@ public sealed class MarkdownSceneProjectionSignatureTests
                 semanticBounds ?? rectangle,
                 semanticFlags),
         ];
-        MarkdownVectorLinkAction[] links =
-        [
-            new MarkdownVectorLinkAction(1, linkTarget, linkAction, linkExternal),
-        ];
-
-        return new MarkdownVectorScene(
-            width,
-            height,
-            baseline,
-            commands,
-            referenceFontSize,
-            viewport ?? new MarkdownVectorRectangle(-2, -1, width + 4, height + 2),
-            semantics,
-            links);
+        return semantics;
     }
 }

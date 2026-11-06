@@ -13,6 +13,11 @@ using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
+/// <remarks>
+/// This file is longer than 500 lines because it is the single test class for
+/// the SVG tile queue's render plan, pending-work and viewport-visibility
+/// rules, and splitting it would rename its tests.
+/// </remarks>
 [Collection(AllocationSensitiveContractCollection.Name)]
 public sealed class SvgTileQueuePlanTests
 {
@@ -101,24 +106,7 @@ public sealed class SvgTileQueuePlanTests
         // access or provider invocation. Do not mutate the shared static gate.
         box.Lifetime.LifetimeCancellation.Cancel();
 
-        int lastTileX = ((width - 1) / tileSize) * tileSize;
-        int lastTileY = ((height - 1) / tileSize) * tileSize;
-        int previousTileX = lastTileX - (horizontal ? tileSize : 0);
-        int previousTileY = lastTileY - (horizontal ? 0 : tileSize);
-        int lastTileWidth = width - lastTileX;
-        int lastTileHeight = height - lastTileY;
-        (int X, int Y, int Width, int Height)[] expectedKeys =
-            horizontal
-                ?
-                [
-                    (previousTileX, 0, tileSize, tileSize),
-                    (lastTileX, 0, lastTileWidth, tileSize),
-                ]
-                :
-                [
-                    (0, previousTileY, tileSize, tileSize),
-                    (0, lastTileY, tileSize, lastTileHeight),
-                ];
+        (int X, int Y, int Width, int Height)[] expectedKeys = GetLastTwoEdgeTileKeys(width, height, horizontal);
         var originalOwners = new Dictionary<(int X, int Y, int Width, int Height), RetirableCancellationTokenSource>();
         foreach (var key in expectedKeys)
         {
@@ -147,21 +135,54 @@ public sealed class SvgTileQueuePlanTests
         }
         finally
         {
-            // If this regression is reintroduced, cancel the wrongly queued
-            // edge work and wait for its ordinary lifetime barrier before
-            // disposing the test-only resources.
-            RetirableCancellationTokenSource[] liveOwners = Snapshot(box).Work.Values.Distinct().ToArray();
-            foreach (RetirableCancellationTokenSource owner in liveOwners)
-            {
-                try { owner.Cancel(); }
-                catch (ObjectDisposedException) { }
-            }
-
-            await ImageBoxTestState.WaitForImageWorkDrainAsync(box, TimeSpan.FromSeconds(10));
-
-            foreach (RetirableCancellationTokenSource owner in originalOwners.Values)
-                owner.Dispose();
+            await CancelEdgeWorkAndDisposeOwnersAsync(box, originalOwners.Values);
         }
+    }
+
+    private static (int X, int Y, int Width, int Height)[] GetLastTwoEdgeTileKeys(
+        int width,
+        int height,
+        bool horizontal)
+    {
+        const int tileSize = ImageBox.SvgTileSizePixels;
+        int lastTileX = ((width - 1) / tileSize) * tileSize;
+        int lastTileY = ((height - 1) / tileSize) * tileSize;
+        int previousTileX = lastTileX - (horizontal ? tileSize : 0);
+        int previousTileY = lastTileY - (horizontal ? 0 : tileSize);
+        int lastTileWidth = width - lastTileX;
+        int lastTileHeight = height - lastTileY;
+        return
+            horizontal
+                ?
+                [
+                    (previousTileX, 0, tileSize, tileSize),
+                    (lastTileX, 0, lastTileWidth, tileSize),
+                ]
+                :
+                [
+                    (0, previousTileY, tileSize, tileSize),
+                    (0, lastTileY, tileSize, lastTileHeight),
+                ];
+    }
+
+    private static async Task CancelEdgeWorkAndDisposeOwnersAsync(
+        ImageBox box,
+        IEnumerable<RetirableCancellationTokenSource> originalOwners)
+    {
+        // If this regression is reintroduced, cancel the wrongly queued
+        // edge work and wait for its ordinary lifetime barrier before
+        // disposing the test-only resources.
+        RetirableCancellationTokenSource[] liveOwners = Snapshot(box).Work.Values.Distinct().ToArray();
+        foreach (RetirableCancellationTokenSource owner in liveOwners)
+        {
+            try { owner.Cancel(); }
+            catch (ObjectDisposedException) { }
+        }
+
+        await ImageBoxTestState.WaitForImageWorkDrainAsync(box, TimeSpan.FromSeconds(10));
+
+        foreach (RetirableCancellationTokenSource owner in originalOwners)
+            owner.Dispose();
     }
 
     [Fact]

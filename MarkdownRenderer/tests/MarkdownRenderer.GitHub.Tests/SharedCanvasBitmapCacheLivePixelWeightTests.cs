@@ -10,6 +10,13 @@ using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
+/// <remarks>
+/// This file is longer than 500 lines because every case asserts the same two
+/// ledgers, the bitmap output charge and the live pixel weight, across all
+/// <see cref="SharedCanvasBitmapCache"/> lease factories, and they share the
+/// reservation, bitmap and precommit-failure scenario helpers at the end of
+/// the class.
+/// </remarks>
 [Collection(SharedCanvasBitmapCacheTestCollection.Name)]
 public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
 {
@@ -31,35 +38,7 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
             SharedCanvasBitmapCache.Lease? clone = null;
             try
             {
-                owner = factory switch
-                {
-                    0 => _renderResources.Images.BitmapCache.StoreAndAcquire(
-                        device,
-                        identity + "-raster",
-                        bitmap,
-                        new Size(4, 2),
-                        bitmapReservation: reservation),
-                    1 => _renderResources.Images.BitmapCache.StoreSvgAndAcquire(
-                        device,
-                        identity + "-svg",
-                        bitmap,
-                        new Size(4, 2),
-                        pixelWidth: 2,
-                        pixelHeight: 1,
-                        svgWorkId: 0,
-                        svgSourceBytes: 0,
-                        svgTargetPixels: 0,
-                        bitmapReservation: reservation),
-                    2 => _renderResources.Images.BitmapCache.CreateUncachedLease(
-                        bitmap,
-                        bitmapReservation: reservation),
-                    _ => _renderResources.Images.BitmapCache.CreateUncachedLease(
-                        bitmap,
-                        pixelWidth: 2,
-                        pixelHeight: 1,
-                        intrinsicSize: new Size(4, 2),
-                        bitmapReservation: reservation),
-                };
+                owner = CreateAdmittedLease(factory, device, identity, bitmap, reservation);
                 bitmap = null; // Lease now owns the native bitmap.
 
                 Assert.True(reservation.IsTransferred);
@@ -225,46 +204,14 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
             string identity = $"single-reservation-owner-{Guid.NewGuid():N}";
             CanvasBitmap firstCandidate = firstBitmap!;
             CanvasBitmap secondCandidate = secondBitmap!;
-            Task<(SharedCanvasBitmapCache.Lease? Lease, Exception? Error)> firstFactory = Task.Run<
-                (SharedCanvasBitmapCache.Lease? Lease, Exception? Error)>(() =>
-            {
-                try
-                {
-                    return (_renderResources.Images.BitmapCache.StoreAndAcquire(
-                        device,
-                        identity,
-                        firstCandidate,
-                        bitmapReservation: reservation), null);
-                }
-                catch (InvalidOperationException) when (reservation.IsTransferred)
-                {
-                    return (null, null);
-                }
-                catch (Exception exception)
-                {
-                    return (null, exception);
-                }
-            });
-            Task<(SharedCanvasBitmapCache.Lease? Lease, Exception? Error)> secondFactory = Task.Run<
-                (SharedCanvasBitmapCache.Lease? Lease, Exception? Error)>(() =>
-            {
-                try
-                {
-                    return (_renderResources.Images.BitmapCache.CreateUncachedLease(
-                        secondCandidate,
-                        pixelWidth: 1,
-                        pixelHeight: 1,
-                        bitmapReservation: reservation), null);
-                }
-                catch (InvalidOperationException) when (reservation.IsTransferred)
-                {
-                    return (null, null);
-                }
-                catch (Exception exception)
-                {
-                    return (null, exception);
-                }
-            });
+            Task<(SharedCanvasBitmapCache.Lease? Lease, Exception? Error)> firstFactory = RunRacingFactory(
+                reservation,
+                () => _renderResources.Images.BitmapCache.StoreAndAcquire(
+                    device, identity, firstCandidate, bitmapReservation: reservation));
+            Task<(SharedCanvasBitmapCache.Lease? Lease, Exception? Error)> secondFactory = RunRacingFactory(
+                reservation,
+                () => _renderResources.Images.BitmapCache.CreateUncachedLease(
+                    secondCandidate, pixelWidth: 1, pixelHeight: 1, bitmapReservation: reservation));
 
             (SharedCanvasBitmapCache.Lease? Lease, Exception? Error)[] results =
                 await Task.WhenAll(firstFactory, secondFactory);
@@ -322,132 +269,61 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
     public void PrecommitCacheInsertionFailureReturnsAdmittedUncachedLeasesForRasterAndSvg()
     {
         using var device = new CanvasDevice();
-        BitmapOutputAdmission admission = BitmapOutputAdmission.CreateDefault();
-        bool failWeighing = false;
-        var cache = new SharedCanvasBitmapCache(
-            admission,
-            SharedCanvasBitmapCache.DefaultBudgetBytes,
-            entry => failWeighing
-                ? throw new InvalidOperationException("Injected precommit cache weighing failure.")
-                : entry.WeightBytes);
+        var scenario = new PrecommitCacheFailureScenario(device);
+        SharedCanvasBitmapCache cache = scenario.Cache;
+        BitmapOutputAdmission admission = scenario.Admission;
         long baseline = admission.GetSnapshot().ChargedBytes;
-        string incumbentIdentity = $"cache-failure-incumbent-{Guid.NewGuid():N}";
-        string rasterIdentity = $"cache-failure-raster-{Guid.NewGuid():N}";
-        string svgIdentity = $"cache-failure-svg-{Guid.NewGuid():N}";
-        SharedCanvasBitmapCache.Lease? incumbent = null;
-        SharedCanvasBitmapCache.Lease? incumbentLookup = null;
-        SharedCanvasBitmapCache.Lease? raster = null;
-        SharedCanvasBitmapCache.Lease? rasterClone = null;
-        SharedCanvasBitmapCache.Lease? svg = null;
-        SharedCanvasBitmapCache.Lease? svgClone = null;
-        BitmapOutputAdmission.Reservation? rasterReservation = null;
-        BitmapOutputAdmission.Reservation? svgReservation = null;
-        CanvasBitmap? rasterBitmap = null;
-        CanvasBitmap? svgBitmap = null;
 
         try
         {
-            incumbent = cache.StoreAndAcquire(
+            scenario.Incumbent = cache.StoreAndAcquire(
                 device,
-                incumbentIdentity,
+                scenario.IncumbentIdentity,
                 CreateBitmap(device, width: 1, height: 1));
             long retainedWithIncumbent = cache.GetSnapshot().RetainedBytes;
 
-            rasterReservation = CreateCommittedReservation(admission, 16);
-            svgReservation = CreateCommittedReservation(admission, 16);
-            rasterBitmap = CreateBitmap(device, width: 2, height: 1);
-            svgBitmap = CreateBitmap(device, width: 2, height: 1);
-            failWeighing = true;
-            try
-            {
-                raster = cache.StoreAndAcquire(
-                    device,
-                    rasterIdentity,
-                    rasterBitmap,
-                    bitmapReservation: rasterReservation);
-                rasterBitmap = null;
-                svg = cache.StoreSvgAndAcquire(
-                    device,
-                    svgIdentity,
-                    svgBitmap,
-                    intrinsicSize: new Size(2, 1),
-                    pixelWidth: 2,
-                    pixelHeight: 1,
-                    svgWorkId: 0,
-                    svgSourceBytes: 0,
-                    svgTargetPixels: 0,
-                    bitmapReservation: svgReservation);
-                svgBitmap = null;
-            }
-            finally
-            {
-                // Restore the normal selector before any cleanup or asserts
-                // that might themselves consult it.
-                failWeighing = false;
-            }
+            scenario.StoreRasterAndSvgWhileWeighingFails();
+            AssertFailedInsertionsReturnedAdmittedUncachedLeases(scenario, retainedWithIncumbent);
 
-            Assert.True(rasterReservation.IsTransferred);
-            Assert.True(svgReservation.IsTransferred);
-            Assert.NotNull(raster);
-            Assert.NotNull(svg);
-            Assert.True(raster.IsBitmapOutputAdmitted);
-            Assert.True(svg.IsBitmapOutputAdmitted);
-            Assert.Equal(8L, raster.BitmapOutputAdmissionBytes);
-            Assert.Equal(8L, svg.BitmapOutputAdmissionBytes);
-            Assert.Equal(retainedWithIncumbent, cache.GetSnapshot().RetainedBytes);
-            Assert.False(cache.TryAcquire(device, rasterIdentity, out _));
-            Assert.False(cache.TryAcquire(device, svgIdentity, out _));
-            Assert.NotNull(incumbent);
-            Assert.True(cache.TryAcquire(device, incumbentIdentity, out incumbentLookup));
-            Assert.NotNull(incumbentLookup);
-            Assert.Same(incumbent.Bitmap, incumbentLookup!.Bitmap);
-
-            rasterClone = raster.TryClone();
-            svgClone = svg.TryClone();
-            Assert.NotNull(rasterClone);
-            Assert.NotNull(svgClone);
+            scenario.RasterClone = scenario.Raster!.TryClone();
+            scenario.SvgClone = scenario.Svg!.TryClone();
+            Assert.NotNull(scenario.RasterClone);
+            Assert.NotNull(scenario.SvgClone);
             Assert.Equal(baseline + 16, admission.GetSnapshot().ChargedBytes);
 
-            cache.ReleaseDevice(device);
-            incumbentLookup.Dispose();
-            incumbentLookup = null;
-            incumbent.Dispose();
-            incumbent = null;
-            raster.Dispose();
-            raster = null;
-            svg.Dispose();
-            svg = null;
+            scenario.ReleaseCacheAndOriginalLeases();
             Assert.Equal(baseline + 16, admission.GetSnapshot().ChargedBytes);
 
-            rasterClone.Dispose();
-            rasterClone = null;
-            svgClone.Dispose();
-            svgClone = null;
+            scenario.ReleaseClones();
             Assert.Equal(baseline, admission.GetSnapshot().ChargedBytes);
         }
         finally
         {
-            failWeighing = false;
-            cache.ReleaseDevice(device);
-            incumbentLookup?.Dispose();
-            incumbent?.Dispose();
-            raster?.Dispose();
-            rasterClone?.Dispose();
-            svg?.Dispose();
-            svgClone?.Dispose();
-            if (rasterBitmap is not null)
-            {
-                rasterBitmap.Dispose();
-                if (rasterReservation is { IsCommitted: true, IsTransferred: false })
-                    rasterReservation.ReleaseAfterSuccessfulCleanup();
-            }
-            if (svgBitmap is not null)
-            {
-                svgBitmap.Dispose();
-                if (svgReservation is { IsCommitted: true, IsTransferred: false })
-                    svgReservation.ReleaseAfterSuccessfulCleanup();
-            }
+            scenario.CleanUp();
         }
+    }
+
+    private static void AssertFailedInsertionsReturnedAdmittedUncachedLeases(
+        PrecommitCacheFailureScenario scenario,
+        long retainedWithIncumbent)
+    {
+        SharedCanvasBitmapCache cache = scenario.Cache;
+        CanvasDevice device = scenario.Device;
+        Assert.True(scenario.RasterReservation!.IsTransferred);
+        Assert.True(scenario.SvgReservation!.IsTransferred);
+        Assert.NotNull(scenario.Raster);
+        Assert.NotNull(scenario.Svg);
+        Assert.True(scenario.Raster.IsBitmapOutputAdmitted);
+        Assert.True(scenario.Svg.IsBitmapOutputAdmitted);
+        Assert.Equal(8L, scenario.Raster.BitmapOutputAdmissionBytes);
+        Assert.Equal(8L, scenario.Svg.BitmapOutputAdmissionBytes);
+        Assert.Equal(retainedWithIncumbent, cache.GetSnapshot().RetainedBytes);
+        Assert.False(cache.TryAcquire(device, scenario.RasterIdentity, out _));
+        Assert.False(cache.TryAcquire(device, scenario.SvgIdentity, out _));
+        Assert.NotNull(scenario.Incumbent);
+        Assert.True(cache.TryAcquire(device, scenario.IncumbentIdentity, out scenario.IncumbentLookup));
+        Assert.NotNull(scenario.IncumbentLookup);
+        Assert.Same(scenario.Incumbent.Bitmap, scenario.IncumbentLookup!.Bitmap);
     }
 
     [Fact]
@@ -586,6 +462,62 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
         Assert.Equal(1, resource.DisposeCount);
     }
 
+    private SharedCanvasBitmapCache.Lease CreateAdmittedLease(
+        int factory,
+        CanvasDevice device,
+        string identity,
+        CanvasBitmap bitmap,
+        BitmapOutputAdmission.Reservation reservation) => factory switch
+    {
+        0 => _renderResources.Images.BitmapCache.StoreAndAcquire(
+            device,
+            identity + "-raster",
+            bitmap,
+            new Size(4, 2),
+            bitmapReservation: reservation),
+        1 => _renderResources.Images.BitmapCache.StoreSvgAndAcquire(
+            device,
+            identity + "-svg",
+            bitmap,
+            new Size(4, 2),
+            pixelWidth: 2,
+            pixelHeight: 1,
+            svgWorkId: 0,
+            svgSourceBytes: 0,
+            svgTargetPixels: 0,
+            bitmapReservation: reservation),
+        2 => _renderResources.Images.BitmapCache.CreateUncachedLease(
+            bitmap,
+            bitmapReservation: reservation),
+        _ => _renderResources.Images.BitmapCache.CreateUncachedLease(
+            bitmap,
+            pixelWidth: 2,
+            pixelHeight: 1,
+            intrinsicSize: new Size(4, 2),
+            bitmapReservation: reservation),
+    };
+
+    // A factory that loses the race for an already-transferred reservation
+    // reports no lease and no error; any other exception is the test failure.
+    private static Task<(SharedCanvasBitmapCache.Lease? Lease, Exception? Error)> RunRacingFactory(
+        BitmapOutputAdmission.Reservation reservation,
+        Func<SharedCanvasBitmapCache.Lease> factory) =>
+        Task.Run<(SharedCanvasBitmapCache.Lease? Lease, Exception? Error)>(() =>
+        {
+            try
+            {
+                return (factory(), null);
+            }
+            catch (InvalidOperationException) when (reservation.IsTransferred)
+            {
+                return (null, null);
+            }
+            catch (Exception exception)
+            {
+                return (null, exception);
+            }
+        });
+
     private BitmapOutputAdmission.Reservation CreateCommittedReservation(long bytes) =>
         CreateCommittedReservation(_renderResources.Images.BitmapOutput, bytes);
 
@@ -622,6 +554,127 @@ public sealed class SharedCanvasBitmapCacheLivePixelWeightTests
             width,
             height,
             DirectXPixelFormat.B8G8R8A8UIntNormalized);
+    }
+
+    /// <summary>
+    /// The cache, leases, reservations and bitmaps of the precommit cache
+    /// insertion failure case. Each nullable slot is cleared as soon as its
+    /// owner is released so <see cref="CleanUp"/> disposes only what is left.
+    /// </summary>
+    private sealed class PrecommitCacheFailureScenario
+    {
+        private bool _failWeighing;
+
+        public PrecommitCacheFailureScenario(CanvasDevice device)
+        {
+            Device = device;
+            Admission = BitmapOutputAdmission.CreateDefault();
+            Cache = new SharedCanvasBitmapCache(
+                Admission,
+                SharedCanvasBitmapCache.DefaultBudgetBytes,
+                entry => _failWeighing
+                    ? throw new InvalidOperationException("Injected precommit cache weighing failure.")
+                    : entry.WeightBytes);
+        }
+
+        public CanvasDevice Device { get; }
+        public BitmapOutputAdmission Admission { get; }
+        public SharedCanvasBitmapCache Cache { get; }
+        public string IncumbentIdentity { get; } = $"cache-failure-incumbent-{Guid.NewGuid():N}";
+        public string RasterIdentity { get; } = $"cache-failure-raster-{Guid.NewGuid():N}";
+        public string SvgIdentity { get; } = $"cache-failure-svg-{Guid.NewGuid():N}";
+
+        public SharedCanvasBitmapCache.Lease? Incumbent;
+        public SharedCanvasBitmapCache.Lease? IncumbentLookup;
+        public SharedCanvasBitmapCache.Lease? Raster;
+        public SharedCanvasBitmapCache.Lease? RasterClone;
+        public SharedCanvasBitmapCache.Lease? Svg;
+        public SharedCanvasBitmapCache.Lease? SvgClone;
+        public BitmapOutputAdmission.Reservation? RasterReservation;
+        public BitmapOutputAdmission.Reservation? SvgReservation;
+        public CanvasBitmap? RasterBitmap;
+        public CanvasBitmap? SvgBitmap;
+
+        public void StoreRasterAndSvgWhileWeighingFails()
+        {
+            RasterReservation = CreateCommittedReservation(Admission, 16);
+            SvgReservation = CreateCommittedReservation(Admission, 16);
+            RasterBitmap = CreateBitmap(Device, width: 2, height: 1);
+            SvgBitmap = CreateBitmap(Device, width: 2, height: 1);
+            _failWeighing = true;
+            try
+            {
+                Raster = Cache.StoreAndAcquire(
+                    Device,
+                    RasterIdentity,
+                    RasterBitmap,
+                    bitmapReservation: RasterReservation);
+                RasterBitmap = null;
+                Svg = Cache.StoreSvgAndAcquire(
+                    Device,
+                    SvgIdentity,
+                    SvgBitmap,
+                    intrinsicSize: new Size(2, 1),
+                    pixelWidth: 2,
+                    pixelHeight: 1,
+                    svgWorkId: 0,
+                    svgSourceBytes: 0,
+                    svgTargetPixels: 0,
+                    bitmapReservation: SvgReservation);
+                SvgBitmap = null;
+            }
+            finally
+            {
+                // Restore the normal selector before any cleanup or asserts
+                // that might themselves consult it.
+                _failWeighing = false;
+            }
+        }
+
+        public void ReleaseCacheAndOriginalLeases()
+        {
+            Cache.ReleaseDevice(Device);
+            IncumbentLookup!.Dispose();
+            IncumbentLookup = null;
+            Incumbent!.Dispose();
+            Incumbent = null;
+            Raster!.Dispose();
+            Raster = null;
+            Svg!.Dispose();
+            Svg = null;
+        }
+
+        public void ReleaseClones()
+        {
+            RasterClone!.Dispose();
+            RasterClone = null;
+            SvgClone!.Dispose();
+            SvgClone = null;
+        }
+
+        public void CleanUp()
+        {
+            _failWeighing = false;
+            Cache.ReleaseDevice(Device);
+            IncumbentLookup?.Dispose();
+            Incumbent?.Dispose();
+            Raster?.Dispose();
+            RasterClone?.Dispose();
+            Svg?.Dispose();
+            SvgClone?.Dispose();
+            if (RasterBitmap is not null)
+            {
+                RasterBitmap.Dispose();
+                if (RasterReservation is { IsCommitted: true, IsTransferred: false })
+                    RasterReservation.ReleaseAfterSuccessfulCleanup();
+            }
+            if (SvgBitmap is not null)
+            {
+                SvgBitmap.Dispose();
+                if (SvgReservation is { IsCommitted: true, IsTransferred: false })
+                    SvgReservation.ReleaseAfterSuccessfulCleanup();
+            }
+        }
     }
 
     private sealed class ThrowingDisposable(Exception failure) : IDisposable

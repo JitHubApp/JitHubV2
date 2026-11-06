@@ -22,6 +22,13 @@ namespace MarkdownRenderer.GitHub.Tests;
 // Each test owns its cache and admission state. The collection still keeps
 // these fixtures off the shared Win2D device while other bitmap-cache tests
 // use it.
+/// <summary>How an image box suspends, releases and restores its raster and SVG resources.</summary>
+/// <remarks>
+/// This file is longer than 500 lines because each residency rule (raster release and reuse, late
+/// resolvers, queued publications, SVG document disposal, tiled suspension, render cancellation and
+/// warm constructor caches) is its own suspend-and-resume scenario, and all of them share the fake
+/// resolvers and the counting SVG provider and document declared at the end of the class.
+/// </remarks>
 [Collection(SharedCanvasBitmapCacheTestCollection.Name)]
 public sealed class ImageBoxResidencyTests
 {
@@ -310,79 +317,7 @@ public sealed class ImageBoxResidencyTests
             Assert.True(image.UsesSvgTilesForAutomation);
             Assert.Equal(0, renderer.Document.DisposeCount);
 
-            BitmapOutputAdmission.Snapshot admissionBeforeTilePaint =
-                _renderResources.Images.BitmapOutput.GetSnapshot();
-            long cacheBytesBeforeTilePaint = _renderResources.Images.BitmapCache.GetSnapshot().RetainedBytes;
-            TaskCompletionSource repaintPulse = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            void OnLoadCompleted(object? sender, LoadCompletedEventArgs args)
-            {
-                // The production control treats these as a source-free hint and
-                // invalidates its canvas. This fixture only signals the test
-                // loop; it never paints from inside the callback.
-                if (!args.LayoutInvalidated || args.IsBitmapOutputRecoverySignal)
-                    Volatile.Read(ref repaintPulse).TrySetResult();
-            }
-
-            using var renderDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            using var target = new CanvasRenderTarget(
-                CanvasDevice.GetSharedDevice(),
-                256,
-                256,
-                96);
-            image.LoadCompleted += OnLoadCompleted;
-            try
-            {
-                Task renderStarted = renderer.Document.RenderStarted.Task;
-                while (!renderStarted.IsCompleted)
-                {
-                    await WaitForWorkCountAsync(image, expected: 0).WaitAsync(renderDeadline.Token);
-                    if (renderStarted.IsCompleted)
-                        break;
-
-                    // Re-arm before painting so a recovery raised during or
-                    // immediately after Paint cannot be lost between frames.
-                    var nextRepaintPulse = new TaskCompletionSource(
-                        TaskCreationOptions.RunContinuationsAsynchronously);
-                    Interlocked.Exchange(ref repaintPulse, nextRepaintPulse);
-
-                    using (CanvasDrawingSession drawingSession = target.CreateDrawingSession())
-                        image.Paint(drawingSession, new Rect(0, 0, 256, 256));
-
-                    if (renderStarted.IsCompleted)
-                        break;
-                    await Task.WhenAny(renderStarted, nextRepaintPulse.Task)
-                        .WaitAsync(renderDeadline.Token);
-                }
-            }
-            catch (OperationCanceledException exception) when (renderDeadline.IsCancellationRequested)
-            {
-                BitmapOutputAdmission.Snapshot admission = _renderResources.Images.BitmapOutput.GetSnapshot();
-                throw new TimeoutException(
-                    $"Visible SVG tile render did not start. " +
-                    $"beforePaint(admissionCharged={admissionBeforeTilePaint.ChargedBytes}, " +
-                    $"active={admissionBeforeTilePaint.ActiveBytes}, " +
-                    $"waiters={admissionBeforeTilePaint.WaiterCount}, " +
-                    $"capacityVersion={admissionBeforeTilePaint.CapacityVersion}, " +
-                    $"cacheRetained={cacheBytesBeforeTilePaint}); " +
-                    $"after(admissionCharged={admission.ChargedBytes}, active={admission.ActiveBytes}, " +
-                    $"uncertain={admission.UncertainBytes}, capacity={admission.CapacityBytes}, " +
-                    $"visibleLimit={admission.VisibleInitialLimitBytes}, waiters={admission.WaiterCount}, " +
-                    $"offered={admission.OfferedBytes}, capacityVersion={admission.CapacityVersion}); " +
-                    $"cache(retained={_renderResources.Images.BitmapCache.GetSnapshot().RetainedBytes}, " +
-                    $"pixelLedger={_renderResources.Images.BitmapCache.GetSnapshot().LivePixelWeightBytes}, " +
-                    $"uncertainPixelLedger={_renderResources.Images.BitmapCache.GetSnapshot().UncertainDisposePixelWeightBytes}); " +
-                    $"image(work={image.GetWorkState().ActiveWorkCount}, " +
-                    $"needsRecovery={image.NeedsBitmapOutputRecovery}, " +
-                    $"svgTiles={image.UsesSvgTilesForAutomation}, raster={image.SvgRasterPixelSize}, " +
-                    $"accessibility={image.AccessibilityState}); " +
-                    $"provider(open={renderer.OpenCount}, render={renderer.RenderCount}, " +
-                    $"dispose={renderer.Document.DisposeCount}).",
-                    exception);
-            }
-            finally
-            {
-                image.LoadCompleted -= OnLoadCompleted;
-            }
+            await PaintUntilTileRenderStartsAsync(image, renderer);
             await WaitForWorkCountAsync(image, expected: 0);
             Assert.True(renderer.Document.RenderCount > 0);
             Assert.Equal(0, renderer.Document.DisposeCount);
@@ -670,6 +605,92 @@ public sealed class ImageBoxResidencyTests
         {
             image.Dispose();
         }
+    }
+
+    private async Task PaintUntilTileRenderStartsAsync(ImageBox image, ResidencySvgRenderer renderer)
+    {
+        BitmapOutputAdmission.Snapshot admissionBeforeTilePaint =
+            _renderResources.Images.BitmapOutput.GetSnapshot();
+        long cacheBytesBeforeTilePaint = _renderResources.Images.BitmapCache.GetSnapshot().RetainedBytes;
+        TaskCompletionSource repaintPulse = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnLoadCompleted(object? sender, LoadCompletedEventArgs args)
+        {
+            // The production control treats these as a source-free hint and
+            // invalidates its canvas. This fixture only signals the test
+            // loop; it never paints from inside the callback.
+            if (!args.LayoutInvalidated || args.IsBitmapOutputRecoverySignal)
+                Volatile.Read(ref repaintPulse).TrySetResult();
+        }
+
+        using var renderDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var target = new CanvasRenderTarget(
+            CanvasDevice.GetSharedDevice(),
+            256,
+            256,
+            96);
+        image.LoadCompleted += OnLoadCompleted;
+        try
+        {
+            Task renderStarted = renderer.Document.RenderStarted.Task;
+            while (!renderStarted.IsCompleted)
+            {
+                await WaitForWorkCountAsync(image, expected: 0).WaitAsync(renderDeadline.Token);
+                if (renderStarted.IsCompleted)
+                    break;
+
+                // Re-arm before painting so a recovery raised during or
+                // immediately after Paint cannot be lost between frames.
+                var nextRepaintPulse = new TaskCompletionSource(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+                Interlocked.Exchange(ref repaintPulse, nextRepaintPulse);
+
+                using (CanvasDrawingSession drawingSession = target.CreateDrawingSession())
+                    image.Paint(drawingSession, new Rect(0, 0, 256, 256));
+
+                if (renderStarted.IsCompleted)
+                    break;
+                await Task.WhenAny(renderStarted, nextRepaintPulse.Task)
+                    .WaitAsync(renderDeadline.Token);
+            }
+        }
+        catch (OperationCanceledException exception) when (renderDeadline.IsCancellationRequested)
+        {
+            throw new TimeoutException(
+                DescribeTileRenderStall(image, renderer, admissionBeforeTilePaint, cacheBytesBeforeTilePaint),
+                exception);
+        }
+        finally
+        {
+            image.LoadCompleted -= OnLoadCompleted;
+        }
+    }
+
+    private string DescribeTileRenderStall(
+        ImageBox image,
+        ResidencySvgRenderer renderer,
+        BitmapOutputAdmission.Snapshot admissionBeforeTilePaint,
+        long cacheBytesBeforeTilePaint)
+    {
+        BitmapOutputAdmission.Snapshot admission = _renderResources.Images.BitmapOutput.GetSnapshot();
+        return $"Visible SVG tile render did not start. " +
+            $"beforePaint(admissionCharged={admissionBeforeTilePaint.ChargedBytes}, " +
+            $"active={admissionBeforeTilePaint.ActiveBytes}, " +
+            $"waiters={admissionBeforeTilePaint.WaiterCount}, " +
+            $"capacityVersion={admissionBeforeTilePaint.CapacityVersion}, " +
+            $"cacheRetained={cacheBytesBeforeTilePaint}); " +
+            $"after(admissionCharged={admission.ChargedBytes}, active={admission.ActiveBytes}, " +
+            $"uncertain={admission.UncertainBytes}, capacity={admission.CapacityBytes}, " +
+            $"visibleLimit={admission.VisibleInitialLimitBytes}, waiters={admission.WaiterCount}, " +
+            $"offered={admission.OfferedBytes}, capacityVersion={admission.CapacityVersion}); " +
+            $"cache(retained={_renderResources.Images.BitmapCache.GetSnapshot().RetainedBytes}, " +
+            $"pixelLedger={_renderResources.Images.BitmapCache.GetSnapshot().LivePixelWeightBytes}, " +
+            $"uncertainPixelLedger={_renderResources.Images.BitmapCache.GetSnapshot().UncertainDisposePixelWeightBytes}); " +
+            $"image(work={image.GetWorkState().ActiveWorkCount}, " +
+            $"needsRecovery={image.NeedsBitmapOutputRecovery}, " +
+            $"svgTiles={image.UsesSvgTilesForAutomation}, raster={image.SvgRasterPixelSize}, " +
+            $"accessibility={image.AccessibilityState}); " +
+            $"provider(open={renderer.OpenCount}, render={renderer.RenderCount}, " +
+            $"dispose={renderer.Document.DisposeCount}).";
     }
 
     private static async Task LoadAsync(ImageBox image)

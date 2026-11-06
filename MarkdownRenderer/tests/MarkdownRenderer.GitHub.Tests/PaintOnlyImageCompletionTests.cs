@@ -39,21 +39,8 @@ public sealed class PaintOnlyImageCompletionTests
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
         MarkdownSourceMap sourceMap = new(source);
         MarkdownLayoutContext context = CreateContext(sourceMap, resolver, session);
-        int blockIndex = context.NextBlockIndex();
-        var paragraph = new InlineContainerBox(context, MarkdownElementKeys.Body)
-        {
-            BlockIndex = blockIndex,
-        };
-        var imageRun = new InlineImageRun(
-            context,
-            "badge",
-            imageUrl,
-            requestedWidth: new SafeHtmlLength(80, IsPercent: false),
-            requestedHeight: new SafeHtmlLength(40, IsPercent: false))
-        {
-            SourceSpan = new SourceSpan(0, source.Length),
-        };
-        paragraph.Add(imageRun);
+        (InlineContainerBox paragraph, InlineImageRun imageRun) =
+            CreateSizedImageParagraph(context, imageUrl, source.Length);
         LayoutSnapshot? snapshot = null;
         try
         {
@@ -110,6 +97,29 @@ public sealed class PaintOnlyImageCompletionTests
             else
                 paragraph.Dispose();
         }
+    }
+
+    private static (InlineContainerBox Paragraph, InlineImageRun ImageRun) CreateSizedImageParagraph(
+        MarkdownLayoutContext context,
+        string imageUrl,
+        int sourceLength)
+    {
+        int blockIndex = context.NextBlockIndex();
+        var paragraph = new InlineContainerBox(context, MarkdownElementKeys.Body)
+        {
+            BlockIndex = blockIndex,
+        };
+        var imageRun = new InlineImageRun(
+            context,
+            "badge",
+            imageUrl,
+            requestedWidth: new SafeHtmlLength(80, IsPercent: false),
+            requestedHeight: new SafeHtmlLength(40, IsPercent: false))
+        {
+            SourceSpan = new SourceSpan(0, sourceLength),
+        };
+        paragraph.Add(imageRun);
+        return (paragraph, imageRun);
     }
 
     [Fact]

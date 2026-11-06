@@ -20,6 +20,12 @@ using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
+/// <remarks>
+/// This file is longer than 500 lines because each completed-SVG clone rule (provider and local
+/// fences, metadata mutation, theme/DPI/cancellation mismatch, tiled and fallback-tile state,
+/// pending opens, host and bitmap-output deferral) needs its own ready or started fixture
+/// scenario, and that fixture, its scripted SVG renderers and resolver are private to this class.
+/// </remarks>
 [Collection(SharedCanvasBitmapCacheTestCollection.Name)]
 public sealed class CompletedSvgPlacementCloneTests
 {
@@ -36,12 +42,7 @@ public sealed class CompletedSvgPlacementCloneTests
         ImageBox sourceImage = sourceRun.Image;
         CanvasBitmap bitmap = Assert.IsType<CanvasBitmap>(sourceImage.Bitmap);
         SharedCanvasBitmapCache.Lease sourceLease = Assert.IsType<SharedCanvasBitmapCache.Lease>(sourceImage.Presentation.Lease);
-        MarkdownSvgDocumentInfo sourceInfo = Assert.IsType<MarkdownSvgDocumentInfo>(sourceImage.Svg.Info);
-        var sourceIntrinsic = sourceImage.Svg.IntrinsicSize;
-        int sourceWidth = sourceImage.SvgRasterPixelSize.Width;
-        int sourceHeight = sourceImage.SvgRasterPixelSize.Height;
-        string? sourceTitle = sourceImage.SvgTitle;
-        string? sourceDescription = sourceImage.SvgDesc;
+        AcceptedSvgPlacement sourcePlacement = AcceptedSvgPlacement.Capture(sourceImage);
         string semanticText = sourceSnapshot.SemanticDocument.Text;
         var layoutLock = sourceSnapshot.Geometry.Gate;
         var imageLock = sourceImage.Lifetime.Sync;
@@ -75,7 +76,29 @@ public sealed class CompletedSvgPlacementCloneTests
         InlineImageRun privateRun = Assert.Single(privateRoot.Runs.OfType<InlineImageRun>());
         ImageBox privateImage = privateRun.Image;
         SharedCanvasBitmapCache.Lease privateLease = Assert.IsType<SharedCanvasBitmapCache.Lease>(privateImage.Presentation.Lease);
+        AssertPrivateRunCopiesAcceptedSvgPlacement(
+            sourceRun, privateRun, sourceLease, privateLease, bitmap, sourcePlacement);
 
+        await fixture.RetireSourceAsync();
+        Assert.Null(sourceImage.Bitmap);
+        Assert.True(sourceImage.GetWorkState().LifetimeDisposed);
+        Assert.Same(bitmap, privateImage.Bitmap);
+        Assert.False(privateImage.GetWorkState().LifetimeDisposed);
+
+        PaintTransparent(privateRoot);
+        Assert.Same(bitmap, privateImage.Bitmap);
+    }
+
+    private static void AssertPrivateRunCopiesAcceptedSvgPlacement(
+        InlineImageRun sourceRun,
+        InlineImageRun privateRun,
+        SharedCanvasBitmapCache.Lease sourceLease,
+        SharedCanvasBitmapCache.Lease privateLease,
+        CanvasBitmap bitmap,
+        AcceptedSvgPlacement sourcePlacement)
+    {
+        ImageBox sourceImage = sourceRun.Image;
+        ImageBox privateImage = privateRun.Image;
         Assert.NotSame(sourceRun, privateRun);
         Assert.Equal(sourceRun.SourceSpan, privateRun.SourceSpan);
         Assert.Equal(sourceRun.AltText, privateRun.AltText);
@@ -88,11 +111,11 @@ public sealed class CompletedSvgPlacementCloneTests
             privateImage.Presentation.PhysicalViewport);
         Assert.True(privateLease.IsBitmapOutputAdmitted);
         Assert.True(privateImage.IsSvg);
-        Assert.Equal(sourceTitle, privateImage.SvgTitle);
-        Assert.Equal(sourceDescription, privateImage.SvgDesc);
-        Assert.Equal(sourceInfo, privateImage.Svg.Info);
-        Assert.Equal(sourceIntrinsic, privateImage.Svg.IntrinsicSize);
-        Assert.Equal((sourceWidth, sourceHeight), privateImage.SvgRasterPixelSize);
+        Assert.Equal(sourcePlacement.Title, privateImage.SvgTitle);
+        Assert.Equal(sourcePlacement.Description, privateImage.SvgDesc);
+        Assert.Equal(sourcePlacement.Info, privateImage.Svg.Info);
+        Assert.Equal(sourcePlacement.Intrinsic, privateImage.Svg.IntrinsicSize);
+        Assert.Equal((sourcePlacement.PixelWidth, sourcePlacement.PixelHeight), privateImage.SvgRasterPixelSize);
         Assert.Equal(MarkdownImageAccessibilityState.Loaded, privateImage.AccessibilityState);
         Assert.NotSame(
             sourceImage.Lifetime.LifetimeCancellation,
@@ -106,24 +129,42 @@ public sealed class CompletedSvgPlacementCloneTests
         Assert.Null(privateImage.Svg.ParkingPlan);
         Assert.True(privateImage.SvgTileCache.IsClear());
         Assert.Equal(0, privateImage.GetWorkState().ActiveWorkCount);
+    }
 
-        await fixture.RetireSourceAsync();
-        Assert.Null(sourceImage.Bitmap);
-        Assert.True(sourceImage.GetWorkState().LifetimeDisposed);
-        Assert.Same(bitmap, privateImage.Bitmap);
-        Assert.False(privateImage.GetWorkState().LifetimeDisposed);
-
+    private static void PaintTransparent(InlineContainerBox root)
+    {
         using var target = new CanvasRenderTarget(
             CanvasDevice.GetSharedDevice(),
-            (float)System.Math.Max(1, privateRoot.Bounds.Width),
-            (float)System.Math.Max(1, privateRoot.Bounds.Height),
+            (float)System.Math.Max(1, root.Bounds.Width),
+            (float)System.Math.Max(1, root.Bounds.Height),
             96);
         using (CanvasDrawingSession drawing = target.CreateDrawingSession())
         {
             drawing.Clear(Color.FromArgb(0, 0, 0, 0));
-            privateRoot.Paint(drawing, new Rect(0, 0, target.Size.Width, target.Size.Height));
+            root.Paint(drawing, new Rect(0, 0, target.Size.Width, target.Size.Height));
         }
-        Assert.Same(bitmap, privateImage.Bitmap);
+    }
+
+    /// <summary>Accepted SVG placement metadata read from the source image before cloning.</summary>
+    private readonly record struct AcceptedSvgPlacement(
+        MarkdownSvgDocumentInfo Info,
+        Size Intrinsic,
+        int PixelWidth,
+        int PixelHeight,
+        string? Title,
+        string? Description)
+    {
+        internal static AcceptedSvgPlacement Capture(ImageBox image)
+        {
+            MarkdownSvgDocumentInfo info = Assert.IsType<MarkdownSvgDocumentInfo>(image.Svg.Info);
+            return new AcceptedSvgPlacement(
+                info,
+                image.Svg.IntrinsicSize,
+                image.SvgRasterPixelSize.Width,
+                image.SvgRasterPixelSize.Height,
+                image.SvgTitle,
+                image.SvgDesc);
+        }
     }
 
     [Fact]

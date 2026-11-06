@@ -23,22 +23,7 @@ public sealed class LazyTextDescriptorCloneTests
         InlineContainerBox? clone = null;
         try
         {
-            source = new InlineContainerBox(sourceContext, MarkdownElementKeys.Body)
-            {
-                BlockIndex = sourceContext.NextBlockIndex(),
-                UseContainerMargin = false,
-            };
-            source.Add(new TextRun("lazy descriptor ")
-            {
-                SourceSpan = new SourceSpan(0, 16),
-                StyleAliases = ["lazy-text"],
-            });
-            source.Add(new LinkRun("link", "https://example.test/lazy", "lazy link")
-            {
-                SourceSpan = new SourceSpan(16, 4),
-                AccessibilityName = "lazy accessible link",
-                StyleAliases = ["lazy-link"],
-            });
+            source = CreateUnmeasuredTextAndLinkLeaf(sourceContext);
 
             Assert.False(source.HasMeasuredLayout);
             Assert.True(source.IsBufferDirty);
@@ -96,32 +81,7 @@ public sealed class LazyTextDescriptorCloneTests
         }
         finally
         {
-            try
-            {
-                if (clone is not null)
-                    targetContext.DiscardConstructionBlock(clone);
-            }
-            finally
-            {
-                try
-                {
-                    if (source is not null)
-                        sourceContext.DiscardConstructionBlock(source);
-                }
-                finally
-                {
-                    try
-                    {
-                        await targetContext.DrainOwnedRetirementsAsync()
-                            .WaitAsync(TimeSpan.FromSeconds(30));
-                    }
-                    finally
-                    {
-                        await sourceContext.DrainOwnedRetirementsAsync()
-                            .WaitAsync(TimeSpan.FromSeconds(30));
-                    }
-                }
-            }
+            await ReleaseSourceAndCloneAsync(sourceContext, targetContext, source, clone);
         }
     }
 
@@ -168,30 +128,60 @@ public sealed class LazyTextDescriptorCloneTests
         }
         finally
         {
+            await ReleaseSourceAndCloneAsync(sourceContext, targetContext, source, clone);
+        }
+    }
+
+    private static InlineContainerBox CreateUnmeasuredTextAndLinkLeaf(MarkdownLayoutContext sourceContext)
+    {
+        var source = new InlineContainerBox(sourceContext, MarkdownElementKeys.Body)
+        {
+            BlockIndex = sourceContext.NextBlockIndex(),
+            UseContainerMargin = false,
+        };
+        source.Add(new TextRun("lazy descriptor ")
+        {
+            SourceSpan = new SourceSpan(0, 16),
+            StyleAliases = ["lazy-text"],
+        });
+        source.Add(new LinkRun("link", "https://example.test/lazy", "lazy link")
+        {
+            SourceSpan = new SourceSpan(16, 4),
+            AccessibilityName = "lazy accessible link",
+            StyleAliases = ["lazy-link"],
+        });
+        return source;
+    }
+
+    private static async Task ReleaseSourceAndCloneAsync(
+        MarkdownLayoutContext sourceContext,
+        MarkdownLayoutContext targetContext,
+        InlineContainerBox? source,
+        InlineContainerBox? clone)
+    {
+        try
+        {
+            if (clone is not null)
+                targetContext.DiscardConstructionBlock(clone);
+        }
+        finally
+        {
             try
             {
-                if (clone is not null)
-                    targetContext.DiscardConstructionBlock(clone);
+                if (source is not null)
+                    sourceContext.DiscardConstructionBlock(source);
             }
             finally
             {
                 try
                 {
-                    if (source is not null)
-                        sourceContext.DiscardConstructionBlock(source);
+                    await targetContext.DrainOwnedRetirementsAsync()
+                        .WaitAsync(TimeSpan.FromSeconds(30));
                 }
                 finally
                 {
-                    try
-                    {
-                        await targetContext.DrainOwnedRetirementsAsync()
-                            .WaitAsync(TimeSpan.FromSeconds(30));
-                    }
-                    finally
-                    {
-                        await sourceContext.DrainOwnedRetirementsAsync()
-                            .WaitAsync(TimeSpan.FromSeconds(30));
-                    }
+                    await sourceContext.DrainOwnedRetirementsAsync()
+                        .WaitAsync(TimeSpan.FromSeconds(30));
                 }
             }
         }

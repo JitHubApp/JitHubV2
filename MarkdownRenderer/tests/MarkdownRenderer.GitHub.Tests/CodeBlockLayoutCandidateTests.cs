@@ -26,8 +26,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection(SharedCanvasBitmapCacheTestCollection.Name)]
 public sealed class CodeBlockLayoutCandidateTests
 {
-    private const float LayoutWidth = 320f;
-    private const int AutomationGeneration = 7_421;
+    internal const float LayoutWidth = 320f;
+    internal const int AutomationGeneration = 7_421;
 
     [Theory]
     [InlineData(1f, false)]
@@ -73,31 +73,7 @@ public sealed class CodeBlockLayoutCandidateTests
             Assert.Equal(1, owner.SourceImageCount);
             LayoutSnapshot replacement = owner.Snapshot;
             CodeBlockBox candidateCode = Assert.Single(replacement.Blocks.OfType<CodeBlockBox>());
-            Assert.NotSame(sourceCode, candidateCode);
-            Assert.Same(sourceCode.Metadata, candidateCode.Metadata);
-            Assert.Same(sourceCode.CodeText, candidateCode.CodeText);
-            Assert.Equal(sourceCode.StableKey, candidateCode.StableKey);
-            Assert.Equal(sourceCode.CodeLanguage, candidateCode.CodeLanguage);
-            Assert.Equal(sourceCode.HeaderText, candidateCode.HeaderText);
-            Assert.Equal(sourceCode.ShowLineNumbers, candidateCode.ShowLineNumbers);
-            Assert.Equal(sourceCode.LineCount, candidateCode.LineCount);
-            Assert.Equal(sourceCode.HorizontalOffset, candidateCode.HorizontalOffset);
-            Assert.Equal(sourceCode.HorizontalViewport, candidateCode.HorizontalViewport, precision: 3);
-            Assert.Equal(sourceCode.HorizontalExtent, candidateCode.HorizontalExtent, precision: 3);
-            Assert.True(candidateCode.HasAppliedSyntaxHighlighting(highlightKey));
-            Assert.Equal(sourceCode.PrivatePlacementForegroundSpanCount,
-                candidateCode.PrivatePlacementForegroundSpanCount);
-            Assert.Equal(sourceCode.Chunks.Count, candidateCode.Chunks.Count);
-            Assert.Equal(sourceCode.CodeText, ConcatenateChunkText(candidateCode));
-
-            for (int index = 0; index < sourceCode.Chunks.Count; index++)
-            {
-                Assert.NotSame(sourceCode.Chunks[index], candidateCode.Chunks[index]);
-                Assert.Equal(sourceCode.Chunks[index].CodeBlockTextOffset,
-                    candidateCode.Chunks[index].CodeBlockTextOffset);
-                Assert.Equal(sourceCode.Chunks[index].CodeBlockTextLength,
-                    candidateCode.Chunks[index].CodeBlockTextLength);
-            }
+            AssertCandidateCodeCopiesSourceIdentity(sourceCode, candidateCode, highlightKey);
 
             Assert.Equal(sourceBounds.Width, candidateCode.Bounds.Width, precision: 3);
             Assert.Equal(sourceBounds.Height, candidateCode.Bounds.Height, precision: 3);
@@ -129,6 +105,38 @@ public sealed class CodeBlockLayoutCandidateTests
         finally
         {
             await DisposeCandidateAndDrainAsync(candidate, candidateContext);
+        }
+    }
+
+    private static void AssertCandidateCodeCopiesSourceIdentity(
+        CodeBlockBox sourceCode,
+        CodeBlockBox candidateCode,
+        CodeBlockHighlightCacheKey highlightKey)
+    {
+        Assert.NotSame(sourceCode, candidateCode);
+        Assert.Same(sourceCode.Metadata, candidateCode.Metadata);
+        Assert.Same(sourceCode.CodeText, candidateCode.CodeText);
+        Assert.Equal(sourceCode.StableKey, candidateCode.StableKey);
+        Assert.Equal(sourceCode.CodeLanguage, candidateCode.CodeLanguage);
+        Assert.Equal(sourceCode.HeaderText, candidateCode.HeaderText);
+        Assert.Equal(sourceCode.ShowLineNumbers, candidateCode.ShowLineNumbers);
+        Assert.Equal(sourceCode.LineCount, candidateCode.LineCount);
+        Assert.Equal(sourceCode.HorizontalOffset, candidateCode.HorizontalOffset);
+        Assert.Equal(sourceCode.HorizontalViewport, candidateCode.HorizontalViewport, precision: 3);
+        Assert.Equal(sourceCode.HorizontalExtent, candidateCode.HorizontalExtent, precision: 3);
+        Assert.True(candidateCode.HasAppliedSyntaxHighlighting(highlightKey));
+        Assert.Equal(sourceCode.PrivatePlacementForegroundSpanCount,
+            candidateCode.PrivatePlacementForegroundSpanCount);
+        Assert.Equal(sourceCode.Chunks.Count, candidateCode.Chunks.Count);
+        Assert.Equal(sourceCode.CodeText, ConcatenateChunkText(candidateCode));
+
+        for (int index = 0; index < sourceCode.Chunks.Count; index++)
+        {
+            Assert.NotSame(sourceCode.Chunks[index], candidateCode.Chunks[index]);
+            Assert.Equal(sourceCode.Chunks[index].CodeBlockTextOffset,
+                candidateCode.Chunks[index].CodeBlockTextOffset);
+            Assert.Equal(sourceCode.Chunks[index].CodeBlockTextLength,
+                candidateCode.Chunks[index].CodeBlockTextLength);
         }
     }
 
@@ -387,218 +395,6 @@ public sealed class CodeBlockLayoutCandidateTests
         {
             if (context is not null)
                 await context.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
-        }
-    }
-
-    private sealed class ParsedImageCodeDocument : IAsyncDisposable
-    {
-        private readonly MarkdownPerformanceSession _session;
-        private bool _disposed;
-
-        private ParsedImageCodeDocument(
-            CompletedRasterPlacementCloneTests.PlacementFixture seed,
-            MarkdownPerformanceSession session,
-            MarkdownLayoutContext context,
-            LayoutSnapshot snapshot,
-            RasterResolver resolver,
-            ImageBox image,
-            CodeBlockBox code)
-        {
-            Seed = seed;
-            _session = session;
-            Context = context;
-            Snapshot = snapshot;
-            Resolver = resolver;
-            Image = image;
-            Code = code;
-            SourceMap = context.SourceMap;
-        }
-
-        internal CompletedRasterPlacementCloneTests.PlacementFixture Seed { get; }
-        internal MarkdownLayoutContext Context { get; }
-        internal LayoutSnapshot Snapshot { get; }
-        internal RasterResolver Resolver { get; }
-        internal ImageBox Image { get; }
-        internal CodeBlockBox Code { get; }
-        internal MarkdownSourceMap SourceMap { get; }
-
-        internal static async Task<ParsedImageCodeDocument> CreateAsync(
-            float rasterizationScale,
-            bool rightToLeft,
-            bool lazy,
-            int spacerParagraphCount,
-            bool singleLineCode = false,
-            CodeBlockLineNumberMode lineNumberMode = CodeBlockLineNumberMode.Always)
-        {
-            var seed = new CompletedRasterPlacementCloneTests.PlacementFixture();
-            var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
-            MarkdownLayoutContext? context = null;
-            LayoutSnapshot? snapshot = null;
-            ParsedImageCodeDocument? ownedDocument = null;
-            try
-            {
-                string sourceText = CreateMarkdown(spacerParagraphCount, singleLineCode);
-                MarkdownExtensionRegistry registry = new MarkdownExtensionRegistry().ConfigureGitHubReadmeRegistry();
-                Markdig.Syntax.MarkdownDocument parsed = Markdown.Parse(sourceText, registry.BuildPipeline());
-                MarkdownDocument semanticDocument = MarkdownDocument.FromParsed(sourceText, parsed);
-                var resolver = new RasterResolver(DisplaySizedRasterDecodeTests.CreatePng(64, 32));
-                context = new MarkdownLayoutContext(
-                    seed.Device,
-                    seed.SourceContext.ThemeSnapshot,
-                    new MarkdownSourceMap(sourceText),
-                    registry,
-                    rightToLeft ? FlowDirection.RightToLeft : FlowDirection.LeftToRight,
-                    language: "en-US")
-                {
-                    RenderResources = seed.RenderResources,
-                    CancellationToken = CancellationToken.None,
-                    ImageCancellationToken = CancellationToken.None,
-                    ImagePreparationOwner = seed.ImagePreparationOwnerToken,
-                    PerformanceDocumentOwner = seed.PerformanceDocumentOwner,
-                    PerformanceSession = session,
-                    ImageResolver = resolver,
-                    AllowThirdPartyRemoteImages = true,
-                    RasterizationScale = rasterizationScale,
-                    CodeBlockLineNumberMode = lineNumberMode,
-                    CodeBlockChromeMode = CodeBlockChromeMode.Enhanced,
-                };
-
-                var builder = new LayoutBuilder(context, semanticDocument: semanticDocument);
-                snapshot = lazy
-                    ? builder.BuildLazy(parsed, LayoutWidth, viewportTop: 0, viewportHeight: 120,
-                        overscan: 0, CancellationToken.None)
-                    : builder.Build(parsed, LayoutWidth, CancellationToken.None);
-                snapshot.AssignAutomationDocumentGeneration(AutomationGeneration);
-                Assert.Null(snapshot.VectorSceneResidencyPolicy);
-                ImageBox image = Assert.IsType<ImageBox>(snapshot.Blocks[0]);
-                CodeBlockBox code = Assert.Single(snapshot.Blocks.OfType<CodeBlockBox>());
-                ownedDocument = new ParsedImageCodeDocument(seed, session, context, snapshot, resolver, image, code);
-                context = null;
-                snapshot = null;
-
-                await DisplaySizedRasterDecodeTests.WaitForLoadAsync(image)
-                    .WaitAsync(TimeSpan.FromSeconds(10));
-                await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-                    () => image.GetWorkState().ActiveWorkCount == 0);
-                Assert.NotNull(image.Bitmap);
-                Assert.Equal(1, resolver.ResolveCount);
-                Assert.True(code.HasCopyButtonAction);
-                ParsedImageCodeDocument completedDocument = ownedDocument ??
-                    throw new InvalidOperationException("The parsed image/code fixture lost its owner.");
-                ownedDocument = null;
-                return completedDocument;
-            }
-            catch
-            {
-                if (ownedDocument is not null)
-                {
-                    await ownedDocument.DisposeAsync();
-                    throw;
-                }
-
-                try
-                {
-                    if (snapshot is not null)
-                        await snapshot.Retire().WaitAsync(TimeSpan.FromSeconds(10));
-                }
-                finally
-                {
-                    try
-                    {
-                        if (context is not null)
-                            await context.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
-                    }
-                    finally
-                    {
-                        try
-                        {
-                            session.Dispose();
-                        }
-                        finally
-                        {
-                            await seed.DisposeAsync();
-                        }
-                    }
-                }
-                throw;
-            }
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            if (_disposed)
-                return;
-            _disposed = true;
-            try
-            {
-                await Snapshot.Retire().WaitAsync(TimeSpan.FromSeconds(10));
-            }
-            finally
-            {
-                try
-                {
-                    await Context.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
-                }
-                finally
-                {
-                    try
-                    {
-                        _session.Dispose();
-                    }
-                    finally
-                    {
-                        await Seed.DisposeAsync();
-                    }
-                }
-            }
-        }
-
-        private static string CreateMarkdown(int spacerParagraphCount, bool singleLineCode)
-        {
-            if (singleLineCode)
-            {
-                return "![local raster](https://images.example/code-layout.png)\n\n" +
-                    "```csharp\n" +
-                    // Markdig joins code lines without a terminal separator;
-                    // retain a blank authored line to exercise a parsed payload
-                    // whose final LF reaches code placement and copying.
-                    "let answer = 42;\n\n" +
-                    "```\n";
-            }
-
-            string longLiteral = new string('x', 480);
-            string code =
-                "public sealed class Example\n" +
-                "{\n" +
-                $"    public static string Value => \"{longLiteral}\";\n" +
-                "    public int Read() => 42;\n" +
-                "}\n";
-            string spacer = string.Join("\n\n", Enumerable.Range(0, spacerParagraphCount)
-                .Select(index => $"Far paragraph {index} keeps lazy roots beyond the first viewport."));
-            return "![local raster](https://images.example/code-layout.png)\n\n" +
-                (spacerParagraphCount == 0 ? string.Empty : spacer + "\n\n") +
-                "```csharp filename=Example.cs startline=17 showLineNumbers\n" +
-                code +
-                "```\n";
-        }
-    }
-
-    private sealed class RasterResolver(byte[] png) : IMarkdownImageResolver
-    {
-        private readonly string _cacheKey = "code-placement:" + Guid.NewGuid().ToString("N");
-        private int _resolveCount;
-
-        internal int ResolveCount => Volatile.Read(ref _resolveCount);
-
-        public ValueTask<MarkdownImageResolution> ResolveAsync(
-            string source,
-            MarkdownImageResolveContext context,
-            CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            Interlocked.Increment(ref _resolveCount);
-            return ValueTask.FromResult(MarkdownImageResolution.Resolved(
-                new MarkdownImageAsset(png, "image/png", CacheKey: _cacheKey + source)));
         }
     }
 }

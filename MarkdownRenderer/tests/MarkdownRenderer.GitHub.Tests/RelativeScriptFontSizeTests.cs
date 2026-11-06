@@ -19,6 +19,7 @@ using Microsoft.UI.Xaml;
 using Windows.UI;
 using Xunit;
 using Xunit.Abstractions;
+using static MarkdownRenderer.GitHub.Tests.LinkInlineStyleMapAssertions;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
@@ -254,35 +255,7 @@ public sealed class RelativeScriptFontSizeTests
     {
         Color linkColor = Color.FromArgb(255, 20, 80, 160);
         Color codeBackground = Color.FromArgb(255, 240, 240, 240);
-        MarkdownStyleSheet sheet = new MarkdownStyleSheet(
-        [
-            new MarkdownStyleRule(
-                new MarkdownStyleSelector(MarkdownStyleRole.Link),
-                new ElementStyleOverride
-                {
-                    FontFamily = "Arial",
-                    FontSize = 20f,
-                    Foreground = linkColor,
-                    Underline = true,
-                }),
-            new MarkdownStyleRule(
-                new MarkdownStyleSelector(MarkdownStyleRole.FromElementKey(MarkdownElementKeys.Strong)),
-                new ElementStyleOverride { FontWeight = new Windows.UI.Text.FontWeight { Weight = 700 } }),
-            new MarkdownStyleRule(
-                new MarkdownStyleSelector(MarkdownStyleRole.FromElementKey(MarkdownElementKeys.Emphasis)),
-                new ElementStyleOverride { FontStyle = Windows.UI.Text.FontStyle.Italic }),
-            new MarkdownStyleRule(
-                new MarkdownStyleSelector(MarkdownStyleRole.FromElementKey(MarkdownElementKeys.CodeInline)),
-                new ElementStyleOverride
-                {
-                    // Deliberately equals the body style while differing
-                    // from the overridden link base, to pin range-relative
-                    // SetFontFamily/SetFontSize behavior.
-                    FontFamily = "Segoe UI",
-                    FontSize = 16f,
-                    Background = codeBackground,
-                }),
-        ]);
+        MarkdownStyleSheet sheet = CreateNestedLinkSheet(linkColor, codeBackground);
         using LayoutSnapshot snapshot = BuildParsedSnapshot(
             "[**bold** and *italic* and `code`](https://example.test/link)",
             sheet);
@@ -316,22 +289,7 @@ public sealed class RelativeScriptFontSizeTests
             Assert.NotSame(firstResolution, otherBoxResolution);
             Assert.Equal(map.Count, firstResolution.Length);
 
-            ElementStyle strong = GetSpanStyle(map, firstResolution, MarkdownElementKeys.Strong);
-            Assert.Equal((ushort)700, strong.FontWeight.Weight);
-            Assert.Equal(linkColor, strong.Foreground);
-            Assert.True(strong.Underline);
-
-            ElementStyle emphasis = GetSpanStyle(map, firstResolution, MarkdownElementKeys.Emphasis);
-            Assert.Equal(Windows.UI.Text.FontStyle.Italic, emphasis.FontStyle);
-            Assert.Equal(linkColor, emphasis.Foreground);
-            Assert.True(emphasis.Underline);
-
-            ElementStyle code = GetSpanStyle(map, firstResolution, MarkdownElementKeys.CodeInline);
-            Assert.Equal("Segoe UI", code.FontFamily);
-            Assert.Equal(16f, code.FontSize);
-            Assert.Equal(codeBackground, code.Background);
-            Assert.Equal(linkColor, code.Foreground);
-            Assert.True(code.Underline);
+            AssertNestedSpanStylesKeepLinkPaint(map, firstResolution, linkColor, codeBackground);
 
             LinkInlineStyleSpan codeSpan = GetSpan(map, MarkdownElementKeys.CodeInline);
             CanvasTextLayout actualLayout = Assert.IsType<CanvasTextLayout>(sourceBox.TextLayout);
@@ -774,99 +732,6 @@ public sealed class RelativeScriptFontSizeTests
         {
             box.Dispose();
         }
-    }
-
-    private static ElementStyle GetSpanStyle(
-        LinkInlineStyleMap map,
-        ElementStyle[] styles,
-        string expectedStyleKey)
-    {
-        for (int index = 0; index < map.Count; index++)
-        {
-            LinkInlineStyleSpan span = map.GetSpan(index);
-            for (LinkInlineStylePath? path = span.Path; path is not null; path = path.Parent)
-            {
-                if (string.Equals(path.StyleKey, expectedStyleKey, StringComparison.Ordinal))
-                    return styles[index];
-            }
-        }
-
-        throw new Xunit.Sdk.XunitException($"No nested link span carried style key '{expectedStyleKey}'.");
-    }
-
-    private static LinkInlineStyleSpan GetSpan(LinkInlineStyleMap map, string expectedStyleKey)
-    {
-        for (int index = 0; index < map.Count; index++)
-        {
-            LinkInlineStyleSpan span = map.GetSpan(index);
-            for (LinkInlineStylePath? path = span.Path; path is not null; path = path.Parent)
-                if (string.Equals(path.StyleKey, expectedStyleKey, StringComparison.Ordinal))
-                    return span;
-        }
-
-        throw new Xunit.Sdk.XunitException($"No nested link span carried style key '{expectedStyleKey}'.");
-    }
-
-    private static void AssertSpanText(LinkRun link, LinkInlineStyleSpan span, string expected)
-    {
-        Assert.Equal(expected.Length, span.Length);
-        Assert.Equal(link.Text.IndexOf(expected, StringComparison.Ordinal), span.Start);
-        Assert.Equal(expected, link.Text.Substring(span.Start, span.Length));
-    }
-
-    private static string[] GetPathKeys(LinkInlineStylePath path)
-    {
-        var keys = new List<string>();
-        for (LinkInlineStylePath? current = path; current is not null; current = current.Parent)
-            keys.Add(current.StyleKey);
-        keys.Reverse();
-        return [.. keys];
-    }
-
-    private static int FindSpanIndex(LinkInlineStyleMap map, LinkInlineStyleSpan expected)
-    {
-        for (int index = 0; index < map.Count; index++)
-        {
-            LinkInlineStyleSpan actual = map.GetSpan(index);
-            if (actual.Start == expected.Start && actual.Length == expected.Length &&
-                ReferenceEquals(actual.Path, expected.Path))
-            {
-                return index;
-            }
-        }
-
-        throw new Xunit.Sdk.XunitException("The nested link style map did not contain the expected span.");
-    }
-
-    private static float ReadUniformFontSize(CanvasTextLayout layout, int start, int length)
-    {
-        Assert.True(start >= 0 && length > 0);
-        float fontSize = layout.GetFontSize(start);
-        for (int index = 1; index < length; index++)
-            Assert.Equal(fontSize, layout.GetFontSize(start + index));
-        return fontSize;
-    }
-
-    private static int GetRunStart(InlineContainerBox box, InlineRun target)
-    {
-        int offset = 0;
-        foreach (InlineRun run in box.Runs)
-        {
-            if (ReferenceEquals(run, target))
-                return offset;
-            offset += run.TextLength;
-        }
-
-        throw new Xunit.Sdk.XunitException("The inline run is not present in its container.");
-    }
-
-    private static string ReadUniformFontFamily(CanvasTextLayout layout, int start, int length)
-    {
-        Assert.True(start >= 0 && length > 0);
-        string fontFamily = layout.GetFontFamily(start);
-        for (int index = 1; index < length; index++)
-            Assert.Equal(fontFamily, layout.GetFontFamily(start + index));
-        return fontFamily;
     }
 
     [Fact]

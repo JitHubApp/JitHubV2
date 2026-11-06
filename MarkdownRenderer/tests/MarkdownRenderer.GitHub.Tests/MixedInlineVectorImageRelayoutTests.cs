@@ -1,26 +1,36 @@
 using System.Reflection;
-using MarkdownRenderer.Accessibility;
-using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
-using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Math;
 using MarkdownRenderer.Performance;
-using MarkdownRenderer.Parsing;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
-using Windows.UI;
 using Xunit;
+using static MarkdownRenderer.GitHub.Tests.ImageRelayoutTestSupport;
+using static MarkdownRenderer.GitHub.Tests.MixedInlineVectorImageRelayoutFixture;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
+/// <summary>
+/// Inline roots that mix completed image runs with materialized math vector
+/// runs relayout through the completed-image path, transferring only vector
+/// metrics, and match a protected full-reflow fallback.
+/// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because it holds the six scenarios of
+/// the mixed vector and image recipe (commit across scale and direction,
+/// progressive geometry transfer, stationary index refresh, late vector
+/// mutation, cancellation and preflight rejection), each of which arranges its
+/// own document and states its own oracle. Documents and shared oracles live
+/// in <see cref="MixedInlineVectorImageDocument"/> and
+/// <see cref="MixedInlineVectorImageRelayoutFixture"/>.
+/// </remarks>
 [Collection(SharedCanvasBitmapCacheTestCollection.Name)]
 public sealed class MixedInlineVectorImageRelayoutTests
 {
-    private const float LayoutWidth = 320f;
+    private const float LayoutWidth = MixedInlineVectorImageDocument.LayoutWidth;
 
     [Theory]
     [InlineData(1f, false, false)]
@@ -56,9 +66,9 @@ public sealed class MixedInlineVectorImageRelayoutTests
         string fallbackSource = source + fallbackResolver.Url + ") and $x^2$ after the result.";
         FlowDirection direction = rightToLeft ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
 
-        await using ImageDocument optimized = await BuildDocumentAsync(
+        await using MixedInlineVectorImageDocument optimized = await BuildDocumentAsync(
             seed, session, optimizedResolver, optimizedSource, direction, rasterizationScale);
-        await using ImageDocument fallback = await BuildDocumentAsync(
+        await using MixedInlineVectorImageDocument fallback = await BuildDocumentAsync(
             seed, session, fallbackResolver, fallbackSource, direction, rasterizationScale);
 
         InlineContainerBox optimizedInline = Assert.Single(optimized.Snapshot.Blocks.OfType<InlineContainerBox>());
@@ -78,51 +88,12 @@ public sealed class MixedInlineVectorImageRelayoutTests
         MarkdownVectorScene sourceScene = Assert.IsType<MarkdownVectorScene>(sourceVector.Scene);
         VectorSceneDrawing sourceDrawing = GetVectorDrawing(sourceVector);
         Assert.False(sourceVector.IsMeasuredPlacementOnly);
-
-        // The general private-inline COW recipe is intentionally still
-        // conservative. Only the image-completion root-local recipe may use a
-        // non-paintable measured vector clone.
-        MarkdownLayoutContext probeContext = optimized.Context.CreateRasterPlacementContext(
-            CancellationToken.None,
-            optimized.Context.ImagePreparationOwner!,
-            retirementSink: null,
-            imageUnavailable: null);
-        Assert.False(optimizedInline.TryGetPrivateRasterPlacementCounts(
-            probeContext, LayoutWidth, out _, out _, out _));
-
-        InlineVectorSceneRun measuredOnly = sourceVector.CloneForMeasuredPlacement();
-        try
-        {
-            Assert.True(measuredOnly.IsMeasuredPlacementOnly);
-            Assert.False(measuredOnly.IsNativeResourcesPrepared);
-            Assert.Null(ReadRawField(measuredOnly, "_drawing"));
-            Assert.Same(sourceVector.Scene, measuredOnly.Scene);
-            Assert.Throws<InvalidOperationException>(() =>
-                measuredOnly.PrepareNativeResources(CancellationToken.None));
-        }
-        finally
-        {
-            measuredOnly.Dispose();
-        }
+        AssertOnlyRootLocalRecipeUsesMeasuredOnlyVectorClone(optimized, optimizedInline, sourceVector);
         Assert.True(sourceVector.IsNativeResourcesPrepared);
         Assert.Same(sourceDrawing, GetVectorDrawing(sourceVector));
 
-        InlineRun[] sourceRuns = optimizedInline.Runs.ToArray();
-        CanvasTextLayout oldLayout = GetInlineLayout(optimizedInline);
-        SharedCanvasBitmapCache.Lease sourceLease = GetBitmapLease(sourceImage);
-        CanvasBitmap sourceBitmap = Assert.IsType<CanvasBitmap>(sourceImage.Bitmap);
-        Rect[] oldRootBounds = optimized.Snapshot.Blocks.Select(static block => block.Bounds).ToArray();
-        Size oldSize = optimized.Snapshot.Size;
-        long oldRevision = optimized.Snapshot.LayoutRevision;
-        MarkdownSemanticDocument semanticDocument = optimized.Snapshot.SemanticDocument;
-        MarkdownSourceMap sourceMap = optimized.Snapshot.SourceMap;
-        string semanticText = semanticDocument.Text;
-        var semanticProjection = semanticDocument.TextProjectionFingerprint;
-        var semanticRanges = semanticDocument.SemanticRangeFingerprint;
-        Rect oldVectorBounds = sourceVector.LocalBounds;
-        Rect[] oldSelection = SelectionFor(optimized.Snapshot, optimizedInline, sourceVector);
-        Rect oldImageBounds = sourceImage.Bounds;
-        int resolveCountBeforeCommit = optimizedResolver.ResolveCount;
+        InlineRootBefore before = InlineRootBefore.Capture(
+            optimized.Snapshot, optimizedInline, sourceVector, sourceImage, optimizedResolver);
 
         // Keep the old full root reflow as the compatibility oracle. The new
         // path must not get its result from a second parser/image-provider pass.
@@ -133,84 +104,28 @@ public sealed class MixedInlineVectorImageRelayoutTests
         try
         {
             PreparedImageRelayoutResult result = optimized.Snapshot.TryRelayoutCompletedImageRoot(
-                [optimizedInline.BlockIndex],
-                LayoutWidth,
-                CancellationToken.None,
-                out constructionContext,
+                [optimizedInline.BlockIndex], LayoutWidth, CancellationToken.None, out constructionContext,
                 expectedPointerInputEpoch: optimized.Snapshot.PointerInputEpoch);
 
             Assert.Equal(PreparedImageRelayoutResult.Committed, result);
             Assert.NotNull(constructionContext);
-            Assert.Equal(oldRevision + 1, optimized.Snapshot.LayoutRevision);
-            Assert.NotEqual(oldSize, optimized.Snapshot.Size);
-            Assert.Equal(fallback.Snapshot.Size, optimized.Snapshot.Size);
-            Assert.Same(semanticDocument, optimized.Snapshot.SemanticDocument);
-            Assert.Same(sourceMap, optimized.Snapshot.SourceMap);
-            Assert.Equal(semanticText, optimized.Snapshot.SemanticDocument.Text);
-            Assert.Equal(semanticProjection, optimized.Snapshot.SemanticDocument.TextProjectionFingerprint);
-            Assert.Equal(semanticRanges, optimized.Snapshot.SemanticDocument.SemanticRangeFingerprint);
-            Assert.Equal(resolveCountBeforeCommit, optimizedResolver.ResolveCount);
+            before.AssertPublishedOverSameDocument(optimized.Snapshot, fallback.Snapshot, optimizedResolver);
 
             Assert.Same(optimizedInline, optimized.Snapshot.Blocks.Single(
                 block => ReferenceEquals(block, optimizedInline)));
-            Assert.Equal(oldRootBounds.Length, optimized.Snapshot.Blocks.Count);
-            for (int index = 0; index < oldRootBounds.Length; index++)
-            {
-                Rect expectedBounds = LayoutPlacementTestGeometry.ToLogical(
-                    fallback.Snapshot, fallback.Snapshot.Blocks[index]);
-                Rect actualBounds = LayoutPlacementTestGeometry.ToLogical(
-                    optimized.Snapshot, optimized.Snapshot.Blocks[index]);
-                Assert.Equal(expectedBounds, actualBounds);
-                Assert.NotEqual(oldRootBounds[index], actualBounds);
-            }
-
-            Assert.NotSame(oldLayout, GetInlineLayout(optimizedInline));
-            Assert.Equal(sourceRuns.Length, optimizedInline.Runs.Count);
-            for (int index = 0; index < sourceRuns.Length; index++)
-                Assert.Same(sourceRuns[index], optimizedInline.Runs[index]);
-            Assert.Same(sourceVector, optimizedInline.Runs.OfType<InlineVectorSceneRun>().Single());
-            Assert.Same(sourceImageRun, optimizedInline.Runs.OfType<InlineImageRun>().Single());
-            Assert.Same(sourceImage, sourceImageRun.Image);
-            Assert.Same(sourceBitmap, sourceImage.Bitmap);
-            Assert.Same(sourceLease, GetBitmapLease(sourceImage));
-            Rect expectedImageBounds = LayoutPlacementTestGeometry.ToLogical(
-                fallback.Snapshot, optimizedInline.BlockIndex, [fallbackImage.Bounds])[0];
-            Rect actualImageBounds = LayoutPlacementTestGeometry.ToLogical(
-                optimized.Snapshot, optimizedInline.BlockIndex, [sourceImage.Bounds])[0];
-            Assert.Equal(expectedImageBounds, actualImageBounds);
-            Assert.NotEqual(oldImageBounds, actualImageBounds);
-            Assert.Equal(fallbackImageRun.DesiredWidth, sourceImageRun.DesiredWidth);
-            Assert.Equal(fallbackImageRun.DesiredHeight, sourceImageRun.DesiredHeight);
-
-            InlineVectorSceneRun updatedFallbackVector = Assert.Single(
-                fallbackInline.Runs.OfType<InlineVectorSceneRun>());
-            Assert.Same(sourceScene, sourceVector.Scene);
-            Assert.Same(sourceDrawing, GetVectorDrawing(sourceVector));
-            Assert.True(sourceVector.IsNativeResourcesPrepared);
-            Assert.False(sourceVector.IsMeasuredPlacementOnly);
-            Assert.Equal(updatedFallbackVector.Scene.Width, sourceVector.Scene.Width);
-            Assert.Equal(updatedFallbackVector.Scene.Height, sourceVector.Scene.Height);
-            Assert.Equal(updatedFallbackVector.DesiredWidth, sourceVector.DesiredWidth);
-            Assert.Equal(updatedFallbackVector.DesiredHeight, sourceVector.DesiredHeight);
-            Assert.Equal(updatedFallbackVector.DesiredBaseline, sourceVector.DesiredBaseline);
-            Assert.Equal(updatedFallbackVector.LocalBounds, sourceVector.LocalBounds);
-            Assert.Equal(SelectionFor(fallback.Snapshot, fallbackInline, updatedFallbackVector),
-                SelectionFor(optimized.Snapshot, optimizedInline, sourceVector));
-            Assert.NotEmpty(SelectionFor(optimized.Snapshot, optimizedInline, sourceVector));
-            Assert.NotEqual(oldVectorBounds, sourceVector.LocalBounds);
-            Assert.False(oldSelection.SequenceEqual(
-                SelectionFor(optimized.Snapshot, optimizedInline, sourceVector)));
-
-            AssertSemanticSpanGeometryEqual(
-                CaptureSemanticSpanGeometry(optimized.Snapshot, optimizedInline),
-                CaptureSemanticSpanGeometry(fallback.Snapshot, fallbackInline));
-            Assert.Equal(Paint(optimized.Snapshot, seed.Device, rasterizationScale),
-                Paint(fallback.Snapshot, seed.Device, rasterizationScale));
+            before.AssertRootsMovedToFallbackPlacement(optimized.Snapshot, fallback.Snapshot);
+            before.AssertRunsAndImageRetainedWithFallbackPlacement(
+                optimized.Snapshot, optimizedInline, sourceVector, sourceImageRun,
+                fallback.Snapshot, fallbackImageRun, fallbackImage);
+            AssertVectorRetainedWithFallbackMetrics(
+                optimized.Snapshot, optimizedInline, sourceVector, sourceScene, sourceDrawing,
+                fallback.Snapshot, fallbackInline, before);
+            AssertSemanticSpansAndPixelsMatchFallback(
+                optimized.Snapshot, optimizedInline, fallback.Snapshot, fallbackInline, seed.Device, rasterizationScale);
         }
         finally
         {
-            if (constructionContext is not null)
-                await constructionContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            await DrainAsync(constructionContext);
         }
     }
 
@@ -223,9 +138,9 @@ public sealed class MixedInlineVectorImageRelayoutTests
         var fallbackResolver = new InlineVectorRasterResolver(DisplaySizedRasterDecodeTests.CreatePng(80, 160));
         string optimizedSource = $"before ![badge]({optimizedResolver.Url}) and $x^2$ after";
         string fallbackSource = $"before ![badge]({fallbackResolver.Url}) and $x^2$ after";
-        await using ImageDocument optimized = await BuildProgressiveLazyDocumentAsync(
+        await using MixedInlineVectorImageDocument optimized = await BuildProgressiveLazyDocumentAsync(
             seed, session, optimizedResolver, optimizedSource, FlowDirection.LeftToRight, 1.5f);
-        await using ImageDocument fallback = await BuildProgressiveLazyDocumentAsync(
+        await using MixedInlineVectorImageDocument fallback = await BuildProgressiveLazyDocumentAsync(
             seed, session, fallbackResolver, fallbackSource, FlowDirection.LeftToRight, 1.5f);
 
         InlineContainerBox optimizedInline = Assert.Single(optimized.Snapshot.Blocks.OfType<InlineContainerBox>());
@@ -240,35 +155,15 @@ public sealed class MixedInlineVectorImageRelayoutTests
         MarkdownDeferredSceneBinding binding = Assert.IsType<MarkdownDeferredSceneBinding>(vector.DeferredSceneBinding);
         Assert.True(vector.IsNativeResourcesPrepared);
         VectorSceneDrawing drawing = GetVectorDrawing(vector);
-        Assert.True(optimizedInline.TryCaptureCurrentSceneGeometry(
-            CancellationToken.None, out long generation, out InlineSceneGeometry[] initialGeometry));
-        Assert.Contains(initialGeometry, item => ReferenceEquals(item.Run, vector) && item.RegionCount > 0);
-        if (optimizedInline.TryGetCurrentSceneGeometry(
-                out long pendingGeneration, out InlineSceneGeometry[] pendingGeometry))
-        {
-            Assert.Equal(generation, pendingGeneration);
-            Assert.Contains(pendingGeometry, item => ReferenceEquals(item.Run, vector) && item.RegionCount > 0);
-        }
 
         // Lazy realization may already have released the optional pending
         // array after building the active index. Capture from the authoritative
-        // live layout above, then explicitly exercise the released-cache path;
-        // if the pending cache still exists, its run identity is checked too.
-        // Reflow must recapture candidate geometry and rebind every geometry
-        // record to the retained source run.
-        optimizedInline.ReleasePendingSceneGeometry(generation);
-        Assert.False(optimizedInline.TryGetCurrentSceneGeometry(out _, out _));
-        Assert.True(fallbackInline.TryCaptureCurrentSceneGeometry(
-            CancellationToken.None, out long fallbackGeneration, out InlineSceneGeometry[] fallbackInitial));
-        Assert.Contains(fallbackInitial, item => ReferenceEquals(item.Run, fallbackVector) && item.RegionCount > 0);
-        if (fallbackInline.TryGetCurrentSceneGeometry(
-                out long fallbackPendingGeneration, out InlineSceneGeometry[] fallbackPending))
-        {
-            Assert.Equal(fallbackGeneration, fallbackPendingGeneration);
-            Assert.Contains(fallbackPending, item => ReferenceEquals(item.Run, fallbackVector) && item.RegionCount > 0);
-        }
-        fallbackInline.ReleasePendingSceneGeometry(fallbackGeneration);
-        Assert.False(fallbackInline.TryGetCurrentSceneGeometry(out _, out _));
+        // live layout, then explicitly exercise the released-cache path; if the
+        // pending cache still exists, its run identity is checked too. Reflow
+        // must recapture candidate geometry and rebind every geometry record to
+        // the retained source run.
+        long generation = CaptureThenReleasePendingSceneGeometry(optimizedInline, vector);
+        _ = CaptureThenReleasePendingSceneGeometry(fallbackInline, fallbackVector);
 
         fallback.Snapshot.RelayoutChangedBlocks(
             [fallbackInline.BlockIndex], LayoutWidth, CancellationToken.None);
@@ -306,8 +201,7 @@ public sealed class MixedInlineVectorImageRelayoutTests
         }
         finally
         {
-            if (constructionContext is not null)
-                await constructionContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            await DrainAsync(constructionContext);
         }
     }
 
@@ -318,7 +212,7 @@ public sealed class MixedInlineVectorImageRelayoutTests
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
         var resolver = new InlineVectorRasterResolver(DisplaySizedRasterDecodeTests.CreatePng(80, 160));
         string source = $"before ![badge]({resolver.Url}) with $x^2$ and $y^2$ after\n\n$$\n\\frac{{1}}{{2}}\n$$";
-        await using ImageDocument document = await BuildProgressiveLazyDocumentAsync(
+        await using MixedInlineVectorImageDocument document = await BuildProgressiveLazyDocumentAsync(
             seed, session, resolver, source, FlowDirection.LeftToRight, 1f,
             materializeAllInlineMarkers: true);
 
@@ -350,52 +244,21 @@ public sealed class MixedInlineVectorImageRelayoutTests
             Assert.Equal(PreparedImageRelayoutResult.Committed, result);
             Assert.True(inline.SceneGeometryGeneration > oldGeneration);
             Assert.NotSame(oldLayout, GetInlineLayout(inline));
-            Assert.Equal(originalRuns.Length, inline.Runs.Count);
-            for (int index = 0; index < originalRuns.Length; index++)
-                Assert.Same(originalRuns[index], inline.Runs[index]);
+            AssertRunsRetained(inline, originalRuns);
             foreach (InlineVectorSceneRun vector in vectors)
                 Assert.Same(vector, inline.Runs.Single(run => ReferenceEquals(run, vector)));
-
-            Assert.True(inline.TryGetCurrentSceneGeometry(
-                out long pendingGeneration, out InlineSceneGeometry[] pendingGeometry));
-            Assert.Equal(inline.SceneGeometryGeneration, pendingGeneration);
-            foreach (InlineVectorSceneRun vector in vectors)
-                Assert.Contains(pendingGeometry, geometry => ReferenceEquals(geometry.Run, vector) && geometry.RegionCount > 0);
+            AssertPendingGeometryCoversVectors(inline, vectors);
 
             LazyLayoutBand stationaryBand = LazyLayoutBand.FromViewport(0, 1024, 0);
             document.Snapshot.EnsureMeasuredBand(stationaryBand, CancellationToken.None);
             Assert.True(document.Snapshot.IsBandWorkSettled(stationaryBand));
-
-            MarkdownVectorSceneResidencyPolicy policy = Assert.IsType<MarkdownVectorSceneResidencyPolicy>(
-                document.Snapshot.VectorSceneResidencyPolicy);
-            var inlineMarkers = new List<string>();
-            bool inlineResourcesReady = true;
-            Assert.True(policy.TryAppendVisibleInlineSceneMarkers(
-                inline, stationaryBand.Top, stationaryBand.Bottom, viewport: null,
-                inlineMarkers, ref inlineResourcesReady));
-            Assert.True(inlineResourcesReady);
-            Assert.Empty(inlineMarkers);
-
-            Assert.True(document.Snapshot.TryBeginPaint());
-            try
+            MarkdownVectorSceneResidencyPolicy policy =
+                AssertNoVisibleInlineSceneMarkers(document.Snapshot, inline, stationaryBand);
+            ProbeVisibleDeferredMarkersUnderPaint(document.Snapshot, policy, 0, 1024, visibleMarkers =>
             {
-                Assert.True(document.Snapshot.TryGetMeasuredTopLevelBlocksInBandForSceneProbe(
-                    0, 1024,
-                    out IReadOnlyList<BlockBox> measuredBlocks,
-                    out IReadOnlyList<int> measuredOrdinals,
-                    out LayoutPlacementGeneration placements,
-                    out IReadOnlyDictionary<int, int> ordinalByBlockIndex));
-                Assert.True(MarkdownProgressiveScenePlan.TryCollectVisibleDeferredSceneMarkers(
-                    measuredBlocks, measuredOrdinals, placements, document.Snapshot.PlacementTransform, ordinalByBlockIndex,
-                    0, 1024, viewport: null, residencyPolicy: policy,
-                    out IReadOnlyList<string> visibleMarkers, out _));
                 Assert.Contains(deferredMarker, visibleMarkers);
                 Assert.Equal(1, plan.UpdateVisibleMarkers(visibleMarkers));
-            }
-            finally
-            {
-                document.Snapshot.EndPaint();
-            }
+            });
 
             Assert.True(document.Snapshot.TryGetLogicalTopForBlockIndex(
                 deferredNeighbor.BlockIndex, out double deferredNeighborLogicalTop));
@@ -409,42 +272,16 @@ public sealed class MixedInlineVectorImageRelayoutTests
                 System.Math.Max(0, deferredNeighborLogicalTop - 1),
                 deferredNeighborLogicalTop + System.Math.Max(1, deferredNeighborPhysicalBounds.Height));
             Assert.True(document.Snapshot.IsBandWorkSettled(translatedVisibleBand));
-            Assert.True(document.Snapshot.TryBeginPaint());
-            try
-            {
-                Assert.True(document.Snapshot.TryGetMeasuredTopLevelBlocksInBandForSceneProbe(
-                    translatedVisibleBand.Top,
-                    translatedVisibleBand.Bottom,
-                    out IReadOnlyList<BlockBox> translatedBlocks,
-                    out IReadOnlyList<int> translatedOrdinals,
-                    out LayoutPlacementGeneration translatedPlacements,
-                    out IReadOnlyDictionary<int, int> translatedOrdinalByBlockIndex));
-                Assert.True(MarkdownProgressiveScenePlan.TryCollectVisibleDeferredSceneMarkers(
-                    translatedBlocks,
-                    translatedOrdinals,
-                    translatedPlacements,
-                    document.Snapshot.PlacementTransform,
-                    translatedOrdinalByBlockIndex,
-                    translatedVisibleBand.Top,
-                    translatedVisibleBand.Bottom,
-                    viewport: null,
-                    residencyPolicy: policy,
-                    out IReadOnlyList<string> translatedMarkers,
-                    out _));
-                Assert.Contains(deferredMarker, translatedMarkers);
-            }
-            finally
-            {
-                document.Snapshot.EndPaint();
-            }
+            ProbeVisibleDeferredMarkersUnderPaint(
+                document.Snapshot, policy, translatedVisibleBand.Top, translatedVisibleBand.Bottom,
+                translatedMarkers => Assert.Contains(deferredMarker, translatedMarkers));
 
             await PublishAsync(plan, deferredMarker);
             Assert.True(plan.TryGetResult(deferredMarker, out _));
         }
         finally
         {
-            if (constructionContext is not null)
-                await constructionContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            await DrainAsync(constructionContext);
         }
     }
 
@@ -455,7 +292,7 @@ public sealed class MixedInlineVectorImageRelayoutTests
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
         var resolver = new InlineVectorRasterResolver(DisplaySizedRasterDecodeTests.CreatePng(96, 192));
         string source = $"before ![badge]({resolver.Url}) then $x^2$ and later $y^2$";
-        await using ImageDocument document = await BuildDocumentAsync(
+        await using MixedInlineVectorImageDocument document = await BuildDocumentAsync(
             seed, session, resolver, source, FlowDirection.LeftToRight, 1f);
 
         InlineContainerBox inline = Assert.Single(document.Snapshot.Blocks.OfType<InlineContainerBox>());
@@ -506,8 +343,7 @@ public sealed class MixedInlineVectorImageRelayoutTests
         }
         finally
         {
-            if (constructionContext is not null)
-                await constructionContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            await DrainAsync(constructionContext);
         }
     }
 
@@ -518,7 +354,7 @@ public sealed class MixedInlineVectorImageRelayoutTests
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
         var resolver = new InlineVectorRasterResolver(DisplaySizedRasterDecodeTests.CreatePng(96, 192));
         string source = $"before $x^2$ and ![badge]({resolver.Url}) after";
-        await using ImageDocument document = await BuildDocumentAsync(
+        await using MixedInlineVectorImageDocument document = await BuildDocumentAsync(
             seed, session, resolver, source, FlowDirection.RightToLeft, 1.5f);
         InlineContainerBox inline = Assert.Single(document.Snapshot.Blocks.OfType<InlineContainerBox>());
         InlineVectorSceneRun vector = Assert.Single(inline.Runs.OfType<InlineVectorSceneRun>());
@@ -555,8 +391,7 @@ public sealed class MixedInlineVectorImageRelayoutTests
         }
         finally
         {
-            if (constructionContext is not null)
-                await constructionContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            await DrainAsync(constructionContext);
         }
     }
 
@@ -568,7 +403,7 @@ public sealed class MixedInlineVectorImageRelayoutTests
         var resolver = new InlineVectorRasterResolver(DisplaySizedRasterDecodeTests.CreatePng(32, 64));
         string tooManyImages = $"$x^2$ " + string.Join(" ", Enumerable.Range(0, 33)
             .Select(index => $"![badge {index}]({resolver.Url})"));
-        await using ImageDocument overBudget = await BuildDocumentAsync(
+        await using MixedInlineVectorImageDocument overBudget = await BuildDocumentAsync(
             seed, session, resolver, tooManyImages, FlowDirection.LeftToRight, 1f);
         InlineContainerBox overBudgetInline = Assert.Single(overBudget.Snapshot.Blocks.OfType<InlineContainerBox>());
         InlineVectorSceneRun overBudgetVector = Assert.Single(overBudgetInline.Runs.OfType<InlineVectorSceneRun>());
@@ -599,7 +434,7 @@ public sealed class MixedInlineVectorImageRelayoutTests
         // root-local preflight must reject this malformed recipe before it
         // clones any image or publishes an alternate layout.
         var malformedResolver = new InlineVectorRasterResolver(DisplaySizedRasterDecodeTests.CreatePng(48, 96));
-        await using ImageDocument malformed = await BuildDocumentAsync(
+        await using MixedInlineVectorImageDocument malformed = await BuildDocumentAsync(
             seed, session, malformedResolver, $"![badge]({malformedResolver.Url}) then $y^2$",
             FlowDirection.LeftToRight, 1f);
         InlineContainerBox malformedInline = Assert.Single(malformed.Snapshot.Blocks.OfType<InlineContainerBox>());
@@ -631,225 +466,95 @@ public sealed class MixedInlineVectorImageRelayoutTests
         Assert.True(double.IsNaN(malformedVector.LocalBounds.X));
     }
 
-    private static async Task<ImageDocument> BuildDocumentAsync(
+    private static Task<MixedInlineVectorImageDocument> BuildDocumentAsync(
         CompletedRasterPlacementCloneTests.PlacementFixture seed,
         MarkdownPerformanceSession session,
         InlineVectorRasterResolver resolver,
         string source,
         FlowDirection direction,
-        float rasterizationScale)
-    {
-        MarkdownEngine engine = CreateMathEngine();
-        try
-        {
-            MarkdownDocument markdown = await engine.ParseAsync(source);
-            return BuildSnapshot(seed, session, resolver, markdown, engine, direction, rasterizationScale, lazy: false);
-        }
-        catch
-        {
-            engine.Dispose();
-            throw;
-        }
-    }
+        float rasterizationScale) =>
+        MixedInlineVectorImageDocument.BuildAsync(seed, session, resolver, source, direction, rasterizationScale);
 
-    private static async Task<ImageDocument> BuildProgressiveLazyDocumentAsync(
+    private static Task<MixedInlineVectorImageDocument> BuildProgressiveLazyDocumentAsync(
         CompletedRasterPlacementCloneTests.PlacementFixture seed,
         MarkdownPerformanceSession session,
         InlineVectorRasterResolver resolver,
         string source,
         FlowDirection direction,
         float rasterizationScale,
-        bool materializeAllInlineMarkers = false)
+        bool materializeAllInlineMarkers = false) =>
+        MixedInlineVectorImageDocument.BuildProgressiveLazyAsync(
+            seed, session, resolver, source, direction, rasterizationScale, materializeAllInlineMarkers);
+
+    /// <summary>
+    /// The general private-inline COW recipe is intentionally still
+    /// conservative. Only the image-completion root-local recipe may use a
+    /// non-paintable measured vector clone: this asserts the general recipe
+    /// refuses the root and that a measured-only clone cannot prepare
+    /// native resources.
+    /// </summary>
+    private static void AssertOnlyRootLocalRecipeUsesMeasuredOnlyVectorClone(
+        MixedInlineVectorImageDocument document,
+        InlineContainerBox inline,
+        InlineVectorSceneRun sourceVector)
     {
-        MarkdownEngine engine = CreateMathEngine();
-        object owner = new();
-        var registry = new MarkdownExtensionRegistry().ConfigureGitHubReadmeRegistry();
+        MarkdownLayoutContext probeContext = document.Context.CreateRasterPlacementContext(
+            CancellationToken.None,
+            document.Context.ImagePreparationOwner!,
+            retirementSink: null,
+            imageUnavailable: null);
+        Assert.False(inline.TryGetPrivateRasterPlacementCounts(
+            probeContext, LayoutWidth, out _, out _, out _));
+
+        InlineVectorSceneRun measuredOnly = sourceVector.CloneForMeasuredPlacement();
         try
         {
-            MarkdownDocument markdown = Assert.IsType<MarkdownDocument>(
-                await ((IMarkdownPerformanceSessionInternal)session).ParseAndPrepareDocumentAsync(
-                    engine, null, source, registry, owner, CancellationToken.None));
-            string[] allInlineMarkers = GetInlineMarkers(markdown);
-            string[] markersToPublish = materializeAllInlineMarkers
-                ? allInlineMarkers
-                : [Assert.Single(allInlineMarkers)];
-            MarkdownProgressiveScenePlan plan = GetRegisteredPlan(session, owner);
-            plan.UpdateVisibleMarkers(markersToPublish);
-            foreach (string marker in markersToPublish)
-                await PublishAsync(plan, marker);
-            return BuildSnapshot(seed, session, resolver, markdown, engine, direction, rasterizationScale,
-                lazy: true, performanceOwner: owner, registry: registry);
+            Assert.True(measuredOnly.IsMeasuredPlacementOnly);
+            Assert.False(measuredOnly.IsNativeResourcesPrepared);
+            Assert.Null(ReadRawField(measuredOnly, "_drawing"));
+            Assert.Same(sourceVector.Scene, measuredOnly.Scene);
+            Assert.Throws<InvalidOperationException>(() =>
+                measuredOnly.PrepareNativeResources(CancellationToken.None));
         }
-        catch
+        finally
         {
-            engine.Dispose();
-            await ((IMarkdownPerformanceSessionInternal)session).ReleaseDeferredSceneDocument(owner);
-            throw;
+            measuredOnly.Dispose();
         }
     }
 
-    private static MarkdownEngine CreateMathEngine() => new MarkdownEngineBuilder()
-        .UseProfile(MarkdownProfiles.GfmStrict)
-        .UseMathematics()
-        .WithParseCacheBudgetBytes(0)
-        .Build();
-
-    private static ImageDocument BuildSnapshot(
-        CompletedRasterPlacementCloneTests.PlacementFixture seed,
-        MarkdownPerformanceSession session,
-        InlineVectorRasterResolver resolver,
-        MarkdownDocument markdown,
-        MarkdownEngine engine,
-        FlowDirection direction,
-        float rasterizationScale,
-        bool lazy,
-        object? performanceOwner = null,
-        MarkdownExtensionRegistry? registry = null)
-    {
-        registry ??= new MarkdownExtensionRegistry().ConfigureGitHubReadmeRegistry();
-        var sourceMap = new MarkdownSourceMap(markdown.Source);
-        var context = new MarkdownLayoutContext(
-            seed.Device,
-            seed.SourceContext.ThemeSnapshot,
-            sourceMap,
-            registry,
-            direction,
-            language: "en-US")
-        {
-            RenderResources = seed.RenderResources,
-            CancellationToken = CancellationToken.None,
-            ImageCancellationToken = CancellationToken.None,
-            ImagePreparationOwner = seed.ImagePreparationOwnerToken,
-            PerformanceDocumentOwner = performanceOwner ?? new object(),
-            PerformanceSession = session,
-            ImageResolver = resolver,
-            AllowThirdPartyRemoteImages = true,
-            RasterizationScale = rasterizationScale,
-        };
-
-        LayoutSnapshot? snapshot = null;
-        try
-        {
-            var builder = new LayoutBuilder(context, semanticDocument: markdown);
-            snapshot = lazy
-                ? builder.BuildLazy(markdown.ParsedDocument!, LayoutWidth, viewportTop: 0,
-                    viewportHeight: 1024, overscan: 0, CancellationToken.None)
-                : builder.Build(markdown.ParsedDocument!, LayoutWidth, CancellationToken.None);
-            snapshot.AssignAutomationDocumentGeneration(42_081);
-            var result = new ImageDocument(context, snapshot, sourceMap, resolver, engine, performanceOwner);
-            snapshot = null;
-            return result;
-        }
-        catch
-        {
-            if (snapshot is not null)
-                snapshot.Retire().GetAwaiter().GetResult();
-            context.DrainOwnedRetirementsAsync().GetAwaiter().GetResult();
-            throw;
-        }
-    }
-
-    private static string[] GetInlineMarkers(MarkdownDocument document) =>
-        document.ExtensionInlineNodeContent.Values
-            .SelectMany(static fragment => fragment.Items)
-        .Where(static content => content.Attributes.ContainsKey(MarkdownContentAttributes.DeferredScene))
-        .Select(static content => Assert.IsType<string>(content.Attributes[MarkdownContentAttributes.DeferredScene]))
-        .ToArray();
-
-    private static MarkdownProgressiveScenePlan GetRegisteredPlan(MarkdownPerformanceSession session, object owner)
-    {
-        Assert.True(session.ScenePlans.TryGetPlan(owner, out MarkdownProgressiveScenePlan? plan));
-        return plan;
-    }
-
-    private static async Task PublishAsync(MarkdownProgressiveScenePlan plan, string marker)
-    {
-        var published = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        Assert.True(plan.TrySchedule(
-            marker,
-            static action => { action(); return true; },
-            () => published.TrySetResult()));
-        await published.Task.WaitAsync(TimeSpan.FromSeconds(10));
-    }
-
-    private static async Task LoadImageAsync(ImageBox image)
-    {
-        await DisplaySizedRasterDecodeTests.WaitForLoadAsync(image).WaitAsync(TimeSpan.FromSeconds(10));
-        await DisplaySizedRasterDecodeTests.WaitUntilAsync(() => image.GetWorkState().ActiveWorkCount == 0);
-        Assert.NotNull(image.Bitmap);
-    }
-
-    private static Rect[] SelectionFor(LayoutSnapshot snapshot, InlineContainerBox inline, InlineRun run)
-    {
-        int runIndex = Enumerable.Range(0, inline.Runs.Count)
-            .Single(index => ReferenceEquals(inline.Runs[index], run));
-        var range = new DocumentRange(
-            new DocumentPosition(inline.BlockIndex, runIndex, 0),
-            new DocumentPosition(inline.BlockIndex, runIndex, run.RenderedLength));
-        return LayoutPlacementTestGeometry.ToLogical(
-            snapshot, inline.BlockIndex, inline.GetSelectionRects(range));
-    }
-
-    private static SemanticSpanGeometry[] CaptureSemanticSpanGeometry(
+    /// <summary>
+    /// Asserts that the source vector run kept its scene, drawing and native
+    /// resources, and took only the fallback's metrics, bounds and selection.
+    /// </summary>
+    private static void AssertVectorRetainedWithFallbackMetrics(
         LayoutSnapshot snapshot,
-        InlineContainerBox inline)
+        InlineContainerBox inline,
+        InlineVectorSceneRun sourceVector,
+        MarkdownVectorScene sourceScene,
+        VectorSceneDrawing sourceDrawing,
+        LayoutSnapshot fallback,
+        InlineContainerBox fallbackInline,
+        InlineRootBefore before)
     {
-        return snapshot.SemanticDocument.TextSpans
-            .Where(span => ReferenceEquals(span.InlineBox, inline))
-            .Select(span => new SemanticSpanGeometry(
-                span.TextStart,
-                span.TextEnd,
-                span.InlineRun?.GetType(),
-                snapshot.SemanticDocument.Text.Substring(span.TextStart, span.TextEnd - span.TextStart),
-                snapshot.SemanticDocument.GetDocumentRects(span.TextStart, span.TextEnd).ToArray()))
-            .ToArray();
+        InlineVectorSceneRun updatedFallbackVector = Assert.Single(
+            fallbackInline.Runs.OfType<InlineVectorSceneRun>());
+        Assert.Same(sourceScene, sourceVector.Scene);
+        Assert.Same(sourceDrawing, GetVectorDrawing(sourceVector));
+        Assert.True(sourceVector.IsNativeResourcesPrepared);
+        Assert.False(sourceVector.IsMeasuredPlacementOnly);
+        Assert.Equal(updatedFallbackVector.Scene.Width, sourceVector.Scene.Width);
+        Assert.Equal(updatedFallbackVector.Scene.Height, sourceVector.Scene.Height);
+        Assert.Equal(updatedFallbackVector.DesiredWidth, sourceVector.DesiredWidth);
+        Assert.Equal(updatedFallbackVector.DesiredHeight, sourceVector.DesiredHeight);
+        Assert.Equal(updatedFallbackVector.DesiredBaseline, sourceVector.DesiredBaseline);
+        Assert.Equal(updatedFallbackVector.LocalBounds, sourceVector.LocalBounds);
+        Assert.Equal(SelectionFor(fallback, fallbackInline, updatedFallbackVector),
+            SelectionFor(snapshot, inline, sourceVector));
+        Assert.NotEmpty(SelectionFor(snapshot, inline, sourceVector));
+        Assert.NotEqual(before.VectorBounds, sourceVector.LocalBounds);
+        Assert.False(before.Selection.SequenceEqual(
+            SelectionFor(snapshot, inline, sourceVector)));
     }
-
-    private static InlineSceneGeometrySnapshot[] CaptureSceneGeometry(InlineSceneGeometry[] geometry) =>
-        geometry.Select(item => new InlineSceneGeometrySnapshot(
-            item.RegionCount,
-            Enumerable.Range(0, item.RegionCount).Select(item.GetRegionBounds).ToArray())).ToArray();
-
-    private static void AssertSceneGeometryEqual(
-        InlineSceneGeometrySnapshot[] expected,
-        InlineSceneGeometrySnapshot[] actual)
-    {
-        Assert.Equal(expected.Length, actual.Length);
-        for (int index = 0; index < expected.Length; index++)
-        {
-            Assert.Equal(expected[index].RegionCount, actual[index].RegionCount);
-            Assert.Equal(expected[index].Regions, actual[index].Regions);
-        }
-    }
-
-    private static void AssertSemanticSpanGeometryEqual(
-        SemanticSpanGeometry[] expected,
-        SemanticSpanGeometry[] actual)
-    {
-        Assert.Equal(expected.Length, actual.Length);
-        for (int index = 0; index < expected.Length; index++)
-        {
-            Assert.Equal(expected[index].Start, actual[index].Start);
-            Assert.Equal(expected[index].End, actual[index].End);
-            Assert.Equal(expected[index].RunType, actual[index].RunType);
-            Assert.Equal(expected[index].Text, actual[index].Text);
-            Assert.Equal(expected[index].DocumentRects, actual[index].DocumentRects);
-        }
-    }
-
-    private static void AssertGeometryBoundToSource(
-        InlineSceneGeometry[] geometry,
-        InlineVectorSceneRun source)
-    {
-        Assert.NotEmpty(geometry);
-        Assert.All(geometry, item => Assert.Same(source, item.Run));
-    }
-
-    private static CanvasTextLayout GetInlineLayout(InlineContainerBox inline) =>
-        Assert.IsType<CanvasTextLayout>(inline.TextLayout);
-
-    private static SharedCanvasBitmapCache.Lease GetBitmapLease(ImageBox image) =>
-        Assert.IsType<SharedCanvasBitmapCache.Lease>(image.Presentation.Lease);
 
     private static VectorSceneDrawing GetVectorDrawing(InlineVectorSceneRun run) =>
         Assert.IsType<VectorSceneDrawing>(ReadRawField(run, "_drawing"));
@@ -859,100 +564,5 @@ public sealed class MixedInlineVectorImageRelayoutTests
         FieldInfo field = instance.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)
             ?? throw new InvalidOperationException($"Missing private test field '{name}'.");
         return field.GetValue(instance);
-    }
-
-    private static Color[] Paint(LayoutSnapshot snapshot, CanvasDevice device, float rasterizationScale)
-    {
-        float height = (float)System.Math.Max(1, System.Math.Ceiling(snapshot.Size.Height + 1));
-        using var target = new CanvasRenderTarget(device, LayoutWidth, height, 96 * rasterizationScale);
-        using (CanvasDrawingSession drawing = target.CreateDrawingSession())
-        {
-            drawing.Clear(Color.FromArgb(0, 0, 0, 0));
-            snapshot.Paint(drawing, new Rect(0, 0, LayoutWidth, height));
-        }
-        return target.GetPixelColors();
-    }
-
-    private readonly record struct SemanticSpanGeometry(
-        int Start,
-        int End,
-        Type? RunType,
-        string Text,
-        Rect[] DocumentRects);
-
-    private readonly record struct InlineSceneGeometrySnapshot(int RegionCount, Rect[] Regions);
-
-    private sealed class ImageDocument : IAsyncDisposable
-    {
-        internal ImageDocument(
-            MarkdownLayoutContext context,
-            LayoutSnapshot snapshot,
-            MarkdownSourceMap sourceMap,
-            InlineVectorRasterResolver resolver,
-            MarkdownEngine engine,
-            object? performanceOwner)
-        {
-            Context = context;
-            Snapshot = snapshot;
-            SourceMap = sourceMap;
-            Resolver = resolver;
-            Engine = engine;
-            PerformanceOwner = performanceOwner;
-        }
-
-        internal MarkdownLayoutContext Context { get; }
-        internal LayoutSnapshot Snapshot { get; }
-        internal MarkdownSourceMap SourceMap { get; }
-        internal InlineVectorRasterResolver Resolver { get; }
-        private MarkdownEngine Engine { get; }
-        internal object? PerformanceOwner { get; }
-
-        public async ValueTask DisposeAsync()
-        {
-            try
-            {
-                await Snapshot.Retire().WaitAsync(TimeSpan.FromSeconds(10));
-            }
-            finally
-            {
-                await Context.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
-                if (PerformanceOwner is not null)
-                    await ((IMarkdownPerformanceSessionInternal)Context.PerformanceSession!)
-                        .ReleaseDeferredSceneDocument(PerformanceOwner);
-                Engine.Dispose();
-            }
-        }
-    }
-
-    private sealed class InlineVectorRasterResolver : IMarkdownImageResolver
-    {
-        private readonly byte[] _png;
-        private readonly string _cacheKey = "mixed-inline-vector:" + Guid.NewGuid().ToString("N");
-        private int _resolveCount;
-
-        internal InlineVectorRasterResolver(byte[] png)
-        {
-            _png = png;
-            Url = $"https://images.example.test/mixed-vector-{Guid.NewGuid():N}.png";
-        }
-
-        internal string Url { get; }
-        internal int ResolveCount => Volatile.Read(ref _resolveCount);
-
-        public ValueTask<MarkdownImageResolution> ResolveAsync(
-            string source,
-            MarkdownImageResolveContext context,
-            CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (!string.Equals(source, Url, StringComparison.Ordinal))
-                throw new InvalidOperationException("The test resolver received an unexpected image URL.");
-            Interlocked.Increment(ref _resolveCount);
-            return ValueTask.FromResult(MarkdownImageResolution.Resolved(new MarkdownImageAsset(
-                _png,
-                "image/png",
-                new Uri(source),
-                _cacheKey)));
-        }
     }
 }

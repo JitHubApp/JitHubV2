@@ -64,35 +64,16 @@ public sealed class RawSemanticTextProjectionReuseTests
             Assert.Same(source.SourceMap, replacement.SourceMap);
             Assert.Equal(sourceSemantic.SemanticRangeFingerprint, replacementSemantic.SemanticRangeFingerprint);
 
-            Assert.NotSame(fixture.Source, replacementRoot);
-            Assert.NotSame(fixture.ImageRun, replacementRun);
-            Assert.NotSame(fixture.ImageRun.Image, replacementRun.Image);
-            Assert.Same(replacementRoot, replacementImageNode.InlineBox);
-            Assert.Same(replacementRun, replacementImageNode.InlineRun);
-            Assert.Same(replacementRun.Image, replacementImageNode.ImageBox);
-            MarkdownSemanticNode replacementHeading = Assert.IsType<MarkdownSemanticNode>(replacementImageNode.Parent);
-            Assert.Equal(MarkdownSemanticRole.Heading, replacementHeading.Role);
-            Assert.Equal(3, replacementHeading.HeadingLevel);
-            Assert.NotSame(sourceImageNode.Parent, replacementHeading);
-            Assert.Same(replacementRoot, replacementHeading.InlineBox);
-            Assert.Same(replacementRun, replacementHeading.InlineRun);
-            Assert.Same(replacementSemantic.Root.Children.Single(), replacementHeading.Parent);
-            Assert.Equal(fixture.RasterSource, replacementImageNode.HelpText);
-            Assert.Equal(sourceImageNode.HelpText, replacementImageNode.HelpText);
-            Assert.Equal(sourceImageNode.AccessibilityRole, replacementImageNode.AccessibilityRole);
-            Assert.Same(replacementRoot, replacementImageSpan.InlineBox);
-            Assert.Same(replacementRun, replacementImageSpan.InlineRun);
-            Assert.Null(replacementImageSpan.ImageBox);
-
-            Assert.Equal(fixture.ImageRun.InlineIndex, replacementRun.InlineIndex);
-            Assert.Equal(fixture.ImageRun.SourceSpan, replacementRun.SourceSpan);
-            Assert.Equal(fixture.ImageRun.ElementKey, replacementRun.ElementKey);
-            Assert.Equal(fixture.ImageRun.StyleAliases, replacementRun.StyleAliases);
-            Assert.Equal(fixture.ImageRun.StyleModifierKeys, replacementRun.StyleModifierKeys);
-            Assert.Equal(sourceImageSpan.TextStart, replacementImageSpan.TextStart);
-            Assert.Equal(sourceImageSpan.TextEnd, replacementImageSpan.TextEnd);
-            Assert.Equal(sourceSemantic.Text, replacementSemantic.Text);
-            Assert.Equal(211, replacement.AutomationDocumentGeneration);
+            AssertReplacementBindsFreshImageOwners(
+                fixture,
+                sourceSemantic,
+                sourceImageNode,
+                sourceImageSpan,
+                replacement,
+                replacementRoot,
+                replacementRun,
+                replacementImageNode,
+                replacementImageSpan);
         }
         finally
         {
@@ -106,6 +87,49 @@ public sealed class RawSemanticTextProjectionReuseTests
                     await constructionContext.DrainOwnedRetirementsAsync();
             }
         }
+    }
+
+    private static void AssertReplacementBindsFreshImageOwners(
+        CompletedRasterPlacementCloneTests.PlacementFixture fixture,
+        MarkdownSemanticDocument sourceSemantic,
+        MarkdownSemanticNode sourceImageNode,
+        MarkdownTextSpan sourceImageSpan,
+        LayoutSnapshot replacement,
+        InlineContainerBox replacementRoot,
+        InlineImageRun replacementRun,
+        MarkdownSemanticNode replacementImageNode,
+        MarkdownTextSpan replacementImageSpan)
+    {
+        MarkdownSemanticDocument replacementSemantic = replacement.SemanticDocument;
+        Assert.NotSame(fixture.Source, replacementRoot);
+        Assert.NotSame(fixture.ImageRun, replacementRun);
+        Assert.NotSame(fixture.ImageRun.Image, replacementRun.Image);
+        Assert.Same(replacementRoot, replacementImageNode.InlineBox);
+        Assert.Same(replacementRun, replacementImageNode.InlineRun);
+        Assert.Same(replacementRun.Image, replacementImageNode.ImageBox);
+        MarkdownSemanticNode replacementHeading = Assert.IsType<MarkdownSemanticNode>(replacementImageNode.Parent);
+        Assert.Equal(MarkdownSemanticRole.Heading, replacementHeading.Role);
+        Assert.Equal(3, replacementHeading.HeadingLevel);
+        Assert.NotSame(sourceImageNode.Parent, replacementHeading);
+        Assert.Same(replacementRoot, replacementHeading.InlineBox);
+        Assert.Same(replacementRun, replacementHeading.InlineRun);
+        Assert.Same(replacementSemantic.Root.Children.Single(), replacementHeading.Parent);
+        Assert.Equal(fixture.RasterSource, replacementImageNode.HelpText);
+        Assert.Equal(sourceImageNode.HelpText, replacementImageNode.HelpText);
+        Assert.Equal(sourceImageNode.AccessibilityRole, replacementImageNode.AccessibilityRole);
+        Assert.Same(replacementRoot, replacementImageSpan.InlineBox);
+        Assert.Same(replacementRun, replacementImageSpan.InlineRun);
+        Assert.Null(replacementImageSpan.ImageBox);
+
+        Assert.Equal(fixture.ImageRun.InlineIndex, replacementRun.InlineIndex);
+        Assert.Equal(fixture.ImageRun.SourceSpan, replacementRun.SourceSpan);
+        Assert.Equal(fixture.ImageRun.ElementKey, replacementRun.ElementKey);
+        Assert.Equal(fixture.ImageRun.StyleAliases, replacementRun.StyleAliases);
+        Assert.Equal(fixture.ImageRun.StyleModifierKeys, replacementRun.StyleModifierKeys);
+        Assert.Equal(sourceImageSpan.TextStart, replacementImageSpan.TextStart);
+        Assert.Equal(sourceImageSpan.TextEnd, replacementImageSpan.TextEnd);
+        Assert.Equal(sourceSemantic.Text, replacementSemantic.Text);
+        Assert.Equal(211, replacement.AutomationDocumentGeneration);
     }
 
     [Fact]

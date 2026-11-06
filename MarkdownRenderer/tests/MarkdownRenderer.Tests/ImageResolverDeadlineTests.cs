@@ -341,49 +341,20 @@ public sealed class ImageResolverDeadlineTests
     public async Task AbandonedCompletionObserverWaitsForImmediateRaceDisposal()
     {
         using var cancellation = new CancellationTokenSource();
-        using var releaseDisposer = new ManualResetEventSlim();
-        var pending = new TaskCompletionSource<TrackedResult>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        var allowLateRegistration = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        var registrationReady = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        var disposerEntered = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        var observedCompletion = new TaskCompletionSource<Task>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        var result = new TrackedResult();
-        CancellationTokenRegistration registration = default;
+        using var race = new ImageResolverLateRegistrationRace(LivenessTimeout);
+        TaskCompletionSource disposerEntered = race.DisposerEntered;
+        TaskCompletionSource<Task> observedCompletion = race.ObservedCompletion;
+        ManualResetEventSlim releaseDisposer = race.ReleaseDisposer;
+        TrackedResult result = race.Result;
         ValueTask<TrackedResult> work = ImageResolverDeadline.RunAsync(
-            token =>
-            {
-                _ = Task.Run(async () =>
-                {
-                    await allowLateRegistration.Task.ConfigureAwait(false);
-                    registration = token.Register(
-                        static state =>
-                        {
-                            var completion = ((TaskCompletionSource<TrackedResult> Pending, TrackedResult Result))state!;
-                            completion.Pending.TrySetResult(completion.Result);
-                        },
-                        (pending, result));
-                    registrationReady.TrySetResult();
-                });
-                return new ValueTask<TrackedResult>(pending.Task);
-            },
+            race.ResolveWithLateCancellationRegistration,
             TimeSpan.FromSeconds(5),
             cancellation.Token,
-            abandoned =>
-            {
-                disposerEntered.TrySetResult();
-                if (!releaseDisposer.Wait(LivenessTimeout))
-                    throw new TimeoutException("The test did not release the disposer.");
-                abandoned.Dispose();
-            },
-            completion => observedCompletion.TrySetResult(completion));
+            race.DisposeAbandonedAfterRelease,
+            race.ObserveAbandonedCompletion);
         Task<TrackedResult> workTask = work.AsTask();
-        allowLateRegistration.TrySetResult();
-        await registrationReady.Task.WaitAsync(LivenessTimeout);
+        race.AllowLateRegistration.TrySetResult();
+        await race.RegistrationReady.Task.WaitAsync(LivenessTimeout);
 
         Task cancelTask = Task.Run(cancellation.Cancel);
         Task firstCompletion = await Task.WhenAny(
@@ -416,7 +387,7 @@ public sealed class ImageResolverDeadlineTests
         finally
         {
             releaseDisposer.Set();
-            registration.Dispose();
+            race.DisposeRegistration();
         }
     }
 
@@ -499,14 +470,5 @@ public sealed class ImageResolverDeadlineTests
             Assert.Equal(returnedToCaller ? 0 : 1, result.DisposeCount);
             Assert.Equal(returnedToCaller, !disposed.Task.IsCompleted);
         }
-    }
-
-    private sealed class TrackedResult : IDisposable
-    {
-        private int _disposeCount;
-
-        public int DisposeCount => Volatile.Read(ref _disposeCount);
-
-        public void Dispose() => Interlocked.Increment(ref _disposeCount);
     }
 }

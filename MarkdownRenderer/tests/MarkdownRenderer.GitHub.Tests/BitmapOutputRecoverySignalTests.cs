@@ -20,11 +20,7 @@ public sealed class BitmapOutputRecoverySignalTests
     {
         BitmapOutputAdmission admission = _renderResources.Images.BitmapOutput;
         _renderResources.Images.BitmapCache.Clear();
-        await DisplaySizedRasterDecodeTests.WaitUntilAsync(() =>
-        {
-            BitmapOutputAdmission.Snapshot snapshot = admission.GetSnapshot();
-            return snapshot.ChargedBytes == 0 && snapshot.WaiterCount == 0;
-        });
+        await WaitForEmptyLedgerAsync(admission);
 
         var reservations = new List<BitmapOutputAdmission.Reservation>();
         var waiterOwners = new List<PassiveWaiter>();
@@ -35,53 +31,7 @@ public sealed class BitmapOutputRecoverySignalTests
         var resolver = new RecoverySignalResolver(DisplaySizedRasterDecodeTests.CreatePng(2, 1));
         try
         {
-            while (admission.GetSnapshot().ChargedBytes < admission.CapacityBytes)
-            {
-                BitmapOutputAdmission.Snapshot snapshot = admission.GetSnapshot();
-                long remaining = snapshot.CapacityBytes - snapshot.ChargedBytes;
-                long amount = System.Math.Min(remaining, snapshot.MaximumSingleOutputBytes);
-                Assert.True(admission.TryReserve(
-                    amount,
-                    isVisible: true,
-                    isReplacement: true,
-                    out BitmapOutputAdmission.Reservation? reservation,
-                    out _));
-                reservations.Add(Assert.IsType<BitmapOutputAdmission.Reservation>(reservation));
-            }
-
-            long capacityVersion = admission.GetSnapshot().CapacityVersion;
-            for (int index = 0; index < 248; index++)
-            {
-                var owner = new PassiveWaiter();
-                Assert.True(admission.TryRegisterWaiter(
-                    owner,
-                    requiredBytes: 1,
-                    isVisible: false,
-                    isReplacement: false,
-                    capacityVersion,
-                    out BitmapOutputAdmission.WaiterRegistration? registration));
-                waiterOwners.Add(owner);
-                waiterRegistrations.Add(Assert.IsType<BitmapOutputAdmission.WaiterRegistration>(registration));
-            }
-
-            // The shared admission queue reserves eight of its unchanged 256
-            // slots for visible work. Fill those too so the image exercises
-            // true total-cap overflow, not the speculative quota boundary.
-            for (int index = 0; index < 8; index++)
-            {
-                var owner = new PassiveWaiter();
-                Assert.True(admission.TryRegisterWaiter(
-                    owner,
-                    requiredBytes: 1,
-                    isVisible: true,
-                    isReplacement: false,
-                    capacityVersion,
-                    out BitmapOutputAdmission.WaiterRegistration? registration));
-                waiterOwners.Add(owner);
-                waiterRegistrations.Add(Assert.IsType<BitmapOutputAdmission.WaiterRegistration>(registration));
-            }
-            Assert.Equal(256, admission.GetSnapshot().WaiterCount);
-            GC.KeepAlive(waiterOwners);
+            SaturateLedgerAndWaiterQueue(admission, reservations, waiterOwners, waiterRegistrations);
 
             image = new ImageBox(
                 DisplaySizedRasterDecodeTests.CreateContext(_renderResources, resolver, session, scale: 1), _renderResources.Images,
@@ -134,27 +84,95 @@ public sealed class BitmapOutputRecoverySignalTests
         }
         finally
         {
-            if (image is not null)
-            {
-                if (handler is not null)
-                    image.LoadCompleted -= handler;
-                image.Dispose();
-                await image.RetirementTask.WaitAsync(TimeSpan.FromSeconds(15));
-            }
-
-            foreach (BitmapOutputAdmission.WaiterRegistration registration in waiterRegistrations)
-                registration.Dispose();
-            foreach (BitmapOutputAdmission.Reservation reservation in reservations)
-                reservation.Dispose();
-            _renderResources.Images.BitmapCache.Clear();
-            GC.KeepAlive(waiterOwners);
+            await ReleaseOverflowFixtureAsync(image, handler, reservations, waiterOwners, waiterRegistrations);
         }
 
-        await DisplaySizedRasterDecodeTests.WaitUntilAsync(() =>
+        await WaitForEmptyLedgerAsync(admission);
+    }
+
+    private static Task WaitForEmptyLedgerAsync(BitmapOutputAdmission admission) =>
+        DisplaySizedRasterDecodeTests.WaitUntilAsync(() =>
         {
             BitmapOutputAdmission.Snapshot snapshot = admission.GetSnapshot();
             return snapshot.ChargedBytes == 0 && snapshot.WaiterCount == 0;
         });
+
+    private static void SaturateLedgerAndWaiterQueue(
+        BitmapOutputAdmission admission,
+        List<BitmapOutputAdmission.Reservation> reservations,
+        List<PassiveWaiter> waiterOwners,
+        List<BitmapOutputAdmission.WaiterRegistration> waiterRegistrations)
+    {
+        while (admission.GetSnapshot().ChargedBytes < admission.CapacityBytes)
+        {
+            BitmapOutputAdmission.Snapshot snapshot = admission.GetSnapshot();
+            long remaining = snapshot.CapacityBytes - snapshot.ChargedBytes;
+            long amount = System.Math.Min(remaining, snapshot.MaximumSingleOutputBytes);
+            Assert.True(admission.TryReserve(
+                amount,
+                isVisible: true,
+                isReplacement: true,
+                out BitmapOutputAdmission.Reservation? reservation,
+                out _));
+            reservations.Add(Assert.IsType<BitmapOutputAdmission.Reservation>(reservation));
+        }
+
+        long capacityVersion = admission.GetSnapshot().CapacityVersion;
+        for (int index = 0; index < 248; index++)
+        {
+            var owner = new PassiveWaiter();
+            Assert.True(admission.TryRegisterWaiter(
+                owner,
+                requiredBytes: 1,
+                isVisible: false,
+                isReplacement: false,
+                capacityVersion,
+                out BitmapOutputAdmission.WaiterRegistration? registration));
+            waiterOwners.Add(owner);
+            waiterRegistrations.Add(Assert.IsType<BitmapOutputAdmission.WaiterRegistration>(registration));
+        }
+
+        // The shared admission queue reserves eight of its unchanged 256
+        // slots for visible work. Fill those too so the image exercises
+        // true total-cap overflow, not the speculative quota boundary.
+        for (int index = 0; index < 8; index++)
+        {
+            var owner = new PassiveWaiter();
+            Assert.True(admission.TryRegisterWaiter(
+                owner,
+                requiredBytes: 1,
+                isVisible: true,
+                isReplacement: false,
+                capacityVersion,
+                out BitmapOutputAdmission.WaiterRegistration? registration));
+            waiterOwners.Add(owner);
+            waiterRegistrations.Add(Assert.IsType<BitmapOutputAdmission.WaiterRegistration>(registration));
+        }
+        Assert.Equal(256, admission.GetSnapshot().WaiterCount);
+        GC.KeepAlive(waiterOwners);
+    }
+
+    private async Task ReleaseOverflowFixtureAsync(
+        ImageBox? image,
+        EventHandler<LoadCompletedEventArgs>? handler,
+        List<BitmapOutputAdmission.Reservation> reservations,
+        List<PassiveWaiter> waiterOwners,
+        List<BitmapOutputAdmission.WaiterRegistration> waiterRegistrations)
+    {
+        if (image is not null)
+        {
+            if (handler is not null)
+                image.LoadCompleted -= handler;
+            image.Dispose();
+            await image.RetirementTask.WaitAsync(TimeSpan.FromSeconds(15));
+        }
+
+        foreach (BitmapOutputAdmission.WaiterRegistration registration in waiterRegistrations)
+            registration.Dispose();
+        foreach (BitmapOutputAdmission.Reservation reservation in reservations)
+            reservation.Dispose();
+        _renderResources.Images.BitmapCache.Clear();
+        GC.KeepAlive(waiterOwners);
     }
 
     private sealed class RecoverySignalResolver(byte[] bytes) : IMarkdownImageResolver

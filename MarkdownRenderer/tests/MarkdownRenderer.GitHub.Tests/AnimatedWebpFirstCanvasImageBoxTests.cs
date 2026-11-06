@@ -54,65 +54,10 @@ public sealed class AnimatedWebpFirstCanvasImageBoxTests(ITestOutputHelper outpu
         {
             foreach (bool registerStaticProvider in new[] { false, true })
             {
-                var resolver = new AnimatedWebpResolver(
-                    source,
-                    $"animated-webp-first-canvas-{registerStaticProvider}-{Guid.NewGuid():N}");
-                var provider = registerStaticProvider ? new StaticWebpDecoderProbe() : null;
-                using var session = new MarkdownPerformanceSession(
-                    MarkdownPerformanceOptions.Progressive with
-                    {
-                        UseDisplaySizedRasterDecode = true,
-                        MaxRasterOutputPixels = 16,
-                    });
-                MarkdownLayoutContext context = CreateContext(device, resolver, session, provider);
-                var image = new ImageBox(context, context.ImageResources, "https://images.example/partial-animation.webp", "frame one");
-
-                try
-                {
-                    image.Measure(3);
-                    await DisplaySizedRasterDecodeTests.WaitForLoadAsync(image);
-                    await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-                        () => image.GetWorkState().ActiveWorkCount == 0);
-
-                    Assert.NotNull(image.Bitmap);
-                    Assert.Equal(MarkdownImageAccessibilityState.Loaded, image.AccessibilityState);
-                    Assert.Equal((3u, 1u), (image.Bitmap.SizeInPixels.Width, image.Bitmap.SizeInPixels.Height));
-
-                    // The ANIM black background matches the semi-transparent
-                    // black pixel. A reader may apply or ignore
-                    // the hint for unused canvas and the transparent first-frame
-                    // pixel independently; untouched canvas pixels must still
-                    // agree with each other. Both valid first-pixel outcomes are
-                    // enumerated below. The oracle pins frame zero at x=2 and
-                    // rejects a raw 1x1 subframe or the later x=0 sentinel.
-                    byte[] actual = image.Bitmap.GetPixelBytes();
-                    try
-                    {
-                        AssertFirstCanvasPixels(actual);
-                        output.WriteLine(
-                            $"providerRegistered={registerStaticProvider}; published=3x1; BGRA={Convert.ToHexString(actual)}");
-                        if (registerStaticProvider)
-                        {
-                            Assert.Equal(0, provider!.SupportsFormatCalls);
-                            Assert.Equal(0, provider.DecodeCalls);
-                            Assert.Equal(noProviderPixels, actual);
-                        }
-                        else
-                        {
-                            noProviderPixels = actual.ToArray();
-                        }
-                    }
-                    finally
-                    {
-                        Array.Clear(actual);
-                    }
-                }
-                finally
-                {
-                    image.Dispose();
-                    await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-                        () => image.GetWorkState().ActiveWorkCount == 0);
-                }
+                byte[]? copiedPixels = await PublishAndAssertFirstCanvasAsync(
+                    device, source, registerStaticProvider, noProviderPixels);
+                if (!registerStaticProvider)
+                    noProviderPixels = copiedPixels;
             }
         }
         finally
@@ -122,6 +67,78 @@ public sealed class AnimatedWebpFirstCanvasImageBoxTests(ITestOutputHelper outpu
             _renderResources.Images.BitmapCache.Clear();
             await DisplaySizedRasterDecodeTests.WaitUntilAsync(
                 () => _renderResources.Images.BitmapCache.GetSnapshot().RetainedBytes == 0);
+        }
+    }
+
+    /// <summary>
+    /// Publishes the fixture through one ImageBox and checks its first canvas.
+    /// Without a static provider it returns a copy of the published pixels;
+    /// with one it checks the provider was never consulted and the pixels match
+    /// <paramref name="noProviderPixels"/>, and returns <see langword="null"/>.
+    /// </summary>
+    private async Task<byte[]?> PublishAndAssertFirstCanvasAsync(
+        CanvasDevice device,
+        byte[] source,
+        bool registerStaticProvider,
+        byte[]? noProviderPixels)
+    {
+        var resolver = new AnimatedWebpResolver(
+            source,
+            $"animated-webp-first-canvas-{registerStaticProvider}-{Guid.NewGuid():N}");
+        var provider = registerStaticProvider ? new StaticWebpDecoderProbe() : null;
+        using var session = new MarkdownPerformanceSession(
+            MarkdownPerformanceOptions.Progressive with
+            {
+                UseDisplaySizedRasterDecode = true,
+                MaxRasterOutputPixels = 16,
+            });
+        MarkdownLayoutContext context = CreateContext(device, resolver, session, provider);
+        var image = new ImageBox(context, context.ImageResources, "https://images.example/partial-animation.webp", "frame one");
+
+        try
+        {
+            image.Measure(3);
+            await DisplaySizedRasterDecodeTests.WaitForLoadAsync(image);
+            await DisplaySizedRasterDecodeTests.WaitUntilAsync(
+                () => image.GetWorkState().ActiveWorkCount == 0);
+
+            Assert.NotNull(image.Bitmap);
+            Assert.Equal(MarkdownImageAccessibilityState.Loaded, image.AccessibilityState);
+            Assert.Equal((3u, 1u), (image.Bitmap.SizeInPixels.Width, image.Bitmap.SizeInPixels.Height));
+
+            // The ANIM black background matches the semi-transparent
+            // black pixel. A reader may apply or ignore
+            // the hint for unused canvas and the transparent first-frame
+            // pixel independently; untouched canvas pixels must still
+            // agree with each other. Both valid first-pixel outcomes are
+            // enumerated below. The oracle pins frame zero at x=2 and
+            // rejects a raw 1x1 subframe or the later x=0 sentinel.
+            byte[] actual = image.Bitmap.GetPixelBytes();
+            try
+            {
+                AssertFirstCanvasPixels(actual);
+                output.WriteLine(
+                    $"providerRegistered={registerStaticProvider}; published=3x1; BGRA={Convert.ToHexString(actual)}");
+                if (registerStaticProvider)
+                {
+                    Assert.Equal(0, provider!.SupportsFormatCalls);
+                    Assert.Equal(0, provider.DecodeCalls);
+                    Assert.Equal(noProviderPixels, actual);
+                    return null;
+                }
+
+                return actual.ToArray();
+            }
+            finally
+            {
+                Array.Clear(actual);
+            }
+        }
+        finally
+        {
+            image.Dispose();
+            await DisplaySizedRasterDecodeTests.WaitUntilAsync(
+                () => image.GetWorkState().ActiveWorkCount == 0);
         }
     }
 

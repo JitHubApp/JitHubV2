@@ -2,7 +2,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Extensions;
@@ -13,6 +12,15 @@ using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
+/// <summary>
+/// Contract tests for the vector native resource admission ledger.
+/// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because it is the single contract suite
+/// for one ledger: reservation and refund, capacity observers, scene weight
+/// estimation and the credit lifetime of drawings through release, terminal
+/// retirement and clip quarantine all share its scenes and observer fixtures.
+/// </remarks>
 [Collection(AllocationSensitiveContractCollection.Name)]
 public sealed class VectorNativeResourceAdmissionTests
 {
@@ -371,12 +379,7 @@ public sealed class VectorNativeResourceAdmissionTests
         using var device = new CanvasDevice(forceSoftwareRenderer: true);
         using var target = new CanvasRenderTarget(device, 24, 24, 96);
         using CanvasDrawingSession session = target.CreateDrawingSession();
-        MarkdownVectorScene scene = new(24, 24, 24,
-        [
-            MarkdownVectorCommand.BeginClip(Path(0)),
-            MarkdownVectorCommand.FillRectangle(new MarkdownVectorRectangle(0, 0, 24, 24), 0xFFFF0000),
-            MarkdownVectorCommand.EndClip(),
-        ]);
+        MarkdownVectorScene scene = ClippedFillScene();
         long weight = VectorSceneDrawing.EstimateNativeResourceWeightUnits(scene, CancellationToken.None);
         var admission = new VectorNativeResourceAdmission(weight, weight);
         int capacityWakeCount = 0;
@@ -404,25 +407,13 @@ public sealed class VectorNativeResourceAdmissionTests
 
         Assert.True(drawing.TryPrepareNativeResources(CancellationToken.None, out _));
         Assert.Equal(weight, admission.ReservedWeightUnits);
-        FieldInfo clipStackField = typeof(VectorSceneDrawing)
-            .GetField("_clipStack", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        FieldInfo geometryField = typeof(VectorSceneDrawing)
-            .GetField("_geometries", BindingFlags.Instance | BindingFlags.NonPublic)!;
 
-        Assert.Throws<InvalidOperationException>(() => drawing.Paint(
-            new LayoutPlacementTransformContext(),
-            session,
-            new Windows.Foundation.Rect(0, 0, 24, 24),
-            new VectorScenePaintPalette(
-                Windows.UI.Color.FromArgb(255, 0, 0, 0),
-                Windows.UI.Color.FromArgb(255, 255, 255, 255),
-                Windows.UI.Color.FromArgb(255, 0, 0, 255)),
-            highContrast: false));
+        Assert.Throws<InvalidOperationException>(() => PaintClippedFillScene(drawing, session));
         Assert.Equal(1, activeLayerDisposeAttempts);
 
-        var clipSlots = Assert.IsType<CanvasActiveLayer?[]>(clipStackField.GetValue(drawing));
+        var clipSlots = Assert.IsType<CanvasActiveLayer?[]>(VectorSceneDrawingNativeSlots.ReadClipStack(drawing));
         CanvasActiveLayer clipLayer = Assert.IsType<CanvasActiveLayer>(clipSlots[0]);
-        var geometrySlots = Assert.IsType<CanvasGeometry?[]>(geometryField.GetValue(drawing));
+        var geometrySlots = Assert.IsType<CanvasGeometry?[]>(VectorSceneDrawingNativeSlots.ReadGeometries(drawing));
         CanvasGeometry clipGeometry = Assert.IsType<CanvasGeometry>(geometrySlots[0]);
         try
         {
@@ -486,6 +477,24 @@ public sealed class VectorNativeResourceAdmissionTests
         observerReference = new WeakReference(observer);
         return admission.RegisterCapacityObserver(observer);
     }
+
+    private static MarkdownVectorScene ClippedFillScene() => new(24, 24, 24,
+    [
+        MarkdownVectorCommand.BeginClip(Path(0)),
+        MarkdownVectorCommand.FillRectangle(new MarkdownVectorRectangle(0, 0, 24, 24), 0xFFFF0000),
+        MarkdownVectorCommand.EndClip(),
+    ]);
+
+    private static void PaintClippedFillScene(VectorSceneDrawing drawing, CanvasDrawingSession session)
+        => drawing.Paint(
+            new LayoutPlacementTransformContext(),
+            session,
+            new Windows.Foundation.Rect(0, 0, 24, 24),
+            new VectorScenePaintPalette(
+                Windows.UI.Color.FromArgb(255, 0, 0, 0),
+                Windows.UI.Color.FromArgb(255, 255, 255, 255),
+                Windows.UI.Color.FromArgb(255, 0, 0, 255)),
+            highContrast: false);
 
     private static MarkdownVectorScene PathScene() => new(
         40,

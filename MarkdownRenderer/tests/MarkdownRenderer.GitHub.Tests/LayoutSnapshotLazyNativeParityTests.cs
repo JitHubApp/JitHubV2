@@ -27,6 +27,12 @@ namespace MarkdownRenderer.GitHub.Tests;
 /// through the private full-prefix placement pass. This intentionally compares
 /// the actual DirectWrite/Win2D tree rather than callback-only fake boxes.
 /// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because its one parity scenario compares
+/// two native trees through several independent oracles (box geometry, semantic
+/// text, selection rectangles, hit testing, viewport probes and pixels), and
+/// each oracle walks the real list and quote roots with its own helper here.
+/// </remarks>
 public sealed class LayoutSnapshotLazyNativeParityTests
 {
     private const float LayoutWidth = 640f;
@@ -73,88 +79,39 @@ public sealed class LayoutSnapshotLazyNativeParityTests
             rasterizationScale,
             flowDirection);
 
+        var inputs = new NativeBuildInputs(
+            source, pipeline, registry, device, sheet, rasterizationScale, flowDirection);
+
         // Populate exact per-root measurements first. This exercises the
         // unchanged-geometry/no-reflow path after distant list/quote roots are
         // realized, without making the lazy snapshots share native objects.
-        using (LayoutSnapshot seed = Build(
-            source,
-            pipeline,
-            registry,
-            device,
-            sheet,
-            rasterizationScale,
-            flowDirection,
-            sharedEngine: engine,
-            metricsKey: key,
-            lazy: false))
+        using (LayoutSnapshot seed = Build(inputs, engine, key, lazy: false))
         {
             Assert.True(seed.Size.Height > InitialViewportHeight);
         }
 
-        using (LayoutSnapshot exactOptimized = Build(
-            source,
-            pipeline,
-            registry,
-            device,
-            sheet,
-            rasterizationScale,
-            flowDirection,
-            sharedEngine: engine,
-            metricsKey: key,
-            lazy: true))
-        using (LayoutSnapshot exactBaseline = Build(
-            source,
-            pipeline,
-            registry,
-            device,
-            sheet,
-            rasterizationScale,
-            flowDirection,
-            sharedEngine: engine,
-            metricsKey: key,
-            lazy: true))
-        {
-            AssertBandMatchesFullPrefix(
-                exactOptimized,
-                exactBaseline,
-                device,
-                rasterizationScale,
-                expectExactEstimate: true);
-        }
+        AssertLazyPairMatchesFullPrefix(inputs, engine, key, expectExactEstimate: true);
 
         // An unseeded metrics buffer uses conservative height estimates. The
         // long list item guarantees a real measured-height correction and thus
         // exercises the changed-suffix path before comparing against full reflow.
-        using (LayoutSnapshot suffixOptimized = Build(
-            source,
-            pipeline,
-            registry,
-            device,
-            sheet,
-            rasterizationScale,
-            flowDirection,
-            sharedEngine: null,
-            metricsKey: null,
-            lazy: true))
-        using (LayoutSnapshot suffixBaseline = Build(
-            source,
-            pipeline,
-            registry,
-            device,
-            sheet,
-            rasterizationScale,
-            flowDirection,
-            sharedEngine: null,
-            metricsKey: null,
-            lazy: true))
-        {
-            AssertBandMatchesFullPrefix(
-                suffixOptimized,
-                suffixBaseline,
-                device,
-                rasterizationScale,
-                expectExactEstimate: false);
-        }
+        AssertLazyPairMatchesFullPrefix(inputs, sharedEngine: null, metricsKey: null, expectExactEstimate: false);
+    }
+
+    private static void AssertLazyPairMatchesFullPrefix(
+        NativeBuildInputs inputs,
+        MarkdownEngine? sharedEngine,
+        SharedLayoutMetricsKey? metricsKey,
+        bool expectExactEstimate)
+    {
+        using LayoutSnapshot optimized = Build(inputs, sharedEngine, metricsKey, lazy: true);
+        using LayoutSnapshot baseline = Build(inputs, sharedEngine, metricsKey, lazy: true);
+        AssertBandMatchesFullPrefix(
+            optimized,
+            baseline,
+            inputs.Device,
+            inputs.RasterizationScale,
+            expectExactEstimate);
     }
 
     private static void AssertBandMatchesFullPrefix(
@@ -217,13 +174,7 @@ public sealed class LayoutSnapshotLazyNativeParityTests
             Assert.NotEqual(initialListHeight, optimizedList.Bounds.Height);
         }
 
-        bool[] optimizedMeasuredMask = optimized.Blocks
-            .Select(optimized.IsTopLevelBlockMeasured)
-            .ToArray();
-        bool[] baselineMeasuredMask = baseline.Blocks
-            .Select(baseline.IsTopLevelBlockMeasured)
-            .ToArray();
-        Assert.Equal(optimizedMeasuredMask, baselineMeasuredMask);
+        AssertMeasuredMasksMatch(optimized, baseline);
 
         AssertEquivalentTree(optimized, baseline);
         Assert.Equal(optimized.SemanticDocument.Text, baseline.SemanticDocument.Text);
@@ -232,6 +183,28 @@ public sealed class LayoutSnapshotLazyNativeParityTests
         AssertInteractionAndViewportResults(optimized, baseline, optimizedList, optimizedQuote,
             baselineList, baselineQuote);
 
+        AssertViewportPixelsMatch(optimized, baseline, device, rasterizationScale, optimizedList, optimizedQuote);
+    }
+
+    private static void AssertMeasuredMasksMatch(LayoutSnapshot optimized, LayoutSnapshot baseline)
+    {
+        bool[] optimizedMeasuredMask = optimized.Blocks
+            .Select(optimized.IsTopLevelBlockMeasured)
+            .ToArray();
+        bool[] baselineMeasuredMask = baseline.Blocks
+            .Select(baseline.IsTopLevelBlockMeasured)
+            .ToArray();
+        Assert.Equal(optimizedMeasuredMask, baselineMeasuredMask);
+    }
+
+    private static void AssertViewportPixelsMatch(
+        LayoutSnapshot optimized,
+        LayoutSnapshot baseline,
+        CanvasDevice device,
+        float rasterizationScale,
+        BlockBox optimizedList,
+        BlockBox optimizedQuote)
+    {
         double paintTop = System.Math.Max(0, optimizedList.Bounds.Top - 4);
         double paintBottom = System.Math.Max(paintTop + 1, optimizedQuote.Bounds.Bottom + 12);
         Color[] optimizedPixels = PaintViewport(
@@ -551,6 +524,22 @@ public sealed class LayoutSnapshotLazyNativeParityTests
     }
 
     private static LayoutSnapshot Build(
+        NativeBuildInputs inputs,
+        MarkdownEngine? sharedEngine,
+        SharedLayoutMetricsKey? metricsKey,
+        bool lazy) => Build(
+            inputs.Source,
+            inputs.Pipeline,
+            inputs.Registry,
+            inputs.Device,
+            inputs.Sheet,
+            inputs.RasterizationScale,
+            inputs.FlowDirection,
+            sharedEngine,
+            metricsKey,
+            lazy);
+
+    private static LayoutSnapshot Build(
         string source,
         MarkdownPipeline pipeline,
         MarkdownExtensionRegistry registry,
@@ -676,4 +665,13 @@ public sealed class LayoutSnapshotLazyNativeParityTests
     }
 
     private sealed record SelectionGeometry(int BlockIndex, int InlineIndex, Rect[] Rects);
+
+    private sealed record NativeBuildInputs(
+        string Source,
+        MarkdownPipeline Pipeline,
+        MarkdownExtensionRegistry Registry,
+        CanvasDevice Device,
+        MarkdownStyleSheet Sheet,
+        float RasterizationScale,
+        FlowDirection FlowDirection);
 }

@@ -85,62 +85,71 @@ public sealed class ThemeResolverDefaultEquivalenceTests
         Color? userAccent,
         PlatformThemeColors platformColors,
         IMarkdownSystemThemeProvider systemTheme)
+        => isHighContrast
+            ? LegacyHighContrastDefault(key, systemTheme)
+            : LegacyStandardDefault(key, isDark, userAccent, platformColors);
+
+    private static ElementStyle LegacyHighContrastDefault(string key, IMarkdownSystemThemeProvider systemTheme)
     {
-        if (isHighContrast)
+        MarkdownHighContrastStyleRoles roles = MarkdownHighContrastDefaults.Resolve(key);
+        Color fg = LegacyHighContrastColor(roles.Foreground, systemTheme);
+        Color? bg = roles.Background is { } backgroundRole
+            ? LegacyHighContrastColor(backgroundRole, systemTheme)
+            : null;
+        Color? accentBar = roles.AccentBar is { } accentRole
+            ? LegacyHighContrastColor(accentRole, systemTheme)
+            : null;
+        const string font = "Segoe UI Variable Text";
+        const string mono = "Consolas";
+
+        return key switch
         {
-            MarkdownHighContrastStyleRoles roles = MarkdownHighContrastDefaults.Resolve(key);
-            Color fg = LegacyHighContrastColor(roles.Foreground, systemTheme);
-            Color? bg = roles.Background is { } backgroundRole
-                ? LegacyHighContrastColor(backgroundRole, systemTheme)
-                : null;
-            Color? accentBar = roles.AccentBar is { } accentRole
-                ? LegacyHighContrastColor(accentRole, systemTheme)
-                : null;
-            const string font = "Segoe UI Variable Text";
-            const string mono = "Consolas";
+            MarkdownElementKeys.Heading1 => new ElementStyle { FontFamily = font, FontSize = 32, FontWeight = SemiBold, Foreground = fg, Margin = new Thickness(0, 16, 0, 8) },
+            MarkdownElementKeys.Heading2 => new ElementStyle { FontFamily = font, FontSize = 26, FontWeight = SemiBold, Foreground = fg, Margin = new Thickness(0, 14, 0, 6) },
+            MarkdownElementKeys.Heading3 => new ElementStyle { FontFamily = font, FontSize = 22, FontWeight = SemiBold, Foreground = fg, Margin = new Thickness(0, 12, 0, 4) },
+            MarkdownElementKeys.Heading4 => new ElementStyle { FontFamily = font, FontSize = 18, FontWeight = SemiBold, Foreground = fg, Margin = new Thickness(0, 10, 0, 4) },
+            MarkdownElementKeys.Heading5 => new ElementStyle { FontFamily = font, FontSize = 15, FontWeight = SemiBold, Foreground = fg, Margin = new Thickness(0, 8, 0, 2) },
+            MarkdownElementKeys.Heading6 => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = SemiBold, Foreground = fg, Margin = new Thickness(0, 6, 0, 2) },
+            MarkdownElementKeys.Body => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg, Margin = new Thickness(0, 0, 0, 8) },
+            MarkdownElementKeys.CodeBlock => new ElementStyle { FontFamily = mono, FontSize = 13, Foreground = fg, Background = bg, AccentBar = accentBar, BorderBrush = accentBar, BorderThickness = accentBar is null ? 0 : 1, CornerRadius = 0, Margin = new Thickness(0, 4, 0, 8), Padding = new Thickness(12, 10, 12, 10) },
+            MarkdownElementKeys.CodeBlockHeader => new ElementStyle { FontFamily = font, FontSize = 12, Foreground = fg, Background = bg, BorderBrush = accentBar },
+            MarkdownElementKeys.CodeBlockLanguage => new ElementStyle { FontFamily = font, FontSize = 12, FontWeight = SemiBold, Foreground = fg },
+            MarkdownElementKeys.CodeBlockGutter => new ElementStyle { FontFamily = mono, FontSize = 12, Foreground = fg, Background = bg, BorderBrush = accentBar },
+            MarkdownElementKeys.CodeBlockLineNumber => new ElementStyle { FontFamily = mono, FontSize = 12, Foreground = fg },
+            MarkdownElementKeys.CodeInline => new ElementStyle { FontFamily = mono, FontSize = 12, Foreground = fg, Background = bg, Padding = new Thickness(2, 0, 2, 0) },
+            MarkdownElementKeys.Quote => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, AccentBar = accentBar, Margin = new Thickness(0, 4, 0, 4), Padding = new Thickness(12, 2, 8, 2) },
+            MarkdownElementKeys.Link => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, HoverForeground = fg, FocusForeground = fg, Underline = roles.Underline },
+            MarkdownElementKeys.Strong => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = SemiBold, Foreground = fg },
+            MarkdownElementKeys.Emphasis => new ElementStyle { FontFamily = font, FontSize = 14, FontStyle = FontStyle.Italic, Foreground = fg },
+            MarkdownElementKeys.Strikethrough => new ElementStyle { FontFamily = font, FontSize = 14, Strikethrough = roles.Strikethrough, Foreground = fg },
+            MarkdownElementKeys.Subscript => new ElementStyle { FontFamily = font, FontSize = 11, Foreground = fg },
+            MarkdownElementKeys.Superscript => new ElementStyle { FontFamily = font, FontSize = 11, Foreground = fg },
+            MarkdownElementKeys.Inserted => new ElementStyle { FontFamily = font, FontSize = 14, Underline = roles.Underline, Foreground = fg },
+            MarkdownElementKeys.Marked => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg },
+            MarkdownElementKeys.Abbreviation => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, AccentBar = accentBar, Underline = roles.Underline },
+            MarkdownElementKeys.DefinitionTerm => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = SemiBold, Foreground = fg, Margin = new Thickness(0, 4, 0, 0) },
+            MarkdownElementKeys.DefinitionDescription => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg, Margin = new Thickness(18, 0, 0, 6) },
+            MarkdownElementKeys.Figure => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg, Margin = new Thickness(0, 8, 0, 10) },
+            MarkdownElementKeys.FigureCaption => new ElementStyle { FontFamily = font, FontSize = 12, FontStyle = FontStyle.Italic, Foreground = fg, Background = bg, Margin = new Thickness(0, 2, 0, 8) },
+            MarkdownElementKeys.Diagram => new ElementStyle { FontFamily = mono, FontSize = 13, Foreground = fg, Background = bg, AccentBar = accentBar, BorderBrush = accentBar, BorderThickness = accentBar is null ? 0 : 1, Padding = new Thickness(12, 8, 12, 8), Margin = new Thickness(0, 6, 0, 8) },
+            MarkdownElementKeys.Math => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg, Margin = new Thickness(1, 0, 1, 0) },
+            MarkdownElementKeys.ListMarker => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, ListIndent = 22f, NestedListIndent = 0f },
+            MarkdownElementKeys.ThematicBreak => new ElementStyle { FontFamily = font, Foreground = fg, Margin = new Thickness(0, 12, 0, 12) },
+            MarkdownElementKeys.ImageCaption => new ElementStyle { FontFamily = font, FontSize = 12, FontStyle = FontStyle.Italic, Foreground = fg, Margin = new Thickness(0, 2, 0, 8) },
+            MarkdownElementKeys.Table => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg, BorderBrush = accentBar, BorderThickness = accentBar is null ? 0 : 1, Margin = new Thickness(0, 8, 0, 12) },
+            MarkdownElementKeys.TableHeader => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = SemiBold, Foreground = fg, Background = bg, BorderBrush = accentBar, Padding = new Thickness(12, 9, 12, 9) },
+            MarkdownElementKeys.TableCell => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg, BorderBrush = accentBar, Padding = new Thickness(12, 9, 12, 9) },
+            MarkdownElementKeys.AlertNote or MarkdownElementKeys.AlertTip or MarkdownElementKeys.AlertImportant or MarkdownElementKeys.AlertWarning or MarkdownElementKeys.AlertCaution => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, AccentBar = accentBar, Padding = new Thickness(12, 2, 8, 2), Margin = new Thickness(0, 4, 0, 8) },
+            _ => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg, Margin = new Thickness(0, 0, 0, 4) },
+        };
+    }
 
-            return key switch
-            {
-                MarkdownElementKeys.Heading1 => new ElementStyle { FontFamily = font, FontSize = 32, FontWeight = SemiBold, Foreground = fg, Margin = new Thickness(0, 16, 0, 8) },
-                MarkdownElementKeys.Heading2 => new ElementStyle { FontFamily = font, FontSize = 26, FontWeight = SemiBold, Foreground = fg, Margin = new Thickness(0, 14, 0, 6) },
-                MarkdownElementKeys.Heading3 => new ElementStyle { FontFamily = font, FontSize = 22, FontWeight = SemiBold, Foreground = fg, Margin = new Thickness(0, 12, 0, 4) },
-                MarkdownElementKeys.Heading4 => new ElementStyle { FontFamily = font, FontSize = 18, FontWeight = SemiBold, Foreground = fg, Margin = new Thickness(0, 10, 0, 4) },
-                MarkdownElementKeys.Heading5 => new ElementStyle { FontFamily = font, FontSize = 15, FontWeight = SemiBold, Foreground = fg, Margin = new Thickness(0, 8, 0, 2) },
-                MarkdownElementKeys.Heading6 => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = SemiBold, Foreground = fg, Margin = new Thickness(0, 6, 0, 2) },
-                MarkdownElementKeys.Body => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg, Margin = new Thickness(0, 0, 0, 8) },
-                MarkdownElementKeys.CodeBlock => new ElementStyle { FontFamily = mono, FontSize = 13, Foreground = fg, Background = bg, AccentBar = accentBar, BorderBrush = accentBar, BorderThickness = accentBar is null ? 0 : 1, CornerRadius = 0, Margin = new Thickness(0, 4, 0, 8), Padding = new Thickness(12, 10, 12, 10) },
-                MarkdownElementKeys.CodeBlockHeader => new ElementStyle { FontFamily = font, FontSize = 12, Foreground = fg, Background = bg, BorderBrush = accentBar },
-                MarkdownElementKeys.CodeBlockLanguage => new ElementStyle { FontFamily = font, FontSize = 12, FontWeight = SemiBold, Foreground = fg },
-                MarkdownElementKeys.CodeBlockGutter => new ElementStyle { FontFamily = mono, FontSize = 12, Foreground = fg, Background = bg, BorderBrush = accentBar },
-                MarkdownElementKeys.CodeBlockLineNumber => new ElementStyle { FontFamily = mono, FontSize = 12, Foreground = fg },
-                MarkdownElementKeys.CodeInline => new ElementStyle { FontFamily = mono, FontSize = 12, Foreground = fg, Background = bg, Padding = new Thickness(2, 0, 2, 0) },
-                MarkdownElementKeys.Quote => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, AccentBar = accentBar, Margin = new Thickness(0, 4, 0, 4), Padding = new Thickness(12, 2, 8, 2) },
-                MarkdownElementKeys.Link => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, HoverForeground = fg, FocusForeground = fg, Underline = roles.Underline },
-                MarkdownElementKeys.Strong => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = SemiBold, Foreground = fg },
-                MarkdownElementKeys.Emphasis => new ElementStyle { FontFamily = font, FontSize = 14, FontStyle = FontStyle.Italic, Foreground = fg },
-                MarkdownElementKeys.Strikethrough => new ElementStyle { FontFamily = font, FontSize = 14, Strikethrough = roles.Strikethrough, Foreground = fg },
-                MarkdownElementKeys.Subscript => new ElementStyle { FontFamily = font, FontSize = 11, Foreground = fg },
-                MarkdownElementKeys.Superscript => new ElementStyle { FontFamily = font, FontSize = 11, Foreground = fg },
-                MarkdownElementKeys.Inserted => new ElementStyle { FontFamily = font, FontSize = 14, Underline = roles.Underline, Foreground = fg },
-                MarkdownElementKeys.Marked => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg },
-                MarkdownElementKeys.Abbreviation => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, AccentBar = accentBar, Underline = roles.Underline },
-                MarkdownElementKeys.DefinitionTerm => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = SemiBold, Foreground = fg, Margin = new Thickness(0, 4, 0, 0) },
-                MarkdownElementKeys.DefinitionDescription => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg, Margin = new Thickness(18, 0, 0, 6) },
-                MarkdownElementKeys.Figure => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg, Margin = new Thickness(0, 8, 0, 10) },
-                MarkdownElementKeys.FigureCaption => new ElementStyle { FontFamily = font, FontSize = 12, FontStyle = FontStyle.Italic, Foreground = fg, Background = bg, Margin = new Thickness(0, 2, 0, 8) },
-                MarkdownElementKeys.Diagram => new ElementStyle { FontFamily = mono, FontSize = 13, Foreground = fg, Background = bg, AccentBar = accentBar, BorderBrush = accentBar, BorderThickness = accentBar is null ? 0 : 1, Padding = new Thickness(12, 8, 12, 8), Margin = new Thickness(0, 6, 0, 8) },
-                MarkdownElementKeys.Math => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg, Margin = new Thickness(1, 0, 1, 0) },
-                MarkdownElementKeys.ListMarker => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, ListIndent = 22f, NestedListIndent = 0f },
-                MarkdownElementKeys.ThematicBreak => new ElementStyle { FontFamily = font, Foreground = fg, Margin = new Thickness(0, 12, 0, 12) },
-                MarkdownElementKeys.ImageCaption => new ElementStyle { FontFamily = font, FontSize = 12, FontStyle = FontStyle.Italic, Foreground = fg, Margin = new Thickness(0, 2, 0, 8) },
-                MarkdownElementKeys.Table => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg, BorderBrush = accentBar, BorderThickness = accentBar is null ? 0 : 1, Margin = new Thickness(0, 8, 0, 12) },
-                MarkdownElementKeys.TableHeader => new ElementStyle { FontFamily = font, FontSize = 14, FontWeight = SemiBold, Foreground = fg, Background = bg, BorderBrush = accentBar, Padding = new Thickness(12, 9, 12, 9) },
-                MarkdownElementKeys.TableCell => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg, BorderBrush = accentBar, Padding = new Thickness(12, 9, 12, 9) },
-                MarkdownElementKeys.AlertNote or MarkdownElementKeys.AlertTip or MarkdownElementKeys.AlertImportant or MarkdownElementKeys.AlertWarning or MarkdownElementKeys.AlertCaution => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, AccentBar = accentBar, Padding = new Thickness(12, 2, 8, 2), Margin = new Thickness(0, 4, 0, 8) },
-                _ => new ElementStyle { FontFamily = font, FontSize = 14, Foreground = fg, Background = bg, Margin = new Thickness(0, 0, 0, 4) },
-            };
-        }
-
+    private static ElementStyle LegacyStandardDefault(
+        string key,
+        bool isDark,
+        Color? userAccent,
+        PlatformThemeColors platformColors)
+    {
         Color foreground = platformColors.PrimaryText;
         Color secondary = platformColors.SecondaryText;
         Color accent = userAccent ?? platformColors.AccentText;

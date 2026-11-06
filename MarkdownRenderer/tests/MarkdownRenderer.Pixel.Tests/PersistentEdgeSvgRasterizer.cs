@@ -13,6 +13,12 @@ namespace MarkdownRenderer.Pixel.Tests;
 /// render still navigates to the exact fixture bytes on disk and captures an
 /// unmodified CSS viewport at the requested device scale factor.
 /// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because the fixture keeps its private
+/// DevTools-protocol browser session nested: launch, page isolation, command
+/// correlation, readiness polling and teardown are one protocol owned only by
+/// this fixture, and nothing else may drive that browser.
+/// </remarks>
 public sealed class PersistentEdgeSvgRasterizer : Xunit.IAsyncLifetime
 {
     private const int MaximumCssDimension = 16_384;
@@ -221,15 +227,7 @@ public sealed class PersistentEdgeSvgRasterizer : Xunit.IAsyncLifetime
                 };
 
                 processJob = BrowserProcessJob.StartSuspended(startInfo, out process);
-                httpClient = new HttpClient(new SocketsHttpHandler
-                {
-                    UseProxy = false,
-                    ConnectTimeout = TimeSpan.FromSeconds(2),
-                    PooledConnectionLifetime = TimeSpan.FromMinutes(2),
-                })
-                {
-                    Timeout = TimeSpan.FromSeconds(3),
-                };
+                httpClient = CreateDevToolsHttpClient();
                 socket = new ClientWebSocket();
                 socket.Options.KeepAliveInterval = TimeSpan.FromSeconds(15);
 
@@ -252,30 +250,7 @@ public sealed class PersistentEdgeSvgRasterizer : Xunit.IAsyncLifetime
                 httpClient = null;
                 socket = null;
 
-                // A dedicated context keeps fixture pages independent of the
-                // browser profile's startup/default-tab lifecycle and state.
-                JsonElement context = await session.SendCommandAsync(
-                    "Target.createBrowserContext", new { disposeOnDetach = true }).ConfigureAwait(false);
-                string browserContextId = context.GetProperty("browserContextId").GetString()
-                    ?? throw new InvalidDataException("Edge did not create an isolated browser context.");
-                JsonElement created = await session.SendCommandAsync("Target.createTarget", new
-                {
-                    url = "about:blank", browserContextId, background = false, newWindow = true,
-                }).ConfigureAwait(false);
-                string targetId = created.GetProperty("targetId").GetString()
-                    ?? throw new InvalidDataException("The browser did not create a DevTools page target.");
-                JsonElement attached = await session.SendCommandAsync(
-                    "Target.attachToTarget",
-                    new { targetId, flatten = true }).ConfigureAwait(false);
-                session._pageSessionId = attached.GetProperty("sessionId").GetString()
-                    ?? throw new InvalidDataException("The browser did not attach a DevTools page session.");
-                await session.SendPageCommandAsync("Page.enable", new { }).ConfigureAwait(false);
-                await session.SendPageCommandAsync("Runtime.enable", new { }).ConfigureAwait(false);
-                await session.SendPageCommandAsync("Page.bringToFront", new { }).ConfigureAwait(false);
-                await session.SendPageCommandAsync("Emulation.setDefaultBackgroundColorOverride", new
-                {
-                    color = new { r = 0, g = 0, b = 0, a = 0 },
-                }).ConfigureAwait(false);
+                await session.OpenIsolatedPageAsync().ConfigureAwait(false);
                 return session;
             }
             catch
@@ -286,21 +261,71 @@ public sealed class PersistentEdgeSvgRasterizer : Xunit.IAsyncLifetime
                 }
                 else
                 {
-                    try { socket?.Abort(); } catch { }
-                    socket?.Dispose();
-                    httpClient?.Dispose();
-                    try { processJob?.Dispose(); } catch { }
-                    if (process is not null)
-                    {
-                        try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
-                        process.Dispose();
-                    }
-
-                    try { Directory.Delete(directory, recursive: true); } catch { }
+                    AbandonPartialStartup(socket, httpClient, processJob, process, directory);
                 }
 
                 throw;
             }
+        }
+
+        private static HttpClient CreateDevToolsHttpClient() =>
+            new(new SocketsHttpHandler
+            {
+                UseProxy = false,
+                ConnectTimeout = TimeSpan.FromSeconds(2),
+                PooledConnectionLifetime = TimeSpan.FromMinutes(2),
+            })
+            {
+                Timeout = TimeSpan.FromSeconds(3),
+            };
+
+        // A dedicated context keeps fixture pages independent of the
+        // browser profile's startup/default-tab lifecycle and state.
+        private async Task OpenIsolatedPageAsync()
+        {
+            JsonElement context = await SendCommandAsync(
+                "Target.createBrowserContext", new { disposeOnDetach = true }).ConfigureAwait(false);
+            string browserContextId = context.GetProperty("browserContextId").GetString()
+                ?? throw new InvalidDataException("Edge did not create an isolated browser context.");
+            JsonElement created = await SendCommandAsync("Target.createTarget", new
+            {
+                url = "about:blank", browserContextId, background = false, newWindow = true,
+            }).ConfigureAwait(false);
+            string targetId = created.GetProperty("targetId").GetString()
+                ?? throw new InvalidDataException("The browser did not create a DevTools page target.");
+            JsonElement attached = await SendCommandAsync(
+                "Target.attachToTarget",
+                new { targetId, flatten = true }).ConfigureAwait(false);
+            _pageSessionId = attached.GetProperty("sessionId").GetString()
+                ?? throw new InvalidDataException("The browser did not attach a DevTools page session.");
+            await SendPageCommandAsync("Page.enable", new { }).ConfigureAwait(false);
+            await SendPageCommandAsync("Runtime.enable", new { }).ConfigureAwait(false);
+            await SendPageCommandAsync("Page.bringToFront", new { }).ConfigureAwait(false);
+            await SendPageCommandAsync("Emulation.setDefaultBackgroundColorOverride", new
+            {
+                color = new { r = 0, g = 0, b = 0, a = 0 },
+            }).ConfigureAwait(false);
+        }
+
+        // Releases whatever startup created before the session took ownership.
+        private static void AbandonPartialStartup(
+            ClientWebSocket? socket,
+            HttpClient? httpClient,
+            BrowserProcessJob? processJob,
+            Process? process,
+            string directory)
+        {
+            try { socket?.Abort(); } catch { }
+            socket?.Dispose();
+            httpClient?.Dispose();
+            try { processJob?.Dispose(); } catch { }
+            if (process is not null)
+            {
+                try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
+                process.Dispose();
+            }
+
+            try { Directory.Delete(directory, recursive: true); } catch { }
         }
 
         public async Task<byte[]> RasterizeAsync(byte[] source, int cssWidth, int cssHeight, double scale)
@@ -379,38 +404,7 @@ public sealed class PersistentEdgeSvgRasterizer : Xunit.IAsyncLifetime
 
         private async Task WaitForDocumentReadyAsync(string expectedUrl, int width, int height, double scale)
         {
-            string encodedUrl = JsonSerializer.Serialize(expectedUrl);
-            string expression = $$"""
-                (async () => {
-                  const expected = {{encodedUrl}};
-                  if (location.href !== expected) {
-                    return { href: location.href, retry: true };
-                  }
-                  const deadline = performance.now() + 25000;
-                  while (document.readyState !== 'complete') {
-                    if (performance.now() >= deadline) throw new Error('Document readiness timed out.');
-                    await new Promise(resolve => setTimeout(resolve, 20));
-                  }
-                  if (document.fonts && document.fonts.ready) await document.fonts.ready;
-                  const imageWaits = Array.from(document.querySelectorAll('image')).map(element => {
-                    const href = element.href && element.href.baseVal;
-                    if (!href || href.startsWith('#')) return Promise.resolve();
-                    const image = new Image();
-                    image.src = href;
-                    return image.decode();
-                  });
-                  await Promise.all(imageWaits);
-                  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-                  return {
-                    href: location.href,
-                    readyState: document.readyState,
-                    width: innerWidth,
-                    height: innerHeight,
-                    devicePixelRatio,
-                    imageCount: imageWaits.length
-                  };
-                })()
-                """;
+            string expression = BuildReadinessExpression(JsonSerializer.Serialize(expectedUrl));
 
             long deadline = Environment.TickCount64 + (long)StartupTimeout.TotalMilliseconds;
             while (Environment.TickCount64 < deadline)
@@ -471,6 +465,42 @@ public sealed class PersistentEdgeSvgRasterizer : Xunit.IAsyncLifetime
 
             throw new TimeoutException($"Edge did not reach the expected SVG document within {StartupTimeout}.");
         }
+
+        // Waits in the page for the expected URL, a complete document, loaded
+        // fonts, decoded external images and two animation frames, then reports
+        // the viewport. Returns { retry: true } while a navigation is pending.
+        private static string BuildReadinessExpression(string encodedUrl) =>
+            $$"""
+                (async () => {
+                  const expected = {{encodedUrl}};
+                  if (location.href !== expected) {
+                    return { href: location.href, retry: true };
+                  }
+                  const deadline = performance.now() + 25000;
+                  while (document.readyState !== 'complete') {
+                    if (performance.now() >= deadline) throw new Error('Document readiness timed out.');
+                    await new Promise(resolve => setTimeout(resolve, 20));
+                  }
+                  if (document.fonts && document.fonts.ready) await document.fonts.ready;
+                  const imageWaits = Array.from(document.querySelectorAll('image')).map(element => {
+                    const href = element.href && element.href.baseVal;
+                    if (!href || href.startsWith('#')) return Promise.resolve();
+                    const image = new Image();
+                    image.src = href;
+                    return image.decode();
+                  });
+                  await Promise.all(imageWaits);
+                  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+                  return {
+                    href: location.href,
+                    readyState: document.readyState,
+                    width: innerWidth,
+                    height: innerHeight,
+                    devicePixelRatio,
+                    imageCount: imageWaits.length
+                  };
+                })()
+                """;
 
         private Task<JsonElement> SendPageCommandAsync(string method, object parameters, TimeSpan? timeout = null)
         {

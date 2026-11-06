@@ -25,25 +25,11 @@ public sealed class LazyIdleImageLayoutCandidateTests
         await using var seed = new CompletedRasterPlacementCloneTests.PlacementFixture();
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
         var resolver = new RasterResolver(DisplaySizedRasterDecodeTests.CreatePng(400, 200));
-        string markdown = "![front alt](https://images.example/front.png)\n\n" +
-            string.Join("\n\n", Enumerable.Range(0, 12).Select(index => $"Paragraph {index} with **bold** and `code`.")) +
-            "\n\n" + (inlineImage
-                ? "Far [![tail alt](https://images.example/tail.png)](https://example.test/target) image."
-                : "![tail alt](https://images.example/tail.png)");
+        string markdown = CreateMarkdown(inlineImage);
         var registry = new MarkdownExtensionRegistry().ConfigureGitHubReadmeRegistry();
         var parsed = Markdown.Parse(markdown, registry.BuildPipeline());
         var sourceMap = new MarkdownSourceMap(markdown);
-        var context = new MarkdownLayoutContext(seed.Device, seed.SourceContext.ThemeSnapshot, sourceMap,
-            registry, rightToLeft ? FlowDirection.RightToLeft : FlowDirection.LeftToRight, language: "en-US")
-        {
-            RenderResources = seed.RenderResources,
-            ImagePreparationOwner = seed.ImagePreparationOwnerToken,
-            PerformanceDocumentOwner = new object(),
-            PerformanceSession = session,
-            ImageResolver = resolver,
-            AllowThirdPartyRemoteImages = true,
-            RasterizationScale = scale,
-        };
+        var context = CreateLazyContext(seed, session, resolver, sourceMap, registry, rightToLeft, scale);
         LayoutSnapshot? source = null;
         SingleRasterLayoutCandidate? candidate = null;
         MarkdownLayoutContext? candidateContext = null;
@@ -71,43 +57,12 @@ public sealed class LazyIdleImageLayoutCandidateTests
             LayoutSnapshot replacement = owner.Snapshot;
             BlockBox privateTailRoot = replacement.Blocks[^1];
             ImageBox privateTail = GetImage(privateTailRoot);
-            Assert.Equal(2, owner.SourceImageCount);
-            Assert.Equal(1, owner.SourceSubscribedImageCount);
-            Assert.True(owner.MatchesSourceImages([front], new HashSet<ImageBox> { front }));
-            Assert.False(owner.MatchesSourceImages([front, tail], new HashSet<ImageBox> { front, tail }));
-            Assert.True(owner.HasCurrentSourceRaster());
-            Assert.NotSame(tail, privateTail);
-            Assert.True(privateTail.IsCurrentIdleImagePlacement(0));
-            Assert.Equal(measuredCount, replacement.MeasuredTopLevelBlockCount);
-            Assert.False(replacement.IsTopLevelBlockMeasured(privateTailRoot));
-            Assert.Equal(tailBounds.Height, privateTailRoot.Bounds.Height);
-            Assert.Equal(0, privateTail.GetWorkState().ActiveWorkCount);
-            Assert.Null(privateTail.MeasureCustody.GetLayoutState().Placeholder);
-            if (privateTailRoot is InlineContainerBox privateInline)
-                Assert.False(privateInline.HasMeasuredLayout);
-            Assert.Same(sourceMap, replacement.SourceMap);
-            Assert.Same(source.SemanticDocument.Text, replacement.SemanticDocument.Text);
-            Assert.Equal(source.SemanticDocument.SemanticRangeFingerprint, replacement.SemanticDocument.SemanticRangeFingerprint);
-            Assert.Equal(4_301, replacement.AutomationDocumentGeneration);
-            var imagePlan = new RasterPlacementImagePlan(replacement.GetMeasuredTopLevelBlocks(), owner.SourceSubscribedImageCount);
-            Assert.Single(imagePlan.Images);
-            Assert.DoesNotContain(privateTail, imagePlan.Images);
-            Assert.Equal(1, resolver.ResolveCount);
+            AssertCandidateCarriesIdleTail(owner, source, sourceMap, resolver, front, tail, tailBounds.Height,
+                measuredCount, privateTailRoot, privateTail);
 
             // Source retirement cannot cancel a descriptor's new lifetime.
-            await source.Retire().WaitAsync(TimeSpan.FromSeconds(10));
-            Assert.True(privateTail.IsCurrentIdleImagePlacement(0));
-            LazyLayoutCommit commit = replacement.EnsureMeasuredViewport(privateTailRoot.Bounds.Top,
-                System.Math.Max(120, privateTailRoot.Bounds.Height), 0, CancellationToken.None);
-            Assert.True(commit.Changed);
-            Assert.True(replacement.IsTopLevelBlockMeasured(privateTailRoot));
-            Assert.Equal(1, resolver.ResolveCount);
-            Assert.Equal(tailBounds, tailRoot.Bounds);
-            await DisplaySizedRasterDecodeTests.WaitForLoadAsync(privateTail);
-            await DisplaySizedRasterDecodeTests.WaitUntilAsync(() => privateTail.GetWorkState().ActiveWorkCount == 0);
-            Assert.NotNull(privateTail.Bitmap);
-            Assert.Equal(2, resolver.ResolveCount);
-            Assert.Null(tail.Bitmap);
+            await AssertRetiredSourceKeepsPrivateTailLoadableAsync(source, replacement, privateTailRoot, privateTail,
+                tailRoot, tail, tailBounds, resolver);
         }
         finally
         {
@@ -124,6 +79,76 @@ public sealed class LazyIdleImageLayoutCandidateTests
             }
             finally { await context.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10)); }
         }
+    }
+
+    private static string CreateMarkdown(bool inlineImage) =>
+        "![front alt](https://images.example/front.png)\n\n" +
+            string.Join("\n\n", Enumerable.Range(0, 12).Select(index => $"Paragraph {index} with **bold** and `code`.")) +
+            "\n\n" + (inlineImage
+                ? "Far [![tail alt](https://images.example/tail.png)](https://example.test/target) image."
+                : "![tail alt](https://images.example/tail.png)");
+
+    private static MarkdownLayoutContext CreateLazyContext(CompletedRasterPlacementCloneTests.PlacementFixture seed,
+        MarkdownPerformanceSession session, RasterResolver resolver, MarkdownSourceMap sourceMap,
+        MarkdownExtensionRegistry registry, bool rightToLeft, double scale) =>
+        new MarkdownLayoutContext(seed.Device, seed.SourceContext.ThemeSnapshot, sourceMap,
+            registry, rightToLeft ? FlowDirection.RightToLeft : FlowDirection.LeftToRight, language: "en-US")
+        {
+            RenderResources = seed.RenderResources,
+            ImagePreparationOwner = seed.ImagePreparationOwnerToken,
+            PerformanceDocumentOwner = new object(),
+            PerformanceSession = session,
+            ImageResolver = resolver,
+            AllowThirdPartyRemoteImages = true,
+            RasterizationScale = scale,
+        };
+
+    private static void AssertCandidateCarriesIdleTail(SingleRasterLayoutCandidate owner, LayoutSnapshot source,
+        MarkdownSourceMap sourceMap, RasterResolver resolver, ImageBox front, ImageBox tail, double tailHeight,
+        int measuredCount, BlockBox privateTailRoot, ImageBox privateTail)
+    {
+        LayoutSnapshot replacement = owner.Snapshot;
+        Assert.Equal(2, owner.SourceImageCount);
+        Assert.Equal(1, owner.SourceSubscribedImageCount);
+        Assert.True(owner.MatchesSourceImages([front], new HashSet<ImageBox> { front }));
+        Assert.False(owner.MatchesSourceImages([front, tail], new HashSet<ImageBox> { front, tail }));
+        Assert.True(owner.HasCurrentSourceRaster());
+        Assert.NotSame(tail, privateTail);
+        Assert.True(privateTail.IsCurrentIdleImagePlacement(0));
+        Assert.Equal(measuredCount, replacement.MeasuredTopLevelBlockCount);
+        Assert.False(replacement.IsTopLevelBlockMeasured(privateTailRoot));
+        Assert.Equal(tailHeight, privateTailRoot.Bounds.Height);
+        Assert.Equal(0, privateTail.GetWorkState().ActiveWorkCount);
+        Assert.Null(privateTail.MeasureCustody.GetLayoutState().Placeholder);
+        if (privateTailRoot is InlineContainerBox privateInline)
+            Assert.False(privateInline.HasMeasuredLayout);
+        Assert.Same(sourceMap, replacement.SourceMap);
+        Assert.Same(source.SemanticDocument.Text, replacement.SemanticDocument.Text);
+        Assert.Equal(source.SemanticDocument.SemanticRangeFingerprint, replacement.SemanticDocument.SemanticRangeFingerprint);
+        Assert.Equal(4_301, replacement.AutomationDocumentGeneration);
+        var imagePlan = new RasterPlacementImagePlan(replacement.GetMeasuredTopLevelBlocks(), owner.SourceSubscribedImageCount);
+        Assert.Single(imagePlan.Images);
+        Assert.DoesNotContain(privateTail, imagePlan.Images);
+        Assert.Equal(1, resolver.ResolveCount);
+    }
+
+    private static async Task AssertRetiredSourceKeepsPrivateTailLoadableAsync(LayoutSnapshot source,
+        LayoutSnapshot replacement, BlockBox privateTailRoot, ImageBox privateTail, BlockBox tailRoot, ImageBox tail,
+        Windows.Foundation.Rect tailBounds, RasterResolver resolver)
+    {
+        await source.Retire().WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.True(privateTail.IsCurrentIdleImagePlacement(0));
+        LazyLayoutCommit commit = replacement.EnsureMeasuredViewport(privateTailRoot.Bounds.Top,
+            System.Math.Max(120, privateTailRoot.Bounds.Height), 0, CancellationToken.None);
+        Assert.True(commit.Changed);
+        Assert.True(replacement.IsTopLevelBlockMeasured(privateTailRoot));
+        Assert.Equal(1, resolver.ResolveCount);
+        Assert.Equal(tailBounds, tailRoot.Bounds);
+        await DisplaySizedRasterDecodeTests.WaitForLoadAsync(privateTail);
+        await DisplaySizedRasterDecodeTests.WaitUntilAsync(() => privateTail.GetWorkState().ActiveWorkCount == 0);
+        Assert.NotNull(privateTail.Bitmap);
+        Assert.Equal(2, resolver.ResolveCount);
+        Assert.Null(tail.Bitmap);
     }
 
     private static ImageBox GetImage(BlockBox root) => root switch

@@ -86,19 +86,9 @@ public sealed class InlineObjectLineSpacingTests
             WordWrapping = CanvasWordWrapping.Wrap,
         };
         string words = string.Join(' ', Enumerable.Repeat("wrapped", 36));
-        using var textOnlyLayout = new CanvasTextLayout(
-            CanvasDevice.GetSharedDevice(),
-            words,
-            defaultFormat,
-            LayoutWidth,
-            float.MaxValue);
+        using var textOnlyLayout = CreateLayout(words, defaultFormat);
         float naturalTextLineHeight = textOnlyLayout.LineMetrics.First().Height;
-        using var cssTextOnlyLayout = new CanvasTextLayout(
-            CanvasDevice.GetSharedDevice(),
-            words,
-            cssTextFormat.Format,
-            LayoutWidth,
-            float.MaxValue);
+        using var cssTextOnlyLayout = CreateLayout(words, cssTextFormat.Format);
         CanvasLineMetrics[] cssTextOnlyLines = cssTextOnlyLayout.LineMetrics;
 
         var proportionalFormat = new CanvasTextFormat
@@ -111,18 +101,8 @@ public sealed class InlineObjectLineSpacingTests
             LineSpacingBaseline = (cssLineHeight / naturalTextLineHeight) * 0.8f,
         };
         string mixedText = $"Before \uFFFC {words}";
-        using var naturalMixedLayout = new CanvasTextLayout(
-            CanvasDevice.GetSharedDevice(),
-            mixedText,
-            defaultFormat,
-            LayoutWidth,
-            float.MaxValue);
-        using var proportionalMixedLayout = new CanvasTextLayout(
-            CanvasDevice.GetSharedDevice(),
-            mixedText,
-            proportionalFormat,
-            LayoutWidth,
-            float.MaxValue);
+        using var naturalMixedLayout = CreateLayout(mixedText, defaultFormat);
+        using var proportionalMixedLayout = CreateLayout(mixedText, proportionalFormat);
         int objectIndex = "Before ".Length;
         naturalMixedLayout.SetInlineObject(objectIndex, 1, new ProbeInlineObject(InlineWidth, InlineHeight));
         proportionalMixedLayout.SetInlineObject(objectIndex, 1, new ProbeInlineObject(InlineWidth, InlineHeight));
@@ -250,6 +230,9 @@ public sealed class InlineObjectLineSpacingTests
             lines[0].Height,
             followingRegion.LayoutBounds.Y);
     }
+
+    private static CanvasTextLayout CreateLayout(string text, CanvasTextFormat format) =>
+        new(CanvasDevice.GetSharedDevice(), text, format, LayoutWidth, float.MaxValue);
 
     private readonly record struct Measurement(
         double LayoutHeight,

@@ -31,50 +31,22 @@ public sealed class SourceSliceMeasuredPlacementTransferTests
         MarkdownLayoutContext? candidateContext = null;
         try
         {
-            string sourceText = string.Concat(
-                new string('a', DirectSliceLength),
-                "!",
-                new string('b', DirectSliceLength));
+            string sourceText = CreateSliceImageSliceText();
             var sourceMap = new MarkdownSourceMap(sourceText);
             ThemeSnapshot theme = CreateTheme();
             var registry = new MarkdownExtensionRegistry();
             IReadOnlyDictionary<string, bool> disclosures = new Dictionary<string, bool>();
             object documentOwner = new();
             object preparationOwner = new();
-            string imageUri = new Uri($"ms-appx:///source-slice-placement-{Guid.NewGuid():N}.png").AbsoluteUri;
-            Assert.True(MarkdownBuiltInImageSourcePolicy.TryResolve(
-                imageUri, null, out MarkdownBuiltInImageSource resolved));
-            using (_renderResources.Images.BitmapCache.StoreAndAcquire(
-                       device,
-                       resolved.CacheKey,
-                       CreateBitmap(device, 64, 32),
-                       new Size(64, 32)))
-            {
-            }
+            string imageUri = SeedBuiltInImage(device);
 
             sourceContext = CreateContext(device, theme, sourceMap, registry, documentOwner, preparationOwner, disclosures);
             source = new InlineContainerBox(sourceContext, MarkdownElementKeys.Body)
             {
                 BlockIndex = sourceContext.NextBlockIndex(),
             };
-            var left = new SourceSliceTextRun(sourceText, 0, DirectSliceLength)
-            {
-                SourceSpan = new SourceSpan(0, DirectSliceLength),
-                StyleAliases = new[] { "source-literal" },
-                StyleModifierKeys = new[] { MarkdownElementKeys.Strong },
-            };
-            var sourceImageRun = new InlineImageRun(sourceContext, "image", imageUri)
-            {
-                SourceSpan = new SourceSpan(DirectSliceLength, 1),
-            };
-            var right = new SourceSliceTextRun(
-                sourceText, DirectSliceLength + 1, DirectSliceLength)
-            {
-                SourceSpan = new SourceSpan(DirectSliceLength + 1, DirectSliceLength),
-            };
-            source.Add(left);
-            source.Add(sourceImageRun);
-            source.Add(right);
+            (SourceSliceTextRun left, InlineImageRun sourceImageRun, SourceSliceTextRun right) =
+                AddSliceImageSliceRuns(source, sourceContext, sourceText, imageUri);
 
             AssertUnmaterialized(left, right);
             _ = source.Measure(320f);
@@ -107,52 +79,9 @@ public sealed class SourceSliceMeasuredPlacementTransferTests
             AssertUnmaterialized(candidateSlices);
             Assert.False(transfer!.IsCurrentAndPrepared());
 
-            _ = candidate.Measure(320f);
-            candidate.Arrange(0f, 0f, 320f);
-            AssertUnmaterialized(left, right);
-            AssertUnmaterialized(candidateSlices);
-            Assert.True(transfer!.IsCurrentAndPrepared());
-            AssertUnmaterialized(left, right);
-            AssertUnmaterialized(candidateSlices);
+            MeasureCandidateAndAssertPreparedLazily(candidate, transfer, left, right, candidateSlices);
 
-            SourceSpan sourceOriginalSpan = left.SourceSpan;
-            left.SourceSpan = new SourceSpan(sourceOriginalSpan.Start + 1, sourceOriginalSpan.Length);
-            Assert.False(transfer.IsCurrentAndPrepared());
-            left.SourceSpan = sourceOriginalSpan;
-            Assert.True(transfer.IsCurrentAndPrepared());
-
-            SourceSliceTextRun spanFenceRun = candidateSlices[0];
-            SourceSpan originalSpan = spanFenceRun.SourceSpan;
-            spanFenceRun.SourceSpan = new SourceSpan(originalSpan.Start + 1, originalSpan.Length);
-            Assert.False(transfer.IsCurrentAndPrepared());
-            spanFenceRun.SourceSpan = originalSpan;
-            Assert.True(transfer.IsCurrentAndPrepared());
-            AssertUnmaterialized(left, right);
-            AssertUnmaterialized(candidateSlices);
-
-            SourceSliceTextRun indexFenceRun = candidateSlices[1];
-            int originalInlineIndex = indexFenceRun.InlineIndex;
-            indexFenceRun.InlineIndex = originalInlineIndex - 1;
-            Assert.False(transfer.IsCurrentAndPrepared());
-            indexFenceRun.InlineIndex = originalInlineIndex;
-            Assert.True(transfer.IsCurrentAndPrepared());
-            AssertUnmaterialized(left, right);
-            AssertUnmaterialized(candidateSlices);
-
-            SourceSliceTextRun styleFenceRun = candidateSlices[0];
-            IReadOnlyList<string> originalAliases = styleFenceRun.StyleAliases;
-            styleFenceRun.StyleAliases = new[] { "changed-alias" };
-            Assert.False(transfer.IsCurrentAndPrepared());
-            styleFenceRun.StyleAliases = originalAliases;
-            Assert.True(transfer.IsCurrentAndPrepared());
-
-            IReadOnlyList<string> originalModifiers = styleFenceRun.StyleModifierKeys;
-            styleFenceRun.StyleModifierKeys = new[] { MarkdownElementKeys.Emphasis };
-            Assert.False(transfer.IsCurrentAndPrepared());
-            styleFenceRun.StyleModifierKeys = originalModifiers;
-            Assert.True(transfer.IsCurrentAndPrepared());
-            AssertUnmaterialized(left, right);
-            AssertUnmaterialized(candidateSlices);
+            AssertSliceFencesInvalidateTransfer(transfer, left, right, candidateSlices);
 
             transfer.SwapPlacementNoThrow();
             AssertUnmaterialized(left, right);
@@ -161,24 +90,136 @@ public sealed class SourceSliceMeasuredPlacementTransferTests
         finally
         {
             if (candidate is not null && candidateContext is not null)
-            {
-                InlineImageRun[] imageRuns = candidate.Runs.OfType<InlineImageRun>().ToArray();
-                candidateContext.DiscardConstructionBlock(candidate);
-                foreach (InlineImageRun imageRun in imageRuns)
-                    await imageRun.Image.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
-            }
+                await DiscardWithImagesAsync(candidate, candidateContext);
 
             if (source is not null && sourceContext is not null)
-            {
-                InlineImageRun[] imageRuns = source.Runs.OfType<InlineImageRun>().ToArray();
-                sourceContext.DiscardConstructionBlock(source);
-                foreach (InlineImageRun imageRun in imageRuns)
-                    await imageRun.Image.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
-            }
+                await DiscardWithImagesAsync(source, sourceContext);
 
             _renderResources.Images.BitmapCache.ReleaseDevice(device);
             device.Dispose();
         }
+    }
+
+    private static string CreateSliceImageSliceText() => string.Concat(
+        new string('a', DirectSliceLength),
+        "!",
+        new string('b', DirectSliceLength));
+
+    private static void MeasureCandidateAndAssertPreparedLazily(
+        InlineContainerBox candidate,
+        InlineMeasuredPlacementTransfer transfer,
+        SourceSliceTextRun left,
+        SourceSliceTextRun right,
+        SourceSliceTextRun[] candidateSlices)
+    {
+        _ = candidate.Measure(320f);
+        candidate.Arrange(0f, 0f, 320f);
+        AssertUnmaterialized(left, right);
+        AssertUnmaterialized(candidateSlices);
+        Assert.True(transfer.IsCurrentAndPrepared());
+        AssertUnmaterialized(left, right);
+        AssertUnmaterialized(candidateSlices);
+    }
+
+    private string SeedBuiltInImage(CanvasDevice device)
+    {
+        string imageUri = new Uri($"ms-appx:///source-slice-placement-{Guid.NewGuid():N}.png").AbsoluteUri;
+        Assert.True(MarkdownBuiltInImageSourcePolicy.TryResolve(
+            imageUri, null, out MarkdownBuiltInImageSource resolved));
+        using (_renderResources.Images.BitmapCache.StoreAndAcquire(
+                   device,
+                   resolved.CacheKey,
+                   CreateBitmap(device, 64, 32),
+                   new Size(64, 32)))
+        {
+        }
+        return imageUri;
+    }
+
+    private static (SourceSliceTextRun Left, InlineImageRun Image, SourceSliceTextRun Right) AddSliceImageSliceRuns(
+        InlineContainerBox source,
+        MarkdownLayoutContext sourceContext,
+        string sourceText,
+        string imageUri)
+    {
+        var left = new SourceSliceTextRun(sourceText, 0, DirectSliceLength)
+        {
+            SourceSpan = new SourceSpan(0, DirectSliceLength),
+            StyleAliases = new[] { "source-literal" },
+            StyleModifierKeys = new[] { MarkdownElementKeys.Strong },
+        };
+        var sourceImageRun = new InlineImageRun(sourceContext, "image", imageUri)
+        {
+            SourceSpan = new SourceSpan(DirectSliceLength, 1),
+        };
+        var right = new SourceSliceTextRun(
+            sourceText, DirectSliceLength + 1, DirectSliceLength)
+        {
+            SourceSpan = new SourceSpan(DirectSliceLength + 1, DirectSliceLength),
+        };
+        source.Add(left);
+        source.Add(sourceImageRun);
+        source.Add(right);
+        return (left, sourceImageRun, right);
+    }
+
+    /// <summary>
+    /// Each source and candidate slice fence (span, inline index, style aliases and
+    /// modifiers) must invalidate the transfer while changed and restore it when
+    /// reverted, without materializing any slice text.
+    /// </summary>
+    private static void AssertSliceFencesInvalidateTransfer(
+        InlineMeasuredPlacementTransfer transfer,
+        SourceSliceTextRun left,
+        SourceSliceTextRun right,
+        SourceSliceTextRun[] candidateSlices)
+    {
+        SourceSpan sourceOriginalSpan = left.SourceSpan;
+        left.SourceSpan = new SourceSpan(sourceOriginalSpan.Start + 1, sourceOriginalSpan.Length);
+        Assert.False(transfer.IsCurrentAndPrepared());
+        left.SourceSpan = sourceOriginalSpan;
+        Assert.True(transfer.IsCurrentAndPrepared());
+
+        SourceSliceTextRun spanFenceRun = candidateSlices[0];
+        SourceSpan originalSpan = spanFenceRun.SourceSpan;
+        spanFenceRun.SourceSpan = new SourceSpan(originalSpan.Start + 1, originalSpan.Length);
+        Assert.False(transfer.IsCurrentAndPrepared());
+        spanFenceRun.SourceSpan = originalSpan;
+        Assert.True(transfer.IsCurrentAndPrepared());
+        AssertUnmaterialized(left, right);
+        AssertUnmaterialized(candidateSlices);
+
+        SourceSliceTextRun indexFenceRun = candidateSlices[1];
+        int originalInlineIndex = indexFenceRun.InlineIndex;
+        indexFenceRun.InlineIndex = originalInlineIndex - 1;
+        Assert.False(transfer.IsCurrentAndPrepared());
+        indexFenceRun.InlineIndex = originalInlineIndex;
+        Assert.True(transfer.IsCurrentAndPrepared());
+        AssertUnmaterialized(left, right);
+        AssertUnmaterialized(candidateSlices);
+
+        SourceSliceTextRun styleFenceRun = candidateSlices[0];
+        IReadOnlyList<string> originalAliases = styleFenceRun.StyleAliases;
+        styleFenceRun.StyleAliases = new[] { "changed-alias" };
+        Assert.False(transfer.IsCurrentAndPrepared());
+        styleFenceRun.StyleAliases = originalAliases;
+        Assert.True(transfer.IsCurrentAndPrepared());
+
+        IReadOnlyList<string> originalModifiers = styleFenceRun.StyleModifierKeys;
+        styleFenceRun.StyleModifierKeys = new[] { MarkdownElementKeys.Emphasis };
+        Assert.False(transfer.IsCurrentAndPrepared());
+        styleFenceRun.StyleModifierKeys = originalModifiers;
+        Assert.True(transfer.IsCurrentAndPrepared());
+        AssertUnmaterialized(left, right);
+        AssertUnmaterialized(candidateSlices);
+    }
+
+    private static async Task DiscardWithImagesAsync(InlineContainerBox box, MarkdownLayoutContext context)
+    {
+        InlineImageRun[] imageRuns = box.Runs.OfType<InlineImageRun>().ToArray();
+        context.DiscardConstructionBlock(box);
+        foreach (InlineImageRun imageRun in imageRuns)
+            await imageRun.Image.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
     }
 
     private MarkdownLayoutContext CreateContext(
