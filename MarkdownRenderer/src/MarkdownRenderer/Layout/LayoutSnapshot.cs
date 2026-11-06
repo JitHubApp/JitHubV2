@@ -17,6 +17,14 @@ namespace MarkdownRenderer.Layout;
 /// Holds the laid-out block tree for a single markdown source. Computed off the
 /// UI thread; published atomically to <see cref="MarkdownRenderer.Controls.MarkdownRendererControl"/>.
 /// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because it is the snapshot's one
+/// published surface. Geometry, bands, relayout, raster candidates, focus,
+/// hit testing, painting and placement queries each live in their own owner;
+/// what stays here is the constructor that wires them and a one-line
+/// forward per operation, so callers hold one snapshot reference and never
+/// reach an owner that shares the layout gate directly.
+/// </remarks>
 internal sealed class LayoutSnapshot : System.IDisposable, ILayoutSnapshotRetirementHost
 {
     private readonly object _layoutLock = new();
@@ -140,6 +148,12 @@ internal sealed class LayoutSnapshot : System.IDisposable, ILayoutSnapshotRetire
     {
     }
 
+    // This constructor stays whole because it wires the snapshot's owners in
+    // dependency order: the block ordinals are filled before the semantic
+    // traversal feeds the index builder, the focus and plan owners consume
+    // that builder before the ordinal index freezes, and the band, relayout
+    // and raster owners are created over the frozen index before the initial
+    // metadata is published.
     internal LayoutSnapshot(
         IReadOnlyList<BlockBox> blocks,
         MarkdownSourceMap sourceMap,
@@ -218,8 +232,8 @@ internal sealed class LayoutSnapshot : System.IDisposable, ILayoutSnapshotRetire
             _geometry, _recovery, _retirement, _planCandidates, vectorSceneResidencyPolicy);
         _locator = new SnapshotBlockLocator(_geometry, _recovery, _retirement);
         _relayout = new ChangedBlockRelayout(_geometry, _recovery);
-        _imageRoots = new CompletedImageRootRelayout(
-            _geometry, _recovery, _retirement, _relayout,
+        _imageRoots = new CompletedImageRootRelayout(
+            _geometry, _recovery, _retirement, _relayout,
             new CompletedImageRootCapture(_geometry, _recovery, sourceMap));
         _rasterCandidates = new PrivateRasterCandidateFactory(
             this, _geometry, _recovery, _retirement, _bands, _horizontalOverflow,
