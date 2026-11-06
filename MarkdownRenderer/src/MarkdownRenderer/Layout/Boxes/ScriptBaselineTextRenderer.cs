@@ -12,6 +12,11 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// shaper, wrapping, bidi ordering, clusters, and source character indexes do
 /// not change.
 /// </summary>
+/// <remarks>
+/// Declared <c>partial</c> because CsWinRT generates the AOT interop
+/// vtable for classes that implement the WinRT <c>ICanvasTextRenderer</c>
+/// interface.
+/// </remarks>
 internal sealed partial class ScriptBaselineTextRenderer : ICanvasTextRenderer, IDisposable
 {
     private readonly CanvasDrawingSession _drawingSession;

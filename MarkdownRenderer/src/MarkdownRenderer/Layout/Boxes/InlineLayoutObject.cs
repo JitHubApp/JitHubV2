@@ -12,6 +12,11 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// font-dependent U+FFFC glyph advance that previously made tall images
 /// consume hundreds of extra horizontal DIPs and wrap unnecessarily.
 /// </summary>
+/// <remarks>
+/// Declared <c>partial</c> because CsWinRT generates the AOT interop
+/// vtable for classes that implement the WinRT <c>ICanvasTextInlineObject</c>
+/// interface.
+/// </remarks>
 internal sealed partial class InlineLayoutObject : ICanvasTextInlineObject
 {
     public InlineLayoutObject(
