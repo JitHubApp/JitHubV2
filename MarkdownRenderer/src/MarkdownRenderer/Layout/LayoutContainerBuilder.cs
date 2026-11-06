@@ -62,7 +62,7 @@ internal sealed class LayoutContainerBuilder
         };
         _tracker.TrackBlock(stack);
         stack.BlockIndex = _context.NextBlockIndex();
-        using var quoteScoue = _context.PushStyleContext(MarkdownElementKeys.Quote);
+        using var quoteScoue = _context.Styles.PushContext(MarkdownElementKeys.Quote);
         PopulateBlockChildren(stack, qb);
         CollapseTrailingQuoteParagraphMargin(stack);
         return stack;
@@ -124,7 +124,7 @@ internal sealed class LayoutContainerBuilder
 
     internal StackBox BuildList(ListBlock list)
     {
-        using var listScope = _context.PushListDepth();
+        using var listScope = _context.Styles.PushListDepth();
         Thickness listMargin = _context.ThemeSnapshot.GetStyle(
             ListContainerStyleRole,
             _context.CreateStyleContextSnapshot(),
@@ -191,7 +191,7 @@ internal sealed class LayoutContainerBuilder
             MarkdownElementKeys.ListMarker,
             _context.CreateStyleContextSnapshot(),
             _context.CreateStyleAliasSnapshot());
-        float markerWidth = Math.Max(1f, listStyle.ListIndent + Math.Max(0, _context.ListDepth - 1) * listStyle.NestedListIndent);
+        float markerWidth = Math.Max(1f, listStyle.ListIndent + Math.Max(0, _context.Styles.ListDepth - 1) * listStyle.NestedListIndent);
 
         // Marker gutter — fixed width; center the unordered bullet without
         // changing the content column or ordered-marker alignment.
@@ -258,7 +258,7 @@ internal sealed class LayoutContainerBuilder
     {
         SafeHtmlBlockScopeTracker? htmlScopes = _context.Registry.SafeHtmlPolicy is null
             ? null
-            : _context.SafeHtmlNestedScopes ??
+            : _context.SafeHtmlBlock.NestedScopes ??
               new SafeHtmlBlockScopeTracker(_context.Registry.SafeHtmlPolicy.Limits);
         bool htmlBudgetNoticeAdded = htmlScopes?.BudgetExceeded == true;
         foreach (Block child in container)
@@ -342,7 +342,7 @@ internal sealed class LayoutContainerBuilder
             ? htmlScopes?.CloneForNestedContent()
             : null;
         BlockBox? box;
-        using (_context.PushSafeHtmlBlockContext(
+        using (_context.SafeHtmlBlock.Push(
                    alignmentAtBlockEntry,
                    nestedScopes,
                    inlineFlowScopeIdForBlock,

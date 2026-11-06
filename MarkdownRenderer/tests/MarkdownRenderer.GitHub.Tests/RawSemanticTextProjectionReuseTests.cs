@@ -133,7 +133,7 @@ public sealed class RawSemanticTextProjectionReuseTests
     }
 
     [Fact]
-    public void ExistingConstructorAndBuildReflectionShapesRemainAvailable()
+    public void ExistingConstructorAndBuildShapesRemainAvailable()
     {
         Type[] snapshotParameters =
         [
@@ -153,33 +153,17 @@ public sealed class RawSemanticTextProjectionReuseTests
         Assert.NotNull(snapshotConstructor);
         Assert.Equal(11, snapshotConstructor!.GetParameters().Length);
 
-        Type[] semanticParameters =
-        [
-            typeof(MarkdownSemanticNode),
-            typeof(string),
-            typeof(IReadOnlyList<MarkdownTextSpan>),
-        ];
-        ConstructorInfo? semanticConstructor = typeof(MarkdownSemanticDocument).GetConstructor(
-            BindingFlags.Instance | BindingFlags.NonPublic,
-            binder: null,
-            types: semanticParameters,
-            modifiers: null);
+        // The internal shapes bind at compile time: each delegate below stops
+        // compiling if its constructor or factory loses that signature.
+        Func<MarkdownSemanticNode, string, IReadOnlyList<MarkdownTextSpan>, MarkdownSemanticDocument> semanticConstructor =
+            static (root, text, spans) => new MarkdownSemanticDocument(root, text, spans);
+        Func<LayoutSnapshot, MarkdownSemanticTextProjectionReuse> projectionCapture =
+            MarkdownSemanticTextProjectionReuse.Capture;
         Assert.NotNull(semanticConstructor);
-        Assert.Equal(3, semanticConstructor!.GetParameters().Length);
+        Assert.NotNull(projectionCapture);
         Assert.NotNull(typeof(MarkdownSemanticDocument).GetMethod(
             nameof(MarkdownSemanticDocument.Build),
             BindingFlags.Public | BindingFlags.Static,
-            binder: null,
-            types: [typeof(LayoutSnapshot)],
-            modifiers: null));
-
-        ConstructorInfo projectionConstructor = typeof(MarkdownSemanticTextProjectionReuse)
-            .GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic)
-            .Single();
-        Assert.True(projectionConstructor.IsPrivate);
-        Assert.NotNull(typeof(MarkdownSemanticTextProjectionReuse).GetMethod(
-            "Capture",
-            BindingFlags.Static | BindingFlags.NonPublic,
             binder: null,
             types: [typeof(LayoutSnapshot)],
             modifiers: null));

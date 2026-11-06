@@ -24,7 +24,7 @@ internal static class HtmlNestedMarkdownSource
     {
         bodyOffset = 0;
         nestedProjection = null;
-        MarkdownSourceProjection? safeHtmlProjection = context.SafeHtmlSourceProjection;
+        MarkdownSourceProjection? safeHtmlProjection = context.SourceProjections.SafeHtml;
         MarkdownSourceProjectionBuilder? projectionBuilder = safeHtmlProjection is null
             ? null
             : new MarkdownSourceProjectionBuilder();

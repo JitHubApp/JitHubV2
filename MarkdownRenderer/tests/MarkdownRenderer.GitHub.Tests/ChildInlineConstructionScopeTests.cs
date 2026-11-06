@@ -32,7 +32,7 @@ public sealed class ChildInlineConstructionScopeTests
                 : builder.Build(document, 640, CancellationToken.None);
             TableBox table = Assert.Single(snapshot.Blocks.OfType<TableBox>());
             InlineContainerBox cell = table.GetCellBoxes().First();
-            Assert.False(context.TryAppendChildInlines(cell, new ContainerInline(), null, -1));
+            Assert.False(context.ChildBuilders.TryAppendInlines(cell, new ContainerInline(), null, -1));
         }
         finally
         {
@@ -58,7 +58,7 @@ public sealed class ChildInlineConstructionScopeTests
         Func<Inline, bool> filter = static inline => inline is LiteralInline;
         int outerCalls = 0;
         int innerCalls = 0;
-        using (context.PushChildInlineBuilder((box, received, skip, aliasStart) =>
+        using (context.ChildBuilders.PushInlineBuilder((box, received, skip, aliasStart) =>
         {
             Assert.Same(seed.Source, box);
             Assert.Same(inlines, received);
@@ -67,14 +67,14 @@ public sealed class ChildInlineConstructionScopeTests
             outerCalls++;
         }))
         {
-            Assert.True(context.TryAppendChildInlines(seed.Source, inlines, filter, 17));
-            using (context.PushChildInlineBuilder((_, _, _, _) => innerCalls++))
-                Assert.True(context.TryAppendChildInlines(seed.Source, inlines, null, -1));
-            Assert.True(context.TryAppendChildInlines(seed.Source, inlines, filter, 17));
+            Assert.True(context.ChildBuilders.TryAppendInlines(seed.Source, inlines, filter, 17));
+            using (context.ChildBuilders.PushInlineBuilder((_, _, _, _) => innerCalls++))
+                Assert.True(context.ChildBuilders.TryAppendInlines(seed.Source, inlines, null, -1));
+            Assert.True(context.ChildBuilders.TryAppendInlines(seed.Source, inlines, filter, 17));
         }
         Assert.Equal(2, outerCalls);
         Assert.Equal(1, innerCalls);
-        Assert.False(context.TryAppendChildInlines(seed.Source, inlines, filter, 17));
+        Assert.False(context.ChildBuilders.TryAppendInlines(seed.Source, inlines, filter, 17));
     }
 
     [Theory]
@@ -89,18 +89,18 @@ public sealed class ChildInlineConstructionScopeTests
             cancellation.Cancel();
         void Invoke()
         {
-            using var scope = context.PushChildInlineBuilder((_, _, _, _) =>
+            using var scope = context.ChildBuilders.PushInlineBuilder((_, _, _, _) =>
             {
                 cancellation.Token.ThrowIfCancellationRequested();
                 throw new InvalidOperationException("injected child construction failure");
             });
-            context.TryAppendChildInlines(seed.Source, new ContainerInline(), null, -1);
+            context.ChildBuilders.TryAppendInlines(seed.Source, new ContainerInline(), null, -1);
         }
         if (canceled)
             Assert.ThrowsAny<OperationCanceledException>(Invoke);
         else
             Assert.Throws<InvalidOperationException>(Invoke);
-        Assert.False(context.TryAppendChildInlines(seed.Source, new ContainerInline(), null, -1));
+        Assert.False(context.ChildBuilders.TryAppendInlines(seed.Source, new ContainerInline(), null, -1));
     }
 
     [Fact]
@@ -110,13 +110,13 @@ public sealed class ChildInlineConstructionScopeTests
         MarkdownLayoutContext foreign = seed.CreateContext();
         var box = new InlineContainerBox(foreign, MarkdownElementKeys.Body);
         int calls = 0;
-        using (seed.SourceContext.PushChildInlineBuilder((_, _, _, _) => calls++))
+        using (seed.SourceContext.ChildBuilders.PushInlineBuilder((_, _, _, _) => calls++))
         {
             Assert.Throws<InvalidOperationException>(() =>
-                seed.SourceContext.TryAppendChildInlines(box, new ContainerInline(), null, -1));
+                seed.SourceContext.ChildBuilders.TryAppendInlines(box, new ContainerInline(), null, -1));
             Assert.Equal(0, calls);
         }
-        Assert.False(seed.SourceContext.TryAppendChildInlines(box, new ContainerInline(), null, -1));
+        Assert.False(seed.SourceContext.ChildBuilders.TryAppendInlines(box, new ContainerInline(), null, -1));
         try
         {
             box.Dispose();

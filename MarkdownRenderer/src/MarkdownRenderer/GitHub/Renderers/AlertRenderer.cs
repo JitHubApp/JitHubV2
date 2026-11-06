@@ -64,7 +64,7 @@ internal sealed class AlertRenderer : MarkdownNodeRenderer<QuoteBlock>
             Margin = style.Margin,
             FlowDirection = context.FlowDirection,
         };
-        using var alertScope = context.PushStyleContext(alert.StyleKey);
+        using var alertScope = context.Styles.PushContext(alert.StyleKey);
 
         // Title row: icon + alert type name
         var titleBox = new InlineContainerBox(context, MarkdownElementKeys.Strong);

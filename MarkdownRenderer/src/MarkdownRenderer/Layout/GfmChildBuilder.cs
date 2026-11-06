@@ -30,7 +30,7 @@ internal static class GfmChildBuilder
         context.RegisterConstructionBlock(stack);
         SafeHtmlBlockScopeTracker? htmlScopes = context.Registry.SafeHtmlPolicy is null
             ? null
-            : context.SafeHtmlNestedScopes?.CloneForNestedContent() ??
+            : context.SafeHtmlBlock.NestedScopes?.CloneForNestedContent() ??
               new SafeHtmlBlockScopeTracker(context.Registry.SafeHtmlPolicy.Limits);
         bool htmlBudgetNoticeAdded = htmlScopes?.BudgetExceeded == true;
         foreach (Block child in container)
@@ -101,7 +101,7 @@ internal static class GfmChildBuilder
             ? htmlScopes?.CloneForNestedContent()
             : null;
         BlockBox? box;
-        using (context.PushSafeHtmlBlockContext(
+        using (context.SafeHtmlBlock.Push(
                    alignmentAtBlockEntry,
                    nestedScopes,
                    inlineFlowScopeIdAtBlockEntry))
@@ -168,7 +168,7 @@ internal static class GfmChildBuilder
         // A nested list is not a generic stack: it owns marker numbering,
         // tight/loose spacing and list-depth indentation. Use the same builder
         // as top-level lists when called inside a normal layout transaction.
-        if (block is ListBlock && context.TryBuildChildBlock(block, out BlockBox? nestedList))
+        if (block is ListBlock && context.ChildBuilders.TryBuildBlock(block, out BlockBox? nestedList))
             return nestedList;
 
         // Code blocks need the owning layout's source projection and chunk
@@ -178,7 +178,7 @@ internal static class GfmChildBuilder
         // for internal callers that construct a child outside BuildBlocks.
         if (block is CodeBlock code)
         {
-            if (context.TryBuildChildBlock(block, out BlockBox? ownerBuiltCode))
+            if (context.ChildBuilders.TryBuildBlock(block, out BlockBox? ownerBuiltCode))
                 return ownerBuiltCode;
 
             return LayoutBuilder.BuildCodeBlockForExtension(code, context);

@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Collections.Concurrent;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
@@ -13,9 +12,12 @@ namespace MarkdownRenderer.GitHub.Tests;
 /// threshold increases, already-ready thresholds, and rejected and
 /// barriered duplicate registrations.
 /// </summary>
-// These tests exercise managed registry ownership only. Bare boxes are weak
-// identity tokens; only managed deferred-ownership callbacks are called, never
-// layout, paint, WinUI, provider rendering or device methods.
+// These tests exercise managed registry ownership only. Every owner is a real
+// SvgHostLoadDeferral over a managed host, denied through DeferSvgHostLoad and
+// registered by the scope's admission coordinator. A stale attempt comes from
+// a second real denial. The deferral lock is reentrant, so a denial made while
+// the test holds it completes before a blocked registration callback resumes.
+// No layout, paint, WinUI, provider rendering or device methods are called.
 [Collection(AllocationSensitiveContractCollection.Name)]
 public sealed class SvgHostDuplicateWaiterTests
 {
@@ -24,15 +26,14 @@ public sealed class SvgHostDuplicateWaiterTests
     [Fact]
     public void LateFinishedWaiterCannotClearAReplacementForTheSameDemandAndGeneration()
     {
-        SvgHostLoadDeferral owner = TestSvgHostDeferralHost.CreateDeferral(_renderResources.Images);
-        var domain = new SvgHostAdmissionDomain();
-        var admission = new RegistryAdmission();
+        var admission = new ThresholdAdmission();
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         const int generation = 41;
-        TestSvgHostDeferralHost.Of(owner).LoadDemand = demand;
-        TestSvgHostDeferralHost.Of(owner).LoadDemandGeneration = generation;
-        SetField(owner, "_svgHostDeferred", 1);
         using var lifetime = new CancellationTokenSource();
+        SvgHostLoadDeferral owner = CreateLoadingOwner(
+            _renderResources.Images, demand, lifetime.Token, generation: generation);
+        // The test's waiters belong to their own domain and are never queued.
+        var domain = new SvgHostAdmissionDomain();
         var oldEntry = new SvgHostPendingEntry(
             owner, admission, demand, generation, 0, 128, false, 0, 0, 0, lifetime.Token);
         var replacementEntry = new SvgHostPendingEntry(
@@ -41,33 +42,37 @@ public sealed class SvgHostDuplicateWaiterTests
         using var replacement = new SvgHostPendingWaiter(domain, replacementEntry);
         try
         {
-            object oldAttempt = new();
-            SetField(owner, "_svgHostDeferredRegistrationAttempt", oldAttempt);
+            Deny(owner, admission, demand, requiredBytes: 128, generation);
+            object oldAttempt = AttemptOf(owner);
             Assert.True(owner.OnSvgHostAdmissionWaiterRegistered(demand, generation, oldAttempt, oldWaiter));
-            SetField(owner, "_svgHostDeferredWaiter", oldWaiter);
+            Assert.True(owner.GetState().HasWaiter);
             owner.OnSvgHostAdmissionWaiterFinished(demand, generation, oldWaiter.Identity);
-            Assert.Null(NullableField(owner, "_svgHostDeferredWaiter"));
+            Assert.False(owner.GetState().HasWaiter);
 
-            object newAttempt = new();
-            SetField(owner, "_svgHostDeferredRegistrationAttempt", newAttempt);
+            Deny(owner, admission, demand, requiredBytes: 128, generation);
+            object newAttempt = AttemptOf(owner);
+            Assert.NotSame(oldAttempt, newAttempt);
             Assert.True(owner.OnSvgHostAdmissionWaiterRegistered(demand, generation, newAttempt, replacement));
-            SetField(owner, "_svgHostDeferredWaiter", replacement);
             owner.OnSvgHostAdmissionWaiterFinished(demand, generation, oldWaiter.Identity);
-            Assert.Same(replacement, NullableField(owner, "_svgHostDeferredWaiter"));
-            Assert.Same(replacement.Identity, NullableField(owner, "_svgHostDeferredWaiterIdentity"));
-            Assert.Same(newAttempt, NullableField(owner, "_svgHostDeferredRegistrationAttempt"));
+            SvgHostLoadDeferralState kept = owner.GetState();
+            Assert.True(kept.HasWaiter);
+            Assert.Same(replacement.Identity, kept.WaiterIdentity);
+            Assert.Same(newAttempt, kept.RegistrationAttempt);
 
             owner.OnSvgHostAdmissionWaiterFinished(demand, generation, replacement.Identity);
-            Assert.Null(NullableField(owner, "_svgHostDeferredWaiter"));
-            Assert.Null(NullableField(owner, "_svgHostDeferredWaiterIdentity"));
-            Assert.Null(NullableField(owner, "_svgHostDeferredRegistrationAttempt"));
+            SvgHostLoadDeferralState finished = owner.GetState();
+            Assert.False(finished.HasWaiter);
+            Assert.Null(finished.WaiterIdentity);
+            Assert.Null(finished.RegistrationAttempt);
 
-            SetField(owner, "_svgHostDeferredRegistrationAttempt", newAttempt);
+            Deny(owner, admission, demand, requiredBytes: 128, generation);
+            object thirdAttempt = AttemptOf(owner);
             Volatile.Write(ref replacementEntry.WaiterCompletionStarted, 1);
-            Assert.False(owner.OnSvgHostAdmissionWaiterRegistered(demand, generation, newAttempt, replacement));
+            Assert.False(owner.OnSvgHostAdmissionWaiterRegistered(demand, generation, thirdAttempt, replacement));
         }
         finally
         {
+            owner.ClearSvgHostDeferral();
             // These entries are never queued: retire their source-free linked
             // cancellation objects explicitly, without starting a waiter.
             oldEntry.Cancellation.Dispose();
@@ -78,35 +83,29 @@ public sealed class SvgHostDuplicateWaiterTests
     [Fact]
     public async Task DuplicateThresholdIncreaseWaitsForTheLatestRequirementBeforeClaim()
     {
-        var domain = new SvgHostAdmissionDomain();
         var admission = new ThresholdAdmission();
-        var owner = TestSvgHostDeferralHost.CreateDeferral(_renderResources.Images);
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using var lifetime = new CancellationTokenSource();
-        var firstAttempt = new object();
-        InitializeSourceDeferredOwner(owner, demand, firstAttempt, admission, requiredBytes: 128);
         var queued = new ConcurrentQueue<Action>();
-        SetField(owner, "_svgDeferredRetryEnqueueOverride", new Func<Action, bool>(callback =>
+        SvgHostLoadDeferral owner = CreateLoadingOwner(_renderResources.Images, demand, lifetime.Token, callback =>
         {
             queued.Enqueue(callback);
             return true;
-        }));
+        });
+        SvgHostAdmissionDomain domain = DomainOf(_renderResources.Images, admission.DomainKey);
 
-        SvgHostPendingWaiter first = Assert.IsType<SvgHostPendingWaiter>(
-            domain.Defer(owner, admission, demand, 1, admission.CapacityVersion, 128, false,
-                domain.Owners.OwnerVersion, demand.Version, 0, firstAttempt, lifetime.Token));
-        SvgHostPendingEntry entry = PendingEntryOf(first);
+        Deny(owner, admission, demand, requiredBytes: 128);
+        SvgHostLoadDeferralState denied = owner.GetState();
+        SvgHostPendingEntry entry = PendingEntry(domain, denied.WaiterIdentity);
         Assert.True(SpinWait.SpinUntil(() => admission.WaitCalls.Length == 1, TimeSpan.FromSeconds(5)));
         Assert.Equal(128, admission.WaitCalls[0].RequiredBytes);
         Assert.Equal(0, admission.CapacityVersion);
 
-        var secondAttempt = new object();
-        lock (Field<object>(owner, "_svgHostDeferredSync"))
-            SetField(owner, "_svgHostDeferredRegistrationAttempt", secondAttempt);
+        // A duplicate registration of the same demand raises the row's threshold.
         SvgHostPendingWaiter second = Assert.IsType<SvgHostPendingWaiter>(
             domain.Defer(owner, admission, demand, 1, admission.CapacityVersion, 512, false,
-                domain.Owners.OwnerVersion, demand.Version, 0, secondAttempt, lifetime.Token));
-        Assert.Same(first.Identity, second.Identity);
+                domain.Owners.OwnerVersion, demand.Version, 0, AttemptOf(owner), lifetime.Token));
+        Assert.Same(entry.Identity, second.Identity);
         Assert.Equal(512, entry.RequiredSourceReservationBytes);
 
         // The smaller wait becomes ready without any version change. The
@@ -116,67 +115,65 @@ public sealed class SvgHostDuplicateWaiterTests
         Assert.True(SpinWait.SpinUntil(() => admission.WaitCalls.Length == 2, TimeSpan.FromSeconds(5)));
         Assert.Equal(512, admission.WaitCalls[1].RequiredBytes);
         Assert.Equal(0, Volatile.Read(ref entry.Claimed));
-        Assert.Contains(entry, Field<ICollection>(domain, "_pending").Cast<SvgHostPendingEntry>());
+        Assert.Contains(entry, domain.GetPendingEntries());
         Assert.Empty(queued);
 
         admission.SetAvailableBytes(512);
-        Assert.True(SpinWait.SpinUntil(() => first.IsFinished, TimeSpan.FromSeconds(5)));
+        Assert.True(SpinWait.SpinUntil(() => IsFinished(entry), TimeSpan.FromSeconds(5)));
         Assert.Equal(0, admission.CapacityVersion);
         Assert.Single(queued);
-        Assert.Equal(2, Field<int>(owner, "_svgHostDeferred"));
-        Assert.Same(first.Identity, NullableField(owner, "_svgHostDeferredWaiterIdentity"));
+        SvgHostLoadDeferralState retried = owner.GetState();
+        Assert.Equal(SvgHostDeferralPhase.RetryQueued, retried.Phase);
+        Assert.Same(entry.Identity, retried.WaiterIdentity);
 
-        first.Dispose();
         second.Dispose();
+        owner.ClearSvgHostDeferral();
         GC.KeepAlive(owner);
     }
 
     [Fact]
     public async Task RejectedDuplicateRegistrationCannotRaiseAnAcceptedWaitersThreshold()
     {
-        var domain = new SvgHostAdmissionDomain();
         var admission = new ThresholdAdmission();
-        var owner = TestSvgHostDeferralHost.CreateDeferral(_renderResources.Images);
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using var lifetime = new CancellationTokenSource();
-        var firstAttempt = new object();
-        InitializeSourceDeferredOwner(owner, demand, firstAttempt, admission, requiredBytes: 128);
         int queued = 0;
-        SetField(owner, "_svgDeferredRetryEnqueueOverride", new Func<Action, bool>(_ =>
+        SvgHostLoadDeferral owner = CreateLoadingOwner(_renderResources.Images, demand, lifetime.Token, _ =>
         {
             Interlocked.Increment(ref queued);
             return true;
-        }));
+        });
+        SvgHostAdmissionDomain domain = DomainOf(_renderResources.Images, admission.DomainKey);
 
-        SvgHostPendingWaiter first = Assert.IsType<
-            SvgHostPendingWaiter>(domain.Defer(
-                owner, admission, demand, 1, admission.CapacityVersion, 128, false,
-                domain.Owners.OwnerVersion, demand.Version, 0, firstAttempt, lifetime.Token));
-        SvgHostPendingEntry entry = PendingEntryOf(first);
+        Deny(owner, admission, demand, requiredBytes: 128);
+        SvgHostLoadDeferralState denied = owner.GetState();
+        SvgHostPendingEntry entry = PendingEntry(domain, denied.WaiterIdentity);
+        object staleAttempt = AttemptOf(owner);
         Assert.True(SpinWait.SpinUntil(() => admission.WaitCalls.Length == 1, TimeSpan.FromSeconds(5)));
 
-        object hostGate = Field<object>(owner, "_svgHostDeferredSync");
-        var rejectedAttempt = new object();
-        var replacementAttempt = new object();
         Task<SvgHostPendingWaiter?> rejectedRegistration;
-        Monitor.Enter(hostGate);
+        Monitor.Enter(owner.Sync);
         try
         {
-            SetField(owner, "_svgHostDeferredRegistrationAttempt", rejectedAttempt);
             rejectedRegistration = Task.Run(() => domain.Defer(
                 owner, admission, demand, 1, admission.CapacityVersion, 512, false,
-                domain.Owners.OwnerVersion, demand.Version, 0, rejectedAttempt, lifetime.Token));
+                domain.Owners.OwnerVersion, demand.Version, 0, staleAttempt, lifetime.Token));
             Assert.True(SpinWait.SpinUntil(() =>
                 Volatile.Read(ref entry.RegistrationsInFlight) == 1,
                 TimeSpan.FromSeconds(5)));
 
-            // The duplicate became stale while its ImageBox acceptance
-            // callback was waiting outside the coordinator lock.
-            SetField(owner, "_svgHostDeferredRegistrationAttempt", replacementAttempt);
+            // The duplicate becomes stale while its owner callback waits
+            // outside the coordinator lock: a second real denial of the same
+            // demand replaces its attempt and joins the accepted row.
+            Deny(owner, admission, demand, requiredBytes: 128);
+            SvgHostLoadDeferralState replaced = owner.GetState();
+            Assert.NotSame(staleAttempt, replaced.RegistrationAttempt);
+            Assert.True(replaced.HasWaiter);
+            Assert.Same(entry.Identity, replaced.WaiterIdentity);
         }
         finally
         {
-            Monitor.Exit(hostGate);
+            Monitor.Exit(owner.Sync);
         }
 
         Assert.Null(await rejectedRegistration.WaitAsync(TimeSpan.FromSeconds(5)));
@@ -184,150 +181,155 @@ public sealed class SvgHostDuplicateWaiterTests
         Assert.Equal(0, Volatile.Read(ref entry.RegistrationsInFlight));
 
         admission.SetAvailableBytes(128);
-        Assert.True(SpinWait.SpinUntil(() => first.IsFinished, TimeSpan.FromSeconds(5)));
+        Assert.True(SpinWait.SpinUntil(() => IsFinished(entry), TimeSpan.FromSeconds(5)));
         Assert.Single(admission.WaitCalls);
         Assert.Equal(1, Volatile.Read(ref queued));
-        first.Dispose();
+        owner.ClearSvgHostDeferral();
         GC.KeepAlive(owner);
     }
 
     [Fact]
     public async Task FirstRejectedRegistrationDoesNotSeedAcceptedDuplicateMetadataOrStrandWaiter()
     {
-        var domain = new SvgHostAdmissionDomain();
         var admission = new ThresholdAdmission();
-        SvgHostLoadDeferral owner = TestSvgHostDeferralHost.CreateDeferral(_renderResources.Images);
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using var lifetime = new CancellationTokenSource();
-        var rejectedAttempt = new object();
-        var acceptedAttempt = new object();
-        InitializeSourceDeferredOwner(owner, demand, rejectedAttempt, admission, requiredBytes: 1024);
         int queued = 0;
-        SetField(owner, "_svgDeferredRetryEnqueueOverride", new Func<Action, bool>(_ =>
+        SvgHostLoadDeferral owner = CreateLoadingOwner(_renderResources.Images, demand, lifetime.Token, _ =>
         {
             Interlocked.Increment(ref queued);
             return true;
-        }));
+        });
+        SvgHostAdmissionDomain domain = DomainOf(_renderResources.Images, admission.DomainKey);
 
-        object hostGate = Field<object>(owner, "_svgHostDeferredSync");
-        Task<SvgHostPendingWaiter?> rejectedTask;
-        Task<SvgHostPendingWaiter?> acceptedTask;
+        // Pause the first denial's registration after the denial is recorded,
+        // so the test can take the deferral lock before the row is published.
+        Task domainReadHeld = admission.HoldNextDomainRead();
+        Task rejectedDenial = Task.Run(() => Deny(owner, admission, demand, requiredBytes: 1024));
+        await domainReadHeld.WaitAsync(TimeSpan.FromSeconds(5));
+
         SvgHostPendingEntry entry;
-        Monitor.Enter(hostGate);
+        Monitor.Enter(owner.Sync);
         try
         {
-            SetField(owner, "_svgHostDeferredRegistrationAttempt", rejectedAttempt);
-            rejectedTask = Task.Run(() => domain.Defer(
-                owner, admission, demand, 1, admission.CapacityVersion, 1024, false,
-                domain.Owners.OwnerVersion, demand.Version, 0, rejectedAttempt, lifetime.Token));
-            Assert.True(SpinWait.SpinUntil(() =>
-                Field<ICollection>(domain, "_pending").Count == 1,
+            admission.ReleaseDomainRead();
+            Assert.True(SpinWait.SpinUntil(
+                () => domain.GetPendingEntries() is [var row] &&
+                    Volatile.Read(ref row.RegistrationsInFlight) == 1,
                 TimeSpan.FromSeconds(5)));
-            entry = Field<ICollection>(domain, "_pending")
-                .Cast<SvgHostPendingEntry>()
-                .Single();
-            Assert.True(SpinWait.SpinUntil(() =>
-                Volatile.Read(ref entry.RegistrationsInFlight) == 1,
-                TimeSpan.FromSeconds(5)));
+            entry = Assert.Single(domain.GetPendingEntries());
+            Assert.False(entry.HasAcceptedRegistration);
 
             // The first row's constructor values are provisional. While its
-            // identity callback is blocked, publish a lower-threshold attempt
-            // that will be the only one accepted by the ImageBox.
-            SetField(owner, "_svgHostDeferredRegistrationAttempt", acceptedAttempt);
-            acceptedTask = Task.Run(() => domain.Defer(
-                owner, admission, demand, 1, admission.CapacityVersion, 256, false,
-                domain.Owners.OwnerVersion, demand.Version, 0, acceptedAttempt, lifetime.Token));
-            Assert.True(SpinWait.SpinUntil(() =>
-                Volatile.Read(ref entry.RegistrationsInFlight) == 2,
-                TimeSpan.FromSeconds(5)));
+            // owner callback is blocked, a second real denial with a lower
+            // threshold replaces the attempt and is the only registration the
+            // owner accepts.
+            Deny(owner, admission, demand, requiredBytes: 256);
+            Assert.True(entry.HasAcceptedRegistration);
+            Assert.Equal(256, entry.RequiredSourceReservationBytes);
+            Assert.Equal(1, Volatile.Read(ref entry.RegistrationsInFlight));
+            Assert.Equal(0, Volatile.Read(ref entry.WaiterStartState));
+            SvgHostLoadDeferralState accepted = owner.GetState();
+            Assert.True(accepted.HasWaiter);
+            Assert.Same(entry.Identity, accepted.WaiterIdentity);
         }
         finally
         {
-            Monitor.Exit(hostGate);
+            Monitor.Exit(owner.Sync);
         }
 
-        Assert.Null(await rejectedTask.WaitAsync(TimeSpan.FromSeconds(5)));
-        using SvgHostPendingWaiter accepted = Assert.IsType<
-            SvgHostPendingWaiter>(
-                await acceptedTask.WaitAsync(TimeSpan.FromSeconds(5)));
-        Assert.Same(entry.Identity, accepted.Identity);
+        await rejectedDenial.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.True(entry.HasAcceptedRegistration);
         Assert.Equal(256, entry.RequiredSourceReservationBytes);
         Assert.Equal(0, Volatile.Read(ref entry.RegistrationsInFlight));
         Assert.Equal(2, Volatile.Read(ref entry.WaiterStartState));
+        SvgHostLoadDeferralState settled = owner.GetState();
+        Assert.True(settled.HasWaiter);
+        Assert.Same(entry.Identity, settled.WaiterIdentity);
         Assert.True(SpinWait.SpinUntil(() => admission.WaitCalls.Length == 1, TimeSpan.FromSeconds(5)));
         Assert.Equal(256, admission.WaitCalls[0].RequiredBytes);
 
         admission.SetAvailableBytes(256);
-        Assert.True(SpinWait.SpinUntil(() => accepted.IsFinished, TimeSpan.FromSeconds(5)));
+        Assert.True(SpinWait.SpinUntil(() => IsFinished(entry), TimeSpan.FromSeconds(5)));
         Assert.Equal(1, Volatile.Read(ref queued));
+        owner.ClearSvgHostDeferral();
         GC.KeepAlive(owner);
     }
 
     [Fact]
     public async Task AlreadyReadyThresholdSignalsWithoutCapacityVersionAdvance()
     {
-        var domain = new SvgHostAdmissionDomain();
         var admission = new ThresholdAdmission(initialAvailableBytes: 1024);
-        var owner = TestSvgHostDeferralHost.CreateDeferral(_renderResources.Images);
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using var lifetime = new CancellationTokenSource();
-        var attempt = new object();
-        InitializeSourceDeferredOwner(owner, demand, attempt, admission, requiredBytes: 768);
         int queued = 0;
-        SetField(owner, "_svgDeferredRetryEnqueueOverride", new Func<Action, bool>(_ =>
+        SvgHostLoadDeferral owner = CreateLoadingOwner(_renderResources.Images, demand, lifetime.Token, _ =>
         {
             Interlocked.Increment(ref queued);
             return true;
-        }));
+        });
+        SvgHostAdmissionDomain domain = DomainOf(_renderResources.Images, admission.DomainKey);
 
-        using SvgHostPendingWaiter waiter = Assert.IsType<
-            SvgHostPendingWaiter>(domain.Defer(
-                owner, admission, demand, 1, admission.CapacityVersion, 768, false,
-                domain.Owners.OwnerVersion, demand.Version, 0, attempt, lifetime.Token));
-        Assert.True(SpinWait.SpinUntil(() => waiter.IsFinished, TimeSpan.FromSeconds(5)));
+        // Hold the registration's owner callback just long enough to observe
+        // the row before its already-ready waiter claims and removes it.
+        Task domainReadHeld = admission.HoldNextDomainRead();
+        Task denial = Task.Run(() => Deny(owner, admission, demand, requiredBytes: 768));
+        await domainReadHeld.WaitAsync(TimeSpan.FromSeconds(5));
+        SvgHostPendingEntry entry;
+        Monitor.Enter(owner.Sync);
+        try
+        {
+            admission.ReleaseDomainRead();
+            Assert.True(SpinWait.SpinUntil(
+                () => domain.GetPendingEntries() is [var row] &&
+                    Volatile.Read(ref row.RegistrationsInFlight) == 1,
+                TimeSpan.FromSeconds(5)));
+            entry = Assert.Single(domain.GetPendingEntries());
+        }
+        finally
+        {
+            Monitor.Exit(owner.Sync);
+        }
+
+        await denial.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(SpinWait.SpinUntil(() => IsFinished(entry), TimeSpan.FromSeconds(5)));
 
         Assert.Equal(0, admission.CapacityVersion);
         Assert.Single(admission.WaitCalls);
         Assert.Equal(768, admission.WaitCalls[0].RequiredBytes);
         Assert.Equal(1, Volatile.Read(ref queued));
-        Assert.Equal(2, Field<int>(owner, "_svgHostDeferred"));
+        Assert.Equal(SvgHostDeferralPhase.RetryQueued, owner.GetState().Phase);
+        owner.ClearSvgHostDeferral();
         GC.KeepAlive(owner);
     }
 
     [Fact]
     public async Task DuplicateRegistrationBarrierPreventsClaimUntilIdentityIsAccepted()
     {
-        var domain = new SvgHostAdmissionDomain();
         var admission = new ThresholdAdmission();
-        var owner = TestSvgHostDeferralHost.CreateDeferral(_renderResources.Images);
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         using var lifetime = new CancellationTokenSource();
-        var firstAttempt = new object();
-        InitializeSourceDeferredOwner(owner, demand, firstAttempt, admission, requiredBytes: 128);
         var queued = new ConcurrentQueue<Action>();
-        SetField(owner, "_svgDeferredRetryEnqueueOverride", new Func<Action, bool>(callback =>
+        SvgHostLoadDeferral owner = CreateLoadingOwner(_renderResources.Images, demand, lifetime.Token, callback =>
         {
             queued.Enqueue(callback);
             return true;
-        }));
+        });
+        SvgHostAdmissionDomain domain = DomainOf(_renderResources.Images, admission.DomainKey);
 
-        SvgHostPendingWaiter first = Assert.IsType<SvgHostPendingWaiter>(
-            domain.Defer(owner, admission, demand, 1, admission.CapacityVersion, 128, false,
-                domain.Owners.OwnerVersion, demand.Version, 0, firstAttempt, lifetime.Token));
-        SvgHostPendingEntry entry = PendingEntryOf(first);
+        Deny(owner, admission, demand, requiredBytes: 128);
+        SvgHostLoadDeferralState denied = owner.GetState();
+        SvgHostPendingEntry entry = PendingEntry(domain, denied.WaiterIdentity);
+        object attempt = AttemptOf(owner);
         Assert.True(SpinWait.SpinUntil(() => admission.WaitCalls.Length == 1, TimeSpan.FromSeconds(5)));
 
-        object hostGate = Field<object>(owner, "_svgHostDeferredSync");
-        var secondAttempt = new object();
         Task<SvgHostPendingWaiter?> secondTask;
-        Monitor.Enter(hostGate);
+        Monitor.Enter(owner.Sync);
         try
         {
-            SetField(owner, "_svgHostDeferredRegistrationAttempt", secondAttempt);
             secondTask = Task.Run(() => domain.Defer(
                 owner, admission, demand, 1, admission.CapacityVersion, 512, false,
-                domain.Owners.OwnerVersion, demand.Version, 0, secondAttempt, lifetime.Token));
+                domain.Owners.OwnerVersion, demand.Version, 0, attempt, lifetime.Token));
             Assert.True(SpinWait.SpinUntil(() =>
                 Volatile.Read(ref entry.RegistrationsInFlight) == 1,
                 TimeSpan.FromSeconds(5)));
@@ -337,29 +339,33 @@ public sealed class SvgHostDuplicateWaiterTests
             admission.SetAvailableBytes(128);
             Thread.Sleep(100);
             Assert.Equal(0, Volatile.Read(ref entry.Claimed));
-            Assert.False(first.IsFinished);
+            Assert.False(IsFinished(entry));
             Assert.Empty(queued);
         }
         finally
         {
-            Monitor.Exit(hostGate);
+            Monitor.Exit(owner.Sync);
         }
 
         SvgHostPendingWaiter second = Assert.IsType<
             SvgHostPendingWaiter>(
                 await secondTask.WaitAsync(TimeSpan.FromSeconds(5)));
-        Assert.Same(first.Identity, second.Identity);
+        Assert.Same(entry.Identity, second.Identity);
         Assert.True(SpinWait.SpinUntil(() => admission.WaitCalls.Length == 2, TimeSpan.FromSeconds(5)));
         Assert.Equal(512, admission.WaitCalls[1].RequiredBytes);
         Assert.Equal(0, Volatile.Read(ref entry.Claimed));
         Assert.Empty(queued);
 
         admission.SetAvailableBytes(512);
-        Assert.True(SpinWait.SpinUntil(() => first.IsFinished, TimeSpan.FromSeconds(5)));
+        Assert.True(SpinWait.SpinUntil(() => IsFinished(entry), TimeSpan.FromSeconds(5)));
         Assert.Single(queued);
         Assert.Equal(0, Volatile.Read(ref entry.RegistrationsInFlight));
-        first.Dispose();
         second.Dispose();
+        owner.ClearSvgHostDeferral();
         GC.KeepAlive(owner);
     }
+
+    private static object AttemptOf(SvgHostLoadDeferral owner) =>
+        owner.GetState().RegistrationAttempt
+            ?? throw new InvalidOperationException("The denial kept no live registration attempt.");
 }

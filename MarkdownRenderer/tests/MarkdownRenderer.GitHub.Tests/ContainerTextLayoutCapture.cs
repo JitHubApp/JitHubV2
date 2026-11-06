@@ -1,6 +1,7 @@
 ﻿using System.Reflection;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Theming;
 using Xunit;
 using static MarkdownRenderer.GitHub.Tests.ContainerRelayoutTestTree;
 
@@ -16,9 +17,6 @@ internal static class ContainerTextLayoutCapture
     internal static (int RootBlockIndex, int BlockIndex, float X, float Y)[] CaptureFinalTextOrigins(
         LayoutSnapshot snapshot)
     {
-        MethodInfo getOrigin = typeof(InlineContainerBox).GetMethods(
-                BindingFlags.Instance | BindingFlags.NonPublic)
-            .Single(method => method.Name == "GetSnappedOrigin" && method.GetParameters().Length == 3);
         var result = new List<(int RootBlockIndex, int BlockIndex, float X, float Y)>();
         Assert.True(snapshot.TryBeginInteraction());
         try
@@ -29,12 +27,10 @@ internal static class ContainerTextLayoutCapture
                     snapshot.EnterPlacementTransformScopeForTopLevelBlockUnderPaint(root);
                 foreach (InlineContainerBox inline in EnumerateBoxes([root]).OfType<InlineContainerBox>())
                 {
-                    object style = inline.GetContainerStyle()
+                    ElementStyle style = inline.GetContainerStyle()
                         ?? throw new InvalidOperationException("Inline style resolver returned null.");
-                    object?[] arguments = [style, 0f, 0f];
-                    _ = getOrigin.Invoke(inline, arguments);
-                    result.Add((root.BlockIndex, inline.BlockIndex,
-                        Assert.IsType<float>(arguments[1]), Assert.IsType<float>(arguments[2])));
+                    _ = inline.GetSnappedOrigin(style, out float finalOriginX, out float finalOriginY);
+                    result.Add((root.BlockIndex, inline.BlockIndex, finalOriginX, finalOriginY));
                 }
             }
         }
@@ -166,9 +162,6 @@ internal static class ContainerTextLayoutCapture
 
     internal static string CaptureInlinePaintDetails(LayoutSnapshot snapshot, BlockBox root)
     {
-        MethodInfo getOrigin = typeof(InlineContainerBox).GetMethods(
-                BindingFlags.Instance | BindingFlags.NonPublic)
-            .Single(method => method.Name == "GetSnappedOrigin" && method.GetParameters().Length == 3);
         Assert.True(snapshot.TryBeginInteraction());
         try
         {
@@ -180,14 +173,11 @@ internal static class ContainerTextLayoutCapture
                 $"ImageBox#{image.BlockIndex} logical={LayoutPlacementTestGeometry.ToLogical(snapshot, image)}"));
             string inlines = string.Join("; ", EnumerateBoxes([root]).OfType<InlineContainerBox>().Select(inline =>
             {
-                object style = inline.GetContainerStyle()
+                ElementStyle style = inline.GetContainerStyle()
                     ?? throw new InvalidOperationException("Inline style resolver returned null.");
-                object?[] arguments = [style, 0f, 0f];
-                _ = getOrigin.Invoke(inline, arguments);
-                float originX = Assert.IsType<float>(arguments[1]);
-                float originY = Assert.IsType<float>(arguments[2]);
+                _ = inline.GetSnappedOrigin(style, out float originX, out float originY);
                 string text = Assert.IsType<string>(inline.LayoutBuffer);
-                object? foreground = style.GetType().GetProperty("Foreground")?.GetValue(style);
+                object? foreground = style.Foreground;
                 return $"block={inline.BlockIndex}, bounds={inline.Bounds}, origin=({originX:R},{originY:R}), " +
                     $"foreground={foreground}, text=\"{text}\"";
             }));

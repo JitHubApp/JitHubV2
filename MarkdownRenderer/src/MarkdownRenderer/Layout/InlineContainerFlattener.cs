@@ -145,7 +145,7 @@ internal sealed class InlineContainerFlattener
             LinkInlineStyleMapBuilder builder = inlineStyles ??= new LinkInlineStyleMapBuilder();
             LinkInlineStylePath leafPath = builder.CreatePath(
                 elementKey,
-                _context.CreateStyleAliasSnapshotFrom(inlineStyleAliasStart),
+                _context.Styles.CreateAliasSnapshotFrom(inlineStyleAliasStart),
                 path);
             builder.AddRange(start, sb.Length - start, leafPath);
         }
@@ -168,7 +168,7 @@ internal sealed class InlineContainerFlattener
         LinkInlineStyleMapBuilder builder = inlineStyles ??= new LinkInlineStyleMapBuilder();
         LinkInlineStylePath emphasisPath = builder.CreatePath(
             MarkdownInlineSyntax.GetEmphasisElementKey(emphasis),
-            _context.CreateStyleAliasSnapshotFrom(inlineStyleAliasStart),
+            _context.Styles.CreateAliasSnapshotFrom(inlineStyleAliasStart),
             path);
         FlattenContainer(emphasis, sb, ref inlineStyles, emphasisPath, inlineStyleAliasStart);
     }

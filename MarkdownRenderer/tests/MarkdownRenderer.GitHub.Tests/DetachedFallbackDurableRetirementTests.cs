@@ -144,11 +144,7 @@ public sealed class DetachedFallbackDurableRetirementTests
         {
             box.ReleaseSceneGraph();
             Assert.True(box.PrepareDetachedFallback(CancellationToken.None, MarkdownDetachedSceneFallback.Create));
-            var field = typeof(VectorSceneBox).GetField(
-                "_detachedFallbackLayout",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-            Assert.NotNull(field);
-            CanvasTextLayout existing = Assert.IsType<CanvasTextLayout>(field!.GetValue(box));
+            CanvasTextLayout existing = Assert.IsType<CanvasTextLayout>(box.DetachedFallbackLayout);
 
             Assert.False(box.PrepareDetachedFallback(
                 CancellationToken.None,

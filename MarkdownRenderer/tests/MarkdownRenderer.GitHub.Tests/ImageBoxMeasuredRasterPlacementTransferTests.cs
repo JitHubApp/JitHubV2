@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Threading;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
@@ -176,11 +175,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             Assert.NotNull(expectedLease);
             PrepareAtDifferentOrigin(source, prepared);
 
-            SetField(source.OutputDeferral, "_bitmapOutputWaiterEpoch", 11L);
-            SetField(source.OutputDeferral, "_bitmapOutputRecoverySignaledEpoch", 7L);
-            SetField(source.OutputDeferral, "_bitmapOutputVisible", 1);
-            SetField(source.OutputDeferral, "_bitmapOutputReplacement", 1);
-            SetField(source.OutputDeferral, "_bitmapOutputExistingTile", 1);
+            ImageBitmapOutputState history = RecordInertBitmapOutputHistory(source);
             Rect preparedBounds = prepared.Bounds;
             CanvasTextLayout preparedCaption = Assert.IsType<CanvasTextLayout>(prepared.MeasureCustody.GetLayoutState().Caption);
 
@@ -199,10 +194,8 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
                 snapshot.EndInteraction();
             }
 
-            ImageBitmapOutputState history = source.OutputDeferral.GetState();
-            Assert.Equal(11L, history.WaiterEpoch);
-            Assert.Equal(7L, history.RecoverySignaledEpoch);
-            Assert.True(history.Visible && history.Replacement && history.ExistingTile);
+            // The transfer neither rejects nor resets the inert history.
+            Assert.Equal(history, source.OutputDeferral.GetState());
             Assert.Equal(preparedBounds, source.Bounds);
             Assert.Same(preparedCaption, Assert.IsType<CanvasTextLayout>(source.MeasureCustody.GetLayoutState().Caption));
         }
@@ -238,20 +231,35 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             Rect preparedBounds = prepared.Bounds;
             CanvasTextLayout sourceCaption = Assert.IsType<CanvasTextLayout>(source.MeasureCustody.GetLayoutState().Caption);
             CanvasTextLayout preparedCaption = Assert.IsType<CanvasTextLayout>(prepared.MeasureCustody.GetLayoutState().Caption);
-            var fakeOwner = new ImageBitmapOutputWaiter(source.OutputDeferral, 17L);
-            var liveStates = new (string Field, object? Value)[]
+            // Each live state is entered through the deferral's own operations:
+            // a recorded deferred request, and that request after its deferral
+            // flag cleared while its demand, waiter owner and cancellations
+            // remain. ImageBitmapOutputStateTests pins every individual live
+            // field of the HasNoLiveWork gate this transfer consults.
+            var liveStates = new (string Name, Action<ImageBox> Enter)[]
             {
-                ("_bitmapOutputDeferred", 1),
-                ("_bitmapOutputRetryOfferPending", 1),
-                ("_bitmapOutputDemand", new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan)),
-                ("_bitmapOutputWaiterOwner", fakeOwner),
+                ("recorded deferral", image =>
+                {
+                    RecordLiveBitmapOutputDeferral(image);
+                    ImageBitmapOutputState live = image.OutputDeferral.GetState();
+                    Assert.True(live.Deferred && live.HasDemand && live.HasWaiterOwner);
+                }),
+                ("demand and waiter owner without deferral", image =>
+                {
+                    RecordLiveBitmapOutputDeferral(image);
+                    Assert.True(image.OutputDeferral.ClearBitmapOutputDeferral(preserveRetryOffer: true));
+                    ImageBitmapOutputState live = image.OutputDeferral.GetState();
+                    Assert.False(live.Deferred);
+                    Assert.True(live.HasDemand && live.HasWaiterOwner);
+                }),
             };
 
-            foreach ((string field, object? value) in liveStates)
+            foreach ((string name, Action<ImageBox> enter) in liveStates)
             {
-                SetField(source.OutputDeferral, field, value);
+                enter(source);
                 try
                 {
+                    Assert.False(source.OutputDeferral.GetState().HasNoLiveWork, name);
                     Assert.True(snapshot.TryBeginInteraction());
                     try
                     {
@@ -274,12 +282,28 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
                 }
                 finally
                 {
-                    if (field == "_bitmapOutputDeferred" || field == "_bitmapOutputRetryOfferPending")
-                        SetField(source.OutputDeferral, field, 0);
-                    else
-                        SetField(source.OutputDeferral, field, null);
+                    Assert.True(source.OutputDeferral.ClearBitmapOutputDeferral());
                 }
             }
+
+            // Once the live request is retired only inert history remains, and
+            // the same transfer is accepted.
+            Assert.True(source.OutputDeferral.GetState().HasNoLiveWork);
+            Assert.True(snapshot.TryBeginInteraction());
+            try
+            {
+                Assert.True(source.TryTransferMeasuredPlacementFromCompletedClone(
+                    prepared,
+                    expectedLease,
+                    expectedSvgMetadataFence: null,
+                    currentProviderCacheGeneration: 0,
+                    expectedAvailableWidth: Width));
+            }
+            finally
+            {
+                snapshot.EndInteraction();
+            }
+            Assert.Equal(preparedBounds, source.Bounds);
         }
         finally
         {
@@ -322,9 +346,10 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             Assert.NotNull(candidate);
             Assert.True(candidate!.HasCurrentSourceRaster());
 
-            SetField(sourceImage.OutputDeferral, "_bitmapOutputDeferred", 1);
+            RecordLiveBitmapOutputDeferral(sourceImage);
             try
             {
+                Assert.True(sourceImage.OutputDeferral.IsBitmapOutputDeferred);
                 Assert.False(sourceImage.IsCurrentCompletedRasterPlacement(retainedLease));
                 Assert.False(sourceImage.TryCreateCompletedRasterPlacementClone(
                     candidate.Context,
@@ -351,7 +376,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             }
             finally
             {
-                SetField(sourceImage.OutputDeferral, "_bitmapOutputDeferred", 0);
+                Assert.True(sourceImage.OutputDeferral.ClearBitmapOutputDeferral());
             }
         }
         finally
@@ -722,11 +747,83 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             DirectXPixelFormat.B8G8R8A8UIntNormalized);
     }
 
-    private static void SetField(object instance, string name, object? value)
+    // Records a live deferred bitmap-output request for the image's current
+    // load demand through the deferral's own entry point, starting that
+    // demand first when the image was never loaded.
+    private static void RecordLiveBitmapOutputDeferral(
+        ImageBox image,
+        bool isVisible = false,
+        bool isReplacement = false,
+        bool isExistingTile = false)
     {
-        FieldInfo field = instance.GetType().GetField(name,
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        field.SetValue(instance, value);
+        if (image.LoadState.Demand is null)
+            _ = image.LoadState.BeginDemand(new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Visible));
+        BitmapOutputWorkContext work = image.OutputAdmission.CaptureBitmapOutputWorkContext(
+            CancellationToken.None, isExistingSvgTileOutput: isExistingTile);
+        Assert.True(image.OutputDeferral.RecordBitmapOutputDeferral(
+            requiredBytes: 4096,
+            image.Resources.BitmapOutput.GetSnapshot().CapacityVersion,
+            work,
+            isVisible,
+            isReplacement,
+            needsCacheTrim: false));
+    }
+
+    // Leaves only inert bitmap-output history behind, through real deferral
+    // operations: a visible replacement tile request whose governor waiter
+    // cannot register while the scope's waiter table is full (which signals
+    // recovery for its epoch), then retired.
+    private static ImageBitmapOutputState RecordInertBitmapOutputHistory(ImageBox image)
+    {
+        BitmapOutputAdmission governor = image.Resources.BitmapOutput;
+        var fillers = new List<FullWaiterTableProbe>();
+        var registrations = new List<BitmapOutputAdmission.WaiterRegistration>();
+        try
+        {
+            for (int index = 0; index < 4096; index++)
+            {
+                var filler = new FullWaiterTableProbe();
+                if (!governor.TryRegisterWaiter(filler, 1, isVisible: true, isReplacement: false,
+                        governor.GetSnapshot().CapacityVersion,
+                        out BitmapOutputAdmission.WaiterRegistration? registration))
+                {
+                    break;
+                }
+                fillers.Add(filler);
+                registrations.Add(Assert.IsType<BitmapOutputAdmission.WaiterRegistration>(registration));
+            }
+            Assert.NotEmpty(registrations);
+
+            RecordLiveBitmapOutputDeferral(image, isVisible: true, isReplacement: true, isExistingTile: true);
+            long epoch = image.OutputDeferral.GetState().WaiterEpoch;
+            image.OutputDeferral.PrepareDeferredBitmapOutputWaiterSafely(epoch);
+            ImageBitmapOutputState failed = image.OutputDeferral.GetState();
+            Assert.True(failed.RegistrationFailed);
+            Assert.Equal(epoch, failed.RecoverySignaledEpoch);
+        }
+        finally
+        {
+            foreach (BitmapOutputAdmission.WaiterRegistration registration in registrations)
+                registration.Dispose();
+            GC.KeepAlive(fillers);
+        }
+
+        Assert.True(image.OutputDeferral.ClearBitmapOutputDeferral());
+        ImageBitmapOutputState history = image.OutputDeferral.GetState();
+        Assert.True(history.HasNoLiveWork);
+        Assert.False(history.IsPristine);
+        Assert.NotEqual(0, history.WaiterEpoch);
+        Assert.NotEqual(0, history.RecoverySignaledEpoch);
+        Assert.True(history.Visible && history.Replacement && history.ExistingTile);
+        return history;
+    }
+
+    private sealed class FullWaiterTableProbe : IBitmapOutputWaiter
+    {
+        public void OnBitmapOutputCapacityAvailable(long capacityVersion)
+        {
+            // A filler only occupies a waiter slot; it never retries.
+        }
     }
 
 }

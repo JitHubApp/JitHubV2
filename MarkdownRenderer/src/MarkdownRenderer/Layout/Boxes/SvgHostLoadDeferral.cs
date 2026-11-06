@@ -12,6 +12,12 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// the queued retry. Its lock is also the box's load-activation gate, taken
 /// after the image-work lock and never before it.
 /// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because the denial record, its bounded
+/// waiter and the queued retry are one state machine under one lock: denial,
+/// registration, readiness, retry queueing and its fallback, and the retry's
+/// start each read and write that state in single lock transactions.
+/// </remarks>
 internal sealed class SvgHostLoadDeferral
 {
     private const int SvgHostDeferredNone = 0;
@@ -34,14 +40,28 @@ internal sealed class SvgHostLoadDeferral
     private long _svgHostDeferredRequiredSourceBytes;
     private bool _svgHostDeferredRequiresOwnerSlot;
     private bool _svgHostDeferredCapacityReady;
-    // Instance-scoped managed test seam; normal retries use the two existing
-    // non-inline queues without allocating a test callback.
-    private Func<Action, bool>? _svgDeferredRetryEnqueueOverride = null;
+    // Null for image boxes: retries use the two built-in non-inline queues
+    // without allocating a queue callback.
+    private readonly Func<Action, bool>? _svgDeferredRetryEnqueueOverride;
 
-    internal SvgHostLoadDeferral(ISvgHostDeferralHost host, ImageResourceScope resources)
+    /// <summary>Creates the deferral of the box behind <paramref name="host"/>.</summary>
+    /// <param name="host">The box whose load this deferral resumes.</param>
+    /// <param name="resources">The scope whose admission coordinator holds the waiter.</param>
+    /// <param name="retryQueue">
+    /// An injected scheduler for queued retries, used in place of both built-in
+    /// non-inline queues (<see cref="Task.Run(Action)"/>, then the thread pool).
+    /// It receives the retry and returns whether it accepted it; a rejection or
+    /// exception takes the same fallback and restore path as the built-in
+    /// queues. Null, the default, uses the built-in queues.
+    /// </param>
+    internal SvgHostLoadDeferral(
+        ISvgHostDeferralHost host,
+        ImageResourceScope resources,
+        Func<Action, bool>? retryQueue = null)
     {
         _host = host;
         _resources = resources;
+        _svgDeferredRetryEnqueueOverride = retryQueue;
     }
 
     /// <summary>The deferral lock, which is also the box's load-activation gate.</summary>
@@ -62,6 +82,31 @@ internal sealed class SvgHostLoadDeferral
                    _svgHostDeferredDenialIdentity is null &&
                    _svgHostDeferredAdmission is null &&
                    !_svgHostDeferredCapacityReady;
+        }
+    }
+
+    /// <summary>
+    /// One consistent view of the denial record, its waiter identities and its
+    /// readiness, taken under the deferral lock.
+    /// </summary>
+    internal SvgHostLoadDeferralState GetState()
+    {
+        lock (_svgHostDeferredSync)
+        {
+            return new SvgHostLoadDeferralState(
+                Phase: (SvgHostDeferralPhase)_svgHostDeferred,
+                HasWaiter: _svgHostDeferredWaiter is not null,
+                WaiterIdentity: _svgHostDeferredWaiterIdentity,
+                RegistrationAttempt: _svgHostDeferredRegistrationAttempt,
+                DenialIdentity: _svgHostDeferredDenialIdentity,
+                HasAdmission: _svgHostDeferredAdmission is not null,
+                DemandVersion: _svgHostDeferredDemandVersion,
+                CapacityVersion: _svgHostDeferredCapacityVersion,
+                OwnerVersion: _svgHostDeferredOwnerVersion,
+                VisualDemandEpoch: _svgHostDeferredVisualDemandEpoch,
+                RequiredSourceBytes: _svgHostDeferredRequiredSourceBytes,
+                RequiresOwnerSlot: _svgHostDeferredRequiresOwnerSlot,
+                CapacityReady: _svgHostDeferredCapacityReady);
         }
     }
 

@@ -2,20 +2,24 @@ using System;
 using System.Collections.Generic;
 using Markdig.Syntax.Inlines;
 using MarkdownRenderer.Parsing;
-using MarkdownRenderer.Accessibility;
-using MarkdownRenderer.Hosting;
 
 namespace MarkdownRenderer.Layout;
 
+/// <summary>
+/// Tracks inline safe-HTML for one inline flow: the open element scope stack,
+/// the script (subscript/superscript) ancestry, and the node and input budget.
+/// It lowers each HTML tag to a run or a scope change and applies the open
+/// scopes' links, styles and class aliases to runs inside them.
+/// </summary>
 internal sealed class SafeHtmlInlineState
 {
-    private readonly List<Scope> _scopes = [];
-    private List<ScriptStyleAncestryToken>? _scriptStyleAncestry;
+    private readonly List<SafeHtmlInlineScope> _scopes = [];
+    private List<SafeHtmlScriptStyleAncestryToken>? _scriptStyleAncestry;
 
     /// <summary>
     /// The open script scopes in source order, or null before the first one.
     /// </summary>
-    internal IReadOnlyList<ScriptStyleAncestryToken>? ScriptStyleAncestry => _scriptStyleAncestry;
+    internal IReadOnlyList<SafeHtmlScriptStyleAncestryToken>? ScriptStyleAncestry => _scriptStyleAncestry;
 
     private readonly SafeHtmlRenderPolicy? _policy;
     private int? _sourceStart;
@@ -65,14 +69,14 @@ internal sealed class SafeHtmlInlineState
         _policy = policy;
     }
 
-    internal ScriptStyleScope PushMarkdownScript(string styleKey)
+    internal SafeHtmlScriptStyleScope PushMarkdownScript(string styleKey)
     {
-        if (!IsScriptStyleKey(styleKey))
+        if (!SafeHtmlInlineElementNames.IsScriptStyleKey(styleKey))
             return default;
 
-        var token = new ScriptStyleAncestryToken(styleKey!);
+        var token = new SafeHtmlScriptStyleAncestryToken(styleKey!);
         (_scriptStyleAncestry ??= []).Add(token);
-        return new ScriptStyleScope(this, token);
+        return new SafeHtmlScriptStyleScope(this, token);
     }
 
     internal bool IsStandaloneImage(HtmlInline html, MarkdownLayoutContext context)
@@ -142,7 +146,7 @@ internal sealed class SafeHtmlInlineState
             return ProcessSuppressedElement(_policy, tag, html, span);
         }
 
-        if (!IsSupportedElement(tag.Name))
+        if (!SafeHtmlInlineElementNames.IsSupportedElement(tag.Name))
         {
             return _policy.RenderUnknownElementsLiterally
                 ? new TextRun(html.Tag) { SourceSpan = span }
@@ -170,7 +174,7 @@ internal sealed class SafeHtmlInlineState
         }
 
         bool suppressed = IsSuppressed || SafeHtmlParser.IsSuppressedElement(tag.Name);
-        string? styleKey = GetStyleKey(tag.Name);
+        string? styleKey = SafeHtmlInlineElementNames.GetStyleKey(tag.Name);
         string? linkUrl = null;
         string? linkTitle = null;
         if (policy.EnableLinks &&
@@ -191,7 +195,8 @@ internal sealed class SafeHtmlInlineState
             return null;
         }
 
-        return CreateElementRun(policy, tag, context, span, containingLinkUrl, containingLinkTitle);
+        return SafeHtmlInlineElementRunFactory.CreateElementRun(
+            this, policy, tag, context, span, containingLinkUrl, containingLinkTitle);
     }
 
     private InlineRun? ProcessSuppressedElement(
@@ -209,7 +214,7 @@ internal sealed class SafeHtmlInlineState
         }
         else if (tag.Kind == SafeHtmlTagKind.Opening)
         {
-            _scopes.Add(new Scope(
+            _scopes.Add(new SafeHtmlInlineScope(
                 tag.Name,
                 styleKey: null,
                 linkUrl: null,
@@ -228,14 +233,14 @@ internal sealed class SafeHtmlInlineState
         string? linkTitle,
         bool suppressed)
     {
-        ScriptStyleAncestryToken? scriptToken = null;
-        if (IsScriptStyleKey(styleKey))
+        SafeHtmlScriptStyleAncestryToken? scriptToken = null;
+        if (SafeHtmlInlineElementNames.IsScriptStyleKey(styleKey))
         {
-            scriptToken = new ScriptStyleAncestryToken(styleKey!);
+            scriptToken = new SafeHtmlScriptStyleAncestryToken(styleKey!);
             (_scriptStyleAncestry ??= []).Add(scriptToken);
         }
 
-        _scopes.Add(new Scope(
+        _scopes.Add(new SafeHtmlInlineScope(
             tag.Name,
             styleKey,
             linkUrl,
@@ -245,169 +250,6 @@ internal sealed class SafeHtmlInlineState
             scriptToken));
     }
 
-    private InlineRun? CreateElementRun(
-        SafeHtmlRenderPolicy policy,
-        in SafeHtmlTag tag,
-        MarkdownLayoutContext context,
-        SourceSpan span,
-        string? containingLinkUrl,
-        string? containingLinkTitle)
-    {
-        if (tag.Name == "br")
-        {
-            return new LineBreakRun(isHard: true) { SourceSpan = span };
-        }
-
-        if (tag.Name == "hr")
-        {
-            return new LineBreakRun(isHard: true) { SourceSpan = span };
-        }
-
-        if (tag.Name == "input")
-        {
-            if (!tag.TryGetAttribute("type", out string type) ||
-                !type.Equals("checkbox", StringComparison.OrdinalIgnoreCase))
-            {
-                return null;
-            }
-
-            return TaskMarkerControlFactory.CreateReadOnlyRun(
-                context,
-                tag.TryGetAttribute("checked", out _),
-                span);
-        }
-
-        if (tag.Name is "video" or "audio")
-        {
-            return CreateMediaRun(policy, tag, context, span, containingLinkUrl, containingLinkTitle);
-        }
-
-        if (tag.Name != "img")
-        {
-            return null;
-        }
-
-        return CreateImageRun(policy, tag, context, span, containingLinkUrl, containingLinkTitle);
-    }
-
-    private InlineRun CreateMediaRun(
-        SafeHtmlRenderPolicy policy,
-        in SafeHtmlTag tag,
-        MarkdownLayoutContext context,
-        SourceSpan span,
-        string? containingLinkUrl,
-        string? containingLinkTitle)
-    {
-        SafeHtmlParser.TryGetSafeImageSource(tag, out string mediaSource);
-        string? posterSource = tag.TryGetAttribute("poster", out string poster) &&
-            SafeHtmlParser.TryNormalizeImageSource(poster, out string safePoster)
-                ? safePoster
-                : null;
-        string? accessibilityName = tag.TryGetAttribute("aria-label", out string ariaLabel) &&
-            !string.IsNullOrWhiteSpace(ariaLabel)
-                ? ariaLabel
-                : tag.TryGetAttribute("title", out string mediaTitle) &&
-                    !string.IsNullOrWhiteSpace(mediaTitle)
-                        ? mediaTitle
-                        : null;
-        SafeHtmlLength? mediaWidth = SafeHtmlParser.TryGetLength(tag, "width", out SafeHtmlLength parsedWidth)
-            ? parsedWidth
-            : null;
-        SafeHtmlLength? mediaHeight = SafeHtmlParser.TryGetLength(tag, "height", out SafeHtmlLength parsedHeight)
-            ? parsedHeight
-            : null;
-        Scope? containingScope = FindLinkScope();
-        return ApplyAliases(SafeHtmlMediaRunFactory.Create(
-            context,
-            tag.Name == "video",
-            accessibilityName,
-            mediaSource,
-            posterSource,
-            mediaWidth,
-            mediaHeight,
-            span,
-            policy.EnableLinks ? containingLinkUrl ?? containingScope?.LinkUrl : null,
-            policy.EnableLinks ? containingLinkTitle ?? containingScope?.LinkTitle : null));
-    }
-
-    private InlineRun? CreateImageRun(
-        SafeHtmlRenderPolicy policy,
-        in SafeHtmlTag tag,
-        MarkdownLayoutContext context,
-        SourceSpan span,
-        string? containingLinkUrl,
-        string? containingLinkTitle)
-    {
-        if (SafeHtmlParser.TryGetInertImageSpacerDimensions(
-                tag,
-                policy.EnableImages,
-                IsInsidePicture(),
-                !string.IsNullOrWhiteSpace(containingLinkUrl) || IsInsideLinkElement(),
-                out float spacerWidth,
-                out float spacerHeight))
-        {
-            return new InlineSpacerRun(spacerWidth, spacerHeight) { SourceSpan = span };
-        }
-
-        bool hasExplicitAlt = tag.TryGetAttribute("alt", out string altValue);
-        string alt = hasExplicitAlt
-            ? altValue
-            : SafeHtmlParser.ResolveMissingImageAlternative(
-                tag.TryGetAttribute("src", out string sourceAttribute) ? sourceAttribute : string.Empty,
-                context.ResolveString(MarkdownStringKeys.ImageName, MarkdownLocalizedStrings.ImageName));
-        if (!policy.EnableImages)
-        {
-            InlineRun? fallback = string.IsNullOrWhiteSpace(alt)
-                ? null
-                : Apply(new TextRun(alt) { SourceSpan = span });
-            return ApplyContainingLink(fallback, containingLinkUrl, containingLinkTitle);
-        }
-
-        if (!SafeHtmlParser.TryGetSafeImageSource(tag, out string source))
-        {
-            InlineRun? fallback = string.IsNullOrWhiteSpace(alt)
-                ? null
-                : Apply(new TextRun(alt) { SourceSpan = span });
-            return ApplyContainingLink(fallback, containingLinkUrl, containingLinkTitle);
-        }
-
-        tag.TryGetAttribute("title", out string title);
-        SafeHtmlParser.TryGetLength(tag, "width", out SafeHtmlLength width);
-        SafeHtmlParser.TryGetLength(tag, "height", out SafeHtmlLength height);
-        Scope? link = FindLinkScope();
-        return ApplyAliases(new InlineImageRun(
-            context,
-            alt,
-            source,
-            string.IsNullOrWhiteSpace(title) ? null : title,
-            policy.EnableLinks ? containingLinkUrl ?? link?.LinkUrl : null,
-            policy.EnableLinks ? containingLinkTitle ?? link?.LinkTitle : null,
-            width.Value > 0 ? width : null,
-            height.Value > 0 ? height : null)
-        {
-            SourceSpan = span,
-        });
-    }
-
-    private InlineRun? ApplyContainingLink(
-        InlineRun? run,
-        string? containingLinkUrl,
-        string? containingLinkTitle)
-    {
-        if (run is null ||
-            !_policy!.EnableLinks ||
-            string.IsNullOrWhiteSpace(containingLinkUrl) ||
-            run is LinkRun or InlineSpacerRun)
-        {
-            return run;
-        }
-
-        return ApplyAliases(new LinkRun(run.Text, containingLinkUrl, containingLinkTitle)
-        {
-            SourceSpan = run.SourceSpan,
-        });
-    }
-
     public InlineRun? Apply(InlineRun? run)
     {
         if (run is null || IsSuppressed)
@@ -415,7 +257,7 @@ internal sealed class SafeHtmlInlineState
             return null;
         }
 
-        Scope? link = FindLinkScope();
+        SafeHtmlInlineScope? link = FindLinkScope();
         string? styleKey = FindStyleKey();
         if (run is LinkRun existingLink)
         {
@@ -457,7 +299,7 @@ internal sealed class SafeHtmlInlineState
             _ => run,
         };
         styled.SourceSpan = run.SourceSpan;
-        styled.SafeHtmlScriptRoleIsRunElement = IsScriptStyleKey(styleKey);
+        styled.SafeHtmlScriptRoleIsRunElement = SafeHtmlInlineElementNames.IsScriptStyleKey(styleKey);
         return ApplyAliases(styled);
     }
 
@@ -477,7 +319,11 @@ internal sealed class SafeHtmlInlineState
         }
     }
 
-    private Scope? FindLinkScope()
+    /// <summary>
+    /// Returns the innermost open scope that carries a safe link, or null when
+    /// no enclosing element contributes one.
+    /// </summary>
+    internal SafeHtmlInlineScope? FindLinkScope()
     {
         for (int index = _scopes.Count - 1; index >= 0; index--)
         {
@@ -490,9 +336,13 @@ internal sealed class SafeHtmlInlineState
         return null;
     }
 
-    private bool IsInsideLinkElement()
+    /// <summary>
+    /// Whether any open scope is an <c>a</c> element, whether or not its link
+    /// was safe enough to keep.
+    /// </summary>
+    internal bool IsInsideLinkElement()
     {
-        foreach (Scope scope in _scopes)
+        foreach (SafeHtmlInlineScope scope in _scopes)
         {
             if (scope.Name.Equals("a", StringComparison.OrdinalIgnoreCase))
                 return true;
@@ -501,9 +351,12 @@ internal sealed class SafeHtmlInlineState
         return false;
     }
 
-    private bool IsInsidePicture()
+    /// <summary>
+    /// Whether any open scope is a <c>picture</c> element.
+    /// </summary>
+    internal bool IsInsidePicture()
     {
-        foreach (Scope scope in _scopes)
+        foreach (SafeHtmlInlineScope scope in _scopes)
         {
             if (scope.Name.Equals("picture", StringComparison.OrdinalIgnoreCase))
                 return true;
@@ -540,18 +393,24 @@ internal sealed class SafeHtmlInlineState
         return aliases.Count == 0 ? Array.Empty<string>() : aliases.ToArray();
     }
 
-    private InlineRun ApplyAliases(InlineRun run)
+    /// <summary>
+    /// Stamps <paramref name="run"/> with the class aliases of every open scope
+    /// (outermost first, then the run's own) and with the open script ancestry,
+    /// appending the run's own script role when the ancestry does not already
+    /// end with it. Returns the same run.
+    /// </summary>
+    internal InlineRun ApplyAliases(InlineRun run)
     {
         int aliasCount = run.StyleAliases.Count;
-        foreach (Scope scope in _scopes)
+        foreach (SafeHtmlInlineScope scope in _scopes)
             aliasCount += scope.StyleAliases.Count;
 
-        string? runScriptRole = IsScriptStyleKey(run.ElementKey)
+        string? runScriptRole = SafeHtmlInlineElementNames.IsScriptStyleKey(run.ElementKey)
             ? run.ElementKey
             : run is LinkRun { IsSuperscript: true }
                 ? Theming.MarkdownElementKeys.Superscript
                 : null;
-        List<ScriptStyleAncestryToken>? scriptAncestry = _scriptStyleAncestry;
+        List<SafeHtmlScriptStyleAncestryToken>? scriptAncestry = _scriptStyleAncestry;
         bool runRoleAlreadyCaptured = run.SafeHtmlScriptRoleIsRunElement &&
             runScriptRole is not null &&
             scriptAncestry is { Count: > 0 } &&
@@ -570,7 +429,7 @@ internal sealed class SafeHtmlInlineState
         {
             var aliases = new string[aliasCount];
             int written = 0;
-            foreach (Scope scope in _scopes)
+            foreach (SafeHtmlInlineScope scope in _scopes)
             {
                 foreach (string alias in scope.StyleAliases)
                     aliases[written++] = alias;
@@ -596,20 +455,6 @@ internal sealed class SafeHtmlInlineState
         return run;
     }
 
-    private static bool IsScriptStyleKey(string? styleKey)
-        => styleKey is Theming.MarkdownElementKeys.Subscript or
-            Theming.MarkdownElementKeys.Superscript;
-
-    internal static bool IsSupportedElement(string name) => name is
-        "a" or "address" or "article" or "aside" or "b" or "blockquote" or "br" or
-        "caption" or "center" or "cite" or "code" or "col" or "colgroup" or "del" or
-        "details" or "div" or "em" or "figcaption" or "figure" or "footer" or "h1" or
-        "h2" or "h3" or "h4" or "h5" or "h6" or "header" or "hr" or "i" or "img" or
-        "ins" or "kbd" or "li" or "main" or "mark" or "nav" or "ol" or "p" or
-        "audio" or "input" or "picture" or "pre" or "s" or "samp" or "section" or "small" or "source" or
-        "span" or "strike" or "strong" or "sub" or "summary" or "sup" or "table" or
-        "tbody" or "td" or "tfoot" or "th" or "thead" or "tr" or "u" or "ul" or "var" or "video";
-
     private void PopThrough(string name)
     {
         for (int index = _scopes.Count - 1; index >= 0; index--)
@@ -626,76 +471,18 @@ internal sealed class SafeHtmlInlineState
         }
     }
 
-    private void RemoveScriptToken(ScriptStyleAncestryToken? token)
+    /// <summary>
+    /// Removes the script ancestry entry identified by <paramref name="token"/>
+    /// when it is still open; a null token or an already removed one is a no-op.
+    /// </summary>
+    internal void RemoveScriptToken(SafeHtmlScriptStyleAncestryToken? token)
     {
-        List<ScriptStyleAncestryToken>? ancestry = _scriptStyleAncestry;
+        List<SafeHtmlScriptStyleAncestryToken>? ancestry = _scriptStyleAncestry;
         if (token is null || ancestry is null)
             return;
 
         int index = ancestry.LastIndexOf(token);
         if (index >= 0)
             ancestry.RemoveAt(index);
-    }
-
-    internal readonly struct ScriptStyleScope : IDisposable
-    {
-        private readonly SafeHtmlInlineState? _owner;
-        private readonly ScriptStyleAncestryToken? _token;
-
-        internal ScriptStyleScope(SafeHtmlInlineState owner, ScriptStyleAncestryToken token)
-        {
-            _owner = owner;
-            _token = token;
-        }
-
-        public void Dispose()
-            => _owner?.RemoveScriptToken(_token);
-    }
-
-    internal sealed class ScriptStyleAncestryToken(string styleKey)
-    {
-        internal string StyleKey { get; } = styleKey;
-    }
-
-    internal static string? GetStyleKey(string name) => name switch
-    {
-        "b" or "strong" => Theming.MarkdownElementKeys.Strong,
-        "i" or "em" or "cite" or "var" => Theming.MarkdownElementKeys.Emphasis,
-        "s" or "strike" or "del" => Theming.MarkdownElementKeys.Strikethrough,
-        "sub" => Theming.MarkdownElementKeys.Subscript,
-        "sup" => Theming.MarkdownElementKeys.Superscript,
-        "ins" or "u" => Theming.MarkdownElementKeys.Inserted,
-        "mark" => Theming.MarkdownElementKeys.Marked,
-        "code" or "kbd" or "samp" => Theming.MarkdownElementKeys.CodeInline,
-        _ => null,
-    };
-
-    internal readonly struct Scope
-    {
-        internal Scope(
-            string name,
-            string? styleKey,
-            string? linkUrl,
-            string? linkTitle,
-            bool suppressed,
-            IReadOnlyList<string> styleAliases,
-            ScriptStyleAncestryToken? scriptToken = null)
-        {
-            Name = name;
-            StyleKey = styleKey;
-            LinkUrl = linkUrl;
-            LinkTitle = linkTitle;
-            Suppressed = suppressed;
-            StyleAliases = styleAliases;
-            ScriptToken = scriptToken;
-        }
-
-        internal readonly string Name;
-        internal readonly string? StyleKey;
-        internal readonly string? LinkUrl;
-        internal readonly string? LinkTitle;
-        internal readonly bool Suppressed;
-        internal readonly IReadOnlyList<string> StyleAliases;
-        internal readonly ScriptStyleAncestryToken? ScriptToken;
     }
 }

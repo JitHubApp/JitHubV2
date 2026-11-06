@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
-using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -32,9 +31,6 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection("Shared Canvas text format cache")]
 public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper output)
 {
-    private const BindingFlags PrivateInstance = BindingFlags.Instance | BindingFlags.NonPublic;
-    private const BindingFlags InstanceFields = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-
     private readonly ITestOutputHelper _output = output;
 
     [Theory]
@@ -77,7 +73,7 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
         Array firstVisualLines = actual.Box.VisualLineIndex.Lines;
         Array firstBottomEdges = actual.Box.VisualLineIndex.BottomEdges;
         object?[] firstNativeLayouts = CaptureChunkNativeLayouts(actual.Box);
-        long? buildCount = TryGetCacheBuildCount(actual.Box);
+        long buildCount = actual.Box.VisualLineCacheBuildCount;
 
         // These coordinates deliberately exceed 2^17 and retain fractional
         // parts. Every expected top is recomputed from fresh chunk origins and
@@ -102,14 +98,11 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
                 actual.Box, oracle.Box, (float)actual.Box.Bounds.X, (float)actual.Box.Bounds.Y, 420);
         }
 
-        if (buildCount is not null)
-        {
-            Assert.Equal(buildCount.Value, TryGetCacheBuildCount(actual.Box));
-            Assert.Same(firstVisualLines, actual.Box.VisualLineIndex.Lines);
-            Assert.Same(firstBottomEdges, actual.Box.VisualLineIndex.BottomEdges);
-            Assert.Same(beforeScrollLines, actual.Box.VisualLineIndex.Lines);
-            Assert.Same(beforeScrollBottomEdges, actual.Box.VisualLineIndex.BottomEdges);
-        }
+        Assert.Equal(buildCount, actual.Box.VisualLineCacheBuildCount);
+        Assert.Same(firstVisualLines, actual.Box.VisualLineIndex.Lines);
+        Assert.Same(firstBottomEdges, actual.Box.VisualLineIndex.BottomEdges);
+        Assert.Same(beforeScrollLines, actual.Box.VisualLineIndex.Lines);
+        Assert.Same(beforeScrollBottomEdges, actual.Box.VisualLineIndex.BottomEdges);
         AssertSameChunkNativeLayouts(actual.Box, firstNativeLayouts);
 
         Assert.Equal(actual.Box.CopyButtonBounds, oracle.Box.CopyButtonBounds);
@@ -136,7 +129,7 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
 
         CanvasLineMetrics[][] sourceMetricsBeforeWidthChange = GetChunkMetrics(source.Box);
         object?[] sourceLayoutsBeforeWidthChange = CaptureChunkNativeLayouts(source.Box);
-        long? buildCountBeforeWidthChange = TryGetCacheBuildCount(source.Box);
+        long buildCountBeforeWidthChange = source.Box.VisualLineCacheBuildCount;
         source.Box.Measure(208);
         source.Box.Arrange(5.25f, 91_337.625f, 208);
         initialOracle.Box.Measure(208);
@@ -151,8 +144,7 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
             Assert.NotSame(sourceLayoutsBeforeWidthChange[index], sourceLayoutsAfterWidthChange[index]);
         }
         Assert.True(source.Box.IndexedVisualLineCount > initialOracle.Box.LineCount);
-        if (buildCountBeforeWidthChange is not null)
-            Assert.True(TryGetCacheBuildCount(source.Box)!.Value > buildCountBeforeWidthChange.Value);
+        Assert.True(source.Box.VisualLineCacheBuildCount > buildCountBeforeWidthChange);
         AssertMatchesIndependentLegacyOracle(
             source.Box, initialOracle.Box, 5.25f, 91_337.625f, 208);
 
@@ -273,7 +265,7 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
         AssertNativeMetricsAvailable(fixture.Box);
         AssertMatchesIndependentLegacyOracle(fixture.Box, oracle.Box, 9.125f, 1_024.375f, 400);
         int originalCount = fixture.Box.IndexedVisualLineCount;
-        long? buildCount = TryGetCacheBuildCount(fixture.Box);
+        long buildCount = fixture.Box.VisualLineCacheBuildCount;
 
         InlineContainerBox missingChunk = fixture.Box.Chunks[1];
         CanvasLineMetrics[]? savedMetrics = missingChunk.CachedLineMetrics;
@@ -287,7 +279,7 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
             Assert.Equal(0, fixture.Box.IndexedVisualLineCount);
             Assert.Empty(ReadVisualLines(fixture.Box));
             Assert.Empty(fixture.Box.VisualLineIndex.BottomEdges);
-            Assert.Equal(buildCount, TryGetCacheBuildCount(fixture.Box));
+            Assert.Equal(buildCount, fixture.Box.VisualLineCacheBuildCount);
 
             SetLineMetricsCache(missingChunk, savedMetrics, savedReadState);
             fixture.Box.Arrange(9.125f, 1_024.375f, 400);
@@ -296,8 +288,7 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
             Assert.Equal(originalCount, fixture.Box.IndexedVisualLineCount);
             AssertMatchesIndependentLegacyOracle(
                 fixture.Box, oracle.Box, 9.125f, 1_024.375f, 400);
-            if (buildCount is not null)
-                Assert.True(TryGetCacheBuildCount(fixture.Box)!.Value > buildCount.Value);
+            Assert.True(fixture.Box.VisualLineCacheBuildCount > buildCount);
         }
         finally
         {
@@ -323,19 +314,19 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
         CanvasLineMetrics[]? savedMetrics = chunk.CachedLineMetrics;
         bool savedReadState = chunk.HasReadLineMetrics;
         CanvasLineMetrics[] validMetrics = Assert.IsType<CanvasLineMetrics[]>(savedMetrics);
-        long? originalBuildCount = TryGetCacheBuildCount(fixture.Box);
+        long originalBuildCount = fixture.Box.VisualLineCacheBuildCount;
 
         try
         {
             SetCachedMetrics(chunk, Array.Empty<CanvasLineMetrics>());
             fixture.Box.Arrange(7.25f, 8_192.375f, 400);
             AssertVisualLineFallbackIsComplete(fixture.Box);
-            Assert.Equal(originalBuildCount, TryGetCacheBuildCount(fixture.Box));
+            Assert.Equal(originalBuildCount, fixture.Box.VisualLineCacheBuildCount);
             RestoreAndAssertRecovery(fixture.Box, oracle.Box, chunk,
                 validMetrics, savedReadState, 7.25f, 8_192.375f, 400);
 
             CanvasLineMetrics[] nonfiniteMetrics = validMetrics.ToArray();
-            nonfiniteMetrics[0] = WithMetricValue(nonfiniteMetrics[0], "Height", float.NaN);
+            nonfiniteMetrics[0].Height = float.NaN;
             SetCachedMetrics(chunk, nonfiniteMetrics);
             fixture.Box.Arrange(7.25f, 8_192.375f, 400);
             AssertVisualLineFallbackIsComplete(fixture.Box);
@@ -344,8 +335,7 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
 
             Assert.True(validMetrics.Length > 1);
             CanvasLineMetrics[] overflowingMetrics = validMetrics.ToArray();
-            overflowingMetrics[0] = WithMetricValue(
-                overflowingMetrics[0], "CharacterCount", int.MaxValue);
+            overflowingMetrics[0].CharacterCount = int.MaxValue;
             SetCachedMetrics(chunk, overflowingMetrics);
             fixture.Box.Arrange(7.25f, 8_192.375f, 400);
             AssertVisualLineFallbackIsComplete(fixture.Box);
@@ -386,13 +376,13 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
         AssertMatchesIndependentLegacyOracle(fixture.Box, oracle.Box, 4.25f, 233.625f, 370);
         LinePlacement[] previous = ReadVisualLines(fixture.Box);
         Array previousArray = fixture.Box.VisualLineIndex.Lines;
-        long? previousBuildCount = TryGetCacheBuildCount(fixture.Box);
+        long previousBuildCount = fixture.Box.VisualLineCacheBuildCount;
 
         cancellation.Cancel();
         Assert.ThrowsAny<OperationCanceledException>(() => fixture.Box.Measure(210));
         Assert.Equal(previous, ReadVisualLines(fixture.Box));
         Assert.Same(previousArray, fixture.Box.VisualLineIndex.Lines);
-        Assert.Equal(previousBuildCount, TryGetCacheBuildCount(fixture.Box));
+        Assert.Equal(previousBuildCount, fixture.Box.VisualLineCacheBuildCount);
 
         fixture.Context.SetCancellationToken(CancellationToken.None);
         fixture.Box.Arrange(4.25f, 233.625f, 370);
@@ -468,7 +458,7 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
         Array warmedVisualLines = actual.Box.VisualLineIndex.Lines;
         Array warmedBottomEdges = actual.Box.VisualLineIndex.BottomEdges;
         object?[] warmedNativeLayouts = CaptureChunkNativeLayouts(actual.Box);
-        long? warmedBuildCount = TryGetCacheBuildCount(actual.Box);
+        long warmedBuildCount = actual.Box.VisualLineCacheBuildCount;
         (int scrollChanges, long allocatedBytes, long elapsedMilliseconds) =
             MeasureRepeatedVerticalArrange(actual.Box, x, y);
 
@@ -481,15 +471,12 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
 
         bool reusedVisualLines = ReferenceEquals(warmedVisualLines, actual.Box.VisualLineIndex.Lines);
         bool reusedBottomEdges = ReferenceEquals(warmedBottomEdges, actual.Box.VisualLineIndex.BottomEdges);
-        long? finalBuildCount = TryGetCacheBuildCount(actual.Box);
+        long finalBuildCount = actual.Box.VisualLineCacheBuildCount;
         Assert.Equal(15, scrollChanges);
-        if (warmedBuildCount is not null)
-        {
-            Assert.Equal(warmedBuildCount.Value, finalBuildCount);
-            Assert.True(reusedVisualLines);
-            Assert.True(reusedBottomEdges);
-            Assert.Equal(0, allocatedBytes);
-        }
+        Assert.Equal(warmedBuildCount, finalBuildCount);
+        Assert.True(reusedVisualLines);
+        Assert.True(reusedBottomEdges);
+        Assert.Equal(0, allocatedBytes);
         AssertSameChunkNativeLayouts(actual.Box, warmedNativeLayouts);
 
         _output.WriteLine(
@@ -500,7 +487,7 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
             actual.Box.Chunks.Count,
             allocatedBytes,
             elapsedMilliseconds,
-            finalBuildCount?.ToString(CultureInfo.InvariantCulture) ?? "unavailable-on-baseline-runtime",
+            finalBuildCount.ToString(CultureInfo.InvariantCulture),
             reusedVisualLines,
             reusedBottomEdges,
             actual.Context.RasterizationScale,
@@ -543,7 +530,7 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
         Array horizontalVisualLines = actual.Box.VisualLineIndex.Lines;
         Array horizontalBottomEdges = actual.Box.VisualLineIndex.BottomEdges;
         object?[] horizontalNativeLayouts = CaptureChunkNativeLayouts(actual.Box);
-        long? horizontalBuildCount = TryGetCacheBuildCount(actual.Box);
+        long horizontalBuildCount = actual.Box.VisualLineCacheBuildCount;
         int horizontalChanges = 0;
         long horizontalAllocatedBefore = GC.GetAllocatedBytesForCurrentThread();
         long horizontalStarted = Stopwatch.GetTimestamp();
@@ -560,13 +547,10 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
 
         Assert.Equal(120, horizontalChanges);
         Assert.Equal(horizontalY, actual.Box.Bounds.Y);
-        if (horizontalBuildCount is not null)
-        {
-            Assert.Equal(horizontalBuildCount.Value, TryGetCacheBuildCount(actual.Box));
-            Assert.Same(horizontalVisualLines, actual.Box.VisualLineIndex.Lines);
-            Assert.Same(horizontalBottomEdges, actual.Box.VisualLineIndex.BottomEdges);
-            Assert.Equal(0, horizontalAllocatedBytes);
-        }
+        Assert.Equal(horizontalBuildCount, actual.Box.VisualLineCacheBuildCount);
+        Assert.Same(horizontalVisualLines, actual.Box.VisualLineIndex.Lines);
+        Assert.Same(horizontalBottomEdges, actual.Box.VisualLineIndex.BottomEdges);
+        Assert.Equal(0, horizontalAllocatedBytes);
         AssertSameChunkNativeLayouts(actual.Box, horizontalNativeLayouts);
 
         oracle.Box.Arrange(horizontalX, horizontalY, 428);
@@ -578,8 +562,7 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
             horizontalChanges,
             horizontalAllocatedBytes,
             horizontalElapsedMilliseconds,
-            TryGetCacheBuildCount(actual.Box)?.ToString(CultureInfo.InvariantCulture) ??
-                "unavailable-on-baseline-runtime",
+            actual.Box.VisualLineCacheBuildCount.ToString(CultureInfo.InvariantCulture),
             horizontalNativeLayouts.Zip(CaptureChunkNativeLayouts(actual.Box), ReferenceEquals).All(static same => same));
     }
 
@@ -671,31 +654,12 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
         => SetLineMetricsCache(chunk, metrics, read: true);
 
     // Fault injection: no product path yields malformed DirectWrite line
-    // metrics, so crafted ones are written into the chunk's owned text-layout
-    // state. The struct is read as a boxed copy and written back whole.
+    // metrics, so crafted ones replace the chunk's cached metrics.
     private static void SetLineMetricsCache(InlineContainerBox chunk, CanvasLineMetrics[]? metrics, bool read)
     {
-        FieldInfo stateField = GetRequiredPrivateField(typeof(InlineContainerBox), "_textLayout");
-        object state = stateField.GetValue(chunk)!;
-        GetRequiredPrivateField(typeof(InlineTextLayoutState), "_cachedLineMetrics").SetValue(state, metrics);
-        GetRequiredPrivateField(typeof(InlineTextLayoutState), "_lineMetricsRead").SetValue(state, read);
-        stateField.SetValue(chunk, state);
+        chunk.ReplaceCachedLineMetrics(metrics, read);
         Assert.Same(metrics, chunk.CachedLineMetrics);
         Assert.Equal(read, chunk.HasReadLineMetrics);
-    }
-
-    private static CanvasLineMetrics WithMetricValue<T>(CanvasLineMetrics metric, string propertyName, T value)
-    {
-        object boxedMetric = metric;
-        FieldInfo field = typeof(CanvasLineMetrics)
-            .GetFields(InstanceFields)
-            .SingleOrDefault(candidate =>
-                candidate.FieldType == typeof(T) &&
-                candidate.Name.Contains(propertyName, StringComparison.OrdinalIgnoreCase))
-            ?? throw new InvalidOperationException(
-                $"Win2D CanvasLineMetrics no longer exposes a test-writable backing field for {propertyName}.");
-        field.SetValue(boxedMetric, value);
-        return Assert.IsType<CanvasLineMetrics>(boxedMetric);
     }
 
     private static void RestoreAndAssertRecovery(
@@ -723,22 +687,14 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
 
     private static void AssertOptionalChunkMetricCacheIsCleared(CodeBlockBox box)
     {
-        object? cache = box.VisualLineIndex.ChunkCache;
-        if (cache is null)
+        VisualLineChunkCache[]? entries = box.VisualLineIndex.ChunkCache;
+        if (entries is null)
             return;
 
-        Array entries = Assert.IsAssignableFrom<Array>(cache);
-        Type entryType = entries.GetType().GetElementType() ??
-            throw new InvalidOperationException("The visual-line chunk cache has no entry type.");
-        FieldInfo[] referenceFields = entryType.GetFields(InstanceFields)
-            .Where(static member => !member.FieldType.IsValueType)
-            .ToArray();
-        for (int index = 0; index < entries.Length; index++)
+        foreach (VisualLineChunkCache entry in entries)
         {
-            object entry = entries.GetValue(index) ??
-                throw new InvalidOperationException("The visual-line chunk cache entry was null.");
-            foreach (FieldInfo referenceField in referenceFields)
-                Assert.Null(referenceField.GetValue(entry));
+            Assert.Null(entry.Chunk);
+            Assert.Null(entry.Metrics);
         }
     }
 
@@ -911,35 +867,16 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
 
     private static LinePlacement[] ReadVisualLines(CodeBlockBox box)
     {
-        Array values = box.VisualLineIndex.Lines;
-        Type valueType = values.GetType().GetElementType() ??
-            throw new InvalidOperationException("The visual-line array has no element type.");
-        FieldInfo logicalLineIndex = GetRequiredPrivateField(valueType, "LogicalLineIndex");
-        FieldInfo top = GetRequiredPrivateField(valueType, "Top");
-        FieldInfo height = GetRequiredPrivateField(valueType, "Height");
+        CodeVisualLineInfo[] values = box.VisualLineIndex.Lines;
         var result = new LinePlacement[values.Length];
         for (int index = 0; index < values.Length; index++)
         {
-            object value = values.GetValue(index) ?? throw new InvalidOperationException("A visual line was null.");
-            result[index] = new LinePlacement(
-                Assert.IsType<int>(logicalLineIndex.GetValue(value)),
-                Assert.IsType<double>(top.GetValue(value)),
-                Assert.IsType<double>(height.GetValue(value)));
+            CodeVisualLineInfo value = values[index];
+            result[index] = new LinePlacement(value.LogicalLineIndex, value.Top, value.Height);
         }
         return result;
     }
 
-    private static long? TryGetCacheBuildCount(CodeBlockBox box)
-    {
-        PropertyInfo? property = typeof(CodeBlockBox).GetProperty(
-            "VisualLineCacheBuildCount", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-        if (property is null)
-            return null; // Frozen pre-optimization assemblies remain test-compatible.
-        return Assert.IsType<int>(property.GetValue(box));
-    }
-
-    private static FieldInfo GetRequiredPrivateField(Type type, string name)
-        => Assert.IsAssignableFrom<FieldInfo>(type.GetField(name, InstanceFields));
 
     private readonly record struct LinePlacement(int LogicalLineIndex, double Top, double Height);
 }

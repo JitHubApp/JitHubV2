@@ -192,11 +192,10 @@ public sealed partial class RepoFileCacheService : IRepoFileCacheService
             return cached;
 
         using KeyLockLease keyLock = await AcquireKeyLockAsync(key, ct).ConfigureAwait(false);
-        bool maintenanceLockAcquired = false;
+        MaintenanceLease? maintenance = null;
         try
         {
-            await _maintenanceLock.WaitAsync(ct).ConfigureAwait(false);
-            maintenanceLockAcquired = true;
+            maintenance = await EnterMaintenanceAsync(ct).ConfigureAwait(false);
 
             // Double-checked: another task may have populated memory while we waited.
             if (TryGet(key, out var cached2))
@@ -249,10 +248,7 @@ public sealed partial class RepoFileCacheService : IRepoFileCacheService
         }
         finally
         {
-            if (maintenanceLockAcquired)
-            {
-                _maintenanceLock.Release();
-            }
+            maintenance?.Dispose();
         }
     }
 
@@ -267,11 +263,10 @@ public sealed partial class RepoFileCacheService : IRepoFileCacheService
         PromoteToMemory(MemKey(key), effectiveEntry);
 
         using KeyLockLease keyLock = await AcquireKeyLockAsync(key, ct).ConfigureAwait(false);
-        bool maintenanceLockAcquired = false;
+        MaintenanceLease? maintenance = null;
         try
         {
-            await _maintenanceLock.WaitAsync(ct).ConfigureAwait(false);
-            maintenanceLockAcquired = true;
+            maintenance = await EnterMaintenanceAsync(ct).ConfigureAwait(false);
 
             string binPath = BinPath(key);
             string metaPath = MetaPath(key);
@@ -318,16 +313,13 @@ public sealed partial class RepoFileCacheService : IRepoFileCacheService
         }
         finally
         {
-            if (maintenanceLockAcquired)
-            {
-                _maintenanceLock.Release();
-            }
+            maintenance?.Dispose();
         }
     }
 
     public async Task PurgeAsync(CancellationToken ct)
     {
-        await _maintenanceLock.WaitAsync(ct).ConfigureAwait(false);
+        MaintenanceLease maintenance = await EnterMaintenanceAsync(ct).ConfigureAwait(false);
         try
         {
             await PurgeExpiredAsync(ct).ConfigureAwait(false);
@@ -335,13 +327,13 @@ public sealed partial class RepoFileCacheService : IRepoFileCacheService
         }
         finally
         {
-            _maintenanceLock.Release();
+            maintenance.Dispose();
         }
     }
 
     public async Task<long> GetTotalBytesAsync(CancellationToken ct = default)
     {
-        await _maintenanceLock.WaitAsync(ct).ConfigureAwait(false);
+        MaintenanceLease maintenance = await EnterMaintenanceAsync(ct).ConfigureAwait(false);
         try
         {
             if (!Directory.Exists(_diskRoot))
@@ -367,13 +359,13 @@ public sealed partial class RepoFileCacheService : IRepoFileCacheService
         }
         finally
         {
-            _maintenanceLock.Release();
+            maintenance.Dispose();
         }
     }
 
     public async Task<CacheStoreInspection> InspectAsync(CancellationToken ct = default)
     {
-        await _maintenanceLock.WaitAsync(ct).ConfigureAwait(false);
+        MaintenanceLease maintenance = await EnterMaintenanceAsync(ct).ConfigureAwait(false);
         try
         {
             await _indexLock.WaitAsync(ct).ConfigureAwait(false);
@@ -511,13 +503,13 @@ public sealed partial class RepoFileCacheService : IRepoFileCacheService
         }
         finally
         {
-            _maintenanceLock.Release();
+            maintenance.Dispose();
         }
     }
 
     public async Task ClearAllAsync(CancellationToken ct = default)
     {
-        await _maintenanceLock.WaitAsync(ct).ConfigureAwait(false);
+        MaintenanceLease maintenance = await EnterMaintenanceAsync(ct).ConfigureAwait(false);
         try
         {
             lock (_memLock)
@@ -547,7 +539,7 @@ public sealed partial class RepoFileCacheService : IRepoFileCacheService
         }
         finally
         {
-            _maintenanceLock.Release();
+            maintenance.Dispose();
         }
     }
 
@@ -555,7 +547,7 @@ public sealed partial class RepoFileCacheService : IRepoFileCacheService
     {
         string partition = GitHubAccountPartition.Require(userId);
         _ = ValidatePathSegment(partition, nameof(userId));
-        await _maintenanceLock.WaitAsync(ct).ConfigureAwait(false);
+        MaintenanceLease maintenance = await EnterMaintenanceAsync(ct).ConfigureAwait(false);
         try
         {
             lock (_memLock)
@@ -618,7 +610,7 @@ public sealed partial class RepoFileCacheService : IRepoFileCacheService
         }
         finally
         {
-            _maintenanceLock.Release();
+            maintenance.Dispose();
         }
     }
 
@@ -1195,6 +1187,23 @@ public sealed partial class RepoFileCacheService : IRepoFileCacheService
         };
     }
 
+    /// <summary>
+    /// Number of per-key locks currently referenced by a waiting or running
+    /// read or write. A cancelled waiter releases its reference, so the count
+    /// returns to zero once no operation is in flight.
+    /// </summary>
+    internal int ActiveKeyLockCount => _keyLocks.Count;
+
+    /// <summary>
+    /// Enters the maintenance gate that serializes disk reads, writes, purges,
+    /// inspection and clears. The gate is held until the lease is disposed.
+    /// </summary>
+    internal async Task<MaintenanceLease> EnterMaintenanceAsync(CancellationToken ct)
+    {
+        await _maintenanceLock.WaitAsync(ct).ConfigureAwait(false);
+        return new MaintenanceLease(_maintenanceLock);
+    }
+
     private async ValueTask<KeyLockLease> AcquireKeyLockAsync(RepoFileCacheKey key, CancellationToken ct)
     {
         string cacheKey = DiskKey(key);
@@ -1315,6 +1324,16 @@ public sealed partial class RepoFileCacheService : IRepoFileCacheService
                 return true;
             }
         }
+    }
+
+    /// <summary>Holds the maintenance gate; releases it exactly once on dispose.</summary>
+    internal sealed partial class MaintenanceLease : IDisposable
+    {
+        private SemaphoreSlim? _gate;
+
+        internal MaintenanceLease(SemaphoreSlim gate) => _gate = gate;
+
+        public void Dispose() => Interlocked.Exchange(ref _gate, null)?.Release();
     }
 
     private sealed partial class KeyLockLease : IDisposable

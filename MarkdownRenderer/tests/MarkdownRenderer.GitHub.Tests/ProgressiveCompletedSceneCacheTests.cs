@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
@@ -204,22 +203,19 @@ public sealed class ProgressiveCompletedSceneCacheTests
             }
         }
 
-        object graphEntriesBeforeTrim = GetCacheCollection(cache, "_entries");
-        object graphRecencyBeforeTrim = GetCacheCollection(cache, "_recency");
-        object metadataEntriesBeforeTrim = GetCacheCollection(cache, "_metadataEntries");
-        object metadataRecencyBeforeTrim = GetCacheCollection(cache, "_metadataRecency");
+        (int sceneCapacityBeforeTrim, int metadataCapacityBeforeTrim) = cache.IndexCapacity;
         Assert.True(cache.Count > 1_000);
         Assert.True(cache.MetadataCount > 1_000);
+        Assert.True(sceneCapacityBeforeTrim >= cache.Count);
+        Assert.True(metadataCapacityBeforeTrim >= cache.MetadataCount);
 
         if (retireOwner)
             cache.RemoveOwner(owner);
         else
             cache.Trim();
 
-        Assert.NotSame(graphEntriesBeforeTrim, GetCacheCollection(cache, "_entries"));
-        Assert.NotSame(graphRecencyBeforeTrim, GetCacheCollection(cache, "_recency"));
-        Assert.NotSame(metadataEntriesBeforeTrim, GetCacheCollection(cache, "_metadataEntries"));
-        Assert.NotSame(metadataRecencyBeforeTrim, GetCacheCollection(cache, "_metadataRecency"));
+        // The high-water indexes were replaced, not cleared in place.
+        Assert.Equal((0, 0), cache.IndexCapacity);
         Assert.Equal(0, cache.Count);
         Assert.Equal(0, cache.MetadataCount);
         Assert.Equal(0, cache.RetainedWeightBytes);
@@ -227,13 +223,13 @@ public sealed class ProgressiveCompletedSceneCacheTests
 
         Assert.True(cache.Retain(owner, "after-trim", result, estimatedWeightBytes: 1));
         Assert.True(cache.RetainMetadata(owner, "after-trim", new object(), estimatedWeightBytes: 1));
-        object graphEntriesBeforeDispose = GetCacheCollection(cache, "_entries");
-        object metadataEntriesBeforeDispose = GetCacheCollection(cache, "_metadataEntries");
+        (int sceneCapacityBeforeDispose, int metadataCapacityBeforeDispose) = cache.IndexCapacity;
+        Assert.True(sceneCapacityBeforeDispose > 0);
+        Assert.True(metadataCapacityBeforeDispose > 0);
 
         cache.Dispose();
 
-        Assert.NotSame(graphEntriesBeforeDispose, GetCacheCollection(cache, "_entries"));
-        Assert.NotSame(metadataEntriesBeforeDispose, GetCacheCollection(cache, "_metadataEntries"));
+        Assert.Equal((0, 0), cache.IndexCapacity);
         Assert.Equal(0, cache.Count);
         Assert.Equal(0, cache.MetadataCount);
         Assert.Equal(0, cache.RetainedWeightBytes);
@@ -435,10 +431,6 @@ public sealed class ProgressiveCompletedSceneCacheTests
         ]);
     }
 
-    private static object GetCacheCollection(MarkdownCompletedSceneCache cache, string name) =>
-        typeof(MarkdownCompletedSceneCache)
-            .GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)?
-            .GetValue(cache) ?? throw new InvalidOperationException($"Cache collection '{name}' was not found.");
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static (

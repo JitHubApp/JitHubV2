@@ -1,4 +1,3 @@
-using System.Reflection;
 using Markdig;
 using Markdig.Extensions.Footnotes;
 using Markdig.Extensions.Tables;
@@ -97,14 +96,7 @@ public sealed class GitHubReadmeProfileTests
     }
 
     private static bool HasRenderer<TNode>(MarkdownExtensionRegistry registry) where TNode : class
-    {
-        MethodInfo method = typeof(MarkdownExtensionRegistry).GetMethod(
-            "TryGetRenderer",
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Renderer registry lookup contract was not found.");
-        object?[] arguments = [typeof(TNode), null];
-        return (bool)(method.Invoke(registry, arguments) ?? false);
-    }
+        => registry.TryGetRenderer(typeof(TNode), out _);
 
     private static IEnumerable<string> FlattenLiteralText(MarkdownObject markdownObject)
     {

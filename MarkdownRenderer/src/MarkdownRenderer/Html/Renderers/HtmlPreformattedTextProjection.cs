@@ -99,7 +99,7 @@ internal sealed class HtmlPreformattedTextProjection
         int inputLength,
         out SourceSpan sourceSpan)
     {
-        if (context.SafeHtmlSourceProjection is { } projection)
+        if (context.SourceProjections.SafeHtml is { } projection)
             return projection.TryMapRange(inputStart, inputLength, out sourceSpan);
 
         sourceSpan = new SourceSpan(inputStart, inputLength);
@@ -126,7 +126,7 @@ internal sealed class HtmlPreformattedTextProjection
             _context = context;
             _sourceOffset = sourceOffset;
             _sourceSpan = sourceSpan;
-            _safeHtmlProjection = context.SafeHtmlSourceProjection;
+            _safeHtmlProjection = context.SourceProjections.SafeHtml;
             _work = work;
             _text = new StringBuilder(Math.Min(sourceSpan.Length, 64 * 1024));
         }

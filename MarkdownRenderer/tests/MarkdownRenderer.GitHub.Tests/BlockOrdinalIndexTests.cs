@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Accessibility;
@@ -25,21 +24,23 @@ public sealed class BlockOrdinalIndexTests
     public void PagedGeneratedDomainPreservesHolesBoundariesAndFirstWins()
     {
         var index = new BlockOrdinalIndex(generatedUpperBound: 513);
-        int[]?[] pages = GetField<int[]?[]?>(index, "_pages")
-            ?? throw new InvalidOperationException("A valid generated domain needs a page directory.");
-        Assert.Equal(2, pages.Length);
-        Assert.All(pages, static page => Assert.Null(page));
+        Assert.Equal(513, index.DenseGeneratedUpperBound);
+        Assert.Equal(2, index.DensePageCount);
+        Assert.Equal(0, index.GetDensePageLength(0));
+        Assert.Equal(0, index.GetDensePageLength(1));
 
         Assert.True(index.TryAdd(1, 0));
         Assert.True(index.TryAdd(512, 11));
         Assert.True(index.TryAdd(513, 12));
         Assert.False(index.TryAdd(512, 99));
 
-        Assert.Equal(512, pages[0]!.Length);
-        Assert.Single(pages[1]!);
-        Assert.Equal(1, pages[0]![0]); // Zero is absent; ordinal zero is stored as one.
-        Assert.Equal(12, pages[0]![511]);
-        Assert.Equal(13, pages[1]![0]);
+        Assert.Equal(512, index.GetDensePageLength(0));
+        Assert.Equal(1, index.GetDensePageLength(1));
+        Assert.Equal(1, index.ReadEncodedDenseSlot(1)); // Zero is absent; ordinal zero is stored as one.
+        Assert.Equal(12, index.ReadEncodedDenseSlot(512));
+        Assert.Equal(13, index.ReadEncodedDenseSlot(513));
+        Assert.Equal(0, index.ReadEncodedDenseSlot(2));
+        Assert.False(index.TryGetSpilled(1, out _));
         Assert.False(index.TryGetValue(2, out _));
         Assert.False(index.ContainsKey(0));
         Assert.Equal(3, index.Count);
@@ -91,10 +92,11 @@ public sealed class BlockOrdinalIndexTests
         Assert.Equal(int.MaxValue, index[1]);
         Assert.Equal(int.MaxValue - 1, index[2]);
         Assert.Equal(2, index.Count);
-        Assert.Equal(int.MaxValue, GetField<Dictionary<int, int>>(index, "_spill")[1]);
-        int[]?[] pages = GetField<int[]?[]?>(index, "_pages")
-            ?? throw new InvalidOperationException("A valid generated domain needs a page directory.");
-        Assert.Equal(int.MaxValue, pages[0]![1]);
+        Assert.True(index.TryGetSpilled(1, out int spilled));
+        Assert.Equal(int.MaxValue, spilled);
+        Assert.Equal(0, index.ReadEncodedDenseSlot(1));
+        Assert.Equal(int.MaxValue, index.ReadEncodedDenseSlot(2));
+        Assert.False(index.TryGetSpilled(2, out _));
     }
 
     [Theory]
@@ -104,10 +106,13 @@ public sealed class BlockOrdinalIndexTests
     public void MissingOrOverCapGeneratedBoundUsesDictionaryFallback(int upperBound)
     {
         var index = new BlockOrdinalIndex(upperBound);
-        Assert.Null(GetField<int[]?[]?>(index, "_pages"));
+        Assert.Equal(0, index.DensePageCount);
+        Assert.Equal(0, index.DenseGeneratedUpperBound);
         Assert.True(index.TryAdd(1, 0));
         Assert.True(index.TryAdd(int.MinValue, int.MaxValue));
         Assert.False(index.TryAdd(1, 1));
+        Assert.True(index.TryGetSpilled(1, out int fallbackOrdinal));
+        Assert.Equal(0, fallbackOrdinal);
         Assert.Equal(2, index.Count);
         AssertMapEquals(new Dictionary<int, int> { [1] = 0, [int.MinValue] = int.MaxValue }, index);
     }
@@ -117,14 +122,15 @@ public sealed class BlockOrdinalIndexTests
     {
         int upperBound = BlockOrdinalIndex.MaximumDenseGeneratedUpperBound;
         var index = new BlockOrdinalIndex(upperBound);
-        int[]?[] pages = GetField<int[]?[]?>(index, "_pages")
-            ?? throw new InvalidOperationException("The capped generated domain needs a page directory.");
-        Assert.Equal(upperBound / 512, pages.Length);
-        Assert.All(pages, static page => Assert.Null(page));
+        int pageCount = index.DensePageCount;
+        Assert.Equal(upperBound / 512, pageCount);
+        for (int page = 0; page < pageCount; page++)
+            Assert.Equal(0, index.GetDensePageLength(page));
 
         Assert.True(index.TryAdd(upperBound, 0));
-        Assert.Equal(512, pages[^1]!.Length);
-        Assert.Equal(1, pages[^1]![^1]);
+        Assert.Equal(512, index.GetDensePageLength(pageCount - 1));
+        Assert.Equal(0, index.GetDensePageLength(pageCount - 2));
+        Assert.Equal(1, index.ReadEncodedDenseSlot(upperBound));
         Assert.True(index.TryGetValue(upperBound, out int ordinal));
         Assert.Equal(0, ordinal);
         Assert.False(index.TryGetValue(upperBound - 1, out _));
@@ -229,7 +235,7 @@ public sealed class BlockOrdinalIndexTests
         BlockOrdinalIndex index = Assert.IsType<BlockOrdinalIndex>(map);
         Assert.Equal(
             upperBound is > 0 and <= BlockOrdinalIndex.MaximumDenseGeneratedUpperBound ? upperBound : 0,
-            GetField<int>(index, "_denseGeneratedUpperBound"));
+            index.DenseGeneratedUpperBound);
         Assert.Throws<InvalidOperationException>(() => index.TryAdd(int.MinValue, -1));
         foreach (BlockBox block in snapshot.Blocks)
         {
@@ -290,19 +296,5 @@ public sealed class BlockOrdinalIndexTests
         }
         Assert.Equal(expected.Count, actualKeys.Count);
         Assert.Throws<KeyNotFoundException>(() => _ = actual[int.MinValue + 1]);
-    }
-
-    private static T GetField<T>(object instance, string name)
-    {
-        FieldInfo field = instance.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException($"Field '{name}' was not found.");
-        object? value = field.GetValue(instance);
-        if (value is null)
-        {
-            if (default(T) is null)
-                return default!;
-            throw new InvalidOperationException($"Field '{name}' unexpectedly contained null.");
-        }
-        return Assert.IsType<T>(value);
     }
 }

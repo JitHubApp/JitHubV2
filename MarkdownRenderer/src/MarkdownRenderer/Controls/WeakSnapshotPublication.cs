@@ -35,6 +35,13 @@ internal sealed class WeakSnapshotPublication<TSnapshot> where TSnapshot : class
         _delivery = new Delivery(snapshot, publish, discard);
     }
 
+    /// <summary>
+    /// True once <see cref="Publish"/> or <see cref="Discard"/> has claimed the
+    /// one-shot delivery. The envelope, with its weak snapshot identity and both
+    /// callbacks, is then released, so a retained publication holds nothing.
+    /// </summary>
+    internal bool IsClaimed => Volatile.Read(ref _delivery) is null;
+
     internal void Publish()
     {
         // The winner owns delivery. Clear the handoff before invoking completion

@@ -1,7 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Buffers;
-using System.Reflection;
 using System.Threading;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Document;
@@ -421,8 +420,8 @@ public sealed class CompletedSvgPlacementCloneTests
         await using var fixture = await SvgPlacementFixture.CreateStartedAsync(_renderResources, renderer: renderer);
         // Registration precedes dispatch of the provider's asynchronous wait.
         // Observe both milestones rather than racing that queued callback.
-        await WaitUntilAsync(() => GetField<int>(fixture.Image.SvgHostDeferral, "_svgHostDeferred") != 0 &&
-            GetField(fixture.Image.SvgHostDeferral, "_svgHostDeferredWaiter") is not null && renderer.WaitCount > 0);
+        await WaitUntilAsync(() => fixture.Image.SvgHostDeferral.IsDeferred &&
+            fixture.Image.SvgHostDeferral.GetState().HasWaiter && renderer.WaitCount > 0);
         AssertCloneRejected(fixture.Image, fixture.CreateTargetContext());
         Assert.True(renderer.WaitCount > 0);
     }
@@ -515,18 +514,6 @@ public sealed class CompletedSvgPlacementCloneTests
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         while (!condition())
             await Task.Delay(10, timeout.Token);
-    }
-
-    private static T GetField<T>(object owner, string name)
-    {
-        FieldInfo field = owner.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return Assert.IsType<T>(field.GetValue(owner));
-    }
-
-    private static object? GetField(object owner, string name)
-    {
-        FieldInfo field = owner.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return field.GetValue(owner);
     }
 
     private sealed class SvgPlacementFixture : IAsyncDisposable

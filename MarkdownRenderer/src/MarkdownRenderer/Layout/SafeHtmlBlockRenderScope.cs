@@ -3,17 +3,17 @@ using MarkdownRenderer.Parsing;
 
 namespace MarkdownRenderer.Layout;
 
-/// <summary>Restores a layout context's previous safe-HTML alignment, nested scopes and inline flow when disposed.</summary>
+/// <summary>Restores the previous safe-HTML alignment, nested scopes and inline flow when disposed.</summary>
 internal readonly struct SafeHtmlBlockRenderScope : IDisposable
 {
-    private readonly MarkdownLayoutContext? _owner;
+    private readonly LayoutSafeHtmlBlockContext? _owner;
     private readonly SafeHtmlAlignment _alignment;
     private readonly SafeHtmlBlockScopeTracker? _nestedScopes;
     private readonly int? _inlineFlowScopeId;
     private readonly bool _inlineFlowContinuesPrevious;
 
     internal SafeHtmlBlockRenderScope(
-        MarkdownLayoutContext owner,
+        LayoutSafeHtmlBlockContext owner,
         SafeHtmlAlignment alignment,
         SafeHtmlBlockScopeTracker? nestedScopes,
         int? inlineFlowScopeId,
@@ -27,7 +27,7 @@ internal readonly struct SafeHtmlBlockRenderScope : IDisposable
     }
 
     public void Dispose()
-        => _owner?.RestoreSafeHtmlBlockContext(
+        => _owner?.Restore(
             _alignment,
             _nestedScopes,
             _inlineFlowScopeId,

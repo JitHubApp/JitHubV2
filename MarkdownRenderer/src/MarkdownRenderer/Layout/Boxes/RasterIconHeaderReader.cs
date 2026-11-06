@@ -276,7 +276,7 @@ internal static class RasterIconHeaderReader
         return true;
     }
 
-    private readonly struct IconPayloadRange(int Offset, int Length)
+    internal readonly struct IconPayloadRange(int Offset, int Length)
     {
         public readonly int Offset = Offset;
         public readonly int Length = Length;

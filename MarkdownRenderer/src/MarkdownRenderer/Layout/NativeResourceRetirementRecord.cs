@@ -59,6 +59,12 @@ internal sealed class NativeResourceRetirementRecord
     internal int LastFailureHResult { get; private set; }
     internal Action<IDisposable> Disposer => _disposer ?? s_directDisposer;
 
+    /// <summary>
+    /// The native owner a single-slot record holds in its in-record custody
+    /// slot; null when that slot is empty or the record uses slot groups.
+    /// </summary>
+    internal IDisposable? SingleSlotResource => _singleResource;
+
     // Arrays are covariant only for custody/clearing. Never store another
     // native type into a group borrowed from a concrete Win2D resource array.
     internal void SetGroup(int index, IDisposable?[]? resources, bool retryable = true)

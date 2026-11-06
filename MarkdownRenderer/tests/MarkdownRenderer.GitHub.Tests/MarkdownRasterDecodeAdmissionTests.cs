@@ -1,6 +1,5 @@
 using MarkdownRenderer.Layout;
 using System;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -274,9 +273,7 @@ public sealed class MarkdownRasterDecodeAdmissionTests
     }
 
     private static object GetAdmissionLock(MarkdownImagePreparationAdmission admission) =>
-        typeof(MarkdownImagePreparationAdmission)
-            .GetField("_gate", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(admission)!;
+        admission.SyncRoot;
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static async Task<(WeakReference<object> Owner, IDisposable Lease)> AcquireWithTemporaryOwnerAsync(

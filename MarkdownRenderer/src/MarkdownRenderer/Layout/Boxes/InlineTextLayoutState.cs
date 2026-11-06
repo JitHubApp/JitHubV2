@@ -291,6 +291,18 @@ internal struct InlineTextLayoutState
         }
     }
 
+    /// <summary>
+    /// Replaces the cached line metrics and their read flag, so later reads
+    /// return <paramref name="metrics"/> as if the native layout produced them.
+    /// DirectWrite never yields malformed metrics, so this is how the
+    /// fail-closed paths for empty, nonfinite or overflowing metrics run.
+    /// </summary>
+    internal void ReplaceCachedLineMetrics(CanvasLineMetrics[]? metrics, bool read)
+    {
+        _cachedLineMetrics = metrics;
+        _lineMetricsRead = read;
+    }
+
     /// <summary>Drops the cached line metrics so the next read queries the layout.</summary>
     internal void InvalidateLineMetrics()
     {

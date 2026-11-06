@@ -108,7 +108,7 @@ internal sealed class HtmlNestedMarkdown
             else
             {
                 nestedProjection.ApplyTo(tail, context.CancellationToken);
-                using (context.PushSourceProjection(nestedProjection))
+                using (context.SourceProjections.PushMarkdown(nestedProjection))
                     GfmChildBuilder.PopulateChildren(root, tail, context);
             }
         }
@@ -171,7 +171,7 @@ internal sealed class HtmlNestedMarkdown
             }
             else
             {
-                using (context.PushSourceProjection(nestedProjection))
+                using (context.SourceProjections.PushMarkdown(nestedProjection))
                     GfmChildBuilder.PopulateChildren(stack, fragment, context, alignment);
             }
             return HtmlBoxes.ReturnIfNonEmpty(stack, context);

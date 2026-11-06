@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Reflection;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
@@ -122,7 +121,7 @@ public sealed class VectorSceneDrawingCleanupTests
             failAtRequest: 2,
             injectedFailure);
         MarkdownLayoutContext context = CreateContext(resourceCreator);
-        using MarkdownLayoutConstructionScope construction = context.BeginConstructionScope();
+        using MarkdownLayoutConstructionScope construction = context.Construction.Begin();
         VectorSceneBox box = CreateTwoPathVectorBox(context);
         context.RegisterConstructionBlock(box);
 
@@ -153,7 +152,7 @@ public sealed class VectorSceneDrawingCleanupTests
             failAtRequest: 2,
             injectedFailure);
         MarkdownLayoutContext context = CreateContext(resourceCreator);
-        using MarkdownLayoutConstructionScope construction = context.BeginConstructionScope();
+        using MarkdownLayoutConstructionScope construction = context.Construction.Begin();
 
         InvalidOperationException actual = Assert.Throws<InvalidOperationException>(() =>
             _ = new InlineVectorSceneRun(
@@ -167,11 +166,7 @@ public sealed class VectorSceneDrawingCleanupTests
         Assert.Same(injectedFailure, actual);
         Assert.Equal(2, resourceCreator.DeviceRequestCount);
 
-        FieldInfo rootsField = Assert.IsAssignableFrom<FieldInfo>(
-            typeof(MarkdownLayoutConstructionScope).GetField("_roots", BindingFlags.Instance | BindingFlags.NonPublic));
-        var roots = Assert.IsType<HashSet<object>>(rootsField.GetValue(construction));
-        InlineVectorSceneRun run = Assert.IsType<InlineVectorSceneRun>(
-            Assert.Single(roots, static root => root is InlineVectorSceneRun));
+        InlineVectorSceneRun run = Assert.Single(construction.GetOwnedRoots<InlineVectorSceneRun>());
         Assert.False(run.IsNativeResourcesPrepared);
 
         construction.Dispose();
@@ -185,8 +180,6 @@ public sealed class VectorSceneDrawingCleanupTests
     public void FailedDrawTextPreparationOwnsAndClearsPendingFormatBeforeRetry()
     {
         var injectedFailure = new InvalidOperationException("text layout device request failed");
-        FieldInfo pendingFormatField = Assert.IsAssignableFrom<FieldInfo>(
-            typeof(VectorSceneDrawing).GetField("_pendingTextFormat", BindingFlags.Instance | BindingFlags.NonPublic));
         VectorSceneDrawing? drawing = null;
         CanvasTextFormat? pendingFormatAtFailure = null;
         var resourceCreator = new FailOnceResourceCreator(
@@ -194,18 +187,16 @@ public sealed class VectorSceneDrawingCleanupTests
             failAtRequest: 2,
             injectedFailure,
             beforeFailure: () =>
-                pendingFormatAtFailure = drawing is null
-                    ? null
-                    : pendingFormatField.GetValue(drawing) as CanvasTextFormat);
+                pendingFormatAtFailure = drawing?.PendingTextFormat);
         MarkdownLayoutContext context = CreateContext(resourceCreator);
-        using MarkdownLayoutConstructionScope construction = context.BeginConstructionScope();
+        using MarkdownLayoutConstructionScope construction = context.Construction.Begin();
         drawing = new VectorSceneDrawing(
             resourceCreator,
             CreatePathAndTextScene(),
             CancellationToken.None,
             _renderResources,
             deferNativeResources: true);
-        context.RegisterConstructionResource(drawing);
+        context.Construction.RegisterResource(drawing);
 
         InvalidOperationException actual = Assert.Throws<InvalidOperationException>(
             () => drawing.PrepareNativeResources(CancellationToken.None));
@@ -213,7 +204,7 @@ public sealed class VectorSceneDrawingCleanupTests
         Assert.Same(injectedFailure, actual);
         Assert.Equal(2, resourceCreator.DeviceRequestCount);
         Assert.NotNull(pendingFormatAtFailure);
-        Assert.Null(pendingFormatField.GetValue(drawing));
+        Assert.Null(drawing.PendingTextFormat);
         Assert.False(drawing.IsPrepared);
 
         drawing.PrepareNativeResources(CancellationToken.None);

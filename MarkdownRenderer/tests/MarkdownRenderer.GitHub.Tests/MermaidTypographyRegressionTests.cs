@@ -1,5 +1,4 @@
 using System.Numerics;
-using System.Reflection;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Layout;
@@ -154,10 +153,8 @@ public sealed class MermaidTypographyRegressionTests
         MarkdownVectorScene scene,
         int commandIndex)
     {
-        FieldInfo layoutsField = typeof(VectorSceneDrawing).GetField(
-            "_textLayouts",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        var layouts = (CanvasTextLayout?[])layoutsField.GetValue(drawing)!;
+        IReadOnlyList<CanvasTextLayout?> layouts =
+            Assert.IsAssignableFrom<IReadOnlyList<CanvasTextLayout?>>(drawing.TextLayoutSlots);
         MarkdownVectorCommand command = scene.Commands[commandIndex];
         Assert.True(HasNativeTextLayout(command),
             $"Command {commandIndex} is not a complete DrawText command.");
@@ -171,7 +168,7 @@ public sealed class MermaidTypographyRegressionTests
                 textLayoutSlot++;
         }
 
-        Assert.InRange(textLayoutSlot, 0, layouts.Length - 1);
+        Assert.InRange(textLayoutSlot, 0, layouts.Count - 1);
         CanvasTextLayout layout = Assert.IsType<CanvasTextLayout>(layouts[textLayoutSlot]);
         Vector2 origin = VectorSceneNativeFactory.ResolveTextOrigin(command, layout);
         Rect ink = layout.DrawBounds;

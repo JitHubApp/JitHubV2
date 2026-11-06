@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -509,21 +508,20 @@ public class RepoFileCacheServiceTests : IDisposable
     {
         RepoFileCacheService cache = CreateCache();
         RepoFileCacheKey key = Key("cancelled-get");
-        SemaphoreSlim maintenanceLock = GetPrivateSemaphore(cache, "_maintenanceLock");
-        await maintenanceLock.WaitAsync();
+        RepoFileCacheService.MaintenanceLease maintenance = await cache.EnterMaintenanceAsync(CancellationToken.None);
         try
         {
             using CancellationTokenSource cancellation = new();
             Task<RepoFileCacheEntry?> pending = cache.GetAsync(key, cancellation.Token);
-            await WaitUntilAsync(() => GetKeyLockCount(cache) == 1);
+            await WaitUntilAsync(() => cache.ActiveKeyLockCount == 1);
 
             cancellation.Cancel();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
-            await WaitUntilAsync(() => GetKeyLockCount(cache) == 0);
+            await WaitUntilAsync(() => cache.ActiveKeyLockCount == 0);
         }
         finally
         {
-            maintenanceLock.Release();
+            maintenance.Dispose();
         }
 
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(2));
@@ -536,21 +534,20 @@ public class RepoFileCacheServiceTests : IDisposable
         RepoFileCacheService cache = CreateCache();
         RepoFileCacheKey key = Key("cancelled-put");
         RepoFileCacheEntry entry = MakeEntry(key.Sha, Encoding.UTF8.GetBytes("content"));
-        SemaphoreSlim maintenanceLock = GetPrivateSemaphore(cache, "_maintenanceLock");
-        await maintenanceLock.WaitAsync();
+        RepoFileCacheService.MaintenanceLease maintenance = await cache.EnterMaintenanceAsync(CancellationToken.None);
         try
         {
             using CancellationTokenSource cancellation = new();
             Task pending = cache.PutAsync(key, entry, cancellation.Token);
-            await WaitUntilAsync(() => GetKeyLockCount(cache) == 1);
+            await WaitUntilAsync(() => cache.ActiveKeyLockCount == 1);
 
             cancellation.Cancel();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
-            await WaitUntilAsync(() => GetKeyLockCount(cache) == 0);
+            await WaitUntilAsync(() => cache.ActiveKeyLockCount == 0);
         }
         finally
         {
-            maintenanceLock.Release();
+            maintenance.Dispose();
         }
 
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(2));
@@ -590,8 +587,7 @@ public class RepoFileCacheServiceTests : IDisposable
     public async Task CancelledUniqueKeyWaiters_DoNotAccumulateKeyLocks()
     {
         RepoFileCacheService cache = CreateCache();
-        SemaphoreSlim maintenanceLock = GetPrivateSemaphore(cache, "_maintenanceLock");
-        await maintenanceLock.WaitAsync();
+        RepoFileCacheService.MaintenanceLease maintenance = await cache.EnterMaintenanceAsync(CancellationToken.None);
         try
         {
             using CancellationTokenSource cancellation = new();
@@ -601,15 +597,15 @@ public class RepoFileCacheServiceTests : IDisposable
                 pending[index] = cache.GetAsync(Key($"cancelled-{index}"), cancellation.Token);
             }
 
-            await WaitUntilAsync(() => GetKeyLockCount(cache) == pending.Length);
+            await WaitUntilAsync(() => cache.ActiveKeyLockCount == pending.Length);
             cancellation.Cancel();
             await Task.WhenAll(pending.Select(async task =>
                 await Assert.ThrowsAnyAsync<OperationCanceledException>(() => task)));
-            await WaitUntilAsync(() => GetKeyLockCount(cache) == 0);
+            await WaitUntilAsync(() => cache.ActiveKeyLockCount == 0);
         }
         finally
         {
-            maintenanceLock.Release();
+            maintenance.Dispose();
         }
     }
 
@@ -833,19 +829,6 @@ public class RepoFileCacheServiceTests : IDisposable
         using JsonDocument sanitizedIndex = JsonDocument.Parse(await File.ReadAllTextAsync(indexPath));
         Assert.Empty(sanitizedIndex.RootElement.GetProperty("entries").EnumerateArray());
         File.Delete(outsidePath);
-    }
-
-    private static SemaphoreSlim GetPrivateSemaphore(RepoFileCacheService cache, string fieldName) =>
-        (SemaphoreSlim)(typeof(RepoFileCacheService)
-            .GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(cache) ?? throw new InvalidOperationException($"Missing {fieldName}."));
-
-    private static int GetKeyLockCount(RepoFileCacheService cache)
-    {
-        object keyLocks = typeof(RepoFileCacheService)
-            .GetField("_keyLocks", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(cache) ?? throw new InvalidOperationException("Missing per-key locks.");
-        return (int)(keyLocks.GetType().GetProperty("Count")?.GetValue(keyLocks) ?? -1);
     }
 
     private static async Task WaitUntilAsync(Func<bool> predicate)

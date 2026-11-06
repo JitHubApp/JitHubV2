@@ -102,6 +102,20 @@ internal sealed class MarkdownCompletedSceneCache : IDisposable
         }
     }
 
+    /// <summary>
+    /// Bucket capacity of the scene and metadata indexes, sampled under the
+    /// cache lock. Trim, last-owner removal and disposal replace a high-water
+    /// index instead of clearing it, so its capacity returns to zero.
+    /// </summary>
+    internal (int Scenes, int Metadata) IndexCapacity
+    {
+        get
+        {
+            lock (_gate)
+                return (_entries.Capacity, _metadataEntries.Capacity);
+        }
+    }
+
     internal long MetadataHits
     {
         get

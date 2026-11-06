@@ -348,17 +348,7 @@ public sealed class SelectionAdornerLazyViewportTests
     }
 
     private static VisibleAppendDelegate? TryCreateVisibleAppendDelegate(SelectionController selection)
-    {
-        var method = typeof(SelectionController).GetMethod(
-            "AppendVisibleHighlightRects",
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
-            binder: null,
-            types: [typeof(LayoutSnapshot), typeof(Rect), typeof(List<Rect>)],
-            modifiers: null);
-        return method is null
-            ? null
-            : (VisibleAppendDelegate)method.CreateDelegate(typeof(VisibleAppendDelegate), selection);
-    }
+        => selection.AppendVisibleHighlightRects;
 
     private delegate void VisibleAppendDelegate(
         LayoutSnapshot snapshot,

@@ -1,4 +1,4 @@
-using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Markdig;
 using MarkdownRenderer.Accessibility;
@@ -142,14 +142,37 @@ public sealed class DirectLiteralTextRunTests
     }
 
     [Fact]
+    public void TextRunKeepsOneStringSlotThatTheDirectSourceCacheReuses()
+    {
+        // Every literal run pays for TextRun's storage. It holds exactly one
+        // string slot, and a direct-source run publishes its materialized text
+        // into that slot instead of allocating a cache of its own.
+        Assert.Equal(
+            MeasureAllocatedBytes(static () => new OneStringSlotRun("literal")),
+            MeasureAllocatedBytes(static () => new TextRun("literal")));
+        Assert.Equal(
+            MeasureAllocatedBytes(static () => new SourceSliceShapedRun(SlotProbeSource, 7)),
+            MeasureAllocatedBytes(static () => new SourceSliceTextRun(SlotProbeSource, 7, 7)));
+
+        long substringBytes = MeasureAllocatedBytes(static () => SlotProbeSource.Substring(7, 7));
+        _ = new SourceSliceTextRun(SlotProbeSource, 7, 7).Text;
+        var run = new SourceSliceTextRun(SlotProbeSource, 7, 7);
+        long beforeFirstRead = GC.GetAllocatedBytesForCurrentThread();
+        string first = run.Text;
+        long afterFirstRead = GC.GetAllocatedBytesForCurrentThread();
+        string second = run.Text;
+        long afterSecondRead = GC.GetAllocatedBytesForCurrentThread();
+
+        Assert.Equal("literal", first);
+        Assert.Same(first, second);
+        Assert.True(run.HasMaterializedText);
+        Assert.Equal(substringBytes, afterFirstRead - beforeFirstRead);
+        Assert.Equal(0, afterSecondRead - afterFirstRead);
+    }
+
+    [Fact]
     public void SourceSliceLayoutAppendAndPrivateCloneStayLazyAndPublishOneConcurrentString()
     {
-        Assert.Equal(
-            new[] { "_text" },
-            typeof(TextRun)
-                .GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly)
-                .Select(static field => field.Name));
-
         const string source = "prefix:A\uD83D\uDE00B:suffix";
         var run = new SourceSliceTextRun(source, 7, 4)
         {
@@ -572,6 +595,37 @@ public sealed class DirectLiteralTextRunTests
     private sealed class CustomTextRun(string text) : TextRun(text)
     {
         public override string Text => "custom";
+    }
+
+    private const string SlotProbeSource = "prefix:literal:suffix";
+
+    /// <summary>Allocates one object from <paramref name="create"/> after a warm-up call and returns its size.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static long MeasureAllocatedBytes(Func<object> create)
+    {
+        GC.KeepAlive(create());
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        object created = create();
+        long after = GC.GetAllocatedBytesForCurrentThread();
+        GC.KeepAlive(created);
+        return after - before;
+    }
+
+    /// <summary>The storage reference for TextRun: an inline run with one string field.</summary>
+    private class OneStringSlotRun(string text) : InlineRun
+    {
+        private readonly string _text = text;
+
+        public override string Text => _text;
+    }
+
+    /// <summary>The storage reference for SourceSliceTextRun: the one-slot run plus a source string and start.</summary>
+    private sealed class SourceSliceShapedRun(string sourceText, int sourceStart) : OneStringSlotRun(string.Empty)
+    {
+        private readonly string _sourceText = sourceText;
+        private readonly int _sourceStart = sourceStart;
+
+        public override string Text => _sourceText.Substring(_sourceStart);
     }
 
     private sealed class BuildFixture(CanvasDevice device, MarkdownLayoutContext context, LayoutSnapshot snapshot)

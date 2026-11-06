@@ -25,6 +25,7 @@ using MarkdownRenderer.Controls.LazyLayout;
 using MarkdownRenderer.Controls.Pipeline;
 using MarkdownRenderer.Controls.Readiness;
 using MarkdownRenderer.Controls.Selection;
+using MarkdownRenderer.Controls.Threading;
 
 namespace MarkdownRenderer.Controls.Composition;
 
@@ -41,11 +42,15 @@ internal sealed class EmbedHosts :
     ICodeBlockHighlightingHost
 {
     private readonly MarkdownRendererControl _control;
+    private readonly IMarkdownUiScheduler? _uiScheduler;
     private Parts? _owners;
 
-    internal EmbedHosts(MarkdownRendererControl control)
+    /// <param name="control">The renderer the hosts serve.</param>
+    /// <param name="uiScheduler">The renderer's UI thread; none when it has no dispatcher.</param>
+    internal EmbedHosts(MarkdownRendererControl control, IMarkdownUiScheduler? uiScheduler)
     {
         _control = control;
+        _uiScheduler = uiScheduler;
     }
 
     /// <summary>The owners the hosts forward to.</summary>
@@ -66,7 +71,9 @@ internal sealed class EmbedHosts :
         VisibleImageLoading VisibleImages,
         HostedElementFocus HostedFocus,
         ImagePlanSet ImagePlans,
-        ImageSubscriptions ImageSubscriptions);
+        ImageSubscriptions ImageSubscriptions,
+        EmbedRealization Embeds,
+        MarkdownViewport Viewport);
 
     internal void Connect(Parts owners) => _owners = owners;
 
@@ -132,7 +139,12 @@ internal sealed class EmbedHosts :
 
     object ICodeBlockHighlightingHost.DocumentOwner => _control;
 
-    Microsoft.UI.Dispatching.DispatcherQueue? ICodeBlockHighlightingHost.DispatcherQueue => _control.DispatcherQueue;
+    IMarkdownUiScheduler? ICodeBlockHighlightingHost.UiScheduler => _uiScheduler;
+
+    bool ICodeBlockHighlightingHost.HasMeasuredCodeBlocks => Owners.Embeds.HasMeasuredCodeBlocks;
+
+    bool ICodeBlockHighlightingHost.TryGetViewport(out double top, out double height) =>
+        Owners.Viewport.TryGet(out top, out height, out _);
 
     ICodeHighlighter? ICodeBlockHighlightingHost.CodeHighlighter => _control.CodeHighlighter;
 

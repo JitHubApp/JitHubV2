@@ -411,8 +411,9 @@ public sealed class NativePaintSessionResourceTests
             Assert.Contains("poisoned", failure.Message, StringComparison.OrdinalIgnoreCase);
             Assert.Equal(1, retirement.QuarantinedResourceCount);
             Assert.Equal(0, retirement.PendingRecordCount);
-            object quarantineRecord = GetPrivateField(retirement, "_quarantine")!;
-            quarantinedLayer = Assert.IsType<CanvasActiveLayer>(GetPrivateField(quarantineRecord, "_singleResource"));
+            NativeResourceRetirementRecord quarantineRecord =
+                Assert.IsType<NativeResourceRetirementRecord>(retirement.LatestQuarantinedRecord);
+            quarantinedLayer = Assert.IsType<CanvasActiveLayer>(quarantineRecord.SingleSlotResource);
             Assert.Equal(0, disposal.LayerAttempts);
             Assert.False(retirement.DrainOnce());
             Assert.Equal(0, disposal.LayerAttempts);
@@ -490,17 +491,8 @@ public sealed class NativePaintSessionResourceTests
         return GC.GetAllocatedBytesForCurrentThread() - before;
     }
 
-    private static object? GetPrivateField(object owner, string name) =>
-        owner.GetType().GetField(
-            name,
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-        .GetValue(owner);
-
-    private static CanvasActiveLayer? TryGetQuarantinedLayer(NativeResourceRetirement retirement)
-    {
-        object? record = GetPrivateField(retirement, "_quarantine");
-        return record is null ? null : GetPrivateField(record, "_singleResource") as CanvasActiveLayer;
-    }
+    private static CanvasActiveLayer? TryGetQuarantinedLayer(NativeResourceRetirement retirement) =>
+        retirement.LatestQuarantinedRecord?.SingleSlotResource as CanvasActiveLayer;
 
     private sealed class DisposalProbe
     {

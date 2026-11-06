@@ -236,7 +236,7 @@ internal sealed class SnapshotRetirementTracker
         }
     }
 
-    private readonly struct RetirementFailure(long Sequence, Exception Exception)
+    internal readonly struct RetirementFailure(long Sequence, Exception Exception)
     {
         public readonly long Sequence = Sequence;
         public readonly Exception Exception = Exception;

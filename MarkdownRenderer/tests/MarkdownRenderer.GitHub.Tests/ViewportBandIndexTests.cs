@@ -1,5 +1,4 @@
 using System;
-using System.Reflection;
 using MarkdownRenderer.Layout;
 using Xunit;
 
@@ -17,9 +16,8 @@ public sealed class ViewportBandIndexTests
         index.Commit();
         Assert.True(index.IsDocumentOrder);
 
-        FieldInfo entriesField = typeof(ViewportBandIndex).GetField(
-            "_entries", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        object backingArray = entriesField.GetValue(index)!;
+        // The entry array is a readonly field, so a suffix commit can only
+        // reuse it; the zero-allocation assert below proves no copy is made.
         int last = count - 1;
 
         // Warm the successful suffix path before measuring managed allocation.
@@ -31,7 +29,7 @@ public sealed class ViewportBandIndexTests
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
         Assert.Equal(0, allocated);
-        Assert.Same(backingArray, entriesField.GetValue(index));
+        Assert.Equal(count, index.Count);
         Assert.True(index.IsDocumentOrder);
         Assert.Equal((last * 2d, last * 2d + 3d), index.GetBounds(last));
     }

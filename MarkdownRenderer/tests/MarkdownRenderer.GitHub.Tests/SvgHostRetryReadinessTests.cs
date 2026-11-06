@@ -1,49 +1,75 @@
-using MarkdownRenderer.Layout;
-using System.Reflection;
-using System.Runtime.CompilerServices;
 using System.Collections.Concurrent;
+using MarkdownRenderer.Layout;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Boxes;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
-// These bare managed-owner tests never construct a XAML object, load images,
-// create a device or invoke a native queue. Injected queues retain callbacks.
-public sealed class SvgHostRetryReadinessTests
+// These managed-owner tests never construct a XAML object, load images,
+// create a device or invoke a native queue. Each denial is recorded through
+// the real deferral and the scope's managed admission coordinator; injected
+// retry queues retain or reject callbacks.
+public sealed class SvgHostRetryReadinessTests : IDisposable
 {
-    private readonly MarkdownRenderResources _renderResources = new();
-
     private const int Generation = 7;
+    private const long DeniedCapacityVersion = 11;
+    private const long RequiredSourceBytes = 73728;
+
+    private readonly MarkdownRenderResources _renderResources = new();
+    private readonly Dictionary<SvgHostLoadDeferral, TestSvgHostDeferralHost> _owners = new();
+
+    public void Dispose()
+    {
+        // Release the coordinator waiters the denials registered.
+        foreach (SvgHostLoadDeferral owner in _owners.Keys)
+            owner.ClearSvgHostDeferral();
+    }
 
     [Fact]
     public async Task ObservedSelfReleaseReregistersOnlyTheSourceFreeThresholdWait()
     {
-        var (owner, demand, _) = CreateWaiting();
-        using var lifetime = new CancellationTokenSource();
-        var admission = new ThresholdProbe();
+        var queue = new RetryQueueProbe();
         var queued = new ConcurrentQueue<Action>();
-        TestSvgHostDeferralHost.Of(owner).Cancellation = lifetime.Token;
-        Set(owner, "_svgHostDeferredAdmission", new WeakReference<IMarkdownSvgAdmission>(admission));
-        Set(owner, "_svgDeferredRetryEnqueueOverride", (Func<Action, bool>)(work => { queued.Enqueue(work); return true; }));
+        queue.Handler = work => { queued.Enqueue(work); return true; };
+        using var lifetime = new CancellationTokenSource();
+        var admission = new ThresholdProbe { CapacityVersion = DeniedCapacityVersion, FailNextDomainRead = true };
+        SvgHostLoadDeferral owner = CreateOwner(queue);
+        TestSvgHostDeferralHost host = HostOf(owner);
+        host.Cancellation = lifetime.Token;
+        MarkdownSvgRenderDemand demand = host.LoadDemand!;
         try
         {
+            // The bounded waiter cannot be registered, so only the scalar
+            // denial remains on the box.
+            owner.DeferSvgHostLoad(Denial(admission, demand));
+            SvgHostLoadDeferralState denied = owner.GetState();
+            Assert.Equal(SvgHostDeferralPhase.Waiting, denied.Phase);
+            Assert.False(denied.HasWaiter);
+            Assert.Null(denied.WaiterIdentity);
+            Assert.NotNull(denied.DenialIdentity);
+            Assert.Equal(DeniedCapacityVersion, denied.CapacityVersion);
+            Assert.Equal(0, admission.WaitCount);
+
+            admission.CapacityVersion = 12; // A self-release pulse.
             owner.TryResumeDeferredSvgLoadForObservedDemandOrCapacity(demand);
             await admission.WaitStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.Empty(queued);
             Assert.Equal(1, admission.WaitCount);
-            Assert.Equal(73728, admission.RequiredBytes);
+            Assert.Equal(RequiredSourceBytes, admission.RequiredBytes);
             Assert.Equal(MarkdownSvgRenderPriority.Overscan, admission.Priority);
-            Assert.Equal(12, Field<long>(owner, "_svgHostDeferredCapacityVersion"));
-            Assert.False(Field<bool>(owner, "_svgHostDeferredCapacityReady"));
-            Assert.Equal(1, Field<int>(owner, "_svgHostDeferred"));
+            SvgHostLoadDeferralState reregistered = owner.GetState();
+            Assert.Equal(12, reregistered.CapacityVersion);
+            Assert.False(reregistered.CapacityReady);
+            Assert.Equal(SvgHostDeferralPhase.Waiting, reregistered.Phase);
 
             admission.Ready.TrySetResult(); // No additional numeric version change.
             Assert.True(SpinWait.SpinUntil(() => queued.Count == 1, TimeSpan.FromSeconds(5)));
             Assert.Equal(1, admission.WaitCount);
             Assert.Equal(0, admission.OpenCount);
-            Assert.True(Field<bool>(owner, "_svgHostDeferredCapacityReady"));
-            Assert.Equal(2, Field<int>(owner, "_svgHostDeferred"));
+            SvgHostLoadDeferralState ready = owner.GetState();
+            Assert.True(ready.CapacityReady);
+            Assert.Equal(SvgHostDeferralPhase.RetryQueued, ready.Phase);
         }
         finally
         {
@@ -57,265 +83,369 @@ public sealed class SvgHostRetryReadinessTests
     [Fact]
     public void NumericCapacityPulseAloneCannotRetryAnInsufficientSourceDenial()
     {
-        var (owner, demand, identity) = CreateWaiting();
-        int calls = 0;
-        Set(owner, "_svgDeferredRetryEnqueueOverride", (Func<Action, bool>)(_ => { calls++; return true; }));
+        var queue = new RetryQueueProbe();
+        var (owner, demand, identity) = CreateWaiting(queue);
         owner.TryQueueDeferredSvgHostRetry(demand, Generation, 0, 12, 0);
-        Assert.Equal(0, calls);
-        Assert.Equal(1, Field<int>(owner, "_svgHostDeferred"));
-        Assert.False(Field<bool>(owner, "_svgHostDeferredCapacityReady"));
-        Assert.Same(identity, Field<object>(owner, "_svgHostDeferredWaiterIdentity"));
+        Assert.Equal(0, queue.Calls);
+        SvgHostLoadDeferralState state = owner.GetState();
+        Assert.Equal(SvgHostDeferralPhase.Waiting, state.Phase);
+        Assert.False(state.CapacityReady);
+        Assert.Same(identity, state.WaiterIdentity);
+        Assert.True(state.HasWaiter);
     }
 
     [Fact]
     public void AcceptedThresholdCanRetryWithoutAdvancingNumericCapacityVersion()
     {
-        var (owner, demand, identity) = CreateWaiting();
-        int calls = 0;
-        Set(owner, "_svgDeferredRetryEnqueueOverride", (Func<Action, bool>)(_ => { calls++; return true; }));
+        var queue = new RetryQueueProbe();
+        var (owner, demand, identity) = CreateWaiting(queue);
         owner.TryQueueDeferredSvgHostRetry(demand, Generation, 0, 11, 0,
             capacityThresholdSatisfied: true, waiterIdentity: identity);
-        Assert.Equal(1, calls);
-        Assert.Equal(2, Field<int>(owner, "_svgHostDeferred"));
-        Assert.Equal(11, Field<long>(owner, "_svgHostDeferredCapacityVersion"));
-        Assert.True(Field<bool>(owner, "_svgHostDeferredCapacityReady"));
+        Assert.Equal(1, queue.Calls);
+        SvgHostLoadDeferralState state = owner.GetState();
+        Assert.Equal(SvgHostDeferralPhase.RetryQueued, state.Phase);
+        Assert.Equal(11, state.CapacityVersion);
+        Assert.True(state.CapacityReady);
+        Assert.False(state.HasWaiter);
         owner.OnSvgHostAdmissionWaiterFinished(demand, Generation, identity);
-        Assert.Same(identity, Field<object>(owner, "_svgHostDeferredWaiterIdentity"));
+        Assert.Same(identity, owner.GetState().WaiterIdentity);
     }
 
     [Fact]
     public void OldWaiterThresholdCannotQueueAReplacementWithTheSameDemandAndGeneration()
     {
-        var (owner, demand, identity) = CreateWaiting();
-        object replacement = new();
-        Set(owner, "_svgHostDeferredWaiterIdentity", replacement);
-        int calls = 0;
-        Set(owner, "_svgDeferredRetryEnqueueOverride", (Func<Action, bool>)(_ => { calls++; return true; }));
+        var queue = new RetryQueueProbe();
+        var (owner, demand, identity) = CreateWaiting(queue);
+        // A replacement denial for the same demand and generation registers
+        // a new waiter and retires the old one.
+        owner.DeferSvgHostLoad(Denial(new ThresholdProbe { CapacityVersion = DeniedCapacityVersion }, demand));
+        object replacement = Assert.IsType<object>(owner.GetState().WaiterIdentity);
+        Assert.NotSame(identity, replacement);
+
         owner.TryQueueDeferredSvgHostRetry(demand, Generation, 0, 11, 0,
             capacityThresholdSatisfied: true, waiterIdentity: identity);
-        Assert.Equal(0, calls);
-        Assert.Equal(1, Field<int>(owner, "_svgHostDeferred"));
-        Assert.False(Field<bool>(owner, "_svgHostDeferredCapacityReady"));
-        Assert.Same(replacement, Field<object>(owner, "_svgHostDeferredWaiterIdentity"));
+        Assert.Equal(0, queue.Calls);
+        SvgHostLoadDeferralState state = owner.GetState();
+        Assert.Equal(SvgHostDeferralPhase.Waiting, state.Phase);
+        Assert.False(state.CapacityReady);
+        Assert.Same(replacement, state.WaiterIdentity);
     }
 
     [Fact]
     public void SourceThresholdCannotSatisfyAnOwnerSlotDenial()
     {
-        var (owner, demand, identity) = CreateWaiting();
-        Set(owner, "_svgHostDeferredRequiresOwnerSlot", true);
-        int calls = 0;
-        Set(owner, "_svgDeferredRetryEnqueueOverride", (Func<Action, bool>)(_ => { calls++; return true; }));
+        var queue = new RetryQueueProbe();
+        var (owner, demand, identity) = CreateWaiting(queue, requiresOwnerSlot: true);
+        Assert.True(owner.GetState().RequiresOwnerSlot);
         owner.TryQueueDeferredSvgHostRetry(demand, Generation, 0, 11, 0,
             capacityThresholdSatisfied: true, waiterIdentity: identity);
-        Assert.Equal(0, calls);
-        Assert.False(Field<bool>(owner, "_svgHostDeferredCapacityReady"));
+        Assert.Equal(0, queue.Calls);
+        Assert.False(owner.GetState().CapacityReady);
         owner.TryQueueDeferredSvgHostRetry(demand, Generation, 0, 11, 1);
-        Assert.Equal(1, calls);
+        Assert.Equal(1, queue.Calls);
     }
 
     [Fact]
     public void DualQueueRejectionRetainsThresholdForOneLaterObservation()
     {
-        var (owner, demand, identity) = CreateWaiting();
-        int calls = 0;
-        Set(owner, "_svgDeferredRetryEnqueueOverride", (Func<Action, bool>)(_ => ++calls > 2));
+        var queue = new RetryQueueProbe();
+        queue.Handler = _ => queue.Calls > 2;
+        var (owner, demand, identity) = CreateWaiting(queue);
         owner.TryQueueDeferredSvgHostRetry(demand, Generation, 0, 11, 0,
             capacityThresholdSatisfied: true, waiterIdentity: identity);
-        Assert.Equal(2, calls);
-        Assert.Equal(1, Field<int>(owner, "_svgHostDeferred"));
+        Assert.Equal(2, queue.Calls);
+        Assert.Equal(SvgHostDeferralPhase.Waiting, owner.GetState().Phase);
         owner.OnSvgHostAdmissionWaiterFinished(demand, Generation, identity);
-        Assert.True(Field<bool>(owner, "_svgHostDeferredCapacityReady"));
-        Assert.Same(identity, Field<object>(owner, "_svgHostDeferredWaiterIdentity"));
+        SvgHostLoadDeferralState retained = owner.GetState();
+        Assert.True(retained.CapacityReady);
+        Assert.Same(identity, retained.WaiterIdentity);
         owner.TryQueueDeferredSvgHostRetry(demand, Generation, 0, 11, 0);
         owner.TryQueueDeferredSvgHostRetry(demand, Generation, 0, 11, 0);
-        Assert.Equal(3, calls);
-        Assert.Equal(2, Field<int>(owner, "_svgHostDeferred"));
+        Assert.Equal(3, queue.Calls);
+        Assert.Equal(SvgHostDeferralPhase.RetryQueued, owner.GetState().Phase);
     }
 
     [Fact]
     public void LateQueuedWorkCannotClearANewerDenialForTheSameDemandAndGeneration()
     {
-        var (owner, demand, identity) = CreateWaiting();
-        Action? oldWork = null;
-        Set(owner, "_svgDeferredRetryEnqueueOverride", (Func<Action, bool>)(work => { oldWork = work; return true; }));
+        var queue = new RetryQueueProbe();
+        var queued = new List<Action>();
+        queue.Handler = work => { queued.Add(work); return true; };
+        var (owner, demand, identity) = CreateWaiting(queue);
+        TestSvgHostDeferralHost host = HostOf(owner);
         owner.TryQueueDeferredSvgHostRetry(demand, Generation, 0, 11, 0,
             capacityThresholdSatisfied: true, waiterIdentity: identity);
-        Assert.NotNull(oldWork);
-        object newerDenial = new();
-        Set(owner, "_svgHostDeferredDenialIdentity", newerDenial);
-        oldWork!();
-        Assert.Equal(2, Field<int>(owner, "_svgHostDeferred"));
-        Assert.Same(newerDenial, Field<object>(owner, "_svgHostDeferredDenialIdentity"));
-        Assert.True(Field<bool>(owner, "_svgHostDeferredCapacityReady"));
+        Action oldWork = Assert.Single(queued);
+
+        // A newer denial of the same demand and generation reaches its own
+        // queued retry before the old callback runs.
+        owner.DeferSvgHostLoad(Denial(new ThresholdProbe { CapacityVersion = DeniedCapacityVersion }, demand));
+        SvgHostLoadDeferralState newer = owner.GetState();
+        object newerDenial = Assert.IsType<object>(newer.DenialIdentity);
+        owner.TryQueueDeferredSvgHostRetry(demand, Generation, 0, 11, 0,
+            capacityThresholdSatisfied: true, waiterIdentity: newer.WaiterIdentity);
+        Assert.Equal(2, queued.Count);
+
+        oldWork();
+        SvgHostLoadDeferralState state = owner.GetState();
+        Assert.Equal(SvgHostDeferralPhase.RetryQueued, state.Phase);
+        Assert.Same(newerDenial, state.DenialIdentity);
+        Assert.True(state.CapacityReady);
+        Assert.Equal(0, host.StartLoadCount);
+
+        // The newer denial's own retry still starts the load.
+        queued[1]();
+        Assert.Equal(1, host.StartLoadCount);
+        Assert.Equal(SvgHostDeferralPhase.None, owner.GetState().Phase);
     }
 
     [Fact]
     public void DelayedRetryCannotStartAReplacementLoadGenerationWithTheSameDemandAndDenialIdentity()
     {
-        var (owner, demand, identity) = CreateWaiting();
+        var queue = new RetryQueueProbe();
         Action? queued = null;
-        Set(owner, "_svgDeferredRetryEnqueueOverride", (Func<Action, bool>)(work => { queued = work; return true; }));
+        queue.Handler = work => { queued = work; return true; };
+        var (owner, demand, identity) = CreateWaiting(queue);
+        TestSvgHostDeferralHost host = HostOf(owner);
         owner.TryQueueDeferredSvgHostRetry(demand, Generation, 0, 11, 0,
             capacityThresholdSatisfied: true, waiterIdentity: identity);
         Assert.NotNull(queued);
-        Assert.Equal(2, Field<int>(owner, "_svgHostDeferred"));
+        Assert.Equal(SvgHostDeferralPhase.RetryQueued, owner.GetState().Phase);
 
         // Keep demand and denial identity equal deliberately: the generation
         // fence itself must reject an old queued callback before StartLoad.
-        TestSvgHostDeferralHost.Of(owner).LoadDemandGeneration = Generation + 1;
+        host.LoadDemandGeneration = Generation + 1;
         queued!();
 
-        Assert.Equal(Generation + 1, TestSvgHostDeferralHost.Of(owner).LoadDemandGeneration);
-        Assert.Equal(2, Field<int>(owner, "_svgHostDeferred"));
-        Assert.True(Field<bool>(owner, "_svgHostDeferredCapacityReady"));
-        Assert.Same(identity, Field<object>(owner, "_svgHostDeferredWaiterIdentity"));
+        Assert.Equal(Generation + 1, host.LoadDemandGeneration);
+        Assert.Equal(0, host.StartLoadCount);
+        SvgHostLoadDeferralState state = owner.GetState();
+        Assert.Equal(SvgHostDeferralPhase.RetryQueued, state.Phase);
+        Assert.True(state.CapacityReady);
+        Assert.Same(identity, state.WaiterIdentity);
     }
 
     [Fact]
     public void LateThresholdCannotQueueANewerGenerationEvenWhenDemandAndWaiterIdentityMatch()
     {
-        var (owner, demand, identity) = CreateWaiting();
-        int queues = 0;
-        Set(owner, "_svgDeferredRetryEnqueueOverride", (Func<Action, bool>)(_ => { queues++; return true; }));
-        TestSvgHostDeferralHost.Of(owner).LoadDemandGeneration = Generation + 1;
+        var queue = new RetryQueueProbe();
+        var (owner, demand, identity) = CreateWaiting(queue);
+        HostOf(owner).LoadDemandGeneration = Generation + 1;
 
         owner.TryQueueDeferredSvgHostRetry(demand, Generation, 0, 11, 0,
             capacityThresholdSatisfied: true, waiterIdentity: identity);
 
-        Assert.Equal(0, queues);
-        Assert.Equal(1, Field<int>(owner, "_svgHostDeferred"));
-        Assert.False(Field<bool>(owner, "_svgHostDeferredCapacityReady"));
-        Assert.Same(identity, Field<object>(owner, "_svgHostDeferredWaiterIdentity"));
+        Assert.Equal(0, queue.Calls);
+        SvgHostLoadDeferralState state = owner.GetState();
+        Assert.Equal(SvgHostDeferralPhase.Waiting, state.Phase);
+        Assert.False(state.CapacityReady);
+        Assert.Same(identity, state.WaiterIdentity);
     }
 
     [Fact]
     public void ReentrantQueueFailureCannotRollBackANewerDenial()
     {
-        var (owner, demand, identity) = CreateWaiting();
-        object newerDenial = new();
-        int calls = 0;
-        Set(owner, "_svgDeferredRetryEnqueueOverride", (Func<Action, bool>)(_ =>
+        var queue = new RetryQueueProbe();
+        SvgHostLoadDeferral? reentrantOwner = null;
+        MarkdownSvgRenderDemand? reentrantDemand = null;
+        object? newerDenial = null;
+        queue.Handler = _ =>
         {
-            calls++;
-            Set(owner, "_svgHostDeferredDenialIdentity", newerDenial);
-            return false;
-        }));
+            if (queue.Calls == 1)
+            {
+                // While the primary queue attempt runs outside the lock, a
+                // newer denial of the same demand and generation is recorded
+                // and its own retry is accepted (the second queue call).
+                reentrantOwner!.DeferSvgHostLoad(Denial(
+                    new ThresholdProbe { CapacityVersion = DeniedCapacityVersion }, reentrantDemand!));
+                SvgHostLoadDeferralState newer = reentrantOwner.GetState();
+                newerDenial = newer.DenialIdentity;
+                reentrantOwner.TryQueueDeferredSvgHostRetry(reentrantDemand!, Generation, 0, 11, 0,
+                    capacityThresholdSatisfied: true, waiterIdentity: newer.WaiterIdentity);
+                return false;
+            }
+            return queue.Calls == 2;
+        };
+        var (owner, demand, identity) = CreateWaiting(queue);
+        reentrantOwner = owner;
+        reentrantDemand = demand;
+        object originalDenial = Assert.IsType<object>(owner.GetState().DenialIdentity);
+
         owner.TryQueueDeferredSvgHostRetry(demand, Generation, 0, 11, 0,
             capacityThresholdSatisfied: true, waiterIdentity: identity);
-        Assert.Equal(2, calls);
-        Assert.Equal(2, Field<int>(owner, "_svgHostDeferred"));
-        Assert.Same(newerDenial, Field<object>(owner, "_svgHostDeferredDenialIdentity"));
+
+        // The old denial's primary and fallback attempts, with the newer
+        // denial's accepted retry between them.
+        Assert.Equal(3, queue.Calls);
+        SvgHostLoadDeferralState state = owner.GetState();
+        Assert.Equal(SvgHostDeferralPhase.RetryQueued, state.Phase);
+        Assert.NotNull(newerDenial);
+        Assert.NotSame(originalDenial, newerDenial);
+        Assert.Same(newerDenial, state.DenialIdentity);
     }
 
     [Fact]
     public void ThrowingPrimaryQueueUsesTheFallbackOnce()
     {
-        var (owner, demand, identity) = CreateWaiting();
-        int calls = 0;
-        Set(owner, "_svgDeferredRetryEnqueueOverride", (Func<Action, bool>)(_ =>
-        {
-            if (++calls == 1) throw new InvalidOperationException("primary queue");
-            return true;
-        }));
+        var queue = new RetryQueueProbe();
+        queue.Handler = _ => queue.Calls == 1 ? throw new InvalidOperationException("primary queue") : true;
+        var (owner, demand, identity) = CreateWaiting(queue);
         owner.TryQueueDeferredSvgHostRetry(demand, Generation, 0, 11, 0,
             capacityThresholdSatisfied: true, waiterIdentity: identity);
-        Assert.Equal(2, calls);
-        Assert.Equal(2, Field<int>(owner, "_svgHostDeferred"));
-        Assert.True(Field<bool>(owner, "_svgHostDeferredCapacityReady"));
+        Assert.Equal(2, queue.Calls);
+        SvgHostLoadDeferralState state = owner.GetState();
+        Assert.Equal(SvgHostDeferralPhase.RetryQueued, state.Phase);
+        Assert.True(state.CapacityReady);
     }
 
     [Fact]
     public void ThrowingFallbackRestoresWaitingAndExplicitDeferralClearRetiresReadiness()
     {
-        var (owner, demand, identity) = CreateWaiting();
-        int calls = 0;
-        Set(owner, "_svgDeferredRetryEnqueueOverride", (Func<Action, bool>)(_ =>
-        {
-            calls++;
-            throw new InvalidOperationException("queue");
-        }));
+        var queue = new RetryQueueProbe();
+        queue.Handler = _ => throw new InvalidOperationException("queue");
+        var (owner, demand, identity) = CreateWaiting(queue);
         owner.TryQueueDeferredSvgHostRetry(demand, Generation, 0, 11, 0,
             capacityThresholdSatisfied: true, waiterIdentity: identity);
-        Assert.Equal(2, calls);
-        Assert.Equal(1, Field<int>(owner, "_svgHostDeferred"));
-        Assert.True(Field<bool>(owner, "_svgHostDeferredCapacityReady"));
+        Assert.Equal(2, queue.Calls);
+        SvgHostLoadDeferralState restored = owner.GetState();
+        Assert.Equal(SvgHostDeferralPhase.Waiting, restored.Phase);
+        Assert.True(restored.CapacityReady);
         owner.ClearSvgHostDeferral();
         owner.TryQueueDeferredSvgHostRetry(demand, Generation, 0, 11, 0,
             capacityThresholdSatisfied: true, waiterIdentity: identity);
-        Assert.Equal(2, calls);
-        Assert.Equal(0, Field<int>(owner, "_svgHostDeferred"));
-        Assert.False(Field<bool>(owner, "_svgHostDeferredCapacityReady"));
+        Assert.Equal(2, queue.Calls);
+        SvgHostLoadDeferralState cleared = owner.GetState();
+        Assert.Equal(SvgHostDeferralPhase.None, cleared.Phase);
+        Assert.False(cleared.CapacityReady);
     }
 
     [Fact]
     public void ThresholdWithoutAnAcceptedWaiterIdentityCannotQueue()
     {
-        var (owner, demand, _) = CreateWaiting();
-        int calls = 0;
-        Set(owner, "_svgDeferredRetryEnqueueOverride", (Func<Action, bool>)(_ => { calls++; return true; }));
+        var queue = new RetryQueueProbe();
+        var (owner, demand, _) = CreateWaiting(queue);
         owner.TryQueueDeferredSvgHostRetry(demand, Generation, 0, 12, 0,
             capacityThresholdSatisfied: true);
-        Assert.Equal(0, calls);
-        Assert.Equal(1, Field<int>(owner, "_svgHostDeferred"));
-        Assert.False(Field<bool>(owner, "_svgHostDeferredCapacityReady"));
+        Assert.Equal(0, queue.Calls);
+        SvgHostLoadDeferralState state = owner.GetState();
+        Assert.Equal(SvgHostDeferralPhase.Waiting, state.Phase);
+        Assert.False(state.CapacityReady);
     }
 
     [Fact]
     public void FinishedUnreadyWaiterRetiresIdentityWithoutClearingItsScalarDenial()
     {
-        var (owner, demand, identity) = CreateWaiting();
-        object denial = Field<object>(owner, "_svgHostDeferredDenialIdentity");
+        var (owner, demand, identity) = CreateWaiting(new RetryQueueProbe());
+        object denial = Assert.IsType<object>(owner.GetState().DenialIdentity);
         owner.OnSvgHostAdmissionWaiterFinished(demand, Generation, identity);
-        Assert.Equal(1, Field<int>(owner, "_svgHostDeferred"));
-        Assert.False(Field<bool>(owner, "_svgHostDeferredCapacityReady"));
-        Assert.Null(Value(owner, "_svgHostDeferredWaiterIdentity"));
-        Assert.Null(Value(owner, "_svgHostDeferredRegistrationAttempt"));
-        Assert.Same(denial, Field<object>(owner, "_svgHostDeferredDenialIdentity"));
+        SvgHostLoadDeferralState state = owner.GetState();
+        Assert.Equal(SvgHostDeferralPhase.Waiting, state.Phase);
+        Assert.False(state.CapacityReady);
+        Assert.False(state.HasWaiter);
+        Assert.Null(state.WaiterIdentity);
+        Assert.Null(state.RegistrationAttempt);
+        Assert.Same(denial, state.DenialIdentity);
     }
 
     [Fact]
     public void ClearingDeferralRetiresEveryScalarReadinessIdentity()
     {
-        var (owner, demand, identity) = CreateWaiting();
-        Set(owner, "_svgDeferredRetryEnqueueOverride", (Func<Action, bool>)(_ => true));
+        var (owner, demand, identity) = CreateWaiting(new RetryQueueProbe());
         owner.TryQueueDeferredSvgHostRetry(demand, Generation, 0, 11, 0,
             capacityThresholdSatisfied: true, waiterIdentity: identity);
         owner.ClearSvgHostDeferral();
-        Assert.Equal(0, Field<int>(owner, "_svgHostDeferred"));
-        Assert.False(Field<bool>(owner, "_svgHostDeferredCapacityReady"));
-        Assert.Null(Value(owner, "_svgHostDeferredDenialIdentity"));
-        Assert.Null(Value(owner, "_svgHostDeferredWaiterIdentity"));
-        Assert.Null(Value(owner, "_svgHostDeferredRegistrationAttempt"));
+        SvgHostLoadDeferralState state = owner.GetState();
+        Assert.Equal(SvgHostDeferralPhase.None, state.Phase);
+        Assert.False(state.CapacityReady);
+        Assert.Null(state.DenialIdentity);
+        Assert.Null(state.WaiterIdentity);
+        Assert.Null(state.RegistrationAttempt);
+        Assert.True(owner.IsClear());
     }
 
-    private (SvgHostLoadDeferral, MarkdownSvgRenderDemand, object) CreateWaiting()
+    // Records a real source-threshold (or owner-slot) denial whose bounded
+    // waiter is registered with the scope's coordinator and never signals on
+    // its own. The registration attempt is the denial identity; the waiter
+    // identity is distinct from it.
+    private (SvgHostLoadDeferral, MarkdownSvgRenderDemand, object) CreateWaiting(
+        RetryQueueProbe queue,
+        bool requiresOwnerSlot = false)
     {
-        SvgHostLoadDeferral owner = TestSvgHostDeferralHost.CreateDeferral(_renderResources.Images);
-        var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
-        object waiterIdentity = new();
-        object denialIdentity = new();
-        TestSvgHostDeferralHost.Of(owner).LoadDemand = demand;
-        TestSvgHostDeferralHost.Of(owner).LoadDemandGeneration = Generation;
-        Set(owner, "_svgHostDeferred", 1);
-        Set(owner, "_svgHostDeferredCapacityVersion", 11L);
-        Set(owner, "_svgHostDeferredRequiredSourceBytes", 73728L);
-        Set(owner, "_svgHostDeferredWaiterIdentity", waiterIdentity);
-        Set(owner, "_svgHostDeferredRegistrationAttempt", denialIdentity);
-        Set(owner, "_svgHostDeferredDenialIdentity", denialIdentity);
+        SvgHostLoadDeferral owner = CreateOwner(queue);
+        MarkdownSvgRenderDemand demand = HostOf(owner).LoadDemand!;
+        owner.DeferSvgHostLoad(Denial(
+            new ThresholdProbe { CapacityVersion = DeniedCapacityVersion }, demand, requiresOwnerSlot));
+        SvgHostLoadDeferralState state = owner.GetState();
+        Assert.Equal(SvgHostDeferralPhase.Waiting, state.Phase);
+        Assert.True(state.HasWaiter);
+        Assert.Equal(DeniedCapacityVersion, state.CapacityVersion);
+        Assert.Equal(RequiredSourceBytes, state.RequiredSourceBytes);
+        Assert.False(state.CapacityReady);
+        object waiterIdentity = Assert.IsType<object>(state.WaiterIdentity);
+        object denialIdentity = Assert.IsType<object>(state.DenialIdentity);
+        Assert.Same(denialIdentity, state.RegistrationAttempt);
+        Assert.NotSame(denialIdentity, waiterIdentity);
+        Assert.Equal(0, queue.Calls);
         return (owner, demand, waiterIdentity);
     }
 
-    private static T Field<T>(SvgHostLoadDeferral owner, string name) => (T)Value(owner, name)!;
-    private static object? Value(SvgHostLoadDeferral owner, string name) =>
-        typeof(SvgHostLoadDeferral).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(owner);
-    private static void Set(SvgHostLoadDeferral owner, string name, object value) =>
-        typeof(SvgHostLoadDeferral).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(owner, value);
+    private SvgHostLoadDeferral CreateOwner(RetryQueueProbe queue)
+    {
+        var host = new TestSvgHostDeferralHost
+        {
+            LoadDemand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan),
+            LoadDemandGeneration = Generation,
+        };
+        var owner = new SvgHostLoadDeferral(host, _renderResources.Images, queue.TryEnqueue);
+        _owners.Add(owner, host);
+        return owner;
+    }
+
+    private TestSvgHostDeferralHost HostOf(SvgHostLoadDeferral owner) => _owners[owner];
+
+    private static SvgHostCapacityDeferral Denial(
+        ThresholdProbe admission,
+        MarkdownSvgRenderDemand demand,
+        bool requiresOwnerSlot = false) =>
+        new(admission, demand, Generation, admission.CapacityVersion, RequiredSourceBytes,
+            requiresOwnerSlot, OwnerVersionAtDenial: 0,
+            DemandVersionAtDenial: demand.Version, VisualDemandEpochAtDenial: 0);
+
+    /// <summary>An injected retry queue that counts attempts and delegates to <see cref="Handler"/>.</summary>
+    private sealed class RetryQueueProbe
+    {
+        internal Func<Action, bool> Handler { get; set; } = static _ => true;
+        internal int Calls { get; private set; }
+
+        internal bool TryEnqueue(Action work)
+        {
+            Calls++;
+            return Handler(work);
+        }
+    }
 
     private sealed class ThresholdProbe : IMarkdownSvgAdmission
     {
-        public object AdmissionDomain { get; } = new();
-        public long CapacityVersion => 12;
+        private readonly object _admissionDomain = new();
+        private long _capacityVersion;
+        private int _failNextDomainRead;
+
+        // A failed domain read is how a bounded waiter registration fails.
+        public object AdmissionDomain => Interlocked.Exchange(ref _failNextDomainRead, 0) != 0
+            ? throw new InvalidOperationException("The bounded waiter could not be registered.")
+            : _admissionDomain;
+
+        public long CapacityVersion
+        {
+            get => Volatile.Read(ref _capacityVersion);
+            set => Volatile.Write(ref _capacityVersion, value);
+        }
+
+        internal bool FailNextDomainRead
+        {
+            init => _failNextDomainRead = value ? 1 : 0;
+        }
+
         internal readonly TaskCompletionSource WaitStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal readonly TaskCompletionSource Ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal int WaitCount;

@@ -24,7 +24,7 @@ internal static class GfmChildInlineBuilder
         // nodes, after earlier image/native runs have already been attached.
         // Register the partially populated owner before entering that walk.
         box.Context.RegisterConstructionBlock(box);
-        if (box.Context.TryAppendChildInlines(box, inlines, skipFirstIf, inheritedAliasStart))
+        if (box.Context.ChildBuilders.TryAppendInlines(box, inlines, skipFirstIf, inheritedAliasStart))
             return;
         AddInlines(
             box,
@@ -129,7 +129,7 @@ internal static class GfmChildInlineBuilder
         string? containingLinkUrl,
         string? containingLinkTitle)
     {
-        int aliasStart = box.Context.StyleAliasCount;
+        int aliasStart = box.Context.Styles.AliasCount;
         using var inlineAttrs = box.Context.PushMarkdownAttributes(i);
         int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
         if (i is EmphasisInline emphasis &&
@@ -137,7 +137,7 @@ internal static class GfmChildInlineBuilder
         {
             box.Context.RegisterMarkdownAttributes(i, box.BlockIndex);
             string emphasisKey = MarkdownInlineSyntax.GetEmphasisElementKey(emphasis);
-            using SafeHtmlInlineState.ScriptStyleScope scriptScope =
+            using SafeHtmlScriptStyleScope scriptScope =
                 htmlState.PushMarkdownScript(emphasisKey);
             AddInlines(
                 box,
@@ -257,7 +257,7 @@ internal static class GfmChildInlineBuilder
             inheritedStyleModifiers);
         run.SetStyleAliases(MarkdownInlineSyntax.CombineStyleAliases(
             run.StyleAliases,
-            box.Context.CreateStyleAliasSnapshotFrom(effectiveAliasStart)));
+            box.Context.Styles.CreateAliasSnapshotFrom(effectiveAliasStart)));
         box.Context.RegisterMarkdownAttributes(i, box.BlockIndex);
         box.Add(run);
         if (run is InlineImageRun addedImage)

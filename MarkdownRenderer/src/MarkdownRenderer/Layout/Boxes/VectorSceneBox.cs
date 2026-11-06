@@ -15,6 +15,14 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// A block-level painter-neutral scene with an intrinsic viewport. It owns only
 /// local horizontal overflow; the document remains the sole vertical scroller.
 /// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because the box is the one owner that
+/// sequences its drawing swap, capacity fallback and horizontal-overflow
+/// viewport through Measure, Paint, release and terminal Dispose, and it
+/// implements the overflow and selection-geometry interfaces those steps feed.
+/// Hit testing, selection and fallback painting, semantic styling and
+/// detached-fallback custody already live in their own collaborators.
+/// </remarks>
 internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox, ISelectionBackgroundGeometrySource
 {
 
@@ -23,10 +31,7 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox, ISelect
     private readonly VectorSceneFallbackPainter _fallback;
     private readonly VectorSceneSemanticHitTester _hitTester;
     private VectorSceneDrawing _drawing;
-    private CanvasTextLayout? _detachedFallbackLayout;
-    private bool _detachedFallbackCleanupPending;
-    private NativeResourceRetirementRecord? _detachedFallbackRetirementRecord;
-    private NativeResourceRetirementRecord? _detachedFallbackCandidateRecord;
+    private readonly VectorSceneDetachedFallback _detachedFallback;
     private readonly MarkdownVectorRectangle _semanticViewport;
     internal readonly IReadOnlyList<MarkdownVectorSemanticItem> SemanticItems;
     private readonly IReadOnlyList<MarkdownVectorLinkAction?> _semanticLinks;
@@ -70,6 +75,7 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox, ISelect
         _hitTester = new VectorSceneSemanticHitTester(this);
         _fallback = new VectorSceneFallbackPainter(this);
         _selection = new VectorSceneSelectionPainter(this);
+        _detachedFallback = new VectorSceneDetachedFallback(this);
         ArgumentNullException.ThrowIfNull(content);
         MarkdownVectorScene scene = content.VectorScene ?? throw new ArgumentException("Vector content requires a scene.", nameof(content));
         _semanticViewport = scene.Viewport;
@@ -145,7 +151,7 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox, ISelect
     internal string CapacityFallbackText =>
         _graphRebindFailed ? _capacityFallbackFailureText : _capacityFallbackText;
 
-    internal CanvasTextLayout? DetachedFallbackLayout => _detachedFallbackLayout;
+    internal CanvasTextLayout? DetachedFallbackLayout => _detachedFallback.Layout;
 
     internal VectorSceneDrawing Drawing => _drawing;
 
@@ -228,7 +234,7 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox, ISelect
         }
         try
         {
-            DisposeDetachedFallback();
+            _detachedFallback.Release();
         }
         catch (Exception fallbackFailure) when (drawingFailure is not null)
         {
@@ -245,13 +251,13 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox, ISelect
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         _drawing.DetachSceneGraph();
-        DisposeDetachedFallback();
+        _detachedFallback.Release();
     }
 
     internal bool IsDisposed => _disposed;
 
     internal bool HasDetachedFallback =>
-        (_detachedFallbackLayout is not null && !_detachedFallbackCleanupPending) ||
+        _detachedFallback.HasPaintableLayout ||
         (NativeAdmission is not null && IsGraphDetached && HasCapacityFallbackText &&
             VectorSceneCapacityFallback.TryGetFormat(NativeAdmission, LayoutContext.FlowDirection, out _));
 
@@ -259,49 +265,16 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox, ISelect
     internal bool TryAdoptDetachedFallback(
         ref CanvasTextLayout? candidate,
         CancellationToken cancellationToken)
-    {
-        if (candidate is null)
-            return false;
-        NativeResourceRetirementRecord? candidateRecord = Volatile.Read(ref _detachedFallbackCandidateRecord);
-        if (candidateRecord is null)
-            return false;
-        if (ReferenceEquals(_detachedFallbackLayout, candidate))
-        {
-            candidateRecord.SetTemporary(0, null);
-            candidate = null;
-            return false;
-        }
-        cancellationToken.ThrowIfCancellationRequested();
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        if (!IsGraphDetached)
-            return false;
-        // Do not sever the old layout's owner before successful cleanup. On a
-        // failure the caller still owns its candidate and this box retains only
-        // the old, non-paintable cleanup slot for a later retirement attempt.
-        DisposeDetachedFallback();
-        _detachedFallbackLayout = candidate;
-        _detachedFallbackRetirementRecord = candidateRecord;
-        candidate = null;
-        return true;
-    }
+        => _detachedFallback.TryAdopt(ref candidate, cancellationToken);
 
     internal bool TryBeginDetachedFallbackCandidate(NativeResourceRetirementRecord retirementRecord)
-    {
-        ArgumentNullException.ThrowIfNull(retirementRecord);
-        if (_disposed || Interlocked.CompareExchange(
-                ref _detachedFallbackCandidateRecord, retirementRecord, null) is not null)
-            return false;
-        if (!_disposed)
-            return true;
-        Interlocked.CompareExchange(ref _detachedFallbackCandidateRecord, null, retirementRecord);
-        return false;
-    }
+        => _detachedFallback.TryBeginCandidate(retirementRecord);
 
     internal NativeResourceRetirementRecord? GetDetachedFallbackCandidateRecord() =>
-        Volatile.Read(ref _detachedFallbackCandidateRecord);
+        _detachedFallback.CandidateRecord;
 
     internal void EndDetachedFallbackCandidate(NativeResourceRetirementRecord retirementRecord) =>
-        Interlocked.CompareExchange(ref _detachedFallbackCandidateRecord, null, retirementRecord);
+        _detachedFallback.EndCandidate(retirementRecord);
 
     /// <summary>Marks a failed visible-band graph rebind and refreshes its fallback status.</summary>
     internal void MarkGraphRebindFailed()
@@ -334,7 +307,7 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox, ISelect
                 "A replacement drawing must own a prepared scene or a prewarmed bounded-capacity fallback.");
         }
 
-        DisposeDetachedFallback();
+        _detachedFallback.Release();
         VectorSceneDrawing previous = _drawing;
         // The previous drawing is already detached and has no device resources.
         // Dispose it before the field swap so any unexpected cleanup failure
@@ -527,43 +500,9 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox, ISelect
         // scalar and semantic projections intentionally survive for UIA reads.
         BlockBoxCleanupScope cleanup = default;
         cleanup.TryDispose(_drawing);
-        _detachedFallbackCleanupPending = true;
-        cleanup.TryDisposeAndClear(
-            ref _detachedFallbackLayout,
-            _detachedFallbackRetirementRecord?.Disposer);
-        _detachedFallbackCleanupPending = _detachedFallbackLayout is not null;
-        if (_detachedFallbackLayout is { } retainedFallback)
-        {
-            NativeResourceRetirementRecord? retirement = _detachedFallbackRetirementRecord;
-            if (retirement is not null)
-            {
-                // Transfer the already-reserved native slot before releasing
-                // this terminal owner. No queue node or callback is allocated.
-                retirement.SetTemporary(0, retainedFallback);
-                _detachedFallbackLayout = null;
-                _detachedFallbackRetirementRecord = null;
-                _disposed = true;
-                retirement.Publish();
-            }
-            else
-            {
-                // Every adopted fallback is paired with a preallocated record.
-                // Retain the field if that invariant is ever violated rather
-                // than silently losing the only remaining native owner.
-                _disposed = true;
-            }
-        }
-        else
-        {
-            NativeResourceRetirementRecord? retirement = _detachedFallbackRetirementRecord;
-            _detachedFallbackRetirementRecord = null;
-            _disposed = true;
-            if (retirement is not null)
-            {
-                retirement.SetTemporary(0, null);
-                retirement.Publish();
-            }
-        }
+        // Sets _disposed after the fallback slot leaves its owner and before
+        // the fallback's retirement record is published.
+        _detachedFallback.RetireWithHost(ref cleanup, ref _disposed);
         cleanup.ThrowIfAny("disposing vector scene box");
     }
 
@@ -591,30 +530,6 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox, ISelect
             _styleContextKeys,
             _styleAliasKeys).Foreground;
         return new VectorScenePaintPalette(Style.Foreground, surface, link);
-    }
-
-    private void DisposeDetachedFallback()
-    {
-        BlockBoxCleanupScope cleanup = default;
-        _detachedFallbackCleanupPending = true;
-        cleanup.TryDisposeAndClear(
-            ref _detachedFallbackLayout,
-            _detachedFallbackRetirementRecord?.Disposer);
-        _detachedFallbackCleanupPending = _detachedFallbackLayout is not null;
-        if (!_detachedFallbackCleanupPending)
-            CompleteDetachedFallbackRetirement();
-        cleanup.ThrowIfAny("disposing detached vector scene fallback");
-    }
-
-    private void CompleteDetachedFallbackRetirement()
-    {
-        NativeResourceRetirementRecord? retirement = _detachedFallbackRetirementRecord;
-        if (retirement is null)
-            return;
-
-        retirement.SetTemporary(0, null);
-        retirement.Publish();
-        _detachedFallbackRetirementRecord = null;
     }
 
     private bool HasCapacityFallbackText =>

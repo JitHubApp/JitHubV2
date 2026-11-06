@@ -299,7 +299,7 @@ internal sealed class DeclarativeBlockBuilder
         MarkdownContent content,
         HostedElementFallbackKey fallbackKey)
     {
-        using var listScope = _context.PushListDepth();
+        using var listScope = _context.Styles.PushListDepth();
         var stack = new StackBox
         {
             BlockIndex = _context.NextBlockIndex(),
@@ -336,7 +336,7 @@ internal sealed class DeclarativeBlockBuilder
             _context.CreateStyleAliasSnapshot());
         float markerWidth = Math.Max(
             1f,
-            listStyle.ListIndent + Math.Max(0, _context.ListDepth - 1) * listStyle.NestedListIndent);
+            listStyle.ListIndent + Math.Max(0, _context.Styles.ListDepth - 1) * listStyle.NestedListIndent);
         var marker = new InlineContainerBox(_context, MarkdownElementKeys.ListMarker)
         {
             BlockIndex = _context.NextBlockIndex(),

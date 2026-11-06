@@ -32,7 +32,7 @@ public sealed class VectorSceneClipLifetimeTests
         using var drawing = new VectorSceneDrawing(device, scene, CancellationToken.None,
             _renderResources,
             nativeRetirement: retirement);
-        var slots = Assert.IsType<CanvasActiveLayer?[]>(VectorSceneDrawingNativeSlots.ReadClipStack(drawing));
+        var slots = Assert.IsAssignableFrom<IReadOnlyList<CanvasActiveLayer?>>(drawing.ClipStackSlots);
         CanvasGeometry[] borrowedGeometries = BorrowGeometries(drawing);
         using CanvasDrawingSession session = target.CreateDrawingSession();
         Matrix3x2 original = Matrix3x2.CreateTranslation(1, 1);
@@ -43,7 +43,7 @@ public sealed class VectorSceneClipLifetimeTests
             Assert.Same(failure, Assert.Throws<InvalidOperationException>(
                 () => PaintScene(drawing, session, new Rect(0, 0, 20, 20))));
             Assert.Equal(original, session.Transform);
-            Assert.Equal(2, slots.Length);
+            Assert.Equal(2, slots.Count);
             Assert.All(slots, Assert.NotNull);
             Assert.Equal(2, borrowedGeometries.Length);
             Assert.Empty(geometryDisposalAttempts);
@@ -53,7 +53,7 @@ public sealed class VectorSceneClipLifetimeTests
             // Only after both active layers have been closed in LIFO order is
             // manual geometry cleanup safe. The terminal owner preserved both
             // clip geometries as well as both active wrappers.
-            for (int index = slots.Length - 1; index >= 0; index--)
+            for (int index = slots.Count - 1; index >= 0; index--)
                 slots[index]!.Dispose();
             Assert.Equal(new Rect(0, 0, 18, 18), borrowedGeometries[0].ComputeBounds());
             Assert.Equal(new Rect(2, 2, 12, 12), borrowedGeometries[1].ComputeBounds());
@@ -102,7 +102,7 @@ public sealed class VectorSceneClipLifetimeTests
                 return layer;
             });
 
-        var vectorSlots = Assert.IsType<CanvasActiveLayer?[]>(VectorSceneDrawingNativeSlots.ReadClipStack(drawing));
+        var vectorSlots = Assert.IsAssignableFrom<IReadOnlyList<CanvasActiveLayer?>>(drawing.ClipStackSlots);
         CanvasGeometry[] borrowedGeometries = BorrowGeometries(drawing);
         Matrix3x2 original = Matrix3x2.CreateTranslation(2.25f, 1.75f);
         session.Transform = original;
@@ -115,7 +115,7 @@ public sealed class VectorSceneClipLifetimeTests
             Assert.Equal(original, session.Transform);
             Assert.Equal(2, createdVectorLayers.Count);
             Assert.NotSame(createdVectorLayers[0], createdVectorLayers[1]);
-            Assert.Equal(2, vectorSlots.Length);
+            Assert.Equal(2, vectorSlots.Count);
             Assert.Same(createdVectorLayers[0], vectorSlots[0]);
             Assert.Null(vectorSlots[1]);
             AssertFailedPushPoisonsDrawingWithoutRetry(drawing, recorder, helperOuterLease);
@@ -183,8 +183,8 @@ public sealed class VectorSceneClipLifetimeTests
                 throw factoryFailure;
             });
 
-        var vectorSlots = Assert.IsType<CanvasActiveLayer?[]>(VectorSceneDrawingNativeSlots.ReadClipStack(drawing));
-        var geometrySlots = Assert.IsType<CanvasGeometry?[]>(VectorSceneDrawingNativeSlots.ReadGeometries(drawing));
+        var vectorSlots = Assert.IsAssignableFrom<IReadOnlyList<CanvasActiveLayer?>>(drawing.ClipStackSlots);
+        var geometrySlots = Assert.IsAssignableFrom<IReadOnlyList<CanvasGeometry?>>(drawing.GeometrySlots);
         CanvasGeometry geometryOwner = Assert.IsType<CanvasGeometry>(Assert.Single(geometrySlots));
         Matrix3x2 original = Matrix3x2.CreateTranslation(3.5f, 2.25f);
         session.Transform = original;
@@ -263,7 +263,7 @@ public sealed class VectorSceneClipLifetimeTests
 
     private static CanvasGeometry[] BorrowGeometries(VectorSceneDrawing drawing)
     {
-        var geometrySlots = Assert.IsType<CanvasGeometry?[]>(VectorSceneDrawingNativeSlots.ReadGeometries(drawing));
+        var geometrySlots = Assert.IsAssignableFrom<IReadOnlyList<CanvasGeometry?>>(drawing.GeometrySlots);
         return geometrySlots
             .Select(static geometry => Assert.IsType<CanvasGeometry>(geometry))
             .ToArray();
@@ -280,7 +280,7 @@ public sealed class VectorSceneClipLifetimeTests
     private static void AssertFailedPopIsQuarantinedWithoutRetry(
         VectorSceneDrawing drawing,
         NativeResourceRetirement retirement,
-        CanvasActiveLayer?[] slots,
+        IReadOnlyList<CanvasActiveLayer?> slots,
         List<CanvasActiveLayer> attempts,
         List<CanvasGeometry> geometryDisposalAttempts)
     {
@@ -292,8 +292,8 @@ public sealed class VectorSceneClipLifetimeTests
         Assert.Throws<InvalidOperationException>(() => drawing.Dispose());
         Assert.Equal(4, retirement.QuarantinedResourceCount);
         Assert.Equal(0, retirement.PendingResourceCount);
-        Assert.Null(VectorSceneDrawingNativeSlots.ReadClipStack(drawing));
-        Assert.Null(VectorSceneDrawingNativeSlots.ReadGeometries(drawing));
+        Assert.Null(drawing.ClipStackSlots);
+        Assert.Null(drawing.GeometrySlots);
         Assert.Empty(geometryDisposalAttempts);
         Assert.False(retirement.DrainOnce());
         Assert.Equal(4, retirement.QuarantinedResourceCount);
@@ -332,8 +332,8 @@ public sealed class VectorSceneClipLifetimeTests
         Assert.Empty(recorder.GeometryDisposalAttempts);
         Assert.Equal(expectedQuarantinedResources, retirement.QuarantinedResourceCount);
         Assert.Equal(0, retirement.PendingResourceCount);
-        Assert.Null(VectorSceneDrawingNativeSlots.ReadClipStack(drawing));
-        Assert.Null(VectorSceneDrawingNativeSlots.ReadGeometries(drawing));
+        Assert.Null(drawing.ClipStackSlots);
+        Assert.Null(drawing.GeometrySlots);
         Assert.Empty(recorder.GeometryDisposalAttempts);
         Assert.False(retirement.DrainOnce());
         Assert.Equal(expectedQuarantinedResources, retirement.QuarantinedResourceCount);
@@ -424,7 +424,7 @@ public sealed class VectorSceneClipLifetimeTests
             Assert.Equal(Blue, Sample(9, 11));
             Assert.Equal((byte)0, Sample(16, 9).A);
             Assert.Equal((byte)0, Sample(3, 10).A);
-            var clips = Assert.IsType<CanvasActiveLayer?[]>(VectorSceneDrawingNativeSlots.ReadClipStack(drawing));
+            var clips = Assert.IsAssignableFrom<IReadOnlyList<CanvasActiveLayer?>>(drawing.ClipStackSlots);
             Assert.All(clips, Assert.Null);
             Assert.True(drawing.IsPrepared);
             return pixels;

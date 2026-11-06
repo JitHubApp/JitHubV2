@@ -1,5 +1,4 @@
 using System;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Performance;
@@ -73,7 +72,5 @@ public sealed class SourceByteAdmissionCancellationBoundaryTests
         Assert.Equal(0, admission.PendingRequests);
     }
 
-    private static object GetAdmissionLock(SourceByteAdmission admission) =>
-        typeof(SourceByteAdmission).GetField("_gate", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(admission)!;
+    private static object GetAdmissionLock(SourceByteAdmission admission) => admission.SyncRoot;
 }

@@ -22,6 +22,13 @@ internal sealed class SvgHostOwnerSlot : IDisposable
 
     internal object AdmissionDomain { get; }
 
+    /// <summary>
+    /// The slot lock, which serializes commit, touch and disposal of this
+    /// slot. A commit holds it while it takes the registry's
+    /// <see cref="SvgHostOwnerRegistry.Sync"/>.
+    /// </summary>
+    internal object Sync => _sync;
+
     internal void Commit(
         ImageBox owner,
         SvgTileRenderPlan plan,

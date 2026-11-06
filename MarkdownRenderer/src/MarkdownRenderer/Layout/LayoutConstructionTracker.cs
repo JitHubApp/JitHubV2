@@ -19,7 +19,7 @@ internal sealed class LayoutConstructionTracker
     }
 
     internal MarkdownLayoutConstructionScope BeginBlockBuildOwnership() =>
-        _context.BeginConstructionScope();
+        _context.Construction.Begin();
 
     internal void EndBlockBuildOwnership(MarkdownLayoutConstructionScope ownership) =>
         ownership.Dispose();
@@ -57,7 +57,7 @@ internal sealed class LayoutConstructionTracker
         if (run is InlineImageRun image)
             AdoptBlock(image.Image);
         else if (run is InlineVectorSceneRun vector)
-            _context.AdoptConstructionResource(vector);
+            _context.Construction.AdoptResource(vector);
     }
 
     internal void AddCodeBlockChunk(CodeBlockBox parent, InlineContainerBox child)

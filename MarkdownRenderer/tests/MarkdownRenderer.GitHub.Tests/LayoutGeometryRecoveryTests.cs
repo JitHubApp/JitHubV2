@@ -1,4 +1,4 @@
-using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -305,8 +305,8 @@ public sealed class LayoutGeometryRecoveryTests
         Assert.Equal(primary.HResult, snapshot.GeometryRecoveryFailureHResult);
 
         // Recovery state is deliberately scalar-only. The exception graph is
-        // surfaced to this caller, never retained by the published snapshot.
-        AssertRecoveryStateUsesOnlyScalarFields();
+        // surfaced to this caller, never retained by the published snapshot;
+        // RecoveryLatchKeepsOnlyScalarsOfItsFailures proves the latch drops it.
         await snapshot.Retire().WaitAsync(HangGuard);
     }
 
@@ -410,17 +410,43 @@ public sealed class LayoutGeometryRecoveryTests
         Assert.True(snapshot.GeometryRecoveryRequired);
         Assert.True(snapshot.GeometryRecoveryIsDeviceLost);
         Assert.Equal(failure.HResult, snapshot.GeometryRecoveryFailureHResult);
-        AssertRecoveryStateUsesOnlyScalarFields();
     }
 
-    private static void AssertRecoveryStateUsesOnlyScalarFields()
+    [Fact]
+    public void RecoveryLatchKeepsOnlyScalarsOfItsFailures()
     {
-        // The latch must never retain an exception graph: every piece of its
-        // storage is a lock-free scalar.
-        FieldInfo[] fields = typeof(GeometryRecoveryLatch).GetFields(
-            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-        Assert.Equal(4, fields.Length);
-        Assert.All(fields, field => Assert.Equal(typeof(int), field.FieldType));
+        // The latch must never retain an exception graph: it keeps the
+        // primary HResult and the device-loss cause, and both failures are
+        // collectable while the latch is alive.
+        var latch = new GeometryRecoveryLatch();
+        (WeakReference primary, WeakReference secondary) = MarkWithUnrootedFailures(latch);
+
+        RetentionCollector.CollectUntilDead(primary, secondary);
+
+        Assert.False(primary.IsAlive);
+        Assert.False(secondary.IsAlive);
+        Assert.True(latch.IsRequired);
+        Assert.True(latch.IsDeviceLost);
+        Assert.Equal(PrimaryLatchFailureHResult, latch.FailureHResult);
+        Assert.True(latch.TryClaimGeometryRecoveryRequest());
+        GC.KeepAlive(latch);
+    }
+
+    private const int PrimaryLatchFailureHResult = unchecked((int)0x80004005);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static (WeakReference Primary, WeakReference Secondary) MarkWithUnrootedFailures(
+        GeometryRecoveryLatch latch)
+    {
+        var primary = new InvalidOperationException("The measure failed.")
+        {
+            HResult = PrimaryLatchFailureHResult,
+        };
+        var secondary = new COMException(
+            "The rollback lost the device.",
+            MarkdownRenderer.Diagnostics.GraphicsDeviceErrors.DxgiErrorDeviceRemoved);
+        latch.MarkGeometryRecoveryRequiredNoLock(primary, secondary);
+        return (new WeakReference(primary), new WeakReference(secondary));
     }
 
     private static Fixture CreateFixture()

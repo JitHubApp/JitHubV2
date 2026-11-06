@@ -196,7 +196,7 @@ internal struct BlockBoxCleanupScope
         _hasAdditionalFailures = true;
     }
 
-    private readonly struct AggregateFailureCursor
+    internal readonly struct AggregateFailureCursor
     {
         internal AggregateFailureCursor(
             IReadOnlyList<Exception> innerExceptions,

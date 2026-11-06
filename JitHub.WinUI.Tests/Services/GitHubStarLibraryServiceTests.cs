@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Models.GitHub;
@@ -497,16 +498,44 @@ public sealed class GitHubStarLibraryServiceTests : IDisposable
         Assert.True(coordinator.TryTake(followUpVersion, out StarSyncRequestBatch followUp));
         Assert.True(followUp.ForceFull);
         Assert.DoesNotContain(
-            typeof(StarSyncRequestCoordinator).GetFields(
-                System.Reflection.BindingFlags.Instance |
-                System.Reflection.BindingFlags.Public |
-                System.Reflection.BindingFlags.NonPublic),
-            field => field.FieldType == typeof(string));
-        Assert.DoesNotContain(
             typeof(StarSyncRequestBatch).GetProperties(),
             property => property.PropertyType == typeof(string));
 
         coordinator.Dispose();
+    }
+
+    [Fact]
+    public async Task CompletedSynchronization_DoesNotRetainItsAccessToken()
+    {
+        SqliteStarLibraryStore store = CreateStore();
+        await store.InitializeAsync();
+        GitHubStarLibraryService service = CreateService(
+            store,
+            Substitute.For<IGitHubClientService>(),
+            new StatefulStarQueryService(static () => []));
+
+        WeakReference token = await SynchronizeWithUnrootedTokenAsync(service);
+        for (int attempt = 0; attempt < 5 && token.IsAlive; attempt++)
+        {
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true);
+            GC.WaitForPendingFinalizers();
+        }
+
+        // The account's request coordinator stays registered after the sync,
+        // so the token is unreachable from it and from the rest of the service.
+        Assert.Equal(1, service.SyncCoordinatorCount);
+        Assert.False(token.IsAlive, "A completed sync must not retain its access token.");
+        service.Dispose();
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static async Task<WeakReference> SynchronizeWithUnrootedTokenAsync(GitHubStarLibraryService service)
+    {
+        // A runtime-built string, so no intern table or literal keeps it alive.
+        string accessToken = new('t', 32);
+        StarSyncState state = await service.SynchronizeAsync(accessToken, "u1", forceFull: true);
+        Assert.Empty(state.ErrorMessage);
+        return new WeakReference(accessToken);
     }
 
     [Fact]
@@ -553,10 +582,7 @@ public sealed class GitHubStarLibraryServiceTests : IDisposable
         await drain;
         await service.ClearAccountStateAsync("u1");
 
-        var coordinators = (ConcurrentDictionary<string, StarSyncRequestCoordinator>)typeof(GitHubStarLibraryService)
-            .GetField("_syncCoordinators", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-            .GetValue(service)!;
-        Assert.False(coordinators.ContainsKey("u1"));
+        Assert.Equal(0, service.SyncCoordinatorCount);
         service.Dispose();
     }
 

@@ -27,6 +27,22 @@ internal sealed class MarkdownLayoutConstructionScope : IDisposable
             return;
     }
 
+    /// <summary>
+    /// A snapshot of the unadopted roots of type <typeparamref name="T"/> this
+    /// scope would retire if it ended now; empty once the scope has ended.
+    /// </summary>
+    internal List<T> GetOwnedRoots<T>() where T : class
+    {
+        var owned = new List<T>();
+        if (_roots is { } roots)
+        {
+            foreach (object root in roots)
+                if (root is T typed)
+                    owned.Add(typed);
+        }
+        return owned;
+    }
+
     internal void Adopt(object child) => _roots?.Remove(child);
 
     internal void Forget(BlockBox block) => _roots?.Remove(block);
@@ -151,7 +167,7 @@ internal sealed class MarkdownLayoutConstructionScope : IDisposable
         finally
         {
             _roots = null;
-            _context.EndConstructionScope(this);
+            _context.Construction.End(this);
         }
     }
 }

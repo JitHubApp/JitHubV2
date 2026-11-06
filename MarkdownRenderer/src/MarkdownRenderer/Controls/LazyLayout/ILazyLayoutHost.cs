@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using MarkdownRenderer.Controls.Threading;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Performance;
 
@@ -9,8 +10,8 @@ namespace MarkdownRenderer.Controls.LazyLayout;
 /// <summary>What lazy layout realization needs from the control.</summary>
 internal interface ILazyLayoutHost
 {
-    /// <summary>The control's dispatcher; read on the UI thread only.</summary>
-    Microsoft.UI.Dispatching.DispatcherQueue? DispatcherQueue { get; }
+    /// <summary>The control's UI thread; none when the control has no dispatcher.</summary>
+    IMarkdownUiScheduler? UiScheduler { get; }
 
     IMarkdownPerformanceSession? PerformanceSession { get; }
 

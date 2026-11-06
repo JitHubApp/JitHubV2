@@ -109,7 +109,7 @@ public sealed class RelativeScriptFontSizeTests
             allowedStyleClasses: null));
 
         Assert.Null(state.Process(new HtmlInline("<sub>"), context));
-        SafeHtmlInlineState.ScriptStyleScope markdownSup =
+        SafeHtmlScriptStyleScope markdownSup =
             state.PushMarkdownScript(MarkdownElementKeys.Superscript);
         Assert.Null(state.Process(new HtmlInline("<sup>"), context));
         Assert.Null(state.Process(new HtmlInline("</sup>"), context));
@@ -130,7 +130,7 @@ public sealed class RelativeScriptFontSizeTests
         // A misnested closing tag removes the HTML scopes it crosses, but it
         // must not erase a live Markdown token that was interleaved between them.
         Assert.Null(state.Process(new HtmlInline("<sup>"), context));
-        SafeHtmlInlineState.ScriptStyleScope markdownSub =
+        SafeHtmlScriptStyleScope markdownSub =
             state.PushMarkdownScript(MarkdownElementKeys.Subscript);
         Assert.Null(state.Process(new HtmlInline("<span>"), context));
         Assert.Null(state.Process(new HtmlInline("</sub>"), context));
@@ -165,15 +165,15 @@ public sealed class RelativeScriptFontSizeTests
         Assert.Null(state.Process(new HtmlInline("</strong>"), context));
         Assert.Null(state.ScriptStyleAncestry);
 
-        SafeHtmlInlineState.ScriptStyleScope first =
+        SafeHtmlScriptStyleScope first =
             state.PushMarkdownScript(MarkdownElementKeys.Superscript);
-        IReadOnlyList<SafeHtmlInlineState.ScriptStyleAncestryToken> ancestry = GetScriptAncestry(state);
+        IReadOnlyList<SafeHtmlScriptStyleAncestryToken> ancestry = GetScriptAncestry(state);
         Assert.Single(ancestry);
         first.Dispose();
         Assert.Same(ancestry, state.ScriptStyleAncestry);
         Assert.Empty(ancestry);
 
-        SafeHtmlInlineState.ScriptStyleScope sibling =
+        SafeHtmlScriptStyleScope sibling =
             state.PushMarkdownScript(MarkdownElementKeys.Subscript);
         Assert.Same(ancestry, state.ScriptStyleAncestry);
         Assert.Equal([MarkdownElementKeys.Subscript],
@@ -199,9 +199,9 @@ public sealed class RelativeScriptFontSizeTests
         Assert.Null(state.ScriptStyleAncestry);
     }
 
-    private static IReadOnlyList<SafeHtmlInlineState.ScriptStyleAncestryToken> GetScriptAncestry(
+    private static IReadOnlyList<SafeHtmlScriptStyleAncestryToken> GetScriptAncestry(
         SafeHtmlInlineState state)
-        => Assert.IsAssignableFrom<IReadOnlyList<SafeHtmlInlineState.ScriptStyleAncestryToken>>(
+        => Assert.IsAssignableFrom<IReadOnlyList<SafeHtmlScriptStyleAncestryToken>>(
             state.ScriptStyleAncestry);
 
     [Fact]

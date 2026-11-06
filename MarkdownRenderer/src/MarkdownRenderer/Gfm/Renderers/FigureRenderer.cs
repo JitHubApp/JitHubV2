@@ -32,7 +32,7 @@ internal sealed class FigureRenderer : MarkdownNodeRenderer<Figure>
         };
         stack.BlockIndex = context.NextBlockIndex();
 
-        using var figureScope = context.PushStyleContext(MarkdownElementKeys.Figure);
+        using var figureScope = context.Styles.PushContext(MarkdownElementKeys.Figure);
         foreach (var child in figure)
         {
             context.CancellationToken.ThrowIfCancellationRequested();

@@ -20,7 +20,7 @@ public sealed class SparseEffectiveRunAliasTests
         InlineContainerBox? source = null;
         try
         {
-            using (contexts.Source.PushStyleAliases(new[] { "outer-a", "outer-b" }))
+            using (contexts.Source.Styles.PushAliases(new[] { "outer-a", "outer-b" }))
             {
                 source = CreateBox(contexts.Source,
                     new TextRun("one") { StyleAliases = new[] { "first" } },
@@ -53,7 +53,7 @@ public sealed class SparseEffectiveRunAliasTests
         try
         {
             string[] scopedAliases = ["container-a", "container-b"];
-            using (contexts.Source.PushStyleAliases(scopedAliases))
+            using (contexts.Source.Styles.PushAliases(scopedAliases))
             {
                 source = CreateBox(contexts.Source,
                     new TextRun("first"),
@@ -110,7 +110,7 @@ public sealed class SparseEffectiveRunAliasTests
             string[] containerAliases = ["scope"];
             string[] mutableRunAliases = ["captured"];
             var overriddenRun = new TextRun(" third") { StyleAliases = mutableRunAliases };
-            using (contexts.Source.PushStyleAliases(containerAliases))
+            using (contexts.Source.Styles.PushAliases(containerAliases))
             {
                 source = CreateBox(contexts.Source,
                     new TextRun("first"),
@@ -210,7 +210,7 @@ public sealed class SparseEffectiveRunAliasTests
         {
             string[] containerAliases = ["scope"];
             var afterRun = new TextRun(" after") { StyleAliases = new[] { "old-after" } };
-            using (contexts.Source.PushStyleAliases(containerAliases))
+            using (contexts.Source.Styles.PushAliases(containerAliases))
             {
                 source = CreateBox(contexts.Source,
                     new TextRun("before"),
@@ -275,7 +275,7 @@ public sealed class SparseEffectiveRunAliasTests
         try
         {
             string[] containerAliases = ["container"];
-            using (contexts.Source.PushStyleAliases(containerAliases))
+            using (contexts.Source.Styles.PushAliases(containerAliases))
             {
                 source = CreateBox(contexts.Source,
                     new TextRun("left"),
@@ -307,7 +307,7 @@ public sealed class SparseEffectiveRunAliasTests
         InlineImageRun[] detachedImages = Array.Empty<InlineImageRun>();
         try
         {
-            using (contexts.Source.PushStyleAliases(new[] { "scope" }))
+            using (contexts.Source.Styles.PushAliases(new[] { "scope" }))
             {
                 source = CreateBox(contexts.Source,
                     new TextRun("first") { StyleAliases = new[] { "first-run" } },

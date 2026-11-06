@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using System.Security.Cryptography;
@@ -186,60 +185,43 @@ public sealed class ImageBoxSourceLeaseTests
     }
 
     [Fact]
-    public void QueuedSvgPublicationUsesWeakSourceMetadataCarrier()
+    public async Task QueuedSvgPublicationUsesWeakSourceMetadataCarrier()
     {
-        Type metadata = typeof(SvgPublicationMetadata);
-        FieldInfo[] fields = metadata.GetFields(
-            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-        Assert.Contains(fields, field => field.FieldType == typeof(WeakReference<byte[]>));
-        Assert.Contains(fields, field => field.FieldType == typeof(long));
-        Assert.DoesNotContain(fields, field => field.FieldType == typeof(byte[]));
-        Assert.DoesNotContain(fields, field => field.FieldType.Name.Contains(
-            "SvgCacheEntry",
-            StringComparison.Ordinal));
+        await using var fixture = new QueuedSvgPublicationFixture();
 
-        foreach (string methodName in new[]
-        {
-            nameof(SvgPublicationCommit.CreateTiledPublication),
-            nameof(SvgPublicationCommit.CreateBitmapPublication),
-        })
-        {
-            MethodInfo method = typeof(SvgPublicationCommit).GetMethod(
-                methodName,
-                BindingFlags.Instance | BindingFlags.NonPublic)!;
-            Assert.DoesNotContain(method.GetParameters(), parameter =>
-                parameter.ParameterType == typeof(byte[]) ||
-                parameter.ParameterType.Name.Contains("SvgCacheEntry", StringComparison.Ordinal));
-        }
+        // Whole bitmap: the completed render retires its provider document
+        // whether or not the queued UI publication ever runs.
+        var (bitmapDocument, bitmapInfo, bitmapUse, bitmapDocumentDisposed) = fixture.OpenCandidateDocument();
+        var (bitmapMetadata, bitmapSource) = fixture.CreateMetadata(bitmapInfo, "queued-bitmap");
+        Action queuedBitmap = fixture.Queue(fixture.Image.SvgPublication.CreateBitmapPublication(
+            bitmapMetadata, new SharedCanvasBitmapCache.Lease()));
+        fixture.RetireCandidateDocument(bitmapDocument, bitmapUse);
+        await bitmapDocumentDisposed.WaitAsync(TimeSpan.FromSeconds(10));
 
-        MethodInfo bitmapPublication = typeof(SvgPublicationCommit).GetMethod(
-            nameof(SvgPublicationCommit.CreateBitmapPublication),
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        Assert.DoesNotContain(bitmapPublication.GetParameters(), parameter =>
-            typeof(IMarkdownSvgDocument).IsAssignableFrom(parameter.ParameterType));
+        // Tiled: the queued publication must own its candidate document and
+        // use, but still only a weak source identity.
+        var tiledDocument = new PublicationCommitSvgDocument();
+        var tiledUse = (SvgDocumentUseLease)SvgPublicationCommitTestOperations.AcquireCandidate(
+            fixture.Image, tiledDocument);
+        var (tiledMetadata, tiledSource) = fixture.CreateMetadata(tiledDocument.Info, "queued-tiled");
+        Action queuedTiled = fixture.Queue(fixture.Image.SvgPublication.CreateTiledPublication(
+            tiledMetadata, tiledDocument, tiledUse));
 
-        Type metadataType = typeof(SvgPublicationMetadata);
-        Type bitmapLeaseType = Assert.Single(bitmapPublication.GetParameters(), parameter =>
-            parameter.ParameterType.Name == "Lease").ParameterType;
-        Type[] bitmapPublicationClosures = typeof(SvgPublicationCommit)
-            .GetNestedTypes(BindingFlags.NonPublic)
-            .Where(type =>
-            {
-                FieldInfo[] closureFields = type.GetFields(
-                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                // Inspect the queued publication callback owner, not the
-                // separate Render state machine which must own a live document.
-                return type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-                    .Any(method => method.Name.StartsWith("<CreateBitmapPublication>", StringComparison.Ordinal)) &&
-                    closureFields.Any(field => field.FieldType == metadataType) &&
-                    closureFields.Any(field => field.FieldType == bitmapLeaseType);
-            })
-            .ToArray();
-        Assert.NotEmpty(bitmapPublicationClosures);
-        Assert.All(bitmapPublicationClosures, closure =>
-            Assert.DoesNotContain(
-                closure.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic),
-                field => typeof(IMarkdownSvgDocument).IsAssignableFrom(field.FieldType)));
+        RetentionCollector.CollectUntilDead(bitmapSource, bitmapDocument, tiledSource);
+
+        Assert.False(bitmapSource.IsAlive, "A queued bitmap publication must not keep its source array alive.");
+        Assert.False(bitmapDocument.IsAlive, "A queued bitmap publication must not keep its provider document alive.");
+        Assert.False(tiledSource.IsAlive, "A queued tiled publication must not keep its source array alive.");
+        Assert.False(bitmapMetadata.SourceIdentity.TryGetTarget(out _));
+        Assert.False(tiledMetadata.SourceIdentity.TryGetTarget(out _));
+        Assert.Equal(0, tiledDocument.DisposeCount);
+        GC.KeepAlive(queuedBitmap);
+        GC.KeepAlive(queuedTiled);
+
+        // Deliver both queued publications so their work units drain before
+        // the fixture retires the box.
+        queuedTiled();
+        queuedBitmap();
     }
 
     [Fact]
@@ -384,17 +366,16 @@ public sealed class ImageBoxSourceLeaseTests
     {
         ForceCollection();
         int retainedSourceCount = originalSources.Count(IsAlive);
-        bool sourceRetained = retainedSourceCount != 0;
-        string retentionPath = sourceRetained
-            ? StrongSourceRetentionScanner.Describe(renderer.ReleaseRender.Task, renderer, image, resolver, originalSources)
-            : string.Empty;
-        Assert.False(sourceRetained,
+        // The renderer, image and resolver stay rooted here, so a retained
+        // source means one of them or an async frame still holds it.
+        GC.KeepAlive(renderer);
+        GC.KeepAlive(image);
+        GC.KeepAlive(resolver);
+        Assert.True(retainedSourceCount == 0,
             "Original source must not remain in caller/Open async frames while Render is pending." +
-            (retentionPath.Length == 0 ? string.Empty :
-                $" Retained source arrays: {retainedSourceCount}; resolver source creations: " +
-                $"{sourceCreationCount()}; Open/PrepareSource/Render counts: " +
-                $"{renderer.OpenCount}/{renderer.PrepareSourceCount}/{renderer.RenderCount}; " +
-                $"retention path: {retentionPath}"));
+            $" Retained source arrays: {retainedSourceCount}; resolver source creations: " +
+            $"{sourceCreationCount()}; Open/PrepareSource/Render counts: " +
+            $"{renderer.OpenCount}/{renderer.PrepareSourceCount}/{renderer.RenderCount}.");
     }
 
     [Theory]

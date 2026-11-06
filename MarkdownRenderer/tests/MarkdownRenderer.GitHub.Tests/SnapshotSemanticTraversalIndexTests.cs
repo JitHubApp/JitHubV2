@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Threading;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Document;
@@ -282,19 +281,12 @@ public sealed class SnapshotSemanticTraversalIndexTests
 
         internal static FocusPlanEntrySnapshot[] CaptureFocusablePlan(LayoutSnapshot snapshot)
         {
-            Array focusPlan = ReadField<Array>(snapshot.Focusables.Entries);
-            var result = new FocusPlanEntrySnapshot[focusPlan.Length];
-            for (int index = 0; index < focusPlan.Length; index++)
+            IReadOnlyList<FocusablePlanEntry> focusPlan = snapshot.Focusables.Entries;
+            var result = new FocusPlanEntrySnapshot[focusPlan.Count];
+            for (int index = 0; index < focusPlan.Count; index++)
             {
-                object entry = focusPlan.GetValue(index)!;
-                Type entryType = entry.GetType();
-                var item = Assert.IsType<FocusableItem>(
-                    entryType.GetField("Item", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!
-                        .GetValue(entry));
-                var overflow = (IHorizontalOverflowBox?)entryType
-                    .GetField("HorizontalOverflow", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!
-                    .GetValue(entry);
-                result[index] = new FocusPlanEntrySnapshot(item, overflow);
+                FocusablePlanEntry entry = focusPlan[index];
+                result[index] = new FocusPlanEntrySnapshot(entry.Item, entry.HorizontalOverflow);
             }
             return result;
         }

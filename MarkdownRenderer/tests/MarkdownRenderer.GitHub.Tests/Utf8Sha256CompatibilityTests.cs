@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using MarkdownRenderer.Layout;
@@ -123,10 +122,7 @@ public sealed class Utf8Sha256CompatibilityTests
     public void SafeHtmlMediaPlaceholderPreservesOriginalFirstEightDigestBytes()
     {
         const string source = "https://private.example.test/video.mp4?token=secret-\U0001F30D";
-        MethodInfo method = typeof(SafeHtmlMediaRunFactory).GetMethod(
-            "CreateMediaPlaceholder",
-            BindingFlags.Static | BindingFlags.NonPublic)!;
-        string placeholder = Assert.IsType<string>(method.Invoke(null, [true, source]));
+        string placeholder = SafeHtmlMediaRunFactory.CreateMediaPlaceholder(isVideo: true, source);
         const string prefix = "data:image/svg+xml;base64,";
         Assert.StartsWith(prefix, placeholder, StringComparison.Ordinal);
         string svg = Encoding.UTF8.GetString(Convert.FromBase64String(placeholder[prefix.Length..]));

@@ -1,5 +1,4 @@
-﻿using System.Reflection;
-using MarkdownRenderer.Accessibility;
+﻿using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Layout;
@@ -209,14 +208,7 @@ internal static class RootLocalContainerVectorRelayoutHarness
         Assert.IsType<CanvasTextLayout>(inline.TextLayout);
 
     internal static VectorSceneDrawing GetVectorDrawing(InlineVectorSceneRun run) =>
-        Assert.IsType<VectorSceneDrawing>(ReadRawField(run, "_drawing"));
-
-    private static object? ReadRawField(object instance, string name)
-    {
-        FieldInfo field = instance.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException($"Missing private test field '{name}'.");
-        return field.GetValue(instance);
-    }
+        Assert.IsType<VectorSceneDrawing>(run.Drawing);
 
     internal readonly record struct InlineImagePlacementTrace(
         Rect LogicalBounds,

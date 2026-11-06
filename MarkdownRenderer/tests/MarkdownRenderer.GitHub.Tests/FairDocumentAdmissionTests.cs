@@ -1,5 +1,4 @@
 using MarkdownRenderer.Performance;
-using System.Reflection;
 using System.Threading;
 using Xunit;
 
@@ -11,9 +10,7 @@ public sealed class FairDocumentAdmissionTests
     public async Task CancellationWhileBlockedOnAdmissionGateDoesNotGrantOrLeakCapacity()
     {
         var admission = new FairDocumentAdmission(capacity: 1);
-        object gate = typeof(FairDocumentAdmission)
-            .GetField("_gate", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(admission)!;
+        object gate = admission.SyncRoot;
         using var cancellation = new CancellationTokenSource();
         using var started = new ManualResetEventSlim();
         var completion = new TaskCompletionSource<IDisposable>(

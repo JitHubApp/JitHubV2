@@ -28,6 +28,7 @@ using MarkdownRenderer.Controls.Navigation;
 using MarkdownRenderer.Controls.Pipeline;
 using MarkdownRenderer.Controls.Readiness;
 using MarkdownRenderer.Controls.Selection;
+using MarkdownRenderer.Controls.Threading;
 
 namespace MarkdownRenderer.Controls.Composition;
 
@@ -49,11 +50,15 @@ internal sealed class LayoutHosts :
     ICanvasTilePainterHost
 {
     private readonly MarkdownRendererControl _control;
+    private readonly IMarkdownUiScheduler? _uiScheduler;
     private Parts? _owners;
 
-    internal LayoutHosts(MarkdownRendererControl control)
+    /// <param name="control">The renderer the hosts serve.</param>
+    /// <param name="uiScheduler">The renderer's UI thread; none when it has no dispatcher.</param>
+    internal LayoutHosts(MarkdownRendererControl control, IMarkdownUiScheduler? uiScheduler)
     {
         _control = control;
+        _uiScheduler = uiScheduler;
     }
 
     /// <summary>The owners the hosts forward to.</summary>
@@ -93,7 +98,7 @@ internal sealed class LayoutHosts :
     void IVectorCapacityRetryHost.QueueLazyLayoutForViewport(bool forceCapacityRetry) =>
         Owners.LazyLayout.QueueForViewport(forceCapacityRetry);
 
-    Microsoft.UI.Dispatching.DispatcherQueue? ILazyLayoutHost.DispatcherQueue => _control.DispatcherQueue;
+    IMarkdownUiScheduler? ILazyLayoutHost.UiScheduler => _uiScheduler;
 
     IMarkdownPerformanceSession? ILazyLayoutHost.PerformanceSession => _control.PerformanceSession;
 

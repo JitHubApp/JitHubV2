@@ -130,6 +130,36 @@ internal sealed class VectorSceneDrawing : IDisposable
 
     internal VectorNativePreparationOutcome PreparationOutcome => _preparationOutcome;
 
+    // Native slot inventory. Each view is the drawing's own live slot array,
+    // not a copy: it is null when no preparation owns slots of that kind,
+    // reflects slot-by-slot release while cleanup runs, and is the shared
+    // empty array when the scene needs none. Slots are densely packed by
+    // resource kind in command order; they are not command-indexed.
+
+    /// <summary>Prepared path geometries, one per geometry-bearing command, or null when unowned.</summary>
+    internal IReadOnlyList<CanvasGeometry?>? GeometrySlots => _geometries;
+
+    /// <summary>Prepared text layouts, one per complete DrawText command, or null when unowned.</summary>
+    internal IReadOnlyList<CanvasTextLayout?>? TextLayoutSlots => _textLayouts;
+
+    /// <summary>Prepared stroke styles, one per command whose style needs one, or null when unowned.</summary>
+    internal IReadOnlyList<CanvasStrokeStyle?>? StrokeStyleSlots => _strokeStyles;
+
+    /// <summary>Paint-time transform scratch stack sized to the maximum group depth, or null when unprepared.</summary>
+    internal IReadOnlyList<Matrix3x2>? TransformStackSlots => _transformStack;
+
+    /// <summary>
+    /// Paint-time clip-layer stack sized to the maximum clip depth, or null when
+    /// unowned. A layer left in a slot is one a paint pass could not close.
+    /// </summary>
+    internal IReadOnlyList<CanvasActiveLayer?>? ClipStackSlots => _clipStack;
+
+    /// <summary>
+    /// The temporary text format a DrawText preparation owns while it creates
+    /// one layout; null outside that window and after its cleanup succeeded.
+    /// </summary>
+    internal CanvasTextFormat? PendingTextFormat => _pendingTextFormat;
+
     /// <summary>
     /// Drops the immutable command graph after reversible native resources have
     /// been released. A failed native cleanup leaves the graph attached so its

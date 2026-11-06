@@ -81,7 +81,7 @@ internal sealed class DefinitionListRenderer : MarkdownNodeRenderer<DefinitionLi
 
     private static BlockBox? BuildDescriptionBlock(Block block, MarkdownLayoutContext context)
     {
-        using var styleScope = context.PushStyleContext(MarkdownElementKeys.DefinitionDescription);
+        using var styleScope = context.Styles.PushContext(MarkdownElementKeys.DefinitionDescription);
         return GfmChildBuilder.TryBuildBlock(block, context);
     }
 }

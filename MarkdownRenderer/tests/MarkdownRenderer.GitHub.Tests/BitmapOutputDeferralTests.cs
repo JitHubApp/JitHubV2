@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Text;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Document;
@@ -848,13 +847,6 @@ public sealed class BitmapOutputDeferralTests
         while (!condition())
             await Task.Delay(10, cancellation.Token);
     }
-
-    private static object? GetField(object owner, string name) =>
-        owner.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(owner);
-
-    private static T GetField<T>(object owner, string name) =>
-        Assert.IsType<T>(GetField(owner, name));
 
     private static async Task DisposeImageAsync(ImageBox image)
     {

@@ -1,9 +1,9 @@
 using System.Threading;
 using System.Threading.Tasks;
+using MarkdownRenderer.Controls.Threading;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
-using Microsoft.UI.Dispatching;
 
 namespace MarkdownRenderer.Controls.Highlighting;
 
@@ -15,8 +15,17 @@ internal interface ICodeBlockHighlightingHost
     /// <summary>The document owner the performance session admits scene work for: the control.</summary>
     object DocumentOwner { get; }
 
-    /// <summary>The control's dispatcher; read on the UI thread only.</summary>
-    DispatcherQueue? DispatcherQueue { get; }
+    /// <summary>The control's UI thread; none when the control has no dispatcher. Read on the UI thread only.</summary>
+    IMarkdownUiScheduler? UiScheduler { get; }
+
+    /// <summary>True when plan collection measured at least one code block of the published snapshot.</summary>
+    bool HasMeasuredCodeBlocks { get; }
+
+    /// <summary>
+    /// The visible document band, in DIPs. Returns false, with an estimate
+    /// based on the renderer's size, when no viewport is known yet.
+    /// </summary>
+    bool TryGetViewport(out double top, out double height);
 
     /// <summary>The highlight provider; read on the UI thread only.</summary>
     ICodeHighlighter? CodeHighlighter { get; }

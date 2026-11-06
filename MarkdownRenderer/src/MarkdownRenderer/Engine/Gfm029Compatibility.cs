@@ -60,6 +60,12 @@ internal static class Gfm029Compatibility
             HasChanges = insertions.Length > 0 || maskedSeparators.Length > 0;
         }
 
+        /// <summary>The transformed-text offsets of inserted separators, ascending.</summary>
+        internal ReadOnlySpan<int> Insertions => _insertions;
+
+        /// <summary>The transformed-text offsets of masked separators, ascending.</summary>
+        internal ReadOnlySpan<int> MaskedSeparators => _maskedSeparators;
+
         internal readonly string Text;
 
         internal readonly bool HasChanges;

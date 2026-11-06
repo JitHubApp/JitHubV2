@@ -31,6 +31,45 @@ internal sealed class BlockOrdinalIndex : IReadOnlyDictionary<int, int>
 
     public int Count => _count;
 
+    /// <summary>
+    /// The generated block-index bound this index pages densely, or zero when
+    /// the bound is missing or over <see cref="MaximumDenseGeneratedUpperBound"/>
+    /// and every key goes to the spill dictionary.
+    /// </summary>
+    internal int DenseGeneratedUpperBound => _denseGeneratedUpperBound;
+
+    /// <summary>Number of slots in the dense page directory; zero in dictionary fallback.</summary>
+    internal int DensePageCount => _pages?.Length ?? 0;
+
+    /// <summary>
+    /// The length of dense page <paramref name="pageIndex"/>, or zero while it
+    /// is unallocated. Pages are allocated on the first key that falls in them.
+    /// </summary>
+    internal int GetDensePageLength(int pageIndex) => _pages![pageIndex]?.Length ?? 0;
+
+    /// <summary>
+    /// The encoded dense slot for <paramref name="blockIndex"/>: zero when the
+    /// key has no dense entry, otherwise its ordinal plus one.
+    /// </summary>
+    internal int ReadEncodedDenseSlot(int blockIndex)
+    {
+        if (!TryGetDenseSlot(blockIndex, out int pageIndex, out int pageOffset))
+            throw new ArgumentOutOfRangeException(nameof(blockIndex));
+        return _pages![pageIndex]?[pageOffset] ?? 0;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="blockIndex"/> is stored in the spill dictionary
+    /// (custom and out-of-domain keys, and ordinals the dense encoding cannot hold).
+    /// </summary>
+    internal bool TryGetSpilled(int blockIndex, out int ordinal)
+    {
+        if (_spill is not null && _spill.TryGetValue(blockIndex, out ordinal))
+            return true;
+        ordinal = default;
+        return false;
+    }
+
     public IEnumerable<int> Keys
     {
         get

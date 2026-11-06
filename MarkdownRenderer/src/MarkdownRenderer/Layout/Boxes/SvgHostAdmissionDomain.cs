@@ -32,6 +32,18 @@ internal sealed class SvgHostAdmissionDomain
     /// <summary>The accepted owners of this domain.</summary>
     internal SvgHostOwnerRegistry Owners { get; } = new();
 
+    /// <summary>
+    /// The rows currently in this domain's bounded pending table, in table
+    /// order, copied under the domain gate. A row leaves the table when it is
+    /// claimed, retired or pruned, so the copy says which deferred demands
+    /// still hold a place in the bound.
+    /// </summary>
+    internal SvgHostPendingEntry[] GetPendingEntries()
+    {
+        lock (_gate)
+            return _pending.ToArray();
+    }
+
     internal SvgHostPendingWaiter? Defer(
         SvgHostLoadDeferral owner,
         IMarkdownSvgAdmission admission,

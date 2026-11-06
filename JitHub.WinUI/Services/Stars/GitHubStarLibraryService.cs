@@ -162,6 +162,12 @@ public sealed partial class GitHubStarLibraryService : IGitHubStarLibraryService
 
     public event EventHandler<StarLibraryChangedEventArgs>? Changed;
 
+    /// <summary>
+    /// Number of accounts that own a sync request coordinator. Clearing an
+    /// account's state or disposing the service removes its coordinator.
+    /// </summary>
+    internal int SyncCoordinatorCount => _syncCoordinators.Count;
+
     public StarLibraryDegradedState GetDegradedState(string userId) =>
         _degradedStates.TryGetValue(userId, out StarLibraryDegradedState? state)
             ? state

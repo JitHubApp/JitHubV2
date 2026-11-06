@@ -1,5 +1,4 @@
-﻿using System.Reflection;
-using MarkdownRenderer.Document;
+﻿using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Parsing;
@@ -13,7 +12,7 @@ using Xunit;
 namespace MarkdownRenderer.GitHub.Tests;
 
 /// <summary>
-/// Table, list and quote source builders, tree walks, paint and field probes
+/// Table, list and quote source builders, tree walks and paint helpers
 /// for <see cref="CompositeRasterLayoutCandidateTests"/>.
 /// </summary>
 internal static class CompositeRasterCandidateFixtures
@@ -254,16 +253,4 @@ internal static class CompositeRasterCandidateFixtures
 
     internal static Point Center(Rect bounds)
         => new(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2);
-
-    internal static T GetField<T>(object instance, string name)
-    {
-        FieldInfo field = instance.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return Assert.IsType<T>(field.GetValue(instance));
-    }
-
-    internal static object GetReferenceField(object instance, string name)
-    {
-        FieldInfo field = instance.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return Assert.IsAssignableFrom<object>(field.GetValue(instance));
-    }
 }

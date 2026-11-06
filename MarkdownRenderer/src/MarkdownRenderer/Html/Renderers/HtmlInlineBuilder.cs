@@ -29,7 +29,7 @@ internal sealed class HtmlInlineBuilder
         int sourceOffset,
         HtmlInlineContext inlineContext)
     {
-        if (inlineContext.SourceProjection is null && context.SafeHtmlSourceProjection is { } sourceProjection)
+        if (inlineContext.SourceProjection is null && context.SourceProjections.SafeHtml is { } sourceProjection)
             inlineContext = inlineContext with { SourceProjection = sourceProjection };
 
         foreach (SafeHtmlNode node in nodes)
@@ -251,7 +251,7 @@ internal sealed class HtmlInlineBuilder
             childContext = childContext with { InsideLink = true };
         }
 
-        string? styleKey = SafeHtmlInlineState.GetStyleKey(element.Name);
+        string? styleKey = SafeHtmlInlineElementNames.GetStyleKey(element.Name);
         if (!string.IsNullOrEmpty(styleKey))
         {
             childContext = childContext with { StyleKey = styleKey };
