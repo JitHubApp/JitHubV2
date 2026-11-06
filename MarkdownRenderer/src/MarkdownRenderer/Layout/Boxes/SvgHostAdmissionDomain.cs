@@ -12,6 +12,15 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// deferred demands and their waiters, and the accepted owners it may park
 /// to make room for them.
 /// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because the pending table and each
+/// row's registration, waiter-start, claim and parking fields form one state
+/// machine under one gate. Registration, waiter start, the wait-and-claim
+/// loop, the cancellation drains and pressure parking each read and write
+/// that state in single lock transactions, so splitting them apart would
+/// share the gate across owners. Per-row cancellation that needs no gate
+/// lives on <see cref="SvgHostPendingEntry"/>.
+/// </remarks>
 internal sealed class SvgHostAdmissionDomain
 {
     private const int MaximumPendingDemandsPerDomain = 128;
@@ -44,7 +53,6 @@ internal sealed class SvgHostAdmissionDomain
         var proposedRegistrationsDrained = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         SvgHostPendingEntry? entry;
-        bool thresholdIncreased = false;
         SvgHostPendingWaiter waiter;
         lock (_gate)
         {
@@ -86,12 +94,47 @@ internal sealed class SvgHostAdmissionDomain
             }
         }
 
+        bool registered = PublishWaiterRegistration(
+            owner,
+            entry,
+            waiter,
+            registrationAttempt,
+            admission,
+            capacityVersion,
+            requiredSourceReservationBytes,
+            requiresOwnerSlot,
+            ownerVersionAtDenial,
+            demandVersionAtDenial,
+            visualDemandEpochAtDenial,
+            out bool thresholdIncreased);
+        return StartAcceptedWaiter(entry, waiter, registered, thresholdIncreased);
+    }
+
+    // Publishes the waiter's identity to its owner outside the domain lock,
+    // then ends this registration. The waiter is disposed when the owner
+    // rejects it, and the drain signal completes when this was the last
+    // registration in flight.
+    private bool PublishWaiterRegistration(
+        SvgHostLoadDeferral owner,
+        SvgHostPendingEntry entry,
+        SvgHostPendingWaiter waiter,
+        object registrationAttempt,
+        IMarkdownSvgAdmission admission,
+        long capacityVersion,
+        long requiredSourceReservationBytes,
+        bool requiresOwnerSlot,
+        long ownerVersionAtDenial,
+        long demandVersionAtDenial,
+        long visualDemandEpochAtDenial,
+        out bool thresholdIncreased)
+    {
         bool registered = false;
+        thresholdIncreased = false;
         try
         {
             registered = owner.OnSvgHostAdmissionWaiterRegistered(
-                demand,
-                loadGeneration,
+                entry.Demand,
+                entry.LoadGeneration,
                 registrationAttempt,
                 waiter);
         }
@@ -119,15 +162,25 @@ internal sealed class SvgHostAdmissionDomain
                     ownerVersionAtDenial,
                     demandVersionAtDenial,
                     visualDemandEpochAtDenial,
-                    out bool acceptedThresholdIncreased);
-                thresholdIncreased |= acceptedThresholdIncreased;
+                    out thresholdIncreased);
                 // RunContinuationsAsynchronously ensures the waiter cannot
                 // re-enter this host after completion while a domain or
                 // ImageBox lock remains held by the registration caller.
                 registrationsDrained?.TrySetResult();
             }
         }
+        return registered;
+    }
 
+    // Starts the row's waiter if this registration owns its start, and
+    // returns the accepted handle, or null after disposing it when the row
+    // was rejected, failed to start, or was cancelled before any claim.
+    private SvgHostPendingWaiter? StartAcceptedWaiter(
+        SvgHostPendingEntry entry,
+        SvgHostPendingWaiter waiter,
+        bool registered,
+        bool thresholdIncreased)
+    {
         bool ownsWaiterStart = TryClaimPendingWaiterStart(entry);
         bool waiterStartSucceeded = !ownsWaiterStart || StartPendingWaiter(entry);
         if (!registered)
@@ -352,7 +405,7 @@ internal sealed class SvgHostAdmissionDomain
             if (unstarted)
                 CancelWithoutWaiter(entry);
             else
-                _ = RequestPendingCancellation(entry);
+                _ = entry.RequestCancellation();
         }
     }
 
@@ -367,7 +420,7 @@ internal sealed class SvgHostAdmissionDomain
             _pending.Remove(entry);
             Interlocked.Exchange(ref entry.Removed, 1);
         }
-        DisposePromotionRegistration(entry);
+        entry.DisposePromotionRegistration();
         _ = DrainUnstartedWaiterAsync(entry);
     }
 
@@ -392,12 +445,12 @@ internal sealed class SvgHostAdmissionDomain
         foreach (SvgHostPendingEntry entry in abandoned)
         {
             Interlocked.Exchange(ref entry.Removed, 1);
-            DisposePromotionRegistration(entry);
+            entry.DisposePromotionRegistration();
             if (entry.WaiterStartState == 2)
             {
                 // The running waiter observes this shared cancellation
                 // task in its terminal drain before it disposes the CTS.
-                _ = RequestPendingCancellation(entry);
+                _ = entry.RequestCancellation();
             }
             else
             {
@@ -408,7 +461,7 @@ internal sealed class SvgHostAdmissionDomain
 
     private async Task DrainUnstartedWaiterAsync(SvgHostPendingEntry entry)
     {
-        try { await RequestPendingCancellation(entry).ConfigureAwait(false); }
+        try { await entry.RequestCancellation().ConfigureAwait(false); }
         catch (Exception exception)
         {
             MarkdownDiagnostics.WriteLine(
@@ -422,21 +475,9 @@ internal sealed class SvgHostAdmissionDomain
                 $"[SvgAdmission] unstarted registration drain failed: {exception.GetType().Name}");
         }
 
-        Volatile.Write(ref entry.WaiterCompletionStarted, 1);
         try
         {
-            if (entry.Owner.TryGetTarget(out SvgHostLoadDeferral? owner))
-            {
-                owner.OnSvgHostAdmissionWaiterFinished(
-                    entry.Demand,
-                    entry.LoadGeneration,
-                    entry.Identity);
-            }
-        }
-        catch (Exception exception)
-        {
-            MarkdownDiagnostics.WriteLine(
-                $"[SvgAdmission] unstarted waiter completion callback failed: {exception.GetType().Name}");
+            entry.NotifyOwnerWaiterFinished("unstarted waiter completion callback");
         }
         finally
         {
@@ -444,6 +485,11 @@ internal sealed class SvgHostAdmissionDomain
         }
     }
 
+    // This method stays whole because it is one waiter's loop: snapshot the
+    // row, drain in-flight registrations, wait for the primary signal or a
+    // promotion, then claim. The capacity wait it starts must stay visible to
+    // the finally that decides when the row's cancellation source may be
+    // disposed, so the loop and that finally share one frame.
     private async Task WaitAndResumeAsync(SvgHostPendingEntry entry)
     {
         Task? capacityWait = null;
@@ -505,13 +551,8 @@ internal sealed class SvgHostAdmissionDomain
                     // waits for that drain before claiming.
                     if (entry.Demand.Version > entry.DemandVersionAtDenial)
                     {
-                        if (TryClaimPending(entry, sourceThresholdReached: false,
-                                awaitedSourceBytes: 0, out promoted, out thresholdReady, out ownerReady))
-                        {
-                            entry.Admission.TryGetTarget(out admission);
-                            SignalDeferredOwner(entry, admission, promoted, thresholdReady, ownerReady);
+                        if (TryClaimAndSignal(entry, sourceThresholdReached: false, awaitedSourceBytes: 0))
                             return;
-                        }
                         continue;
                     }
 
@@ -529,29 +570,17 @@ internal sealed class SvgHostAdmissionDomain
 
                 capacityWait = null;
 
-                if (entry.RequiresOwnerSlot)
-                {
-                    if (TryClaimPending(entry, sourceThresholdReached: false,
-                            awaitedSourceBytes: 0, out promoted, out thresholdReady, out ownerReady))
-                    {
-                        entry.Admission.TryGetTarget(out admission);
-                        SignalDeferredOwner(entry, admission, promoted, thresholdReady, ownerReady);
-                        return;
-                    }
-                    continue;
-                }
-
                 // A small threshold may wake this task after a duplicate
                 // denial raised the entry's monotonic maximum. The claim
                 // rechecks that maximum under _gate; if it grew, the next
                 // iteration waits for the larger requirement (which is
                 // immediately observable if it already fits).
-                if (TryClaimPending(entry, sourceThresholdReached: true,
-                        awaitedSourceBytes: requiredSourceBytes,
-                        out promoted, out thresholdReady, out ownerReady))
+                bool ownerSlot = entry.RequiresOwnerSlot;
+                if (TryClaimAndSignal(
+                        entry,
+                        sourceThresholdReached: !ownerSlot,
+                        awaitedSourceBytes: ownerSlot ? 0 : requiredSourceBytes))
                 {
-                    entry.Admission.TryGetTarget(out admission);
-                    SignalDeferredOwner(entry, admission, promoted, thresholdReady, ownerReady);
                     return;
                 }
             }
@@ -568,27 +597,33 @@ internal sealed class SvgHostAdmissionDomain
         finally
         {
             RemovePending(entry);
-            Volatile.Write(ref entry.WaiterCompletionStarted, 1);
             try
             {
-                if (entry.Owner.TryGetTarget(out SvgHostLoadDeferral? owner))
-                {
-                    owner.OnSvgHostAdmissionWaiterFinished(
-                        entry.Demand,
-                        entry.LoadGeneration,
-                        entry.Identity);
-                }
-            }
-            catch (Exception exception)
-            {
-                MarkdownDiagnostics.WriteLine(
-                    $"[SvgAdmission] waiter completion callback failed: {exception.GetType().Name}");
+                entry.NotifyOwnerWaiterFinished("waiter completion callback");
             }
             finally
             {
                 await FinishPendingWaiterAsync(entry, capacityWait).ConfigureAwait(false);
             }
         }
+    }
+
+    // Claims the row and, when the claim succeeds, signals its owner with the
+    // row's current admission.
+    private bool TryClaimAndSignal(
+        SvgHostPendingEntry entry,
+        bool sourceThresholdReached,
+        long awaitedSourceBytes)
+    {
+        if (!TryClaimPending(entry, sourceThresholdReached, awaitedSourceBytes,
+                out bool promoted, out bool thresholdReady, out bool ownerReady))
+        {
+            return false;
+        }
+
+        entry.Admission.TryGetTarget(out IMarkdownSvgAdmission? admission);
+        SignalDeferredOwner(entry, admission, promoted, thresholdReady, ownerReady);
+        return true;
     }
 
     private bool TryGetPendingWaitSnapshot(
@@ -699,48 +734,15 @@ internal sealed class SvgHostAdmissionDomain
             _pending.Remove(entry);
     }
 
-    private static void DisposePromotionRegistration(SvgHostPendingEntry entry)
-    {
-        IDisposable? registration = Interlocked.Exchange(ref entry.PromotionRegistration, null);
-        try { registration?.Dispose(); }
-        catch (Exception exception)
-        {
-            MarkdownDiagnostics.WriteLine(
-                $"[SvgAdmission] promotion retirement failed: {exception.GetType().Name}");
-        }
-    }
-
-    private static Task RequestPendingCancellation(SvgHostPendingEntry entry)
-    {
-        Interlocked.Exchange(ref entry.Removed, 1);
-        DisposePromotionRegistration(entry);
-        lock (entry.CancellationSync)
-        {
-            if (entry.CancellationCallbacks is { } existing)
-                return existing;
-            try
-            {
-                entry.CancellationCallbacks = entry.Cancellation.CancelAsync();
-                return entry.CancellationCallbacks;
-            }
-            catch (Exception exception)
-            {
-                MarkdownDiagnostics.WriteLine(
-                    $"[SvgAdmission] waiter cancellation failed: {exception.GetType().Name}");
-                return Task.FromException(exception);
-            }
-        }
-    }
-
     private async Task FinishPendingWaiterAsync(SvgHostPendingEntry entry, Task? capacityWait)
     {
         if (Interlocked.Exchange(ref entry.WaiterFinished, 1) != 0)
             return;
         Interlocked.Exchange(ref entry.Removed, 1);
-        DisposePromotionRegistration(entry);
+        entry.DisposePromotionRegistration();
         try
         {
-            await RequestPendingCancellation(entry).ConfigureAwait(false);
+            await entry.RequestCancellation().ConfigureAwait(false);
         }
         catch (Exception exception)
         {
