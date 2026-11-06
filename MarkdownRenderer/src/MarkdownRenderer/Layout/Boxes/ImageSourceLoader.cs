@@ -26,7 +26,7 @@ internal sealed class ImageSourceLoader
     // GitHub Camo to the canonical HTTPS origin).  Keep this document-level
     // guard outside two 20-second transport attempts so it remains the final
     // safety net instead of racing the resolver's recovery path.
-    private static readonly TimeSpan ImageResolverTimeout = TimeSpan.FromSeconds(45);
+    internal static readonly TimeSpan ResolverTimeout = TimeSpan.FromSeconds(45);
 
     private readonly IImageSourceLoadHost _host;
     private readonly MarkdownLayoutContext _context;
@@ -150,7 +150,7 @@ internal sealed class ImageSourceLoader
             {
                 state.SourceLease = await ImageResolverDeadline.RunAsync(
                         token => StartLeasedResolver(state, token),
-                        ImageResolverTimeout,
+                        ResolverTimeout,
                         state.LifetimeToken,
                         abandonedResultDisposer: static lease => lease.Dispose(),
                         abandonedCompletionObserver: cleanup =>
@@ -162,7 +162,7 @@ internal sealed class ImageSourceLoader
             {
                 state.Resolution = await ImageResolverDeadline.RunAsync(
                     token => StartResolver(state, token),
-                    ImageResolverTimeout,
+                    ResolverTimeout,
                     state.LifetimeToken)
                 .ConfigureAwait(false);
             }
