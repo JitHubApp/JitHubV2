@@ -318,7 +318,7 @@ internal sealed class SafeHtmlBlockScopeTracker
         }
     }
 
-    private readonly struct Scope
+    internal readonly struct Scope
     {
         internal Scope(
             string name,

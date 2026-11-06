@@ -1,7 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Reflection;
+using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.CodeBlocks;
@@ -88,22 +89,6 @@ public sealed class ImmutablePayloadStorageTests
             TableSourceRange = new SourceSpan(7, 8),
         };
 
-        Type[] liveLayoutTypes =
-        [
-            typeof(BlockBox),
-            typeof(InlineRun),
-            typeof(ImageBox),
-            typeof(CodeBlockBox),
-            typeof(TableBox),
-            typeof(LayoutSnapshot),
-        ];
-        // Remaining reflection: the storage oracle covers private backing fields.
-        foreach (FieldInfo field in type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
-        {
-            Type fieldType = Nullable.GetUnderlyingType(field.FieldType) ?? field.FieldType;
-            Assert.DoesNotContain(liveLayoutTypes, liveType => liveType.IsAssignableFrom(fieldType));
-        }
-
         Assert.Equal("https://example.test/link", target.LinkUrl);
         Assert.Equal(new SourceSpan(1, 2), target.LinkSourceRange);
         Assert.Equal("https://example.test/image.png", target.ImageUrl);
@@ -114,6 +99,59 @@ public sealed class ImmutablePayloadStorageTests
         Assert.Same(tableSnapshot, target.TableSnapshot);
         Assert.Equal(new SourceSpan(7, 8), target.TableSourceRange);
         Assert.Null(target.ImageBitmapLease);
+    }
+
+    [Fact]
+    public void PopulatedContextMenuTargetsRetainNoLiveLayout()
+    {
+        // Targets built from a link, a code block and a table keep detached
+        // values only: the snapshot, its context and every box it hit are
+        // collectable while the targets are alive.
+        (ContextMenuTarget[] targets, WeakReference[] layout) = PopulateTargetsFromUnrootedLayout();
+
+        RetentionCollector.CollectUntilDead(layout);
+
+        Assert.All(layout, reference => Assert.False(reference.IsAlive));
+        Assert.Equal("https://example.test/link", targets[0].LinkUrl);
+        Assert.Contains("detached code", targets[1].CodeText, StringComparison.Ordinal);
+        Assert.False(string.IsNullOrEmpty(targets[1].CodeLanguage));
+        MarkdownTableClipboardSnapshot table = Assert.IsType<MarkdownTableClipboardSnapshot>(targets[2].TableSnapshot);
+        Assert.Contains("cell", table.Format().Text, StringComparison.Ordinal);
+        foreach (ContextMenuTarget target in targets)
+            target.Dispose();
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static (ContextMenuTarget[] Targets, WeakReference[] Layout) PopulateTargetsFromUnrootedLayout()
+    {
+        const string source =
+            "[link](https://example.test/link)\n\n" +
+            "```cs\ndetached code\n```\n\n" +
+            "| head | other |\n|---|---|\n| cell | value |\n";
+        var layout = new List<WeakReference>();
+        var targets = new ContextMenuTarget[3];
+        using (LayoutSnapshot snapshot = SafeHtmlRenderingFixture.BuildGitHub(source))
+        {
+            BlockBox[] boxes = SafeHtmlRenderingFixture.FlattenBoxes(snapshot).ToArray();
+            InlineContainerBox link = boxes.OfType<InlineContainerBox>().First(box => box.Runs.OfType<LinkRun>().Any());
+            BlockBox code = boxes.OfType<CodeBlockBox>().Single();
+            BlockBox tableBox = boxes.OfType<TableBox>().Single();
+            BlockBox[] hits = [link, code, tableBox];
+            for (int index = 0; index < hits.Length; index++)
+            {
+                Rect bounds = hits[index].Bounds;
+                var point = new Point(bounds.X + 2, bounds.Y + bounds.Height / 2);
+                targets[index] = new ContextMenuTarget();
+                Assert.True(ContextMenuTargets.PopulateContextMenuTarget(hits[index], point, targets[index]));
+            }
+
+            layout.Add(new WeakReference(snapshot));
+            layout.Add(new WeakReference(link.Context));
+            foreach (BlockBox box in boxes)
+                layout.Add(new WeakReference(box));
+        }
+
+        return (targets, layout.ToArray());
     }
 
     [Fact]
@@ -412,31 +450,31 @@ public sealed class ImmutablePayloadStorageTests
     [Fact]
     public void CompactPrivateRangeAndRetirementPayloadsPreserveConstructorValues()
     {
-        // Remaining reflection: IconPayloadRange, RetirementFailure and AggregateFailureCursor are private nested types.
-        object range = Construct(Nested(typeof(RasterIconHeaderReader), "IconPayloadRange"), [31, 17]);
-        Assert.Equal(31, Field(range, "Offset"));
-        Assert.Equal(17, Field(range, "Length"));
-        Assert.Equal(48, range.GetType().GetProperty("End")!.GetValue(range));
+        var range = new RasterIconHeaderReader.IconPayloadRange(31, 17);
+        Assert.Equal(31, range.Offset);
+        Assert.Equal(17, range.Length);
+        Assert.Equal(48, range.End);
 
         var failure = new InvalidOperationException("retained failure");
-        object retirement = Construct(Nested(typeof(SnapshotRetirementTracker), "RetirementFailure"), [42L, failure]);
-        Assert.Equal(42L, Field(retirement, "Sequence"));
-        Assert.Same(failure, Field(retirement, "Exception"));
+        var retirement = new SnapshotRetirementTracker.RetirementFailure(42L, failure);
+        Assert.Equal(42L, retirement.Sequence);
+        Assert.Same(failure, retirement.Exception);
 
         Exception[] failures = [failure];
-        object cursor = Construct(Nested(typeof(BlockBoxCleanupScope), "AggregateFailureCursor"), [failures, 3, 5]);
-        Assert.Same(failures, Field(cursor, "InnerExceptions"));
-        Assert.Equal(3, Field(cursor, "NextIndex"));
-        Assert.Equal(5, Field(cursor, "Depth"));
+        var cursor = new BlockBoxCleanupScope.AggregateFailureCursor(failures, 3, 5);
+        Assert.Same(failures, cursor.InnerExceptions);
+        Assert.Equal(3, cursor.NextIndex);
+        Assert.Equal(5, cursor.Depth);
 
         int[] insertions = [5, 12];
         int[] maskedSeparators = [8];
         var preparedSource = new Gfm029Compatibility.PreparedSource("rewritten source", insertions, maskedSeparators);
         Assert.Equal("rewritten source", preparedSource.Text);
         Assert.True(preparedSource.HasChanges);
-        // Remaining reflection: the edit arrays are private fields of PreparedSource.
-        Assert.Same(insertions, Field(preparedSource, "_insertions"));
-        Assert.Same(maskedSeparators, Field(preparedSource, "_maskedSeparators"));
+        // The views alias the constructor's arrays: span equality is identity
+        // of the first element and the length, so a copy would fail it.
+        Assert.True(preparedSource.Insertions == insertions);
+        Assert.True(preparedSource.MaskedSeparators == maskedSeparators);
         Assert.False(new Gfm029Compatibility.PreparedSource(
             "unchanged source", Array.Empty<int>(), Array.Empty<int>()).HasChanges);
         Assert.True(new Gfm029Compatibility.PreparedSource(
@@ -658,13 +696,11 @@ public sealed class ImmutablePayloadStorageTests
         Assert.Same(aliases, inlineScope.StyleAliases);
         Assert.Same(scriptToken, inlineScope.ScriptToken);
 
-        // Remaining reflection: SafeHtmlBlockScopeTracker.Scope is a private nested type.
-        object blockScope = Construct(Nested(typeof(SafeHtmlBlockScopeTracker), "Scope"),
-            ["details", SafeHtmlAlignment.Center, true, 19]);
-        Assert.Equal("details", Field(blockScope, "Name"));
-        Assert.Equal(SafeHtmlAlignment.Center, Field(blockScope, "Alignment"));
-        Assert.Equal(true, Field(blockScope, "SuppressContent"));
-        Assert.Equal(19, Field(blockScope, "InlineFlowScopeId"));
+        var blockScope = new SafeHtmlBlockScopeTracker.Scope("details", SafeHtmlAlignment.Center, true, 19);
+        Assert.Equal("details", blockScope.Name);
+        Assert.Equal(SafeHtmlAlignment.Center, blockScope.Alignment);
+        Assert.True(blockScope.SuppressContent);
+        Assert.Equal(19, blockScope.InlineFlowScopeId);
 
         var viewportRange = new ViewportRange(3, 8);
         Assert.Equal(3, viewportRange.Start);
@@ -757,13 +793,6 @@ public sealed class ImmutablePayloadStorageTests
             textScaleFactor: 1);
     }
 
-    private static Type Nested(Type owner, string name) =>
-        owner.GetNestedType(name, BindingFlags.NonPublic) ?? throw new InvalidOperationException(name);
-
-    private static object Construct(Type type, object[] values) =>
-        Assert.Single(Array.FindAll(
-            type.GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic),
-            constructor => constructor.GetParameters().Length == values.Length)).Invoke(values);
 
     private static CanvasBitmap CreateBitmap(CanvasDevice device) => CanvasBitmap.CreateFromBytes(
         device,
@@ -772,8 +801,6 @@ public sealed class ImmutablePayloadStorageTests
         1,
         DirectXPixelFormat.B8G8R8A8UIntNormalized);
 
-    private static object? Field(object payload, string name) =>
-        payload.GetType().GetField(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!.GetValue(payload);
 
     private sealed class TestEmbedFactory : IMarkdownEmbedFactory
     {
