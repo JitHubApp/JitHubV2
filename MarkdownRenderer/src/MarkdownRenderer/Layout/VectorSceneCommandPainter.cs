@@ -120,7 +120,7 @@ internal sealed class VectorSceneCommandPainter
                 ? slots.Geometries[geometryIndex++] : null;
             CanvasTextLayout? textLayout = VectorSceneResourceShapes.RequiresTextLayout(command)
                 ? slots.TextLayouts[textIndex++] : null;
-            CanvasStrokeStyle? strokeStyle = style is not null && VectorSceneDrawing.RequiresStrokeStyle(style)
+            CanvasStrokeStyle? strokeStyle = style is not null && VectorSceneResourceShapes.RequiresStrokeStyle(style)
                 ? slots.StrokeStyles[strokeIndex++] : null;
             switch (command.Kind)
             {

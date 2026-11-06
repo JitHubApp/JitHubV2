@@ -223,11 +223,11 @@ public sealed class MermaidHighContrastAccessibilityTests
         bool highContrast)
     {
         MarkdownVectorPaintStyle style = command.Style!;
-        return VectorSceneDrawing.ResolvePaintRole(
+        return VectorScenePaintResolver.ResolvePaintRole(
             command,
             style.FillRole,
             style.FillArgb,
-            style.HighContrastFillRole ?? VectorSceneDrawing.InferFillRole(
+            style.HighContrastFillRole ?? VectorScenePaintResolver.InferFillRole(
                 command,
                 style,
                 SemanticRole(scene, command)),
@@ -241,7 +241,7 @@ public sealed class MermaidHighContrastAccessibilityTests
         bool highContrast)
     {
         MarkdownVectorPaintStyle style = command.Style!;
-        return VectorSceneDrawing.ResolvePaintRole(
+        return VectorScenePaintResolver.ResolvePaintRole(
             command,
             style.StrokeRole,
             style.StrokeArgb,
@@ -254,7 +254,7 @@ public sealed class MermaidHighContrastAccessibilityTests
         MarkdownVectorScene scene,
         MarkdownVectorCommand command,
         bool highContrast) =>
-        VectorSceneDrawing.ResolveColor(
+        VectorScenePaintResolver.ResolveColor(
             command.Style!.FillArgb,
             command.Style.Opacity,
             HighContrastPalette,
@@ -265,7 +265,7 @@ public sealed class MermaidHighContrastAccessibilityTests
         MarkdownVectorScene scene,
         MarkdownVectorCommand command,
         bool highContrast) =>
-        VectorSceneDrawing.ResolveColor(
+        VectorScenePaintResolver.ResolveColor(
             command.Style!.StrokeArgb,
             command.Style.Opacity,
             HighContrastPalette,

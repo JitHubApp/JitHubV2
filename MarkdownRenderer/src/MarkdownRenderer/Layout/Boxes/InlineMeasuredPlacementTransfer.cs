@@ -17,28 +17,6 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// </summary>
 internal sealed class InlineMeasuredPlacementTransfer
 {
-    private readonly struct PreparedVectorPlacement
-    {
-        internal PreparedVectorPlacement(
-            InlineVectorSceneRun source,
-            InlineVectorSceneRun prepared)
-        {
-            Source = source;
-            Prepared = prepared;
-            Width = prepared.DesiredWidth;
-            Height = prepared.DesiredHeight;
-            Baseline = prepared.DesiredBaseline;
-            LocalBounds = prepared.LocalBounds;
-        }
-
-        internal readonly InlineVectorSceneRun Source;
-        internal readonly InlineVectorSceneRun Prepared;
-        internal readonly float Width;
-        internal readonly float Height;
-        internal readonly float Baseline;
-        internal readonly Rect LocalBounds;
-    }
-
     private readonly InlineContainerBox _source;
     private readonly InlineContainerBox _prepared;
     private readonly float _expectedAvailableWidth;
@@ -68,12 +46,7 @@ internal sealed class InlineMeasuredPlacementTransfer
     private readonly object? _sourceVectorSceneState;
     private readonly object? _preparedVectorSceneState;
     private readonly bool _sourceProgressiveSceneResidency;
-    private InlineSceneGeometry[]? _preparedVectorGeometrySnapshot;
-    private InlineSceneGeometry[]? _preparedVectorGeometryForSource;
-    private readonly PreparedVectorPlacement[] _preparedVectorPlacements;
-    private long _preparedSceneGeometryGeneration;
-    private long _preparedPendingSceneGeometryGeneration;
-    private bool _preparedVectorGeometryReady;
+    private readonly InlineMeasuredVectorGeometryCapture _vectorGeometry;
     private readonly InlineMeasuredRunState[] _runs;
     private readonly IReadOnlyList<string> _containerContextKeys;
     private readonly IReadOnlyList<string> _containerAliasKeys;
@@ -105,7 +78,6 @@ internal sealed class InlineMeasuredPlacementTransfer
             if (run.SourceVectorRun is not null)
                 vectorRunCount++;
         _vectorRunCount = vectorRunCount;
-        _preparedVectorPlacements = new PreparedVectorPlacement[vectorRunCount];
         _sourceBounds = source.Bounds;
         _sourceRawMargin = source.RawPlacementMargin;
         _preparedRawMargin = prepared.RawPlacementMargin;
@@ -127,6 +99,9 @@ internal sealed class InlineMeasuredPlacementTransfer
         _sourcePendingSceneGeometry = source.PendingSceneGeometry;
         _sourceVectorSceneState = source.VectorSceneStateHolder;
         _preparedVectorSceneState = prepared.VectorSceneStateHolder;
+        _vectorGeometry = new InlineMeasuredVectorGeometryCapture(
+            source, prepared, runs, allowMeasuredVectorPlacement, vectorRunCount,
+            _preparedVectorSceneState);
         _sourceProgressiveSceneResidency = source.UsesProgressiveNativeSceneResidency;
         _runs = runs;
         // These arrays belong to the still-private candidate. Measurement
@@ -157,204 +132,7 @@ internal sealed class InlineMeasuredPlacementTransfer
     /// only allocation in the vector-geometry transfer; final validation
     /// and the swap use the captured arrays and managed references only.
     /// </summary>
-    internal bool TryPrepareMeasuredVectorGeometry()
-    {
-        if (_vectorRunCount == 0)
-            return true;
-        if (_preparedVectorGeometryReady)
-            return MatchesPreparedVectorGeometry();
-
-        int vectorCount = 0;
-        foreach (InlineMeasuredRunState run in _runs)
-            if (run.SourceVectorRun is not null)
-                vectorCount++;
-
-        InlineContainerBox prepared = _prepared;
-        if (vectorCount != _source.VectorSceneRunCount ||
-            vectorCount != prepared.VectorSceneRunCount ||
-            (vectorCount != 0 && !_allowMeasuredVectorPlacement) ||
-            prepared.IsDirty || prepared.TextLayout is null || prepared.IsBufferDirty ||
-            !InlineMeasuredPlacementCapture.HasValidNativeLayoutCustody(prepared))
-        {
-            return false;
-        }
-
-        InlineSceneGeometry[] candidateGeometry = prepared.PendingSceneGeometry;
-        InlineSceneGeometry[] remappedGeometry = Array.Empty<InlineSceneGeometry>();
-        if (!TryCapturePreparedVectorPlacements(vectorCount))
-            return false;
-
-        if (vectorCount > 0 && prepared.UsesProgressiveNativeSceneResidency)
-        {
-            if (candidateGeometry.Length != vectorCount ||
-                prepared.PendingSceneGeometryGeneration == 0 ||
-                prepared.PendingSceneGeometryGeneration != prepared.CurrentSceneGeometryGeneration)
-            {
-                return false;
-            }
-
-            remappedGeometry = new InlineSceneGeometry[vectorCount];
-            if (!TryRemapMeasuredGeometryToSource(candidateGeometry, remappedGeometry))
-                return false;
-        }
-        else if (candidateGeometry.Length != 0 || prepared.PendingSceneGeometryGeneration != 0 &&
-                 !prepared.UsesProgressiveNativeSceneResidency)
-        {
-            return false;
-        }
-
-        _preparedVectorGeometrySnapshot = candidateGeometry;
-        _preparedVectorGeometryForSource = remappedGeometry;
-        _preparedSceneGeometryGeneration = prepared.CurrentSceneGeometryGeneration;
-        _preparedPendingSceneGeometryGeneration = prepared.PendingSceneGeometryGeneration;
-        _preparedVectorGeometryReady = true;
-        return MatchesPreparedVectorGeometry();
-    }
-
-    // Pairs each source vector run with its prepared clone in run order.
-    private bool TryCapturePreparedVectorPlacements(int vectorCount)
-    {
-        int placementOrdinal = 0;
-        foreach (InlineMeasuredRunState run in _runs)
-        {
-            if (run.SourceVectorRun is not { } sourceVector ||
-                run.PreparedVectorRun is not { } preparedVector)
-            {
-                continue;
-            }
-            if (placementOrdinal >= _preparedVectorPlacements.Length ||
-                !run.MatchesSourceAndPreparedVectorState(_allowMeasuredVectorPlacement) ||
-                !InlineMeasuredPlacementCapture.IsFiniteNonnegative(preparedVector.LocalBounds))
-            {
-                return false;
-            }
-            _preparedVectorPlacements[placementOrdinal++] = new PreparedVectorPlacement(
-                sourceVector, preparedVector);
-        }
-
-        return placementOrdinal == vectorCount;
-    }
-
-    // Rebinds each measured candidate geometry entry to its source vector
-    // run, filling remappedGeometry, whose length is the vector count.
-    private bool TryRemapMeasuredGeometryToSource(
-        InlineSceneGeometry[] candidateGeometry,
-        InlineSceneGeometry[] remappedGeometry)
-    {
-        int geometryOrdinal = 0;
-        foreach (InlineMeasuredRunState run in _runs)
-        {
-            if (run.SourceVectorRun is not { } sourceVector)
-                continue;
-            if (run.PreparedVectorRun is not { IsMeasuredPlacementOnly: true } preparedVector ||
-                geometryOrdinal >= candidateGeometry.Length)
-            {
-                return false;
-            }
-
-            InlineSceneGeometry measuredGeometry = candidateGeometry[geometryOrdinal];
-            if (!ReferenceEquals(measuredGeometry.Run, preparedVector) ||
-                !ReferenceEquals(measuredGeometry.Run.Scene, run.VectorScene) ||
-                !InlineMeasuredPlacementCapture.HasUsableMeasuredVectorRegions(measuredGeometry))
-            {
-                return false;
-            }
-
-            remappedGeometry[geometryOrdinal] = measuredGeometry.WithRun(sourceVector);
-            geometryOrdinal++;
-        }
-
-        return geometryOrdinal == remappedGeometry.Length;
-    }
-
-    private bool MatchesPreparedVectorGeometry()
-    {
-        if (!ReferenceEquals(_prepared.VectorSceneStateHolder, _preparedVectorSceneState))
-            return false;
-        if (_vectorRunCount == 0)
-            return true;
-        if (!_preparedVectorGeometryReady ||
-            !ReferenceEquals(_prepared.PendingSceneGeometry, _preparedVectorGeometrySnapshot) ||
-            _prepared.CurrentSceneGeometryGeneration != _preparedSceneGeometryGeneration ||
-            _prepared.PendingSceneGeometryGeneration != _preparedPendingSceneGeometryGeneration)
-        {
-            return false;
-        }
-
-        int vectorCount = 0;
-        foreach (InlineMeasuredRunState run in _runs)
-            if (run.SourceVectorRun is not null)
-                vectorCount++;
-
-        if (!_allowMeasuredVectorPlacement && vectorCount != 0)
-            return false;
-        if (!MatchesPreparedVectorPlacements(vectorCount))
-            return false;
-        if (_prepared.UsesProgressiveNativeSceneResidency && vectorCount != 0)
-        {
-            if (_preparedVectorGeometrySnapshot is null ||
-                _preparedVectorGeometrySnapshot.Length != vectorCount ||
-                _preparedVectorGeometryForSource is null ||
-                _preparedVectorGeometryForSource.Length != vectorCount)
-            {
-                return false;
-            }
-
-            int geometryOrdinal = 0;
-            foreach (InlineMeasuredRunState run in _runs)
-            {
-                if (run.SourceVectorRun is not { } sourceVector ||
-                    run.PreparedVectorRun is not { } preparedVector)
-                {
-                    continue;
-                }
-
-                InlineSceneGeometry candidateGeometry = _preparedVectorGeometrySnapshot[geometryOrdinal];
-                InlineSceneGeometry sourceGeometry = _preparedVectorGeometryForSource[geometryOrdinal];
-                if (!ReferenceEquals(candidateGeometry.Run, preparedVector) ||
-                    !ReferenceEquals(sourceGeometry.Run, sourceVector) ||
-                    !candidateGeometry.HasSameRegions(in sourceGeometry))
-                {
-                    return false;
-                }
-                // WithRun value-copies the scalar region fields and shares
-                // inaccessible immutable Rect[] storage. This exact
-                // identity/value check stays constant-time under the gate.
-                geometryOrdinal++;
-            }
-
-            return geometryOrdinal == vectorCount;
-        }
-
-        return _preparedVectorGeometryForSource is { Length: 0 } &&
-            (_preparedVectorGeometrySnapshot?.Length ?? 0) == 0;
-    }
-
-    private bool MatchesPreparedVectorPlacements(int vectorCount)
-    {
-        if (_preparedVectorPlacements.Length != vectorCount)
-            return false;
-
-        for (int index = 0; index < vectorCount; index++)
-        {
-            PreparedVectorPlacement expected = _preparedVectorPlacements[index];
-            InlineVectorSceneRun source = expected.Source;
-            InlineVectorSceneRun prepared = expected.Prepared;
-            if (prepared.IsDisposed || !prepared.IsMeasuredPlacementOnly ||
-                source.IsDisposed || source.IsMeasuredPlacementOnly ||
-                !ReferenceEquals(prepared.Scene, source.Scene) ||
-                prepared.DesiredWidth != expected.Width ||
-                prepared.DesiredHeight != expected.Height ||
-                prepared.DesiredBaseline != expected.Baseline ||
-                !InlineMeasuredPlacementCapture.SameRect(prepared.LocalBounds, expected.LocalBounds) ||
-                !InlineMeasuredPlacementCapture.IsFiniteNonnegative(prepared.LocalBounds))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
+    internal bool TryPrepareMeasuredVectorGeometry() => _vectorGeometry.TryPrepare();
 
     /// <summary>
     /// Revalidates immutable run/source identity and the captured source
@@ -367,10 +145,10 @@ internal sealed class InlineMeasuredPlacementTransfer
         InlineContainerBox source = _source;
         InlineContainerBox prepared = _prepared;
         bool compatibleRootInputs = _isTableCellTransfer
-            ? InlineMeasuredPlacementCapture.AreCompatibleTableCellRootInputs(source, prepared, _allowMeasuredVectorPlacement)
+            ? InlineMeasuredPlacementRootAdmission.AreCompatibleTableCellRootInputs(source, prepared, _allowMeasuredVectorPlacement)
             : _isContainerLeafTransfer
-            ? InlineMeasuredPlacementCapture.AreCompatibleContainerLeafRootInputs(source, prepared, _allowMeasuredVectorPlacement)
-            : InlineMeasuredPlacementCapture.AreCompatibleMeasuredRootInputs(
+            ? InlineMeasuredPlacementRootAdmission.AreCompatibleContainerLeafRootInputs(source, prepared, _allowMeasuredVectorPlacement)
+            : InlineMeasuredPlacementRootAdmission.AreCompatibleMeasuredRootInputs(
                 source, prepared, _expectedAvailableWidth, _allowMeasuredVectorPlacement);
         bool preparedWidthMatches = _isTableCellTransfer
             ? float.IsFinite(prepared.LastMeasuredWidth) && prepared.LastMeasuredWidth > 0f &&
@@ -455,7 +233,7 @@ internal sealed class InlineMeasuredPlacementTransfer
             !InlineMeasuredPlacementCapture.HasValidNativeLayoutCustody(source) || !InlineMeasuredPlacementCapture.HasValidNativeLayoutCustody(prepared) ||
             (!_allowMeasuredVectorPlacement &&
                 (source.PendingSceneGeometry.Length != 0 || prepared.PendingSceneGeometry.Length != 0)) ||
-            !MatchesPreparedVectorGeometry() ||
+            !_vectorGeometry.Matches() ||
             (_isContainerLeafTransfer &&
                 (source.InlineImageEntries is { Count: > 0 } ||
                  prepared.InlineImageEntries is { Count: > 0 } ||
@@ -610,7 +388,7 @@ internal sealed class InlineMeasuredPlacementTransfer
             _sourcePendingSceneGeneration,
             _sourcePendingSceneGeometry,
             _allowMeasuredVectorPlacement && _vectorRunCount > 0,
-            _preparedVectorGeometryForSource);
+            _vectorGeometry.GeometryForSource);
 
         foreach (InlineMeasuredRunState run in _runs)
         {

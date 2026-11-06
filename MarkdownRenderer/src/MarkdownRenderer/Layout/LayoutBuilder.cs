@@ -140,26 +140,14 @@ internal sealed class LayoutBuilder : ILayoutBlockDispatcher
                 phaseStarted = Stopwatch.GetTimestamp();
             }
 
-            var (defs, refs) = _context.SnapshotFootnoteRegistry();
-            var fragments = _context.SnapshotFragmentTargets();
-            vectorSceneResidencyPolicy =
-                _context.PerformanceSession?.CreateVectorSceneResidencyPolicy(
-                    blocks, _context.PerformanceDocumentOwner, _context.PlacementTransform);
-            snapshot = new LayoutSnapshot(
+            snapshot = CreateSnapshot(
                 blocks,
-                _context.SourceMap,
                 availableWidth,
                 y,
-                generatedBlockIndexUpperBound: _context.GeneratedBlockIndexUpperBound,
-                footnoteDefBlocks: defs,
-                footnoteRefBlocks: refs,
-                fragmentTargetBlocks: fragments,
-                sharedLayoutMetrics: sharedMetrics,
-                documentPadding: documentPadding,
-                blockSpacing: blockSpacing,
-                vectorSceneResidencyPolicy: vectorSceneResidencyPolicy,
-                layoutContext: _context);
-            vectorSceneResidencyPolicy = null;
+                sharedMetrics,
+                documentPadding,
+                blockSpacing,
+                ref vectorSceneResidencyPolicy);
             ownership.TransferToSnapshot(blocks);
             if (snapshot.VectorSceneResidencyPolicy is not null)
                 EnsureEagerDocumentResidencyBand(snapshot, effectiveCancellationToken);
@@ -282,26 +270,14 @@ internal sealed class LayoutBuilder : ILayoutBlockDispatcher
 
             if (diagnostics is not null)
                 phaseStarted = Stopwatch.GetTimestamp();
-            var (defs, refs) = _context.SnapshotFootnoteRegistry();
-            var fragments = _context.SnapshotFragmentTargets();
-            vectorSceneResidencyPolicy =
-                _context.PerformanceSession?.CreateVectorSceneResidencyPolicy(
-                    blocks, _context.PerformanceDocumentOwner, _context.PlacementTransform);
-            snapshot = new LayoutSnapshot(
+            snapshot = CreateSnapshot(
                 blocks,
-                _context.SourceMap,
                 availableWidth,
                 0,
-                generatedBlockIndexUpperBound: _context.GeneratedBlockIndexUpperBound,
-                footnoteDefBlocks: defs,
-                footnoteRefBlocks: refs,
-                fragmentTargetBlocks: fragments,
-                sharedLayoutMetrics: sharedMetrics,
-                documentPadding: _context.ThemeSnapshot.DocumentPadding,
-                blockSpacing: _context.ThemeSnapshot.BlockSpacing,
-                vectorSceneResidencyPolicy: vectorSceneResidencyPolicy,
-                layoutContext: _context);
-            vectorSceneResidencyPolicy = null;
+                sharedMetrics,
+                _context.ThemeSnapshot.DocumentPadding,
+                _context.ThemeSnapshot.BlockSpacing,
+                ref vectorSceneResidencyPolicy);
             ownership.TransferToSnapshot(blocks);
             if (diagnostics is not null)
             {
@@ -335,6 +311,41 @@ internal sealed class LayoutBuilder : ILayoutBlockDispatcher
         {
             _tracker.EndBlockBuildOwnership(ownership);
         }
+    }
+
+    // Creates the residency policy and the snapshot that takes it over. The
+    // policy is published through the caller's local first, so a failing
+    // snapshot constructor leaves it for the caller's failure path to dispose.
+    private LayoutSnapshot CreateSnapshot(
+        List<BlockBox> blocks,
+        float availableWidth,
+        float height,
+        SharedLayoutMetrics? sharedMetrics,
+        Thickness documentPadding,
+        double blockSpacing,
+        ref IMarkdownVectorSceneResidencyPolicy? vectorSceneResidencyPolicy)
+    {
+        var (defs, refs) = _context.SnapshotFootnoteRegistry();
+        var fragments = _context.SnapshotFragmentTargets();
+        vectorSceneResidencyPolicy =
+            _context.PerformanceSession?.CreateVectorSceneResidencyPolicy(
+                blocks, _context.PerformanceDocumentOwner, _context.PlacementTransform);
+        var snapshot = new LayoutSnapshot(
+            blocks,
+            _context.SourceMap,
+            availableWidth,
+            height,
+            generatedBlockIndexUpperBound: _context.GeneratedBlockIndexUpperBound,
+            footnoteDefBlocks: defs,
+            footnoteRefBlocks: refs,
+            fragmentTargetBlocks: fragments,
+            sharedLayoutMetrics: sharedMetrics,
+            documentPadding: documentPadding,
+            blockSpacing: blockSpacing,
+            vectorSceneResidencyPolicy: vectorSceneResidencyPolicy,
+            layoutContext: _context);
+        vectorSceneResidencyPolicy = null;
+        return snapshot;
     }
 
     // Diagnostics already captured by an earlier pass are not recorded again.

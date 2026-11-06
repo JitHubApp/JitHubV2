@@ -22,8 +22,6 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
     internal const float DiffMarkerWidth = 16f;
     internal const float LineNumberPadding = 10f;
     private const float CodeTextPaddingLeft = 12f;
-    private const float HorizontalScrollbarHeight = 12f;
-    private const float MinimumScrollbarThumbWidth = 24f;
 
     internal readonly MarkdownLayoutContext Context;
     private readonly CodeBlockHitTester _hitTester;
@@ -295,33 +293,12 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
             double codeTextPaddingLeft = gutterWidth > 0 ? CodeTextPaddingLeft : 0;
             double left = outer.Left + style.Padding.Left + gutterWidth + codeTextPaddingLeft;
             double width = Math.Max(0, outer.Width - style.Padding.Left - style.Padding.Right - gutterWidth - codeTextPaddingLeft);
-            double y = outer.Bottom - style.Padding.Bottom - HorizontalScrollbarHeight;
-            return new Rect(left, y, width, HorizontalScrollbarHeight);
+            double y = outer.Bottom - style.Padding.Bottom - HorizontalOverflowScrollbar.Height;
+            return new Rect(left, y, width, HorizontalOverflowScrollbar.Height);
         }
     }
 
-    public Rect HorizontalScrollThumbBounds
-    {
-        get
-        {
-            Rect track = HorizontalScrollTrackBounds;
-            if (track.IsEmpty || HorizontalExtent <= 0)
-                return Rect.Empty;
-
-            double thumbWidth = Math.Clamp(
-                track.Width * HorizontalViewport / HorizontalExtent,
-                Math.Min(MinimumScrollbarThumbWidth, track.Width),
-                track.Width);
-            double travel = Math.Max(0, track.Width - thumbWidth);
-            double maximum = Math.Max(0, HorizontalExtent - HorizontalViewport);
-            double fraction = maximum <= 0 ? 0 : HorizontalOffset / maximum;
-            bool rtl = Context.FlowDirection == FlowDirection.RightToLeft;
-            double x = rtl
-                ? track.Right - thumbWidth - travel * fraction
-                : track.Left + travel * fraction;
-            return new Rect(x, track.Y, thumbWidth, track.Height);
-        }
-    }
+    public Rect HorizontalScrollThumbBounds => HorizontalOverflowScrollbar.GetThumbBounds(this);
 
     public void AddChunk(InlineContainerBox chunk)
     {
@@ -431,7 +408,7 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
         }
         y += style.Padding.Bottom;
         if (CanScrollHorizontally)
-            y += HorizontalScrollbarHeight;
+            y += HorizontalOverflowScrollbar.Height;
         y += Margin.Bottom;
 
         Bounds = new Rect(0, 0, availableWidth, Math.Max(0, y));
@@ -561,7 +538,7 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
         double codeTextPaddingLeft = gutterWidth > 0 ? CodeTextPaddingLeft : 0;
         double left = outer.Left + style.Padding.Left + gutterWidth + codeTextPaddingLeft;
         double top = outer.Top + HeaderHeight + style.Padding.Top;
-        double scrollbarHeight = CanScrollHorizontally ? HorizontalScrollbarHeight : 0;
+        double scrollbarHeight = CanScrollHorizontally ? HorizontalOverflowScrollbar.Height : 0;
         double height = Math.Max(0, outer.Height - HeaderHeight - style.Padding.Top - style.Padding.Bottom - scrollbarHeight);
         double width = Math.Max(0, outer.Width - style.Padding.Left - style.Padding.Right - gutterWidth - codeTextPaddingLeft);
         return new Rect(left, top, width, height);

@@ -38,7 +38,7 @@ internal static class TablePainter
             ? viewportX + innerWidth - table.ContentWidth + (float)table.HorizontalOffset
             : viewportX - (float)table.HorizontalOffset;
         float headerStartY = (float)(table.Bounds.Y + table.Margin.Top);
-        float tableH = TableBox.Sum(table.RowHeights);
+        float tableH = TableColumnWidths.Sum(table.RowHeights);
         var viewportRect = new Rect(viewportX, headerStartY, innerWidth, tableH);
         var contentRect = new Rect(contentX, headerStartY, table.ContentWidth, tableH);
 

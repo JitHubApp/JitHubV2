@@ -15,7 +15,7 @@ internal static class RasterImageHeaderReader
     /// </summary>
     internal static RasterImageHeader? TryRead(ReadOnlySpan<byte> bytes) =>
         TryReadPng(bytes) ??
-        TryReadGif(bytes) ??
+        RasterGifHeaderReader.TryRead(bytes) ??
         TryReadJpeg(bytes) ??
         TryReadBmp(bytes) ??
         TryReadWebP(bytes) ??
@@ -201,101 +201,6 @@ internal static class RasterImageHeaderReader
         return offset == end;
     }
 
-    private static RasterImageHeader? TryReadGif(ReadOnlySpan<byte> bytes)
-    {
-        if (bytes.Length < 13 ||
-            (!bytes[..6].SequenceEqual("GIF87a"u8) && !bytes[..6].SequenceEqual("GIF89a"u8)))
-        {
-            return null;
-        }
-
-        int width = BinaryPrimitives.ReadUInt16LittleEndian(bytes[6..]);
-        int height = BinaryPrimitives.ReadUInt16LittleEndian(bytes[8..]);
-        long canvasPixels = (long)width * height;
-        if (width <= 0 || height <= 0 || width > RasterImageResourceBudget.MaxDimension || height > RasterImageResourceBudget.MaxDimension ||
-            canvasPixels > RasterImageResourceBudget.MaxDownsampleSourcePixels)
-        {
-            return null;
-        }
-
-        int offset = 13;
-        if ((bytes[10] & 0x80) != 0)
-        {
-            int tableBytes = 3 * (1 << ((bytes[10] & 0x07) + 1));
-            if (!TryAdvance(ref offset, tableBytes, bytes.Length))
-                return null;
-        }
-
-        int frames = 0;
-        long framePixels = 0;
-        (int Left, int Top, int Width, int Height)? firstFrame = null;
-        while (offset < bytes.Length)
-        {
-            byte marker = bytes[offset++];
-            if (marker == 0x3B)
-            {
-                // The logical canvas is the display/intrinsic geometry; WIC
-                // exposes just the first descriptor's frame axes. Keep both.
-                return frames == 0 ? null : new RasterImageHeader(
-                    "GIF", width, height, frames, Math.Max(canvasPixels, framePixels), firstFrame);
-            }
-
-            if (marker == 0x21)
-            {
-                if (!TryAdvance(ref offset, 1, bytes.Length) || !TrySkipSubBlocks(bytes, ref offset))
-                    return null;
-                continue;
-            }
-
-            if (marker != 0x2C || offset > bytes.Length - 9)
-                return null;
-
-            int left = BinaryPrimitives.ReadUInt16LittleEndian(bytes[offset..]);
-            int top = BinaryPrimitives.ReadUInt16LittleEndian(bytes[(offset + 2)..]);
-            int frameWidth = BinaryPrimitives.ReadUInt16LittleEndian(bytes[(offset + 4)..]);
-            int frameHeight = BinaryPrimitives.ReadUInt16LittleEndian(bytes[(offset + 6)..]);
-            // Validate every descriptor, not only the one we will draw.
-            // Subtraction avoids overflow in right/bottom comparisons.
-            if (frameWidth <= 0 || frameHeight <= 0)
-                return null;
-            bool insideCanvas = left <= width && top <= height &&
-                frameWidth <= width - left && frameHeight <= height - top;
-            if (firstFrame is null)
-            {
-                // The first frame is the one drawn; it must lie on the canvas.
-                if (!insideCanvas)
-                    return null;
-                firstFrame = (left, top, frameWidth, frameHeight);
-                framePixels = checked(framePixels + (long)frameWidth * frameHeight);
-            }
-            else
-            {
-                // Browsers clip a later frame to the logical canvas
-                // (a 640x386 frame on a 640x384 canvas). Count only the
-                // visible area instead of rejecting the whole image.
-                long visibleWidth = Math.Max(0, Math.Min(frameWidth, (long)width - left));
-                long visibleHeight = Math.Max(0, Math.Min(frameHeight, (long)height - top));
-                framePixels = checked(framePixels + visibleWidth * visibleHeight);
-            }
-            frames++;
-            byte packed = bytes[offset + 8];
-            offset += 9;
-            if ((packed & 0x80) != 0)
-            {
-                int tableBytes = 3 * (1 << ((packed & 0x07) + 1));
-                if (!TryAdvance(ref offset, tableBytes, bytes.Length))
-                    return null;
-            }
-
-            if (!TryAdvance(ref offset, 1, bytes.Length) || !TrySkipSubBlocks(bytes, ref offset))
-                return null;
-        }
-
-        // A complete admitted source must include the GIF trailer, even if
-        // an earlier frame was valid. Do not accept truncated later content.
-        return null;
-    }
-
     private static RasterImageHeader? TryReadJpeg(ReadOnlySpan<byte> bytes)
     {
         if (bytes.Length < 4 || bytes[0] != 0xFF || bytes[1] != 0xD8)
@@ -464,36 +369,6 @@ internal static class RasterImageHeaderReader
         }
 
         return frames;
-    }
-
-    private static bool TrySkipSubBlocks(ReadOnlySpan<byte> bytes, ref int offset)
-    {
-        while (offset < bytes.Length)
-        {
-            int length = bytes[offset++];
-            if (length == 0)
-            {
-                return true;
-            }
-
-            if (!TryAdvance(ref offset, length, bytes.Length))
-            {
-                return false;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool TryAdvance(ref int offset, int amount, int length)
-    {
-        if (amount < 0 || offset > length - amount)
-        {
-            return false;
-        }
-
-        offset += amount;
-        return true;
     }
 
     private static bool IsJpegStartOfFrame(byte marker) => marker is

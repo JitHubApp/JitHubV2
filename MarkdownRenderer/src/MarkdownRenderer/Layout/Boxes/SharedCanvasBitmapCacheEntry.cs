@@ -266,42 +266,52 @@ internal sealed class SharedCanvasBitmapCacheEntry
             if (reservation is null)
                 return false;
 
-            try
-            {
-                if (!reservation.Commit())
-                {
-                    reservation.Dispose();
-                    requiredBytes = PixelWeightBytes;
-                    return false;
-                }
-                if (!reservation.TransferToEntry())
-                {
-                    reservation.MarkUncertain();
-                    // Retain the terminal token on this Entry so another
-                    // lease cannot charge the same still-live bitmap again.
-                    _bitmapOutputReservation = reservation;
-                    requiredBytes = PixelWeightBytes;
-                    return false;
-                }
-
-                _bitmapOutputReservation = reservation;
-                _bitmapOutputReservationTransferred = true;
+            if (TryCommitAndAdoptReservation(reservation))
                 return true;
-            }
-            catch
+            requiredBytes = PixelWeightBytes;
+            return false;
+        }
+    }
+
+    // Called under the admission gate with a fresh lazy reservation. Commits
+    // it and transfers it to this Entry. A reservation that cannot be
+    // released while the bitmap is live stays on the Entry as its terminal
+    // charge, so another lease cannot admit the same pixels again.
+    private bool TryCommitAndAdoptReservation(BitmapOutputAdmission.Reservation reservation)
+    {
+        try
+        {
+            if (!reservation.Commit())
             {
-                if (reservation.IsCommitted)
-                {
-                    reservation.MarkUncertain();
-                    // The native bitmap is still alive, so retain this
-                    // terminal charge on the Entry and prevent a later
-                    // lease from admitting the same pixels a second time.
-                    _bitmapOutputReservation = reservation;
-                }
-                else
-                    reservation.Dispose();
-                throw;
+                reservation.Dispose();
+                return false;
             }
+            if (!reservation.TransferToEntry())
+            {
+                reservation.MarkUncertain();
+                // Retain the terminal token on this Entry so another
+                // lease cannot charge the same still-live bitmap again.
+                _bitmapOutputReservation = reservation;
+                return false;
+            }
+
+            _bitmapOutputReservation = reservation;
+            _bitmapOutputReservationTransferred = true;
+            return true;
+        }
+        catch
+        {
+            if (reservation.IsCommitted)
+            {
+                reservation.MarkUncertain();
+                // The native bitmap is still alive, so retain this
+                // terminal charge on the Entry and prevent a later
+                // lease from admitting the same pixels a second time.
+                _bitmapOutputReservation = reservation;
+            }
+            else
+                reservation.Dispose();
+            throw;
         }
     }
 

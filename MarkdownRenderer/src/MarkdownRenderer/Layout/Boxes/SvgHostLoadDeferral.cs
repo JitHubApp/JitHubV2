@@ -68,12 +68,32 @@ internal sealed class SvgHostLoadDeferral
     internal void DeferSvgHostLoad(
         SvgHostCapacityDeferral deferral, object? expectedDenialIdentity = null)
     {
-        SvgHostPendingWaiter? previousWaiter;
         object registrationAttempt = new();
-        CancellationToken cancellationToken;
-        if (!_host.TryCaptureSvgHostDeferralCancellation(deferral, out cancellationToken))
+        if (!_host.TryCaptureSvgHostDeferralCancellation(deferral, out CancellationToken cancellationToken))
             return;
 
+        if (!TryRecordDenial(deferral, expectedDenialIdentity, registrationAttempt, out SvgHostPendingWaiter? previousWaiter))
+            return;
+        previousWaiter?.Dispose();
+
+        SvgHostPendingWaiter? waiter = TryRegisterWaiter(deferral, registrationAttempt, cancellationToken);
+        if (!TryRetainRegisteredWaiter(deferral, registrationAttempt, waiter))
+            waiter?.Dispose();
+
+        // Close the denial-to-registration lost-wakeup window. This also
+        // handles a waiter that completed synchronously before its handle was
+        // stored on the box.
+        TryResumeDeferredSvgLoadForObservedDemandOrCapacity(deferral.Demand);
+    }
+
+    // Records a fresh denial, replacing only this box's earlier source-free
+    // waiter, which the caller disposes after the lock.
+    private bool TryRecordDenial(
+        SvgHostCapacityDeferral deferral,
+        object? expectedDenialIdentity,
+        object registrationAttempt,
+        out SvgHostPendingWaiter? previousWaiter)
+    {
         lock (_svgHostDeferredSync)
         {
             if (!ReferenceEquals(_host.LoadDemand, deferral.Demand) ||
@@ -84,11 +104,10 @@ internal sealed class SvgHostLoadDeferral
                         _svgHostDeferredCapacityReady ||
                         _svgHostDeferredWaiter is { IsFinished: false })))
             {
-                return;
+                previousWaiter = null;
+                return false;
             }
 
-            // A fresh denial replaces only this box's earlier source-free
-            // waiter. The old registration is disposed after the lock.
             previousWaiter = _svgHostDeferredWaiter;
             _svgHostDeferredWaiter = null;
             _svgHostDeferredWaiterIdentity = null;
@@ -104,13 +123,18 @@ internal sealed class SvgHostLoadDeferral
             _svgHostDeferredRequiresOwnerSlot = deferral.RequiresOwnerSlot;
             _svgHostDeferredCapacityReady = false;
             _host.MarkLoadNotStarted();
+            return true;
         }
-        previousWaiter?.Dispose();
+    }
 
-        SvgHostPendingWaiter? waiter = null;
+    private SvgHostPendingWaiter? TryRegisterWaiter(
+        SvgHostCapacityDeferral deferral,
+        object registrationAttempt,
+        CancellationToken cancellationToken)
+    {
         try
         {
-            waiter = _resources.SvgHostAdmission.Defer(
+            return _resources.SvgHostAdmission.Defer(
                 this,
                 deferral.Admission,
                 deferral.Demand,
@@ -131,9 +155,17 @@ internal sealed class SvgHostLoadDeferral
             // a later demand/capacity observation can still restart it.
             MarkdownDiagnostics.WriteLine(
                 $"[ImageBox] SVG capacity wait could not be registered: {exception.GetType().Name}");
+            return null;
         }
+    }
 
-        bool retained = false;
+    // Stores the registered waiter when it still belongs to the current
+    // denial. Returns false when the caller must dispose it.
+    private bool TryRetainRegisteredWaiter(
+        SvgHostCapacityDeferral deferral,
+        object registrationAttempt,
+        SvgHostPendingWaiter? waiter)
+    {
         lock (_svgHostDeferredSync)
         {
             if (_svgHostDeferred == SvgHostDeferredWaiting &&
@@ -145,9 +177,9 @@ internal sealed class SvgHostLoadDeferral
                 !waiter.IsFinished)
             {
                 _svgHostDeferredWaiter = waiter;
-                retained = true;
+                return true;
             }
-            else if (ReferenceEquals(_svgHostDeferredRegistrationAttempt, registrationAttempt))
+            if (ReferenceEquals(_svgHostDeferredRegistrationAttempt, registrationAttempt))
             {
                 // A failed/finished registration has no live wait handle. Keep
                 // the scalar denial state for a future demand observation, but
@@ -156,14 +188,8 @@ internal sealed class SvgHostLoadDeferral
                 if (_svgHostDeferred != SvgHostDeferredRetryQueued && !_svgHostDeferredCapacityReady)
                     _svgHostDeferredWaiterIdentity = null;
             }
+            return false;
         }
-        if (!retained)
-            waiter?.Dispose();
-
-        // Close the denial-to-registration lost-wakeup window. This also
-        // handles a waiter that completed synchronously before its handle was
-        // stored on the box.
-        TryResumeDeferredSvgLoadForObservedDemandOrCapacity(deferral.Demand);
     }
 
     internal void TryResumeDeferredSvgLoadForObservedDemandOrCapacity(
@@ -174,14 +200,9 @@ internal sealed class SvgHostLoadDeferral
 
         IMarkdownSvgAdmission? admission = null;
         int loadGeneration;
-        long demandVersionAtDenial;
-        long capacityVersionAtDenial;
-        long ownerVersionAtDenial;
-        long visualDemandEpochAtDenial;
-        long requiredSourceBytes;
-        bool requiresOwnerSlot;
-        bool capacityReady;
-        bool hasLiveWaiter;
+        long demandVersionAtDenial, capacityVersionAtDenial, ownerVersionAtDenial;
+        long visualDemandEpochAtDenial, requiredSourceBytes;
+        bool requiresOwnerSlot, capacityReady, hasLiveWaiter;
         object? denialIdentity;
         lock (_svgHostDeferredSync)
         {
@@ -306,44 +327,49 @@ internal sealed class SvgHostLoadDeferral
         }
         catch (Exception taskQueueFailure)
         {
-            // Task.Run can fail under transient scheduler pressure. Make one
-            // second non-inline queue attempt; if both fail, leave the exact
-            // denial eligible for the next demand/capacity observation.
-            bool queued = false;
-            Exception? fallbackQueueFailure = null;
-            try
-            {
-                queued = QueueDeferredSvgRetry(retry, fallback: true);
-            }
-            catch (Exception exception)
-            {
-                fallbackQueueFailure = exception;
-            }
-
-            if (queued)
-            {
-                MarkdownDiagnostics.WriteLine(
-                    $"[ImageBox] SVG deferred retry used the fallback queue after {taskQueueFailure.GetType().Name}.");
-                return;
-            }
-
-            lock (_svgHostDeferredSync)
-            {
-                if (_svgHostDeferred == SvgHostDeferredRetryQueued &&
-                    ReferenceEquals(_host.LoadDemand, demand) &&
-                    loadGeneration == _host.LoadDemandGeneration &&
-                    ReferenceEquals(_svgHostDeferredDenialIdentity, retry.DenialIdentity))
-                {
-                    // Retain the real threshold reason and accepted identity
-                    // for one retry on a later demand/paint observation. Do
-                    // not recurse into an immediately-ready allocation loop.
-                    _svgHostDeferred = SvgHostDeferredWaiting;
-                }
-            }
-            MarkdownDiagnostics.WriteLine(
-                $"[ImageBox] SVG deferred retry could not be queued: {taskQueueFailure.GetType().Name}" +
-                (fallbackQueueFailure is null ? string.Empty : $"/{fallbackQueueFailure.GetType().Name}"));
+            QueueFallbackRetryOrRestoreWaiting(retry, taskQueueFailure);
         }
+    }
+
+    // Task.Run can fail under transient scheduler pressure. Make one second
+    // non-inline queue attempt; if both fail, leave the exact denial eligible
+    // for the next demand/capacity observation.
+    private void QueueFallbackRetryOrRestoreWaiting(SvgDeferredLoadWork retry, Exception taskQueueFailure)
+    {
+        bool queued = false;
+        Exception? fallbackQueueFailure = null;
+        try
+        {
+            queued = QueueDeferredSvgRetry(retry, fallback: true);
+        }
+        catch (Exception exception)
+        {
+            fallbackQueueFailure = exception;
+        }
+
+        if (queued)
+        {
+            MarkdownDiagnostics.WriteLine(
+                $"[ImageBox] SVG deferred retry used the fallback queue after {taskQueueFailure.GetType().Name}.");
+            return;
+        }
+
+        lock (_svgHostDeferredSync)
+        {
+            if (_svgHostDeferred == SvgHostDeferredRetryQueued &&
+                ReferenceEquals(_host.LoadDemand, retry.Demand) &&
+                retry.LoadGeneration == _host.LoadDemandGeneration &&
+                ReferenceEquals(_svgHostDeferredDenialIdentity, retry.DenialIdentity))
+            {
+                // Retain the real threshold reason and accepted identity
+                // for one retry on a later demand/paint observation. Do
+                // not recurse into an immediately-ready allocation loop.
+                _svgHostDeferred = SvgHostDeferredWaiting;
+            }
+        }
+        MarkdownDiagnostics.WriteLine(
+            $"[ImageBox] SVG deferred retry could not be queued: {taskQueueFailure.GetType().Name}" +
+            (fallbackQueueFailure is null ? string.Empty : $"/{fallbackQueueFailure.GetType().Name}"));
     }
 
     private bool QueueDeferredSvgRetry(SvgDeferredLoadWork retry, bool fallback)

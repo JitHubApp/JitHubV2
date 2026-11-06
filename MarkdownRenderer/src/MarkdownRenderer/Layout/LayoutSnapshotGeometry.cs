@@ -434,24 +434,7 @@ internal sealed class LayoutSnapshotGeometry
     }
 
     internal float EstimateHeight(BlockBox block, int ordinal)
-    {
-        if (_sharedLayoutMetrics?.TryGetHeight(ordinal, out float sharedHeight) == true)
-            return sharedHeight;
-
-        float margin = (float)(block.Margin.Top + block.Margin.Bottom);
-        return block switch
-        {
-            ImageBox => Math.Max(160f, margin + 120f),
-            EmbedBox => Math.Max(64f, margin + 48f),
-            CodeBlockBox => Math.Max(72f, margin + 64f),
-            TableBox table => Math.Clamp(36f + table.RowCount * 34f + margin, 72f, 360f),
-            ListItemBox => Math.Max(36f, margin + 32f),
-            StackBox stack => Math.Clamp(32f + stack.Children.Count * 28f + margin, 48f, 420f),
-            ThematicBreakBox => Math.Max(16f, margin + 1f),
-            InlineContainerBox => Math.Max(28f, margin + 24f),
-            _ => Math.Max(32f, margin + 28f),
-        };
-    }
+        => LayoutPlacementInputCapture.EstimateHeight(_sharedLayoutMetrics, block, ordinal);
 
     internal void RefreshViewportIndexNoLock()
         => RefreshViewportIndexNoLock(0);
@@ -480,37 +463,8 @@ internal sealed class LayoutSnapshotGeometry
         if (!preservePrefix)
             source = null;
 
-        var inputs = new LayoutPlacementInput[Blocks.Count];
-        for (int ordinal = 0; ordinal < Blocks.Count; ordinal++)
-        {
-            if (preservePrefix && ordinal < start)
-            {
-                LayoutRootPlacement prior = source!.GetPlacement(ordinal);
-                inputs[ordinal] = new LayoutPlacementInput(
-                    prior.BaseX,
-                    prior.BaseTop,
-                    prior.X,
-                    prior.Width,
-                    prior.Height,
-                    prior.Measured,
-                    source.SharesFlowWithNext(ordinal));
-                continue;
-            }
-
-            BlockBox block = Blocks[ordinal];
-            Rect bounds = block.Bounds;
-            bool measured = _measuredTopLevelBlocks is null || _measuredTopLevelBlocks[ordinal];
-            bool sharesFlowWithNext = ordinal < Blocks.Count - 1 &&
-                StackBox.SharesSafeHtmlInlineFlow(block, Blocks[ordinal + 1]);
-            inputs[ordinal] = new LayoutPlacementInput(
-                (float)bounds.X,
-                (float)bounds.Y,
-                (float)bounds.X,
-                (float)bounds.Width,
-                measured ? (float)bounds.Height : EstimateHeight(block, ordinal),
-                measured,
-                sharesFlowWithNext);
-        }
+        LayoutPlacementInput[] inputs = LayoutPlacementInputCapture.Capture(
+            Blocks, _measuredTopLevelBlocks, _sharedLayoutMetrics, preservePrefix ? source : null, start);
 
         LayoutPlacementGeneration generation = captureExistingPlacements
             ? LayoutPlacementGeneration.CaptureExisting(inputs, _size, _layoutRevision, _blockSpacing)

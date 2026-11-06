@@ -49,7 +49,7 @@ public sealed class MermaidTypographyRegressionTests
             MarkdownVectorTextStyle textStyle = scene.Commands[index].TextStyle!;
             Assert.Equal(MarkdownVectorFontRole.Authored, textStyle.FontRole);
             Assert.Equal(catalogPrimaryFamily, textStyle.FontFamily);
-            Assert.Equal(catalogPrimaryFamily, VectorSceneDrawing.ResolveFontFamily(textStyle, hostThemeFontFamily));
+            Assert.Equal(catalogPrimaryFamily, VectorScenePaintResolver.ResolveFontFamily(textStyle, hostThemeFontFamily));
         }
 
         int shapeIndex = Array.FindIndex(scene.Commands.ToArray(), command =>

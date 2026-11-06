@@ -10,8 +10,8 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// <summary>
 /// Captures an inline measured-placement transfer between a published
 /// inline box and its private measured clone, and holds the shared fences
-/// that validate it: supported roots, compatible inputs, run and key
-/// identity, and native-layout custody.
+/// that validate it: run and key identity, native-layout custody and finite
+/// geometry. The root fences live in <see cref="InlineMeasuredPlacementRootAdmission"/>.
 /// </summary>
 internal static class InlineMeasuredPlacementCapture
 {
@@ -169,18 +169,18 @@ internal static class InlineMeasuredPlacementCapture
         out int imageCount)
     {
         bool rootsSupported = isTableCellTransfer
-            ? IsSupportedTableCellMeasuredPlacementRoot(box, allowMeasuredVectorPlacement) &&
-                IsSupportedTableCellMeasuredPlacementRoot(prepared, allowMeasuredVectorPlacement)
+            ? InlineMeasuredPlacementRootAdmission.IsSupportedTableCellMeasuredPlacementRoot(box, allowMeasuredVectorPlacement) &&
+                InlineMeasuredPlacementRootAdmission.IsSupportedTableCellMeasuredPlacementRoot(prepared, allowMeasuredVectorPlacement)
             : isContainerLeafTransfer
-            ? IsSupportedContainerLeafMeasuredPlacementRoot(box, allowMeasuredVectorPlacement) &&
-                IsSupportedContainerLeafMeasuredPlacementRoot(prepared, allowMeasuredVectorPlacement)
-            : IsSupportedMeasuredPlacementRoot(box, allowMeasuredVectorPlacement) &&
-                IsSupportedMeasuredPlacementRoot(prepared, allowMeasuredVectorPlacement);
+            ? InlineMeasuredPlacementRootAdmission.IsSupportedContainerLeafMeasuredPlacementRoot(box, allowMeasuredVectorPlacement) &&
+                InlineMeasuredPlacementRootAdmission.IsSupportedContainerLeafMeasuredPlacementRoot(prepared, allowMeasuredVectorPlacement)
+            : InlineMeasuredPlacementRootAdmission.IsSupportedMeasuredPlacementRoot(box, allowMeasuredVectorPlacement) &&
+                InlineMeasuredPlacementRootAdmission.IsSupportedMeasuredPlacementRoot(prepared, allowMeasuredVectorPlacement);
         bool measuredSource = isTableCellTransfer
-            ? IsMeasuredSourceForTableCellTransfer(box, expectedAvailableWidth, allowMeasuredVectorPlacement)
+            ? InlineMeasuredPlacementRootAdmission.IsMeasuredSourceForTableCellTransfer(box, expectedAvailableWidth, allowMeasuredVectorPlacement)
             : isContainerLeafTransfer
-            ? IsMeasuredSourceForContainerLeafTransfer(box, expectedAvailableWidth, allowMeasuredVectorPlacement)
-            : IsMeasuredSourceForTransfer(box, expectedAvailableWidth, allowMeasuredVectorPlacement);
+            ? InlineMeasuredPlacementRootAdmission.IsMeasuredSourceForContainerLeafTransfer(box, expectedAvailableWidth, allowMeasuredVectorPlacement)
+            : InlineMeasuredPlacementRootAdmission.IsMeasuredSourceForTransfer(box, expectedAvailableWidth, allowMeasuredVectorPlacement);
         runCount = 0;
         imageCount = 0;
         bool placementCountsValid = allowMeasuredVectorPlacement
@@ -203,7 +203,7 @@ internal static class InlineMeasuredPlacementCapture
             (!isTableCellTransfer && !isContainerLeafTransfer && runCount == 0) ||
             runCount > InlineContainerBox.MaximumPrivateRasterPlacementRuns ||
             !measuredSource ||
-            !IsUnmeasuredPrivateCloneOf(
+            !InlineMeasuredPlacementRootAdmission.IsUnmeasuredPrivateCloneOf(
                 box, prepared, expectedAvailableWidth,
                 allowImageFree: isTableCellTransfer || isContainerLeafTransfer,
                 allowMeasuredVectorPlacement: allowMeasuredVectorPlacement) ||
@@ -318,213 +318,6 @@ internal static class InlineMeasuredPlacementCapture
         return true;
     }
 
-    private static bool IsSupportedMeasuredPlacementRoot(
-        InlineContainerBox box,
-        bool allowMeasuredVectorPlacement = false) =>
-        (box.ElementKey == MarkdownElementKeys.Body || InlineRunStyleResolver.IsHeadingElement(box.ElementKey)) &&
-        box.CodeLanguage is null && box.StyleState is null &&
-        box.CodeBlockTextOffset == 0 && box.CodeBlockTextLength == 0 &&
-        box.SafeHtmlInlineFlowScopeId is null &&
-        box.InlineEmbedEntries is null &&
-        (allowMeasuredVectorPlacement || box.VectorSceneRunCount == 0) &&
-        !box.HasDeferredSceneMarker &&
-        (allowMeasuredVectorPlacement || box.PendingSceneGeometry.Length == 0) &&
-        box.ForegroundSpans.Count == 0;
-
-    private static bool IsSupportedTableCellMeasuredPlacementRoot(
-        InlineContainerBox box,
-        bool allowMeasuredVectorPlacement = false) =>
-        (box.ElementKey is MarkdownElementKeys.TableHeader or MarkdownElementKeys.TableCell) &&
-        box.BlockIndex > 0 && box.CodeLanguage is null && box.StyleState is null &&
-        box.CodeBlockTextOffset == 0 && box.CodeBlockTextLength == 0 &&
-        box.SafeHtmlInlineFlowScopeId is null &&
-        box.InlineEmbedEntries is null &&
-        (allowMeasuredVectorPlacement || box.VectorSceneRunCount == 0) &&
-        !box.HasDeferredSceneMarker &&
-        (allowMeasuredVectorPlacement || box.PendingSceneGeometry.Length == 0) &&
-        box.ForegroundSpans.Count == 0;
-
-    private static bool IsSupportedContainerLeafMeasuredPlacementRoot(
-        InlineContainerBox box,
-        bool allowMeasuredVectorPlacement = false) =>
-        (box.ElementKey is MarkdownElementKeys.Body or
-            MarkdownElementKeys.Heading1 or MarkdownElementKeys.Heading2 or
-            MarkdownElementKeys.Heading3 or MarkdownElementKeys.Heading4 or
-            MarkdownElementKeys.Heading5 or MarkdownElementKeys.Heading6 or
-            MarkdownElementKeys.ListMarker) &&
-        box.BlockIndex > 0 && box.CodeLanguage is null && box.StyleState is null &&
-        box.CodeBlockTextOffset == 0 && box.CodeBlockTextLength == 0 &&
-        box.SafeHtmlInlineFlowScopeId is null &&
-        box.InlineEmbedEntries is null &&
-        (allowMeasuredVectorPlacement || box.VectorSceneRunCount == 0) &&
-        !box.HasDeferredSceneMarker &&
-        (allowMeasuredVectorPlacement || box.PendingSceneGeometry.Length == 0) &&
-        box.ForegroundSpans.Count == 0;
-
-    internal static bool AreCompatibleMeasuredRootInputs(
-        InlineContainerBox source,
-        InlineContainerBox prepared,
-        float expectedAvailableWidth,
-        bool allowMeasuredVectorPlacement = false) =>
-        float.IsFinite(expectedAvailableWidth) && expectedAvailableWidth > 0f &&
-        IsSupportedMeasuredPlacementRoot(source, allowMeasuredVectorPlacement) &&
-        IsSupportedMeasuredPlacementRoot(prepared, allowMeasuredVectorPlacement) &&
-        AreCompatiblePlacementRootInputs(source, prepared);
-
-    internal static bool AreCompatibleTableCellRootInputs(
-        InlineContainerBox source,
-        InlineContainerBox prepared,
-        bool allowMeasuredVectorPlacement = false) =>
-        IsSupportedTableCellMeasuredPlacementRoot(source, allowMeasuredVectorPlacement) &&
-        IsSupportedTableCellMeasuredPlacementRoot(prepared, allowMeasuredVectorPlacement) &&
-        AreCompatiblePlacementRootInputs(source, prepared);
-
-    internal static bool AreCompatibleContainerLeafRootInputs(
-        InlineContainerBox source,
-        InlineContainerBox prepared,
-        bool allowMeasuredVectorPlacement = false) =>
-        IsSupportedContainerLeafMeasuredPlacementRoot(source, allowMeasuredVectorPlacement) &&
-        IsSupportedContainerLeafMeasuredPlacementRoot(prepared, allowMeasuredVectorPlacement) &&
-        AreCompatiblePlacementRootInputs(source, prepared);
-
-    private static bool AreCompatiblePlacementRootInputs(
-        InlineContainerBox source,
-        InlineContainerBox prepared) =>
-        InlinePrivatePlacementPreflight.ArePrivateRasterPlacementContextsCompatible(source.Context, prepared.Context) &&
-        source.BlockIndex == prepared.BlockIndex &&
-        string.Equals(source.ElementKey, prepared.ElementKey, StringComparison.Ordinal) &&
-        string.Equals(source.CodeLanguage, prepared.CodeLanguage, StringComparison.Ordinal) &&
-        string.Equals(source.StyleState, prepared.StyleState, StringComparison.Ordinal) &&
-        source.CodeBlockTextOffset == prepared.CodeBlockTextOffset &&
-        source.CodeBlockTextLength == prepared.CodeBlockTextLength &&
-        source.WordWrapping == prepared.WordWrapping &&
-        source.TextAlignment == prepared.TextAlignment &&
-        source.DrawContainerChrome == prepared.DrawContainerChrome &&
-        source.UseContainerPadding == prepared.UseContainerPadding &&
-        source.UseContainerMargin == prepared.UseContainerMargin &&
-        source.SafeHtmlInlineFlowScopeId == prepared.SafeHtmlInlineFlowScopeId &&
-        source.Margin.Equals(prepared.Margin) &&
-        source.CollapsedTopMargin == prepared.CollapsedTopMargin &&
-        source.SuppressTopMargin == prepared.SuppressTopMargin &&
-        source.SuppressBottomMargin == prepared.SuppressBottomMargin &&
-        source.UsesProgressiveNativeSceneResidency == prepared.UsesProgressiveNativeSceneResidency &&
-        source.HasAtomicInlineObject == prepared.HasAtomicInlineObject &&
-        source.IsBufferDirty == prepared.IsBufferDirty &&
-        source.RunTextLength == prepared.RunTextLength &&
-        ReferenceEquals(source.LayoutBuffer, prepared.LayoutBuffer) &&
-        ReferenceEquals(source.ResolvedContainerStyle, prepared.ResolvedContainerStyle) &&
-        MatchesKeys(source.StyleContextKeys, prepared.StyleContextKeys) &&
-        MatchesKeys(source.StyleAliasKeys, prepared.StyleAliasKeys);
-
-    private static bool IsMeasuredSourceForTransfer(
-        InlineContainerBox box,
-        float expectedAvailableWidth,
-        bool allowMeasuredVectorPlacement = false)
-    {
-        bool expectedAtomic = (box.InlineImageEntries?.Count ?? 0) > 0 ||
-            allowMeasuredVectorPlacement && box.VectorSceneRunCount > 0;
-        if (box.IsDirty || box.TextLayout is null || box.IsBufferDirty || box.ResolvedContainerStyle is null ||
-            !float.IsFinite(box.LastMeasuredWidth) || box.LastMeasuredWidth <= 0f ||
-            Math.Abs(box.LastMeasuredWidth - expectedAvailableWidth) > 0.5f ||
-            !IsFiniteNonnegative(box.Bounds) || box.Bounds.Width != expectedAvailableWidth ||
-            box.RunList.Count == 0 || box.RunTextLength != box.LayoutBuffer.Length ||
-            box.RunTextLength > InlineContainerBox.MaximumPrivateRasterPlacementTextLength ||
-            !box.HasWellFormedEffectiveRunAliases || box.ResolvedRunStyleCount != box.RunList.Count ||
-            box.HasAtomicInlineObject != expectedAtomic ||
-            !IsFiniteThickness(box.Margin) || !double.IsFinite(box.CollapsedTopMargin))
-        {
-            return false;
-        }
-
-        return true;
-    }
-
-    private static bool IsMeasuredSourceForTableCellTransfer(
-        InlineContainerBox box,
-        float expectedSourceWidth,
-        bool allowMeasuredVectorPlacement = false)
-    {
-        int imageCount = box.InlineImageEntries?.Count ?? 0;
-        bool expectedAtomic = imageCount > 0 ||
-            allowMeasuredVectorPlacement && box.VectorSceneRunCount > 0;
-        if (box.IsDirty || box.TextLayout is null || box.IsBufferDirty || box.ResolvedContainerStyle is null ||
-            !float.IsFinite(expectedSourceWidth) || expectedSourceWidth <= 0f ||
-            !float.IsFinite(box.LastMeasuredWidth) || box.LastMeasuredWidth != expectedSourceWidth ||
-            !IsFiniteNonnegative(box.Bounds) || box.Bounds.Width != expectedSourceWidth ||
-            box.RunTextLength != box.LayoutBuffer.Length ||
-            box.RunTextLength > InlineContainerBox.MaximumPrivateRasterPlacementTextLength ||
-            !box.HasWellFormedEffectiveRunAliases || box.ResolvedRunStyleCount != box.RunList.Count ||
-            imageCount > InlineContainerBox.MaximumPrivateRasterPlacementImages ||
-            box.HasAtomicInlineObject != expectedAtomic ||
-            !IsFiniteThickness(box.Margin) || !double.IsFinite(box.CollapsedTopMargin))
-        {
-            return false;
-        }
-
-        return true;
-    }
-
-    private static bool IsMeasuredSourceForContainerLeafTransfer(
-        InlineContainerBox box,
-        float expectedAvailableWidth,
-        bool allowMeasuredVectorPlacement = false)
-    {
-        int imageCount = box.InlineImageEntries?.Count ?? 0;
-        bool expectedAtomic = allowMeasuredVectorPlacement && box.VectorSceneRunCount > 0;
-        if (box.IsDirty || box.TextLayout is null || box.IsBufferDirty || box.ResolvedContainerStyle is null ||
-            !float.IsFinite(expectedAvailableWidth) || expectedAvailableWidth <= 0f ||
-            !float.IsFinite(box.LastMeasuredWidth) || box.LastMeasuredWidth != expectedAvailableWidth ||
-            !IsFiniteNonnegative(box.Bounds) || box.Bounds.Width != expectedAvailableWidth ||
-            box.RunTextLength != box.LayoutBuffer.Length ||
-            box.RunTextLength > InlineContainerBox.MaximumPrivateRasterPlacementTextLength ||
-            !box.HasWellFormedEffectiveRunAliases || box.ResolvedRunStyleCount != box.RunList.Count ||
-            imageCount != 0 || box.InlineImageEntries is not null || box.HasAtomicInlineObject != expectedAtomic ||
-            !IsFiniteThickness(box.RawPlacementMargin) || !IsFiniteThickness(box.Margin) ||
-            !double.IsFinite(box.CollapsedTopMargin))
-        {
-            return false;
-        }
-
-        // Empty paragraphs may have no runs, but only the established clean
-        // empty native-layout shape is admitted. Zero-length runs remain
-        // restricted to the existing table-cell path.
-        return box.RunList.Count != 0 ||
-            (box.LayoutBuffer.Length == 0 && box.RunTextLength == 0 && box.InlineEmbedEntries is null &&
-             box.VectorSceneRunCount == 0 && !box.HasDeferredSceneMarker &&
-             box.PendingSceneGeometry.Length == 0 && box.ForegroundSpans.Count == 0);
-    }
-
-    private static bool IsUnmeasuredPrivateCloneOf(
-        InlineContainerBox source,
-        InlineContainerBox prepared,
-        float expectedAvailableWidth,
-        bool allowImageFree = false,
-        bool allowMeasuredVectorPlacement = false)
-    {
-        bool imageIndexShapeMatches = allowImageFree
-            ? (prepared.InlineImageEntries?.Count ?? 0) == (source.InlineImageEntries?.Count ?? 0) &&
-                ((prepared.InlineImageEntries is null) == (source.InlineImageEntries is null))
-            : prepared.InlineImageEntries is { Count: > 0 } &&
-                prepared.InlineImageEntries.Count == source.InlineImageEntries?.Count;
-        return prepared.IsDirty && prepared.TextLayout is null && prepared.SelectionLayout is null &&
-            prepared.TextLayoutRetirementRecord is null &&
-            prepared.SelectionLayoutRetirementRecord is null &&
-            prepared.CachedLineMetrics is null && !prepared.HasReadLineMetrics &&
-            !prepared.IsBufferDirty && ReferenceEquals(prepared.LayoutBuffer, source.LayoutBuffer) &&
-            prepared.RunTextLength == source.RunTextLength &&
-            prepared.RunList.Count == source.RunList.Count && imageIndexShapeMatches &&
-            prepared.VectorSceneRunCount == source.VectorSceneRunCount &&
-            (allowMeasuredVectorPlacement || source.VectorSceneRunCount == 0) &&
-            !source.HasDeferredSceneMarker && !prepared.HasDeferredSceneMarker &&
-            prepared.CurrentSceneGeometryGeneration == 0 &&
-            prepared.PendingSceneGeometryGeneration == 0 &&
-            prepared.PendingSceneGeometry.Length == 0 &&
-            prepared.LastMeasuredWidth == source.LastMeasuredWidth &&
-            ReferenceEquals(prepared.ResolvedContainerStyle, source.ResolvedContainerStyle) &&
-            prepared.Bounds.Width == 0 && prepared.Bounds.Height == 0 &&
-            float.IsFinite(expectedAvailableWidth);
-    }
-
     internal static bool MatchesRuns(
         InlineContainerBox source,
         InlineContainerBox prepared,
@@ -596,7 +389,7 @@ internal static class InlineMeasuredPlacementCapture
         MatchesKeys(box.StyleContextKeys, contextKeys) &&
         MatchesKeys(box.StyleAliasKeys, aliasKeys);
 
-    private static bool MatchesKeys(IReadOnlyList<string>? left, IReadOnlyList<string>? right)
+    internal static bool MatchesKeys(IReadOnlyList<string>? left, IReadOnlyList<string>? right)
     {
         if (left is null || right is null || left.Count != right.Count)
             return false;
@@ -654,7 +447,7 @@ internal static class InlineMeasuredPlacementCapture
         return true;
     }
 
-    private static bool IsFiniteThickness(Thickness thickness) =>
+    internal static bool IsFiniteThickness(Thickness thickness) =>
         double.IsFinite(thickness.Left) && double.IsFinite(thickness.Top) &&
         double.IsFinite(thickness.Right) && double.IsFinite(thickness.Bottom);
 }

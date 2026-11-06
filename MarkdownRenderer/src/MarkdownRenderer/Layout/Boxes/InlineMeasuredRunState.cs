@@ -100,8 +100,8 @@ internal readonly struct InlineMeasuredRunState
         _sourceSpan = sourceRun.SourceSpan;
         _elementKey = sourceRun.ElementKey;
         _semanticHeadingKey = sourceRun.SemanticHeadingKey;
-        if (TryGetDirectSourceSlice(sourceRun, out SourceSliceTextRun sourceSlice) &&
-            TryGetDirectSourceSlice(preparedRun, out SourceSliceTextRun preparedSlice) &&
+        if (InlineMeasuredRunComparison.TryGetDirectSourceSlice(sourceRun, out SourceSliceTextRun sourceSlice) &&
+            InlineMeasuredRunComparison.TryGetDirectSourceSlice(preparedRun, out SourceSliceTextRun preparedSlice) &&
             ReferenceEquals(sourceSlice.SourceText, preparedSlice.SourceText) &&
             sourceSlice.SourceStart == preparedSlice.SourceStart &&
             sourceSlice.SliceLength == preparedSlice.SliceLength)
@@ -225,11 +225,11 @@ internal readonly struct InlineMeasuredRunState
             ReferenceEquals(sourceRun, preparedRun) ||
             sourceRun.GetType() != preparedRun.GetType() ||
             sourceRun.InlineIndex != index || preparedRun.InlineIndex != index ||
-            !HasValidTextLengths(sourceRun) ||
-            !HasValidTextLengths(preparedRun) ||
-            !IsSupportedRun(sourceRun, allowMeasuredVectorPlacement) ||
-            !IsSupportedRun(preparedRun, allowMeasuredVectorPlacement) ||
-            !RunSemanticsMatch(sourceRun, preparedRun, allowMeasuredVectorPlacement))
+            !InlineMeasuredRunComparison.HasValidTextLengths(sourceRun) ||
+            !InlineMeasuredRunComparison.HasValidTextLengths(preparedRun) ||
+            !InlineMeasuredRunComparison.IsSupportedRun(sourceRun, allowMeasuredVectorPlacement) ||
+            !InlineMeasuredRunComparison.IsSupportedRun(preparedRun, allowMeasuredVectorPlacement) ||
+            !InlineMeasuredRunComparison.RunSemanticsMatch(sourceRun, preparedRun, allowMeasuredVectorPlacement))
         {
             return false;
         }
@@ -265,7 +265,7 @@ internal readonly struct InlineMeasuredRunState
                 sourceVectorRun.DeferredSceneMarker is not null ||
                 preparedVectorRun.DeferredSceneMarker is not null ||
                 !ReferenceEquals(sourceVectorRun.Scene, preparedVectorRun.Scene) ||
-                !SameVectorMetadata(sourceVectorRun, preparedVectorRun) ||
+                !InlineMeasuredRunComparison.SameVectorMetadata(sourceVectorRun, preparedVectorRun) ||
                 !sourceVectorRun.HasExpectedMeasuredDimensions(vectorFontSize) ||
                 sourceVectorRun.DesiredWidth != preparedVectorRun.DesiredWidth ||
                 sourceVectorRun.DesiredHeight != preparedVectorRun.DesiredHeight ||
@@ -312,7 +312,7 @@ internal readonly struct InlineMeasuredRunState
             PreparedVectorRun.IsDisposed || !PreparedVectorRun.IsMeasuredPlacementOnly ||
             !MatchesCapturedVectorMetadata(SourceVectorRun) ||
             !MatchesCapturedVectorMetadata(PreparedVectorRun) ||
-            !SameVectorMetadata(SourceVectorRun, PreparedVectorRun) ||
+            !InlineMeasuredRunComparison.SameVectorMetadata(SourceVectorRun, PreparedVectorRun) ||
             SourceVectorRun.DesiredWidth != _sourceVectorWidth ||
             SourceVectorRun.DesiredHeight != _sourceVectorHeight ||
             SourceVectorRun.DesiredBaseline != _sourceVectorBaseline ||
@@ -369,9 +369,9 @@ internal readonly struct InlineMeasuredRunState
             !string.Equals(run.ElementKey, _elementKey, StringComparison.Ordinal) ||
             !string.Equals(run.SemanticHeadingKey, _semanticHeadingKey, StringComparison.Ordinal) ||
             !MatchesTextFence(run) ||
-            !MatchesKeys(run.StyleAliases, _styleAliases) ||
-            !MatchesKeys(run.StyleModifierKeys, _styleModifiers) ||
-            !MatchesKeys(run.ScriptStyleAncestryKeys, _scriptStyleAncestryKeys) ||
+            !InlineMeasuredRunComparison.MatchesKeys(run.StyleAliases, _styleAliases) ||
+            !InlineMeasuredRunComparison.MatchesKeys(run.StyleModifierKeys, _styleModifiers) ||
+            !InlineMeasuredRunComparison.MatchesKeys(run.ScriptStyleAncestryKeys, _scriptStyleAncestryKeys) ||
             run.SafeHtmlScriptRoleIsRunElement != _safeHtmlScriptRoleIsRunElement)
         {
             return false;
@@ -440,65 +440,11 @@ internal readonly struct InlineMeasuredRunState
             ReferenceEquals(value.ProjectionIdentity, _vectorDeferredProjectionIdentity);
     }
 
-    private static bool RunSemanticsMatch(
-        InlineRun source,
-        InlineRun prepared,
-        bool allowMeasuredVectorPlacement)
-    {
-        if (source.InlineIndex != prepared.InlineIndex ||
-            source.RenderedLength != prepared.RenderedLength ||
-            !source.SourceSpan.Equals(prepared.SourceSpan) ||
-            !string.Equals(source.ElementKey, prepared.ElementKey, StringComparison.Ordinal) ||
-            !string.Equals(source.SemanticHeadingKey, prepared.SemanticHeadingKey, StringComparison.Ordinal) ||
-            !RunTextContractsMatch(source, prepared) ||
-            !SameKeys(source.StyleAliases, prepared.StyleAliases) ||
-            !SameKeys(source.StyleModifierKeys, prepared.StyleModifierKeys) ||
-            !SameKeys(source.ScriptStyleAncestryKeys, prepared.ScriptStyleAncestryKeys) ||
-            source.SafeHtmlScriptRoleIsRunElement != prepared.SafeHtmlScriptRoleIsRunElement)
-        {
-            return false;
-        }
-
-        if (source is LinkRun sourceLink && prepared is LinkRun preparedLink)
-        {
-            return !sourceLink.IsDisclosure && !sourceLink.IsExpanded &&
-                !preparedLink.IsDisclosure && !preparedLink.IsExpanded &&
-                string.Equals(sourceLink.Url, preparedLink.Url, StringComparison.Ordinal) &&
-                string.Equals(sourceLink.Title, preparedLink.Title, StringComparison.Ordinal) &&
-                string.Equals(sourceLink.AccessibilityName, preparedLink.AccessibilityName, StringComparison.Ordinal) &&
-                string.Equals(sourceLink.DisclosureId, preparedLink.DisclosureId, StringComparison.Ordinal) &&
-                sourceLink.IsSuperscript == preparedLink.IsSuperscript;
-        }
-
-        if (source is InlineImageRun sourceImage && prepared is InlineImageRun preparedImage)
-        {
-            return !ReferenceEquals(sourceImage.Image, preparedImage.Image) &&
-                string.Equals(sourceImage.Url, preparedImage.Url, StringComparison.Ordinal) &&
-                string.Equals(sourceImage.Title, preparedImage.Title, StringComparison.Ordinal) &&
-                string.Equals(sourceImage.LinkUrl, preparedImage.LinkUrl, StringComparison.Ordinal) &&
-                string.Equals(sourceImage.LinkTitle, preparedImage.LinkTitle, StringComparison.Ordinal) &&
-                string.Equals(sourceImage.AltText, preparedImage.AltText, StringComparison.Ordinal);
-        }
-
-        if (source is InlineVectorSceneRun sourceVector &&
-            prepared is InlineVectorSceneRun preparedVector)
-        {
-            return allowMeasuredVectorPlacement && !sourceVector.IsDisposed &&
-                !sourceVector.IsMeasuredPlacementOnly && !preparedVector.IsDisposed &&
-                preparedVector.IsMeasuredPlacementOnly &&
-                sourceVector.DeferredSceneMarker is null && preparedVector.DeferredSceneMarker is null &&
-                ReferenceEquals(sourceVector.Scene, preparedVector.Scene) &&
-                SameVectorMetadata(sourceVector, preparedVector);
-        }
-
-        return true;
-    }
-
     private bool MatchesTextFence(InlineRun run)
     {
         if (_usesDirectSourceSliceFence)
         {
-            return TryGetDirectSourceSlice(run, out SourceSliceTextRun slice) &&
+            return InlineMeasuredRunComparison.TryGetDirectSourceSlice(run, out SourceSliceTextRun slice) &&
                 ReferenceEquals(slice.SourceText, _text) &&
                 slice.SourceStart == _sourceSpan.Start &&
                 slice.SliceLength == _renderedLength;
@@ -507,112 +453,5 @@ internal readonly struct InlineMeasuredRunState
         return string.Equals(run.Text, _text, StringComparison.Ordinal) &&
             string.Equals(run.LayoutText, _layoutText, StringComparison.Ordinal) &&
             string.Equals(run.AccessibleText, _accessibleText, StringComparison.Ordinal);
-    }
-
-    private static bool HasValidTextLengths(InlineRun run)
-    {
-        if (TryGetDirectSourceSlice(run, out SourceSliceTextRun slice))
-        {
-            return slice.SliceLength > 0 &&
-                slice.RenderedLength == slice.SliceLength &&
-                slice.TextLength == slice.SliceLength &&
-                slice.LayoutTextLength == slice.SliceLength;
-        }
-
-        return run.RenderedLength == run.Text.Length &&
-            run.LayoutText.Length == run.Text.Length;
-    }
-
-    private static bool RunTextContractsMatch(InlineRun source, InlineRun prepared)
-    {
-        if (TryGetDirectSourceSlice(source, out SourceSliceTextRun sourceSlice) &&
-            TryGetDirectSourceSlice(prepared, out SourceSliceTextRun preparedSlice))
-        {
-            if (ReferenceEquals(sourceSlice.SourceText, preparedSlice.SourceText) &&
-                sourceSlice.SourceStart == preparedSlice.SourceStart &&
-                sourceSlice.SliceLength == preparedSlice.SliceLength)
-            {
-                return true;
-            }
-        }
-
-        // Different backing strings/ranges keep the previous exact text
-        // contract, including equivalent slices from independently-owned
-        // source buffers. Only the shared immutable slice can skip strings.
-        return string.Equals(source.Text, prepared.Text, StringComparison.Ordinal) &&
-            string.Equals(source.LayoutText, prepared.LayoutText, StringComparison.Ordinal) &&
-            string.Equals(source.AccessibleText, prepared.AccessibleText, StringComparison.Ordinal);
-    }
-
-    private static bool TryGetDirectSourceSlice(
-        InlineRun run,
-        out SourceSliceTextRun sourceSlice)
-    {
-        if (run is SourceSliceTextRun slice &&
-            slice.SliceLength > 0 &&
-            slice.RenderedLength == slice.SliceLength &&
-            slice.TextLength == slice.SliceLength &&
-            slice.LayoutTextLength == slice.SliceLength &&
-            slice.SourceSpan.Start == slice.SourceStart &&
-            slice.SourceSpan.Length == slice.SliceLength)
-        {
-            sourceSlice = slice;
-            return true;
-        }
-
-        sourceSlice = null!;
-        return false;
-    }
-
-    private static bool IsSupportedRun(InlineRun run, bool allowMeasuredVectorPlacement) =>
-        PrivateTextRunPlacement.IsSupported(run) ||
-        run is LinkRun { IsDisclosure: false, IsExpanded: false } ||
-        run is InlineImageRun ||
-        allowMeasuredVectorPlacement && run is InlineVectorSceneRun;
-
-    private static bool SameVectorMetadata(
-        InlineVectorSceneRun first,
-        InlineVectorSceneRun second) =>
-        string.Equals(first.SemanticText, second.SemanticText, StringComparison.Ordinal) &&
-        string.Equals(first.AccessibilityName, second.AccessibilityName, StringComparison.Ordinal) &&
-        string.Equals(first.AccessibilityDescription, second.AccessibilityDescription, StringComparison.Ordinal) &&
-        string.Equals(first.DeferredSceneMarker, second.DeferredSceneMarker, StringComparison.Ordinal) &&
-        SameDeferredBinding(first.DeferredSceneBinding, second.DeferredSceneBinding) &&
-        string.Equals(first.LinkUrl, second.LinkUrl, StringComparison.Ordinal) &&
-        string.Equals(first.LinkTitle, second.LinkTitle, StringComparison.Ordinal);
-
-    private static bool SameDeferredBinding(
-        MarkdownDeferredSceneBinding? first,
-        MarkdownDeferredSceneBinding? second)
-    {
-        if (first.HasValue != second.HasValue)
-            return false;
-        if (!first.HasValue)
-            return true;
-        MarkdownDeferredSceneBinding left = first.Value;
-        MarkdownDeferredSceneBinding right = second!.Value;
-        return string.Equals(left.Marker, right.Marker, StringComparison.Ordinal) &&
-            left.SceneOrdinal == right.SceneOrdinal &&
-            ReferenceEquals(left.ProjectionIdentity, right.ProjectionIdentity);
-    }
-
-    private static bool MatchesKeys(IReadOnlyList<string>? current, IReadOnlyList<string> expected)
-    {
-        if (current is null || current.Count != expected.Count)
-            return false;
-        for (int index = 0; index < expected.Count; index++)
-            if (!string.Equals(current[index], expected[index], StringComparison.Ordinal))
-                return false;
-        return true;
-    }
-
-    private static bool SameKeys(IReadOnlyList<string>? left, IReadOnlyList<string>? right)
-    {
-        if (left is null || right is null || left.Count != right.Count)
-            return false;
-        for (int index = 0; index < left.Count; index++)
-            if (!string.Equals(left[index], right[index], StringComparison.Ordinal))
-                return false;
-        return true;
     }
 }

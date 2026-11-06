@@ -87,13 +87,28 @@ internal static class SvgFallbackTileRetention
             right = (long)Math.Clamp(Math.Ceiling(Math.BitIncrement(Math.Min(keyRight, fallbackWidth) / fallbackWidth * currentWidth)), 1, currentWidthPixels);
             bottom = (long)Math.Clamp(Math.Ceiling(Math.BitIncrement(Math.Min(keyBottom, fallbackHeight) / fallbackHeight * currentHeight)), 1, currentHeightPixels);
         }
+        return !AreCurrentTilesResident(
+            left, top, right, bottom, currentWidthPixels, currentHeightPixels, currentTiles);
+    }
+
+    // Whether every current-grid tile overlapping the physical pixel span
+    // [left, right) x [top, bottom) is resident.
+    private static bool AreCurrentTilesResident(
+        long left,
+        long top,
+        long right,
+        long bottom,
+        int currentWidthPixels,
+        int currentHeightPixels,
+        Dictionary<SvgTileKey, SharedCanvasBitmapCache.Lease> currentTiles)
+    {
         int firstTileX = (int)(left / SvgTileCache.SvgTileSizePixels);
         int firstTileY = (int)(top / SvgTileCache.SvgTileSizePixels);
         int lastTileX = (int)((right - 1) / SvgTileCache.SvgTileSizePixels);
         int lastTileY = (int)((bottom - 1) / SvgTileCache.SvgTileSizePixels);
         long requiredTileCount = ((long)lastTileX - firstTileX + 1) * ((long)lastTileY - firstTileY + 1);
         if (requiredTileCount > currentTiles.Count)
-            return true;
+            return false;
 
         // Enumeration work is bounded by resident entries, not the SVG's area.
         // Values remain opaque: dictionary membership is the published lease
@@ -109,10 +124,10 @@ internal static class SvgFallbackTileRetention
                     Math.Min(SvgTileCache.SvgTileSizePixels, currentWidthPixels - x),
                     Math.Min(SvgTileCache.SvgTileSizePixels, currentHeightPixels - y));
                 if (!currentTiles.ContainsKey(currentKey))
-                    return true;
+                    return false;
             }
         }
-        return false;
+        return true;
     }
 
     private static bool IsFiniteNonemptyRect(Rect rectangle) =>

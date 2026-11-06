@@ -47,6 +47,13 @@ internal static class RasterImageResourceBudget
             return RasterImageBudgetResult.Reject("The raster animation frame count exceeds the safe budget.");
         }
 
+        return ValidateDecodedSize(header);
+    }
+
+    // Applies the pixel, frame and decoded-byte ceilings to a header whose
+    // dimensions and frame count are already in range.
+    private static RasterImageBudgetResult ValidateDecodedSize(RasterImageHeader header)
+    {
         long pixelsPerFrame;
         long totalPixels;
         long decodedBytes;
@@ -118,5 +125,4 @@ internal static class RasterImageResourceBudget
             null,
             header.FirstFrame);
     }
-
 }

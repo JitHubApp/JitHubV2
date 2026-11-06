@@ -364,7 +364,7 @@ internal static class CommandIndexedVectorReferenceRenderer
             argb = style.FillArgb;
             declaredRole = style.FillRole;
             fallbackRole = style.HighContrastFillRole ??
-                VectorSceneDrawing.InferFillRole(command, style, semanticRole: null);
+                VectorScenePaintResolver.InferFillRole(command, style, semanticRole: null);
         }
         else
         {
@@ -373,16 +373,16 @@ internal static class CommandIndexedVectorReferenceRenderer
             fallbackRole = style.HighContrastStrokeRole ?? MarkdownVectorPaintRole.Foreground;
         }
 
-        MarkdownVectorPaintRole role = VectorSceneDrawing.ResolvePaintRole(
+        MarkdownVectorPaintRole role = VectorScenePaintResolver.ResolvePaintRole(
             command, declaredRole, argb, fallbackRole, highContrast, linkedSemantic: false);
-        return VectorSceneDrawing.ResolveColor(argb, style.Opacity, palette, role, highContrast);
+        return VectorScenePaintResolver.ResolveColor(argb, style.Opacity, palette, role, highContrast);
     }
 
     private static Color ResolveLegacyColor(
         uint? argb,
         VectorScenePaintPalette palette,
         bool highContrast) =>
-        VectorSceneDrawing.ResolveColor(
+        VectorScenePaintResolver.ResolveColor(
             argb,
             opacity: 1f,
             palette,

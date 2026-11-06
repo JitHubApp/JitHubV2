@@ -17,10 +17,6 @@ namespace MarkdownRenderer.Layout.Boxes;
 internal sealed class TableBox : BlockBox, IHorizontalOverflowBox
 {
     internal const int MaximumPrivateRasterPlacementCells = 256;
-    internal const float HorizontalScrollbarHeight = 12f;
-    private const float MinimumScrollbarThumbWidth = 24f;
-    private const float MinimumColumnWidth = 48f;
-    private const float MaximumPreferredColumnWidth = 720f;
 
     internal enum CellAlignment
     {
@@ -151,7 +147,7 @@ internal sealed class TableBox : BlockBox, IHorizontalOverflowBox
     {
         get
         {
-            double height = _rowHeights is null ? 0 : Sum(_rowHeights);
+            double height = _rowHeights is null ? 0 : TableColumnWidths.Sum(_rowHeights);
             return new Rect(
                 Bounds.X + Margin.Left,
                 Bounds.Y + Margin.Top,
@@ -160,43 +156,9 @@ internal sealed class TableBox : BlockBox, IHorizontalOverflowBox
         }
     }
 
-    public Rect HorizontalScrollTrackBounds
-    {
-        get
-        {
-            if (!CanScrollHorizontally)
-                return Rect.Empty;
+    public Rect HorizontalScrollTrackBounds => HorizontalOverflowScrollbar.GetTrackBelowViewport(this);
 
-            Rect viewport = HorizontalViewportBounds;
-            return new Rect(
-                viewport.X,
-                viewport.Bottom,
-                viewport.Width,
-                HorizontalScrollbarHeight);
-        }
-    }
-
-    public Rect HorizontalScrollThumbBounds
-    {
-        get
-        {
-            Rect track = HorizontalScrollTrackBounds;
-            if (track.IsEmpty || HorizontalExtent <= 0)
-                return Rect.Empty;
-
-            double thumbWidth = Math.Clamp(
-                track.Width * HorizontalViewport / HorizontalExtent,
-                Math.Min(MinimumScrollbarThumbWidth, track.Width),
-                track.Width);
-            double travel = Math.Max(0, track.Width - thumbWidth);
-            double maximum = Math.Max(0, HorizontalExtent - HorizontalViewport);
-            double fraction = maximum <= 0 ? 0 : HorizontalOffset / maximum;
-            double x = _context.FlowDirection == FlowDirection.RightToLeft
-                ? track.Right - thumbWidth - travel * fraction
-                : track.Left + travel * fraction;
-            return new Rect(x, track.Y, thumbWidth, track.Height);
-        }
-    }
+    public Rect HorizontalScrollThumbBounds => HorizontalOverflowScrollbar.GetThumbBounds(this);
 
     /// <summary>All cell boxes (header rows first, then body rows), left-to-right within each row.</summary>
     public IEnumerable<InlineContainerBox> GetCellBoxes()
@@ -235,10 +197,12 @@ internal sealed class TableBox : BlockBox, IHorizontalOverflowBox
         Margin = tableStyle.Margin;
 
         _viewportWidth = Math.Max(1f, availableWidth - (float)(Margin.Left + Margin.Right));
-        _colWidths = ResolveColumnWidths(
+        _colWidths = TableColumnWidths.Resolve(
             _viewportWidth,
-            MeasureIntrinsicColumns(headerPadding, bodyPadding));
-        _contentWidth = Sum(_colWidths);
+            TableColumnWidths.MeasureIntrinsic(
+                _headerCells, _bodyCells, _colCount, headerPadding, bodyPadding,
+                _context.CancellationToken));
+        _contentWidth = TableColumnWidths.Sum(_colWidths);
         _horizontalOffset = Math.Clamp(
             _horizontalOffset,
             0,
@@ -247,41 +211,14 @@ internal sealed class TableBox : BlockBox, IHorizontalOverflowBox
         int totalRows = _headerCells.Length + _bodyCells.Length;
         _rowHeights = new float[totalRows];
 
-        for (int r = 0; r < _headerCells.Length; r++)
-        {
-            _context.CancellationToken.ThrowIfCancellationRequested();
-            float maxH = 0;
-            for (int c = 0; c < _headerCells[r].Length; c++)
-            {
-                _context.CancellationToken.ThrowIfCancellationRequested();
-                _headerCells[r][c].TextAlignment = GetHeaderTextAlignment(c);
-                float headerCellMeasureWidth = Math.Max(
-                    1f,
-                    GetColumnWidth(c) - (float)(headerPadding.Left + headerPadding.Right));
-                maxH = Math.Max(maxH, _headerCells[r][c].Measure(headerCellMeasureWidth));
-            }
-            _rowHeights[r] = maxH + (float)(headerPadding.Top + headerPadding.Bottom);
-        }
-        for (int r = 0; r < _bodyCells.Length; r++)
-        {
-            _context.CancellationToken.ThrowIfCancellationRequested();
-            float maxH = 0;
-            for (int c = 0; c < _bodyCells[r].Length; c++)
-            {
-                _context.CancellationToken.ThrowIfCancellationRequested();
-                _bodyCells[r][c].TextAlignment = ToCanvasAlignment(GetColumnAlignment(c), _context.FlowDirection == FlowDirection.RightToLeft);
-                float bodyCellMeasureWidth = Math.Max(
-                    1f,
-                    GetColumnWidth(c) - (float)(bodyPadding.Left + bodyPadding.Right));
-                maxH = Math.Max(maxH, _bodyCells[r][c].Measure(bodyCellMeasureWidth));
-            }
-            _rowHeights[_headerCells.Length + r] = maxH + (float)(bodyPadding.Top + bodyPadding.Bottom);
-        }
+        bool rtl = _context.FlowDirection == FlowDirection.RightToLeft;
+        MeasureRows(_headerCells, headerPadding, firstRow: 0, isHeader: true, rtl);
+        MeasureRows(_bodyCells, bodyPadding, firstRow: _headerCells.Length, isHeader: false, rtl);
 
         float totalHeight = (float)(Margin.Top + Margin.Bottom);
         foreach (var h in _rowHeights) totalHeight += h;
         if (CanScrollHorizontally)
-            totalHeight += HorizontalScrollbarHeight;
+            totalHeight += HorizontalOverflowScrollbar.Height;
 
         Bounds = new Rect(0, 0, availableWidth, totalHeight);
         return totalHeight;
@@ -313,40 +250,63 @@ internal sealed class TableBox : BlockBox, IHorizontalOverflowBox
             ? _arrangedX + (float)Margin.Left + innerW - _contentWidth + (float)_horizontalOffset
             : _arrangedX + (float)Margin.Left - (float)_horizontalOffset;
 
-        for (int r = 0; r < _headerCells.Length; r++)
+        rowY = ArrangeRows(_headerCells, headerPadding, firstRow: 0, isHeader: true, rowY, contentOrigin, rtl);
+        _ = ArrangeRows(_bodyCells, bodyPadding, firstRow: _headerCells.Length, isHeader: false, rowY, contentOrigin, rtl);
+
+        RefreshRowBottomEdges();
+    }
+
+    private void MeasureRows(
+        InlineContainerBox[][] rows,
+        Thickness padding,
+        int firstRow,
+        bool isHeader,
+        bool rtl)
+    {
+        for (int r = 0; r < rows.Length; r++)
         {
-            float rh = _rowHeights[r];
-            int nCols = _headerCells[r].Length;
-            for (int c = 0; c < nCols; c++)
+            _context.CancellationToken.ThrowIfCancellationRequested();
+            float maxH = 0;
+            for (int c = 0; c < rows[r].Length; c++)
             {
-                float colWidth = GetColumnWidth(c);
-                float colX = contentOrigin + GetColumnStart(c, rtl);
-                _headerCells[r][c].TextAlignment = GetHeaderTextAlignment(c, rtl);
-                _headerCells[r][c].Arrange(
-                    colX + (float)headerPadding.Left,
-                    rowY + (float)headerPadding.Top,
-                    Math.Max(1f, colWidth - (float)(headerPadding.Left + headerPadding.Right)));
+                _context.CancellationToken.ThrowIfCancellationRequested();
+                rows[r][c].TextAlignment = TableCellTextAlignment.Resolve(
+                    _columnAlignments, c, isHeader, rtl, _context);
+                float cellMeasureWidth = Math.Max(1f, GetColumnWidth(c) - (float)(padding.Left + padding.Right));
+                maxH = Math.Max(maxH, rows[r][c].Measure(cellMeasureWidth));
             }
-            rowY += rh;
+            _rowHeights![firstRow + r] = maxH + (float)(padding.Top + padding.Bottom);
         }
-        for (int r = 0; r < _bodyCells.Length; r++)
+    }
+
+    // Arranges each row's cells from rowY and returns the y below the last row.
+    private float ArrangeRows(
+        InlineContainerBox[][] rows,
+        Thickness padding,
+        int firstRow,
+        bool isHeader,
+        float rowY,
+        float contentOrigin,
+        bool rtl)
+    {
+        for (int r = 0; r < rows.Length; r++)
         {
-            float rh = _rowHeights[_headerCells.Length + r];
-            int nCols = _bodyCells[r].Length;
-            for (int c = 0; c < nCols; c++)
+            float rh = _rowHeights![firstRow + r];
+            for (int c = 0; c < rows[r].Length; c++)
             {
                 float colWidth = GetColumnWidth(c);
                 float colX = contentOrigin + GetColumnStart(c, rtl);
-                _bodyCells[r][c].TextAlignment = ToCanvasAlignment(GetColumnAlignment(c), rtl);
-                _bodyCells[r][c].Arrange(
-                    colX + (float)bodyPadding.Left,
-                    rowY + (float)bodyPadding.Top,
-                    Math.Max(1f, colWidth - (float)(bodyPadding.Left + bodyPadding.Right)));
+                rows[r][c].TextAlignment = TableCellTextAlignment.Resolve(
+                    _columnAlignments, c, isHeader, rtl, _context);
+                rows[r][c].Arrange(
+                    colX + (float)padding.Left,
+                    rowY + (float)padding.Top,
+                    Math.Max(1f, colWidth - (float)(padding.Left + padding.Right)));
             }
             rowY += rh;
         }
 
-        RefreshRowBottomEdges();
+        return rowY;
     }
 
     public override void Paint(CanvasDrawingSession ds, Rect viewport)
@@ -431,41 +391,9 @@ internal sealed class TableBox : BlockBox, IHorizontalOverflowBox
         => _context.ThemeSnapshot.GetStyle(MarkdownElementKeys.TableCell);
 
     internal static Thickness EffectiveCellPadding(ElementStyle style)
-        => IsZero(style.Padding) ? new Thickness(12, 9, 12, 9) : style.Padding;
-
-    private static bool IsZero(Thickness thickness)
-        => thickness.Left == 0 &&
-           thickness.Top == 0 &&
-           thickness.Right == 0 &&
-           thickness.Bottom == 0;
-
-    private CellAlignment GetColumnAlignment(int column)
-        => column >= 0 && column < _columnAlignments.Length
-            ? _columnAlignments[column]
-            : CellAlignment.Default;
-
-    private Microsoft.Graphics.Canvas.Text.CanvasHorizontalAlignment GetHeaderTextAlignment(int column)
-        => GetHeaderTextAlignment(column, _context.FlowDirection == FlowDirection.RightToLeft);
-
-    private Microsoft.Graphics.Canvas.Text.CanvasHorizontalAlignment GetHeaderTextAlignment(int column, bool rightToLeft)
-    {
-        CellAlignment alignment = GetColumnAlignment(column);
-        if (alignment == CellAlignment.Default && _context.ThemeSnapshot.CenterDefaultTableHeaders)
-            return Microsoft.Graphics.Canvas.Text.CanvasHorizontalAlignment.Center;
-
-        return ToCanvasAlignment(alignment, rightToLeft);
-    }
-
-    private static Microsoft.Graphics.Canvas.Text.CanvasHorizontalAlignment ToCanvasAlignment(CellAlignment alignment, bool rtl)
-        => alignment switch
-        {
-            CellAlignment.Left => Microsoft.Graphics.Canvas.Text.CanvasHorizontalAlignment.Left,
-            CellAlignment.Center => Microsoft.Graphics.Canvas.Text.CanvasHorizontalAlignment.Center,
-            CellAlignment.Right => Microsoft.Graphics.Canvas.Text.CanvasHorizontalAlignment.Right,
-            _ => rtl
-                ? Microsoft.Graphics.Canvas.Text.CanvasHorizontalAlignment.Right
-                : Microsoft.Graphics.Canvas.Text.CanvasHorizontalAlignment.Left,
-        };
+        => style.Padding is { Left: 0, Top: 0, Right: 0, Bottom: 0 }
+            ? new Thickness(12, 9, 12, 9)
+            : style.Padding;
 
     public bool ScrollHorizontal(double delta)
         => SetHorizontalOffset(HorizontalOffset + delta);
@@ -532,77 +460,6 @@ internal sealed class TableBox : BlockBox, IHorizontalOverflowBox
         }
     }
 
-    private (float[] Minimum, float[] Preferred) MeasureIntrinsicColumns(
-        Thickness headerPadding,
-        Thickness bodyPadding)
-    {
-        var minimum = new float[_colCount];
-        var preferred = new float[_colCount];
-        for (int c = 0; c < _colCount; c++)
-        {
-            minimum[c] = MinimumColumnWidth;
-            preferred[c] = MinimumColumnWidth;
-        }
-
-        MeasureIntrinsicRows(_headerCells, headerPadding, minimum, preferred);
-        MeasureIntrinsicRows(_bodyCells, bodyPadding, minimum, preferred);
-        return (minimum, preferred);
-    }
-
-    private void MeasureIntrinsicRows(
-        InlineContainerBox[][] rows,
-        Thickness padding,
-        float[] minimum,
-        float[] preferred)
-    {
-        float horizontalPadding = (float)(padding.Left + padding.Right);
-        foreach (var row in rows)
-        {
-            _context.CancellationToken.ThrowIfCancellationRequested();
-            int count = Math.Min(row.Length, _colCount);
-            for (int c = 0; c < count; c++)
-            {
-                IntrinsicWidthMetrics metrics = row[c].MeasureIntrinsicWidths(MaximumPreferredColumnWidth);
-                minimum[c] = Math.Max(minimum[c], Math.Min(MaximumPreferredColumnWidth, metrics.Minimum + horizontalPadding));
-                preferred[c] = Math.Max(preferred[c], Math.Min(MaximumPreferredColumnWidth, metrics.Preferred + horizontalPadding));
-            }
-        }
-    }
-
-    private static float[] ResolveColumnWidths(
-        float availableWidth,
-        (float[] Minimum, float[] Preferred) intrinsic)
-    {
-        int count = intrinsic.Minimum.Length;
-        var result = new float[count];
-        float minimumTotal = Sum(intrinsic.Minimum);
-        float preferredTotal = Sum(intrinsic.Preferred);
-
-        if (preferredTotal <= availableWidth)
-        {
-            float extra = availableWidth - preferredTotal;
-            float weightTotal = Math.Max(1f, preferredTotal);
-            for (int c = 0; c < count; c++)
-                result[c] = intrinsic.Preferred[c] + extra * intrinsic.Preferred[c] / weightTotal;
-            return result;
-        }
-
-        if (minimumTotal >= availableWidth)
-        {
-            Array.Copy(intrinsic.Minimum, result, count);
-            return result;
-        }
-
-        float distributable = availableWidth - minimumTotal;
-        float flexibility = Math.Max(0.001f, preferredTotal - minimumTotal);
-        for (int c = 0; c < count; c++)
-        {
-            float columnFlex = Math.Max(0, intrinsic.Preferred[c] - intrinsic.Minimum[c]);
-            result[c] = intrinsic.Minimum[c] + distributable * columnFlex / flexibility;
-        }
-        return result;
-    }
-
     internal float GetColumnWidth(int column)
         => _colWidths is not null && column >= 0 && column < _colWidths.Length
             ? _colWidths[column]
@@ -624,51 +481,19 @@ internal sealed class TableBox : BlockBox, IHorizontalOverflowBox
         return start;
     }
 
-    internal static float Sum(float[] values)
-    {
-        float sum = 0;
-        for (int i = 0; i < values.Length; i++)
-            sum += values[i];
-        return sum;
-    }
-
     public override void Dispose()
     {
         var cleanup = new BlockBoxCleanupScope();
-        DisposeCells(_headerCells, ref cleanup);
-        DisposeCells(_bodyCells, ref cleanup);
+        cleanup.TryDisposeRows(_headerCells);
+        cleanup.TryDisposeRows(_bodyCells);
         cleanup.ThrowIfAny("disposing table cells");
     }
 
     internal override void CollectRetirementTasks(List<Task> pendingTasks)
     {
         var cleanup = new BlockBoxCleanupScope();
-        CollectCellRetirementTasks(_headerCells, pendingTasks, ref cleanup);
-        CollectCellRetirementTasks(_bodyCells, pendingTasks, ref cleanup);
+        cleanup.TryCollectRetirementTasks(_headerCells, pendingTasks);
+        cleanup.TryCollectRetirementTasks(_bodyCells, pendingTasks);
         cleanup.ThrowIfAny("collecting table-cell retirement tasks");
     }
-
-    private static void DisposeCells(InlineContainerBox[][] rows, ref BlockBoxCleanupScope cleanup)
-    {
-        for (int row = 0; row < rows.Length; row++)
-        {
-            InlineContainerBox[] cells = rows[row];
-            for (int column = 0; column < cells.Length; column++)
-                cleanup.TryDispose(cells[column]);
-        }
-    }
-
-    private static void CollectCellRetirementTasks(
-        InlineContainerBox[][] rows,
-        List<Task> pendingTasks,
-        ref BlockBoxCleanupScope cleanup)
-    {
-        for (int row = 0; row < rows.Length; row++)
-        {
-            InlineContainerBox[] cells = rows[row];
-            for (int column = 0; column < cells.Length; column++)
-                cleanup.TryCollectRetirementTasks(cells[column], pendingTasks);
-        }
-    }
 }
-

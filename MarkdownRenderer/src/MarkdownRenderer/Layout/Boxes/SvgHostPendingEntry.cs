@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Images;
 
 namespace MarkdownRenderer.Layout.Boxes;
@@ -69,4 +70,63 @@ internal sealed class SvgHostPendingEntry(
     internal long ParkedSourceBytes;
     internal int ParkedVictims;
     internal bool ParkingInProgress;
+
+    /// <summary>Retires the demand-promotion registration once, logging a failure.</summary>
+    internal void DisposePromotionRegistration()
+    {
+        IDisposable? registration = Interlocked.Exchange(ref PromotionRegistration, null);
+        try { registration?.Dispose(); }
+        catch (Exception exception)
+        {
+            MarkdownDiagnostics.WriteLine(
+                $"[SvgAdmission] promotion retirement failed: {exception.GetType().Name}");
+        }
+    }
+
+    /// <summary>
+    /// Marks the row removed, retires its promotion registration, and
+    /// requests cancellation of its waiter once. Every caller shares the
+    /// same cancellation-callback task.
+    /// </summary>
+    internal Task RequestCancellation()
+    {
+        Interlocked.Exchange(ref Removed, 1);
+        DisposePromotionRegistration();
+        lock (CancellationSync)
+        {
+            if (CancellationCallbacks is { } existing)
+                return existing;
+            try
+            {
+                CancellationCallbacks = Cancellation.CancelAsync();
+                return CancellationCallbacks;
+            }
+            catch (Exception exception)
+            {
+                MarkdownDiagnostics.WriteLine(
+                    $"[SvgAdmission] waiter cancellation failed: {exception.GetType().Name}");
+                return Task.FromException(exception);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Marks waiter completion as started and tells a still-live owner that
+    /// this waiter finished. A callback failure is logged with
+    /// <paramref name="failureLabel"/>.
+    /// </summary>
+    internal void NotifyOwnerWaiterFinished(string failureLabel)
+    {
+        Volatile.Write(ref WaiterCompletionStarted, 1);
+        try
+        {
+            if (Owner.TryGetTarget(out SvgHostLoadDeferral? owner))
+                owner.OnSvgHostAdmissionWaiterFinished(Demand, LoadGeneration, Identity);
+        }
+        catch (Exception exception)
+        {
+            MarkdownDiagnostics.WriteLine(
+                $"[SvgAdmission] {failureLabel} failed: {exception.GetType().Name}");
+        }
+    }
 }

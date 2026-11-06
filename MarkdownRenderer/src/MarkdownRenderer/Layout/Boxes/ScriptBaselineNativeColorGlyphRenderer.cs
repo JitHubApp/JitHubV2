@@ -4,7 +4,6 @@ using System.Runtime.InteropServices;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Brushes;
 using Microsoft.Graphics.Canvas.Text;
-using WinRT;
 
 namespace MarkdownRenderer.Layout.Boxes;
 
@@ -14,14 +13,18 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// only for this synchronous draw callback; no device-bound pointer survives
 /// a drawing session or device-loss transition.
 /// </summary>
-internal sealed unsafe partial class ScriptBaselineNativeColorGlyphRenderer : IDisposable
+/// <remarks>
+/// This file is longer than 500 lines because it is one ABI surface: the
+/// verified vtable slots, the sequential DirectWrite structures whose layout
+/// tests pin, and the Context7 and Context4 draw paths that index through
+/// them must change together when the SDK headers are re-verified.
+/// </remarks>
+internal sealed unsafe class ScriptBaselineNativeColorGlyphRenderer : IDisposable
 {
-    private static readonly Guid IidCanvasResourceWrapperNative = new("5f10688d-ea55-4d55-a3b0-4ddb55c0c20a");
     private static readonly Guid IidD2D1DeviceContext7 = new("ec891cf7-9b69-4851-9def-4e0915771e62");
     private static readonly Guid IidD2D1DeviceContext4 = new("8c427831-3d90-4476-b647-c4fae349e4db");
     private static readonly Guid IidD2D1Brush = new("2cd906a8-12e2-11dc-9fed-001143a055f9");
     private static readonly Guid IidDWriteFontFaceReference = new("5e7fa7ca-dde3-424c-89f0-9fcd6fed58cd");
-    private static readonly Guid IidDWriteFactory4 = new("4b0b5bd3-0797-4549-8ac5-fe915cc53856");
 
     // Verified against d2d1.h, d2d1_1.h, d2d1_2.h, and d2d1_3.h
     // (Windows SDK 10.0.26100.0): IUnknown contributes slots 0–2;
@@ -38,7 +41,6 @@ internal sealed unsafe partial class ScriptBaselineNativeColorGlyphRenderer : ID
     internal const int SolidColorBrushSetColorVtableSlot = 8;
     internal const int DeviceContext4DrawColorBitmapGlyphRunVtableSlot = 111;
     internal const int DeviceContext4DrawSvgGlyphRunVtableSlot = 112;
-    private const int ENoInterface = unchecked((int)0x80004002);
     private const int DWriteENoColor = unchecked((int)0x8898500C);
     private const int DWriteGlyphImageFormatTrueType = 0x1;
     private const int DWriteGlyphImageFormatCff = 0x2;
@@ -58,7 +60,6 @@ internal sealed unsafe partial class ScriptBaselineNativeColorGlyphRenderer : ID
         DWriteGlyphImageFormatTiff |
         DWriteGlyphImageFormatPremultipliedBgra;
     private const ushort DWriteNoPaletteIndex = 0xFFFF;
-    private const uint DWriteFactoryTypeShared = 0;
 
     private nint _deviceContext7;
     private nint _deviceContext4;
@@ -70,7 +71,7 @@ internal sealed unsafe partial class ScriptBaselineNativeColorGlyphRenderer : ID
     {
         ArgumentNullException.ThrowIfNull(drawingSession);
         if (!forceLegacyColorSupport &&
-            TryGetNativeResource(drawingSession, IidD2D1DeviceContext7, out nint context7))
+            Win2DNativeComInterop.TryGetNativeResource(drawingSession, IidD2D1DeviceContext7, out nint context7))
         {
             _deviceContext7 = context7;
             return;
@@ -81,14 +82,14 @@ internal sealed unsafe partial class ScriptBaselineNativeColorGlyphRenderer : ID
         // package's minimum OS is 19041, where both interfaces are available.
         // Do not silently route a supported color glyph through Win2D's legacy
         // monochrome overload if either interface is missing.
-        _deviceContext4 = GetNativeResource(drawingSession, IidD2D1DeviceContext4);
+        _deviceContext4 = Win2DNativeComInterop.GetNativeResource(drawingSession, IidD2D1DeviceContext4);
         try
         {
-            _dwriteFactory4 = CreateDWriteFactory4();
+            _dwriteFactory4 = Win2DNativeComInterop.CreateDWriteFactory4();
         }
         catch
         {
-            Release(ref _deviceContext4);
+            Win2DNativeComInterop.Release(ref _deviceContext4);
             throw;
         }
     }
@@ -99,10 +100,10 @@ internal sealed unsafe partial class ScriptBaselineNativeColorGlyphRenderer : ID
     internal static bool IsContext7Available(CanvasDrawingSession drawingSession)
     {
         ArgumentNullException.ThrowIfNull(drawingSession);
-        if (!TryGetNativeResource(drawingSession, IidD2D1DeviceContext7, out nint context7))
+        if (!Win2DNativeComInterop.TryGetNativeResource(drawingSession, IidD2D1DeviceContext7, out nint context7))
             return false;
 
-        Release(ref context7);
+        Win2DNativeComInterop.Release(ref context7);
         return true;
     }
 
@@ -147,9 +148,9 @@ internal sealed unsafe partial class ScriptBaselineNativeColorGlyphRenderer : ID
         NativeGlyphOffset[]? glyphOffsets = null;
         try
         {
-            fontFaceReference = GetNativeResource(fontFace, IidDWriteFontFaceReference);
+            fontFaceReference = Win2DNativeComInterop.GetNativeResource(fontFace, IidDWriteFontFaceReference);
             nativeFontFace = CreateFontFace(fontFaceReference);
-            nativeBrush = GetNativeResource(foregroundBrush, IidD2D1Brush);
+            nativeBrush = Win2DNativeComInterop.GetNativeResource(foregroundBrush, IidD2D1Brush);
 
             glyphIndices = new ushort[glyphs.Length];
             glyphAdvances = new float[glyphs.Length];
@@ -203,12 +204,12 @@ internal sealed unsafe partial class ScriptBaselineNativeColorGlyphRenderer : ID
                     &colorRunEnumerator);
                 if (translationResult == DWriteENoColor)
                 {
-                    Release(ref colorRunEnumerator);
+                    Win2DNativeComInterop.Release(ref colorRunEnumerator);
                     return false;
                 }
                 if (translationResult < 0)
                 {
-                    Release(ref colorRunEnumerator);
+                    Win2DNativeComInterop.Release(ref colorRunEnumerator);
                     Marshal.ThrowExceptionForHR(translationResult);
                 }
                 if (colorRunEnumerator == 0)
@@ -224,25 +225,25 @@ internal sealed unsafe partial class ScriptBaselineNativeColorGlyphRenderer : ID
         }
         finally
         {
-            Release(ref colorRunEnumerator);
-            Release(ref colorLayerBrush);
+            Win2DNativeComInterop.Release(ref colorRunEnumerator);
+            Win2DNativeComInterop.Release(ref colorLayerBrush);
             if (glyphIndices is not null)
                 Array.Clear(glyphIndices);
             if (glyphAdvances is not null)
                 Array.Clear(glyphAdvances);
             if (glyphOffsets is not null)
                 Array.Clear(glyphOffsets);
-            Release(ref nativeBrush);
-            Release(ref nativeFontFace);
-            Release(ref fontFaceReference);
+            Win2DNativeComInterop.Release(ref nativeBrush);
+            Win2DNativeComInterop.Release(ref nativeFontFace);
+            Win2DNativeComInterop.Release(ref fontFaceReference);
         }
     }
 
     public void Dispose()
     {
-        Release(ref _dwriteFactory4);
-        Release(ref _deviceContext4);
-        Release(ref _deviceContext7);
+        Win2DNativeComInterop.Release(ref _dwriteFactory4);
+        Win2DNativeComInterop.Release(ref _deviceContext4);
+        Win2DNativeComInterop.Release(ref _deviceContext7);
     }
 
     private static bool IsFullyTransparent(ICanvasBrush brush)
@@ -272,7 +273,7 @@ internal sealed unsafe partial class ScriptBaselineNativeColorGlyphRenderer : ID
         int result = createFontFace(fontFaceReference, &fontFace);
         if (result < 0)
         {
-            Release(ref fontFace);
+            Win2DNativeComInterop.Release(ref fontFace);
             Marshal.ThrowExceptionForHR(result);
         }
         if (fontFace == 0)
@@ -515,7 +516,7 @@ internal sealed unsafe partial class ScriptBaselineNativeColorGlyphRenderer : ID
         int hr = create(deviceContext4, &color, 0, &brush);
         if (hr < 0)
         {
-            Release(ref brush);
+            Win2DNativeComInterop.Release(ref brush);
             Marshal.ThrowExceptionForHR(hr);
         }
         if (brush == 0)
@@ -529,107 +530,6 @@ internal sealed unsafe partial class ScriptBaselineNativeColorGlyphRenderer : ID
         var setColor = (delegate* unmanaged[Stdcall]<nint, NativeColor*, void>)
             vtable[SolidColorBrushSetColorVtableSlot];
         setColor(solidColorBrush, &color);
-    }
-
-    private static nint CreateDWriteFactory4()
-    {
-        nint factory = 0;
-        Guid iid = IidDWriteFactory4;
-        int hr = DWriteCreateFactory(DWriteFactoryTypeShared, &iid, &factory);
-        if (hr < 0)
-        {
-            Release(ref factory);
-            Marshal.ThrowExceptionForHR(hr);
-        }
-        if (factory == 0)
-            throw new InvalidOperationException("DWriteCreateFactory succeeded without returning IDWriteFactory4.");
-        return factory;
-    }
-
-    private static nint GetNativeResource(object wrapper, Guid resourceIid)
-    {
-        if (!TryGetNativeResource(wrapper, resourceIid, out nint resource))
-            throw new COMException($"Win2D did not expose the required native resource {resourceIid:B}.", ENoInterface);
-        return resource;
-    }
-
-    private static bool TryGetNativeResource(object wrapper, Guid resourceIid, out nint resource)
-    {
-        ArgumentNullException.ThrowIfNull(wrapper);
-        if (wrapper is not IWinRTObject winrtObject)
-            throw new InvalidOperationException("The Win2D object does not expose its projected WinRT reference.");
-
-        nint inspectable = winrtObject.NativeObject.GetRef();
-        nint resourceWrapper = 0;
-        try
-        {
-            if (!TryQueryInterface(inspectable, IidCanvasResourceWrapperNative, out resourceWrapper))
-                throw new InvalidOperationException("The Win2D object does not implement ICanvasResourceWrapperNative.");
-
-            nint nativeResource = 0;
-            Guid iid = resourceIid;
-            var vtable = *(nint**)resourceWrapper;
-            var getNativeResource = (delegate* unmanaged[Stdcall]<nint, nint, float, Guid*, nint*, int>)vtable[3];
-            int result = getNativeResource(resourceWrapper, 0, 0f, &iid, &nativeResource);
-            if (result == ENoInterface)
-            {
-                Release(ref nativeResource);
-                resource = 0;
-                return false;
-            }
-            if (result < 0)
-            {
-                Release(ref nativeResource);
-                Marshal.ThrowExceptionForHR(result);
-            }
-            if (nativeResource == 0)
-                throw new InvalidOperationException("ICanvasResourceWrapperNative::GetNativeResource returned null.");
-
-            resource = nativeResource;
-            return true;
-        }
-        finally
-        {
-            Release(ref resourceWrapper);
-            Release(ref inspectable);
-        }
-    }
-
-    private static bool TryQueryInterface(nint source, Guid iid, out nint result)
-    {
-        nint queried = 0;
-        Guid requestedIid = iid;
-        var vtable = *(nint**)source;
-        var queryInterface = (delegate* unmanaged[Stdcall]<nint, Guid*, nint*, int>)vtable[0];
-        int hr = queryInterface(source, &requestedIid, &queried);
-        if (hr == ENoInterface)
-        {
-            Release(ref queried);
-            result = 0;
-            return false;
-        }
-        if (hr < 0)
-        {
-            Release(ref queried);
-            result = 0;
-            Marshal.ThrowExceptionForHR(hr);
-        }
-        if (queried == 0)
-            throw new InvalidOperationException("QueryInterface succeeded but returned null.");
-        result = queried;
-        return true;
-    }
-
-    private static void Release(ref nint pointer)
-    {
-        nint value = pointer;
-        pointer = 0;
-        if (value == 0)
-            return;
-
-        var vtable = *(nint**)value;
-        var release = (delegate* unmanaged[Stdcall]<nint, uint>)vtable[2];
-        _ = release(value);
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -697,7 +597,4 @@ internal sealed unsafe partial class ScriptBaselineNativeColorGlyphRenderer : ID
         public int GlyphImageFormat;
         public int MeasuringMode;
     }
-
-    [LibraryImport("dwrite.dll", EntryPoint = "DWriteCreateFactory")]
-    private static partial int DWriteCreateFactory(uint factoryType, Guid* factoryIid, nint* factory);
 }

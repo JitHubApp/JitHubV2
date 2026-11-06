@@ -151,11 +151,7 @@ internal sealed class RasterLoadPlanner
         // The shared budget reserves both the GIF canvas and its temporary
         // frame; legacy consumers retain their existing eager decode behavior.
         bool transformedDecode = sizingPolicyApplies || composeGifCanvas || boundedBitmapOutput;
-        long maximumOutputPixels = Math.Min(RasterImageResourceBudget.MaxPixelsPerFrame,
-            plan.Options?.MaxRasterOutputPixels ?? RasterImageResourceBudget.MaxPixelsPerFrame);
-        if (boundedBitmapOutput)
-            maximumOutputPixels = Math.Min(maximumOutputPixels,
-                _resources.BitmapOutput.MaximumSingleOutputBytes / (composeGifCanvas ? 8 : 4));
+        long maximumOutputPixels = GetMaximumOutputPixels(plan, boundedBitmapOutput, composeGifCanvas);
         var sizingRequest = new RasterImageSizingRequest(
             sizingPolicyApplies ? _host.RasterSizingAvailableWidth : budget.Width,
             sizingPolicyApplies ? _context.RasterizationScale : 1d,
@@ -191,9 +187,7 @@ internal sealed class RasterLoadPlanner
         }
         bool nativeDecode = nativePlanAvailable && !portableRasterDecode &&
             RasterNativeWicDecoder.IsQualifiedPlan(nativePlan);
-        if (nativeDecode)
-            rasterSize = (nativePlan.OutputWidth, nativePlan.OutputHeight);
-        else if (portableRasterDecode)
+        if (nativeDecode || portableRasterDecode)
             rasterSize = (nativePlan.OutputWidth, nativePlan.OutputHeight);
         RasterGifFirstFrameDecodePlan nativeGifPlan = default;
         bool nativeGifDecode = transformedDecode && budget.Format == "GIF" &&
@@ -212,6 +206,19 @@ internal sealed class RasterLoadPlanner
             NativeGifPlan = nativeGifPlan,
             NativeGifDecode = nativeGifDecode,
         };
+    }
+
+    // The per-frame output ceiling, narrowed by the options' raster cap and,
+    // for bounded bitmap output, by the largest single output the shared
+    // budget admits (a composed GIF canvas also holds its temporary frame).
+    private long GetMaximumOutputPixels(RasterLoadPlan plan, bool boundedBitmapOutput, bool composeGifCanvas)
+    {
+        long maximumOutputPixels = Math.Min(RasterImageResourceBudget.MaxPixelsPerFrame,
+            plan.Options?.MaxRasterOutputPixels ?? RasterImageResourceBudget.MaxPixelsPerFrame);
+        if (boundedBitmapOutput)
+            maximumOutputPixels = Math.Min(maximumOutputPixels,
+                _resources.BitmapOutput.MaximumSingleOutputBytes / (composeGifCanvas ? 8 : 4));
+        return maximumOutputPixels;
     }
 
     private (string CacheFamily, string BitmapCacheKey) GetBitmapCacheIdentity(

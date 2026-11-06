@@ -109,7 +109,7 @@ internal static class VectorSceneSemanticCommandIndex
         MarkdownVectorPaintRole highContrastRole = style.HighContrastFillRole ??
             (style.FillRole == MarkdownVectorPaintRole.Surface
                 ? MarkdownVectorPaintRole.Surface
-                : VectorSceneDrawing.InferFillRole(command, style, semanticRole));
+                : VectorScenePaintResolver.InferFillRole(command, style, semanticRole));
         return opaque && highContrastRole == MarkdownVectorPaintRole.Surface;
     }
 

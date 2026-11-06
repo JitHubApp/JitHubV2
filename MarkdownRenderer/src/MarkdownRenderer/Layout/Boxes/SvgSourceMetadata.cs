@@ -45,113 +45,7 @@ internal readonly struct SvgSourceMetadata(
                 MaxCharactersFromEntities = 1,
                 MaxCharactersInDocument = MaxInputBytes,
             });
-
-            int elementCount = 0;
-            int attributeCount = 0;
-            int textNodeCount = 0;
-            long textCharacters = 0;
-            bool sawRoot = false;
-            char[]? geometryAttributeBuffer = null;
-
-            while (reader.Read())
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (reader.Depth > MaxDepth)
-                    return default;
-
-                if (reader.NodeType == XmlNodeType.DocumentType)
-                {
-                    if (!string.IsNullOrWhiteSpace(reader.Value))
-                        return default;
-                    continue;
-                }
-
-                if (reader.NodeType == XmlNodeType.Element)
-                {
-                    if (++elementCount > MaxElements)
-                        return default;
-
-                    int elementDepth = reader.Depth;
-                    string elementName = reader.LocalName;
-                    if (!sawRoot)
-                    {
-                        if (elementDepth != 0 ||
-                            !elementName.Equals("svg", StringComparison.OrdinalIgnoreCase) ||
-                            !SvgMetadataCollector.IsAcceptedRootNamespace(reader.NamespaceURI))
-                        {
-                            return default;
-                        }
-                        sawRoot = true;
-                    }
-
-                    if (!collector.ObserveElement(
-                            elementDepth,
-                            elementName,
-                            reader.NamespaceURI,
-                            reader.IsEmptyElement))
-                    {
-                        return default;
-                    }
-
-                    // XmlReader already parses and validates all attributes as
-                    // part of Read(). Count them without visiting every image
-                    // payload attribute again just to extract root metadata.
-                    int currentAttributeCount = reader.AttributeCount;
-                    if (currentAttributeCount > MaxAttributes - attributeCount)
-                        return default;
-                    attributeCount += currentAttributeCount;
-
-                    if (elementDepth == 0 && currentAttributeCount != 0)
-                    {
-                        while (reader.MoveToNextAttribute())
-                        {
-                            cancellationToken.ThrowIfCancellationRequested();
-                            string attributeName = reader.LocalName;
-                            string? attributeNamespace = reader.NamespaceURI;
-                            if (string.IsNullOrEmpty(attributeNamespace) &&
-                                SvgMetadataCollector.IsGeometryAttribute(attributeName))
-                            {
-                                string? attributeValue = ReadBoundedAttributeValue(
-                                    reader,
-                                    cancellationToken,
-                                    ref geometryAttributeBuffer);
-                                if (attributeValue is not null)
-                                {
-                                    collector.ObserveAttribute(
-                                        elementDepth,
-                                        attributeName,
-                                        attributeNamespace,
-                                        attributeValue);
-                                }
-                            }
-                        }
-
-                        reader.MoveToElement();
-                    }
-                }
-                else if (reader.NodeType == XmlNodeType.EndElement)
-                {
-                    collector.EndElement(reader.Depth);
-                }
-                else if (reader.NodeType is XmlNodeType.Text or XmlNodeType.CDATA or XmlNodeType.SignificantWhitespace)
-                {
-                    if (++textNodeCount > MaxTextNodes)
-                        return default;
-                    textCharacters += reader.Value.Length;
-                    if (textCharacters > MaxTextCharacters)
-                        return default;
-                    collector.AppendText(reader.Depth, reader.Value.AsSpan());
-                }
-                else if (reader.NodeType == XmlNodeType.Whitespace)
-                {
-                    collector.AppendText(reader.Depth, reader.Value.AsSpan());
-                }
-            }
-
-            cancellationToken.ThrowIfCancellationRequested();
-            SvgSourceMetadata metadata = sawRoot ? collector.GetMetadata() : default;
-            cancellationToken.ThrowIfCancellationRequested();
-            return metadata;
+            return ReadMetadata(reader, collector, cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -162,6 +56,151 @@ internal readonly struct SvgSourceMetadata(
             cancellationToken.ThrowIfCancellationRequested();
             return default;
         }
+    }
+
+    // Visits every node once under the element, attribute, text and depth
+    // ceilings; any ceiling or root violation yields no metadata.
+    private static SvgSourceMetadata ReadMetadata(
+        XmlReader reader,
+        SvgMetadataCollector collector,
+        CancellationToken cancellationToken)
+    {
+        int elementCount = 0;
+        int attributeCount = 0;
+        int textNodeCount = 0;
+        long textCharacters = 0;
+        bool sawRoot = false;
+        char[]? geometryAttributeBuffer = null;
+
+        while (reader.Read())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (reader.Depth > MaxDepth)
+                return default;
+
+            if (reader.NodeType == XmlNodeType.DocumentType)
+            {
+                if (!string.IsNullOrWhiteSpace(reader.Value))
+                    return default;
+                continue;
+            }
+
+            if (reader.NodeType == XmlNodeType.Element)
+            {
+                if (!TryObserveElement(
+                        reader,
+                        collector,
+                        cancellationToken,
+                        ref elementCount,
+                        ref attributeCount,
+                        ref sawRoot,
+                        ref geometryAttributeBuffer))
+                {
+                    return default;
+                }
+            }
+            else if (reader.NodeType == XmlNodeType.EndElement)
+            {
+                collector.EndElement(reader.Depth);
+            }
+            else if (reader.NodeType is XmlNodeType.Text or XmlNodeType.CDATA or XmlNodeType.SignificantWhitespace)
+            {
+                if (++textNodeCount > MaxTextNodes)
+                    return default;
+                textCharacters += reader.Value.Length;
+                if (textCharacters > MaxTextCharacters)
+                    return default;
+                collector.AppendText(reader.Depth, reader.Value.AsSpan());
+            }
+            else if (reader.NodeType == XmlNodeType.Whitespace)
+            {
+                collector.AppendText(reader.Depth, reader.Value.AsSpan());
+            }
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        SvgSourceMetadata metadata = sawRoot ? collector.GetMetadata() : default;
+        cancellationToken.ThrowIfCancellationRequested();
+        return metadata;
+    }
+
+    private static bool TryObserveElement(
+        XmlReader reader,
+        SvgMetadataCollector collector,
+        CancellationToken cancellationToken,
+        ref int elementCount,
+        ref int attributeCount,
+        ref bool sawRoot,
+        ref char[]? geometryAttributeBuffer)
+    {
+        if (++elementCount > MaxElements)
+            return false;
+
+        int elementDepth = reader.Depth;
+        string elementName = reader.LocalName;
+        if (!sawRoot)
+        {
+            if (elementDepth != 0 ||
+                !elementName.Equals("svg", StringComparison.OrdinalIgnoreCase) ||
+                !SvgMetadataCollector.IsAcceptedRootNamespace(reader.NamespaceURI))
+            {
+                return false;
+            }
+            sawRoot = true;
+        }
+
+        if (!collector.ObserveElement(
+                elementDepth,
+                elementName,
+                reader.NamespaceURI,
+                reader.IsEmptyElement))
+        {
+            return false;
+        }
+
+        // XmlReader already parses and validates all attributes as
+        // part of Read(). Count them without visiting every image
+        // payload attribute again just to extract root metadata.
+        int currentAttributeCount = reader.AttributeCount;
+        if (currentAttributeCount > MaxAttributes - attributeCount)
+            return false;
+        attributeCount += currentAttributeCount;
+
+        if (elementDepth == 0 && currentAttributeCount != 0)
+            ObserveRootGeometryAttributes(reader, collector, cancellationToken, ref geometryAttributeBuffer);
+        return true;
+    }
+
+    private static void ObserveRootGeometryAttributes(
+        XmlReader reader,
+        SvgMetadataCollector collector,
+        CancellationToken cancellationToken,
+        ref char[]? geometryAttributeBuffer)
+    {
+        while (reader.MoveToNextAttribute())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            string attributeName = reader.LocalName;
+            string? attributeNamespace = reader.NamespaceURI;
+            if (string.IsNullOrEmpty(attributeNamespace) &&
+                SvgMetadataCollector.IsGeometryAttribute(attributeName))
+            {
+                string? attributeValue = ReadBoundedAttributeValue(
+                    reader,
+                    cancellationToken,
+                    ref geometryAttributeBuffer);
+                if (attributeValue is not null)
+                {
+                    collector.ObserveAttribute(
+                        0,
+                        attributeName,
+                        attributeNamespace,
+                        attributeValue);
+                }
+            }
+        }
+
+        reader.MoveToElement();
     }
 
     private static string? ReadBoundedAttributeValue(

@@ -18,7 +18,7 @@ internal sealed class PrivateRasterCandidateFactory
     private readonly LayoutSnapshotGeometry _geometry;
     private readonly GeometryRecoveryLatch _recovery;
     private readonly SnapshotRetirement _retirement;
-    private readonly SnapshotBandRealization _bands;
+    private readonly SnapshotSceneResidency _scenes;
     private readonly SnapshotHorizontalOverflowIndex _horizontalOverflow;
     private readonly IReadOnlyDictionary<int, int> _footnoteDefBlocks;
     private readonly IReadOnlyDictionary<int, int> _footnoteRefBlocks;
@@ -30,7 +30,7 @@ internal sealed class PrivateRasterCandidateFactory
         LayoutSnapshotGeometry geometry,
         GeometryRecoveryLatch recovery,
         SnapshotRetirement retirement,
-        SnapshotBandRealization bands,
+        SnapshotSceneResidency scenes,
         SnapshotHorizontalOverflowIndex horizontalOverflow,
         IReadOnlyDictionary<int, int> footnoteDefBlocks,
         IReadOnlyDictionary<int, int> footnoteRefBlocks,
@@ -41,7 +41,7 @@ internal sealed class PrivateRasterCandidateFactory
         _geometry = geometry;
         _recovery = recovery;
         _retirement = retirement;
-        _bands = bands;
+        _scenes = scenes;
         _horizontalOverflow = horizontalOverflow;
         _footnoteDefBlocks = footnoteDefBlocks;
         _footnoteRefBlocks = footnoteRefBlocks;
@@ -139,7 +139,7 @@ internal sealed class PrivateRasterCandidateFactory
         float width)
     {
         if (_retirement.IsRetiringOrDisposed || _recovery.IsRequired ||
-            _bands.VectorSceneResidencyPolicy is not null ||
+            _scenes.VectorSceneResidencyPolicy is not null ||
             _geometry.Blocks.Count is 0 or > LayoutSnapshot.MaximumPrivateRasterPlacementRoots ||
             !PrivateRasterPlacementTree.TryGetFirstInlineContext(
                 _geometry.Blocks, out MarkdownLayoutContext? sourceContext) || sourceContext is null ||

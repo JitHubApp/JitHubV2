@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
+using System.Threading;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Geometry;
 using Microsoft.Graphics.Canvas.Text;
@@ -10,7 +12,7 @@ namespace MarkdownRenderer.Layout;
 
 /// <summary>
 /// Creates and releases the Win2D resources a vector scene paints with:
-/// stroke styles, slot arrays and the scene-to-canvas conversions.
+/// stroke styles, path figures, slot arrays and the scene-to-canvas conversions.
 /// </summary>
 internal static class VectorSceneNativeFactory
 {
@@ -153,6 +155,45 @@ internal static class VectorSceneNativeFactory
 
     internal static Matrix3x2 ToMatrix(MarkdownVectorTransform value) =>
         new(value.M11, value.M12, value.M21, value.M22, value.M31, value.M32);
+
+    /// <summary>Replays a vector path's operations into a path builder, closing any open figure.</summary>
+    internal static void AddPathOperations(
+        CanvasPathBuilder builder,
+        IReadOnlyList<MarkdownVectorPathOperation> operations,
+        CancellationToken cancellationToken)
+    {
+        bool figureOpen = false;
+        for (int i = 0; i < operations.Count; i++)
+        {
+            if ((i & 0xff) == 0)
+                cancellationToken.ThrowIfCancellationRequested();
+            MarkdownVectorPathOperation operation = operations[i];
+            switch (operation.Kind)
+            {
+                case MarkdownVectorPathOperationKind.Move:
+                    if (figureOpen)
+                        builder.EndFigure(CanvasFigureLoop.Open);
+                    builder.BeginFigure(ToVector2(operation.Point1));
+                    figureOpen = true;
+                    break;
+                case MarkdownVectorPathOperationKind.Line when figureOpen:
+                    builder.AddLine(ToVector2(operation.Point1));
+                    break;
+                case MarkdownVectorPathOperationKind.QuadraticBezier when figureOpen:
+                    builder.AddQuadraticBezier(ToVector2(operation.Point1), ToVector2(operation.Point2));
+                    break;
+                case MarkdownVectorPathOperationKind.CubicBezier when figureOpen:
+                    builder.AddCubicBezier(ToVector2(operation.Point1), ToVector2(operation.Point2), ToVector2(operation.Point3));
+                    break;
+                case MarkdownVectorPathOperationKind.Close when figureOpen:
+                    builder.EndFigure(CanvasFigureLoop.Closed);
+                    figureOpen = false;
+                    break;
+            }
+        }
+        if (figureOpen)
+            builder.EndFigure(CanvasFigureLoop.Open);
+    }
 
     internal static Vector2 ToVector2(MarkdownVectorPoint point) => new(point.X, point.Y);
 

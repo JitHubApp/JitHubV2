@@ -197,7 +197,7 @@ internal static class TableMeasuredPlacementCapture
                 return false;
         }
 
-        return TableMeasuredPlacementTransfer.IsValidMeasuredGeometry(
+        return TableMeasuredGeometryFence.IsValidMeasuredGeometry(
             table, expectedRootWidth, headerPadding, bodyPadding);
     }
 

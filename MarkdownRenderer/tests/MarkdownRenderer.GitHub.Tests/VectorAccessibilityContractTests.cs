@@ -337,16 +337,16 @@ public sealed class VectorAccessibilityContractTests
 
         Assert.Equal(
             "Host Diagram Face",
-            VectorSceneDrawing.ResolveFontFamily(hostText, " Host Diagram Face "));
+            VectorScenePaintResolver.ResolveFontFamily(hostText, " Host Diagram Face "));
         Assert.Equal(
             "Scene Fallback",
-            VectorSceneDrawing.ResolveFontFamily(hostText, null));
+            VectorScenePaintResolver.ResolveFontFamily(hostText, null));
         Assert.Equal(
             "Authored Face",
-            VectorSceneDrawing.ResolveFontFamily(authoredText, "Host Diagram Face"));
+            VectorScenePaintResolver.ResolveFontFamily(authoredText, "Host Diagram Face"));
         Assert.Equal(
             "ms-appx:///Assets/Fonts/JetBrainsMono-Variable.ttf",
-            VectorSceneDrawing.ResolveFontFamily(
+            VectorScenePaintResolver.ResolveFontFamily(
                 hostText,
                 "ms-appx:///Assets/Fonts/JetBrainsMono-Variable.ttf#JetBrains Mono"));
     }
@@ -359,19 +359,19 @@ public sealed class VectorAccessibilityContractTests
             Color.FromArgb(0xFF, 0x00, 0x00, 0x00),
             Color.FromArgb(0xFF, 0x00, 0xFF, 0xFF));
 
-        Color foreground = VectorSceneDrawing.ResolveColor(
+        Color foreground = VectorScenePaintResolver.ResolveColor(
             0x66333333,
             opacity: 0.25f,
             palette,
             MarkdownVectorPaintRole.Foreground,
             highContrast: true);
-        Color surface = VectorSceneDrawing.ResolveColor(
+        Color surface = VectorScenePaintResolver.ResolveColor(
             0x66EEEEEE,
             opacity: 0.25f,
             palette,
             MarkdownVectorPaintRole.Surface,
             highContrast: true);
-        Color link = VectorSceneDrawing.ResolveColor(
+        Color link = VectorScenePaintResolver.ResolveColor(
             0x660000FF,
             opacity: 0.25f,
             palette,
@@ -444,7 +444,7 @@ public sealed class VectorAccessibilityContractTests
 
         using CanvasStrokeStyle strokeStyle = VectorSceneNativeFactory.CreateStrokeStyle(style, new NativeResourceRetirement(createTimer: false));
 
-        Assert.Equal(nonScalingStroke, VectorSceneDrawing.RequiresStrokeStyle(style));
+        Assert.Equal(nonScalingStroke, VectorSceneResourceShapes.RequiresStrokeStyle(style));
         Assert.Equal(expected, strokeStyle.TransformBehavior);
     }
 
@@ -480,13 +480,13 @@ public sealed class VectorAccessibilityContractTests
 
         Assert.Equal(
             MarkdownVectorPaintRole.Surface,
-            VectorSceneDrawing.InferFillRole(authoredRectangle, authoredRectangle.Style!));
+            VectorScenePaintResolver.InferFillRole(authoredRectangle, authoredRectangle.Style!));
         Assert.Equal(
             MarkdownVectorPaintRole.Foreground,
-            VectorSceneDrawing.InferFillRole(accentPath, accentPath.Style!));
+            VectorScenePaintResolver.InferFillRole(accentPath, accentPath.Style!));
         Assert.Equal(
             MarkdownVectorPaintRole.Surface,
-            VectorSceneDrawing.InferFillRole(
+            VectorScenePaintResolver.InferFillRole(
                 accentPath,
                 accentPath.Style!,
                 MarkdownVectorSemanticRole.Node));

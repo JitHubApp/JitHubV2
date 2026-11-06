@@ -17,8 +17,6 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// </summary>
 internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox, ISelectionBackgroundGeometrySource
 {
-    private const float HorizontalScrollbarHeight = 12f;
-    private const float MinimumScrollbarThumbWidth = 24f;
 
     internal readonly MarkdownLayoutContext LayoutContext;
     private readonly VectorSceneSelectionPainter _selection;
@@ -364,37 +362,9 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox, ISelect
         Math.Max(0, _viewportWidth),
         Math.Max(0, _contentHeight));
 
-    public Rect HorizontalScrollTrackBounds
-    {
-        get
-        {
-            if (!CanScrollHorizontally)
-                return Rect.Empty;
-            Rect viewport = HorizontalViewportBounds;
-            return new Rect(viewport.X, viewport.Bottom, viewport.Width, HorizontalScrollbarHeight);
-        }
-    }
+    public Rect HorizontalScrollTrackBounds => HorizontalOverflowScrollbar.GetTrackBelowViewport(this);
 
-    public Rect HorizontalScrollThumbBounds
-    {
-        get
-        {
-            Rect track = HorizontalScrollTrackBounds;
-            if (track.IsEmpty || HorizontalExtent <= 0)
-                return Rect.Empty;
-            double thumbWidth = Math.Clamp(
-                track.Width * HorizontalViewport / HorizontalExtent,
-                Math.Min(MinimumScrollbarThumbWidth, track.Width),
-                track.Width);
-            double travel = Math.Max(0, track.Width - thumbWidth);
-            double maximum = Math.Max(0, HorizontalExtent - HorizontalViewport);
-            double fraction = maximum <= 0 ? 0 : HorizontalOffset / maximum;
-            double x = IsRightToLeft
-                ? track.Right - thumbWidth - travel * fraction
-                : track.Left + travel * fraction;
-            return new Rect(x, track.Y, thumbWidth, track.Height);
-        }
-    }
+    public Rect HorizontalScrollThumbBounds => HorizontalOverflowScrollbar.GetThumbBounds(this);
 
     public override float Measure(float availableWidth)
     {
@@ -413,7 +383,7 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox, ISelect
         _horizontalOffset = Math.Clamp(_horizontalOffset, 0, Math.Max(0, HorizontalExtent - HorizontalViewport));
         double height = Margin.Top + Style.Padding.Top + _contentHeight + Style.Padding.Bottom + Margin.Bottom;
         if (CanScrollHorizontally)
-            height += HorizontalScrollbarHeight;
+            height += HorizontalOverflowScrollbar.Height;
         Bounds = new Rect(0, 0, availableWidth, height);
         UpdateContentBounds();
         // Block scenes are prepared during layout, not in the per-frame paint
