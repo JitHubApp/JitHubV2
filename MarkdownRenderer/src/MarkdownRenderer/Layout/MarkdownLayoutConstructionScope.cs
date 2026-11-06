@@ -167,7 +167,7 @@ internal sealed class MarkdownLayoutConstructionScope : IDisposable
         finally
         {
             _roots = null;
-            _context.EndConstructionScope(this);
+            _context.Construction.End(this);
         }
     }
 }

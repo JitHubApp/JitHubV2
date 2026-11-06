@@ -121,7 +121,7 @@ public sealed class VectorSceneDrawingCleanupTests
             failAtRequest: 2,
             injectedFailure);
         MarkdownLayoutContext context = CreateContext(resourceCreator);
-        using MarkdownLayoutConstructionScope construction = context.BeginConstructionScope();
+        using MarkdownLayoutConstructionScope construction = context.Construction.Begin();
         VectorSceneBox box = CreateTwoPathVectorBox(context);
         context.RegisterConstructionBlock(box);
 
@@ -152,7 +152,7 @@ public sealed class VectorSceneDrawingCleanupTests
             failAtRequest: 2,
             injectedFailure);
         MarkdownLayoutContext context = CreateContext(resourceCreator);
-        using MarkdownLayoutConstructionScope construction = context.BeginConstructionScope();
+        using MarkdownLayoutConstructionScope construction = context.Construction.Begin();
 
         InvalidOperationException actual = Assert.Throws<InvalidOperationException>(() =>
             _ = new InlineVectorSceneRun(
@@ -189,14 +189,14 @@ public sealed class VectorSceneDrawingCleanupTests
             beforeFailure: () =>
                 pendingFormatAtFailure = drawing?.PendingTextFormat);
         MarkdownLayoutContext context = CreateContext(resourceCreator);
-        using MarkdownLayoutConstructionScope construction = context.BeginConstructionScope();
+        using MarkdownLayoutConstructionScope construction = context.Construction.Begin();
         drawing = new VectorSceneDrawing(
             resourceCreator,
             CreatePathAndTextScene(),
             CancellationToken.None,
             _renderResources,
             deferNativeResources: true);
-        context.RegisterConstructionResource(drawing);
+        context.Construction.RegisterResource(drawing);
 
         InvalidOperationException actual = Assert.Throws<InvalidOperationException>(
             () => drawing.PrepareNativeResources(CancellationToken.None));

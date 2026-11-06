@@ -41,7 +41,7 @@ internal sealed class TaskListItemRenderer : MarkdownNodeRenderer<ListItemBlock>
 
         float markerWidth = Math.Max(
             1f,
-            listStyle.ListIndent + Math.Max(0, context.ListDepth - 1) * listStyle.NestedListIndent);
+            listStyle.ListIndent + Math.Max(0, context.Styles.ListDepth - 1) * listStyle.NestedListIndent);
 
         var result = new ListItemBox(marker, content, markerWidth)
         {

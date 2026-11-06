@@ -66,7 +66,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
         // clear a parent's mapper for an ordinary/global-source block so
         // nested parsing cannot accidentally apply the previous block's
         // projection a second time.
-        using var sourceProjectionScope = context.PushSafeHtmlSourceProjection(htmlSourceProjection);
+        using var sourceProjectionScope = context.SourceProjections.PushSafeHtml(htmlSourceProjection);
         // Markdig can retain Markdown after a whitespace-only blank line
         // inside a void-element HTML block (for example <hr> followed by
         // a heading). Split only a pure, closed tag prefix; reparse the
@@ -82,7 +82,7 @@ internal sealed class HtmlBlockRenderer : MarkdownNodeRenderer<HtmlBlock>
             context.CancellationToken);
         var root = HtmlBoxes.CreateStack(context, collapsePositiveAdjacentMargins: true);
         root.HasResolvedSafeHtmlAlignment = true;
-        SafeHtmlAlignment inheritedAlignment = context.SafeHtmlBlockAlignment;
+        SafeHtmlAlignment inheritedAlignment = context.SafeHtmlBlock.Alignment;
         _blocks.AppendBlocks(root, document.Root.Children, context, sourceOffset, inheritedAlignment);
 
         if (markdownTailStart >= 0)

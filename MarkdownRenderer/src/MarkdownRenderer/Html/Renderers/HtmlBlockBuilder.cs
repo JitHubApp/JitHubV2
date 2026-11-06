@@ -153,7 +153,7 @@ internal sealed class HtmlBlockBuilder : IHtmlBlockBuilderHost
                     unknown,
                     element,
                     sourceOffset,
-                    HtmlInlineContext.Empty with { SourceProjection = context.SafeHtmlSourceProjection });
+                    HtmlInlineContext.Empty with { SourceProjection = context.SourceProjections.SafeHtml });
                 return HtmlBoxes.ReturnIfNonEmpty(unknown, context);
             }
 
@@ -162,7 +162,7 @@ internal sealed class HtmlBlockBuilder : IHtmlBlockBuilderHost
             return HtmlBoxes.ReturnIfNonEmpty(inline, context);
         }
 
-        using var classScope = context.PushStyleAliases(_inline.GetAllowedClassAliases(element));
+        using var classScope = context.Styles.PushAliases(_inline.GetAllowedClassAliases(element));
 
         SafeHtmlAlignment alignment = HtmlAlignments.EffectiveAlignment(element, inheritedAlignment);
         string? headingKey = HtmlElementNames.HeadingKey(element.Name);
@@ -296,7 +296,7 @@ internal sealed class HtmlBlockBuilder : IHtmlBlockBuilderHost
         stack.CornerRadius = style.CornerRadius;
         stack.Margin = style.Margin;
         stack.FlowDirection = context.FlowDirection;
-        using var scope = context.PushStyleContext(MarkdownElementKeys.Quote);
+        using var scope = context.Styles.PushContext(MarkdownElementKeys.Quote);
         AppendBlocks(stack, quote.Children, context, sourceOffset, alignment);
         return HtmlBoxes.ReturnIfNonEmpty(stack, context);
     }
@@ -308,7 +308,7 @@ internal sealed class HtmlBlockBuilder : IHtmlBlockBuilderHost
         SafeHtmlAlignment alignment,
         bool ordered)
     {
-        using var listScope = context.PushListDepth();
+        using var listScope = context.Styles.PushListDepth();
         var stack = HtmlBoxes.CreateStack(context);
         int index = 1;
         if (ordered &&
@@ -325,7 +325,7 @@ internal sealed class HtmlBlockBuilder : IHtmlBlockBuilderHost
         float markerWidth = Math.Max(
             1f,
             listStyle.ListIndent +
-            Math.Max(0, context.ListDepth - 1) * listStyle.NestedListIndent);
+            Math.Max(0, context.Styles.ListDepth - 1) * listStyle.NestedListIndent);
         foreach (SafeHtmlElement item in list.Children.OfType<SafeHtmlElement>().Where(element => element.Name == "li"))
         {
             InlineContainerBox marker = HtmlBoxes.CreateInlineBox(

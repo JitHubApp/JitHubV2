@@ -121,7 +121,7 @@ public sealed class ProgressiveSceneBindingTests
         MarkdownDocument document = await engine.ParseAsync("ordinary text");
         LayoutBuilder builder = CreateLayoutBuilder(document, FlowDirection.LeftToRight);
         MarkdownLayoutContext context = builder.Context;
-        using MarkdownLayoutConstructionScope ownership = context.BeginConstructionScope();
+        using MarkdownLayoutConstructionScope ownership = context.Construction.Begin();
         var fragment = new MarkdownContentBuilder();
         AddScene(new Dictionary<string, string> { [MarkerAttribute] = nestedMarker });
         AddScene(attributes: null);

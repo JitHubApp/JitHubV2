@@ -124,7 +124,7 @@ internal sealed class GitHubDetailsBlockRenderer : MarkdownNodeRenderer<GitHubDe
             FlowDirection = context.FlowDirection,
         };
         context.RegisterConstructionBlock(rendered);
-        using (context.PushSourceProjection(sourceProjection))
+        using (context.SourceProjections.PushMarkdown(sourceProjection))
             GfmChildBuilder.PopulateChildren(rendered, fragment, context);
 
         if (rendered.Children.Count == 0)

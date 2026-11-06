@@ -151,7 +151,7 @@ internal sealed class DeclarativeInlineBuilder
                 ? _scenes.NextBinding()
                 : null,
         };
-        _context.RegisterConstructionResource(run);
+        _context.Construction.RegisterResource(run);
         return run;
     }
 

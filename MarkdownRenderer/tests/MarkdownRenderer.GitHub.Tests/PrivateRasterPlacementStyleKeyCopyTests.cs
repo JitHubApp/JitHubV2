@@ -296,9 +296,9 @@ public sealed class PrivateRasterPlacementStyleKeyCopyTests
         try
         {
             for (int index = 0; index < contextScopes.Length; index++)
-                contextScopes[index] = context.PushStyleContext(MarkdownElementKeys.Strong);
+                contextScopes[index] = context.Styles.PushContext(MarkdownElementKeys.Strong);
 
-            using LayoutStyleScope aliasScope = context.PushStyleAliases(CreateKeys(containerAliasCount));
+            using LayoutStyleScope aliasScope = context.Styles.PushAliases(CreateKeys(containerAliasCount));
             var inline = new InlineContainerBox(context, MarkdownElementKeys.Body)
             {
                 BlockIndex = context.NextBlockIndex(),

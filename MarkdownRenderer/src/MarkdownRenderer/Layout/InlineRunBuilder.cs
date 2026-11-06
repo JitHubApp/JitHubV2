@@ -105,7 +105,7 @@ internal sealed class InlineRunBuilder
         string? containingLinkUrl,
         string? containingLinkTitle)
     {
-        int aliasStart = _context.StyleAliasCount;
+        int aliasStart = _context.Styles.AliasCount;
         using var inlineAttrs = _context.PushMarkdownAttributes(i);
         int effectiveAliasStart = inheritedAliasStart >= 0 ? inheritedAliasStart : aliasStart;
 
@@ -151,7 +151,7 @@ internal sealed class InlineRunBuilder
                 inheritedStyleModifiers);
             run.StyleAliases = MarkdownInlineSyntax.CombineStyleAliases(
                 run.StyleAliases,
-                _context.CreateStyleAliasSnapshotFrom(effectiveAliasStart));
+                _context.Styles.CreateAliasSnapshotFrom(effectiveAliasStart));
             _context.RegisterMarkdownAttributes(i, box.BlockIndex);
             _tracker.AddInlineRun(box, run);
         }
@@ -218,7 +218,7 @@ internal sealed class InlineRunBuilder
             return false;
         }
 
-        IReadOnlyList<string> aliases = _context.CreateStyleAliasSnapshotFrom(declarativeAliasStart);
+        IReadOnlyList<string> aliases = _context.Styles.CreateAliasSnapshotFrom(declarativeAliasStart);
         _context.RegisterMarkdownAttributes(i, box.BlockIndex);
         foreach (InlineRun sourceRun in declarativeRuns)
         {

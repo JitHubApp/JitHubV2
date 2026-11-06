@@ -86,7 +86,7 @@ internal sealed class InlineVectorSceneRun : InlineRun, IDisposable
         // drawing. Establish construction ownership before preparation, not
         // only after this constructor returns to the builder. Duplicate
         // registration by the builder is harmless in the identity ledger.
-        context.RegisterConstructionResource(this);
+        context.Construction.RegisterResource(this);
         if (!ShouldDeferNativeResources(context))
             PrepareConstructedNativeResources(_drawing, context.CancellationToken);
     }

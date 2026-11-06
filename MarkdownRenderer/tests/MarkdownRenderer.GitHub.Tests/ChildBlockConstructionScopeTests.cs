@@ -40,7 +40,7 @@ public sealed class ChildBlockConstructionScopeTests
             StackBox nested = Assert.Single(parent.Content.Children.OfType<StackBox>());
             Assert.Equal(2, nested.Children.Count);
             Assert.All(nested.Children, child => Assert.IsType<ListItemBox>(child));
-            Assert.False(context.TryBuildChildBlock(document[0], out BlockBox? result));
+            Assert.False(context.ChildBuilders.TryBuildBlock(document[0], out BlockBox? result));
             Assert.Null(result);
         }
         finally
@@ -64,25 +64,25 @@ public sealed class ChildBlockConstructionScopeTests
         var context = seed.SourceContext;
         Block node = Markdig.Markdown.Parse("- child")[0];
         int outerCalls = 0;
-        using (context.PushChildBlockBuilder(received =>
+        using (context.ChildBuilders.PushBlockBuilder(received =>
         {
             Assert.Same(node, received);
             outerCalls++;
             return seed.Source;
         }))
         {
-            Assert.True(context.TryBuildChildBlock(node, out BlockBox? first));
+            Assert.True(context.ChildBuilders.TryBuildBlock(node, out BlockBox? first));
             Assert.Same(seed.Source, first);
-            using (context.PushChildBlockBuilder(_ => null))
+            using (context.ChildBuilders.PushBlockBuilder(_ => null))
             {
-                Assert.True(context.TryBuildChildBlock(node, out BlockBox? suppressed));
+                Assert.True(context.ChildBuilders.TryBuildBlock(node, out BlockBox? suppressed));
                 Assert.Null(suppressed);
             }
-            Assert.True(context.TryBuildChildBlock(node, out BlockBox? restored));
+            Assert.True(context.ChildBuilders.TryBuildBlock(node, out BlockBox? restored));
             Assert.Same(seed.Source, restored);
         }
         Assert.Equal(2, outerCalls);
-        Assert.False(context.TryBuildChildBlock(node, out _));
+        Assert.False(context.ChildBuilders.TryBuildBlock(node, out _));
     }
 
     [Theory]
@@ -98,18 +98,18 @@ public sealed class ChildBlockConstructionScopeTests
             cancellation.Cancel();
         void Invoke()
         {
-            using var scope = context.PushChildBlockBuilder(_ =>
+            using var scope = context.ChildBuilders.PushBlockBuilder(_ =>
             {
                 cancellation.Token.ThrowIfCancellationRequested();
                 throw new InvalidOperationException("injected nested block failure");
             });
-            context.TryBuildChildBlock(node, out _);
+            context.ChildBuilders.TryBuildBlock(node, out _);
         }
         if (canceled)
             Assert.ThrowsAny<OperationCanceledException>(Invoke);
         else
             Assert.Throws<InvalidOperationException>(Invoke);
-        Assert.False(context.TryBuildChildBlock(node, out _));
+        Assert.False(context.ChildBuilders.TryBuildBlock(node, out _));
         default(LayoutChildBlockBuildScope).Dispose();
     }
 
@@ -154,7 +154,7 @@ public sealed class ChildBlockConstructionScopeTests
                 Assert.Equal("injected nested list failure", failure.Message);
             }
             Assert.Equal(1, factory.NestedListCalls);
-            Assert.False(context.TryBuildChildBlock(document[0], out _));
+            Assert.False(context.ChildBuilders.TryBuildBlock(document[0], out _));
         }
         finally
         {

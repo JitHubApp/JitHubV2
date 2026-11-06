@@ -8,7 +8,6 @@ using Microsoft.UI.Xaml;
 using Markdig.Extensions.Footnotes;
 using Markdig.Renderers.Html;
 using Markdig.Syntax;
-using Markdig.Syntax.Inlines;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Images;
@@ -29,69 +28,9 @@ namespace MarkdownRenderer.Layout;
 internal sealed class MarkdownLayoutContext
 {
     private CancellationToken _cancellationToken;
-    private SafeHtmlAlignment _safeHtmlBlockAlignment;
-    private SafeHtmlBlockScopeTracker? _safeHtmlNestedScopes;
-    private int? _safeHtmlInlineFlowScopeId;
-    private bool _safeHtmlInlineFlowContinuesPrevious;
     private readonly LayoutContextRetirementLedger _retirements = new();
     private readonly LayoutNavigationTargets _navigation = new();
-    private MarkdownLayoutConstructionScope? _constructionScope;
-    private Action<InlineContainerBox, ContainerInline, Func<Inline, bool>?, int>? _childInlineBuilder;
-    private Func<Block, BlockBox?>? _childBlockBuilder;
-    private MarkdownSourceProjection? _sourceProjection;
-    private MarkdownSourceProjection? _safeHtmlSourceProjection;
     private MarkdownRenderResources? _renderResources;
-
-    // Reuse the owning builder for structural children of extension-owned
-    // containers. Like the inline callback, this must not survive construction
-    // and retain the builder or semantic document in a published layout context.
-    internal LayoutChildBlockBuildScope PushChildBlockBuilder(Func<Block, BlockBox?> builder)
-    {
-        ArgumentNullException.ThrowIfNull(builder);
-        var previous = _childBlockBuilder;
-        _childBlockBuilder = builder;
-        return new LayoutChildBlockBuildScope(this, previous);
-    }
-
-    internal void RestoreChildBlockBuilder(Func<Block, BlockBox?>? previous) => _childBlockBuilder = previous;
-
-    internal bool TryBuildChildBlock(Block block, out BlockBox? result)
-    {
-        result = null;
-        if (_childBlockBuilder is not { } builder)
-            return false;
-        ArgumentNullException.ThrowIfNull(block);
-        result = builder(block);
-        return true;
-    }
-
-    // Optional built-in container renderers must use the owning layout build's
-    // semantic extension fragments, not a second reduced inline implementation.
-    // Scope this callback to construction so contexts do not retain a builder
-    // or its semantic document after publication, failure or cancellation.
-    internal LayoutChildInlineBuildScope PushChildInlineBuilder(
-        Action<InlineContainerBox, ContainerInline, Func<Inline, bool>?, int> builder)
-    {
-        var previous = _childInlineBuilder;
-        _childInlineBuilder = builder;
-        return new LayoutChildInlineBuildScope(this, previous);
-    }
-
-    internal void RestoreChildInlineBuilder(
-        Action<InlineContainerBox, ContainerInline, Func<Inline, bool>?, int>? previous) =>
-        _childInlineBuilder = previous;
-
-    internal bool TryAppendChildInlines(
-        InlineContainerBox box, ContainerInline inlines,
-        Func<Inline, bool>? skipFirstIf, int inheritedAliasStart)
-    {
-        if (_childInlineBuilder is not { } builder)
-            return false;
-        if (!ReferenceEquals(box.Context, this))
-            throw new InvalidOperationException("Child inline construction must use its owning layout context.");
-        builder(box, inlines, skipFirstIf, inheritedAliasStart);
-        return true;
-    }
 
     /// <summary>
     /// Initializes a layout context. Advanced renderer authors receive this object
@@ -106,6 +45,8 @@ internal sealed class MarkdownLayoutContext
         DispatcherQueue? dispatcher = null,
         string? language = null)
     {
+        ChildBuilders = new LayoutChildBuilders(this);
+        Construction = new LayoutConstructionOwnership(this);
         ResourceCreator = resourceCreator;
         ThemeSnapshot = themeSnapshot;
         SourceMap = sourceMap;
@@ -139,17 +80,43 @@ internal sealed class MarkdownLayoutContext
     /// <summary>Extension registry used by the current layout pass.</summary>
     public readonly MarkdownExtensionRegistry Registry;
 
-    internal SafeHtmlAlignment SafeHtmlBlockAlignment => _safeHtmlBlockAlignment;
+    /// <summary>Style context keys, style aliases and list depth pushed by this pass.</summary>
+    internal LayoutStyleStack Styles { get; } = new();
 
-    internal MarkdownSourceProjection? SourceProjection => _sourceProjection;
+    /// <summary>Safe-HTML block state inherited by the blocks this pass is building.</summary>
+    internal LayoutSafeHtmlBlockContext SafeHtmlBlock { get; } = new();
 
-    internal MarkdownSourceProjection? SafeHtmlSourceProjection => _safeHtmlSourceProjection;
+    /// <summary>Source projections of the transformed fragments this pass is consuming.</summary>
+    internal LayoutSourceProjections SourceProjections { get; } = new();
 
-    internal SafeHtmlBlockScopeTracker? SafeHtmlNestedScopes => _safeHtmlNestedScopes;
+    /// <summary>The owning builder's child block and inline callbacks during construction.</summary>
+    internal LayoutChildBuilders ChildBuilders { get; }
 
-    internal int? SafeHtmlInlineFlowScopeId => _safeHtmlInlineFlowScopeId;
+    /// <summary>Construction ownership of the boxes and resources this pass creates.</summary>
+    internal LayoutConstructionOwnership Construction { get; }
 
-    internal bool SafeHtmlInlineFlowContinuesPrevious => _safeHtmlInlineFlowContinuesPrevious;
+    // Renderers read these on nearly every block and inline they build, so
+    // the context keeps short forwards to the owners above.
+    internal int? SafeHtmlInlineFlowScopeId => SafeHtmlBlock.InlineFlowScopeId;
+
+    internal MarkdownSourceProjection? SourceProjection => SourceProjections.Markdown;
+
+    internal SourceSpan MapSafeHtmlSourceRange(int localStart, int localLength)
+        => SourceProjections.MapSafeHtmlSourceRange(localStart, localLength);
+
+    internal void RegisterConstructionBlock(BlockBox block) => Construction.RegisterBlock(block);
+
+    internal void AdoptConstructionBlock(BlockBox child) => Construction.AdoptBlock(child);
+
+    /// <inheritdoc cref="LayoutConstructionOwnership.DiscardBlock"/>
+    internal void DiscardConstructionBlock(BlockBox block) => Construction.DiscardBlock(block);
+
+    internal IReadOnlyList<string> CreateStyleContextSnapshot() => Styles.CreateContextSnapshot();
+
+    internal IReadOnlyList<string> CreateStyleAliasSnapshot() => Styles.CreateAliasSnapshot();
+
+    internal LayoutStyleScope PushMarkdownAttributes(IMarkdownObject markdownObject)
+        => Styles.PushMarkdownAttributes(markdownObject);
 
     /// <summary>Flow direction used for text layout.</summary>
     public readonly FlowDirection FlowDirection;
@@ -267,93 +234,6 @@ internal sealed class MarkdownLayoutContext
             ImageCarryIdentity = ImageCarryIdentity,
             CompletedImageCarry = CompletedImageCarry,
         };
-    }
-
-    /// <summary>
-    /// Begins synchronous construction ownership for one layout pass. Builders
-    /// register newly-created block roots here and remove them only after the
-    /// parent successfully accepts ownership. The context is single-build at a
-    /// time, matching its other mutable per-pass registries.
-    /// </summary>
-    internal MarkdownLayoutConstructionScope BeginConstructionScope()
-    {
-        if (_constructionScope is not null)
-            throw new InvalidOperationException("A layout construction scope is already active.");
-
-        return _constructionScope = new MarkdownLayoutConstructionScope(this);
-    }
-
-    internal void RegisterConstructionBlock(BlockBox block)
-    {
-        ArgumentNullException.ThrowIfNull(block);
-        _constructionScope?.Register(block);
-    }
-
-    internal void RegisterConstructionResource(IDisposable resource)
-    {
-        ArgumentNullException.ThrowIfNull(resource);
-        _constructionScope?.Register(resource);
-    }
-
-    internal void AdoptConstructionBlock(BlockBox child)
-    {
-        ArgumentNullException.ThrowIfNull(child);
-        _constructionScope?.Adopt(child);
-    }
-
-    internal void AdoptConstructionResource(IDisposable resource)
-    {
-        ArgumentNullException.ThrowIfNull(resource);
-        _constructionScope?.Adopt(resource);
-    }
-
-    internal void ForgetConstructionBlock(BlockBox block)
-    {
-        ArgumentNullException.ThrowIfNull(block);
-        _constructionScope?.Forget(block);
-    }
-
-    /// <summary>Disposes a deliberately omitted build object and observes its async retirement.</summary>
-    internal void DiscardConstructionBlock(BlockBox block)
-    {
-        ArgumentNullException.ThrowIfNull(block);
-        ForgetConstructionBlock(block);
-        var retirementTasks = new List<Task>();
-        try
-        {
-            block.CollectRetirementTasks(retirementTasks);
-        }
-        catch (Exception exception)
-        {
-            retirementTasks.Add(Task.FromException(exception));
-        }
-
-        try
-        {
-            block.Dispose();
-        }
-        catch (Exception exception)
-        {
-            retirementTasks.Add(Task.FromException(exception));
-        }
-
-        foreach (Task task in retirementTasks)
-        {
-            try
-            {
-                RegisterRetirement(task);
-            }
-            catch
-            {
-                // Discard is best-effort and must not replace a primary build failure.
-            }
-        }
-    }
-
-    internal void EndConstructionScope(MarkdownLayoutConstructionScope scope)
-    {
-        if (ReferenceEquals(_constructionScope, scope))
-            _constructionScope = null;
     }
 
     /// <summary>
@@ -528,174 +408,12 @@ internal sealed class MarkdownLayoutContext
     /// </summary>
     internal int GeneratedBlockIndexUpperBound => _blockIndex;
 
-    private readonly List<string> _styleContextKeys = new();
-    private readonly List<string> _styleAliasKeys = new();
-    private int _listDepth;
-
-    internal int ListDepth => _listDepth;
-    internal int StyleAliasCount => _styleAliasKeys.Count;
-
-    internal IReadOnlyList<string> CreateStyleContextSnapshot()
-        => _styleContextKeys.Count == 0 ? Array.Empty<string>() : _styleContextKeys.ToArray();
-
-    internal IReadOnlyList<string> CreateStyleAliasSnapshot()
-        => _styleAliasKeys.Count == 0 ? Array.Empty<string>() : _styleAliasKeys.ToArray();
-
-    internal IReadOnlyList<string> CreateStyleAliasSnapshotFrom(int startIndex)
-    {
-        startIndex = Math.Clamp(startIndex, 0, _styleAliasKeys.Count);
-        int count = _styleAliasKeys.Count - startIndex;
-        if (count == 0)
-            return Array.Empty<string>();
-
-        var result = new string[count];
-        _styleAliasKeys.CopyTo(startIndex, result, 0, count);
-        return result;
-    }
-
-    internal LayoutStyleScope PushStyleContext(string key)
-    {
-        LayoutStyleScope scope = CaptureStyleScope();
-        if (!string.IsNullOrWhiteSpace(key))
-            _styleContextKeys.Add(key);
-        return scope;
-    }
-
-    internal LayoutStyleScope PushListDepth()
-    {
-        LayoutStyleScope scope = CaptureStyleScope();
-        _listDepth++;
-        _styleContextKeys.Add(MarkdownElementKeys.ListDepth(_listDepth));
-        return scope;
-    }
-
-    internal LayoutStyleScope PushMarkdownAttributes(IMarkdownObject markdownObject)
-    {
-        LayoutStyleScope scope = CaptureStyleScope();
-        AddMarkdownAttributeAliases(markdownObject, _styleAliasKeys);
-        return scope;
-    }
-
-    internal LayoutStyleScope PushStyleAliases(IReadOnlyList<string> aliases)
-    {
-        ArgumentNullException.ThrowIfNull(aliases);
-        LayoutStyleScope scope = CaptureStyleScope();
-        for (int index = 0; index < aliases.Count; index++)
-        {
-            string alias = aliases[index];
-            if (!string.IsNullOrWhiteSpace(alias))
-                _styleAliasKeys.Add(alias);
-        }
-
-        return scope;
-    }
-
-    internal SafeHtmlBlockRenderScope PushSafeHtmlBlockContext(
-        SafeHtmlAlignment alignment,
-        SafeHtmlBlockScopeTracker? nestedScopes,
-        int? inlineFlowScopeId,
-        bool inlineFlowContinuesPrevious = false)
-    {
-        SafeHtmlAlignment previousAlignment = _safeHtmlBlockAlignment;
-        SafeHtmlBlockScopeTracker? previousNestedScopes = _safeHtmlNestedScopes;
-        int? previousInlineFlowScopeId = _safeHtmlInlineFlowScopeId;
-        bool previousInlineFlowContinuesPrevious = _safeHtmlInlineFlowContinuesPrevious;
-        _safeHtmlBlockAlignment = alignment;
-        _safeHtmlNestedScopes = nestedScopes;
-        _safeHtmlInlineFlowScopeId = inlineFlowScopeId;
-        _safeHtmlInlineFlowContinuesPrevious = inlineFlowContinuesPrevious;
-        return new SafeHtmlBlockRenderScope(
-            this,
-            previousAlignment,
-            previousNestedScopes,
-            previousInlineFlowScopeId,
-            previousInlineFlowContinuesPrevious);
-    }
-
-    /// <summary>
-    /// Scopes a transformed Markdown fragment's source mapping to the synchronous
-    /// construction pass that consumes its already-parsed nodes.
-    /// </summary>
-    internal MarkdownSourceProjectionScope PushSourceProjection(MarkdownSourceProjection projection)
-    {
-        ArgumentNullException.ThrowIfNull(projection);
-        MarkdownSourceProjection? previous = _sourceProjection;
-        _sourceProjection = projection;
-        return new MarkdownSourceProjectionScope(this, previous, safeHtml: false);
-    }
-
-    /// <summary>
-    /// Scopes a composed raw-HTML line projection. Its coordinates are local to
-    /// the exact string handed to SafeHtmlParser, not to the Markdig AST.
-    /// </summary>
-    internal MarkdownSourceProjectionScope PushSafeHtmlSourceProjection(MarkdownSourceProjection? projection)
-    {
-        MarkdownSourceProjection? previous = _safeHtmlSourceProjection;
-        _safeHtmlSourceProjection = projection;
-        return new MarkdownSourceProjectionScope(this, previous, safeHtml: true);
-    }
-
-    internal SourceSpan MapSafeHtmlSourceRange(int localStart, int localLength)
-        => _safeHtmlSourceProjection?.MapRangeOrEmpty(localStart, localLength)
-            ?? new SourceSpan(localStart, localLength);
-
-    internal void RestoreSourceProjection(MarkdownSourceProjection? projection, bool safeHtml)
-    {
-        if (safeHtml)
-            _safeHtmlSourceProjection = projection;
-        else
-            _sourceProjection = projection;
-    }
-
-    internal void RestoreSafeHtmlBlockContext(
-        SafeHtmlAlignment alignment,
-        SafeHtmlBlockScopeTracker? nestedScopes,
-        int? inlineFlowScopeId,
-        bool inlineFlowContinuesPrevious)
-    {
-        _safeHtmlBlockAlignment = alignment;
-        _safeHtmlNestedScopes = nestedScopes;
-        _safeHtmlInlineFlowScopeId = inlineFlowScopeId;
-        _safeHtmlInlineFlowContinuesPrevious = inlineFlowContinuesPrevious;
-    }
-
-    private LayoutStyleScope CaptureStyleScope() =>
-        new(this, _styleContextKeys.Count, _styleAliasKeys.Count, _listDepth);
-
     internal void RegisterMarkdownAttributes(IMarkdownObject markdownObject, int blockIndex)
     {
         var attrs = HtmlAttributesExtensions.TryGetAttributes(markdownObject);
         var id = attrs?.Id;
         if (!string.IsNullOrWhiteSpace(id))
             RegisterFragmentTarget(id, blockIndex);
-    }
-
-    private static void AddMarkdownAttributeAliases(IMarkdownObject markdownObject, List<string> aliases)
-    {
-        var attrs = HtmlAttributesExtensions.TryGetAttributes(markdownObject);
-        if (attrs is null)
-            return;
-
-        if (attrs.Classes is not null)
-        {
-            foreach (var @class in attrs.Classes)
-            {
-                if (!string.IsNullOrWhiteSpace(@class))
-                    aliases.Add(MarkdownElementKeys.Class(@class));
-            }
-        }
-
-        if (!string.IsNullOrWhiteSpace(attrs.Id))
-            aliases.Add(MarkdownElementKeys.Id(attrs.Id));
-    }
-
-    internal void RestoreStyleState(int contextCount, int aliasCount, int listDepth)
-    {
-        if (_styleContextKeys.Count > contextCount)
-            _styleContextKeys.RemoveRange(contextCount, _styleContextKeys.Count - contextCount);
-        if (_styleAliasKeys.Count > aliasCount)
-            _styleAliasKeys.RemoveRange(aliasCount, _styleAliasKeys.Count - aliasCount);
-        _listDepth = listDepth;
     }
 
     /// <summary>

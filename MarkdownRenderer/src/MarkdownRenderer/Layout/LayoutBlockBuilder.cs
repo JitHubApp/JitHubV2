@@ -53,8 +53,8 @@ internal sealed class LayoutBlockBuilder
 
     internal List<BlockBox> BuildBlocks(MarkdownDocument document, CancellationToken cancellationToken)
     {
-        using var childBlockScope = _context.PushChildBlockBuilder(BuildBlock);
-        using var childInlineScope = _context.PushChildInlineBuilder(_inlines.AddExtensionContainerInlines);
+        using var childBlockScope = _context.ChildBuilders.PushBlockBuilder(BuildBlock);
+        using var childInlineScope = _context.ChildBuilders.PushInlineBuilder(_inlines.AddExtensionContainerInlines);
         var blocks = new List<BlockBox>();
         SafeHtmlBlockScopeTracker? htmlScopes = _context.Registry.SafeHtmlPolicy is null
             ? null
@@ -140,7 +140,7 @@ internal sealed class LayoutBlockBuilder
         SafeHtmlBlockScopeTracker? nestedScopes = b is ContainerBlock or HtmlBlock
             ? htmlScopes?.CloneForNestedContent()
             : null;
-        using (_context.PushSafeHtmlBlockContext(
+        using (_context.SafeHtmlBlock.Push(
                    alignmentAtBlockEntry,
                    nestedScopes,
                    inlineFlowScopeIdForBlock,
@@ -404,7 +404,7 @@ internal sealed class LayoutBlockBuilder
         var box = new InlineContainerBox(_context, MarkdownElementKeys.Body);
         _tracker.TrackBlock(box);
         box.BlockIndex = _context.NextBlockIndex();
-        Inline? leadingFlowBreak = _context.SafeHtmlInlineFlowContinuesPrevious
+        Inline? leadingFlowBreak = _context.SafeHtmlBlock.InlineFlowContinuesPrevious
             ? SafeHtmlFlowParagraphs.FindLeadingHtmlBreak(p.Inline)
             : null;
         _inlines.AddInlines(box, p.Inline, skipInline: leadingFlowBreak);

@@ -183,35 +183,35 @@ public sealed class MarkdownSourceProjectionTests
         MarkdownSourceProjection outer = CreateOffsetProjection(30);
         MarkdownSourceProjection inner = CreateOffsetProjection(70);
 
-        Assert.Null(context.SafeHtmlSourceProjection);
+        Assert.Null(context.SourceProjections.SafeHtml);
         Action exerciseScopes = () =>
         {
-            using (context.PushSafeHtmlSourceProjection(outer))
+            using (context.SourceProjections.PushSafeHtml(outer))
             {
-                Assert.Same(outer, context.SafeHtmlSourceProjection);
+                Assert.Same(outer, context.SourceProjections.SafeHtml);
                 Assert.Equal(new SourceSpan(30, 1), context.MapSafeHtmlSourceRange(0, 1));
 
-                using (context.PushSafeHtmlSourceProjection(inner))
+                using (context.SourceProjections.PushSafeHtml(inner))
                 {
-                    Assert.Same(inner, context.SafeHtmlSourceProjection);
+                    Assert.Same(inner, context.SourceProjections.SafeHtml);
                     Assert.Equal(new SourceSpan(70, 1), context.MapSafeHtmlSourceRange(0, 1));
 
-                    using (context.PushSafeHtmlSourceProjection(null))
+                    using (context.SourceProjections.PushSafeHtml(null))
                     {
-                        Assert.Null(context.SafeHtmlSourceProjection);
+                        Assert.Null(context.SourceProjections.SafeHtml);
                         Assert.Equal(new SourceSpan(0, 1), context.MapSafeHtmlSourceRange(0, 1));
                     }
 
-                    Assert.Same(inner, context.SafeHtmlSourceProjection);
+                    Assert.Same(inner, context.SourceProjections.SafeHtml);
                 }
 
-                Assert.Same(outer, context.SafeHtmlSourceProjection);
+                Assert.Same(outer, context.SourceProjections.SafeHtml);
                 throw new InvalidOperationException("Exercise exceptional scope restoration.");
             }
         };
         Assert.Throws<InvalidOperationException>(exerciseScopes);
 
-        Assert.Null(context.SafeHtmlSourceProjection);
+        Assert.Null(context.SourceProjections.SafeHtml);
         Assert.Equal(new SourceSpan(0, 1), context.MapSafeHtmlSourceRange(0, 1));
     }
 

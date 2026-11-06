@@ -78,7 +78,7 @@ public sealed class MarkdownLayoutConstructionScopeTests
         var unpublishedRoot = new TrackingBlockBox();
         publishedRoot.Add(publishedDescendant);
 
-        MarkdownLayoutConstructionScope scope = context.BeginConstructionScope();
+        MarkdownLayoutConstructionScope scope = context.Construction.Begin();
         context.RegisterConstructionBlock(publishedRoot);
         context.RegisterConstructionBlock(publishedDescendant);
         context.RegisterConstructionBlock(unpublishedRoot);
@@ -206,7 +206,7 @@ public sealed class MarkdownLayoutConstructionScopeTests
         var builder = new LayoutBuilder(context);
         MarkdownVectorScene sourceScene = CreateInlineScene();
         MarkdownContent content = CreateInlineSceneContent(sourceScene);
-        MarkdownLayoutConstructionScope scope = context.BeginConstructionScope();
+        MarkdownLayoutConstructionScope scope = context.Construction.Begin();
         var runs = new List<InlineRun>();
         var throwingResource = new ThrowingDisposable();
 
@@ -219,8 +219,8 @@ public sealed class MarkdownLayoutConstructionScopeTests
             // The appender has staged the actual run, but no InlineContainerBox
             // has accepted it yet. A later cancellation/failure must therefore
             // leave disposal to the construction ledger.
-            context.RegisterConstructionResource(throwingResource);
-            context.RegisterConstructionResource(throwingResource);
+            context.Construction.RegisterResource(throwingResource);
+            context.Construction.RegisterResource(throwingResource);
             if (canceled)
             {
                 cancellation.Cancel();
@@ -268,7 +268,7 @@ public sealed class MarkdownLayoutConstructionScopeTests
         var builder = new LayoutBuilder(context);
         MarkdownVectorScene sourceScene = CreateInlineScene();
         MarkdownContent content = CreateInlineSceneContent(sourceScene);
-        MarkdownLayoutConstructionScope scope = context.BeginConstructionScope();
+        MarkdownLayoutConstructionScope scope = context.Construction.Begin();
         var runs = new List<InlineRun>();
         InlineContainerBox parent = new(context, MarkdownElementKeys.Body)
         {
