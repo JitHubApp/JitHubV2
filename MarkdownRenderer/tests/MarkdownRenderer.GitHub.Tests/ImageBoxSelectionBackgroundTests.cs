@@ -74,58 +74,14 @@ public sealed class ImageBoxSelectionBackgroundTests
             selection.ExtendTo(new DocumentPosition(1, 0, 1));
             var selectionRects = new List<Rect>();
             var selectionBackgrounds = new List<SelectionBackgroundGeometry>();
-            Assert.True(snapshot.TryBeginPaint());
-            try
-            {
-                selection.AppendVisibleHighlightRects(
-                    snapshot,
-                    new Rect(0, 0, AvailableWidth, targetHeight),
-                    selectionRects,
-                    selectionBackgrounds);
-            }
-            finally
-            {
-                snapshot.EndPaint();
-            }
+            AppendVisibleHighlights(snapshot, selection, targetHeight, selectionRects, selectionBackgrounds);
 
             // Interaction geometry is unchanged: the whole atomic block.
             Assert.Equal(image.Bounds, Assert.Single(selectionRects));
 
-            Assert.NotEmpty(selectionBackgrounds);
-            SelectionBackgroundGeometry artworkBackground = Assert.Single(
-                selectionBackgrounds,
-                background => background.Bounds == artwork);
-            Assert.True(artworkBackground.Opacity < 1f,
-                "Selected artwork must stay visible through a translucent tint.");
-            foreach (SelectionBackgroundGeometry background in selectionBackgrounds)
-            {
-                Assert.True(background.Bounds.Width < image.Bounds.Width / 2,
-                    "No selection background may span the whole block width.");
-                Assert.True(image.Bounds.Contains(new Point(background.Bounds.Left, background.Bounds.Top)) &&
-                            image.Bounds.Contains(new Point(background.Bounds.Right - 0.5, background.Bounds.Bottom - 0.5)));
-            }
+            AssertBackgroundsFollowArtworkAndCaption(image, artwork, selectionBackgrounds);
 
-            // The wrapped alt caption keeps an opaque text band so the
-            // selection-foreground caption remains readable.
-            SelectionBackgroundGeometry caption = Assert.Single(
-                selectionBackgrounds,
-                background => background.Bounds.Top >= artwork.Bottom);
-            Assert.Equal(1f, caption.Opacity);
-
-            using var target = new CanvasRenderTarget(context.ResourceCreator, AvailableWidth, targetHeight, 96);
-            using (CanvasDrawingSession drawingSession = target.CreateDrawingSession())
-            {
-                drawingSession.Clear(White);
-                foreach (SelectionBackgroundGeometry background in selectionBackgrounds)
-                    background.Paint(drawingSession, Highlight, highContrast: false);
-                image.PaintSelectionForeground(
-                    drawingSession,
-                    selection.Range,
-                    White,
-                    new Rect(0, 0, AvailableWidth, targetHeight));
-            }
-
-            Color[] pixels = target.GetPixelColors();
+            Color[] pixels = PaintSelection(context, image, selection, selectionBackgrounds, targetHeight);
             // A point on the artwork's row but well clear of the artwork must
             // remain the page color.
             double clearX = flowDirection == FlowDirection.LeftToRight
@@ -146,6 +102,78 @@ public sealed class ImageBoxSelectionBackgroundTests
     {
         Assert.True(typeof(ISelectionBackgroundGeometrySource).IsAssignableFrom(typeof(ImageBox)));
         Assert.True(typeof(ISelectionBackgroundGeometrySource).IsAssignableFrom(typeof(VectorSceneBox)));
+    }
+
+    private static void AppendVisibleHighlights(
+        LayoutSnapshot snapshot,
+        SelectionController selection,
+        int targetHeight,
+        List<Rect> selectionRects,
+        List<SelectionBackgroundGeometry> selectionBackgrounds)
+    {
+        Assert.True(snapshot.TryBeginPaint());
+        try
+        {
+            selection.AppendVisibleHighlightRects(
+                snapshot,
+                new Rect(0, 0, AvailableWidth, targetHeight),
+                selectionRects,
+                selectionBackgrounds);
+        }
+        finally
+        {
+            snapshot.EndPaint();
+        }
+    }
+
+    private static void AssertBackgroundsFollowArtworkAndCaption(
+        ImageBox image,
+        Rect artwork,
+        List<SelectionBackgroundGeometry> selectionBackgrounds)
+    {
+        Assert.NotEmpty(selectionBackgrounds);
+        SelectionBackgroundGeometry artworkBackground = Assert.Single(
+            selectionBackgrounds,
+            background => background.Bounds == artwork);
+        Assert.True(artworkBackground.Opacity < 1f,
+            "Selected artwork must stay visible through a translucent tint.");
+        foreach (SelectionBackgroundGeometry background in selectionBackgrounds)
+        {
+            Assert.True(background.Bounds.Width < image.Bounds.Width / 2,
+                "No selection background may span the whole block width.");
+            Assert.True(image.Bounds.Contains(new Point(background.Bounds.Left, background.Bounds.Top)) &&
+                        image.Bounds.Contains(new Point(background.Bounds.Right - 0.5, background.Bounds.Bottom - 0.5)));
+        }
+
+        // The wrapped alt caption keeps an opaque text band so the
+        // selection-foreground caption remains readable.
+        SelectionBackgroundGeometry caption = Assert.Single(
+            selectionBackgrounds,
+            background => background.Bounds.Top >= artwork.Bottom);
+        Assert.Equal(1f, caption.Opacity);
+    }
+
+    private static Color[] PaintSelection(
+        MarkdownLayoutContext context,
+        ImageBox image,
+        SelectionController selection,
+        List<SelectionBackgroundGeometry> selectionBackgrounds,
+        int targetHeight)
+    {
+        using var target = new CanvasRenderTarget(context.ResourceCreator, AvailableWidth, targetHeight, 96);
+        using (CanvasDrawingSession drawingSession = target.CreateDrawingSession())
+        {
+            drawingSession.Clear(White);
+            foreach (SelectionBackgroundGeometry background in selectionBackgrounds)
+                background.Paint(drawingSession, Highlight, highContrast: false);
+            image.PaintSelectionForeground(
+                drawingSession,
+                selection.Range,
+                White,
+                new Rect(0, 0, AvailableWidth, targetHeight));
+        }
+
+        return target.GetPixelColors();
     }
 
     private static Color ReadPixel(Color[] pixels, int width, double x, double y)
