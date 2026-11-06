@@ -57,7 +57,7 @@ public sealed class ImageBoxSvgRendererTests
             UsesCurrentColor: true,
             UsesColorScheme: true));
         var image = new ImageBox(
-            CreateContext(renderer, rasterizationScale), _renderResources.Images,
+            CreateContext(_renderResources, renderer, rasterizationScale), _renderResources.Images,
             CreateSvgDataUri($"sizing-{rasterizationScale}"),
             "Sizing example");
 
@@ -94,9 +94,9 @@ public sealed class ImageBoxSvgRendererTests
             // from an unrelated float division/multiplication rounding step.
             IntrinsicWidthDips: 256, IntrinsicHeightDips: 128, IntrinsicAspectRatio: 2));
         string source = CreateSvgDataUri(Guid.NewGuid().ToString("N"));
-        var first = new ImageBox(CreateContext(renderer), _renderResources.Images, source, string.Empty);
-        var second = new ImageBox(CreateContext(renderer), _renderResources.Images, source, string.Empty);
-        var repeat = new ImageBox(CreateContext(renderer), _renderResources.Images, source, string.Empty);
+        var first = new ImageBox(CreateContext(_renderResources, renderer), _renderResources.Images, source, string.Empty);
+        var second = new ImageBox(CreateContext(_renderResources, renderer), _renderResources.Images, source, string.Empty);
+        var repeat = new ImageBox(CreateContext(_renderResources, renderer), _renderResources.Images, source, string.Empty);
         try
         {
             first.Measure(125.125f);
@@ -145,7 +145,7 @@ public sealed class ImageBoxSvgRendererTests
                     bytes[offset] = bytes[offset + 1] = bytes[offset + 2] = bytes[offset + 3] = 128;
                 }
             });
-        var image = new ImageBox(CreateContext(renderer, scale), _renderResources.Images,
+        var image = new ImageBox(CreateContext(_renderResources, renderer, scale), _renderResources.Images,
             CreateSvgDataUri(Guid.NewGuid().ToString("N")), string.Empty);
         try
         {
@@ -187,7 +187,7 @@ public sealed class ImageBoxSvgRendererTests
         var renderer = new RecordingSvgRenderer(
             new MarkdownSvgDocumentInfo(width, height, (double)width / height),
             fillPixels: static (pixels, _, _) => pixels.Span.Fill(128));
-        var image = new ImageBox(CreateContext(renderer, scale), _renderResources.Images,
+        var image = new ImageBox(CreateContext(_renderResources, renderer, scale), _renderResources.Images,
             CreateSvgDataUri(Guid.NewGuid().ToString("N")), string.Empty);
         try
         {
@@ -243,7 +243,7 @@ public sealed class ImageBoxSvgRendererTests
         string source = CreateSvgDataUri(Guid.NewGuid().ToString("N"));
         if (previousWholeBitmap)
         {
-            var previous = new ImageBox(CreateContext(renderer, rasterizationScale: 0.5), _renderResources.Images, source, string.Empty);
+            var previous = new ImageBox(CreateContext(_renderResources, renderer, rasterizationScale: 0.5), _renderResources.Images, source, string.Empty);
             try
             {
                 previous.Measure(width);
@@ -257,7 +257,7 @@ public sealed class ImageBoxSvgRendererTests
             }
         }
 
-        var image = new ImageBox(CreateContext(renderer), _renderResources.Images, source, string.Empty);
+        var image = new ImageBox(CreateContext(_renderResources, renderer), _renderResources.Images, source, string.Empty);
         try
         {
             if (previousWholeBitmap)
@@ -381,7 +381,7 @@ public sealed class ImageBoxSvgRendererTests
         var retirement = new NativeResourceRetirement(createTimer: false);
         var injected = new InvalidOperationException("injected tile clip factory failure");
         var resources = new MarkdownRenderResources(retirement, afterPaintLayerReservation: () => throw injected);
-        var image = new ImageBox(CreateContext(renderer, renderResources: resources), resources.Images,
+        var image = new ImageBox(CreateContext(resources, renderer), resources.Images,
             CreateSvgDataUri(Guid.NewGuid().ToString("N")), string.Empty);
         try
         {
@@ -417,14 +417,14 @@ public sealed class ImageBoxSvgRendererTests
             IntrinsicAspectRatio: 2));
         string source = CreateSvgDataUri(Guid.NewGuid().ToString("N"));
 
-        var first = new ImageBox(CreateContext(renderer), _renderResources.Images, source, "cached");
+        var first = new ImageBox(CreateContext(_renderResources, renderer), _renderResources.Images, source, "cached");
         first.Measure(80);
         await WaitForLoadAsync(first);
         first.Dispose();
 
         int opensAfterFirstRender = renderer.OpenCount;
         int rendersAfterFirstRender = renderer.RenderRequests.Count;
-        var second = new ImageBox(CreateContext(renderer), _renderResources.Images, source, "cached");
+        var second = new ImageBox(CreateContext(_renderResources, renderer), _renderResources.Images, source, "cached");
         try
         {
             second.Measure(80);
@@ -467,6 +467,7 @@ public sealed class ImageBoxSvgRendererTests
                 CacheKey: builtInUri);
             resolverImage = new ImageBox(
                 CreateContext(
+                    _renderResources,
                     renderer,
                     imageResolver: new FixedImageResolver(asset)), _renderResources.Images,
                 resolverSource,
@@ -480,7 +481,7 @@ public sealed class ImageBoxSvgRendererTests
             Assert.Equal(1, opensAfterResolverLoad);
 
             builtInImage = new ImageBox(
-                CreateContext(renderer, imageResolver: new NotHandledImageResolver()), _renderResources.Images,
+                CreateContext(_renderResources, renderer, imageResolver: new NotHandledImageResolver()), _renderResources.Images,
                 builtInUri,
                 "Built-in SVG");
             builtInImage.Measure(80);
@@ -530,7 +531,7 @@ public sealed class ImageBoxSvgRendererTests
         try
         {
             first = new ImageBox(
-                CreateContext(renderer, imageResolver: resolver), _renderResources.Images,
+                CreateContext(_renderResources, renderer, imageResolver: resolver), _renderResources.Images,
                 source,
                 "First partitioned SVG");
             first.Measure(80);
@@ -546,7 +547,7 @@ public sealed class ImageBoxSvgRendererTests
             int opensAfterFirstLoad = renderer.OpenCount;
 
             second = new ImageBox(
-                CreateContext(renderer, imageResolver: resolver), _renderResources.Images,
+                CreateContext(_renderResources, renderer, imageResolver: resolver), _renderResources.Images,
                 source,
                 "Second partitioned SVG");
             second.Measure(80);
@@ -579,8 +580,8 @@ public sealed class ImageBoxSvgRendererTests
                 IntrinsicAspectRatio: 2),
             openDelay: TimeSpan.FromMilliseconds(150));
         string source = CreateSvgDataUri(Guid.NewGuid().ToString("N"));
-        var first = new ImageBox(CreateContext(renderer), _renderResources.Images, source, "duplicate");
-        var second = new ImageBox(CreateContext(renderer), _renderResources.Images, source, "duplicate");
+        var first = new ImageBox(CreateContext(_renderResources, renderer), _renderResources.Images, source, "duplicate");
+        var second = new ImageBox(CreateContext(_renderResources, renderer), _renderResources.Images, source, "duplicate");
 
         try
         {
@@ -611,8 +612,8 @@ public sealed class ImageBoxSvgRendererTests
             CreateSvgBytes("Unkeyed source"), "image/svg+xml",
             ResolvedUri: new Uri(source), CacheKey: string.Empty));
         var renderer = new RecordingSvgRenderer(new MarkdownSvgDocumentInfo(80, 40));
-        var first = new ImageBox(CreateContext(renderer, imageResolver: resolver), _renderResources.Images, source, "First unkeyed SVG");
-        var second = new ImageBox(CreateContext(renderer, imageResolver: resolver), _renderResources.Images, source, "Second unkeyed SVG");
+        var first = new ImageBox(CreateContext(_renderResources, renderer, imageResolver: resolver), _renderResources.Images, source, "First unkeyed SVG");
+        var second = new ImageBox(CreateContext(_renderResources, renderer, imageResolver: resolver), _renderResources.Images, source, "Second unkeyed SVG");
         try
         {
             first.Measure(80);
@@ -647,11 +648,11 @@ public sealed class ImageBoxSvgRendererTests
             IntrinsicHeightDips: 40,
             IntrinsicAspectRatio: 2));
         var first = new ImageBox(
-            CreateContext(renderer), _renderResources.Images,
+            CreateContext(_renderResources, renderer), _renderResources.Images,
             CreateSvgDataUri("parallel-first-" + Guid.NewGuid().ToString("N")),
             "first independent SVG");
         var second = new ImageBox(
-            CreateContext(renderer), _renderResources.Images,
+            CreateContext(_renderResources, renderer), _renderResources.Images,
             CreateSvgDataUri("parallel-second-" + Guid.NewGuid().ToString("N")),
             "second independent SVG");
 
@@ -696,13 +697,13 @@ public sealed class ImageBoxSvgRendererTests
         var replacementRenderer = new RecordingSvgRenderer(info);
         string source = CreateSvgDataUri(Guid.NewGuid().ToString("N"));
 
-        var first = new ImageBox(CreateContext(firstRenderer), _renderResources.Images, source, "provider swap");
+        var first = new ImageBox(CreateContext(_renderResources, firstRenderer), _renderResources.Images, source, "provider swap");
         first.Measure(80);
         await WaitForLoadAsync(first);
         first.Dispose();
 
         var replacement = new ImageBox(
-            CreateContext(replacementRenderer), _renderResources.Images,
+            CreateContext(_renderResources, replacementRenderer), _renderResources.Images,
             source,
             "provider swap");
         try
@@ -729,12 +730,12 @@ public sealed class ImageBoxSvgRendererTests
             IntrinsicAspectRatio: 2));
         string source = CreateSvgDataUri(Guid.NewGuid().ToString("N"));
 
-        var first = new ImageBox(CreateContext(renderer), _renderResources.Images, source, "provider removed");
+        var first = new ImageBox(CreateContext(_renderResources, renderer), _renderResources.Images, source, "provider removed");
         first.Measure(80);
         await WaitForLoadAsync(first);
         first.Dispose();
 
-        var withoutProvider = new ImageBox(CreateContext(renderer: null), _renderResources.Images, source, "provider removed");
+        var withoutProvider = new ImageBox(CreateContext(_renderResources, renderer: null), _renderResources.Images, source, "provider removed");
         try
         {
             withoutProvider.Measure(80);
@@ -761,7 +762,7 @@ public sealed class ImageBoxSvgRendererTests
             HasText: false));
         string source = CreateSvgDataUri(Guid.NewGuid().ToString("N"));
 
-        var first = new ImageBox(CreateContext(renderer), _renderResources.Images, source, "generation");
+        var first = new ImageBox(CreateContext(_renderResources, renderer), _renderResources.Images, source, "generation");
         first.Measure(80);
         await WaitForLoadAsync(first);
         first.Dispose();
@@ -770,7 +771,7 @@ public sealed class ImageBoxSvgRendererTests
         int rendersBeforeInvalidation = renderer.RenderRequests.Count;
         renderer.AdvanceGeneration();
 
-        var replacement = new ImageBox(CreateContext(renderer), _renderResources.Images, source, "generation");
+        var replacement = new ImageBox(CreateContext(_renderResources, renderer), _renderResources.Images, source, "generation");
         try
         {
             replacement.Measure(80);
@@ -796,7 +797,7 @@ public sealed class ImageBoxSvgRendererTests
             HasText: true));
         string source = CreateSvgDataUri(Guid.NewGuid().ToString("N"));
 
-        var first = new ImageBox(CreateContext(renderer), _renderResources.Images, source, "generation");
+        var first = new ImageBox(CreateContext(_renderResources, renderer), _renderResources.Images, source, "generation");
         first.Measure(80);
         await WaitForLoadAsync(first);
         first.Dispose();
@@ -805,7 +806,7 @@ public sealed class ImageBoxSvgRendererTests
         int rendersBeforeInvalidation = renderer.RenderRequests.Count;
         renderer.AdvanceGeneration();
 
-        var replacement = new ImageBox(CreateContext(renderer), _renderResources.Images, source, "generation");
+        var replacement = new ImageBox(CreateContext(_renderResources, renderer), _renderResources.Images, source, "generation");
         try
         {
             replacement.Measure(80);
@@ -831,14 +832,14 @@ public sealed class ImageBoxSvgRendererTests
         var rejectingRenderer = new RecoveringSvgRenderer(info, reject: true);
         string source = CreateSvgDataUri(Guid.NewGuid().ToString("N"));
 
-        var rejected = new ImageBox(CreateContext(rejectingRenderer), _renderResources.Images, source, "rejected");
+        var rejected = new ImageBox(CreateContext(_renderResources, rejectingRenderer), _renderResources.Images, source, "rejected");
         rejected.Measure(80);
         await WaitForLoadAsync(rejected);
         Assert.Equal(MarkdownSvgFailureReason.UnsupportedContent, rejected.SvgFailureReason);
         rejected.Dispose();
 
         var replacementRenderer = new RecordingSvgRenderer(info);
-        var replacement = new ImageBox(CreateContext(replacementRenderer), _renderResources.Images, source, "replacement");
+        var replacement = new ImageBox(CreateContext(_renderResources, replacementRenderer), _renderResources.Images, source, "replacement");
         try
         {
             replacement.Measure(80);
@@ -865,14 +866,14 @@ public sealed class ImageBoxSvgRendererTests
             reject: true);
         string source = CreateSvgDataUri(Guid.NewGuid().ToString("N"));
 
-        var rejected = new ImageBox(CreateContext(renderer), _renderResources.Images, source, "generation zero");
+        var rejected = new ImageBox(CreateContext(_renderResources, renderer), _renderResources.Images, source, "generation zero");
         rejected.Measure(80);
         await WaitForLoadAsync(rejected);
         Assert.Equal(MarkdownSvgFailureReason.UnsupportedContent, rejected.SvgFailureReason);
         rejected.Dispose();
 
         renderer.EnableAndAdvanceGeneration();
-        var recovered = new ImageBox(CreateContext(renderer), _renderResources.Images, source, "generation one");
+        var recovered = new ImageBox(CreateContext(_renderResources, renderer), _renderResources.Images, source, "generation one");
         try
         {
             recovered.Measure(80);
@@ -898,7 +899,7 @@ public sealed class ImageBoxSvgRendererTests
                 IntrinsicAspectRatio: 2),
             TransientResourceLimitStage.Open);
         string source = CreateSvgDataUri($"runtime-open-limit-{Guid.NewGuid():N}");
-        var rejected = new ImageBox(CreateContext(renderer), _renderResources.Images, source, "runtime open limit");
+        var rejected = new ImageBox(CreateContext(_renderResources, renderer), _renderResources.Images, source, "runtime open limit");
 
         try
         {
@@ -915,7 +916,7 @@ public sealed class ImageBoxSvgRendererTests
             rejected.Dispose();
         }
 
-        var recovered = new ImageBox(CreateContext(renderer), _renderResources.Images, source, "runtime open retry");
+        var recovered = new ImageBox(CreateContext(_renderResources, renderer), _renderResources.Images, source, "runtime open retry");
         try
         {
             recovered.Measure(80);
@@ -943,7 +944,7 @@ public sealed class ImageBoxSvgRendererTests
                 IntrinsicAspectRatio: 2),
             TransientResourceLimitStage.Render);
         string source = CreateSvgDataUri($"runtime-render-limit-{Guid.NewGuid():N}");
-        var rejected = new ImageBox(CreateContext(renderer), _renderResources.Images, source, "runtime render limit");
+        var rejected = new ImageBox(CreateContext(_renderResources, renderer), _renderResources.Images, source, "runtime render limit");
 
         try
         {
@@ -960,7 +961,7 @@ public sealed class ImageBoxSvgRendererTests
             rejected.Dispose();
         }
 
-        var recovered = new ImageBox(CreateContext(renderer), _renderResources.Images, source, "runtime render retry");
+        var recovered = new ImageBox(CreateContext(_renderResources, renderer), _renderResources.Images, source, "runtime render retry");
         try
         {
             recovered.Measure(80);
@@ -988,7 +989,7 @@ public sealed class ImageBoxSvgRendererTests
                 IntrinsicAspectRatio: 2),
             TransientResourceLimitStage.PrepareSource);
         string source = CreateSvgDataUri($"source-budget-limit-{Guid.NewGuid():N}");
-        var rejected = new ImageBox(CreateContext(renderer), _renderResources.Images, source, "source budget limit");
+        var rejected = new ImageBox(CreateContext(_renderResources, renderer), _renderResources.Images, source, "source budget limit");
 
         try
         {
@@ -1007,7 +1008,7 @@ public sealed class ImageBoxSvgRendererTests
         // The provider admits this second preparation. The same renderer,
         // generation and source must still observe the earlier deterministic
         // content rejection before an OpenAsync call can begin.
-        var cached = new ImageBox(CreateContext(renderer), _renderResources.Images, source, "cached source budget limit");
+        var cached = new ImageBox(CreateContext(_renderResources, renderer), _renderResources.Images, source, "cached source budget limit");
         try
         {
             cached.Measure(80);
@@ -1029,7 +1030,7 @@ public sealed class ImageBoxSvgRendererTests
     {
         var renderer = new BlockingSvgRenderer();
         var image = new ImageBox(
-            CreateContext(renderer), _renderResources.Images,
+            CreateContext(_renderResources, renderer), _renderResources.Images,
             CreateSvgDataUri(Guid.NewGuid().ToString("N")),
             "dispose race");
         image.Measure(80);
@@ -1051,7 +1052,7 @@ public sealed class ImageBoxSvgRendererTests
         var renderer = new RecordingSvgRenderer(new MarkdownSvgDocumentInfo(
             IntrinsicWidthDips: 80, IntrinsicHeightDips: 40, IntrinsicAspectRatio: 2));
         var image = new ImageBox(
-            CreateContext(renderer, performanceSession: session), _renderResources.Images, "", "queued publication");
+            CreateContext(_renderResources, renderer, performanceSession: session), _renderResources.Images, "", "queued publication");
         Action? delivery = null;
         int published = 0;
         int dropped = 0;
@@ -1097,15 +1098,15 @@ public sealed class ImageBoxSvgRendererTests
         var images = new[]
         {
             new ImageBox(
-                CreateContext(renderer, performanceSession: firstSession), _renderResources.Images,
+                CreateContext(_renderResources, renderer, performanceSession: firstSession), _renderResources.Images,
                 CreateSvgDataUri("process-preparation-session-one"),
                 "session one"),
             new ImageBox(
-                CreateContext(renderer, performanceSession: secondSession), _renderResources.Images,
+                CreateContext(_renderResources, renderer, performanceSession: secondSession), _renderResources.Images,
                 CreateSvgDataUri("process-preparation-session-two"),
                 "session two"),
             new ImageBox(
-                CreateContext(renderer), _renderResources.Images,
+                CreateContext(_renderResources, renderer), _renderResources.Images,
                 CreateSvgDataUri("process-preparation-without-session"),
                 "legacy control"),
         };
@@ -1156,7 +1157,7 @@ public sealed class ImageBoxSvgRendererTests
         using IDisposable blocker = await gate.EnterAsync(
             new object(), heldWeight, exclusive: false, CancellationToken.None);
         using var renderer = new ProcessPreparationSvgRenderer(holdOpens: false);
-        var image = new ImageBox(CreateContext(renderer), _renderResources.Images, dataUri, "weighted SVG");
+        var image = new ImageBox(CreateContext(_renderResources, renderer), _renderResources.Images, dataUri, "weighted SVG");
         Task load = Task.CompletedTask;
 
         try
@@ -1196,11 +1197,11 @@ public sealed class ImageBoxSvgRendererTests
         using var renderer = new ProcessPreparationSvgRenderer(holdOpens: false);
         await using var retiringSession = CreateSingleSlotCpuPreparationSession();
         var retired = new ImageBox(
-            CreateContext(renderer, performanceSession: retiringSession), _renderResources.Images,
+            CreateContext(_renderResources, renderer, performanceSession: retiringSession), _renderResources.Images,
             CreateSvgDataUri("process-preparation-retired"),
             "retired SVG");
         var survivor = new ImageBox(
-            CreateContext(renderer), _renderResources.Images,
+            CreateContext(_renderResources, renderer), _renderResources.Images,
             CreateSvgDataUri("process-preparation-survivor"),
             "surviving SVG");
         int retiredPublications = 0;
@@ -1250,9 +1251,9 @@ public sealed class ImageBoxSvgRendererTests
         using var renderer = new ProcessPreparationSvgRenderer(holdOpens: true);
         var images = new[]
         {
-            new ImageBox(CreateContext(renderer), _renderResources.Images, CreateSvgDataUri("provider-block-first"), "first"),
-            new ImageBox(CreateContext(renderer), _renderResources.Images, CreateSvgDataUri("provider-block-second"), "second"),
-            new ImageBox(CreateContext(renderer), _renderResources.Images, CreateSvgDataUri("provider-block-third"), "third"),
+            new ImageBox(CreateContext(_renderResources, renderer), _renderResources.Images, CreateSvgDataUri("provider-block-first"), "first"),
+            new ImageBox(CreateContext(_renderResources, renderer), _renderResources.Images, CreateSvgDataUri("provider-block-second"), "second"),
+            new ImageBox(CreateContext(_renderResources, renderer), _renderResources.Images, CreateSvgDataUri("provider-block-third"), "third"),
         };
         Task[] loads = [];
 
@@ -1307,11 +1308,11 @@ public sealed class ImageBoxSvgRendererTests
         await using var session = CreateSingleSlotCpuPreparationSession();
         object documentOwner = new();
         var first = new ImageBox(
-            CreateContext(renderer, performanceSession: session, performanceDocumentOwner: documentOwner), _renderResources.Images,
+            CreateContext(_renderResources, renderer, performanceSession: session, performanceDocumentOwner: documentOwner), _renderResources.Images,
             CreateSvgDataUri("cpu-admission-first-" + Guid.NewGuid().ToString("N")),
             "first admitted SVG");
         var second = new ImageBox(
-            CreateContext(renderer, performanceSession: session, performanceDocumentOwner: documentOwner), _renderResources.Images,
+            CreateContext(_renderResources, renderer, performanceSession: session, performanceDocumentOwner: documentOwner), _renderResources.Images,
             CreateSvgDataUri("cpu-admission-second-" + Guid.NewGuid().ToString("N")),
             "queued SVG");
         Task firstLoad = Task.CompletedTask;
@@ -1371,11 +1372,11 @@ public sealed class ImageBoxSvgRendererTests
         await using var session = CreateSingleSlotCpuPreparationSession();
         object documentOwner = new();
         var first = new ImageBox(
-            CreateContext(renderer, performanceSession: session, performanceDocumentOwner: documentOwner), _renderResources.Images,
+            CreateContext(_renderResources, renderer, performanceSession: session, performanceDocumentOwner: documentOwner), _renderResources.Images,
             CreateSvgDataUri("cpu-retire-first-" + Guid.NewGuid().ToString("N")),
             "admitted SVG");
         var queued = new ImageBox(
-            CreateContext(renderer, performanceSession: session, performanceDocumentOwner: documentOwner), _renderResources.Images,
+            CreateContext(_renderResources, renderer, performanceSession: session, performanceDocumentOwner: documentOwner), _renderResources.Images,
             CreateSvgDataUri("cpu-retire-queued-" + Guid.NewGuid().ToString("N")),
             "retired queued SVG");
         int queuedPublications = 0;
@@ -1432,6 +1433,7 @@ public sealed class ImageBoxSvgRendererTests
         var unavailable = new ConcurrentQueue<MarkdownSvgFailureReason?>();
         var first = new ImageBox(
             CreateContext(
+                _renderResources,
                 renderer,
                 imageUnavailable: (_, _, failure) => unavailable.Enqueue(failure),
                 performanceSession: session,
@@ -1440,6 +1442,7 @@ public sealed class ImageBoxSvgRendererTests
             "active SVG");
         var queued = new ImageBox(
             CreateContext(
+                _renderResources,
                 renderer,
                 imageUnavailable: (_, _, failure) => unavailable.Enqueue(failure),
                 performanceSession: session,
@@ -1508,6 +1511,7 @@ public sealed class ImageBoxSvgRendererTests
         var unavailable = new ConcurrentQueue<MarkdownSvgFailureReason?>();
         var image = new ImageBox(
             CreateContext(
+                _renderResources,
                 renderer,
                 imageUnavailable: (_, _, failure) => unavailable.Enqueue(failure),
                 performanceSession: session), _renderResources.Images,
@@ -1552,7 +1556,7 @@ public sealed class ImageBoxSvgRendererTests
         using var queuedRenderer = new CpuAdmissionSvgRenderer(info);
         await using var session = CreateSingleSlotCpuPreparationSession();
         var queued = new ImageBox(
-            CreateContext(queuedRenderer, performanceSession: session), _renderResources.Images,
+            CreateContext(_renderResources, queuedRenderer, performanceSession: session), _renderResources.Images,
             CreateSvgDataUri("provider-admission-queued-" + Guid.NewGuid().ToString("N")),
             "SVG waiting for provider admission");
         int publications = 0;
@@ -1566,7 +1570,7 @@ public sealed class ImageBoxSvgRendererTests
             {
                 var renderer = new CpuAdmissionSvgRenderer(info, blockFirstOpen: true);
                 var image = new ImageBox(
-                    CreateContext(renderer), _renderResources.Images,
+                    CreateContext(_renderResources, renderer), _renderResources.Images,
                     CreateSvgDataUri("provider-admission-blocker-" + Guid.NewGuid().ToString("N")),
                     "unrelated admitted SVG");
                 blockers.Add((image, renderer));
@@ -1627,11 +1631,11 @@ public sealed class ImageBoxSvgRendererTests
         await using var session = CreateSingleSlotCpuPreparationSession();
         object documentOwner = new();
         var failed = new ImageBox(
-            CreateContext(renderer, performanceSession: session, performanceDocumentOwner: documentOwner), _renderResources.Images,
+            CreateContext(_renderResources, renderer, performanceSession: session, performanceDocumentOwner: documentOwner), _renderResources.Images,
             CreateSvgDataUri("cpu-failure-first-" + Guid.NewGuid().ToString("N")),
             "provider failure");
         var recovered = new ImageBox(
-            CreateContext(renderer, performanceSession: session, performanceDocumentOwner: documentOwner), _renderResources.Images,
+            CreateContext(_renderResources, renderer, performanceSession: session, performanceDocumentOwner: documentOwner), _renderResources.Images,
             CreateSvgDataUri("cpu-failure-recovered-" + Guid.NewGuid().ToString("N")),
             "subsequent provider request");
 
@@ -1669,14 +1673,14 @@ public sealed class ImageBoxSvgRendererTests
             IntrinsicAspectRatio: 2));
         string source = CreateSvgDataUri(Guid.NewGuid().ToString("N"));
 
-        var first = new ImageBox(CreateContext(renderer), _renderResources.Images, source, "transition");
+        var first = new ImageBox(CreateContext(_renderResources, renderer), _renderResources.Images, source, "transition");
         first.Measure(80);
         await WaitForLoadAsync(first);
         first.Dispose();
 
         int rendersBeforeScaleChange = renderer.RenderRequests.Count;
         var scaled = new ImageBox(
-            CreateContext(renderer, rasterizationScale: 2), _renderResources.Images,
+            CreateContext(_renderResources, renderer, rasterizationScale: 2), _renderResources.Images,
             source,
             "transition");
         try
@@ -1703,7 +1707,7 @@ public sealed class ImageBoxSvgRendererTests
             IntrinsicHeightDips: 1000,
             IntrinsicAspectRatio: 5));
         var image = new ImageBox(
-            CreateContext(renderer, rasterizationScale: 4), _renderResources.Images,
+            CreateContext(_renderResources, renderer, rasterizationScale: 4), _renderResources.Images,
             CreateSvgDataUri(Guid.NewGuid().ToString("N")),
             "large diagram");
 
@@ -1754,7 +1758,7 @@ public sealed class ImageBoxSvgRendererTests
             IntrinsicHeightDips: 1000,
             IntrinsicAspectRatio: 5));
         var image = new ImageBox(
-            CreateContext(renderer, rasterizationScale: 4), _renderResources.Images,
+            CreateContext(_renderResources, renderer, rasterizationScale: 4), _renderResources.Images,
             CreateSvgDataUri(Guid.NewGuid().ToString("N")),
             "partially rendered diagram");
 
@@ -1803,7 +1807,7 @@ public sealed class ImageBoxSvgRendererTests
             IntrinsicHeightDips: intrinsicHeight,
             IntrinsicAspectRatio: intrinsicWidth / intrinsicHeight));
         var image = new ImageBox(
-            CreateContext(renderer), _renderResources.Images,
+            CreateContext(_renderResources, renderer), _renderResources.Images,
             CreateSvgDataUri(Guid.NewGuid().ToString("N")),
             "extreme aspect ratio");
 
@@ -1845,7 +1849,7 @@ public sealed class ImageBoxSvgRendererTests
     {
         var unavailable = new ConcurrentQueue<MarkdownSvgFailureReason?>();
         var image = new ImageBox(
-            CreateContext(renderer: null, imageUnavailable: (_, _, svgReason) => unavailable.Enqueue(svgReason)), _renderResources.Images,
+            CreateContext(_renderResources, renderer: null, imageUnavailable: (_, _, svgReason) => unavailable.Enqueue(svgReason)), _renderResources.Images,
             CreateSvgDataUri("missing-provider"),
             "Unavailable diagram");
         try
@@ -1896,7 +1900,7 @@ public sealed class ImageBoxSvgRendererTests
         };
 
         AppDomain.CurrentDomain.FirstChanceException += handler;
-        var image = new ImageBox(CreateContext(renderer), _renderResources.Images, source, "Contributor avatars");
+        var image = new ImageBox(CreateContext(_renderResources, renderer), _renderResources.Images, source, "Contributor avatars");
         try
         {
             image.Measure(120);
@@ -1929,7 +1933,7 @@ public sealed class ImageBoxSvgRendererTests
             IntrinsicWidthDips: 64,
             IntrinsicHeightDips: 56,
             IntrinsicAspectRatio: 64d / 56d));
-        var image = new ImageBox(CreateContext(renderer), _renderResources.Images, source, "Organization avatar");
+        var image = new ImageBox(CreateContext(_renderResources, renderer), _renderResources.Images, source, "Organization avatar");
 
         try
         {
@@ -1963,7 +1967,7 @@ public sealed class ImageBoxSvgRendererTests
             ResolvedUri: new Uri(source),
             CacheKey: $"opencollective-transparent-{Guid.NewGuid():N}"));
         var image = new ImageBox(
-            CreateContext(renderer, imageResolver: resolver), _renderResources.Images,
+            CreateContext(_renderResources, renderer, imageResolver: resolver), _renderResources.Images,
             source,
             "Unoccupied organization slot");
 
@@ -1996,7 +2000,7 @@ public sealed class ImageBoxSvgRendererTests
             ResolvedUri: new Uri(source),
             CacheKey: string.Empty));
         var image = new ImageBox(
-            CreateContext(renderer: null, imageResolver: resolver), _renderResources.Images,
+            CreateContext(_renderResources, renderer: null, imageResolver: resolver), _renderResources.Images,
             source,
             "Private image");
         SharedCanvasBitmapCache.Lease? clipboardLease = null;
@@ -2030,7 +2034,7 @@ public sealed class ImageBoxSvgRendererTests
             png, "image/png", CacheKey: $"off-thread-{Guid.NewGuid():N}"));
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
         var image = new ImageBox(
-            CreateContext(renderer: null, imageResolver: resolver, performanceSession: session), _renderResources.Images,
+            CreateContext(_renderResources, renderer: null, imageResolver: resolver, performanceSession: session), _renderResources.Images,
             "https://example.test/visible.png",
             "Visible image");
 
@@ -2056,7 +2060,7 @@ public sealed class ImageBoxSvgRendererTests
         var resolver = new ThreadRecordingImageResolver(new MarkdownImageAsset(
             png, "image/png", CacheKey: $"caller-thread-{Guid.NewGuid():N}"));
         var image = new ImageBox(
-            CreateContext(renderer: null, imageResolver: resolver), _renderResources.Images,
+            CreateContext(_renderResources, renderer: null, imageResolver: resolver), _renderResources.Images,
             "https://example.test/default.png",
             "Default image");
 
@@ -2179,14 +2183,14 @@ public sealed class ImageBoxSvgRendererTests
             MaxConcurrentCpuPreparations = 1,
         });
 
-    private MarkdownLayoutContext CreateContext(
+    private static MarkdownLayoutContext CreateContext(
+        MarkdownRenderResources renderResources,
         IMarkdownSvgRenderer? renderer,
         double rasterizationScale = 1,
         IMarkdownImageResolver? imageResolver = null,
         Action<string, MarkdownImageUnavailableReason, MarkdownSvgFailureReason?>? imageUnavailable = null,
         MarkdownPerformanceSession? performanceSession = null,
-        object? performanceDocumentOwner = null,
-        MarkdownRenderResources? renderResources = null)
+        object? performanceDocumentOwner = null)
     {
         var body = new ElementStyle
         {
@@ -2217,7 +2221,7 @@ public sealed class ImageBoxSvgRendererTests
             FlowDirection.LeftToRight,
             language: "en-US")
         {
-            RenderResources = renderResources ?? _renderResources,
+            RenderResources = renderResources,
             ImageResolver = imageResolver,
             PerformanceSession = performanceSession,
             PerformanceDocumentOwner = performanceDocumentOwner,

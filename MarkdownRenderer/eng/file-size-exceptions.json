@@ -33,7 +33,7 @@
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/ImageBoxSvgRendererTests.cs",
-      "lines": 2826,
+      "lines": 2830,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
