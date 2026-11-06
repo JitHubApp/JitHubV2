@@ -33,8 +33,8 @@ public sealed class SvgHostAdmissionCoordinatorTests
                     Reserve(domain, identity, out _)));
 
             Assert.Null(Reserve(domain, identity, out long deniedVersion));
-            Assert.Equal(512, ReservedCount(domain));
-            Assert.Equal(0, OwnerCount(domain));
+            Assert.Equal(512, domain.Owners.ReservedOwnerSlotCount);
+            Assert.Equal(0, domain.Owners.OwnerCount);
             Task changed = domain.Owners.WaitForOwnerVersionChangeAsync(deniedVersion, CancellationToken.None);
             Assert.False(changed.IsCompleted);
 
@@ -42,7 +42,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
             slots[173].Dispose();
             await changed.WaitAsync(TimeSpan.FromSeconds(5));
 
-            Assert.Equal(511, ReservedCount(domain));
+            Assert.Equal(511, domain.Owners.ReservedOwnerSlotCount);
             using SvgHostOwnerSlot replacement =
                 Assert.IsType<SvgHostOwnerSlot>(
                     Reserve(domain, identity, out long admittedVersion));
@@ -54,8 +54,8 @@ public sealed class SvgHostAdmissionCoordinatorTests
             foreach (SvgHostOwnerSlot slot in slots)
                 slot.Dispose();
         }
-        Assert.Equal(0, ReservedCount(domain));
-        Assert.Equal(0, OwnerCount(domain));
+        Assert.Equal(0, domain.Owners.ReservedOwnerSlotCount);
+        Assert.Equal(0, domain.Owners.OwnerCount);
     }
 
     [Fact]
@@ -95,8 +95,8 @@ public sealed class SvgHostAdmissionCoordinatorTests
         var plan = new SvgTileRenderPlan(
             new RegistryDocument(), "registry-race", 2048, 2048, 1,
             demand, sourceReservationBytes: 128, ownerSlot: slot);
-        object domainGate = Field<object>(domain.Owners, "_gate");
-        object slotGate = Field<object>(slot, "_sync");
+        object domainGate = domain.Owners.Sync;
+        object slotGate = slot.Sync;
         Task commit;
         Task dispose;
         Monitor.Enter(domainGate);
@@ -121,10 +121,10 @@ public sealed class SvgHostAdmissionCoordinatorTests
         finally { Monitor.Exit(domainGate); }
 
         await Task.WhenAll(commit, dispose).WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Equal(0, OwnerCount(domain));
-        Assert.Equal(0, ReservedCount(domain));
+        Assert.Equal(0, domain.Owners.OwnerCount);
+        Assert.Equal(0, domain.Owners.ReservedOwnerSlotCount);
         slot.Dispose();
-        Assert.Equal(0, OwnerCount(domain));
+        Assert.Equal(0, domain.Owners.OwnerCount);
         GC.KeepAlive(owner);
         GC.KeepAlive(plan);
     }
@@ -139,7 +139,7 @@ public sealed class SvgHostAdmissionCoordinatorTests
             Assert.IsType<SvgHostOwnerSlot>(
                 Reserve(domain, new object(), out _));
         (WeakReference weak, object retained) = CommitWeakOwner(domain, slot, collectPlan);
-        Assert.Equal(1, OwnerCount(domain));
+        Assert.Equal(1, domain.Owners.OwnerCount);
         long observed = domain.Owners.OwnerVersion;
         Task changed = domain.Owners.WaitForOwnerVersionChangeAsync(observed, CancellationToken.None);
         Assert.False(changed.IsCompleted);
@@ -157,8 +157,8 @@ public sealed class SvgHostAdmissionCoordinatorTests
                 Reserve(domain, new object(), out _));
         await changed.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.True(domain.Owners.OwnerVersion > observed);
-        Assert.Equal(0, OwnerCount(domain));
-        Assert.Equal(1, ReservedCount(domain));
+        Assert.Equal(0, domain.Owners.OwnerCount);
+        Assert.Equal(1, domain.Owners.ReservedOwnerSlotCount);
         GC.KeepAlive(retained);
     }
 
@@ -178,8 +178,8 @@ public sealed class SvgHostAdmissionCoordinatorTests
         var plan = new SvgTileRenderPlan(new RegistryDocument(), "retired", 2048, 2048, 1);
         Assert.Throws<InvalidOperationException>(() => retired.Commit(owner, plan, demand, 128));
         retired.Dispose();
-        Assert.Equal(1, ReservedCount(domain));
-        Assert.Equal(0, OwnerCount(domain));
+        Assert.Equal(1, domain.Owners.ReservedOwnerSlotCount);
+        Assert.Equal(0, domain.Owners.OwnerCount);
         GC.KeepAlive(owner);
     }
 
@@ -220,8 +220,8 @@ public sealed class SvgHostAdmissionCoordinatorTests
                 slot.Dispose();
             long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
             Assert.Equal(0, allocated);
-            Assert.Equal(0, OwnerCount(domain));
-            Assert.Equal(0, ReservedCount(domain));
+            Assert.Equal(0, domain.Owners.OwnerCount);
+            Assert.Equal(0, domain.Owners.ReservedOwnerSlotCount);
         }
         finally
         {

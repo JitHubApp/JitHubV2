@@ -22,10 +22,12 @@ internal sealed class TestSvgHostDeferralHost : ISvgHostDeferralHost
 
     /// <summary>Creates a deferral over a fresh host in <paramref name="scope"/>.</summary>
     /// <param name="scope">The test's image scope.</param>
-    internal static SvgHostLoadDeferral CreateDeferral(ImageResourceScope scope)
+    /// <param name="retryQueue">The deferral's retry scheduler, or null for the built-in queues.</param>
+    internal static SvgHostLoadDeferral CreateDeferral(
+        ImageResourceScope scope, System.Func<System.Action, bool>? retryQueue = null)
     {
         var host = new TestSvgHostDeferralHost();
-        var deferral = new SvgHostLoadDeferral(host, scope);
+        var deferral = new SvgHostLoadDeferral(host, scope, retryQueue);
         Hosts.Add(deferral, host);
         return deferral;
     }

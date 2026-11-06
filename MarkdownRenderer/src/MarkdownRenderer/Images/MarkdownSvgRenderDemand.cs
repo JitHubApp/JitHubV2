@@ -134,6 +134,16 @@ public sealed class MarkdownSvgRenderDemand : IMarkdownImageActivationDemand
         get { lock (_gate) return _registrations?.Count ?? 0; }
     }
 
+    /// <summary>
+    /// The number of promotion registrations that count against
+    /// <see cref="MaximumPromotionRegistrations"/>: those waiting for promotion
+    /// plus those queued or running that have not yet been disposed or removed.
+    /// </summary>
+    internal int ActiveRegistrationCount
+    {
+        get { lock (_gate) return _activeRegistrations; }
+    }
+
     private sealed class PromotionRegistration(MarkdownSvgRenderDemand owner, Action callback) : IDisposable
     {
         private MarkdownSvgRenderDemand? _owner = owner;

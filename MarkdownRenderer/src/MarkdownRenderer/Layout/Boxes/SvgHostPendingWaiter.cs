@@ -14,6 +14,9 @@ internal sealed class SvgHostPendingWaiter(SvgHostAdmissionDomain domain, SvgHos
     private readonly object _identity = entry.Identity;
 
     internal object Identity => _identity;
+
+    /// <summary>The pending row this handle holds, or null once the handle is disposed.</summary>
+    internal SvgHostPendingEntry? Entry => Volatile.Read(ref _entry);
     internal bool IsFinished => Volatile.Read(ref _entry) is not { } currentEntry ||
         Volatile.Read(ref currentEntry.WaiterCompletionStarted) != 0;
 

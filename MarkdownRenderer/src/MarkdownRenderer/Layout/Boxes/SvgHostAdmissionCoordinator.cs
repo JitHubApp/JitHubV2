@@ -22,7 +22,7 @@ internal sealed class SvgHostAdmissionCoordinator
     {
         ArgumentNullException.ThrowIfNull(admissionDomain);
         ArgumentNullException.ThrowIfNull(demand);
-        SvgHostAdmissionDomain domain = _domains.GetValue(admissionDomain, static _ => new SvgHostAdmissionDomain());
+        SvgHostAdmissionDomain domain = GetDomain(admissionDomain);
         SvgHostOwnerSlot? slot = domain.Owners.TryReserveOwnerSlot(admissionDomain, out ownerVersionAtDenial);
         if (slot is not null)
             return slot;
@@ -50,8 +50,7 @@ internal sealed class SvgHostAdmissionCoordinator
         ArgumentNullException.ThrowIfNull(demand);
         if (requiredSourceReservationBytes <= 0)
             throw new ArgumentOutOfRangeException(nameof(requiredSourceReservationBytes));
-        object domainKey = admission.AdmissionDomain;
-        SvgHostAdmissionDomain domain = _domains.GetValue(domainKey, static _ => new SvgHostAdmissionDomain());
+        SvgHostAdmissionDomain domain = GetDomain(admission.AdmissionDomain);
         return domain.Defer(
             owner,
             admission,
@@ -68,7 +67,17 @@ internal sealed class SvgHostAdmissionCoordinator
     }
 
     internal long GetOwnerVersion(object admissionDomain) =>
-        _domains.GetValue(admissionDomain, static _ => new SvgHostAdmissionDomain()).Owners.GetOwnerVersion();
+        GetDomain(admissionDomain).Owners.GetOwnerVersion();
+
+    /// <summary>
+    /// The host-side admission state that this coordinator keeps for
+    /// <paramref name="admissionDomain"/>: the domain every reservation, denial
+    /// and owner-version read for that provider domain goes through. An empty
+    /// domain is created on first use and lives as long as the key.
+    /// </summary>
+    /// <param name="admissionDomain">A provider's admission domain key.</param>
+    internal SvgHostAdmissionDomain GetDomain(object admissionDomain) =>
+        _domains.GetValue(admissionDomain, static _ => new SvgHostAdmissionDomain());
 
     internal static void Touch(SvgTileRenderPlan plan) => plan.OwnerSlot?.Touch();
 }

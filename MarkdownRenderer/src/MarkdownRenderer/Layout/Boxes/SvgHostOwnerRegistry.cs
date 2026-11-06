@@ -28,6 +28,27 @@ internal sealed class SvgHostOwnerRegistry
         get { lock (_gate) return _ownerVersion; }
     }
 
+    /// <summary>The number of committed owners still published in the registry.</summary>
+    internal int OwnerCount
+    {
+        get { lock (_gate) return _owners.Count; }
+    }
+
+    /// <summary>
+    /// The number of reserved slots not yet committed or returned. Committed
+    /// owners plus reserved slots never exceed the domain's owner bound.
+    /// </summary>
+    internal int ReservedOwnerSlotCount
+    {
+        get { lock (_gate) return _reservedOwnerSlots; }
+    }
+
+    /// <summary>
+    /// The registry lock. A slot commit takes it inside the slot's own
+    /// <see cref="SvgHostOwnerSlot.Sync"/>, so this lock is always the inner one.
+    /// </summary>
+    internal object Sync => _gate;
+
     internal static int CompareParkCandidateOrder(
         int leftTier,
         long leftLastUse,
