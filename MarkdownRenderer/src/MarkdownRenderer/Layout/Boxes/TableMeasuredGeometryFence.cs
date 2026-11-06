@@ -52,7 +52,7 @@ internal static class TableMeasuredGeometryFence
         }
 
         if (table.ContentWidth > table.ViewportWidth + 0.5f)
-            totalHeight += TableBox.HorizontalScrollbarHeight;
+            totalHeight += HorizontalOverflowScrollbar.Height;
 
         if (!float.IsFinite(totalHeight) || table.Bounds.Height != totalHeight)
             return false;
