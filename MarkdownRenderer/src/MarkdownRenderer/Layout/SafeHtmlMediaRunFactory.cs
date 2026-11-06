@@ -84,7 +84,12 @@ internal static class SafeHtmlMediaRunFactory
             Convert.ToBase64String(Encoding.UTF8.GetBytes(svg));
     }
 
-    private static string CreateMediaPlaceholder(bool isVideo, string? mediaSource)
+    /// <summary>
+    /// The generic video or audio placeholder image. A non-blank source adds
+    /// a <c>media-</c> metadata identity of the first eight bytes of its UTF-8
+    /// SHA-256 digest; the source itself never appears in the image.
+    /// </summary>
+    internal static string CreateMediaPlaceholder(bool isVideo, string? mediaSource)
     {
         if (string.IsNullOrWhiteSpace(mediaSource))
             return isVideo ? VideoPlaceholder : AudioPlaceholder;

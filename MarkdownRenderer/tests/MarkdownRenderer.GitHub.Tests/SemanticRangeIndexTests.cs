@@ -215,30 +215,24 @@ public sealed class SemanticRangeIndexTests
     }
 
     [Fact]
-    public void PrivateCodeLinePayloadsRemainExactReadonlyValues()
+    public void CodeLinePayloadsRemainExactValues()
     {
-        Type logicalType = typeof(CodeLineInfo);
-        Type visualType = typeof(CodeVisualLineInfo);
-        Type diffType = typeof(CodeLineDiffKind);
-        object removed = Enum.Parse(diffType, "Removed");
-        AssertFields(logicalType, [37, 11, 19, removed, "line label"],
-            ["Number", "Start", "Length", "DiffKind", "Label"]);
-        AssertFields(visualType, [7, 12.5, 34.25], ["LogicalLineIndex", "Top", "Height"]);
+        var logical = new CodeLineInfo(37, 11, 19, CodeLineDiffKind.Removed, "line label");
+        Assert.Equal(37, logical.Number);
+        Assert.Equal(11, logical.Start);
+        Assert.Equal(19, logical.Length);
+        Assert.Equal(CodeLineDiffKind.Removed, logical.DiffKind);
+        Assert.Equal("line label", logical.Label);
 
-        static void AssertFields(Type type, object[] values, string[] names)
-        {
-            ConstructorInfo constructor = Assert.Single(type.GetConstructors(
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic));
-            object payload = constructor.Invoke(values);
-            Assert.Empty(type.GetProperties(BindingFlags.Instance | BindingFlags.Public));
-            for (int index = 0; index < values.Length; index++)
-            {
-                FieldInfo field = type.GetField(names[index], BindingFlags.Instance | BindingFlags.Public)!;
-                Assert.NotNull(field);
-                Assert.True(field.IsInitOnly);
-                Assert.Equal(values[index], field.GetValue(payload));
-            }
-        }
+        var visual = new CodeVisualLineInfo(7, 12.5, 34.25);
+        Assert.Equal(7, visual.LogicalLineIndex);
+        Assert.Equal(12.5, visual.Top);
+        Assert.Equal(34.25, visual.Height);
+
+        // The payloads stay plain field carriers: no public instance property
+        // wraps or recomputes a stored value.
+        Assert.Empty(typeof(CodeLineInfo).GetProperties(BindingFlags.Instance | BindingFlags.Public));
+        Assert.Empty(typeof(CodeVisualLineInfo).GetProperties(BindingFlags.Instance | BindingFlags.Public));
     }
 
     private static MarkdownSemanticNode LinearEnclosing(MarkdownSemanticNode root, int start, int end, int length)
