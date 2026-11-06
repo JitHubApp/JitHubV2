@@ -40,40 +40,8 @@ internal static class RasterIconHeaderReader
         List<IconPayloadRange> ranges = new(count);
         for (int index = 0; index < count; index++)
         {
-            int entryOffset = 6 + (index * 16);
-            int advertisedWidth = bytes[entryOffset] == 0 ? 256 : bytes[entryOffset];
-            int advertisedHeight = bytes[entryOffset + 1] == 0 ? 256 : bytes[entryOffset + 1];
-            uint payloadLengthValue = BinaryPrimitives.ReadUInt32LittleEndian(bytes[(entryOffset + 8)..]);
-            uint payloadOffsetValue = BinaryPrimitives.ReadUInt32LittleEndian(bytes[(entryOffset + 12)..]);
-            if (payloadLengthValue == 0 || payloadLengthValue > int.MaxValue ||
-                payloadOffsetValue > int.MaxValue)
-            {
-                return null;
-            }
-
-            int payloadLength = (int)payloadLengthValue;
-            int payloadOffset = (int)payloadOffsetValue;
-            if (payloadOffset < directoryLength || payloadOffset > bytes.Length - payloadLength)
-            {
-                return null;
-            }
-
-            var range = new IconPayloadRange(payloadOffset, payloadLength);
-            foreach (IconPayloadRange existing in ranges)
-            {
-                if (range.Offset < existing.End && existing.Offset < range.End)
-                {
-                    return null;
-                }
-            }
-
-            ranges.Add(range);
-            ReadOnlySpan<byte> payload = bytes.Slice(payloadOffset, payloadLength);
-            RasterImageHeader? nested = TryReadCompleteIconPng(payload) ?? TryReadIconDib(payload);
-            if (nested is null || nested.FrameCount != 1 ||
-                nested.Width != advertisedWidth || nested.Height != advertisedHeight ||
-                nested.Width <= 0 || nested.Height <= 0 ||
-                nested.Width > RasterImageResourceBudget.MaxDimension || nested.Height > RasterImageResourceBudget.MaxDimension)
+            RasterImageHeader? nested = TryReadEntry(bytes, 6 + (index * 16), directoryLength, ranges);
+            if (nested is null)
             {
                 return null;
             }
@@ -100,6 +68,55 @@ internal static class RasterIconHeaderReader
         }
 
         return new RasterImageHeader("ICO", maxWidth, maxHeight, count, totalPixels);
+    }
+
+    // Reads one 16-byte directory entry. Its payload must lie after the
+    // directory, overlap no earlier payload, and hold one PNG or DIB image of
+    // exactly the advertised size within the dimension budget.
+    private static RasterImageHeader? TryReadEntry(
+        ReadOnlySpan<byte> bytes,
+        int entryOffset,
+        int directoryLength,
+        List<IconPayloadRange> ranges)
+    {
+        int advertisedWidth = bytes[entryOffset] == 0 ? 256 : bytes[entryOffset];
+        int advertisedHeight = bytes[entryOffset + 1] == 0 ? 256 : bytes[entryOffset + 1];
+        uint payloadLengthValue = BinaryPrimitives.ReadUInt32LittleEndian(bytes[(entryOffset + 8)..]);
+        uint payloadOffsetValue = BinaryPrimitives.ReadUInt32LittleEndian(bytes[(entryOffset + 12)..]);
+        if (payloadLengthValue == 0 || payloadLengthValue > int.MaxValue ||
+            payloadOffsetValue > int.MaxValue)
+        {
+            return null;
+        }
+
+        int payloadLength = (int)payloadLengthValue;
+        int payloadOffset = (int)payloadOffsetValue;
+        if (payloadOffset < directoryLength || payloadOffset > bytes.Length - payloadLength)
+        {
+            return null;
+        }
+
+        var range = new IconPayloadRange(payloadOffset, payloadLength);
+        foreach (IconPayloadRange existing in ranges)
+        {
+            if (range.Offset < existing.End && existing.Offset < range.End)
+            {
+                return null;
+            }
+        }
+
+        ranges.Add(range);
+        ReadOnlySpan<byte> payload = bytes.Slice(payloadOffset, payloadLength);
+        RasterImageHeader? nested = TryReadCompleteIconPng(payload) ?? TryReadIconDib(payload);
+        if (nested is null || nested.FrameCount != 1 ||
+            nested.Width != advertisedWidth || nested.Height != advertisedHeight ||
+            nested.Width <= 0 || nested.Height <= 0 ||
+            nested.Width > RasterImageResourceBudget.MaxDimension || nested.Height > RasterImageResourceBudget.MaxDimension)
+        {
+            return null;
+        }
+
+        return nested;
     }
 
     private static RasterImageHeader? TryReadCompleteIconPng(ReadOnlySpan<byte> bytes)
@@ -168,43 +185,16 @@ internal static class RasterIconHeaderReader
         }
 
         int headerSize = (int)headerSizeValue;
-        int width;
-        int doubledHeight;
-        int bitsPerPixel;
-        int paletteEntryBytes;
-        uint colorsUsed = 0;
-        if (headerSize == 12)
+        if (!TryReadDibInfo(
+                bytes,
+                headerSize,
+                out int width,
+                out int doubledHeight,
+                out int bitsPerPixel,
+                out int paletteEntryBytes,
+                out uint colorsUsed))
         {
-            width = BinaryPrimitives.ReadUInt16LittleEndian(bytes[4..]);
-            doubledHeight = BinaryPrimitives.ReadUInt16LittleEndian(bytes[6..]);
-            bitsPerPixel = BinaryPrimitives.ReadUInt16LittleEndian(bytes[10..]);
-            paletteEntryBytes = 3;
-        }
-        else
-        {
-            if (headerSize < 40 || headerSize > bytes.Length)
-            {
-                return null;
-            }
-
-            int rawWidth = BinaryPrimitives.ReadInt32LittleEndian(bytes[4..]);
-            int rawDoubledHeight = BinaryPrimitives.ReadInt32LittleEndian(bytes[8..]);
-            if (rawWidth == int.MinValue || rawDoubledHeight == int.MinValue)
-            {
-                return null;
-            }
-
-            uint compression = BinaryPrimitives.ReadUInt32LittleEndian(bytes[16..]);
-            if (compression != 0)
-            {
-                return null;
-            }
-
-            width = Math.Abs(rawWidth);
-            doubledHeight = Math.Abs(rawDoubledHeight);
-            bitsPerPixel = BinaryPrimitives.ReadUInt16LittleEndian(bytes[14..]);
-            colorsUsed = BinaryPrimitives.ReadUInt32LittleEndian(bytes[32..]);
-            paletteEntryBytes = 4;
+            return null;
         }
 
         if (width <= 0 || doubledHeight <= 0 || (doubledHeight & 1) != 0 ||
@@ -236,6 +226,54 @@ internal static class RasterIconHeaderReader
         return requiredBytes <= bytes.Length
             ? new RasterImageHeader("ICO-DIB", width, height, 1)
             : null;
+    }
+
+    // Reads the size and palette fields of a BITMAPCOREHEADER (12 bytes) or
+    // an uncompressed BITMAPINFOHEADER or later (40 bytes or more).
+    private static bool TryReadDibInfo(
+        ReadOnlySpan<byte> bytes,
+        int headerSize,
+        out int width,
+        out int doubledHeight,
+        out int bitsPerPixel,
+        out int paletteEntryBytes,
+        out uint colorsUsed)
+    {
+        colorsUsed = 0;
+        if (headerSize == 12)
+        {
+            width = BinaryPrimitives.ReadUInt16LittleEndian(bytes[4..]);
+            doubledHeight = BinaryPrimitives.ReadUInt16LittleEndian(bytes[6..]);
+            bitsPerPixel = BinaryPrimitives.ReadUInt16LittleEndian(bytes[10..]);
+            paletteEntryBytes = 3;
+            return true;
+        }
+
+        width = doubledHeight = bitsPerPixel = paletteEntryBytes = 0;
+        if (headerSize < 40 || headerSize > bytes.Length)
+        {
+            return false;
+        }
+
+        int rawWidth = BinaryPrimitives.ReadInt32LittleEndian(bytes[4..]);
+        int rawDoubledHeight = BinaryPrimitives.ReadInt32LittleEndian(bytes[8..]);
+        if (rawWidth == int.MinValue || rawDoubledHeight == int.MinValue)
+        {
+            return false;
+        }
+
+        uint compression = BinaryPrimitives.ReadUInt32LittleEndian(bytes[16..]);
+        if (compression != 0)
+        {
+            return false;
+        }
+
+        width = Math.Abs(rawWidth);
+        doubledHeight = Math.Abs(rawDoubledHeight);
+        bitsPerPixel = BinaryPrimitives.ReadUInt16LittleEndian(bytes[14..]);
+        colorsUsed = BinaryPrimitives.ReadUInt32LittleEndian(bytes[32..]);
+        paletteEntryBytes = 4;
+        return true;
     }
 
     private readonly struct IconPayloadRange(int Offset, int Length)
