@@ -226,8 +226,29 @@ public static class GitHubReadmeVisualStyleProfiles
         const string mono = "Consolas";
         Windows.UI.Text.FontWeight semibold = new() { Weight = 600 };
 
-        var rules = new List<MarkdownStyleRule>
-        {
+        var rules = new List<MarkdownStyleRule>();
+        rules.AddRange(PrimerLightTextRules(sans, foreground, muted, link, semibold));
+        rules.AddRange(PrimerLightCodeRules(sans, mono, foreground, muted, codeSurface));
+        rules.AddRange(PrimerLightBlockRules(sans, foreground, surface, muted, border, semibold));
+
+        return new GitHubReadmeVisualStyleProfile(
+            id: "github-primer-light",
+            version: 1,
+            fingerprint: "af720fa86fc6902ba4984dbe7e41a3303a83f1359a4bf26c2dc3536d7147436e",
+            surfaceColor: surface,
+            accentColor: link,
+            styleSheet: new MarkdownStyleSheet(rules).WithPositiveAdjacentMarginCollapse());
+    }
+
+    /// <summary>The Primer Light v1 body, heading, link and emphasis rules, in stylesheet order.</summary>
+    private static MarkdownStyleRule[] PrimerLightTextRules(
+        string sans,
+        Color foreground,
+        Color muted,
+        Color link,
+        Windows.UI.Text.FontWeight semibold)
+        =>
+        [
             Rule(MarkdownStyleRole.Body, new ElementStyleOverride
             {
                 FontFamily = sans,
@@ -265,6 +286,17 @@ public static class GitHubReadmeVisualStyleProfiles
                 FontSize = 16,
                 Foreground = foreground,
             }),
+        ];
+
+    /// <summary>The Primer Light v1 inline code and code block rules, in stylesheet order.</summary>
+    private static MarkdownStyleRule[] PrimerLightCodeRules(
+        string sans,
+        string mono,
+        Color foreground,
+        Color muted,
+        Color codeSurface)
+        =>
+        [
             Rule(MarkdownStyleRole.InlineCode, new ElementStyleOverride
             {
                 FontFamily = mono,
@@ -313,6 +345,18 @@ public static class GitHubReadmeVisualStyleProfiles
                 FontSize = 12,
                 Foreground = muted,
             }),
+        ];
+
+    /// <summary>The Primer Light v1 quote, table, list and thematic break rules, in stylesheet order.</summary>
+    private static MarkdownStyleRule[] PrimerLightBlockRules(
+        string sans,
+        Color foreground,
+        Color surface,
+        Color muted,
+        Color border,
+        Windows.UI.Text.FontWeight semibold)
+        =>
+        [
             Rule(MarkdownStyleRole.Quote, new ElementStyleOverride
             {
                 FontFamily = sans,
@@ -364,16 +408,7 @@ public static class GitHubReadmeVisualStyleProfiles
                 Foreground = border,
                 Margin = new Thickness(0, 12, 0, 12),
             }),
-        };
-
-        return new GitHubReadmeVisualStyleProfile(
-            id: "github-primer-light",
-            version: 1,
-            fingerprint: "af720fa86fc6902ba4984dbe7e41a3303a83f1359a4bf26c2dc3536d7147436e",
-            surfaceColor: surface,
-            accentColor: link,
-            styleSheet: new MarkdownStyleSheet(rules).WithPositiveAdjacentMarginCollapse());
-    }
+        ];
 
     private static MarkdownStyleRule Rule(MarkdownStyleRole role, ElementStyleOverride style)
         => new(new MarkdownStyleSelector(role), style);

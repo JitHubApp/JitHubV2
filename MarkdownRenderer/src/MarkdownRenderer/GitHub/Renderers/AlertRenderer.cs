@@ -44,15 +44,7 @@ internal sealed class AlertRenderer : MarkdownNodeRenderer<QuoteBlock>
         GfmChildBuilder.FlattenInlines(firstPara.Inline, sb);
         string firstParaText = sb.ToString().TrimStart();
 
-        AlertKind? alertKind = null;
-        foreach (var kind in AlertKinds)
-        {
-            if (firstParaText.StartsWith(kind.Tag, StringComparison.OrdinalIgnoreCase))
-            {
-                alertKind = kind;
-                break;
-            }
-        }
+        AlertKind? alertKind = FindAlertKind(firstParaText);
         if (alertKind is null) return null;
 
         var alert = alertKind.Value;
@@ -72,7 +64,7 @@ internal sealed class AlertRenderer : MarkdownNodeRenderer<QuoteBlock>
             Margin = style.Margin,
             FlowDirection = context.FlowDirection,
         };
-        using var alertScoue = context.PushStyleContext(alert.StyleKey);
+        using var alertScope = context.PushStyleContext(alert.StyleKey);
 
         // Title row: icon + alert type name
         var titleBox = new InlineContainerBox(context, MarkdownElementKeys.Strong);
@@ -94,51 +86,7 @@ internal sealed class AlertRenderer : MarkdownNodeRenderer<QuoteBlock>
                 {
                     string remaining = firstParaText.Substring(alert.Tag.Length).TrimStart('\n', '\r', ' ');
                     if (!string.IsNullOrWhiteSpace(remaining))
-                    {
-                        // Compute a source span that excludes the [!TAG] prefix
-                        // so partial selections of the alert body copy the
-                        // correct markdown.  Walk forward in the original
-                        // source from the paragraph start, skipping the tag
-                        // text and any following whitespace.
-                        var sourceText = context.SourceMap.SourceText;
-                        int bodyStart = fp.Span.Start;
-                        int paraEnd = fp.Span.Start + fp.Span.Length;
-                        // Find the closing ']' of the [!TAG] marker.
-                        int close = -1;
-                        if (bodyStart >= 0 && bodyStart < sourceText.Length)
-                        {
-                            close = sourceText.IndexOf(']', bodyStart, Math.Max(0, paraEnd - bodyStart));
-                        }
-                        if (close >= 0)
-                        {
-                            bodyStart = close + 1;
-                            while (bodyStart < paraEnd && bodyStart < sourceText.Length
-                                && (sourceText[bodyStart] == ' ' || sourceText[bodyStart] == '\t'
-                                    || sourceText[bodyStart] == '\n' || sourceText[bodyStart] == '\r'))
-                            {
-                                bodyStart++;
-                            }
-                        }
-                        int bodyLen = Math.Max(0, paraEnd - bodyStart);
-
-                        var contentBox = new InlineContainerBox(context, MarkdownElementKeys.Body);
-                        contentBox.BlockIndex = context.NextBlockIndex();
-                        if (fp.Inline is not null && bodyLen > 0)
-                        {
-                            // Keep the body's links, emphasis, code and
-                            // entities; only the [!TAG] marker is dropped.
-                            GfmChildBuilder.AddInlinesFromSource(contentBox, fp.Inline, bodyStart);
-                        }
-                        else
-                        {
-                            contentBox.Add(new TextRun(remaining)
-                            {
-                                ElementKey = MarkdownElementKeys.Body,
-                                SourceSpan = new MarkdownRenderer.SourceSpan(bodyStart, bodyLen)
-                            });
-                        }
-                        stack.Add(contentBox);
-                    }
+                        stack.Add(BuildFirstParagraphBody(fp, remaining, context));
                 }
                 continue;
             }
@@ -148,5 +96,75 @@ internal sealed class AlertRenderer : MarkdownNodeRenderer<QuoteBlock>
         }
 
         return stack;
+    }
+
+    private static AlertKind? FindAlertKind(string firstParaText)
+    {
+        foreach (var kind in AlertKinds)
+        {
+            if (firstParaText.StartsWith(kind.Tag, StringComparison.OrdinalIgnoreCase))
+                return kind;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Builds the body of the alert's first paragraph: the text after the
+    /// <c>[!TAG]</c> marker, with a source span that excludes the marker.
+    /// </summary>
+    private static InlineContainerBox BuildFirstParagraphBody(
+        ParagraphBlock fp,
+        string remaining,
+        MarkdownLayoutContext context)
+    {
+        int bodyStart = FindBodyStart(context.SourceMap.SourceText, fp);
+        int paraEnd = fp.Span.Start + fp.Span.Length;
+        int bodyLen = Math.Max(0, paraEnd - bodyStart);
+
+        var contentBox = new InlineContainerBox(context, MarkdownElementKeys.Body);
+        contentBox.BlockIndex = context.NextBlockIndex();
+        if (fp.Inline is not null && bodyLen > 0)
+        {
+            // Keep the body's links, emphasis, code and
+            // entities; only the [!TAG] marker is dropped.
+            GfmChildBuilder.AddInlinesFromSource(contentBox, fp.Inline, bodyStart);
+        }
+        else
+        {
+            contentBox.Add(new TextRun(remaining)
+            {
+                ElementKey = MarkdownElementKeys.Body,
+                SourceSpan = new MarkdownRenderer.SourceSpan(bodyStart, bodyLen)
+            });
+        }
+        return contentBox;
+    }
+
+    /// <summary>
+    /// Finds where the alert body starts in the source, so partial selections
+    /// of the body copy the correct markdown. Walks forward from the paragraph
+    /// start past the closing <c>]</c> of the <c>[!TAG]</c> marker and any
+    /// whitespace after it.
+    /// </summary>
+    private static int FindBodyStart(string sourceText, ParagraphBlock fp)
+    {
+        int bodyStart = fp.Span.Start;
+        int paraEnd = fp.Span.Start + fp.Span.Length;
+        int close = -1;
+        if (bodyStart >= 0 && bodyStart < sourceText.Length)
+        {
+            close = sourceText.IndexOf(']', bodyStart, Math.Max(0, paraEnd - bodyStart));
+        }
+        if (close >= 0)
+        {
+            bodyStart = close + 1;
+            while (bodyStart < paraEnd && bodyStart < sourceText.Length
+                && (sourceText[bodyStart] == ' ' || sourceText[bodyStart] == '\t'
+                    || sourceText[bodyStart] == '\n' || sourceText[bodyStart] == '\r'))
+            {
+                bodyStart++;
+            }
+        }
+        return bodyStart;
     }
 }
