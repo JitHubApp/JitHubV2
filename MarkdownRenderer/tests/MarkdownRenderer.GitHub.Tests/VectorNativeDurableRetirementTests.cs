@@ -29,8 +29,7 @@ public sealed class VectorNativeDurableRetirementTests
         {
             NativeResourceRetirementRecord record = retirement.Reserve(
                 resourceGroupCount: 1,
-                temporarySlotCount: 0,
-                disposer: static value => value.Dispose());
+                temporarySlotCount: 0);
             record.SetGroup(0, [resource]);
             record.Publish();
         }
@@ -67,8 +66,7 @@ public sealed class VectorNativeDurableRetirementTests
             .ToArray();
         NativeResourceRetirementRecord record = retirement.Reserve(
             resourceGroupCount: 1,
-            temporarySlotCount: 0,
-            disposer: static value => value.Dispose());
+            temporarySlotCount: 0);
         var ownedResources = new IDisposable?[resources.Length];
         Array.Copy(resources, ownedResources, resources.Length);
         record.SetGroup(0, ownedResources);
@@ -92,11 +90,11 @@ public sealed class VectorNativeDurableRetirementTests
     [Fact]
     public void MixedRetirementCompactsNullsQuarantinesNonretryableSlotsAndReleasesCompletedSlots()
     {
-        var retirement = new NativeResourceRetirement(createTimer: false);
+        var disposer = new ControlledRetryDisposer();
+        var retirement = new NativeResourceRetirement(createTimer: false, disposer.Dispose);
         WeakReference<ProbeResource> retryable = PublishMixedRetryAndQuarantineRecord(
             retirement,
             out WeakReference<ProbeResource> quarantined,
-            out var disposer,
             out long compactResourceCount);
 
         // Only the non-null retryable resource is scheduled. The non-retryable
@@ -134,19 +132,16 @@ public sealed class VectorNativeDurableRetirementTests
     private static WeakReference<ProbeResource> PublishMixedRetryAndQuarantineRecord(
         NativeResourceRetirement retirement,
         out WeakReference<ProbeResource> quarantinedReference,
-        out ControlledRetryDisposer disposer,
         out long compactResourceCount)
     {
         var retryable = new ProbeResource();
         var quarantined = new ProbeResource();
         var retryableReference = new WeakReference<ProbeResource>(retryable);
         quarantinedReference = new WeakReference<ProbeResource>(quarantined);
-        disposer = new ControlledRetryDisposer();
 
         NativeResourceRetirementRecord record = retirement.Reserve(
             resourceGroupCount: 2,
-            temporarySlotCount: 2,
-            disposer: disposer.Dispose);
+            temporarySlotCount: 2);
         record.SetGroup(0, [null, retryable, null]);
         record.SetGroup(1, [null, quarantined, null], retryable: false);
         record.SetTemporary(0, null);
@@ -189,20 +184,19 @@ public sealed class VectorNativeDurableRetirementTests
     [Fact]
     public async Task RetryQueueAllowsOnlyOneNativeDrainAtATime()
     {
-        var retirement = new NativeResourceRetirement(createTimer: false);
         using var entered = new ManualResetEventSlim();
         using var release = new ManualResetEventSlim();
+        var retirement = new NativeResourceRetirement(createTimer: false, value =>
+        {
+            entered.Set();
+            if (!release.Wait(TimeSpan.FromSeconds(10)))
+                throw new TimeoutException("The native-disposal gate was not released.");
+            value.Dispose();
+        });
         var resource = new ProbeResource();
         NativeResourceRetirementRecord record = retirement.Reserve(
             resourceGroupCount: 1,
-            temporarySlotCount: 0,
-            disposer: value =>
-            {
-                entered.Set();
-                if (!release.Wait(TimeSpan.FromSeconds(10)))
-                    throw new TimeoutException("The native-disposal gate was not released.");
-                value.Dispose();
-            });
+            temporarySlotCount: 0);
         record.SetGroup(0, [resource]);
         record.Publish();
 
@@ -239,12 +233,12 @@ public sealed class VectorNativeDurableRetirementTests
     [Fact]
     public void EagerConstructorFailureTransfersPartialPrefixWithoutReturningDrawing()
     {
-        var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new NativeDisposalProbe();
         disposer.FailPersistentlyOnFirst<CanvasGeometry>();
+        var retirement = new NativeResourceRetirement(createTimer: false, disposer.Dispose);
 
         WeakReference<MarkdownVectorScene> scene = CreateEagerPartialPrefixFailure(
-            retirement, disposer, out WeakReference<FailAtDeviceRequestCreator> creator);
+            retirement, out WeakReference<FailAtDeviceRequestCreator> creator);
 
         Assert.Equal(1, retirement.PendingRecordCount);
         Assert.True(retirement.PendingResourceCount >= 1);
@@ -308,12 +302,12 @@ public sealed class VectorNativeDurableRetirementTests
         Func<MarkdownVectorScene> sceneFactory)
         where TResource : class, IDisposable
     {
-        var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new NativeDisposalProbe();
         disposer.FailPersistentlyOnFirst<TResource>();
+        var retirement = new NativeResourceRetirement(createTimer: false, disposer.Dispose);
 
         WeakReference<MarkdownVectorScene> scene = CreateAndRetireDrawing(
-            sceneFactory, retirement, disposer, eager: false,
+            sceneFactory, retirement, eager: false,
             out WeakReference<TestResourceCreator> creator);
         Assert.Equal(1, retirement.PendingRecordCount);
         Assert.Equal(1, retirement.PendingResourceCount);
@@ -354,7 +348,6 @@ public sealed class VectorNativeDurableRetirementTests
     private static WeakReference<MarkdownVectorScene> CreateAndRetireDrawing(
         Func<MarkdownVectorScene> sceneFactory,
         NativeResourceRetirement retirement,
-        NativeDisposalProbe disposer,
         bool eager,
         out WeakReference<TestResourceCreator> creatorReference)
     {
@@ -368,8 +361,7 @@ public sealed class VectorNativeDurableRetirementTests
             CancellationToken.None,
             new MarkdownRenderResources(),
             deferNativeResources: !eager,
-            nativeRetirement: retirement,
-            nativeDisposer: disposer.Dispose);
+            nativeRetirement: retirement);
         try
         {
             drawing.PrepareNativeResources(CancellationToken.None);
@@ -396,7 +388,6 @@ public sealed class VectorNativeDurableRetirementTests
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static WeakReference<MarkdownVectorScene> CreateEagerPartialPrefixFailure(
         NativeResourceRetirement retirement,
-        NativeDisposalProbe disposer,
         out WeakReference<FailAtDeviceRequestCreator> creatorReference)
     {
         MarkdownVectorScene scene = CreateTwoPathScene();
@@ -410,8 +401,7 @@ public sealed class VectorNativeDurableRetirementTests
             CancellationToken.None,
             new MarkdownRenderResources(),
             deferNativeResources: false,
-            nativeRetirement: retirement,
-            nativeDisposer: disposer.Dispose));
+            nativeRetirement: retirement));
 
         return sceneReference;
     }

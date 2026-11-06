@@ -14,10 +14,9 @@ public sealed class NativePaintSessionResourceTests
     {
         using var target = CreateTarget();
         using CanvasDrawingSession drawing = target.CreateDrawingSession();
-        var retirement = new NativeResourceRetirement(createTimer: false);
-        var sessions = new NativePaintSessionResources(retirement);
         var disposal = new DisposalProbe();
-        sessions.RegisterTestOwner(drawing, retirement, disposal.Dispose);
+        var retirement = new NativeResourceRetirement(createTimer: false, disposal.Dispose);
+        var sessions = new NativePaintSessionResources(retirement);
 
         NativePaintSessionResources.LayerLease outer = sessions.CreateLayer(
             drawing, 1f, new Rect(0, 0, 96, 96));
@@ -38,10 +37,9 @@ public sealed class NativePaintSessionResourceTests
     {
         using var target = CreateTarget();
         using CanvasDrawingSession drawing = target.CreateDrawingSession();
-        var retirement = new NativeResourceRetirement(createTimer: false);
-        var sessions = new NativePaintSessionResources(retirement);
         var disposal = new DisposalProbe();
-        sessions.RegisterTestOwner(drawing, retirement, disposal.Dispose);
+        var retirement = new NativeResourceRetirement(createTimer: false, disposal.Dispose);
+        var sessions = new NativePaintSessionResources(retirement);
 
         NativePaintSessionResources.LayerLease outer = sessions.CreateLayer(
             drawing, 1f, new Rect(0, 0, 96, 96));
@@ -92,10 +90,9 @@ public sealed class NativePaintSessionResourceTests
     {
         using var target = CreateTarget();
         using CanvasDrawingSession drawing = target.CreateDrawingSession();
-        var retirement = new NativeResourceRetirement(createTimer: false);
-        var sessions = new NativePaintSessionResources(retirement);
         var disposal = new DisposalProbe();
-        sessions.RegisterTestOwner(drawing, retirement, disposal.Dispose);
+        var retirement = new NativeResourceRetirement(createTimer: false, disposal.Dispose);
+        var sessions = new NativePaintSessionResources(retirement);
 
         NativePaintSessionResources.LayerLease outer = sessions.CreateLayer(
             drawing, 1f, new Rect(0, 0, 96, 96));
@@ -155,10 +152,9 @@ public sealed class NativePaintSessionResourceTests
     {
         using var target = CreateTarget();
         using CanvasDrawingSession drawing = target.CreateDrawingSession();
-        var retirement = new NativeResourceRetirement(createTimer: false);
-        var sessions = new NativePaintSessionResources(retirement);
         var disposal = new DisposalProbe();
-        sessions.RegisterTestOwner(drawing, retirement, disposal.Dispose);
+        var retirement = new NativeResourceRetirement(createTimer: false, disposal.Dispose);
+        var sessions = new NativePaintSessionResources(retirement);
 
         NativePaintSessionResources.LayerLease outer = sessions.CreateLayer(
             drawing, 1f, new Rect(0, 0, 96, 96));
@@ -189,10 +185,9 @@ public sealed class NativePaintSessionResourceTests
     {
         using var target = CreateTarget();
         using CanvasDrawingSession drawing = target.CreateDrawingSession();
-        var retirement = new NativeResourceRetirement(createTimer: false);
-        var sessions = new NativePaintSessionResources(retirement);
         var disposal = new DisposalProbe { FailAfterClosingNextLayer = true };
-        sessions.RegisterTestOwner(drawing, retirement, disposal.Dispose);
+        var retirement = new NativeResourceRetirement(createTimer: false, disposal.Dispose);
+        var sessions = new NativePaintSessionResources(retirement);
 
         NativePaintSessionResources.LayerLease layer = sessions.CreateLayer(
             drawing, 1f, new Rect(0, 0, 64, 64));
@@ -211,10 +206,9 @@ public sealed class NativePaintSessionResourceTests
     {
         using var target = CreateTarget();
         using CanvasDrawingSession drawing = target.CreateDrawingSession();
-        var retirement = new NativeResourceRetirement(createTimer: false);
-        var sessions = new NativePaintSessionResources(retirement);
         var disposal = new DisposalProbe { FailNextGeometry = true };
-        sessions.RegisterTestOwner(drawing, retirement, disposal.Dispose);
+        var retirement = new NativeResourceRetirement(createTimer: false, disposal.Dispose);
+        var sessions = new NativePaintSessionResources(retirement);
 
         NativePaintSessionResources.AuxiliaryLease geometryOwner = sessions.ReserveAuxiliary(drawing);
         CanvasGeometry geometry = CanvasGeometry.CreateRoundedRectangle(target, new Rect(0, 0, 64, 64), 6, 6);
@@ -243,7 +237,6 @@ public sealed class NativePaintSessionResourceTests
         using CanvasDrawingSession drawing = target.CreateDrawingSession();
         var retirement = new NativeResourceRetirement(createTimer: false);
         var sessions = new NativePaintSessionResources(retirement);
-        sessions.RegisterTestOwner(drawing, retirement);
 
         NativePaintSessionResources.LayerLease oldLease = sessions.CreateLayer(
             drawing, 1f, new Rect(0, 0, 64, 64));
@@ -267,10 +260,9 @@ public sealed class NativePaintSessionResourceTests
     {
         using var target = CreateTarget();
         using CanvasDrawingSession drawing = target.CreateDrawingSession();
-        var retirement = new NativeResourceRetirement(createTimer: false);
-        var sessions = new NativePaintSessionResources(retirement);
         var disposal = new DisposalProbe();
-        sessions.RegisterTestOwner(drawing, retirement, disposal.Dispose);
+        var retirement = new NativeResourceRetirement(createTimer: false, disposal.Dispose);
+        var sessions = new NativePaintSessionResources(retirement);
 
         NativePaintSessionResources.AuxiliaryLease oldLease = sessions.ReserveAuxiliary(drawing);
         oldLease.Attach(CanvasGeometry.CreateRoundedRectangle(target, new Rect(0, 0, 32, 32), 3, 3));
@@ -303,10 +295,9 @@ public sealed class NativePaintSessionResourceTests
         using var otherTarget = CreateTarget();
         using CanvasDrawingSession ownerSession = target.CreateDrawingSession();
         using CanvasDrawingSession otherSession = otherTarget.CreateDrawingSession();
-        var retirement = new NativeResourceRetirement(createTimer: false);
-        var sessions = new NativePaintSessionResources(retirement);
         var disposal = new DisposalProbe();
-        sessions.RegisterTestOwner(ownerSession, retirement, disposal.Dispose);
+        var retirement = new NativeResourceRetirement(createTimer: false, disposal.Dispose);
+        var sessions = new NativePaintSessionResources(retirement);
 
         NativePaintSessionResources.AuxiliaryLease owner = sessions.ReserveAuxiliary(ownerSession);
         CanvasGeometry geometry = CanvasGeometry.CreateRoundedRectangle(target, new Rect(0, 0, 64, 64), 4, 4);
@@ -328,7 +319,6 @@ public sealed class NativePaintSessionResourceTests
         using CanvasDrawingSession drawing = target.CreateDrawingSession();
         var retirement = new NativeResourceRetirement(createTimer: false);
         var sessions = new NativePaintSessionResources(retirement);
-        sessions.RegisterTestOwner(drawing, retirement);
         const int iterations = 512;
         const int sampleCount = 5;
         Rect clip = new(0, 0, 64, 64);
@@ -405,14 +395,12 @@ public sealed class NativePaintSessionResourceTests
     {
         using var target = CreateTarget();
         using CanvasDrawingSession drawing = target.CreateDrawingSession();
-        var retirement = new NativeResourceRetirement(createTimer: false);
-        var sessions = new NativePaintSessionResources(retirement);
         var disposal = new DisposalProbe();
-        sessions.RegisterTestOwner(
-            drawing,
+        var retirement = new NativeResourceRetirement(createTimer: false, disposal.Dispose);
+        NativePaintSessionResources? sessions = null;
+        sessions = new NativePaintSessionResources(
             retirement,
-            disposal.Dispose,
-            afterLayerReservation: () => sessions.PoisonSession(drawing));
+            afterLayerReservation: () => sessions!.PoisonSession(drawing));
 
         CanvasActiveLayer? quarantinedLayer = null;
         try

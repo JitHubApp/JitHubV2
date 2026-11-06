@@ -40,8 +40,7 @@ internal static class InlineIntrinsicWidthMeasurer
                 CanvasHorizontalAlignment.Left);
             layoutRetirementRecord = box.NativeRetirement.Reserve(
                 resourceGroupCount: 0,
-                temporarySlotCount: 1,
-                disposer: box.NativeDisposer);
+                temporarySlotCount: 1);
             layout = CanvasTextLayoutFactory.Create(
                 box.Context.ResourceCreator,
                 box.LayoutBuffer,

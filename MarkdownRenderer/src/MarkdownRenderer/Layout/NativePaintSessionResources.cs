@@ -15,21 +15,35 @@ namespace MarkdownRenderer.Layout;
 /// its drawing session has returned.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Each <see cref="MarkdownRenderResources"/> owns one instance, so the
 /// sessions its documents paint into are tracked with its native
-/// retirement owner.
+/// retirement owner, whose disposal seam closes their resources.
+/// </para>
+/// <para>
+/// An instance may be created with a hook that runs between a layer's
+/// custody reservation and the native layer factory. Native-lifetime tests
+/// use it to fail or poison a session at that boundary; production owners
+/// have none.
+/// </para>
 /// </remarks>
 internal sealed class NativePaintSessionResources
 {
     private readonly ConditionalWeakTable<CanvasDrawingSession, NativePaintSessionState> _sessions = new();
     private readonly NativeResourceRetirement _retirement;
+    private readonly Action? _afterLayerReservation;
 
     /// <summary>Creates paint-session tracking that retires through <paramref name="retirement"/>.</summary>
     /// <param name="retirement">The owner of failed paint resources.</param>
-    internal NativePaintSessionResources(NativeResourceRetirement retirement)
+    /// <param name="afterLayerReservation">
+    /// Runs after each layer's custody is reserved and before Win2D creates
+    /// the layer, or <see langword="null"/> for none.
+    /// </param>
+    internal NativePaintSessionResources(NativeResourceRetirement retirement, Action? afterLayerReservation = null)
     {
         ArgumentNullException.ThrowIfNull(retirement);
         _retirement = retirement;
+        _afterLayerReservation = afterLayerReservation;
     }
 
     internal LayerLease CreateLayer(CanvasDrawingSession drawingSession, float opacity, Windows.Foundation.Rect clip)
@@ -40,7 +54,7 @@ internal sealed class NativePaintSessionResources
         CanvasActiveLayer layer;
         try
         {
-            state.RunTestAfterLayerReservation();
+            _afterLayerReservation?.Invoke();
             layer = drawingSession.CreateLayer(opacity, clip);
         }
         catch
@@ -91,7 +105,7 @@ internal sealed class NativePaintSessionResources
         CanvasActiveLayer layer;
         try
         {
-            state.RunTestAfterLayerReservation();
+            _afterLayerReservation?.Invoke();
             layer = drawingSession.CreateLayer(opacity, clip);
         }
         catch
@@ -119,21 +133,6 @@ internal sealed class NativePaintSessionResources
         return GetState(drawingSession).ReserveAuxiliary();
     }
 
-    // Isolated tests inject a timerless owner and native fault plan before a
-    // real Win2D drawing session is used. Production never supplies callbacks.
-    internal void RegisterTestOwner(
-        CanvasDrawingSession drawingSession,
-        NativeResourceRetirement retirement,
-        Action<IDisposable>? disposer = null,
-        Action? afterLayerReservation = null)
-    {
-        ArgumentNullException.ThrowIfNull(drawingSession);
-        ArgumentNullException.ThrowIfNull(retirement);
-        if (!retirement.AllowsTestDisposer && (disposer is not null || afterLayerReservation is not null))
-            throw new ArgumentException("Paint-resource fault injection requires an isolated retirement owner.", nameof(retirement));
-        _sessions.Add(drawingSession, new NativePaintSessionState(retirement, disposer, afterLayerReservation));
-    }
-
     /// <summary>
     /// Poison an already-tracked session after another native active-layer
     /// stack failed. This path never allocates a state/CWT entry or invokes a
@@ -149,7 +148,7 @@ internal sealed class NativePaintSessionResources
     private NativePaintSessionState GetState(CanvasDrawingSession drawingSession) =>
         _sessions.GetOrAdd(
             drawingSession,
-            static (_, retirement) => new NativePaintSessionState(retirement, null, null),
+            static (_, retirement) => new NativePaintSessionState(retirement),
             _retirement);
 
     /// <summary>A stack-only token; stale copies cannot close a reused node.</summary>

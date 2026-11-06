@@ -281,8 +281,8 @@ public sealed class VectorNativeResourceAdmissionTests
     public void ReversibleReleaseRefundsOnlyAfterEveryNativeSlotCloses()
     {
         using var device = new CanvasDevice(forceSoftwareRenderer: false);
-        var retirement = new NativeResourceRetirement(createTimer: false);
         var faultPlan = new GeometryDisposeFaultPlan(failures: 1);
+        var retirement = new NativeResourceRetirement(createTimer: false, faultPlan.Dispose);
         MarkdownVectorScene scene = PathScene();
         long weight = VectorSceneDrawing.EstimateNativeResourceWeightUnits(scene, CancellationToken.None);
         var admission = new VectorNativeResourceAdmission(weight, weight);
@@ -293,7 +293,6 @@ public sealed class VectorNativeResourceAdmissionTests
             _renderResources,
             deferNativeResources: true,
             nativeRetirement: retirement,
-            nativeDisposer: faultPlan.Dispose,
             nativeAdmission: admission);
 
         Assert.True(drawing.TryPrepareNativeResources(CancellationToken.None, out _));
@@ -340,8 +339,8 @@ public sealed class VectorNativeResourceAdmissionTests
     public void TerminalRetirementKeepsCreditUntilDurableOwnerCompletes()
     {
         using var device = new CanvasDevice(forceSoftwareRenderer: false);
-        var retirement = new NativeResourceRetirement(createTimer: false);
         var faultPlan = new GeometryDisposeFaultPlan(failures: 1);
+        var retirement = new NativeResourceRetirement(createTimer: false, faultPlan.Dispose);
         MarkdownVectorScene scene = PathScene();
         long weight = VectorSceneDrawing.EstimateNativeResourceWeightUnits(scene, CancellationToken.None);
         var admission = new VectorNativeResourceAdmission(weight, weight);
@@ -352,7 +351,6 @@ public sealed class VectorNativeResourceAdmissionTests
             _renderResources,
             deferNativeResources: true,
             nativeRetirement: retirement,
-            nativeDisposer: faultPlan.Dispose,
             nativeAdmission: admission);
 
         Assert.True(drawing.TryPrepareNativeResources(CancellationToken.None, out _));
@@ -373,7 +371,6 @@ public sealed class VectorNativeResourceAdmissionTests
         using var device = new CanvasDevice(forceSoftwareRenderer: true);
         using var target = new CanvasRenderTarget(device, 24, 24, 96);
         using CanvasDrawingSession session = target.CreateDrawingSession();
-        var retirement = new NativeResourceRetirement(createTimer: false);
         MarkdownVectorScene scene = new(24, 24, 24,
         [
             MarkdownVectorCommand.BeginClip(Path(0)),
@@ -386,6 +383,15 @@ public sealed class VectorNativeResourceAdmissionTests
         var observer = new DelegateObserver(_ => Interlocked.Increment(ref capacityWakeCount));
         using IDisposable registration = admission.RegisterCapacityObserver(observer);
         int activeLayerDisposeAttempts = 0;
+        var retirement = new NativeResourceRetirement(createTimer: false, resource =>
+        {
+            if (resource is CanvasActiveLayer)
+            {
+                Interlocked.Increment(ref activeLayerDisposeAttempts);
+                throw new InvalidOperationException("Injected uncertain active clip pop.");
+            }
+            resource.Dispose();
+        });
         var drawing = new VectorSceneDrawing(
             device,
             scene,
@@ -393,18 +399,8 @@ public sealed class VectorNativeResourceAdmissionTests
             _renderResources,
             deferNativeResources: true,
             nativeRetirement: retirement,
-            nativeDisposer: resource =>
-            {
-                if (resource is CanvasActiveLayer)
-                {
-                    Interlocked.Increment(ref activeLayerDisposeAttempts);
-                    throw new InvalidOperationException("Injected uncertain active clip pop.");
-                }
-                resource.Dispose();
-            },
+            clipLayerFactory: static (drawingSession, geometry) => drawingSession.CreateLayer(1f, geometry),
             nativeAdmission: admission);
-        drawing.UseClipLayerFactory(static (drawingSession, geometry) =>
-            drawingSession.CreateLayer(1f, geometry));
 
         Assert.True(drawing.TryPrepareNativeResources(CancellationToken.None, out _));
         Assert.Equal(weight, admission.ReservedWeightUnits);

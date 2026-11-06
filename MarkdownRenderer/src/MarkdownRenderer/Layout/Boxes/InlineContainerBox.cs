@@ -97,8 +97,6 @@ internal sealed class InlineContainerBox : BlockBox
     internal IReadOnlyList<CodeBlockHighlightSpan> ForegroundSpans => _foregroundSpans;
     private readonly NativeResourceRetirement _nativeRetirement;
     internal NativeResourceRetirement NativeRetirement => _nativeRetirement;
-    private readonly Action<IDisposable>? _nativeDisposer;
-    internal Action<IDisposable>? NativeDisposer => _nativeDisposer;
 
     /// <summary>
     /// Run currently being hovered by the pointer.  Retained for hit-test /
@@ -158,19 +156,17 @@ internal sealed class InlineContainerBox : BlockBox
     }
 
     public InlineContainerBox(MarkdownLayoutContext context, string elementKey)
-        : this(context, elementKey, null, null)
+        : this(context, elementKey, null)
     {
     }
 
     internal InlineContainerBox(
         MarkdownLayoutContext context,
         string elementKey,
-        NativeResourceRetirement? nativeRetirement,
-        Action<IDisposable>? nativeDisposer)
+        NativeResourceRetirement? nativeRetirement)
     {
         Context = context;
         _nativeRetirement = nativeRetirement ?? context.RenderResources.NativeRetirement;
-        _nativeDisposer = nativeDisposer;
         // BuildLazy scopes the context hint only while constructing boxes.
         // Later offscreen measurements still need to retain their scalar
         // geometry handoff, so capture the mode on the box itself.
@@ -194,7 +190,6 @@ internal sealed class InlineContainerBox : BlockBox
     {
         Context = context;
         _nativeRetirement = source._nativeRetirement;
-        _nativeDisposer = source._nativeDisposer;
         // BuildLazy's construction hint is scoped on the shared context. Its
         // current value may already have been restored when a placement clone
         // is captured; the source box holds the authoritative lifetime mode.

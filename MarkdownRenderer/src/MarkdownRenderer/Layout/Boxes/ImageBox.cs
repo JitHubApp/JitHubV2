@@ -82,7 +82,7 @@ internal sealed class ImageBox : BlockBox, ISelectionBackgroundGeometrySource, I
         string alt,
         SafeHtmlLength? requestedWidth = null,
         SafeHtmlLength? requestedHeight = null)
-        : this(context, resources, url, alt, requestedWidth, requestedHeight, context.RenderResources.NativeRetirement, null, null)
+        : this(context, resources, url, alt, requestedWidth, requestedHeight, context.RenderResources.NativeRetirement)
     {
     }
 
@@ -91,9 +91,8 @@ internal sealed class ImageBox : BlockBox, ISelectionBackgroundGeometrySource, I
         string url,
         string alt,
         NativeResourceRetirement nativeRetirement,
-        Action<IDisposable>? nativeDisposer = null,
         Action<CanvasTextLayout>? nativeLayoutOptionsSetter = null)
-        : this(context, resources, url, alt, null, null, nativeRetirement, nativeDisposer, nativeLayoutOptionsSetter)
+        : this(context, resources, url, alt, null, null, nativeRetirement, nativeLayoutOptionsSetter)
     {
     }
 
@@ -104,16 +103,15 @@ internal sealed class ImageBox : BlockBox, ISelectionBackgroundGeometrySource, I
         SafeHtmlLength? requestedWidth,
         SafeHtmlLength? requestedHeight,
         NativeResourceRetirement nativeRetirement,
-        Action<IDisposable>? nativeDisposer = null,
         Action<CanvasTextLayout>? nativeLayoutOptionsSetter = null)
         : this(
-            ValidateNativeFaultPlan(context, nativeRetirement, nativeDisposer, nativeLayoutOptionsSetter),
+            ValidateNativeCustody(context, nativeRetirement),
             resources ?? throw new ArgumentNullException(nameof(resources)),
             url ?? string.Empty,
             alt ?? string.Empty,
             requestedWidth,
             requestedHeight,
-            box => new ImageMeasureCustody(box, context, nativeRetirement, nativeDisposer, nativeLayoutOptionsSetter))
+            box => new ImageMeasureCustody(box, context, nativeRetirement, nativeLayoutOptionsSetter))
     {
         BuiltInSource = MarkdownBuiltInImageSourcePolicy.TryResolve(
             Url,
@@ -264,17 +262,12 @@ internal sealed class ImageBox : BlockBox, ISelectionBackgroundGeometrySource, I
         _cloner = new ImagePlacementCloner(this, PlacementEligibility);
     }
 
-    private static MarkdownLayoutContext ValidateNativeFaultPlan(
+    private static MarkdownLayoutContext ValidateNativeCustody(
         MarkdownLayoutContext context,
-        NativeResourceRetirement nativeRetirement,
-        Action<IDisposable>? nativeDisposer,
-        Action<CanvasTextLayout>? nativeLayoutOptionsSetter)
+        NativeResourceRetirement nativeRetirement)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(nativeRetirement);
-        if ((nativeDisposer is not null || nativeLayoutOptionsSetter is not null) &&
-            !nativeRetirement.AllowsTestDisposer)
-            throw new ArgumentException("Native fault plans require an isolated retirement owner.", nameof(nativeRetirement));
         return context;
     }
 

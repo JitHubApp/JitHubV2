@@ -10,10 +10,18 @@ namespace MarkdownRenderer.Layout;
 /// This bounds retry service work, not aggregate native memory or backlog.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Each <see cref="MarkdownRenderResources"/> owns one instance with a retry
 /// clock. While retryable records are pending the armed clock roots its
 /// owner, so their retries continue after the engine that created them is
 /// gone; quarantined records live as long as the owner.
+/// </para>
+/// <para>
+/// The owner's disposal seam decides how every record it reserves closes a
+/// native slot. Owners built by <see cref="MarkdownRenderResources"/> close
+/// slots directly; native-lifetime tests construct an owner with a fault
+/// plan instead, so a fault plan is part of an owner from its creation.
+/// </para>
 /// </remarks>
 internal sealed class NativeResourceRetirement
 {
@@ -21,6 +29,7 @@ internal sealed class NativeResourceRetirement
     private const int MaximumSlotsPerPass = 128;
     private readonly object _gate = new();
     private readonly Timer? _timer;
+    private readonly Action<IDisposable>? _disposer;
     private NativeResourceRetirementRecord? _head;
     private NativeResourceRetirementRecord? _tail;
     private NativeResourceRetirementRecord? _quarantine;
@@ -32,11 +41,21 @@ internal sealed class NativeResourceRetirement
     private long _publicationVersion;
     private int _lastClockFailureHResult;
 
-    // Production owners create their recovery clock when they are
-    // constructed, before any participating factory, so a timer is never
-    // first allocated on an already-failing cleanup path.
-    internal NativeResourceRetirement(bool createTimer)
+    /// <summary>Creates a retirement owner.</summary>
+    /// <param name="createTimer">
+    /// Whether retries run on the owner's own clock. Production owners create
+    /// it here, before any participating factory, so a timer is never first
+    /// allocated on an already-failing cleanup path. A timerless owner retries
+    /// only when <see cref="DrainOnce"/> is called.
+    /// </param>
+    /// <param name="disposer">
+    /// How this owner's records close native slots, or <see langword="null"/>
+    /// to call <see cref="IDisposable.Dispose"/>. A quarantined record stops
+    /// using it.
+    /// </param>
+    internal NativeResourceRetirement(bool createTimer, Action<IDisposable>? disposer = null)
     {
+        _disposer = disposer;
         if (createTimer)
         {
             _timer = new Timer(static owner => ((NativeResourceRetirement)owner!).DrainOnce(),
@@ -59,23 +78,19 @@ internal sealed class NativeResourceRetirement
         get { lock (_gate) return _quarantinedResourceCount; }
     }
 
-    internal bool AllowsTestDisposer => _timer is null;
+    /// <summary>The disposal seam this owner was created with, if any.</summary>
+    internal Action<IDisposable>? Disposer => _disposer;
 
     internal NativeResourceRetirementRecord Reserve(
         int resourceGroupCount = 4,
-        int temporarySlotCount = 2,
-        Action<IDisposable>? disposer = null)
+        int temporarySlotCount = 2)
     {
-        // Arbitrary callback targets never enter process-owned production
-        // custody. Fault plans are confined to an isolated timerless test owner.
-        if (disposer is not null && !AllowsTestDisposer)
-            throw new ArgumentException("Native disposal fault plans require an isolated retirement owner.", nameof(disposer));
         lock (_gate)
         {
             if (_head is not null && _lastClockFailureHResult != 0)
                 ScheduleNoLock();
         }
-        return new(this, resourceGroupCount, temporarySlotCount, disposer);
+        return new(this, resourceGroupCount, temporarySlotCount, _disposer);
     }
 
     internal void Publish(NativeResourceRetirementRecord record)
@@ -111,7 +126,7 @@ internal sealed class NativeResourceRetirement
     /// <summary>
     /// One non-overlapping, background retry quantum. Native Dispose is never
     /// called under the registry gate; reentrant publishers cannot deadlock it.
-    /// Tests use an isolated clock-free owner and invoke this deterministically.
+    /// A timerless owner is drained only by explicit calls to this method.
     /// </summary>
     internal bool DrainOnce()
     {

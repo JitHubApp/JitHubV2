@@ -295,8 +295,7 @@ public sealed class NeutralSelectionLayoutCacheTests(ITestOutputHelper output)
         var box = new InlineContainerBox(
             context,
             MarkdownElementKeys.Body,
-            retirement,
-            static resource => resource.Dispose())
+            retirement)
         {
             BlockIndex = context.NextBlockIndex(),
             UseContainerMargin = false,

@@ -14,20 +14,17 @@ internal sealed class ImageMeasureCustody
     private readonly IImageMeasureHost _host;
     private readonly MarkdownLayoutContext _context;
     private readonly NativeResourceRetirement _nativeRetirement;
-    private readonly Action<IDisposable>? _nativeDisposer;
     private readonly Action<CanvasTextLayout>? _nativeLayoutOptionsSetter;
 
     internal ImageMeasureCustody(
         IImageMeasureHost host,
         MarkdownLayoutContext context,
         NativeResourceRetirement nativeRetirement,
-        Action<IDisposable>? nativeDisposer,
         Action<CanvasTextLayout>? nativeLayoutOptionsSetter)
     {
         _host = host;
         _context = context;
         _nativeRetirement = nativeRetirement;
-        _nativeDisposer = nativeDisposer;
         _nativeLayoutOptionsSetter = nativeLayoutOptionsSetter;
     }
 
@@ -50,9 +47,9 @@ internal sealed class ImageMeasureCustody
     internal NativeResourceRetirementRecord? OriginalCaptionRecord;
     internal int NativeLayoutGeneration;
 
-    /// <summary>A custody for a clone, sharing this one's retirement owner and fault plan.</summary>
+    /// <summary>A custody for a clone, sharing this one's retirement owner and layout-options hook.</summary>
     internal ImageMeasureCustody CreateForClone(IImageMeasureHost host, MarkdownLayoutContext context) =>
-        new(host, context, _nativeRetirement, _nativeDisposer, _nativeLayoutOptionsSetter);
+        new(host, context, _nativeRetirement, _nativeLayoutOptionsSetter);
 
     /// <summary>One consistent read of the layouts and their retirement records.</summary>
     internal ImageTextLayoutState GetLayoutState()
@@ -228,7 +225,7 @@ internal sealed class ImageMeasureCustody
     }
 
     internal NativeResourceRetirementRecord ReserveNativeLayoutRetirementRecord() =>
-        _nativeRetirement.Reserve(0, 1, _nativeDisposer);
+        _nativeRetirement.Reserve(0, 1);
 
     internal CanvasTextLayout CreateOwnedTextLayout(
         string text,
@@ -250,8 +247,8 @@ internal sealed class ImageMeasureCustody
                 height,
                 _context.LayoutDiagnostics);
             reserved.SetTemporary(0, layout);
-            if (_nativeLayoutOptionsSetter is { } testSetter)
-                testSetter(layout);
+            if (_nativeLayoutOptionsSetter is { } optionsSetter)
+                optionsSetter(layout);
             else
                 layout.Options = CanvasDrawTextOptions.EnableColorFont;
             retirementRecord = reserved;

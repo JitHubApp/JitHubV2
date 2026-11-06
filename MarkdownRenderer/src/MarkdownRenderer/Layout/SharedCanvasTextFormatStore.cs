@@ -11,8 +11,8 @@ namespace MarkdownRenderer.Layout;
 /// Bounded LRU store of immutable CanvasTextFormat descriptors with native
 /// retirement custody. Each <see cref="MarkdownRenderResources"/> owns one
 /// production instance; isolated instances back deterministic native-lifetime
-/// tests. Fault hooks are accepted only with a timerless retirement owner, so
-/// a production store never holds arbitrary delegates.
+/// tests. Native formats close through the retirement owner's disposal seam,
+/// and optional construction hooks fail the store at fixed boundaries.
 /// </summary>
 internal sealed class SharedCanvasTextFormatStore
 {
@@ -32,13 +32,6 @@ internal sealed class SharedCanvasTextFormatStore
         SharedCanvasTextFormatStoreHooks? hooks = null)
     {
         ArgumentNullException.ThrowIfNull(retirement);
-        if (hooks is not null && hooks.InjectsFaults && !retirement.AllowsTestDisposer)
-        {
-            throw new ArgumentException(
-                "Text-format fault injection requires an isolated timerless retirement owner.",
-                nameof(retirement));
-        }
-
         _retirement = retirement;
         _hooks = hooks;
         _cache = new WeightedLruCache<TextFormatKey, SharedCanvasTextFormatEntry>(
@@ -128,8 +121,7 @@ internal sealed class SharedCanvasTextFormatStore
         Interlocked.Increment(ref _recordReservationCount);
         NativeResourceRetirementRecord retirementRecord = _retirement.Reserve(
             resourceGroupCount: 0,
-            temporarySlotCount: 1,
-            disposer: _hooks?.NativeDisposer);
+            temporarySlotCount: 1);
         CanvasTextFormat? format = null;
         SharedCanvasTextFormatEntry? entry = null;
         SharedCanvasTextFormatCache.Lease? lease = null;

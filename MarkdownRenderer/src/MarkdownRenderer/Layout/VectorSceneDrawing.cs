@@ -33,7 +33,6 @@ internal sealed class VectorSceneDrawing : IDisposable
     private volatile VectorNativePreparationStatus _nativePreparationStatus;
     private long _nativeResourceWeightUnits;
     private VectorNativePreparationOutcome _preparationOutcome;
-    private Action<IDisposable>? _nativeDisposer;
     private Func<CanvasDrawingSession, CanvasGeometry, CanvasActiveLayer>? _clipLayerFactory;
     private MarkdownVectorScene? _scene;
     private readonly string? _hostFontFamily;
@@ -63,7 +62,7 @@ internal sealed class VectorSceneDrawing : IDisposable
         ,
         bool deferNativeResources = false,
         NativeResourceRetirement? nativeRetirement = null,
-        Action<IDisposable>? nativeDisposer = null,
+        Func<CanvasDrawingSession, CanvasGeometry, CanvasActiveLayer>? clipLayerFactory = null,
         VectorNativeResourceAdmission? nativeAdmission = null)
     {
         _resourceCreator = resourceCreator ?? throw new ArgumentNullException(nameof(resourceCreator));
@@ -72,11 +71,9 @@ internal sealed class VectorSceneDrawing : IDisposable
         _hostFontFamily = hostFontFamily;
         _primitives = new VectorScenePrimitivePainter(this);
         _commandPainter = new VectorSceneCommandPainter(this);
-        if (nativeDisposer is not null && nativeRetirement?.AllowsTestDisposer != true)
-            throw new ArgumentException("Native disposal fault plans require an isolated retirement owner.", nameof(nativeDisposer));
         _nativeRetirementOwner = nativeRetirement;
         _nativeAdmission = nativeAdmission;
-        _nativeDisposer = nativeDisposer;
+        _clipLayerFactory = clipLayerFactory;
         _layoutDiagnostics = layoutDiagnostics;
 
         if (nativeAdmission is not null && !deferNativeResources)
@@ -126,20 +123,6 @@ internal sealed class VectorSceneDrawing : IDisposable
     internal VectorNativeResourceAdmission? NativeAdmission => _nativeAdmission;
 
     internal VectorNativePreparationOutcome PreparationOutcome => _preparationOutcome;
-
-    /// <summary>
-    /// Replaces the clip-layer factory used by BeginClip. This is a native
-    /// fault-injection seam: it is accepted only when the drawing owns an
-    /// isolated timerless retirement owner, never on the shared production one.
-    /// </summary>
-    internal void UseClipLayerFactory(Func<CanvasDrawingSession, CanvasGeometry, CanvasActiveLayer> factory)
-    {
-        ArgumentNullException.ThrowIfNull(factory);
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_nativeRetirementOwner?.AllowsTestDisposer != true)
-            throw new InvalidOperationException("Native clip factory fault plans require an isolated retirement owner.");
-        _clipLayerFactory = factory;
-    }
 
     /// <summary>
     /// Drops the immutable command graph after reversible native resources have
@@ -243,7 +226,7 @@ internal sealed class VectorSceneDrawing : IDisposable
             if (_nativeRetirement is null)
             {
                 _nativeRetirement = (_nativeRetirementOwner ?? _renderResources.NativeRetirement)
-                    .Reserve(disposer: _nativeDisposer);
+                    .Reserve();
                 retirementRecordCreated = true;
             }
 
@@ -549,7 +532,6 @@ internal sealed class VectorSceneDrawing : IDisposable
         {
             _scene = null;
             _resourceCreator = null;
-            _nativeDisposer = null;
             _clipLayerFactory = null;
             _disposed = true;
             // Reversible release retains slots on the drawing. Terminal
@@ -595,7 +577,12 @@ internal sealed class VectorSceneDrawing : IDisposable
 
     internal VectorScenePrimitivePainter Primitives => _primitives;
 
-    /// <summary>Clip-layer factory installed by <see cref="UseClipLayerFactory"/>, if any.</summary>
+    /// <summary>
+    /// The clip-layer factory BeginClip uses instead of
+    /// <see cref="CanvasDrawingSession.CreateLayer(float, CanvasGeometry)"/>, if
+    /// the drawing was created with one. Native-lifetime tests use it to fail a
+    /// push at a known depth.
+    /// </summary>
     internal Func<CanvasDrawingSession, CanvasGeometry, CanvasActiveLayer>? ClipLayerFactory => _clipLayerFactory;
 
     internal static long EstimateNativeResourceWeightUnits(

@@ -22,8 +22,8 @@ public sealed class DetachedFallbackDurableRetirementTests
     [Fact]
     public void CanceledUnadoptedFallbackRemainsRootedUntilNativeDisposeRetrySucceeds()
     {
-        var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new LayoutDisposalProbe(failCanvasTextLayout: true);
+        var retirement = new NativeResourceRetirement(createTimer: false, disposer.Dispose);
         using var canceled = new CancellationTokenSource();
         WeakReference<CanvasTextLayout>? candidateReference = null;
         (VectorSceneBox box, LayoutSnapshot snapshot, WeakReference<MarkdownVectorScene> scene) =
@@ -44,8 +44,7 @@ public sealed class DetachedFallbackDurableRetirementTests
                         return layout;
                     },
                     replaceExisting: true,
-                    nativeRetirement: retirement,
-                    nativeDisposer: disposer.Dispose));
+                    nativeRetirement: retirement));
 
             Assert.Contains(failure.Flatten().InnerExceptions, exception => exception is OperationCanceledException);
             Assert.Contains(failure.Flatten().InnerExceptions, exception => exception is InvalidOperationException);
@@ -77,8 +76,8 @@ public sealed class DetachedFallbackDurableRetirementTests
     [Fact]
     public void TerminalBoxDisposalPublishesAdoptedFallbackBeforeReleasingOwner()
     {
-        var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new LayoutDisposalProbe(failCanvasTextLayout: true);
+        var retirement = new NativeResourceRetirement(createTimer: false, disposer.Dispose);
         (WeakReference<VectorSceneBox> boxReference, WeakReference<MarkdownVectorScene> scene) =
             CreateAndRetireAdoptedFallback(retirement, disposer);
 
@@ -110,8 +109,7 @@ public sealed class DetachedFallbackDurableRetirementTests
             Assert.True(box.PrepareDetachedFallback(
                 CancellationToken.None,
                 MarkdownDetachedSceneFallback.Create,
-                nativeRetirement: retirement,
-                nativeDisposer: disposer.Dispose));
+                nativeRetirement: retirement));
             Assert.True(box.HasDetachedFallback);
             Assert.Empty(disposer.Layouts);
             InvalidOperationException failure = Assert.Throws<InvalidOperationException>(box.Dispose);

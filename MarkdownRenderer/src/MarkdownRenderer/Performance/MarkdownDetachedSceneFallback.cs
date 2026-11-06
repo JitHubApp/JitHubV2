@@ -21,8 +21,7 @@ internal static class MarkdownDetachedSceneFallback
         CancellationToken cancellationToken,
         Func<VectorSceneBox, CancellationToken, CanvasTextLayout?> factory,
         bool replaceExisting = false,
-        NativeResourceRetirement? nativeRetirement = null,
-        Action<IDisposable>? nativeDisposer = null)
+        NativeResourceRetirement? nativeRetirement = null)
     {
         ArgumentNullException.ThrowIfNull(factory);
         ObjectDisposedException.ThrowIf(box.IsDisposed, box);
@@ -44,7 +43,7 @@ internal static class MarkdownDetachedSceneFallback
             return box.PrepareCapacityFallback(cancellationToken);
         }
 
-        return PrepareFactoryFallback(box, cancellationToken, factory, nativeRetirement, nativeDisposer);
+        return PrepareFactoryFallback(box, cancellationToken, factory, nativeRetirement);
     }
 
     /// <summary>The legacy factory path: one box-owned native text layout per detached box.</summary>
@@ -52,16 +51,14 @@ internal static class MarkdownDetachedSceneFallback
         VectorSceneBox box,
         CancellationToken cancellationToken,
         Func<VectorSceneBox, CancellationToken, CanvasTextLayout?> factory,
-        NativeResourceRetirement? nativeRetirement,
-        Action<IDisposable>? nativeDisposer)
+        NativeResourceRetirement? nativeRetirement)
     {
         // Reserve custody before invoking either the built-in or a supplied
         // factory. If native cleanup fails, this record can be published
         // without allocating a retirement queue node on the failure path.
         NativeResourceRetirementRecord retirement = (nativeRetirement ?? box.LayoutContext.RenderResources.NativeRetirement).Reserve(
             resourceGroupCount: 0,
-            temporarySlotCount: 1,
-            disposer: nativeDisposer);
+            temporarySlotCount: 1);
         if (!box.TryBeginDetachedFallbackCandidate(retirement))
         {
             retirement.Publish();

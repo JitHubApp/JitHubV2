@@ -80,6 +80,17 @@ public sealed class EngineRenderResourceOwnershipTests
     }
 
     [Fact]
+    public void ProductionOwnersCloseNativeSlotsWithoutAFaultPlan()
+    {
+        using MarkdownEngine built = new MarkdownEngineBuilder().Build();
+
+        Assert.Null(built.RenderResources.NativeRetirement.Disposer);
+        Assert.Null(MarkdownEngine.Default.RenderResources.NativeRetirement.Disposer);
+        Assert.Null(GfmMarkdownRenderer.SharedEngine.RenderResources.NativeRetirement.Disposer);
+        Assert.Null(new MarkdownRenderResources().NativeRetirement.Disposer);
+    }
+
+    [Fact]
     public void ContextsWithoutAnEngineAreIsolatedAndPlacementCandidatesKeepTheSourceOwner()
     {
         MarkdownLayoutContext first = CreateContext();

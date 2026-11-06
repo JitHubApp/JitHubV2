@@ -378,7 +378,10 @@ public sealed class ImageBoxSvgRendererTests
     public async Task TileClipFactoryFailureRestoresDrawingModeAndDoesNotQueueRendering(CanvasAntialiasing antialiasing)
     {
         var renderer = new RecordingSvgRenderer(new MarkdownSvgDocumentInfo(20_000, 8, 2500));
-        var image = new ImageBox(CreateContext(renderer), _renderResources.Images,
+        var retirement = new NativeResourceRetirement(createTimer: false);
+        var injected = new InvalidOperationException("injected tile clip factory failure");
+        var resources = new MarkdownRenderResources(retirement, afterPaintLayerReservation: () => throw injected);
+        var image = new ImageBox(CreateContext(renderer, renderResources: resources), resources.Images,
             CreateSvgDataUri(Guid.NewGuid().ToString("N")), string.Empty);
         try
         {
@@ -386,13 +389,9 @@ public sealed class ImageBoxSvgRendererTests
             await WaitForLoadAsync(image);
             image.Measure(20_000);
             image.Arrange(0, 0, 20_000);
-            var retirement = new NativeResourceRetirement(createTimer: false);
             using var target = new CanvasRenderTarget(CanvasDevice.GetSharedDevice(), 64, 8, 96);
             using CanvasDrawingSession drawing = target.CreateDrawingSession();
             drawing.Antialiasing = antialiasing;
-            var injected = new InvalidOperationException("injected tile clip factory failure");
-            _renderResources.PaintSessions.RegisterTestOwner(drawing, retirement,
-                afterLayerReservation: () => throw injected);
             Rect destination = image.AutomationRenderDestination;
             Assert.Same(injected, Assert.Throws<InvalidOperationException>(() =>
                 image.Paint(drawing, new Rect(destination.X, destination.Y, 64, 8))));
@@ -2186,7 +2185,8 @@ public sealed class ImageBoxSvgRendererTests
         IMarkdownImageResolver? imageResolver = null,
         Action<string, MarkdownImageUnavailableReason, MarkdownSvgFailureReason?>? imageUnavailable = null,
         MarkdownPerformanceSession? performanceSession = null,
-        object? performanceDocumentOwner = null)
+        object? performanceDocumentOwner = null,
+        MarkdownRenderResources? renderResources = null)
     {
         var body = new ElementStyle
         {
@@ -2217,7 +2217,7 @@ public sealed class ImageBoxSvgRendererTests
             FlowDirection.LeftToRight,
             language: "en-US")
         {
-            RenderResources = _renderResources,
+            RenderResources = renderResources ?? _renderResources,
             ImageResolver = imageResolver,
             PerformanceSession = performanceSession,
             PerformanceDocumentOwner = performanceDocumentOwner,

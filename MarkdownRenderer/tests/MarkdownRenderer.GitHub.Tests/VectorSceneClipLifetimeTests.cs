@@ -25,7 +25,6 @@ public sealed class VectorSceneClipLifetimeTests
     {
         using var device = new CanvasDevice(forceSoftwareRenderer: true);
         using var target = new CanvasRenderTarget(device, 20, 20, 96);
-        var retirement = new NativeResourceRetirement(createTimer: false);
         var scene = new MarkdownVectorScene(20, 20, 20,
         [
             MarkdownVectorCommand.BeginClip(RectanglePath(0, 0, 18, 18)),
@@ -37,22 +36,22 @@ public sealed class VectorSceneClipLifetimeTests
         var failure = new InvalidOperationException("Injected failed native pop before Close.");
         var attempts = new List<CanvasActiveLayer>();
         var geometryDisposalAttempts = new List<CanvasGeometry>();
+        var retirement = new NativeResourceRetirement(createTimer: false, resource =>
+        {
+            if (resource is CanvasGeometry geometry)
+                geometryDisposalAttempts.Add(geometry);
+            if (resource is CanvasActiveLayer layer)
+            {
+                attempts.Add(layer);
+                // Leave the native stack open, unlike a throw-after-close
+                // fixture. Production cannot assume a failed Pop succeeded.
+                throw failure;
+            }
+            resource.Dispose();
+        });
         using var drawing = new VectorSceneDrawing(device, scene, CancellationToken.None,
             _renderResources,
-            nativeRetirement: retirement,
-            nativeDisposer: resource =>
-            {
-                if (resource is CanvasGeometry geometry)
-                    geometryDisposalAttempts.Add(geometry);
-                if (resource is CanvasActiveLayer layer)
-                {
-                    attempts.Add(layer);
-                    // Leave the native stack open, unlike a throw-after-close
-                    // fixture. Production cannot assume a failed Pop succeeded.
-                    throw failure;
-                }
-                resource.Dispose();
-            });
+            nativeRetirement: retirement);
         FieldInfo clipStackField = typeof(VectorSceneDrawing)
             .GetField("_clipStack", BindingFlags.Instance | BindingFlags.NonPublic)!;
         FieldInfo geometryField = typeof(VectorSceneDrawing)
@@ -127,19 +126,19 @@ public sealed class VectorSceneClipLifetimeTests
         using var device = new CanvasDevice(forceSoftwareRenderer: true);
         using var target = new CanvasRenderTarget(device, 24, 24, 96);
         using CanvasDrawingSession session = target.CreateDrawingSession();
-        var retirement = new NativeResourceRetirement(createTimer: false);
-        var helperDisposalAttempts = new List<CanvasActiveLayer>();
-        _renderResources.PaintSessions.RegisterTestOwner(
-            session,
-            retirement,
-            resource =>
-            {
-                if (resource is CanvasActiveLayer layer)
-                    helperDisposalAttempts.Add(layer);
-                resource.Dispose();
-            });
+        var layerDisposalAttempts = new List<CanvasActiveLayer>();
+        var geometryDisposalAttempts = new List<CanvasGeometry>();
+        var retirement = new NativeResourceRetirement(createTimer: false, resource =>
+        {
+            if (resource is CanvasActiveLayer layer)
+                layerDisposalAttempts.Add(layer);
+            if (resource is CanvasGeometry geometry)
+                geometryDisposalAttempts.Add(geometry);
+            resource.Dispose();
+        });
+        var resources = new MarkdownRenderResources(retirement);
 
-        NativePaintSessionResources.LayerLease helperOuterLease = _renderResources.PaintSessions.CreateLayer(
+        NativePaintSessionResources.LayerLease helperOuterLease = resources.PaintSessions.CreateLayer(
             session,
             1f,
             new Rect(0, 0, 24, 24));
@@ -152,32 +151,21 @@ public sealed class VectorSceneClipLifetimeTests
             MarkdownVectorCommand.EndClip(),
             MarkdownVectorCommand.EndClip(),
         ]);
-        var vectorDisposalAttempts = new List<CanvasActiveLayer>();
-        var geometryDisposalAttempts = new List<CanvasGeometry>();
         var createdVectorLayers = new List<CanvasActiveLayer>();
         var factoryFailure = new InvalidOperationException("Injected failure after native partial push.");
         using var drawing = new VectorSceneDrawing(
             device,
             scene,
             CancellationToken.None,
-            _renderResources,
-            nativeRetirement: retirement,
-            nativeDisposer: resource =>
+            resources,
+            clipLayerFactory: (drawingSession, geometry) =>
             {
-                if (resource is CanvasGeometry geometry)
-                    geometryDisposalAttempts.Add(geometry);
-                if (resource is CanvasActiveLayer layer)
-                    vectorDisposalAttempts.Add(layer);
-                resource.Dispose();
+                CanvasActiveLayer layer = drawingSession.CreateLayer(1f, geometry);
+                createdVectorLayers.Add(layer);
+                if (createdVectorLayers.Count == 2)
+                    throw factoryFailure;
+                return layer;
             });
-        drawing.UseClipLayerFactory((drawingSession, geometry) =>
-        {
-            CanvasActiveLayer layer = drawingSession.CreateLayer(1f, geometry);
-            createdVectorLayers.Add(layer);
-            if (createdVectorLayers.Count == 2)
-                throw factoryFailure;
-            return layer;
-        });
 
         FieldInfo clipStackField = typeof(VectorSceneDrawing)
             .GetField("_clipStack", BindingFlags.Instance | BindingFlags.NonPublic)!;
@@ -206,14 +194,12 @@ public sealed class VectorSceneClipLifetimeTests
             Assert.Equal(2, vectorSlots.Length);
             Assert.Same(createdVectorLayers[0], vectorSlots[0]);
             Assert.Null(vectorSlots[1]);
-            Assert.Empty(vectorDisposalAttempts);
-            Assert.Empty(helperDisposalAttempts);
+            Assert.Empty(layerDisposalAttempts);
             Assert.Empty(geometryDisposalAttempts);
             Assert.False(drawing.IsPrepared);
             Assert.Throws<InvalidOperationException>(() => drawing.PrepareNativeResources(CancellationToken.None));
             Assert.Throws<InvalidOperationException>(() => drawing.ReleaseNativeResources());
-            Assert.Empty(vectorDisposalAttempts);
-            Assert.Empty(helperDisposalAttempts);
+            Assert.Empty(layerDisposalAttempts);
             Assert.Empty(geometryDisposalAttempts);
             Assert.Null(helperOuterLease.Layer);
             Assert.Equal(1, retirement.QuarantinedResourceCount);
@@ -225,8 +211,7 @@ public sealed class VectorSceneClipLifetimeTests
             CanvasActiveLayer[] borrowedVectorLayers = createdVectorLayers.ToArray();
             Assert.Throws<InvalidOperationException>(() => drawing.Dispose());
             Assert.Equal(original, session.Transform);
-            Assert.Empty(vectorDisposalAttempts);
-            Assert.Empty(helperDisposalAttempts);
+            Assert.Empty(layerDisposalAttempts);
             Assert.Equal(2, borrowedGeometries.Length);
             Assert.Equal(4, retirement.QuarantinedResourceCount);
             Assert.Equal(0, retirement.PendingResourceCount);
@@ -235,8 +220,7 @@ public sealed class VectorSceneClipLifetimeTests
             Assert.Empty(geometryDisposalAttempts);
             Assert.False(retirement.DrainOnce());
             Assert.Equal(4, retirement.QuarantinedResourceCount);
-            Assert.Empty(vectorDisposalAttempts);
-            Assert.Empty(helperDisposalAttempts);
+            Assert.Empty(layerDisposalAttempts);
             Assert.Empty(geometryDisposalAttempts);
 
             // The injected factory is known to have left exactly these layers
@@ -273,19 +257,19 @@ public sealed class VectorSceneClipLifetimeTests
         using var device = new CanvasDevice(forceSoftwareRenderer: true);
         using var target = new CanvasRenderTarget(device, 24, 24, 96);
         using CanvasDrawingSession session = target.CreateDrawingSession();
-        var retirement = new NativeResourceRetirement(createTimer: false);
-        var helperDisposalAttempts = new List<CanvasActiveLayer>();
-        _renderResources.PaintSessions.RegisterTestOwner(
-            session,
-            retirement,
-            resource =>
-            {
-                if (resource is CanvasActiveLayer layer)
-                    helperDisposalAttempts.Add(layer);
-                resource.Dispose();
-            });
+        var layerDisposalAttempts = new List<CanvasActiveLayer>();
+        var geometryDisposalAttempts = new List<CanvasGeometry>();
+        var retirement = new NativeResourceRetirement(createTimer: false, resource =>
+        {
+            if (resource is CanvasActiveLayer layer)
+                layerDisposalAttempts.Add(layer);
+            if (resource is CanvasGeometry geometry)
+                geometryDisposalAttempts.Add(geometry);
+            resource.Dispose();
+        });
+        var resources = new MarkdownRenderResources(retirement);
 
-        NativePaintSessionResources.LayerLease helperOuterLease = _renderResources.PaintSessions.CreateLayer(
+        NativePaintSessionResources.LayerLease helperOuterLease = resources.PaintSessions.CreateLayer(
             session,
             1f,
             new Rect(0, 0, 24, 24));
@@ -296,30 +280,19 @@ public sealed class VectorSceneClipLifetimeTests
             MarkdownVectorCommand.FillRectangle(new MarkdownVectorRectangle(0, 0, 24, 24), 0xFFFF0000),
             MarkdownVectorCommand.EndClip(),
         ]);
-        var vectorDisposalAttempts = new List<CanvasActiveLayer>();
-        var geometryDisposalAttempts = new List<CanvasGeometry>();
         var createdVectorLayers = new List<CanvasActiveLayer>();
         var factoryFailure = new InvalidOperationException("Injected failure after the first native clip push.");
         using var drawing = new VectorSceneDrawing(
             device,
             scene,
             CancellationToken.None,
-            _renderResources,
-            nativeRetirement: retirement,
-            nativeDisposer: resource =>
+            resources,
+            clipLayerFactory: (drawingSession, geometry) =>
             {
-                if (resource is CanvasActiveLayer layer)
-                    vectorDisposalAttempts.Add(layer);
-                if (resource is CanvasGeometry geometry)
-                    geometryDisposalAttempts.Add(geometry);
-                resource.Dispose();
+                CanvasActiveLayer layer = drawingSession.CreateLayer(1f, geometry);
+                createdVectorLayers.Add(layer);
+                throw factoryFailure;
             });
-        drawing.UseClipLayerFactory((drawingSession, geometry) =>
-        {
-            CanvasActiveLayer layer = drawingSession.CreateLayer(1f, geometry);
-            createdVectorLayers.Add(layer);
-            throw factoryFailure;
-        });
 
         FieldInfo clipStackField = typeof(VectorSceneDrawing)
             .GetField("_clipStack", BindingFlags.Instance | BindingFlags.NonPublic)!;
@@ -344,15 +317,13 @@ public sealed class VectorSceneClipLifetimeTests
             Assert.Single(createdVectorLayers);
             Assert.Single(vectorSlots);
             Assert.Null(vectorSlots[0]);
-            Assert.Empty(vectorDisposalAttempts);
+            Assert.Empty(layerDisposalAttempts);
             Assert.Empty(geometryDisposalAttempts);
-            Assert.Empty(helperDisposalAttempts);
             Assert.False(drawing.IsPrepared);
             Assert.Throws<InvalidOperationException>(() => drawing.PrepareNativeResources(CancellationToken.None));
             Assert.Throws<InvalidOperationException>(() => drawing.ReleaseNativeResources());
-            Assert.Empty(vectorDisposalAttempts);
+            Assert.Empty(layerDisposalAttempts);
             Assert.Empty(geometryDisposalAttempts);
-            Assert.Empty(helperDisposalAttempts);
             Assert.Null(helperOuterLease.Layer);
             Assert.Equal(1, retirement.QuarantinedResourceCount);
             Assert.Equal(0, retirement.PendingResourceCount);
@@ -360,18 +331,16 @@ public sealed class VectorSceneClipLifetimeTests
             CanvasActiveLayer returnedLessLayer = Assert.Single(createdVectorLayers);
             Assert.Throws<InvalidOperationException>(() => drawing.Dispose());
             Assert.Equal(original, session.Transform);
-            Assert.Empty(vectorDisposalAttempts);
+            Assert.Empty(layerDisposalAttempts);
             Assert.Empty(geometryDisposalAttempts);
-            Assert.Empty(helperDisposalAttempts);
             Assert.Equal(2, retirement.QuarantinedResourceCount);
             Assert.Equal(0, retirement.PendingResourceCount);
             Assert.Null(clipStackField.GetValue(drawing));
             Assert.Null(geometryField.GetValue(drawing));
             Assert.False(retirement.DrainOnce());
             Assert.Equal(2, retirement.QuarantinedResourceCount);
-            Assert.Empty(vectorDisposalAttempts);
+            Assert.Empty(layerDisposalAttempts);
             Assert.Empty(geometryDisposalAttempts);
-            Assert.Empty(helperDisposalAttempts);
 
             // Although the factory returned no wrapper to VectorSceneDrawing,
             // this test observed its native push. Close it and the poisoned
@@ -396,15 +365,20 @@ public sealed class VectorSceneClipLifetimeTests
     }
 
     [Fact]
-    public void ClipFactoryFaultSeamRejectsSharedProductionRetirementOwner()
+    public void ClipLayerFactoryIsFixedWhenTheDrawingIsCreated()
     {
         using var device = new CanvasDevice(forceSoftwareRenderer: true);
         var scene = new MarkdownVectorScene(8, 8, 8, Array.Empty<MarkdownVectorCommand>());
-        using var drawing = new VectorSceneDrawing(device, scene, CancellationToken.None, _renderResources);
+        Func<CanvasDrawingSession, CanvasGeometry, CanvasActiveLayer> factory =
+            static (_, _) => throw new InvalidOperationException("The factory must not run.");
+        using var plain = new VectorSceneDrawing(device, scene, CancellationToken.None, _renderResources);
+        using var injected = new VectorSceneDrawing(
+            device, scene, CancellationToken.None, _renderResources, clipLayerFactory: factory);
 
-        Assert.Throws<InvalidOperationException>(() => drawing.UseClipLayerFactory(
-            static (_, _) => throw new InvalidOperationException("The factory must not run.")));
-        Assert.True(drawing.IsPrepared);
+        Assert.Null(plain.ClipLayerFactory);
+        Assert.Same(factory, injected.ClipLayerFactory);
+        Assert.True(plain.IsPrepared);
+        Assert.True(injected.IsPrepared);
     }
 
     [Theory]
