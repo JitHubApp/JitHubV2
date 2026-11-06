@@ -24,9 +24,9 @@ namespace MarkdownRenderer.Controls.Highlighting;
 /// work and keeps a late result from being published. At most two provider
 /// requests run at once.
 /// <para>
-/// Kept as one type, just over 500 lines, because scheduling, provider work
-/// and UI-thread publication share the generation, the in-flight key set and
-/// the cache, and each step re-checks the others' fences. Band and cache key
+/// This file is longer than 500 lines because scheduling, provider work and
+/// UI-thread publication share the generation, the in-flight key set and the
+/// cache, and each step re-checks the others' fences. Band and cache key
 /// helpers live in <see cref="CodeBlockHighlightTargets"/> and started-task
 /// tracking in <see cref="CodeBlockHighlightTasks"/>.
 /// </para>
@@ -93,12 +93,6 @@ internal sealed class CodeBlockHighlighting
     /// Applies cached highlights to the code blocks in the visible band and
     /// starts the provider for the rest.
     /// </summary>
-    /// <remarks>
-    /// Kept over 80 lines because the provider start loop stays with the
-    /// fences that admit it: every start re-checks the generation after the
-    /// previous provider callback, and its closures capture only this batch's
-    /// weak snapshot identity, never the snapshot or its boxes.
-    /// </remarks>
     internal void ScheduleVisible()
     {
         if (!_embeds.HasMeasuredCodeBlocks ||
@@ -146,59 +140,78 @@ internal sealed class CodeBlockHighlighting
 
         if (pendingHighlights is not null)
         {
-            // One weak identity is shared across this admitted batch. The
-            // provider work may outlive snapshot retirement, so task state and
-            // dispatcher callbacks must not keep the retired document graph
-            // rooted while they wait for completion.
-            var snapshotIdentity = new WeakReference<LayoutSnapshot>(snapshot);
-            for (int pendingIndex = 0; pendingIndex < pendingHighlights.Count; pendingIndex++)
-            {
-                if (!CodeBlockHighlightOperationLifetime.IsCurrentAfterProviderCallback(
-                        _host.CodeHighlighter,
-                        highlighter,
-                        _generation,
-                        generation,
-                        _lifetime.IsDisposed,
-                        _lifetime.IsUnloaded,
-                        operationToken))
-                {
-                    for (int remaining = pendingIndex; remaining < pendingHighlights.Count; remaining++)
-                        RemoveInFlight(pendingHighlights[remaining].Key, generation);
-                    break;
-                }
-
-                var pending = pendingHighlights[pendingIndex];
-                // Start user highlighter code only after releasing the layout
-                // lease. Reserve its retirement lifetime before invoking
-                // provider code: sessionless providers may reenter unload or
-                // replacement synchronously before returning their Task.
-                try
-                {
-                    CodeBlockHighlightOperationLifetime.StartAndTrack(
-                        _tasks.Track,
-                        () => runOnWorker
-                            ? Task.Run(
-                                () => HighlightAsync(
-                                    snapshotIdentity, pending.CodeText, pending.Key,
-                                    highlighter, generation,
-                                    sceneSession, dispatcher, operationToken),
-                                CancellationToken.None)
-                            : HighlightAsync(
-                                snapshotIdentity, pending.CodeText, pending.Key,
-                                highlighter, generation,
-                                sceneSession, dispatcher, operationToken));
-                }
-                catch (Exception ex)
-                {
-                    RemoveInFlight(pending.Key, generation);
-                    MarkdownDiagnostics.WriteLine(
-                        $"[MarkdownRendererControl] Code block highlighting could not start: {ex.Message}");
-                }
-            }
+            StartPendingHighlights(
+                snapshot,
+                pendingHighlights,
+                highlighter,
+                generation,
+                runOnWorker,
+                sceneSession,
+                dispatcher,
+                operationToken);
         }
 
         if (appliedCached)
             _host.InvalidateCanvas();
+    }
+
+    /// <summary>
+    /// Starts the provider for each admitted request in order, re-checking
+    /// the generation after every provider callback. Once the generation is
+    /// retired, the remaining requests release their in-flight keys.
+    /// </summary>
+    private void StartPendingHighlights(
+        LayoutSnapshot snapshot,
+        List<(CodeBlockHighlightCacheKey Key, string CodeText)> pendingHighlights,
+        ICodeHighlighter highlighter,
+        int generation,
+        bool runOnWorker,
+        IMarkdownPerformanceSessionInternal? sceneSession,
+        DispatcherQueue dispatcher,
+        CancellationToken operationToken)
+    {
+        // One weak identity is shared across this admitted batch. The
+        // provider work may outlive snapshot retirement, so task state and
+        // dispatcher callbacks must not keep the retired document graph
+        // rooted while they wait for completion.
+        var snapshotIdentity = new WeakReference<LayoutSnapshot>(snapshot);
+        for (int pendingIndex = 0; pendingIndex < pendingHighlights.Count; pendingIndex++)
+        {
+            if (!IsCurrentAfterProviderCallback(highlighter, generation, operationToken))
+            {
+                for (int remaining = pendingIndex; remaining < pendingHighlights.Count; remaining++)
+                    RemoveInFlight(pendingHighlights[remaining].Key, generation);
+                break;
+            }
+
+            var pending = pendingHighlights[pendingIndex];
+            // Start user highlighter code only after releasing the layout
+            // lease. Reserve its retirement lifetime before invoking
+            // provider code: sessionless providers may reenter unload or
+            // replacement synchronously before returning their Task.
+            try
+            {
+                CodeBlockHighlightOperationLifetime.StartAndTrack(
+                    _tasks.Track,
+                    () => runOnWorker
+                        ? Task.Run(
+                            () => HighlightAsync(
+                                snapshotIdentity, pending.CodeText, pending.Key,
+                                highlighter, generation,
+                                sceneSession, dispatcher, operationToken),
+                            CancellationToken.None)
+                        : HighlightAsync(
+                            snapshotIdentity, pending.CodeText, pending.Key,
+                            highlighter, generation,
+                            sceneSession, dispatcher, operationToken));
+            }
+            catch (Exception ex)
+            {
+                RemoveInFlight(pending.Key, generation);
+                MarkdownDiagnostics.WriteLine(
+                    $"[MarkdownRendererControl] Code block highlighting could not start: {ex.Message}");
+            }
+        }
     }
 
     /// <summary>
@@ -228,20 +241,26 @@ internal sealed class CodeBlockHighlighting
             return false;
         }
 
-        if (!CodeBlockHighlightOperationLifetime.IsCurrentAfterProviderCallback(
-                _host.CodeHighlighter,
-                highlighter,
-                _generation,
-                generation,
-                _lifetime.IsDisposed,
-                _lifetime.IsUnloaded,
-                operationToken))
-        {
-            return false;
-        }
-
-        return true;
+        return IsCurrentAfterProviderCallback(highlighter, generation, operationToken);
     }
+
+    /// <summary>
+    /// True when, after a provider callback, <paramref name="highlighter"/> is
+    /// still the control's provider, <paramref name="generation"/> is still
+    /// current and the control is neither disposed, unloaded nor cancelled.
+    /// </summary>
+    private bool IsCurrentAfterProviderCallback(
+        ICodeHighlighter highlighter,
+        int generation,
+        CancellationToken token)
+        => CodeBlockHighlightOperationLifetime.IsCurrentAfterProviderCallback(
+            _host.CodeHighlighter,
+            highlighter,
+            _generation,
+            generation,
+            _lifetime.IsDisposed,
+            _lifetime.IsUnloaded,
+            token);
 
     /// <summary>
     /// Under the snapshot's read lease, applies cached highlights to the code
@@ -474,14 +493,7 @@ internal sealed class CodeBlockHighlighting
         CodeBlockHighlightCacheKey key)
     {
         bool providerCurrent = false;
-        if (CodeBlockHighlightOperationLifetime.IsCurrentAfterProviderCallback(
-                _host.CodeHighlighter,
-                highlighter,
-                _generation,
-                generation,
-                _lifetime.IsDisposed,
-                _lifetime.IsUnloaded,
-                token))
+        if (IsCurrentAfterProviderCallback(highlighter, generation, token))
         {
             try
             {
