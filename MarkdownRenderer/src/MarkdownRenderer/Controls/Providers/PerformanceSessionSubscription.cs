@@ -1,5 +1,4 @@
 using System;
-using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Controls.Pipeline;
 using MarkdownRenderer.Controls.Selection;
@@ -17,9 +16,9 @@ namespace MarkdownRenderer.Controls.Providers;
 /// eager engine/legacy parser path replaces any committed fallback.
 /// </summary>
 /// <remarks>
-/// The session raises Disposed on any thread. The subscribed instance is kept
-/// outside DependencyObject storage so that callback never reads a
-/// thread-affine dependency property.
+/// The session raises Disposed on any thread. The watched session is kept by
+/// <see cref="PerformanceSessionDisposalWatch"/>, outside DependencyObject
+/// storage, so that callback never reads a thread-affine dependency property.
 /// </remarks>
 internal sealed class PerformanceSessionSubscription
 {
@@ -30,7 +29,7 @@ internal sealed class PerformanceSessionSubscription
     private readonly SelectionController _selection;
     private readonly SelectionAdornerPresenter _adorner;
     private readonly InteractiveTextAdorner _textAdorner;
-    private IMarkdownPerformanceSessionInternal? _subscribed;
+    private readonly PerformanceSessionDisposalWatch _disposalWatch;
 
     internal PerformanceSessionSubscription(
         MarkdownRendererControl control,
@@ -48,6 +47,10 @@ internal sealed class PerformanceSessionSubscription
         _selection = selection;
         _adorner = adorner;
         _textAdorner = textAdorner;
+        _disposalWatch = new PerformanceSessionDisposalWatch(
+            lifetime,
+            callback => control.DispatcherQueue?.TryEnqueue(callback.Invoke) == true,
+            () => rebuild.Request(RebuildReason.Full));
     }
 
     /// <summary>The PerformanceSession property changed.</summary>
@@ -83,18 +86,10 @@ internal sealed class PerformanceSessionSubscription
             return;
         }
 
-        session.Disposed -= OnDisposed;
-        Volatile.Write(ref _subscribed, session);
-        session.Disposed += OnDisposed;
+        _disposalWatch.Watch(session);
     }
 
-    internal void Detach()
-    {
-        IMarkdownPerformanceSessionInternal? previous =
-            Interlocked.Exchange(ref _subscribed, null);
-        if (previous is not null)
-            previous.Disposed -= OnDisposed;
-    }
+    internal void Detach() => _disposalWatch.Stop();
 
     /// <summary>Advances the session's deferred scene generation for a new pipeline, tracking its retirement.</summary>
     internal void AdvanceDeferredSceneGeneration()
@@ -114,27 +109,5 @@ internal sealed class PerformanceSessionSubscription
             _snapshotRetirements.Track(performanceSession.ReleaseDeferredSceneDocument(_control));
             performanceSession.ReleaseDocumentScope(_control);
         }
-    }
-
-    private void OnDisposed(object? sender, EventArgs args)
-    {
-        if (!ReferenceEquals(sender, Volatile.Read(ref _subscribed)) ||
-            _lifetime.IsDisposed ||
-            _lifetime.IsUnloaded)
-        {
-            return;
-        }
-
-        _control.DispatcherQueue?.TryEnqueue(() =>
-        {
-            if (ReferenceEquals(sender, Volatile.Read(ref _subscribed)) &&
-                !_lifetime.IsDisposed && !_lifetime.IsUnloaded)
-            {
-                // RebuildInputCapture drops the disposed borrowed session, so
-                // the rebuild uses the eager engine/legacy parser path, replacing
-                // any committed code fallback with its native scene.
-                _rebuild.Request(RebuildReason.Full);
-            }
-        });
     }
 }

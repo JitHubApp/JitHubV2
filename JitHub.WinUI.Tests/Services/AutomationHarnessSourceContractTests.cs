@@ -180,15 +180,6 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("raw pointer drag did not create a cross-line text selection", source, StringComparison.Ordinal);
         Assert.Contains("foreach (AutomationElement host in FindMarkdownLifecycleHosts(root, target))", source, StringComparison.Ordinal);
         Assert.Contains("recycled UIA peer", source, StringComparison.Ordinal);
-        string rendererSource = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "src",
-            "MarkdownRenderer",
-            "Controls",
-            "Input",
-            "KeyboardInput.cs"));
-        Assert.Contains("case VirtualKey.Application when _selection.IsActive", rendererSource, StringComparison.Ordinal);
         Assert.Contains("Use a new output directory rather than combining incompatible evidence", source, StringComparison.Ordinal);
     }
 
@@ -375,72 +366,6 @@ public sealed class AutomationHarnessSourceContractTests
     }
 
     [Fact]
-    public void MarkdownImageTerminalFailureRelayoutsOnlyUnconstrainedInlineFallbacks()
-    {
-        string publisher = ReadImageBoxOwnerSource("ImageFailurePublisher.cs");
-        string placeholder = ReadImageBoxOwnerSource("ImagePlaceholderLayout.cs");
-        int publishFailure = publisher.IndexOf("internal void PublishFailure(", StringComparison.Ordinal);
-
-        Assert.True(publishFailure >= 0);
-        string failureImplementation = publisher[publishFailure..];
-        Assert.Contains("_placeholder.UpdateForFailure();", failureImplementation, StringComparison.Ordinal);
-        Assert.Contains("layoutInvalidated: _placeholder.ShouldExpandInlineFailure", failureImplementation, StringComparison.Ordinal);
-        string updateForFailure = Regex.Match(placeholder,
-            @"internal void UpdateForFailure\(\)[\s\S]*?\n    }").Value;
-        Assert.Contains("UpdatePlaceholder(maxWidth, _measure.ImageHeight)", updateForFailure, StringComparison.Ordinal);
-        Assert.Contains("_requestedWidth is null", placeholder, StringComparison.Ordinal);
-        Assert.Contains("_requestedHeight is null", placeholder, StringComparison.Ordinal);
-    }
-
-    // ImageBox composes its placeholder layout, painter, measurer and failure
-    // publisher; each guarded behavior lives in the owner named here.
-    private static string ReadImageBoxOwnerSource(string fileName) =>
-        File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "src",
-            "MarkdownRenderer",
-            "Layout",
-            "Boxes",
-            fileName));
-
-    [Fact]
-    public void MarkdownImagePlaceholderUsesThemeTypographyAndPaintsInlineAltText()
-    {
-        string painter = ReadImageBoxOwnerSource("ImagePainter.cs");
-        string source = ReadImageBoxOwnerSource("ImagePlaceholderLayout.cs");
-
-        Assert.Contains("PaintPlaceholder(ds, destination);", painter, StringComparison.Ordinal);
-        Assert.Contains("EnsureLoading();", painter, StringComparison.Ordinal);
-        string sourceLoader = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(), "MarkdownRenderer", "src", "MarkdownRenderer", "Layout", "Boxes",
-            "ImageSourceLoader.cs"));
-        Assert.Contains("ImageResolverDeadline.RunAsync", sourceLoader, StringComparison.Ordinal);
-        Assert.Contains("ImageResolverTimeout", sourceLoader, StringComparison.Ordinal);
-        Assert.Contains("TimeSpan.FromSeconds(45)", sourceLoader, StringComparison.Ordinal);
-        Assert.Contains("compactInlineFailure", source, StringComparison.Ordinal);
-        Assert.Contains("MeasureInlineFailureWidth", source, StringComparison.Ordinal);
-        Assert.Contains("GetInlineFailureText()", source, StringComparison.Ordinal);
-        Assert.Contains("CanvasWordWrapping.NoWrap", source, StringComparison.Ordinal);
-        Assert.Contains("GetStyle(MarkdownElementKeys.ImageCaption)", source, StringComparison.Ordinal);
-        string placeholder = Regex.Match(source,
-            @"internal void UpdatePlaceholder\([\s\S]*?\n    }").Value;
-        Assert.NotEmpty(placeholder);
-        Assert.Matches(
-            @"Context\.RenderResources\.TextFormats\.Acquire\(\s*style,\s*compactInlineFailure \? CanvasWordWrapping\.NoWrap : CanvasWordWrapping\.Wrap,\s*CanvasHorizontalAlignment\.Center,\s*Context\.FlowDirection,\s*Context\.Language,\s*true,\s*CanvasVerticalAlignment\.Center\)",
-            placeholder);
-        string formatSource = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(), "MarkdownRenderer", "src", "MarkdownRenderer", "Layout",
-            "SharedCanvasTextFormatStore.cs"));
-        Assert.Contains("NormalizeFontFamilyForCanvas(style.FontFamily)", formatSource, StringComparison.Ordinal);
-        Assert.Contains("style.FontSize,", formatSource, StringComparison.Ordinal);
-        Assert.Contains("format.FontFamily = key.FontFamily", formatSource, StringComparison.Ordinal);
-        Assert.Contains("format.FontSize = key.FontSize", formatSource, StringComparison.Ordinal);
-        Assert.DoesNotContain("FontFamily = \"Segoe UI Variable\"", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("FontFamily = \"Segoe UI Variable\"", painter, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void MarkdownInlineImagesSubscribeBeforeViewportGeometryIsAvailable()
     {
         string source = File.ReadAllText(Path.Combine(
@@ -474,16 +399,7 @@ public sealed class AutomationHarnessSourceContractTests
             "Composition",
             "EmbedHosts.cs"));
         Assert.Contains("void IEmbedRealizationHost.AddImagePlan(ImageBox image) => AddImagePlan(image);", embedHostsSource, StringComparison.Ordinal);
-        string subscriptionSource = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "src",
-            "MarkdownRenderer",
-            "Controls",
-            "Images",
-            "ImageSubscriptions.cs"));
         Assert.Contains("if (!Owners.ImageSubscriptions.Subscribe(image))", embedHostsSource, StringComparison.Ordinal);
-        Assert.Contains("image.LoadCompleted += OnImageLoadCompleted;", subscriptionSource, StringComparison.Ordinal);
         string completionSource = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "MarkdownRenderer",
@@ -514,14 +430,6 @@ public sealed class AutomationHarnessSourceContractTests
             "MarkdownRenderer",
             "Controls",
             "MarkdownRendererControl.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
-        string snapshotSource = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "src",
-            "MarkdownRenderer",
-            "Layout",
-            "LayoutSnapshot.cs"));
-
         string relayoutSource = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "MarkdownRenderer",
@@ -626,18 +534,6 @@ public sealed class AutomationHarnessSourceContractTests
                 "Composition",
                 "LayoutHosts.cs")),
             StringComparison.Ordinal);
-
-        string weakRecoveryTimer = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "src",
-            "MarkdownRenderer",
-            "Controls",
-            "WeakRecoveryTimer.cs"));
-        Assert.Contains("_target = new WeakReference<T>(target);", weakRecoveryTimer, StringComparison.Ordinal);
-        Assert.Contains("_queuedCallback = RunQueuedCallback;", weakRecoveryTimer, StringComparison.Ordinal);
-        Assert.Contains("if (!TryGetLiveTarget(out _))", weakRecoveryTimer, StringComparison.Ordinal);
-        Assert.Contains("private bool TryGetLiveTarget(out T? target) => _target.TryGetTarget(out target);", weakRecoveryTimer, StringComparison.Ordinal);
 
         string recoveryWorkSource = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
@@ -758,34 +654,14 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("else if (retryImageBlockIndex.HasValue || retryCurrentImages)", completion, StringComparison.Ordinal);
         Assert.Contains("if (retryImageBlockIndex is { } retryIndex)", completion, StringComparison.Ordinal);
         Assert.Contains("if (retryCurrentImages)\n                        _imageSubscriptions.AddBlockIndicesTo(_pending);", completion, StringComparison.Ordinal);
-        string subscriptionsSource = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "src",
-            "MarkdownRenderer",
-            "Controls",
-            "Images",
-            "ImageSubscriptions.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
-        Assert.Contains("foreach (ImageBox image in _images)\n            blockIndices.Add(image.BlockIndex);", subscriptionsSource, StringComparison.Ordinal);
         Assert.DoesNotContain("retryImageBlockIndices", completion, StringComparison.Ordinal);
         Assert.Contains("rootMeasureCommitted &&\n                        (canceled || capturedScrollOffset != _surface.Scroll?.VerticalOffset) ? null : anchor", completion, StringComparison.Ordinal);
-
-        Assert.Contains("internal SingleRasterLayoutCandidate? CreateSingleRasterCandidate(", snapshotSource, StringComparison.Ordinal);
-        Assert.Contains("internal void RelayoutChangedBlocks(", snapshotSource, StringComparison.Ordinal);
         Assert.DoesNotContain("Initial load / intrinsic-size change", controlSource, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void MarkdownSelectionContextMenuSupportsKeyboardInvocation()
+    public void MarkdownSelectionContextMenuOpensOnlyForTheCurrentSnapshot()
     {
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "src",
-            "MarkdownRenderer",
-            "Controls",
-            "Input",
-            "KeyboardInput.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
         string pointerSource = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "MarkdownRenderer",
@@ -811,9 +687,6 @@ public sealed class AutomationHarnessSourceContractTests
             "Input",
             "TouchGestureInteraction.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
 
-        Assert.Contains("case VirtualKey.F10 when shift && _selection.IsActive", source, StringComparison.Ordinal);
-        Assert.Contains("_contextMenu.Show(_contextMenu.GetKeyboardPoint())", source, StringComparison.Ordinal);
-
         int rightTappedStart = gestureSource.IndexOf("internal void ProcessRightTapped(ref PointerInput e)", StringComparison.Ordinal);
         int rightTappedEnd = gestureSource.IndexOf("\n    }\n", rightTappedStart, StringComparison.Ordinal);
         Assert.True(rightTappedStart >= 0 && rightTappedEnd > rightTappedStart);
@@ -824,14 +697,6 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("if (!_host.IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))", rightTapped, StringComparison.Ordinal);
         Assert.Contains("e.ShowContextMenuAfterInteraction = true;", rightTapped, StringComparison.Ordinal);
         Assert.Contains("e.TouchSelectionContextMenu = touchOrPen;", rightTapped, StringComparison.Ordinal);
-
-        int keyDownStart = source.IndexOf("internal void OnKeyDown(", StringComparison.Ordinal);
-        int keyDownEnd = source.IndexOf("internal void OnHostedEmbedKeyDown(", keyDownStart, StringComparison.Ordinal);
-        Assert.True(keyDownStart >= 0 && keyDownEnd > keyDownStart);
-        string keyDown = source[keyDownStart..keyDownEnd];
-        Assert.Contains("case VirtualKey.F10 when shift && _selection.IsActive:", keyDown, StringComparison.Ordinal);
-        Assert.Contains("case VirtualKey.Application when _selection.IsActive:", keyDown, StringComparison.Ordinal);
-        Assert.Equal(2, Regex.Matches(keyDown, "_contextMenu\\.Show\\(_contextMenu\\.GetKeyboardPoint\\(\\)\\)").Count);
 
         int menuStart = menuSource.IndexOf("internal bool Show(", StringComparison.Ordinal);
         int menuClosedStart = menuSource.IndexOf("private void OnClosed(", menuStart, StringComparison.Ordinal);

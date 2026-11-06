@@ -1,6 +1,7 @@
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Controls;
 using Windows.Foundation;
+using Windows.System;
 using Xunit;
 
 namespace MarkdownRenderer.Tests;
@@ -168,5 +169,24 @@ public class KeyboardNavTests
         Assert.Equal(
             expected,
             MarkdownKeyboardInputPolicy.ShouldSelectAll(controlDown, selectionEnabled));
+    }
+
+    [Theory]
+    [InlineData(VirtualKey.Application, false, true, true)]
+    [InlineData(VirtualKey.Application, true, true, true)]
+    [InlineData(VirtualKey.F10, true, true, true)]
+    [InlineData(VirtualKey.F10, false, true, false)]
+    [InlineData(VirtualKey.Application, false, false, false)]
+    [InlineData(VirtualKey.F10, true, false, false)]
+    [InlineData(VirtualKey.Enter, true, true, false)]
+    public void SelectionContextMenuKeys_AreTheMenuKeyAndShiftF10WhileSelectionIsActive(
+        VirtualKey key,
+        bool shiftDown,
+        bool selectionActive,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            MarkdownKeyboardInputPolicy.ShouldOpenSelectionContextMenu(key, shiftDown, selectionActive));
     }
 }

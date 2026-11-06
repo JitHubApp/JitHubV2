@@ -24,6 +24,10 @@ InternalsVisibleTo items (MRS0001, MRS0002). This script covers the rest:
   MRS0010  Each size exception is current: the file exists, is still over
            1,000 lines, and its cap equals its length, so the cap only
            ratchets down.
+  MRS0011  No project under src declares RuntimeIdentifier,
+           RuntimeIdentifiers or PlatformTarget. Shipping libraries inherit
+           their supported runtimes and architecture-neutral target from
+           src/Directory.Build.props, so every package and lock file agrees.
 
 bin, obj and artifacts folders are skipped. The script prints one line per
 violation and exits 1 if there is any.
@@ -145,6 +149,19 @@ else {
 foreach ($project in $projectFiles) {
     if ((Test-InSourceFolder $project.FullName) -and -not $solutionProjects.Contains($project.FullName)) {
         Add-Violation 'MRS0005' $project.FullName 'project is not in MarkdownRenderer.slnx.'
+    }
+}
+
+# MRS0011: shipping libraries inherit their runtimes and platform target.
+$inheritedPlatformProperties = @('RuntimeIdentifier', 'RuntimeIdentifiers', 'PlatformTarget')
+foreach ($project in $projectFiles) {
+    $first = [IO.Path]::GetRelativePath($Root, $project.FullName).Split([IO.Path]::DirectorySeparatorChar)[0]
+    if ($first -ne 'src') { continue }
+    [xml] $document = Get-Content -LiteralPath $project.FullName -Raw
+    foreach ($name in $inheritedPlatformProperties) {
+        if ($document.SelectNodes("//*[local-name()='PropertyGroup']/*[local-name()='$name']").Count -gt 0) {
+            Add-Violation 'MRS0011' $project.FullName "declares $name. Shipping libraries inherit it from src/Directory.Build.props; remove the local value."
+        }
     }
 }
 

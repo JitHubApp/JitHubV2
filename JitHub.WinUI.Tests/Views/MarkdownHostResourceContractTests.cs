@@ -61,18 +61,14 @@ public sealed class MarkdownHostResourceContractTests
     [Fact]
     public void SafeHtmlDetailsUseStatefulAccessibleDisclosuresAndTelemetry()
     {
+        // The open attribute, view-recorded toggles, collapsed bodies and disclosure ids are
+        // covered by SafeHtmlDisclosureStateTests.DisclosureFollowsItsOpenAttributeUntilTheViewRecordsAToggle.
         string root = FindRepositoryRoot();
-        string renderer = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Html", "Renderers", "HtmlDetailsBuilder.cs"));
         string control = File.ReadAllText(Path.Combine(
             root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "MarkdownRendererControl.cs"));
         string peer = File.ReadAllText(Path.Combine(
             root, "MarkdownRenderer", "src", "MarkdownRenderer", "Accessibility", "MarkdownLinkPeer.cs"));
 
-        Assert.Contains("details.TryGetAttribute(\"open\"", renderer, StringComparison.Ordinal);
-        Assert.Contains("context.IsDisclosureExpanded", renderer, StringComparison.Ordinal);
-        Assert.Contains("if (!expanded)", renderer, StringComparison.Ordinal);
-        Assert.Contains("DisclosureId = disclosureId", renderer, StringComparison.Ordinal);
         string documentInputs = File.ReadAllText(Path.Combine(
             root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Pipeline", "DocumentInputs.cs"));
         string inputCapture = File.ReadAllText(Path.Combine(
@@ -97,40 +93,20 @@ public sealed class MarkdownHostResourceContractTests
     [Fact]
     public void LinkedMarkdownImagesAreKeyboardAndAutomationHyperlinks()
     {
+        // Focus planning and decorative-image omission are covered by
+        // LayoutSnapshotIndexConstructionTests.LinkedEmptyAltInlineImageIsFocusableButDecorativeImagesAreNot,
+        // and linked-image activation targets by LinkedAtomicTargetTests.
         string root = FindRepositoryRoot();
-        string snapshot = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Layout", "LayoutSnapshot.cs"));
-        string snapshotIndexes = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Layout", "LayoutSnapshotIndexBuilder.cs"));
-        string semanticDocument = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Accessibility", "MarkdownSemanticDocumentBuilder.cs"));
         string automationPeer = File.ReadAllText(Path.Combine(
             root, "MarkdownRenderer", "src", "MarkdownRenderer", "Accessibility", "MarkdownAutomationPeer.cs"));
         string imagePeer = File.ReadAllText(Path.Combine(
             root, "MarkdownRenderer", "src", "MarkdownRenderer", "Accessibility", "MarkdownLinkedImagePeer.cs"));
-        string linkTargets = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Input", "LinkTargets.cs"));
 
-        Assert.Matches(
-            @"MarkdownSemanticDocument\.Build\(\s*this,\s*matchingTextProjection,\s*indexBuilder,\s*passCancellation\.GetEffectiveToken\(",
-            snapshot);
-        Assert.Contains("_focusables = new SnapshotFocusablePlan(", snapshot, StringComparison.Ordinal);
-        Assert.Contains("indexBuilder.CompleteFocusablePlan()", snapshot, StringComparison.Ordinal);
-        Assert.Contains("if (run is LinkRun or InlineImageRun { IsLinked: true } or", snapshotIndexes, StringComparison.Ordinal);
-        int observeInlineRun = semanticDocument.IndexOf("_layoutIndexes?.ObserveInlineRun(inline, run);", StringComparison.Ordinal);
-        int decorativeImageFilter = semanticDocument.IndexOf(
-            "if (run is InlineImageRun { IsLinked: false } && accessibleLength == 0)",
-            StringComparison.Ordinal);
-        Assert.True(observeInlineRun >= 0, "Inline layout indexes must be observed from semantic construction.");
-        Assert.True(
-            decorativeImageFilter > observeInlineRun,
-            "The focus planner must observe linked images before decorative empty-alt runs are omitted from UIA semantics.");
         string automation = File.ReadAllText(Path.Combine(
             root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "RendererAutomation.cs"));
         string focusableItems = File.ReadAllText(Path.Combine(
             root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Focus", "FocusableItemsPublication.cs"));
         Assert.Contains("TryGetFocusedLinkedAtomic", automation, StringComparison.Ordinal);
-        Assert.Contains("case InlineImageRun { IsLinked: true, LinkUrl: { } imageUrl } image:", linkTargets, StringComparison.Ordinal);
         Assert.Contains("_owner.AutomationHost.ActivateLinkedAtomic(_run);", imagePeer, StringComparison.Ordinal);
         Assert.Contains("LinkTargets.TryCreateLinkedAtomicTarget(run, out LinkTarget target)", automation, StringComparison.Ordinal);
         Assert.Contains("InvalidateAutomationLayout();", focusableItems, StringComparison.Ordinal);

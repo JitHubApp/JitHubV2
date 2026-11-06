@@ -1,4 +1,5 @@
 using MarkdownRenderer.Layout;
+using Windows.System;
 
 namespace MarkdownRenderer.Controls;
 
@@ -10,6 +11,13 @@ internal static class MarkdownKeyboardInputPolicy
 {
     internal static bool ShouldSelectAll(bool controlDown, bool selectionEnabled) =>
         controlDown && selectionEnabled;
+
+    /// <summary>
+    /// True when <paramref name="key"/> opens the selection's context menu:
+    /// the Application (menu) key or Shift+F10, while a selection is active.
+    /// </summary>
+    internal static bool ShouldOpenSelectionContextMenu(VirtualKey key, bool shiftDown, bool selectionActive) =>
+        selectionActive && (key == VirtualKey.Application || (key == VirtualKey.F10 && shiftDown));
 
     internal static HorizontalArrowHandlingOrder GetHorizontalArrowHandlingOrder(
         FocusableItemKind? focusedKind) =>
