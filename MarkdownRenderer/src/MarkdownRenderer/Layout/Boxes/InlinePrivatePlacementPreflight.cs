@@ -206,30 +206,16 @@ internal static class InlinePrivatePlacementPreflight
         for (int runIndex = 0; runIndex < box.RunList.Count; runIndex++)
         {
             InlineRun run = box.RunList[runIndex];
-            if (run is null || run.InlineIndex != runIndex || run.RenderedLength != run.TextLength ||
-                run.LayoutTextLength != run.TextLength)
-                return false;
-
-            if (!TryAccumulateRunStyleKeyCopyEntries(box, run, runIndex, ref styleKeyCopyEntries))
-                return false;
-
-            if (PrivateTextRunPlacement.IsSupported(run) || run is LinkRun)
-            {
-                if (run is LinkRun disclosureLink && (disclosureLink.IsDisclosure || disclosureLink.IsExpanded))
-                    return false;
-            }
-            else if (run is InlineImageRun imageRun)
-            {
-                if (!IsAdmissibleImageRun(box, imageEntries, imageRun, ref imageOrdinal, offset))
-                    return false;
-            }
-            else if (allowMeasuredVectorPlacement && run is InlineVectorSceneRun vectorRun)
-            {
-                if (!IsAdmissibleVectorRun(vectorRun))
-                    return false;
-                vectorOrdinal++;
-            }
-            else
+            if (!IsAdmissibleRun(
+                    box,
+                    run,
+                    runIndex,
+                    imageEntries,
+                    allowMeasuredVectorPlacement,
+                    offset,
+                    ref styleKeyCopyEntries,
+                    ref imageOrdinal,
+                    ref vectorOrdinal))
             {
                 return false;
             }
@@ -255,6 +241,42 @@ internal static class InlinePrivatePlacementPreflight
         runCount = box.RunList.Count;
         imageCount = imageOrdinal;
         return true;
+    }
+
+    // One run at its logical index with consistent text lengths: a text or
+    // non-disclosure link run, an admissible image, or (when allowed) an
+    // admissible measured vector scene. Accumulates its style-key copies and
+    // advances the image or vector ordinal it consumes.
+    private static bool IsAdmissibleRun(
+        InlineContainerBox box,
+        InlineRun run,
+        int runIndex,
+        IReadOnlyList<(InlineImageRun Run, int Offset)> imageEntries,
+        bool allowMeasuredVectorPlacement,
+        long offset,
+        ref long styleKeyCopyEntries,
+        ref int imageOrdinal,
+        ref int vectorOrdinal)
+    {
+        if (run is null || run.InlineIndex != runIndex || run.RenderedLength != run.TextLength ||
+            run.LayoutTextLength != run.TextLength)
+            return false;
+
+        if (!TryAccumulateRunStyleKeyCopyEntries(box, run, runIndex, ref styleKeyCopyEntries))
+            return false;
+
+        if (PrivateTextRunPlacement.IsSupported(run) || run is LinkRun)
+            return run is not LinkRun disclosureLink || (!disclosureLink.IsDisclosure && !disclosureLink.IsExpanded);
+        if (run is InlineImageRun imageRun)
+            return IsAdmissibleImageRun(box, imageEntries, imageRun, ref imageOrdinal, offset);
+        if (allowMeasuredVectorPlacement && run is InlineVectorSceneRun vectorRun)
+        {
+            if (!IsAdmissibleVectorRun(vectorRun))
+                return false;
+            vectorOrdinal++;
+            return true;
+        }
+        return false;
     }
 
     // The container-level size bounds and cache shape, accumulating its own
