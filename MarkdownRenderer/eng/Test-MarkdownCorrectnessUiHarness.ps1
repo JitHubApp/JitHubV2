@@ -512,23 +512,29 @@ foreach ($nativeProofFailure in @('lastNativeCanceled', 'nativeCanceledPacketCou
     try { Assert-SyntheticTouchDelivery -Before $cancelBefore -After $changedProof -ExpectedPoint $expectedTouchPoint -ExpectedState 'Canceled' | Out-Null } catch { $rejected = $true }
     if (-not $rejected) { throw "A raw release was relabeled as cancellation without valid $nativeProofFailure evidence." }
 }
-$pointerInputSourcePath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Controls\Input\PointerInputRouter.cs'
+$pointerInputSourcePath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Controls\Input\RoutedPointerInputRouting.cs'
 $pointerInputSource = Get-Content -LiteralPath $pointerInputSourcePath -Raw
-$dispatcherStart = $pointerInputSource.IndexOf('internal void DispatchPointerInput(', [StringComparison]::Ordinal)
-$dispatcherEnd = $pointerInputSource.IndexOf('internal void OnLazyLayoutCompletion(', $dispatcherStart, [StringComparison]::Ordinal)
-$dispatcherBody = $pointerInputSource.Substring($dispatcherStart, $dispatcherEnd - $dispatcherStart)
-# Deferral (speculative capture and enqueue) is DeferPointerInput, which
-# DispatchPointerInput calls with the classified kind.
-$deferStart = $pointerInputSource.IndexOf('private void DeferPointerInput(', [StringComparison]::Ordinal)
-$deferEnd = $pointerInputSource.IndexOf('private bool EnqueueRecognizedGesture(', $deferStart, [StringComparison]::Ordinal)
+$dispatcherStart = $pointerInputSource.IndexOf('internal void Dispatch(', [StringComparison]::Ordinal)
+$dispatcherEnd = if ($dispatcherStart -ge 0) { $pointerInputSource.IndexOf('private void ProcessUnderLease(', $dispatcherStart, [StringComparison]::Ordinal) } else { -1 }
+$dispatcherBody = if ($dispatcherEnd -gt $dispatcherStart) { $pointerInputSource.Substring($dispatcherStart, $dispatcherEnd - $dispatcherStart) } else { '' }
+# Deferral (speculative capture and enqueue) is Defer, which Dispatch calls
+# with the classified kind; DeferredPointerCaptures takes the capture.
+$deferStart = $pointerInputSource.IndexOf('private void Defer(', [StringComparison]::Ordinal)
+$deferEnd = if ($deferStart -ge 0) { $pointerInputSource.IndexOf('private void CancelDeferredGesture(', $deferStart, [StringComparison]::Ordinal) } else { -1 }
 $deferBody = if ($deferStart -ge 0 -and $deferEnd -gt $deferStart) { $pointerInputSource.Substring($deferStart, $deferEnd - $deferStart) } else { '' }
+$captureSourcePath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Controls\Input\DeferredPointerCaptures.cs'
+$captureSource = Get-Content -LiteralPath $captureSourcePath -Raw
+$captureStart = $captureSource.IndexOf('internal void CaptureForDeferral(', [StringComparison]::Ordinal)
+$captureEnd = if ($captureStart -ge 0) { $captureSource.IndexOf('internal void ReleaseAll()', $captureStart, [StringComparison]::Ordinal) } else { -1 }
+$captureBody = if ($captureEnd -gt $captureStart) { $captureSource.Substring($captureStart, $captureEnd - $captureStart) } else { '' }
 $cancellationClassification = $dispatcherBody.IndexOf('NormalizeCanceledPointerInputKind(kind, point.Properties.IsCanceled)', [StringComparison]::Ordinal)
 if ($cancellationClassification -lt 0 -or
     $dispatcherBody.IndexOf('Kind = kind', [StringComparison]::Ordinal) -lt $cancellationClassification -or
     $dispatcherBody.IndexOf('snapshot.TryBeginInteraction()', [StringComparison]::Ordinal) -lt $cancellationClassification -or
-    $dispatcherBody.IndexOf('DeferPointerInput(kind, sender, ref input, snapshot, args);', [StringComparison]::Ordinal) -lt $cancellationClassification -or
-    $deferBody.IndexOf('CapturePointerForInput(target, input)', [StringComparison]::Ordinal) -lt 0 -or
-    $deferBody.IndexOf('_deferred.TryEnqueue', [StringComparison]::Ordinal) -lt 0) {
+    $dispatcherBody.IndexOf('Defer(kind, sender, ref input, snapshot, args);', [StringComparison]::Ordinal) -lt $cancellationClassification -or
+    $deferBody.IndexOf('_deferredCaptures.CaptureForDeferral(kind, sender, ref input, _surface.Canvas);', [StringComparison]::Ordinal) -lt 0 -or
+    $captureBody.IndexOf('CapturePointerForInput(target, input)', [StringComparison]::Ordinal) -lt 0 -or
+    $deferBody.IndexOf('queue.TryEnqueue', [StringComparison]::Ordinal) -lt 0) {
     throw 'Native canceled input must be classified before input capture, live dispatch and deferred enqueue.'
 }
 $checks.Add([pscustomobject]@{name='native IsCanceled release retains raw-event evidence and cannot masquerade as ordinary release; real dispatcher normalizes before live and deferred paths';status='PASS'})

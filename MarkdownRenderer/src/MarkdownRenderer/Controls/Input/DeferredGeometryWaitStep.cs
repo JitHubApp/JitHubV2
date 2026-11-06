@@ -2,7 +2,7 @@ namespace MarkdownRenderer.Controls.Input;
 
 /// <summary>
 /// What a queued gesture that waited for geometry does next in a
-/// <see cref="PointerInputRouter"/> drain pass.
+/// <see cref="DeferredInputReplay"/> drain pass.
 /// </summary>
 internal enum DeferredGeometryWaitStep
 {

@@ -11,9 +11,8 @@ namespace MarkdownRenderer.Controls.Input;
 /// release is delivered even while layout is busy.
 /// </summary>
 /// <remarks>
-/// <see cref="PointerInputRouter"/> takes each capture itself, in the
-/// original press event, and records it here; this class owns only the
-/// record and how the captures are let go.
+/// Each capture is taken in the original press event, while the input is
+/// being queued, and only for a primary press.
 /// </remarks>
 internal sealed class DeferredPointerCaptures
 {
@@ -41,9 +40,35 @@ internal sealed class DeferredPointerCaptures
     /// <summary>True when <paramref name="pointerId"/> holds a speculative capture.</summary>
     internal bool Contains(uint pointerId) => _captures.ContainsKey(pointerId);
 
-    /// <summary>Records that <paramref name="target"/> captured <paramref name="pointer"/>.</summary>
-    internal void Record(uint pointerId, UIElement target, Pointer pointer)
-        => _captures[pointerId] = (target, pointer);
+    /// <summary>
+    /// Captures the pointer of a primary press being queued, so its release
+    /// is delivered even while layout is busy, and marks
+    /// <paramref name="input"/> as captured when its pointer holds a capture.
+    /// </summary>
+    /// <param name="kind">The normalized kind of the queued input.</param>
+    /// <param name="sender">The element that raised the input.</param>
+    /// <param name="input">The input being queued.</param>
+    /// <param name="canvas">The document canvas that captures a canvas press.</param>
+    internal void CaptureForDeferral(PointerInputKind kind, object sender, ref PointerInput input, UIElement? canvas)
+    {
+        // Capture in the original press event so a release outside the canvas is
+        // delivered even if layout is still busy. Never capture a pending touch
+        // pan on the canvas; explicit selection handles own their touch gesture.
+        bool primaryPress = input.Point.IsInContact &&
+            (kind == PointerInputKind.HandlePress ||
+             (kind == PointerInputKind.Press && PointerInputClassification.IsPrecisePointer(input) &&
+              input.Point.Properties.IsLeftButtonPressed && !input.Point.Properties.IsBarrelButtonPressed));
+        if (primaryPress)
+        {
+            UIElement target = kind == PointerInputKind.HandlePress && sender is UIElement handle ? handle : canvas!;
+            if (PointerInputClassification.CapturePointerForInput(target, input))
+            {
+                input.CapturedBeforeDeferral = true;
+                _captures[input.Pointer.PointerId] = (target, input.Pointer);
+            }
+        }
+        input.CapturedBeforeDeferral |= Contains(input.Pointer.PointerId);
+    }
 
     /// <summary>
     /// Releases every capture, continuing past a failed release, and forgets

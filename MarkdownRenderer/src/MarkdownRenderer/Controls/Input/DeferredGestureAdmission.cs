@@ -191,6 +191,70 @@ internal sealed class DeferredGestureAdmission
         return _host.IsLazyLayoutBandCovered(snapshot, hitBand);
     }
 
+    /// <summary>
+    /// Decides whether the queue head, a gesture that waited for geometry, can
+    /// be dispatched now. Records in <paramref name="outcome"/> why the drain
+    /// stops when it must wait for layout, or when a dropped gesture still has
+    /// post-interaction work.
+    /// </summary>
+    internal DeferredGeometryWaitStep AdmitQueuedGesture(
+        DeferredInputQueue<PointerInput> queue,
+        ref PointerInput input,
+        LayoutSnapshot snapshot,
+        ref DeferredInputDrainOutcome outcome)
+    {
+        bool hasBand = TryGetAdmissionBand(
+            ref input,
+            snapshot,
+            out outcome.WaitingBand,
+            out bool bandReady);
+        if (input.InvalidDeferredProjection)
+            return DropQueueHead(queue, input, ref outcome);
+        if (input.WaitForLayoutPublication)
+        {
+            queue.TryReplaceHead(
+                input,
+                blocksSnapshotInteraction: false);
+            outcome.WaitingForLayoutPublication = true;
+            if (input.HasPostInteractionWork)
+                outcome.PostInteractionInput = input;
+            return DeferredGeometryWaitStep.Stop;
+        }
+        if (hasBand && !bandReady)
+        {
+            queue.TryReplaceHead(
+                input,
+                blocksSnapshotInteraction: false);
+            outcome.WaitingForGeometry = true;
+            if (input.HasPostInteractionWork)
+                outcome.PostInteractionInput = input;
+            return DeferredGeometryWaitStep.Stop;
+        }
+        if (!input.WaitForMeasuredHitTest &&
+            !TryReproject(ref input))
+        {
+            return DropQueueHead(queue, input, ref outcome);
+        }
+        input.WaitForMeasuredHitTest = false;
+        return DeferredGeometryWaitStep.Dispatch;
+    }
+
+    /// <summary>
+    /// Dequeues a gesture that can no longer be dispatched. The drain stops
+    /// only when the gesture still has post-interaction work to run.
+    /// </summary>
+    private static DeferredGeometryWaitStep DropQueueHead(
+        DeferredInputQueue<PointerInput> queue,
+        PointerInput input,
+        ref DeferredInputDrainOutcome outcome)
+    {
+        queue.TryDequeue(out _);
+        if (!input.HasPostInteractionWork)
+            return DeferredGeometryWaitStep.Skip;
+        outcome.PostInteractionInput = input;
+        return DeferredGeometryWaitStep.Stop;
+    }
+
     private bool TryGetHitTestBand(ref PointerInput input, out LazyLayoutBand band)
     {
         band = default;

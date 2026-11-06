@@ -531,10 +531,11 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("catch (Exception ex)\n        {\n            ContextMenuTargets.DisposeContextMenuTarget(target);", menu, StringComparison.Ordinal);
 
         Assert.Contains("_contextMenuCompletion = new GestureContextMenuCompletion(lifetime, published, contextMenu);", pointerSource, StringComparison.Ordinal);
-        int recognizedGestureStart = pointerSource.IndexOf("internal bool DispatchRecognizedGesture(", StringComparison.Ordinal);
-        int pointerDispatchStart = pointerSource.IndexOf("internal void DispatchPointerInput(", recognizedGestureStart, StringComparison.Ordinal);
-        Assert.True(recognizedGestureStart >= 0 && pointerDispatchStart > recognizedGestureStart);
-        string recognizedGesture = pointerSource[recognizedGestureStart..pointerDispatchStart];
+        string gestureRoutingSource = ReadRendererSource("Controls", "Input", "RecognizedGestureRouting.cs");
+        int recognizedGestureStart = gestureRoutingSource.IndexOf("private bool DispatchUnderLease(", StringComparison.Ordinal);
+        int geometryDeferralStart = gestureRoutingSource.IndexOf("private bool DeferForGeometry(", recognizedGestureStart, StringComparison.Ordinal);
+        Assert.True(recognizedGestureStart >= 0 && geometryDeferralStart > recognizedGestureStart);
+        string recognizedGesture = gestureRoutingSource[recognizedGestureStart..geometryDeferralStart];
         int endInteraction = recognizedGesture.IndexOf("snapshot.EndInteraction();", StringComparison.Ordinal);
         int postInteractionMenu = recognizedGesture.IndexOf("_contextMenuCompletion.Complete(", endInteraction, StringComparison.Ordinal);
         Assert.True(endInteraction >= 0 && postInteractionMenu > endInteraction);
