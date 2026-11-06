@@ -1,41 +1,57 @@
-using System.Reflection;
+using System.Runtime.CompilerServices;
+using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Boxes;
 using Xunit;
+using static MarkdownRenderer.GitHub.Tests.SvgPublicationCommitTestOperations;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class ImagePublicationCarrierContractTests
 {
     [Fact]
-    public void SvgPublicationFactoryAcceptsOnlyWeakSourceIdentityAndScalarLength()
+    public async Task SvgPublicationFactoryAcceptsOnlyWeakSourceIdentityAndScalarLength()
     {
-        ConstructorInfo factory = Assert.Single(typeof(SvgPublicationMetadata).GetConstructors(
-            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic));
-        ParameterInfo[] parameters = factory.GetParameters();
-        Assert.Equal(typeof(WeakReference<byte[]>), parameters[0].ParameterType);
-        Assert.Equal(typeof(long), parameters[1].ParameterType);
-        Assert.DoesNotContain(parameters, parameter => parameter.ParameterType == typeof(byte[]));
-        FieldInfo[] fields = typeof(SvgPublicationMetadata).GetFields(
-            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-        Assert.DoesNotContain(fields, field => field.FieldType == typeof(byte[]));
-        Assert.Equal(typeof(WeakReference<byte[]>),
-            Assert.Single(fields, field => field.Name == "SourceIdentity").FieldType);
+        await using var fixture = new QueuedSvgPublicationFixture();
+        var (metadata, source) = fixture.CreateMetadata(
+            new PublicationCommitSvgDocument().Info, "weak-source", sourceLength: 4096);
+
+        RetentionCollector.CollectUntilDead(source);
+
+        // The metadata keeps the scalar length for tracing but never the bytes.
+        Assert.False(source.IsAlive, "Publication metadata must not keep its source array alive.");
+        Assert.False(metadata.SourceIdentity.TryGetTarget(out _));
+        Assert.Equal(4096, metadata.SourceByteLength);
+        GC.KeepAlive(metadata);
     }
 
     [Fact]
-    public void OpenedRenderHandoffContainsNoSourceBearingPayloadFields()
+    public async Task OpenedRenderHandoffRetainsItsDocumentButNotItsSource()
     {
-        Type work = typeof(SvgOpenedRenderWork);
-        FieldInfo[] fields = work.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-        Assert.DoesNotContain(fields, field => field.FieldType == typeof(byte[]) ||
-            field.FieldType == typeof(Memory<byte>) || field.FieldType == typeof(ReadOnlyMemory<byte>) ||
-            field.FieldType.Name is "MarkdownSvgSourcePreparation" or "MarkdownSvgOpenRequest" or
-                "SvgCacheEntry" or "MarkdownImageAsset" or "MarkdownImageResolution" or
-                "IMarkdownImageResolutionLease" or "MarkdownBuiltInImageSource");
-        Assert.Contains(fields, field => field.Name == "Document" &&
-            field.FieldType.Name == "IMarkdownSvgDocument");
-        Assert.Contains(fields, field => field.Name == "ContentCacheKey" && field.IsInitOnly);
-        Assert.Contains(fields, field => field.Name == "Metadata" && field.IsInitOnly);
+        await using var fixture = new QueuedSvgPublicationFixture();
+        var (document, info, candidateUse, disposed) = fixture.OpenCandidateDocument();
+        var (metadata, source) = fixture.CreateMetadata(info, "opened-handoff");
+        SvgOpenedRenderWork work = CreateOpenedWork(fixture, metadata, document, candidateUse);
+
+        RetentionCollector.CollectUntilDead(source);
+
+        // Between Open and Render the handoff owns the document it will
+        // render, never the source bytes the document was opened from.
+        Assert.False(source.IsAlive, "The opened-render handoff must not keep its source array alive.");
+        Assert.True(document.IsAlive);
+        PublicationCommitSvgDocument opened = Assert.IsType<PublicationCommitSvgDocument>(document.Target);
+        Assert.Same(opened, work.Document);
+        Assert.Same(candidateUse, work.DocumentUse);
+        Assert.Same(metadata, work.Metadata);
+        Assert.Equal("content:opened-handoff", work.ContentCacheKey);
+        GC.KeepAlive(work);
+
+        // An unconsumed handoff retires its document and work exactly once.
+        work.Dispose();
+        await disposed.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Null(work.Document);
+        Assert.Null(work.DocumentUse);
+        work.Dispose();
+        Assert.Equal(1, opened.DisposeCount);
     }
 
     [Fact]
@@ -65,16 +81,56 @@ public sealed class ImagePublicationCarrierContractTests
     [Theory]
     [InlineData(nameof(SvgPublicationCommit.CreateTiledPublication))]
     [InlineData(nameof(SvgPublicationCommit.CreateBitmapPublication))]
-    public void SvgPublicationReturnsAnAllocationFreeCallbackPair(string methodName)
+    public async Task SvgPublicationReturnsAnAllocationFreeCallbackPair(string methodName)
     {
-        Type carrier = typeof(SvgPublicationCommit).GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic)!.ReturnType;
-        Assert.True(carrier.IsValueType);
-        Assert.Equal(typeof(ValueTuple<Action, Action>), carrier);
-        FieldInfo[] fields = carrier.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-        Assert.Equal(2, fields.Length);
-        Assert.All(fields, field =>
+        await using var fixture = new QueuedSvgPublicationFixture();
+        var document = new PublicationCommitSvgDocument();
+        var (metadata, _) = fixture.CreateMetadata(document.Info, "callback-pair");
+        (Action Publish, Action? OnDropped) publication = methodName switch
         {
-            Assert.Equal(typeof(Action), field.FieldType);
-        });
+            nameof(SvgPublicationCommit.CreateTiledPublication) =>
+                fixture.Image.SvgPublication.CreateTiledPublication(
+                    metadata, document, (SvgDocumentUseLease)AcquireCandidate(fixture.Image, document)),
+            nameof(SvgPublicationCommit.CreateBitmapPublication) =>
+                fixture.Image.SvgPublication.CreateBitmapPublication(
+                    metadata, new SharedCanvasBitmapCache.Lease()),
+            _ => throw new ArgumentOutOfRangeException(nameof(methodName)),
+        };
+
+        // The pair is a built-in value tuple of exactly two callbacks: no
+        // separate carrier object is allocated beside the publication owner.
+        object carrier = publication;
+        Assert.IsType<ValueTuple<Action, Action>>(carrier);
+        Assert.NotNull(publication.Publish);
+        Action onDropped = Assert.IsType<Action>(publication.OnDropped);
+
+        // Drop the unpublished pair so its candidate or lease is released.
+        onDropped();
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static SvgOpenedRenderWork CreateOpenedWork(
+        QueuedSvgPublicationFixture fixture,
+        SvgPublicationMetadata metadata,
+        WeakReference document,
+        SvgDocumentUseLease candidateUse)
+    {
+        Assert.True(fixture.Image.Lifetime.TryBeginWork(out ImageWorkLease? imageWork));
+        return new SvgOpenedRenderWork(
+            fixture.Image.SourceLoadHost,
+            fixture.Image.Resources,
+            metadata,
+            "content:opened-handoff",
+            builtInSourceAliasKey: null,
+            usesTiles: false,
+            Assert.IsAssignableFrom<IMarkdownSvgDocument>(document.Target),
+            candidateUse,
+            ownerSlot: null,
+            Assert.IsType<ImageWorkLease>(imageWork),
+            preparationCancellation: null,
+            CancellationToken.None,
+            CancellationToken.None,
+            openAdmissionEntry: null,
+            providerAdmissionHeld: false);
     }
 }

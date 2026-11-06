@@ -124,15 +124,13 @@ internal static class CompositeRasterCandidateAssertions
         Assert.Equal(sourceTable.CollapsedTopMargin, candidateTable.CollapsedTopMargin);
         Assert.Equal(sourceTable.SuppressTopMargin, candidateTable.SuppressTopMargin);
         Assert.Equal(sourceTable.SuppressBottomMargin, candidateTable.SuppressBottomMargin);
-        Assert.NotSame(GetReferenceField(sourceTable, "_headerCells"), GetReferenceField(candidateTable, "_headerCells"));
-        Assert.NotSame(GetReferenceField(sourceTable, "_bodyCells"), GetReferenceField(candidateTable, "_bodyCells"));
-        InlineContainerBox[][] sourceBodyRows = GetField<InlineContainerBox[][]>(sourceTable, "_bodyCells");
-        InlineContainerBox[][] candidateBodyRows = GetField<InlineContainerBox[][]>(candidateTable, "_bodyCells");
-        Assert.NotSame(sourceBodyRows[0], candidateBodyRows[0]);
-        Assert.NotSame(GetReferenceField(sourceTable, "_columnAlignments"), GetReferenceField(candidateTable, "_columnAlignments"));
-        Assert.NotSame(GetReferenceField(sourceTable, "_colWidths"), GetReferenceField(candidateTable, "_colWidths"));
-        Assert.NotSame(GetReferenceField(sourceTable, "_rowHeights"), GetReferenceField(candidateTable, "_rowHeights"));
-        Assert.NotSame(GetReferenceField(sourceTable, "_rowBottomEdges"), GetReferenceField(candidateTable, "_rowBottomEdges"));
+        Assert.NotSame(sourceTable.HeaderCells, candidateTable.HeaderCells);
+        Assert.NotSame(sourceTable.BodyCells, candidateTable.BodyCells);
+        Assert.NotSame(sourceTable.BodyCells[0], candidateTable.BodyCells[0]);
+        Assert.NotSame(sourceTable.ColumnAlignments, candidateTable.ColumnAlignments);
+        Assert.NotSame(Assert.IsType<float[]>(sourceTable.ColumnWidths), Assert.IsType<float[]>(candidateTable.ColumnWidths));
+        Assert.NotSame(Assert.IsType<float[]>(sourceTable.RowHeights), Assert.IsType<float[]>(candidateTable.RowHeights));
+        Assert.NotSame(sourceTable.RowBottomEdges, candidateTable.RowBottomEdges);
     }
 
     internal static void AssertDpiReplacementMatchesSource(

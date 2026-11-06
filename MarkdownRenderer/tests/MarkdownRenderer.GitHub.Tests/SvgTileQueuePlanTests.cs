@@ -1,5 +1,4 @@
 using System.Collections;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -34,11 +33,11 @@ public sealed class SvgTileQueuePlanTests
 
         SvgTileRenderPlan plan = NewPlan(document, identity, width, height, generation);
 
-        AssertPlanMember(plan, "Document", document);
-        AssertPlanMember(plan, "IdentityPrefix", identity);
-        AssertPlanMember(plan, "FullWidthPixels", width);
-        AssertPlanMember(plan, "FullHeightPixels", height);
-        AssertPlanMember(plan, "RenderGeneration", generation);
+        Assert.Same(document, plan.Document);
+        Assert.Equal(identity, plan.IdentityPrefix);
+        Assert.Equal(width, plan.FullWidthPixels);
+        Assert.Equal(height, plan.FullHeightPixels);
+        Assert.Equal(generation, plan.RenderGeneration);
     }
 
     [Fact]
@@ -800,21 +799,6 @@ public sealed class SvgTileQueuePlanTests
 
     private long GetRendererIdentity(IMarkdownSvgRenderer renderer) =>
         _renderResources.Images.ProviderIdentities.GetSvgRendererIdentity(renderer);
-
-    private static void AssertPlanMember<T>(SvgTileRenderPlan plan, string memberName, T expected)
-    {
-        FieldInfo field = FindPlanField(memberName);
-        Assert.True(field.IsInitOnly, $"Plan member '{memberName}' must be readonly.");
-        Assert.Equal(expected, (T)field.GetValue(plan)!);
-    }
-
-    private static FieldInfo FindPlanField(string memberName)
-        => typeof(SvgTileRenderPlan)
-            .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-            .SingleOrDefault(candidate =>
-                candidate.Name.TrimStart('_').Equals(memberName, StringComparison.OrdinalIgnoreCase) ||
-                candidate.Name.Equals($"<{memberName}>k__BackingField", StringComparison.Ordinal))
-            ?? throw new Xunit.Sdk.XunitException($"Immutable plan has no stored '{memberName}' field.");
 
     private sealed class CountingDocument : IMarkdownSvgDocument
     {
