@@ -77,8 +77,6 @@
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\FilePreviewResolver.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\RepositorySvgSecurityPolicy.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\RepositorySvgRasterizer.cs" Link="Services\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\CodeViewer\RepositorySvgPixelFormatPolicy.cs" Link="Services\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\CodeViewer\StrictResourceLeaseCache.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\CsvDocumentParser.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\SvgPreviewRequestGate.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\SettledZoomTracker.cs" Link="Services\%(Filename)%(Extension)" />

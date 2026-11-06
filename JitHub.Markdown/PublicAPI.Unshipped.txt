@@ -380,6 +380,25 @@ JitHub.Markdown.RuntimeEventSubscription.RuntimeEventSubscription(System.Action<
 JitHub.Markdown.RuntimeEventSubscription.TryCreate<T>(System.Func<T!>! factory, string! sourceName) -> T?
 JitHub.Markdown.RuntimeEventSubscription.TrySubscribe(System.Action! subscribe, string! eventName) -> bool
 JitHub.Markdown.RuntimeEventSubscription.TryUnsubscribe(System.Action! unsubscribe, bool wasSubscribed, string! eventName) -> void
+JitHub.Markdown.Svg.RepositorySvgPixelFormatPolicy
+JitHub.Markdown.Svg.StrictResourceLease<TKey, TResource>
+JitHub.Markdown.Svg.StrictResourceLease<TKey, TResource>.Dispose() -> void
+JitHub.Markdown.Svg.StrictResourceLease<TKey, TResource>.Resource.get -> TResource!
+JitHub.Markdown.Svg.StrictResourceLeaseCache<TKey, TResource>
+JitHub.Markdown.Svg.StrictResourceLeaseCache<TKey, TResource>.AccountedBytes.get -> long
+JitHub.Markdown.Svg.StrictResourceLeaseCache<TKey, TResource>.CachedResourceCount.get -> int
+JitHub.Markdown.Svg.StrictResourceLeaseCache<TKey, TResource>.Dispose() -> void
+JitHub.Markdown.Svg.StrictResourceLeaseCache<TKey, TResource>.MaximumBytes.get -> long
+JitHub.Markdown.Svg.StrictResourceLeaseCache<TKey, TResource>.RemoveWhere(System.Predicate<TKey>! predicate) -> void
+JitHub.Markdown.Svg.StrictResourceLeaseCache<TKey, TResource>.ReservedBytes.get -> long
+JitHub.Markdown.Svg.StrictResourceLeaseCache<TKey, TResource>.ResidentBytes.get -> long
+JitHub.Markdown.Svg.StrictResourceLeaseCache<TKey, TResource>.StoreAndAcquire(TKey key, TResource! resource, long byteCount, JitHub.Markdown.Svg.StrictResourceReservation<TKey, TResource!>! reservation) -> JitHub.Markdown.Svg.StrictResourceLease<TKey, TResource!>!
+JitHub.Markdown.Svg.StrictResourceLeaseCache<TKey, TResource>.StrictResourceLeaseCache(long maximumBytes) -> void
+JitHub.Markdown.Svg.StrictResourceLeaseCache<TKey, TResource>.Trim() -> void
+JitHub.Markdown.Svg.StrictResourceLeaseCache<TKey, TResource>.TryAcquire(TKey key, out JitHub.Markdown.Svg.StrictResourceLease<TKey, TResource!>? lease) -> bool
+JitHub.Markdown.Svg.StrictResourceLeaseCache<TKey, TResource>.TryReserve(long byteCount, out JitHub.Markdown.Svg.StrictResourceReservation<TKey, TResource!>? reservation) -> bool
+JitHub.Markdown.Svg.StrictResourceReservation<TKey, TResource>
+JitHub.Markdown.Svg.StrictResourceReservation<TKey, TResource>.Dispose() -> void
 override JitHub.Markdown.GitHubMarkdownImageReference.GetHashCode() -> int
 override JitHub.Markdown.Images.GitHubCachedImage.Equals(object? obj) -> bool
 override JitHub.Markdown.Images.GitHubCachedImage.GetHashCode() -> int
@@ -459,4 +478,5 @@ static JitHub.Markdown.MarkdownRemoteImageDecision.operator !=(JitHub.Markdown.M
 static JitHub.Markdown.MarkdownRemoteImageDecision.operator ==(JitHub.Markdown.MarkdownRemoteImageDecision left, JitHub.Markdown.MarkdownRemoteImageDecision right) -> bool
 static JitHub.Markdown.MarkdownRemoteImagePolicy.IsTrustedGitHubHost(string? host) -> bool
 static JitHub.Markdown.NoMarkdownHostObserver.Instance.get -> JitHub.Markdown.NoMarkdownHostObserver!
+static JitHub.Markdown.Svg.RepositorySvgPixelFormatPolicy.Select(bool forceSoftwareRenderer, bool rgbaSupported) -> MarkdownRenderer.Images.MarkdownSvgPixelFormat
 virtual JitHub.Markdown.Images.GitHubImageFetcher.Invoke(JitHub.Markdown.Images.GitHubImageCacheEntry? cachedEntry, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<JitHub.Markdown.Images.GitHubImageDownload?>!

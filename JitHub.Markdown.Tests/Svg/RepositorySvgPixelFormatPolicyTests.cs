@@ -1,8 +1,8 @@
-using JitHub.Services.CodeViewer;
+using JitHub.Markdown.Svg;
 using MarkdownRenderer.Images;
 using Xunit;
 
-namespace JitHub.WinUI.Tests.Services;
+namespace JitHub.Markdown.Tests.Svg;
 
 public sealed class RepositorySvgPixelFormatPolicyTests
 {

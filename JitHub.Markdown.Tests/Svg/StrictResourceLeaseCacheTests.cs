@@ -1,7 +1,7 @@
-using JitHub.Services.CodeViewer;
+using JitHub.Markdown.Svg;
 using Xunit;
 
-namespace JitHub.WinUI.Tests.Services;
+namespace JitHub.Markdown.Tests.Svg;
 
 public sealed class StrictResourceLeaseCacheTests
 {
@@ -11,7 +11,7 @@ public sealed class StrictResourceLeaseCacheTests
         using StrictResourceLeaseCache<string, TrackingResource> cache = new(10);
         Assert.True(cache.TryReserve(6, out var firstReservation));
         TrackingResource first = new();
-        using StrictResourceLeaseCache<string, TrackingResource>.Lease firstLease =
+        using StrictResourceLease<string, TrackingResource> firstLease =
             cache.StoreAndAcquire("first", first, 6, firstReservation!);
         firstReservation!.Dispose();
 
@@ -34,7 +34,7 @@ public sealed class StrictResourceLeaseCacheTests
         using StrictResourceLeaseCache<string, TrackingResource> cache = new(10);
         Assert.True(cache.TryReserve(8, out var reservation));
         TrackingResource resource = new();
-        using StrictResourceLeaseCache<string, TrackingResource>.Lease lease =
+        using StrictResourceLease<string, TrackingResource> lease =
             cache.StoreAndAcquire("published", resource, 8, reservation!);
         reservation!.Dispose();
 
@@ -56,14 +56,14 @@ public sealed class StrictResourceLeaseCacheTests
     {
         using StrictResourceLeaseCache<string, TrackingResource> cache = new(12);
         Assert.True(cache.TryReserve(12, out var reservation));
-        using StrictResourceLeaseCache<string, TrackingResource>.Lease first =
+        using StrictResourceLease<string, TrackingResource> first =
             cache.StoreAndAcquire("a", new TrackingResource(), 5, reservation!);
 
         Assert.Equal(5, cache.ResidentBytes);
         Assert.Equal(7, cache.ReservedBytes);
         Assert.Equal(12, cache.AccountedBytes);
 
-        using StrictResourceLeaseCache<string, TrackingResource>.Lease second =
+        using StrictResourceLease<string, TrackingResource> second =
             cache.StoreAndAcquire("b", new TrackingResource(), 7, reservation!);
         Assert.Equal(12, cache.ResidentBytes);
         Assert.Equal(0, cache.ReservedBytes);
@@ -76,13 +76,13 @@ public sealed class StrictResourceLeaseCacheTests
         using StrictResourceLeaseCache<string, TrackingResource> cache = new(10);
         Assert.True(cache.TryReserve(4, out var firstReservation));
         TrackingResource cached = new();
-        using StrictResourceLeaseCache<string, TrackingResource>.Lease first =
+        using StrictResourceLease<string, TrackingResource> first =
             cache.StoreAndAcquire("same", cached, 4, firstReservation!);
         firstReservation!.Dispose();
 
         Assert.True(cache.TryReserve(4, out var duplicateReservation));
         TrackingResource duplicate = new();
-        using StrictResourceLeaseCache<string, TrackingResource>.Lease second =
+        using StrictResourceLease<string, TrackingResource> second =
             cache.StoreAndAcquire("same", duplicate, 4, duplicateReservation!);
         duplicateReservation!.Dispose();
 
@@ -98,12 +98,12 @@ public sealed class StrictResourceLeaseCacheTests
         using StrictResourceLeaseCache<string, TrackingResource> cache = new(10);
         Assert.True(cache.TryReserve(4, out var firstReservation));
         TrackingResource firstResource = new();
-        using StrictResourceLeaseCache<string, TrackingResource>.Lease firstLease =
+        using StrictResourceLease<string, TrackingResource> firstLease =
             cache.StoreAndAcquire("device-a/tile", firstResource, 4, firstReservation!);
         firstReservation!.Dispose();
         Assert.True(cache.TryReserve(4, out var secondReservation));
         TrackingResource secondResource = new();
-        using StrictResourceLeaseCache<string, TrackingResource>.Lease secondLease =
+        using StrictResourceLease<string, TrackingResource> secondLease =
             cache.StoreAndAcquire("device-b/tile", secondResource, 4, secondReservation!);
         secondReservation!.Dispose();
 

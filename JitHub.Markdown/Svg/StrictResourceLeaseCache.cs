@@ -1,34 +1,34 @@
 using System;
 using System.Collections.Generic;
 
-namespace JitHub.Services.CodeViewer;
+namespace JitHub.Markdown.Svg;
 
 /// <summary>
 /// A thread-safe LRU whose reservations, cached resources, and active leases
 /// share one strict byte budget. Resources removed while leased remain charged
 /// until their final lease is released.
 /// </summary>
-internal sealed partial class StrictResourceLeaseCache<TKey, TResource> : IDisposable
+public sealed partial class StrictResourceLeaseCache<TKey, TResource> : IDisposable
     where TKey : notnull
     where TResource : class, IDisposable
 {
     private readonly object _gate = new();
-    private readonly Dictionary<TKey, LinkedListNode<Entry>> _entries = [];
-    private readonly LinkedList<Entry> _lru = [];
+    private readonly Dictionary<TKey, LinkedListNode<StrictResourceLeaseEntry<TKey, TResource>>> _entries = [];
+    private readonly LinkedList<StrictResourceLeaseEntry<TKey, TResource>> _lru = [];
     private readonly long _maximumBytes;
     private long _residentBytes;
     private long _reservedBytes;
     private bool _disposed;
 
-    internal StrictResourceLeaseCache(long maximumBytes)
+    public StrictResourceLeaseCache(long maximumBytes)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumBytes);
         _maximumBytes = maximumBytes;
     }
 
-    internal long MaximumBytes => _maximumBytes;
+    public long MaximumBytes => _maximumBytes;
 
-    internal long AccountedBytes
+    public long AccountedBytes
     {
         get
         {
@@ -39,7 +39,7 @@ internal sealed partial class StrictResourceLeaseCache<TKey, TResource> : IDispo
         }
     }
 
-    internal long ResidentBytes
+    public long ResidentBytes
     {
         get
         {
@@ -50,7 +50,7 @@ internal sealed partial class StrictResourceLeaseCache<TKey, TResource> : IDispo
         }
     }
 
-    internal long ReservedBytes
+    public long ReservedBytes
     {
         get
         {
@@ -61,7 +61,7 @@ internal sealed partial class StrictResourceLeaseCache<TKey, TResource> : IDispo
         }
     }
 
-    internal int CachedResourceCount
+    public int CachedResourceCount
     {
         get
         {
@@ -72,11 +72,11 @@ internal sealed partial class StrictResourceLeaseCache<TKey, TResource> : IDispo
         }
     }
 
-    internal bool TryAcquire(TKey key, out Lease? lease)
+    public bool TryAcquire(TKey key, out StrictResourceLease<TKey, TResource>? lease)
     {
         lock (_gate)
         {
-            if (_disposed || !_entries.TryGetValue(key, out LinkedListNode<Entry>? node))
+            if (_disposed || !_entries.TryGetValue(key, out LinkedListNode<StrictResourceLeaseEntry<TKey, TResource>>? node))
             {
                 lease = null;
                 return false;
@@ -84,12 +84,12 @@ internal sealed partial class StrictResourceLeaseCache<TKey, TResource> : IDispo
 
             TouchLocked(node);
             node.Value.LeaseCount++;
-            lease = new Lease(this, node.Value);
+            lease = new StrictResourceLease<TKey, TResource>(this, node.Value);
             return true;
         }
     }
 
-    internal bool TryReserve(long byteCount, out Reservation? reservation)
+    public bool TryReserve(long byteCount, out StrictResourceReservation<TKey, TResource>? reservation)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(byteCount);
         lock (_gate)
@@ -102,7 +102,7 @@ internal sealed partial class StrictResourceLeaseCache<TKey, TResource> : IDispo
 
             while (checked(_residentBytes + _reservedBytes + byteCount) > _maximumBytes)
             {
-                LinkedListNode<Entry>? candidate = FindOldestUnleasedLocked();
+                LinkedListNode<StrictResourceLeaseEntry<TKey, TResource>>? candidate = FindOldestUnleasedLocked();
                 if (candidate is null)
                 {
                     reservation = null;
@@ -113,16 +113,16 @@ internal sealed partial class StrictResourceLeaseCache<TKey, TResource> : IDispo
             }
 
             _reservedBytes = checked(_reservedBytes + byteCount);
-            reservation = new Reservation(this, byteCount);
+            reservation = new StrictResourceReservation<TKey, TResource>(this, byteCount);
             return true;
         }
     }
 
-    internal Lease StoreAndAcquire(
+    public StrictResourceLease<TKey, TResource> StoreAndAcquire(
         TKey key,
         TResource resource,
         long byteCount,
-        Reservation reservation)
+        StrictResourceReservation<TKey, TResource> reservation)
     {
         ArgumentNullException.ThrowIfNull(resource);
         ArgumentNullException.ThrowIfNull(reservation);
@@ -133,7 +133,7 @@ internal sealed partial class StrictResourceLeaseCache<TKey, TResource> : IDispo
             ObjectDisposedException.ThrowIf(_disposed, this);
             ValidateReservationLocked(reservation, byteCount);
 
-            if (_entries.TryGetValue(key, out LinkedListNode<Entry>? existing))
+            if (_entries.TryGetValue(key, out LinkedListNode<StrictResourceLeaseEntry<TKey, TResource>>? existing))
             {
                 // The reservation continues to cover the duplicate allocation
                 // until it has actually been released.
@@ -141,11 +141,11 @@ internal sealed partial class StrictResourceLeaseCache<TKey, TResource> : IDispo
                 ConsumeReservationLocked(reservation, byteCount);
                 TouchLocked(existing);
                 existing.Value.LeaseCount++;
-                return new Lease(this, existing.Value);
+                return new StrictResourceLease<TKey, TResource>(this, existing.Value);
             }
 
-            Entry entry = new(key, resource, byteCount) { LeaseCount = 1 };
-            LinkedListNode<Entry>? node = null;
+            StrictResourceLeaseEntry<TKey, TResource> entry = new(key, resource, byteCount) { LeaseCount = 1 };
+            LinkedListNode<StrictResourceLeaseEntry<TKey, TResource>>? node = null;
             try
             {
                 node = _lru.AddLast(entry);
@@ -170,11 +170,11 @@ internal sealed partial class StrictResourceLeaseCache<TKey, TResource> : IDispo
 
             ConsumeReservationLocked(reservation, byteCount);
             _residentBytes = checked(_residentBytes + byteCount);
-            return new Lease(this, entry);
+            return new StrictResourceLease<TKey, TResource>(this, entry);
         }
     }
 
-    internal void Trim()
+    public void Trim()
     {
         lock (_gate)
         {
@@ -182,15 +182,15 @@ internal sealed partial class StrictResourceLeaseCache<TKey, TResource> : IDispo
         }
     }
 
-    internal void RemoveWhere(Predicate<TKey> predicate)
+    public void RemoveWhere(Predicate<TKey> predicate)
     {
         ArgumentNullException.ThrowIfNull(predicate);
         lock (_gate)
         {
-            LinkedListNode<Entry>? node = _lru.First;
+            LinkedListNode<StrictResourceLeaseEntry<TKey, TResource>>? node = _lru.First;
             while (node is not null)
             {
-                LinkedListNode<Entry>? next = node.Next;
+                LinkedListNode<StrictResourceLeaseEntry<TKey, TResource>>? next = node.Next;
                 if (predicate(node.Value.Key))
                 {
                     RemoveCachedEntryLocked(node);
@@ -215,7 +215,7 @@ internal sealed partial class StrictResourceLeaseCache<TKey, TResource> : IDispo
         }
     }
 
-    private void Release(Entry entry)
+    internal void Release(StrictResourceLeaseEntry<TKey, TResource> entry)
     {
         lock (_gate)
         {
@@ -232,7 +232,7 @@ internal sealed partial class StrictResourceLeaseCache<TKey, TResource> : IDispo
         }
     }
 
-    private void ReleaseReservation(Reservation reservation)
+    internal void ReleaseReservation(StrictResourceReservation<TKey, TResource> reservation)
     {
         lock (_gate)
         {
@@ -247,7 +247,7 @@ internal sealed partial class StrictResourceLeaseCache<TKey, TResource> : IDispo
         }
     }
 
-    private void ValidateReservationLocked(Reservation reservation, long byteCount)
+    private void ValidateReservationLocked(StrictResourceReservation<TKey, TResource> reservation, long byteCount)
     {
         if (!ReferenceEquals(reservation.Owner, this) ||
             reservation.IsDisposed ||
@@ -257,15 +257,15 @@ internal sealed partial class StrictResourceLeaseCache<TKey, TResource> : IDispo
         }
     }
 
-    private void ConsumeReservationLocked(Reservation reservation, long byteCount)
+    private void ConsumeReservationLocked(StrictResourceReservation<TKey, TResource> reservation, long byteCount)
     {
         reservation.RemainingBytes -= byteCount;
         _reservedBytes -= byteCount;
     }
 
-    private LinkedListNode<Entry>? FindOldestUnleasedLocked()
+    private LinkedListNode<StrictResourceLeaseEntry<TKey, TResource>>? FindOldestUnleasedLocked()
     {
-        LinkedListNode<Entry>? node = _lru.First;
+        LinkedListNode<StrictResourceLeaseEntry<TKey, TResource>>? node = _lru.First;
         while (node is not null && node.Value.LeaseCount != 0)
         {
             node = node.Next;
@@ -274,7 +274,7 @@ internal sealed partial class StrictResourceLeaseCache<TKey, TResource> : IDispo
         return node;
     }
 
-    private void TouchLocked(LinkedListNode<Entry> node)
+    private void TouchLocked(LinkedListNode<StrictResourceLeaseEntry<TKey, TResource>> node)
     {
         _lru.Remove(node);
         _lru.AddLast(node);
@@ -282,18 +282,18 @@ internal sealed partial class StrictResourceLeaseCache<TKey, TResource> : IDispo
 
     private void TrimLocked()
     {
-        LinkedListNode<Entry>? node = _lru.First;
+        LinkedListNode<StrictResourceLeaseEntry<TKey, TResource>>? node = _lru.First;
         while (node is not null)
         {
-            LinkedListNode<Entry>? next = node.Next;
+            LinkedListNode<StrictResourceLeaseEntry<TKey, TResource>>? next = node.Next;
             RemoveCachedEntryLocked(node);
             node = next;
         }
     }
 
-    private void RemoveCachedEntryLocked(LinkedListNode<Entry> node)
+    private void RemoveCachedEntryLocked(LinkedListNode<StrictResourceLeaseEntry<TKey, TResource>> node)
     {
-        Entry entry = node.Value;
+        StrictResourceLeaseEntry<TKey, TResource> entry = node.Value;
         _lru.Remove(node);
         _entries.Remove(entry.Key);
         entry.Node = null;
@@ -304,7 +304,7 @@ internal sealed partial class StrictResourceLeaseCache<TKey, TResource> : IDispo
         }
     }
 
-    private void DisposeEntryLocked(Entry entry)
+    private void DisposeEntryLocked(StrictResourceLeaseEntry<TKey, TResource> entry)
     {
         if (entry.IsDisposed)
         {
@@ -327,66 +327,5 @@ internal sealed partial class StrictResourceLeaseCache<TKey, TResource> : IDispo
             // Cache trimming and device-loss cleanup are best effort. The
             // accounting entry must still retire if a native wrapper faults.
         }
-    }
-
-    internal sealed class Entry(TKey key, TResource resource, long byteCount)
-    {
-        internal TKey Key { get; } = key;
-
-        internal TResource Resource { get; } = resource;
-
-        internal long ByteCount { get; } = byteCount;
-
-        internal LinkedListNode<Entry>? Node { get; set; }
-
-        internal int LeaseCount { get; set; }
-
-        internal bool IsCached { get; set; } = true;
-
-        internal bool IsDisposed { get; set; }
-    }
-
-    internal sealed partial class Lease : IDisposable
-    {
-        private StrictResourceLeaseCache<TKey, TResource>? _owner;
-        private Entry? _entry;
-
-        internal Lease(StrictResourceLeaseCache<TKey, TResource> owner, Entry entry)
-        {
-            _owner = owner;
-            _entry = entry;
-        }
-
-        internal TResource Resource =>
-            _entry?.Resource ?? throw new ObjectDisposedException(nameof(Lease));
-
-        public void Dispose()
-        {
-            StrictResourceLeaseCache<TKey, TResource>? owner = _owner;
-            Entry? entry = _entry;
-            _owner = null;
-            _entry = null;
-            if (owner is not null && entry is not null)
-            {
-                owner.Release(entry);
-            }
-        }
-    }
-
-    internal sealed partial class Reservation : IDisposable
-    {
-        internal Reservation(StrictResourceLeaseCache<TKey, TResource> owner, long byteCount)
-        {
-            Owner = owner;
-            RemainingBytes = byteCount;
-        }
-
-        internal StrictResourceLeaseCache<TKey, TResource> Owner { get; }
-
-        internal long RemainingBytes { get; set; }
-
-        internal bool IsDisposed { get; set; }
-
-        public void Dispose() => Owner.ReleaseReservation(this);
     }
 }
