@@ -238,7 +238,7 @@ internal sealed class ImageBox : BlockBox, ISelectionBackgroundGeometrySource, I
         _lifetime = new ImageWorkLifetime(
             this,
             context,
-            System.Threading.CancellationTokenSource.CreateLinkedTokenSource(context.ImageCancellationToken));
+            RetirableCancellationTokenSource.CreateLinked(context.ImageCancellationToken));
         _load = new ImageLoadState();
         _presentation = new ImagePresentation(_lifetime, _load);
         _documents = new SvgDocumentCustody(_lifetime);

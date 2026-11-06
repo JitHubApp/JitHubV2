@@ -11,10 +11,10 @@ namespace MarkdownRenderer.Performance.ProgressiveScenes;
 /// </summary>
 internal sealed class ActiveSceneWork(
     long generation,
-    CancellationTokenSource cancellation)
+    RetirableCancellationTokenSource cancellation)
 {
     private readonly object _gate = new();
-    private CancellationTokenSource? _cancellation = cancellation;
+    private RetirableCancellationTokenSource? _cancellation = cancellation;
     private int _cancelRequested;
     private Task? _retirementTask;
     internal long Generation { get; } = generation;
@@ -23,7 +23,7 @@ internal sealed class ActiveSceneWork(
 
     internal void Cancel()
     {
-        CancellationTokenSource? source;
+        RetirableCancellationTokenSource? source;
         lock (_gate)
             source = _cancellation;
         if (source is not null && Interlocked.Exchange(ref _cancelRequested, 1) == 0)
@@ -32,7 +32,7 @@ internal sealed class ActiveSceneWork(
 
     internal Task Dispose(Task? lifetime = null)
     {
-        CancellationTokenSource? source;
+        RetirableCancellationTokenSource? source;
         TaskCompletionSource? completion = null;
         lock (_gate)
         {

@@ -46,5 +46,5 @@ internal interface ICodeBlockHighlightingHost
     /// Cancels <paramref name="cts"/> and disposes it after
     /// <paramref name="lifetime"/> completes.
     /// </summary>
-    Task RetireCancellationTokenSource(CancellationTokenSource? cts, Task? lifetime);
+    Task RetireCancellationTokenSource(RetirableCancellationTokenSource? cts, Task? lifetime);
 }

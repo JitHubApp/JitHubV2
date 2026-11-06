@@ -291,7 +291,7 @@ public sealed class CompletedSvgPlacementCloneTests
     {
         await using var fixture = await SvgPlacementFixture.CreateReadyAsync(hasText: true);
 
-        using var imageCancellation = new CancellationTokenSource();
+        using var imageCancellation = new RetirableCancellationTokenSource();
         imageCancellation.Cancel();
         AssertCloneRejected(fixture.Image, fixture.CreateTargetContext(imageToken: imageCancellation.Token));
 
@@ -351,7 +351,7 @@ public sealed class CompletedSvgPlacementCloneTests
         }
         finally
         {
-            (SharedCanvasBitmapCache.Lease[] tiles, CancellationTokenSource[] work) = cache.DetachAll();
+            (SharedCanvasBitmapCache.Lease[] tiles, RetirableCancellationTokenSource[] work) = cache.DetachAll();
             cache.RetireDetached(tiles, work);
         }
     }

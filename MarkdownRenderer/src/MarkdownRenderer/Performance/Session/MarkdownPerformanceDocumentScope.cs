@@ -20,7 +20,7 @@ internal sealed class MarkdownPerformanceDocumentScope : IMarkdownPerformanceDoc
     private readonly IMarkdownImageResolver _resolver;
     private readonly object _resolverCacheIdentity;
     private readonly MarkdownImageResolveContext _context;
-    private readonly CancellationTokenSource _scopeLifetime;
+    private readonly RetirableCancellationTokenSource _scopeLifetime;
     private readonly CancellationToken _token;
     private readonly object _inFlightGate = new();
     private readonly Dictionary<string, DocumentImageRequest> _inFlight =
@@ -40,7 +40,7 @@ internal sealed class MarkdownPerformanceDocumentScope : IMarkdownPerformanceDoc
         // arbitrary host/plugin state after its last document is closed.
         _resolverCacheIdentity = services.Cache.GetResolverIdentity(resolver);
         _context = context;
-        _scopeLifetime = CancellationTokenSource.CreateLinkedTokenSource(services.Lifetime.Token);
+        _scopeLifetime = RetirableCancellationTokenSource.CreateLinked(services.Lifetime.Token);
         _token = _scopeLifetime.Token;
     }
 
@@ -321,10 +321,10 @@ internal sealed class MarkdownPerformanceDocumentScope : IMarkdownPerformanceDoc
                 SessionWorkLease? requestLifetime = _services.Lifetime.TryBeginWorkLease();
                 if (requestLifetime is null)
                     throw new OperationCanceledException(_services.Lifetime.Token);
-                CancellationTokenSource? linked = null;
+                RetirableCancellationTokenSource? linked = null;
                 try
                 {
-                    linked = CancellationTokenSource.CreateLinkedTokenSource(_token);
+                    linked = RetirableCancellationTokenSource.CreateLinked(_token);
                     request = new DocumentImageRequest(
                         linked, background, _services.Lifetime, requestLifetime)
                     { WaiterCount = 1 };

@@ -38,12 +38,12 @@ internal sealed class ImageWorkLifetime
     private List<Task>? _lateWork;
     private TaskCompletionSource? _workDrained;
     private TaskCompletionSource? _retirementCompletion;
-    private CancellationTokenSource? _residencyCancellation;
+    private RetirableCancellationTokenSource? _residencyCancellation;
 
     internal ImageWorkLifetime(
         IImageWorkLifetimeHost host,
         MarkdownLayoutContext context,
-        CancellationTokenSource lifetimeCancellation)
+        RetirableCancellationTokenSource lifetimeCancellation)
     {
         _host = host;
         _context = context;
@@ -54,7 +54,7 @@ internal sealed class ImageWorkLifetime
     internal readonly object Sync = new();
 
     /// <summary>Linked to the context's image token; canceled by disposal.</summary>
-    internal CancellationTokenSource LifetimeCancellation { get; }
+    internal RetirableCancellationTokenSource LifetimeCancellation { get; }
 
     /// <summary>True once the box is disposed.</summary>
     internal bool IsDisposed => _disposed;
@@ -130,7 +130,7 @@ internal sealed class ImageWorkLifetime
 
             if (_residencyCancellation is null &&
                 _context.PerformanceSession?.Options.ReleaseOffscreenImageResources == true)
-                _residencyCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                _residencyCancellation = RetirableCancellationTokenSource.CreateLinked(
                     LifetimeCancellation.Token);
             var createdWork = new ImageWorkLease(this,
                 (_residencyCancellation ?? LifetimeCancellation).Token);
@@ -476,7 +476,7 @@ internal sealed class ImageWorkLifetime
     /// drain open until that cancellation finishes.
     /// </summary>
     internal bool TrySuspend(
-        out CancellationTokenSource? cancellation,
+        out RetirableCancellationTokenSource? cancellation,
         out ImageWorkLease? cancellationWork)
     {
         cancellation = null;
@@ -516,7 +516,7 @@ internal sealed class ImageWorkLifetime
     /// </summary>
     internal void ReplaceResidencyCancellationNoLock()
     {
-        var replacement = CancellationTokenSource.CreateLinkedTokenSource(LifetimeCancellation.Token);
+        var replacement = RetirableCancellationTokenSource.CreateLinked(LifetimeCancellation.Token);
         _residencyCancellation?.Dispose();
         _residencyCancellation = replacement;
         _residencyReleased = false;

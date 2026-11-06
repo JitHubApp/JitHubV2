@@ -1,5 +1,4 @@
 using System;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using static MarkdownRenderer.TaskFaultObservation;
@@ -11,17 +10,16 @@ namespace MarkdownRenderer;
 /// retires the source only after both those callbacks and its owning work have
 /// finished.
 /// </summary>
+/// <remarks>
+/// Each source carries its own request state; see
+/// <see cref="RetirableCancellationTokenSource"/>.
+/// </remarks>
 internal static class CancellationTokenSourceRetirement
 {
-    private static readonly ConditionalWeakTable<CancellationTokenSource, CancellationState>
-        _cancellationStates = new();
-
-    internal static Task RequestCancellation(CancellationTokenSource source)
+    internal static Task RequestCancellation(RetirableCancellationTokenSource source)
     {
         ArgumentNullException.ThrowIfNull(source);
-        return _cancellationStates.GetValue(
-            source,
-            static _ => new CancellationState()).Request(source);
+        return source.RequestCancellation();
     }
 
     /// <summary>
@@ -30,7 +28,7 @@ internal static class CancellationTokenSourceRetirement
     /// cancellation callbacks and the supplied owning work have retired.
     /// </summary>
     internal static Task CancelAndDisposeAfter(
-        CancellationTokenSource source,
+        RetirableCancellationTokenSource source,
         Task? lifetime = null)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -39,7 +37,7 @@ internal static class CancellationTokenSourceRetirement
     }
 
     internal static Task DisposeAfter(
-        CancellationTokenSource source,
+        RetirableCancellationTokenSource source,
         Task? cancellationCallbacks,
         Task? lifetime = null)
     {
@@ -54,7 +52,7 @@ internal static class CancellationTokenSourceRetirement
     }
 
     private static async Task DisposeAfterCoreAsync(
-        CancellationTokenSource source,
+        RetirableCancellationTokenSource source,
         Task cancellationCallbacks,
         Task lifetime)
     {
@@ -74,7 +72,6 @@ internal static class CancellationTokenSourceRetirement
         {
             try { source.Dispose(); }
             catch (ObjectDisposedException) { }
-            _cancellationStates.Remove(source);
         }
     }
 
@@ -82,39 +79,5 @@ internal static class CancellationTokenSourceRetirement
     {
         if (task.IsFaulted)
             _ = task.Exception;
-    }
-
-    private sealed class CancellationState
-    {
-        private readonly object _gate = new();
-        private Task? _callbacks;
-
-        internal Task Request(CancellationTokenSource source)
-        {
-            lock (_gate)
-            {
-                if (_callbacks is not null)
-                    return _callbacks;
-
-                try
-                {
-                    // CancelAsync transitions IsCancellationRequested before
-                    // returning, but schedules registrations away from the
-                    // initiating thread. Retain its first task so a later
-                    // retirement cannot mistake an already-canceling source for
-                    // one whose callbacks have completed.
-                    _callbacks = source.CancelAsync();
-                    ObserveFault(_callbacks);
-                }
-                catch (ObjectDisposedException)
-                {
-                    // The owning operation completed while a concurrent
-                    // cancellation request was being coordinated.
-                    _callbacks = Task.CompletedTask;
-                }
-
-                return _callbacks;
-            }
-        }
     }
 }

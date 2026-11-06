@@ -13,7 +13,7 @@ namespace MarkdownRenderer.Performance;
 internal sealed class MarkdownPerformanceSessionLifetime
 {
     private readonly object _gate = new();
-    private readonly CancellationTokenSource _lifetime = new();
+    private readonly RetirableCancellationTokenSource _lifetime = new();
     private TaskCompletionSource<bool>? _workDrained;
     private TaskCompletionSource<bool>? _shutdownCompleted;
     private EventHandler? _disposedHandlers;
@@ -162,7 +162,7 @@ internal sealed class MarkdownPerformanceSessionLifetime
     }
 
     internal void RetireCancellationSource(
-        CancellationTokenSource cancellation,
+        RetirableCancellationTokenSource cancellation,
         Task? cancellationCallbacks,
         Task operationCompletion,
         IDisposable lifetimeWork,

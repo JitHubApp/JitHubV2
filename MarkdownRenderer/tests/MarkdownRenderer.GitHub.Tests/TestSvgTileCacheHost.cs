@@ -74,7 +74,7 @@ internal sealed class TestSvgTileCacheHost : ISvgTileCacheHost
     /// <summary>Detaches and releases every tile the cache still owns.</summary>
     internal void ReleaseAll()
     {
-        (SharedCanvasBitmapCache.Lease[] tiles, CancellationTokenSource[] work) = Cache.DetachAll();
+        (SharedCanvasBitmapCache.Lease[] tiles, RetirableCancellationTokenSource[] work) = Cache.DetachAll();
         Cache.RetireDetached(tiles, work);
     }
 

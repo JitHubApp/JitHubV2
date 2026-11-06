@@ -22,7 +22,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
         var image = CreateImage(renderer);
         var document = new TestSvgDocument();
         IDisposable? documentUse = null;
-        CancellationTokenSource? tileCancellation = null;
+        RetirableCancellationTokenSource? tileCancellation = null;
         try
         {
             TrackDisposalsUnderWorkLock(image, document);
@@ -38,7 +38,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
             Assert.Equal("previous-good-svg", image.SvgTileCache.CaptureSnapshot().FallbackIdentityPrefix);
             documentUse = AcquireCurrentUse(image, document);
 
-            tileCancellation = new CancellationTokenSource();
+            tileCancellation = new RetirableCancellationTokenSource();
             object workOwner = SvgTileCacheTestOperations.AdmitWork(
                 image.SvgTileCache, (SvgTileRenderPlan)plan, key, tileCancellation);
 
@@ -290,8 +290,8 @@ public sealed class ImageBoxSvgPublicationCommitTests
         var acceptedDocument = new TestSvgDocument();
         var candidateDocument = new TestSvgDocument();
         IDisposable? candidateUse = null;
-        CancellationTokenSource? oldTileWork = null;
-        CancellationTokenSource? lateOldTileWork = null;
+        RetirableCancellationTokenSource? oldTileWork = null;
+        RetirableCancellationTokenSource? lateOldTileWork = null;
         object? oldTileOwner = null;
         object? lateOldTileOwner = null;
         (int X, int Y, int Width, int Height) key = (0, 0, 128, 128);
@@ -320,7 +320,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
                 Height(metadata),
                 candidateGeneration);
 
-            oldTileWork = new CancellationTokenSource();
+            oldTileWork = new RetirableCancellationTokenSource();
             oldTileOwner = RegisterTileFailureOwner(image, acceptedPlan, key, oldTileWork);
 
             // A terminal failure of the older fallback plan detaches only that
@@ -342,7 +342,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
             // A delayed callback from the retired plan cannot invalidate or
             // otherwise disturb the just-committed candidate. The commit
             // detached the retired plan's work, so its owner is no longer mapped.
-            lateOldTileWork = new CancellationTokenSource();
+            lateOldTileWork = new RetirableCancellationTokenSource();
             lateOldTileOwner = new SvgTileWorkOwner(
                 (SvgTileRenderPlan)acceptedPlan,
                 lateOldTileWork,
@@ -388,7 +388,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
         var image = CreateImage(renderer);
         var document = new TestSvgDocument();
         IDisposable? candidateUse = null;
-        CancellationTokenSource? tileWork = null;
+        RetirableCancellationTokenSource? tileWork = null;
         object? tileWorkOwner = null;
         (int X, int Y, int Width, int Height) key = (0, 0, 128, 128);
 
@@ -411,7 +411,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
                 Height(metadata),
                 candidateGeneration);
 
-            tileWork = new CancellationTokenSource();
+            tileWork = new RetirableCancellationTokenSource();
             tileWorkOwner = RegisterTileFailureOwner(image, failedPlan, key, tileWork);
             Assert.True(image.TileHost.TryInvalidateFailedSvgTile((SvgTileRenderPlan)failedPlan, key, (SvgTileWorkOwner)tileWorkOwner, null));
             Assert.Equal(candidateGeneration, image.Svg.RenderGeneration);
@@ -638,7 +638,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
             // so the candidate's render generation stays current and the
             // suspension alone must reject it.
             Assert.True(image.Lifetime.TrySuspend(
-                out CancellationTokenSource? _,
+                out RetirableCancellationTokenSource? _,
                 out ImageWorkLease? suspensionWork));
             suspensionWork?.Dispose();
 
@@ -934,7 +934,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
         ImageBox image,
         object plan,
         (int X, int Y, int Width, int Height) key,
-        CancellationTokenSource cancellation) =>
+        RetirableCancellationTokenSource cancellation) =>
         SvgTileCacheTestOperations.AdmitWork(
             image.SvgTileCache, (SvgTileRenderPlan)plan, key, cancellation, claimFailure: true);
 

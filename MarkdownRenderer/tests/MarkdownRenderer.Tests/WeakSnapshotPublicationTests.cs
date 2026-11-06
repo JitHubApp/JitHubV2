@@ -353,7 +353,7 @@ public sealed class WeakSnapshotPublicationTests
         var releaseWork = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var workObservation = new WorkObservation();
-        using var source = new CancellationTokenSource();
+        using var source = new RetirableCancellationTokenSource();
         CancellationToken token = source.Token;
         var cancellationCallbackCompleted = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);

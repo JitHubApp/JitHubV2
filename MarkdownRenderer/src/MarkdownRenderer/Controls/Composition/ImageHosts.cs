@@ -151,7 +151,7 @@ internal sealed class ImageHosts :
 
     void IImageRelayoutHost.StopRecoveryClock(bool force) => Owners.RecoveryWork.Stop(force);
 
-    Task IImageRelayoutHost.RetireCancellationTokenSource(CancellationTokenSource? cts, Task? lifetime) =>
+    Task IImageRelayoutHost.RetireCancellationTokenSource(RetirableCancellationTokenSource? cts, Task? lifetime) =>
         Owners.CancellationRetirement.Retire(cts, lifetime);
 
     Microsoft.UI.Dispatching.DispatcherQueue? IImageLoadCompletionHost.DispatcherQueue => _control.DispatcherQueue;

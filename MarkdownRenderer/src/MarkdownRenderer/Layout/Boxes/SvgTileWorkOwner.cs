@@ -8,11 +8,11 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// </summary>
 internal sealed class SvgTileWorkOwner(
     SvgTileRenderPlan plan,
-    CancellationTokenSource cancellation,
+    RetirableCancellationTokenSource cancellation,
     MarkdownSvgRenderDemand demand)
 {
     internal readonly SvgTileRenderPlan Plan = plan;
-    internal readonly CancellationTokenSource Cancellation = cancellation;
+    internal readonly RetirableCancellationTokenSource Cancellation = cancellation;
     internal readonly MarkdownSvgRenderDemand Demand = demand;
     // 0=active, 1=terminal failure claimed, 2=retired/reassigned,
     // 3=terminal failure map invalidation in progress.

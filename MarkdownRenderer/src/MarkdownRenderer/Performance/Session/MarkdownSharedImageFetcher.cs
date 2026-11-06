@@ -334,7 +334,7 @@ internal sealed class MarkdownSharedImageFetcher
                 SessionWorkLease? flightLifetime = _lifetime.TryBeginWorkLease();
                 if (flightLifetime is null)
                     throw new OperationCanceledException(_lifetime.Token);
-                CancellationTokenSource? source = null;
+                RetirableCancellationTokenSource? source = null;
                 try
                 {
                     if (_sharedFlights.TryGetValue(key, out SharedImageFetch? previous))
@@ -343,7 +343,7 @@ internal sealed class MarkdownSharedImageFetcher
                         _sharedFlights.Remove(key);
                     }
 
-                    source = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+                    source = RetirableCancellationTokenSource.CreateLinked(_lifetime.Token);
                     flight = new SharedImageFetch(source, background, _lifetime, flightLifetime);
                     _ = flight.Task.ContinueWith(
                         static completed => _ = completed.Exception,

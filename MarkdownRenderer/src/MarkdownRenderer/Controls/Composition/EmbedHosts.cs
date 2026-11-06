@@ -148,7 +148,7 @@ internal sealed class EmbedHosts :
 
     void ICodeBlockHighlightingHost.InvalidateCanvas() => Owners.CanvasInvalidation.Invalidate();
 
-    Task ICodeBlockHighlightingHost.RetireCancellationTokenSource(CancellationTokenSource? cts, Task? lifetime) =>
+    Task ICodeBlockHighlightingHost.RetireCancellationTokenSource(RetirableCancellationTokenSource? cts, Task? lifetime) =>
         Owners.CancellationRetirement.Retire(cts, lifetime);
 
     private void AddImagePlan(Layout.Boxes.ImageBox image)

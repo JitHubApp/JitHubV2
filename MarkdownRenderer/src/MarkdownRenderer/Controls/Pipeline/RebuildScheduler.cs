@@ -26,7 +26,7 @@ internal sealed class RebuildScheduler
     private long _lastDispatchTicket;
     private readonly RejectedRebuildRequest _rejected = new();
     private long _pendingRequestTimestamp;
-    private volatile CancellationTokenSource? _cts;
+    private volatile RetirableCancellationTokenSource? _cts;
     private Task? _task;
     private long _generation;
     private long _activeGeneration;
@@ -64,7 +64,7 @@ internal sealed class RebuildScheduler
     /// </summary>
     internal CancellationToken GetActiveToken(long generation)
     {
-        CancellationTokenSource? cancellation = _cts;
+        RetirableCancellationTokenSource? cancellation = _cts;
         return generation > 0 &&
             generation == _activeGeneration &&
             cancellation is not null
@@ -367,7 +367,7 @@ internal sealed class RebuildScheduler
         // snapshot actually begins replacing it, then retire it with its task.
         var previousCts = _cts;
         var previousTask = _task;
-        var cts = new CancellationTokenSource();
+        var cts = new RetirableCancellationTokenSource();
         _cts = cts;
         _activeGeneration = generation;
         var lifetime = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

@@ -20,7 +20,7 @@ internal sealed class SvgTileWorkSet
     // Keep the original CTS map stable for lifecycle cleanup. The parallel
     // work-owner map carries only immutable plan/ticket identity for parking
     // and exact stale-completion rejection.
-    private readonly Dictionary<SvgTileKey, CancellationTokenSource> _svgTilesInFlight = new();
+    private readonly Dictionary<SvgTileKey, RetirableCancellationTokenSource> _svgTilesInFlight = new();
     private readonly Dictionary<SvgTileKey, SvgTileWorkOwner> _svgTileWorkOwners = new();
 
     /// <summary>The number of tiles with work in flight.</summary>
@@ -33,13 +33,13 @@ internal sealed class SvgTileWorkSet
     internal bool Contains(SvgTileKey key) => _svgTilesInFlight.ContainsKey(key);
 
     /// <summary>The cancellation sources of every in-flight render.</summary>
-    internal Dictionary<SvgTileKey, CancellationTokenSource>.ValueCollection Cancellations => _svgTilesInFlight.Values;
+    internal Dictionary<SvgTileKey, RetirableCancellationTokenSource>.ValueCollection Cancellations => _svgTilesInFlight.Values;
 
     /// <summary>Copies the cancellation sources of every in-flight render.</summary>
     /// <summary>A copy of the in-flight cancellation map.</summary>
-    internal Dictionary<SvgTileKey, CancellationTokenSource> CopyCancellations() => new(_svgTilesInFlight);
+    internal Dictionary<SvgTileKey, RetirableCancellationTokenSource> CopyCancellations() => new(_svgTilesInFlight);
 
-    internal CancellationTokenSource[] ToCancellationArray() => _svgTilesInFlight.Values.ToArray();
+    internal RetirableCancellationTokenSource[] ToCancellationArray() => _svgTilesInFlight.Values.ToArray();
 
     /// <summary>Forgets every in-flight render; its owner still drains its own leases.</summary>
     internal void Clear()
@@ -101,9 +101,9 @@ internal sealed class SvgTileWorkSet
     internal bool IsCurrentOwner(
         SvgTileRenderPlan plan,
         SvgTileKey key,
-        CancellationTokenSource workCancellation)
+        RetirableCancellationTokenSource workCancellation)
     {
-        if (!_svgTilesInFlight.TryGetValue(key, out CancellationTokenSource? current) ||
+        if (!_svgTilesInFlight.TryGetValue(key, out RetirableCancellationTokenSource? current) ||
             !ReferenceEquals(current, workCancellation) ||
             !_svgTileWorkOwners.TryGetValue(key, out SvgTileWorkOwner? owner))
         {
@@ -125,7 +125,7 @@ internal sealed class SvgTileWorkSet
         SvgTileWorkOwner workOwner)
     {
         return ReferenceEquals(workOwner.Plan, plan) &&
-            _svgTilesInFlight.TryGetValue(key, out CancellationTokenSource? current) &&
+            _svgTilesInFlight.TryGetValue(key, out RetirableCancellationTokenSource? current) &&
             ReferenceEquals(current, workOwner.Cancellation) &&
             _svgTileWorkOwners.TryGetValue(key, out SvgTileWorkOwner? mappedOwner) &&
             ReferenceEquals(mappedOwner, workOwner) &&
@@ -133,9 +133,9 @@ internal sealed class SvgTileWorkSet
     }
 
     /// <summary>Removes a finished render's entry unless a terminal failure transition owns it.</summary>
-    internal void Complete(SvgTileKey key, CancellationTokenSource workCancellation)
+    internal void Complete(SvgTileKey key, RetirableCancellationTokenSource workCancellation)
     {
-        if (_svgTilesInFlight.TryGetValue(key, out CancellationTokenSource? current) &&
+        if (_svgTilesInFlight.TryGetValue(key, out RetirableCancellationTokenSource? current) &&
             ReferenceEquals(current, workCancellation))
         {
             if (_svgTileWorkOwners.TryGetValue(key, out SvgTileWorkOwner? owner) &&
@@ -154,7 +154,7 @@ internal sealed class SvgTileWorkSet
     /// <summary>Removes queued work whose render task could not be scheduled.</summary>
     internal void Abandon(SvgTileKey key, SvgTileWorkOwner workOwner)
     {
-        if (_svgTilesInFlight.TryGetValue(key, out CancellationTokenSource? current) &&
+        if (_svgTilesInFlight.TryGetValue(key, out RetirableCancellationTokenSource? current) &&
             ReferenceEquals(current, workOwner.Cancellation))
         {
             Interlocked.CompareExchange(ref workOwner.State, 2, 0);
@@ -173,9 +173,9 @@ internal sealed class SvgTileWorkSet
         int firstTileY,
         int lastTileX,
         int lastTileY,
-        ref List<CancellationTokenSource>? staleWork)
+        ref List<RetirableCancellationTokenSource>? staleWork)
     {
-        foreach (KeyValuePair<SvgTileKey, CancellationTokenSource> work in _svgTilesInFlight)
+        foreach (KeyValuePair<SvgTileKey, RetirableCancellationTokenSource> work in _svgTilesInFlight)
         {
             int tileX = work.Key.X / SvgTileCache.SvgTileSizePixels;
             int tileY = work.Key.Y / SvgTileCache.SvgTileSizePixels;
@@ -193,7 +193,7 @@ internal sealed class SvgTileWorkSet
 
                 // Do not claim queued work before its cancellation owner
                 // can be retained, and do not allocate for busy work.
-                staleWork ??= new List<CancellationTokenSource>(_svgTilesInFlight.Count);
+                staleWork ??= new List<RetirableCancellationTokenSource>(_svgTilesInFlight.Count);
                 if (owner is not null && state == 0 &&
                     Interlocked.CompareExchange(ref owner.State, 2, 0) != 0)
                 {
@@ -238,7 +238,7 @@ internal sealed class SvgTileWorkSet
     internal int CountDetachablePlanWork(SvgTileRenderPlan plan)
     {
         int ownedWorkCount = 0;
-        foreach (KeyValuePair<(int X, int Y, int Width, int Height), CancellationTokenSource> work in _svgTilesInFlight)
+        foreach (KeyValuePair<(int X, int Y, int Width, int Height), RetirableCancellationTokenSource> work in _svgTilesInFlight)
         {
             if (!_svgTileWorkOwners.TryGetValue(work.Key, out SvgTileWorkOwner? owner) ||
                 !ReferenceEquals(owner.Plan, plan))
@@ -261,10 +261,10 @@ internal sealed class SvgTileWorkSet
     /// </summary>
     internal bool TryDetachPlanWork(
         SvgTileRenderPlan plan,
-        CancellationTokenSource[] canceledWork,
+        RetirableCancellationTokenSource[] canceledWork,
         ref int canceledWorkCount)
     {
-        foreach (KeyValuePair<(int X, int Y, int Width, int Height), CancellationTokenSource> work in _svgTilesInFlight)
+        foreach (KeyValuePair<(int X, int Y, int Width, int Height), RetirableCancellationTokenSource> work in _svgTilesInFlight)
         {
             if (!_svgTileWorkOwners.TryGetValue(work.Key, out SvgTileWorkOwner? owner) ||
                 !ReferenceEquals(owner.Plan, plan))

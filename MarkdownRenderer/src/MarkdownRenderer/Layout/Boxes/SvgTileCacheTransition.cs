@@ -25,7 +25,7 @@ internal sealed class SvgTileCacheTransition(
     Dictionary<SvgTileKey, SharedCanvasBitmapCache.Lease>? replacementTiles,
     SharedCanvasBitmapCache.Lease[]? retiredTiles,
     SharedCanvasBitmapCache.Lease[]? retiredFallbackTiles,
-    CancellationTokenSource[] work,
+    RetirableCancellationTokenSource[] work,
     bool restoreFallback = false,
     string? restoredFallbackIdentityPrefix = null,
     int restoredFallbackWidthPixels = 0,
@@ -45,7 +45,7 @@ internal sealed class SvgTileCacheTransition(
     internal readonly Dictionary<SvgTileKey, SharedCanvasBitmapCache.Lease>? ReplacementTiles = replacementTiles;
     internal readonly SharedCanvasBitmapCache.Lease[]? RetiredTiles = retiredTiles;
     internal readonly SharedCanvasBitmapCache.Lease[]? RetiredFallbackTiles = retiredFallbackTiles;
-    internal readonly CancellationTokenSource[] Work = work;
+    internal readonly RetirableCancellationTokenSource[] Work = work;
     internal readonly bool RestoreFallback = restoreFallback;
     internal readonly string? RestoredFallbackIdentityPrefix = restoredFallbackIdentityPrefix;
     internal readonly int RestoredFallbackWidthPixels = restoredFallbackWidthPixels;
@@ -69,7 +69,7 @@ internal sealed class SvgTileCacheTransition(
         int previousWidth,
         int previousHeight,
         MarkdownSvgPhysicalViewport? previousPhysicalViewport,
-        Dictionary<SvgTileKey, CancellationTokenSource>.ValueCollection inFlightWork)
+        Dictionary<SvgTileKey, RetirableCancellationTokenSource>.ValueCollection inFlightWork)
     {
         bool sameIdentity = plan is not null &&
             string.Equals(previousIdentityPrefix, plan.IdentityPrefix, StringComparison.Ordinal) &&
@@ -101,8 +101,8 @@ internal sealed class SvgTileCacheTransition(
             }
         }
 
-        CancellationTokenSource[] work = inFlightWork.Count == 0
-            ? Array.Empty<CancellationTokenSource>()
+        RetirableCancellationTokenSource[] work = inFlightWork.Count == 0
+            ? Array.Empty<RetirableCancellationTokenSource>()
             : inFlightWork.ToArray();
         return new SvgTileCacheTransition(
             token,
@@ -138,7 +138,7 @@ internal sealed class SvgTileCacheTransition(
         int fallbackWidthPixels,
         int fallbackHeightPixels,
         MarkdownSvgPhysicalViewport? fallbackPhysicalViewport,
-        Dictionary<SvgTileKey, CancellationTokenSource>.ValueCollection inFlightWork)
+        Dictionary<SvgTileKey, RetirableCancellationTokenSource>.ValueCollection inFlightWork)
     {
         bool restoreFallback = expectedFallback is { Count: > 0 };
 
@@ -155,8 +155,8 @@ internal sealed class SvgTileCacheTransition(
         Dictionary<SvgTileKey, SharedCanvasBitmapCache.Lease> replacementTiles = restoreFallback
             ? expectedFallback!
             : new Dictionary<SvgTileKey, SharedCanvasBitmapCache.Lease>();
-        CancellationTokenSource[] work = inFlightWork.Count == 0
-            ? Array.Empty<CancellationTokenSource>()
+        RetirableCancellationTokenSource[] work = inFlightWork.Count == 0
+            ? Array.Empty<RetirableCancellationTokenSource>()
             : inFlightWork.ToArray();
 
         return new SvgTileCacheTransition(

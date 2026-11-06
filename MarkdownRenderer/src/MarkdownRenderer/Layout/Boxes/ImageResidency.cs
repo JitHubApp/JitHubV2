@@ -49,7 +49,7 @@ internal sealed class ImageResidency
     /// <summary>Closes admission immediately; cancellation and native work drain asynchronously.</summary>
     internal void SuspendResources()
     {
-        if (!_lifetime.TrySuspend(out CancellationTokenSource? cancellation, out ImageWorkLease? cancellationWork))
+        if (!_lifetime.TrySuspend(out RetirableCancellationTokenSource? cancellation, out ImageWorkLease? cancellationWork))
             return;
 
         _svg.AdvanceRenderGeneration();
@@ -59,7 +59,7 @@ internal sealed class ImageResidency
             _ = CancelResidencyAsync(cancellation, cancellationWork!);
     }
 
-    private async Task CancelResidencyAsync(CancellationTokenSource cancellation, ImageWorkLease work)
+    private async Task CancelResidencyAsync(RetirableCancellationTokenSource cancellation, ImageWorkLease work)
     {
         using (work)
         {
@@ -207,7 +207,7 @@ internal sealed class ImageResidency
     // always released.
     private SvgPressurePark DetachParkedPlan(SvgTileRenderPlan plan, long demandVersion, int maximumTier)
     {
-        CancellationTokenSource[] canceledWork = Array.Empty<CancellationTokenSource>();
+        RetirableCancellationTokenSource[] canceledWork = Array.Empty<RetirableCancellationTokenSource>();
         int canceledWorkCount = 0;
         bool ownsViewportParkingClaim = false;
         SvgPressurePark park = default;
@@ -351,7 +351,7 @@ internal sealed class ImageResidency
     }
 
     private void RequestCanceledSvgTileWork(
-        CancellationTokenSource[] canceledWork,
+        RetirableCancellationTokenSource[] canceledWork,
         int canceledWorkCount)
     {
         for (int index = 0; index < canceledWorkCount; index++)

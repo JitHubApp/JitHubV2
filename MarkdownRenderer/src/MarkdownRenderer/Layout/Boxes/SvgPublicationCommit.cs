@@ -192,7 +192,7 @@ internal sealed class SvgPublicationCommit
     /// <summary>Detaches and retires every tile and in-flight tile render.</summary>
     internal void ReleaseSvgTiles()
     {
-        (SharedCanvasBitmapCache.Lease[] Tiles, CancellationTokenSource[] Work) detached;
+        (SharedCanvasBitmapCache.Lease[] Tiles, RetirableCancellationTokenSource[] Work) detached;
         lock (Sync)
             detached = _box.SvgTileCache.DetachAll();
         _box.SvgTileCache.RetireDetached(detached.Tiles, detached.Work);

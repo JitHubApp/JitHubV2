@@ -14,7 +14,7 @@ namespace MarkdownRenderer;
 internal sealed class MarkdownInFlightParse
 {
     private readonly object _cancellationGate = new();
-    private CancellationTokenSource? _cancellation = new();
+    private RetirableCancellationTokenSource? _cancellation = new();
     private Task _cancellationCallbacks = Task.CompletedTask;
     private Task _cancellationRetirement = Task.CompletedTask;
 
@@ -92,7 +92,7 @@ internal sealed class MarkdownInFlightParse
     {
         lock (_cancellationGate)
         {
-            CancellationTokenSource? cancellation = _cancellation;
+            RetirableCancellationTokenSource? cancellation = _cancellation;
             if (cancellation is null)
                 return _cancellationRetirement;
 

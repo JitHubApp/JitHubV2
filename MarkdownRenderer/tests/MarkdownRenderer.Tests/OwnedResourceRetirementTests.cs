@@ -86,7 +86,7 @@ public sealed class OwnedResourceRetirementTests
     [Fact]
     public async Task OwnerWaitsForBlockingCancellationCallbackAfterWorkReturns()
     {
-        var source = new CancellationTokenSource();
+        var source = new RetirableCancellationTokenSource();
         CancellationToken token = source.Token;
         var owner = new TrackingDisposable();
         var callbackEntered = new TaskCompletionSource(

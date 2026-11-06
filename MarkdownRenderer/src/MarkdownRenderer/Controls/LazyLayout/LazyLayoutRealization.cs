@@ -39,7 +39,7 @@ internal sealed class LazyLayoutRealization
     private readonly LazyLayoutViewportRequests _viewportRequests;
     private readonly LazyLayoutCompletionPublisher _completion;
 
-    private CancellationTokenSource? _cts;
+    private RetirableCancellationTokenSource? _cts;
     private Task? _task;
     private LayoutSnapshot? _pendingSnapshot;
     private LayoutSnapshot? _activeSnapshot;
@@ -291,7 +291,7 @@ internal sealed class LazyLayoutRealization
 
         var oldCts = _cts;
         var oldTask = _task;
-        var cts = CancellationTokenSource.CreateLinkedTokenSource(_host.PipelineToken);
+        var cts = RetirableCancellationTokenSource.CreateLinked(_host.PipelineToken);
         long realizationGeneration = ++_generation;
         _publicationHandoff.Reset(realizationGeneration);
         long pipelineGeneration = _host.PipelineGeneration;

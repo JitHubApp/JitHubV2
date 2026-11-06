@@ -38,7 +38,7 @@ internal sealed class ImageRelayout
     private bool _queued;
     private bool _active;
     private long _dispatchTicket;
-    private CancellationTokenSource? _cts;
+    private RetirableCancellationTokenSource? _cts;
     private Task? _task;
     private ImageRelayoutWorkPayload<LayoutSnapshot>? _payload;
 
@@ -238,7 +238,7 @@ internal sealed class ImageRelayout
             return;
 
         _queued = false;
-        CancellationTokenSource? cancellation = null;
+        RetirableCancellationTokenSource? cancellation = null;
         try
         {
             IMarkdownPerformanceSessionInternal? session =
@@ -257,7 +257,7 @@ internal sealed class ImageRelayout
             // Rebuild start and unload explicitly cancel this operation. A
             // failed replacement's canceled CTS must not poison recovery of
             // the snapshot that remains published afterward.
-            cancellation = new CancellationTokenSource();
+            cancellation = new RetirableCancellationTokenSource();
             var payload = new ImageRelayoutWorkPayload<LayoutSnapshot>(
                 snapshot, changed, _host.LayoutWidth);
             var receiver = new WeakReference<ImageRelayout>(this);
@@ -303,7 +303,7 @@ internal sealed class ImageRelayout
         LayoutSnapshot? snapshot,
         (int BlockIndex, double OffsetFromTop)? anchor,
         long generation,
-        CancellationTokenSource cancellation,
+        RetirableCancellationTokenSource cancellation,
         Exception? failure,
         RasterPlacementPlan? candidate = null,
         int? retryImageBlockIndex = null,

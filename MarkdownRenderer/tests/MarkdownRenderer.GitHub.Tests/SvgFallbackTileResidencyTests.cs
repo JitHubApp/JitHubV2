@@ -352,7 +352,7 @@ public sealed class SvgFallbackTileResidencyTests
         }
         finally
         {
-            (SharedCanvasBitmapCache.Lease[] tiles, CancellationTokenSource[] work) = cache.DetachAll();
+            (SharedCanvasBitmapCache.Lease[] tiles, RetirableCancellationTokenSource[] work) = cache.DetachAll();
             cache.RetireDetached(tiles, work);
         }
     }

@@ -195,7 +195,7 @@ public sealed class ImageRetirementBarrierTests
     public async Task ImageRetirementWaitsForTileCancellationCallbacksBeforeDisposingSource()
     {
         var image = new ImageBox(CreateContext(renderer: null), ImageResourceScope.Shared, "", "tile cancellation");
-        using var source = new CancellationTokenSource();
+        using var source = new RetirableCancellationTokenSource();
         var callbackStarted = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseCallback = new TaskCompletionSource(

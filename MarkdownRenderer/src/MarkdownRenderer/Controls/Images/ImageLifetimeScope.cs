@@ -10,7 +10,7 @@ namespace MarkdownRenderer.Controls.Images;
 internal sealed class ImageLifetimeScope
 {
     private readonly PipelineCancellationRetirement _cancellationRetirement;
-    private CancellationTokenSource? _source;
+    private RetirableCancellationTokenSource? _source;
 
     internal ImageLifetimeScope(PipelineCancellationRetirement cancellationRetirement)
     {
@@ -18,7 +18,7 @@ internal sealed class ImageLifetimeScope
     }
 
     /// <summary>The current scope's source; null while the view is unloaded.</summary>
-    internal CancellationTokenSource? Source => _source;
+    internal RetirableCancellationTokenSource? Source => _source;
 
     internal CancellationToken Token => _source?.Token ?? CancellationToken.None;
 
@@ -28,7 +28,7 @@ internal sealed class ImageLifetimeScope
         if (_source is null || _source.IsCancellationRequested)
         {
             _source?.Dispose();
-            _source = new CancellationTokenSource();
+            _source = new RetirableCancellationTokenSource();
         }
     }
 
