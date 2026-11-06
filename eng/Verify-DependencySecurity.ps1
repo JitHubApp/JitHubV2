@@ -13,42 +13,7 @@ function Invoke-CheckedDotNet {
     return $output
 }
 
-function Get-ProjectFilesPruned {
-    param([Parameter(Mandatory = $true)][string] $Root)
-
-    $excludedDirectoryNames = [System.Collections.Generic.HashSet[string]]::new(
-        [StringComparer]::OrdinalIgnoreCase)
-    foreach ($name in @('bin', 'obj', 'artifacts', '_scratch', '.codex-artifacts', '.git')) {
-        [void] $excludedDirectoryNames.Add($name)
-    }
-
-    $pendingDirectories = [System.Collections.Generic.Stack[System.IO.DirectoryInfo]]::new()
-    $pendingDirectories.Push([System.IO.DirectoryInfo]::new($Root))
-
-    while ($pendingDirectories.Count -gt 0) {
-        $directory = $pendingDirectories.Pop()
-        foreach ($projectFile in $directory.EnumerateFiles('*.csproj', [System.IO.SearchOption]::TopDirectoryOnly)) {
-            $projectFile
-        }
-
-        foreach ($packagesFile in $directory.EnumerateFiles('Directory.Packages.props', [System.IO.SearchOption]::TopDirectoryOnly)) {
-            $packagesFile
-        }
-
-        foreach ($childDirectory in $directory.EnumerateDirectories('*', [System.IO.SearchOption]::TopDirectoryOnly)) {
-            $isGeneratedDirectory =
-                $excludedDirectoryNames.Contains($childDirectory.Name) -or
-                $childDirectory.Name.StartsWith('bin-', [StringComparison]::OrdinalIgnoreCase) -or
-                $childDirectory.Name.StartsWith('obj-', [StringComparison]::OrdinalIgnoreCase)
-            $isReparsePoint = ($childDirectory.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0
-            if (-not $isGeneratedDirectory -and -not $isReparsePoint) {
-                $pendingDirectories.Push($childDirectory)
-            }
-        }
-    }
-}
-
-$dependencyFiles = @(Get-ProjectFilesPruned -Root $repositoryRoot)
+$dependencyFiles = @(& (Join-Path $PSScriptRoot 'Get-DependencyManifestFiles.ps1') -Root $repositoryRoot)
 $projectFiles = @($dependencyFiles | Where-Object { $_.Extension -eq '.csproj' })
 $centralPackageFiles = @($dependencyFiles | Where-Object { $_.Name -eq 'Directory.Packages.props' })
 

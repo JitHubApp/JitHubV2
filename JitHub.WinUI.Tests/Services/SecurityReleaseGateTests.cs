@@ -36,10 +36,93 @@ public sealed class SecurityReleaseGateTests
         Assert.Contains("--include-transitive", script, StringComparison.Ordinal);
         Assert.Contains("allowedPrereleasePackages", script, StringComparison.Ordinal);
         Assert.Contains("UriSchemeHttps", script, StringComparison.Ordinal);
-        Assert.Contains("Get-ProjectFilesPruned", script, StringComparison.Ordinal);
-        Assert.Contains("EnumerateDirectories", script, StringComparison.Ordinal);
-        Assert.Contains("[System.IO.FileAttributes]::ReparsePoint", script, StringComparison.Ordinal);
-        Assert.DoesNotContain("Get-ChildItem -LiteralPath $repositoryRoot -Recurse", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [Trait("Category", "ReleaseSecurity")]
+    public void DependencyAudit_ReadsProjectFilesButNeverBuildOutputOrLinkedTrees()
+    {
+        string root = FindRepositoryRoot();
+        string fixture = Path.Combine(Path.GetTempPath(), $"jithub-dependency-walk-{Guid.NewGuid():N}");
+        string outside = fixture + "-outside";
+        string repository = Path.Combine(fixture, "repo");
+        try
+        {
+            string[] expected =
+            [
+                WriteFixtureFile(repository, "Directory.Packages.props"),
+                WriteFixtureFile(repository, Path.Combine("App", "App.csproj")),
+                WriteFixtureFile(repository, Path.Combine("src", "Lib", "Lib.csproj")),
+                WriteFixtureFile(repository, Path.Combine("src", "Lib", "Directory.Packages.props")),
+            ];
+            foreach (string generated in new[] { "bin", "obj", "bin-x64", "OBJ-arm64", "artifacts", "_scratch", ".codex-artifacts", ".git" })
+                WriteFixtureFile(repository, Path.Combine("src", "Lib", generated, "Generated.csproj"));
+            WriteFixtureFile(outside, "Outside.csproj");
+            CreateJunction(Path.Combine(repository, "linked"), outside);
+
+            string[] listed = ListDependencyManifestFiles(
+                    Path.Combine(root, "eng", "Get-DependencyManifestFiles.ps1"),
+                    repository)
+                .Order(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            Assert.Equal(expected.Order(StringComparer.OrdinalIgnoreCase), listed, StringComparer.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            string link = Path.Combine(repository, "linked");
+            if (Directory.Exists(link))
+                Directory.Delete(link);
+            if (Directory.Exists(fixture))
+                Directory.Delete(fixture, recursive: true);
+            if (Directory.Exists(outside))
+                Directory.Delete(outside, recursive: true);
+        }
+    }
+
+    private static string WriteFixtureFile(string directory, string relativePath)
+    {
+        string path = Path.Combine(directory, relativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "<Project />");
+        return path;
+    }
+
+    // A junction needs no symbolic-link privilege, unlike Directory.CreateSymbolicLink.
+    private static void CreateJunction(string link, string target)
+    {
+        string[] output = RunProcess("cmd.exe", "/c", "mklink", "/J", link, target);
+        Assert.True(Directory.Exists(link), string.Join(Environment.NewLine, output));
+        Assert.True(new DirectoryInfo(link).Attributes.HasFlag(FileAttributes.ReparsePoint));
+    }
+
+    // Windows PowerShell, as the release gate in JitHub.WinUI.csproj runs the audit.
+    private static string[] ListDependencyManifestFiles(string script, string root) =>
+        RunProcess(
+            "powershell.exe",
+            "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
+            $"& {QuotePowerShell(script)} -Root {QuotePowerShell(root)} | ForEach-Object {{ $_.FullName }}");
+
+    private static string QuotePowerShell(string value) =>
+        "'" + value.Replace("'", "''", StringComparison.Ordinal) + "'";
+
+    private static string[] RunProcess(string fileName, params string[] arguments)
+    {
+        var start = new System.Diagnostics.ProcessStartInfo(fileName)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        foreach (string argument in arguments)
+            start.ArgumentList.Add(argument);
+        using var process = System.Diagnostics.Process.Start(start)!;
+        Task<string> error = process.StandardError.ReadToEndAsync();
+        string output = process.StandardOutput.ReadToEnd();
+        Assert.True(process.WaitForExit(TimeSpan.FromMinutes(1)), $"{fileName} did not exit.");
+        Assert.True(process.ExitCode == 0, $"{fileName} exited {process.ExitCode}: {error.Result}");
+        return output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 
     [Fact]
