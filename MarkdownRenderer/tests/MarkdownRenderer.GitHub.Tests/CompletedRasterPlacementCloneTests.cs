@@ -15,6 +15,12 @@ using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
+/// <remarks>
+/// This file is longer than 500 lines because it also holds the nested
+/// <see cref="PlacementFixture"/> and its test context environment, the
+/// completed-raster source fixture that the relayout and layout-candidate test
+/// classes reference as <c>CompletedRasterPlacementCloneTests.PlacementFixture</c>.
+/// </remarks>
 [Collection(SharedCanvasBitmapCacheTestCollection.Name)]
 public sealed class CompletedRasterPlacementCloneTests
 {
@@ -65,39 +71,9 @@ public sealed class CompletedRasterPlacementCloneTests
         Assert.Same(candidateTaskAvailabilityChanged, clonedContainer.Context.TaskCommandAvailabilityChanged);
         Assert.Same(candidateRetirementSink, candidateContext.RetirementSink);
 
-        InlineRun[] sourceRuns = fixture.Source.Runs.ToArray();
         InlineRun[] clonedRuns = clonedContainer.Runs.ToArray();
-        Assert.Equal(2, clonedRuns.Length);
-        Assert.All(clonedRuns, run => Assert.DoesNotContain(run, sourceRuns));
-        for (int index = 0; index < sourceRuns.Length; index++)
-        {
-            Assert.Equal(sourceRuns[index].InlineIndex, clonedRuns[index].InlineIndex);
-            Assert.Equal(sourceRuns[index].RenderedLength, clonedRuns[index].RenderedLength);
-            Assert.Equal(sourceRuns[index].SourceSpan, clonedRuns[index].SourceSpan);
-            Assert.Equal(sourceRuns[index].ElementKey, clonedRuns[index].ElementKey);
-            Assert.Equal(sourceRuns[index].StyleAliases, clonedRuns[index].StyleAliases);
-            Assert.Equal(sourceRuns[index].StyleModifierKeys, clonedRuns[index].StyleModifierKeys);
-            Assert.Equal(sourceRuns[index].SemanticHeadingKey, clonedRuns[index].SemanticHeadingKey);
-            Assert.NotSame(sourceRuns[index].StyleAliases, clonedRuns[index].StyleAliases);
-        }
-
-        InlineImageRun clonedImageRun = Assert.IsType<InlineImageRun>(clonedRuns[1]);
-        Assert.NotSame(fixture.ImageRun.Image, clonedImageRun.Image);
-        Assert.Equal(fixture.ImageRun.Url, clonedImageRun.Url);
-        Assert.Equal(fixture.ImageRun.AltText, clonedImageRun.AltText);
-        Assert.Same(fixture.ImageRun.Image.Bitmap, clonedImageRun.Image.Bitmap);
-        Size expectedIntrinsicSize = expectedSourceLease!.IntrinsicSize.GetValueOrDefault();
-        Assert.Equal(new Size(96, 48), expectedIntrinsicSize);
-        Assert.Equal(expectedIntrinsicSize, clonedImageRun.Image.Presentation.RasterIntrinsicSize);
-        Assert.Equal(fixture.ImageRun.DesiredWidth, clonedImageRun.DesiredWidth);
-        Assert.Equal(fixture.ImageRun.DesiredHeight, clonedImageRun.DesiredHeight);
-        Assert.NotSame(
-            fixture.ImageRun.Image.Lifetime.LifetimeCancellation,
-            clonedImageRun.Image.Lifetime.LifetimeCancellation);
-        Assert.Equal(0, clonedImageRun.Image.GetWorkState().ActiveWorkCount);
-        Assert.Null(clonedImageRun.Image.SvgDocuments.Current);
-        Assert.Null(clonedImageRun.Image.Svg.SourceIdentity);
-        Assert.True(clonedImageRun.Image.SvgTileCache.IsClear());
+        AssertRunsCopySemanticsWithoutSharing(fixture.Source.Runs.ToArray(), clonedRuns);
+        AssertImageRunOwnsFreshImage(fixture, Assert.IsType<InlineImageRun>(clonedRuns[1]), expectedSourceLease);
 
         float measuredHeight = clonedContainer.Measure(320f);
         clonedContainer.Arrange(0f, 0f, 320f);
@@ -111,6 +87,46 @@ public sealed class CompletedRasterPlacementCloneTests
         Assert.Equal(0, unavailableCalls);
         Assert.Equal(0, taskAvailabilityCalls);
         Assert.Equal(0, retirementCalls);
+    }
+
+    private static void AssertRunsCopySemanticsWithoutSharing(InlineRun[] sourceRuns, InlineRun[] clonedRuns)
+    {
+        Assert.Equal(2, clonedRuns.Length);
+        Assert.All(clonedRuns, run => Assert.DoesNotContain(run, sourceRuns));
+        for (int index = 0; index < sourceRuns.Length; index++)
+        {
+            Assert.Equal(sourceRuns[index].InlineIndex, clonedRuns[index].InlineIndex);
+            Assert.Equal(sourceRuns[index].RenderedLength, clonedRuns[index].RenderedLength);
+            Assert.Equal(sourceRuns[index].SourceSpan, clonedRuns[index].SourceSpan);
+            Assert.Equal(sourceRuns[index].ElementKey, clonedRuns[index].ElementKey);
+            Assert.Equal(sourceRuns[index].StyleAliases, clonedRuns[index].StyleAliases);
+            Assert.Equal(sourceRuns[index].StyleModifierKeys, clonedRuns[index].StyleModifierKeys);
+            Assert.Equal(sourceRuns[index].SemanticHeadingKey, clonedRuns[index].SemanticHeadingKey);
+            Assert.NotSame(sourceRuns[index].StyleAliases, clonedRuns[index].StyleAliases);
+        }
+    }
+
+    private static void AssertImageRunOwnsFreshImage(
+        PlacementFixture fixture,
+        InlineImageRun clonedImageRun,
+        SharedCanvasBitmapCache.Lease expectedSourceLease)
+    {
+        Assert.NotSame(fixture.ImageRun.Image, clonedImageRun.Image);
+        Assert.Equal(fixture.ImageRun.Url, clonedImageRun.Url);
+        Assert.Equal(fixture.ImageRun.AltText, clonedImageRun.AltText);
+        Assert.Same(fixture.ImageRun.Image.Bitmap, clonedImageRun.Image.Bitmap);
+        Size expectedIntrinsicSize = expectedSourceLease.IntrinsicSize.GetValueOrDefault();
+        Assert.Equal(new Size(96, 48), expectedIntrinsicSize);
+        Assert.Equal(expectedIntrinsicSize, clonedImageRun.Image.Presentation.RasterIntrinsicSize);
+        Assert.Equal(fixture.ImageRun.DesiredWidth, clonedImageRun.DesiredWidth);
+        Assert.Equal(fixture.ImageRun.DesiredHeight, clonedImageRun.DesiredHeight);
+        Assert.NotSame(
+            fixture.ImageRun.Image.Lifetime.LifetimeCancellation,
+            clonedImageRun.Image.Lifetime.LifetimeCancellation);
+        Assert.Equal(0, clonedImageRun.Image.GetWorkState().ActiveWorkCount);
+        Assert.Null(clonedImageRun.Image.SvgDocuments.Current);
+        Assert.Null(clonedImageRun.Image.Svg.SourceIdentity);
+        Assert.True(clonedImageRun.Image.SvgTileCache.IsClear());
     }
 
     [Fact]

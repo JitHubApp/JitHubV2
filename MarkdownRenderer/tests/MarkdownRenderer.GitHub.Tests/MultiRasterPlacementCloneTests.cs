@@ -16,6 +16,12 @@ using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
+/// <remarks>
+/// This file is longer than 500 lines because it also holds the nested
+/// <see cref="MultiRasterFixture"/>, the multi-raster source fixture that the
+/// other placement and relayout test classes reference as
+/// <c>MultiRasterPlacementCloneTests.MultiRasterFixture</c>.
+/// </remarks>
 [Collection(SharedCanvasBitmapCacheTestCollection.Name)]
 public sealed class MultiRasterPlacementCloneTests
 {
@@ -58,6 +64,28 @@ public sealed class MultiRasterPlacementCloneTests
             Assert.Equal(sourceRuns[index].SemanticHeadingKey, clonedRuns[index].SemanticHeadingKey);
         }
 
+        AssertImageRunsCloneWithOwnLeases(fixture, clonedRuns, expectedSources);
+
+        Assert.Equal(
+            fixture.Source.InlineImageRuns.Select(static entry => entry.Offset),
+            cloned.InlineImageRuns.Select(static entry => entry.Offset));
+        Assert.Equal(sourceSlice, fixture.SourceContext.SourceMap.Slice(WholeBlockRange(fixture.Source)));
+
+        float candidateHeight = cloned.Measure(180f);
+        cloned.Arrange(0f, 0f, 180f);
+        Assert.True(float.IsFinite(candidateHeight));
+        Assert.True(candidateHeight > 0);
+        Assert.True(cloned.HasMeasuredLayout);
+        Assert.NotSame(sourceLayout, Assert.IsType<CanvasTextLayout>(cloned.TextLayout));
+        Assert.Equal(sourceBounds, fixture.Source.Bounds);
+        Assert.Same(sourceLayout, Assert.IsType<CanvasTextLayout>(fixture.Source.TextLayout));
+    }
+
+    private static void AssertImageRunsCloneWithOwnLeases(
+        MultiRasterFixture fixture,
+        InlineRun[] clonedRuns,
+        RasterPlacementSourceFence[]? expectedSources)
+    {
         InlineImageRun[] clonedImageRuns = clonedRuns.OfType<InlineImageRun>().ToArray();
         Assert.Equal(fixture.ImageRuns.Count, clonedImageRuns.Length);
         Assert.Equal(fixture.ImageRuns.Count, expectedSources!.Length);
@@ -86,20 +114,6 @@ public sealed class MultiRasterPlacementCloneTests
             Assert.Equal(sourceRun.AltText, cloneRun.AltText);
             Assert.Equal(sourceRun.LinkUrl, cloneRun.LinkUrl);
         }
-
-        Assert.Equal(
-            fixture.Source.InlineImageRuns.Select(static entry => entry.Offset),
-            cloned.InlineImageRuns.Select(static entry => entry.Offset));
-        Assert.Equal(sourceSlice, fixture.SourceContext.SourceMap.Slice(WholeBlockRange(fixture.Source)));
-
-        float candidateHeight = cloned.Measure(180f);
-        cloned.Arrange(0f, 0f, 180f);
-        Assert.True(float.IsFinite(candidateHeight));
-        Assert.True(candidateHeight > 0);
-        Assert.True(cloned.HasMeasuredLayout);
-        Assert.NotSame(sourceLayout, Assert.IsType<CanvasTextLayout>(cloned.TextLayout));
-        Assert.Equal(sourceBounds, fixture.Source.Bounds);
-        Assert.Same(sourceLayout, Assert.IsType<CanvasTextLayout>(fixture.Source.TextLayout));
     }
 
     [Fact]
@@ -471,27 +485,7 @@ public sealed class MultiRasterPlacementCloneTests
         {
             ArgumentOutOfRangeException.ThrowIfNegative(imageCount);
             ArgumentOutOfRangeException.ThrowIfNegative(trailingTextRunCount);
-            var body = new ElementStyle { FontFamily = "Segoe UI", FontSize = 16f };
-            var styles = new Dictionary<string, ElementStyle>(StringComparer.Ordinal)
-            {
-                [MarkdownElementKeys.Body] = body,
-                [MarkdownElementKeys.Strong] = body,
-                [MarkdownElementKeys.Emphasis] = body,
-                [MarkdownElementKeys.Link] = body,
-                [MarkdownElementKeys.Heading2] = body,
-                [MarkdownElementKeys.Heading3] = body,
-            };
-            Color transparent = Color.FromArgb(0, 0, 0, 0);
-            _theme = new ThemeSnapshot(
-                styles,
-                new Dictionary<string, ElementStyleOverride>(),
-                transparent,
-                transparent,
-                transparent,
-                transparent,
-                isDark: false,
-                isHighContrast: false,
-                textScaleFactor: 1f);
+            _theme = CreateTheme();
 
             (List<(string? Text, int ImageIndex)> segments, string sourceText) = CreateSegments(imageCount, trailingTextRunCount);
             _sourceMap = new MarkdownSourceMap(sourceText);
@@ -509,46 +503,12 @@ public sealed class MultiRasterPlacementCloneTests
             {
                 if (text is { } value)
                 {
-                    Source.Add(new TextRun(value)
-                    {
-                        ElementKey = imageOrdinal % 2 == 0 ? MarkdownElementKeys.Strong : string.Empty,
-                        SourceSpan = new SourceSpan(sourceOffset, value.Length),
-                        StyleAliases = new[] { $"text-run-{Source.Runs.Count}" },
-                        StyleModifierKeys = imageOrdinal % 2 == 0
-                            ? new[] { MarkdownElementKeys.Emphasis }
-                            : Array.Empty<string>(),
-                        SemanticHeadingKey = MarkdownElementKeys.Heading2,
-                    });
+                    AddTextRun(value, sourceOffset, imageOrdinal);
                     sourceOffset += value.Length;
                 }
                 else
                 {
-                    string imageUrl;
-                    if (finalImageIsSvg && segmentImageIndex == imageCount - 1)
-                    {
-                        imageUrl = SvgDataUri;
-                    }
-                    else
-                    {
-                        imageUrl = $"ms-appx:///multi-raster-{Guid.NewGuid():N}-{segmentImageIndex}.png";
-                        StoreRaster(imageUrl, segmentImageIndex);
-                    }
-
-                    var imageRun = new InlineImageRun(
-                        SourceContext,
-                        $"Raster alt {segmentImageIndex}",
-                        imageUrl,
-                        linkUrl: $"https://example.test/image-{segmentImageIndex}")
-                    {
-                        ElementKey = MarkdownElementKeys.Link,
-                        SourceSpan = new SourceSpan(sourceOffset, 1),
-                        StyleAliases = new[] { $"image-run-{segmentImageIndex}" },
-                        StyleModifierKeys = new[] { MarkdownElementKeys.Strong },
-                        SemanticHeadingKey = MarkdownElementKeys.Heading3,
-                    };
-                    Source.Add(imageRun);
-                    ImageRuns.Add(imageRun);
-                    ImageBoxes.Add(imageRun.Image);
+                    AddImageRun(segmentImageIndex, sourceOffset, isSvg: finalImageIsSvg && segmentImageIndex == imageCount - 1);
                     sourceOffset++;
                     imageOrdinal++;
                 }
@@ -561,6 +521,75 @@ public sealed class MultiRasterPlacementCloneTests
             Assert.Equal(imageCount, ImageRuns.Count);
             if (!finalImageIsSvg)
                 Assert.All(ImageBoxes, static image => Assert.NotNull(image.Bitmap));
+        }
+
+        private static ThemeSnapshot CreateTheme()
+        {
+            var body = new ElementStyle { FontFamily = "Segoe UI", FontSize = 16f };
+            var styles = new Dictionary<string, ElementStyle>(StringComparer.Ordinal)
+            {
+                [MarkdownElementKeys.Body] = body,
+                [MarkdownElementKeys.Strong] = body,
+                [MarkdownElementKeys.Emphasis] = body,
+                [MarkdownElementKeys.Link] = body,
+                [MarkdownElementKeys.Heading2] = body,
+                [MarkdownElementKeys.Heading3] = body,
+            };
+            Color transparent = Color.FromArgb(0, 0, 0, 0);
+            return new ThemeSnapshot(
+                styles,
+                new Dictionary<string, ElementStyleOverride>(),
+                transparent,
+                transparent,
+                transparent,
+                transparent,
+                isDark: false,
+                isHighContrast: false,
+                textScaleFactor: 1f);
+        }
+
+        private void AddTextRun(string value, int sourceOffset, int imageOrdinal)
+        {
+            Source.Add(new TextRun(value)
+            {
+                ElementKey = imageOrdinal % 2 == 0 ? MarkdownElementKeys.Strong : string.Empty,
+                SourceSpan = new SourceSpan(sourceOffset, value.Length),
+                StyleAliases = new[] { $"text-run-{Source.Runs.Count}" },
+                StyleModifierKeys = imageOrdinal % 2 == 0
+                    ? new[] { MarkdownElementKeys.Emphasis }
+                    : Array.Empty<string>(),
+                SemanticHeadingKey = MarkdownElementKeys.Heading2,
+            });
+        }
+
+        private void AddImageRun(int segmentImageIndex, int sourceOffset, bool isSvg)
+        {
+            string imageUrl;
+            if (isSvg)
+            {
+                imageUrl = SvgDataUri;
+            }
+            else
+            {
+                imageUrl = $"ms-appx:///multi-raster-{Guid.NewGuid():N}-{segmentImageIndex}.png";
+                StoreRaster(imageUrl, segmentImageIndex);
+            }
+
+            var imageRun = new InlineImageRun(
+                SourceContext,
+                $"Raster alt {segmentImageIndex}",
+                imageUrl,
+                linkUrl: $"https://example.test/image-{segmentImageIndex}")
+            {
+                ElementKey = MarkdownElementKeys.Link,
+                SourceSpan = new SourceSpan(sourceOffset, 1),
+                StyleAliases = new[] { $"image-run-{segmentImageIndex}" },
+                StyleModifierKeys = new[] { MarkdownElementKeys.Strong },
+                SemanticHeadingKey = MarkdownElementKeys.Heading3,
+            };
+            Source.Add(imageRun);
+            ImageRuns.Add(imageRun);
+            ImageBoxes.Add(imageRun.Image);
         }
 
         internal CanvasDevice Device => _device;

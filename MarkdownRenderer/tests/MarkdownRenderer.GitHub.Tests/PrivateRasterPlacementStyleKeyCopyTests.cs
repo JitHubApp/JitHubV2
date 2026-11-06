@@ -52,49 +52,62 @@ public sealed class PrivateRasterPlacementStyleKeyCopyTests
             InlineContainerBox copied = Assert.IsType<InlineContainerBox>(clone);
             Assert.True(copied.TryGetPrivateRasterPlacementStyleKeyCopyEntries(out long copiedEntries));
             Assert.Equal(styleKeyCopyEntries, copiedEntries);
+            AssertStyleKeysAreEqualDeepCopies(source, copied);
+        }
+        finally
+        {
+            await ReleaseLeafAndCloneAsync(fixture, target, source, clone);
+        }
+    }
 
-            for (int index = 0; index < source.Runs.Count; index++)
-            {
-                Assert.Equal(source.Runs[index].StyleAliases, copied.Runs[index].StyleAliases);
-                Assert.NotSame(source.Runs[index].StyleAliases, copied.Runs[index].StyleAliases);
-                Assert.Equal(source.Runs[index].StyleModifierKeys, copied.Runs[index].StyleModifierKeys);
-                Assert.NotSame(source.Runs[index].StyleModifierKeys, copied.Runs[index].StyleModifierKeys);
-            }
+    private static void AssertStyleKeysAreEqualDeepCopies(InlineContainerBox source, InlineContainerBox copied)
+    {
+        for (int index = 0; index < source.Runs.Count; index++)
+        {
+            Assert.Equal(source.Runs[index].StyleAliases, copied.Runs[index].StyleAliases);
+            Assert.NotSame(source.Runs[index].StyleAliases, copied.Runs[index].StyleAliases);
+            Assert.Equal(source.Runs[index].StyleModifierKeys, copied.Runs[index].StyleModifierKeys);
+            Assert.NotSame(source.Runs[index].StyleModifierKeys, copied.Runs[index].StyleModifierKeys);
+        }
 
-            Assert.Equal(GetKeyList(source, "_styleContextKeys"), GetKeyList(copied, "_styleContextKeys"));
-            Assert.NotSame(GetKeyList(source, "_styleContextKeys"), GetKeyList(copied, "_styleContextKeys"));
-            Assert.Equal(GetKeyList(source, "_styleAliasKeys"), GetKeyList(copied, "_styleAliasKeys"));
-            Assert.NotSame(GetKeyList(source, "_styleAliasKeys"), GetKeyList(copied, "_styleAliasKeys"));
-            IReadOnlyList<IReadOnlyList<string>> sourceEffectiveAliases = GetEffectiveAliases(source);
-            IReadOnlyList<IReadOnlyList<string>> copiedEffectiveAliases = GetEffectiveAliases(copied);
-            Assert.Equal(sourceEffectiveAliases.Count, copiedEffectiveAliases.Count);
-            for (int index = 0; index < sourceEffectiveAliases.Count; index++)
-            {
-                Assert.Equal(sourceEffectiveAliases[index], copiedEffectiveAliases[index]);
-                Assert.NotSame(sourceEffectiveAliases[index], copiedEffectiveAliases[index]);
-            }
+        Assert.Equal(GetKeyList(source, "_styleContextKeys"), GetKeyList(copied, "_styleContextKeys"));
+        Assert.NotSame(GetKeyList(source, "_styleContextKeys"), GetKeyList(copied, "_styleContextKeys"));
+        Assert.Equal(GetKeyList(source, "_styleAliasKeys"), GetKeyList(copied, "_styleAliasKeys"));
+        Assert.NotSame(GetKeyList(source, "_styleAliasKeys"), GetKeyList(copied, "_styleAliasKeys"));
+        IReadOnlyList<IReadOnlyList<string>> sourceEffectiveAliases = GetEffectiveAliases(source);
+        IReadOnlyList<IReadOnlyList<string>> copiedEffectiveAliases = GetEffectiveAliases(copied);
+        Assert.Equal(sourceEffectiveAliases.Count, copiedEffectiveAliases.Count);
+        for (int index = 0; index < sourceEffectiveAliases.Count; index++)
+        {
+            Assert.Equal(sourceEffectiveAliases[index], copiedEffectiveAliases[index]);
+            Assert.NotSame(sourceEffectiveAliases[index], copiedEffectiveAliases[index]);
+        }
+    }
+
+    private static async Task ReleaseLeafAndCloneAsync(
+        MultiRasterPlacementCloneTests.MultiRasterFixture fixture,
+        MarkdownLayoutContext target,
+        InlineContainerBox? source,
+        InlineContainerBox? clone)
+    {
+        try
+        {
+            if (clone is not null)
+                target.DiscardConstructionBlock(clone);
         }
         finally
         {
             try
             {
-                if (clone is not null)
-                    target.DiscardConstructionBlock(clone);
+                if (source is not null)
+                    fixture.SourceContext.DiscardConstructionBlock(source);
             }
             finally
             {
-                try
-                {
-                    if (source is not null)
-                        fixture.SourceContext.DiscardConstructionBlock(source);
-                }
-                finally
-                {
-                    await Task.WhenAll(
-                        target.DrainOwnedRetirementsAsync(),
-                        fixture.SourceContext.DrainOwnedRetirementsAsync())
-                        .WaitAsync(TimeSpan.FromSeconds(30));
-                }
+                await Task.WhenAll(
+                    target.DrainOwnedRetirementsAsync(),
+                    fixture.SourceContext.DrainOwnedRetirementsAsync())
+                    .WaitAsync(TimeSpan.FromSeconds(30));
             }
         }
     }
@@ -150,12 +163,7 @@ public sealed class PrivateRasterPlacementStyleKeyCopyTests
             Assert.True(clone.TryGetPrivateRasterPlacementStyleKeyCopyEntries(out long copiedEntries));
             Assert.Equal(styleKeyCopyEntries, copiedEntries);
 
-            sourceScriptKeys[0] = "source-mutated-script";
-            Assert.Equal(MarkdownElementKeys.Subscript, copiedScriptKeys[0]);
-            sourceScriptKeys[0] = MarkdownElementKeys.Subscript;
-            copiedScriptKeys[1] = "candidate-mutated-script";
-            Assert.Equal(MarkdownElementKeys.Superscript, sourceScriptKeys[1]);
-            copiedScriptKeys[1] = MarkdownElementKeys.Superscript;
+            AssertScriptKeyArraysAreIndependent(sourceScriptKeys, copiedScriptKeys);
 
             Assert.True(InlineMeasuredPlacementCapture.TryCaptureContainerLeafMeasuredPlacementTransfer(
                 source,
@@ -169,40 +177,38 @@ public sealed class PrivateRasterPlacementStyleKeyCopyTests
             _ = clone.Measure(Width);
             clone.Arrange(0f, 0f, Width);
             Assert.True(transfer!.IsCurrentAndPrepared());
-
-            sourceScriptKeys[1] = MarkdownElementKeys.Subscript;
-            Assert.False(transfer.IsCurrentAndPrepared());
-            sourceScriptKeys[1] = MarkdownElementKeys.Superscript;
-            Assert.True(transfer.IsCurrentAndPrepared());
-
-            sourceRun.SafeHtmlScriptRoleIsRunElement = false;
-            Assert.False(transfer.IsCurrentAndPrepared());
-            sourceRun.SafeHtmlScriptRoleIsRunElement = true;
-            Assert.True(transfer.IsCurrentAndPrepared());
+            AssertTransferFencesSourceScriptAncestry(transfer, sourceScriptKeys, sourceRun);
         }
         finally
         {
-            try
-            {
-                if (clone is not null)
-                    target.DiscardConstructionBlock(clone);
-            }
-            finally
-            {
-                try
-                {
-                    if (source is not null)
-                        fixture.SourceContext.DiscardConstructionBlock(source);
-                }
-                finally
-                {
-                    await Task.WhenAll(
-                        target.DrainOwnedRetirementsAsync(),
-                        fixture.SourceContext.DrainOwnedRetirementsAsync())
-                        .WaitAsync(TimeSpan.FromSeconds(30));
-                }
-            }
+            await ReleaseLeafAndCloneAsync(fixture, target, source, clone);
         }
+    }
+
+    private static void AssertScriptKeyArraysAreIndependent(string[] sourceScriptKeys, string[] copiedScriptKeys)
+    {
+        sourceScriptKeys[0] = "source-mutated-script";
+        Assert.Equal(MarkdownElementKeys.Subscript, copiedScriptKeys[0]);
+        sourceScriptKeys[0] = MarkdownElementKeys.Subscript;
+        copiedScriptKeys[1] = "candidate-mutated-script";
+        Assert.Equal(MarkdownElementKeys.Superscript, sourceScriptKeys[1]);
+        copiedScriptKeys[1] = MarkdownElementKeys.Superscript;
+    }
+
+    private static void AssertTransferFencesSourceScriptAncestry(
+        InlineMeasuredPlacementTransfer transfer,
+        string[] sourceScriptKeys,
+        SuperscriptRun sourceRun)
+    {
+        sourceScriptKeys[1] = MarkdownElementKeys.Subscript;
+        Assert.False(transfer.IsCurrentAndPrepared());
+        sourceScriptKeys[1] = MarkdownElementKeys.Superscript;
+        Assert.True(transfer.IsCurrentAndPrepared());
+
+        sourceRun.SafeHtmlScriptRoleIsRunElement = false;
+        Assert.False(transfer.IsCurrentAndPrepared());
+        sourceRun.SafeHtmlScriptRoleIsRunElement = true;
+        Assert.True(transfer.IsCurrentAndPrepared());
     }
 
     [Fact]

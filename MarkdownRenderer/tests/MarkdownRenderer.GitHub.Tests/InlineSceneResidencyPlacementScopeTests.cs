@@ -32,25 +32,7 @@ public sealed class InlineSceneResidencyPlacementScopeTests
         const float placementTranslationY = 0.2f;
 
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
-        var style = new ElementStyle
-        {
-            FontSize = 16,
-            Foreground = Color.FromArgb(255, 20, 20, 20),
-        };
-        var theme = new ThemeSnapshot(
-            new Dictionary<string, ElementStyle>
-            {
-                [MarkdownElementKeys.Body] = style,
-                [MarkdownElementKeys.Math] = style,
-            },
-            new Dictionary<string, ElementStyleOverride>(),
-            Color.FromArgb(255, 255, 255, 255),
-            Color.FromArgb(255, 0, 80, 180),
-            Color.FromArgb(255, 255, 255, 255),
-            style.Foreground,
-            isDark: false,
-            isHighContrast: false,
-            textScaleFactor: 1);
+        ThemeSnapshot theme = CreateTheme();
         var admission = new VectorNativeResourceAdmission(1_000_000, 1_000_000);
         var context = new MarkdownLayoutContext(
             CanvasDevice.GetSharedDevice(),
@@ -63,36 +45,9 @@ public sealed class InlineSceneResidencyPlacementScopeTests
             PerformanceSession = (IMarkdownPerformanceSessionInternal)session,
             UseProgressiveNativeSceneResidency = true,
         };
-        var inline = new InlineContainerBox(context, MarkdownElementKeys.Body)
-        {
-            BlockIndex = 1,
-        };
-        var run = new InlineVectorSceneRun(
-            context,
-            CreateScene(),
-            "inline badge",
-            "inline badge",
-            null,
-            MarkdownElementKeys.Math,
-            nativeAdmission: admission);
-        inline.Add(run);
-        _ = inline.Measure(160);
-        inline.Arrange(0, localTop, 160);
+        (InlineContainerBox inline, InlineVectorSceneRun run) = CreateArrangedInlineScene(context, admission, localTop);
 
-        LayoutPlacementGeneration placements = LayoutPlacementGeneration.Create(
-            [new LayoutPlacementInput(
-                baseX: 0,
-                baseTop: localTop,
-                logicalX: 0,
-                width: 160,
-                height: (float)inline.Bounds.Height,
-                measured: true,
-                sharesFlowWithNext: false)],
-            initialTop: localTop + placementTranslationY,
-            blockSpacing: 0,
-            bottomPadding: 0,
-            documentWidth: 160,
-            revision: 1);
+        LayoutPlacementGeneration placements = CreatePlacements(inline, localTop, placementTranslationY);
         LayoutRootPlacement placement = placements.GetPlacement(0);
         Assert.Equal(placementTranslationY, placement.TranslationY);
         var band = new LazyLayoutBand(placement.Top, placement.Bottom);
@@ -146,6 +101,71 @@ public sealed class InlineSceneResidencyPlacementScopeTests
         }
         Assert.Equal(0, admission.ReservedWeightUnits);
     }
+
+    private static ThemeSnapshot CreateTheme()
+    {
+        var style = new ElementStyle
+        {
+            FontSize = 16,
+            Foreground = Color.FromArgb(255, 20, 20, 20),
+        };
+        return new ThemeSnapshot(
+            new Dictionary<string, ElementStyle>
+            {
+                [MarkdownElementKeys.Body] = style,
+                [MarkdownElementKeys.Math] = style,
+            },
+            new Dictionary<string, ElementStyleOverride>(),
+            Color.FromArgb(255, 255, 255, 255),
+            Color.FromArgb(255, 0, 80, 180),
+            Color.FromArgb(255, 255, 255, 255),
+            style.Foreground,
+            isDark: false,
+            isHighContrast: false,
+            textScaleFactor: 1);
+    }
+
+    private static (InlineContainerBox Inline, InlineVectorSceneRun Run) CreateArrangedInlineScene(
+        MarkdownLayoutContext context,
+        VectorNativeResourceAdmission admission,
+        float localTop)
+    {
+        var inline = new InlineContainerBox(context, MarkdownElementKeys.Body)
+        {
+            BlockIndex = 1,
+        };
+        var run = new InlineVectorSceneRun(
+            context,
+            CreateScene(),
+            "inline badge",
+            "inline badge",
+            null,
+            MarkdownElementKeys.Math,
+            nativeAdmission: admission);
+        inline.Add(run);
+        _ = inline.Measure(160);
+        inline.Arrange(0, localTop, 160);
+        return (inline, run);
+    }
+
+    private static LayoutPlacementGeneration CreatePlacements(
+        InlineContainerBox inline,
+        float localTop,
+        float placementTranslationY) =>
+        LayoutPlacementGeneration.Create(
+            [new LayoutPlacementInput(
+                baseX: 0,
+                baseTop: localTop,
+                logicalX: 0,
+                width: 160,
+                height: (float)inline.Bounds.Height,
+                measured: true,
+                sharesFlowWithNext: false)],
+            initialTop: localTop + placementTranslationY,
+            blockSpacing: 0,
+            bottomPadding: 0,
+            documentWidth: 160,
+            revision: 1);
 
     private static MarkdownVectorScene CreateScene() => new(
         width: 40,

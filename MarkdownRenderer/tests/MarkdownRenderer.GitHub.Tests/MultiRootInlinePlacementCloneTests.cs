@@ -286,41 +286,8 @@ public sealed class MultiRootInlinePlacementCloneTests
             bool suppressTopMargin = false,
             bool suppressBottomMargin = false)
         {
-            string source = kind switch
-            {
-                InlinePlacementKind.TextOnly => "plain text",
-                InlinePlacementKind.RasterOnly => "!",
-                InlinePlacementKind.LinkAndRaster => "pre doc!",
-                InlinePlacementKind.DisclosureLinkAndRaster => "click!",
-                InlinePlacementKind.CodeAndRaster or InlinePlacementKind.UnsupportedCustomAndRaster => "code!",
-                _ => throw new ArgumentOutOfRangeException(nameof(kind)),
-            };
-            _sourceMap = new MarkdownSourceMap(source);
-            var body = new ElementStyle
-            {
-                FontFamily = "Segoe UI",
-                FontSize = 16f,
-                Margin = new Thickness(2, 5, 3, 7),
-            };
-            var styles = new Dictionary<string, ElementStyle>(StringComparer.Ordinal)
-            {
-                [MarkdownElementKeys.Body] = body,
-                [MarkdownElementKeys.Strong] = body,
-                [MarkdownElementKeys.Emphasis] = body,
-                [MarkdownElementKeys.Link] = body,
-                [MarkdownElementKeys.Heading2] = body,
-            };
-            Color transparent = Color.FromArgb(0, 0, 0, 0);
-            _theme = new ThemeSnapshot(
-                styles,
-                new Dictionary<string, ElementStyleOverride>(),
-                transparent,
-                transparent,
-                transparent,
-                transparent,
-                isDark: false,
-                isHighContrast: false,
-                textScaleFactor: 1f);
+            _sourceMap = new MarkdownSourceMap(CreateSourceText(kind));
+            _theme = CreateTheme();
             SourceContext = new MarkdownLayoutContext(
                 _device,
                 _theme,
@@ -344,6 +311,52 @@ public sealed class MultiRootInlinePlacementCloneTests
             Source.SuppressTopMargin = suppressTopMargin;
             Source.SuppressBottomMargin = suppressBottomMargin;
 
+            AddRuns(kind);
+
+            _ = Source.Measure(320f);
+            Source.Arrange(0f, 0f, 320f);
+            if (ImageRuns.Count != 0)
+                Assert.All(ImageRuns, static run => Assert.NotNull(run.Image.Bitmap));
+        }
+
+        private static string CreateSourceText(InlinePlacementKind kind) => kind switch
+        {
+            InlinePlacementKind.TextOnly => "plain text",
+            InlinePlacementKind.RasterOnly => "!",
+            InlinePlacementKind.LinkAndRaster => "pre doc!",
+            InlinePlacementKind.DisclosureLinkAndRaster => "click!",
+            InlinePlacementKind.CodeAndRaster or InlinePlacementKind.UnsupportedCustomAndRaster => "code!",
+            _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+        };
+
+        private static ThemeSnapshot CreateTheme()
+        {
+            var body = new ElementStyle
+            {
+                FontFamily = "Segoe UI",
+                FontSize = 16f,
+                Margin = new Thickness(2, 5, 3, 7),
+            };
+            var styles = new Dictionary<string, ElementStyle>(StringComparer.Ordinal)
+            {
+                [MarkdownElementKeys.Body] = body,
+                [MarkdownElementKeys.Strong] = body,
+                [MarkdownElementKeys.Emphasis] = body,
+                [MarkdownElementKeys.Link] = body,
+                [MarkdownElementKeys.Heading2] = body,
+            };
+            Color transparent = Color.FromArgb(0, 0, 0, 0);
+            return new ThemeSnapshot(
+                styles,
+                new Dictionary<string, ElementStyleOverride>(),
+                transparent, transparent, transparent, transparent,
+                isDark: false,
+                isHighContrast: false,
+                textScaleFactor: 1f);
+        }
+
+        private void AddRuns(InlinePlacementKind kind)
+        {
             switch (kind)
             {
                 case InlinePlacementKind.TextOnly:
@@ -381,11 +394,6 @@ public sealed class MultiRootInlinePlacementCloneTests
                 default:
                     throw new ArgumentOutOfRangeException(nameof(kind));
             }
-
-            _ = Source.Measure(320f);
-            Source.Arrange(0f, 0f, 320f);
-            if (ImageRuns.Count != 0)
-                Assert.All(ImageRuns, static run => Assert.NotNull(run.Image.Bitmap));
         }
 
         internal MarkdownLayoutContext SourceContext { get; }
@@ -396,8 +404,7 @@ public sealed class MultiRootInlinePlacementCloneTests
             => SourceContext.CreateRasterPlacementContext(
                 CancellationToken.None,
                 _imagePreparationOwner,
-                retirementSink: null,
-                imageUnavailable: null);
+                retirementSink: null, imageUnavailable: null);
 
         internal void SetCandidate(MarkdownLayoutContext context, InlineContainerBox? candidate)
         {
@@ -487,11 +494,7 @@ public sealed class MultiRootInlinePlacementCloneTests
         {
             byte[] pixels = new byte[checked(width * height * 4)];
             return CanvasBitmap.CreateFromBytes(
-                device,
-                pixels,
-                width,
-                height,
-                DirectXPixelFormat.B8G8R8A8UIntNormalized);
+                device, pixels, width, height, DirectXPixelFormat.B8G8R8A8UIntNormalized);
         }
     }
 }

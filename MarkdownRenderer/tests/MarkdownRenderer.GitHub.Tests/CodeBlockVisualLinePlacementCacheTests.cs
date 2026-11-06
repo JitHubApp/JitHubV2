@@ -23,6 +23,12 @@ using Xunit.Abstractions;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
+/// <remarks>
+/// This file is longer than 500 lines because every visual-line cache rule (repeated placement,
+/// width reflow and highlighting, private chunk adoption, missing and invalid native metrics,
+/// cancellation, gutter width and the allocation diagnostics) is checked against the same
+/// independent legacy line-placement oracle and native-metric fault helpers kept in this class.
+/// </remarks>
 [Collection("Shared Canvas text format cache")]
 public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper output)
 {
@@ -54,10 +60,10 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
     {
         using var device = new CanvasDevice(forceSoftwareRenderer: true);
         string text = CreateLongMultichunkCode(lineCount: 180, longTokenLength: 124);
-        await using Fixture actual = CreateFixture(
+        await using CodeBlockVisualLineFixture actual = CodeBlockVisualLineFixture.Create(
             device, text, rasterizationScale, flowDirection, CanvasWordWrapping.NoWrap,
             availableWidth: 420, chunkCount: 5, startLine: 17, showLineNumbers: true);
-        await using Fixture oracle = CreateFixture(
+        await using CodeBlockVisualLineFixture oracle = CodeBlockVisualLineFixture.Create(
             device, text, rasterizationScale, flowDirection, CanvasWordWrapping.NoWrap,
             availableWidth: 420, chunkCount: 5, startLine: 17, showLineNumbers: true);
 
@@ -116,10 +122,10 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
     {
         using var device = new CanvasDevice(forceSoftwareRenderer: true);
         string text = CreateLongMultichunkCode(lineCount: 112, longTokenLength: 156);
-        await using Fixture source = CreateFixture(
+        await using CodeBlockVisualLineFixture source = CodeBlockVisualLineFixture.Create(
             device, text, 1.5f, FlowDirection.RightToLeft, CanvasWordWrapping.Wrap,
             availableWidth: 460, chunkCount: 4, startLine: 99, showLineNumbers: true);
-        await using Fixture initialOracle = CreateFixture(
+        await using CodeBlockVisualLineFixture initialOracle = CodeBlockVisualLineFixture.Create(
             device, text, 1.5f, FlowDirection.RightToLeft, CanvasWordWrapping.Wrap,
             availableWidth: 460, chunkCount: 4, startLine: 99, showLineNumbers: true);
 
@@ -150,68 +156,29 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
         AssertMatchesIndependentLegacyOracle(
             source.Box, initialOracle.Box, 5.25f, 91_337.625f, 208);
 
-        CodeBlockHighlightCacheKey highlightKey = new(
-            source.Box.CodeLanguage,
-            source.Box.Metadata.CodeTextHash,
-            source.Box.CodeText.Length,
-            MarkdownThemeVariant.Light,
-            ProviderIdentity: 921,
-            ProviderRevision: 1);
-        CodeBlockHighlightSpan[] spans =
-        [
-            new(4, "var".Length, Color.FromArgb(255, 181, 74, 208)),
-            new(global::System.Math.Max(0, text.IndexOf("value", StringComparison.Ordinal)), "value".Length,
-                Color.FromArgb(255, 48, 132, 202)),
-        ];
-        Assert.True(source.Box.ApplySyntaxHighlighting(highlightKey, spans));
-        Assert.True(initialOracle.Box.ApplySyntaxHighlighting(highlightKey, spans));
-        Assert.True(source.Box.PrivatePlacementForegroundSpanCount > 0);
+        CodeBlockHighlightCacheKey highlightKey = ApplyTestHighlighting(source.Box, initialOracle.Box, text);
         source.Box.Arrange(5.25f, 91_337.625f, 208);
         initialOracle.Box.Arrange(5.25f, 91_337.625f, 208);
         AssertMatchesIndependentLegacyOracle(
             source.Box, initialOracle.Box, 5.25f, 91_337.625f, 208);
 
-        MarkdownLayoutContext candidateContext = CreateCompatibleContext(source, device);
+        MarkdownLayoutContext candidateContext = CodeBlockVisualLineFixture.CreateCompatibleContext(source, device);
         AssertPrivatePlacementFixtureReady(source.Box, candidateContext);
         CodeBlockBox? shell = null;
-        Fixture? adopted = null;
+        CodeBlockVisualLineFixture? adopted = null;
         try
         {
             CodeBlockBox candidateBox = source.Box.CreatePrivatePlacementCloneShell(candidateContext);
             shell = candidateBox;
-            foreach (InlineContainerBox sourceChunk in source.Box.Chunks)
-            {
-                Assert.True(sourceChunk.TryCreatePrivateInlinePlacementClone(
-                    candidateContext,
-                    (float)sourceChunk.Bounds.Width,
-                    out InlineContainerBox? candidateChunk,
-                    out _,
-                    allowUnmeasuredTextOnly: false,
-                    allowIdleImagePlacements: false,
-                    allowCodeForegroundSpans: true));
-                candidateBox.AddPrivatePlacementChunk(
-                    candidateChunk ?? throw new InvalidOperationException("Private code chunk cloning returned no chunk."));
-            }
+            AddPrivateChunkClones(source.Box, candidateBox, candidateContext);
 
             candidateBox.Measure(208);
             candidateBox.Arrange(5.25f, 91_337.625f, 208);
             AssertLineBreakChunkSeamsUseEffectiveHeight(candidateBox);
-            adopted = new Fixture(candidateBox, candidateContext, source.Theme, source.Style, ownsContext: true);
+            adopted = new CodeBlockVisualLineFixture(candidateBox, candidateContext, source.Theme, source.Style, ownsContext: true);
 
-            Assert.NotSame(source.Box, adopted.Box);
-            Assert.Equal(source.Box.CodeText, adopted.Box.CodeText);
-            Assert.Equal(source.Box.Chunks.Count, adopted.Box.Chunks.Count);
-            Assert.True(adopted.Box.HasAppliedSyntaxHighlighting(highlightKey));
-            Assert.Equal(source.Box.PrivatePlacementForegroundSpanCount,
-                adopted.Box.PrivatePlacementForegroundSpanCount);
-            AssertMatchesIndependentLegacyOracle(adopted.Box, 5.25f, 91_337.625f, 208);
-            for (int index = 0; index < source.Box.Chunks.Count; index++)
-            {
-                Assert.NotSame(source.Box.Chunks[index], adopted.Box.Chunks[index]);
-                Assert.NotSame(
-                    sourceMetricsAfterWidthChange[index],
-                    Assert.IsType<CanvasLineMetrics[]>(adopted.Box.Chunks[index].GetLineMetricsSnapshot()));
-            }
+            AssertAdoptedChunksRebuildIndependentMetrics(
+                source.Box, adopted.Box, highlightKey, sourceMetricsAfterWidthChange);
         }
         finally
         {
@@ -225,15 +192,81 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
         }
     }
 
+    private static CodeBlockHighlightCacheKey ApplyTestHighlighting(
+        CodeBlockBox source,
+        CodeBlockBox oracle,
+        string text)
+    {
+        CodeBlockHighlightCacheKey highlightKey = new(
+            source.CodeLanguage,
+            source.Metadata.CodeTextHash,
+            source.CodeText.Length,
+            MarkdownThemeVariant.Light,
+            ProviderIdentity: 921,
+            ProviderRevision: 1);
+        CodeBlockHighlightSpan[] spans =
+        [
+            new(4, "var".Length, Color.FromArgb(255, 181, 74, 208)),
+            new(global::System.Math.Max(0, text.IndexOf("value", StringComparison.Ordinal)), "value".Length,
+                Color.FromArgb(255, 48, 132, 202)),
+        ];
+        Assert.True(source.ApplySyntaxHighlighting(highlightKey, spans));
+        Assert.True(oracle.ApplySyntaxHighlighting(highlightKey, spans));
+        Assert.True(source.PrivatePlacementForegroundSpanCount > 0);
+        return highlightKey;
+    }
+
+    private static void AddPrivateChunkClones(
+        CodeBlockBox source,
+        CodeBlockBox candidateBox,
+        MarkdownLayoutContext candidateContext)
+    {
+        foreach (InlineContainerBox sourceChunk in source.Chunks)
+        {
+            Assert.True(sourceChunk.TryCreatePrivateInlinePlacementClone(
+                candidateContext,
+                (float)sourceChunk.Bounds.Width,
+                out InlineContainerBox? candidateChunk,
+                out _,
+                allowUnmeasuredTextOnly: false,
+                allowIdleImagePlacements: false,
+                allowCodeForegroundSpans: true));
+            candidateBox.AddPrivatePlacementChunk(
+                candidateChunk ?? throw new InvalidOperationException("Private code chunk cloning returned no chunk."));
+        }
+    }
+
+    private static void AssertAdoptedChunksRebuildIndependentMetrics(
+        CodeBlockBox source,
+        CodeBlockBox adopted,
+        CodeBlockHighlightCacheKey highlightKey,
+        CanvasLineMetrics[][] sourceMetricsAfterWidthChange)
+    {
+        Assert.NotSame(source, adopted);
+        Assert.Equal(source.CodeText, adopted.CodeText);
+        Assert.Equal(source.Chunks.Count, adopted.Chunks.Count);
+        Assert.True(adopted.HasAppliedSyntaxHighlighting(highlightKey));
+        Assert.Equal(source.PrivatePlacementForegroundSpanCount,
+            adopted.PrivatePlacementForegroundSpanCount);
+        AssertMatchesIndependentLegacyOracle(adopted, 5.25f, 91_337.625f, 208);
+        for (int index = 0; index < source.Chunks.Count; index++)
+        {
+            Assert.NotSame(source.Chunks[index], adopted.Chunks[index]);
+            Assert.NotSame(
+                sourceMetricsAfterWidthChange[index],
+                Assert.IsType<CanvasLineMetrics[]>(adopted.Chunks[index].GetLineMetricsSnapshot()));
+        }
+    }
+
     [Fact]
     public async Task MissingMetricsClearsIndexAndLaterNativeMetricsRecoverIt()
     {
         using var device = new CanvasDevice(forceSoftwareRenderer: true);
         string text = CreateLongMultichunkCode(lineCount: 36, longTokenLength: 72);
-        await using Fixture fixture = CreateFixture(
+        await using CodeBlockVisualLineFixture fixture = CodeBlockVisualLineFixture.Create(
             device, text, 2f, FlowDirection.LeftToRight, CanvasWordWrapping.Wrap,
             availableWidth: 400, chunkCount: 3, startLine: 8, showLineNumbers: true);
-        await using Fixture oracle = CreateFixture(
+        await using CodeBlockVisualLineFixture oracle = CodeBlockVisualLineFixture.Create(
             device, text, 2f, FlowDirection.LeftToRight, CanvasWordWrapping.Wrap,
             availableWidth: 400, chunkCount: 3, startLine: 8, showLineNumbers: true);
 
@@ -277,10 +310,10 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
     {
         using var device = new CanvasDevice(forceSoftwareRenderer: true);
         string text = CreateLongMultichunkCode(lineCount: 30, longTokenLength: 72);
-        await using Fixture fixture = CreateFixture(
+        await using CodeBlockVisualLineFixture fixture = CodeBlockVisualLineFixture.Create(
             device, text, 1.5f, FlowDirection.LeftToRight, CanvasWordWrapping.Wrap,
             availableWidth: 400, chunkCount: 3, startLine: 9, showLineNumbers: true);
-        await using Fixture oracle = CreateFixture(
+        await using CodeBlockVisualLineFixture oracle = CodeBlockVisualLineFixture.Create(
             device, text, 1.5f, FlowDirection.LeftToRight, CanvasWordWrapping.Wrap,
             availableWidth: 400, chunkCount: 3, startLine: 9, showLineNumbers: true);
 
@@ -342,11 +375,11 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
         using var device = new CanvasDevice(forceSoftwareRenderer: true);
         using var cancellation = new CancellationTokenSource();
         string text = CreateLongMultichunkCode(lineCount: 48, longTokenLength: 60);
-        await using Fixture fixture = CreateFixture(
+        await using CodeBlockVisualLineFixture fixture = CodeBlockVisualLineFixture.Create(
             device, text, 1f, FlowDirection.RightToLeft, CanvasWordWrapping.Wrap,
             availableWidth: 370, chunkCount: 3, startLine: 1, showLineNumbers: true,
             cancellationToken: cancellation.Token);
-        await using Fixture oracle = CreateFixture(
+        await using CodeBlockVisualLineFixture oracle = CodeBlockVisualLineFixture.Create(
             device, text, 1f, FlowDirection.RightToLeft, CanvasWordWrapping.Wrap,
             availableWidth: 370, chunkCount: 3, startLine: 1, showLineNumbers: true);
 
@@ -381,7 +414,7 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
     {
         using var device = new CanvasDevice(forceSoftwareRenderer: true);
         string text = string.Join("\n", Enumerable.Repeat("x", lineCount));
-        await using Fixture fixture = CreateFixture(
+        await using CodeBlockVisualLineFixture fixture = CodeBlockVisualLineFixture.Create(
             device, text, 1f, FlowDirection.LeftToRight, CanvasWordWrapping.NoWrap,
             availableWidth: 720, chunkCount: global::System.Math.Min(8, lineCount), startLine,
             showLineNumbers: true);
@@ -410,10 +443,10 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
     {
         using var device = new CanvasDevice(forceSoftwareRenderer: true);
         string text = CreateLongMultichunkCode(lineCount: 2_048, longTokenLength: 96);
-        await using Fixture actual = CreateFixture(
+        await using CodeBlockVisualLineFixture actual = CodeBlockVisualLineFixture.Create(
             device, text, 1.5f, FlowDirection.LeftToRight, CanvasWordWrapping.NoWrap,
             availableWidth: 428, chunkCount: 8, startLine: 10_000, showLineNumbers: true);
-        await using Fixture oracle = CreateFixture(
+        await using CodeBlockVisualLineFixture oracle = CodeBlockVisualLineFixture.Create(
             device, text, 1.5f, FlowDirection.LeftToRight, CanvasWordWrapping.NoWrap,
             availableWidth: 428, chunkCount: 8, startLine: 10_000, showLineNumbers: true);
 
@@ -436,23 +469,8 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
         Array warmedBottomEdges = actual.Box.VisualLineIndex.BottomEdges;
         object?[] warmedNativeLayouts = CaptureChunkNativeLayouts(actual.Box);
         long? warmedBuildCount = TryGetCacheBuildCount(actual.Box);
-        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
-        long started = Stopwatch.GetTimestamp();
-        int scrollChanges = 0;
-        for (int index = 0; index < 120; index++)
-        {
-            float placementY = y + 12 + index * 0.125f;
-            actual.Box.Arrange(x + (index % 3) * 0.25f, placementY, 428);
-            if (index % 8 == 0)
-            {
-                double nextOffset = index % 16 == 0 ? 24 : 64;
-                if (actual.Box.SetHorizontalOffset(nextOffset))
-                    scrollChanges++;
-            }
-        }
-        long elapsedTicks = Stopwatch.GetTimestamp() - started;
-        long allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
-        long elapsedMilliseconds = (long)(elapsedTicks * 1000d / Stopwatch.Frequency);
+        (int scrollChanges, long allocatedBytes, long elapsedMilliseconds) =
+            MeasureRepeatedVerticalArrange(actual.Box, x, y);
 
         float finalY = y + 12 + 119 * 0.125f;
         oracle.Box.Arrange(x + (119 % 3) * 0.25f, finalY, 428);
@@ -488,6 +506,38 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
             actual.Context.RasterizationScale,
             actual.Box.Bounds.Y);
 
+        AssertSameOriginHorizontalScrollReusesPlacement(actual, oracle);
+    }
+
+    private static (int ScrollChanges, long AllocatedBytes, long ElapsedMilliseconds) MeasureRepeatedVerticalArrange(
+        CodeBlockBox box,
+        float x,
+        float y)
+    {
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        long started = Stopwatch.GetTimestamp();
+        int scrollChanges = 0;
+        for (int index = 0; index < 120; index++)
+        {
+            float placementY = y + 12 + index * 0.125f;
+            box.Arrange(x + (index % 3) * 0.25f, placementY, 428);
+            if (index % 8 == 0)
+            {
+                double nextOffset = index % 16 == 0 ? 24 : 64;
+                if (box.SetHorizontalOffset(nextOffset))
+                    scrollChanges++;
+            }
+        }
+        long elapsedTicks = Stopwatch.GetTimestamp() - started;
+        long allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        long elapsedMilliseconds = (long)(elapsedTicks * 1000d / Stopwatch.Frequency);
+        return (scrollChanges, allocatedBytes, elapsedMilliseconds);
+    }
+
+    private void AssertSameOriginHorizontalScrollReusesPlacement(
+        CodeBlockVisualLineFixture actual,
+        CodeBlockVisualLineFixture oracle)
+    {
         float horizontalY = (float)actual.Box.Bounds.Y;
         float horizontalX = (float)actual.Box.Bounds.X;
         Array horizontalVisualLines = actual.Box.VisualLineIndex.Lines;
@@ -531,137 +581,6 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
             TryGetCacheBuildCount(actual.Box)?.ToString(CultureInfo.InvariantCulture) ??
                 "unavailable-on-baseline-runtime",
             horizontalNativeLayouts.Zip(CaptureChunkNativeLayouts(actual.Box), ReferenceEquals).All(static same => same));
-    }
-
-    private static Fixture CreateFixture(
-        CanvasDevice device,
-        string codeText,
-        float rasterizationScale,
-        FlowDirection flowDirection,
-        CanvasWordWrapping wrapping,
-        float availableWidth,
-        int chunkCount,
-        int startLine,
-        bool showLineNumbers,
-        CancellationToken cancellationToken = default)
-    {
-        ElementStyle codeStyle = new()
-        {
-            FontFamily = "Consolas",
-            FontSize = 13,
-            Foreground = Color.FromArgb(255, 28, 30, 33),
-        };
-        ElementStyle lineNumberStyle = new()
-        {
-            FontFamily = "Consolas",
-            FontSize = 11,
-            Foreground = Color.FromArgb(255, 86, 93, 101),
-        };
-        Color transparent = Color.FromArgb(0, 0, 0, 0);
-        var styles = new Dictionary<string, ElementStyle>
-        {
-            [MarkdownElementKeys.Body] = codeStyle,
-            [MarkdownElementKeys.CodeBlock] = codeStyle,
-            [MarkdownElementKeys.CodeBlockLineNumber] = lineNumberStyle,
-            [MarkdownElementKeys.CodeBlockGutter] = new ElementStyle(),
-            [MarkdownElementKeys.CodeBlockHeader] = new ElementStyle(),
-            [MarkdownElementKeys.CodeBlockLanguage] = new ElementStyle(),
-        };
-        var theme = new ThemeSnapshot(
-            styles,
-            new Dictionary<string, ElementStyleOverride>(),
-            transparent, transparent, transparent, transparent,
-            isDark: false,
-            isHighContrast: false,
-            textScaleFactor: 1);
-        var registry = new MarkdownExtensionRegistry();
-        var sourceMap = new MarkdownSourceMap(codeText);
-        MarkdownLayoutContext context = CreateContext(
-            device, theme, sourceMap, registry, flowDirection, rasterizationScale, cancellationToken);
-        var attributes = new Dictionary<string, string>
-        {
-            ["startline"] = startLine.ToString(CultureInfo.InvariantCulture),
-        };
-        CodeBlockMetadata metadata = CodeBlockMetadata.FromDeclarative(
-            new SourceSpan(0, codeText.Length), codeText, "csharp", attributes);
-        var box = new CodeBlockBox(context, metadata, codeText, isCopyButtonEnabled: true, showLineNumbers)
-        {
-            BlockIndex = context.NextBlockIndex(),
-        };
-
-        // CodeBlockBox canonicalizes CRLF/CR to LF in CopyPayload. Chunk
-        // descriptors must partition the exact displayed payload so private
-        // placement preflight can prove contiguous source offsets and text.
-        string displayedCodeText = box.CodeText;
-        foreach ((int offset, int length) in SplitAtLineBoundaries(displayedCodeText, chunkCount))
-        {
-            var chunk = new InlineContainerBox(context, MarkdownElementKeys.CodeBlock)
-            {
-                BlockIndex = context.NextBlockIndex(),
-                CodeLanguage = metadata.Language,
-                CodeBlockTextOffset = offset,
-                CodeBlockTextLength = length,
-                WordWrapping = wrapping,
-            };
-            chunk.Add(new TextRun(displayedCodeText.Substring(offset, length)));
-            box.AddChunk(chunk);
-        }
-
-        box.Measure(availableWidth);
-        box.Arrange(0, 0, availableWidth);
-        return new Fixture(box, context, theme, codeStyle, ownsContext: true);
-    }
-
-    private static MarkdownLayoutContext CreateContext(
-        CanvasDevice device,
-        ThemeSnapshot theme,
-        MarkdownSourceMap sourceMap,
-        MarkdownExtensionRegistry registry,
-        FlowDirection flowDirection,
-        float rasterizationScale,
-        CancellationToken cancellationToken = default,
-        IReadOnlyDictionary<string, bool>? disclosureStates = null)
-        => new(device, theme, sourceMap, registry, flowDirection, language: "en-US")
-        {
-            CancellationToken = cancellationToken,
-            RasterizationScale = rasterizationScale,
-            IsCodeBlockCopyEnabled = true,
-            // Private-placement preflight requires the exact immutable state
-            // snapshots to be shared. A fresh context otherwise creates a new
-            // empty DisclosureStates dictionary and is correctly rejected.
-            DisclosureStates = disclosureStates ?? new Dictionary<string, bool>(StringComparer.Ordinal),
-        };
-
-    private static MarkdownLayoutContext CreateCompatibleContext(Fixture source, CanvasDevice device)
-        => CreateContext(
-            device,
-            source.Theme,
-            source.Context.SourceMap,
-            source.Context.Registry,
-            source.Context.FlowDirection,
-            (float)source.Context.RasterizationScale,
-            disclosureStates: source.Context.DisclosureStates);
-
-    private static IEnumerable<(int Offset, int Length)> SplitAtLineBoundaries(string text, int chunkCount)
-    {
-        int start = 0;
-        for (int part = 1; part < chunkCount; part++)
-        {
-            int target = (int)((long)text.Length * part / chunkCount);
-            int split = text.IndexOf('\n', target);
-            if (split < 0 || split + 1 >= text.Length)
-                break;
-            int end = split + 1;
-            if (end <= start)
-                continue;
-            yield return (start, end - start);
-            start = end;
-        }
-
-        if (start < text.Length)
-            yield return (start, text.Length - start);
-        else if (text.Length == 0)
-            yield return (0, 0);
     }
 
     private static string CreateLongMultichunkCode(int lineCount, int longTokenLength)
@@ -1023,24 +942,4 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
         => Assert.IsAssignableFrom<FieldInfo>(type.GetField(name, InstanceFields));
 
     private readonly record struct LinePlacement(int LogicalLineIndex, double Top, double Height);
-
-    private sealed class Fixture(
-        CodeBlockBox box,
-        MarkdownLayoutContext context,
-        ThemeSnapshot theme,
-        ElementStyle style,
-        bool ownsContext) : IAsyncDisposable
-    {
-        internal CodeBlockBox Box { get; } = box;
-        internal MarkdownLayoutContext Context { get; } = context;
-        internal ThemeSnapshot Theme { get; } = theme;
-        internal ElementStyle Style { get; } = style;
-
-        public async ValueTask DisposeAsync()
-        {
-            Box.Dispose();
-            if (ownsContext)
-                await Context.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
-        }
-    }
 }
