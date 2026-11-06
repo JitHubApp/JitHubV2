@@ -87,23 +87,12 @@ internal sealed class LayoutBlockBuilder
 
             if (htmlScopes?.BudgetExceeded == true)
             {
-                if (!htmlBudgetNoticeAdded)
-                {
-                    blocks.Add(CreateHtmlBudgetNotice());
-                    htmlBudgetNoticeAdded = true;
-                }
+                AddHtmlBudgetNoticeOnce(blocks, ref htmlBudgetNoticeAdded);
                 if (b is HtmlBlock || suppressedBeforeBlock)
                     continue;
             }
-            if (scopeOnly)
-            {
+            if (scopeOnly || suppressedBeforeBlock)
                 continue;
-            }
-
-            if (suppressedBeforeBlock)
-            {
-                continue;
-            }
 
             if (BuildTopLevelBlock(
                     b,
@@ -119,11 +108,8 @@ internal sealed class LayoutBlockBuilder
                     b,
                     _context.DisclosureStates,
                     cancellationToken);
-                if (htmlScopes?.BudgetExceeded == true && !htmlBudgetNoticeAdded)
-                {
-                    blocks.Add(CreateHtmlBudgetNotice());
-                    htmlBudgetNoticeAdded = true;
-                }
+                if (htmlScopes?.BudgetExceeded == true)
+                    AddHtmlBudgetNoticeOnce(blocks, ref htmlBudgetNoticeAdded);
             }
         }
 
@@ -131,6 +117,14 @@ internal sealed class LayoutBlockBuilder
 
         ApplyTopLevelMarginPolicy(blocks);
         return blocks;
+    }
+
+    private void AddHtmlBudgetNoticeOnce(List<BlockBox> blocks, ref bool added)
+    {
+        if (added)
+            return;
+        blocks.Add(CreateHtmlBudgetNotice());
+        added = true;
     }
 
     // Builds one top-level block under the safe-HTML context captured at its

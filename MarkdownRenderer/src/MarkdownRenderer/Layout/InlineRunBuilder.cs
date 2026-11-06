@@ -112,27 +112,16 @@ internal sealed class InlineRunBuilder
         if (TryAddDeclarativeRuns(box, i, effectiveAliasStart, containingLinkUrl, containingLinkTitle))
             return;
 
-        if (i is EmphasisInline emphasis)
-        {
-            string emphasisKey = MarkdownInlineSyntax.GetEmphasisElementKey(emphasis);
-            if (_context.ThemeSnapshot.HasRelativeScriptFontSizeRules || MarkdownInlineSyntax.ContainsMarkdownLink(emphasis))
-            {
-                _context.RegisterMarkdownAttributes(i, box.BlockIndex);
-                using SafeHtmlInlineState.ScriptStyleScope scriptScope =
-                    htmlState.PushMarkdownScript(emphasisKey);
-                AddInlines(
-                    box,
-                    emphasis,
-                    htmlState,
-                    effectiveAliasStart,
-                    MarkdownInlineSyntax.AppendStyleModifier(
-                        inheritedStyleModifiers,
-                        emphasisKey),
-                    containingLinkUrl,
-                    containingLinkTitle);
-                return;
-            }
-        }
+        if (i is EmphasisInline emphasis &&
+            TryAddEmphasisAsStyledChildren(
+                box,
+                emphasis,
+                htmlState,
+                effectiveAliasStart,
+                inheritedStyleModifiers,
+                containingLinkUrl,
+                containingLinkTitle))
+            return;
 
         InlineRun? run = ResolveRun(
             box,
@@ -178,6 +167,38 @@ internal sealed class InlineRunBuilder
                 containingLinkUrl,
                 containingLinkTitle);
         }
+    }
+
+    // Emphasis that carries a relative script size or contains a Markdown
+    // link builds its children under the emphasis style modifier instead of
+    // resolving to a single run.
+    private bool TryAddEmphasisAsStyledChildren(
+        InlineContainerBox box,
+        EmphasisInline emphasis,
+        SafeHtmlInlineState htmlState,
+        int effectiveAliasStart,
+        IReadOnlyList<string> inheritedStyleModifiers,
+        string? containingLinkUrl,
+        string? containingLinkTitle)
+    {
+        string emphasisKey = MarkdownInlineSyntax.GetEmphasisElementKey(emphasis);
+        if (!_context.ThemeSnapshot.HasRelativeScriptFontSizeRules && !MarkdownInlineSyntax.ContainsMarkdownLink(emphasis))
+            return false;
+
+        _context.RegisterMarkdownAttributes(emphasis, box.BlockIndex);
+        using SafeHtmlInlineState.ScriptStyleScope scriptScope =
+            htmlState.PushMarkdownScript(emphasisKey);
+        AddInlines(
+            box,
+            emphasis,
+            htmlState,
+            effectiveAliasStart,
+            MarkdownInlineSyntax.AppendStyleModifier(
+                inheritedStyleModifiers,
+                emphasisKey),
+            containingLinkUrl,
+            containingLinkTitle);
+        return true;
     }
 
     // Semantic-document extension content renders through its declarative
