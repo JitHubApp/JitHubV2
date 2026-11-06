@@ -14,9 +14,9 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
     [Fact]
     public void CacheHitReusesFormatWithoutReservingAnotherNativeRecord()
     {
-        var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new FormatDisposalProbe();
-        var cache = new SharedCanvasTextFormatStore(8_192, retirement, new SharedCanvasTextFormatStoreHooks { NativeDisposer = disposer.Dispose });
+        var retirement = new NativeResourceRetirement(createTimer: false, disposer.Dispose);
+        var cache = new SharedCanvasTextFormatStore(8_192, retirement);
         var style = CreateStyle("Cache hit family");
 
         using SharedCanvasTextFormatCache.Lease first = Acquire(cache, style);
@@ -35,14 +35,13 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
     [Fact]
     public void CacheHitLeaseConstructionFailureBalancesOnlyTheAcquiredReference()
     {
-        var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new FormatDisposalProbe();
+        var retirement = new NativeResourceRetirement(createTimer: false, disposer.Dispose);
         var cache = new SharedCanvasTextFormatStore(
             8_192,
             retirement,
             new SharedCanvasTextFormatStoreHooks
             {
-                NativeDisposer = disposer.Dispose,
                 FailCacheHitLeaseConstruction = true,
             });
         var style = CreateStyle("Cache hit lease failure family");
@@ -65,9 +64,9 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
     [Fact]
     public void VerticalAlignmentPartitionsFormatsWithoutChangingTheLegacyTopDefault()
     {
-        var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new FormatDisposalProbe();
-        var cache = new SharedCanvasTextFormatStore(8_192, retirement, new SharedCanvasTextFormatStoreHooks { NativeDisposer = disposer.Dispose });
+        var retirement = new NativeResourceRetirement(createTimer: false, disposer.Dispose);
+        var cache = new SharedCanvasTextFormatStore(8_192, retirement);
         var style = CreateStyle("Vertical alignment family");
 
         using SharedCanvasTextFormatCache.Lease top = Acquire(cache, style);
@@ -102,9 +101,9 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
     [Fact]
     public void ActiveLeaseKeepsNativeFormatAliveAcrossEvictionAndLastReleaseDisposesIt()
     {
-        var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new FormatDisposalProbe();
-        var cache = new SharedCanvasTextFormatStore(500, retirement, new SharedCanvasTextFormatStoreHooks { NativeDisposer = disposer.Dispose });
+        var retirement = new NativeResourceRetirement(createTimer: false, disposer.Dispose);
+        var cache = new SharedCanvasTextFormatStore(500, retirement);
 
         EvictionEvidence evidence = AcquireAcrossEviction(cache);
 
@@ -127,10 +126,10 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
     [Fact]
     public void FailedLastReleaseRetainsOnlyFormatAndCollectsEntryLeaseAndStyle()
     {
-        var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new FormatDisposalProbe();
+        var retirement = new NativeResourceRetirement(createTimer: false, disposer.Dispose);
         disposer.FailPersistently();
-        var cache = new SharedCanvasTextFormatStore(8_192, retirement, new SharedCanvasTextFormatStoreHooks { NativeDisposer = disposer.Dispose });
+        var cache = new SharedCanvasTextFormatStore(8_192, retirement);
 
         NativeFormatEvidence evidence = CreateFailedLastRelease(cache, disposer);
 
@@ -159,8 +158,8 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
     [Fact]
     public void InitializationFailureRemainsPrimaryWhileCleanupFailureIsRetired()
     {
-        var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new FormatDisposalProbe();
+        var retirement = new NativeResourceRetirement(createTimer: false, disposer.Dispose);
         disposer.FailPersistently();
         var primary = new InvalidOperationException("Injected initializer failure.");
         var cache = new SharedCanvasTextFormatStore(
@@ -168,7 +167,6 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
             retirement,
             new SharedCanvasTextFormatStoreHooks
             {
-                NativeDisposer = disposer.Dispose,
                 AfterInitialize = _ => throw primary,
             });
 
@@ -192,8 +190,8 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
     [Fact]
     public void EntryStageFailureRemainsPrimaryAndReleasesCreatedEntryAfterNativeRetry()
     {
-        var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new FormatDisposalProbe();
+        var retirement = new NativeResourceRetirement(createTimer: false, disposer.Dispose);
         disposer.FailPersistently();
         var primary = new InvalidOperationException("Injected post-entry setup failure.");
         WeakReference<SharedCanvasTextFormatEntry>? entryWitness = null;
@@ -202,7 +200,6 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
             retirement,
             new SharedCanvasTextFormatStoreHooks
             {
-                NativeDisposer = disposer.Dispose,
                 AfterEntryCreated = entry =>
                 {
                     entryWitness = new WeakReference<SharedCanvasTextFormatEntry>(entry);
@@ -234,15 +231,14 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
     [Fact]
     public void LeaseConstructionFailurePreservesPrimaryAndRetiresCleanupFailedFormat()
     {
-        var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new FormatDisposalProbe();
+        var retirement = new NativeResourceRetirement(createTimer: false, disposer.Dispose);
         disposer.FailPersistently();
         var cache = new SharedCanvasTextFormatStore(
             8_192,
             retirement,
             new SharedCanvasTextFormatStoreHooks
             {
-                NativeDisposer = disposer.Dispose,
                 FailLeaseConstruction = true,
             });
         var style = CreateStyle("Lease failure family");
@@ -268,8 +264,8 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
     [Fact]
     public void CachePublicationFailurePreservesPrimaryAndBalancesBothReferences()
     {
-        var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new FormatDisposalProbe();
+        var retirement = new NativeResourceRetirement(createTimer: false, disposer.Dispose);
         disposer.FailPersistently();
         var primary = new InvalidOperationException("Injected cache publication failure.");
         WeakReference<SharedCanvasTextFormatEntry>? entryWitness = null;
@@ -278,7 +274,6 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
             retirement,
             new SharedCanvasTextFormatStoreHooks
             {
-                NativeDisposer = disposer.Dispose,
                 AfterEntryCreated = entry =>
                     entryWitness = new WeakReference<SharedCanvasTextFormatEntry>(entry),
                 BeforeCachePublication = () => throw primary,
@@ -308,9 +303,9 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
     [Fact]
     public async Task ConcurrentLastLeaseReleaseDisposesExactlyOnce()
     {
-        var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new FormatDisposalProbe();
-        var cache = new SharedCanvasTextFormatStore(8_192, retirement, new SharedCanvasTextFormatStoreHooks { NativeDisposer = disposer.Dispose });
+        var retirement = new NativeResourceRetirement(createTimer: false, disposer.Dispose);
+        var cache = new SharedCanvasTextFormatStore(8_192, retirement);
 
         ConcurrentReleaseEvidence evidence = await ReleaseLeasesTogether(cache);
 
@@ -322,19 +317,6 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
         AssertCollected(evidence.Format);
         GC.KeepAlive(cache);
         GC.KeepAlive(retirement);
-    }
-
-    [Fact]
-    public void FaultInjectionCannotBeAttachedToProductionRetirementOwner()
-    {
-        var disposer = new FormatDisposalProbe();
-        Assert.Throws<ArgumentException>(() => new SharedCanvasTextFormatStore(
-            1_024,
-            new NativeResourceRetirement(createTimer: true),
-            new SharedCanvasTextFormatStoreHooks
-            {
-                NativeDisposer = disposer.Dispose,
-            }));
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

@@ -42,9 +42,9 @@ public sealed class InlineNativeDurableRetirementTests
         using var harness = new Harness();
         using var cancellation = new CancellationTokenSource();
         var context = harness.CreateContext(cancellation.Token);
-        var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new LayoutDisposalProbe();
-        InlineContainerBox box = CreateTextRoot(context, retirement, disposer);
+        var retirement = new NativeResourceRetirement(createTimer: false, disposer.Dispose);
+        InlineContainerBox box = CreateTextRoot(context, retirement);
         BuildSelection(box, harness.Device, 0, 12);
 
         CanvasTextLayout originalLayout = Required(box.TextLayout);
@@ -82,9 +82,9 @@ public sealed class InlineNativeDurableRetirementTests
     {
         using var harness = new Harness();
         var context = harness.CreateContext();
-        var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new LayoutDisposalProbe();
-        InlineContainerBox box = CreateTextRoot(context, retirement, disposer);
+        var retirement = new NativeResourceRetirement(createTimer: false, disposer.Dispose);
+        InlineContainerBox box = CreateTextRoot(context, retirement);
         BuildSelection(box, harness.Device, 0, 12);
 
         CanvasTextLayout oldLayout = Required(box.TextLayout);
@@ -117,8 +117,9 @@ public sealed class InlineNativeDurableRetirementTests
     public void TerminalDisposeLetsBoxContextAndRunsCollectWhileRegistryRetainsFailedLayouts()
     {
         using var harness = new Harness();
-        var retirement = new NativeResourceRetirement(createTimer: false);
-        TerminalEvidence evidence = CreateTerminalEvidence(harness, retirement);
+        var disposer = new LayoutDisposalProbe();
+        var retirement = new NativeResourceRetirement(createTimer: false, disposer.Dispose);
+        TerminalEvidence evidence = CreateTerminalEvidence(harness, retirement, disposer);
 
         Assert.Equal(2, retirement.PendingRecordCount);
         Assert.Equal(2, retirement.PendingResourceCount);
@@ -144,9 +145,9 @@ public sealed class InlineNativeDurableRetirementTests
         using var harness = new Harness();
         var context = harness.CreateContext();
         context.UseProgressiveNativeSceneResidency = true;
-        var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new LayoutDisposalProbe();
-        InlineContainerBox box = CreateTextRoot(context, retirement, disposer, addText: false);
+        var retirement = new NativeResourceRetirement(createTimer: false, disposer.Dispose);
+        InlineContainerBox box = CreateTextRoot(context, retirement, addText: false);
         var sceneRun = new InlineVectorSceneRun(
             context,
             new MarkdownVectorScene(24, 12, 9, []),
@@ -197,9 +198,9 @@ public sealed class InlineNativeDurableRetirementTests
     {
         using var harness = new Harness();
         var context = harness.CreateContext();
-        var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new LayoutDisposalProbe();
-        InlineContainerBox box = CreateTextRoot(context, retirement, disposer);
+        var retirement = new NativeResourceRetirement(createTimer: false, disposer.Dispose);
+        InlineContainerBox box = CreateTextRoot(context, retirement);
         Color originalColor = Color.FromArgb(0xFF, 0x24, 0x68, 0xA0);
         Color replacementColor = Color.FromArgb(0xFF, 0xA0, 0x42, 0x18);
         BuildSelection(box, harness.Device, 0, 9, originalColor);
@@ -223,8 +224,9 @@ public sealed class InlineNativeDurableRetirementTests
     public void PlacementTransferSwapsLayoutRecordsTogetherAndRetiresAtTheNewOwner()
     {
         using var harness = new Harness();
-        var retirement = new NativeResourceRetirement(createTimer: false);
-        PlacementEvidence evidence = CreateAndRetireTransferredLayouts(harness, retirement);
+        var disposer = new LayoutDisposalProbe();
+        var retirement = new NativeResourceRetirement(createTimer: false, disposer.Dispose);
+        PlacementEvidence evidence = CreateAndRetireTransferredLayouts(harness, retirement, disposer);
 
         Assert.Equal(2, retirement.PendingRecordCount);
         Assert.Equal(2, retirement.PendingResourceCount);
@@ -251,11 +253,13 @@ public sealed class InlineNativeDurableRetirementTests
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static TerminalEvidence CreateTerminalEvidence(Harness harness, NativeResourceRetirement retirement)
+    private static TerminalEvidence CreateTerminalEvidence(
+        Harness harness,
+        NativeResourceRetirement retirement,
+        LayoutDisposalProbe disposer)
     {
-        var disposer = new LayoutDisposalProbe();
         MarkdownLayoutContext context = harness.CreateContext();
-        InlineContainerBox box = CreateTextRoot(context, retirement, disposer);
+        InlineContainerBox box = CreateTextRoot(context, retirement);
         TextRun run = Assert.IsType<TextRun>(Assert.Single(box.Runs));
         BuildSelection(box, harness.Device, 0, 12);
         CanvasTextLayout primary = Required(box.TextLayout);
@@ -273,12 +277,14 @@ public sealed class InlineNativeDurableRetirementTests
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static PlacementEvidence CreateAndRetireTransferredLayouts(Harness harness, NativeResourceRetirement retirement)
+    private static PlacementEvidence CreateAndRetireTransferredLayouts(
+        Harness harness,
+        NativeResourceRetirement retirement,
+        LayoutDisposalProbe disposer)
     {
-        var disposer = new LayoutDisposalProbe();
         MarkdownLayoutContext sourceContext = harness.CreateContext();
         MarkdownLayoutContext preparedContext = harness.CreateContext();
-        InlineContainerBox source = CreateTextRoot(sourceContext, retirement, disposer);
+        InlineContainerBox source = CreateTextRoot(sourceContext, retirement);
         BuildSelection(source, harness.Device, 0, 12);
         Assert.True(source.TryCreatePrivateInlinePlacementClone(
             preparedContext,
@@ -334,10 +340,9 @@ public sealed class InlineNativeDurableRetirementTests
     private static InlineContainerBox CreateTextRoot(
         MarkdownLayoutContext context,
         NativeResourceRetirement retirement,
-        LayoutDisposalProbe disposer,
         bool addText = true)
     {
-        var root = new InlineContainerBox(context, MarkdownElementKeys.Body, retirement, disposer.Dispose)
+        var root = new InlineContainerBox(context, MarkdownElementKeys.Body, retirement)
         {
             BlockIndex = context.NextBlockIndex(),
             UseContainerMargin = false,

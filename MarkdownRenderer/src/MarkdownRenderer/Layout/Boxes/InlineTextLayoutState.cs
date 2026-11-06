@@ -134,8 +134,7 @@ internal struct InlineTextLayoutState
                 NativeResourceRetirementRecord candidateRetirementRecord =
                     box.NativeRetirement.Reserve(
                         resourceGroupCount: 0,
-                        temporarySlotCount: 1,
-                        disposer: box.NativeDisposer);
+                        temporarySlotCount: 1);
                 replacementLayoutRetirementRecord = candidateRetirementRecord;
                 CanvasTextLayout candidateLayout = CanvasTextLayoutFactory.Create(
                     box.Context.ResourceCreator,

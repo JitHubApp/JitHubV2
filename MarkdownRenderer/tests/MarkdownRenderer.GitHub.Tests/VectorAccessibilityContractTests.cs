@@ -549,7 +549,7 @@ public sealed class VectorAccessibilityContractTests
             strokeWidth: 2,
             nonScalingStroke: nonScalingStroke);
 
-        using CanvasStrokeStyle strokeStyle = VectorSceneDrawing.CreateStrokeStyle(style, new NativeResourceRetirement(createTimer: false));
+        using CanvasStrokeStyle strokeStyle = VectorSceneNativeFactory.CreateStrokeStyle(style, new NativeResourceRetirement(createTimer: false));
 
         Assert.Equal(nonScalingStroke, VectorSceneDrawing.RequiresStrokeStyle(style));
         Assert.Equal(expected, strokeStyle.TransformBehavior);

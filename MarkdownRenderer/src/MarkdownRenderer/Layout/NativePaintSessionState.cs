@@ -12,8 +12,7 @@ internal sealed class NativePaintSessionState
 {
     private readonly object _gate = new();
     private readonly NativeResourceRetirement _retirement;
-    private Action<IDisposable>? _testDisposer;
-    private Action? _testAfterLayerReservation;
+    private Action<IDisposable>? _disposer;
     private NativePaintLayerNode? _layerPool;
     private NativePaintLayerNode? _layers;
     private NativePaintAuxiliaryNode? _auxiliaryPool;
@@ -25,14 +24,11 @@ internal sealed class NativePaintSessionState
     private bool _poisoned;
     private bool _operationInProgress;
 
-    internal NativePaintSessionState(
-        NativeResourceRetirement retirement,
-        Action<IDisposable>? testDisposer,
-        Action? testAfterLayerReservation)
+    internal NativePaintSessionState(NativeResourceRetirement retirement)
     {
         _retirement = retirement;
-        _testDisposer = testDisposer;
-        _testAfterLayerReservation = testAfterLayerReservation;
+        // A poisoned session stops using the owner's disposal seam.
+        _disposer = retirement.Disposer;
     }
 
     internal NativePaintSessionResources.LayerLease ReserveLayer(NativePaintSessionResources.AuxiliaryLease clipOwner)
@@ -99,17 +95,6 @@ internal sealed class NativePaintSessionState
             _operationInProgress = true;
             return new NativePaintSessionResources.AuxiliaryLease(this, node, generation);
         }
-    }
-
-    internal void RunTestAfterLayerReservation()
-    {
-        Action? callback;
-        lock (_gate)
-        {
-            callback = _testAfterLayerReservation;
-            _testAfterLayerReservation = null;
-        }
-        callback?.Invoke();
     }
 
     internal void AttachLayer(NativePaintSessionResources.LayerLease lease, CanvasActiveLayer layer)
@@ -378,7 +363,7 @@ internal sealed class NativePaintSessionState
                 node.Retired = true;
         }
 
-        var created = new NativePaintLayerNode(_retirement.Reserve(0, 1, _testDisposer))
+        var created = new NativePaintLayerNode(_retirement.Reserve(0, 1))
         {
             PoolNext = _layerPool,
         };
@@ -396,7 +381,7 @@ internal sealed class NativePaintSessionState
                 node.Retired = true;
         }
 
-        var created = new NativePaintAuxiliaryNode(_retirement.Reserve(0, 1, _testDisposer))
+        var created = new NativePaintAuxiliaryNode(_retirement.Reserve(0, 1))
         {
             PoolNext = _auxiliaryPool,
         };
@@ -506,8 +491,7 @@ internal sealed class NativePaintSessionState
     private void PoisonAndPublishNoLock()
     {
         _poisoned = true;
-        _testDisposer = null;
-        _testAfterLayerReservation = null;
+        _disposer = null;
 
         NativePaintLayerNode? preserveLayer = _pendingLayerFactory ?? _nativeLayerOperation;
         NativePaintLayerNode? layer = _layers;
@@ -581,7 +565,7 @@ internal sealed class NativePaintSessionState
 
     private void DisposeNative(IDisposable resource)
     {
-        if (_testDisposer is { } disposer)
+        if (_disposer is { } disposer)
             disposer(resource);
         else
             resource.Dispose();

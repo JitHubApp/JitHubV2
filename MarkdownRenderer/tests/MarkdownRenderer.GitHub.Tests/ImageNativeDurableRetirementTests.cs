@@ -23,8 +23,8 @@ public sealed class ImageNativeDurableRetirementTests
     public async Task CaptionOptionsFailureKeepsBothOldAndFailedNativeLayoutsInSourceFreeCustody()
     {
         using var harness = new Harness();
-        var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new LayoutDisposalProbe();
+        var retirement = new NativeResourceRetirement(createTimer: false, disposer.Dispose);
         ImageEvidence evidence = await CreateFailedCaptionEvidence(harness, retirement, disposer);
 
         // The image's active placeholder is synchronously disposed during
@@ -58,8 +58,8 @@ public sealed class ImageNativeDurableRetirementTests
     public async Task TerminalDisposalAttemptsEveryLayoutAndPublishesFailedOwnerBeforeReturning()
     {
         using var harness = new Harness();
-        var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new LayoutDisposalProbe();
+        var retirement = new NativeResourceRetirement(createTimer: false, disposer.Dispose);
         TerminalFailureEvidence evidence = await CreateTerminalFailureEvidence(harness, retirement, disposer);
 
         Assert.Equal("Injected native image-layout disposal failure.", evidence.Failure.Message);
@@ -84,8 +84,8 @@ public sealed class ImageNativeDurableRetirementTests
     public async Task DisposeDuringInlineCheckpointRetainsOriginalPairAndRevokesLateRollback()
     {
         using var harness = new Harness();
-        var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new LayoutDisposalProbe();
+        var retirement = new NativeResourceRetirement(createTimer: false, disposer.Dispose);
         DisposedCheckpointEvidence evidence = await CreateDisposedCheckpointEvidence(
             harness, retirement, disposer);
 
@@ -110,9 +110,9 @@ public sealed class ImageNativeDurableRetirementTests
     public async Task InlineCheckpointRollbackRestoresOriginalPairAndCommitRetiresItOnce()
     {
         using var harness = new Harness();
-        var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new LayoutDisposalProbe();
-        var image = new ImageBox(harness.CreateContext(), harness.RenderResources.Images, string.Empty, "inline failure", retirement, disposer.Dispose);
+        var retirement = new NativeResourceRetirement(createTimer: false, disposer.Dispose);
+        var image = new ImageBox(harness.CreateContext(), harness.RenderResources.Images, string.Empty, "inline failure", retirement);
 
         _ = image.MeasureInline(180f, 22f);
         CanvasTextLayout original = Assert.IsType<CanvasTextLayout>(image.MeasureCustody.GetLayoutState().Placeholder);
@@ -158,14 +158,13 @@ public sealed class ImageNativeDurableRetirementTests
     public async Task PlacementTransferMovesCaptionLayoutAndItsRetirementRecordAsOnePair()
     {
         await using var fixture = new CompletedRasterPlacementCloneTests.PlacementFixture();
-        var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new LayoutDisposalProbe();
+        var retirement = new NativeResourceRetirement(createTimer: false, disposer.Dispose);
         ImageBox source = new(
             fixture.SourceContext, fixture.SourceContext.ImageResources,
             fixture.RasterSource,
             "Placement custody",
-            retirement,
-            disposer.Dispose)
+            retirement)
         {
             BlockIndex = fixture.Source.BlockIndex,
         };
@@ -293,14 +292,13 @@ public sealed class ImageNativeDurableRetirementTests
     public async Task PlacementTransferRejectsCrossImageRetirementRecordAlias()
     {
         await using var fixture = new CompletedRasterPlacementCloneTests.PlacementFixture();
-        var retirement = new NativeResourceRetirement(createTimer: false);
         var disposer = new LayoutDisposalProbe();
+        var retirement = new NativeResourceRetirement(createTimer: false, disposer.Dispose);
         ImageBox source = new(
             fixture.SourceContext, fixture.SourceContext.ImageResources,
             fixture.RasterSource,
             "Record alias",
-            retirement,
-            disposer.Dispose)
+            retirement)
         {
             BlockIndex = fixture.Source.BlockIndex,
         };
@@ -383,7 +381,6 @@ public sealed class ImageNativeDurableRetirementTests
             string.Empty,
             "caption failure",
             retirement,
-            disposer.Dispose,
             _ =>
             {
                 if (Interlocked.Increment(ref optionsCalls) == 2)
@@ -418,7 +415,7 @@ public sealed class ImageNativeDurableRetirementTests
         LayoutDisposalProbe disposer)
     {
         MarkdownLayoutContext context = harness.CreateContext();
-        var image = new ImageBox(context, context.ImageResources, string.Empty, "terminal failure", retirement, disposer.Dispose);
+        var image = new ImageBox(context, context.ImageResources, string.Empty, "terminal failure", retirement);
         _ = image.Measure(Width);
         Assert.NotNull(image.MeasureCustody.GetLayoutState().Placeholder);
         Assert.NotNull(image.MeasureCustody.GetLayoutState().Caption);
@@ -439,7 +436,7 @@ public sealed class ImageNativeDurableRetirementTests
         LayoutDisposalProbe disposer)
     {
         MarkdownLayoutContext context = harness.CreateContext();
-        var image = new ImageBox(context, context.ImageResources, string.Empty, "disposed checkpoint", retirement, disposer.Dispose);
+        var image = new ImageBox(context, context.ImageResources, string.Empty, "disposed checkpoint", retirement);
         _ = image.MeasureInline(180f, 22f);
         CanvasTextLayout original = Assert.IsType<CanvasTextLayout>(image.MeasureCustody.GetLayoutState().Placeholder);
         InlineMeasureCheckpoint checkpoint = image.BeginInlineCheckpoint();

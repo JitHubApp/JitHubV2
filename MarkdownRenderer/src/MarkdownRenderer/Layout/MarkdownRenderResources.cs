@@ -23,6 +23,12 @@ namespace MarkdownRenderer.Layout;
 /// A layout context created outside an engine-driven rebuild gets an
 /// isolated instance of its own.
 /// </para>
+/// <para>
+/// Native-lifetime tests build an instance over their own retirement owner,
+/// typically timerless and with a disposal fault plan, and may add a
+/// paint-layer hook. Production instances create a clocked owner that closes
+/// native slots directly.
+/// </para>
 /// </remarks>
 internal sealed class MarkdownRenderResources
 {
@@ -39,18 +45,38 @@ internal sealed class MarkdownRenderResources
     /// <summary>Creates resources over an existing image scope.</summary>
     /// <param name="images">The image caches and admissions to use.</param>
     internal MarkdownRenderResources(ImageResourceScope images)
-        : this(images, trimOnMemoryPressure: false)
+        : this(images, CreateRetirement(), afterPaintLayerReservation: null, trimOnMemoryPressure: false)
     {
     }
 
-    private MarkdownRenderResources(ImageResourceScope images, bool trimOnMemoryPressure)
+    /// <summary>
+    /// Creates resources with default image budgets whose native custody goes
+    /// through an existing owner.
+    /// </summary>
+    /// <param name="nativeRetirement">The owner that retires failed native cleanup.</param>
+    /// <param name="afterPaintLayerReservation">
+    /// Runs between each paint layer's custody reservation and its native
+    /// factory, or <see langword="null"/> for none.
+    /// </param>
+    internal MarkdownRenderResources(
+        NativeResourceRetirement nativeRetirement,
+        Action? afterPaintLayerReservation = null)
+        : this(new ImageResourceScope(), nativeRetirement, afterPaintLayerReservation, trimOnMemoryPressure: false)
+    {
+    }
+
+    private MarkdownRenderResources(
+        ImageResourceScope images,
+        NativeResourceRetirement nativeRetirement,
+        Action? afterPaintLayerReservation,
+        bool trimOnMemoryPressure)
     {
         ArgumentNullException.ThrowIfNull(images);
+        ArgumentNullException.ThrowIfNull(nativeRetirement);
         Images = images;
-        // Create the retry clock before any participating native factory.
-        NativeRetirement = new NativeResourceRetirement(createTimer: true);
+        NativeRetirement = nativeRetirement;
         TextFormats = new SharedCanvasTextFormatStore(SharedCanvasTextFormatCache.DefaultBudgetBytes, NativeRetirement);
-        PaintSessions = new NativePaintSessionResources(NativeRetirement);
+        PaintSessions = new NativePaintSessionResources(NativeRetirement, afterPaintLayerReservation);
         if (trimOnMemoryPressure)
             _memoryPressure = ImageMemoryPressureSubscription.TrySubscribe(images);
     }
@@ -72,7 +98,10 @@ internal sealed class MarkdownRenderResources
     /// caches under system memory pressure.
     /// </summary>
     internal static MarkdownRenderResources CreateForEngine() =>
-        new(new ImageResourceScope(), trimOnMemoryPressure: true);
+        new(new ImageResourceScope(), CreateRetirement(), afterPaintLayerReservation: null, trimOnMemoryPressure: true);
+
+    // Create the retry clock before any participating native factory.
+    private static NativeResourceRetirement CreateRetirement() => new(createTimer: true);
 
     /// <summary>Drops cached device resources created on <paramref name="device"/>.</summary>
     /// <param name="device">The lost device.</param>

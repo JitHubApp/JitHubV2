@@ -85,8 +85,7 @@ internal struct InlineSelectionLayoutState
         float horizontalPadding = (float)(padding.Left + padding.Right);
         NativeResourceRetirementRecord candidateRetirementRecord = box.NativeRetirement.Reserve(
             resourceGroupCount: 0,
-            temporarySlotCount: 1,
-            disposer: box.NativeDisposer);
+            temporarySlotCount: 1);
         CanvasTextLayout? candidateLayout = null;
         Exception? candidateFailure = null;
         try
