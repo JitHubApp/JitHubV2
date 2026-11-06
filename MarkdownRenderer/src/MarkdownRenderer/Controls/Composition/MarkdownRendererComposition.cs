@@ -146,10 +146,10 @@ internal sealed class MarkdownRendererComposition
         IMarkdownUiScheduler? uiScheduler = DispatcherQueueUiScheduler.For(control.DispatcherQueue);
         var events = new RendererEvents(control, Lifetime, control.DispatcherQueue);
         var pipelineHosts = new PipelineHosts(control);
-        var layoutHosts = new LayoutHosts(control);
+        var layoutHosts = new LayoutHosts(control, uiScheduler);
         var imageHosts = new ImageHosts(control);
         var focusHosts = new FocusHosts(control);
-        var embedHosts = new EmbedHosts(control);
+        var embedHosts = new EmbedHosts(control, uiScheduler);
         var pointerHosts = new PointerHosts(control);
         var selectionHosts = new SelectionHosts(control);
         var imagePrefetch = new ImageSourcePrefetch();
@@ -194,7 +194,7 @@ internal sealed class MarkdownRendererComposition
         var imagePlans = new ImagePlanSet(Lifetime, Published);
         var imageSubscriptions = new ImageSubscriptions(imageHosts, Lifetime, Published, imagePlans);
         var imageResidency = new ImageResidency(imageHosts, Lifetime, Published, imagePlans, Embeds);
-        Highlighting = new CodeBlockHighlighting(embedHosts, Lifetime, Published, Viewport, Embeds);
+        Highlighting = new CodeBlockHighlighting(embedHosts, Lifetime, Published);
         InputChanges = new PresentationInputChanges(Lifetime, Rebuild, Embeds, Highlighting, Handles);
         var focus = new KeyboardFocusModel(Lifetime, Published);
         var focusGeometry = new FocusGeometryReader(Lifetime, Published);
@@ -260,7 +260,7 @@ internal sealed class MarkdownRendererComposition
         embedHosts.Connect(new EmbedHosts.Parts(
             events, Published, cancellationRetirement, Rebuild, CanvasInvalidation, VisibleWork, Automation,
             layoutPublisher, rasterPlacement, LazyLayout, hostedFocusPlan, Localization, CodeBlockClipboard,
-            visibleImages, hostedFocus, imagePlans, imageSubscriptions));
+            visibleImages, hostedFocus, imagePlans, imageSubscriptions, Embeds, Viewport));
         focusHosts.Connect(new FocusHosts.Parts(
             Surface, Published, Viewport, recoveryClock, Rebuild, geometryRecovery, textAdorner, links,
             Automation, LayoutCommit, LazyLayout, focusGeometryWork, focusRing));

@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using MarkdownRenderer.Controls.Focus;
 using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Controls.Pipeline;
+using MarkdownRenderer.Controls.Threading;
 using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Performance;
@@ -232,12 +233,12 @@ internal sealed class LazyLayoutRealization
         long dispatchTicket = ++_dispatchTicket;
         if (dispatchTicket == 0)
             dispatchTicket = ++_dispatchTicket;
-        var dispatcher = _host.DispatcherQueue;
+        var dispatcher = _host.UiScheduler;
         var receiver = new WeakReference<LazyLayoutRealization>(this);
         try
         {
             if (dispatcher is null || !dispatcher.TryEnqueue(
-                    Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                    MarkdownUiPriority.Low,
                     () =>
                     {
                         if (receiver.TryGetTarget(out var realization))
@@ -299,7 +300,7 @@ internal sealed class LazyLayoutRealization
         double? anchorOffset = preserveScrollAnchor && _surface.Scroll is not null
             ? _surface.Scroll.VerticalOffset
             : null;
-        var dispatcher = _host.DispatcherQueue;
+        var dispatcher = _host.UiScheduler;
 
         _cts = cts;
         _activeSnapshot = snapshot;

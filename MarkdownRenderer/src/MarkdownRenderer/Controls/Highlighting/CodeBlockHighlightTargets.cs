@@ -87,7 +87,6 @@ internal static class CodeBlockHighlightTargets
     /// </summary>
     internal static bool ApplyUncachedResult(
         ICodeBlockHighlightingHost host,
-        MarkdownViewport viewport,
         LayoutSnapshot snapshot,
         CodeBlockHighlightCacheKey key,
         CodeBlockHighlightResult result,
@@ -112,7 +111,7 @@ internal static class CodeBlockHighlightTargets
             }
             else
             {
-                viewport.TryGet(out double viewportTop, out double viewportHeight, out _);
+                host.TryGetViewport(out double viewportTop, out double viewportHeight);
                 band = LazyLayoutBand.FromDirectionalViewport(
                     viewportTop,
                     viewportHeight,

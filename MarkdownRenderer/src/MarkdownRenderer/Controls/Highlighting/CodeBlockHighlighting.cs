@@ -4,13 +4,12 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.CodeBlocks;
-using MarkdownRenderer.Controls.Embeds;
+using MarkdownRenderer.Controls.Threading;
 using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
-using Microsoft.UI.Dispatching;
 
 namespace MarkdownRenderer.Controls.Highlighting;
 
@@ -40,8 +39,6 @@ internal sealed class CodeBlockHighlighting
     private readonly ICodeBlockHighlightingHost _host;
     private readonly MarkdownViewLifetime _lifetime;
     private readonly PublishedLayout _published;
-    private readonly MarkdownViewport _viewport;
-    private readonly EmbedRealization _embeds;
     private readonly BoundedCodeBlockHighlightCache<CodeBlockHighlightCacheKey> _cache = new(
         CacheMaxEntries,
         CacheBudgetBytes,
@@ -56,15 +53,11 @@ internal sealed class CodeBlockHighlighting
     internal CodeBlockHighlighting(
         ICodeBlockHighlightingHost host,
         MarkdownViewLifetime lifetime,
-        PublishedLayout published,
-        MarkdownViewport viewport,
-        EmbedRealization embeds)
+        PublishedLayout published)
     {
         _host = host;
         _lifetime = lifetime;
         _published = published;
-        _viewport = viewport;
-        _embeds = embeds;
     }
 
     /// <summary>Retires the current highlight work and starts a new generation.</summary>
@@ -95,7 +88,7 @@ internal sealed class CodeBlockHighlighting
     /// </summary>
     internal void ScheduleVisible()
     {
-        if (!_embeds.HasMeasuredCodeBlocks ||
+        if (!_host.HasMeasuredCodeBlocks ||
             !_host.IsCodeBlockSyntaxHighlightingEnabled ||
             _host.CodeHighlighter is not { } highlighter ||
             _published.Snapshot is not { } snapshot ||
@@ -118,7 +111,7 @@ internal sealed class CodeBlockHighlighting
             performanceSession as IMarkdownPerformanceSessionInternal;
         if (sceneSession?.IsDisposed == true)
             return;
-        DispatcherQueue? dispatcher = _host.DispatcherQueue;
+        IMarkdownUiScheduler? dispatcher = _host.UiScheduler;
         if (dispatcher is null)
             return;
 
@@ -167,7 +160,7 @@ internal sealed class CodeBlockHighlighting
         int generation,
         bool runOnWorker,
         IMarkdownPerformanceSessionInternal? sceneSession,
-        DispatcherQueue dispatcher,
+        IMarkdownUiScheduler dispatcher,
         CancellationToken operationToken)
     {
         // One weak identity is shared across this admitted batch. The
@@ -280,7 +273,7 @@ internal sealed class CodeBlockHighlighting
     {
         appliedCached = false;
         pendingHighlights = null;
-        _viewport.TryGet(out double viewportTop, out double viewportHeight, out _);
+        _host.TryGetViewport(out double viewportTop, out double viewportHeight);
         LazyLayoutBand highlightBand = performanceSession is { } activePerformanceSession
             ? LazyLayoutBand.FromDirectionalViewport(
                 viewportTop,
@@ -355,7 +348,7 @@ internal sealed class CodeBlockHighlighting
         ICodeHighlighter highlighter,
         int generation,
         IMarkdownPerformanceSessionInternal? sceneSession,
-        DispatcherQueue dispatcher,
+        IMarkdownUiScheduler dispatcher,
         CancellationToken token)
     {
         bool publicationQueued = false;
@@ -392,7 +385,7 @@ internal sealed class CodeBlockHighlighting
                 if (workToken.IsCancellationRequested)
                     return;
 
-                publicationQueued = dispatcher.TryEnqueue(() =>
+                publicationQueued = dispatcher.TryEnqueue(MarkdownUiPriority.Normal, () =>
                     PublishResult(
                         snapshotIdentity, key, result, highlighter, generation,
                         sceneSession, token, workToken));
@@ -415,7 +408,7 @@ internal sealed class CodeBlockHighlighting
             // Cancellation may occur after admission but before publication.
             // A stale key must not suppress a future visible-band request.
             if (!publicationQueued)
-                dispatcher.TryEnqueue(() => RemoveInFlight(key, generation));
+                dispatcher.TryEnqueue(MarkdownUiPriority.Normal, () => RemoveInFlight(key, generation));
         }
     }
 
@@ -463,7 +456,7 @@ internal sealed class CodeBlockHighlighting
             }
             else if (callbackSnapshot is not null &&
                 CodeBlockHighlightTargets.ApplyUncachedResult(
-                    _host, _viewport, callbackSnapshot, key, result,
+                    _host, callbackSnapshot, key, result,
                     out retryAfterSnapshotBusy))
             {
                 // Oversized results cannot enter the bounded cache.

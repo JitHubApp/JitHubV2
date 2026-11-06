@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Controls.Pipeline;
+using MarkdownRenderer.Controls.Threading;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Performance;
 
@@ -31,7 +32,7 @@ internal static class LazyLayoutWork
         long pipelineGeneration,
         long realizationGeneration,
         CancellationToken operationToken,
-        Microsoft.UI.Dispatching.DispatcherQueue? dispatcher,
+        IMarkdownUiScheduler? dispatcher,
         IMarkdownPerformanceSessionInternal? session,
         object sceneOwner,
         WeakReference<LazyLayoutRealization> receiver,
@@ -125,7 +126,7 @@ internal static class LazyLayoutWork
         long realizationGeneration,
         bool canceled,
         CancellationToken operationToken,
-        Microsoft.UI.Dispatching.DispatcherQueue? dispatcher,
+        IMarkdownUiScheduler? dispatcher,
         WeakSnapshotPublicationDrainFence<LayoutSnapshot> handoff)
     {
         var publication = CreateCompletionPublication(
@@ -145,7 +146,7 @@ internal static class LazyLayoutWork
             try
             {
                 dispatcher.TryEnqueue(
-                    Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                    MarkdownUiPriority.Low,
                     CreateCompletionDispatchCallback(
                         receiver,
                         realizationGeneration));
@@ -186,7 +187,7 @@ internal static class LazyLayoutWork
             }
         });
 
-    private static Microsoft.UI.Dispatching.DispatcherQueueHandler
+    private static Action
         CreateCompletionDispatchCallback(
             WeakReference<LazyLayoutRealization> receiver,
             long realizationGeneration)
