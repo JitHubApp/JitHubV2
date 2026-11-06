@@ -384,17 +384,16 @@ public sealed class ImageBoxSourceLeaseTests
     {
         ForceCollection();
         int retainedSourceCount = originalSources.Count(IsAlive);
-        bool sourceRetained = retainedSourceCount != 0;
-        string retentionPath = sourceRetained
-            ? StrongSourceRetentionScanner.Describe(renderer.ReleaseRender.Task, renderer, image, resolver, originalSources)
-            : string.Empty;
-        Assert.False(sourceRetained,
+        // The renderer, image and resolver stay rooted here, so a retained
+        // source means one of them or an async frame still holds it.
+        GC.KeepAlive(renderer);
+        GC.KeepAlive(image);
+        GC.KeepAlive(resolver);
+        Assert.True(retainedSourceCount == 0,
             "Original source must not remain in caller/Open async frames while Render is pending." +
-            (retentionPath.Length == 0 ? string.Empty :
-                $" Retained source arrays: {retainedSourceCount}; resolver source creations: " +
-                $"{sourceCreationCount()}; Open/PrepareSource/Render counts: " +
-                $"{renderer.OpenCount}/{renderer.PrepareSourceCount}/{renderer.RenderCount}; " +
-                $"retention path: {retentionPath}"));
+            $" Retained source arrays: {retainedSourceCount}; resolver source creations: " +
+            $"{sourceCreationCount()}; Open/PrepareSource/Render counts: " +
+            $"{renderer.OpenCount}/{renderer.PrepareSourceCount}/{renderer.RenderCount}.");
     }
 
     [Theory]
