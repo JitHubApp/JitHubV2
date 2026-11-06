@@ -1,10 +1,25 @@
 using System.Xml.Linq;
+using JitHub.WinUI.Tests.TestSupport;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
 
+/// <summary>
+/// Checks the solution's platform mappings and the Windows SDK build-tools pin
+/// against what MSBuild evaluates for each project, so inherited
+/// <c>Directory.Build.props</c> values and central package versions count the
+/// way a build sees them.
+/// </summary>
 public sealed class SolutionConfigurationContractTests
 {
+    private const string BuildToolsPackage = "Microsoft.Windows.SDK.BuildTools";
+    private const string BuildToolsVersionProperty = "JitHubWindowsSdkBuildToolsVersion";
+
+    private static readonly Dictionary<string, string> Release = new(StringComparer.Ordinal)
+    {
+        ["Configuration"] = "Release",
+    };
+
     [Theory]
     [InlineData("MarkdownRenderer/tests/aot/MarkdownRenderer.AotSmoke/MarkdownRenderer.AotSmoke.csproj")]
     [InlineData("MarkdownRenderer/tests/MarkdownRenderer.Pixel.Tests/MarkdownRenderer.Pixel.Tests.csproj")]
@@ -13,163 +28,172 @@ public sealed class SolutionConfigurationContractTests
     public void SelfContainedManifestHosts_ReferencePinnedSdkBuildTools(string relativePath)
     {
         string root = FindRepositoryRoot();
-        XDocument project = XDocument.Load(Path.Combine(
-            root,
-            relativePath.Replace('/', Path.DirectorySeparatorChar)));
-        XElement packageReference = Assert.Single(
-            project.Root!
-                .Elements("ItemGroup")
-                .Elements("PackageReference"),
-            static package => string.Equals(
-                package.Attribute("Include")?.Value,
-                "Microsoft.Windows.SDK.BuildTools",
-                StringComparison.OrdinalIgnoreCase));
+        MsBuildEvaluation host = MsBuild.Evaluate(
+            ProjectPath(root, relativePath),
+            Release,
+            [],
+            ["PackageReference", "PackageVersion"]);
 
         // The renderer pins package versions centrally; the reference itself
         // must not carry a competing version.
-        Assert.Null(packageReference.Attribute("Version"));
-        Assert.Null(packageReference.Attribute("VersionOverride"));
-        Assert.Equal("all", packageReference.Attribute("PrivateAssets")?.Value, ignoreCase: true);
+        MsBuildItem reference = Assert.Single(host.GetItems("PackageReference"), IsBuildTools);
+        Assert.Empty(reference.GetMetadata("Version"));
+        Assert.Empty(reference.GetMetadata("VersionOverride"));
+        Assert.Equal("all", reference.GetMetadata("PrivateAssets"), ignoreCase: true);
 
-        XDocument packages = XDocument.Load(Path.Combine(root, "MarkdownRenderer", "Directory.Packages.props"));
-        XElement packageVersion = Assert.Single(
-            packages.Root!
-                .Elements("ItemGroup")
-                .Elements("PackageVersion"),
-            static package => string.Equals(
-                package.Attribute("Include")?.Value,
-                "Microsoft.Windows.SDK.BuildTools",
-                StringComparison.OrdinalIgnoreCase));
-        Assert.Equal("$(JitHubWindowsSdkBuildToolsVersion)", packageVersion.Attribute("Version")?.Value);
+        MsBuildItem pin = Assert.Single(host.GetItems("PackageVersion"), IsBuildTools);
+        Assert.Equal(RepositoryBuildToolsVersion(root), pin.GetMetadata("Version"));
     }
 
     [Fact]
-    public void WindowsSdkBuildToolsVersion_IsDefinedOnceAndImportedByRendererProps()
+    public void WindowsSdkBuildToolsVersion_IsOneRepositoryPolicyInEveryScope()
     {
+        // The app and the renderer subtree must build with the same tools, so
+        // the version is one repository value that neither scope can drift from.
         string root = FindRepositoryRoot();
-        XDocument repositoryProps = XDocument.Load(Path.Combine(root, "Directory.Build.props"));
-        XDocument rendererProps = XDocument.Load(Path.Combine(root, "MarkdownRenderer", "Directory.Build.props"));
-
-        string version = Assert.Single(
-            repositoryProps.Root!
-                .Elements("PropertyGroup")
-                .Elements("JitHubWindowsSdkBuildToolsVersion")).Value;
+        MsBuildEvaluation app = EvaluateApp(root, ["PackageReference"]);
+        string version = app.GetProperty(BuildToolsVersionProperty);
         Assert.Matches(@"^\d+\.\d+\.\d+\.\d+$", version);
+        Assert.Equal(version, Assert.Single(app.GetItems("PackageReference"), IsBuildTools).GetMetadata("Version"));
 
-        // The renderer subtree inherits the repository policy instead of
-        // repeating the version, so the two scopes cannot drift.
-        Assert.Empty(rendererProps.Root!.Descendants("JitHubWindowsSdkBuildToolsVersion"));
-        XElement import = Assert.Single(rendererProps.Root!.Elements("Import"));
-        Assert.Contains(
-            "GetPathOfFileAbove('Directory.Build.props'",
-            import.Attribute("Project")?.Value,
-            StringComparison.Ordinal);
+        MsBuildEvaluation renderer = MsBuild.Evaluate(
+            ProjectPath(root, "MarkdownRenderer/src/MarkdownRenderer/MarkdownRenderer.csproj"),
+            Release,
+            [BuildToolsVersionProperty],
+            ["PackageVersion"]);
+        Assert.Equal(version, renderer.GetProperty(BuildToolsVersionProperty));
+        Assert.Equal(version, Assert.Single(renderer.GetItems("PackageVersion"), IsBuildTools).GetMetadata("Version"));
     }
 
     [Fact]
     public void ExplicitSolutionPlatformMappings_TargetDeclaredProjectPlatforms()
     {
         string root = FindRepositoryRoot();
-        XDocument solution = XDocument.Load(Path.Combine(root, "JitHub.slnx"));
+        SolutionProject[] projects = ReadSolutionProjects(root);
+        IReadOnlyDictionary<string, string[]> declaredPlatforms = EvaluateDeclaredPlatforms(root, projects);
 
-        foreach (XElement projectEntry in solution.Root!.Descendants("Project"))
+        List<string> failures = [];
+        foreach (SolutionProject project in projects)
         {
-            XElement[] mappings = projectEntry.Elements("Platform").ToArray();
-            if (mappings.Length == 0)
-            {
-                continue;
-            }
-
-            string relativePath = Assert.IsType<XAttribute>(projectEntry.Attribute("Path")).Value;
-            string[] declaredPlatforms = GetDeclaredPlatforms(root, relativePath);
-
-            foreach (XElement mapping in mappings)
-            {
-                string projectPlatform = NormalizePlatform(
-                    Assert.IsType<XAttribute>(mapping.Attribute("Project")).Value);
-
-                Assert.Contains(
-                    projectPlatform,
-                    declaredPlatforms,
-                    StringComparer.OrdinalIgnoreCase);
-            }
+            string[] declared = declaredPlatforms[project.FullPath];
+            failures.AddRange(project.Mappings
+                .Where(mapping => !declared.Contains(mapping.ProjectPlatform, StringComparer.OrdinalIgnoreCase))
+                .Select(mapping => $"{project.RelativePath}: {mapping.SolutionConfiguration} -> {mapping.ProjectPlatform} (declares {string.Join(';', declared)})"));
         }
+
+        Assert.True(failures.Count == 0, "Solution mappings to undeclared platforms: " + string.Join(", ", failures));
     }
 
     [Fact]
     public void ArchitectureSpecificProjects_MapDefaultSolutionConfigurations()
     {
         string root = FindRepositoryRoot();
-        XDocument solution = XDocument.Load(Path.Combine(root, "JitHub.slnx"));
+        SolutionProject[] projects = ReadSolutionProjects(root);
+        IReadOnlyDictionary<string, string[]> declaredPlatforms = EvaluateDeclaredPlatforms(root, projects);
 
-        foreach (XElement projectEntry in solution.Root!.Descendants("Project"))
+        List<string> failures = [];
+        foreach (SolutionProject project in projects)
         {
-            string relativePath = Assert.IsType<XAttribute>(projectEntry.Attribute("Path")).Value;
-            string[] declaredPlatforms = GetDeclaredPlatforms(root, relativePath);
-            if (declaredPlatforms.Contains("AnyCPU", StringComparer.OrdinalIgnoreCase))
-            {
+            string[] declared = declaredPlatforms[project.FullPath];
+            if (declared.Contains("AnyCPU", StringComparer.OrdinalIgnoreCase))
                 continue;
-            }
 
             foreach (string configuration in new[] { "Debug", "Release" })
             {
-                XElement mapping = Assert.Single(
-                    projectEntry.Elements("Platform"),
-                    candidate => string.Equals(
-                        candidate.Attribute("Solution")?.Value,
-                        $"{configuration}|Any CPU",
-                        StringComparison.OrdinalIgnoreCase));
-                string mappedPlatform = NormalizePlatform(
-                    Assert.IsType<XAttribute>(mapping.Attribute("Project")).Value);
-
-                Assert.Contains(
-                    mappedPlatform,
-                    declaredPlatforms,
-                    StringComparer.OrdinalIgnoreCase);
+                SolutionPlatformMapping[] defaults = project.Mappings
+                    .Where(mapping => string.Equals(
+                        mapping.SolutionConfiguration,
+                        $"{configuration}|AnyCPU",
+                        StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+                if (defaults.Length != 1 || !declared.Contains(defaults[0].ProjectPlatform, StringComparer.OrdinalIgnoreCase))
+                    failures.Add($"{project.RelativePath}: {configuration}|Any CPU");
             }
         }
+
+        Assert.True(
+            failures.Count == 0,
+            "Architecture-specific projects without one declared default mapping: " + string.Join(", ", failures));
     }
 
-    // A project declares Platforms itself or inherits them from the nearest
-    // Directory.Build.props that sets them (each folder props imports its
-    // parent before setting its own values, so the nearest one wins).
-    private static string[] GetDeclaredPlatforms(string root, string relativeProjectPath)
+    private static bool IsBuildTools(MsBuildItem package) =>
+        string.Equals(package.Identity, BuildToolsPackage, StringComparison.OrdinalIgnoreCase);
+
+    private static string RepositoryBuildToolsVersion(string root) =>
+        EvaluateApp(root, []).GetProperty(BuildToolsVersionProperty);
+
+    private static MsBuildEvaluation EvaluateApp(string root, string[] itemTypes) =>
+        MsBuild.Evaluate(
+            ProjectPath(root, "JitHub.WinUI/JitHub.WinUI.csproj"),
+            new Dictionary<string, string>(Release, StringComparer.Ordinal) { ["Platform"] = "x64" },
+            [BuildToolsVersionProperty],
+            itemTypes);
+
+    // GetTargetFrameworks returns each project's evaluated Platforms, the list
+    // ProjectReference platform negotiation also reads. One probe evaluates the
+    // whole solution in a single MSBuild run.
+    private static IReadOnlyDictionary<string, string[]> EvaluateDeclaredPlatforms(string root, SolutionProject[] projects)
     {
-        string projectPath = Path.Combine(root, relativeProjectPath.Replace('/', Path.DirectorySeparatorChar));
-        string[] platforms = ReadPlatforms(XDocument.Load(projectPath));
-        DirectoryInfo? directory = new FileInfo(projectPath).Directory;
-        string normalizedRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
-        while (platforms.Length == 0 && directory is not null)
+        string probe = Path.Combine(Path.GetTempPath(), $"jithub-platform-probe-{Guid.NewGuid():N}.proj");
+        new XDocument(
+            new XElement(
+                "Project",
+                new XElement(
+                    "ItemGroup",
+                    projects.Select(project => new XElement(
+                        "ProbeProject",
+                        new XAttribute("Include", project.FullPath),
+                        new XAttribute("AdditionalProperties", "Configuration=Release")))),
+                new XElement(
+                    "Target",
+                    new XAttribute("Name", "Probe"),
+                    new XAttribute("Returns", "@(ProbeResult)"),
+                    new XElement(
+                        "MSBuild",
+                        new XAttribute("Projects", "@(ProbeProject)"),
+                        new XAttribute("Targets", "GetTargetFrameworks"),
+                        new XElement(
+                            "Output",
+                            new XAttribute("TaskParameter", "TargetOutputs"),
+                            new XAttribute("ItemName", "ProbeResult"))))))
+            .Save(probe);
+        try
         {
-            string propsPath = Path.Combine(directory.FullName, "Directory.Build.props");
-            if (File.Exists(propsPath))
-            {
-                platforms = ReadPlatforms(XDocument.Load(propsPath));
-            }
-
-            if (string.Equals(
-                Path.TrimEndingDirectorySeparator(directory.FullName),
-                normalizedRoot,
-                StringComparison.OrdinalIgnoreCase))
-            {
-                break;
-            }
-
-            directory = directory.Parent;
+            return MsBuild.GetTargetOutputs(probe, "Probe", new Dictionary<string, string>(), workingDirectory: root)
+                .ToDictionary(
+                    static result => Path.GetFullPath(result.Identity),
+                    static result => result.GetMetadata("Platforms")
+                        .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                        .Select(NormalizePlatform)
+                        .ToArray(),
+                    StringComparer.OrdinalIgnoreCase);
         }
-
-        return platforms.Length == 0 ? ["AnyCPU"] : platforms;
+        finally
+        {
+            File.Delete(probe);
+        }
     }
 
-    private static string[] ReadPlatforms(XDocument document) => document.Root!
-        .Elements("PropertyGroup")
-        .Elements("Platforms")
-        .SelectMany(static element => element.Value.Split(
-            ';',
-            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        .Select(NormalizePlatform)
-        .Distinct(StringComparer.OrdinalIgnoreCase)
-        .ToArray();
+    private static SolutionProject[] ReadSolutionProjects(string root) =>
+        XDocument.Load(Path.Combine(root, "JitHub.slnx"))
+            .Root!
+            .Descendants("Project")
+            .Select(entry =>
+            {
+                string relativePath = (string)entry.Attribute("Path")!;
+                return new SolutionProject(
+                    relativePath,
+                    ProjectPath(root, relativePath),
+                    entry.Elements("Platform")
+                        .Select(static mapping => new SolutionPlatformMapping(
+                            NormalizePlatform((string)mapping.Attribute("Solution")!),
+                            NormalizePlatform((string)mapping.Attribute("Project")!)))
+                        .ToArray());
+            })
+            .ToArray();
+
+    private static string ProjectPath(string root, string relativePath) =>
+        Path.GetFullPath(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
 
     private static string NormalizePlatform(string value) => value.Replace(" ", string.Empty, StringComparison.Ordinal);
 
@@ -188,4 +212,8 @@ public sealed class SolutionConfigurationContractTests
 
         throw new DirectoryNotFoundException("Could not locate the repository root containing JitHub.slnx.");
     }
+
+    private sealed record SolutionProject(string RelativePath, string FullPath, SolutionPlatformMapping[] Mappings);
+
+    private sealed record SolutionPlatformMapping(string SolutionConfiguration, string ProjectPlatform);
 }
