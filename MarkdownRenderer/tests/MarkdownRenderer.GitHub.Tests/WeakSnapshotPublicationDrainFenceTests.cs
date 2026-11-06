@@ -1,6 +1,8 @@
-using System.Reflection;
-using System.Threading;
+using System.Runtime.CompilerServices;
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Controls.LazyLayout;
+using MarkdownRenderer.Controls.Threading;
+using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout;
 using Xunit;
 
@@ -76,25 +78,74 @@ public sealed class WeakSnapshotPublicationDrainFenceTests
         Assert.Equal(1, currentDeliveries);
     }
 
-    [Theory]
-    [InlineData("<CreateCompletionPublication>")]
-    [InlineData("<CreateCompletionDispatchCallback>")]
-    public void DelayedLazyCallbacksCaptureOnlyWeakOwnerAndValueMetadata(string callbackPrefix)
+    [Fact]
+    public void StagedLazyCompletionAndItsQueuedDispatchRetainNeitherTheSnapshotNorTheSceneOwner()
     {
-        const BindingFlags fields = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-        const BindingFlags methods = BindingFlags.Instance | BindingFlags.Static |
-            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
-        Type control = typeof(MarkdownDocumentView).BaseType!;
-        Type owner = typeof(MarkdownRenderer.Controls.LazyLayout.LazyLayoutRealization);
-        Type closure = Assert.Single(typeof(MarkdownRenderer.Controls.LazyLayout.LazyLayoutWork).GetNestedTypes(BindingFlags.NonPublic),
-            type => type.GetMethods(methods).Any(method =>
-                method.Name.StartsWith(callbackPrefix, StringComparison.Ordinal)));
+        var scheduler = new ManualUiScheduler();
+        var handoff = new WeakSnapshotPublicationDrainFence<LayoutSnapshot>();
+        handoff.Reset(RealizationGeneration);
 
-        FieldInfo[] captured = closure.GetFields(fields);
-        Assert.Contains(captured, field => field.FieldType == typeof(WeakReference<>).MakeGenericType(owner));
-        Assert.DoesNotContain(captured, field => field.FieldType == control || field.FieldType == owner ||
-            field.FieldType == typeof(LayoutSnapshot) ||
-            typeof(CancellationTokenSource).IsAssignableFrom(field.FieldType) ||
-            field.FieldType == typeof(MarkdownRenderer.Layout.Boxes.ImageBox));
+        LazyWorkProbe probe = RunLazyWorkOnUnreferencedSnapshot(scheduler, handoff);
+
+        // The worker has finished: its completion is staged in the handoff and
+        // its low-priority dispatch is still queued on the UI thread.
+        Assert.True(probe.Worker.IsCompletedSuccessfully);
+        Assert.True(handoff.HasPendingPublication);
+        Assert.Equal([MarkdownUiPriority.Low], scheduler.Posted);
+        Assert.Equal(1, scheduler.PendingCount);
+        RetentionCollector.CollectUntilDead(probe.Snapshot, probe.SceneOwner);
+        Assert.False(probe.Snapshot.IsAlive);
+        Assert.False(probe.SceneOwner.IsAlive);
+
+        // The realization marks the work drained when the worker task ends.
+        // The queued dispatch reaches the realization only weakly, so with no
+        // realization it neither claims nor publishes the staged completion.
+        handoff.MarkWorkDrained(RealizationGeneration);
+        Assert.Equal(1, scheduler.RunPending());
+        Assert.True(handoff.HasPendingPublication);
+
+        // A recovery-clock claim still delivers it once, harmlessly.
+        Assert.True(handoff.TryPublishAfterWorkDrains(RealizationGeneration));
+        Assert.False(handoff.HasPendingPublication);
+        GC.KeepAlive(probe.Worker);
     }
+
+    private const long RealizationGeneration = 4;
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static LazyWorkProbe RunLazyWorkOnUnreferencedSnapshot(
+        ManualUiScheduler scheduler,
+        WeakSnapshotPublicationDrainFence<LayoutSnapshot> handoff)
+    {
+        LayoutSnapshot snapshot = CreateSnapshot();
+        object sceneOwner = new();
+        var band = new LazyLayoutBand(0, 160);
+        // The worker can reach its realization only through this weak
+        // reference; no realization is needed to observe what else it keeps.
+        var receiver = new WeakReference<LazyLayoutRealization>(null!);
+
+        Task worker = LazyLayoutWork.RunAsync(
+            snapshot, band, band, anchorOffset: 10, pipelineGeneration: 1, RealizationGeneration,
+            CancellationToken.None, scheduler, session: null, sceneOwner, receiver, handoff);
+        Assert.True(worker.Wait(TimeSpan.FromSeconds(10)));
+
+        return new LazyWorkProbe(worker, new WeakReference(snapshot), new WeakReference(sceneOwner));
+    }
+
+    private static LayoutSnapshot CreateSnapshot()
+    {
+        float top = 0;
+        var blocks = new ImageRelayoutFixture.MeasuredBox[4];
+        for (int index = 0; index < blocks.Length; index++)
+        {
+            var block = new ImageRelayoutFixture.MeasuredBox(40) { BlockIndex = index };
+            block.Measure(100);
+            block.Arrange(0, top, 100);
+            top += 40;
+            blocks[index] = block;
+        }
+        return new LayoutSnapshot(blocks, new MarkdownSourceMap(string.Empty), width: 100, height: top);
+    }
+
+    private sealed record LazyWorkProbe(Task Worker, WeakReference Snapshot, WeakReference SceneOwner);
 }
