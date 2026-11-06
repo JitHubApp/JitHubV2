@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using Windows.Foundation;
 using MarkdownRenderer.Extensions;
@@ -8,6 +7,18 @@ using MarkdownRenderer.Layout.Boxes;
 
 namespace MarkdownRenderer.Accessibility;
 
+/// <summary>
+/// One node of the semantic document: its role, the layout boxes it
+/// describes, its text range, its table, list and vector metadata, and its
+/// children.
+/// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because it is the compact storage of a
+/// node. Owner, text and numeric metadata each keep the common case in one
+/// shared slot under a small mask and promote a rare node to a private holder,
+/// and every typed accessor and setter must read and write those same slots
+/// and masks. The children view lives in <see cref="MarkdownSemanticChildrenView"/>.
+/// </remarks>
 internal sealed class MarkdownSemanticNode
 {
     private const byte InlineBoxOwner = 1 << 0;
@@ -153,7 +164,7 @@ internal sealed class MarkdownSemanticNode
     // A value view keeps children live across construction without making each
     // node itself an enumerable WinRT collection. Retained views continue to
     // observe children added later, and the view adds no per-node allocation.
-    public ChildrenView Children => new(this);
+    public MarkdownSemanticChildrenView Children => new(this);
     public int TextStart { get; set; }
     public int TextEnd { get; set; }
     public int HeadingLevel { get; init; }
@@ -712,6 +723,12 @@ internal sealed class MarkdownSemanticNode
         InlineBox?.BlockIndex ?? ImageBox?.BlockIndex ?? EmbedBox?.BlockIndex ??
         HostedElementBox?.BlockIndex ?? -1;
 
+    /// <summary>
+    /// Counts child additions, so a <see cref="MarkdownSemanticChildrenView"/>
+    /// enumerator detects a change during enumeration.
+    /// </summary>
+    internal int ChildrenVersion => _childrenVersion;
+
     public void Add(MarkdownSemanticNode child)
     {
         child.Parent = this;
@@ -736,7 +753,8 @@ internal sealed class MarkdownSemanticNode
         _childrenVersion++;
     }
 
-    private int ChildCount => _children switch
+    /// <summary>The live child count, read by <see cref="MarkdownSemanticChildrenView"/>.</summary>
+    internal int ChildCount => _children switch
     {
         null => 0,
         MarkdownSemanticNode => 1,
@@ -744,7 +762,8 @@ internal sealed class MarkdownSemanticNode
         _ => throw new InvalidOperationException("Invalid semantic child storage."),
     };
 
-    private MarkdownSemanticNode GetChildAt(int index)
+    /// <summary>The child at <paramref name="index"/>, read by <see cref="MarkdownSemanticChildrenView"/>.</summary>
+    internal MarkdownSemanticNode GetChildAt(int index)
     {
         return _children switch
         {
@@ -752,106 +771,5 @@ internal sealed class MarkdownSemanticNode
             List<MarkdownSemanticNode> children => children[index],
             _ => throw new ArgumentOutOfRangeException(nameof(index)),
         };
-    }
-
-    internal readonly struct ChildrenView : IReadOnlyList<MarkdownSemanticNode>
-    {
-        private readonly MarkdownSemanticNode? _owner;
-
-        internal ChildrenView(MarkdownSemanticNode owner)
-        {
-            _owner = owner;
-        }
-
-        internal MarkdownSemanticNode? Owner => _owner;
-
-        public int Count => _owner?.ChildCount ?? 0;
-
-        public MarkdownSemanticNode this[int index]
-        {
-            get
-            {
-                if (_owner is { } owner)
-                    return owner.GetChildAt(index);
-
-                throw new ArgumentOutOfRangeException(nameof(index));
-            }
-        }
-
-        // Foreach over the concrete Children property uses this value-returning
-        // pattern method and does not box the enumerator. Interface callers
-        // retain IReadOnlyList compatibility through the explicit adapters.
-        public ChildrenEnumerator GetEnumerator()
-            => new(_owner, _owner?._childrenVersion ?? 0);
-
-        IEnumerator<MarkdownSemanticNode> IEnumerable<MarkdownSemanticNode>.GetEnumerator()
-            => Count == 0
-                ? ((IEnumerable<MarkdownSemanticNode>)Array.Empty<MarkdownSemanticNode>()).GetEnumerator()
-                : GetEnumerator();
-
-        IEnumerator IEnumerable.GetEnumerator()
-            => Count == 0
-                ? ((IEnumerable<MarkdownSemanticNode>)Array.Empty<MarkdownSemanticNode>()).GetEnumerator()
-                : GetEnumerator();
-
-        public struct ChildrenEnumerator : IEnumerator<MarkdownSemanticNode>
-        {
-            private readonly MarkdownSemanticNode? _owner;
-            private readonly int _version;
-            private int _index;
-            private MarkdownSemanticNode? _current;
-
-            internal ChildrenEnumerator(MarkdownSemanticNode? owner, int version)
-            {
-                _owner = owner;
-                _version = version;
-                _index = 0;
-                _current = null;
-            }
-
-            public MarkdownSemanticNode Current => _current!;
-
-            object IEnumerator.Current
-            {
-                get
-                {
-                    return _index <= 0
-                        ? throw new InvalidOperationException("The enumerator is not positioned on a child.")
-                        : Current;
-                }
-            }
-
-            public bool MoveNext()
-            {
-                if (_owner is { } owner && _version != owner._childrenVersion)
-                    throw new InvalidOperationException("The semantic child collection was modified during enumeration.");
-
-                int count = _owner?.ChildCount ?? 0;
-                if ((uint)_index < (uint)count)
-                {
-                    _current = _owner!.GetChildAt(_index++);
-                    return true;
-                }
-
-                // Keep exhaustion independent of the owner's live child count:
-                // appending later must not make non-generic Current readable.
-                _index = -1;
-                _current = null;
-                return false;
-            }
-
-            public void Reset()
-            {
-                if (_owner is { } owner && _version != owner._childrenVersion)
-                    throw new InvalidOperationException("The semantic child collection was modified during enumeration.");
-
-                _index = 0;
-                _current = null;
-            }
-
-            public void Dispose()
-            {
-            }
-        }
     }
 }

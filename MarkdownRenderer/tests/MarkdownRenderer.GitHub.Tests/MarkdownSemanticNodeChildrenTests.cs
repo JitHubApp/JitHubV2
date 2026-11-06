@@ -16,7 +16,7 @@ public sealed class MarkdownSemanticNodeChildrenTests
     public void ChildrenView_RemainsStableAndLiveAcrossFirstAndLaterAdditions()
     {
         var parent = new MarkdownSemanticNode(MarkdownSemanticRole.Group);
-        MarkdownSemanticNode.ChildrenView retainedView = parent.Children;
+        MarkdownSemanticChildrenView retainedView = parent.Children;
 
         Assert.Empty(retainedView);
         Assert.Same(parent, retainedView.Owner);
@@ -47,7 +47,7 @@ public sealed class MarkdownSemanticNodeChildrenTests
         var leaf = new MarkdownSemanticNode(MarkdownSemanticRole.Image);
         Assert.Null(ChildStorageField.GetValue(leaf));
 
-        MarkdownSemanticNode.ChildrenView retainedView = leaf.Children;
+        MarkdownSemanticChildrenView retainedView = leaf.Children;
         var first = new MarkdownSemanticNode(MarkdownSemanticRole.Paragraph);
         leaf.Add(first);
 

@@ -12,7 +12,7 @@ public sealed class MarkdownSemanticNodeChildrenViewTests
     public void NodeIsNotAWinRtCollectionAndChildrenUsesAConcreteValueView()
     {
         Type nodeType = typeof(MarkdownSemanticNode);
-        Type viewType = typeof(MarkdownSemanticNode.ChildrenView);
+        Type viewType = typeof(MarkdownSemanticChildrenView);
 
         Assert.False(typeof(IReadOnlyList<MarkdownSemanticNode>).IsAssignableFrom(nodeType));
         Assert.False(typeof(IEnumerable<MarkdownSemanticNode>).IsAssignableFrom(nodeType));
@@ -24,9 +24,9 @@ public sealed class MarkdownSemanticNodeChildrenViewTests
         Assert.True(viewType.IsValueType);
 
         MethodInfo patternEnumerator = viewType.GetMethod(
-            nameof(MarkdownSemanticNode.ChildrenView.GetEnumerator),
+            nameof(MarkdownSemanticChildrenView.GetEnumerator),
             BindingFlags.Instance | BindingFlags.Public)!;
-        Assert.Equal(typeof(MarkdownSemanticNode.ChildrenView.ChildrenEnumerator), patternEnumerator.ReturnType);
+        Assert.Equal(typeof(MarkdownSemanticChildrenView.ChildrenEnumerator), patternEnumerator.ReturnType);
         Assert.True(patternEnumerator.ReturnType.IsValueType);
     }
 
@@ -49,7 +49,7 @@ public sealed class MarkdownSemanticNodeChildrenViewTests
     [Fact]
     public void DefaultAndEmptyViewsKeepBoundsAndEnumeratorDefaults()
     {
-        MarkdownSemanticNode.ChildrenView defaultView = default;
+        MarkdownSemanticChildrenView defaultView = default;
         Assert.Null(defaultView.Owner);
         Assert.Empty(defaultView);
         Assert.Throws<ArgumentOutOfRangeException>(() => _ = defaultView[-1]);
@@ -70,7 +70,7 @@ public sealed class MarkdownSemanticNodeChildrenViewTests
         ((IDisposable)defaultNonGeneric).Dispose();
 
         var parent = new MarkdownSemanticNode(MarkdownSemanticRole.Group);
-        MarkdownSemanticNode.ChildrenView emptyView = parent.Children;
+        MarkdownSemanticChildrenView emptyView = parent.Children;
         Assert.Same(parent, emptyView.Owner);
         Assert.Empty(emptyView);
         Assert.Throws<ArgumentOutOfRangeException>(() => _ = emptyView[-1]);
@@ -97,7 +97,7 @@ public sealed class MarkdownSemanticNodeChildrenViewTests
         parent.Add(child);
         parent.Add(child);
 
-        MarkdownSemanticNode.ChildrenView children = parent.Children;
+        MarkdownSemanticChildrenView children = parent.Children;
         Assert.Equal(2, children.Count);
         Assert.Same(child, children[0]);
         Assert.Same(child, children[1]);
@@ -130,7 +130,7 @@ public sealed class MarkdownSemanticNodeChildrenViewTests
         parent.Add(first);
 
         var expectedChildren = new List<MarkdownSemanticNode> { first };
-        MarkdownSemanticNode.ChildrenView.ChildrenEnumerator actual = parent.Children.GetEnumerator();
+        MarkdownSemanticChildrenView.ChildrenEnumerator actual = parent.Children.GetEnumerator();
         IEnumerator<MarkdownSemanticNode> expected = expectedChildren.GetEnumerator();
         actual.Dispose();
         expected.Dispose();
@@ -146,7 +146,7 @@ public sealed class MarkdownSemanticNodeChildrenViewTests
     }
 
     private static MarkdownSemanticNode[] EnumerateWithConcretePattern(
-        MarkdownSemanticNode.ChildrenView children)
+        MarkdownSemanticChildrenView children)
     {
         var result = new List<MarkdownSemanticNode>(children.Count);
         foreach (MarkdownSemanticNode child in children)
