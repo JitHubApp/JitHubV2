@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Services;
 using JitHub.Services.CodeViewer;
+using JitHub.Services.Markdown;
 using JitHub.WinUI.ViewModels.CodeViewer;
 using JitHub.WinUI.Views.Controls.App;
 using MarkdownRenderer.Images;
@@ -38,8 +39,10 @@ public sealed partial class SvgPreview : UserControl
     {
         InitializeComponent();
         _dispatcher = DispatcherQueue.GetForCurrentThread();
-        _svgRenderer = ((global::JitHub.WinUI.App)Application.Current).MarkdownRuntime.SvgRenderer;
-        _rasterizer = new RepositorySvgRasterizer(_svgRenderer);
+        JitHubMarkdownRuntime runtime =
+            ((global::JitHub.WinUI.App)Application.Current).MarkdownRuntime;
+        _svgRenderer = runtime.SvgRenderer;
+        _rasterizer = runtime.SvgPreviewRasterizer;
         SvgViewport.RenderFailed += SvgViewport_RenderFailed;
         SvgViewport.ZoomSettled += SvgViewport_ZoomSettled;
         DataContextChanged += OnDataContextChanged;
