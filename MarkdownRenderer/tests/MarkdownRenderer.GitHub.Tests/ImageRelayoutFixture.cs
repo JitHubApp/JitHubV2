@@ -39,8 +39,9 @@ internal sealed class ImageRelayoutFixture : IDisposable
         Snapshot = new LayoutSnapshot(Blocks, new MarkdownSourceMap(string.Empty), width: 100, height: top);
         Published.Snapshot = Snapshot;
         Published.Generation = 7;
+        Plans = new ImagePlanSet(Lifetime, Published);
         Subscriptions = new ImageSubscriptions(
-            new NoClockHost(), Lifetime, Published, new ImagePlanSet(Lifetime, Published));
+            new NoClockHost(), Lifetime, Published, Plans);
         Clock = new RecoveryClock(new NoTickHost(), Lifetime, clockHasScheduler ? Scheduler : null);
         Host = new RelayoutHost(Clock);
         Relayout = CreateRelayout();
@@ -60,6 +61,8 @@ internal sealed class ImageRelayoutFixture : IDisposable
 
     internal ImageSubscriptions Subscriptions { get; }
 
+    internal ImagePlanSet Plans { get; }
+
     internal RecoveryClock Clock { get; }
 
     internal RelayoutHost Host { get; }
@@ -72,6 +75,14 @@ internal sealed class ImageRelayoutFixture : IDisposable
     /// <summary>Creates an image at <paramref name="blockIndex"/> and subscribes to it.</summary>
     internal ImageBox SubscribeImage(int blockIndex)
     {
+        ImageBox image = CreateImage(blockIndex);
+        Assert.True(Subscriptions.Subscribe(image));
+        return image;
+    }
+
+    /// <summary>Creates an image at <paramref name="blockIndex"/> that the fixture disposes.</summary>
+    internal ImageBox CreateImage(int blockIndex)
+    {
         MarkdownLayoutContext context = DisplaySizedRasterDecodeTests.CreateContext(
             _imageResources, new BlockedResolver(), session: null, scale: 1);
         var image = new ImageBox(context, _imageResources.Images, $"https://example.test/{Guid.NewGuid():N}.png", "diagram")
@@ -79,7 +90,6 @@ internal sealed class ImageRelayoutFixture : IDisposable
             BlockIndex = blockIndex,
         };
         _images.Add(image);
-        Assert.True(Subscriptions.Subscribe(image));
         return image;
     }
 

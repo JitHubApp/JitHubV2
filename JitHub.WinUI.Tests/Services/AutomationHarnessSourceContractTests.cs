@@ -368,56 +368,26 @@ public sealed class AutomationHarnessSourceContractTests
     [Fact]
     public void MarkdownInlineImagesSubscribeBeforeViewportGeometryIsAvailable()
     {
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "src",
-            "MarkdownRenderer",
-            "Controls",
-            "MarkdownRendererControl.cs"));
-        string embedSource = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "src",
-            "MarkdownRenderer",
-            "Controls",
-            "Embeds",
-            "EmbedRealization.cs"));
-
-        Assert.Contains("foreach (var (imageRun, _) in icb.InlineImageRuns)", embedSource, StringComparison.Ordinal);
-        Assert.Contains("_host.AddImagePlan(imageRun.Image);", embedSource, StringComparison.Ordinal);
-        Assert.Contains("foreach (var _ in icb.EnumerateInlineImageRects())", embedSource, StringComparison.Ordinal);
-        Assert.True(
-            embedSource.IndexOf("_host.AddImagePlan(imageRun.Image);", StringComparison.Ordinal) <
-            embedSource.IndexOf("foreach (var _ in icb.EnumerateInlineImageRects())", StringComparison.Ordinal));
-        string embedHostsSource = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "src",
-            "MarkdownRenderer",
-            "Controls",
-            "Composition",
-            "EmbedHosts.cs"));
-        Assert.Contains("void IEmbedRealizationHost.AddImagePlan(ImageBox image) => AddImagePlan(image);", embedHostsSource, StringComparison.Ordinal);
-        Assert.Contains("if (!Owners.ImageSubscriptions.Subscribe(image))", embedHostsSource, StringComparison.Ordinal);
-        string completionSource = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "src",
-            "MarkdownRenderer",
-            "Controls",
-            "Images",
-            "ImageLoadCompletion.cs"));
-        Assert.Contains("imageSubscriptions.LoadCompleted += imageLoadCompletion.OnLoadCompleted;", source, StringComparison.Ordinal);
-        Assert.Contains("_imageSubscriptions.Contains(completedImage)", completionSource, StringComparison.Ordinal);
-        string attachmentSource = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "src",
-            "MarkdownRenderer",
-            "Controls",
-            "ViewAttachment.cs"));
-        Assert.Contains("_imageSubscriptions.UnsubscribeAll();", attachmentSource, StringComparison.Ordinal);
+        // Planning inline images before reading their geometry, planning images with no
+        // character region, and subscribing each plan once are covered by
+        // InlineContainerPlansTests; ignoring completions of unsubscribed images by
+        // ImageLoadCompletionTests. What stays here is the control's wiring of those
+        // owners, which needs a live control.
+        string embedSource = ReadRendererSource("Controls", "Embeds", "EmbedRealization.cs");
+        Assert.Contains("InlineContainerPlans.Collect(this, snapshot, topLevelRoot, icb);", embedSource, StringComparison.Ordinal);
+        Assert.Contains("void IInlinePlanCollector.AddImagePlan(ImageBox image) => _host.AddImagePlan(image);", embedSource, StringComparison.Ordinal);
+        Assert.Contains(
+            "void IEmbedRealizationHost.AddImagePlan(ImageBox image) => Owners.ImageSubscriptions.AddPlan(image);",
+            ReadRendererSource("Controls", "Composition", "EmbedHosts.cs"),
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "imageSubscriptions.LoadCompleted += imageLoadCompletion.OnLoadCompleted;",
+            ReadRendererSource("Controls", "MarkdownRendererControl.cs"),
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_imageSubscriptions.UnsubscribeAll();",
+            ReadRendererSource("Controls", "ViewAttachment.cs"),
+            StringComparison.Ordinal);
     }
 
     [Fact]
