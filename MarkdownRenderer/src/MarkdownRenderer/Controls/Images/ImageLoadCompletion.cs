@@ -1,5 +1,6 @@
 using System;
 using MarkdownRenderer.Controls.Pipeline;
+using MarkdownRenderer.Controls.Threading;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Performance;
 
@@ -18,6 +19,7 @@ internal sealed class ImageLoadCompletion
     private readonly LayoutCommitState _layoutCommit;
     private readonly ImageSubscriptions _imageSubscriptions;
     private readonly ImageRelayout _imageRelayout;
+    private readonly IMarkdownUiScheduler? _scheduler;
 
     internal ImageLoadCompletion(
         IImageLoadCompletionHost host,
@@ -25,7 +27,8 @@ internal sealed class ImageLoadCompletion
         PublishedLayout published,
         LayoutCommitState layoutCommit,
         ImageSubscriptions imageSubscriptions,
-        ImageRelayout imageRelayout)
+        ImageRelayout imageRelayout,
+        IMarkdownUiScheduler? scheduler)
     {
         _host = host;
         _lifetime = lifetime;
@@ -33,6 +36,7 @@ internal sealed class ImageLoadCompletion
         _layoutCommit = layoutCommit;
         _imageSubscriptions = imageSubscriptions;
         _imageRelayout = imageRelayout;
+        _scheduler = scheduler;
     }
 
     /// <summary>
@@ -43,11 +47,11 @@ internal sealed class ImageLoadCompletion
     {
         // ImageBox publishes on UI already. Keep that path inline; only custom
         // off-thread senders need a second weak dispatcher handoff.
-        var dq = _host.DispatcherQueue;
-        if (dq is null) return;
+        var scheduler = _scheduler;
+        if (scheduler is null) return;
         bool layoutInvalidated = e?.LayoutInvalidated ?? true;
         bool bitmapOutputRecoverySignal = e?.IsBitmapOutputRecoverySignal ?? false;
-        if (dq.HasThreadAccess)
+        if (scheduler.HasThreadAccess)
         {
             Apply(sender as ImageBox, layoutInvalidated, bitmapOutputRecoverySignal);
             return;
@@ -59,7 +63,7 @@ internal sealed class ImageLoadCompletion
         bool enqueued = false;
         try
         {
-            enqueued = dq.TryEnqueue(() =>
+            enqueued = scheduler.TryEnqueue(MarkdownUiPriority.Normal, () =>
             {
                 if (!receiver.TryGetTarget(out var completion))
                     return;

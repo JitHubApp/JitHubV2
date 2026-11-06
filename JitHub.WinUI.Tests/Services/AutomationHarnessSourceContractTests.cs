@@ -423,125 +423,25 @@ public sealed class AutomationHarnessSourceContractTests
     [Fact]
     public void MarkdownImageCompletionRelayoutsTheCommittedSnapshotWithoutResolverLoop()
     {
-        string controlSource = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "src",
-            "MarkdownRenderer",
-            "Controls",
-            "MarkdownRendererControl.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
-        string relayoutSource = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "src",
-            "MarkdownRenderer",
-            "Controls",
-            "Images",
-            "ImageRelayout.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
-        string workSource = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "src",
-            "MarkdownRenderer",
-            "Controls",
-            "Images",
-            "ImageRelayoutWork.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
-
-        string completionSource = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "src",
-            "MarkdownRenderer",
-            "Controls",
-            "Images",
-            "ImageLoadCompletion.cs"));
-        Assert.Contains("_imageRelayout.Queue(completedImage.BlockIndex);", completionSource, StringComparison.Ordinal);
-        string imageHostsSource = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "src",
-            "MarkdownRenderer",
-            "Controls",
-            "Composition",
-            "ImageHosts.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
+        // Queueing, coalescing, the Low dispatch, the missing-clock rebuild, rejected and
+        // stale dispatches, rebuild and gesture deferral, generation and cancellation fences,
+        // pointer-input retries and the scroll anchor are covered by ImageRelayoutTests;
+        // completion membership and the queued root by ImageLoadCompletionTests; the
+        // recovery clock's weak repeating timer and managed fallback by RecoveryClockTests.
+        // What stays here needs a live control (host wiring), a performance session and
+        // raster placement (private candidates), or a rebuild pipeline.
+        string controlSource = ReadRendererSource("Controls", "MarkdownRendererControl.cs");
+        string relayoutSource = ReadRendererSource("Controls", "Images", "ImageRelayout.cs");
+        string workSource = ReadRendererSource("Controls", "Images", "ImageRelayoutWork.cs");
+        string imageHostsSource = ReadRendererSource("Controls", "Composition", "ImageHosts.cs");
         Assert.Contains("void IImageRelayoutHost.RequestFullRebuild() => Owners.Rebuild.Request(RebuildReason.Full);", imageHostsSource, StringComparison.Ordinal);
-        int queueStart = relayoutSource.IndexOf("internal void Queue(int blockIndex)", StringComparison.Ordinal);
-        int queueEnd = relayoutSource.IndexOf("internal void QueueFirstPending()", queueStart, StringComparison.Ordinal);
-        Assert.True(queueStart >= 0 && queueEnd > queueStart);
-        string queue = relayoutSource[queueStart..queueEnd];
-        Assert.Contains("_pending.Add(blockIndex);", queue, StringComparison.Ordinal);
-        Assert.Contains("if (_queued || _active)", queue, StringComparison.Ordinal);
-        Assert.Contains("_recoveryClock.Start();", queue, StringComparison.Ordinal);
-        int queuedFlag = queue.IndexOf("_queued = true;", StringComparison.Ordinal);
-        Assert.True(queuedFlag >= 0);
-        int recoveryStartAfterQueue = queue.IndexOf("_recoveryClock.Start();", queuedFlag, StringComparison.Ordinal);
-        Assert.True(recoveryStartAfterQueue > queuedFlag);
-        int missingRecoveryClock = queue.IndexOf("if (!_recoveryClock.IsRunning)", recoveryStartAfterQueue, StringComparison.Ordinal);
-        Assert.True(missingRecoveryClock > recoveryStartAfterQueue);
-        int dispatcherCapture = queue.IndexOf("Microsoft.UI.Dispatching.DispatcherQueue? dispatcher = _host.DispatcherQueue;", missingRecoveryClock, StringComparison.Ordinal);
-        Assert.True(dispatcherCapture > missingRecoveryClock);
-        string missingRecovery = queue[missingRecoveryClock..dispatcherCapture];
-        Assert.Contains("_queued = false;", missingRecovery, StringComparison.Ordinal);
-        Assert.Contains("_host.RequestFullRebuild();", missingRecovery, StringComparison.Ordinal);
-        Assert.DoesNotContain("_pending.Clear();", missingRecovery, StringComparison.Ordinal);
-        int enqueueAfterRecovery = queue.IndexOf("dispatcher?.TryEnqueue(", dispatcherCapture, StringComparison.Ordinal);
-        Assert.True(enqueueAfterRecovery > dispatcherCapture);
-        string dispatch = queue[dispatcherCapture..];
-        Assert.Contains("DispatcherQueuePriority.Low", dispatch, StringComparison.Ordinal);
-        Assert.Contains("var receiver = new WeakReference<ImageRelayout>(this);", dispatch, StringComparison.Ordinal);
-        Assert.Contains("if (receiver.TryGetTarget(out var relayout))", dispatch, StringComparison.Ordinal);
-        Assert.Contains("relayout.ProcessQueued(ticket);", dispatch, StringComparison.Ordinal);
-        Assert.DoesNotContain("_pending.Clear();", dispatch, StringComparison.Ordinal);
-
-        string clockSource = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "src",
-            "MarkdownRenderer",
-            "Controls",
-            "RecoveryClock.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
-        Assert.Contains(
-            "internal bool IsRunning => _timer is not null || _managedTimer is not null;",
-            clockSource,
-            StringComparison.Ordinal);
-
-        int recoveryStart = clockSource.IndexOf("internal void Start()", StringComparison.Ordinal);
-        int recoveryMethodEnd = clockSource.IndexOf("internal void Stop()", recoveryStart, StringComparison.Ordinal);
-        Assert.True(recoveryStart >= 0 && recoveryMethodEnd > recoveryStart);
-        string recovery = clockSource[recoveryStart..recoveryMethodEnd];
-        Assert.Contains("if (IsRunning || _host.DispatcherQueue is not { } dispatcher)", recovery, StringComparison.Ordinal);
-        Assert.Contains("var receiver = new WeakReference<RecoveryClock>(this);", recovery, StringComparison.Ordinal);
-        Assert.Contains("dispatcher.CreateTimer()", recovery, StringComparison.Ordinal);
-        Assert.Contains("timer.Tick +=", recovery, StringComparison.Ordinal);
-        Assert.Contains("!ReferenceEquals(sender, clock._timer)", recovery, StringComparison.Ordinal);
-        Assert.Contains("Tick(clock);", recovery, StringComparison.Ordinal);
-        Assert.Matches(
-            "_managedTimer\\s*=\\s*new\\(\\s*this,\\s*callback\\s*=>\\s*dispatcher\\.TryEnqueue\\(callback\\.Invoke\\),\\s*Tick,\\s*TimeSpan\\.FromMilliseconds\\(100\\)\\);",
-            recovery);
-        Assert.DoesNotContain("ProcessQueued(", recovery, StringComparison.Ordinal);
-        Assert.Contains(
-            "private static void Tick(RecoveryClock clock) => clock._host.ProcessRecoveryTick();",
-            clockSource,
-            StringComparison.Ordinal);
+        Assert.Contains("double? IImageRelayoutHost.VerticalScrollOffset => Owners.Surface.Scroll?.VerticalOffset;", imageHostsSource, StringComparison.Ordinal);
         Assert.Contains(
             "void IRecoveryClockHost.ProcessRecoveryTick() => Owners.RecoveryWork.ProcessTick();",
-            File.ReadAllText(Path.Combine(
-                FindRepositoryRoot(),
-                "MarkdownRenderer",
-                "src",
-                "MarkdownRenderer",
-                "Controls",
-                "Composition",
-                "LayoutHosts.cs")),
+            ReadRendererSource("Controls", "Composition", "LayoutHosts.cs"),
             StringComparison.Ordinal);
 
-        string recoveryWorkSource = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "src",
-            "MarkdownRenderer",
-            "Controls",
-            "RecoveryClockWork.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
+        string recoveryWorkSource = ReadRendererSource("Controls", "RecoveryClockWork.cs");
         int recoveryTickStart = recoveryWorkSource.IndexOf("internal void ProcessTick(", StringComparison.Ordinal);
         int recoveryTickEnd = recoveryWorkSource.IndexOf("internal void Stop(", recoveryTickStart, StringComparison.Ordinal);
         Assert.True(recoveryTickEnd > recoveryTickStart);
@@ -549,19 +449,11 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("internal void ProcessTick()", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("_imageSubscriptions.ProcessBitmapOutputRecovery();", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("_imageRelayout.ProcessQueued();", recoveryTick, StringComparison.Ordinal);
-        Assert.Contains("internal void ProcessQueued() => ProcessQueued(_dispatchTicket);", relayoutSource, StringComparison.Ordinal);
         Assert.Contains("_imageRelayout.PublishReadyCompletion();", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("internal void PublishReadyCompletion() => _payload?.PublishAfterWorkDrains();", relayoutSource, StringComparison.Ordinal);
         Assert.Contains("_imageRelayout.RecoverFaultedHandoff();", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("_layoutPublisher.PublishPending();", recoveryTick, StringComparison.Ordinal);
-        string lazyLayoutSource = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "src",
-            "MarkdownRenderer",
-            "Controls",
-            "LazyLayout",
-            "LazyLayoutRealization.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
+        string lazyLayoutSource = ReadRendererSource("Controls", "LazyLayout", "LazyLayoutRealization.cs");
         Assert.Contains("_lazyLayout.ProcessQueued();", recoveryTick, StringComparison.Ordinal);
         Assert.Contains("internal void ProcessQueued() => ProcessQueued(_dispatchTicket);", lazyLayoutSource, StringComparison.Ordinal);
         Assert.Contains("_lazyLayout.TryPublishCompletion();", recoveryTick, StringComparison.Ordinal);
@@ -578,30 +470,21 @@ public sealed class AutomationHarnessSourceContractTests
         int completionStart = relayoutSource.IndexOf("internal void Complete(", processStart, StringComparison.Ordinal);
         Assert.True(processStart >= 0 && completionStart > processStart);
         string process = relayoutSource[processStart..completionStart];
-        Assert.Contains("if (_host.DefersToRebuild())", process, StringComparison.Ordinal);
         Assert.Contains("bool IImageRelayoutHost.DefersToRebuild() => Owners.Rebuild.DefersToRebuild();", imageHostsSource, StringComparison.Ordinal);
-        string schedulerSource = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(), "MarkdownRenderer", "src", "MarkdownRenderer", "Controls",
-            "Pipeline", "RebuildScheduler.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
+        string schedulerSource = ReadRendererSource("Controls", "Pipeline", "RebuildScheduler.cs");
         int defersStart = schedulerSource.IndexOf("internal bool DefersToRebuild()", StringComparison.Ordinal);
         int defersEnd = schedulerSource.IndexOf("internal void QueuePendingIfIdle()", defersStart, StringComparison.Ordinal);
         Assert.True(defersStart >= 0 && defersEnd > defersStart);
         string defers = schedulerSource[defersStart..defersEnd];
         Assert.Contains("OnPipelineCompleted(_activeGeneration);", defers, StringComparison.Ordinal);
         Assert.Contains("return _coordinator.HasPendingOrBuilding;", defers, StringComparison.Ordinal);
-        Assert.Contains("ImageRelayoutBatch.CapturePendingIndices(", process, StringComparison.Ordinal);
         Assert.Contains("private readonly SortedSet<int> _pending = [];", relayoutSource, StringComparison.Ordinal);
         Assert.Contains("optedIn: session is not null", process, StringComparison.Ordinal);
-        int taskLaunch = process.IndexOf("_task = ImageRelayoutWork.RunAsync(", StringComparison.Ordinal);
-        int acceptedRemoval = process.IndexOf("_pending.Remove(completedBlockIndex)", StringComparison.Ordinal);
-        Assert.True(taskLaunch >= 0 && acceptedRemoval > taskLaunch);
-        Assert.DoesNotContain("_pending.Clear()", process, StringComparison.Ordinal);
-        string rasterPublication = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(), "MarkdownRenderer", "src", "MarkdownRenderer", "Controls",
-            "Images", "RasterPlacementPublisher.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
+        string rasterPublication = ReadRendererSource("Controls", "Images", "RasterPlacementPublisher.cs");
         Assert.Contains("TryPrepareCodeBlockActionPublication(plan", rasterPublication, StringComparison.Ordinal);
         Assert.Contains("ReferenceEquals(newPlan.Box, identity.Placement)", rasterPublication, StringComparison.Ordinal);
-        Assert.Contains("_rasterPlacement.TryCreateInputs(snapshot, optedIn: session is not null);", process, StringComparison.Ordinal);
+        Assert.Contains("_host.TryCreateRasterPlacementInputs(snapshot, optedIn: session is not null);", process, StringComparison.Ordinal);
+        Assert.Contains("Owners.RasterPlacement.TryCreateInputs(snapshot, optedIn)", imageHostsSource, StringComparison.Ordinal);
         int inputsStart = rasterPublication.IndexOf("internal RasterPlacementInputs? TryCreateInputs(", StringComparison.Ordinal);
         int inputsEnd = rasterPublication.IndexOf("internal void RaiseImageUnavailableIfCurrent(", inputsStart, StringComparison.Ordinal);
         Assert.True(inputsStart >= 0 && inputsEnd > inputsStart);
@@ -626,9 +509,6 @@ public sealed class AutomationHarnessSourceContractTests
         int rootPreparation = run.IndexOf("payload.Snapshot.TryRelayoutCompletedImageRoots(", StringComparison.Ordinal);
         Assert.True(rootPreparation >= 0 && rootPreparation < privateCandidate && rootPreparation < fallbackRelayout);
         Assert.Contains("else if (result == PreparedImageRelayoutResult.Unavailable)", run, StringComparison.Ordinal);
-        Assert.Contains("expectedPointerInputEpoch: pointerInputEpoch", run, StringComparison.Ordinal);
-        Assert.Contains("if (result == PreparedImageRelayoutResult.Retry)", run, StringComparison.Ordinal);
-        Assert.Contains("retryImageBlockIndex = payload.Changed[0];", run, StringComparison.Ordinal);
         Assert.Contains("retryCurrentImages = true;", run, StringComparison.Ordinal);
         Assert.DoesNotContain("retryImageBlockIndices", run, StringComparison.Ordinal);
         Assert.Contains("rootMeasureContext.DrainOwnedRetirementsAsync(failure)", run, StringComparison.Ordinal);
@@ -648,14 +528,10 @@ public sealed class AutomationHarnessSourceContractTests
         string completion = relayoutSource[completionStart..];
         Assert.Contains("current && snapshot is not null && !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&\n                (!canceled || rootMeasureCommitted)", completion, StringComparison.Ordinal);
         Assert.Contains("// A private whole-tree candidate has not committed and is excluded.", completion, StringComparison.Ordinal);
-        Assert.Contains("generation == _published.Generation && ReferenceEquals(snapshot, _published.Snapshot)", completion, StringComparison.Ordinal);
-        Assert.Contains("_rasterPlacement.TryPublish(snapshot, candidate, generation)", completion, StringComparison.Ordinal);
-        Assert.Contains("_host.RequestFullRebuild();", completion, StringComparison.Ordinal);
-        Assert.Contains("else if (retryImageBlockIndex.HasValue || retryCurrentImages)", completion, StringComparison.Ordinal);
-        Assert.Contains("if (retryImageBlockIndex is { } retryIndex)", completion, StringComparison.Ordinal);
-        Assert.Contains("if (retryCurrentImages)\n                        _imageSubscriptions.AddBlockIndicesTo(_pending);", completion, StringComparison.Ordinal);
+        Assert.Contains("_host.TryPublishRasterPlacement(snapshot, candidate, generation)", completion, StringComparison.Ordinal);
+        Assert.Contains("Owners.RasterPlacement.TryPublish(snapshot, candidate, generation)", imageHostsSource, StringComparison.Ordinal);
         Assert.DoesNotContain("retryImageBlockIndices", completion, StringComparison.Ordinal);
-        Assert.Contains("rootMeasureCommitted &&\n                        (canceled || capturedScrollOffset != _surface.Scroll?.VerticalOffset) ? null : anchor", completion, StringComparison.Ordinal);
+        Assert.Contains("rootMeasureCommitted &&\n                        (canceled || capturedScrollOffset != _host.VerticalScrollOffset) ? null : anchor", completion, StringComparison.Ordinal);
         Assert.DoesNotContain("Initial load / intrinsic-size change", controlSource, StringComparison.Ordinal);
     }
 
@@ -1109,6 +985,11 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("PrintWindow(windowHandle, deviceContext, PwRenderFullContent)", source, StringComparison.Ordinal);
         Assert.Contains("GetPhysicalWindowBounds(windowHandle)", source, StringComparison.Ordinal);
     }
+
+    private static string ReadRendererSource(params string[] pathFromRendererProject) =>
+        File.ReadAllText(Path.Combine(
+            [FindRepositoryRoot(), "MarkdownRenderer", "src", "MarkdownRenderer", .. pathFromRendererProject]))
+            .Replace("\r\n", "\n", StringComparison.Ordinal);
 
     private static string FindRepositoryRoot()
     {

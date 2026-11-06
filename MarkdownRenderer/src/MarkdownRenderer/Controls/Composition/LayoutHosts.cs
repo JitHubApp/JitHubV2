@@ -152,8 +152,6 @@ internal sealed class LayoutHosts :
 
     void IFocusableItemsPublicationHost.InvalidateAutomationLayout() => Owners.Automation.InvalidateLayout();
 
-    Microsoft.UI.Dispatching.DispatcherQueue? IRecoveryClockHost.DispatcherQueue => _control.DispatcherQueue;
-
     void IRecoveryClockHost.ProcessRecoveryTick() => Owners.RecoveryWork.ProcessTick();
 
     void ICanvasDeviceRecoveryHost.RequestFullRebuild() => Owners.Rebuild.Request(RebuildReason.Full);

@@ -7,9 +7,6 @@ namespace MarkdownRenderer.Controls.Images;
 /// <summary>What image load completion routing needs from the control.</summary>
 internal interface IImageLoadCompletionHost
 {
-    /// <summary>The control's dispatcher.</summary>
-    Microsoft.UI.Dispatching.DispatcherQueue? DispatcherQueue { get; }
-
     IMarkdownPerformanceSession? PerformanceSession { get; }
 
     /// <summary>The width layout runs at, in DIPs.</summary>

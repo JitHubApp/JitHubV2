@@ -137,7 +137,7 @@ public sealed class ImageRelayoutPublicationRetentionTests
         Assert.Contains(nativeTick.Closure.GetFields(fields), field => field.FieldType.IsGenericType &&
             field.FieldType.GetGenericTypeDefinition() == typeof(WeakReference<>));
         Assert.Contains(managedEnqueue.Closure.GetFields(fields), field =>
-            field.FieldType == typeof(Microsoft.UI.Dispatching.DispatcherQueue));
+            field.FieldType == typeof(MarkdownRenderer.Controls.Threading.IMarkdownUiScheduler));
         foreach (var callback in compiledCallbacks)
         {
             Assert.DoesNotContain(callback.Closure.GetFields(fields), field =>

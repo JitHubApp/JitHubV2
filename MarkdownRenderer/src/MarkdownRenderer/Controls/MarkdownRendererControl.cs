@@ -32,6 +32,7 @@ using MarkdownRenderer.Controls.Pipeline;
 using MarkdownRenderer.Controls.Providers;
 using MarkdownRenderer.Controls.Readiness;
 using MarkdownRenderer.Controls.Selection;
+using MarkdownRenderer.Controls.Threading;
 
 namespace MarkdownRenderer.Controls;
 
@@ -679,6 +680,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// owner in dependency order, and readonly owner fields can be set only in a constructor.</remarks>
     private protected MarkdownRendererControl(bool ownsScrollViewport, MarkdownRendererDiagnosticOptions diagnostics)
     {
+        IMarkdownUiScheduler? uiScheduler = DispatcherQueueUiScheduler.For(DispatcherQueue);
         var events = new RendererEvents(this, _lifetime, DispatcherQueue);
         var pipelineHosts = new PipelineHosts(this);
         var layoutHosts = new LayoutHosts(this);
@@ -700,7 +702,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _localization = new RendererLocalization(pipelineHosts, _published);
         _surface = new MarkdownViewSurface(ownsScrollViewport);
         _windowDestroying = new WindowDestroyingWatch(this, _lifetime);
-        var recoveryClock = new RecoveryClock(layoutHosts, _lifetime);
+        var recoveryClock = new RecoveryClock(layoutHosts, _lifetime, uiScheduler);
         _viewport = new MarkdownViewport(this, _surface);
         var vectorCapacity = new VectorCapacityRetry(layoutHosts, _lifetime, _published, _viewport);
         var cursor = new PointerCursorPresenter(cursor => ProtectedCursor = cursor);
@@ -762,8 +764,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _painter = new CanvasTilePainter(layoutHosts, _lifetime, _published, _surface, _lazyLayout, _deviceRecovery, _rebuild, _deferredScenes);
         _deviceReset = new SyntheticDeviceReset(_published, _snapshotRetirements, _automationDocumentGenerations, _layoutCommit, _automation, _painter, _lazyLayout, vectorCapacity);
         _canvasEvents = new CanvasEvents(_lifetime, _surface, canvasPointerEvents, _painter, _rebuild);
-        var imageRelayout = new ImageRelayout(imageHosts, _lifetime, _published, _layoutCommit, layoutPublisher, _surface, pointerInput, imageSubscriptions, rasterPlacement, recoveryClock);
-        var imageLoadCompletion = new ImageLoadCompletion(imageHosts, _lifetime, _published, _layoutCommit, imageSubscriptions, imageRelayout);
+        var imageRelayout = new ImageRelayout(imageHosts, _lifetime, _published, _layoutCommit, imageSubscriptions, recoveryClock, uiScheduler);
+        var imageLoadCompletion = new ImageLoadCompletion(imageHosts, _lifetime, _published, _layoutCommit, imageSubscriptions, imageRelayout, uiScheduler);
         imageSubscriptions.LoadCompleted += imageLoadCompletion.OnLoadCompleted;
         var geometryRecovery = new GeometryRecovery(_lifetime, _published, _surface, pointerInput, vectorCapacity, horizontalOverflowDrag, focusGeometryWork, _overflowScroll, focusRing, _adorner, _layoutCommit, imageSubscriptions, _lazyLayout, imageRelayout, _interactionReset, _dragShield, contextMenu, abbreviationTooltip, cursor, _handles, _automation, _deviceRecovery, _rebuild);
         _visibleWork = new VisibleWorkScheduler(this, _published, _highlighting, geometryRecovery);
@@ -803,7 +805,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
             events, _hover, cursor, abbreviationTooltip, _adorner, _deviceRecovery, recoveryClock,
             _snapshotRetirements, cancellationRetirement, _rebuild, _canvasInvalidation, geometryRecovery,
             textAdorner, _recoveryWork, _visibleWork, _scrolling, _automation, imageLifetime, _layoutCommit,
-            imagePreparationOwnerToken, inputCapture, extent));
+            imagePreparationOwnerToken, inputCapture, extent, _surface, pointerInput, layoutPublisher,
+            rasterPlacement));
         layoutHosts.Connect(new LayoutHosts.Parts(
             _deviceRecovery, cancellationRetirement, _rebuild, _canvasInvalidation, geometryRecovery, textAdorner,
             _recoveryWork, _visibleWork, _scrolling, _deferredScenes, _blockScroll, _automation, _lazyLayout, extent));

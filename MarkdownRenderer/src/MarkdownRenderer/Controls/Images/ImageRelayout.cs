@@ -3,8 +3,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Controls.Pipeline;
+using MarkdownRenderer.Controls.Threading;
 using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Performance;
@@ -24,12 +24,9 @@ internal sealed class ImageRelayout
     private readonly MarkdownViewLifetime _lifetime;
     private readonly PublishedLayout _published;
     private readonly LayoutCommitState _layoutCommit;
-    private readonly LayoutCommitPublisher _layoutPublisher;
-    private readonly MarkdownViewSurface _surface;
-    private readonly PointerInputRouter _pointerInput;
     private readonly ImageSubscriptions _imageSubscriptions;
-    private readonly RasterPlacementPublisher _rasterPlacement;
     private readonly RecoveryClock _recoveryClock;
+    private readonly IMarkdownUiScheduler? _scheduler;
 
     // A sparse HashSet can scan an old storm's entire retained slot array to
     // capture just 32 live indices. A balanced live-only tree keeps capture
@@ -47,23 +44,17 @@ internal sealed class ImageRelayout
         MarkdownViewLifetime lifetime,
         PublishedLayout published,
         LayoutCommitState layoutCommit,
-        LayoutCommitPublisher layoutPublisher,
-        MarkdownViewSurface surface,
-        PointerInputRouter pointerInput,
         ImageSubscriptions imageSubscriptions,
-        RasterPlacementPublisher rasterPlacement,
-        RecoveryClock recoveryClock)
+        RecoveryClock recoveryClock,
+        IMarkdownUiScheduler? scheduler)
     {
         _host = host;
         _lifetime = lifetime;
         _published = published;
         _layoutCommit = layoutCommit;
-        _layoutPublisher = layoutPublisher;
-        _surface = surface;
-        _pointerInput = pointerInput;
         _imageSubscriptions = imageSubscriptions;
-        _rasterPlacement = rasterPlacement;
         _recoveryClock = recoveryClock;
+        _scheduler = scheduler;
     }
 
     /// <summary>True while a relayout is queued, running or has pending block indices.</summary>
@@ -100,13 +91,13 @@ internal sealed class ImageRelayout
             _host.RequestFullRebuild();
             return;
         }
-        Microsoft.UI.Dispatching.DispatcherQueue? dispatcher = _host.DispatcherQueue;
+        IMarkdownUiScheduler? scheduler = _scheduler;
         var receiver = new WeakReference<ImageRelayout>(this);
         try
         {
             // The timer retains the pending set on rejection and can also
             // claim accepted-but-withheld dispatch. Neither callback keeps this owner alive.
-            dispatcher?.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            scheduler?.TryEnqueue(MarkdownUiPriority.Low,
                 () =>
                 {
                     if (receiver.TryGetTarget(out var relayout))
@@ -234,7 +225,7 @@ internal sealed class ImageRelayout
         // Keep the pending set and recovery route intact. Neither in-place
         // reflow nor private snapshot replacement may change geometry owned
         // by a live or not-yet-captured table/selection gesture.
-        if (_pointerInput.HasSnapshotInteraction)
+        if (_host.HasSnapshotInteraction)
             return;
 
         _queued = false;
@@ -247,8 +238,8 @@ internal sealed class ImageRelayout
                 _pending,
                 optedIn: session is not null);
             (int BlockIndex, double OffsetFromTop)? anchor = null;
-            if (_surface.Scroll is { VerticalOffset: > 0 } scroll &&
-                snapshot.TryCaptureScrollAnchor(scroll.VerticalOffset, out var captured) &&
+            if (_host.VerticalScrollOffset is { } scrollOffset and > 0 &&
+                snapshot.TryCaptureScrollAnchor(scrollOffset, out var captured) &&
                 captured.BlockIndex is { } blockIndex)
             {
                 anchor = (blockIndex, captured.OffsetFromTop);
@@ -266,11 +257,11 @@ internal sealed class ImageRelayout
             _cts = cancellation;
             _payload = payload;
             RasterPlacementInputs? rasterPlacement =
-                _rasterPlacement.TryCreateInputs(snapshot, optedIn: session is not null);
+                _host.TryCreateRasterPlacementInputs(snapshot, optedIn: session is not null);
             _task = ImageRelayoutWork.RunAsync(
-                payload, anchor, _published.Generation, cancellation, _host.DispatcherQueue,
+                payload, anchor, _published.Generation, cancellation, _scheduler,
                 receiver, session, rasterPlacement, snapshot.PointerInputEpoch,
-                _surface.Scroll?.VerticalOffset);
+                _host.VerticalScrollOffset);
             // The worker now owns only this immutable bounded index array.
             // Leave any storm remainder in the UI-owned pending set for the
             // normal completion/recovery route to schedule next.
@@ -364,7 +355,7 @@ internal sealed class ImageRelayout
                 }
                 else if (candidate is not null)
                 {
-                    if (_pointerInput.HasSnapshotInteraction)
+                    if (_host.HasSnapshotInteraction)
                     {
                         // A gesture may have started after the worker captured
                         // its source. Discard this private candidate and retry
@@ -372,7 +363,7 @@ internal sealed class ImageRelayout
                         // rebuild solely because the user is interacting.
                         _imageSubscriptions.AddBlockIndicesTo(_pending);
                     }
-                    else if (!_rasterPlacement.TryPublish(snapshot, candidate, generation))
+                    else if (!_host.TryPublishRasterPlacement(snapshot, candidate, generation))
                     {
                         // A changed width/policy/raster invalidates the private
                         // proof. Rebuild rather than mutate the old tree here.
@@ -381,8 +372,8 @@ internal sealed class ImageRelayout
                     }
                 }
                 else
-                    _layoutPublisher.Apply(snapshot, rootMeasureCommitted &&
-                        (canceled || capturedScrollOffset != _surface.Scroll?.VerticalOffset) ? null : anchor);
+                    _host.PublishRelayout(snapshot, rootMeasureCommitted &&
+                        (canceled || capturedScrollOffset != _host.VerticalScrollOffset) ? null : anchor);
             }
         }
         catch (Exception exception)
