@@ -33,6 +33,32 @@ internal sealed class ImageRelayoutWorkPayload<TSnapshot> where TSnapshot : clas
 
     internal float Width { get; }
 
+    /// <summary>
+    /// True until <see cref="ReleaseAfterWorkDrains"/> drops the strong snapshot
+    /// borrow. Closing the publication never clears it.
+    /// </summary>
+    internal bool HasSnapshot => Volatile.Read(ref _snapshot) is not null;
+
+    /// <summary>
+    /// True until <see cref="ReleaseAfterWorkDrains"/> drops the strong
+    /// dirty-index borrow. Closing the publication never clears it.
+    /// </summary>
+    internal bool HasChangedIndices => Volatile.Read(ref _changed) is not null;
+
+    /// <summary>
+    /// True once <see cref="DiscardPublication"/> has closed the publication
+    /// slot: the payload references no publication and rejects any later one.
+    /// </summary>
+    internal bool IsPublicationClosed =>
+        ReferenceEquals(Volatile.Read(ref _publication), ClosedPublication);
+
+    /// <summary>
+    /// True when <paramref name="publication"/> is the one publication this
+    /// payload registered and has not closed.
+    /// </summary>
+    internal bool OwnsPublication(WeakSnapshotPublication<TSnapshot> publication) =>
+        ReferenceEquals(Volatile.Read(ref _publication), publication);
+
     internal bool TryOwnPublication(WeakSnapshotPublication<TSnapshot> publication)
     {
         ArgumentNullException.ThrowIfNull(publication);

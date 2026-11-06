@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using MarkdownRenderer.Controls;
 using Xunit;
@@ -131,8 +130,8 @@ public sealed class ImageRelayoutPublicationRecoveryTests
         payload.PublishAfterWorkDrains();
 
         Assert.Equal(0, delivery.Count);
-        Assert.Null(GetPayloadField(payload, "_snapshot"));
-        Assert.Null(GetPayloadField(payload, "_changed"));
+        Assert.False(payload.HasSnapshot);
+        Assert.False(payload.HasChangedIndices);
     }
 
     [Fact]
@@ -155,8 +154,8 @@ public sealed class ImageRelayoutPublicationRecoveryTests
         payload.PublishAfterWorkDrains();
 
         Assert.Equal(0, delivery.Count);
-        Assert.Null(GetPayloadField(payload, "_snapshot"));
-        Assert.Null(GetPayloadField(payload, "_changed"));
+        Assert.False(payload.HasSnapshot);
+        Assert.False(payload.HasChangedIndices);
     }
 
     [Fact]
@@ -225,8 +224,8 @@ public sealed class ImageRelayoutPublicationRecoveryTests
             payload.PublishAfterWorkDrains();
 
             Assert.InRange(Volatile.Read(ref deliveries), 0, 1);
-            Assert.Null(GetPayloadField(payload, "_snapshot"));
-            Assert.Null(GetPayloadField(payload, "_changed"));
+            Assert.False(payload.HasSnapshot);
+            Assert.False(payload.HasChangedIndices);
         }
     }
 
@@ -235,8 +234,8 @@ public sealed class ImageRelayoutPublicationRecoveryTests
     {
         DrainedPayload retained = CreateDrainedPayload();
 
-        Assert.Null(GetPayloadField(retained.Payload, "_snapshot"));
-        Assert.Null(GetPayloadField(retained.Payload, "_changed"));
+        Assert.False(retained.Payload.HasSnapshot);
+        Assert.False(retained.Payload.HasChangedIndices);
         CollectUntilDead(retained.Snapshot);
         CollectUntilDead(retained.Changed);
 
@@ -267,17 +266,6 @@ public sealed class ImageRelayoutPublicationRecoveryTests
             delivery,
             new WeakReference<SnapshotGraph>(snapshot),
             new WeakReference<int[]>(changed));
-    }
-
-    private static object? GetPayloadField(
-        ImageRelayoutWorkPayload<SnapshotGraph> payload,
-        string fieldName)
-    {
-        FieldInfo field = typeof(ImageRelayoutWorkPayload<SnapshotGraph>).GetField(
-            fieldName,
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException($"Payload field '{fieldName}' was not found.");
-        return field.GetValue(payload);
     }
 
     private static void CollectUntilDead<T>(WeakReference<T> reference)

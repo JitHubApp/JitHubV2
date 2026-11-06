@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using MarkdownRenderer.Controls;
 using Xunit;
@@ -128,7 +127,7 @@ public sealed class WeakSnapshotPublicationTests
         harness.Payload.DiscardPublication();
         harness.Payload.DiscardPublication();
         AssertPublicationClosedAndDetached(harness.Payload);
-        Assert.Null(GetPublicationField(harness.Publication, "_delivery"));
+        Assert.True(harness.Publication.IsClaimed);
 
         queuedCallback();
         Assert.Equal(0, harness.Observation.Count);
@@ -141,8 +140,8 @@ public sealed class WeakSnapshotPublicationTests
         Assert.True(IsAlive(harness.Changed));
         Assert.Equal(SnapshotGraph.ExpectedId, harness.Payload.Snapshot.Id);
         Assert.Equal(SnapshotGraph.ExpectedChangedBlockIndex, harness.Payload.Changed[0]);
-        Assert.NotNull(GetPayloadField(harness.Payload, "_snapshot"));
-        Assert.NotNull(GetPayloadField(harness.Payload, "_changed"));
+        Assert.True(harness.Payload.HasSnapshot);
+        Assert.True(harness.Payload.HasChangedIndices);
 
         harness.Payload.ReleaseAfterWorkDrains();
         AssertPayloadGraphAliasesCleared(harness.Payload);
@@ -163,7 +162,7 @@ public sealed class WeakSnapshotPublicationTests
         harness.Payload.DiscardPublication();
         AssertPublicationClosedAndDetached(harness.Payload);
         Assert.False(harness.Payload.TryOwnPublication(harness.Publication));
-        Assert.Null(GetPublicationField(harness.Publication, "_delivery"));
+        Assert.True(harness.Publication.IsClaimed);
         harness.Callback();
 
         Assert.Equal(0, harness.Observation.Count);
@@ -175,8 +174,8 @@ public sealed class WeakSnapshotPublicationTests
         Assert.True(IsAlive(harness.Changed));
         Assert.Equal(SnapshotGraph.ExpectedId, harness.Payload.Snapshot.Id);
         Assert.Equal(SnapshotGraph.ExpectedChangedBlockIndex, harness.Payload.Changed[0]);
-        Assert.NotNull(GetPayloadField(harness.Payload, "_snapshot"));
-        Assert.NotNull(GetPayloadField(harness.Payload, "_changed"));
+        Assert.True(harness.Payload.HasSnapshot);
+        Assert.True(harness.Payload.HasChangedIndices);
 
         harness.Payload.ReleaseAfterWorkDrains();
         AssertPayloadGraphAliasesCleared(harness.Payload);
@@ -215,7 +214,7 @@ public sealed class WeakSnapshotPublicationTests
             _ = await registration;
 
             AssertPublicationClosedAndDetached(payload);
-            Assert.Null(GetPublicationField(publication, "_delivery"));
+            Assert.True(publication.IsClaimed);
             harness.Callback();
             Assert.Equal(0, harness.Observation.Count);
             CollectUntilDead(harness.Receiver);
@@ -251,7 +250,7 @@ public sealed class WeakSnapshotPublicationTests
 
         old.Payload.DiscardPublication();
         AssertPublicationClosedAndDetached(old.Payload);
-        Assert.Null(GetPublicationField(old.Publication, "_delivery"));
+        Assert.True(old.Publication.IsClaimed);
         old.Callback();
         current.Callback();
 
@@ -301,8 +300,8 @@ public sealed class WeakSnapshotPublicationTests
         Assert.True(owner.Payload.TryOwnPublication(owner.Publication));
 
         Assert.False(owner.Payload.TryOwnPublication(second.Publication));
-        Assert.Same(owner.Publication, GetPayloadField(owner.Payload, "_publication"));
-        Assert.Null(GetPublicationField(second.Publication, "_delivery"));
+        Assert.True(owner.Payload.OwnsPublication(owner.Publication));
+        Assert.True(second.Publication.IsClaimed);
         second.Callback();
         Assert.Equal(0, second.Observation.Count);
         CollectUntilDead(second.Receiver);
@@ -381,8 +380,8 @@ public sealed class WeakSnapshotPublicationTests
             Assert.False(IsAlive(harness.Sentinel));
             Assert.True(IsAlive(harness.Graph));
             Assert.True(IsAlive(harness.Changed));
-            Assert.NotNull(GetPayloadField(harness.Payload, "_snapshot"));
-            Assert.NotNull(GetPayloadField(harness.Payload, "_changed"));
+            Assert.True(harness.Payload.HasSnapshot);
+            Assert.True(harness.Payload.HasChangedIndices);
 
             retirement = CancellationTokenSourceRetirement.CancelAndDisposeAfter(
                 source,
@@ -462,8 +461,8 @@ public sealed class WeakSnapshotPublicationTests
         ImageRelayoutWorkPayload<SnapshotGraph> retainedPayload =
             workObservation.ReleasedPayload ?? throw new InvalidOperationException(
                 "The drained payload was not retained for inspection.");
-        Assert.Null(GetPayloadField(retainedPayload, "_snapshot"));
-        Assert.Null(GetPayloadField(retainedPayload, "_changed"));
+        Assert.False(retainedPayload.HasSnapshot);
+        Assert.False(retainedPayload.HasChangedIndices);
 
         CollectUntilDead(graph);
         CollectUntilDead(changed);
@@ -688,43 +687,18 @@ public sealed class WeakSnapshotPublicationTests
         DeliveryProbe delivery) =>
         new(payload.Snapshot, delivery.Deliver);
 
-    private static object? GetPayloadField(
-        ImageRelayoutWorkPayload<SnapshotGraph> payload,
-        string fieldName)
-    {
-        FieldInfo field = typeof(ImageRelayoutWorkPayload<SnapshotGraph>).GetField(
-            fieldName,
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException($"Payload field '{fieldName}' was not found.");
-        return field.GetValue(payload);
-    }
-
-    private static object? GetPublicationField(
-        WeakSnapshotPublication<SnapshotGraph> publication,
-        string fieldName)
-    {
-        FieldInfo field = typeof(WeakSnapshotPublication<SnapshotGraph>).GetField(
-            fieldName,
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException($"Publication field '{fieldName}' was not found.");
-        return field.GetValue(publication);
-    }
-
     private static void AssertPublicationClosedAndDetached(
         ImageRelayoutWorkPayload<SnapshotGraph> payload)
     {
-        FieldInfo closedMarkerField = typeof(ImageRelayoutWorkPayload<SnapshotGraph>).GetField(
-            "ClosedPublication",
-            BindingFlags.Static | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("The closed publication marker was not found.");
-        Assert.Same(closedMarkerField.GetValue(null), GetPayloadField(payload, "_publication"));
+        // The closed slot holds only the terminal marker, never a publication.
+        Assert.True(payload.IsPublicationClosed);
     }
 
     private static void AssertPayloadGraphAliasesCleared(
         ImageRelayoutWorkPayload<SnapshotGraph> payload)
     {
-        Assert.Null(GetPayloadField(payload, "_snapshot"));
-        Assert.Null(GetPayloadField(payload, "_changed"));
+        Assert.False(payload.HasSnapshot);
+        Assert.False(payload.HasChangedIndices);
     }
 
     private static void CollectUntilDead<T>(WeakReference<T> reference)
