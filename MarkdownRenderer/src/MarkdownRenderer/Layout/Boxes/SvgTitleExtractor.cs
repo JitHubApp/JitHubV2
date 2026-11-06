@@ -86,19 +86,7 @@ internal static class SvgTitleExtractor
                 break;
             }
             sb.Append(text, i, lt - i);
-            // Detect <containerName ...> opening of a hidden container.
-            int hidden = -1;
-            for (int k = 0; k < HiddenContainers.Length; k++)
-            {
-                var name = HiddenContainers[k];
-                if (lt + 1 + name.Length < text.Length
-                    && string.Compare(text, lt + 1, name, 0, name.Length, StringComparison.OrdinalIgnoreCase) == 0)
-                {
-                    char nx = text[lt + 1 + name.Length];
-                    if (nx == ' ' || nx == '\t' || nx == '\r' || nx == '\n' || nx == '>' || nx == '/')
-                    { hidden = k; break; }
-                }
-            }
+            int hidden = FindHiddenContainerAt(text, lt);
             if (hidden < 0)
             {
                 sb.Append('<');
@@ -106,11 +94,10 @@ internal static class SvgTitleExtractor
                 continue;
             }
             // Skip the entire subtree (handles nested same-name containers).
-            string n = HiddenContainers[hidden];
             int openTagEnd = text.IndexOf('>', lt);
             if (openTagEnd < 0) { i = text.Length; break; }
             // Self-closing initial container (e.g. <defs/>) has no children
-            // to skip — advance past the tag and continue scanning at the
+            // to skip â€” advance past the tag and continue scanning at the
             // sibling level so a following root <title>/<desc> is still
             // visible.
             if (openTagEnd > 0 && text[openTagEnd - 1] == '/')
@@ -118,41 +105,66 @@ internal static class SvgTitleExtractor
                 i = openTagEnd + 1;
                 continue;
             }
-            int depth = 1;
-            int j = openTagEnd + 1;
-            while (j < text.Length && depth > 0)
+            i = SkipHiddenSubtree(text, openTagEnd + 1, HiddenContainers[hidden]);
+        }
+        return sb.ToString();
+    }
+
+    // Detects the opening of a hidden container, <containerName ...>, at the
+    // '<' at <paramref name="lt"/>. Returns its index in HiddenContainers.
+    private static int FindHiddenContainerAt(string text, int lt)
+    {
+        for (int k = 0; k < HiddenContainers.Length; k++)
+        {
+            var name = HiddenContainers[k];
+            if (lt + 1 + name.Length < text.Length
+                && string.Compare(text, lt + 1, name, 0, name.Length, StringComparison.OrdinalIgnoreCase) == 0)
             {
-                int next = text.IndexOf('<', j);
-                if (next < 0) { j = text.Length; break; }
-                if (next + 1 < text.Length && text[next + 1] == '/'
-                    && next + 2 + n.Length <= text.Length
-                    && string.Compare(text, next + 2, n, 0, n.Length, StringComparison.OrdinalIgnoreCase) == 0)
+                char nx = text[lt + 1 + name.Length];
+                if (nx == ' ' || nx == '\t' || nx == '\r' || nx == '\n' || nx == '>' || nx == '/')
+                    return k;
+            }
+        }
+        return -1;
+    }
+
+    // Returns the offset just past the close tag that balances an already
+    // opened container <paramref name="n"/>, counting nested same-name
+    // containers, or the text length when the subtree is unterminated.
+    private static int SkipHiddenSubtree(string text, int j, string n)
+    {
+        int depth = 1;
+        while (j < text.Length && depth > 0)
+        {
+            int next = text.IndexOf('<', j);
+            if (next < 0) { j = text.Length; break; }
+            if (next + 1 < text.Length && text[next + 1] == '/'
+                && next + 2 + n.Length <= text.Length
+                && string.Compare(text, next + 2, n, 0, n.Length, StringComparison.OrdinalIgnoreCase) == 0)
+            {
+                depth--;
+                int gt = text.IndexOf('>', next);
+                if (gt < 0) { j = text.Length; break; }
+                j = gt + 1;
+                if (depth == 0) break;
+            }
+            else if (next + 1 + n.Length <= text.Length
+                && string.Compare(text, next + 1, n, 0, n.Length, StringComparison.OrdinalIgnoreCase) == 0)
+            {
+                char nx = text[next + 1 + n.Length];
+                if (nx == ' ' || nx == '\t' || nx == '\r' || nx == '\n' || nx == '>' || nx == '/')
                 {
-                    depth--;
+                    // Self-closing? <defs ... />
                     int gt = text.IndexOf('>', next);
                     if (gt < 0) { j = text.Length; break; }
+                    if (gt > 0 && text[gt - 1] != '/') depth++;
                     j = gt + 1;
-                    if (depth == 0) break;
-                }
-                else if (next + 1 + n.Length <= text.Length
-                    && string.Compare(text, next + 1, n, 0, n.Length, StringComparison.OrdinalIgnoreCase) == 0)
-                {
-                    char nx = text[next + 1 + n.Length];
-                    if (nx == ' ' || nx == '\t' || nx == '\r' || nx == '\n' || nx == '>' || nx == '/')
-                    {
-                        // Self-closing? <defs ... />
-                        int gt = text.IndexOf('>', next);
-                        if (gt < 0) { j = text.Length; break; }
-                        if (gt > 0 && text[gt - 1] != '/') depth++;
-                        j = gt + 1;
-                    }
-                    else j = next + 1;
                 }
                 else j = next + 1;
             }
-            i = j;
+            else j = next + 1;
         }
-        return sb.ToString();
+        return j;
     }
 
     private static string? MatchOrNull(string text, Regex rx)

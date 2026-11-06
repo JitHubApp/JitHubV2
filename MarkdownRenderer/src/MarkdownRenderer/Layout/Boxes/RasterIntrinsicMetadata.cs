@@ -344,26 +344,14 @@ internal readonly struct RasterIntrinsicMetadata(int Width, int Height) : IEquat
         ref int orientationCount,
         ref int orientation)
     {
-        if (depth >= MaxTiffIfdDepth || offset < 0 || offset > data.Length - 2 ||
-            visitedCount >= visitedOffsets.Length)
-        {
+        if (!TryVisitIfd(data.Length, offset, depth, visitedOffsets, ref visitedCount))
             return false;
-        }
-        for (int i = 0; i < visitedCount; i++)
-        {
-            if (visitedOffsets[i] == offset)
-                return false;
-        }
-        visitedOffsets[visitedCount++] = offset;
 
         int entryCount = ReadUInt16(data, offset, littleEndian);
         int entriesStart = offset + 2;
         int entriesBytes;
         int nextOffsetPosition;
-        bool hasThumbnailOffset = false;
-        bool hasThumbnailLength = false;
-        uint thumbnailOffset = 0;
-        uint thumbnailLength = 0;
+        TiffThumbnailTags thumbnail = default;
         try
         {
             entriesBytes = checked(entryCount * 12);
@@ -379,72 +367,17 @@ internal readonly struct RasterIntrinsicMetadata(int Width, int Height) : IEquat
         for (int i = 0; i < entryCount; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            int entry = entriesStart + i * 12;
-            ushort tag = ReadUInt16(data, entry, littleEndian);
-            ushort type = ReadUInt16(data, entry + 2, littleEndian);
-            uint count = ReadUInt32(data, entry + 4, littleEndian);
-            if (!TryGetTiffTypeWidth(type, out int typeWidth) || count == 0)
+            if (!ValidateIfdEntry(data, entriesStart + i * 12, littleEndian, depth, cancellationToken,
+                    visitedOffsets, ref visitedCount, ref orientationCount, ref orientation, ref thumbnail))
+            {
                 return false;
-
-            ulong valueBytes = (ulong)count * (uint)typeWidth;
-            if (valueBytes > int.MaxValue)
-                return false;
-            if (valueBytes > 4)
-            {
-                uint valueOffset = ReadUInt32(data, entry + 8, littleEndian);
-                if (valueOffset > int.MaxValue || valueOffset > (uint)data.Length ||
-                    valueBytes > (ulong)data.Length - valueOffset)
-                {
-                    return false;
-                }
-            }
-
-            if (tag == 0x0112)
-            {
-                orientationCount++;
-                if (depth != 0 || orientationCount != 1 || type != 3 || count != 1)
-                    return false;
-                int value = ReadUInt16(data, entry + 8, littleEndian);
-                if (value is < 1 or > 8)
-                    return false;
-                orientation = value;
-            }
-            else if (IsIfdPointerTag(tag))
-            {
-                if (type is not (4 or 13) || count != 1)
-                    return false;
-                uint childOffsetValue = ReadUInt32(data, entry + 8, littleEndian);
-                if (childOffsetValue != 0)
-                {
-                    if (childOffsetValue > int.MaxValue ||
-                        !ValidateIfd(data, (int)childOffsetValue, littleEndian, depth + 1,
-                            cancellationToken,
-                            visitedOffsets, ref visitedCount, ref orientationCount, ref orientation))
-                    {
-                        return false;
-                    }
-                }
-            }
-            else if (tag == 0x0201)
-            {
-                if (type != 4 || count != 1)
-                    return false;
-                hasThumbnailOffset = true;
-                thumbnailOffset = ReadUInt32(data, entry + 8, littleEndian);
-            }
-            else if (tag == 0x0202)
-            {
-                if (type != 4 || count != 1)
-                    return false;
-                hasThumbnailLength = true;
-                thumbnailLength = ReadUInt32(data, entry + 8, littleEndian);
             }
         }
 
-        if (hasThumbnailOffset != hasThumbnailLength ||
-            (hasThumbnailOffset &&
-             (thumbnailOffset > (uint)data.Length ||
-              thumbnailLength > (ulong)data.Length - thumbnailOffset)))
+        if (thumbnail.HasOffset != thumbnail.HasLength ||
+            (thumbnail.HasOffset &&
+             (thumbnail.Offset > (uint)data.Length ||
+              thumbnail.Length > (ulong)data.Length - thumbnail.Offset)))
         {
             return false;
         }
@@ -460,6 +393,115 @@ internal readonly struct RasterIntrinsicMetadata(int Width, int Height) : IEquat
             }
         }
         return true;
+    }
+
+    // Rejects an IFD beyond the depth limit, outside the data, or already
+    // visited, and records it as visited otherwise.
+    private static bool TryVisitIfd(
+        int dataLength,
+        int offset,
+        int depth,
+        Span<int> visitedOffsets,
+        ref int visitedCount)
+    {
+        if (depth >= MaxTiffIfdDepth || offset < 0 || offset > dataLength - 2 ||
+            visitedCount >= visitedOffsets.Length)
+        {
+            return false;
+        }
+        for (int i = 0; i < visitedCount; i++)
+        {
+            if (visitedOffsets[i] == offset)
+                return false;
+        }
+        visitedOffsets[visitedCount++] = offset;
+        return true;
+    }
+
+    // Validates one 12-byte IFD entry: its value range, the orientation tag,
+    // child IFD pointers (recursively) and the JPEG thumbnail tags.
+    private static bool ValidateIfdEntry(
+        ReadOnlySpan<byte> data,
+        int entry,
+        bool littleEndian,
+        int depth,
+        CancellationToken cancellationToken,
+        Span<int> visitedOffsets,
+        ref int visitedCount,
+        ref int orientationCount,
+        ref int orientation,
+        ref TiffThumbnailTags thumbnail)
+    {
+        ushort tag = ReadUInt16(data, entry, littleEndian);
+        ushort type = ReadUInt16(data, entry + 2, littleEndian);
+        uint count = ReadUInt32(data, entry + 4, littleEndian);
+        if (!TryGetTiffTypeWidth(type, out int typeWidth) || count == 0)
+            return false;
+
+        ulong valueBytes = (ulong)count * (uint)typeWidth;
+        if (valueBytes > int.MaxValue)
+            return false;
+        if (valueBytes > 4)
+        {
+            uint valueOffset = ReadUInt32(data, entry + 8, littleEndian);
+            if (valueOffset > int.MaxValue || valueOffset > (uint)data.Length ||
+                valueBytes > (ulong)data.Length - valueOffset)
+            {
+                return false;
+            }
+        }
+
+        if (tag == 0x0112)
+        {
+            orientationCount++;
+            if (depth != 0 || orientationCount != 1 || type != 3 || count != 1)
+                return false;
+            int value = ReadUInt16(data, entry + 8, littleEndian);
+            if (value is < 1 or > 8)
+                return false;
+            orientation = value;
+        }
+        else if (IsIfdPointerTag(tag))
+        {
+            if (type is not (4 or 13) || count != 1)
+                return false;
+            uint childOffsetValue = ReadUInt32(data, entry + 8, littleEndian);
+            if (childOffsetValue != 0)
+            {
+                if (childOffsetValue > int.MaxValue ||
+                    !ValidateIfd(data, (int)childOffsetValue, littleEndian, depth + 1,
+                        cancellationToken,
+                        visitedOffsets, ref visitedCount, ref orientationCount, ref orientation))
+                {
+                    return false;
+                }
+            }
+        }
+        else if (tag == 0x0201)
+        {
+            if (type != 4 || count != 1)
+                return false;
+            thumbnail.HasOffset = true;
+            thumbnail.Offset = ReadUInt32(data, entry + 8, littleEndian);
+        }
+        else if (tag == 0x0202)
+        {
+            if (type != 4 || count != 1)
+                return false;
+            thumbnail.HasLength = true;
+            thumbnail.Length = ReadUInt32(data, entry + 8, littleEndian);
+        }
+        return true;
+    }
+
+    // The JPEG interchange-format thumbnail tags seen in one IFD; both or
+    // neither must be present, and together they must stay inside the data.
+    private struct TiffThumbnailTags
+    {
+        internal bool HasOffset;
+        internal bool HasLength;
+        internal uint Offset;
+        internal uint Length;
     }
 
     private static bool TryGetTiffTypeWidth(ushort type, out int width)
