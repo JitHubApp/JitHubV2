@@ -140,36 +140,8 @@ public sealed class MarkdownHostResourceContractTests
         // to the copy button need a live XAML runtime to observe.
     }
 
-    [Fact]
-    public void App_ReferencesEveryShippingRendererFeatureAndShipsItsNotices()
-    {
-        // Which features the shared runtime composes, and how the viewer and shell
-        // borrow it, is wired in code that needs the renderer feature packs and a
-        // live XAML runtime; see the PR notes for how that is verified.
-        string root = FindRepositoryRoot();
-        string project = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "JitHub.WinUI.csproj"));
-
-        foreach (string projectName in new[]
-        {
-            "MarkdownRenderer",
-            "MarkdownRenderer.Math",
-            "MarkdownRenderer.Mermaid",
-            "MarkdownRenderer.Svg.Resvg",
-            "MarkdownRenderer.SyntaxHighlighting.TextMate",
-            "MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common",
-        })
-        {
-            Assert.Contains(projectName + "\\" + projectName + ".csproj", project, StringComparison.Ordinal);
-        }
-
-        Assert.Contains("THIRD-PARTY-NOTICES.md", project, StringComparison.Ordinal);
-        Assert.Contains("MPL2-SOURCE.md", project, StringComparison.Ordinal);
-        Assert.Contains("NATIVE_RUST_DEPENDENCIES.json", project, StringComparison.Ordinal);
-        Assert.Contains("Microsoft.Web.WebView2\\LICENSE.txt", project, StringComparison.Ordinal);
-        Assert.Contains("Microsoft.Web.WebView2\\NOTICE.txt", project, StringComparison.Ordinal);
-        Assert.Contains("Microsoft.WindowsAppSDK\\Base-LICENSE.txt", project, StringComparison.Ordinal);
-        Assert.Contains("Microsoft.WindowsAppSDK\\WinUI-NOTICE.txt", project, StringComparison.Ordinal);
-    }
+    // The app's renderer feature references and published notices are checked on
+    // the evaluated project by AppRendererPackagingTests.
 
     [Fact]
     public void MarkdownViewer_CodeBackgroundsResolveThroughHighContrastAwareThemeTokens()

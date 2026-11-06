@@ -42,9 +42,8 @@ public sealed class NativeAotSourceContractTests
         Assert.Contains("<CsWinRTAotWarningLevel>2</CsWinRTAotWarningLevel>", project, StringComparison.Ordinal);
         Assert.Contains("CsWinRT1032", directoryProps, StringComparison.Ordinal);
         Assert.Contains("<RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>", project, StringComparison.Ordinal);
-        Assert.Contains("MarkdownRenderer.Math\\MarkdownRenderer.Math.csproj", project, StringComparison.Ordinal);
-        Assert.Contains("MarkdownRenderer.Mermaid\\MarkdownRenderer.Mermaid.csproj", project, StringComparison.Ordinal);
-        Assert.Contains("MarkdownRenderer.Svg.Resvg\\MarkdownRenderer.Svg.Resvg.csproj", project, StringComparison.Ordinal);
+        // The renderer feature references are checked on the evaluated project by
+        // AppRendererPackagingTests.App_ReferencesEveryShippingRendererFeature.
         Assert.Contains("JitHub.WinUI (AotDebug)", launchSettings, StringComparison.Ordinal);
         Assert.Contains("\"nativeDebugging\": true", launchSettings, StringComparison.Ordinal);
     }
@@ -64,8 +63,9 @@ public sealed class NativeAotSourceContractTests
         string verifier = File.ReadAllText(Path.Combine(root, "eng", "Verify-NativeAotArtifact.ps1"));
         string graph = project + Environment.NewLine + ledger;
 
+        // Resvg replaces Svg.Skia; the app's reference to it is checked on the
+        // evaluated project by AppRendererPackagingTests.
         Assert.Contains("WinUIEdit" + "\" Version=\"0.0.5-prerelease", project, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("MarkdownRenderer.Svg.Resvg\\MarkdownRenderer.Svg.Resvg.csproj", project, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Microsoft.Services.Store.Engagement\" Version=\"10.2307.3001", project, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("'$(RuntimeIdentifier)' == 'win-arm64'", project, StringComparison.Ordinal);
 
@@ -288,7 +288,6 @@ public sealed class NativeAotSourceContractTests
             "Markdown",
             "JitHubMarkdownRuntime.cs"));
         string window = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "MainWindow.xaml.cs"));
-        string project = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "JitHub.WinUI.csproj"));
 
         Assert.Contains("32L * 1024 * 1024", cache, StringComparison.Ordinal);
         Assert.Contains("64L * 1024 * 1024", cache, StringComparison.Ordinal);
@@ -296,7 +295,6 @@ public sealed class NativeAotSourceContractTests
         Assert.Contains("AppMemoryUsageIncreased += OnAppMemoryUsageIncreased", cache, StringComparison.Ordinal);
         Assert.Contains("Cache.Trim();", cache, StringComparison.Ordinal);
         Assert.Contains("RepositorySvgGpuCache.Shutdown();", runtime, StringComparison.Ordinal);
-        Assert.Contains("RUST-DEPENDENCY-LICENSES.txt", project, StringComparison.Ordinal);
 
         int drain = window.IndexOf("private async Task DrainDiagnosticsAndCloseAsync()", StringComparison.Ordinal);
         int unloadViews = window.IndexOf("await UnloadPageContentBeforeMarkdownShutdownAsync();", drain, StringComparison.Ordinal);
