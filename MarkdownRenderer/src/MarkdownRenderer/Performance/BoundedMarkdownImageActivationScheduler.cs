@@ -12,6 +12,14 @@ namespace MarkdownRenderer.Performance;
 /// membership is mutable only under <see cref="_gate"/>; the borrowed demand
 /// only communicates monotonic priority and an asynchronous promotion signal.
 /// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because admission, promotion, the
+/// worker loop and disposal all move activations between the visible,
+/// overscan and visible-waiter queues and update their counts under that one
+/// gate. Splitting them would spread the queue invariants (arrival order,
+/// capacity, the visible-before-overscan ratio) across types that must still
+/// share the lock.
+/// </remarks>
 internal sealed class BoundedMarkdownImageActivationScheduler : IMarkdownImageActivationHost, IDisposable
 {
     internal const int DefaultCapacity = 32;

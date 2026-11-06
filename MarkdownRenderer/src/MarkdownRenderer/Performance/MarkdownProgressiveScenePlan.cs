@@ -29,6 +29,12 @@ namespace MarkdownRenderer.Performance;
 /// graphs, and <see cref="DeferredSceneResultStore"/> and
 /// <see cref="DeferredSceneDiagnostics"/> hold what was published. They reach
 /// back only through the host interfaces the plan implements explicitly.
+/// <para>
+/// This file is longer than 500 lines because those host interface members,
+/// scheduling, generation advance and retirement all read and write the
+/// plan's gated state: the active producer table, the generation and its
+/// cancellation, and the visible set.
+/// </para>
 /// </remarks>
 internal sealed class MarkdownProgressiveScenePlan :
     IScenePublicationTarget,

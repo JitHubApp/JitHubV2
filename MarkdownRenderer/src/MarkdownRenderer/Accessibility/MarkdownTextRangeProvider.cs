@@ -16,8 +16,19 @@ namespace MarkdownRenderer.Accessibility;
 /// generation it was created for.
 /// </summary>
 /// <remarks>
+/// <para>
 /// <c>partial</c> is required by the CsWinRT AOT generator (CsWinRT1028), which
 /// emits the WinRT vtable for this <see cref="ITextRangeProvider"/> implementation.
+/// </para>
+/// <para>
+/// This file is longer than 500 lines because it implements the whole
+/// <see cref="ITextRangeProvider"/> contract, which UIA calls on this one range
+/// object, and every member checks the range's document generation and moves
+/// the same two endpoints. Unit boundaries come from
+/// <see cref="MarkdownTextUnitNavigation"/>, format runs from
+/// <see cref="MarkdownTextFormatRunSearch"/> and attribute values from
+/// <see cref="MarkdownTextAttributeValues"/>.
+/// </para>
 /// </remarks>
 internal sealed partial class MarkdownTextRangeProvider : ITextRangeProvider
 {
