@@ -70,8 +70,8 @@ internal sealed class FocusableItemsPublication
     /// clock, a rebuild, or a newer request.
     /// </summary>
     /// <remarks>
-    /// Kept as one ordered fence sequence: the pre-lease targeting reassigns the
-    /// request and captures the generations and revision every later check compares.
+    /// The pre-lease targeting reassigns the request and captures the
+    /// generations and revision every later check compares.
     /// </remarks>
     internal bool TryPublishPending()
     {
@@ -100,6 +100,60 @@ internal sealed class FocusableItemsPublication
             request = _refresh.Pending;
         }
 
+        if (!IsSnapshotUsable(snapshot, request))
+            return false;
+
+        long revisionBefore = snapshot.LayoutRevision;
+        if (request.LayoutRevision != revisionBefore)
+        {
+            _refresh.Retarget(generation, automationGeneration, revisionBefore, request.RequestVersion);
+            request = _refresh.Pending;
+        }
+
+        if (!TryCollectUnderLease(
+                snapshot,
+                revisionBefore,
+                out bool collectedSuccessfully,
+                out IReadOnlyList<Layout.FocusableItem> collected,
+                out long revisionUnderLease,
+                out Exception? captureFailure))
+        {
+            return false;
+        }
+
+        if (!_refresh.IsCurrent(request, snapshot, generation, automationGeneration))
+            return false;
+
+        if (captureFailure is not null)
+            RelayoutDiagnostics.ReportFailure("focus plan refresh", captureFailure);
+
+        // Diagnostics can reenter the dispatcher/control. Do not let a failed
+        // older attempt clear or rebuild over a newer availability request.
+        if (!_refresh.IsCurrent(request, snapshot, generation, automationGeneration))
+            return false;
+
+        if (!collectedSuccessfully)
+        {
+            RecoverFailedCollection(request, snapshot, generation, automationGeneration, revisionBefore);
+            return false;
+        }
+
+        if (RetargetIfChangedDuringCollection(
+                request, snapshot, generation, automationGeneration, revisionBefore, revisionUnderLease))
+            return false;
+
+        _focus.ReplaceItems(collected);
+        _refresh.Clear(request.RequestVersion);
+        _host.InvalidateAutomationLayout();
+        return true;
+    }
+
+    /// <summary>
+    /// False, after clearing <paramref name="request"/>, when the snapshot is
+    /// retiring or needs geometry recovery, which is requested first.
+    /// </summary>
+    private bool IsSnapshotUsable(LayoutSnapshot snapshot, FocusableItemsRefreshTicket request)
+    {
         if (snapshot.IsRetiringOrDisposed)
         {
             _refresh.Clear(request.RequestVersion);
@@ -111,21 +165,30 @@ internal sealed class FocusableItemsPublication
             _refresh.Clear(request.RequestVersion);
             return false;
         }
+        return true;
+    }
 
-        long revisionBefore = snapshot.LayoutRevision;
-        if (request.LayoutRevision != revisionBefore)
-        {
-            _refresh.Retarget(generation, automationGeneration, revisionBefore, request.RequestVersion);
-            request = _refresh.Pending;
-        }
-
+    /// <summary>
+    /// Collects the focusable items under the snapshot's read lease when the
+    /// layout revision is still <paramref name="revisionBefore"/>. False when
+    /// the lease is busy. A failure is returned, not reported, so diagnostics
+    /// run only after the lease has ended.
+    /// </summary>
+    private static bool TryCollectUnderLease(
+        LayoutSnapshot snapshot,
+        long revisionBefore,
+        out bool collectedSuccessfully,
+        out IReadOnlyList<Layout.FocusableItem> collected,
+        out long revisionUnderLease,
+        out Exception? captureFailure)
+    {
+        collected = Array.Empty<Layout.FocusableItem>();
+        revisionUnderLease = -1;
+        collectedSuccessfully = false;
+        captureFailure = null;
         if (!snapshot.TryBeginInteraction())
             return false;
 
-        IReadOnlyList<Layout.FocusableItem> collected = Array.Empty<Layout.FocusableItem>();
-        long revisionUnderLease = -1;
-        bool collectedSuccessfully = false;
-        Exception? captureFailure = null;
         try
         {
             if (snapshot.LayoutRevision == revisionBefore &&
@@ -147,43 +210,6 @@ internal sealed class FocusableItemsPublication
         {
             snapshot.EndInteraction();
         }
-
-        if (!_refresh.IsCurrent(
-                request,
-                snapshot,
-                generation,
-                automationGeneration))
-        {
-            return false;
-        }
-
-        if (captureFailure is not null)
-            RelayoutDiagnostics.ReportFailure("focus plan refresh", captureFailure);
-
-        // Diagnostics can reenter the dispatcher/control. Do not let a failed
-        // older attempt clear or rebuild over a newer availability request.
-        if (!_refresh.IsCurrent(
-                request,
-                snapshot,
-                generation,
-                automationGeneration))
-        {
-            return false;
-        }
-
-        if (!collectedSuccessfully)
-        {
-            RecoverFailedCollection(request, snapshot, generation, automationGeneration, revisionBefore);
-            return false;
-        }
-
-        if (RetargetIfChangedDuringCollection(
-                request, snapshot, generation, automationGeneration, revisionBefore, revisionUnderLease))
-            return false;
-
-        _focus.ReplaceItems(collected);
-        _refresh.Clear(request.RequestVersion);
-        _host.InvalidateAutomationLayout();
         return true;
     }
 
