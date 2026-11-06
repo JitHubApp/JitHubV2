@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Xunit;
@@ -60,7 +62,6 @@ public sealed class NativeAotSourceContractTests
         string root = FindRepositoryRoot();
         string project = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "JitHub.WinUI.csproj"));
         string ledger = File.ReadAllText(Path.Combine(root, "eng", "native-aot-dependencies.json"));
-        string verifier = File.ReadAllText(Path.Combine(root, "eng", "Verify-NativeAotArtifact.ps1"));
         string graph = project + Environment.NewLine + ledger;
 
         // Resvg replaces Svg.Skia; the app's reference to it is checked on the
@@ -83,7 +84,20 @@ public sealed class NativeAotSourceContractTests
             Assert.DoesNotContain(removedPackage, graph, StringComparison.OrdinalIgnoreCase);
         }
 
-        Assert.DoesNotContain("libHarfBuzzSharp.dll", verifier, StringComparison.OrdinalIgnoreCase);
+        // That the artifact verifier no longer requires the SkiaSharp natives
+        // (libHarfBuzzSharp.dll) is covered by NativeAotArtifactVerifier_PassesItsSelfTests:
+        // its baseline layout has only the reviewed natives and must be accepted.
+    }
+
+    [Fact]
+    [Trait("Category", "ReleaseSecurity")]
+    public void NativeAotArtifactVerifier_PassesItsSelfTests()
+    {
+        // The self-tests accept a layout of exactly the required natives and
+        // reject hidden CoreCLR, hidden host metadata and reparse points.
+        // Windows PowerShell, as the release gate in JitHub.WinUI.csproj runs scripts.
+        string root = FindRepositoryRoot();
+        RunPowerShell(Path.Combine(root, "eng", "tests", "Verify-NativeAotArtifact.Tests.ps1"));
     }
 
     [Fact]
@@ -92,12 +106,26 @@ public sealed class NativeAotSourceContractTests
     {
         string root = FindRepositoryRoot();
         string restoreScript = File.ReadAllText(Path.Combine(root, "eng", "Restore-NativeAot.ps1"));
-        string nativeAotProps = File.ReadAllText(Path.Combine(root, "eng", "NativeAot.props"));
 
         Assert.Contains("$arguments += '--locked-mode'", restoreScript, StringComparison.Ordinal);
         Assert.Contains("$arguments += '--force'", restoreScript, StringComparison.Ordinal);
-        Assert.DoesNotContain("'-p:PublishAot=true'", restoreScript, StringComparison.Ordinal);
-        Assert.Contains("<PublishAot>true</PublishAot>", nativeAotProps, StringComparison.Ordinal);
+
+        // NativeAot.props turns PublishAot on at the app root (checked above).
+        // Passed as a restore global property instead, it would flow into every
+        // project reference and add the ILCompiler packs to their locks, so the
+        // locked restore above would fail. The committed locks show the result:
+        // only the app's graph carries the AOT compiler.
+        using JsonDocument appLock = ReadLockFile(Path.Combine(root, "JitHub.WinUI", "packages.lock.json"));
+        Assert.True(LockedPackageNames(appLock).Any(IsAotCompilerPackage), "The app lock must record the Native AOT compiler.");
+
+        string[] projectReferences = LockedProjectNames(appLock);
+        Assert.NotEmpty(projectReferences);
+        Dictionary<string, string> projectDirectories = SolutionProjectDirectories(root);
+        Assert.All(projectReferences, project =>
+        {
+            using JsonDocument referenceLock = ReadLockFile(Path.Combine(projectDirectories[project], "packages.lock.json"));
+            Assert.DoesNotContain(LockedPackageNames(referenceLock), IsAotCompilerPackage);
+        });
     }
 
     [Fact]
@@ -558,6 +586,62 @@ public sealed class NativeAotSourceContractTests
         }
 
         return count;
+    }
+
+    private static JsonDocument ReadLockFile(string path) => JsonDocument.Parse(File.ReadAllText(path));
+
+    // Package names across the neutral graph and every runtime graph.
+    private static IEnumerable<string> LockedPackageNames(JsonDocument lockFile) =>
+        LockedEntries(lockFile)
+            .Where(static entry => entry.Value.GetProperty("type").GetString() != "Project")
+            .Select(static entry => entry.Name);
+
+    private static string[] LockedProjectNames(JsonDocument lockFile) =>
+        LockedEntries(lockFile)
+            .Where(static entry => entry.Value.GetProperty("type").GetString() == "Project")
+            .Select(static entry => entry.Name)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+    private static IEnumerable<JsonProperty> LockedEntries(JsonDocument lockFile) =>
+        lockFile.RootElement
+            .GetProperty("dependencies")
+            .EnumerateObject()
+            .SelectMany(static target => target.Value.EnumerateObject());
+
+    private static bool IsAotCompilerPackage(string package) =>
+        package.Contains("Microsoft.DotNet.ILCompiler", StringComparison.OrdinalIgnoreCase);
+
+    // Lock files name project references by project name; JitHub.slnx locates them.
+    private static Dictionary<string, string> SolutionProjectDirectories(string root) =>
+        XDocument.Load(Path.Combine(root, "JitHub.slnx"))
+            .Root!
+            .Descendants("Project")
+            .Select(project => Path.Combine(root, ((string)project.Attribute("Path")!).Replace('/', Path.DirectorySeparatorChar)))
+            .ToDictionary(
+                static path => Path.GetFileNameWithoutExtension(path),
+                static path => Path.GetDirectoryName(path)!,
+                StringComparer.OrdinalIgnoreCase);
+
+    private static void RunPowerShell(string script)
+    {
+        var start = new ProcessStartInfo("powershell.exe")
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        foreach (string argument in new[] { "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script })
+            start.ArgumentList.Add(argument);
+
+        using Process process = Process.Start(start)!;
+        Task<string> error = process.StandardError.ReadToEndAsync();
+        string output = process.StandardOutput.ReadToEnd();
+        Assert.True(process.WaitForExit(TimeSpan.FromMinutes(2)), $"{Path.GetFileName(script)} did not exit.");
+        Assert.True(
+            process.ExitCode == 0,
+            $"{Path.GetFileName(script)} exited {process.ExitCode}:{Environment.NewLine}{output}{error.Result}");
     }
 
     private static string FindRepositoryRoot()
