@@ -43,24 +43,9 @@ internal static class SelectionEndpointGeometry
 
         if (box is TableBox table)
         {
-            Rect logicalTableClip = snapshot.ToLogicalRectForTopLevelBlockUnderPaint(
-                topLevelRoot, table.HorizontalViewportBounds);
-            Rect tableClip = clip is { } outerClip
-                ? SelectionBlockRects.Intersect(logicalTableClip, outerClip)
-                : logicalTableClip;
-            if (tableClip.Width <= 0 || tableClip.Height <= 0)
-                return false;
-
-            foreach (InlineContainerBox cell in table.GetCellBoxesInVerticalBand(searchBand.Top, searchBand.Bottom))
-            {
-                if (TryFindSelectionEndpointGeometry(snapshot, topLevelRoot, cell,
-                        position, range, searchBand, tableClip, rangeStart,
-                        out caretPoint, out rectangle, out hasCaret, out geometryIsLogical))
-                {
-                    return true;
-                }
-            }
-            return false;
+            return TryFindInTable(snapshot, topLevelRoot, table,
+                position, range, searchBand, clip, rangeStart,
+                out caretPoint, out rectangle, out hasCaret, out geometryIsLogical);
         }
 
         if (box is StackBox stack)
@@ -80,25 +65,9 @@ internal static class SelectionEndpointGeometry
 
         if (box is CodeBlockBox codeBlock)
         {
-            (int first, int end) = codeBlock.GetVisibleChunkRange(searchBand.Top, searchBand.Bottom);
-            Rect logicalCodeClip = snapshot.ToLogicalRectForTopLevelBlockUnderPaint(
-                topLevelRoot, codeBlock.HorizontalViewportBounds);
-            Rect codeClip = clip is { } outerClip
-                ? SelectionBlockRects.Intersect(logicalCodeClip, outerClip)
-                : logicalCodeClip;
-            if (codeClip.Width <= 0 || codeClip.Height <= 0)
-                return false;
-
-            for (int index = first; index < end; index++)
-            {
-                if (TryFindSelectionEndpointGeometry(snapshot, topLevelRoot, codeBlock.Chunks[index],
-                        position, range, searchBand, codeClip, rangeStart,
-                        out caretPoint, out rectangle, out hasCaret, out geometryIsLogical))
-                {
-                    return true;
-                }
-            }
-            return false;
+            return TryFindInCodeBlock(snapshot, topLevelRoot, codeBlock,
+                position, range, searchBand, clip, rangeStart,
+                out caretPoint, out rectangle, out hasCaret, out geometryIsLogical);
         }
 
         if (box.BlockIndex != position.BlockIndex)
@@ -118,6 +87,87 @@ internal static class SelectionEndpointGeometry
         return TryGetEndpointRectFromOwner(
             snapshot, topLevelRoot, box, range, clip, rangeStart,
             out rectangle, out geometryIsLogical);
+    }
+
+    /// <summary>
+    /// Searches the cells of <paramref name="table"/> in the search band,
+    /// clipped to the table's horizontal viewport.
+    /// </summary>
+    private static bool TryFindInTable(
+        LayoutSnapshot snapshot,
+        BlockBox topLevelRoot,
+        TableBox table,
+        DocumentPosition position,
+        DocumentRange range,
+        Rect searchBand,
+        Rect? clip,
+        bool rangeStart,
+        out Point caretPoint,
+        out Rect rectangle,
+        out bool hasCaret,
+        out bool geometryIsLogical)
+    {
+        caretPoint = default;
+        rectangle = Rect.Empty;
+        hasCaret = false;
+        geometryIsLogical = false;
+        if (!SelectionBlockRects.TryGetViewportClip(
+                snapshot, topLevelRoot, table.HorizontalViewportBounds, clip, out Rect tableClip))
+        {
+            return false;
+        }
+
+        foreach (InlineContainerBox cell in table.GetCellBoxesInVerticalBand(searchBand.Top, searchBand.Bottom))
+        {
+            if (TryFindSelectionEndpointGeometry(snapshot, topLevelRoot, cell,
+                    position, range, searchBand, tableClip, rangeStart,
+                    out caretPoint, out rectangle, out hasCaret, out geometryIsLogical))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Searches the chunks of <paramref name="codeBlock"/> in the search band,
+    /// clipped to the code block's horizontal viewport.
+    /// </summary>
+    private static bool TryFindInCodeBlock(
+        LayoutSnapshot snapshot,
+        BlockBox topLevelRoot,
+        CodeBlockBox codeBlock,
+        DocumentPosition position,
+        DocumentRange range,
+        Rect searchBand,
+        Rect? clip,
+        bool rangeStart,
+        out Point caretPoint,
+        out Rect rectangle,
+        out bool hasCaret,
+        out bool geometryIsLogical)
+    {
+        caretPoint = default;
+        rectangle = Rect.Empty;
+        hasCaret = false;
+        geometryIsLogical = false;
+        (int first, int end) = codeBlock.GetVisibleChunkRange(searchBand.Top, searchBand.Bottom);
+        if (!SelectionBlockRects.TryGetViewportClip(
+                snapshot, topLevelRoot, codeBlock.HorizontalViewportBounds, clip, out Rect codeClip))
+        {
+            return false;
+        }
+
+        for (int index = first; index < end; index++)
+        {
+            if (TryFindSelectionEndpointGeometry(snapshot, topLevelRoot, codeBlock.Chunks[index],
+                    position, range, searchBand, codeClip, rangeStart,
+                    out caretPoint, out rectangle, out hasCaret, out geometryIsLogical))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static bool TryGetEndpointRectFromOwner(
