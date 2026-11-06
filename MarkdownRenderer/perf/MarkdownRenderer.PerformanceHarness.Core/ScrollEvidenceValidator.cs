@@ -1,3 +1,5 @@
+using static MarkdownRenderer.PerformanceHarness.EvidenceValueRules;
+
 namespace MarkdownRenderer.PerformanceHarness;
 
 /// <summary>
@@ -46,22 +48,8 @@ public static class ScrollEvidenceValidator
         for (int ordinal = 0; ordinal < requiredTrials; ordinal++)
         {
             ScrollTrialResult trial = scroll.Trials[ordinal];
-            if (trial.Ordinal != ordinal ||
-                trial.FirstLogicalFrameId <= previousLastFrameId ||
-                trial.FirstLogicalFrameId > long.MaxValue - framesPerTrial + 1L ||
-                trial.RequestedFrames != framesPerTrial ||
-                trial.MeasuredFrameIntervals != framesPerTrial ||
-                trial.FramesWithRendererWork != framesPerTrial ||
-                trial.UiThreadWorkElapsedTicks.Count != framesPerTrial ||
-                trial.FrameIntervalElapsedTicks.Count != framesPerTrial ||
-                trial.RendererOwnedAllocatedBytesPerFrame.Count != framesPerTrial ||
-                trial.UiThreadWorkElapsedTicks.Any(static value => value < 0) ||
-                trial.FrameIntervalElapsedTicks.Any(static value => value <= 0) ||
-                trial.RendererOwnedAllocatedBytesPerFrame.Any(static value => value < 0) ||
-                !trial.Complete)
-            {
+            if (!IsCompleteTrial(trial, ordinal, framesPerTrial, previousLastFrameId))
                 return false;
-            }
 
             previousLastFrameId = trial.FirstLogicalFrameId + framesPerTrial - 1L;
             ScrollTrialEvidenceStatistics computed = ComputeTrial(
@@ -83,6 +71,33 @@ public static class ScrollEvidenceValidator
             allFrameIntervalTicks,
             allRendererOwnedAllocatedBytes,
             scroll.StopwatchFrequency);
+        statistics = CreateStatistics(trialStatistics, pooled);
+        return MatchesReportedAggregate(scroll, statistics);
+    }
+
+    private static bool IsCompleteTrial(
+        ScrollTrialResult trial,
+        int ordinal,
+        int framesPerTrial,
+        long previousLastFrameId)
+        => trial.Ordinal == ordinal &&
+           trial.FirstLogicalFrameId > previousLastFrameId &&
+           trial.FirstLogicalFrameId <= long.MaxValue - framesPerTrial + 1L &&
+           trial.RequestedFrames == framesPerTrial &&
+           trial.MeasuredFrameIntervals == framesPerTrial &&
+           trial.FramesWithRendererWork == framesPerTrial &&
+           trial.UiThreadWorkElapsedTicks.Count == framesPerTrial &&
+           trial.FrameIntervalElapsedTicks.Count == framesPerTrial &&
+           trial.RendererOwnedAllocatedBytesPerFrame.Count == framesPerTrial &&
+           !trial.UiThreadWorkElapsedTicks.Any(static value => value < 0) &&
+           !trial.FrameIntervalElapsedTicks.Any(static value => value <= 0) &&
+           !trial.RendererOwnedAllocatedBytesPerFrame.Any(static value => value < 0) &&
+           trial.Complete;
+
+    private static ScrollEvidenceStatistics CreateStatistics(
+        IReadOnlyList<ScrollTrialEvidenceStatistics> trialStatistics,
+        ScrollTrialEvidenceStatistics pooled)
+    {
         double regressionUiThreadWorkP95Milliseconds = PerformanceStatistics.HodgesLehmann(
             trialStatistics.Select(static trial => trial.UiThreadWorkP95Milliseconds));
         double regressionUiThreadWorkP99Milliseconds = PerformanceStatistics.HodgesLehmann(
@@ -93,7 +108,7 @@ public static class ScrollEvidenceValidator
             trialStatistics.Select(
                 static trial => trial.RendererOwnedAllocatedBytesPerFrameP95));
 
-        statistics = new ScrollEvidenceStatistics(
+        return new ScrollEvidenceStatistics(
             trialStatistics,
             pooled.UiThreadWorkP95Milliseconds,
             pooled.UiThreadWorkP99Milliseconds,
@@ -107,8 +122,6 @@ public static class ScrollEvidenceValidator
             regressionUiThreadWorkP99Milliseconds,
             regressionFrameTimeP95Milliseconds,
             regressionRendererOwnedAllocatedBytesPerFrameP95);
-
-        return MatchesReportedAggregate(scroll, statistics);
     }
 
     private static ScrollTrialEvidenceStatistics ComputeTrial(
@@ -192,36 +205,4 @@ public static class ScrollEvidenceValidator
            NearlyEqual(
                reported.RegressionRendererOwnedAllocatedBytesPerFrameP95,
                computed.RegressionRendererOwnedAllocatedBytesPerFrameP95);
-
-    private static bool NearlyEqual(double left, double right)
-    {
-        if (!double.IsFinite(left) || !double.IsFinite(right))
-            return false;
-        double scale = Math.Max(1, Math.Max(Math.Abs(left), Math.Abs(right)));
-        return Math.Abs(left - right) <= scale * 1e-12;
-    }
 }
-
-public sealed record ScrollEvidenceStatistics(
-    IReadOnlyList<ScrollTrialEvidenceStatistics> Trials,
-    double UiThreadWorkP95Milliseconds,
-    double UiThreadWorkP99Milliseconds,
-    double FrameTimeP95Milliseconds,
-    double FramesOver16_7Percent,
-    double MaximumFrameStallMilliseconds,
-    double RendererOwnedAllocatedBytesPerFrameP95,
-    long MaximumRendererOwnedAllocatedBytesPerFrame,
-    bool RendererOwnedLohAllocationPossible,
-    double RegressionUiThreadWorkP95Milliseconds,
-    double RegressionUiThreadWorkP99Milliseconds,
-    double RegressionFrameTimeP95Milliseconds,
-    double RegressionRendererOwnedAllocatedBytesPerFrameP95);
-
-public readonly record struct ScrollTrialEvidenceStatistics(
-    double UiThreadWorkP95Milliseconds,
-    double UiThreadWorkP99Milliseconds,
-    double FrameTimeP95Milliseconds,
-    double FramesOver16_7Percent,
-    double MaximumFrameStallMilliseconds,
-    double RendererOwnedAllocatedBytesPerFrameP95,
-    long MaximumRendererOwnedAllocatedBytesPerFrame);

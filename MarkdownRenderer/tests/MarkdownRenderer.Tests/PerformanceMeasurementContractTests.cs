@@ -6,6 +6,21 @@ using Xunit;
 
 namespace MarkdownRenderer.Tests;
 
+/// <summary>
+/// Tests for the frozen measurement contract: release and quick population
+/// sizes, the first-viewport schedule and noise floors, strict reference
+/// evidence deserialization, harness options and output writing, and the quick
+/// smoke validator.
+/// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because it covers the harness's whole
+/// input and output contract (frozen populations and schedule, strict
+/// reference evidence reading, option parsing, output writing and the quick
+/// smoke validator), and its theories list 69 named cases as their own
+/// [InlineData] lines so each one is reported and rerun on its own. The quick smoke mutations live in
+/// QuickPerformanceSmokeMutations and the valid report in
+/// QuickPerformanceReportFixture.
+/// </remarks>
 public sealed class PerformanceMeasurementContractTests
 {
     [Theory]
@@ -19,15 +34,15 @@ public sealed class PerformanceMeasurementContractTests
     {
         Assert.Equal(
             expectedQualified,
-            PerformanceReleaseEvidenceValidator.IsConfiguredRefreshRateQualified(
+            MachineEvidenceValidator.IsConfiguredRefreshRateQualified(
                 configuredRefreshRateHz));
     }
 
     [Fact]
     public void ReleasePreflightRejectsNonFiniteConfiguredRefreshRates()
     {
-        Assert.False(PerformanceReleaseEvidenceValidator.IsConfiguredRefreshRateQualified(double.NaN));
-        Assert.False(PerformanceReleaseEvidenceValidator.IsConfiguredRefreshRateQualified(double.PositiveInfinity));
+        Assert.False(MachineEvidenceValidator.IsConfiguredRefreshRateQualified(double.NaN));
+        Assert.False(MachineEvidenceValidator.IsConfiguredRefreshRateQualified(double.PositiveInfinity));
     }
 
     [Fact]
@@ -467,7 +482,7 @@ public sealed class PerformanceMeasurementContractTests
     public void QuickSmokeValidatorAcceptsStructureWithoutApplyingReleaseBudgets()
     {
         JsonObject json = JsonSerializer.SerializeToNode(
-            CreateValidQuickReport(),
+            QuickPerformanceReportFixture.Create(),
             PerformanceReport.JsonOptions)!.AsObject();
         JsonObject viewport = json["firstUsableViewport"]![0]!.AsObject();
         viewport["trials"]![0]!["samplesMilliseconds"]![0] = 10_000;
@@ -487,7 +502,7 @@ public sealed class PerformanceMeasurementContractTests
     [Fact]
     public void QuickSmokeValidatorRejectsStructuralProviderAndRenderFailures()
     {
-        PerformanceReport report = CreateValidQuickReport();
+        PerformanceReport report = QuickPerformanceReportFixture.Create();
         report.Scroll = new ScrollResult();
 
         IReadOnlyList<string> failures = QuickPerformanceSmokeValidator.Validate(
@@ -524,81 +539,9 @@ public sealed class PerformanceMeasurementContractTests
     public void QuickSmokeValidatorRejectsMalformedNonBudgetEvidence(string mutation)
     {
         JsonObject json = JsonNode.Parse(JsonSerializer.Serialize(
-            CreateValidQuickReport(),
+            QuickPerformanceReportFixture.Create(),
             PerformanceReport.JsonOptions))!.AsObject();
-        JsonObject scroll = json["scroll"]!.AsObject();
-        JsonObject trial = scroll["trials"]![0]!.AsObject();
-        switch (mutation)
-        {
-            case "aggregate-metric":
-                scroll["uiThreadWorkP95Milliseconds"] = -1;
-                break;
-            case "aggregate-finite-mismatch":
-                scroll["uiThreadWorkP95Milliseconds"] = 99;
-                break;
-            case "aggregate-regression":
-                scroll["regressionUiThreadWorkP95Milliseconds"] = 99;
-                break;
-            case "allocation-scope":
-                scroll["rawAllocationScope"] = string.Empty;
-                break;
-            case "trial-metric":
-                trial["paintCallbackWorkP95Milliseconds"] = -1;
-                break;
-            case "trial-offscreen":
-                trial["maximumOffscreenRealizedCodeActions"] = 1;
-                break;
-            case "aggregate-offscreen":
-                scroll["maximumOffscreenRealizedCodeActions"] = 1;
-                break;
-            case "aggregate-gen2-mismatch":
-                scroll["gen2Collections"] = 2;
-                break;
-            case "impossible-p99":
-                scroll["uiThreadWorkP99Milliseconds"] = 99;
-                scroll["regressionUiThreadWorkP99Milliseconds"] = 99;
-                trial["uiThreadWorkP99Milliseconds"] = 99;
-                break;
-            case "impossible-max-stall":
-                scroll["maximumFrameStallMilliseconds"] = 99;
-                trial["maximumFrameStallMilliseconds"] = 99;
-                break;
-            case "impossible-frame-percent":
-                scroll["framesOver16_7Percent"] = 101;
-                trial["framesOver16_7Percent"] = 101;
-                break;
-            case "impossible-allocation-maximum":
-                scroll["maximumRendererOwnedAllocatedBytesPerFrame"] = 99_999;
-                trial["maximumRendererOwnedAllocatedBytesPerFrame"] = 99_999;
-                break;
-            case "raw-scroll-frequency":
-                scroll["stopwatchFrequency"] = 0;
-                break;
-            case "raw-scroll-ui-tick":
-                trial["uiThreadWorkElapsedTicks"]![0] = -1;
-                break;
-            case "raw-scroll-frame-count":
-                trial["frameIntervalElapsedTicks"]!.AsArray().RemoveAt(0);
-                break;
-            case "raw-scroll-allocation":
-                trial["rendererOwnedAllocatedBytesPerFrame"]![0] = -1;
-                break;
-            case "lifecycle-growth":
-                json["lifecyclePlateau"]!["checkpoint100ManagedBytes"] = 2;
-                break;
-            case "runtime-policy":
-                json["runtimeConfiguration"]!["policy"] = "uncontrolled";
-                break;
-            case "runtime-override":
-                json["runtimeConfiguration"]!["overrideEnvironmentVariables"] =
-                    new JsonArray("DOTNET_TieredCompilation");
-                break;
-            case "runtimeconfig-artifact":
-                json["buildArtifacts"]!["runtimeConfig"]!["sha256"] = "not-a-sha256";
-                break;
-            default:
-                throw new ArgumentOutOfRangeException(nameof(mutation), mutation, null);
-        }
+        QuickPerformanceSmokeMutations.NonBudget[mutation](json);
         PerformanceReport malformed = JsonSerializer.Deserialize<PerformanceReport>(
             json.ToJsonString(PerformanceReport.JsonOptions),
             PerformanceReport.JsonOptions)!;
@@ -644,471 +587,14 @@ public sealed class PerformanceMeasurementContractTests
     public void QuickSmokeValidatorRejectsMalformedRepeatabilityProtocol(string mutation)
     {
         JsonObject json = JsonNode.Parse(JsonSerializer.Serialize(
-            CreateValidQuickReport(),
+            QuickPerformanceReportFixture.Create(),
             PerformanceReport.JsonOptions))!.AsObject();
-        JsonObject viewport = json["firstUsableViewport"]![0]!.AsObject();
-        JsonObject lookup = json["sourceLookup"]!.AsObject();
-        JsonObject lookupTrial = lookup["regressionTrials"]![0]!.AsObject();
-        JsonObject cancellation = json["cancellation"]!.AsObject();
-        JsonObject cancellationTrial = cancellation["trials"]![0]!.AsObject();
-        switch (mutation)
-        {
-            case "viewport-warmup-count":
-                viewport["warmupTrials"]!.AsArray().Clear();
-                break;
-            case "viewport-cache":
-                viewport["parseCacheBudgetBytes"] = 1;
-                break;
-            case "viewport-engine-reuse":
-                viewport["engineReuseMode"] = "per-sample";
-                break;
-            case "viewport-trial-policy":
-                viewport["trialStartPolicy"] = "none";
-                break;
-            case "viewport-schedule-policy":
-                viewport["schedulePolicy"] = "none";
-                break;
-            case "viewport-stationarity-policy":
-                viewport["stationarityPolicy"] = "none";
-                break;
-            case "viewport-affinity":
-                viewport["measurementThreadAffinityMask"] = "0x0000000000000000";
-                break;
-            case "viewport-estimator":
-                viewport["regressionEstimator"] = "pooled-p95";
-                break;
-            case "viewport-trial-count":
-                viewport["trials"]!.AsArray().Clear();
-                break;
-            case "viewport-trial-order":
-                viewport["trials"]![0]!["ordinal"] = 1;
-                break;
-            case "viewport-global-order":
-                viewport["trials"]![0]!["globalOrdinal"] = 0;
-                break;
-            case "viewport-schedule-position":
-                viewport["trials"]![0]!["schedulePosition"] = 5;
-                break;
-            case "viewport-chronology":
-                viewport["trials"]![0]!["startedUtc"] = "2026-09-10T11:00:00-07:00";
-                break;
-            case "viewport-cache-proof":
-                viewport["trials"]![0]!["cacheProofPassed"] = false;
-                break;
-            case "viewport-cache-counter":
-                viewport["trials"]![0]!["sourceKeyHashCountAfterTrial"] = 0;
-                break;
-            case "viewport-gc":
-                viewport["trials"]![0]!["gen0Collections"] = -1;
-                break;
-            case "viewport-allocation":
-                viewport["trials"]![0]!["processAllocatedBytes"] = -1;
-                break;
-            case "viewport-trial-p95":
-                viewport["trials"]![0]!["p95Milliseconds"] = 2;
-                break;
-            case "viewport-flattened-samples":
-                viewport["samplesMilliseconds"]![0] = 2;
-                viewport["p95Milliseconds"] = 2;
-                viewport["regressionP95Milliseconds"] = 2;
-                break;
-            case "viewport-regression-estimate":
-                viewport["regressionP95Milliseconds"] = 2;
-                break;
-            case "viewport-stationarity-derived":
-                viewport["projectedDriftMilliseconds"] = 1;
-                break;
-            case "viewport-stationarity-flags":
-                viewport["stationarityEvaluated"] = true;
-                break;
-            case "lookup-estimator":
-                lookup["regressionEstimator"] = "single-trial";
-                break;
-            case "lookup-affinity":
-                lookup["measurementThreadAffinityMask"] = "0x0000000000000000";
-                break;
-            case "lookup-trial-count":
-                lookup["regressionTrialCount"] = 4;
-                break;
-            case "lookup-trial-order":
-                lookupTrial["ordinal"] = 1;
-                break;
-            case "lookup-trial-tick-normalization":
-                lookupTrial["samplesNanosecondsPerLookup"]![0] = 999;
-                break;
-            case "lookup-trial-p95":
-                lookupTrial["p95Nanoseconds"] = 999;
-                break;
-            case "lookup-top-estimate":
-                lookup["regressionP95Nanoseconds"] = 999;
-                break;
-            case "cancellation-estimator":
-                cancellation["regressionEstimator"] = "single-trial";
-                break;
-            case "cancellation-trial-order":
-                cancellationTrial["ordinal"] = 1;
-                break;
-            case "cancellation-seed":
-                cancellationTrial["warmupSourceSeed"] = 123;
-                break;
-            case "cancellation-trial-p95":
-                cancellationTrial["p95Milliseconds"] = 99;
-                break;
-            case "cancellation-flattened-samples":
-                cancellation["samplesMilliseconds"]![0] = 99;
-                break;
-            default:
-                throw new ArgumentOutOfRangeException(nameof(mutation), mutation, null);
-        }
-
+        QuickPerformanceSmokeMutations.Repeatability[mutation](json);
         PerformanceReport malformed = JsonSerializer.Deserialize<PerformanceReport>(
             json.ToJsonString(PerformanceReport.JsonOptions),
             PerformanceReport.JsonOptions)!;
+
         Assert.NotEmpty(QuickPerformanceSmokeValidator.Validate(malformed, 0, []));
-    }
-
-    private static PerformanceReport CreateValidQuickReport()
-    {
-        long stopwatchFrequency = System.Diagnostics.Stopwatch.Frequency;
-        long elapsedTicks = Math.Max(1, stopwatchFrequency / 10);
-        double elapsedMilliseconds = elapsedTicks * 1000.0 / stopwatchFrequency;
-        const long rendererOwnedAllocatedBytes = 100_000;
-        IReadOnlyList<CancellationMeasurementIteration> cancellationPlan =
-            CancellationMeasurementPlan.CreateTrial(0, 1);
-        var report = new PerformanceReport
-        {
-            StartedUtc = DateTimeOffset.Parse("2026-09-10T11:59:00Z"),
-            CompletedUtc = DateTimeOffset.Parse("2026-09-10T12:01:00Z"),
-            IsReleaseEvidence = false,
-            BuildArtifacts = CreateStoredBuildArtifacts(),
-            RuntimeConfiguration = CreateRuntimeConfiguration(),
-            SampleRequirements = new SampleRequirements
-            {
-                FirstViewportIterationsRequired = 1,
-                FirstViewportTrialsRequired = 1,
-                FirstViewportWarmupTrialsRequired = 1,
-                ScrollFramesRequired = 30,
-                ScrollTrialsRequired = 1,
-                LifecycleCyclesRequired = 8,
-                CancellationIterationsPerTrialRequired = 1,
-                CancellationTrialsRequired = 1,
-            },
-            Scroll = new ScrollResult
-            {
-                Corpus = PerformanceDocumentFactory.WarmScrollStressCorpus,
-                SourceUtf16Bytes = 1024 * 1024,
-                StopwatchFrequency = stopwatchFrequency,
-                RequestedFrames = 30,
-                MeasuredFrameIntervals = 30,
-                FramesWithRendererWork = 30,
-                RegressionEstimator = "quick-single-trial-non-gating",
-                RegressionUiThreadWorkP95Milliseconds = elapsedMilliseconds,
-                RegressionUiThreadWorkP99Milliseconds = elapsedMilliseconds,
-                RegressionFrameTimeP95Milliseconds = elapsedMilliseconds,
-                RegressionRendererOwnedAllocatedBytesPerFrameP95 = rendererOwnedAllocatedBytes,
-                UiThreadWorkP95Milliseconds = elapsedMilliseconds,
-                UiThreadWorkP99Milliseconds = elapsedMilliseconds,
-                FrameTimeP95Milliseconds = elapsedMilliseconds,
-                FramesOver16_7Percent = 100,
-                MaximumFrameStallMilliseconds = elapsedMilliseconds,
-                AllocatedBytesPerFrameP95 = rendererOwnedAllocatedBytes,
-                MaximumAllocatedBytesPerFrame = rendererOwnedAllocatedBytes,
-                RendererOwnedAllocatedBytesPerFrameP95 = rendererOwnedAllocatedBytes,
-                MaximumRendererOwnedAllocatedBytesPerFrame = rendererOwnedAllocatedBytes,
-                LohAllocationPossible = true,
-                RendererOwnedLohAllocationPossible = true,
-                Gen2Collections = 1,
-                Trials =
-                [
-                    new ScrollTrialResult
-                    {
-                        Ordinal = 0,
-                        FirstLogicalFrameId = 10_000,
-                        RequestedFrames = 30,
-                        MeasuredFrameIntervals = 30,
-                        FramesWithRendererWork = 30,
-                        UiThreadWorkElapsedTicks = Enumerable.Repeat(elapsedTicks, 30).ToList(),
-                        FrameIntervalElapsedTicks = Enumerable.Repeat(elapsedTicks, 30).ToList(),
-                        RendererOwnedAllocatedBytesPerFrame = Enumerable.Repeat(
-                            rendererOwnedAllocatedBytes,
-                            30).ToList(),
-                        UiThreadWorkP95Milliseconds = elapsedMilliseconds,
-                        UiThreadWorkP99Milliseconds = elapsedMilliseconds,
-                        FrameTimeP95Milliseconds = elapsedMilliseconds,
-                        FramesOver16_7Percent = 100,
-                        MaximumFrameStallMilliseconds = elapsedMilliseconds,
-                        AllocatedBytesPerFrameP95 = rendererOwnedAllocatedBytes,
-                        MaximumAllocatedBytesPerFrame = rendererOwnedAllocatedBytes,
-                        RendererOwnedAllocatedBytesPerFrameP95 = rendererOwnedAllocatedBytes,
-                        MaximumRendererOwnedAllocatedBytesPerFrame = rendererOwnedAllocatedBytes,
-                        Gen2Collections = 1,
-                        Complete = true,
-                    },
-                ],
-                Passed = false,
-            },
-            SourceLookup = CreateValidQuickLookup(),
-            LifecyclePlateau = new LifecyclePlateauResult
-            {
-                RequiredCycles = 8,
-                CompletedCycles = 8,
-                Checkpoint80ManagedBytes = 1,
-                Checkpoint100ManagedBytes = 1,
-                Checkpoint80PrivateBytes = 1,
-                Checkpoint100PrivateBytes = 1,
-                RenderFailures = 0,
-                Passed = false,
-            },
-            Cancellation = new CancellationResult
-            {
-                RequestedIterations = 1,
-                IterationsPerTrial = 1,
-                WarmupIterations = 1,
-                WarmupElapsedMilliseconds = 100,
-                ObservedCancellations = 1,
-                TrialStartPolicy = PerformanceMeasurementContract.CancellationTrialStartPolicy,
-                RegressionEstimator = "quick-single-trial-non-gating",
-                Trials =
-                [
-                    new CancellationTrialResult
-                    {
-                        Ordinal = 0,
-                        WarmupSourceSeed = cancellationPlan[0].SourceSeed,
-                        WarmupElapsedMilliseconds = 100,
-                        FirstRecordedSourceSeed = cancellationPlan[1].SourceSeed,
-                        RequestedIterations = 1,
-                        ObservedCancellations = 1,
-                        SamplesMilliseconds = [100],
-                        P95Milliseconds = 100,
-                        Complete = true,
-                    },
-                ],
-                SamplesMilliseconds = [100],
-                P95Milliseconds = 100,
-                RegressionP95Milliseconds = 100,
-                Passed = false,
-            },
-            Regression = new RegressionResult
-            {
-                Mode = "quick-non-gating",
-                Passed = false,
-            },
-        };
-        int condition = 0;
-        foreach (int sourceBytes in new[] { 100 * 1024, 1024 * 1024, 10 * 1024 * 1024 })
-        {
-            foreach (string mode in new[]
-                     {
-                         PerformanceMeasurementContract.FirstViewportCacheDisabledMode,
-                         PerformanceMeasurementContract.FirstViewportCacheHitMode,
-                     })
-            {
-                int position = GetFirstViewportSchedulePosition(condition, row: 0);
-                FirstViewportTrialResult warmupTrial = CreateQuickViewportTrial(
-                    mode,
-                    position,
-                    globalOrdinal: position);
-                FirstViewportTrialResult measuredTrial = CreateQuickViewportTrial(
-                    mode,
-                    position,
-                    globalOrdinal: PerformanceMeasurementContract.FirstViewportConditionCount +
-                        position);
-                double budget = sourceBytes switch
-                {
-                    100 * 1024 when mode ==
-                        PerformanceMeasurementContract.FirstViewportCacheHitMode => 75,
-                    100 * 1024 => 125,
-                    1024 * 1024 => 250,
-                    10 * 1024 * 1024 => 750,
-                    _ => throw new InvalidOperationException(),
-                };
-                report.FirstUsableViewport.Add(new FirstViewportResult
-                {
-                    Corpus = PerformanceDocumentFactory.GetCorpusName(sourceBytes),
-                    Mode = mode,
-                    SourceUtf16Bytes = sourceBytes,
-                    ParseCacheBudgetBytes = mode ==
-                        PerformanceMeasurementContract.FirstViewportCacheHitMode
-                            ? sourceBytes * 8L
-                            : 0,
-                    EngineReuseMode = PerformanceMeasurementContract.FirstViewportEngineReuseMode,
-                    TrialStartPolicy = PerformanceMeasurementContract.FirstViewportTrialStartPolicy,
-                    SchedulePolicy = "quick-first-williams-row-non-gating",
-                    RegressionEstimator = "quick-single-trial-non-gating",
-                    StationarityPolicy = "quick-not-evaluated",
-                    MeasurementThreadAffinityMask = "0x0000000000000001",
-                    MeasurementProcessorGroup = 0,
-                    MeasurementProcessorNumber = 0,
-                    MeasurementThreadPriority = "Normal",
-                    WarmupTrials = [warmupTrial],
-                    Trials = [measuredTrial],
-                    SamplesMilliseconds = [1],
-                    P95Milliseconds = 1,
-                    PublicationSamplesMilliseconds = [1],
-                    PublicationMaximumMilliseconds = 1,
-                    PublicationBudgetMilliseconds =
-                        PerformanceMeasurementContract.UiPublicationMaximumBudgetMilliseconds,
-                    RegressionP95Milliseconds = 1,
-                    RegressionDispersionPercent = 0,
-                    TheilSenSlopeMillisecondsPerGlobalOrdinal = 0,
-                    ProjectedDriftMilliseconds = 0,
-                    WarmupBoundaryShiftMilliseconds = 0,
-                    StationarityAllowanceMilliseconds =
-                        PerformanceMeasurementContract.GetFirstViewportNoiseFloorMilliseconds(
-                            mode,
-                            sourceBytes),
-                    StationarityEvaluated = false,
-                    StationarityPassed = false,
-                    BudgetMilliseconds = budget,
-                    Passed = true,
-                });
-                condition++;
-            }
-            report.RetainedMemory.Add(new RetainedMemoryResult
-            {
-                Corpus = PerformanceDocumentFactory.GetCorpusName(sourceBytes),
-                SourceUtf16Bytes = sourceBytes,
-                ManagedDeltaBytes = 1,
-                PrivateDeltaBytes = 1,
-                BudgetBytes = 1,
-                Passed = false,
-            });
-        }
-        return report;
-    }
-
-    private static FirstViewportTrialResult CreateQuickViewportTrial(
-        string mode,
-        int schedulePosition,
-        int globalOrdinal)
-    {
-        bool cacheHit = mode == PerformanceMeasurementContract.FirstViewportCacheHitMode;
-        DateTimeOffset started = DateTimeOffset.Parse("2026-09-10T12:00:00Z")
-            .AddMilliseconds(globalOrdinal * 2);
-        return new FirstViewportTrialResult
-        {
-            Ordinal = 0,
-            GlobalOrdinal = globalOrdinal,
-            ScheduleRow = 0,
-            SchedulePosition = schedulePosition,
-            StartedUtc = started,
-            CompletedUtc = started.AddMilliseconds(1),
-            SettlingElapsedMilliseconds = 1,
-            SettlingPublicationMilliseconds = 1,
-            SamplesMilliseconds = [1],
-            PublicationSamplesMilliseconds = [1],
-            PublicationMaximumMilliseconds = 1,
-            P95Milliseconds = 1,
-            Gen0Collections = 0,
-            Gen1Collections = 0,
-            Gen2Collections = 0,
-            ProcessAllocatedBytes = 0,
-            CompletedParseCountBeforePrime = 0,
-            CompletedParseCountAfterPrime = cacheHit ? 1 : 0,
-            CompletedParseCountAfterTrial = cacheHit ? 1 : 0,
-            SourceKeyHashCountBeforePrime = 0,
-            SourceKeyHashCountAfterPrime = cacheHit ? 1 : 0,
-            SourceKeyHashCountAfterTrial = cacheHit ? 1 : 2,
-            CacheProofPassed = true,
-            Complete = true,
-        };
-    }
-
-    private static int GetFirstViewportSchedulePosition(int condition, int row)
-        => Enumerable.Range(0, PerformanceMeasurementContract.FirstViewportConditionCount)
-            .Single(position =>
-                PerformanceMeasurementContract.GetFirstViewportCondition(row, position) == condition);
-
-    private static RuntimeConfigurationEvidence CreateRuntimeConfiguration()
-        => new()
-        {
-            Policy = PerformanceMeasurementContract.RuntimeConfigurationPolicy,
-            TieredCompilationEnabled = false,
-            TieredPgoEnabled = false,
-            ConcurrentGcEnabled = false,
-            ReadyToRunEnabled = false,
-            OverrideEnvironmentVariables = [],
-            Passed = true,
-        };
-
-    private static BuildArtifactHashes CreateStoredBuildArtifacts()
-    {
-        const string sha256 =
-            "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF";
-        string directory = Path.Combine(Path.GetTempPath(), "markdown-renderer-quick-contract");
-        BuildArtifactHash Create(string fileName)
-            => new()
-            {
-                FileName = fileName,
-                Path = Path.Combine(directory, fileName),
-                Sha256 = sha256,
-            };
-
-        return new BuildArtifactHashes
-        {
-            Executable = Create("MarkdownRenderer.PerformanceHarness.exe"),
-            PerformanceHarnessDll = Create("MarkdownRenderer.PerformanceHarness.dll"),
-            MarkdownRendererDll = Create("MarkdownRenderer.dll"),
-            RuntimeConfig = Create("MarkdownRenderer.PerformanceHarness.runtimeconfig.json"),
-        };
-    }
-
-    private static SourceLookupResult CreateValidQuickLookup()
-    {
-        long frequency = System.Diagnostics.Stopwatch.Frequency;
-        const long absoluteTicks = 1;
-        const long regressionTicks = 4_096;
-        double absoluteNanoseconds = absoluteTicks * 1_000_000_000.0 / frequency;
-        double regressionNanoseconds =
-            regressionTicks * 1_000_000_000.0 / frequency /
-            PerformanceMeasurementContract.SourceLookupRegressionBatchSize;
-        List<SourceLookupTrialResult> trials = Enumerable.Range(
-                0,
-                PerformanceMeasurementContract.SourceLookupRegressionTrialCount)
-            .Select(ordinal => new SourceLookupTrialResult
-            {
-                Ordinal = ordinal,
-                ObservationCount = PerformanceMeasurementContract.SourceLookupRegressionObservationCount,
-                OperationCount = PerformanceMeasurementContract.SourceLookupRegressionOperationCount,
-                SamplesElapsedTicks = Enumerable.Repeat(
-                    regressionTicks,
-                    PerformanceMeasurementContract.SourceLookupRegressionObservationCount).ToList(),
-                SamplesNanosecondsPerLookup = Enumerable.Repeat(
-                    regressionNanoseconds,
-                    PerformanceMeasurementContract.SourceLookupRegressionObservationCount).ToList(),
-                P95Nanoseconds = regressionNanoseconds,
-                AllocatedBytes = 0,
-                Complete = true,
-            })
-            .ToList();
-        return new SourceLookupResult
-        {
-            MappingCount = PerformanceMeasurementContract.SourceLookupMappingCount,
-            QueryCount = PerformanceMeasurementContract.SourceLookupAbsoluteQueryCount,
-            StopwatchFrequency = frequency,
-            MeasurementThreadAffinityMask = "0x0000000000000001",
-            MeasurementProcessorGroup = 0,
-            MeasurementProcessorNumber = 0,
-            MeasurementThreadPriority = "Highest",
-            SamplesElapsedTicks = Enumerable.Repeat(
-                absoluteTicks,
-                PerformanceMeasurementContract.SourceLookupAbsoluteQueryCount).ToList(),
-            P95Nanoseconds = absoluteNanoseconds,
-            AllocatedBytes = 0,
-            RegressionWarmupPasses =
-                PerformanceMeasurementContract.SourceLookupRegressionWarmupPasses,
-            RegressionEstimator = PerformanceMeasurementContract.SourceLookupRegressionEstimator,
-            RegressionTrialCount = PerformanceMeasurementContract.SourceLookupRegressionTrialCount,
-            RegressionBatchSize = PerformanceMeasurementContract.SourceLookupRegressionBatchSize,
-            RegressionObservationCount =
-                PerformanceMeasurementContract.SourceLookupRegressionObservationCount,
-            RegressionOperationCount =
-                PerformanceMeasurementContract.SourceLookupRegressionOperationCount,
-            RegressionTrials = trials,
-            RegressionP95Nanoseconds = regressionNanoseconds,
-            RegressionAllocatedBytes = 0,
-            Passed = false,
-        };
     }
 
     private static void AssertInvalidReferenceJson(JsonNode root)

@@ -93,6 +93,11 @@ public sealed class PinnedMeasurementThreadScope : IDisposable
             StringComparison.Ordinal);
     }
 
+    // This method stays whole because it is one ordered acquire sequence:
+    // open the thread, read its allowed affinity, pin it, read and raise its
+    // priority, then prove it runs on the pinned processor. Each failure
+    // undoes exactly the steps before it, and keeping the steps together keeps
+    // that rollback visible in one place.
     public static PinnedMeasurementThreadScope Enter(
         ThreadPriority requestedPriority,
         string operation)

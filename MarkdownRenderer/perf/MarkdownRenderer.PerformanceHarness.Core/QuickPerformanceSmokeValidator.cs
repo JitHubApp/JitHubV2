@@ -1,3 +1,5 @@
+using static MarkdownRenderer.PerformanceHarness.EvidenceValueRules;
+
 namespace MarkdownRenderer.PerformanceHarness;
 
 public static class QuickPerformanceSmokeValidator
@@ -22,13 +24,13 @@ public static class QuickPerformanceSmokeValidator
             failures.Add("Quick smoke build artifacts did not include the frozen runtimeconfig evidence.");
         if (!PerformanceRuntimeContract.IsValid(report.RuntimeConfiguration))
             failures.Add("Quick smoke runtime configuration violated the frozen non-tiered runtime contract.");
-        if (!PerformanceReleaseEvidenceValidator.HasRequiredQuickFirstViewportProtocol(
+        if (!FirstViewportEvidenceValidator.HasRequiredQuickFirstViewportProtocol(
                 report.FirstUsableViewport))
         {
             failures.Add(
                 "Quick smoke did not produce the structural first-Williams-row warmup and measured evidence for all six first-viewport conditions.");
         }
-        if (!PerformanceReleaseEvidenceValidator.AreFirstViewportTrialsWithinReportInterval(
+        if (!FirstViewportEvidenceValidator.AreFirstViewportTrialsWithinReportInterval(
                 report.FirstUsableViewport,
                 report.StartedUtc,
                 report.CompletedUtc))
@@ -37,132 +39,155 @@ public static class QuickPerformanceSmokeValidator
                 "Quick smoke first-viewport trials were not bounded by a positive UTC report interval.");
         }
 
-        ScrollResult scroll = report.Scroll;
+        if (!HasValidScroll(report.Scroll))
+            failures.Add("Quick smoke did not produce one complete 30-frame scroll trial.");
+        if (!HasValidRetainedMemory(report.RetainedMemory))
+            failures.Add("Quick smoke did not produce all three structurally valid retained-memory scenarios.");
+        if (!HasValidSourceLookup(report.SourceLookup))
+            failures.Add("Quick smoke source-lookup samples or tick normalization were structurally invalid.");
+        if (!HasValidLifecycle(report.LifecyclePlateau))
+            failures.Add("Quick smoke did not complete eight lifecycle iterations without render failures.");
+        if (!HasValidCancellation(report.Cancellation))
+            failures.Add("Quick smoke did not produce one valid cancellation without a stale commit.");
+        if (!IsRegressionSkipped(report.Regression))
+            failures.Add("Quick smoke unexpectedly evaluated release regression gates.");
+        if (renderFailures != 0)
+            failures.Add($"Quick smoke observed {renderFailures} renderer failure(s).");
+
+        return failures;
+    }
+
+    private static bool HasValidScroll(ScrollResult scroll)
+    {
         ScrollTrialResult? trial = scroll.Trials.Count == 1 ? scroll.Trials[0] : null;
         bool rawScrollEvidenceValid = ScrollEvidenceValidator.TryValidate(
             scroll,
             PerformanceMeasurementContract.QuickScrollFrames,
             PerformanceMeasurementContract.QuickScrollTrials,
             out _);
-        bool trialMetricsValid = trial is not null &&
-            AllFiniteNonNegative(
-                trial.UiThreadWorkP95Milliseconds,
-                trial.UiThreadWorkP99Milliseconds,
-                trial.ScrollCallbackWorkP95Milliseconds,
-                trial.PaintCallbackWorkP95Milliseconds,
-                trial.FrameTimeP95Milliseconds,
-                trial.FramesOver16_7Percent,
-                trial.MaximumFrameStallMilliseconds,
-                trial.AllocatedBytesPerFrameP95,
-                trial.RendererOwnedAllocatedBytesPerFrameP95,
-                trial.PlatformProjectionAllocatedBytesPerFrameP95,
-                trial.ScrollAllocatedBytesPerFrameP95,
-                trial.PaintAllocatedBytesPerFrameP95,
-                trial.ScrollLazyLayoutAllocatedBytesP95,
-                trial.ScrollAdornerAllocatedBytesP95,
-                trial.ScrollRealizationAllocatedBytesP95,
-                trial.ScrollHighlightingAllocatedBytesP95,
-                trial.PaintSchedulingAllocatedBytesP95,
-                trial.PaintPlatformSessionAllocatedBytesP95,
-                trial.SnapshotPaintAllocatedBytesP95,
-                trial.InteractivePaintAllocatedBytesP95,
-                trial.InlinePaintAllocatedBytesP95,
-                trial.TablePaintAllocatedBytesP95,
-                trial.CodePaintAllocatedBytesP95,
-                trial.OtherPaintAllocatedBytesP95) &&
-            AllNonNegative(
-                trial.MaximumAllocatedBytesPerFrame,
-                trial.MaximumRendererOwnedAllocatedBytesPerFrame,
-                trial.MaximumPlatformProjectionAllocatedBytesPerFrame,
-                trial.MaximumRealizedCodeActions) &&
-            trial.UiThreadWorkP99Milliseconds >= trial.UiThreadWorkP95Milliseconds &&
-            trial.MaximumFrameStallMilliseconds >= trial.FrameTimeP95Milliseconds &&
-            trial.FramesOver16_7Percent <= 100 &&
-            trial.MaximumAllocatedBytesPerFrame >= trial.AllocatedBytesPerFrameP95 &&
-            trial.MaximumRendererOwnedAllocatedBytesPerFrame >=
-                trial.RendererOwnedAllocatedBytesPerFrameP95 &&
-            trial.MaximumPlatformProjectionAllocatedBytesPerFrame >=
-                trial.PlatformProjectionAllocatedBytesPerFrameP95 &&
-            trial.MaximumOffscreenRealizedCodeActions == 0 &&
-            trial.Gen2Collections >= 0;
-        bool aggregateMetricsValid =
-            AllFiniteNonNegative(
-                scroll.RegressionUiThreadWorkP95Milliseconds,
-                scroll.RegressionUiThreadWorkP99Milliseconds,
-                scroll.RegressionFrameTimeP95Milliseconds,
-                scroll.RegressionRendererOwnedAllocatedBytesPerFrameP95,
-                scroll.UiThreadWorkP95Milliseconds,
-                scroll.UiThreadWorkP99Milliseconds,
-                scroll.ScrollCallbackWorkP95Milliseconds,
-                scroll.PaintCallbackWorkP95Milliseconds,
-                scroll.FrameTimeP95Milliseconds,
-                scroll.FramesOver16_7Percent,
-                scroll.MaximumFrameStallMilliseconds,
-                scroll.AllocatedBytesPerFrameP95,
-                scroll.RendererOwnedAllocatedBytesPerFrameP95,
-                scroll.PlatformProjectionAllocatedBytesPerFrameP95,
-                scroll.ScrollAllocatedBytesPerFrameP95,
-                scroll.PaintAllocatedBytesPerFrameP95,
-                scroll.ScrollLazyLayoutAllocatedBytesP95,
-                scroll.ScrollAdornerAllocatedBytesP95,
-                scroll.ScrollRealizationAllocatedBytesP95,
-                scroll.ScrollHighlightingAllocatedBytesP95,
-                scroll.PaintSchedulingAllocatedBytesP95,
-                scroll.PaintPlatformSessionAllocatedBytesP95,
-                scroll.SnapshotPaintAllocatedBytesP95,
-                scroll.InteractivePaintAllocatedBytesP95,
-                scroll.InlinePaintAllocatedBytesP95,
-                scroll.TablePaintAllocatedBytesP95,
-                scroll.CodePaintAllocatedBytesP95,
-                scroll.OtherPaintAllocatedBytesP95) &&
-            AllNonNegative(
-                scroll.MaximumAllocatedBytesPerFrame,
-                scroll.MaximumRendererOwnedAllocatedBytesPerFrame,
-                scroll.MaximumPlatformProjectionAllocatedBytesPerFrame,
-                scroll.MaximumRealizedCodeActions) &&
-            scroll.UiThreadWorkP99Milliseconds >= scroll.UiThreadWorkP95Milliseconds &&
-            scroll.MaximumFrameStallMilliseconds >= scroll.FrameTimeP95Milliseconds &&
-            scroll.FramesOver16_7Percent <= 100 &&
-            scroll.MaximumAllocatedBytesPerFrame >= scroll.AllocatedBytesPerFrameP95 &&
-            scroll.MaximumRendererOwnedAllocatedBytesPerFrame >=
-                scroll.RendererOwnedAllocatedBytesPerFrameP95 &&
-            scroll.MaximumPlatformProjectionAllocatedBytesPerFrame >=
-                scroll.PlatformProjectionAllocatedBytesPerFrameP95 &&
-            scroll.AllocationGateBasis == "renderer-owned-managed" &&
-            !string.IsNullOrWhiteSpace(scroll.RawAllocationScope) &&
-            !string.IsNullOrWhiteSpace(scroll.PlatformProjectionAllocationScope) &&
-            scroll.LohAllocationPossible == (scroll.MaximumAllocatedBytesPerFrame >= 85_000) &&
-            scroll.RendererOwnedLohAllocationPossible ==
-                (scroll.MaximumRendererOwnedAllocatedBytesPerFrame >= 85_000) &&
-            scroll.MaximumOffscreenRealizedCodeActions == 0 &&
-            scroll.Gen2Collections >= 0;
-        bool scrollValid =
-            scroll.Corpus == PerformanceDocumentFactory.WarmScrollStressCorpus &&
-            scroll.SourceUtf16Bytes == 1024 * 1024 &&
-            scroll.StopwatchFrequency == System.Diagnostics.Stopwatch.Frequency &&
-            scroll.RequestedFrames == PerformanceMeasurementContract.QuickScrollFrames &&
-            scroll.MeasuredFrameIntervals == PerformanceMeasurementContract.QuickScrollFrames &&
-            scroll.FramesWithRendererWork == PerformanceMeasurementContract.QuickScrollFrames &&
-            scroll.RegressionEstimator == "quick-single-trial-non-gating" &&
-            trial is not null &&
-            trial.Ordinal == 0 &&
-            trial.FirstLogicalFrameId > 0 &&
-            trial.RequestedFrames == PerformanceMeasurementContract.QuickScrollFrames &&
-            trial.MeasuredFrameIntervals == PerformanceMeasurementContract.QuickScrollFrames &&
-            trial.FramesWithRendererWork == PerformanceMeasurementContract.QuickScrollFrames &&
-            IsFinitePositive(trial.FrameTimeP95Milliseconds) &&
-            trialMetricsValid &&
-            aggregateMetricsValid &&
-            rawScrollEvidenceValid &&
-            AggregatesMatchTrial(scroll, trial) &&
-            trial.Complete;
-        if (!scrollValid)
-            failures.Add("Quick smoke did not produce one complete 30-frame scroll trial.");
+        bool trialMetricsValid = trial is not null && HasValidTrialMetrics(trial);
+        bool aggregateMetricsValid = HasValidAggregateMetrics(scroll);
+        return scroll.Corpus == PerformanceDocumentFactory.WarmScrollStressCorpus &&
+               scroll.SourceUtf16Bytes == 1024 * 1024 &&
+               scroll.StopwatchFrequency == System.Diagnostics.Stopwatch.Frequency &&
+               scroll.RequestedFrames == PerformanceMeasurementContract.QuickScrollFrames &&
+               scroll.MeasuredFrameIntervals == PerformanceMeasurementContract.QuickScrollFrames &&
+               scroll.FramesWithRendererWork == PerformanceMeasurementContract.QuickScrollFrames &&
+               scroll.RegressionEstimator == "quick-single-trial-non-gating" &&
+               trial is not null &&
+               trial.Ordinal == 0 &&
+               trial.FirstLogicalFrameId > 0 &&
+               trial.RequestedFrames == PerformanceMeasurementContract.QuickScrollFrames &&
+               trial.MeasuredFrameIntervals == PerformanceMeasurementContract.QuickScrollFrames &&
+               trial.FramesWithRendererWork == PerformanceMeasurementContract.QuickScrollFrames &&
+               IsFinitePositive(trial.FrameTimeP95Milliseconds) &&
+               trialMetricsValid &&
+               aggregateMetricsValid &&
+               rawScrollEvidenceValid &&
+               AggregatesMatchTrial(scroll, trial) &&
+               trial.Complete;
+    }
 
-        bool retainedMemoryValid = report.RetainedMemory.Count == FirstViewportSourceSizes.Length;
+    private static bool HasValidTrialMetrics(ScrollTrialResult trial)
+        => AllFiniteNonNegative(
+               trial.UiThreadWorkP95Milliseconds,
+               trial.UiThreadWorkP99Milliseconds,
+               trial.ScrollCallbackWorkP95Milliseconds,
+               trial.PaintCallbackWorkP95Milliseconds,
+               trial.FrameTimeP95Milliseconds,
+               trial.FramesOver16_7Percent,
+               trial.MaximumFrameStallMilliseconds,
+               trial.AllocatedBytesPerFrameP95,
+               trial.RendererOwnedAllocatedBytesPerFrameP95,
+               trial.PlatformProjectionAllocatedBytesPerFrameP95,
+               trial.ScrollAllocatedBytesPerFrameP95,
+               trial.PaintAllocatedBytesPerFrameP95,
+               trial.ScrollLazyLayoutAllocatedBytesP95,
+               trial.ScrollAdornerAllocatedBytesP95,
+               trial.ScrollRealizationAllocatedBytesP95,
+               trial.ScrollHighlightingAllocatedBytesP95,
+               trial.PaintSchedulingAllocatedBytesP95,
+               trial.PaintPlatformSessionAllocatedBytesP95,
+               trial.SnapshotPaintAllocatedBytesP95,
+               trial.InteractivePaintAllocatedBytesP95,
+               trial.InlinePaintAllocatedBytesP95,
+               trial.TablePaintAllocatedBytesP95,
+               trial.CodePaintAllocatedBytesP95,
+               trial.OtherPaintAllocatedBytesP95) &&
+           AllNonNegative(
+               trial.MaximumAllocatedBytesPerFrame,
+               trial.MaximumRendererOwnedAllocatedBytesPerFrame,
+               trial.MaximumPlatformProjectionAllocatedBytesPerFrame,
+               trial.MaximumRealizedCodeActions) &&
+           trial.UiThreadWorkP99Milliseconds >= trial.UiThreadWorkP95Milliseconds &&
+           trial.MaximumFrameStallMilliseconds >= trial.FrameTimeP95Milliseconds &&
+           trial.FramesOver16_7Percent <= 100 &&
+           trial.MaximumAllocatedBytesPerFrame >= trial.AllocatedBytesPerFrameP95 &&
+           trial.MaximumRendererOwnedAllocatedBytesPerFrame >=
+               trial.RendererOwnedAllocatedBytesPerFrameP95 &&
+           trial.MaximumPlatformProjectionAllocatedBytesPerFrame >=
+               trial.PlatformProjectionAllocatedBytesPerFrameP95 &&
+           trial.MaximumOffscreenRealizedCodeActions == 0 &&
+           trial.Gen2Collections >= 0;
+
+    private static bool HasValidAggregateMetrics(ScrollResult scroll)
+        => AllFiniteNonNegative(
+               scroll.RegressionUiThreadWorkP95Milliseconds,
+               scroll.RegressionUiThreadWorkP99Milliseconds,
+               scroll.RegressionFrameTimeP95Milliseconds,
+               scroll.RegressionRendererOwnedAllocatedBytesPerFrameP95,
+               scroll.UiThreadWorkP95Milliseconds,
+               scroll.UiThreadWorkP99Milliseconds,
+               scroll.ScrollCallbackWorkP95Milliseconds,
+               scroll.PaintCallbackWorkP95Milliseconds,
+               scroll.FrameTimeP95Milliseconds,
+               scroll.FramesOver16_7Percent,
+               scroll.MaximumFrameStallMilliseconds,
+               scroll.AllocatedBytesPerFrameP95,
+               scroll.RendererOwnedAllocatedBytesPerFrameP95,
+               scroll.PlatformProjectionAllocatedBytesPerFrameP95,
+               scroll.ScrollAllocatedBytesPerFrameP95,
+               scroll.PaintAllocatedBytesPerFrameP95,
+               scroll.ScrollLazyLayoutAllocatedBytesP95,
+               scroll.ScrollAdornerAllocatedBytesP95,
+               scroll.ScrollRealizationAllocatedBytesP95,
+               scroll.ScrollHighlightingAllocatedBytesP95,
+               scroll.PaintSchedulingAllocatedBytesP95,
+               scroll.PaintPlatformSessionAllocatedBytesP95,
+               scroll.SnapshotPaintAllocatedBytesP95,
+               scroll.InteractivePaintAllocatedBytesP95,
+               scroll.InlinePaintAllocatedBytesP95,
+               scroll.TablePaintAllocatedBytesP95,
+               scroll.CodePaintAllocatedBytesP95,
+               scroll.OtherPaintAllocatedBytesP95) &&
+           AllNonNegative(
+               scroll.MaximumAllocatedBytesPerFrame,
+               scroll.MaximumRendererOwnedAllocatedBytesPerFrame,
+               scroll.MaximumPlatformProjectionAllocatedBytesPerFrame,
+               scroll.MaximumRealizedCodeActions) &&
+           scroll.UiThreadWorkP99Milliseconds >= scroll.UiThreadWorkP95Milliseconds &&
+           scroll.MaximumFrameStallMilliseconds >= scroll.FrameTimeP95Milliseconds &&
+           scroll.FramesOver16_7Percent <= 100 &&
+           scroll.MaximumAllocatedBytesPerFrame >= scroll.AllocatedBytesPerFrameP95 &&
+           scroll.MaximumRendererOwnedAllocatedBytesPerFrame >=
+               scroll.RendererOwnedAllocatedBytesPerFrameP95 &&
+           scroll.MaximumPlatformProjectionAllocatedBytesPerFrame >=
+               scroll.PlatformProjectionAllocatedBytesPerFrameP95 &&
+           scroll.AllocationGateBasis == "renderer-owned-managed" &&
+           !string.IsNullOrWhiteSpace(scroll.RawAllocationScope) &&
+           !string.IsNullOrWhiteSpace(scroll.PlatformProjectionAllocationScope) &&
+           scroll.LohAllocationPossible == (scroll.MaximumAllocatedBytesPerFrame >= 85_000) &&
+           scroll.RendererOwnedLohAllocationPossible ==
+               (scroll.MaximumRendererOwnedAllocatedBytesPerFrame >= 85_000) &&
+           scroll.MaximumOffscreenRealizedCodeActions == 0 &&
+           scroll.Gen2Collections >= 0;
+
+    private static bool HasValidRetainedMemory(IReadOnlyCollection<RetainedMemoryResult> retainedMemory)
+    {
+        bool retainedMemoryValid = retainedMemory.Count == FirstViewportSourceSizes.Length;
         foreach (int sourceBytes in FirstViewportSourceSizes)
         {
-            RetainedMemoryResult[] matches = report.RetainedMemory
+            RetainedMemoryResult[] matches = retainedMemory
                 .Where(item => item.SourceUtf16Bytes == sourceBytes)
                 .ToArray();
             retainedMemoryValid &= matches.Length == 1 &&
@@ -171,13 +196,64 @@ public static class QuickPerformanceSmokeValidator
                 matches[0].PrivateDeltaBytes >= 0 &&
                 matches[0].BudgetBytes > 0;
         }
-        if (!retainedMemoryValid)
-            failures.Add("Quick smoke did not produce all three structurally valid retained-memory scenarios.");
+        return retainedMemoryValid;
+    }
 
-        SourceLookupResult lookup = report.SourceLookup;
+    private static bool HasValidSourceLookup(SourceLookupResult lookup)
+    {
         double nanosecondsPerTick = lookup.StopwatchFrequency > 0
             ? 1_000_000_000.0 / lookup.StopwatchFrequency
             : double.NaN;
+        bool lookupTrialsValid = HasValidLookupTrials(
+            lookup,
+            nanosecondsPerTick,
+            out long lookupTrialAllocatedBytes);
+        return lookup.MappingCount == PerformanceMeasurementContract.SourceLookupMappingCount &&
+               lookup.QueryCount == PerformanceMeasurementContract.SourceLookupAbsoluteQueryCount &&
+               lookup.StopwatchFrequency == System.Diagnostics.Stopwatch.Frequency &&
+               PinnedMeasurementThreadScope.IsEvidenceValid(
+                   lookup.MeasurementThreadAffinityMask,
+                   lookup.MeasurementProcessorGroup,
+                   lookup.MeasurementProcessorNumber,
+                   lookup.MeasurementThreadPriority,
+                   ThreadPriority.Highest) &&
+               lookup.SamplesElapsedTicks.Count ==
+                   PerformanceMeasurementContract.SourceLookupAbsoluteQueryCount &&
+               lookup.SamplesElapsedTicks.All(static ticks => ticks >= 0) &&
+               IsFiniteNonNegative(lookup.P95Nanoseconds) &&
+               NearlyEqual(
+                   lookup.P95Nanoseconds,
+                   PerformanceStatistics.Percentile(lookup.SamplesElapsedTicks, 0.95) *
+                   nanosecondsPerTick) &&
+               lookup.AllocatedBytes == 0 &&
+               lookup.RegressionWarmupPasses ==
+                   PerformanceMeasurementContract.SourceLookupRegressionWarmupPasses &&
+               lookup.RegressionEstimator ==
+                   PerformanceMeasurementContract.SourceLookupRegressionEstimator &&
+               lookup.RegressionTrialCount ==
+                   PerformanceMeasurementContract.SourceLookupRegressionTrialCount &&
+               lookup.RegressionBatchSize ==
+                   PerformanceMeasurementContract.SourceLookupRegressionBatchSize &&
+               lookup.RegressionObservationCount ==
+                   PerformanceMeasurementContract.SourceLookupRegressionObservationCount &&
+               lookup.RegressionOperationCount ==
+                   PerformanceMeasurementContract.SourceLookupRegressionOperationCount &&
+               lookupTrialsValid &&
+               IsFinitePositive(lookup.RegressionP95Nanoseconds) &&
+               NearlyEqual(
+                   lookup.RegressionP95Nanoseconds,
+                   PerformanceStatistics.HodgesLehmann(
+                       lookup.RegressionTrials.Select(
+                           static trial => trial.P95Nanoseconds))) &&
+               lookup.RegressionAllocatedBytes == lookupTrialAllocatedBytes &&
+               lookupTrialAllocatedBytes == 0;
+    }
+
+    private static bool HasValidLookupTrials(
+        SourceLookupResult lookup,
+        double nanosecondsPerTick,
+        out long lookupTrialAllocatedBytes)
+    {
         bool lookupTrialsValid =
             lookup.RegressionTrials.Count ==
                 PerformanceMeasurementContract.SourceLookupRegressionTrialCount &&
@@ -185,7 +261,7 @@ public static class QuickPerformanceSmokeValidator
                 Enumerable.Range(
                     0,
                     PerformanceMeasurementContract.SourceLookupRegressionTrialCount));
-        long lookupTrialAllocatedBytes = 0;
+        lookupTrialAllocatedBytes = 0;
         foreach (SourceLookupTrialResult trialResult in lookup.RegressionTrials)
         {
             lookupTrialsValid &=
@@ -217,122 +293,62 @@ public static class QuickPerformanceSmokeValidator
             lookupTrialAllocatedBytes = checked(
                 lookupTrialAllocatedBytes + trialResult.AllocatedBytes);
         }
-        bool lookupValid =
-            lookup.MappingCount == PerformanceMeasurementContract.SourceLookupMappingCount &&
-            lookup.QueryCount == PerformanceMeasurementContract.SourceLookupAbsoluteQueryCount &&
-            lookup.StopwatchFrequency == System.Diagnostics.Stopwatch.Frequency &&
-            PinnedMeasurementThreadScope.IsEvidenceValid(
-                lookup.MeasurementThreadAffinityMask,
-                lookup.MeasurementProcessorGroup,
-                lookup.MeasurementProcessorNumber,
-                lookup.MeasurementThreadPriority,
-                ThreadPriority.Highest) &&
-            lookup.SamplesElapsedTicks.Count ==
-                PerformanceMeasurementContract.SourceLookupAbsoluteQueryCount &&
-            lookup.SamplesElapsedTicks.All(static ticks => ticks >= 0) &&
-            IsFiniteNonNegative(lookup.P95Nanoseconds) &&
-            NearlyEqual(
-                lookup.P95Nanoseconds,
-                PerformanceStatistics.Percentile(lookup.SamplesElapsedTicks, 0.95) *
-                nanosecondsPerTick) &&
-            lookup.AllocatedBytes == 0 &&
-            lookup.RegressionWarmupPasses ==
-                PerformanceMeasurementContract.SourceLookupRegressionWarmupPasses &&
-            lookup.RegressionEstimator ==
-                PerformanceMeasurementContract.SourceLookupRegressionEstimator &&
-            lookup.RegressionTrialCount ==
-                PerformanceMeasurementContract.SourceLookupRegressionTrialCount &&
-            lookup.RegressionBatchSize ==
-                PerformanceMeasurementContract.SourceLookupRegressionBatchSize &&
-            lookup.RegressionObservationCount ==
-                PerformanceMeasurementContract.SourceLookupRegressionObservationCount &&
-            lookup.RegressionOperationCount ==
-                PerformanceMeasurementContract.SourceLookupRegressionOperationCount &&
-            lookupTrialsValid &&
-            IsFinitePositive(lookup.RegressionP95Nanoseconds) &&
-            NearlyEqual(
-                lookup.RegressionP95Nanoseconds,
-                PerformanceStatistics.HodgesLehmann(
-                    lookup.RegressionTrials.Select(
-                        static trial => trial.P95Nanoseconds))) &&
-            lookup.RegressionAllocatedBytes == lookupTrialAllocatedBytes &&
-            lookupTrialAllocatedBytes == 0;
-        if (!lookupValid)
-            failures.Add("Quick smoke source-lookup samples or tick normalization were structurally invalid.");
+        return lookupTrialsValid;
+    }
 
-        LifecyclePlateauResult lifecycle = report.LifecyclePlateau;
+    private static bool HasValidLifecycle(LifecyclePlateauResult lifecycle)
+    {
         double managedGrowth = PerformanceStatistics.GrowthPercent(
             lifecycle.Checkpoint100ManagedBytes,
             lifecycle.Checkpoint80ManagedBytes);
         double privateGrowth = PerformanceStatistics.GrowthPercent(
             lifecycle.Checkpoint100PrivateBytes,
             lifecycle.Checkpoint80PrivateBytes);
-        bool lifecycleValid =
-            lifecycle.RequiredCycles == PerformanceMeasurementContract.QuickLifecycleCycles &&
-            lifecycle.CompletedCycles == PerformanceMeasurementContract.QuickLifecycleCycles &&
-            lifecycle.SyntheticDeviceResets == 0 &&
-            lifecycle.Checkpoint80ManagedBytes > 0 &&
-            lifecycle.Checkpoint100ManagedBytes > 0 &&
-            lifecycle.Checkpoint80PrivateBytes > 0 &&
-            lifecycle.Checkpoint100PrivateBytes > 0 &&
-            IsFiniteNonNegative(lifecycle.ManagedGrowthPercent) &&
-            IsFiniteNonNegative(lifecycle.PrivateGrowthPercent) &&
-            IsFiniteNonNegative(lifecycle.GrowthPercent) &&
-            NearlyEqual(lifecycle.ManagedGrowthPercent, managedGrowth) &&
-            NearlyEqual(lifecycle.PrivateGrowthPercent, privateGrowth) &&
-            NearlyEqual(lifecycle.GrowthPercent, Math.Max(managedGrowth, privateGrowth)) &&
-            lifecycle.RenderFailures == 0;
-        if (!lifecycleValid)
-            failures.Add("Quick smoke did not complete eight lifecycle iterations without render failures.");
-
-        CancellationResult cancellation = report.Cancellation;
-        bool cancellationValid = CancellationEvidenceValidator.TryValidate(
-                cancellation,
-                PerformanceMeasurementContract.QuickCancellationIterations,
-                PerformanceMeasurementContract.QuickCancellationTrials,
-                out CancellationEvidenceStatistics cancellationStatistics) &&
-            cancellationStatistics.WarmupStaleCommits == 0 &&
-            cancellationStatistics.StaleCommits == 0 &&
-            cancellation.Trials.All(static trial =>
-                trial.WarmupStaleCommits == 0 && trial.StaleCommits == 0) &&
-            cancellation.TrialStartPolicy ==
-                PerformanceMeasurementContract.CancellationTrialStartPolicy &&
-            cancellation.RegressionEstimator == "quick-single-trial-non-gating";
-        if (!cancellationValid)
-            failures.Add("Quick smoke did not produce one valid cancellation without a stale commit.");
-
-        RegressionResult regression = report.Regression;
-        bool regressionSkipped =
-            regression.Mode == "quick-non-gating" &&
-            regression.DecisionPolicy ==
-                PerformanceMeasurementContract.RegressionDecisionPolicy &&
-            regression.LatencyRegressionBudgetPercent == 5 &&
-            regression.AllocationRegressionBudgetPercent == 2 &&
-            string.IsNullOrEmpty(regression.ReferencePath) &&
-            string.IsNullOrEmpty(regression.ReferenceReportSha256) &&
-            string.IsNullOrEmpty(regression.ReferenceBuildIdentity) &&
-            !regression.ReferenceEligible &&
-            !regression.MachineComparable &&
-            regression.ComparedLatencyMetrics == 0 &&
-            regression.ComparedAllocationMetrics == 0 &&
-            regression.Comparisons.Count == 0 &&
-            !regression.Passed;
-        if (!regressionSkipped)
-            failures.Add("Quick smoke unexpectedly evaluated release regression gates.");
-        if (renderFailures != 0)
-            failures.Add($"Quick smoke observed {renderFailures} renderer failure(s).");
-
-        return failures;
+        return lifecycle.RequiredCycles == PerformanceMeasurementContract.QuickLifecycleCycles &&
+               lifecycle.CompletedCycles == PerformanceMeasurementContract.QuickLifecycleCycles &&
+               lifecycle.SyntheticDeviceResets == 0 &&
+               lifecycle.Checkpoint80ManagedBytes > 0 &&
+               lifecycle.Checkpoint100ManagedBytes > 0 &&
+               lifecycle.Checkpoint80PrivateBytes > 0 &&
+               lifecycle.Checkpoint100PrivateBytes > 0 &&
+               IsFiniteNonNegative(lifecycle.ManagedGrowthPercent) &&
+               IsFiniteNonNegative(lifecycle.PrivateGrowthPercent) &&
+               IsFiniteNonNegative(lifecycle.GrowthPercent) &&
+               NearlyEqual(lifecycle.ManagedGrowthPercent, managedGrowth) &&
+               NearlyEqual(lifecycle.PrivateGrowthPercent, privateGrowth) &&
+               NearlyEqual(lifecycle.GrowthPercent, Math.Max(managedGrowth, privateGrowth)) &&
+               lifecycle.RenderFailures == 0;
     }
 
-    private static bool IsFinitePositive(double value)
-        => double.IsFinite(value) && value > 0;
+    private static bool HasValidCancellation(CancellationResult cancellation)
+        => CancellationEvidenceValidator.TryValidate(
+               cancellation,
+               PerformanceMeasurementContract.QuickCancellationIterations,
+               PerformanceMeasurementContract.QuickCancellationTrials,
+               out CancellationEvidenceStatistics cancellationStatistics) &&
+           cancellationStatistics.WarmupStaleCommits == 0 &&
+           cancellationStatistics.StaleCommits == 0 &&
+           cancellation.Trials.All(static trial =>
+               trial.WarmupStaleCommits == 0 && trial.StaleCommits == 0) &&
+           cancellation.TrialStartPolicy ==
+               PerformanceMeasurementContract.CancellationTrialStartPolicy &&
+           cancellation.RegressionEstimator == "quick-single-trial-non-gating";
 
-    private static bool IsFiniteNonNegative(double value)
-        => double.IsFinite(value) && value >= 0;
-
-    private static bool AllFiniteNonNegative(params double[] values)
-        => values.All(IsFiniteNonNegative);
+    private static bool IsRegressionSkipped(RegressionResult regression)
+        => regression.Mode == "quick-non-gating" &&
+           regression.DecisionPolicy ==
+               PerformanceMeasurementContract.RegressionDecisionPolicy &&
+           regression.LatencyRegressionBudgetPercent == 5 &&
+           regression.AllocationRegressionBudgetPercent == 2 &&
+           string.IsNullOrEmpty(regression.ReferencePath) &&
+           string.IsNullOrEmpty(regression.ReferenceReportSha256) &&
+           string.IsNullOrEmpty(regression.ReferenceBuildIdentity) &&
+           !regression.ReferenceEligible &&
+           !regression.MachineComparable &&
+           regression.ComparedLatencyMetrics == 0 &&
+           regression.ComparedAllocationMetrics == 0 &&
+           regression.Comparisons.Count == 0 &&
+           !regression.Passed;
 
     private static bool AllNonNegative(params long[] values)
         => values.All(static value => value >= 0);
@@ -380,12 +396,4 @@ public static class QuickPerformanceSmokeValidator
            scroll.MaximumRealizedCodeActions == trial.MaximumRealizedCodeActions &&
            scroll.MaximumOffscreenRealizedCodeActions == trial.MaximumOffscreenRealizedCodeActions &&
            scroll.Gen2Collections == trial.Gen2Collections;
-
-    private static bool NearlyEqual(double left, double right)
-    {
-        if (!double.IsFinite(left) || !double.IsFinite(right))
-            return false;
-        double scale = Math.Max(1, Math.Max(Math.Abs(left), Math.Abs(right)));
-        return Math.Abs(left - right) <= scale * 1e-12;
-    }
 }

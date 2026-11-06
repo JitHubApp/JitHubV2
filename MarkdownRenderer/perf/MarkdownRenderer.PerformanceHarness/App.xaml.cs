@@ -5,27 +5,29 @@ namespace MarkdownRenderer.PerformanceHarness;
 
 public partial class App : Application
 {
+    private readonly string[] _arguments;
     private PerformanceWindow? _window;
 
-    public App()
+    public App(string[] arguments)
     {
+        _arguments = arguments;
         UnhandledException += OnUnhandledException;
         InitializeComponent();
     }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        Debug.WriteLine($"[PerfHarness] launch args: {string.Join(" | ", Program.Arguments)}");
+        Debug.WriteLine($"[PerfHarness] launch args: {string.Join(" | ", _arguments)}");
         PerformanceOptions options;
         try
         {
-            options = PerformanceOptions.Parse(Program.Arguments);
+            options = PerformanceOptions.Parse(_arguments);
         }
         catch (Exception exception)
         {
             Debug.WriteLine($"[PerfHarness] option failure: {exception}");
             Console.Error.WriteLine(exception.Message);
-            Program.TryWriteStartupFailureReport(exception);
+            Program.TryWriteStartupFailureReport(_arguments, exception);
             Environment.Exit(2);
             return;
         }

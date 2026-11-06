@@ -15,71 +15,84 @@ public sealed record PerformanceOptions(
 {
     public static PerformanceOptions Parse(IReadOnlyList<string> arguments)
     {
-        string? output = null;
-        string? reference = null;
-        bool baseline = false;
-        bool quick = false;
-        bool populationOverrideSpecified = false;
-        int firstViewportIterations = PerformanceMeasurementContract.ReleaseFirstViewportIterations;
-        int scrollFrames = PerformanceMeasurementContract.ReleaseScrollFrames;
-        int scrollTrials = PerformanceMeasurementContract.ReleaseScrollTrials;
-        int lifecycleCycles = PerformanceMeasurementContract.ReleaseLifecycleCycles;
-        int cancellationIterations = PerformanceMeasurementContract.ReleaseCancellationIterations;
+        ParsedArguments parsed = ReadArguments(arguments);
+        if (string.IsNullOrWhiteSpace(parsed.Output))
+            throw new ArgumentException("--output <absolute-json-path> is required.");
 
+        string fullOutput = Path.GetFullPath(parsed.Output);
+        string? fullReference = string.IsNullOrWhiteSpace(parsed.Reference)
+            ? null
+            : Path.GetFullPath(parsed.Reference);
+        RejectPathsInsideDeployment(fullOutput, fullReference);
+        RejectInvalidCombination(parsed, fullOutput, fullReference);
+
+        return new PerformanceOptions(
+            fullOutput,
+            fullReference,
+            parsed.Baseline,
+            parsed.Quick,
+            parsed.FirstViewportIterations,
+            parsed.ScrollFrames,
+            parsed.ScrollTrials,
+            parsed.LifecycleCycles,
+            parsed.CancellationIterations);
+    }
+
+    private static ParsedArguments ReadArguments(IReadOnlyList<string> arguments)
+    {
+        var parsed = new ParsedArguments();
         for (int index = 0; index < arguments.Count; index++)
         {
             string argument = arguments[index];
             switch (argument)
             {
                 case "--output":
-                    output = ReadValue(arguments, ref index, argument);
+                    parsed.Output = ReadValue(arguments, ref index, argument);
                     break;
                 case "--reference":
-                    reference = ReadValue(arguments, ref index, argument);
+                    parsed.Reference = ReadValue(arguments, ref index, argument);
                     break;
                 case "--baseline":
-                    baseline = true;
+                    parsed.Baseline = true;
                     break;
                 case "--quick":
-                    quick = true;
-                    firstViewportIterations = PerformanceMeasurementContract.QuickFirstViewportIterations;
-                    scrollFrames = PerformanceMeasurementContract.QuickScrollFrames;
-                    scrollTrials = PerformanceMeasurementContract.QuickScrollTrials;
-                    lifecycleCycles = PerformanceMeasurementContract.QuickLifecycleCycles;
-                    cancellationIterations = PerformanceMeasurementContract.QuickCancellationIterations;
+                    parsed.Quick = true;
+                    parsed.FirstViewportIterations = PerformanceMeasurementContract.QuickFirstViewportIterations;
+                    parsed.ScrollFrames = PerformanceMeasurementContract.QuickScrollFrames;
+                    parsed.ScrollTrials = PerformanceMeasurementContract.QuickScrollTrials;
+                    parsed.LifecycleCycles = PerformanceMeasurementContract.QuickLifecycleCycles;
+                    parsed.CancellationIterations = PerformanceMeasurementContract.QuickCancellationIterations;
                     break;
                 case "--first-viewport-iterations":
-                    populationOverrideSpecified = true;
-                    firstViewportIterations = ParsePositiveInt(ReadValue(arguments, ref index, argument), argument);
+                    parsed.PopulationOverrideSpecified = true;
+                    parsed.FirstViewportIterations = ParsePositiveInt(ReadValue(arguments, ref index, argument), argument);
                     break;
                 case "--scroll-frames":
-                    populationOverrideSpecified = true;
-                    scrollFrames = ParsePositiveInt(ReadValue(arguments, ref index, argument), argument);
+                    parsed.PopulationOverrideSpecified = true;
+                    parsed.ScrollFrames = ParsePositiveInt(ReadValue(arguments, ref index, argument), argument);
                     break;
                 case "--scroll-trials":
-                    populationOverrideSpecified = true;
-                    scrollTrials = ParsePositiveInt(ReadValue(arguments, ref index, argument), argument);
+                    parsed.PopulationOverrideSpecified = true;
+                    parsed.ScrollTrials = ParsePositiveInt(ReadValue(arguments, ref index, argument), argument);
                     break;
                 case "--lifecycle-cycles":
-                    populationOverrideSpecified = true;
-                    lifecycleCycles = ParsePositiveInt(ReadValue(arguments, ref index, argument), argument);
+                    parsed.PopulationOverrideSpecified = true;
+                    parsed.LifecycleCycles = ParsePositiveInt(ReadValue(arguments, ref index, argument), argument);
                     break;
                 case "--cancellation-iterations":
-                    populationOverrideSpecified = true;
-                    cancellationIterations = ParsePositiveInt(ReadValue(arguments, ref index, argument), argument);
+                    parsed.PopulationOverrideSpecified = true;
+                    parsed.CancellationIterations = ParsePositiveInt(ReadValue(arguments, ref index, argument), argument);
                     break;
                 default:
                     throw new ArgumentException($"Unknown performance harness argument '{argument}'.");
             }
         }
 
-        if (string.IsNullOrWhiteSpace(output))
-            throw new ArgumentException("--output <absolute-json-path> is required.");
+        return parsed;
+    }
 
-        string fullOutput = Path.GetFullPath(output);
-        string? fullReference = string.IsNullOrWhiteSpace(reference)
-            ? null
-            : Path.GetFullPath(reference);
+    private static void RejectPathsInsideDeployment(string fullOutput, string? fullReference)
+    {
         string executablePath = Environment.ProcessPath ??
             throw new InvalidOperationException(
                 "The performance executable path is unavailable.");
@@ -98,11 +111,20 @@ public sealed record PerformanceOptions(
             throw new ArgumentException(
                 "--reference must be outside the executable deployment directory so reference files cannot affect the frozen runtime-output manifest.");
         }
+    }
+
+    private static void RejectInvalidCombination(
+        ParsedArguments parsed,
+        string fullOutput,
+        string? fullReference)
+    {
+        bool baseline = parsed.Baseline;
+        bool quick = parsed.Quick;
         if (baseline && fullReference is not null)
             throw new ArgumentException("--baseline and --reference are mutually exclusive.");
         if (quick && (baseline || fullReference is not null))
             throw new ArgumentException("--quick cannot be combined with --baseline or --reference.");
-        if (quick && populationOverrideSpecified)
+        if (quick && parsed.PopulationOverrideSpecified)
         {
             throw new ArgumentException(
                 "--quick uses its frozen 1/30/1/8/1 smoke populations and cannot include population overrides.");
@@ -123,17 +145,6 @@ public sealed record PerformanceOptions(
                 "Release measurement requires --reference <same-machine-report> or --baseline. " +
                 "Use --quick only for a non-gating smoke run.");
         }
-
-        return new PerformanceOptions(
-            fullOutput,
-            fullReference,
-            baseline,
-            quick,
-            firstViewportIterations,
-            scrollFrames,
-            scrollTrials,
-            lifecycleCycles,
-            cancellationIterations);
     }
 
     private static string ReadValue(IReadOnlyList<string> arguments, ref int index, string option)
@@ -148,5 +159,22 @@ public sealed record PerformanceOptions(
         if (!int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int parsed) || parsed <= 0)
             throw new ArgumentException($"{option} requires a positive integer.");
         return parsed;
+    }
+
+    /// <summary>The switches as read, before paths are resolved and checked.</summary>
+    private sealed class ParsedArguments
+    {
+        public string? Output { get; set; }
+        public string? Reference { get; set; }
+        public bool Baseline { get; set; }
+        public bool Quick { get; set; }
+        public bool PopulationOverrideSpecified { get; set; }
+        public int FirstViewportIterations { get; set; } =
+            PerformanceMeasurementContract.ReleaseFirstViewportIterations;
+        public int ScrollFrames { get; set; } = PerformanceMeasurementContract.ReleaseScrollFrames;
+        public int ScrollTrials { get; set; } = PerformanceMeasurementContract.ReleaseScrollTrials;
+        public int LifecycleCycles { get; set; } = PerformanceMeasurementContract.ReleaseLifecycleCycles;
+        public int CancellationIterations { get; set; } =
+            PerformanceMeasurementContract.ReleaseCancellationIterations;
     }
 }

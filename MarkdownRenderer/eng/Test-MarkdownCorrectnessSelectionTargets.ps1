@@ -11,7 +11,8 @@ $script:LayoutBuilderPath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Lay
 $script:ThemeDefaultStylesPath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Theming\ThemeDefaultStyles.cs'
 $script:ElementStylePath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Theming\ElementStyle.cs'
 $script:ThemeSnapshotPath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Theming\ThemeSnapshot.cs'
-$script:SampleWindowPath = Join-Path $PSScriptRoot '..\samples\MarkdownRenderer.Sample\MainWindow.xaml.cs'
+$script:SampleRendererHostPath = Join-Path $PSScriptRoot '..\samples\MarkdownRenderer.Sample\SampleRendererHost.cs'
+$script:SampleThemeAdjustmentsPath = Join-Path $PSScriptRoot '..\samples\MarkdownRenderer.Sample\SampleThemeAdjustments.cs'
 $script:SampleAppPath = Join-Path $PSScriptRoot '..\samples\MarkdownRenderer.Sample\App.xaml'
 $tokens = $null
 $parseErrors = $null
@@ -225,7 +226,8 @@ $layoutBuilderSource = [System.IO.File]::ReadAllText($script:LayoutBuilderPath)
 $themeDefaultStylesSource = [System.IO.File]::ReadAllText($script:ThemeDefaultStylesPath)
 $elementStyleSource = [System.IO.File]::ReadAllText($script:ElementStylePath)
 $themeSnapshotSource = [System.IO.File]::ReadAllText($script:ThemeSnapshotPath)
-$sampleWindowSource = [System.IO.File]::ReadAllText($script:SampleWindowPath)
+$sampleRendererHostSource = [System.IO.File]::ReadAllText($script:SampleRendererHostPath)
+$sampleThemeAdjustmentsSource = [System.IO.File]::ReadAllText($script:SampleThemeAdjustmentsPath)
 $sampleAppSource = [System.IO.File]::ReadAllText($script:SampleAppPath)
 $promotionStart = $layoutBuilderSource.IndexOf('private BlockBox BuildParagraphOrImage(')
 $promotionEnd = if ($promotionStart -ge 0) {
@@ -235,22 +237,22 @@ if ($promotionStart -lt 0 -or $promotionEnd -le $promotionStart) {
     throw 'Could not isolate LayoutBlockBuilder.BuildParagraphOrImage source guard.'
 }
 $promotionSource = $layoutBuilderSource.Substring($promotionStart, $promotionEnd - $promotionStart)
-$sampleCreateStart = $sampleWindowSource.IndexOf('private MarkdownRendererControl CreateRenderer(')
+$sampleCreateStart = $sampleRendererHostSource.IndexOf('private MarkdownRendererControl CreateRenderer(')
 $sampleCreateEnd = if ($sampleCreateStart -ge 0) {
-    $sampleWindowSource.IndexOf('private void AttachRendererToHost(', $sampleCreateStart + 1)
+    $sampleRendererHostSource.IndexOf('private void AttachToViewHost(', $sampleCreateStart + 1)
 } else { -1 }
 if ($sampleCreateStart -lt 0 -or $sampleCreateEnd -le $sampleCreateStart) {
     throw 'Could not isolate the sample CreateRenderer source guard.'
 }
-$sampleCreateSource = $sampleWindowSource.Substring($sampleCreateStart, $sampleCreateEnd - $sampleCreateStart)
-$textScaleStart = $sampleWindowSource.IndexOf('private void ApplyTextScale(float scale)')
+$sampleCreateSource = $sampleRendererHostSource.Substring($sampleCreateStart, $sampleCreateEnd - $sampleCreateStart)
+$textScaleStart = $sampleThemeAdjustmentsSource.IndexOf('internal static void ApplyTextScale(MarkdownTheme theme, float scale)')
 $textScaleEnd = if ($textScaleStart -ge 0) {
-    $sampleWindowSource.IndexOf('private void SetTheme(', $textScaleStart + 1)
+    $sampleThemeAdjustmentsSource.Length
 } else { -1 }
 if ($textScaleStart -lt 0 -or $textScaleEnd -le $textScaleStart) {
     throw 'Could not isolate the sample ApplyTextScale source guard.'
 }
-$textScaleSource = $sampleWindowSource.Substring($textScaleStart, $textScaleEnd - $textScaleStart)
+$textScaleSource = $sampleThemeAdjustmentsSource.Substring($textScaleStart, $textScaleEnd - $textScaleStart)
 $bodyDefaultPattern = 'MarkdownElementKeys\.Body\s*=>\s*new ElementStyle\s*\{[^}]*FontSize\s*=\s*14[^}]*Margin\s*=\s*new Thickness\(0,\s*0,\s*0,\s*8\)'
 Assert-Check -Name 'source guard: promoted image replaces ImageBox defaults with effective Body paragraph margin and line height' -Condition `
     ($promotionSource.Contains('MarkdownElementKeys.Body') -and
