@@ -16,7 +16,9 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 /// <summary>
 /// Scene fixtures, pixel readers and shared assertions for
-/// <see cref="VectorAccessibilityContractTests"/>.
+/// <see cref="VectorAccessibilityContractTests"/>,
+/// <see cref="VectorSelectionGeometryTests"/> and
+/// <see cref="VectorKeyboardFocusTests"/>.
 /// </summary>
 internal static class VectorAccessibilityAssertions
 {
