@@ -182,80 +182,67 @@ internal sealed class ThemeResolver
         if (!MarkdownStyleRole.TryCreateCanonical(elementKey, out MarkdownStyleRole role))
             return style;
 
-        Color? foreground = _resources.ResolveRoleColor(role, MarkdownStyleProperty.ForegroundBrush);
-        Color? hoverForeground = _resources.ResolveRoleColor(role, MarkdownStyleProperty.HoverForegroundBrush);
-        Color? focusForeground = _resources.ResolveRoleColor(role, MarkdownStyleProperty.FocusForegroundBrush);
-        Color? background = _resources.ResolveRoleColor(role, MarkdownStyleProperty.BackgroundBrush);
-        Color? accent = _resources.ResolveRoleColor(role, MarkdownStyleProperty.AccentBrush);
-        Color? border = _resources.ResolveRoleColor(role, MarkdownStyleProperty.BorderBrush);
-        string? fontFamily = _resources.ResolveRoleFontFamily(role);
-        float? fontSize = _resources.ResolveRoleFloat(role, MarkdownStyleProperty.FontSize);
-        Windows.UI.Text.FontWeight? fontWeight = _resources.ResolveRoleFontWeight(role);
-        FontStyle? fontStyle = _resources.ResolveRoleFontStyle(role);
-        Thickness? margin = _resources.ResolveRoleThickness(role, MarkdownStyleProperty.Margin);
-        Thickness? padding = _resources.ResolveRoleThickness(role, MarkdownStyleProperty.Padding);
-        float? borderThickness = _resources.ResolveRoleFloat(role, MarkdownStyleProperty.BorderThickness);
-        float? cornerRadius = _resources.ResolveRoleFloat(role, MarkdownStyleProperty.CornerRadius);
-        float? lineHeight = _resources.ResolveRoleFloat(role, MarkdownStyleProperty.LineHeightMultiplier);
-        float? listIndent = _resources.ResolveRoleFloat(role, MarkdownStyleProperty.ListIndent);
-        float? nestedListIndent = _resources.ResolveRoleFloat(role, MarkdownStyleProperty.NestedListIndent);
-        TextDecorations? textDecorations = _resources.ResolveRoleTextDecorations(role);
+        RoleResourceValues values = ResolveRoleResourceValues(role);
+        ApplyConvenienceAliases(elementKey, ref values);
+        return ThemeSnapshot.ApplyOverride(style, values.ToOverride());
+    }
 
-        // Convenience aliases remain stable even if role names evolve.
+    /// <summary>Reads every MarkdownRenderer.&lt;role&gt;.&lt;property&gt; resource of <paramref name="role"/>.</summary>
+    private RoleResourceValues ResolveRoleResourceValues(MarkdownStyleRole role) => new()
+    {
+        Foreground = _resources.ResolveRoleColor(role, MarkdownStyleProperty.ForegroundBrush),
+        HoverForeground = _resources.ResolveRoleColor(role, MarkdownStyleProperty.HoverForegroundBrush),
+        FocusForeground = _resources.ResolveRoleColor(role, MarkdownStyleProperty.FocusForegroundBrush),
+        Background = _resources.ResolveRoleColor(role, MarkdownStyleProperty.BackgroundBrush),
+        Accent = _resources.ResolveRoleColor(role, MarkdownStyleProperty.AccentBrush),
+        Border = _resources.ResolveRoleColor(role, MarkdownStyleProperty.BorderBrush),
+        FontFamily = _resources.ResolveRoleFontFamily(role),
+        FontSize = _resources.ResolveRoleFloat(role, MarkdownStyleProperty.FontSize),
+        FontWeight = _resources.ResolveRoleFontWeight(role),
+        FontStyle = _resources.ResolveRoleFontStyle(role),
+        Margin = _resources.ResolveRoleThickness(role, MarkdownStyleProperty.Margin),
+        Padding = _resources.ResolveRoleThickness(role, MarkdownStyleProperty.Padding),
+        BorderThickness = _resources.ResolveRoleFloat(role, MarkdownStyleProperty.BorderThickness),
+        CornerRadius = _resources.ResolveRoleFloat(role, MarkdownStyleProperty.CornerRadius),
+        LineHeight = _resources.ResolveRoleFloat(role, MarkdownStyleProperty.LineHeightMultiplier),
+        ListIndent = _resources.ResolveRoleFloat(role, MarkdownStyleProperty.ListIndent),
+        NestedListIndent = _resources.ResolveRoleFloat(role, MarkdownStyleProperty.NestedListIndent),
+        TextDecorations = _resources.ResolveRoleTextDecorations(role),
+    };
+
+    /// <summary>
+    /// Fills values the role resources left unset from the convenience
+    /// resource keys, which stay stable even if role names evolve.
+    /// </summary>
+    private void ApplyConvenienceAliases(string elementKey, ref RoleResourceValues values)
+    {
         if (elementKey == MarkdownElementKeys.Body)
         {
-            foreground ??= _resources.ResolveColorResource(MarkdownResourceKeys.BodyForegroundBrush);
-            fontFamily ??= _resources.ResolveFontFamilyResource(MarkdownResourceKeys.BodyFontFamily);
-            fontSize ??= _resources.ResolveFloatResource(MarkdownResourceKeys.BodyFontSize);
+            values.Foreground ??= _resources.ResolveColorResource(MarkdownResourceKeys.BodyForegroundBrush);
+            values.FontFamily ??= _resources.ResolveFontFamilyResource(MarkdownResourceKeys.BodyFontFamily);
+            values.FontSize ??= _resources.ResolveFloatResource(MarkdownResourceKeys.BodyFontSize);
         }
         else if (elementKey == MarkdownElementKeys.Link)
         {
-            foreground ??= _resources.ResolveColorResource(MarkdownResourceKeys.LinkForegroundBrush);
-            hoverForeground ??= _resources.ResolveColorResource(MarkdownResourceKeys.LinkHoverForegroundBrush);
+            values.Foreground ??= _resources.ResolveColorResource(MarkdownResourceKeys.LinkForegroundBrush);
+            values.HoverForeground ??= _resources.ResolveColorResource(MarkdownResourceKeys.LinkHoverForegroundBrush);
         }
         else if (elementKey is MarkdownElementKeys.CodeBlock or MarkdownElementKeys.CodeInline)
         {
-            fontFamily ??= _resources.ResolveFontFamilyResource(MarkdownResourceKeys.CodeFontFamily);
+            values.FontFamily ??= _resources.ResolveFontFamilyResource(MarkdownResourceKeys.CodeFontFamily);
             if (elementKey == MarkdownElementKeys.CodeBlock)
-                background ??= _resources.ResolveColorResource(MarkdownResourceKeys.CodeBlockBackgroundBrush);
+                values.Background ??= _resources.ResolveColorResource(MarkdownResourceKeys.CodeBlockBackgroundBrush);
         }
         else if (elementKey == MarkdownElementKeys.Quote)
         {
-            accent ??= _resources.ResolveColorResource(MarkdownResourceKeys.QuoteAccentBrush);
+            values.Accent ??= _resources.ResolveColorResource(MarkdownResourceKeys.QuoteAccentBrush);
         }
         else if (elementKey is MarkdownElementKeys.Table or MarkdownElementKeys.TableHeader or MarkdownElementKeys.TableCell)
         {
-            border ??= _resources.ResolveColorResource(MarkdownResourceKeys.TableBorderBrush);
+            values.Border ??= _resources.ResolveColorResource(MarkdownResourceKeys.TableBorderBrush);
             if (elementKey is MarkdownElementKeys.TableHeader or MarkdownElementKeys.TableCell)
-                padding ??= _resources.ResolveThicknessResource(MarkdownResourceKeys.TableCellPadding);
+                values.Padding ??= _resources.ResolveThicknessResource(MarkdownResourceKeys.TableCellPadding);
         }
-
-        return ThemeSnapshot.ApplyOverride(style, new ElementStyleOverride
-        {
-            Foreground = foreground,
-            HoverForeground = hoverForeground,
-            FocusForeground = focusForeground,
-            Background = background,
-            AccentBar = accent,
-            BorderBrush = border,
-            FontFamily = fontFamily,
-            FontSize = fontSize,
-            FontWeight = fontWeight,
-            FontStyle = fontStyle,
-            Margin = margin,
-            Padding = padding,
-            BorderThickness = borderThickness,
-            CornerRadius = cornerRadius,
-            LineHeightMultiplier = lineHeight,
-            ListIndent = listIndent,
-            NestedListIndent = nestedListIndent,
-            Underline = textDecorations is { } decorations
-                ? (decorations & TextDecorations.Underline) != 0
-                : null,
-            Strikethrough = textDecorations is { } resolvedDecorations
-                ? (resolvedDecorations & TextDecorations.Strikethrough) != 0
-                : null,
-        });
     }
 
     private Color ResolveSelectionHighlightColor()
@@ -375,4 +362,56 @@ internal sealed class ThemeResolver
         return PlatformThemeColors.Resolve(_host.ActualTheme, scoped);
     }
 
+    /// <summary>
+    /// The app resource values of one style role, before they become an
+    /// <see cref="ElementStyleOverride"/>. A null value leaves the style as is.
+    /// </summary>
+    private struct RoleResourceValues
+    {
+        public Color? Foreground;
+        public Color? HoverForeground;
+        public Color? FocusForeground;
+        public Color? Background;
+        public Color? Accent;
+        public Color? Border;
+        public string? FontFamily;
+        public float? FontSize;
+        public Windows.UI.Text.FontWeight? FontWeight;
+        public FontStyle? FontStyle;
+        public Thickness? Margin;
+        public Thickness? Padding;
+        public float? BorderThickness;
+        public float? CornerRadius;
+        public float? LineHeight;
+        public float? ListIndent;
+        public float? NestedListIndent;
+        public TextDecorations? TextDecorations;
+
+        public readonly ElementStyleOverride ToOverride() => new()
+        {
+            Foreground = Foreground,
+            HoverForeground = HoverForeground,
+            FocusForeground = FocusForeground,
+            Background = Background,
+            AccentBar = Accent,
+            BorderBrush = Border,
+            FontFamily = FontFamily,
+            FontSize = FontSize,
+            FontWeight = FontWeight,
+            FontStyle = FontStyle,
+            Margin = Margin,
+            Padding = Padding,
+            BorderThickness = BorderThickness,
+            CornerRadius = CornerRadius,
+            LineHeightMultiplier = LineHeight,
+            ListIndent = ListIndent,
+            NestedListIndent = NestedListIndent,
+            Underline = TextDecorations is { } decorations
+                ? (decorations & Windows.UI.Text.TextDecorations.Underline) != 0
+                : null,
+            Strikethrough = TextDecorations is { } resolvedDecorations
+                ? (resolvedDecorations & Windows.UI.Text.TextDecorations.Strikethrough) != 0
+                : null,
+        };
+    }
 }
