@@ -44,17 +44,7 @@ public sealed class MultiRasterLayoutCandidateTests
             InlineImageRun[] replacementImages = replacementRuns.OfType<InlineImageRun>().ToArray();
             MarkdownSemanticDocument replacementSemantic = replacement.SemanticDocument;
 
-            Assert.Equal(sourceRuns.Length, replacementRuns.Length);
-            for (int index = 0; index < sourceRuns.Length; index++)
-            {
-                Assert.Equal(sourceRuns[index].InlineIndex, replacementRuns[index].InlineIndex);
-                Assert.Equal(sourceRuns[index].RenderedLength, replacementRuns[index].RenderedLength);
-                Assert.Equal(sourceRuns[index].SourceSpan, replacementRuns[index].SourceSpan);
-                Assert.Equal(sourceRuns[index].ElementKey, replacementRuns[index].ElementKey);
-                Assert.Equal(sourceRuns[index].StyleAliases, replacementRuns[index].StyleAliases);
-                Assert.Equal(sourceRuns[index].StyleModifierKeys, replacementRuns[index].StyleModifierKeys);
-                Assert.Equal(sourceRuns[index].SemanticHeadingKey, replacementRuns[index].SemanticHeadingKey);
-            }
+            AssertRunsCloneSourceIdentity(sourceRuns, replacementRuns);
 
             Assert.Equal(fixture.ImageRuns.Count, replacementImages.Length);
             Assert.NotSame(sourceSemantic, replacementSemantic);
@@ -70,39 +60,9 @@ public sealed class MultiRasterLayoutCandidateTests
             Assert.Equal(907, replacement.AutomationDocumentGeneration);
             Assert.Equal(source.LayoutRevision + 1, replacement.LayoutRevision);
 
-            TextElementBoundaryIndex sourceBoundaries = sourceSemantic.TextElementBoundaries;
-            TextElementBoundaryIndex replacementBoundaries = replacementSemantic.TextElementBoundaries;
-            for (int offset = 0; offset <= sourceBoundaries.TextLength; offset++)
-            {
-                Assert.Equal(sourceBoundaries.FindBoundaries(offset), replacementBoundaries.FindBoundaries(offset));
-                Assert.Equal(sourceBoundaries.FindWordBoundaries(offset), replacementBoundaries.FindWordBoundaries(offset));
-                int sourceNext = sourceBoundaries.Move(offset, 1, out int sourceMoved);
-                int replacementNext = replacementBoundaries.Move(offset, 1, out int replacementMoved);
-                Assert.Equal(sourceNext, replacementNext);
-                Assert.Equal(sourceMoved, replacementMoved);
-            }
+            AssertTextElementBoundariesMatch(sourceSemantic.TextElementBoundaries, replacementSemantic.TextElementBoundaries);
 
-            MarkdownSemanticNode[] sourceImageNodes = MarkdownSemanticDocument
-                .EnumerateDepthFirst(sourceSemantic.Root)
-                .Where(node => node.Role == MarkdownSemanticRole.Image)
-                .ToArray();
-            MarkdownSemanticNode[] replacementImageNodes = MarkdownSemanticDocument
-                .EnumerateDepthFirst(replacementSemantic.Root)
-                .Where(node => node.Role == MarkdownSemanticRole.Image)
-                .ToArray();
-            Assert.Equal(replacementImages.Length, sourceImageNodes.Length);
-            Assert.Equal(sourceImageNodes.Length, replacementImageNodes.Length);
-            for (int index = 0; index < replacementImages.Length; index++)
-            {
-                Assert.NotSame(fixture.ImageRuns[index], replacementImages[index]);
-                Assert.NotSame(fixture.ImageBoxes[index], replacementImages[index].Image);
-                Assert.Same(replacementRoot, replacementImageNodes[index].InlineBox);
-                Assert.Same(replacementImages[index], replacementImageNodes[index].InlineRun);
-                Assert.Same(replacementImages[index].Image, replacementImageNodes[index].ImageBox);
-                Assert.Equal(sourceImageNodes[index].HelpText, replacementImageNodes[index].HelpText);
-                Assert.Equal(sourceImageNodes[index].AccessibilityRole, replacementImageNodes[index].AccessibilityRole);
-                Assert.Equal(fixture.ImageRuns[index].AltText, replacementImages[index].AltText);
-            }
+            AssertImageSemanticNodesMatch(fixture, sourceSemantic, replacementSemantic, replacementRoot, replacementImages);
         }
         finally
         {
@@ -114,6 +74,66 @@ public sealed class MultiRasterLayoutCandidateTests
             {
                 await buildContext.DrainOwnedRetirementsAsync();
             }
+        }
+    }
+
+    private static void AssertRunsCloneSourceIdentity(InlineRun[] sourceRuns, InlineRun[] replacementRuns)
+    {
+        Assert.Equal(sourceRuns.Length, replacementRuns.Length);
+        for (int index = 0; index < sourceRuns.Length; index++)
+        {
+            Assert.Equal(sourceRuns[index].InlineIndex, replacementRuns[index].InlineIndex);
+            Assert.Equal(sourceRuns[index].RenderedLength, replacementRuns[index].RenderedLength);
+            Assert.Equal(sourceRuns[index].SourceSpan, replacementRuns[index].SourceSpan);
+            Assert.Equal(sourceRuns[index].ElementKey, replacementRuns[index].ElementKey);
+            Assert.Equal(sourceRuns[index].StyleAliases, replacementRuns[index].StyleAliases);
+            Assert.Equal(sourceRuns[index].StyleModifierKeys, replacementRuns[index].StyleModifierKeys);
+            Assert.Equal(sourceRuns[index].SemanticHeadingKey, replacementRuns[index].SemanticHeadingKey);
+        }
+    }
+
+    private static void AssertTextElementBoundariesMatch(
+        TextElementBoundaryIndex sourceBoundaries,
+        TextElementBoundaryIndex replacementBoundaries)
+    {
+        for (int offset = 0; offset <= sourceBoundaries.TextLength; offset++)
+        {
+            Assert.Equal(sourceBoundaries.FindBoundaries(offset), replacementBoundaries.FindBoundaries(offset));
+            Assert.Equal(sourceBoundaries.FindWordBoundaries(offset), replacementBoundaries.FindWordBoundaries(offset));
+            int sourceNext = sourceBoundaries.Move(offset, 1, out int sourceMoved);
+            int replacementNext = replacementBoundaries.Move(offset, 1, out int replacementMoved);
+            Assert.Equal(sourceNext, replacementNext);
+            Assert.Equal(sourceMoved, replacementMoved);
+        }
+    }
+
+    private static void AssertImageSemanticNodesMatch(
+        MultiRasterPlacementCloneTests.MultiRasterFixture fixture,
+        MarkdownSemanticDocument sourceSemantic,
+        MarkdownSemanticDocument replacementSemantic,
+        InlineContainerBox replacementRoot,
+        InlineImageRun[] replacementImages)
+    {
+        MarkdownSemanticNode[] sourceImageNodes = MarkdownSemanticDocument
+            .EnumerateDepthFirst(sourceSemantic.Root)
+            .Where(node => node.Role == MarkdownSemanticRole.Image)
+            .ToArray();
+        MarkdownSemanticNode[] replacementImageNodes = MarkdownSemanticDocument
+            .EnumerateDepthFirst(replacementSemantic.Root)
+            .Where(node => node.Role == MarkdownSemanticRole.Image)
+            .ToArray();
+        Assert.Equal(replacementImages.Length, sourceImageNodes.Length);
+        Assert.Equal(sourceImageNodes.Length, replacementImageNodes.Length);
+        for (int index = 0; index < replacementImages.Length; index++)
+        {
+            Assert.NotSame(fixture.ImageRuns[index], replacementImages[index]);
+            Assert.NotSame(fixture.ImageBoxes[index], replacementImages[index].Image);
+            Assert.Same(replacementRoot, replacementImageNodes[index].InlineBox);
+            Assert.Same(replacementImages[index], replacementImageNodes[index].InlineRun);
+            Assert.Same(replacementImages[index].Image, replacementImageNodes[index].ImageBox);
+            Assert.Equal(sourceImageNodes[index].HelpText, replacementImageNodes[index].HelpText);
+            Assert.Equal(sourceImageNodes[index].AccessibilityRole, replacementImageNodes[index].AccessibilityRole);
+            Assert.Equal(fixture.ImageRuns[index].AltText, replacementImages[index].AltText);
         }
     }
 

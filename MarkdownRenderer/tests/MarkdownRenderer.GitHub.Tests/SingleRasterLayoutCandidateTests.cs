@@ -313,7 +313,11 @@ public sealed class SingleRasterLayoutCandidateTests
         Assert.Equal(source.MeasuredTopLevelBlockCount, candidate.Snapshot.MeasuredTopLevelBlockCount);
         candidate.Dispose();
         await lazyContext.DrainOwnedRetirementsAsync();
+        await AssertUnsupportedSecondRootRejectsAndDrainsAsync();
+    }
 
+    private static async Task AssertUnsupportedSecondRootRejectsAndDrainsAsync()
+    {
         await using var multiFixture = new CompletedRasterPlacementCloneTests.PlacementFixture();
         InlineContainerBox secondRoot = new(multiFixture.SourceContext, MarkdownElementKeys.Body)
         {
@@ -337,7 +341,7 @@ public sealed class SingleRasterLayoutCandidateTests
             Width,
             (float)multiFixture.Source.Bounds.Height + secondHeight);
         multiFixture.TransferSourceOwnershipToSnapshot(multipleRootSnapshot);
-        candidate = multipleRootSnapshot.CreateSingleRasterCandidate(
+        SingleRasterLayoutCandidate? candidate = multipleRootSnapshot.CreateSingleRasterCandidate(
             new[] { multiFixture.Source.BlockIndex },
             Width,
             CancellationToken.None,
