@@ -1,35 +1,30 @@
 using System;
 using System.Numerics;
 using System.Runtime.ExceptionServices;
-using System.Threading;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Performance;
-using MarkdownRenderer.Theming;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using Windows.UI;
-using Windows.UI.Text;
 
 namespace MarkdownRenderer.Layout;
 
 /// <summary>
-/// Shared, bounded text fallback for vector scenes that could
-/// not acquire bounded native drawing resources. Only the two text-direction
-/// descriptors are retained process-wide; individual scenes retain bounded
-/// source/semantic strings, not CanvasTextLayout objects.
+/// Bounded text fallback for vector scenes that could not acquire bounded
+/// native drawing resources. The two text-direction descriptors belong to the
+/// admission that deferred the scene
+/// (<see cref="VectorNativeResourceAdmission.CapacityFallbackFormats"/>);
+/// individual scenes retain bounded source/semantic strings, not
+/// CanvasTextLayout objects.
 /// </summary>
 internal static class VectorSceneCapacityFallback
 {
     internal const int MaximumCharacters = 256;
     private const double MinimumTextScale = 0.5d;
     private const double MaximumTextScale = 3d;
-
-    private static readonly object Gate = new();
-    private static SharedCanvasTextFormatCache.Lease? _leftToRightFormat;
-    private static SharedCanvasTextFormatCache.Lease? _rightToLeftFormat;
 
     internal static VectorNativeResourceAdmission? ResolveNativeAdmission(
         MarkdownLayoutContext context,
@@ -45,59 +40,27 @@ internal static class VectorSceneCapacityFallback
             !session.IsDisposed &&
             context.UseProgressiveNativeSceneResidency &&
             session.Options.DeferOffscreenScenes
-                ? VectorNativeResourceAdmission.Shared
+                ? session.VectorNativeAdmission
                 : null;
     }
 
     /// <summary>
-    /// Creates/pins the fixed format only from an off-frame preparation path.
-    /// The returned descriptor remains owned by the shared cache lease, never
-    /// by a scene/run, and is borrowed directly during painting.
+    /// Gets the fallback descriptor <paramref name="admission"/> prepared for
+    /// <paramref name="flowDirection"/>. A scene without an admission was never
+    /// capacity-deferred, so it has no fallback descriptor.
     /// </summary>
-    internal static bool PrepareFormat(FlowDirection flowDirection)
+    internal static bool TryGetFormat(
+        VectorNativeResourceAdmission? admission,
+        FlowDirection flowDirection,
+        out CanvasTextFormat format)
     {
-        lock (Gate)
-        {
-            ref SharedCanvasTextFormatCache.Lease? slot = ref
-                (flowDirection == FlowDirection.RightToLeft
-                    ? ref _rightToLeftFormat
-                    : ref _leftToRightFormat);
-            if (slot is not null)
-                return true;
-
-            var style = new ElementStyle
-            {
-                FontFamily = "Segoe UI",
-                FontSize = 14f,
-                LineHeightMultiplier = 1f,
-                FontStyle = FontStyle.Normal,
-            };
-            SharedCanvasTextFormatCache.Lease lease = SharedCanvasTextFormatCache.Acquire(
-                style,
-                CanvasWordWrapping.Wrap,
-                CanvasHorizontalAlignment.Center,
-                flowDirection,
-                localeName: null,
-                useContentAwareLineSpacing: true,
-                verticalAlignment: CanvasVerticalAlignment.Center);
-            Volatile.Write(ref slot, lease);
-            return true;
-        }
-    }
-
-    internal static bool TryGetFormat(FlowDirection flowDirection, out CanvasTextFormat format)
-    {
-        SharedCanvasTextFormatCache.Lease? lease = flowDirection == FlowDirection.RightToLeft
-            ? Volatile.Read(ref _rightToLeftFormat)
-            : Volatile.Read(ref _leftToRightFormat);
-        if (lease is null)
+        if (admission is null)
         {
             format = null!;
             return false;
         }
 
-        format = lease.Format;
-        return true;
+        return admission.CapacityFallbackFormats.TryGetFormat(flowDirection, out format);
     }
 
     /// <summary>

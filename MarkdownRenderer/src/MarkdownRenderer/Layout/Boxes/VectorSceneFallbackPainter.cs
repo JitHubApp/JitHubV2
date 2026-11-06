@@ -61,6 +61,7 @@ internal sealed class VectorSceneFallbackPainter
         bool clipAlreadyApplied = false)
     {
         if (!VectorSceneCapacityFallback.TryGetFormat(
+                _host.NativeAdmission,
                 _host.LayoutContext.FlowDirection,
                 out CanvasTextFormat format))
         {

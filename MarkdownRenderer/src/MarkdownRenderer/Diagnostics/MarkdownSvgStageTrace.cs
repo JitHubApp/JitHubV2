@@ -1,6 +1,5 @@
 using System;
 using System.Diagnostics;
-using System.Threading;
 
 namespace MarkdownRenderer.Diagnostics;
 
@@ -10,8 +9,6 @@ namespace MarkdownRenderer.Diagnostics;
 /// </summary>
 internal readonly struct MarkdownSvgStageTrace : IDisposable
 {
-    private static readonly AsyncLocal<long> AmbientWorkId = new();
-
     private readonly long _workId;
     private readonly MarkdownSvgWorkStage _stage;
     private readonly long _startedAt;
@@ -34,9 +31,10 @@ internal readonly struct MarkdownSvgStageTrace : IDisposable
 
     internal static long BeginWork() => MarkdownPerformanceEventSource.Log.BeginSvgWork();
 
-    internal static long CurrentWorkId => AmbientWorkId.Value;
+    internal static long CurrentWorkId => MarkdownPerformanceEventSource.Log.GetCurrentSvgWorkId();
 
-    internal static void SetCurrentWorkId(long workId) => AmbientWorkId.Value = workId;
+    internal static void SetCurrentWorkId(long workId) =>
+        MarkdownPerformanceEventSource.Log.SetCurrentSvgWorkId(workId);
 
     internal static MarkdownSvgWorkScope BeginWorkScope()
     {
@@ -49,8 +47,8 @@ internal readonly struct MarkdownSvgStageTrace : IDisposable
         if (workId == 0)
             return default;
 
-        long previousWorkId = AmbientWorkId.Value;
-        AmbientWorkId.Value = workId;
+        long previousWorkId = CurrentWorkId;
+        SetCurrentWorkId(workId);
         return new MarkdownSvgWorkScope(previousWorkId, workId);
     }
 

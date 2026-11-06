@@ -196,9 +196,8 @@ internal sealed class LazyLayoutRealization
             // Same-band work from an older image-reflow revision must not
             // absorb the retry needed to refresh scene indexes/graph bindings.
             _activeRevision == snapshot.LayoutRevision &&
-            (!_vectorCapacity.IsAdmissionEnabled ||
-             VectorNativeResourceAdmission.Shared.CapacityGeneration <=
-                _activeCapacityGeneration) &&
+            (_vectorCapacity.Admission is not { } admission ||
+             admission.CapacityGeneration <= _activeCapacityGeneration) &&
             band.Top >= _activeBand.Top &&
             band.Bottom <= _activeBand.Bottom &&
             (!_vectorCapacity.IsAdmissionEnabled ||
@@ -310,8 +309,8 @@ internal sealed class LazyLayoutRealization
         // The active ticket is current through every refund already visible
         // when dispatch starts. A later refund invalidates this work and makes
         // the capacity wake eligible to schedule a fresh attempt.
-        _activeCapacityGeneration = _vectorCapacity.IsAdmissionEnabled
-            ? VectorNativeResourceAdmission.Shared.CapacityGeneration
+        _activeCapacityGeneration = _vectorCapacity.Admission is { } admission
+            ? admission.CapacityGeneration
             : snapshot.ActiveCapacityGeneration;
         _activeAnchorOffset = anchorOffset;
         var receiver = new WeakReference<LazyLayoutRealization>(this);

@@ -17,16 +17,17 @@ internal sealed class MarkdownPerformanceEventSource : EventSource
 
     internal static MarkdownPerformanceEventSource Log { get; } = new();
 
-    // Harness-owned frame correlation for the calling thread only; each UI
-    // thread sees its own value and production callers never set it.
-    [ThreadStatic]
-    private static long _logicalFrameId;
-
     // The provider is a process singleton by EventSource contract, so its
-    // in-process observer and correlation counter are instance state of that
-    // one provider rather than free statics.
+    // in-process observer, correlation counter, ambient SVG work id and
+    // harness frame id are instance state of that one provider rather than
+    // free statics.
+    private readonly AsyncLocal<long> _currentSvgWorkId = new();
     private IMarkdownPerformanceSink? _sink;
     private long _nextSvgWorkId;
+
+    // Harness-owned frame correlation. Only the performance harness sets it,
+    // from its single UI thread; production callers leave it at zero.
+    private long _logicalFrameId;
 
     private MarkdownPerformanceEventSource()
     {
@@ -37,10 +38,10 @@ internal sealed class MarkdownPerformanceEventSource : EventSource
     /// owned by the performance harness. Production callers leave this at zero.
     /// </summary>
     [NonEvent]
-    internal static long GetLogicalFrameId() => _logicalFrameId;
+    internal static long GetLogicalFrameId() => Volatile.Read(ref Log._logicalFrameId);
 
     [NonEvent]
-    internal static void SetLogicalFrameId(long value) => _logicalFrameId = value;
+    internal static void SetLogicalFrameId(long value) => Volatile.Write(ref Log._logicalFrameId, value);
 
     [NonEvent]
     internal void SetInProcessSink(IMarkdownPerformanceSink? sink) =>
@@ -205,6 +206,17 @@ internal sealed class MarkdownPerformanceEventSource : EventSource
     internal long BeginSvgWork() => IsSvgWorkMeasurementEnabled()
         ? Interlocked.Increment(ref _nextSvgWorkId)
         : 0;
+
+    /// <summary>
+    /// The SVG work id that flows with the current asynchronous operation, or
+    /// zero outside a work scope. It follows Task.Run and await like any
+    /// AsyncLocal value without adding identity to provider requests.
+    /// </summary>
+    [NonEvent]
+    internal long GetCurrentSvgWorkId() => _currentSvgWorkId.Value;
+
+    [NonEvent]
+    internal void SetCurrentSvgWorkId(long workId) => _currentSvgWorkId.Value = workId;
 
     /// <summary>
     /// Numeric-only SVG stage timing. Never pass source text, URLs, titles,

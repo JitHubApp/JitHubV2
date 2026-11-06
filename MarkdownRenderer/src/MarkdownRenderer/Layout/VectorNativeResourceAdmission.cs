@@ -4,9 +4,13 @@ using System.Threading;
 namespace MarkdownRenderer.Layout;
 
 /// <summary>
-/// Process-wide weighted admission for prepared native vector resources. The
-/// units are conservative complexity credits, not measured native bytes, RSS,
-/// or a promise about a graphics driver’s allocation behavior.
+/// Weighted admission for prepared native vector resources. A
+/// <see cref="Performance.MarkdownPerformanceSession"/> owns one, because
+/// vector scenes are admitted against native capacity only for views that
+/// borrow a session deferring offscreen scenes; every view of that session
+/// shares its bound. The units are conservative complexity credits, not
+/// measured native bytes, RSS, or a promise about a graphics driver’s
+/// allocation behavior.
 /// </summary>
 internal sealed class VectorNativeResourceAdmission
 {
@@ -14,12 +18,6 @@ internal sealed class VectorNativeResourceAdmission
     internal const long X86CapacityWeightUnits = 32L * 1024 * 1024;
     private const int ObserverRegistrationsBetweenCompactions = 256;
     private const int ObserverTombstonesBeforeCompaction = 64;
-
-    private static readonly Lazy<VectorNativeResourceAdmission> s_shared = new(
-        static () => new VectorNativeResourceAdmission(
-            IntPtr.Size == 8 ? X64OrArm64CapacityWeightUnits : X86CapacityWeightUnits,
-            IntPtr.Size == 8 ? X64OrArm64CapacityWeightUnits : X86CapacityWeightUnits),
-        LazyThreadSafetyMode.ExecutionAndPublication);
 
     private readonly object _gate = new();
     private readonly long _capacityWeightUnits;
@@ -30,7 +28,12 @@ internal sealed class VectorNativeResourceAdmission
     private long _reservedWeightUnits;
     private long _capacityGeneration;
 
-    internal static VectorNativeResourceAdmission Shared => s_shared.Value;
+    /// <summary>Creates a ledger with the architecture's default capacity.</summary>
+    internal static VectorNativeResourceAdmission CreateDefault()
+    {
+        long capacity = IntPtr.Size == 8 ? X64OrArm64CapacityWeightUnits : X86CapacityWeightUnits;
+        return new VectorNativeResourceAdmission(capacity, capacity);
+    }
 
     /// <summary>
     /// Creates an isolated admission ledger. Limits may only lower the
@@ -57,6 +60,9 @@ internal sealed class VectorNativeResourceAdmission
         get { lock (_gate) return _reservedWeightUnits; }
     }
     internal long CapacityGeneration => Interlocked.Read(ref _capacityGeneration);
+
+    /// <summary>The text descriptors that scenes this ledger defers paint their fallback with.</summary>
+    internal VectorSceneCapacityFallbackFormats CapacityFallbackFormats { get; } = new();
 
     internal VectorNativeAdmissionResult TryReserve(
         long weightUnits,

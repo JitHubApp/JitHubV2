@@ -16,11 +16,7 @@ namespace MarkdownRenderer.Theming;
 /// </summary>
 internal sealed class ThemeResourceLookup
 {
-    private static readonly RelevantResourceKeyCache<ResourceDictionary> RelevantResourceKeys = new(
-        static resources => resources.Keys.Count,
-        ThemeResourceValues.EnumerateStringKeys,
-        ThemeResourceScope.IncludeScopedRendererResource);
-
+    private readonly RelevantResourceKeyCache<ResourceDictionary> _relevantResourceKeys;
     private readonly FrameworkElement _host;
     private readonly ResourceDictionary? _applicationResources;
     private readonly bool _isHighContrast;
@@ -34,8 +30,10 @@ internal sealed class ThemeResourceLookup
     internal ThemeResourceLookup(
         FrameworkElement host,
         ResourceDictionary? applicationResources,
-        bool isHighContrast)
+        bool isHighContrast,
+        RelevantResourceKeyCache<ResourceDictionary> relevantResourceKeys)
     {
+        _relevantResourceKeys = relevantResourceKeys ?? throw new ArgumentNullException(nameof(relevantResourceKeys));
         _host = host;
         _applicationResources = applicationResources;
         _isHighContrast = isHighContrast;
@@ -294,11 +292,18 @@ internal sealed class ThemeResourceLookup
         => _scopedResourceStyleRoles is { } styleRoles &&
             ThemeResourceScope.IsScopedResourceRequiredForSnapshot(key, styleRoles);
 
-    internal static void InvalidateResourceKeyCache()
-        => RelevantResourceKeys.Invalidate();
+    /// <summary>
+    /// Creates the cache of relevant resource keys that one owner's lookups
+    /// share across snapshots. Each control owns one, so a control's
+    /// invalidation never drops another control's discovery.
+    /// </summary>
+    internal static RelevantResourceKeyCache<ResourceDictionary> CreateRelevantResourceKeyCache() => new(
+        static resources => resources.Keys.Count,
+        ThemeResourceValues.EnumerateStringKeys,
+        ThemeResourceScope.IncludeScopedRendererResource);
 
-    private static IEnumerable<string> EnumerateRelevantResourceKeys(ResourceDictionary resources)
-        => RelevantResourceKeys.GetRelevantKeys(resources);
+    private IEnumerable<string> EnumerateRelevantResourceKeys(ResourceDictionary resources)
+        => _relevantResourceKeys.GetRelevantKeys(resources);
 
     internal PlatformThemeColorOverrides ResolveScopedPlatformThemeColorOverrides()
     {

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.System;
@@ -13,13 +12,12 @@ using MarkdownRenderer.Diagnostics;
 namespace MarkdownRenderer.Theming;
 
 /// <summary>
-/// One native environment observer per <see cref="XamlRoot"/>. Controls hold a
+/// One native environment observer per <see cref="XamlRoot"/>, owned by that
+/// root's <see cref="Controls.MarkdownXamlRootServices"/>. Controls hold a
 /// lightweight lease; the monitor holds only weak references back to controls.
 /// </summary>
 internal sealed class MarkdownEnvironmentMonitor
 {
-    private static readonly ConditionalWeakTable<XamlRoot, MarkdownEnvironmentMonitor> Monitors = new();
-
     private readonly XamlRoot _xamlRoot;
     private readonly DispatcherQueue _dispatcher;
     private readonly List<ListenerEntry> _listeners = new();
@@ -34,31 +32,16 @@ internal sealed class MarkdownEnvironmentMonitor
     private bool _isAttached;
     private MarkdownEnvironmentSnapshot _snapshot;
 
-    private MarkdownEnvironmentMonitor(XamlRoot xamlRoot, DispatcherQueue dispatcher)
+    internal MarkdownEnvironmentMonitor(XamlRoot xamlRoot, DispatcherQueue dispatcher)
     {
         _xamlRoot = xamlRoot;
         _dispatcher = dispatcher;
     }
 
-    /// <summary>Acquires the shared monitor for a loaded element's XamlRoot.</summary>
-    public static Subscription? Acquire(
-        FrameworkElement host,
-        IMarkdownEnvironmentListener listener)
+    /// <summary>Leases this root's environment to a listener, attaching on first use.</summary>
+    public Subscription Acquire(IMarkdownEnvironmentListener listener)
     {
-        ArgumentNullException.ThrowIfNull(host);
         ArgumentNullException.ThrowIfNull(listener);
-
-        var xamlRoot = host.XamlRoot;
-        var dispatcher = host.DispatcherQueue;
-        if (xamlRoot is null || dispatcher is null)
-            return null;
-
-        var monitor = Monitors.GetValue(xamlRoot, root => new MarkdownEnvironmentMonitor(root, dispatcher));
-        return monitor.AddListener(listener);
-    }
-
-    private Subscription AddListener(IMarkdownEnvironmentListener listener)
-    {
         if (!_dispatcher.HasThreadAccess)
             throw new InvalidOperationException("Markdown environment subscriptions must be acquired on the XAML thread.");
 

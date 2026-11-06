@@ -46,6 +46,37 @@ public sealed class VectorNativeResourceAdmissionTests
     }
 
     [Fact]
+    public void EachPerformanceSessionOwnsItsCapacityLedger()
+    {
+        using var first = new MarkdownRenderer.Performance.MarkdownPerformanceSession(
+            MarkdownRenderer.Performance.MarkdownPerformanceOptions.Progressive);
+        using var second = new MarkdownRenderer.Performance.MarkdownPerformanceSession(
+            MarkdownRenderer.Performance.MarkdownPerformanceOptions.Progressive);
+        VectorNativeResourceAdmission firstAdmission =
+            ((MarkdownRenderer.Performance.IMarkdownPerformanceSessionInternal)first).VectorNativeAdmission;
+        VectorNativeResourceAdmission secondAdmission =
+            ((MarkdownRenderer.Performance.IMarkdownPerformanceSessionInternal)second).VectorNativeAdmission;
+
+        Assert.Same(
+            firstAdmission,
+            ((MarkdownRenderer.Performance.IMarkdownPerformanceSessionInternal)first).VectorNativeAdmission);
+        Assert.NotSame(firstAdmission, secondAdmission);
+
+        Assert.Equal(VectorNativeAdmissionResult.Granted,
+            firstAdmission.TryReserve(
+                firstAdmission.MaximumSceneWeightUnits,
+                out VectorNativeResourceCredit? credit,
+                out _));
+        using (credit)
+        {
+            Assert.Equal(0, secondAdmission.ReservedWeightUnits);
+            Assert.Equal(VectorNativeAdmissionResult.Granted,
+                secondAdmission.TryReserve(1, out VectorNativeResourceCredit? other, out _));
+            other!.Dispose();
+        }
+    }
+
+    [Fact]
     public async Task CompetingReservationsNeverExceedAggregateCapacity()
     {
         const int capacity = 100;

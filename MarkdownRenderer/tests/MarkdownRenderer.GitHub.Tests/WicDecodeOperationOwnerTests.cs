@@ -28,7 +28,7 @@ public sealed class WicDecodeOperationOwnerTests
         Assert.Equal(0, fixture.DecoderOperation.CancelCalls);
         Assert.Equal(0, fixture.PixelOperation.CancelCalls);
         Assert.Equal(1, fixture.ProcessSlot.DisposeCalls);
-        Assert.False(fixture.Owner.HasSourceStreamsForTests);
+        Assert.False(IsSourceStreamOpen(fixture.SourceStream));
         Assert.Equal(0, retirement.PendingResourceCount);
         Assert.Equal(0, retirement.QuarantinedResourceCount);
     }
@@ -59,7 +59,7 @@ public sealed class WicDecodeOperationOwnerTests
         Assert.Equal(1, fixture.DecoderOperation.CloseCalls);
         Assert.Equal(1, fixture.PixelOperation.CloseCalls);
         Assert.Equal(1, fixture.ProcessSlot.DisposeCalls);
-        Assert.False(fixture.Owner.HasSourceStreamsForTests);
+        Assert.False(IsSourceStreamOpen(fixture.SourceStream));
         Assert.Equal(0, retirement.PendingResourceCount);
         Assert.Equal(0, retirement.QuarantinedResourceCount);
     }
@@ -94,7 +94,7 @@ public sealed class WicDecodeOperationOwnerTests
         Assert.Equal(1, fixture.DecoderOperation.CloseCalls);
         Assert.Equal(1, fixture.PixelOperation.CloseCalls);
         Assert.Equal(1, fixture.ProcessSlot.DisposeCalls);
-        Assert.False(fixture.Owner.HasSourceStreamsForTests);
+        Assert.False(IsSourceStreamOpen(fixture.SourceStream));
         Assert.Equal(0, retirement.PendingResourceCount);
         Assert.Equal(0, retirement.QuarantinedResourceCount);
     }
@@ -159,7 +159,7 @@ public sealed class WicDecodeOperationOwnerTests
         Assert.Equal(2, fixture.PixelOperation.StatusReads);
         Assert.Equal(1, fixture.PixelOperation.CloseCalls);
         Assert.Equal(1, fixture.DecoderOperation.CloseCalls);
-        Assert.True(fixture.Owner.HasSourceStreamsForTests);
+        Assert.True(IsSourceStreamOpen(fixture.SourceStream));
         Assert.Equal(0, fixture.ProcessSlot.DisposeCalls);
         Assert.Equal(0, retirement.PendingRecordCount);
         Assert.Equal(0, retirement.PendingResourceCount);
@@ -184,7 +184,7 @@ public sealed class WicDecodeOperationOwnerTests
         Assert.Throws<InvalidOperationException>(
             () => owner.RegisterDecoderCreationOperation(unownedDecoderOperation));
 
-        owner.OpenSourceStream([1, 2, 3]);
+        IRandomAccessStream sourceStream = owner.OpenSourceStream([1, 2, 3]);
         var decoderOperation = new FakeAsyncOperation<BitmapDecoder>(AsyncStatus.Completed);
         var duplicateDecoderOperation = new FakeAsyncOperation<BitmapDecoder>(AsyncStatus.Completed);
         owner.RegisterDecoderCreationOperation(decoderOperation);
@@ -217,9 +217,25 @@ public sealed class WicDecodeOperationOwnerTests
         Assert.Equal(0, unownedDecoderOperation.CloseCalls);
         Assert.Equal(0, duplicateDecoderOperation.CloseCalls);
         Assert.Equal(0, duplicatePixelOperation.CloseCalls);
-        Assert.False(owner.HasSourceStreamsForTests);
+        Assert.False(IsSourceStreamOpen(sourceStream));
         Assert.Equal(0, retirement.PendingResourceCount);
         Assert.Equal(0, retirement.QuarantinedResourceCount);
+    }
+
+    // The borrowed adapter is the observable end of the owner's stream custody:
+    // it stays readable while the owner holds it and throws once the owner
+    // has disposed it.
+    private static bool IsSourceStreamOpen(IRandomAccessStream stream)
+    {
+        try
+        {
+            _ = stream.Size;
+            return true;
+        }
+        catch (ObjectDisposedException)
+        {
+            return false;
+        }
     }
 
     private static Fixture CreateFixture(

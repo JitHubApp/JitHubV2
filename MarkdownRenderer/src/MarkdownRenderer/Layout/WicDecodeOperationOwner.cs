@@ -42,7 +42,6 @@ internal sealed class WicDecodeOperationOwner : IDisposable
         new(retirement ?? NativeResourceRetirement.Shared);
 
     internal int LastFailureHResult => Volatile.Read(ref _lastFailureHResult);
-    internal bool HasSourceStreamsForTests => _sourceStream is not null || _randomAccessStream is not null;
 
     /// <summary>
     /// True once a native close/dispose attempt failed and ownership can no

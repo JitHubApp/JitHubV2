@@ -32,7 +32,7 @@ internal sealed class EnvironmentSubscription : IMarkdownEnvironmentListener
     internal void Acquire()
     {
         _subscription?.Dispose();
-        _subscription = MarkdownEnvironmentMonitor.Acquire(_host, this);
+        _subscription = MarkdownXamlRootServices.GetOrCreate(_host)?.Environment.Acquire(this);
         _snapshot = _subscription?.Snapshot ?? default;
     }
 

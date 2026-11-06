@@ -10,6 +10,11 @@ namespace MarkdownRenderer.GitHub;
 public static class GitHubReadmeMarkdownRenderer
 {
     /// <summary>Gets a reusable immutable GitHub README engine.</summary>
+    /// <remarks>
+    /// Like any engine it is the scope of its caches: every view given this
+    /// engine shares its completed-document cache and layout hints. Disposing it
+    /// has no effect.
+    /// </remarks>
     public static MarkdownEngine SharedEngine { get; } = new MarkdownEngineBuilder()
         .UseGitHubReadme()
         .BuildShared();

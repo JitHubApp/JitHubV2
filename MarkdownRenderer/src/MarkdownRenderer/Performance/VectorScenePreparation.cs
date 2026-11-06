@@ -66,6 +66,6 @@ internal readonly struct VectorScenePreparation
     {
         cancellationToken.ThrowIfCancellationRequested();
         return _nativeAdmission is not null &&
-            VectorSceneCapacityFallback.PrepareFormat(_fallbackFlowDirection);
+            _nativeAdmission.CapacityFallbackFormats.PrepareFormat(_fallbackFlowDirection);
     }
 }

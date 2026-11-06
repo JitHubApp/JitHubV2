@@ -836,7 +836,6 @@ public partial class App : Application
         }
 
         MarkdownRuntime.ShutdownForProcessExit();
-        MarkdownRenderer.MarkdownRendererRuntime.Shutdown(TimeSpan.FromSeconds(1));
     }
 
     internal Task<DiagnosticsShutdownResult> ShutdownDiagnosticsAsync(

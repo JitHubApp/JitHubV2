@@ -739,7 +739,9 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         // box, or native resource alive while a geometry lease is busy.
         var focusRefresh = new FocusableItemsRefreshRequest(_published);
         var focusableItems = new FocusableItemsPublication(layoutHosts, _lifetime, _published, focusRefresh, focus, recoveryClock);
-        var layoutSetup = new RebuildLayoutSetup(pipelineHosts, diagnostics, _snapshotRetirements, imagePrefetch, completedImageCarry, imagePlans, _embeds, focusableItems, imagePreparationOwnerToken);
+        // Used when neither the control, document nor engine supplies a registry.
+        var fallbackRegistry = new MarkdownExtensionRegistry();
+        var layoutSetup = new RebuildLayoutSetup(pipelineHosts, diagnostics, _snapshotRetirements, imagePrefetch, completedImageCarry, imagePlans, _embeds, focusableItems, imagePreparationOwnerToken, fallbackRegistry);
         var hostedFocus = new HostedElementFocus(focusHosts, _lifetime, _published, focus, hostedFocusPlan, _embeds, focusRing);
         _overflowScroll = new HorizontalOverflowScrollVisuals(focusHosts, _surface, _lifetime, _published, _selection, focus, _embeds, DispatcherQueue);
         var reveal = new FocusedItemReveal(focusHosts, _surface, _lifetime, _published, _viewport, focus, _overflowScroll, DispatcherQueue);
@@ -775,7 +777,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _environment = new EnvironmentSubscription(this, _lifetime, _rebuild);
         var replacementPublisher = new ReplacementPublisher(this, _published, _surface, _rebuild, _touchRestore, _automationDocumentGenerations, _selection, _lazyLayout, _layoutCommit, _scrolling, _painter, _localization, focusRefresh, vectorCapacity, geometryRecovery, imageSubscriptions, imageRelayout, _blockScroll, imagePlans, focus);
         var width = new LayoutWidthWatch(this, _rebuild);
-        var inputCapture = new RebuildInputCapture(this, _published, imagePreparationOwnerToken, _documentInputs, _localization, _environment);
+        var inputCapture = new RebuildInputCapture(this, _published, imagePreparationOwnerToken, _documentInputs, _localization, _environment, fallbackRegistry);
         var replacementPresentation = new ReplacementPresentation(_surface, _snapshotRetirements, _rebuild, _layoutCommit, layoutPublisher, _documentInputs, extent, _scrolling, _hover, _selection, _touchRestore, contextMenu, _dragShield, _adorner, textAdorner, _handles, _embeds, imageSubscriptions, imagePlans, imageResidency, focus, focusRing, focusCommit, _highlighting, _visibleWork, _canvasInvalidation, _automation, _deferredScenes);
         _pipeline = new RebuildPipeline(this, this, _lifetime, _surface, _viewport, _rebuild, inputCapture, layoutSetup, width, imagePrefetch, _automation, replacementPublisher, replacementPresentation);
         _codeBlockClipboard = new CodeBlockClipboard(this, _embeds, events);
@@ -808,7 +810,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
             events, _documentInputs, _automation, imageLifetime, imageRelayout, _lazyLayout, _pipeline,
             _touchRestore, _interactionReset, _performanceSession, _environment));
         _focusEvents = new RendererFocusEvents(this, contextMenu, document, focus, focusEntry, focusRing);
-        _selectionChanges = new SelectionChangeHandling(this, cursor, _rebuild, textAdorner, _automation, _selection, _touchRestore, _touchTapSuppression, _interactionReset);
+        _selectionChanges = new SelectionChangeHandling(selectionDismissal, cursor, _rebuild, textAdorner, _automation, _selection, _touchRestore, _touchTapSuppression, _interactionReset);
         _attachment = new ViewAttachment(this, _surface, _lifetime, _published, cursor, abbreviationTooltip, _adorner, _deviceRecovery, selectionDismissal, _dragShield, _handles, contextMenu, horizontalOverflowDrag, pointerInput, _embeds, _windowDestroying, _snapshotRetirements, _rebuild, _painter, _canvasEvents, geometryRecovery, _recoveryWork, _scrolling, _deferredScenes, _blockScroll, _automation, imageLifetime, _automationDocumentGenerations, _layoutCommit, imageRelayout, vectorCapacity, _lazyLayout, width, _touchSelection, _touchRestore, _touchTapSuppression, _overflowScroll, focusRing, _performanceSession, _svgRenderer, _theme, _environment, imagePlans, imageSubscriptions, imageResidency, imagePrefetch, _highlighting);
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
@@ -954,8 +956,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     private void RequestRebuild(RebuildReason reason) => _rebuild.Request(reason);
 
     /// <summary>
-    /// Clears cached WinUI resource-key discovery and rebuilds the current
-    /// presentation. Call this after replacing resource dictionary keys without
+    /// Clears this control's cached WinUI resource-key discovery and rebuilds
+    /// its presentation. Call this after replacing resource dictionary keys without
     /// changing the dictionary's count; ordinary value replacement, theme
     /// properties, and override mutations do not require it.
     /// </summary>
@@ -964,7 +966,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         if (_lifetime.IsDisposed)
             return;
 
-        ThemeResolver.InvalidateResourceKeyCache();
+        _pipeline.InvalidateThemeResourceKeys();
         RequestRebuild(RebuildReason.Restyle);
     }
 

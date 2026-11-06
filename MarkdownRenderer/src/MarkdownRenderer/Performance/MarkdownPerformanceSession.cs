@@ -34,6 +34,8 @@ public sealed class MarkdownPerformanceSession :
     private readonly MarkdownStyleRoleDemandCache _styleRoleDemand;
     private readonly MarkdownSessionParsePipeline _parsePipeline;
     private readonly MarkdownVectorSceneEstimateCache _vectorSceneEstimates = new();
+    private readonly VectorNativeResourceAdmission _vectorNativeAdmission =
+        VectorNativeResourceAdmission.CreateDefault();
 
     /// <summary>Creates an opt-in session. Use a distinct session for each account/security partition.</summary>
     public MarkdownPerformanceSession(MarkdownPerformanceOptions options)
@@ -130,6 +132,9 @@ public sealed class MarkdownPerformanceSession :
     bool IMarkdownPerformanceSessionInternal.IsLayoutDiagnosticCaptureEnabled =>
         IsLayoutDiagnosticCaptureEnabled;
 
+    VectorNativeResourceAdmission IMarkdownPerformanceSessionInternal.VectorNativeAdmission =>
+        _vectorNativeAdmission;
+
     bool IMarkdownPerformanceSessionInternal.TryGetStyleRoleDemandMask(
         MarkdownDocument document,
         CancellationToken cancellationToken,
@@ -217,7 +222,7 @@ public sealed class MarkdownPerformanceSession :
             return null;
 
         return new MarkdownVectorSceneResidencyPolicy(
-            blocks, plan, VectorNativeResourceAdmission.Shared, _vectorSceneEstimates);
+            blocks, plan, _vectorNativeAdmission, _vectorSceneEstimates);
     }
 
     Task<bool> IMarkdownPerformanceSessionInternal.PrepareDeferredSceneBandAsync(

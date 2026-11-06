@@ -61,7 +61,7 @@ public sealed class GitHubDetailsPublicEngineParserTests
     {
         using MarkdownEngine engine = new MarkdownRendererControlBuilder()
             .UseGitHubReadme()
-            .CreateEngineSnapshotForTesting();
+            .CreateEffectiveEngine(fallback: null, out _);
 
         await AssertMarkdownBearingDetailsAsync(engine);
     }
@@ -71,7 +71,7 @@ public sealed class GitHubDetailsPublicEngineParserTests
     {
         using MarkdownEngine engine = new MarkdownRendererControlBuilder()
             .UseGitHubReadme(new SafeHtmlOptions(enableImages: false))
-            .CreateEngineSnapshotForTesting();
+            .CreateEffectiveEngine(fallback: null, out _);
 
         await AssertMarkdownBearingDetailsAsync(engine);
     }
@@ -82,7 +82,7 @@ public sealed class GitHubDetailsPublicEngineParserTests
         using MarkdownEngine engine = new MarkdownRendererControlBuilder()
             .UseGitHubReadme()
             .UseSafeHtml(new SafeHtmlOptions(enableImages: false))
-            .CreateEngineSnapshotForTesting();
+            .CreateEffectiveEngine(fallback: null, out _);
 
         await AssertMarkdownBearingDetailsAsync(engine);
     }
@@ -95,7 +95,7 @@ public sealed class GitHubDetailsPublicEngineParserTests
             .UseSafeHtml(new SafeHtmlOptions(enableImages: false))
             .UseGitHubReadme(new SafeHtmlOptions(enableImages: false))
             .UseGitHubReadme()
-            .CreateEngineSnapshotForTesting();
+            .CreateEffectiveEngine(fallback: null, out _);
 
         await AssertMarkdownBearingDetailsAsync(engine);
     }

@@ -44,7 +44,10 @@ internal sealed class ThemeResolver
     private readonly ThemeResourceLookup _resources;
     private readonly bool _isHighContrast;
     private PlatformThemeColors? _platformThemeColors;
-    public ThemeResolver(FrameworkElement host, MarkdownTheme theme)
+    public ThemeResolver(
+        FrameworkElement host,
+        MarkdownTheme theme,
+        RelevantResourceKeyCache<ResourceDictionary> relevantResourceKeys)
     {
         _host = host ?? throw new ArgumentNullException(nameof(host));
         _theme = theme ?? throw new ArgumentNullException(nameof(theme));
@@ -56,7 +59,8 @@ internal sealed class ThemeResolver
             ? new ForcedMarkdownSystemThemeProvider(forcedContrastColors)
             : new MarkdownSystemThemeProvider(_host);
         _isHighContrast = _systemTheme.IsHighContrast;
-        _resources = new ThemeResourceLookup(_host, applicationResources, _isHighContrast);
+        _resources = new ThemeResourceLookup(
+            _host, applicationResources, _isHighContrast, relevantResourceKeys);
     }
 
     public ElementStyle GetEffectiveStyle(string elementKey)
@@ -343,9 +347,6 @@ internal sealed class ThemeResolver
 
         return roles;
     }
-
-    internal static void InvalidateResourceKeyCache()
-        => ThemeResourceLookup.InvalidateResourceKeyCache();
 
     private Color ResolveSurfaceColor()
     {

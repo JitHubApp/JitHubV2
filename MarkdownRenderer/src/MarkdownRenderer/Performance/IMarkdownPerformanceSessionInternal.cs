@@ -18,6 +18,12 @@ internal interface IMarkdownPerformanceSessionInternal : IMarkdownPerformanceSes
     IDisposable? TryBeginRasterWork();
     bool IsDisposed { get; }
     bool IsLayoutDiagnosticCaptureEnabled { get; }
+
+    /// <summary>
+    /// The native vector capacity that this session's views admit scenes
+    /// against when the session defers offscreen scenes.
+    /// </summary>
+    VectorNativeResourceAdmission VectorNativeAdmission { get; }
     event EventHandler? Disposed;
     bool TryGetStyleRoleDemandMask(
         MarkdownDocument document,

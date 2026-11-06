@@ -578,7 +578,7 @@ public sealed class LayoutSnapshotLazyNativeParityTests
         var builder = new LayoutBuilder(
             context,
             semanticDocument: semantic,
-            sharedLayoutEngine: sharedEngine,
+            sharedLayoutMetrics: sharedEngine?.LayoutMetrics,
             sharedLayoutMetricsKey: metricsKey);
         return lazy
             ? builder.BuildLazy(

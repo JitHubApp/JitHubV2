@@ -10,13 +10,15 @@ namespace MarkdownRenderer.Controls.Selection;
 /// <summary>
 /// Watches the window's root content while the renderer is loaded. A press
 /// outside the document text clears the selection, and Ctrl+C anywhere in
-/// the window copies it.
+/// the window copies it. While attached it is the renderer's peer in the
+/// root's <see cref="MarkdownSelectionCoordinator"/>, so a selection here
+/// clears the selections of the root's other renderers.
 /// </summary>
 /// <remarks>
 /// Both handlers see handled events too, so a control that consumes the
 /// press or key still dismisses or copies the selection.
 /// </remarks>
-internal sealed class SelectionDismissalHook
+internal sealed class SelectionDismissalHook : ISelectionPeer
 {
     private readonly ISelectionDismissalHost _host;
     private readonly MarkdownRendererControl _renderer;
@@ -27,6 +29,7 @@ internal sealed class SelectionDismissalHook
     private readonly SelectionCommands _commands;
 
     private UIElement? _root;
+    private MarkdownSelectionCoordinator? _coordinator;
     private PointerEventHandler? _pointerPressedHandler;
     private KeyEventHandler? _keyDownHandler;
 
@@ -48,7 +51,7 @@ internal sealed class SelectionDismissalHook
         _commands = commands;
     }
 
-    /// <summary>Attaches to the current window's root content, once.</summary>
+    /// <summary>Attaches to the current window's root content and its selection coordinator, once.</summary>
     internal void Register()
     {
         if (_root is not null)
@@ -63,7 +66,14 @@ internal sealed class SelectionDismissalHook
         _keyDownHandler = OnRootKeyDown;
         root.AddHandler(UIElement.KeyDownEvent, _keyDownHandler, handledEventsToo: true);
         _root = root;
+        _coordinator = MarkdownXamlRootServices.GetOrCreate(_renderer)?.Selection;
+        _coordinator?.Register(this);
     }
+
+    /// <summary>Clears the selections of the other renderers on this root.</summary>
+    internal void ClearOtherSelections() => _coordinator?.ClearSelectionsExcept(this);
+
+    void ISelectionPeer.ClearSelectionFromCoordinator() => _renderer.ClearSelectionFromCoordinator();
 
     /// <summary>Detaches from the root content. A detached root may reject removal.</summary>
     internal void Unregister()
@@ -80,6 +90,8 @@ internal sealed class SelectionDismissalHook
             catch { }
         }
 
+        _coordinator?.Unregister(this);
+        _coordinator = null;
         _root = null;
         _pointerPressedHandler = null;
         _keyDownHandler = null;
@@ -97,7 +109,7 @@ internal sealed class SelectionDismissalHook
 
         if (e.OriginalSource is DependencyObject source && VisualTreeAncestry.IsWithin(source, _renderer))
         {
-            MarkdownSelectionCoordinator.ClearSelectionsExcept(_renderer);
+            ClearOtherSelections();
             if (_host.IsElementWithinCodeBlockAction(source))
                 return;
             if (_host.IsElementWithinSelectionHandle(source))

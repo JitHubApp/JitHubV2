@@ -327,7 +327,7 @@ public sealed class EnginePresentationConfigurationTests
     }
 
     private static MarkdownEngine GetConfiguredEngine(MarkdownRendererControlBuilder builder)
-        => builder.CreateEngineSnapshotForTesting();
+        => builder.CreateEffectiveEngine(fallback: null, out _);
 
     private sealed class CustomTableRenderer : MarkdownNodeRenderer<Table>
     {

@@ -21,6 +21,7 @@ internal sealed class VectorCapacityRetry
 
     private VectorCapacityWakeObserver? _observer;
     private IDisposable? _registration;
+    private VectorNativeResourceAdmission? _registrationAdmission;
     private LayoutSnapshot? _observerSnapshot;
     private LazyLayoutBand _lastAttemptVisibleBand;
     private long _lastAttemptGeneration = -1;
@@ -43,12 +44,20 @@ internal sealed class VectorCapacityRetry
     /// True while the performance session defers offscreen scenes, which is
     /// when vector scenes are admitted visible-first against native capacity.
     /// </summary>
-    internal bool IsAdmissionEnabled =>
+    internal bool IsAdmissionEnabled => Admission is not null;
+
+    /// <summary>
+    /// The borrowed session's native capacity ledger while admission is
+    /// enabled; null otherwise. The session, not this view, owns the ledger.
+    /// </summary>
+    internal VectorNativeResourceAdmission? Admission =>
         _host.PerformanceSession is IMarkdownPerformanceSessionInternal
         {
             IsDisposed: false,
             Options.DeferOffscreenScenes: true,
-        };
+        } session
+            ? session.VectorNativeAdmission
+            : null;
 
     private static bool SameVisibleVectorBand(LazyLayoutBand left, LazyLayoutBand right)
         => left.Top == right.Top && left.Bottom == right.Bottom;
@@ -63,14 +72,14 @@ internal sealed class VectorCapacityRetry
         LazyLayoutBand visibleVectorBand,
         bool forceCapacityRetry)
     {
-        if (!IsAdmissionEnabled || !snapshot.HasCapacityDeferredScenes)
+        if (Admission is not { } admission || !snapshot.HasCapacityDeferredScenes)
             return false;
 
         return forceCapacityRetry ||
             !_hasAttempt ||
             !SameVisibleVectorBand(visibleVectorBand, _lastAttemptVisibleBand) ||
             snapshot.ActiveCapacityGeneration > _lastAttemptGeneration ||
-            VectorNativeResourceAdmission.Shared.CapacityGeneration > _lastAttemptGeneration;
+            admission.CapacityGeneration > _lastAttemptGeneration;
     }
 
     /// <summary>
@@ -81,16 +90,20 @@ internal sealed class VectorCapacityRetry
     /// </summary>
     internal void Synchronize(LayoutSnapshot? snapshot)
     {
+        VectorNativeResourceAdmission? admission = Admission;
         if (_lifetime.IsDisposed || _lifetime.IsUnloaded || snapshot is null ||
             !ReferenceEquals(snapshot, _published.Snapshot) ||
-            !IsAdmissionEnabled ||
+            admission is null ||
             !snapshot.HasCapacityDeferredScenes)
         {
             Reset();
             return;
         }
 
-        if (!ReferenceEquals(snapshot, _observerSnapshot))
+        // A subscription belongs to one session's ledger; a different
+        // borrowed session starts over against its own ledger.
+        if (!ReferenceEquals(snapshot, _observerSnapshot) ||
+            (_registration is not null && !ReferenceEquals(admission, _registrationAdmission)))
         {
             Reset();
             _observerSnapshot = snapshot;
@@ -107,7 +120,7 @@ internal sealed class VectorCapacityRetry
             IDisposable registration;
             try
             {
-                registration = VectorNativeResourceAdmission.Shared.RegisterCapacityObserver(observer);
+                registration = admission.RegisterCapacityObserver(observer);
             }
             catch (Exception exception)
             {
@@ -123,9 +136,10 @@ internal sealed class VectorCapacityRetry
             // whose owner edge back to this owner is weak.
             _observer = observer;
             _registration = registration;
+            _registrationAdmission = admission;
         }
 
-        long generationAfterRegistration = VectorNativeResourceAdmission.Shared.CapacityGeneration;
+        long generationAfterRegistration = admission.CapacityGeneration;
         if (generationAfterRegistration > generationBeforeRegistration)
             _observer?.OnCapacityAvailable(generationAfterRegistration);
     }
@@ -188,6 +202,7 @@ internal sealed class VectorCapacityRetry
         IDisposable? registration = _registration;
         _observer = null;
         _registration = null;
+        _registrationAdmission = null;
         _observerSnapshot = null;
         _hasAttempt = false;
         _lastAttemptGeneration = -1;
