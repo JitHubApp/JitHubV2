@@ -33,6 +33,7 @@ internal sealed class JitHubMarkdownRuntime
     private TextMateCodeBlockSyntaxHighlighter? _codeHighlighter;
     private ResvgMarkdownSvgRenderer? _svgRenderer;
     private RepositorySvgRasterizer? _svgPreviewRasterizer;
+    private RepositorySvgGpuCache? _svgPreviewTileCache;
     private MarkdownPerformanceSession? _performanceSession;
     private long _performanceAccountId = long.MinValue;
     private Task? _shutdownTask;
@@ -100,6 +101,22 @@ internal sealed class JitHubMarkdownRuntime
             {
                 ThrowIfShuttingDown();
                 return _svgPreviewRasterizer ??= new RepositorySvgRasterizer(GetOrCreateSvgRenderer());
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets the GPU tile cache every standalone SVG preview shares. It is
+    /// disposed with the SVG renderer whose tiles it holds.
+    /// </summary>
+    internal RepositorySvgGpuCache SvgPreviewTileCache
+    {
+        get
+        {
+            lock (_gate)
+            {
+                ThrowIfShuttingDown();
+                return _svgPreviewTileCache ??= new RepositorySvgGpuCache();
             }
         }
     }
@@ -206,7 +223,7 @@ internal sealed class JitHubMarkdownRuntime
         retired.CodeHighlighter?.Dispose();
         retired.PerformanceSession?.Dispose();
         retired.Engine?.Dispose();
-        RepositorySvgGpuCache.Shutdown();
+        retired.SvgPreviewTileCache?.Dispose();
         retired.SvgRenderer?.Dispose();
     }
 
@@ -225,11 +242,13 @@ internal sealed class JitHubMarkdownRuntime
     private RetiredProviders RetireProviders(Task shutdownTask)
     {
         _isShuttingDown = true;
-        RetiredProviders retired = new(_engine, _codeHighlighter, _svgRenderer, _performanceSession);
+        RetiredProviders retired = new(
+            _engine, _codeHighlighter, _svgRenderer, _svgPreviewTileCache, _performanceSession);
         _engine = null;
         _codeHighlighter = null;
         _svgRenderer = null;
         _svgPreviewRasterizer = null;
+        _svgPreviewTileCache = null;
         _performanceSession = null;
         _performanceAccountId = long.MinValue;
         _fontChanges.Cancel();
@@ -247,7 +266,7 @@ internal sealed class JitHubMarkdownRuntime
             if (retired.PerformanceSession is not null)
                 await retired.PerformanceSession.DisposeAsync().ConfigureAwait(false);
             retired.Engine?.Dispose();
-            RepositorySvgGpuCache.Shutdown();
+            retired.SvgPreviewTileCache?.Dispose();
             if (retired.SvgRenderer is not null)
                 await retired.SvgRenderer.DisposeAsync().ConfigureAwait(false);
 
@@ -263,5 +282,6 @@ internal sealed class JitHubMarkdownRuntime
         MarkdownEngine? Engine,
         TextMateCodeBlockSyntaxHighlighter? CodeHighlighter,
         ResvgMarkdownSvgRenderer? SvgRenderer,
+        RepositorySvgGpuCache? SvgPreviewTileCache,
         MarkdownPerformanceSession? PerformanceSession);
 }

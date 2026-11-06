@@ -300,6 +300,27 @@ public sealed class AuthServiceSecurityTests
     }
 
     [Fact]
+    public void SignOut_RaisesAuthenticationClearedOnlyOnThatService()
+    {
+        // App subscribes the Markdown performance session reset to this event,
+        // so account-scoped prepared Markdown is released at sign-out.
+        TestContext context = CreateContext();
+        TestContext other = CreateContext();
+        context.Account.SaveUser(42);
+        context.CredentialStore.SaveAccountSession(42, NewSession("access", "refresh"));
+        int cleared = 0;
+        int otherCleared = 0;
+        context.Service.AuthenticationCleared += () => cleared++;
+        other.Service.AuthenticationCleared += () => otherCleared++;
+
+        context.Service.SignOut();
+
+        Assert.Equal(1, cleared);
+        Assert.Equal(0, otherCleared);
+        Assert.False(context.Service.Authenticated);
+    }
+
+    [Fact]
     [Trait("Category", "ReleaseSecurity")]
     public async Task RefreshAuthenticatedUser_DoesNotRestoreAUserAfterSignOut()
     {

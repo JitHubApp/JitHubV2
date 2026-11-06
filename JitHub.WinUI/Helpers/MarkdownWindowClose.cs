@@ -10,7 +10,7 @@ namespace JitHub.WinUI.Helpers;
 /// <summary>
 /// The main window's visual-tree side of <see cref="MarkdownWindowCloseCoordinator"/>:
 /// it finds the window's page and the shell's nested content, and removes each
-/// with a bounded wait for its Unloaded event so the Markdown controls in it
+/// through <see cref="FrameContentDetacher"/> so the Markdown controls in it
 /// retire before the app's shared Markdown providers shut down.
 /// </summary>
 internal static class MarkdownWindowClose
@@ -29,46 +29,8 @@ internal static class MarkdownWindowClose
         return new MarkdownWindowCloseCoordinator(app.MarkdownRenderers, App.LogHandledException)
             .RetireViewsThenCloseAsync(
                 page is ShellPage shellPage ? shellPage.DetachNestedContentForMarkdownShutdownAsync : null,
-                timeout => DetachPageAsync(contentFrame, page, timeout),
+                timeout => FrameContentDetacher.DetachAsync(contentFrame, page, timeout),
                 app.MarkdownRuntime.ShutdownAsync,
                 close);
-    }
-
-    // Clears the frame and, when the page read before the close began was
-    // loaded, waits up to the timeout for it to unload.
-    private static async Task DetachPageAsync(Frame contentFrame, FrameworkElement? page, TimeSpan unloadTimeout)
-    {
-        if (page is null)
-        {
-            contentFrame.Content = null;
-            return;
-        }
-
-        bool wasLoaded = page.IsLoaded;
-        var unloaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        void OnUnloaded(object sender, RoutedEventArgs args) => unloaded.TrySetResult();
-        if (wasLoaded)
-            page.Unloaded += OnUnloaded;
-
-        try
-        {
-            contentFrame.Content = null;
-            if (wasLoaded)
-            {
-                try
-                {
-                    await unloaded.Task.WaitAsync(unloadTimeout);
-                }
-                catch (TimeoutException)
-                {
-                    // Bounded: MarkdownViewShutdown drains the renderers next.
-                }
-            }
-        }
-        finally
-        {
-            if (wasLoaded)
-                page.Unloaded -= OnUnloaded;
-        }
     }
 }
