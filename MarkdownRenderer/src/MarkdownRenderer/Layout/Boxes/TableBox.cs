@@ -17,10 +17,6 @@ namespace MarkdownRenderer.Layout.Boxes;
 internal sealed class TableBox : BlockBox, IHorizontalOverflowBox
 {
     internal const int MaximumPrivateRasterPlacementCells = 256;
-    internal const float HorizontalScrollbarHeight = 12f;
-    private const float MinimumScrollbarThumbWidth = 24f;
-    private const float MinimumColumnWidth = 48f;
-    private const float MaximumPreferredColumnWidth = 720f;
 
     internal enum CellAlignment
     {
@@ -151,7 +147,7 @@ internal sealed class TableBox : BlockBox, IHorizontalOverflowBox
     {
         get
         {
-            double height = _rowHeights is null ? 0 : Sum(_rowHeights);
+            double height = _rowHeights is null ? 0 : TableColumnWidths.Sum(_rowHeights);
             return new Rect(
                 Bounds.X + Margin.Left,
                 Bounds.Y + Margin.Top,
@@ -160,43 +156,9 @@ internal sealed class TableBox : BlockBox, IHorizontalOverflowBox
         }
     }
 
-    public Rect HorizontalScrollTrackBounds
-    {
-        get
-        {
-            if (!CanScrollHorizontally)
-                return Rect.Empty;
+    public Rect HorizontalScrollTrackBounds => HorizontalOverflowScrollbar.GetTrackBelowViewport(this);
 
-            Rect viewport = HorizontalViewportBounds;
-            return new Rect(
-                viewport.X,
-                viewport.Bottom,
-                viewport.Width,
-                HorizontalScrollbarHeight);
-        }
-    }
-
-    public Rect HorizontalScrollThumbBounds
-    {
-        get
-        {
-            Rect track = HorizontalScrollTrackBounds;
-            if (track.IsEmpty || HorizontalExtent <= 0)
-                return Rect.Empty;
-
-            double thumbWidth = Math.Clamp(
-                track.Width * HorizontalViewport / HorizontalExtent,
-                Math.Min(MinimumScrollbarThumbWidth, track.Width),
-                track.Width);
-            double travel = Math.Max(0, track.Width - thumbWidth);
-            double maximum = Math.Max(0, HorizontalExtent - HorizontalViewport);
-            double fraction = maximum <= 0 ? 0 : HorizontalOffset / maximum;
-            double x = _context.FlowDirection == FlowDirection.RightToLeft
-                ? track.Right - thumbWidth - travel * fraction
-                : track.Left + travel * fraction;
-            return new Rect(x, track.Y, thumbWidth, track.Height);
-        }
-    }
+    public Rect HorizontalScrollThumbBounds => HorizontalOverflowScrollbar.GetThumbBounds(this);
 
     /// <summary>All cell boxes (header rows first, then body rows), left-to-right within each row.</summary>
     public IEnumerable<InlineContainerBox> GetCellBoxes()
@@ -235,10 +197,12 @@ internal sealed class TableBox : BlockBox, IHorizontalOverflowBox
         Margin = tableStyle.Margin;
 
         _viewportWidth = Math.Max(1f, availableWidth - (float)(Margin.Left + Margin.Right));
-        _colWidths = ResolveColumnWidths(
+        _colWidths = TableColumnWidths.Resolve(
             _viewportWidth,
-            MeasureIntrinsicColumns(headerPadding, bodyPadding));
-        _contentWidth = Sum(_colWidths);
+            TableColumnWidths.MeasureIntrinsic(
+                _headerCells, _bodyCells, _colCount, headerPadding, bodyPadding,
+                _context.CancellationToken));
+        _contentWidth = TableColumnWidths.Sum(_colWidths);
         _horizontalOffset = Math.Clamp(
             _horizontalOffset,
             0,
@@ -281,7 +245,7 @@ internal sealed class TableBox : BlockBox, IHorizontalOverflowBox
         float totalHeight = (float)(Margin.Top + Margin.Bottom);
         foreach (var h in _rowHeights) totalHeight += h;
         if (CanScrollHorizontally)
-            totalHeight += HorizontalScrollbarHeight;
+            totalHeight += HorizontalOverflowScrollbar.Height;
 
         Bounds = new Rect(0, 0, availableWidth, totalHeight);
         return totalHeight;
@@ -532,77 +496,6 @@ internal sealed class TableBox : BlockBox, IHorizontalOverflowBox
         }
     }
 
-    private (float[] Minimum, float[] Preferred) MeasureIntrinsicColumns(
-        Thickness headerPadding,
-        Thickness bodyPadding)
-    {
-        var minimum = new float[_colCount];
-        var preferred = new float[_colCount];
-        for (int c = 0; c < _colCount; c++)
-        {
-            minimum[c] = MinimumColumnWidth;
-            preferred[c] = MinimumColumnWidth;
-        }
-
-        MeasureIntrinsicRows(_headerCells, headerPadding, minimum, preferred);
-        MeasureIntrinsicRows(_bodyCells, bodyPadding, minimum, preferred);
-        return (minimum, preferred);
-    }
-
-    private void MeasureIntrinsicRows(
-        InlineContainerBox[][] rows,
-        Thickness padding,
-        float[] minimum,
-        float[] preferred)
-    {
-        float horizontalPadding = (float)(padding.Left + padding.Right);
-        foreach (var row in rows)
-        {
-            _context.CancellationToken.ThrowIfCancellationRequested();
-            int count = Math.Min(row.Length, _colCount);
-            for (int c = 0; c < count; c++)
-            {
-                IntrinsicWidthMetrics metrics = row[c].MeasureIntrinsicWidths(MaximumPreferredColumnWidth);
-                minimum[c] = Math.Max(minimum[c], Math.Min(MaximumPreferredColumnWidth, metrics.Minimum + horizontalPadding));
-                preferred[c] = Math.Max(preferred[c], Math.Min(MaximumPreferredColumnWidth, metrics.Preferred + horizontalPadding));
-            }
-        }
-    }
-
-    private static float[] ResolveColumnWidths(
-        float availableWidth,
-        (float[] Minimum, float[] Preferred) intrinsic)
-    {
-        int count = intrinsic.Minimum.Length;
-        var result = new float[count];
-        float minimumTotal = Sum(intrinsic.Minimum);
-        float preferredTotal = Sum(intrinsic.Preferred);
-
-        if (preferredTotal <= availableWidth)
-        {
-            float extra = availableWidth - preferredTotal;
-            float weightTotal = Math.Max(1f, preferredTotal);
-            for (int c = 0; c < count; c++)
-                result[c] = intrinsic.Preferred[c] + extra * intrinsic.Preferred[c] / weightTotal;
-            return result;
-        }
-
-        if (minimumTotal >= availableWidth)
-        {
-            Array.Copy(intrinsic.Minimum, result, count);
-            return result;
-        }
-
-        float distributable = availableWidth - minimumTotal;
-        float flexibility = Math.Max(0.001f, preferredTotal - minimumTotal);
-        for (int c = 0; c < count; c++)
-        {
-            float columnFlex = Math.Max(0, intrinsic.Preferred[c] - intrinsic.Minimum[c]);
-            result[c] = intrinsic.Minimum[c] + distributable * columnFlex / flexibility;
-        }
-        return result;
-    }
-
     internal float GetColumnWidth(int column)
         => _colWidths is not null && column >= 0 && column < _colWidths.Length
             ? _colWidths[column]
@@ -622,14 +515,6 @@ internal sealed class TableBox : BlockBox, IHorizontalOverflowBox
                 start += GetColumnWidth(c);
         }
         return start;
-    }
-
-    internal static float Sum(float[] values)
-    {
-        float sum = 0;
-        for (int i = 0; i < values.Length; i++)
-            sum += values[i];
-        return sum;
     }
 
     public override void Dispose()
@@ -671,4 +556,3 @@ internal sealed class TableBox : BlockBox, IHorizontalOverflowBox
         }
     }
 }
-
