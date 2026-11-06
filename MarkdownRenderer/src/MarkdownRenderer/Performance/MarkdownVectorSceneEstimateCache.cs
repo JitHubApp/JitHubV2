@@ -60,7 +60,7 @@ internal sealed class MarkdownVectorSceneEstimateCache
                 estimate = SaturatingAdd(estimate, SaturatingMultiply(text.Length, 64));
             }
 
-            if (command.Style is { } style && VectorSceneDrawing.RequiresStrokeStyle(style))
+            if (command.Style is { } style && VectorSceneResourceShapes.RequiresStrokeStyle(style))
             {
                 estimate = SaturatingAdd(estimate, 1_024);
                 estimate = SaturatingAdd(

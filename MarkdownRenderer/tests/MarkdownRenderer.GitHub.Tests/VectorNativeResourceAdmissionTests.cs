@@ -206,7 +206,7 @@ public sealed class VectorNativeResourceAdmissionTests
     public void CapacityDenialAndTooLargeAreTypedAndDoNotTouchCanvasFactory()
     {
         MarkdownVectorScene scene = PathScene();
-        long weight = VectorSceneDrawing.EstimateNativeResourceWeightUnits(scene, CancellationToken.None);
+        long weight = VectorSceneResourceShapes.EstimateNativeResourceWeightUnits(scene, CancellationToken.None);
         Assert.True(weight > 1);
 
         var capacity = new VectorNativeResourceAdmission(weight, weight);
@@ -277,8 +277,8 @@ public sealed class VectorNativeResourceAdmissionTests
             MarkdownVectorCommand.EndGroup(),
         ]);
 
-        long simpleWeight = VectorSceneDrawing.EstimateNativeResourceWeightUnits(simple, CancellationToken.None);
-        long complexWeight = VectorSceneDrawing.EstimateNativeResourceWeightUnits(complex, CancellationToken.None);
+        long simpleWeight = VectorSceneResourceShapes.EstimateNativeResourceWeightUnits(simple, CancellationToken.None);
+        long complexWeight = VectorSceneResourceShapes.EstimateNativeResourceWeightUnits(complex, CancellationToken.None);
 
         Assert.True(simpleWeight > 0);
         Assert.True(complexWeight > simpleWeight);
@@ -292,7 +292,7 @@ public sealed class VectorNativeResourceAdmissionTests
         var faultPlan = new GeometryDisposeFaultPlan(failures: 1);
         var retirement = new NativeResourceRetirement(createTimer: false, faultPlan.Dispose);
         MarkdownVectorScene scene = PathScene();
-        long weight = VectorSceneDrawing.EstimateNativeResourceWeightUnits(scene, CancellationToken.None);
+        long weight = VectorSceneResourceShapes.EstimateNativeResourceWeightUnits(scene, CancellationToken.None);
         var admission = new VectorNativeResourceAdmission(weight, weight);
         using var drawing = new VectorSceneDrawing(
             device,
@@ -320,7 +320,7 @@ public sealed class VectorNativeResourceAdmissionTests
         using var device = new CanvasDevice(forceSoftwareRenderer: false);
         var retirement = new NativeResourceRetirement(createTimer: false);
         MarkdownVectorScene scene = PathScene();
-        long weight = VectorSceneDrawing.EstimateNativeResourceWeightUnits(scene, CancellationToken.None);
+        long weight = VectorSceneResourceShapes.EstimateNativeResourceWeightUnits(scene, CancellationToken.None);
         var admission = new VectorNativeResourceAdmission(weight, weight);
         using var drawing = new VectorSceneDrawing(
             device,
@@ -350,7 +350,7 @@ public sealed class VectorNativeResourceAdmissionTests
         var faultPlan = new GeometryDisposeFaultPlan(failures: 1);
         var retirement = new NativeResourceRetirement(createTimer: false, faultPlan.Dispose);
         MarkdownVectorScene scene = PathScene();
-        long weight = VectorSceneDrawing.EstimateNativeResourceWeightUnits(scene, CancellationToken.None);
+        long weight = VectorSceneResourceShapes.EstimateNativeResourceWeightUnits(scene, CancellationToken.None);
         var admission = new VectorNativeResourceAdmission(weight, weight);
         var drawing = new VectorSceneDrawing(
             device,
@@ -380,7 +380,7 @@ public sealed class VectorNativeResourceAdmissionTests
         using var target = new CanvasRenderTarget(device, 24, 24, 96);
         using CanvasDrawingSession session = target.CreateDrawingSession();
         MarkdownVectorScene scene = ClippedFillScene();
-        long weight = VectorSceneDrawing.EstimateNativeResourceWeightUnits(scene, CancellationToken.None);
+        long weight = VectorSceneResourceShapes.EstimateNativeResourceWeightUnits(scene, CancellationToken.None);
         var admission = new VectorNativeResourceAdmission(weight, weight);
         int capacityWakeCount = 0;
         var observer = new DelegateObserver(_ => Interlocked.Increment(ref capacityWakeCount));

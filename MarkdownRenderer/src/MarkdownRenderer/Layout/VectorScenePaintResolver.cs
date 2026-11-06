@@ -175,4 +175,29 @@ internal static class VectorScenePaintResolver
         command.SemanticIndex >= 0 && command.SemanticIndex < scene.Semantics.Count
             ? scene.Semantics[command.SemanticIndex].Role
             : null;
+
+    internal static MarkdownVectorPaintRole ResolvePaintRole(
+        MarkdownVectorCommand command,
+        MarkdownVectorPaintRole declaredRole,
+        uint? argb,
+        MarkdownVectorPaintRole highContrastFallback,
+        bool highContrast,
+        bool linkedSemantic)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        MarkdownVectorPaintRole role = declaredRole;
+        if (role == MarkdownVectorPaintRole.Authored)
+        {
+            if (highContrast)
+                role = highContrastFallback;
+            else if (argb is null)
+                role = MarkdownVectorPaintRole.Foreground;
+            else
+                return MarkdownVectorPaintRole.Authored;
+        }
+
+        return role == MarkdownVectorPaintRole.Foreground && linkedSemantic
+            ? MarkdownVectorPaintRole.Link
+            : role;
+    }
 }

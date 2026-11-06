@@ -19,6 +19,12 @@ namespace MarkdownRenderer.Layout;
 /// formulas and block diagrams use this implementation so their paint behavior
 /// cannot drift.
 /// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because preparation, reversible
+/// release, failed-preparation publication and terminal retirement all hand
+/// off the same native slot arrays, pending temporaries and admission credit;
+/// each step relies on the slot state the others leave behind.
+/// </remarks>
 internal sealed class VectorSceneDrawing : IDisposable
 {
 
@@ -286,7 +292,7 @@ internal sealed class VectorSceneDrawing : IDisposable
                 if (VectorSceneResourceShapes.RequiresTextLayout(command))
                     CreateTextLayout(scene, command, i, textLayouts, textIndex++);
 
-                if (command.Style is { } style && RequiresStrokeStyle(style))
+                if (command.Style is { } style && VectorSceneResourceShapes.RequiresStrokeStyle(style))
                 {
                     // Publish the native owner before property setters or a
                     // custom dash-array copy can fail.
@@ -327,7 +333,7 @@ internal sealed class VectorSceneDrawing : IDisposable
         Exception? textFailure = null;
         try
         {
-            format.FontFamily = ResolveFontFamily(textStyle, _hostFontFamily);
+            format.FontFamily = VectorScenePaintResolver.ResolveFontFamily(textStyle, _hostFontFamily);
             format.FontSize = textStyle.FontSize;
             format.FontWeight = new FontWeight { Weight = textStyle.FontWeight };
             format.FontStyle = textStyle.Italic ? FontStyle.Italic : FontStyle.Normal;
@@ -336,7 +342,7 @@ internal sealed class VectorSceneDrawing : IDisposable
                 : CanvasTextDirection.LeftToRightThenTopToBottom;
             format.WordWrapping = CanvasWordWrapping.NoWrap;
 
-            (float layoutWidth, float layoutHeight) = ResolveTextLayoutSize(
+            (float layoutWidth, float layoutHeight) = VectorScenePaintResolver.ResolveTextLayoutSize(
                 scene,
                 text,
                 textStyle);
@@ -585,14 +591,6 @@ internal sealed class VectorSceneDrawing : IDisposable
     /// </summary>
     internal Func<CanvasDrawingSession, CanvasGeometry, CanvasActiveLayer>? ClipLayerFactory => _clipLayerFactory;
 
-    internal static long EstimateNativeResourceWeightUnits(
-        MarkdownVectorScene scene,
-        CancellationToken cancellationToken)
-        => VectorSceneResourceShapes.EstimateNativeResourceWeightUnits(scene, cancellationToken);
-
-    internal static bool RequiresStrokeStyle(MarkdownVectorPaintStyle style)
-        => VectorSceneResourceShapes.RequiresStrokeStyle(style);
-
     private void CreateGeometry(
         ref CanvasGeometry? geometry,
         ICanvasResourceCreator resourceCreator,
@@ -604,37 +602,7 @@ internal sealed class VectorSceneDrawing : IDisposable
         builder.SetFilledRegionDetermination(fillRule == MarkdownVectorFillRule.EvenOdd
             ? CanvasFilledRegionDetermination.Alternate
             : CanvasFilledRegionDetermination.Winding);
-        bool figureOpen = false;
-        for (int i = 0; i < operations.Count; i++)
-        {
-            if ((i & 0xff) == 0)
-                cancellationToken.ThrowIfCancellationRequested();
-            MarkdownVectorPathOperation operation = operations[i];
-            switch (operation.Kind)
-            {
-                case MarkdownVectorPathOperationKind.Move:
-                    if (figureOpen)
-                        builder.EndFigure(CanvasFigureLoop.Open);
-                    builder.BeginFigure(VectorSceneNativeFactory.ToVector2(operation.Point1));
-                    figureOpen = true;
-                    break;
-                case MarkdownVectorPathOperationKind.Line when figureOpen:
-                    builder.AddLine(VectorSceneNativeFactory.ToVector2(operation.Point1));
-                    break;
-                case MarkdownVectorPathOperationKind.QuadraticBezier when figureOpen:
-                    builder.AddQuadraticBezier(VectorSceneNativeFactory.ToVector2(operation.Point1), VectorSceneNativeFactory.ToVector2(operation.Point2));
-                    break;
-                case MarkdownVectorPathOperationKind.CubicBezier when figureOpen:
-                    builder.AddCubicBezier(VectorSceneNativeFactory.ToVector2(operation.Point1), VectorSceneNativeFactory.ToVector2(operation.Point2), VectorSceneNativeFactory.ToVector2(operation.Point3));
-                    break;
-                case MarkdownVectorPathOperationKind.Close when figureOpen:
-                    builder.EndFigure(CanvasFigureLoop.Closed);
-                    figureOpen = false;
-                    break;
-            }
-        }
-        if (figureOpen)
-            builder.EndFigure(CanvasFigureLoop.Open);
+        VectorSceneNativeFactory.AddPathOperations(builder, operations, cancellationToken);
         // A throwing builder cleanup must not prevent the returned geometry
         // from reaching an owned slot. The outer preparation cleanup attempts
         // both slots and retains any persistent failures.
@@ -644,25 +612,6 @@ internal sealed class VectorSceneDrawing : IDisposable
         cleanup.ThrowIfAny("disposing vector path builder");
     }
 
-    internal static Color ResolveColor(
-        uint? argb,
-        float opacity,
-        VectorScenePaintPalette palette,
-        MarkdownVectorPaintRole role,
-        bool highContrast)
-        => VectorScenePaintResolver.ResolveColor(argb, opacity, palette, role, highContrast);
-
-    internal static string ResolveFontFamily(
-        MarkdownVectorTextStyle style,
-        string? hostFontFamily)
-        => VectorScenePaintResolver.ResolveFontFamily(style, hostFontFamily);
-
-    internal static (float Width, float Height) ResolveTextLayoutSize(
-        MarkdownVectorScene scene,
-        string text,
-        MarkdownVectorTextStyle style)
-        => VectorScenePaintResolver.ResolveTextLayoutSize(scene, text, style);
-
     internal MarkdownVectorPaintRole ResolvePaintRole(
         MarkdownVectorCommand command,
         MarkdownVectorPaintRole declaredRole,
@@ -671,7 +620,7 @@ internal sealed class VectorSceneDrawing : IDisposable
         bool highContrast)
     {
         bool[]? linkedSemantics = _linkedSemantics;
-        return ResolvePaintRole(
+        return VectorScenePaintResolver.ResolvePaintRole(
             command,
             declaredRole,
             argb,
@@ -682,37 +631,6 @@ internal sealed class VectorSceneDrawing : IDisposable
             command.SemanticIndex < linkedSemantics.Length &&
             linkedSemantics[command.SemanticIndex]);
     }
-
-    internal static MarkdownVectorPaintRole ResolvePaintRole(
-        MarkdownVectorCommand command,
-        MarkdownVectorPaintRole declaredRole,
-        uint? argb,
-        MarkdownVectorPaintRole highContrastFallback,
-        bool highContrast,
-        bool linkedSemantic)
-    {
-        ArgumentNullException.ThrowIfNull(command);
-        MarkdownVectorPaintRole role = declaredRole;
-        if (role == MarkdownVectorPaintRole.Authored)
-        {
-            if (highContrast)
-                role = highContrastFallback;
-            else if (argb is null)
-                role = MarkdownVectorPaintRole.Foreground;
-            else
-                return MarkdownVectorPaintRole.Authored;
-        }
-
-        return role == MarkdownVectorPaintRole.Foreground && linkedSemantic
-            ? MarkdownVectorPaintRole.Link
-            : role;
-    }
-
-    internal static MarkdownVectorPaintRole InferFillRole(
-        MarkdownVectorCommand command,
-        MarkdownVectorPaintStyle style,
-        MarkdownVectorSemanticRole? semanticRole = null)
-        => VectorScenePaintResolver.InferFillRole(command, style, semanticRole);
 
     private MarkdownVectorScene GetScene()
     {

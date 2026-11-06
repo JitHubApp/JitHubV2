@@ -33,7 +33,7 @@ internal sealed class VectorScenePrimitivePainter
             command,
             style.FillRole,
             style.FillArgb,
-            style.HighContrastFillRole ?? VectorSceneDrawing.InferFillRole(command, style, VectorScenePaintResolver.GetSemanticRole(scene, command)),
+            style.HighContrastFillRole ?? VectorScenePaintResolver.InferFillRole(command, style, VectorScenePaintResolver.GetSemanticRole(scene, command)),
             highContrast);
         if (VectorScenePaintResolver.TryResolveColor(style.FillArgb, style.Opacity, palette, fillRole,
                 highContrast, foregroundOverride, out Color fill))
@@ -66,7 +66,7 @@ internal sealed class VectorScenePrimitivePainter
             command,
             style.FillRole,
             style.FillArgb,
-            style.HighContrastFillRole ?? VectorSceneDrawing.InferFillRole(command, style, VectorScenePaintResolver.GetSemanticRole(scene, command)),
+            style.HighContrastFillRole ?? VectorScenePaintResolver.InferFillRole(command, style, VectorScenePaintResolver.GetSemanticRole(scene, command)),
             highContrast);
         if (VectorScenePaintResolver.TryResolveColor(style.FillArgb, style.Opacity, palette, fillRole,
                 highContrast, foregroundOverride, out Color fill))
@@ -101,7 +101,7 @@ internal sealed class VectorScenePrimitivePainter
             command,
             style.FillRole,
             style.FillArgb,
-            style.HighContrastFillRole ?? VectorSceneDrawing.InferFillRole(command, style, VectorScenePaintResolver.GetSemanticRole(scene, command)),
+            style.HighContrastFillRole ?? VectorScenePaintResolver.InferFillRole(command, style, VectorScenePaintResolver.GetSemanticRole(scene, command)),
             highContrast);
         if (VectorScenePaintResolver.TryResolveColor(style.FillArgb, style.Opacity, palette, fillRole,
                 highContrast, foregroundOverride, out Color fill))

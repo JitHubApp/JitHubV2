@@ -169,7 +169,7 @@ internal static class VectorAccessibilityAssertions
     }
 
     internal static Color ResolveFill(MarkdownVectorCommand command, VectorScenePaintPalette palette) =>
-        VectorSceneDrawing.ResolveColor(
+        VectorScenePaintResolver.ResolveColor(
             command.Style!.FillArgb,
             command.Style.Opacity,
             palette,

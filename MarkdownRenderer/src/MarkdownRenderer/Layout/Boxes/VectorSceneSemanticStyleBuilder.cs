@@ -89,14 +89,14 @@ internal sealed class VectorSceneSemanticStyleBuilder
                 ? paintStyle.HighContrastFillRole ?? MarkdownVectorPaintRole.Foreground
                 : paintStyle.HighContrastStrokeRole ?? MarkdownVectorPaintRole.Foreground;
         bool linkedSemantic = _host.SemanticLinks[semanticIndex] is not null;
-        MarkdownVectorPaintRole effectiveRole = VectorSceneDrawing.ResolvePaintRole(
+        MarkdownVectorPaintRole effectiveRole = VectorScenePaintResolver.ResolvePaintRole(
             command,
             declaredRole,
             textArgb,
             highContrastRole,
             _host.LayoutContext.ThemeSnapshot.IsHighContrast,
             linkedSemantic);
-        Color effectiveForeground = VectorSceneDrawing.ResolveColor(
+        Color effectiveForeground = VectorScenePaintResolver.ResolveColor(
             textArgb,
             paintStyle.Opacity,
             palette,
@@ -105,7 +105,7 @@ internal sealed class VectorSceneSemanticStyleBuilder
 
         return new ElementStyle
         {
-            FontFamily = VectorSceneDrawing.ResolveFontFamily(textStyle, containerStyle.FontFamily),
+            FontFamily = VectorScenePaintResolver.ResolveFontFamily(textStyle, containerStyle.FontFamily),
             FontSize = Math.Max(1f, textStyle.FontSize * sceneUnitScale),
             FontWeight = new Windows.UI.Text.FontWeight { Weight = textStyle.FontWeight },
             FontStyle = textStyle.Italic
@@ -162,17 +162,17 @@ internal sealed class VectorSceneSemanticStyleBuilder
             {
                 MarkdownVectorCommand command = scene.Commands[commandIndex];
                 MarkdownVectorPaintStyle style = command.Style!;
-                MarkdownVectorPaintRole role = VectorSceneDrawing.ResolvePaintRole(
+                MarkdownVectorPaintRole role = VectorScenePaintResolver.ResolvePaintRole(
                     command,
                     style.FillRole,
                     style.FillArgb,
-                    style.HighContrastFillRole ?? VectorSceneDrawing.InferFillRole(
+                    style.HighContrastFillRole ?? VectorScenePaintResolver.InferFillRole(
                         command,
                         style,
                         _host.SemanticItems[current].Role),
                     _host.LayoutContext.ThemeSnapshot.IsHighContrast,
                     _host.SemanticLinks[current] is not null);
-                background = VectorSceneDrawing.ResolveColor(
+                background = VectorScenePaintResolver.ResolveColor(
                     style.FillArgb,
                     style.Opacity,
                     palette,

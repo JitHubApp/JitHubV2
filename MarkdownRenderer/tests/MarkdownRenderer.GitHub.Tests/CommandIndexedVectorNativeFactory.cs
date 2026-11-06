@@ -64,10 +64,10 @@ internal static class CommandIndexedVectorNativeFactory
         string text,
         MarkdownVectorTextStyle style)
     {
-        (float width, float height) = VectorSceneDrawing.ResolveTextLayoutSize(scene, text, style);
+        (float width, float height) = VectorScenePaintResolver.ResolveTextLayoutSize(scene, text, style);
         using var format = new CanvasTextFormat
         {
-            FontFamily = VectorSceneDrawing.ResolveFontFamily(style, hostFontFamily: null),
+            FontFamily = VectorScenePaintResolver.ResolveFontFamily(style, hostFontFamily: null),
             FontSize = style.FontSize,
             FontWeight = new FontWeight { Weight = style.FontWeight },
             FontStyle = style.Italic ? FontStyle.Italic : FontStyle.Normal,

@@ -200,7 +200,7 @@ public sealed class VectorSceneCapacityResidencyTests
     }
 
     private static long SceneWeight =>
-        VectorSceneDrawing.EstimateNativeResourceWeightUnits(CreateScene(), CancellationToken.None);
+        VectorSceneResourceShapes.EstimateNativeResourceWeightUnits(CreateScene(), CancellationToken.None);
 
     private static MarkdownVectorScene CreateScene() => new(
         width: 40, height: 40, baseline: 40,

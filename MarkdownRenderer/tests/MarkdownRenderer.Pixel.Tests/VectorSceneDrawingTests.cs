@@ -20,7 +20,7 @@ public sealed class VectorSceneDrawingTests
             [],
             []);
 
-        (float width, float height) = VectorSceneDrawing.ResolveTextLayoutSize(
+        (float width, float height) = VectorScenePaintResolver.ResolveTextLayoutSize(
             scene,
             new string('W', 16_384),
             style);
