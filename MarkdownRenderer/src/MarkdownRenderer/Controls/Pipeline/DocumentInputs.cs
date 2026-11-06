@@ -1,12 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using MarkdownRenderer.Controls.Embeds;
-using MarkdownRenderer.Controls.Highlighting;
-using MarkdownRenderer.Controls.Input;
+using MarkdownRenderer.Controls.Threading;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout;
-using Microsoft.UI.Xaml;
 using RebuildReason = MarkdownRenderer.Controls.MarkdownRebuildCoordinatorReason;
 
 namespace MarkdownRenderer.Controls.Pipeline;
@@ -24,12 +21,8 @@ namespace MarkdownRenderer.Controls.Pipeline;
 /// </remarks>
 internal sealed class DocumentInputs
 {
-    private readonly MarkdownRendererControl _control;
-    private readonly RendererEvents _events;
-    private readonly InteractionReset _interactionReset;
-    private readonly EmbedRealization _embeds;
-    private readonly CodeBlockHighlighting _highlighting;
-    private readonly RebuildScheduler _rebuild;
+    private readonly IDocumentInputsHost _host;
+    private readonly IMarkdownUiScheduler? _scheduler;
     private readonly SnapshotRetirementTracker _snapshotRetirements;
     private readonly Dictionary<string, bool> _disclosureStates = new(StringComparer.Ordinal);
     private MarkdownEngine? _ownedEngine;
@@ -37,20 +30,12 @@ internal sealed class DocumentInputs
     private bool _hasExplicitDocument;
 
     internal DocumentInputs(
-        MarkdownRendererControl control,
-        RendererEvents events,
-        InteractionReset interactionReset,
-        EmbedRealization embeds,
-        CodeBlockHighlighting highlighting,
-        RebuildScheduler rebuild,
+        IDocumentInputsHost host,
+        IMarkdownUiScheduler? scheduler,
         SnapshotRetirementTracker snapshotRetirements)
     {
-        _control = control;
-        _events = events;
-        _interactionReset = interactionReset;
-        _embeds = embeds;
-        _highlighting = highlighting;
-        _rebuild = rebuild;
+        _host = host;
+        _scheduler = scheduler;
         _snapshotRetirements = snapshotRetirements;
     }
 
@@ -59,8 +44,8 @@ internal sealed class DocumentInputs
 
     /// <summary>The markdown source the next pipeline renders.</summary>
     internal string EffectiveSource => _hasExplicitDocument
-        ? _control.Document?.Source ?? string.Empty
-        : _control.Markdown ?? string.Empty;
+        ? _host.Document?.Source ?? string.Empty
+        : _host.Markdown ?? string.Empty;
 
     /// <summary>A copy of the disclosure states for one pipeline's layout inputs.</summary>
     internal Dictionary<string, bool> CopyDisclosureStates() =>
@@ -78,7 +63,7 @@ internal sealed class DocumentInputs
         _ownedEngine = null;
         try
         {
-            _control.Engine = engine;
+            _host.AssignEngine(engine);
             _ownedEngine = engine;
         }
         catch
@@ -103,43 +88,43 @@ internal sealed class DocumentInputs
 
     internal void OnMarkdownChanged()
     {
-        _interactionReset.ResetInputForDocumentReplacement();
+        _host.ResetInputForDocumentReplacement();
         // Document has documented precedence over Markdown. A source change
         // invalidates only the document that this control published itself;
         // it must never clear a host-supplied/bound document based on DP
         // notification order. Hosts switch back to source parsing by clearing
         // Document explicitly.
-        if (!_hasExplicitDocument && !_isUpdatingDocumentProperty && _control.Document is not null)
+        if (!_hasExplicitDocument && !_isUpdatingDocumentProperty && _host.Document is not null)
         {
             _isUpdatingDocumentProperty = true;
-            try { _control.ClearValue(MarkdownRendererControl.DocumentProperty); }
+            try { _host.ClearDocument(); }
             finally { _isUpdatingDocumentProperty = false; }
         }
         _disclosureStates.Clear();
-        _embeds.ClearHostedElementFallbacks();
-        _highlighting.ClearCache();
-        _rebuild.Request(RebuildReason.Full);
+        _host.ClearDocumentCaches();
+        _host.RequestRebuild(RebuildReason.Full);
     }
 
-    internal void OnDocumentChanged(DependencyPropertyChangedEventArgs e)
+    /// <summary>Handles a change of the Document property to <paramref name="newValue"/>.</summary>
+    internal void OnDocumentChanged(object? newValue)
     {
         if (_isUpdatingDocumentProperty)
             return;
 
-        _interactionReset.ResetInputForDocumentReplacement();
-        _hasExplicitDocument = e.NewValue is MarkdownRenderer.Document.MarkdownDocument;
+        _host.ResetInputForDocumentReplacement();
+        _hasExplicitDocument = newValue is MarkdownDocument;
         _disclosureStates.Clear();
-        _embeds.ClearHostedElementFallbacks();
-        _highlighting.ClearCache();
-        _rebuild.Request(RebuildReason.Full);
+        _host.ClearDocumentCaches();
+        _host.RequestRebuild(RebuildReason.Full);
     }
 
-    internal void OnEngineChanged(DependencyPropertyChangedEventArgs e)
+    /// <summary>Handles a change of the Engine property from <paramref name="oldValue"/> to <paramref name="newValue"/>.</summary>
+    internal void OnEngineChanged(object? oldValue, object? newValue)
     {
         MarkdownEngine? retiredOwnedEngine = null;
         if (_ownedEngine is not null &&
-            ReferenceEquals(e.OldValue, _ownedEngine) &&
-            !ReferenceEquals(e.NewValue, _ownedEngine))
+            ReferenceEquals(oldValue, _ownedEngine) &&
+            !ReferenceEquals(newValue, _ownedEngine))
         {
             retiredOwnedEngine = _ownedEngine;
             _ownedEngine = null;
@@ -164,17 +149,16 @@ internal sealed class DocumentInputs
         // parsing. Only a document supplied by the host is authoritative.
         // Clear an internally published value so changing Engine or the legacy
         // registry cannot silently reuse an AST produced by old settings.
-        if (!_hasExplicitDocument && _control.Document is not null)
+        if (!_hasExplicitDocument && _host.Document is not null)
         {
             _isUpdatingDocumentProperty = true;
-            try { _control.ClearValue(MarkdownRendererControl.DocumentProperty); }
+            try { _host.ClearDocument(); }
             finally { _isUpdatingDocumentProperty = false; }
         }
 
         _disclosureStates.Clear();
-        _embeds.ClearHostedElementFallbacks();
-        _highlighting.ClearCache();
-        _rebuild.Request(RebuildReason.Full);
+        _host.ClearDocumentCaches();
+        _host.RequestRebuild(RebuildReason.Full);
     }
 
     internal void SetDisclosureExpanded(LinkRun run, bool expanded)
@@ -193,13 +177,13 @@ internal sealed class DocumentInputs
         void Apply()
         {
             _disclosureStates[id] = expanded;
-            _events.RaiseDisclosureToggled(expanded);
-            _rebuild.Request(RebuildReason.Restyle);
+            _host.RaiseDisclosureToggled(expanded);
+            _host.RequestRebuild(RebuildReason.Restyle);
         }
 
-        if (_control.DispatcherQueue is { HasThreadAccess: false } dispatcher)
+        if (_scheduler is { HasThreadAccess: false } scheduler)
         {
-            dispatcher.TryEnqueue(Apply);
+            scheduler.TryEnqueue(MarkdownUiPriority.Normal, Apply);
         }
         else
         {
@@ -213,10 +197,10 @@ internal sealed class DocumentInputs
     /// </summary>
     internal void PublishParsedDocument(MarkdownDocument semanticDocument)
     {
-        if (!ReferenceEquals(_control.Document, semanticDocument))
+        if (!ReferenceEquals(_host.Document, semanticDocument))
         {
             _isUpdatingDocumentProperty = true;
-            try { _control.SetValue(MarkdownRendererControl.DocumentProperty, semanticDocument); }
+            try { _host.SetDocument(semanticDocument); }
             finally { _isUpdatingDocumentProperty = false; }
         }
     }
@@ -228,7 +212,7 @@ internal sealed class DocumentInputs
         // Snapshot the barrier before tracking this engine's own retirement;
         // otherwise a later shutdown drain could wait on a task that waits on
         // that same drain.
-        if (_rebuild.ActiveTask is { } activePipeline)
+        if (_host.ActivePipeline is { } activePipeline)
             _snapshotRetirements.Track(activePipeline);
         Task lifetime = _snapshotRetirements.WaitForPendingAsync();
         Task retirement = OwnedResourceRetirement.DisposeAfterPropagating(engine, lifetime);

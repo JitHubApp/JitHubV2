@@ -154,7 +154,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <summary>Dependency property backing <see cref="Document"/>.</summary>
     public static readonly DependencyProperty DocumentProperty =
         Register<MarkdownRenderer.Document.MarkdownDocument>(nameof(Document), null,
-            (d, e) => ((MarkdownRendererControl)d)._documentInputs.OnDocumentChanged(e));
+            (d, e) => ((MarkdownRendererControl)d)._documentInputs.OnDocumentChanged(e.NewValue));
 
     /// <summary>
     /// Gets or sets an immutable, reusable parsed document. When set, the
@@ -170,7 +170,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <summary>Dependency property backing <see cref="Engine"/>.</summary>
     public static readonly DependencyProperty EngineProperty =
         Register<MarkdownEngine>(nameof(Engine), null,
-            (d, e) => ((MarkdownRendererControl)d)._documentInputs.OnEngineChanged(e));
+            (d, e) => ((MarkdownRendererControl)d)._documentInputs.OnEngineChanged(e.OldValue, e.NewValue));
 
     /// <summary>
     /// Gets or sets the immutable parser engine used for markdown replacements.
@@ -769,7 +769,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         imageSubscriptions.LoadCompleted += imageLoadCompletion.OnLoadCompleted;
         var geometryRecovery = new GeometryRecovery(_lifetime, _published, _surface, pointerInput, vectorCapacity, horizontalOverflowDrag, focusGeometryWork, _overflowScroll, focusRing, _adorner, _layoutCommit, imageSubscriptions, _lazyLayout, imageRelayout, _interactionReset, _dragShield, contextMenu, abbreviationTooltip, cursor, _handles, _automation, _deviceRecovery, _rebuild);
         _visibleWork = new VisibleWorkScheduler(this, _published, _highlighting, geometryRecovery);
-        _documentInputs = new DocumentInputs(this, events, _interactionReset, _embeds, _highlighting, _rebuild, _snapshotRetirements);
+        _documentInputs = new DocumentInputs(pipelineHosts, uiScheduler, _snapshotRetirements);
         _keyboard = new KeyboardInput(this, _published, _selection, _selectionCommands, contextMenu, focus, focusRing, focusCommit, hostedFocus, navigator, geometryRecovery);
         _recoveryWork = new RecoveryClockWork(layoutHosts, _lifetime, _published, recoveryClock, _layoutCommit, imageSubscriptions, imageRelayout, focusRefresh);
         var textAdorner = new InteractiveTextAdorner(_surface, _published, _selection, _touchSelection, _hover, focus, _adorner, geometryRecovery);
@@ -813,7 +813,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
             layoutPublisher, _overflowScroll, focusGeometryWork, focusableItems, pointerInput));
         pipelineHosts.Connect(new PipelineHosts.Parts(
             events, _documentInputs, _automation, imageLifetime, imageRelayout, _lazyLayout, _pipeline,
-            _touchRestore, _interactionReset, _performanceSession, _environment));
+            _touchRestore, _interactionReset, _performanceSession, _environment, _rebuild, _embeds, _highlighting));
         _focusEvents = new RendererFocusEvents(this, contextMenu, document, focus, focusEntry, focusRing);
         _selectionChanges = new SelectionChangeHandling(selectionDismissal, cursor, _rebuild, textAdorner, _automation, _selection, _touchRestore, _touchTapSuppression, _interactionReset);
         _attachment = new ViewAttachment(this, _surface, _lifetime, _published, cursor, abbreviationTooltip, _adorner, _deviceRecovery, selectionDismissal, _dragShield, _handles, contextMenu, horizontalOverflowDrag, pointerInput, _embeds, _windowDestroying, _snapshotRetirements, _rebuild, _painter, _canvasEvents, geometryRecovery, _recoveryWork, _scrolling, _deferredScenes, _blockScroll, _automation, imageLifetime, _automationDocumentGenerations, _layoutCommit, imageRelayout, vectorCapacity, _lazyLayout, width, _touchSelection, _touchRestore, _touchTapSuppression, _overflowScroll, focusRing, _performanceSession, _svgRenderer, _theme, _environment, imagePlans, imageSubscriptions, imageResidency, imagePrefetch, _highlighting);

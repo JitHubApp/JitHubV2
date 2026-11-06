@@ -69,12 +69,13 @@ public sealed class MarkdownHostResourceContractTests
         string peer = File.ReadAllText(Path.Combine(
             root, "MarkdownRenderer", "src", "MarkdownRenderer", "Accessibility", "MarkdownLinkPeer.cs"));
 
-        string documentInputs = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Pipeline", "DocumentInputs.cs"));
+        // Recording, raising and restyling a toggle, forgetting states when the document or
+        // parser changes, the per-pipeline ordinal copy and the off-thread post are covered by
+        // DocumentInputsTests. Handing that copy to a rebuild's layout inputs, link activation
+        // of a disclosure run, raising the public event and the peer's patterns need a live
+        // control or XAML runtime.
         string inputCapture = File.ReadAllText(Path.Combine(
             root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Pipeline", "RebuildInputCapture.cs"));
-        Assert.Contains("_disclosureStates.Clear()", documentInputs, StringComparison.Ordinal);
-        Assert.Contains("new(_disclosureStates, StringComparer.Ordinal)", documentInputs, StringComparison.Ordinal);
         Assert.Contains("DisclosureStates = _documentInputs.CopyDisclosureStates()", inputCapture, StringComparison.Ordinal);
         string layoutSetup = File.ReadAllText(Path.Combine(
             root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Pipeline", "RebuildLayoutSetup.cs"));

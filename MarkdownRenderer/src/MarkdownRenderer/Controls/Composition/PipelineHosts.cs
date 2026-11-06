@@ -39,7 +39,8 @@ internal sealed class PipelineHosts :
     IRebuildLayoutSetupHost,
     IDeferredSceneReadinessHost,
     ILinkActivationHost,
-    IRendererLocalizationHost
+    IRendererLocalizationHost,
+    IDocumentInputsHost
 {
     private readonly MarkdownRendererControl _control;
     private Parts? _owners;
@@ -61,7 +62,10 @@ internal sealed class PipelineHosts :
         TouchSelectionRestore TouchRestore,
         InteractionReset InteractionReset,
         PerformanceSessionSubscription PerformanceSession,
-        EnvironmentSubscription Environment);
+        EnvironmentSubscription Environment,
+        RebuildScheduler Rebuild,
+        EmbedRealization Embeds,
+        CodeBlockHighlighting Highlighting);
 
     internal void Connect(Parts owners) => _owners = owners;
 
@@ -136,4 +140,30 @@ internal sealed class PipelineHosts :
     IMarkdownStringProvider? IRendererLocalizationHost.StringProvider => _control.StringProvider;
 
     string? IRendererLocalizationHost.EnvironmentLanguage => Owners.Environment.Snapshot.Language;
+
+    string? IDocumentInputsHost.Markdown => _control.Markdown;
+
+    MarkdownDocument? IDocumentInputsHost.Document => _control.Document;
+
+    Task? IDocumentInputsHost.ActivePipeline => Owners.Rebuild.ActiveTask;
+
+    void IDocumentInputsHost.AssignEngine(MarkdownEngine engine) => _control.Engine = engine;
+
+    void IDocumentInputsHost.ClearDocument() => _control.ClearValue(MarkdownRendererControl.DocumentProperty);
+
+    void IDocumentInputsHost.SetDocument(MarkdownDocument document) =>
+        _control.SetValue(MarkdownRendererControl.DocumentProperty, document);
+
+    void IDocumentInputsHost.ResetInputForDocumentReplacement() =>
+        Owners.InteractionReset.ResetInputForDocumentReplacement();
+
+    void IDocumentInputsHost.ClearDocumentCaches()
+    {
+        Owners.Embeds.ClearHostedElementFallbacks();
+        Owners.Highlighting.ClearCache();
+    }
+
+    void IDocumentInputsHost.RequestRebuild(RebuildReason reason) => Owners.Rebuild.Request(reason);
+
+    void IDocumentInputsHost.RaiseDisclosureToggled(bool expanded) => Owners.Events.RaiseDisclosureToggled(expanded);
 }
