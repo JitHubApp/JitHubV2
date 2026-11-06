@@ -116,20 +116,9 @@ internal static class RasterNativeWicDecoder
         bool graphOwnsLease = false;
         try
         {
-            if (options.CopyBandRows is < 0 or > RasterNativeWicDecodeOptions.MaximumCopyBandRows)
-                throw new ArgumentOutOfRangeException(nameof(options), "The copy band row count is outside the supported range.");
-            ArgumentNullException.ThrowIfNull(source);
-            cancellationToken.ThrowIfCancellationRequested();
-            if (source.Length == 0 || source.Length > RasterImageResourceBudget.MaxInputBytes ||
-                (isGif ? !gifPlan.MatchesValidatedBudget(RasterImageResourceBudget.Validate(source))
-                    : !IsQualifiedPlan(staticPlan)))
-            {
-                throw new InvalidDataException("The source or decode plan is outside the native WIC admission contract.");
-            }
-
+            ThrowIfOutsideAdmissionContract(source, staticPlan, gifPlan, isGif, options, cancellationToken);
             RasterNativeWicDecodeGeometry plan = isGif
-                ? new RasterNativeWicDecodeGeometry(gifPlan)
-                : new RasterNativeWicDecodeGeometry(staticPlan);
+                ? new RasterNativeWicDecodeGeometry(gifPlan) : new RasterNativeWicDecodeGeometry(staticPlan);
             cancellationToken.ThrowIfCancellationRequested();
             int outputLength = checked(checked(plan.OutputWidth * plan.OutputHeight) * 4);
             int rawLength = checked(checked(plan.DecodeWidth * plan.DecodeHeight) * 4);
@@ -149,30 +138,7 @@ internal static class RasterNativeWicDecoder
             retirementRecord.SetTemporary(0, graph, retryable: false);
             graphOwnsLease = true;
 
-            graph.InitializeApartment();
-            options.Diagnostics?.RecordNativeStarted();
-            cancellationToken.ThrowIfCancellationRequested();
-            graph.CreateFactory();
-            cancellationToken.ThrowIfCancellationRequested();
-            graph.CreateBorrowingStream();
-            cancellationToken.ThrowIfCancellationRequested();
-            graph.CreateDecoder();
-            cancellationToken.ThrowIfCancellationRequested();
-            graph.ReadFrameAndSourceMetadata();
-            cancellationToken.ThrowIfCancellationRequested();
-            graph.CreateColorManagedTransform(cancellationToken);
-            cancellationToken.ThrowIfCancellationRequested();
-            graph.CreatePreScalePremultipliedConverterIfNeeded();
-            cancellationToken.ThrowIfCancellationRequested();
-            graph.CreateFantScaler();
-            cancellationToken.ThrowIfCancellationRequested();
-            graph.CreatePremultipliedConverter();
-            cancellationToken.ThrowIfCancellationRequested();
-            if (options.CopyBandRows > 0)
-                graph.CopyPixelsInBands(options.CopyBandRows, cancellationToken);
-            else
-                graph.CopyPixels();
-            cancellationToken.ThrowIfCancellationRequested();
+            DecodeThroughGraph(graph, options, cancellationToken);
 
             // Source pixels are no longer referenced by any live WIC object
             // after the owned graph is fully retired. Keep output admission in
@@ -202,54 +168,7 @@ internal static class RasterNativeWicDecoder
         }
         catch
         {
-            // CopyPixels has synchronously returned before this catch. WIC
-            // never owns these caller-provided output arrays; erase partial
-            // pixels even if native retirement must retain their custody.
-            if (rawPixels is not null)
-                Array.Clear(rawPixels);
-            if (outputPixels is not null && !ReferenceEquals(outputPixels, rawPixels))
-                Array.Clear(outputPixels);
-            bool retainedByQuarantine = false;
-            if (graph is not null)
-            {
-                try
-                {
-                    graph.Dispose();
-                }
-                catch
-                {
-                    retainedByQuarantine = graph.IsQuarantined;
-                }
-                finally
-                {
-                    graph.BalanceApartmentInitialization();
-                }
-            }
-
-            if (retainedByQuarantine || graphOwnsLease && graph?.IsQuarantined == true)
-            {
-                // The retirement registry now roots graph -> pixel lease ->
-                // process credit and graph -> pinned source. Never clear or
-                // release any object still reachable from that custody root.
-                // Its caller-owned pixel storage has already been erased.
-                pixelLease = null;
-                rawPixels = null;
-                outputPixels = null;
-            }
-            else
-            {
-                if (rawPixels is not null &&
-                    (pixelLease is null || !ReferenceEquals(rawPixels, pixelLease.Pixels)))
-                {
-                    Array.Clear(rawPixels);
-                }
-                pixelLease?.Dispose();
-                if (pixelLease is null && outputPixels is not null &&
-                    (rawPixels is null || !ReferenceEquals(rawPixels, outputPixels)))
-                {
-                    Array.Clear(outputPixels);
-                }
-            }
+            RetireAfterFailure(graph, graphOwnsLease, ref pixelLease, ref rawPixels, ref outputPixels);
             throw;
         }
         finally
@@ -257,9 +176,121 @@ internal static class RasterNativeWicDecoder
             // Ownership transfers into RasterDecodedPixelLease before this
             // point. If construction failed earlier, the lease itself refunds
             // process credit; if it was never created, refund the original.
-            if (pixelLease is not null)
-                pixelLease.Dispose();
+            pixelLease?.Dispose();
             untransferredProcessCredit?.Dispose();
+        }
+    }
+
+    private static void ThrowIfOutsideAdmissionContract(
+        byte[] source,
+        RasterImageDecodePlan staticPlan,
+        RasterGifFirstFrameDecodePlan gifPlan,
+        bool isGif,
+        RasterNativeWicDecodeOptions options,
+        CancellationToken cancellationToken)
+    {
+        if (options.CopyBandRows is < 0 or > RasterNativeWicDecodeOptions.MaximumCopyBandRows)
+            throw new ArgumentOutOfRangeException(nameof(options), "The copy band row count is outside the supported range.");
+        ArgumentNullException.ThrowIfNull(source);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (source.Length == 0 || source.Length > RasterImageResourceBudget.MaxInputBytes ||
+            (isGif ? !gifPlan.MatchesValidatedBudget(RasterImageResourceBudget.Validate(source))
+                : !IsQualifiedPlan(staticPlan)))
+        {
+            throw new InvalidDataException("The source or decode plan is outside the native WIC admission contract.");
+        }
+    }
+
+    // Builds the WIC graph in its fixed order and copies the pixels,
+    // checking cancellation between native calls.
+    private static void DecodeThroughGraph(
+        RasterNativeWicGraph graph,
+        RasterNativeWicDecodeOptions options,
+        CancellationToken cancellationToken)
+    {
+        graph.InitializeApartment();
+        options.Diagnostics?.RecordNativeStarted();
+        cancellationToken.ThrowIfCancellationRequested();
+        graph.CreateFactory();
+        cancellationToken.ThrowIfCancellationRequested();
+        graph.CreateBorrowingStream();
+        cancellationToken.ThrowIfCancellationRequested();
+        graph.CreateDecoder();
+        cancellationToken.ThrowIfCancellationRequested();
+        graph.ReadFrameAndSourceMetadata();
+        cancellationToken.ThrowIfCancellationRequested();
+        graph.CreateColorManagedTransform(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        graph.CreatePreScalePremultipliedConverterIfNeeded();
+        cancellationToken.ThrowIfCancellationRequested();
+        graph.CreateFantScaler();
+        cancellationToken.ThrowIfCancellationRequested();
+        graph.CreatePremultipliedConverter();
+        cancellationToken.ThrowIfCancellationRequested();
+        if (options.CopyBandRows > 0)
+            graph.CopyPixelsInBands(options.CopyBandRows, cancellationToken);
+        else
+            graph.CopyPixels();
+        cancellationToken.ThrowIfCancellationRequested();
+    }
+
+    // Runs on the failure path before the exception is rethrown. A
+    // quarantined graph keeps its custody; the caller's finally then sees the
+    // lease, pixel buffers and credit it must no longer touch as null.
+    private static void RetireAfterFailure(
+        RasterNativeWicGraph? graph,
+        bool graphOwnsLease,
+        ref RasterDecodedPixelLease? pixelLease,
+        ref byte[]? rawPixels,
+        ref byte[]? outputPixels)
+    {
+        // CopyPixels has synchronously returned before this catch. WIC
+        // never owns these caller-provided output arrays; erase partial
+        // pixels even if native retirement must retain their custody.
+        if (rawPixels is not null)
+            Array.Clear(rawPixels);
+        if (outputPixels is not null && !ReferenceEquals(outputPixels, rawPixels))
+            Array.Clear(outputPixels);
+        bool retainedByQuarantine = false;
+        if (graph is not null)
+        {
+            try
+            {
+                graph.Dispose();
+            }
+            catch
+            {
+                retainedByQuarantine = graph.IsQuarantined;
+            }
+            finally
+            {
+                graph.BalanceApartmentInitialization();
+            }
+        }
+
+        if (retainedByQuarantine || graphOwnsLease && graph?.IsQuarantined == true)
+        {
+            // The retirement registry now roots graph -> pixel lease ->
+            // process credit and graph -> pinned source. Never clear or
+            // release any object still reachable from that custody root.
+            // Its caller-owned pixel storage has already been erased.
+            pixelLease = null;
+            rawPixels = null;
+            outputPixels = null;
+        }
+        else
+        {
+            if (rawPixels is not null &&
+                (pixelLease is null || !ReferenceEquals(rawPixels, pixelLease.Pixels)))
+            {
+                Array.Clear(rawPixels);
+            }
+            pixelLease?.Dispose();
+            if (pixelLease is null && outputPixels is not null &&
+                (rawPixels is null || !ReferenceEquals(rawPixels, outputPixels)))
+            {
+                Array.Clear(outputPixels);
+            }
         }
     }
 

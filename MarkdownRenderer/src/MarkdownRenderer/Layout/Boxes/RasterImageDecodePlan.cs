@@ -70,34 +70,8 @@ internal readonly struct RasterImageDecodePlan
         cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(validatedBudget);
 
-        if ((!validatedBudget.Accepted && !validatedBudget.CanRenderStaticPreview) ||
-            validatedBudget.FrameCount != 1 ||
-            validatedBudget.FirstFrame is not null ||
-            validatedBudget.Width <= 0 || validatedBudget.Height <= 0 ||
-            validatedBudget.Width > RasterImageResourceBudget.MaxDimension ||
-            validatedBudget.Height > RasterImageResourceBudget.MaxDimension ||
-            validatedBudget.Format is not ("PNG" or "BMP" or "JPEG" or "WEBP"))
-        {
+        if (!TryGetPlannableSourcePixels(validatedBudget, sizingRequest, out long sourcePixels))
             return false;
-        }
-
-        if (sizingRequest.MaximumPixels <= 0)
-            return false;
-
-        long sourcePixels = (long)validatedBudget.Width * validatedBudget.Height;
-        if (sourcePixels <= 0 || sourcePixels > RasterImageResourceBudget.MaxDownsampleSourcePixels ||
-            validatedBudget.TotalPixels != sourcePixels ||
-            validatedBudget.DecodedBytes != checked(sourcePixels * 4))
-        {
-            return false;
-        }
-
-        if (validatedBudget.Accepted &&
-            (sourcePixels > RasterImageResourceBudget.MaxPixelsPerFrame ||
-             validatedBudget.DecodedBytes > RasterImageResourceBudget.MaxDecodedBytes))
-        {
-            return false;
-        }
 
         if (!RasterIntrinsicMetadata.TryReadValidated(
                 bytes, validatedBudget, out RasterIntrinsicMetadata intrinsic,
@@ -154,5 +128,42 @@ internal readonly struct RasterImageDecodePlan
             sourcePixels,
             outputPixels);
         return true;
+    }
+
+    // Accepts only a single-frame PNG, BMP, JPEG or WebP budget whose source
+    // pixels and decoded bytes are exactly those of one frame and stay within
+    // the downsample source ceiling, or within the full-decode ceilings when
+    // the budget was accepted for a full decode.
+    private static bool TryGetPlannableSourcePixels(
+        RasterImageBudgetResult validatedBudget,
+        RasterImageSizingRequest sizingRequest,
+        out long sourcePixels)
+    {
+        sourcePixels = 0;
+        if ((!validatedBudget.Accepted && !validatedBudget.CanRenderStaticPreview) ||
+            validatedBudget.FrameCount != 1 ||
+            validatedBudget.FirstFrame is not null ||
+            validatedBudget.Width <= 0 || validatedBudget.Height <= 0 ||
+            validatedBudget.Width > RasterImageResourceBudget.MaxDimension ||
+            validatedBudget.Height > RasterImageResourceBudget.MaxDimension ||
+            validatedBudget.Format is not ("PNG" or "BMP" or "JPEG" or "WEBP"))
+        {
+            return false;
+        }
+
+        if (sizingRequest.MaximumPixels <= 0)
+            return false;
+
+        sourcePixels = (long)validatedBudget.Width * validatedBudget.Height;
+        if (sourcePixels <= 0 || sourcePixels > RasterImageResourceBudget.MaxDownsampleSourcePixels ||
+            validatedBudget.TotalPixels != sourcePixels ||
+            validatedBudget.DecodedBytes != checked(sourcePixels * 4))
+        {
+            return false;
+        }
+
+        return !validatedBudget.Accepted ||
+            (sourcePixels <= RasterImageResourceBudget.MaxPixelsPerFrame &&
+             validatedBudget.DecodedBytes <= RasterImageResourceBudget.MaxDecodedBytes);
     }
 }

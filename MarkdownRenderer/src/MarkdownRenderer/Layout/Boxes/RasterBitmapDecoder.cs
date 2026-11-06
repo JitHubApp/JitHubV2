@@ -371,14 +371,7 @@ internal sealed class RasterBitmapDecoder
             wicDecodeOwner.AdoptSoftwareBitmap(firstFrame);
             state.RecordStage(MarkdownRasterPreparationStage.WicPixelDecode, stageStarted);
             decodeToken.ThrowIfCancellationRequested();
-            uint expectedPixelWidth = swapDecodeAxes ? transform.ScaledHeight : transform.ScaledWidth;
-            uint expectedPixelHeight = swapDecodeAxes ? transform.ScaledWidth : transform.ScaledHeight;
-            if (firstFrame.PixelWidth != expectedPixelWidth ||
-                firstFrame.PixelHeight != expectedPixelHeight ||
-                checked((long)firstFrame.PixelWidth * firstFrame.PixelHeight) > plan.SizingRequest.MaximumPixels)
-            {
-                throw new InvalidDataException("The decoded frame does not match the bounded raster transform.");
-            }
+            ThrowIfFrameMismatchesTransform(firstFrame, transform, swapDecodeAxes, plan.SizingRequest.MaximumPixels);
             stageStarted = state.StartStage();
             if (composeGifCanvas)
             {
@@ -397,12 +390,7 @@ internal sealed class RasterBitmapDecoder
             }
             state.RecordStage(MarkdownRasterPreparationStage.Win2DBitmapUpload, stageStarted);
             if (budget.CanRenderStaticPreview)
-            {
-                MarkdownDiagnostics.WriteLine(
-                    $"[ImageBox] rendered a bounded first-frame preview for {cacheKey}; " +
-                    $"source={budget.Width}x{budget.Height}, " +
-                    $"preview={rasterSize.Width}x{rasterSize.Height}, frames={budget.FrameCount}.");
-            }
+                ReportStaticPreview(cacheKey, budget, rasterSize);
         }
         finally
         {
@@ -411,6 +399,31 @@ internal sealed class RasterBitmapDecoder
 
         return true;
     }
+
+    private static void ThrowIfFrameMismatchesTransform(
+        SoftwareBitmap frame,
+        BitmapTransform transform,
+        bool swapDecodeAxes,
+        long maximumPixels)
+    {
+        uint expectedPixelWidth = swapDecodeAxes ? transform.ScaledHeight : transform.ScaledWidth;
+        uint expectedPixelHeight = swapDecodeAxes ? transform.ScaledWidth : transform.ScaledHeight;
+        if (frame.PixelWidth != expectedPixelWidth ||
+            frame.PixelHeight != expectedPixelHeight ||
+            checked((long)frame.PixelWidth * frame.PixelHeight) > maximumPixels)
+        {
+            throw new InvalidDataException("The decoded frame does not match the bounded raster transform.");
+        }
+    }
+
+    private static void ReportStaticPreview(
+        string cacheKey,
+        RasterImageBudgetResult budget,
+        (int Width, int Height) rasterSize) =>
+        MarkdownDiagnostics.WriteLine(
+            $"[ImageBox] rendered a bounded first-frame preview for {cacheKey}; " +
+            $"source={budget.Width}x{budget.Height}, " +
+            $"preview={rasterSize.Width}x{rasterSize.Height}, frames={budget.FrameCount}.");
 
     /// <summary>
     /// Validates the WinRT decoder against the header, records the oriented
