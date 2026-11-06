@@ -290,7 +290,7 @@ public sealed class CompactSemanticNodeStorageTests
             TextStart = 3,
             TextEnd = 21,
         };
-        MarkdownSemanticNode.ChildrenView retainedView = root.Children;
+        MarkdownSemanticChildrenView retainedView = root.Children;
         var child = new MarkdownSemanticNode(MarkdownSemanticRole.Paragraph)
         {
             TextStart = 4,

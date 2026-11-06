@@ -170,6 +170,13 @@ internal sealed class LayoutCommitPublisher
     /// previous publication in place, when the lease is unavailable or any
     /// currency fence fails.
     /// </summary>
+    /// <remarks>
+    /// This method stays whole because it is one lease protocol: the focus
+    /// capture, its currency fence, the plan clear, the candidate collection
+    /// and the image index run under one snapshot lease, the capture failure
+    /// is rethrown only after that lease ends, and the outer finally that
+    /// retires detached plans must cover every step from capture to adoption.
+    /// </remarks>
     internal bool TryRebuildPlans(LayoutSnapshot snapshot, bool preserveRealized,
         out Size size, out double? anchorOffset,
         (int BlockIndex, double OffsetFromTop)? scrollAnchor = null)

@@ -15,6 +15,14 @@ namespace MarkdownRenderer;
 /// exited. All of that state is guarded by one gate so cache admission stays
 /// atomic with in-flight completion.
 /// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because admission, in-flight completion
+/// and deferred disposal read and write the same gated state: disposal waits
+/// on the active parse count and pending cancellation retirements that
+/// completion updates, under the same lock. The cache and in-flight table
+/// themselves live in <see cref="MarkdownCompletedParseCache"/> and
+/// <see cref="MarkdownInFlightParseTable"/>.
+/// </remarks>
 internal sealed class MarkdownParseCoordinator
 {
     private readonly object _parseGate = new();

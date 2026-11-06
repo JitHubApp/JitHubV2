@@ -143,36 +143,7 @@ internal sealed class GitHubDetailsBlockRenderer : MarkdownNodeRenderer<GitHubDe
             if (first && child is InlineContainerBox leading)
             {
                 first = false;
-                InlineRun[] visualRuns = leading.DetachInlineImagesAndSpacersForTransfer();
-                foreach (InlineRun visualRun in visualRuns)
-                {
-                    if (visualRun is InlineImageRun image)
-                        context.RegisterConstructionBlock(image.Image);
-                }
-
-                if (visualRuns.Length > 0)
-                {
-                    var media = new InlineContainerBox(context, MarkdownElementKeys.Body)
-                    {
-                        BlockIndex = context.NextBlockIndex(),
-                        TextAlignment = leading.TextAlignment,
-                    };
-                    context.RegisterConstructionBlock(media);
-                    foreach (InlineRun visualRun in visualRuns)
-                    {
-                        media.Add(visualRun);
-                        if (visualRun is InlineImageRun image)
-                            context.AdoptConstructionBlock(image.Image);
-                    }
-                    destination.Add(media);
-                    context.AdoptConstructionBlock(media);
-                }
-
-                // The source container is only a staging owner. Transferred
-                // image resources now belong to `media`; all other inline runs
-                // (notably vector scenes) must be retired with the discarded
-                // container.
-                context.DiscardConstructionBlock(leading);
+                TransferLeadingMedia(destination, leading, context);
                 continue;
             }
 
@@ -184,6 +155,48 @@ internal sealed class GitHubDetailsBlockRenderer : MarkdownNodeRenderer<GitHubDe
         // Children have been detached and reparented, leaving the staging
         // stack empty. Retire it rather than forgetting a temporary owner.
         context.DiscardConstructionBlock(rendered);
+    }
+
+    /// <summary>
+    /// Moves the inline images and spacers of the summary's leading inline
+    /// container into a new media box in <paramref name="destination"/>, and
+    /// retires the container with the rest of its runs.
+    /// </summary>
+    private static void TransferLeadingMedia(
+        StackBox destination,
+        InlineContainerBox leading,
+        MarkdownLayoutContext context)
+    {
+        InlineRun[] visualRuns = leading.DetachInlineImagesAndSpacersForTransfer();
+        foreach (InlineRun visualRun in visualRuns)
+        {
+            if (visualRun is InlineImageRun image)
+                context.RegisterConstructionBlock(image.Image);
+        }
+
+        if (visualRuns.Length > 0)
+        {
+            var media = new InlineContainerBox(context, MarkdownElementKeys.Body)
+            {
+                BlockIndex = context.NextBlockIndex(),
+                TextAlignment = leading.TextAlignment,
+            };
+            context.RegisterConstructionBlock(media);
+            foreach (InlineRun visualRun in visualRuns)
+            {
+                media.Add(visualRun);
+                if (visualRun is InlineImageRun image)
+                    context.AdoptConstructionBlock(image.Image);
+            }
+            destination.Add(media);
+            context.AdoptConstructionBlock(media);
+        }
+
+        // The source container is only a staging owner. Transferred
+        // image resources now belong to `media`; all other inline runs
+        // (notably vector scenes) must be retired with the discarded
+        // container.
+        context.DiscardConstructionBlock(leading);
     }
 
     private static System.Collections.Generic.IEnumerable<string> DescendantText(SafeHtmlNode node)

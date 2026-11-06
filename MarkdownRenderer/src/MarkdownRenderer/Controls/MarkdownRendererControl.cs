@@ -675,7 +675,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// ancestor viewport through EffectiveViewportChanged.
     /// </param>
     /// <param name="diagnostics">The diagnostics this renderer runs with for its lifetime.</param>
-    /// <remarks>Over 80 lines: the composition root, one line per owner in dependency order.</remarks>
+    /// <remarks>This constructor stays whole because it is the composition root: one line per
+    /// owner in dependency order, and readonly owner fields can be set only in a constructor.</remarks>
     private protected MarkdownRendererControl(bool ownsScrollViewport, MarkdownRendererDiagnosticOptions diagnostics)
     {
         var events = new RendererEvents(this, _lifetime, DispatcherQueue);

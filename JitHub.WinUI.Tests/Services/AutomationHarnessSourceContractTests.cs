@@ -857,7 +857,7 @@ public sealed class AutomationHarnessSourceContractTests
         int postInteractionMenu = recognizedGesture.IndexOf("CompleteGestureAfterSnapshotInteraction(", endInteraction, StringComparison.Ordinal);
         Assert.True(endInteraction >= 0 && postInteractionMenu > endInteraction);
         Assert.Contains("if (input.ShowContextMenuAfterInteraction)", recognizedGesture, StringComparison.Ordinal);
-        Assert.Contains("snapshotGeneration,\n                    layoutRevision);", recognizedGesture[postInteractionMenu..], StringComparison.Ordinal);
+        Assert.Contains("snapshotGeneration,\n                layoutRevision);", recognizedGesture[postInteractionMenu..], StringComparison.Ordinal);
 
         int completeGestureStart = pointerSource.IndexOf("private bool CompleteGestureAfterSnapshotInteraction(", StringComparison.Ordinal);
         int postInteractionStart = pointerSource.IndexOf("private bool CompletePointerPostInteraction(", completeGestureStart, StringComparison.Ordinal);

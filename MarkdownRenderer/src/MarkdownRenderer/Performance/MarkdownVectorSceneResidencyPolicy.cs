@@ -15,6 +15,16 @@ namespace MarkdownRenderer.Performance;
 /// keep readable fallback while awaiting a capacity-generation wake. Neither
 /// the graph estimate nor that complexity weight is an RSS guarantee.
 /// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because band replacement (collect,
+/// weigh, prepare and commit), graph rebind adoption, unpinned release and
+/// disposal each move pins between the committed active scenes, the pending
+/// transient scenes and the pending rebinds. Those sets stay in one owner so
+/// that superseding a pending band retires its transient pins without
+/// touching the committed band. Band walking lives in
+/// <see cref="VectorSceneBandCollector"/> and size estimates in
+/// <see cref="MarkdownVectorSceneEstimateCache"/>.
+/// </remarks>
 internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneResidencyPolicy
 {
     private readonly VectorSceneBandCollector _bandCollector;

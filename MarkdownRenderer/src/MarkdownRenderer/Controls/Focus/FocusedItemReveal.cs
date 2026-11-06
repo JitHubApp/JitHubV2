@@ -78,8 +78,7 @@ internal sealed class FocusedItemReveal
     /// </summary>
     /// <remarks>
     /// The horizontal scroll and the read of the rectangle it produces share
-    /// one snapshot lease, and the vertical scroll must use that rectangle,
-    /// so the steps stay in one method.
+    /// one snapshot lease, and the vertical scroll uses that rectangle.
     /// </remarks>
     internal bool ScrollIntoView()
     {
@@ -111,31 +110,11 @@ internal sealed class FocusedItemReveal
             {
                 capturedRect = FocusableItemQueries.GetLogicalRectUnderPaint(snapshot, item);
                 captured = true;
-                if (capturedRect is { } rect &&
-                    snapshot.TryGetHorizontalOverflowForBlockIndex(item.BlockIndex, out var overflow) &&
-                    overflow is not null)
+                if (capturedRect is { } rect)
                 {
-                    Rect localViewport = snapshot.ToLogicalRectForBlockIndexUnderPaint(
-                        item.BlockIndex, overflow.HorizontalViewportBounds);
-                    const double localMargin = 8.0;
-                    double physicalShift = 0;
-                    if (rect.Left < localViewport.Left + localMargin)
-                        physicalShift = localViewport.Left + localMargin - rect.Left;
-                    else if (rect.Right > localViewport.Right - localMargin)
-                        physicalShift = localViewport.Right - localMargin - rect.Right;
-
-                    if (Math.Abs(physicalShift) > 0.1)
-                    {
-                        oldHorizontalOffset = overflow.HorizontalOffset;
-                        double logicalShift = overflow.IsRightToLeft ? physicalShift : -physicalShift;
-                        if (snapshot.TrySetHorizontalOffset(overflow, oldHorizontalOffset + logicalShift))
-                        {
-                            horizontalScrolled = true;
-                            _ = _overflowScroll.TryCaptureUnderLease(
-                                snapshot, generation, revision, overflow, oldHorizontalOffset, out visualState);
-                            capturedRect = FocusableItemQueries.GetLogicalRectUnderPaint(snapshot, item) ?? rect;
-                        }
-                    }
+                    horizontalScrolled = TryScrollOverflowUnderLease(
+                        snapshot, generation, revision, item, ref capturedRect, rect,
+                        out oldHorizontalOffset, out visualState);
                 }
             }
         }
@@ -169,6 +148,53 @@ internal sealed class FocusedItemReveal
         if (verticalNeeded && !QueueScroll(snapshot, generation, revision, item, detachedRect))
             _host.RequestFocusGeometryRetry();
         return horizontalScrolled || verticalNeeded;
+    }
+
+    /// <summary>
+    /// Under the caller's snapshot lease, scrolls the horizontal overflow
+    /// region that holds <paramref name="item"/> so its rectangle
+    /// <paramref name="rect"/> is visible, then re-reads the rectangle into
+    /// <paramref name="capturedRect"/>. Returns true when the region scrolled.
+    /// </summary>
+    private bool TryScrollOverflowUnderLease(
+        LayoutSnapshot snapshot,
+        long generation,
+        long revision,
+        Layout.FocusableItem item,
+        ref Rect? capturedRect,
+        Rect rect,
+        out double oldHorizontalOffset,
+        out HorizontalOverflowVisualState visualState)
+    {
+        oldHorizontalOffset = 0;
+        visualState = default;
+        if (!snapshot.TryGetHorizontalOverflowForBlockIndex(item.BlockIndex, out var overflow) ||
+            overflow is null)
+        {
+            return false;
+        }
+
+        Rect localViewport = snapshot.ToLogicalRectForBlockIndexUnderPaint(
+            item.BlockIndex, overflow.HorizontalViewportBounds);
+        const double localMargin = 8.0;
+        double physicalShift = 0;
+        if (rect.Left < localViewport.Left + localMargin)
+            physicalShift = localViewport.Left + localMargin - rect.Left;
+        else if (rect.Right > localViewport.Right - localMargin)
+            physicalShift = localViewport.Right - localMargin - rect.Right;
+
+        if (Math.Abs(physicalShift) <= 0.1)
+            return false;
+
+        oldHorizontalOffset = overflow.HorizontalOffset;
+        double logicalShift = overflow.IsRightToLeft ? physicalShift : -physicalShift;
+        if (!snapshot.TrySetHorizontalOffset(overflow, oldHorizontalOffset + logicalShift))
+            return false;
+
+        _ = _overflowScroll.TryCaptureUnderLease(
+            snapshot, generation, revision, overflow, oldHorizontalOffset, out visualState);
+        capturedRect = FocusableItemQueries.GetLogicalRectUnderPaint(snapshot, item) ?? rect;
+        return true;
     }
 
     private bool QueueScroll(

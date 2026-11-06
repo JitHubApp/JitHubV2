@@ -22,24 +22,8 @@ internal sealed class TaskListItemRenderer : MarkdownNodeRenderer<ListItemBlock>
     /// <inheritdoc />
     public override BlockBox? BuildBlock(ListItemBlock listItem, MarkdownLayoutContext context)
     {
-        // GFM TaskList is a LeafInline injected as the first inline of the
-        // first ParagraphBlock child — NOT data on the ListItemBlock itself.
-        TaskList? taskList = null;
-        ParagraphBlock? firstParagraph = null;
-        foreach (var child in listItem)
-        {
-            if (child is ParagraphBlock pb && pb.Inline is not null)
-            {
-                firstParagraph = pb;
-                foreach (var inl in pb.Inline)
-                {
-                    if (inl is TaskList tl) { taskList = tl; break; }
-                    break; // only the first inline can be TaskList
-                }
-                break;
-            }
-        }
-        if (taskList is null || firstParagraph is null) return null;
+        TaskList? taskList = FindTaskList(listItem);
+        if (taskList is null) return null;
 
         bool isChecked = taskList.Checked;
 
@@ -52,6 +36,50 @@ internal sealed class TaskListItemRenderer : MarkdownNodeRenderer<ListItemBlock>
             MarkdownElementKeys.ListMarker,
             context.CreateStyleContextSnapshot(),
             context.CreateStyleAliasSnapshot());
+        InlineContainerBox marker = BuildMarker(context, sourceRange, isChecked, editableRequested, markerSize);
+        StackBox content = BuildContent(listItem, context);
+
+        float markerWidth = Math.Max(
+            1f,
+            listStyle.ListIndent + Math.Max(0, context.ListDepth - 1) * listStyle.NestedListIndent);
+
+        var result = new ListItemBox(marker, content, markerWidth)
+        {
+            FlowDirection = context.FlowDirection,
+        };
+        context.RegisterConstructionBlock(result);
+        context.AdoptConstructionBlock(marker);
+        context.AdoptConstructionBlock(content);
+        return result;
+    }
+
+    /// <summary>
+    /// Finds the task marker. GFM TaskList is a LeafInline injected as the
+    /// first inline of the first ParagraphBlock child, not data on the
+    /// ListItemBlock itself.
+    /// </summary>
+    private static TaskList? FindTaskList(ListItemBlock listItem)
+    {
+        foreach (var child in listItem)
+        {
+            // Only the first inline can be TaskList.
+            if (child is ParagraphBlock pb && pb.Inline is not null)
+                return pb.Inline.FirstChild as TaskList;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Builds the marker box that hosts the task's check box, editable when
+    /// <paramref name="editableRequested"/> and a command set is available.
+    /// </summary>
+    private static InlineContainerBox BuildMarker(
+        MarkdownLayoutContext context,
+        SourceSpan sourceRange,
+        bool isChecked,
+        bool editableRequested,
+        float markerSize)
+    {
         (Windows.UI.Color selectionAccent, Windows.UI.Color selectionForeground) =
             GetTaskMarkerColors(context.ThemeSnapshot);
         string completed = ResolveString(
@@ -113,7 +141,15 @@ internal sealed class TaskListItemRenderer : MarkdownNodeRenderer<ListItemBlock>
         context.RegisterConstructionBlock(marker);
         marker.BlockIndex = context.NextBlockIndex();
         marker.Add(markerRun);
+        return marker;
+    }
 
+    /// <summary>
+    /// Builds the task's content stack: its paragraphs without the task
+    /// marker inline, then its other children.
+    /// </summary>
+    private static StackBox BuildContent(ListItemBlock listItem, MarkdownLayoutContext context)
+    {
         var content = new StackBox
         {
             FlowDirection = context.FlowDirection,
@@ -153,19 +189,7 @@ internal sealed class TaskListItemRenderer : MarkdownNodeRenderer<ListItemBlock>
                 }
             }
         }
-
-        float markerWidth = Math.Max(
-            1f,
-            listStyle.ListIndent + Math.Max(0, context.ListDepth - 1) * listStyle.NestedListIndent);
-
-        var result = new ListItemBox(marker, content, markerWidth)
-        {
-            FlowDirection = context.FlowDirection,
-        };
-        context.RegisterConstructionBlock(result);
-        context.AdoptConstructionBlock(marker);
-        context.AdoptConstructionBlock(content);
-        return result;
+        return content;
     }
 
     private static FrameworkElement CreateTaskMarker(

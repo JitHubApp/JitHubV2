@@ -34,12 +34,7 @@ internal static class SelectionBlockRects
 
         if (box is TableBox table)
         {
-            Rect logicalTableClip = snapshot.ToLogicalRectForTopLevelBlockUnderPaint(
-                topLevelRoot, table.HorizontalViewportBounds);
-            Rect tableClip = clip is { } outerClip
-                ? Intersect(logicalTableClip, outerClip)
-                : logicalTableClip;
-            if (tableClip.Width <= 0 || tableClip.Height <= 0)
+            if (!TryGetViewportClip(snapshot, topLevelRoot, table.HorizontalViewportBounds, clip, out Rect tableClip))
                 return;
 
             foreach (InlineContainerBox cell in table.GetCellBoxesInVerticalBand(
@@ -67,12 +62,7 @@ internal static class SelectionBlockRects
         {
             (int first, int end) = codeBlock.GetVisibleChunkRange(
                 physicalViewport.Top, physicalViewport.Bottom);
-            Rect logicalCodeClip = snapshot.ToLogicalRectForTopLevelBlockUnderPaint(
-                topLevelRoot, codeBlock.HorizontalViewportBounds);
-            Rect codeClip = clip is { } outerClip
-                ? Intersect(logicalCodeClip, outerClip)
-                : logicalCodeClip;
-            if (codeClip.Width <= 0 || codeClip.Height <= 0)
+            if (!TryGetViewportClip(snapshot, topLevelRoot, codeBlock.HorizontalViewportBounds, clip, out Rect codeClip))
                 return;
 
             IReadOnlyList<InlineContainerBox> chunks = codeBlock.Chunks;
@@ -84,6 +74,24 @@ internal static class SelectionBlockRects
             return;
         }
 
+        AppendLeafRects(snapshot, topLevelRoot, box, range, logicalViewport, clip, destination, selectionBackgrounds);
+    }
+
+    /// <summary>
+    /// Appends the visible rectangles of a leaf box, which has no list, table,
+    /// stack or code-block children, and its content-bounded selection
+    /// backgrounds when <paramref name="selectionBackgrounds"/> is given.
+    /// </summary>
+    private static void AppendLeafRects(
+        LayoutSnapshot snapshot,
+        BlockBox topLevelRoot,
+        BlockBox box,
+        DocumentRange range,
+        Rect logicalViewport,
+        Rect? clip,
+        List<Rect> destination,
+        List<SelectionBackgroundGeometry>? selectionBackgrounds)
+    {
         bool inlineCoordinatesAreLogical = box is InlineContainerBox;
         // Atomic Math/Mermaid/SVG scenes and block images keep full-block
         // interaction geometry but paint a content-bounded background.
@@ -195,6 +203,26 @@ internal static class SelectionBlockRects
             if (visible.Width > 0 && visible.Height > 0)
                 yield return visible;
         }
+    }
+
+    /// <summary>
+    /// Maps a table or code block's horizontal viewport to logical coordinates
+    /// and intersects it with the inherited <paramref name="clip"/>. False when
+    /// nothing of the viewport remains visible.
+    /// </summary>
+    internal static bool TryGetViewportClip(
+        LayoutSnapshot snapshot,
+        BlockBox topLevelRoot,
+        Rect horizontalViewportBounds,
+        Rect? clip,
+        out Rect viewportClip)
+    {
+        Rect logicalClip = snapshot.ToLogicalRectForTopLevelBlockUnderPaint(
+            topLevelRoot, horizontalViewportBounds);
+        viewportClip = clip is { } outerClip
+            ? Intersect(logicalClip, outerClip)
+            : logicalClip;
+        return viewportClip.Width > 0 && viewportClip.Height > 0;
     }
 
     internal static Rect Intersect(Rect left, Rect right)

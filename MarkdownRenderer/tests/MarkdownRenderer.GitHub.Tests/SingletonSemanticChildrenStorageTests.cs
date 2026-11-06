@@ -18,7 +18,7 @@ public sealed class SingletonSemanticChildrenStorageTests
     {
         var parent = new MarkdownSemanticNode(MarkdownSemanticRole.Group);
         var expected = new List<MarkdownSemanticNode>(childCount);
-        MarkdownSemanticNode.ChildrenView retainedView = parent.Children;
+        MarkdownSemanticChildrenView retainedView = parent.Children;
 
         AssertViewMatchesList(retainedView, expected);
         for (int index = 0; index < childCount; index++)
@@ -118,7 +118,7 @@ public sealed class SingletonSemanticChildrenStorageTests
     [Fact]
     public void DefaultChildrenViewMatchesEmptyListInterfaceEnumerators()
     {
-        MarkdownSemanticNode.ChildrenView defaultView = default;
+        MarkdownSemanticChildrenView defaultView = default;
         List<MarkdownSemanticNode> expected = [];
         IEnumerable<MarkdownSemanticNode> actualSequence = defaultView;
         IEnumerable<MarkdownSemanticNode> expectedSequence = expected;
@@ -135,7 +135,7 @@ public sealed class SingletonSemanticChildrenStorageTests
     public void DisposeDoesNotDisableEnumerationAndRetainedViewTracksPromotion()
     {
         var parent = new MarkdownSemanticNode(MarkdownSemanticRole.Group);
-        MarkdownSemanticNode.ChildrenView retainedView = parent.Children;
+        MarkdownSemanticChildrenView retainedView = parent.Children;
         var actual = retainedView.GetEnumerator();
 
         actual.Dispose();
@@ -225,7 +225,7 @@ public sealed class SingletonSemanticChildrenStorageTests
     }
 
     private static void AssertViewMatchesList(
-        MarkdownSemanticNode.ChildrenView actual,
+        MarkdownSemanticChildrenView actual,
         List<MarkdownSemanticNode> expected)
     {
         Assert.Equal(expected.Count, actual.Count);

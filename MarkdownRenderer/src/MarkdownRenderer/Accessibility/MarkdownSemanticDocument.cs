@@ -287,7 +287,7 @@ internal sealed class MarkdownSemanticDocument
         while (true)
         {
             MarkdownSemanticNode? next = null;
-            MarkdownSemanticNode.ChildrenView children = enclosing.Children;
+            MarkdownSemanticChildrenView children = enclosing.Children;
             bool ordered = ReferenceEquals(enclosing, Root);
             int firstChild = ordered ? GetOrderedChildStartIndex(children, textStart) : 0;
             for (int index = firstChild; index < children.Count; index++)
@@ -371,7 +371,7 @@ internal sealed class MarkdownSemanticDocument
         if (textStart == textEnd)
             yield break;
 
-        MarkdownSemanticNode.ChildrenView children = enclosing.Children;
+        MarkdownSemanticChildrenView children = enclosing.Children;
         bool ordered = ReferenceEquals(enclosing, Root);
         int firstChild = ordered ? GetOrderedChildStartIndex(children, textStart) : 0;
         for (int index = firstChild; index < children.Count; index++)
@@ -439,7 +439,7 @@ internal sealed class MarkdownSemanticDocument
         {
             int top = path.Count - 1;
             (MarkdownSemanticNode parent, int nextChild) = path[top];
-            MarkdownSemanticNode.ChildrenView children = parent.Children;
+            MarkdownSemanticChildrenView children = parent.Children;
             if (nextChild >= children.Count)
             {
                 path.RemoveAt(top);

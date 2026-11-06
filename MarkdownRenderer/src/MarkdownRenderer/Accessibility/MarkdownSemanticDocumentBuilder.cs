@@ -11,6 +11,17 @@ using static MarkdownRenderer.Accessibility.MarkdownSemanticNodeFactory;
 
 namespace MarkdownRenderer.Accessibility;
 
+/// <summary>
+/// Builds the semantic document of a layout snapshot in one depth-first pass
+/// that appends each node's accessible text and text spans in document order.
+/// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because each box kind's node, text and
+/// spans are appended in the same pass, against the one text projection and
+/// span buffer whose offsets every later node depends on. Node index
+/// registration lives in <see cref="MarkdownSemanticNodeIndexRegistry"/> and
+/// vector scene semantics in <see cref="MarkdownSemanticVectorSceneBuilder"/>.
+/// </remarks>
 internal sealed class MarkdownSemanticDocumentBuilder
 {
     private readonly SemanticTextProjectionAccumulator _text;
@@ -19,9 +30,8 @@ internal sealed class MarkdownSemanticDocumentBuilder
     // growth to avoid repeatedly copying a large value array as the semantic
     // graph is built, then freeze once into the snapshot's stable span list.
     private readonly PagedEntryBuffer<MarkdownTextSpan> _spans = new();
-    private readonly Dictionary<InlineContainerBox, MarkdownSemanticNode> _nodeByInlineBox = new();
-    private readonly Dictionary<IHorizontalOverflowBox, MarkdownSemanticNode> _nodeByHorizontalOverflow = new(
-        ReferenceEqualityComparer.Instance);
+    private readonly MarkdownSemanticNodeIndexRegistry _nodeIndexes = new();
+    private readonly MarkdownSemanticVectorSceneBuilder _vectorScenes;
     private int _listDepth;
 
     public MarkdownSemanticDocumentBuilder(
@@ -30,6 +40,7 @@ internal sealed class MarkdownSemanticDocumentBuilder
     {
         _text = new SemanticTextProjectionAccumulator(expectedTextProjection);
         _layoutIndexes = layoutIndexes;
+        _vectorScenes = new MarkdownSemanticVectorSceneBuilder(_text, _spans, layoutIndexes, _nodeIndexes);
     }
 
     public MarkdownSemanticDocument Build(
@@ -40,7 +51,7 @@ internal sealed class MarkdownSemanticDocumentBuilder
         {
             TextStart = 0
         };
-        RegisterNodeIndexes(root);
+        _nodeIndexes.Register(root);
 
         for (int topLevelOrdinal = 0; topLevelOrdinal < snapshot.Blocks.Count; topLevelOrdinal++)
         {
@@ -71,31 +82,14 @@ internal sealed class MarkdownSemanticDocumentBuilder
             text,
             _spans.Freeze(),
             matchedProjection,
-            MarkdownSemanticNodeIndexes.FromNodeMaps(_nodeByInlineBox, _nodeByHorizontalOverflow));
-    }
-
-    private void RegisterNodeIndexes(MarkdownSemanticNode node)
-    {
-        // Match EnumerateDepthFirst's preorder/first-wins contracts. Register
-        // parent wrappers before creating any semantic children.
-        if (node.InlineBox is { } inline &&
-            node.InlineRun is null &&
-            node.Role is (MarkdownSemanticRole.Paragraph or
-                MarkdownSemanticRole.Heading or
-                MarkdownSemanticRole.CodeBlock))
-        {
-            _nodeByInlineBox.TryAdd(inline, node);
-        }
-
-        if (node.VectorSemanticIndex < 0 && node.Box is IHorizontalOverflowBox overflow)
-            _nodeByHorizontalOverflow.TryAdd(overflow, node);
+            _nodeIndexes.ToIndexes());
     }
 
     private void AddRegisteredChild(
         MarkdownSemanticNode parent,
         MarkdownSemanticNode child)
     {
-        RegisterNodeIndexes(child);
+        _nodeIndexes.Register(child);
         parent.Add(child);
     }
 
@@ -136,7 +130,7 @@ internal sealed class MarkdownSemanticDocumentBuilder
     private MarkdownSemanticNode BuildInline(InlineContainerBox inline)
     {
         MarkdownSemanticNode node = CreateInlineNode(inline);
-        RegisterNodeIndexes(node);
+        _nodeIndexes.Register(node);
 
         MarkdownSemanticNode? flattenedHeading = null;
         MarkdownSemanticNode? flattenedCodeBlock = null;
@@ -332,7 +326,7 @@ internal sealed class MarkdownSemanticDocumentBuilder
                     codeBlock.LanguageDisplay)
                 : null,
         };
-        RegisterNodeIndexes(node);
+        _nodeIndexes.Register(node);
 
         foreach (var chunk in codeBlock.Chunks)
         {
@@ -372,7 +366,7 @@ internal sealed class MarkdownSemanticDocumentBuilder
             TextStart = _text.Length,
             HelpText = image.SvgDesc,
         };
-        RegisterNodeIndexes(node);
+        _nodeIndexes.Register(node);
 
         string name = image.Alt;
         int start = _text.Length;
@@ -391,7 +385,7 @@ internal sealed class MarkdownSemanticDocumentBuilder
             EmbedBox = embed,
             TextStart = _text.Length,
         };
-        RegisterNodeIndexes(node);
+        _nodeIndexes.Register(node);
         int start = _text.Length;
         _text.Append(InlineEmbedRun.PlaceholderChar);
         int end = _text.Length;
@@ -403,122 +397,9 @@ internal sealed class MarkdownSemanticDocumentBuilder
 
     private MarkdownSemanticNode BuildVectorScene(VectorSceneBox vector)
     {
-        IReadOnlyList<MarkdownVectorSemanticItem> semantics = vector.SemanticItems;
-        int start = _text.Length;
-        (int Start, int End)?[] semanticRanges = AppendVectorSceneText(vector, semantics, start);
-        int end = _text.Length;
-
-        string? accessibilityName = ResolveVectorSceneAccessibilityName(vector, semantics);
-        MarkdownSemanticNode node = CreateVectorSceneNode(vector, start, end, accessibilityName);
-        RegisterNodeIndexes(node);
-
-        MarkdownSemanticNode?[] semanticNodes = BuildVectorSemanticNodes(vector, semantics, semanticRanges, start);
-        MarkdownVectorSemanticTree.AttachVectorSemanticNodes(
-            semantics,
-            semanticNodes,
-            node,
-            vector.CancellationToken);
-
+        MarkdownSemanticNode node = _vectorScenes.Build(vector);
         AppendBlockSeparator();
         return node;
-    }
-
-    /// <summary>
-    /// Appends the scene's exposed text and returns the text range of each
-    /// named semantic item (null for items that contribute no text).
-    /// </summary>
-    private (int Start, int End)?[] AppendVectorSceneText(
-        VectorSceneBox vector,
-        IReadOnlyList<MarkdownVectorSemanticItem> semantics,
-        int start)
-    {
-        var semanticRanges = new (int Start, int End)?[semantics.Count];
-        for (int i = 0; i < semantics.Count; i++)
-        {
-            vector.ThrowIfCancellationRequested();
-            MarkdownVectorSemanticItem item = semantics[i];
-            _layoutIndexes?.ObserveVectorSemantic(vector, i, item.Flags);
-            if (!MarkdownVectorSemanticPolicy.IsExposed(item.Flags) ||
-                (item.ParentIndex < 0 && item.Role == MarkdownVectorSemanticRole.Diagram) ||
-                string.IsNullOrWhiteSpace(item.Name))
-            {
-                continue;
-            }
-
-            semanticRanges[i] = AppendVectorText(vector, i, item.Name!, start);
-        }
-
-        if (semantics.Count == 0 &&
-            !string.IsNullOrWhiteSpace(vector.SemanticText))
-        {
-            // Math and other unstructured vector scenes deliberately expose
-            // their semantic source as one exact range. Structured scenes expose
-            // each named, non-decorative child as an exact range above; Selectable
-            // independently controls application selection and pointer hit testing.
-            AppendVectorText(vector, -1, vector.SemanticText, start);
-        }
-
-        if (semantics.Count == 0 &&
-            _text.Length == start &&
-            !string.IsNullOrWhiteSpace(vector.AccessibilityName))
-        {
-            AppendVectorText(vector, -1, vector.AccessibilityName!, start);
-        }
-
-        return semanticRanges;
-    }
-
-    /// <summary>
-    /// Creates and registers a node for each exposed, non-root semantic item,
-    /// indexed by semantic item (null for items that are not exposed).
-    /// </summary>
-    private MarkdownSemanticNode?[] BuildVectorSemanticNodes(
-        VectorSceneBox vector,
-        IReadOnlyList<MarkdownVectorSemanticItem> semantics,
-        (int Start, int End)?[] semanticRanges,
-        int start)
-    {
-        var semanticNodes = new MarkdownSemanticNode?[semantics.Count];
-        for (int i = 0; i < semanticNodes.Length; i++)
-        {
-            vector.ThrowIfCancellationRequested();
-            MarkdownVectorSemanticItem item = semantics[i];
-            if (!MarkdownVectorSemanticPolicy.IsExposed(item.Flags) ||
-                (item.ParentIndex < 0 && item.Role == MarkdownVectorSemanticRole.Diagram))
-            {
-                continue;
-            }
-            MarkdownSemanticNode child = CreateVectorSemanticNode(vector, i, item, semanticRanges[i], start);
-            RegisterNodeIndexes(child);
-            semanticNodes[i] = child;
-        }
-
-        return semanticNodes;
-    }
-
-    private (int Start, int End) AppendVectorText(
-        VectorSceneBox vector,
-        int semanticIndex,
-        string value,
-        int blockStart)
-    {
-        if (_text.Length > blockStart)
-            _text.Append('\n');
-        int start = _text.Length;
-        _text.Append(value);
-        int end = _text.Length;
-        _spans.Add(new MarkdownTextSpan(
-            start,
-            end,
-            null,
-            null,
-            null,
-            null,
-            null,
-            vector,
-            semanticIndex,
-            vector.ResolveSemanticTextStyle(semanticIndex)));
-        return (start, end);
     }
 
     private MarkdownSemanticNode BuildHostedElement(DeclarativeHostedElementBox hosted)
@@ -532,7 +413,7 @@ internal sealed class MarkdownSemanticDocumentBuilder
             AccessibilityDescription = hosted.AccessibilityDescription,
             AutomationId = hosted.AutomationId,
         };
-        RegisterNodeIndexes(node);
+        _nodeIndexes.Register(node);
         int start = _text.Length;
         if (hosted.SemanticText is { } semanticText)
             _text.Append(semanticText);
@@ -553,7 +434,7 @@ internal sealed class MarkdownSemanticDocumentBuilder
             TextStart = _text.Length,
             Level = level,
         };
-        RegisterNodeIndexes(node);
+        _nodeIndexes.Register(node);
 
         int sizeOfSet = 0;
         IReadOnlyList<BlockBox> children = stack.Children;
@@ -598,7 +479,7 @@ internal sealed class MarkdownSemanticDocumentBuilder
         {
             TextStart = _text.Length,
         };
-        RegisterNodeIndexes(node);
+        _nodeIndexes.Register(node);
 
         if (BuildBlock(listItem.Marker) is { } marker) node.Add(marker);
         if (BuildBlock(listItem.Content) is { } content) node.Add(content);
@@ -615,7 +496,7 @@ internal sealed class MarkdownSemanticDocumentBuilder
             RowCount = table.RowCount,
             ColumnCount = table.ColumnCount,
         };
-        RegisterNodeIndexes(node);
+        _nodeIndexes.Register(node);
 
         foreach (var cellInfo in table.GetCellInfos())
         {
@@ -627,7 +508,7 @@ internal sealed class MarkdownSemanticDocumentBuilder
                 Column = cellInfo.Column,
                 IsHeader = cellInfo.IsHeader,
             };
-            RegisterNodeIndexes(cellNode);
+            _nodeIndexes.Register(cellNode);
 
             if (BuildBlock(cellInfo.Box) is { } inlineNode)
                 cellNode.Add(inlineNode);
@@ -645,7 +526,7 @@ internal sealed class MarkdownSemanticDocumentBuilder
         {
             TextStart = _text.Length,
         };
-        RegisterNodeIndexes(node);
+        _nodeIndexes.Register(node);
 
         IReadOnlyList<BlockBox> children = stack.Children;
         for (int index = 0; index < children.Count; index++)

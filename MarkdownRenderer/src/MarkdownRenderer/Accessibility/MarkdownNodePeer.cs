@@ -15,8 +15,18 @@ namespace MarkdownRenderer.Accessibility;
 /// table, scroll, invoke and toggle patterns the node supports.
 /// </summary>
 /// <remarks>
+/// <para>
 /// <c>partial</c> is required by the CsWinRT AOT generator (CsWinRT1028), which
 /// emits the WinRT vtable for a peer that adds provider interfaces.
+/// </para>
+/// <para>
+/// This file is longer than 500 lines because <see cref="GetPatternCore"/>
+/// returns the peer itself for every grid, table, scroll, invoke and toggle
+/// pattern its node supports, so each pattern's explicit interface members
+/// must live on this one WinRT object. Names, help text and control types come
+/// from <see cref="MarkdownNodeAutomationDescriptor"/> and
+/// <see cref="MarkdownNodeAutomationText"/>.
+/// </para>
 /// </remarks>
 internal sealed partial class MarkdownNodePeer : FrameworkElementAutomationPeer,
     IGridProvider,

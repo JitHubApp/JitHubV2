@@ -34,9 +34,11 @@ public sealed class CodeBlockHighlightSnapshotRetentionTests
         Assert.Contains(stateFields, field => field.FieldType == snapshotIdentityType);
         Assert.True(AssertGeneratedCaptureGraphIsSafe(stateMachine, owner, snapshotIdentityType));
 
+        // The provider start closures are emitted for StartPendingHighlights,
+        // which ScheduleVisible hands each admitted batch to.
         Type[] scheduleClosures = GetNestedTypesRecursively(owner).Where(type =>
             type.GetMethods(DeclaredMethods).Any(method =>
-                method.Name.StartsWith("<ScheduleVisible>", StringComparison.Ordinal)))
+                method.Name.StartsWith("<StartPendingHighlights>", StringComparison.Ordinal)))
             .ToArray();
         Assert.NotEmpty(scheduleClosures);
         // Roslyn may put the weak identity on a parent display class while the

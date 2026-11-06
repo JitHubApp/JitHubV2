@@ -5,8 +5,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Images;
-using Windows.Networking.Connectivity;
-using Windows.System.Power;
 
 namespace MarkdownRenderer.Performance;
 
@@ -174,17 +172,17 @@ internal sealed class MarkdownSharedImageFetcher
         MarkdownImageResolveContext context,
         CancellationToken cancellationToken)
     {
-        bool remote = IsRemoteSource(key.Source, context);
+        bool remote = RemoteImagePrefetchPolicy.IsRemoteSource(key.Source, context);
         while (true)
         {
             // Paused remote work must not hold a speculative slot that
             // another document could use for local resources.
-            while (remote && ShouldPauseRemotePrefetch())
+            while (remote && RemoteImagePrefetchPolicy.ShouldPause())
                 await Task.Delay(TimeSpan.FromSeconds(15), cancellationToken)
                     .ConfigureAwait(false);
             IDisposable backgroundLease = await _backgroundAdmission.EnterAsync(
                 owner, cancellationToken).ConfigureAwait(false);
-            if (!remote || !ShouldPauseRemotePrefetch())
+            if (!remote || !RemoteImagePrefetchPolicy.ShouldPause())
                 return backgroundLease;
             backgroundLease.Dispose();
         }
@@ -459,42 +457,5 @@ internal sealed class MarkdownSharedImageFetcher
         if (_sharedFlights.TryGetValue(key, out SharedImageFetch? current) &&
             ReferenceEquals(current, flight))
             _sharedFlights.Remove(key);
-    }
-
-    private static bool ShouldPauseRemotePrefetch()
-    {
-        try
-        {
-            if (PowerManager.EnergySaverStatus == EnergySaverStatus.On)
-                return true;
-        }
-        catch (Exception exception) when (
-            exception is System.Runtime.InteropServices.COMException or
-            PlatformNotSupportedException or TypeInitializationException)
-        {
-            // Unpackaged and headless hosts do not always expose power state.
-        }
-
-        try
-        {
-            ConnectionCost? cost = NetworkInformation.GetInternetConnectionProfile()?.GetConnectionCost();
-            return cost is not null &&
-                (cost.NetworkCostType is NetworkCostType.Fixed or NetworkCostType.Variable ||
-                 cost.Roaming || cost.OverDataLimit);
-        }
-        catch (Exception exception) when (
-            exception is System.Runtime.InteropServices.COMException or
-            PlatformNotSupportedException or TypeInitializationException)
-        {
-            return false;
-        }
-    }
-
-    private static bool IsRemoteSource(string source, MarkdownImageResolveContext context)
-    {
-        if (!Uri.TryCreate(source, UriKind.Absolute, out Uri? uri) &&
-            (context.BaseUri is null || !Uri.TryCreate(context.BaseUri, source, out uri)))
-            return false;
-        return uri.Scheme is "https" or "http";
     }
 }
