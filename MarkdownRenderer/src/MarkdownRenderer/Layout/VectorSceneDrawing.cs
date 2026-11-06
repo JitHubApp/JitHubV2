@@ -603,9 +603,6 @@ internal sealed class VectorSceneDrawing : IDisposable
         CancellationToken cancellationToken)
         => VectorSceneResourceShapes.EstimateNativeResourceWeightUnits(scene, cancellationToken);
 
-    internal static CanvasStrokeStyle CreateStrokeStyle(MarkdownVectorPaintStyle style, NativeResourceRetirement retirement)
-        => VectorSceneNativeFactory.CreateStrokeStyle(style, retirement);
-
     internal static bool RequiresStrokeStyle(MarkdownVectorPaintStyle style)
         => VectorSceneResourceShapes.RequiresStrokeStyle(style);
 
