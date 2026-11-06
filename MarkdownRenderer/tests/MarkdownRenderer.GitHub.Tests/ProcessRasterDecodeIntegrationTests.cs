@@ -1,3 +1,4 @@
+using MarkdownRenderer.Layout;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Performance;
@@ -17,12 +18,14 @@ public sealed class ProcessRasterDecodeCollection
 [Collection(ProcessRasterDecodeCollection.CollectionName)]
 public sealed class ProcessRasterDecodeIntegrationTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task EmptyKeyCacheMissWithoutSessionWaitsForProcessAdmission(bool hasDocumentOwner)
     {
-        var gate = ImageResourceScope.Shared.Preparation;
+        var gate = _renderResources.Images.Preparation;
         using IDisposable held = await gate.EnterAsync(new object(), 1, exclusive: true, CancellationToken.None);
         var image = CreateImage(new Bytes(CreatePng(64, 32), string.Empty), null, hasDocumentOwner);
         Task load = WaitForLoadAsync(image);
@@ -45,7 +48,7 @@ public sealed class ProcessRasterDecodeIntegrationTests
     [Fact]
     public async Task IndependentlyConfiguredSessionsShareOneCodecAdmission()
     {
-        var gate = ImageResourceScope.Shared.Preparation;
+        var gate = _renderResources.Images.Preparation;
         using IDisposable held = await gate.EnterAsync(new object(), 1, exclusive: true, CancellationToken.None);
         using var firstSession = new MarkdownPerformanceSession(
             MarkdownPerformanceOptions.Progressive with { MaxConcurrentCpuPreparations = 1 });
@@ -80,7 +83,7 @@ public sealed class ProcessRasterDecodeIntegrationTests
     [Fact]
     public async Task DistinctSourcesSharingDecodeStripeWaitBeforeCpuAndProcessAdmission()
     {
-        var gate = ImageResourceScope.Shared.Preparation;
+        var gate = _renderResources.Images.Preparation;
         using IDisposable held = await gate.EnterAsync(new object(), 1, exclusive: true, CancellationToken.None);
         using var firstSession = new MarkdownPerformanceSession(
             MarkdownPerformanceOptions.Progressive with { UseDisplaySizedRasterDecode = false });
@@ -98,7 +101,7 @@ public sealed class ProcessRasterDecodeIntegrationTests
         for (int i = 0; i <= 64; i++)
         {
             string key = $"{prefix}/{i}";
-            SemaphoreSlim stripe = ImageResourceScope.Shared.BitmapCache.GetDecodeGate(device, BoundedSourceSizedCacheKey(key));
+            SemaphoreSlim stripe = _renderResources.Images.BitmapCache.GetDecodeGate(device, BoundedSourceSizedCacheKey(key));
             if (stripes.TryGetValue(stripe, out firstKey))
             {
                 secondKey = key;
@@ -155,7 +158,7 @@ public sealed class ProcessRasterDecodeIntegrationTests
     [InlineData(true)]
     public async Task RetiringQueuedImageOrSessionDoesNotStartNativeDecode(bool retireSession)
     {
-        var gate = ImageResourceScope.Shared.Preparation;
+        var gate = _renderResources.Images.Preparation;
         using IDisposable held = await gate.EnterAsync(new object(), 1, exclusive: true, CancellationToken.None);
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
         var image = CreateImage(new Bytes(CreatePng(64, 32), Guid.NewGuid().ToString()), session);
@@ -189,7 +192,7 @@ public sealed class ProcessRasterDecodeIntegrationTests
         try
         {
             await WaitForLoadAsync(first);
-            var gate = ImageResourceScope.Shared.Preparation;
+            var gate = _renderResources.Images.Preparation;
             using IDisposable held = await gate.EnterAsync(new object(), 1, exclusive: true, CancellationToken.None);
             await WaitForLoadAsync(second);
             Assert.Same(first.Bitmap, second.Bitmap);
@@ -205,11 +208,11 @@ public sealed class ProcessRasterDecodeIntegrationTests
         using var session = new MarkdownPerformanceSession(
             MarkdownPerformanceOptions.Progressive with { UseDisplaySizedRasterDecode = false });
         string key = Guid.NewGuid().ToString();
-        var context = CreateContext(new Bytes(CreatePng(64, 32), key), session, 1);
-        SemaphoreSlim keyedGate = ImageResourceScope.Shared.BitmapCache.GetDecodeGate(
+        var context = CreateContext(_renderResources, new Bytes(CreatePng(64, 32), key), session, 1);
+        SemaphoreSlim keyedGate = _renderResources.Images.BitmapCache.GetDecodeGate(
             context.ResourceCreator.Device, BoundedSourceSizedCacheKey(key));
         await keyedGate.WaitAsync();
-        var image = new ImageBox(context, ImageResourceScope.Shared, "https://images.example/keyed-cancel.png", string.Empty);
+        var image = new ImageBox(context, context.ImageResources, "https://images.example/keyed-cancel.png", string.Empty);
         int publications = 0;
         image.LoadCompleted += (_, _) => Interlocked.Increment(ref publications);
         try
@@ -219,7 +222,7 @@ public sealed class ProcessRasterDecodeIntegrationTests
             await WaitUntilAsync(() => image.GetWorkState().ActiveWorkCount >= 2 &&
                 session.ActiveWork == 1);
             Assert.Equal(0, session.GetSnapshot().CpuPreparations);
-            Assert.Equal(0, ImageResourceScope.Shared.Preparation.PendingRequests);
+            Assert.Equal(0, _renderResources.Images.Preparation.PendingRequests);
 
             // The external keyed blocker stays held. Only the linked session
             // token can end this wait; CPU admission has not been entered yet.
@@ -264,8 +267,8 @@ public sealed class ProcessRasterDecodeIntegrationTests
         image.LoadCompleted += (_, _) =>
         {
             Assert.Null(image.Bitmap);
-            Assert.Equal(0, ImageResourceScope.Shared.Preparation.ActiveCount);
-            Assert.Equal(0, ImageResourceScope.Shared.Preparation.ActiveBytes);
+            Assert.Equal(0, _renderResources.Images.Preparation.ActiveCount);
+            Assert.Equal(0, _renderResources.Images.Preparation.ActiveBytes);
             Assert.Equal(0, session.PendingCpuPreparations);
             observedPublication = true;
         };
@@ -280,10 +283,10 @@ public sealed class ProcessRasterDecodeIntegrationTests
         finally { image.Dispose(); recovered.Dispose(); }
     }
 
-    private static ImageBox CreateImage(IMarkdownImageResolver source,
+    private ImageBox CreateImage(IMarkdownImageResolver source,
         MarkdownPerformanceSession? session, bool hasDocumentOwner = true)
     {
-        var image = new ImageBox(CreateContext(source, session, 1, hasDocumentOwner), ImageResourceScope.Shared,
+        var image = new ImageBox(CreateContext(_renderResources, source, session, 1, hasDocumentOwner), _renderResources.Images,
             "https://images.example/process-admission.png", string.Empty);
         image.Measure(64);
         return image;
@@ -292,12 +295,12 @@ public sealed class ProcessRasterDecodeIntegrationTests
     // Disabling display-size optimization does not disable the opt-in live
     // output ceiling. These fixtures must hold/collide on the bounded variant
     // actually used by production, not the legacy unbounded source key.
-    private static string BoundedSourceSizedCacheKey(string sourceIdentity)
+    private string BoundedSourceSizedCacheKey(string sourceIdentity)
     {
         var sizing = new RasterImageSizingRequest(
             64, 1, null, null,
             System.Math.Min(MarkdownPerformanceOptions.Progressive.MaxRasterOutputPixels,
-                ImageResourceScope.Shared.BitmapOutput.MaximumSingleOutputBytes / 4));
+                _renderResources.Images.BitmapOutput.MaximumSingleOutputBytes / 4));
         // These admitted, identity-oriented PNG fixtures use the owned WIC
         // variant. Hold/collide its actual stripe, not the retired WinRT key.
         return sizing.GetCacheKey(sizing.GetCacheFamily(

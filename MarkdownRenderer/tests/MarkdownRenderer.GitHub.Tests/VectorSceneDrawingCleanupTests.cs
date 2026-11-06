@@ -17,6 +17,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class VectorSceneDrawingCleanupTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Fact]
     public void DrawingCleanupAttemptsEveryResourceAndBoundsFailureDetails()
     {
@@ -201,6 +203,7 @@ public sealed class VectorSceneDrawingCleanupTests
             resourceCreator,
             CreatePathAndTextScene(),
             CancellationToken.None,
+            _renderResources,
             deferNativeResources: true);
         context.RegisterConstructionResource(drawing);
 

@@ -29,6 +29,7 @@ internal sealed class InlineVectorSceneRun : InlineRun, IDisposable
     private readonly double _textScaleFactor;
     private readonly string _capacityFallbackText;
     private readonly Microsoft.UI.Xaml.FlowDirection _flowDirection;
+    private readonly MarkdownRenderResources _renderResources;
     private Rect _localBounds;
     private bool _disposed;
     private readonly bool _isMeasuredPlacementOnly;
@@ -52,6 +53,7 @@ internal sealed class InlineVectorSceneRun : InlineRun, IDisposable
         _referenceFontSize = scene.ReferenceFontSize;
         _textScaleFactor = context.ThemeSnapshot.TextScaleFactor;
         _flowDirection = context.FlowDirection;
+        _renderResources = context.RenderResources;
         SemanticText = semanticText ?? string.Empty;
         VectorNativeResourceAdmission? resolvedNativeAdmission =
             VectorSceneCapacityFallback.ResolveNativeAdmission(context, nativeAdmission);
@@ -72,6 +74,7 @@ internal sealed class InlineVectorSceneRun : InlineRun, IDisposable
             context.ResourceCreator,
             scene,
             context.CancellationToken,
+            context.RenderResources,
             vectorStyle.FontFamily
             ,
             context.LayoutDiagnostics
@@ -160,6 +163,7 @@ internal sealed class InlineVectorSceneRun : InlineRun, IDisposable
         _referenceFontSize = source._referenceFontSize;
         _textScaleFactor = source._textScaleFactor;
         _flowDirection = source._flowDirection;
+        _renderResources = source._renderResources;
         _capacityFallbackText = string.Empty;
         SemanticText = source.SemanticText;
         AccessibilityName = source.AccessibilityName;
@@ -265,7 +269,9 @@ internal sealed class InlineVectorSceneRun : InlineRun, IDisposable
         // Keep capacity/size denial as the typed fallback result. A real text
         // descriptor/device failure is not capacity pressure; let the existing
         // renderer recovery path observe it instead of settling an unpaintable run.
-        return _drawing.NativeResourceAdmission.CapacityFallbackFormats.PrepareFormat(_flowDirection);
+        return _drawing.NativeResourceAdmission.CapacityFallbackFormats.PrepareFormat(
+            _renderResources.TextFormats,
+            _flowDirection);
     }
 
     internal void ReleaseNativeResources()
@@ -321,6 +327,7 @@ internal sealed class InlineVectorSceneRun : InlineRun, IDisposable
     }
 
     internal void Paint(
+        LayoutPlacementTransformContext placement,
         CanvasDrawingSession drawingSession,
         float baseX,
         float baseY,
@@ -339,6 +346,7 @@ internal sealed class InlineVectorSceneRun : InlineRun, IDisposable
         if (_drawing?.IsPrepared == true)
         {
             _drawing.Paint(
+                placement,
                 drawingSession,
                 bounds,
                 _paintPalette with { Foreground = semanticForeground },
@@ -354,7 +362,7 @@ internal sealed class InlineVectorSceneRun : InlineRun, IDisposable
         }
 
         NativePaintSessionResources.LayerLease fallbackLayer =
-            NativePaintSessionResources.CreateLayer(drawingSession, 1f, bounds);
+            _renderResources.PaintSessions.CreateLayer(drawingSession, 1f, bounds);
         try
         {
             VectorSceneCapacityFallback.DrawTextWithScale(

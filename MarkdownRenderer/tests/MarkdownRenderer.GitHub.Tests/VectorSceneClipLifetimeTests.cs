@@ -12,6 +12,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class VectorSceneClipLifetimeTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     private static readonly Color Black = Color.FromArgb(255, 0, 0, 0);
     private static readonly Color White = Color.FromArgb(255, 255, 255, 255);
     private static readonly Color Red = Color.FromArgb(255, 255, 0, 0);
@@ -36,6 +38,7 @@ public sealed class VectorSceneClipLifetimeTests
         var attempts = new List<CanvasActiveLayer>();
         var geometryDisposalAttempts = new List<CanvasGeometry>();
         using var drawing = new VectorSceneDrawing(device, scene, CancellationToken.None,
+            _renderResources,
             nativeRetirement: retirement,
             nativeDisposer: resource =>
             {
@@ -66,6 +69,7 @@ public sealed class VectorSceneClipLifetimeTests
         try
         {
             Assert.Same(failure, Assert.Throws<InvalidOperationException>(() => drawing.Paint(
+                new LayoutPlacementTransformContext(),
                 session, new Rect(0, 0, 20, 20),
                 new VectorScenePaintPalette(Black, White, Blue), highContrast: false)));
             Assert.Equal(original, session.Transform);
@@ -125,7 +129,7 @@ public sealed class VectorSceneClipLifetimeTests
         using CanvasDrawingSession session = target.CreateDrawingSession();
         var retirement = new NativeResourceRetirement(createTimer: false);
         var helperDisposalAttempts = new List<CanvasActiveLayer>();
-        NativePaintSessionResources.RegisterTestOwner(
+        _renderResources.PaintSessions.RegisterTestOwner(
             session,
             retirement,
             resource =>
@@ -135,7 +139,7 @@ public sealed class VectorSceneClipLifetimeTests
                 resource.Dispose();
             });
 
-        NativePaintSessionResources.LayerLease helperOuterLease = NativePaintSessionResources.CreateLayer(
+        NativePaintSessionResources.LayerLease helperOuterLease = _renderResources.PaintSessions.CreateLayer(
             session,
             1f,
             new Rect(0, 0, 24, 24));
@@ -156,6 +160,7 @@ public sealed class VectorSceneClipLifetimeTests
             device,
             scene,
             CancellationToken.None,
+            _renderResources,
             nativeRetirement: retirement,
             nativeDisposer: resource =>
             {
@@ -189,6 +194,7 @@ public sealed class VectorSceneClipLifetimeTests
         try
         {
             Assert.Same(factoryFailure, Assert.Throws<InvalidOperationException>(() => drawing.Paint(
+                new LayoutPlacementTransformContext(),
                 session,
                 new Rect(0, 0, 24, 24),
                 new VectorScenePaintPalette(Black, White, Blue),
@@ -269,7 +275,7 @@ public sealed class VectorSceneClipLifetimeTests
         using CanvasDrawingSession session = target.CreateDrawingSession();
         var retirement = new NativeResourceRetirement(createTimer: false);
         var helperDisposalAttempts = new List<CanvasActiveLayer>();
-        NativePaintSessionResources.RegisterTestOwner(
+        _renderResources.PaintSessions.RegisterTestOwner(
             session,
             retirement,
             resource =>
@@ -279,7 +285,7 @@ public sealed class VectorSceneClipLifetimeTests
                 resource.Dispose();
             });
 
-        NativePaintSessionResources.LayerLease helperOuterLease = NativePaintSessionResources.CreateLayer(
+        NativePaintSessionResources.LayerLease helperOuterLease = _renderResources.PaintSessions.CreateLayer(
             session,
             1f,
             new Rect(0, 0, 24, 24));
@@ -298,6 +304,7 @@ public sealed class VectorSceneClipLifetimeTests
             device,
             scene,
             CancellationToken.None,
+            _renderResources,
             nativeRetirement: retirement,
             nativeDisposer: resource =>
             {
@@ -327,6 +334,7 @@ public sealed class VectorSceneClipLifetimeTests
         try
         {
             Assert.Same(factoryFailure, Assert.Throws<InvalidOperationException>(() => drawing.Paint(
+                new LayoutPlacementTransformContext(),
                 session,
                 new Rect(0, 0, 24, 24),
                 new VectorScenePaintPalette(Black, White, Blue),
@@ -392,7 +400,7 @@ public sealed class VectorSceneClipLifetimeTests
     {
         using var device = new CanvasDevice(forceSoftwareRenderer: true);
         var scene = new MarkdownVectorScene(8, 8, 8, Array.Empty<MarkdownVectorCommand>());
-        using var drawing = new VectorSceneDrawing(device, scene, CancellationToken.None);
+        using var drawing = new VectorSceneDrawing(device, scene, CancellationToken.None, _renderResources);
 
         Assert.Throws<InvalidOperationException>(() => drawing.UseClipLayerFactory(
             static (_, _) => throw new InvalidOperationException("The factory must not run.")));
@@ -422,7 +430,7 @@ public sealed class VectorSceneClipLifetimeTests
             MarkdownVectorCommand.EndClip(),
             MarkdownVectorCommand.EndGroup(),
         ]);
-        using var drawing = new VectorSceneDrawing(device, scene, CancellationToken.None);
+        using var drawing = new VectorSceneDrawing(device, scene, CancellationToken.None, _renderResources);
         Color[] expected = Render();
         Assert.Equal(expected, Render());
 
@@ -440,7 +448,7 @@ public sealed class VectorSceneClipLifetimeTests
                 ds.Clear(Color.FromArgb(0, 0, 0, 0));
                 Matrix3x2 original = Matrix3x2.CreateTranslation(4, 5);
                 ds.Transform = original;
-                drawing.Paint(ds, new Rect(0, 0, 20, 20),
+                drawing.Paint(new LayoutPlacementTransformContext(), ds, new Rect(0, 0, 20, 20),
                     new VectorScenePaintPalette(Black, White, Blue), highContrast: false);
                 Assert.Equal(original, ds.Transform);
                 ds.FillRectangle(new Rect(0, 0, 2, 2), Green);

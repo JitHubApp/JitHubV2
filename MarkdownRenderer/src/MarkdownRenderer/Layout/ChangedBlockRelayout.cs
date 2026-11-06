@@ -49,9 +49,9 @@ internal sealed class ChangedBlockRelayout
         if (changedBlockIndices.Count == 0)
             return;
 
-        using var cancellationScope = LayoutPassCancellation.Push(cancellationToken);
         lock (_geometry.Gate)
         {
+            using var cancellationScope = _geometry.PassCancellation.Push(cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             if (_recovery.IsRequired)
                 return;
@@ -258,7 +258,7 @@ internal sealed class ChangedBlockRelayout
         ChangedBlockMeasure state = changedMeasures[0];
         BlockBox block = _geometry.Blocks[state.Ordinal];
         // No token checks may interrupt the arrange/publication pair.
-        using var commitScope = LayoutPassCancellation.Push(CancellationToken.None);
+        using var commitScope = _geometry.PassCancellation.Push(CancellationToken.None);
         try
         {
             block.Arrange(
@@ -366,7 +366,7 @@ internal sealed class ChangedBlockRelayout
         bool arrangeAttempted = false;
         try
         {
-            using (LayoutPassCancellation.Push(CancellationToken.None))
+            using (_geometry.PassCancellation.Push(CancellationToken.None))
             {
                 float y = GetChangedRelayoutStartNoLock(firstChangedOrdinal);
                 float[]? continuationUpdate = _geometry.BeginLazyReflowContinuationUpdateNoLock(firstChangedOrdinal, y);

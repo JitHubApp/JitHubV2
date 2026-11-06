@@ -32,5 +32,5 @@ internal interface IImageRelayoutHost
     /// </summary>
     void StopRecoveryClock(bool force);
 
-    Task RetireCancellationTokenSource(CancellationTokenSource? cts, Task? lifetime);
+    Task RetireCancellationTokenSource(RetirableCancellationTokenSource? cts, Task? lifetime);
 }

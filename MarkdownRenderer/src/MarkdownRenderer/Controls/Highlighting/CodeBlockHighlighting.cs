@@ -49,7 +49,7 @@ internal sealed class CodeBlockHighlighting
     private readonly HashSet<CodeBlockHighlightCacheKey> _inFlight = new();
     private readonly SemaphoreSlim _semaphore = new(2, 2);
     private readonly CodeBlockHighlightTasks _tasks = new();
-    private CancellationTokenSource? _cts;
+    private RetirableCancellationTokenSource? _cts;
     private Task _retirement = Task.CompletedTask;
     private int _generation;
 
@@ -81,7 +81,7 @@ internal sealed class CodeBlockHighlighting
         Task workLifetime = OwnedResourceRetirement.CombineLifetimes(
             _retirement,
             _tasks.Drain());
-        _cts = restart ? new CancellationTokenSource() : null;
+        _cts = restart ? new RetirableCancellationTokenSource() : null;
         _generation++;
         _inFlight.Clear();
         Task retirement = _host.RetireCancellationTokenSource(old, workLifetime);

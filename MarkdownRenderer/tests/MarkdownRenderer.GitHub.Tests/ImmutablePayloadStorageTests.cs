@@ -28,6 +28,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class ImmutablePayloadStorageTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Fact]
     public void InternalPayloadCompactionPreservesReadonlyStorage()
     {
@@ -225,7 +227,7 @@ public sealed class ImmutablePayloadStorageTests
         const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         object menuTarget = Activator.CreateInstance(type, nonPublic: true)!;
         type.GetProperty("ImageUrl", flags)!.SetValue(menuTarget, "https://example.test/image.png");
-        SharedCanvasBitmapCache.Lease lease = ImageResourceScope.Shared.BitmapCache.StoreAndAcquire(
+        SharedCanvasBitmapCache.Lease lease = _renderResources.Images.BitmapCache.StoreAndAcquire(
             device,
             $"context-menu-target-{Guid.NewGuid():N}",
             CreateBitmap(device));
@@ -239,7 +241,7 @@ public sealed class ImmutablePayloadStorageTests
 
             type.GetMethod("Dispose", flags)!.Invoke(menuTarget, null);
             Assert.Null(type.GetProperty("ImageBitmapLease", flags)!.GetValue(menuTarget));
-            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(device);
+            _renderResources.Images.BitmapCache.ReleaseDevice(device);
 
             object executionLease = Assert.IsAssignableFrom<IDisposable>(
                 type.GetProperty("ImageBitmapLease", flags)!.GetValue(executionTarget));
@@ -257,7 +259,7 @@ public sealed class ImmutablePayloadStorageTests
                 type.GetMethod("Dispose", flags)!.Invoke(executionTarget, null);
             else
                 type.GetMethod("Dispose", flags)!.Invoke(menuTarget, null);
-            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(device);
+            _renderResources.Images.BitmapCache.ReleaseDevice(device);
         }
     }
 
@@ -366,7 +368,7 @@ public sealed class ImmutablePayloadStorageTests
     {
         const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         CanvasDevice device = CanvasDevice.GetSharedDevice();
-        SharedCanvasBitmapCache cache = ImageResourceScope.Shared.BitmapCache;
+        SharedCanvasBitmapCache cache = _renderResources.Images.BitmapCache;
 
         CanvasBitmap uncachedBitmap = CreateBitmap(device);
         SharedCanvasBitmapCacheEntry? uncachedEntry = null;
@@ -831,7 +833,7 @@ public sealed class ImmutablePayloadStorageTests
         Assert.Equal(128L, Field(entry, "Weight"));
     }
 
-    private static MarkdownLayoutContext CreateContext()
+    private MarkdownLayoutContext CreateContext()
     {
         var style = new ElementStyle();
         var styles = new Dictionary<string, ElementStyle>(StringComparer.Ordinal)
@@ -855,7 +857,7 @@ public sealed class ImmutablePayloadStorageTests
             theme,
             new MarkdownSourceMap("Hosted element source"),
             new MarkdownExtensionRegistry(),
-            FlowDirection.LeftToRight);
+            FlowDirection.LeftToRight) { RenderResources = _renderResources };
     }
 
     private static Type Nested(Type owner, string name) =>

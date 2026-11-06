@@ -676,6 +676,7 @@ public sealed class RootLocalContainerVectorImageRelayoutTests
                 direction,
                 language: "en-US")
             {
+                RenderResources = seed.RenderResources,
                 CancellationToken = CancellationToken.None,
                 ImageCancellationToken = CancellationToken.None,
                 ImagePreparationOwner = seed.ImagePreparationOwnerToken,
@@ -789,7 +790,7 @@ public sealed class RootLocalContainerVectorImageRelayoutTests
             {
                 using LayoutPlacementTransformContext.Scope placementScope =
                     snapshot.EnterPlacementTransformScopeForTopLevelBlockUnderPaint(topLevelOwner);
-                LayoutPlacementTransformContext.GetCurrentTranslation(out _, out float translationY);
+                snapshot.PlacementTransform.GetCurrentTranslation(out _, out float translationY);
                 Rect logicalBounds = snapshot.ToLogicalRectForTopLevelBlockUnderPaint(topLevelOwner, image.Bounds);
                 return new InlineImagePlacementTrace(
                     logicalBounds, image.Bounds, topLevelOwner.Bounds, translationY, "standalone");
@@ -806,7 +807,7 @@ public sealed class RootLocalContainerVectorImageRelayoutTests
         {
             using LayoutPlacementTransformContext.Scope placementScope =
                 snapshot.EnterPlacementTransformScopeForBlockIndexUnderPaint(inlineOwner.BlockIndex);
-            LayoutPlacementTransformContext.GetCurrentTranslation(out _, out float translationY);
+            snapshot.PlacementTransform.GetCurrentTranslation(out _, out float translationY);
             (InlineImageRun Run, Rect Rect) placement = Assert.Single(
                 inlineOwner.EnumerateInlineImageRects(), entry => ReferenceEquals(entry.Run.Image, image));
             Rect logicalBounds = snapshot.ToLogicalRectForBlockIndexUnderPaint(
@@ -962,7 +963,7 @@ public sealed class RootLocalContainerVectorImageRelayoutTests
                     using LayoutPlacementTransformContext.Scope placementScope =
                         snapshot.EnterPlacementTransformScopeForBlockIndexUnderPaint(inline.BlockIndex);
                     inline.GetSceneGeometryOrigin(out double originX, out double originY);
-                    LayoutPlacementTransformContext.GetCurrentTranslation(out float translationX, out float translationY);
+                    snapshot.PlacementTransform.GetCurrentTranslation(out float translationX, out float translationY);
                     float paintOriginX = (float)originX;
                     float paintOriginY = (float)originY;
                     float finalPaintOriginX = paintOriginX + translationX;
@@ -1022,44 +1023,6 @@ public sealed class RootLocalContainerVectorImageRelayoutTests
                     Engine.Dispose();
                 }
             }
-        }
-    }
-
-    private sealed class ContainerVectorResolver(int imageCount) : IMarkdownImageResolver
-    {
-        private readonly byte[] _png = DisplaySizedRasterDecodeTests.CreatePng(96, 192);
-        private readonly string _id = Guid.NewGuid().ToString("N");
-        private readonly string _cacheKey = "container-vector-relayout:" + Guid.NewGuid().ToString("N");
-        private readonly TaskCompletionSource _imagesReleased =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private int _resolveCount;
-
-        internal int ResolveCount => Volatile.Read(ref _resolveCount);
-        internal string GetUrl(int index)
-        {
-            if ((uint)index >= (uint)imageCount)
-                throw new ArgumentOutOfRangeException(nameof(index));
-            return $"https://images.example.test/{_id}-{index}.png";
-        }
-
-        internal void ReleaseImages() => _imagesReleased.TrySetResult();
-
-        public async ValueTask<MarkdownImageResolution> ResolveAsync(
-            string source,
-            MarkdownImageResolveContext context,
-            CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (!Enumerable.Range(0, imageCount).Any(index =>
-                    string.Equals(source, GetUrl(index), StringComparison.Ordinal)))
-                throw new InvalidOperationException("Unexpected vector-container test image URL.");
-            Interlocked.Increment(ref _resolveCount);
-            await _imagesReleased.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
-            return MarkdownImageResolution.Resolved(new MarkdownImageAsset(
-                _png,
-                "image/png",
-                new Uri(source),
-                _cacheKey + ":" + source));
         }
     }
 }

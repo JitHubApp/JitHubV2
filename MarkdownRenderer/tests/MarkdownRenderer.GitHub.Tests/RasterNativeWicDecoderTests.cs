@@ -1,3 +1,4 @@
+using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using Xunit;
 
@@ -6,6 +7,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection(NativeWicDecodeTestCollection.CollectionName)]
 public sealed class RasterNativeWicDecoderTests
 {
+    private readonly NativeResourceRetirement _retirement = new(createTimer: false);
+
     [Fact]
     public async Task PreCanceledAndRejectedRequestsConsumeTheirProcessCreditExactlyOnce()
     {
@@ -16,17 +19,17 @@ public sealed class RasterNativeWicDecoderTests
         cancellation.Cancel();
         var canceledCredit = new RasterNativeWicProductParity.CountingCredit();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Task.Run(() =>
-            RasterNativeWicDecoder.Decode(source, plan, canceledCredit, cancellation.Token)));
+            RasterNativeWicDecoder.Decode(source, plan, canceledCredit, _retirement, cancellation.Token)));
         Assert.Equal(1, canceledCredit.DisposeCount);
 
         var rejectedCredit = new RasterNativeWicProductParity.CountingCredit();
         await Assert.ThrowsAsync<InvalidDataException>(() => Task.Run(() =>
-            RasterNativeWicDecoder.Decode(source, default, rejectedCredit, CancellationToken.None)));
+            RasterNativeWicDecoder.Decode(source, default, rejectedCredit, _retirement, CancellationToken.None)));
         Assert.Equal(1, rejectedCredit.DisposeCount);
 
         var nullCredit = new RasterNativeWicProductParity.CountingCredit();
         await Assert.ThrowsAsync<ArgumentNullException>(() => Task.Run(() =>
-            RasterNativeWicDecoder.Decode(null!, plan, nullCredit, CancellationToken.None)));
+            RasterNativeWicDecoder.Decode(null!, plan, nullCredit, _retirement, CancellationToken.None)));
         Assert.Equal(1, nullCredit.DisposeCount);
     }
 
@@ -46,7 +49,7 @@ public sealed class RasterNativeWicDecoderTests
             RasterImageResourceBudget.Validate(admittedPng), sizing, out var plan));
         var credit = new RasterNativeWicProductParity.CountingCredit();
         await Assert.ThrowsAsync<InvalidDataException>(() => Task.Run(() =>
-            RasterNativeWicDecoder.Decode(jpeg, plan, credit, CancellationToken.None)));
+            RasterNativeWicDecoder.Decode(jpeg, plan, credit, _retirement, CancellationToken.None)));
         Assert.Equal(1, credit.DisposeCount);
     }
 }

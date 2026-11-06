@@ -27,6 +27,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection(SharedCanvasBitmapCacheTestCollection.Name)]
 public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output)
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     private const long RasterPixelLimit = 512;
 
     [Fact]
@@ -80,7 +82,7 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
             var credit = new RasterNativeWicProductParity.CountingCredit();
             using RasterDecodedPixelLease decoded = await Task.Run(() =>
                 RasterNativeWicDecoder.DecodeGifFirstFrame(
-                    fixture.Bytes, plan, credit, CancellationToken.None));
+                    fixture.Bytes, plan, credit, _renderResources.NativeRetirement, CancellationToken.None));
             Assert.Equal(plan.DecodeWidth, decoded.Width);
             Assert.Equal(plan.DecodeHeight, decoded.Height);
             Assert.Equal(expectedFrame.Length, decoded.Pixels.Length);
@@ -120,15 +122,15 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
     [Trait("Category", "NativeRasterFidelity")]
     public async Task ImageBoxGifCanvasMatchesLegacyWinRtAndLinearWin2DCompositionOnWarp()
     {
-        ImageResourceScope.Shared.BitmapCache.Clear();
+        _renderResources.Images.BitmapCache.Clear();
         await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-            () => ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes == 0);
+            () => _renderResources.Images.BitmapCache.GetSnapshot().RetainedBytes == 0);
 
         using var device = new CanvasDevice(forceSoftwareRenderer: true);
         Assert.True(device.ForceSoftwareRenderer,
             "GIF parity must run through Win2D's software renderer rather than silently using hardware.");
 
-        RasterNativeWicDiagnosticSnapshot before = ImageResourceScope.Shared.NativeWic.GetSnapshot();
+        RasterNativeWicDiagnosticSnapshot before = _renderResources.Images.NativeWic.GetSnapshot();
         int exercised = 0;
         try
         {
@@ -147,7 +149,7 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
                         MaxRasterOutputPixels = RasterPixelLimit,
                     });
                 var context = CreateContext(device, resolver, session);
-                var image = new ImageBox(context, ImageResourceScope.Shared, $"https://images.example/{fixture.Name}.gif", fixture.Name);
+                var image = new ImageBox(context, context.ImageResources, $"https://images.example/{fixture.Name}.gif", fixture.Name);
                 try
                 {
                     float availableWidth = fixture.CanvasWidth;
@@ -193,13 +195,13 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
         }
         finally
         {
-            ImageResourceScope.Shared.BitmapCache.Clear();
+            _renderResources.Images.BitmapCache.Clear();
             await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-                () => ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes == 0);
+                () => _renderResources.Images.BitmapCache.GetSnapshot().RetainedBytes == 0);
         }
 
         Assert.Equal(OwnedNativeWicGifFixtureFactory.CreateCoreMatrix().Count + 1, exercised);
-        RasterNativeWicDiagnosticSnapshot after = ImageResourceScope.Shared.NativeWic.GetSnapshot();
+        RasterNativeWicDiagnosticSnapshot after = _renderResources.Images.NativeWic.GetSnapshot();
         Assert.True(after.NativeStarted > before.NativeStarted,
             "The scope's decode counters should prove that ImageBox entered the owned WIC route for admitted GIFs.");
         Assert.True(after.PixelLeaseCompleted > before.PixelLeaseCompleted,
@@ -230,7 +232,7 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
         using var session = new MarkdownPerformanceSession(
             MarkdownPerformanceOptions.Progressive with { MaxRasterOutputPixels = RasterPixelLimit });
         var image = new ImageBox(
-            CreateContext(device, resolver, session, rasterizationScale), ImageResourceScope.Shared,
+            CreateContext(device, resolver, session, rasterizationScale), _renderResources.Images,
             "https://images.example/dpi-offset.gif",
             "offset frame");
         try
@@ -269,7 +271,7 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
         var onePixelResolver = new GifResolver(
             fixture.Bytes, $"owned-gif-fractional-cap-{Guid.NewGuid():N}");
         var onePixel = new ImageBox(
-            CreateContext(device, onePixelResolver, onePixelSession), ImageResourceScope.Shared,
+            CreateContext(device, onePixelResolver, onePixelSession), _renderResources.Images,
             "https://images.example/fractional-cap.gif",
             "fractional frame");
         try
@@ -344,7 +346,7 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
         var credit = new RasterNativeWicProductParity.CountingCredit();
         using (RasterDecodedPixelLease decoded = await Task.Run(() =>
                    RasterNativeWicDecoder.DecodeGifFirstFrame(
-                       profiledFixture.Bytes, plan, credit, CancellationToken.None)))
+                       profiledFixture.Bytes, plan, credit, _renderResources.NativeRetirement, CancellationToken.None)))
         {
             Assert.Equal(profiledWinRt.Length, decoded.Pixels.Length);
             Assert.True(profiledWinRt.AsSpan().SequenceEqual(decoded.Pixels),
@@ -352,9 +354,9 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
         }
         Assert.Equal(1, credit.DisposeCount);
 
-        ImageResourceScope.Shared.BitmapCache.Clear();
+        _renderResources.Images.BitmapCache.Clear();
         await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-            () => ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes == 0);
+            () => _renderResources.Images.BitmapCache.GetSnapshot().RetainedBytes == 0);
         using var device = new CanvasDevice(forceSoftwareRenderer: true);
         Assert.True(device.ForceSoftwareRenderer);
         using var session = new MarkdownPerformanceSession(
@@ -362,7 +364,7 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
         var resolver = new GifResolver(
             profiledFixture.Bytes, $"owned-gif-icc-{Guid.NewGuid():N}");
         var image = new ImageBox(
-            CreateContext(device, resolver, session), ImageResourceScope.Shared,
+            CreateContext(device, resolver, session), _renderResources.Images,
             "https://images.example/profiled.gif",
             "profiled GIF");
         try
@@ -394,9 +396,9 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
             image.Dispose();
             await DisplaySizedRasterDecodeTests.WaitUntilAsync(
                 () => image.GetWorkState().ActiveWorkCount == 0);
-            ImageResourceScope.Shared.BitmapCache.Clear();
+            _renderResources.Images.BitmapCache.Clear();
             await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-                () => ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes == 0);
+                () => _renderResources.Images.BitmapCache.GetSnapshot().RetainedBytes == 0);
             Array.Clear(profiledWinRt);
             Array.Clear(unprofiledWinRt);
             Array.Clear(profile);
@@ -559,7 +561,7 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
         }
     }
 
-    private static MarkdownLayoutContext CreateContext(
+    private MarkdownLayoutContext CreateContext(
         CanvasDevice device,
         IMarkdownImageResolver resolver,
         MarkdownPerformanceSession session,
@@ -591,6 +593,7 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
             FlowDirection.LeftToRight,
             language: "en-US")
         {
+            RenderResources = _renderResources,
             ImageResolver = resolver,
             PerformanceSession = session,
             PerformanceDocumentOwner = new object(),

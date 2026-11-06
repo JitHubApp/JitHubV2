@@ -35,7 +35,7 @@ internal static class SvgTileCacheTestOperations
         SvgTileCache cache,
         SvgTileRenderPlan plan,
         SvgTileKey key,
-        CancellationTokenSource cancellation,
+        RetirableCancellationTokenSource cancellation,
         bool claimFailure = false)
     {
         var owner = new SvgTileWorkOwner(plan, cancellation, plan.Demand);
@@ -52,7 +52,7 @@ internal static class SvgTileCacheTestOperations
         SvgTileKey key,
         SharedCanvasBitmapCache.Lease lease)
     {
-        using var cancellation = new CancellationTokenSource();
+        using var cancellation = new RetirableCancellationTokenSource();
         _ = AdmitWork(cache, plan, key, cancellation);
         SvgTilePublicationOwnership ownership = default;
         SharedCanvasBitmapCache.Lease? previous = null;

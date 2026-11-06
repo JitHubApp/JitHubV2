@@ -23,6 +23,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 /// </summary>
 public sealed class InlineFailurePlaceholderTrimmingTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Theory]
     [InlineData(80f)]
     [InlineData(120f)]
@@ -33,7 +35,7 @@ public sealed class InlineFailurePlaceholderTrimmingTests
         try
         {
             var image = new ImageBox(
-                CreateContext(device), ImageResourceScope.Shared,
+                CreateContext(device), _renderResources.Images,
                 string.Empty,
                 "Script-bearing SVG fixture whose alternative text is longer than a narrow table cell");
             try
@@ -52,11 +54,11 @@ public sealed class InlineFailurePlaceholderTrimmingTests
         }
         finally
         {
-            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(device);
+            _renderResources.Images.BitmapCache.ReleaseDevice(device);
         }
     }
 
-    private static MarkdownLayoutContext CreateContext(CanvasDevice device)
+    private MarkdownLayoutContext CreateContext(CanvasDevice device)
     {
         var body = new ElementStyle { FontFamily = "Segoe UI", FontSize = 16f };
         var styles = new Dictionary<string, ElementStyle>(StringComparer.Ordinal)
@@ -83,6 +85,7 @@ public sealed class InlineFailurePlaceholderTrimmingTests
             FlowDirection.LeftToRight,
             language: "en-US")
         {
+            RenderResources = _renderResources,
             DisclosureStates = new Dictionary<string, bool>(StringComparer.Ordinal),
         };
     }

@@ -17,6 +17,7 @@ internal static class DeferredSceneMarkerCollector
         IReadOnlyList<BlockBox> measuredTopLevelBlocks,
         IReadOnlyList<int> topLevelOrdinals,
         LayoutPlacementGeneration placements,
+        LayoutPlacementTransformContext placementTransform,
         IReadOnlyDictionary<int, int> topLevelOrdinalByBlockIndex,
         double viewportTop,
         double viewportBottom,
@@ -28,6 +29,7 @@ internal static class DeferredSceneMarkerCollector
         ArgumentNullException.ThrowIfNull(measuredTopLevelBlocks);
         ArgumentNullException.ThrowIfNull(topLevelOrdinals);
         ArgumentNullException.ThrowIfNull(placements);
+        ArgumentNullException.ThrowIfNull(placementTransform);
         ArgumentNullException.ThrowIfNull(topLevelOrdinalByBlockIndex);
         List<string> markers = residencyPolicy?.VisibleDeferredSceneMarkerScratch ?? [];
         markers.Clear();
@@ -59,7 +61,7 @@ internal static class DeferredSceneMarkerCollector
 
             LayoutRootPlacement placement = placements.GetPlacement(ordinal);
             using LayoutPlacementTransformContext.Scope placementScope =
-                LayoutPlacementTransformContext.Enter(placement.TranslationX, placement.TranslationY);
+                placementTransform.Enter(placement.TranslationX, placement.TranslationY);
             LazyLayoutBand rootLocalBand = placements.ToPhysicalBand(ordinal, logicalBand);
             Rect? rootLocalViewport = viewport is { } logicalViewport
                 ? placements.ToPhysicalViewport(ordinal, logicalViewport)

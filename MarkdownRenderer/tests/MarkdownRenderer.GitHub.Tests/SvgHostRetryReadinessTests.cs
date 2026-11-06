@@ -1,3 +1,4 @@
+using MarkdownRenderer.Layout;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Collections.Concurrent;
@@ -11,6 +12,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 // create a device or invoke a native queue. Injected queues retain callbacks.
 public sealed class SvgHostRetryReadinessTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     private const int Generation = 7;
 
     [Fact]
@@ -286,9 +289,9 @@ public sealed class SvgHostRetryReadinessTests
         Assert.Null(Value(owner, "_svgHostDeferredRegistrationAttempt"));
     }
 
-    private static (SvgHostLoadDeferral, MarkdownSvgRenderDemand, object) CreateWaiting()
+    private (SvgHostLoadDeferral, MarkdownSvgRenderDemand, object) CreateWaiting()
     {
-        SvgHostLoadDeferral owner = TestSvgHostDeferralHost.CreateDeferral();
+        SvgHostLoadDeferral owner = TestSvgHostDeferralHost.CreateDeferral(_renderResources.Images);
         var demand = new MarkdownSvgRenderDemand(MarkdownSvgRenderPriority.Overscan);
         object waiterIdentity = new();
         object denialIdentity = new();

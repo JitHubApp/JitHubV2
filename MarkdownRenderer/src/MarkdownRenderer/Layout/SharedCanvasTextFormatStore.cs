@@ -9,10 +9,10 @@ namespace MarkdownRenderer.Layout;
 
 /// <summary>
 /// Bounded LRU store of immutable CanvasTextFormat descriptors with native
-/// retirement custody. <see cref="SharedCanvasTextFormatCache"/> owns the
-/// process-wide instance; isolated instances back deterministic native-lifetime
+/// retirement custody. Each <see cref="MarkdownRenderResources"/> owns one
+/// production instance; isolated instances back deterministic native-lifetime
 /// tests. Fault hooks are accepted only with a timerless retirement owner, so
-/// the process-wide store never holds arbitrary delegates.
+/// a production store never holds arbitrary delegates.
 /// </summary>
 internal sealed class SharedCanvasTextFormatStore
 {
@@ -53,8 +53,8 @@ internal sealed class SharedCanvasTextFormatStore
         CanvasWordWrapping wordWrapping,
         CanvasHorizontalAlignment horizontalAlignment,
         FlowDirection flowDirection,
-        string? localeName,
-        bool useContentAwareLineSpacing) =>
+        string? localeName = null,
+        bool useContentAwareLineSpacing = false) =>
         Acquire(style, wordWrapping, horizontalAlignment, flowDirection, localeName,
             useContentAwareLineSpacing, CanvasVerticalAlignment.Top);
 

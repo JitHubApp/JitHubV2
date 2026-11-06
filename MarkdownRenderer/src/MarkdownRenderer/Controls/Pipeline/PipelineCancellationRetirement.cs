@@ -25,7 +25,7 @@ internal sealed class PipelineCancellationRetirement
     /// the superseded pipeline <paramref name="supersededGeneration"/> took to stop.
     /// </summary>
     internal Task Retire(
-        CancellationTokenSource? cts,
+        RetirableCancellationTokenSource? cts,
         Task? lifetime,
         long supersededGeneration = 0,
         long cancellationStartTimestamp = 0)

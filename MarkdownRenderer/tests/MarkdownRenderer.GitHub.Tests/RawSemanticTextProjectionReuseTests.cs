@@ -192,12 +192,9 @@ public sealed class RawSemanticTextProjectionReuseTests
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 
-        using (LayoutPassCancellation.Push(cancellation.Token))
-        {
-            var accumulator = new SemanticTextProjectionAccumulator("matching text");
-            Assert.Throws<OperationCanceledException>(() => accumulator.GetText());
-            Assert.Throws<OperationCanceledException>(() => accumulator.Append("different-length"));
-        }
+        var accumulator = new SemanticTextProjectionAccumulator("matching text", cancellation.Token);
+        Assert.Throws<OperationCanceledException>(() => accumulator.GetText());
+        Assert.Throws<OperationCanceledException>(() => accumulator.Append("different-length"));
     }
 
     [Fact]

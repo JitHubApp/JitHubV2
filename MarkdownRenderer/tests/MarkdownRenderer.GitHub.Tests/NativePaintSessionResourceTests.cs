@@ -15,12 +15,13 @@ public sealed class NativePaintSessionResourceTests
         using var target = CreateTarget();
         using CanvasDrawingSession drawing = target.CreateDrawingSession();
         var retirement = new NativeResourceRetirement(createTimer: false);
+        var sessions = new NativePaintSessionResources(retirement);
         var disposal = new DisposalProbe();
-        NativePaintSessionResources.RegisterTestOwner(drawing, retirement, disposal.Dispose);
+        sessions.RegisterTestOwner(drawing, retirement, disposal.Dispose);
 
-        NativePaintSessionResources.LayerLease outer = NativePaintSessionResources.CreateLayer(
+        NativePaintSessionResources.LayerLease outer = sessions.CreateLayer(
             drawing, 1f, new Rect(0, 0, 96, 96));
-        NativePaintSessionResources.LayerLease inner = NativePaintSessionResources.CreateLayer(
+        NativePaintSessionResources.LayerLease inner = sessions.CreateLayer(
             drawing, 0.82f, new Rect(4, 4, 80, 80));
 
         inner.Close();
@@ -38,12 +39,13 @@ public sealed class NativePaintSessionResourceTests
         using var target = CreateTarget();
         using CanvasDrawingSession drawing = target.CreateDrawingSession();
         var retirement = new NativeResourceRetirement(createTimer: false);
+        var sessions = new NativePaintSessionResources(retirement);
         var disposal = new DisposalProbe();
-        NativePaintSessionResources.RegisterTestOwner(drawing, retirement, disposal.Dispose);
+        sessions.RegisterTestOwner(drawing, retirement, disposal.Dispose);
 
-        NativePaintSessionResources.LayerLease outer = NativePaintSessionResources.CreateLayer(
+        NativePaintSessionResources.LayerLease outer = sessions.CreateLayer(
             drawing, 1f, new Rect(0, 0, 96, 96));
-        NativePaintSessionResources.LayerLease inner = NativePaintSessionResources.CreateLayer(
+        NativePaintSessionResources.LayerLease inner = sessions.CreateLayer(
             drawing, 0.82f, new Rect(4, 4, 80, 80));
         CanvasActiveLayer outerNative = Assert.IsType<CanvasActiveLayer>(outer.Layer);
         CanvasActiveLayer innerNative = Assert.IsType<CanvasActiveLayer>(inner.Layer);
@@ -91,15 +93,16 @@ public sealed class NativePaintSessionResourceTests
         using var target = CreateTarget();
         using CanvasDrawingSession drawing = target.CreateDrawingSession();
         var retirement = new NativeResourceRetirement(createTimer: false);
+        var sessions = new NativePaintSessionResources(retirement);
         var disposal = new DisposalProbe();
-        NativePaintSessionResources.RegisterTestOwner(drawing, retirement, disposal.Dispose);
+        sessions.RegisterTestOwner(drawing, retirement, disposal.Dispose);
 
-        NativePaintSessionResources.LayerLease outer = NativePaintSessionResources.CreateLayer(
+        NativePaintSessionResources.LayerLease outer = sessions.CreateLayer(
             drawing, 1f, new Rect(0, 0, 96, 96));
-        NativePaintSessionResources.AuxiliaryLease geometryOwner = NativePaintSessionResources.ReserveAuxiliary(drawing);
+        NativePaintSessionResources.AuxiliaryLease geometryOwner = sessions.ReserveAuxiliary(drawing);
         CanvasGeometry geometry = CanvasGeometry.CreateRoundedRectangle(target, new Rect(0, 0, 80, 80), 6, 6);
         geometryOwner.Attach(geometry);
-        NativePaintSessionResources.LayerLease inner = NativePaintSessionResources.CreateLayer(
+        NativePaintSessionResources.LayerLease inner = sessions.CreateLayer(
             drawing, 0.82f, geometry, geometryOwner);
         CanvasActiveLayer outerNative = Assert.IsType<CanvasActiveLayer>(outer.Layer);
         CanvasActiveLayer innerNative = Assert.IsType<CanvasActiveLayer>(inner.Layer);
@@ -153,24 +156,25 @@ public sealed class NativePaintSessionResourceTests
         using var target = CreateTarget();
         using CanvasDrawingSession drawing = target.CreateDrawingSession();
         var retirement = new NativeResourceRetirement(createTimer: false);
+        var sessions = new NativePaintSessionResources(retirement);
         var disposal = new DisposalProbe();
-        NativePaintSessionResources.RegisterTestOwner(drawing, retirement, disposal.Dispose);
+        sessions.RegisterTestOwner(drawing, retirement, disposal.Dispose);
 
-        NativePaintSessionResources.LayerLease outer = NativePaintSessionResources.CreateLayer(
+        NativePaintSessionResources.LayerLease outer = sessions.CreateLayer(
             drawing, 1f, new Rect(0, 0, 96, 96));
-        NativePaintSessionResources.LayerLease inner = NativePaintSessionResources.CreateLayer(
+        NativePaintSessionResources.LayerLease inner = sessions.CreateLayer(
             drawing, 0.82f, new Rect(4, 4, 80, 80));
         CanvasActiveLayer outerNative = Assert.IsType<CanvasActiveLayer>(outer.Layer);
         CanvasActiveLayer innerNative = Assert.IsType<CanvasActiveLayer>(inner.Layer);
 
-        NativePaintSessionResources.PoisonSession(drawing);
+        sessions.PoisonSession(drawing);
 
         Assert.Equal(2, retirement.QuarantinedResourceCount);
         Assert.Equal(0, disposal.LayerAttempts);
         inner.Close();
         outer.Close();
         Assert.Throws<InvalidOperationException>(() =>
-            NativePaintSessionResources.CreateLayer(drawing, 1f, new Rect(0, 0, 64, 64)));
+            sessions.CreateLayer(drawing, 1f, new Rect(0, 0, 64, 64)));
 
         // Simulate the owner unwinding the actual session after the drawing
         // stack reports its failure; quarantine must never retry these layers.
@@ -186,10 +190,11 @@ public sealed class NativePaintSessionResourceTests
         using var target = CreateTarget();
         using CanvasDrawingSession drawing = target.CreateDrawingSession();
         var retirement = new NativeResourceRetirement(createTimer: false);
+        var sessions = new NativePaintSessionResources(retirement);
         var disposal = new DisposalProbe { FailAfterClosingNextLayer = true };
-        NativePaintSessionResources.RegisterTestOwner(drawing, retirement, disposal.Dispose);
+        sessions.RegisterTestOwner(drawing, retirement, disposal.Dispose);
 
-        NativePaintSessionResources.LayerLease layer = NativePaintSessionResources.CreateLayer(
+        NativePaintSessionResources.LayerLease layer = sessions.CreateLayer(
             drawing, 1f, new Rect(0, 0, 64, 64));
         InvalidOperationException failure = Assert.Throws<InvalidOperationException>(layer.Close);
 
@@ -207,13 +212,14 @@ public sealed class NativePaintSessionResourceTests
         using var target = CreateTarget();
         using CanvasDrawingSession drawing = target.CreateDrawingSession();
         var retirement = new NativeResourceRetirement(createTimer: false);
+        var sessions = new NativePaintSessionResources(retirement);
         var disposal = new DisposalProbe { FailNextGeometry = true };
-        NativePaintSessionResources.RegisterTestOwner(drawing, retirement, disposal.Dispose);
+        sessions.RegisterTestOwner(drawing, retirement, disposal.Dispose);
 
-        NativePaintSessionResources.AuxiliaryLease geometryOwner = NativePaintSessionResources.ReserveAuxiliary(drawing);
+        NativePaintSessionResources.AuxiliaryLease geometryOwner = sessions.ReserveAuxiliary(drawing);
         CanvasGeometry geometry = CanvasGeometry.CreateRoundedRectangle(target, new Rect(0, 0, 64, 64), 6, 6);
         geometryOwner.Attach(geometry);
-        NativePaintSessionResources.LayerLease layer = NativePaintSessionResources.CreateLayer(
+        NativePaintSessionResources.LayerLease layer = sessions.CreateLayer(
             drawing, 1f, geometry, geometryOwner);
 
         InvalidOperationException failure = Assert.Throws<InvalidOperationException>(layer.Close);
@@ -236,12 +242,13 @@ public sealed class NativePaintSessionResourceTests
         using var target = CreateTarget();
         using CanvasDrawingSession drawing = target.CreateDrawingSession();
         var retirement = new NativeResourceRetirement(createTimer: false);
-        NativePaintSessionResources.RegisterTestOwner(drawing, retirement);
+        var sessions = new NativePaintSessionResources(retirement);
+        sessions.RegisterTestOwner(drawing, retirement);
 
-        NativePaintSessionResources.LayerLease oldLease = NativePaintSessionResources.CreateLayer(
+        NativePaintSessionResources.LayerLease oldLease = sessions.CreateLayer(
             drawing, 1f, new Rect(0, 0, 64, 64));
         oldLease.Close();
-        NativePaintSessionResources.LayerLease currentLease = NativePaintSessionResources.CreateLayer(
+        NativePaintSessionResources.LayerLease currentLease = sessions.CreateLayer(
             drawing, 1f, new Rect(0, 0, 64, 64));
 
         Assert.Same(oldLease.Node, currentLease.Node);
@@ -261,15 +268,16 @@ public sealed class NativePaintSessionResourceTests
         using var target = CreateTarget();
         using CanvasDrawingSession drawing = target.CreateDrawingSession();
         var retirement = new NativeResourceRetirement(createTimer: false);
+        var sessions = new NativePaintSessionResources(retirement);
         var disposal = new DisposalProbe();
-        NativePaintSessionResources.RegisterTestOwner(drawing, retirement, disposal.Dispose);
+        sessions.RegisterTestOwner(drawing, retirement, disposal.Dispose);
 
-        NativePaintSessionResources.AuxiliaryLease oldLease = NativePaintSessionResources.ReserveAuxiliary(drawing);
+        NativePaintSessionResources.AuxiliaryLease oldLease = sessions.ReserveAuxiliary(drawing);
         oldLease.Attach(CanvasGeometry.CreateRoundedRectangle(target, new Rect(0, 0, 32, 32), 3, 3));
         oldLease.Close();
         Assert.Equal(1, disposal.GeometryAttempts);
 
-        NativePaintSessionResources.AuxiliaryLease currentLease = NativePaintSessionResources.ReserveAuxiliary(drawing);
+        NativePaintSessionResources.AuxiliaryLease currentLease = sessions.ReserveAuxiliary(drawing);
         Assert.Same(oldLease.Node, currentLease.Node);
         Assert.NotEqual(oldLease.Generation, currentLease.Generation);
 
@@ -296,15 +304,16 @@ public sealed class NativePaintSessionResourceTests
         using CanvasDrawingSession ownerSession = target.CreateDrawingSession();
         using CanvasDrawingSession otherSession = otherTarget.CreateDrawingSession();
         var retirement = new NativeResourceRetirement(createTimer: false);
+        var sessions = new NativePaintSessionResources(retirement);
         var disposal = new DisposalProbe();
-        NativePaintSessionResources.RegisterTestOwner(ownerSession, retirement, disposal.Dispose);
+        sessions.RegisterTestOwner(ownerSession, retirement, disposal.Dispose);
 
-        NativePaintSessionResources.AuxiliaryLease owner = NativePaintSessionResources.ReserveAuxiliary(ownerSession);
+        NativePaintSessionResources.AuxiliaryLease owner = sessions.ReserveAuxiliary(ownerSession);
         CanvasGeometry geometry = CanvasGeometry.CreateRoundedRectangle(target, new Rect(0, 0, 64, 64), 4, 4);
         owner.Attach(geometry);
 
         InvalidOperationException failure = Assert.Throws<InvalidOperationException>(() =>
-            NativePaintSessionResources.CreateLayer(otherSession, 1f, geometry, owner));
+            sessions.CreateLayer(otherSession, 1f, geometry, owner));
 
         Assert.Contains("does not belong", failure.Message, StringComparison.Ordinal);
         Assert.Equal(1, disposal.GeometryAttempts);
@@ -318,7 +327,8 @@ public sealed class NativePaintSessionResourceTests
         using var target = CreateTarget();
         using CanvasDrawingSession drawing = target.CreateDrawingSession();
         var retirement = new NativeResourceRetirement(createTimer: false);
-        NativePaintSessionResources.RegisterTestOwner(drawing, retirement);
+        var sessions = new NativePaintSessionResources(retirement);
+        sessions.RegisterTestOwner(drawing, retirement);
         const int iterations = 512;
         const int sampleCount = 5;
         Rect clip = new(0, 0, 64, 64);
@@ -326,15 +336,15 @@ public sealed class NativePaintSessionResourceTests
         // The pool is deliberately drawing-session-local. Warm the CWT, node
         // pools, projected Win2D wrappers and both paint paths in this session.
         MeasureDirectLayers(drawing, clip, 128);
-        MeasureManagedLayers(drawing, clip, 128);
+        MeasureManagedLayers(sessions, drawing, clip, 128);
 
-        NativePaintSessionResources.LayerLease initial = NativePaintSessionResources.CreateLayer(drawing, 1f, clip);
+        NativePaintSessionResources.LayerLease initial = sessions.CreateLayer(drawing, 1f, clip);
         NativePaintLayerNode pooledNode = Assert.IsType<NativePaintLayerNode>(initial.Node);
         NativeResourceRetirementRecord pooledRecord = pooledNode.Retirement;
         initial.Close();
         for (int index = 0; index < 16; index++)
         {
-            NativePaintSessionResources.LayerLease lease = NativePaintSessionResources.CreateLayer(drawing, 1f, clip);
+            NativePaintSessionResources.LayerLease lease = sessions.CreateLayer(drawing, 1f, clip);
             Assert.Same(pooledNode, lease.Node);
             Assert.Same(pooledRecord, lease.Node!.Retirement);
             lease.Close();
@@ -348,11 +358,11 @@ public sealed class NativePaintSessionResourceTests
             if ((sample & 1) == 0)
             {
                 directBytes = MeasureDirectLayers(drawing, clip, iterations);
-                managedBytes = MeasureManagedLayers(drawing, clip, iterations, pooledNode, pooledRecord);
+                managedBytes = MeasureManagedLayers(sessions, drawing, clip, iterations, pooledNode, pooledRecord);
             }
             else
             {
-                managedBytes = MeasureManagedLayers(drawing, clip, iterations, pooledNode, pooledRecord);
+                managedBytes = MeasureManagedLayers(sessions, drawing, clip, iterations, pooledNode, pooledRecord);
                 directBytes = MeasureDirectLayers(drawing, clip, iterations);
             }
             excessBytes[sample] = managedBytes - directBytes;
@@ -376,14 +386,15 @@ public sealed class NativePaintSessionResourceTests
         using var target = CreateTarget();
         const int iterations = 16;
         Rect clip = new(0, 0, 64, 64);
+        var sessions = new NativePaintSessionResources(new NativeResourceRetirement(createTimer: true));
 
-        // Initialize the process-wide retirement clock and CWT buckets before
-        // comparing per-session ownership cost; this is not a global cache hit
-        // claim because every iteration creates a fresh drawing session.
-        MeasureManagedLayersAcrossFreshSessions(target, clip, 16);
+        // Initialize the owner's retirement clock and CWT buckets before
+        // comparing per-session ownership cost; this is not a cache hit claim
+        // because every iteration creates a fresh drawing session.
+        MeasureManagedLayersAcrossFreshSessions(sessions, target, clip, 16);
         MeasureDirectLayersAcrossFreshSessions(target, clip, 8);
         long directBytes = MeasureDirectLayersAcrossFreshSessions(target, clip, iterations);
-        long managedBytes = MeasureManagedLayersAcrossFreshSessions(target, clip, iterations);
+        long managedBytes = MeasureManagedLayersAcrossFreshSessions(sessions, target, clip, iterations);
 
         Assert.True(managedBytes - directBytes <= iterations * 1024L,
             $"Fresh-session direct={directBytes} bytes; managed={managedBytes} bytes for {iterations} layers.");
@@ -395,18 +406,19 @@ public sealed class NativePaintSessionResourceTests
         using var target = CreateTarget();
         using CanvasDrawingSession drawing = target.CreateDrawingSession();
         var retirement = new NativeResourceRetirement(createTimer: false);
+        var sessions = new NativePaintSessionResources(retirement);
         var disposal = new DisposalProbe();
-        NativePaintSessionResources.RegisterTestOwner(
+        sessions.RegisterTestOwner(
             drawing,
             retirement,
             disposal.Dispose,
-            afterLayerReservation: () => NativePaintSessionResources.PoisonSession(drawing));
+            afterLayerReservation: () => sessions.PoisonSession(drawing));
 
         CanvasActiveLayer? quarantinedLayer = null;
         try
         {
             InvalidOperationException failure = Assert.Throws<InvalidOperationException>(() =>
-                NativePaintSessionResources.CreateLayer(drawing, 1f, new Rect(0, 0, 64, 64)));
+                sessions.CreateLayer(drawing, 1f, new Rect(0, 0, 64, 64)));
 
             Assert.Contains("poisoned", failure.Message, StringComparison.OrdinalIgnoreCase);
             Assert.Equal(1, retirement.QuarantinedResourceCount);
@@ -417,7 +429,7 @@ public sealed class NativePaintSessionResourceTests
             Assert.False(retirement.DrainOnce());
             Assert.Equal(0, disposal.LayerAttempts);
             Assert.Throws<InvalidOperationException>(() =>
-                NativePaintSessionResources.CreateLayer(drawing, 1f, new Rect(0, 0, 64, 64)));
+                sessions.CreateLayer(drawing, 1f, new Rect(0, 0, 64, 64)));
         }
         finally
         {
@@ -442,6 +454,7 @@ public sealed class NativePaintSessionResourceTests
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
     private static long MeasureManagedLayers(
+        NativePaintSessionResources sessions,
         CanvasDrawingSession drawing,
         Rect clip,
         int count,
@@ -451,7 +464,7 @@ public sealed class NativePaintSessionResourceTests
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int index = 0; index < count; index++)
         {
-            NativePaintSessionResources.LayerLease lease = NativePaintSessionResources.CreateLayer(drawing, 1f, clip);
+            NativePaintSessionResources.LayerLease lease = sessions.CreateLayer(drawing, 1f, clip);
             bool expectedOwnerReused = expectedNode is null ||
                 (ReferenceEquals(lease.Node, expectedNode) && ReferenceEquals(lease.Node!.Retirement, expectedRecord));
             lease.Close();
@@ -474,13 +487,17 @@ public sealed class NativePaintSessionResourceTests
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-    private static long MeasureManagedLayersAcrossFreshSessions(CanvasRenderTarget target, Rect clip, int count)
+    private static long MeasureManagedLayersAcrossFreshSessions(
+        NativePaintSessionResources sessions,
+        CanvasRenderTarget target,
+        Rect clip,
+        int count)
     {
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int index = 0; index < count; index++)
         {
             using CanvasDrawingSession drawing = target.CreateDrawingSession();
-            NativePaintSessionResources.CreateLayer(drawing, 1f, clip).Close();
+            sessions.CreateLayer(drawing, 1f, clip).Close();
         }
         return GC.GetAllocatedBytesForCurrentThread() - before;
     }

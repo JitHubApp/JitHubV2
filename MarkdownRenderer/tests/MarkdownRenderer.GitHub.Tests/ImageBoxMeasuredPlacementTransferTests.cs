@@ -477,7 +477,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             PrepareAtDifferentOrigin(source1, prepared1);
             PrepareAtDifferentOrigin(source2, prepared2);
 
-            staleLease = ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(
+            staleLease = fixture.RenderResources.Images.BitmapCache.CreateUncachedLease(
                 CreateBitmap(fixture.Device, 7, 5), 7, 5, new Size(7, 5));
             Rect sourceBounds1 = source1.Bounds;
             Rect sourceBounds2 = source2.Bounds;
@@ -654,7 +654,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             Rect preparedBounds = prepared.Bounds;
             CanvasBitmap preparedBitmap = Assert.IsType<CanvasBitmap>(prepared.Bitmap);
             CanvasBitmap replacementBitmap = CreateBitmap(fixture.Device, 24, 12);
-            SharedCanvasBitmapCache.Lease replacementLease = ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(
+            SharedCanvasBitmapCache.Lease replacementLease = fixture.RenderResources.Images.BitmapCache.CreateUncachedLease(
                 replacementBitmap,
                 24,
                 12,
@@ -698,9 +698,9 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
         }
     }
 
-    private static ImageBox CreateStandaloneImage(CompletedRasterPlacementCloneTests.PlacementFixture fixture)
+    private ImageBox CreateStandaloneImage(CompletedRasterPlacementCloneTests.PlacementFixture fixture)
     {
-        var image = new ImageBox(fixture.SourceContext, ImageResourceScope.Shared, fixture.RasterSource, "Standalone test image")
+        var image = new ImageBox(fixture.SourceContext, fixture.SourceContext.ImageResources, fixture.RasterSource, "Standalone test image")
         {
             BlockIndex = fixture.Source.BlockIndex,
         };
@@ -751,6 +751,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
 [Collection(ProcessRasterDecodeCollection.CollectionName)]
 public sealed class ImageBoxMeasuredSvgPlacementTransferTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
     private const float Width = 320f;
     private const string SvgMarkup =
         "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='8'><text x='0' y='7'>x</text></svg>";
@@ -760,7 +761,7 @@ public sealed class ImageBoxMeasuredSvgPlacementTransferTests
         var renderer = new TransferSvgRenderer(hasText: true);
         var resolver = new TransferSvgResolver(System.Text.Encoding.UTF8.GetBytes(SvgMarkup));
         MarkdownLayoutContext sourceContext = CreateSvgContext(renderer, resolver);
-        var source = new ImageBox(sourceContext, ImageResourceScope.Shared, resolver.Url, "Text SVG");
+        var source = new ImageBox(sourceContext, sourceContext.ImageResources, resolver.Url, "Text SVG");
         MarkdownLayoutContext targetContext = sourceContext.CreateRasterPlacementContext(
             CancellationToken.None,
             sourceContext.ImagePreparationOwner!,
@@ -844,7 +845,7 @@ public sealed class ImageBoxMeasuredSvgPlacementTransferTests
         var renderer = new TransferSvgRenderer(hasText: true);
         var resolver = new TransferSvgResolver(System.Text.Encoding.UTF8.GetBytes(SvgMarkup));
         MarkdownLayoutContext sourceContext = CreateSvgContext(renderer, resolver);
-        var source = new ImageBox(sourceContext, ImageResourceScope.Shared, resolver.Url, "Text SVG");
+        var source = new ImageBox(sourceContext, sourceContext.ImageResources, resolver.Url, "Text SVG");
         MarkdownLayoutContext targetContext = sourceContext.CreateRasterPlacementContext(
             CancellationToken.None,
             sourceContext.ImagePreparationOwner!,
@@ -916,7 +917,7 @@ public sealed class ImageBoxMeasuredSvgPlacementTransferTests
         }
     }
 
-    private static MarkdownLayoutContext CreateSvgContext(
+    private MarkdownLayoutContext CreateSvgContext(
         TransferSvgRenderer renderer,
         TransferSvgResolver resolver)
     {
@@ -946,6 +947,7 @@ public sealed class ImageBoxMeasuredSvgPlacementTransferTests
             FlowDirection.LeftToRight,
             language: "en-US")
         {
+            RenderResources = _renderResources,
             ImageResolver = resolver,
             SvgRenderer = renderer,
             ImagePreparationOwner = new object(),
@@ -1028,25 +1030,6 @@ public sealed class ImageBoxMeasuredSvgPlacementTransferTests
                 _info,
                 Requests,
                 () => RenderCount++));
-        }
-    }
-
-    private sealed class TransferSvgResolver(byte[] bytes) : IMarkdownImageResolver
-    {
-        private readonly string _cacheKey = "placement-transfer-svg:" + Guid.NewGuid().ToString("N");
-        internal string Url { get; } = "https://images.example/transfer-placement-" + Guid.NewGuid().ToString("N") + ".svg";
-
-        public ValueTask<MarkdownImageResolution> ResolveAsync(
-            string source,
-            MarkdownImageResolveContext context,
-            CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (!string.Equals(source, Url, StringComparison.Ordinal))
-                throw new InvalidOperationException("The transfer test resolver received an unexpected URL.");
-
-            return ValueTask.FromResult(MarkdownImageResolution.Resolved(
-                new MarkdownImageAsset(bytes, "image/svg+xml", CacheKey: _cacheKey)));
         }
     }
 

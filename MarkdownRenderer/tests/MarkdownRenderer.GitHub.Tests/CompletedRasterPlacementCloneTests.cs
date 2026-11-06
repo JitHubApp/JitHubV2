@@ -117,7 +117,7 @@ public sealed class CompletedRasterPlacementCloneTests
     public async Task UncachedPlacementCloneCopiesAlreadyResolvedIntrinsicGeometry()
     {
         await using var fixture = new PlacementFixture();
-        SharedCanvasBitmapCache.Lease uncached = ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(
+        SharedCanvasBitmapCache.Lease uncached = fixture.RenderResources.Images.BitmapCache.CreateUncachedLease(
             CreateBitmap(fixture.Device, 40, 20));
         InvokeReplaceBitmap(fixture.ImageRun.Image, uncached);
         Assert.Null(uncached.IntrinsicSize);
@@ -196,7 +196,7 @@ public sealed class CompletedRasterPlacementCloneTests
         }
         Assert.True(fixture.ImageRun.Image.IsCurrentCompletedRasterPlacement(expected));
 
-        SharedCanvasBitmapCache.Lease replacementLease = ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(
+        SharedCanvasBitmapCache.Lease replacementLease = fixture.RenderResources.Images.BitmapCache.CreateUncachedLease(
             CreateBitmap(fixture.Device, 40, 20));
         CanvasBitmap replacementBitmap = replacementLease.Bitmap;
         InvokeReplaceBitmap(fixture.ImageRun.Image, replacementLease);
@@ -383,6 +383,7 @@ public sealed class CompletedRasterPlacementCloneTests
         internal InlineImageRun ImageRun { get; private set; } = null!;
         internal MarkdownLayoutContext? CandidateContext { get; private set; }
         internal InlineContainerBox? Candidate { get; private set; }
+        internal MarkdownRenderResources RenderResources => _environment.RenderResources;
         internal CanvasDevice Device => _environment.Device;
         internal bool ForceSoftwareRenderer => _environment.ForceSoftwareRenderer;
         internal object ImagePreparationOwnerToken => _environment.ImagePreparationOwnerToken;
@@ -416,7 +417,7 @@ public sealed class CompletedRasterPlacementCloneTests
             _sourceRetired = true;
         }
 
-        internal void ReleaseCacheEntry() => ImageResourceScope.Shared.BitmapCache.ReleaseDevice(Device);
+        internal void ReleaseCacheEntry() => _environment.RenderResources.Images.BitmapCache.ReleaseDevice(Device);
 
         internal async Task RetireSourceAsync()
         {
@@ -508,6 +509,10 @@ public sealed class CompletedRasterPlacementCloneTests
 
     private sealed class TestContextEnvironment : IDisposable
     {
+        private readonly MarkdownRenderResources _renderResources = new();
+
+        internal MarkdownRenderResources RenderResources => _renderResources;
+
         private const string SourceText = "caption ! extra";
         private readonly ThemeSnapshot _theme;
         private readonly MarkdownSourceMap _sourceMap = new(SourceText);
@@ -562,6 +567,7 @@ public sealed class CompletedRasterPlacementCloneTests
                 FlowDirection.LeftToRight,
                 language: "en-US")
             {
+                RenderResources = _renderResources,
                 CancellationToken = CancellationToken.None,
                 ImageCancellationToken = imageCancellationToken,
                 ImageUnavailable = imageUnavailable,
@@ -574,7 +580,7 @@ public sealed class CompletedRasterPlacementCloneTests
 
         internal void StoreRaster(string identity, int width, int height, Size intrinsicSize)
         {
-            using SharedCanvasBitmapCache.Lease lease = ImageResourceScope.Shared.BitmapCache.StoreAndAcquire(
+            using SharedCanvasBitmapCache.Lease lease = _renderResources.Images.BitmapCache.StoreAndAcquire(
                 Device,
                 identity,
                 CreateBitmap(Device, width, height),
@@ -583,7 +589,7 @@ public sealed class CompletedRasterPlacementCloneTests
 
         public void Dispose()
         {
-            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(Device);
+            _renderResources.Images.BitmapCache.ReleaseDevice(Device);
             Device.Dispose();
         }
     }

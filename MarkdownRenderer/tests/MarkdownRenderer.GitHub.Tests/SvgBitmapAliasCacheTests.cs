@@ -1,3 +1,4 @@
+using MarkdownRenderer.Layout;
 using System.Reflection;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Boxes;
@@ -9,6 +10,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection(ProcessRasterDecodeCollection.CollectionName)]
 public sealed class SvgBitmapAliasCacheTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Fact]
     public void LateBitmapMetadataDoesNotReplaceNewerUrlAlias()
     {
@@ -198,30 +201,30 @@ public sealed class SvgBitmapAliasCacheTests
             null);
     }
 
-    private static void Update(
+    private void Update(
         string? builtInSourceAliasKey,
         string contentKey,
         string bitmapIdentity,
         int width,
         int height)
     {
-        ImageResourceScope.Shared.SvgSources.RecordLastBitmap(
+        _renderResources.Images.SvgSources.RecordLastBitmap(
             builtInSourceAliasKey, contentKey, bitmapIdentity, width, height, physicalViewport: null);
     }
 
-    private static void SetEntry(string key, object entry)
+    private void SetEntry(string key, object entry)
     {
-        ImageResourceScope.Shared.SvgSources.Set(key, (SvgCacheEntry)entry);
+        _renderResources.Images.SvgSources.Set(key, (SvgCacheEntry)entry);
     }
 
-    private static object? GetEntry(string key)
+    private object? GetEntry(string key)
     {
-        return ImageResourceScope.Shared.SvgSources.TryGetValue(key, out SvgCacheEntry? entry) ? entry : null;
+        return _renderResources.Images.SvgSources.TryGetValue(key, out SvgCacheEntry? entry) ? entry : null;
     }
 
-    private static void RemoveEntry(string key)
+    private void RemoveEntry(string key)
     {
-        _ = ImageResourceScope.Shared.SvgSources.Remove(key);
+        _ = _renderResources.Images.SvgSources.Remove(key);
     }
 
     private static T GetField<T>(object instance, string fieldName) =>

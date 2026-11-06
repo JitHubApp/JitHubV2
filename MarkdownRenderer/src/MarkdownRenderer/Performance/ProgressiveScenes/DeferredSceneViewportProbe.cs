@@ -114,6 +114,7 @@ internal sealed class DeferredSceneViewportProbe
                 visibleBlocks,
                 visibleOrdinals,
                 placements,
+                snapshot.PlacementTransform,
                 topLevelOrdinalByBlockIndex,
                 top,
                 bottom,

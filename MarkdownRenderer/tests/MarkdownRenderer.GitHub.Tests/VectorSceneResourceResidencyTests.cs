@@ -592,6 +592,7 @@ public sealed class VectorSceneResourceResidencyTests
                 visibleBlocks,
                 visibleOrdinals,
                 placements,
+                snapshot.PlacementTransform,
                 ordinalByBlockIndex,
                 band.Top,
                 band.Bottom,
@@ -692,6 +693,7 @@ public sealed class VectorSceneResourceResidencyTests
                 visibleBlocks,
                 visibleOrdinals,
                 placements,
+                snapshot.PlacementTransform,
                 ordinalByBlockIndex,
                 visible.Top,
                 visible.Bottom,
@@ -713,6 +715,7 @@ public sealed class VectorSceneResourceResidencyTests
                 outsideBlocks,
                 outsideOrdinals,
                 outsidePlacements,
+                snapshot.PlacementTransform,
                 outsideOrdinalByBlockIndex,
                 outside.Top,
                 outside.Bottom,
@@ -859,6 +862,7 @@ public sealed class VectorSceneResourceResidencyTests
             using var target = new CanvasRenderTarget(CanvasDevice.GetSharedDevice(), 64, 64, 96);
             using CanvasDrawingSession drawingSession = target.CreateDrawingSession();
             deferredRun.Paint(
+                deferredContext.PlacementTransform,
                 drawingSession,
                 baseX: 0,
                 baseY: 0,
@@ -1224,34 +1228,5 @@ public sealed class VectorSceneResourceResidencyTests
         }
 
         public override void Paint(CanvasDrawingSession ds, Rect viewport) { }
-    }
-
-    private sealed class GatedResourceCreator(CanvasDevice device) : ICanvasResourceCreator, IDisposable
-    {
-        private readonly ManualResetEventSlim _release = new();
-        private readonly TaskCompletionSource _entered =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private int _gateEntered;
-
-        internal Func<bool>? ShouldGate { get; set; }
-        internal Task Entered => _entered.Task;
-
-        public CanvasDevice Device
-        {
-            get
-            {
-                if (ShouldGate?.Invoke() == true &&
-                    Interlocked.Exchange(ref _gateEntered, 1) == 0)
-                {
-                    _entered.TrySetResult();
-                    if (!_release.Wait(TimeSpan.FromSeconds(10)))
-                        throw new TimeoutException("The test resource-creation gate was not released.");
-                }
-                return device;
-            }
-        }
-
-        internal void Release() => _release.Set();
-        public void Dispose() => _release.Dispose();
     }
 }

@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Runtime.InteropServices.WindowsRuntime;
+using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using Windows.Foundation;
 using Windows.Graphics.Imaging;
@@ -142,7 +143,7 @@ public sealed class RasterNativeWicWinRtParityTests(ITestOutputHelper output)
         var diagnostics = new RasterNativeWicDiagnostics();
         await Assert.ThrowsAnyAsync<Exception>(() => Task.Run(() =>
             RasterNativeWicDecoder.Decode(
-                source, plan, credit, new RasterNativeWicDecodeOptions(diagnostics), CancellationToken.None)));
+                source, plan, credit, new NativeResourceRetirement(createTimer: false), new RasterNativeWicDecodeOptions(diagnostics), CancellationToken.None)));
         Assert.Equal(1, credit.DisposeCount);
         var after = diagnostics.GetSnapshot();
         Assert.Equal(1, after.NativeStarted);

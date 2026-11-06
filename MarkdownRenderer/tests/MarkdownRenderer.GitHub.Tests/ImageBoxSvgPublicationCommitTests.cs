@@ -15,14 +15,16 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class ImageBoxSvgPublicationCommitTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Fact]
     public async Task TiledFailureTransfersPreparedCleanupLeaseUntilTheLastDocumentUseDrains()
     {
         var renderer = new TestSvgRenderer();
         var image = CreateImage(renderer);
-        var document = new TestSvgDocument();
+        var document = new PublicationCommitSvgDocument();
         IDisposable? documentUse = null;
-        CancellationTokenSource? tileCancellation = null;
+        RetirableCancellationTokenSource? tileCancellation = null;
         try
         {
             TrackDisposalsUnderWorkLock(image, document);
@@ -38,7 +40,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
             Assert.Equal("previous-good-svg", image.SvgTileCache.CaptureSnapshot().FallbackIdentityPrefix);
             documentUse = AcquireCurrentUse(image, document);
 
-            tileCancellation = new CancellationTokenSource();
+            tileCancellation = new RetirableCancellationTokenSource();
             object workOwner = SvgTileCacheTestOperations.AdmitWork(
                 image.SvgTileCache, (SvgTileRenderPlan)plan, key, tileCancellation);
 
@@ -80,8 +82,8 @@ public sealed class ImageBoxSvgPublicationCommitTests
     {
         var renderer = new TestSvgRenderer();
         var image = CreateImage(renderer);
-        var acceptedDocument = new TestSvgDocument();
-        var candidateDocument = new TestSvgDocument();
+        var acceptedDocument = new PublicationCommitSvgDocument();
+        var candidateDocument = new PublicationCommitSvgDocument();
         IDisposable? acceptedDocumentUse = null;
         Action? queuedPublication = null;
 
@@ -147,8 +149,8 @@ public sealed class ImageBoxSvgPublicationCommitTests
     {
         var renderer = new TestSvgRenderer();
         var image = CreateImage(renderer);
-        var acceptedDocument = new TestSvgDocument();
-        var candidateDocument = new TestSvgDocument();
+        var acceptedDocument = new PublicationCommitSvgDocument();
+        var candidateDocument = new PublicationCommitSvgDocument();
 
         try
         {
@@ -187,8 +189,8 @@ public sealed class ImageBoxSvgPublicationCommitTests
     {
         var renderer = new TestSvgRenderer();
         var image = CreateImage(renderer);
-        var acceptedDocument = new TestSvgDocument();
-        var candidateDocument = new TestSvgDocument();
+        var acceptedDocument = new PublicationCommitSvgDocument();
+        var candidateDocument = new PublicationCommitSvgDocument();
         Action? queuedPublication = null;
 
         try
@@ -231,9 +233,9 @@ public sealed class ImageBoxSvgPublicationCommitTests
     {
         var renderer = new TestSvgRenderer();
         var image = CreateImage(renderer);
-        var acceptedDocument = new TestSvgDocument();
-        var olderCandidateDocument = new TestSvgDocument();
-        var newerDocument = new TestSvgDocument();
+        var acceptedDocument = new PublicationCommitSvgDocument();
+        var olderCandidateDocument = new PublicationCommitSvgDocument();
+        var newerDocument = new PublicationCommitSvgDocument();
         Action? olderPublication = null;
 
         try
@@ -287,11 +289,11 @@ public sealed class ImageBoxSvgPublicationCommitTests
     {
         var renderer = new TestSvgRenderer();
         var image = CreateImage(renderer);
-        var acceptedDocument = new TestSvgDocument();
-        var candidateDocument = new TestSvgDocument();
+        var acceptedDocument = new PublicationCommitSvgDocument();
+        var candidateDocument = new PublicationCommitSvgDocument();
         IDisposable? candidateUse = null;
-        CancellationTokenSource? oldTileWork = null;
-        CancellationTokenSource? lateOldTileWork = null;
+        RetirableCancellationTokenSource? oldTileWork = null;
+        RetirableCancellationTokenSource? lateOldTileWork = null;
         object? oldTileOwner = null;
         object? lateOldTileOwner = null;
         (int X, int Y, int Width, int Height) key = (0, 0, 128, 128);
@@ -320,7 +322,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
                 Height(metadata),
                 candidateGeneration);
 
-            oldTileWork = new CancellationTokenSource();
+            oldTileWork = new RetirableCancellationTokenSource();
             oldTileOwner = RegisterTileFailureOwner(image, acceptedPlan, key, oldTileWork);
 
             // A terminal failure of the older fallback plan detaches only that
@@ -342,7 +344,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
             // A delayed callback from the retired plan cannot invalidate or
             // otherwise disturb the just-committed candidate. The commit
             // detached the retired plan's work, so its owner is no longer mapped.
-            lateOldTileWork = new CancellationTokenSource();
+            lateOldTileWork = new RetirableCancellationTokenSource();
             lateOldTileOwner = new SvgTileWorkOwner(
                 (SvgTileRenderPlan)acceptedPlan,
                 lateOldTileWork,
@@ -386,9 +388,9 @@ public sealed class ImageBoxSvgPublicationCommitTests
     {
         var renderer = new TestSvgRenderer();
         var image = CreateImage(renderer);
-        var document = new TestSvgDocument();
+        var document = new PublicationCommitSvgDocument();
         IDisposable? candidateUse = null;
-        CancellationTokenSource? tileWork = null;
+        RetirableCancellationTokenSource? tileWork = null;
         object? tileWorkOwner = null;
         (int X, int Y, int Width, int Height) key = (0, 0, 128, 128);
 
@@ -411,7 +413,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
                 Height(metadata),
                 candidateGeneration);
 
-            tileWork = new CancellationTokenSource();
+            tileWork = new RetirableCancellationTokenSource();
             tileWorkOwner = RegisterTileFailureOwner(image, failedPlan, key, tileWork);
             Assert.True(image.TileHost.TryInvalidateFailedSvgTile((SvgTileRenderPlan)failedPlan, key, (SvgTileWorkOwner)tileWorkOwner, null));
             Assert.Equal(candidateGeneration, image.Svg.RenderGeneration);
@@ -451,7 +453,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
     {
         var renderer = new TestSvgRenderer();
         var image = CreateImage(renderer);
-        var currentDocument = new TestSvgDocument();
+        var currentDocument = new PublicationCommitSvgDocument();
 
         try
         {
@@ -478,7 +480,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
     {
         var renderer = new TestSvgRenderer();
         var image = CreateImage(renderer);
-        var currentDocument = new TestSvgDocument();
+        var currentDocument = new PublicationCommitSvgDocument();
 
         try
         {
@@ -520,7 +522,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
     {
         var renderer = new TestSvgRenderer();
         var image = CreateImage(renderer);
-        var candidateDocument = new TestSvgDocument();
+        var candidateDocument = new PublicationCommitSvgDocument();
         IDisposable? firstUse = null;
 
         try
@@ -553,8 +555,8 @@ public sealed class ImageBoxSvgPublicationCommitTests
     {
         var renderer = new TestSvgRenderer();
         var image = CreateImage(renderer);
-        var acceptedDocument = new TestSvgDocument();
-        var candidateDocument = new TestSvgDocument();
+        var acceptedDocument = new PublicationCommitSvgDocument();
+        var candidateDocument = new PublicationCommitSvgDocument();
         IDisposable? candidateUse = null;
 
         try
@@ -617,8 +619,8 @@ public sealed class ImageBoxSvgPublicationCommitTests
                 ReleaseOffscreenImageResources = true,
             });
         var image = CreateImage(renderer, session);
-        var acceptedDocument = new TestSvgDocument();
-        var candidateDocument = new TestSvgDocument();
+        var acceptedDocument = new PublicationCommitSvgDocument();
+        var candidateDocument = new PublicationCommitSvgDocument();
         IDisposable? candidateUse = null;
 
         try
@@ -638,7 +640,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
             // so the candidate's render generation stays current and the
             // suspension alone must reject it.
             Assert.True(image.Lifetime.TrySuspend(
-                out CancellationTokenSource? _,
+                out RetirableCancellationTokenSource? _,
                 out ImageWorkLease? suspensionWork));
             suspensionWork?.Dispose();
 
@@ -666,7 +668,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
     {
         var renderer = new TestSvgRenderer();
         var image = CreateImage(renderer);
-        var acceptedDocument = new TestSvgDocument();
+        var acceptedDocument = new PublicationCommitSvgDocument();
 
         try
         {
@@ -718,8 +720,8 @@ public sealed class ImageBoxSvgPublicationCommitTests
     {
         var renderer = new TestSvgRenderer();
         var image = CreateImage(renderer);
-        var acceptedDocument = new TestSvgDocument();
-        var candidateDocument = new TestSvgDocument();
+        var acceptedDocument = new PublicationCommitSvgDocument();
+        var candidateDocument = new PublicationCommitSvgDocument();
         Action? queuedPublication = null;
         bool? layoutInvalidated = null;
         EventHandler<LoadCompletedEventArgs> loadCompleted = (_, args) =>
@@ -773,7 +775,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
     {
         var renderer = new TestSvgRenderer();
         var image = CreateImage(renderer);
-        var acceptedDocument = new TestSvgDocument();
+        var acceptedDocument = new PublicationCommitSvgDocument();
         string cacheKey = "svg-fallback-staging-test:" + Guid.NewGuid().ToString("N");
         object? cacheEntry = null;
 
@@ -801,7 +803,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
             // tiled before any CanvasDevice access. It cannot use an exact whole-
             // bitmap cache entry and therefore exercises the miss/fallback path.
             long rendererIdentity =
-                ImageResourceScope.Shared.ProviderIdentities.GetSvgRendererIdentity(renderer);
+                _renderResources.Images.ProviderIdentities.GetSvgRendererIdentity(renderer);
             var candidateInfo = new MarkdownSvgDocumentInfo(
                 IntrinsicWidthDips: 20_000,
                 IntrinsicHeightDips: 20_000,
@@ -823,10 +825,10 @@ public sealed class ImageBoxSvgPublicationCommitTests
                 null);
             cacheEntry = entry;
 
-            ImageResourceScope.Shared.SvgSources.Set(cacheKey, entry);
+            _renderResources.Images.SvgSources.Set(cacheKey, entry);
 
             var sourceLoader = new ImageSourceLoader(
-                image.SourceLoadHost, image.Context, ImageResourceScope.Shared, image.OutputAdmission, image.OutputDeferral,
+                image.SourceLoadHost, image.Context, _renderResources.Images, image.OutputAdmission, image.OutputDeferral,
                 image.SvgHostDeferral, image.Url, requestedWidth: null, requestedHeight: null);
             Assert.False(sourceLoader.TryLoadFallbackFromProcessCache(cacheKey, expectedWork: null));
 
@@ -853,27 +855,27 @@ public sealed class ImageBoxSvgPublicationCommitTests
         finally
         {
             if (cacheEntry is not null)
-                _ = ImageResourceScope.Shared.SvgSources.Remove(cacheKey);
+                _ = _renderResources.Images.SvgSources.Remove(cacheKey);
             image.Dispose();
             await image.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
         }
     }
 
-    private static ImageBox CreateImage(
+    private ImageBox CreateImage(
         TestSvgRenderer renderer,
         MarkdownPerformanceSession? session = null) => new(
-        CreateContext(renderer, session), ImageResourceScope.Shared,
+        CreateContext(renderer, session), _renderResources.Images,
         "data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%3E%3C%2Fsvg%3E",
         "Publication commit test");
 
-    private static void TrackDisposalsUnderWorkLock(ImageBox image, params TestSvgDocument[] documents)
+    private static void TrackDisposalsUnderWorkLock(ImageBox image, params PublicationCommitSvgDocument[] documents)
     {
         object workLock = image.Lifetime.Sync;
-        foreach (TestSvgDocument document in documents)
+        foreach (PublicationCommitSvgDocument document in documents)
             document.WorkLock = workLock;
     }
 
-    private static MarkdownLayoutContext CreateContext(
+    private MarkdownLayoutContext CreateContext(
         TestSvgRenderer renderer,
         MarkdownPerformanceSession? session)
     {
@@ -902,6 +904,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
             FlowDirection.LeftToRight,
             language: "en-US")
         {
+            RenderResources = _renderResources,
             SvgRenderer = renderer,
             ImageCancellationToken = CancellationToken.None,
             RasterizationScale = 1,
@@ -910,10 +913,10 @@ public sealed class ImageBoxSvgPublicationCommitTests
         };
     }
 
-    private static void CommitTiled(
+    private void CommitTiled(
         ImageBox image,
         TestSvgRenderer renderer,
-        TestSvgDocument document,
+        PublicationCommitSvgDocument document,
         string identity)
     {
         int generation = AdvanceGeneration(image);
@@ -934,7 +937,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
         ImageBox image,
         object plan,
         (int X, int Y, int Width, int Height) key,
-        CancellationTokenSource cancellation) =>
+        RetirableCancellationTokenSource cancellation) =>
         SvgTileCacheTestOperations.AdmitWork(
             image.SvgTileCache, (SvgTileRenderPlan)plan, key, cancellation, claimFailure: true);
 
@@ -947,10 +950,10 @@ public sealed class ImageBoxSvgPublicationCommitTests
             image.SvgTileCache.AbandonUnscheduledTileWork(key, workOwner);
     }
 
-    private static (Action Publish, Action? OnDropped) CreateTiledPublication(
+    private (Action Publish, Action? OnDropped) CreateTiledPublication(
         ImageBox image,
         TestSvgRenderer renderer,
-        TestSvgDocument document,
+        PublicationCommitSvgDocument document,
         string identity,
         bool metadataWasKnown = false,
         Size? intrinsic = null)
@@ -968,7 +971,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
         return Assert.IsType<ValueTuple<Action, Action?>>(publication);
     }
 
-    private static IDisposable AcquireCandidate(ImageBox image, TestSvgDocument document)
+    private static IDisposable AcquireCandidate(ImageBox image, PublicationCommitSvgDocument document)
     {
         SvgDocumentUseLease? lease = image.SvgDocuments.TryAcquireCandidateUse(
             document, out bool ownershipConflict);
@@ -976,10 +979,10 @@ public sealed class ImageBoxSvgPublicationCommitTests
         return Assert.IsAssignableFrom<IDisposable>(lease);
     }
 
-    private static IDisposable AcquireCurrentUse(ImageBox image, TestSvgDocument document) =>
+    private static IDisposable AcquireCurrentUse(ImageBox image, PublicationCommitSvgDocument document) =>
         Assert.IsAssignableFrom<IDisposable>(image.SvgDocuments.TryAcquireUse(document));
 
-    private static object CreateMetadata(
+    private object CreateMetadata(
         ImageBox image,
         TestSvgRenderer renderer,
         int generation,
@@ -990,7 +993,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
         byte[] source = [1, 2, 3, 4];
         Size intrinsicSize = intrinsic ?? new Size(32, 16);
         long rendererIdentity =
-            ImageResourceScope.Shared.ProviderIdentities.GetSvgRendererIdentity(renderer);
+            _renderResources.Images.ProviderIdentities.GetSvgRendererIdentity(renderer);
         var info = new MarkdownSvgDocumentInfo(
             IntrinsicWidthDips: intrinsicSize.Width,
             IntrinsicHeightDips: intrinsicSize.Height,
@@ -1026,7 +1029,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
     }
 
     private static object CreatePlan(
-        TestSvgDocument document,
+        PublicationCommitSvgDocument document,
         string identity,
         int width,
         int height,
@@ -1044,7 +1047,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
 
     private static object? Plan(ImageBox image) => image.Svg.AcceptedPlan;
 
-    private static SvgDocumentUseState DocumentUseState(ImageBox image, TestSvgDocument document)
+    private static SvgDocumentUseState DocumentUseState(ImageBox image, PublicationCommitSvgDocument document)
     {
         lock (image.Lifetime.Sync)
             return image.SvgDocuments.GetUseStateNoLock(document);
@@ -1070,38 +1073,5 @@ public sealed class ImageBoxSvgPublicationCommitTests
             MarkdownSvgOpenRequest request,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException("Publication commit tests do not open provider documents.");
-    }
-
-    private sealed class TestSvgDocument : IMarkdownSvgDocument
-    {
-        private int _disposeCount;
-        private int _disposeWhileWorkLockHeld;
-
-        public MarkdownSvgDocumentInfo Info { get; } = new(
-            IntrinsicWidthDips: 32,
-            IntrinsicHeightDips: 16,
-            IntrinsicAspectRatio: 2);
-
-        internal int DisposeCount => Volatile.Read(ref _disposeCount);
-
-        internal object? WorkLock { get; set; }
-
-        internal bool DisposeWhileWorkLockHeld => Volatile.Read(ref _disposeWhileWorkLockHeld) != 0;
-
-        internal TaskCompletionSource DisposeCompleted { get; } = new(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public ValueTask<MarkdownSvgRaster> RenderAsync(
-            MarkdownSvgRenderRequest request,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException("Publication commit tests do not render SVGs.");
-
-        public void Dispose()
-        {
-            if (WorkLock is { } workLock && Monitor.IsEntered(workLock))
-                Interlocked.Exchange(ref _disposeWhileWorkLockHeld, 1);
-            Interlocked.Increment(ref _disposeCount);
-            DisposeCompleted.TrySetResult();
-        }
     }
 }

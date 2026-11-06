@@ -1,3 +1,4 @@
+using MarkdownRenderer.Layout;
 using System.Runtime.InteropServices.WindowsRuntime;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Boxes;
@@ -9,11 +10,14 @@ using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
-// Warm-cache identity requires isolation from other fixtures' process-wide
-// bitmap-cache trims and admission pressure; the assertions remain unchanged.
+// Each test owns its render resources, so no other fixture can trim its
+// warm cache. The collection still keeps these fixtures off the shared Win2D
+// device while other bitmap-cache tests use it.
 [Collection(SharedCanvasBitmapCacheTestCollection.Name)]
 public sealed class ExifRasterCachePolicyTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Theory]
     [InlineData((ushort)1, 800u, 400u)]
     [InlineData((ushort)2, 800u, 400u)]
@@ -39,7 +43,7 @@ public sealed class ExifRasterCachePolicyTests
                 MaxRasterOutputPixels = 4_000_000,
             });
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
+            DisplaySizedRasterDecodeTests.CreateContext(_renderResources, resolver, session, scale: 1), _renderResources.Images,
             "https://images.example/oriented.jpg",
             string.Empty);
 
@@ -254,7 +258,7 @@ public sealed class ExifRasterCachePolicyTests
         }
     }
 
-    private static async Task<ImageBox> LoadAtLimitAsync(
+    private async Task<ImageBox> LoadAtLimitAsync(
         IMarkdownImageResolver resolver,
         MarkdownPerformanceSession session,
         long pixelLimit,
@@ -262,7 +266,7 @@ public sealed class ExifRasterCachePolicyTests
         uint expectedHeight)
     {
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
+            DisplaySizedRasterDecodeTests.CreateContext(_renderResources, resolver, session, scale: 1), _renderResources.Images,
             "https://images.example/capped.jpg",
             string.Empty);
         try
@@ -281,7 +285,7 @@ public sealed class ExifRasterCachePolicyTests
         }
     }
 
-    private static async Task<ImageBox> LoadAtWidthAsync(
+    private async Task<ImageBox> LoadAtWidthAsync(
         IMarkdownImageResolver resolver,
         MarkdownPerformanceSession session,
         float availableWidth,
@@ -289,7 +293,7 @@ public sealed class ExifRasterCachePolicyTests
         uint expectedHeight)
     {
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
+            DisplaySizedRasterDecodeTests.CreateContext(_renderResources, resolver, session, scale: 1), _renderResources.Images,
             "https://images.example/display.jpg",
             string.Empty);
         try

@@ -877,6 +877,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _attachment.Unload();
         _adorner.ReleaseForDispose();
         _published.LayoutDevice = null;
+        _published.RenderResources = null;
         EffectiveViewportChanged -= _scrolling.OnEffectiveViewportChanged;
         DetachCanvasHandlers();
         _dragShield.Release();

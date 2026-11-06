@@ -1,5 +1,4 @@
 using System;
-using System.Runtime.InteropServices;
 using System.Threading;
 using MarkdownRenderer.Images;
 using Microsoft.Graphics.Canvas;
@@ -17,7 +16,9 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// <remarks>
 /// An image box reaches its scope through one property and hands it to the
 /// objects it composes. A scope holds no reference to a box, document or
-/// control.
+/// control. Each engine owns one scope through its
+/// <see cref="MarkdownRenderResources"/>, so every view of that engine stays
+/// inside one set of budgets.
 /// </remarks>
 internal sealed class ImageResourceScope
 {
@@ -26,13 +27,6 @@ internal sealed class ImageResourceScope
     // document's hard worker deadline or turn a large badge wall into hundreds
     // of false resource-limit failures.
     private const int SvgProviderAdmissionCount = 16;
-
-    /// <summary>
-    /// The scope every view uses. It is the one root
-    /// that keeps the image budgets bounded across all controls in a process;
-    /// a per-control scope would multiply them by the number of open views.
-    /// </summary>
-    internal static ImageResourceScope Shared { get; } = CreateShared();
 
     /// <summary>Creates an isolated scope with the default budgets.</summary>
     internal ImageResourceScope()
@@ -134,23 +128,4 @@ internal sealed class ImageResourceScope
         BitmapCache.Clear();
         SvgSources.Clear();
     }
-
-    private static ImageResourceScope CreateShared()
-    {
-        var scope = new ImageResourceScope();
-        try
-        {
-            Windows.System.MemoryManager.AppMemoryUsageIncreased += scope.OnAppMemoryUsageIncreased;
-        }
-        catch (Exception exception) when (
-            exception is COMException or PlatformNotSupportedException or TypeInitializationException)
-        {
-            // MemoryManager is unavailable in some unpackaged and test hosts.
-            // The hard LRU budgets and explicit device-loss cleanup still apply.
-        }
-
-        return scope;
-    }
-
-    private void OnAppMemoryUsageIncreased(object? sender, object args) => TrimForMemoryPressure();
 }

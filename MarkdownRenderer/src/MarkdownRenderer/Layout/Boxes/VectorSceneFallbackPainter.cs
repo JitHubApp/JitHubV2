@@ -37,10 +37,11 @@ internal sealed class VectorSceneFallbackPainter
         float left = (float)_host.ContentBounds.X;
         float top = (float)(_host.ContentBounds.Y + Math.Max(0, (_host.ContentBounds.Height - textBounds.Height) / 2d));
         NativePaintSessionResources.LayerLease fallbackLayer =
-            NativePaintSessionResources.CreateLayer(drawingSession, 1f, clip);
+            _host.LayoutContext.RenderResources.PaintSessions.CreateLayer(drawingSession, 1f, clip);
         try
         {
             PlacementAwareTextDrawing.DrawAtRootLocalOrigin(
+                _host.LayoutContext.PlacementTransform,
                 drawingSession,
                 layout,
                 left,
@@ -89,7 +90,7 @@ internal sealed class VectorSceneFallbackPainter
         }
 
         NativePaintSessionResources.LayerLease fallbackLayer =
-            NativePaintSessionResources.CreateLayer(drawingSession, 1f, clip);
+            _host.LayoutContext.RenderResources.PaintSessions.CreateLayer(drawingSession, 1f, clip);
         try
         {
             VectorSceneCapacityFallback.DrawTextWithScale(

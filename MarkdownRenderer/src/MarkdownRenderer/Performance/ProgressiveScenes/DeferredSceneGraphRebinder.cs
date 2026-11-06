@@ -191,7 +191,7 @@ internal sealed class DeferredSceneGraphRebinder
                 else
                 {
                     var active = new ActiveSceneWork(_host.GenerationNoLock,
-                        CancellationTokenSource.CreateLinkedTokenSource(_host.GenerationTokenNoLock, cancellationToken));
+                        RetirableCancellationTokenSource.CreateLinked(_host.GenerationTokenNoLock, cancellationToken));
                     request = new GraphRebindWork(active, snapshot, policy, candidate.Preparation, revision, band);
                     _graphRebinds.Add(box, request);
                     active.Task = Task.Run(() => PrepareGraphRebindAsync(

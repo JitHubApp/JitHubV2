@@ -23,6 +23,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 /// </summary>
 public sealed class SemanticNodeIndexConstructionTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Theory]
     [InlineData(FlowDirection.LeftToRight)]
     [InlineData(FlowDirection.RightToLeft)]
@@ -167,7 +169,7 @@ public sealed class SemanticNodeIndexConstructionTests
         var images = new ImageBox[32];
         for (int index = 0; index < images.Length; index++)
         {
-            images[index] = new ImageBox(context, ImageResourceScope.Shared, string.Empty, $"image {index}")
+            images[index] = new ImageBox(context, context.ImageResources, string.Empty, $"image {index}")
             {
                 BlockIndex = context.NextBlockIndex(),
             };
@@ -185,7 +187,7 @@ public sealed class SemanticNodeIndexConstructionTests
         Assert.Equal(0, GetSpanMap(document).EnsureCapacity(0));
     }
 
-    private static LayoutSnapshot CreateMixedSnapshot(FlowDirection flowDirection)
+    private LayoutSnapshot CreateMixedSnapshot(FlowDirection flowDirection)
     {
         MarkdownLayoutContext context = CreateContext(new string('x', 1024), flowDirection);
 
@@ -194,7 +196,7 @@ public sealed class SemanticNodeIndexConstructionTests
         heading.Add(new TextRun(" "));
         heading.Add(new InlineImageRun(context, "photo", "https://example.test/photo.png"));
         heading.Add(new TextRun(" "));
-        heading.Add(new InlineEmbedRun(24, 18, static () => throw new InvalidOperationException()));
+        heading.Add(new InlineEmbedRun(24, 18, () => throw new InvalidOperationException()));
         heading.Add(new TextRun(" "));
         heading.Add(new AbbreviationRun("abbr", "expanded"));
         heading.Add(new TextRun(" "));
@@ -219,7 +221,7 @@ public sealed class SemanticNodeIndexConstructionTests
         codeChunk.Add(new TextRun("var x = 1;"));
         codeBlock.AddChunk(codeChunk);
 
-        var poster = new ImageBox(context, ImageResourceScope.Shared, string.Empty, "poster")
+        var poster = new ImageBox(context, context.ImageResources, string.Empty, "poster")
         {
             BlockIndex = context.NextBlockIndex(),
         };
@@ -492,7 +494,7 @@ public sealed class SemanticNodeIndexConstructionTests
         MarkdownSemanticDocument document)
         => Assert.IsType<Dictionary<(int BlockIndex, int InlineIndex), int>>(document.Positions.SpanIndexByPosition);
 
-    private static MarkdownLayoutContext CreateContext(string source, FlowDirection flowDirection)
+    private MarkdownLayoutContext CreateContext(string source, FlowDirection flowDirection)
     {
         var style = new ElementStyle();
         var styles = new Dictionary<string, ElementStyle>(StringComparer.Ordinal)
@@ -522,7 +524,7 @@ public sealed class SemanticNodeIndexConstructionTests
             theme,
             new MarkdownSourceMap(source),
             new MarkdownExtensionRegistry(),
-            flowDirection);
+            flowDirection) { RenderResources = _renderResources };
     }
 
     private sealed record OracleIndexes(

@@ -58,7 +58,7 @@ internal sealed class MarkdownProgressiveScenePlan :
     private readonly DeferredSceneViewportProbe _viewportProbe;
     private HashSet<string> _visibleMarkers = new(StringComparer.Ordinal);
     private bool _hasVisibleBand;
-    private CancellationTokenSource _generationCancellation = new();
+    private RetirableCancellationTokenSource _generationCancellation = new();
     private long _generation;
     private bool _disposed;
     private Task? _retirementTask;
@@ -135,6 +135,7 @@ internal sealed class MarkdownProgressiveScenePlan :
         IReadOnlyList<BlockBox> measuredTopLevelBlocks,
         IReadOnlyList<int> topLevelOrdinals,
         LayoutPlacementGeneration placements,
+        LayoutPlacementTransformContext placementTransform,
         IReadOnlyDictionary<int, int> topLevelOrdinalByBlockIndex,
         double viewportTop,
         double viewportBottom,
@@ -146,6 +147,7 @@ internal sealed class MarkdownProgressiveScenePlan :
             measuredTopLevelBlocks,
             topLevelOrdinals,
             placements,
+            placementTransform,
             topLevelOrdinalByBlockIndex,
             viewportTop,
             viewportBottom,
@@ -282,7 +284,7 @@ internal sealed class MarkdownProgressiveScenePlan :
     {
         lock (_retirementLifecycleGate)
         {
-            CancellationTokenSource oldCancellation;
+            RetirableCancellationTokenSource oldCancellation;
             ActiveSceneWork[] activeWorks;
             lock (_gate)
             {
@@ -290,7 +292,7 @@ internal sealed class MarkdownProgressiveScenePlan :
                     return _retirementTask ?? Task.CompletedTask;
 
                 oldCancellation = _generationCancellation;
-                _generationCancellation = new CancellationTokenSource();
+                _generationCancellation = new RetirableCancellationTokenSource();
                 _generation++;
                 activeWorks = _active.Count == 0 && !_graphRebinder.HasRebindsNoLock
                     ? Array.Empty<ActiveSceneWork>()
@@ -399,7 +401,7 @@ internal sealed class MarkdownProgressiveScenePlan :
             token = _generationCancellation.Token;
             var activeWork = new ActiveSceneWork(
                 _generation,
-                CancellationTokenSource.CreateLinkedTokenSource(token));
+                RetirableCancellationTokenSource.CreateLinked(token));
             Task task = Task.Run(
                 () => _publisher.PrepareAndPublishAsync(
                     marker,
@@ -532,7 +534,7 @@ internal sealed class MarkdownProgressiveScenePlan :
     {
         lock (_retirementLifecycleGate)
         {
-            CancellationTokenSource cancellation;
+            RetirableCancellationTokenSource cancellation;
             ActiveSceneWork[] activeWorks;
             TaskCompletionSource completion;
             lock (_gate)

@@ -15,18 +15,26 @@ namespace MarkdownRenderer.Layout;
 /// </summary>
 internal static class PlacementAwareTextDrawing
 {
+    /// <param name="placement">The placement state of the layout context that owns the text.</param>
+    /// <param name="drawingSession">The session to draw into.</param>
+    /// <param name="layout">The text to draw.</param>
+    /// <param name="rootLocalX">The root-local left edge.</param>
+    /// <param name="rootLocalY">The root-local top edge.</param>
+    /// <param name="color">The text color.</param>
     internal static void DrawAtRootLocalOrigin(
+        LayoutPlacementTransformContext placement,
         CanvasDrawingSession drawingSession,
         CanvasTextLayout layout,
         float rootLocalX,
         float rootLocalY,
         Color color)
     {
-        LayoutPlacementTransformContext.GetCurrentTranslation(
+        ArgumentNullException.ThrowIfNull(placement);
+        placement.GetCurrentTranslation(
             out float translationX,
             out float translationY);
         Matrix3x2 originalTransform = drawingSession.Transform;
-        if (!LayoutPlacementTransformContext.TryGetPlacementFreeCanvasTransform(
+        if (!placement.TryGetPlacementFreeCanvasTransform(
                 originalTransform,
                 out Matrix3x2 placementFreeTransform))
         {

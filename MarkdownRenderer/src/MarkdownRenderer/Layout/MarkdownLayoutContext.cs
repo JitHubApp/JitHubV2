@@ -40,6 +40,7 @@ internal sealed class MarkdownLayoutContext
     private Func<Block, BlockBox?>? _childBlockBuilder;
     private MarkdownSourceProjection? _sourceProjection;
     private MarkdownSourceProjection? _safeHtmlSourceProjection;
+    private MarkdownRenderResources? _renderResources;
 
     // Reuse the owning builder for structural children of extension-owned
     // containers. Like the inline callback, this must not survive construction
@@ -206,10 +207,22 @@ internal sealed class MarkdownLayoutContext
             // control operation, but retaining this check also protects direct
             // relayout callers and test hosts that supply an independent token.
             _cancellationToken.ThrowIfCancellationRequested();
-            return LayoutPassCancellation.GetEffectiveToken(_cancellationToken);
+            return PassCancellation.GetEffectiveToken(_cancellationToken);
         }
         init => _cancellationToken = value;
     }
+
+    /// <summary>
+    /// The token of the measure pass that currently uses this context. A pass
+    /// pushes its token here so that boxes built in this context observe it.
+    /// </summary>
+    internal LayoutPassCancellation PassCancellation { get; } = new();
+
+    /// <summary>
+    /// The root-placement translation of the query, paint or measure that is
+    /// reading boxes built in this context.
+    /// </summary>
+    internal LayoutPlacementTransformContext PlacementTransform { get; } = new();
 
     internal void SetCancellationToken(CancellationToken cancellationToken) =>
         _cancellationToken = cancellationToken;
@@ -227,6 +240,8 @@ internal sealed class MarkdownLayoutContext
         return new(ResourceCreator, ThemeSnapshot, SourceMap, Registry, FlowDirection, Dispatcher, Language)
         {
             CancellationToken = CancellationToken.None,
+            // Candidates measure and paint within the source's budgets.
+            RenderResources = RenderResources,
             ImageCancellationToken = imageCancellationToken,
             RetirementSink = retirementSink,
             ImageUnavailable = imageUnavailable,
@@ -396,11 +411,27 @@ internal sealed class MarkdownLayoutContext
         ImagePreparationOwner ?? PerformanceDocumentOwner;
 
     /// <summary>
+    /// The caches, budgets and native custody shared by the boxes built in
+    /// this context: those of the engine whose document is laid out. A
+    /// context created without them gets an isolated set of its own.
+    /// </summary>
+    internal MarkdownRenderResources RenderResources
+    {
+        get => Volatile.Read(ref _renderResources) ?? CreateIsolatedRenderResources();
+        init => _renderResources = value ?? throw new ArgumentNullException(nameof(value));
+    }
+
+    /// <summary>
     /// The image caches, budgets and admission gates that this layout's image
     /// boxes share. Builders take the scope from here rather than naming one.
-    /// It defaults to the process scope until an engine or device scope owns it.
     /// </summary>
-    internal ImageResourceScope ImageResources { get; init; } = ImageResourceScope.Shared;
+    internal ImageResourceScope ImageResources => RenderResources.Images;
+
+    private MarkdownRenderResources CreateIsolatedRenderResources()
+    {
+        return Interlocked.CompareExchange(ref _renderResources, new MarkdownRenderResources(), null) ??
+            _renderResources!;
+    }
 
     /// <summary>
     /// Shared static-SVG provider borrowed from the host control. Image boxes

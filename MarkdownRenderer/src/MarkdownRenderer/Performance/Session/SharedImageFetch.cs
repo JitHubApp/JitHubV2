@@ -10,7 +10,7 @@ namespace MarkdownRenderer.Performance;
 /// request for the same key until its last waiter leaves.
 /// </summary>
 internal sealed class SharedImageFetch(
-    CancellationTokenSource cancellation,
+    RetirableCancellationTokenSource cancellation,
     bool background,
     MarkdownPerformanceSessionLifetime lifetime,
     IDisposable lifetimeWork)
@@ -21,7 +21,7 @@ internal sealed class SharedImageFetch(
     private readonly CancellationRetirementHandshake _cancellationRetirement = new(cancellation);
     private int _resolutionStarted;
     private IDisposable? _lifetimeWork = lifetimeWork;
-    internal CancellationTokenSource Cancellation { get; } = cancellation;
+    internal RetirableCancellationTokenSource Cancellation { get; } = cancellation;
     internal bool Background { get; } = background;
     internal Task<bool> Task => _completion.Task;
     internal int WaiterCount { get; set; }

@@ -40,7 +40,7 @@ public sealed class IdleImagePlacementCloneTests
 
             Assert.True(MarkdownBuiltInImageSourcePolicy.TryResolve(
                 builtinUrl, null, out MarkdownBuiltInImageSource builtIn));
-            using (SharedCanvasBitmapCache.Lease ignoredSeedReference = ImageResourceScope.Shared.BitmapCache.StoreAndAcquire(
+            using (SharedCanvasBitmapCache.Lease ignoredSeedReference = fixture.RenderResources.Images.BitmapCache.StoreAndAcquire(
                        seed.Device,
                        builtIn.CacheKey,
                        CreateBitmap(seed.Device, 3, 2),
@@ -50,7 +50,7 @@ public sealed class IdleImagePlacementCloneTests
                 // existed. A private idle clone must not adopt it as a hit.
             }
 
-            Assert.True(ImageResourceScope.Shared.BitmapCache.TryAcquire(seed.Device, builtIn.CacheKey, out cacheProbe));
+            Assert.True(fixture.RenderResources.Images.BitmapCache.TryAcquire(seed.Device, builtIn.CacheKey, out cacheProbe));
             int cacheReferencesBefore = GetEntryReferenceCount(cacheProbe!);
 
             Assert.False(InlinePrivatePlacementCloner.TryCreatePrivateRasterImageCandidates(
@@ -332,7 +332,7 @@ public sealed class IdleImagePlacementCloneTests
 
         try
         {
-            completedLease = ImageResourceScope.Shared.BitmapCache.StoreAndAcquire(
+            completedLease = fixture.RenderResources.Images.BitmapCache.StoreAndAcquire(
                 seed.Device,
                 $"idle-preflight-completed-{Guid.NewGuid():N}",
                 CreateBitmap(seed.Device, 8, 4),
@@ -463,6 +463,10 @@ public sealed class IdleImagePlacementCloneTests
 
     private sealed class ImagePlacementFixture : IAsyncDisposable
     {
+        private readonly MarkdownRenderResources _renderResources = new();
+
+        internal MarkdownRenderResources RenderResources => _renderResources;
+
         private readonly MultiRasterPlacementCloneTests.MultiRasterFixture _seed;
         private readonly object _imagePreparationOwner = new();
         private readonly List<(MarkdownLayoutContext Context, InlineContainerBox Root)> _candidates = new();
@@ -486,6 +490,7 @@ public sealed class IdleImagePlacementCloneTests
                 seed.SourceContext.Dispatcher,
                 seed.SourceContext.Language)
             {
+                RenderResources = _renderResources,
                 CancellationToken = CancellationToken.None,
                 ImageCancellationToken = CancellationToken.None,
                 RasterizationScale = seed.SourceContext.RasterizationScale,
@@ -597,7 +602,7 @@ public sealed class IdleImagePlacementCloneTests
             foreach ((MarkdownLayoutContext context, InlineContainerBox root) in _candidates.ToArray())
                 await RetireCandidateAsync(context, root);
             await RetireSourceAsync();
-            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(_seed.Device);
+            _renderResources.Images.BitmapCache.ReleaseDevice(_seed.Device);
         }
     }
 

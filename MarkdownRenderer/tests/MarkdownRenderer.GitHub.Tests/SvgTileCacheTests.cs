@@ -177,7 +177,7 @@ public sealed class SvgTileCacheTests
         var host = new TestSvgTileCacheHost();
         SvgTileRenderPlan plan = TestSvgTileCacheHost.Plan("svg-cache-prefix:removed-success-owner", 2048, 2048, 40);
         host.Accept(plan);
-        using var work = new CancellationTokenSource();
+        using var work = new RetirableCancellationTokenSource();
         SvgTileKey key = (0, 0, TileSize, TileSize);
         _ = SvgTileCacheTestOperations.AdmitWork(host.Cache, plan, key, work);
         host.Cache.CompleteSvgTileWork(key, work);
@@ -192,8 +192,8 @@ public sealed class SvgTileCacheTests
         var host = new TestSvgTileCacheHost();
         SvgTileRenderPlan plan = TestSvgTileCacheHost.Plan("svg-cache-prefix:reassigned-success-owner", 2048, 2048, 42);
         host.Accept(plan);
-        using var staleWork = new CancellationTokenSource();
-        using var currentWork = new CancellationTokenSource();
+        using var staleWork = new RetirableCancellationTokenSource();
+        using var currentWork = new RetirableCancellationTokenSource();
         SvgTileKey key = (0, 0, TileSize, TileSize);
         _ = new SvgTileWorkOwner(plan, staleWork, plan.Demand);
         _ = SvgTileCacheTestOperations.AdmitWork(host.Cache, plan, key, currentWork);
@@ -210,7 +210,7 @@ public sealed class SvgTileCacheTests
         var host = new TestSvgTileCacheHost();
         SvgTileRenderPlan plan = TestSvgTileCacheHost.Plan("svg-cache-prefix:current-success-owner", 2048, 2048, 44);
         host.Accept(plan);
-        using var work = new CancellationTokenSource();
+        using var work = new RetirableCancellationTokenSource();
         SvgTileKey key = (0, 0, TileSize, TileSize);
         _ = SvgTileCacheTestOperations.AdmitWork(host.Cache, plan, key, work);
 
@@ -223,7 +223,7 @@ public sealed class SvgTileCacheTests
         SvgTileCache cache,
         SvgTileRenderPlan plan,
         SvgTileKey key,
-        CancellationTokenSource work)
+        RetirableCancellationTokenSource work)
     {
         SvgTilePublicationOwnership ownership = default;
         SharedCanvasBitmapCache.Lease? previous = null;

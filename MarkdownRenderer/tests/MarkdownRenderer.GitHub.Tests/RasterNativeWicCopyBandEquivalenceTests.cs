@@ -18,6 +18,7 @@ public sealed class RasterNativeWicCopyBandEquivalenceTests(ITestOutputHelper ou
     private const int RequestedWidth = 19;
     private const int MaximumPixels = 300_000;
     private static readonly CancellationToken s_noCancellation = CancellationToken.None;
+    private readonly NativeResourceRetirement _retirement = new(createTimer: false);
 
     [Fact]
     [Trait("Category", "NativeMemoryQualification")]
@@ -163,16 +164,16 @@ public sealed class RasterNativeWicCopyBandEquivalenceTests(ITestOutputHelper ou
         Assert.Equal(ledgerBefore, GetLedgerSnapshot());
     }
 
-    private static RasterDecodedPixelLease DecodeByMode(
+    private RasterDecodedPixelLease DecodeByMode(
         byte[] source,
         RasterImageDecodePlan plan,
         IDisposable credit,
         CopyMode mode) =>
         mode switch
         {
-            CopyMode.Full => RasterNativeWicDecoder.Decode(source, plan, credit, s_noCancellation),
-            CopyMode.Banded64 => RasterNativeWicDecoder.Decode(source, plan, credit, new RasterNativeWicDecodeOptions(CopyBandRows: 64), s_noCancellation),
-            CopyMode.Banded16 => RasterNativeWicDecoder.Decode(source, plan, credit, new RasterNativeWicDecodeOptions(CopyBandRows: 16), s_noCancellation),
+            CopyMode.Full => RasterNativeWicDecoder.Decode(source, plan, credit, _retirement, s_noCancellation),
+            CopyMode.Banded64 => RasterNativeWicDecoder.Decode(source, plan, credit, _retirement, new RasterNativeWicDecodeOptions(CopyBandRows: 64), s_noCancellation),
+            CopyMode.Banded16 => RasterNativeWicDecoder.Decode(source, plan, credit, _retirement, new RasterNativeWicDecodeOptions(CopyBandRows: 16), s_noCancellation),
             _ => throw new ArgumentOutOfRangeException(nameof(mode)),
         };
 
@@ -188,15 +189,15 @@ public sealed class RasterNativeWicCopyBandEquivalenceTests(ITestOutputHelper ou
         return (source, plan);
     }
 
-    private static void AssertStaticCopiesMatch(byte[] source, RasterImageDecodePlan plan, int copyBandRows)
+    private void AssertStaticCopiesMatch(byte[] source, RasterImageDecodePlan plan, int copyBandRows)
     {
         var fullCredit = new CountingDecodeCredit();
         var bandedCredit = new CountingDecodeCredit();
         LedgerSnapshot before = GetLedgerSnapshot();
         using (RasterDecodedPixelLease full = RasterNativeWicDecoder.Decode(
-                   source, plan, fullCredit, s_noCancellation))
+                   source, plan, fullCredit, _retirement, s_noCancellation))
         using (RasterDecodedPixelLease banded = RasterNativeWicDecoder.Decode(
-                   source, plan, bandedCredit, new RasterNativeWicDecodeOptions(CopyBandRows: copyBandRows), s_noCancellation))
+                   source, plan, bandedCredit, _retirement, new RasterNativeWicDecodeOptions(CopyBandRows: copyBandRows), s_noCancellation))
         {
             Assert.Equal((full.Width, full.Height), (banded.Width, banded.Height));
             Assert.True(full.Pixels.AsSpan().SequenceEqual(banded.Pixels), "Row-banded final CopyPixels changed output bytes.");
@@ -207,15 +208,15 @@ public sealed class RasterNativeWicCopyBandEquivalenceTests(ITestOutputHelper ou
         Assert.Equal(before, GetLedgerSnapshot());
     }
 
-    private static void AssertGifCopiesMatch(byte[] source, RasterGifFirstFrameDecodePlan plan, int copyBandRows)
+    private void AssertGifCopiesMatch(byte[] source, RasterGifFirstFrameDecodePlan plan, int copyBandRows)
     {
         var fullCredit = new CountingDecodeCredit();
         var bandedCredit = new CountingDecodeCredit();
         LedgerSnapshot before = GetLedgerSnapshot();
         using (RasterDecodedPixelLease full = RasterNativeWicDecoder.DecodeGifFirstFrame(
-                   source, plan, fullCredit, s_noCancellation))
+                   source, plan, fullCredit, _retirement, s_noCancellation))
         using (RasterDecodedPixelLease banded = RasterNativeWicDecoder.DecodeGifFirstFrame(
-                   source, plan, bandedCredit, new RasterNativeWicDecodeOptions(CopyBandRows: copyBandRows), s_noCancellation))
+                   source, plan, bandedCredit, _retirement, new RasterNativeWicDecodeOptions(CopyBandRows: copyBandRows), s_noCancellation))
         {
             Assert.Equal((full.Width, full.Height), (banded.Width, banded.Height));
             Assert.True(full.Pixels.AsSpan().SequenceEqual(banded.Pixels), "GIF row-banded final CopyPixels changed output bytes.");
@@ -226,13 +227,12 @@ public sealed class RasterNativeWicCopyBandEquivalenceTests(ITestOutputHelper ou
         Assert.Equal(before, GetLedgerSnapshot());
     }
 
-    private static LedgerSnapshot GetLedgerSnapshot()
+    private LedgerSnapshot GetLedgerSnapshot()
     {
-        NativeResourceRetirement retirement = NativeResourceRetirement.Shared;
         return new LedgerSnapshot(
-            retirement.PendingRecordCount,
-            retirement.PendingResourceCount,
-            retirement.QuarantinedResourceCount);
+            _retirement.PendingRecordCount,
+            _retirement.PendingResourceCount,
+            _retirement.QuarantinedResourceCount);
     }
 
     private readonly record struct LedgerSnapshot(int PendingRecords, long PendingResources, long QuarantinedResources);

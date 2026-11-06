@@ -134,7 +134,7 @@ public sealed class MarkdownPerformanceSourceLeaseTests
         var context = new MarkdownImageResolveContext(null);
         using IMarkdownPerformanceDocumentScope document =
             ((IMarkdownPerformanceSessionInternal)session).OpenDocument(resolver, context);
-        using var cancellation = new CancellationTokenSource();
+        using var cancellation = new RetirableCancellationTokenSource();
 
         Task<IMarkdownImageResolutionLease> pending = document.ResolveWithSourceLeaseAsync(
             "late.png", context, cancellation.Token).AsTask();
@@ -253,7 +253,7 @@ public sealed class MarkdownPerformanceSourceLeaseTests
         var context = new MarkdownImageResolveContext(null);
         using IMarkdownPerformanceDocumentScope document =
             ((IMarkdownPerformanceSessionInternal)session).OpenDocument(resolver, context);
-        using var canceledToken = new CancellationTokenSource();
+        using var canceledToken = new RetirableCancellationTokenSource();
         Task<IMarkdownImageResolutionLease> canceled = document.ResolveWithSourceLeaseAsync(
             "canceled-waiter.png", context, canceledToken.Token).AsTask();
         Task<IMarkdownImageResolutionLease>? surviving = null;
@@ -301,7 +301,7 @@ public sealed class MarkdownPerformanceSourceLeaseTests
         var context = new MarkdownImageResolveContext(null);
         using IMarkdownPerformanceDocumentScope document =
             ((IMarkdownPerformanceSessionInternal)session).OpenDocument(resolver, context);
-        using var cancellation = new CancellationTokenSource();
+        using var cancellation = new RetirableCancellationTokenSource();
         Task<IMarkdownImageResolutionLease> pending = document.ResolveWithSourceLeaseAsync(
             "blocked-callback.png", context, cancellation.Token).AsTask();
         Task? shutdown = null;
@@ -340,7 +340,7 @@ public sealed class MarkdownPerformanceSourceLeaseTests
     [Fact]
     public async Task CancellationRequestAndRetirementHandshakeCannotLoseRunningCallbacks()
     {
-        using var source = new CancellationTokenSource();
+        using var source = new RetirableCancellationTokenSource();
         var callbackStarted = new TaskCompletionSource<bool>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseCallback = new TaskCompletionSource<bool>(
@@ -410,7 +410,7 @@ public sealed class MarkdownPerformanceSourceLeaseTests
         var context = new MarkdownImageResolveContext(null);
         using IMarkdownPerformanceDocumentScope document =
             ((IMarkdownPerformanceSessionInternal)session).OpenDocument(resolver, context);
-        using var cancellation = new CancellationTokenSource();
+        using var cancellation = new RetirableCancellationTokenSource();
         Task<IMarkdownImageResolutionLease> pending = document.ResolveWithSourceLeaseAsync(
             "throwing-callback.png", context, cancellation.Token).AsTask();
         Task? shutdown = null;

@@ -1,3 +1,4 @@
+using MarkdownRenderer.Layout;
 using System.Collections.Concurrent;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Images;
@@ -9,6 +10,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class ImageFailureNotificationTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -24,10 +27,10 @@ public sealed class ImageFailureNotificationTests
         using var session = progressive ? new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive) : null;
         var reports = new ConcurrentQueue<MarkdownImageUnavailableReason>();
         var resolver = new ByteResolver(bytes, key);
-        var context = DisplaySizedRasterDecodeTests.CreateContext(resolver, session, 1,
+        var context = DisplaySizedRasterDecodeTests.CreateContext(_renderResources, resolver, session, 1,
             imageUnavailable: (_, reason, _) => reports.Enqueue(reason));
-        var first = new ImageBox(context, ImageResourceScope.Shared, "https://images.example/broken.png", "Banner");
-        var cached = new ImageBox(context, ImageResourceScope.Shared, "https://images.example/broken.png", "Banner");
+        var first = new ImageBox(context, context.ImageResources, "https://images.example/broken.png", "Banner");
+        var cached = new ImageBox(context, context.ImageResources, "https://images.example/broken.png", "Banner");
         try
         {
             first.Measure(100);
@@ -59,9 +62,9 @@ public sealed class ImageFailureNotificationTests
     public async Task ExplicitPolicyFailureIsNotReportedAgainAsGenericUnavailable(MarkdownImageUnavailableReason reason)
     {
         var reports = new ConcurrentQueue<MarkdownImageUnavailableReason>();
-        var context = DisplaySizedRasterDecodeTests.CreateContext(new BlockedResolver(reason), null, 1,
+        var context = DisplaySizedRasterDecodeTests.CreateContext(_renderResources, new BlockedResolver(reason), null, 1,
             imageUnavailable: (_, value, _) => reports.Enqueue(value));
-        var image = new ImageBox(context, ImageResourceScope.Shared, "https://images.example/blocked.png", "Banner");
+        var image = new ImageBox(context, context.ImageResources, "https://images.example/blocked.png", "Banner");
         try
         {
             image.Measure(100);
@@ -77,11 +80,11 @@ public sealed class ImageFailureNotificationTests
     public void InitiallyFailedImageReportsOnlyOnActivationAndNeverAfterDisposal()
     {
         var reports = new ConcurrentQueue<MarkdownImageUnavailableReason>();
-        var context = DisplaySizedRasterDecodeTests.CreateContext(
+        var context = DisplaySizedRasterDecodeTests.CreateContext(_renderResources, 
             new BlockedResolver(MarkdownImageUnavailableReason.Offline), null, 1,
             imageUnavailable: (_, value, _) => reports.Enqueue(value));
-        var image = new ImageBox(context, ImageResourceScope.Shared, string.Empty, "Missing source");
-        var retired = new ImageBox(context, ImageResourceScope.Shared, string.Empty, "Retired source");
+        var image = new ImageBox(context, context.ImageResources, string.Empty, "Missing source");
+        var retired = new ImageBox(context, context.ImageResources, string.Empty, "Retired source");
         try
         {
             Assert.Empty(reports);

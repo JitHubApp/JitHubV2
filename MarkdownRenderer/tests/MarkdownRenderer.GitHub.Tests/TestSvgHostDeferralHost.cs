@@ -20,11 +20,12 @@ internal sealed class TestSvgHostDeferralHost : ISvgHostDeferralHost
     public CancellationToken Cancellation { get; set; }
     public int StartLoadCount { get; private set; }
 
-    /// <summary>Creates a deferral over a fresh host in the shared scope.</summary>
-    internal static SvgHostLoadDeferral CreateDeferral()
+    /// <summary>Creates a deferral over a fresh host in <paramref name="scope"/>.</summary>
+    /// <param name="scope">The test's image scope.</param>
+    internal static SvgHostLoadDeferral CreateDeferral(ImageResourceScope scope)
     {
         var host = new TestSvgHostDeferralHost();
-        var deferral = new SvgHostLoadDeferral(host, ImageResourceScope.Shared);
+        var deferral = new SvgHostLoadDeferral(host, scope);
         Hosts.Add(deferral, host);
         return deferral;
     }

@@ -50,7 +50,7 @@ internal sealed class SnapshotPainter
                 long before = measure ? GC.GetAllocatedBytesForCurrentThread() : 0;
                 Matrix3x2 originalTransform = ds.Transform;
                 using LayoutPlacementTransformContext.Scope placementScope =
-                    LayoutPlacementTransformContext.Enter(
+                    _geometry.PlacementTransform.Enter(
                         placement.TranslationX, placement.TranslationY, originalTransform);
                 try
                 {
@@ -113,7 +113,7 @@ internal sealed class SnapshotPainter
                 if (!placement.Measured) continue;
                 Matrix3x2 originalTransform = ds.Transform;
                 using LayoutPlacementTransformContext.Scope placementScope =
-                    LayoutPlacementTransformContext.Enter(
+                    _geometry.PlacementTransform.Enter(
                         placement.TranslationX, placement.TranslationY, originalTransform);
                 try
                 {

@@ -82,7 +82,7 @@ internal sealed class ImageBox : BlockBox, ISelectionBackgroundGeometrySource, I
         string alt,
         SafeHtmlLength? requestedWidth = null,
         SafeHtmlLength? requestedHeight = null)
-        : this(context, resources, url, alt, requestedWidth, requestedHeight, NativeResourceRetirement.Shared, null, null)
+        : this(context, resources, url, alt, requestedWidth, requestedHeight, context.RenderResources.NativeRetirement, null, null)
     {
     }
 
@@ -238,7 +238,7 @@ internal sealed class ImageBox : BlockBox, ISelectionBackgroundGeometrySource, I
         _lifetime = new ImageWorkLifetime(
             this,
             context,
-            System.Threading.CancellationTokenSource.CreateLinkedTokenSource(context.ImageCancellationToken));
+            RetirableCancellationTokenSource.CreateLinked(context.ImageCancellationToken));
         _load = new ImageLoadState();
         _presentation = new ImagePresentation(_lifetime, _load);
         _documents = new SvgDocumentCustody(_lifetime);

@@ -18,12 +18,14 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class CompactSemanticNodeStorageTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Fact]
     public void TypedOwnersStayNullForCompatiblePrimaryBoxAndPreserveDirectSecondaryAndMultipleOwners()
     {
         MarkdownLayoutContext context = CreateContext();
         var inline = new InlineContainerBox(context, MarkdownElementKeys.Body);
-        var image = new ImageBox(context, ImageResourceScope.Shared, "https://example.test/image.png", "image");
+        var image = new ImageBox(context, context.ImageResources, "https://example.test/image.png", "image");
         var embed = new EmbedBox(Markdig.Markdown.Parse("embed")[0], StubEmbedFactory.Instance);
         var table = new TableBox(
             context,
@@ -310,7 +312,7 @@ public sealed class CompactSemanticNodeStorageTests
         Assert.Equal(20, child.TextEnd);
     }
 
-    private static MarkdownLayoutContext CreateContext()
+    private MarkdownLayoutContext CreateContext()
     {
         var style = new ElementStyle();
         var styles = new Dictionary<string, ElementStyle>(StringComparer.Ordinal)
@@ -336,7 +338,7 @@ public sealed class CompactSemanticNodeStorageTests
             theme,
             new MarkdownSourceMap(string.Empty),
             new MarkdownExtensionRegistry(),
-            FlowDirection.LeftToRight);
+            FlowDirection.LeftToRight) { RenderResources = _renderResources };
     }
 
     private static MarkdownSemanticNode CreateMixedNumericNode(

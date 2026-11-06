@@ -199,9 +199,10 @@ internal sealed class RasterBitmapDecoder
             return false;
         IDisposable nativeCredit = state.ProcessDecodeSlot!;
         var nativeOptions = new RasterNativeWicDecodeOptions(_resources.NativeWic);
+        NativeResourceRetirement nativeRetirement = _context.RenderResources.NativeRetirement;
         Task<RasterDecodedPixelLease> nativeTask = Task.Run(
             () => RasterNativeWicDecoder.Decode(
-                        bytes, nativePlan, nativeCredit, nativeOptions, decodeToken),
+                        bytes, nativePlan, nativeCredit, nativeRetirement, nativeOptions, decodeToken),
             CancellationToken.None);
         // Decode consumes credit on every invocation path. If
         // scheduling itself throws, the caller still owns it.
@@ -247,9 +248,10 @@ internal sealed class RasterBitmapDecoder
         {
             IDisposable nativeCredit = state.ProcessDecodeSlot!;
             var nativeOptions = new RasterNativeWicDecodeOptions(_resources.NativeWic);
+            NativeResourceRetirement nativeRetirement = _context.RenderResources.NativeRetirement;
             Task<RasterDecodedPixelLease> nativeTask = Task.Run(
                 () => RasterNativeWicDecoder.DecodeGifFirstFrame(
-                    bytes, nativeGifPlan, nativeCredit, nativeOptions, decodeToken),
+                    bytes, nativeGifPlan, nativeCredit, nativeRetirement, nativeOptions, decodeToken),
                 CancellationToken.None);
             state.ProcessDecodeSlot = null;
             using RasterDecodedPixelLease pixels = await nativeTask.ConfigureAwait(false);
@@ -305,7 +307,7 @@ internal sealed class RasterBitmapDecoder
             // Reserve durable custody before either WinRT factory.
             // Awaiting a projected operation does not close it;
             // failed terminal cleanup must retain its admission.
-            state.WicDecodeOwner = WicDecodeOperationOwner.Create();
+            state.WicDecodeOwner = WicDecodeOperationOwner.Create(_context.RenderResources.NativeRetirement);
             state.WicDecodeOwner.AdoptProcessDecodeSlot(ref state.ProcessDecodeSlot);
         }
         using MemoryStream? sourceStream = transformedDecode ? null : new(bytes, writable: false);

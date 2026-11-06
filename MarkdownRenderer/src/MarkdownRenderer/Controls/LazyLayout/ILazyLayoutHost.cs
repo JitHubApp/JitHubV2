@@ -45,5 +45,5 @@ internal interface ILazyLayoutHost
     /// <summary>Stops the recovery clock unless other deferred work is pending.</summary>
     void StopRecoveryClockIfIdle();
 
-    Task RetireCancellationTokenSource(CancellationTokenSource? cts, Task? lifetime);
+    Task RetireCancellationTokenSource(RetirableCancellationTokenSource? cts, Task? lifetime);
 }

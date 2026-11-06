@@ -110,7 +110,7 @@ internal sealed class SnapshotPlacementQueries
             return default;
 
         LayoutRootPlacement placement = _geometry.CurrentPlacementGenerationNoLock().GetPlacement(ordinal);
-        return LayoutPlacementTransformContext.Enter(placement.TranslationX, placement.TranslationY);
+        return _geometry.PlacementTransform.Enter(placement.TranslationX, placement.TranslationY);
     }
 
     internal LayoutPlacementTransformContext.Scope EnterPlacementTransformScopeForTopLevelBlockUnderPaint(

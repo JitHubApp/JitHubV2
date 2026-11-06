@@ -27,6 +27,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection(AllocationSensitiveContractCollection.Name)]
 public sealed class ImageBoxSelectionBackgroundTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     private const int ImageSize = 96;
     private const int AvailableWidth = 600;
     private const string Alt = "FinalSvgAtomicAltUnique";
@@ -43,7 +45,7 @@ public sealed class ImageBoxSelectionBackgroundTests
     {
         MarkdownLayoutContext context = CreateContext(flowDirection);
         var image = new ImageBox(
-            context, ImageResourceScope.Shared,
+            context, context.ImageResources,
             SvgDataUri,
             Alt,
             new SafeHtmlLength(ImageSize, IsPercent: false),
@@ -149,7 +151,7 @@ public sealed class ImageBoxSelectionBackgroundTests
     private static Color ReadPixel(Color[] pixels, int width, double x, double y)
         => pixels[(int)System.Math.Floor(y) * width + (int)System.Math.Floor(x)];
 
-    private static MarkdownLayoutContext CreateContext(FlowDirection flowDirection)
+    private MarkdownLayoutContext CreateContext(FlowDirection flowDirection)
     {
         var body = new ElementStyle
         {
@@ -178,6 +180,6 @@ public sealed class ImageBoxSelectionBackgroundTests
             new MarkdownSourceMap($"![{Alt}]({SvgDataUri})"),
             new MarkdownExtensionRegistry(),
             flowDirection,
-            language: "en-US");
+            language: "en-US") { RenderResources = _renderResources };
     }
 }

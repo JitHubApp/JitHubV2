@@ -23,14 +23,14 @@ public sealed class CodeBlockNativeFormatLeaseTests
     private const float EnhancedHeaderHeight = 38;
     private const BindingFlags PrivateInstance = BindingFlags.Instance | BindingFlags.NonPublic;
     private const BindingFlags InstanceFields = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+    private readonly MarkdownRenderResources _renderResources = new();
 
     [Fact]
     public void EquivalentCodeBlocksShareImmutableFormatsButKeepIndependentLeasesAcrossCacheClear()
     {
-        SharedCanvasTextFormatCache.Clear();
         CanvasDevice device = CanvasDevice.GetSharedDevice();
-        var first = CreateFixture(device, FlowDirection.LeftToRight, 1);
-        var second = CreateFixture(device, FlowDirection.LeftToRight, 1);
+        var first = CreateFixture(_renderResources, device, FlowDirection.LeftToRight, 1);
+        var second = CreateFixture(_renderResources, device, FlowDirection.LeftToRight, 1);
 
         try
         {
@@ -50,7 +50,7 @@ public sealed class CodeBlockNativeFormatLeaseTests
 
             CanvasTextFormat activeHeaderFormat = firstHeader.Format;
             CanvasTextFormat activeGutterFormat = firstGutter.Format;
-            SharedCanvasTextFormatCache.Clear();
+            _renderResources.TextFormats.Clear();
 
             // Clearing removes only cache ownership. The CodeBlockBox leases
             // keep both native descriptors alive until their boxes retire.
@@ -63,7 +63,7 @@ public sealed class CodeBlockNativeFormatLeaseTests
         {
             first.Box.Dispose();
             second.Box.Dispose();
-            SharedCanvasTextFormatCache.Clear();
+            _renderResources.TextFormats.Clear();
         }
     }
 
@@ -75,9 +75,8 @@ public sealed class CodeBlockNativeFormatLeaseTests
         CanvasTextDirection expectedHeaderDirection,
         CanvasHorizontalAlignment expectedHeaderAlignment)
     {
-        SharedCanvasTextFormatCache.Clear();
         CanvasDevice device = CanvasDevice.GetSharedDevice();
-        var fixture = CreateFixture(device, flowDirection, 1);
+        var fixture = CreateFixture(_renderResources, device, flowDirection, 1);
 
         try
         {
@@ -111,16 +110,15 @@ public sealed class CodeBlockNativeFormatLeaseTests
         finally
         {
             fixture.Box.Dispose();
-            SharedCanvasTextFormatCache.Clear();
+            _renderResources.TextFormats.Clear();
         }
     }
 
     [Fact]
     public void OffscreenPaintDoesNotAcquireHeaderOrGutterNativeFormats()
     {
-        SharedCanvasTextFormatCache.Clear();
         CanvasDevice device = CanvasDevice.GetSharedDevice();
-        var fixture = CreateFixture(device, FlowDirection.LeftToRight, 1);
+        var fixture = CreateFixture(_renderResources, device, FlowDirection.LeftToRight, 1);
 
         try
         {
@@ -148,7 +146,7 @@ public sealed class CodeBlockNativeFormatLeaseTests
         finally
         {
             fixture.Box.Dispose();
-            SharedCanvasTextFormatCache.Clear();
+            _renderResources.TextFormats.Clear();
         }
     }
 
@@ -174,9 +172,8 @@ public sealed class CodeBlockNativeFormatLeaseTests
         FlowDirection flowDirection,
         bool forceSoftwareRenderer)
     {
-        SharedCanvasTextFormatCache.Clear();
         using var device = new CanvasDevice(forceSoftwareRenderer);
-        var fixture = CreateFixture(device, flowDirection, rasterizationScale);
+        var fixture = CreateFixture(_renderResources, device, flowDirection, rasterizationScale);
 
         try
         {
@@ -207,11 +204,12 @@ public sealed class CodeBlockNativeFormatLeaseTests
         finally
         {
             fixture.Box.Dispose();
-            SharedCanvasTextFormatCache.Clear();
+            _renderResources.TextFormats.Clear();
         }
     }
 
     private static CodeBlockFixture CreateFixture(
+        MarkdownRenderResources renderResources,
         CanvasDevice device,
         FlowDirection flowDirection,
         double rasterizationScale)
@@ -264,6 +262,7 @@ public sealed class CodeBlockNativeFormatLeaseTests
             language: "en-US")
         {
             RasterizationScale = rasterizationScale,
+            RenderResources = renderResources,
         };
         var attributes = new Dictionary<string, string> { ["startline"] = "7" };
         CodeBlockMetadata metadata = CodeBlockMetadata.FromDeclarative(

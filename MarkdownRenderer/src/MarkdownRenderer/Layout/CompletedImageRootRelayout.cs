@@ -110,11 +110,11 @@ internal sealed class CompletedImageRootRelayout
             return PreparedImageRelayoutResult.Unavailable;
 
         var batch = new CompletedImageRelayoutBatch(count, availableWidth, cancellationToken);
-        using var cancellationScope = LayoutPassCancellation.Push(cancellationToken);
         try
         {
             lock (_geometry.Gate)
             {
+                using var sourceScope = _geometry.PassCancellation.Push(cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
                 batch.PointerEpoch = expectedPointerInputEpoch ?? PointerInputEpoch;
                 if (_retirement.IsRetiringOrDisposed || _recovery.IsRequired ||
@@ -125,9 +125,15 @@ internal sealed class CompletedImageRootRelayout
                     !_capture.TryAdmitRootsNoLock(batch, out int imageCount))
                     return PreparedImageRelayoutResult.Unavailable;
                 constructionContext = batch.Context;
+                using var captureScope = batch.Context!.PassCancellation.Push(cancellationToken);
                 if (!_capture.TryCaptureClonesNoLock(batch, imageCount))
                     return PreparedImageRelayoutResult.Unavailable;
             }
+
+            // The clones were built in the batch's own fresh context, which
+            // no other pass can reach, so their pass token lives there for
+            // the off-gate measurement and is lifted again for publication.
+            using var cloneScope = batch.Context!.PassCancellation.Push(cancellationToken);
             // Provider getters, native caption layout, and candidate cleanup
             // must never run under the source's read/paint/interaction gate.
             if (!SingleRasterLayoutCandidate.AreSourceProvidersCurrent(batch.Sources, batch.Context!))
@@ -147,6 +153,7 @@ internal sealed class CompletedImageRootRelayout
 
             lock (_geometry.Gate)
             {
+                using var sourceScope = _geometry.PassCancellation.Push(cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
                 if (!IsBatchCurrentNoLock(batch))
                     return PreparedImageRelayoutResult.Retry;
@@ -239,7 +246,7 @@ internal sealed class CompletedImageRootRelayout
         BlockBox prepared = batch.Prepared[index]!;
         float contentX = batch.ContentX;
         float measuredHeight;
-        using (LayoutPlacementTransformContext.Enter(contentX, flowY))
+        using (batch.Context!.PlacementTransform.Enter(contentX, flowY))
         {
             measuredHeight = prepared.Measure(batch.ContentWidth);
         }
@@ -384,7 +391,8 @@ internal sealed class CompletedImageRootRelayout
         bool placementsAdopted = false;
         try
         {
-            using var commitScope = LayoutPassCancellation.Push(CancellationToken.None);
+            using var commitScope = _geometry.PassCancellation.Push(CancellationToken.None);
+            using var cloneCommitScope = batch.Context!.PassCancellation.Push(CancellationToken.None);
             if (!ImageBox.TryTransferMeasuredPlacementsFromCompletedClones(
                     batch.Transfers, batch.CurrentProviderGeneration, batch.ContentWidth))
                 return PreparedImageRelayoutResult.Retry;

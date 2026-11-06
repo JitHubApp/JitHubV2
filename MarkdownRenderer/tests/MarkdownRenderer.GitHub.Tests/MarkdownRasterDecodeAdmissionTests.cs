@@ -1,3 +1,4 @@
+using MarkdownRenderer.Layout;
 using System;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -10,13 +11,15 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class MarkdownRasterDecodeAdmissionTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Fact]
     public void SharedAdmissionUsesTheArchitectureCapacityCeiling()
     {
         Assert.Equal(IntPtr.Size == 4 ? 64L * 1024 * 1024 : 128L * 1024 * 1024,
-            MarkdownRenderer.Layout.Boxes.ImageResourceScope.Shared.Preparation.CapacityBytes);
+            _renderResources.Images.Preparation.CapacityBytes);
         Assert.Equal(IntPtr.Size == 4 ? 1 : 2,
-            MarkdownRenderer.Layout.Boxes.ImageResourceScope.Shared.Preparation.MaxConcurrency);
+            _renderResources.Images.Preparation.MaxConcurrency);
     }
 
     [Fact]

@@ -27,6 +27,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 /// </summary>
 public sealed class LayoutSnapshotIndexConstructionTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Theory]
     [InlineData(FlowDirection.LeftToRight, 0)]
     [InlineData(FlowDirection.RightToLeft, 0)]
@@ -514,7 +516,7 @@ public sealed class LayoutSnapshotIndexConstructionTests
         }
     }
 
-    private static Fixture CreateFixture(FlowDirection flowDirection)
+    private Fixture CreateFixture(FlowDirection flowDirection)
     {
         MarkdownLayoutContext context = CreateContext(flowDirection);
         var root = new StackBox { BlockIndex = 100 };
@@ -565,7 +567,7 @@ public sealed class LayoutSnapshotIndexConstructionTests
         var secondTableHeaderLink = NewParagraph(context, 211, MarkdownElementKeys.TableCell);
         secondTableHeaderLink.Add(new LinkRun("second header link", "https://example.test/table-header-2"));
         var tableBodyTask = NewParagraph(context, 202, MarkdownElementKeys.TableCell);
-        tableBodyTask.Add(new InlineEmbedRun(16, 16, static () => null!)
+        tableBodyTask.Add(new InlineEmbedRun(16, 16, () => null!)
         {
             AutomationMetadata = new InlineEmbedAutomationMetadata(
                 "Done",
@@ -647,7 +649,7 @@ public sealed class LayoutSnapshotIndexConstructionTests
         root.Add(hosted);
 
         var marker = NewParagraph(context, 208, MarkdownElementKeys.ListMarker);
-        marker.Add(new InlineEmbedRun(14, 14, static () => null!)
+        marker.Add(new InlineEmbedRun(14, 14, () => null!)
         {
             AutomationMetadata = new InlineEmbedAutomationMetadata(
                 "Checked",
@@ -670,7 +672,7 @@ public sealed class LayoutSnapshotIndexConstructionTests
 
         var secondRoot = new StackBox { BlockIndex = 100 };
         secondRoot.Add(sharedInlineImageRun.Image);
-        var decorativeImage = new ImageBox(context, ImageResourceScope.Shared, "https://example.test/decorative.png", string.Empty)
+        var decorativeImage = new ImageBox(context, context.ImageResources, "https://example.test/decorative.png", string.Empty)
         {
             BlockIndex = 220,
         };
@@ -771,7 +773,7 @@ public sealed class LayoutSnapshotIndexConstructionTests
             BlockIndex = blockIndex,
         };
 
-    private static MarkdownLayoutContext CreateContext(
+    private MarkdownLayoutContext CreateContext(
         FlowDirection flowDirection,
         CodeBlockChromeMode codeBlockChromeMode = CodeBlockChromeMode.Enhanced)
     {
@@ -804,6 +806,7 @@ public sealed class LayoutSnapshotIndexConstructionTests
             new MarkdownExtensionRegistry(),
             flowDirection)
         {
+            RenderResources = _renderResources,
             CodeBlockChromeMode = codeBlockChromeMode,
         };
     }
@@ -1119,21 +1122,6 @@ public sealed class LayoutSnapshotIndexConstructionTests
         internal static readonly TestEmbedFactory Instance = new();
         public bool CanCreate(Block block) => true;
         public float MeasureHeight(Block block, float availableWidth) => 20;
-        public FrameworkElement CreateBlock(Block block) => null!;
-    }
-
-    private sealed class CancelAfterMeasureEmbedFactory : IMarkdownEmbedFactory
-    {
-        internal Action? AfterMeasure { get; set; }
-
-        public bool CanCreate(Block block) => true;
-
-        public float MeasureHeight(Block block, float availableWidth)
-        {
-            AfterMeasure?.Invoke();
-            return 20;
-        }
-
         public FrameworkElement CreateBlock(Block block) => null!;
     }
 

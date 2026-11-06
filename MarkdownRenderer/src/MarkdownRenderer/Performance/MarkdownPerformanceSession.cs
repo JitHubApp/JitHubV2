@@ -204,7 +204,8 @@ public sealed class MarkdownPerformanceSession :
 
     IMarkdownVectorSceneResidencyPolicy? IMarkdownPerformanceSessionInternal.CreateVectorSceneResidencyPolicy(
         IReadOnlyList<BlockBox> blocks,
-        object? documentOwner)
+        object? documentOwner,
+        LayoutPlacementTransformContext? placementTransform)
     {
         ArgumentNullException.ThrowIfNull(blocks);
         MarkdownProgressiveScenePlan? plan = null;
@@ -222,7 +223,7 @@ public sealed class MarkdownPerformanceSession :
             return null;
 
         return new MarkdownVectorSceneResidencyPolicy(
-            blocks, plan, _vectorNativeAdmission, _vectorSceneEstimates);
+            blocks, plan, _vectorNativeAdmission, _vectorSceneEstimates, placementTransform);
     }
 
     Task<bool> IMarkdownPerformanceSessionInternal.PrepareDeferredSceneBandAsync(

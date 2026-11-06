@@ -77,11 +77,11 @@ internal sealed class PrivateRasterCandidateFactory
         constructionContext = null;
         var build = new PrivateRasterCandidateBuild(cancellationToken);
         Exception? constructionFailure = null;
-        using var cancellationScope = LayoutPassCancellation.Push(cancellationToken);
         try
         {
             lock (_geometry.Gate)
             {
+                using var sourceScope = _geometry.PassCancellation.Push(cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
                 if (!TryAdmitSourceNoLock(build, changedBlockIndices, width) ||
                     !TryCaptureRootExtentsNoLock(build))
@@ -92,10 +92,16 @@ internal sealed class PrivateRasterCandidateFactory
                     imageCancellationToken, imagePreparationOwner,
                     retirementSink, imageUnavailable);
                 constructionContext = build.Context;
+                using var captureScope = build.Context.PassCancellation.Push(cancellationToken);
 
                 if (!TryPreflightRootsNoLock(build) || !TryCloneRootsNoLock(build))
                     return null;
             }
+
+            // The private tree lives in the candidate's own context, which no
+            // other pass reaches, so its measure and snapshot construction
+            // observe the token there.
+            using var candidateScope = build.Context!.PassCancellation.Push(cancellationToken);
 
             // No source lock spans DirectWrite or semantic/index construction.
             cancellationToken.ThrowIfCancellationRequested();
@@ -344,7 +350,8 @@ internal sealed class PrivateRasterCandidateFactory
             sharedLayoutMetrics: build.CapturedSharedLayoutMetrics,
             vectorSceneResidencyPolicy: null,
             textProjectionReuse: build.TextProjectionReuse,
-            generatedBlockIndexUpperBound: _generatedBlockIndexUpperBound);
+            generatedBlockIndexUpperBound: _generatedBlockIndexUpperBound,
+            layoutContext: build.Context);
         build.Snapshot = snapshot;
         if (lazyLayoutEnabled)
         {

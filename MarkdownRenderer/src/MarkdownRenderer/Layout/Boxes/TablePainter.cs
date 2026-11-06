@@ -46,7 +46,7 @@ internal static class TablePainter
         for (int i = 0; i < table.HeaderCells.Length; i++) headerTotalH += table.RowHeights[i];
 
         NativePaintSessionResources.LayerLease viewportLayer =
-            NativePaintSessionResources.CreateLayer(ds, 1.0f, viewportRect);
+            table.Context.RenderResources.PaintSessions.CreateLayer(ds, 1.0f, viewportRect);
         try
         {
             if (radius > 0)
@@ -90,7 +90,7 @@ internal static class TablePainter
         float tableH)
     {
         NativePaintSessionResources.AuxiliaryLease clipOwner =
-            NativePaintSessionResources.ReserveAuxiliary(ds);
+            table.Context.RenderResources.PaintSessions.ReserveAuxiliary(ds);
         CanvasGeometry clip;
         try
         {
@@ -104,7 +104,7 @@ internal static class TablePainter
         }
 
         NativePaintSessionResources.LayerLease roundedLayer =
-            NativePaintSessionResources.CreateLayer(ds, 1.0f, clip, clipOwner);
+            table.Context.RenderResources.PaintSessions.CreateLayer(ds, 1.0f, clip, clipOwner);
         try
         {
             PaintTableContent(table, ds, viewport, contentRect, bodyBgColor, headerBgColor, borderColor, headerTotalH, tableH);
@@ -228,7 +228,7 @@ internal static class TablePainter
         Rect viewport)
     {
         NativePaintSessionResources.LayerLease clip =
-            NativePaintSessionResources.CreateLayer(ds, 1.0f, table.HorizontalViewportBounds);
+            table.Context.RenderResources.PaintSessions.CreateLayer(ds, 1.0f, table.HorizontalViewportBounds);
         try
         {
             int firstVisibleRow = table.FindFirstVisibleRow(viewport.Top);

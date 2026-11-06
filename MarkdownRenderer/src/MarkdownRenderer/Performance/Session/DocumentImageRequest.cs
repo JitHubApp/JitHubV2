@@ -10,7 +10,7 @@ namespace MarkdownRenderer.Performance;
 /// document's waiters for the same source until the last one leaves.
 /// </summary>
 internal sealed class DocumentImageRequest(
-    CancellationTokenSource cancellation,
+    RetirableCancellationTokenSource cancellation,
     bool background,
     MarkdownPerformanceSessionLifetime lifetime,
     IDisposable lifetimeWork)
@@ -20,7 +20,7 @@ internal sealed class DocumentImageRequest(
     private readonly ResolutionLeaseSlot _result = new();
     private readonly CancellationRetirementHandshake _cancellationRetirement = new(cancellation);
     private IDisposable? _lifetimeWork = lifetimeWork;
-    internal CancellationTokenSource Cancellation { get; } = cancellation;
+    internal RetirableCancellationTokenSource Cancellation { get; } = cancellation;
     internal bool Background { get; } = background;
     internal Task<bool> Task => _completion.Task;
     internal int WaiterCount { get; set; }

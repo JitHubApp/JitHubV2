@@ -726,7 +726,7 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
         if (right <= left)
             return;
 
-        CanvasTextFormat format = (_headerTextFormatLease ??= SharedCanvasTextFormatCache.Acquire(
+        CanvasTextFormat format = (_headerTextFormatLease ??= Context.RenderResources.TextFormats.Acquire(
             style,
             CanvasWordWrapping.NoWrap,
             rtl ? CanvasHorizontalAlignment.Right : CanvasHorizontalAlignment.Left,
@@ -739,7 +739,7 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
     }
 
     internal CanvasTextFormat GetLineNumberTextFormat(ElementStyle style)
-        => (_lineNumberTextFormatLease ??= SharedCanvasTextFormatCache.Acquire(
+        => (_lineNumberTextFormatLease ??= Context.RenderResources.TextFormats.Acquire(
             style,
             CanvasWordWrapping.NoWrap,
             CanvasHorizontalAlignment.Right,

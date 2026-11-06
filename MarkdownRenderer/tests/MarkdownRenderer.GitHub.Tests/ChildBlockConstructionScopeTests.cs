@@ -15,6 +15,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection(SharedCanvasBitmapCacheTestCollection.Name)]
 public sealed class ChildBlockConstructionScopeTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -24,7 +26,7 @@ public sealed class ChildBlockConstructionScopeTests
         const string source = "- [ ] parent\n  - ordinary child\n  - [x] task child";
         var registry = new MarkdownExtensionRegistry().ConfigureGitHubReadmeRegistry();
         var context = new MarkdownLayoutContext(seed.Device, seed.SourceContext.ThemeSnapshot,
-            new MarkdownSourceMap(source), registry, FlowDirection.LeftToRight);
+            new MarkdownSourceMap(source), registry, FlowDirection.LeftToRight) { RenderResources = _renderResources };
         var document = Markdig.Markdown.Parse(source, registry.BuildPipeline());
         LayoutSnapshot? snapshot = null;
         try
@@ -122,13 +124,14 @@ public sealed class ChildBlockConstructionScopeTests
         await using var seed = new CompletedRasterPlacementCloneTests.PlacementFixture();
         CanvasBitmap bitmap = CanvasBitmap.CreateFromBytes(
             seed.Device, new byte[4], 1, 1, DirectXPixelFormat.B8G8R8A8UIntNormalized);
-        ImageResourceScope.Shared.BitmapCache.StoreAndAcquire(seed.Device, imageUrl, bitmap).Dispose();
+        _renderResources.Images.BitmapCache.StoreAndAcquire(seed.Device, imageUrl, bitmap).Dispose();
         using var cancellation = new CancellationTokenSource();
         string source = $"- [ ] label ![sample]({imageUrl})\n  - child";
         var registry = new MarkdownExtensionRegistry().ConfigureGfmRegistry();
         var context = new MarkdownLayoutContext(seed.Device, seed.SourceContext.ThemeSnapshot,
             new MarkdownSourceMap(source), registry, FlowDirection.LeftToRight)
         {
+            RenderResources = _renderResources,
             CancellationToken = cancellation.Token,
         };
         var document = Markdig.Markdown.Parse(source, registry.BuildPipeline());
@@ -163,7 +166,7 @@ public sealed class ChildBlockConstructionScopeTests
             }
             finally
             {
-                ImageResourceScope.Shared.BitmapCache.ReleaseDevice(seed.Device);
+                _renderResources.Images.BitmapCache.ReleaseDevice(seed.Device);
             }
         }
 

@@ -14,6 +14,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class MarkdownSemanticIndexPreallocationTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Fact]
     public void UnmappedStandaloneImagesDoNotPreallocatePositionIndexEntries()
     {
@@ -22,7 +24,7 @@ public sealed class MarkdownSemanticIndexPreallocationTests
         var images = new ImageBox[imageCount];
         for (int i = 0; i < images.Length; i++)
         {
-            images[i] = new ImageBox(context, ImageResourceScope.Shared, $"https://example.test/{i}.png", $"image {i}")
+            images[i] = new ImageBox(context, context.ImageResources, $"https://example.test/{i}.png", $"image {i}")
             {
                 BlockIndex = context.NextBlockIndex(),
             };
@@ -159,7 +161,7 @@ public sealed class MarkdownSemanticIndexPreallocationTests
         MarkdownSemanticDocument document)
         => document.NodeIndexes.ByInlineBlockIndex;
 
-    private static MarkdownLayoutContext CreateContext()
+    private MarkdownLayoutContext CreateContext()
     {
         var style = new ElementStyle();
         var styles = new Dictionary<string, ElementStyle>(StringComparer.Ordinal)
@@ -184,6 +186,6 @@ public sealed class MarkdownSemanticIndexPreallocationTests
             theme,
             new MarkdownSourceMap(new string(' ', 2_000)),
             new MarkdownExtensionRegistry(),
-            FlowDirection.LeftToRight);
+            FlowDirection.LeftToRight) { RenderResources = _renderResources };
     }
 }

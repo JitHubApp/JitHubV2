@@ -184,38 +184,32 @@ public sealed class SourceSliceSemanticTextProjectionTests
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 
-        using (LayoutPassCancellation.Push(cancellation.Token))
-        {
-            var actual = new SemanticTextProjectionAccumulator();
-            Assert.Throws<OperationCanceledException>(() => actual.AppendSlice("large", 0, 5));
-            Assert.Equal(0, actual.Length);
-            Assert.Throws<IndexOutOfRangeException>(() => _ = actual[0]);
-        }
+        var actual = new SemanticTextProjectionAccumulator(cancellationToken: cancellation.Token);
+        Assert.Throws<OperationCanceledException>(() => actual.AppendSlice("large", 0, 5));
+        Assert.Equal(0, actual.Length);
+        Assert.Throws<IndexOutOfRangeException>(() => _ = actual[0]);
     }
 
     [Fact]
     public void CancellationAfterSuccessfulSourceSlicesPreservesText()
     {
         using var cancellation = new CancellationTokenSource();
-        using (LayoutPassCancellation.Push(cancellation.Token))
-        {
-            var actual = new SemanticTextProjectionAccumulator();
-            var expected = new StringBuilder();
-            actual.AppendSlice("retained", 0, 8);
-            expected.Append("retained");
-            actual.Append('\n');
-            expected.Append('\n');
+        var actual = new SemanticTextProjectionAccumulator(cancellationToken: cancellation.Token);
+        var expected = new StringBuilder();
+        actual.AppendSlice("retained", 0, 8);
+        expected.Append("retained");
+        actual.Append('\n');
+        expected.Append('\n');
 
-            int oldLength = actual.Length;
-            char[] oldContent = expected.ToString().ToCharArray();
-            cancellation.Cancel();
+        int oldLength = actual.Length;
+        char[] oldContent = expected.ToString().ToCharArray();
+        cancellation.Cancel();
 
-            Assert.Throws<OperationCanceledException>(() => actual.Append("new fragment"));
-            Assert.Throws<OperationCanceledException>(() => actual.GetText());
-            Assert.Equal(oldLength, actual.Length);
-            for (int index = 0; index < oldContent.Length; index++)
-                Assert.Equal(oldContent[index], actual[index]);
-        }
+        Assert.Throws<OperationCanceledException>(() => actual.Append("new fragment"));
+        Assert.Throws<OperationCanceledException>(() => actual.GetText());
+        Assert.Equal(oldLength, actual.Length);
+        for (int index = 0; index < oldContent.Length; index++)
+            Assert.Equal(oldContent[index], actual[index]);
     }
 
     [Fact]

@@ -26,6 +26,7 @@ internal sealed class MarkdownSemanticDocumentBuilder
 {
     private readonly SemanticTextProjectionAccumulator _text;
     private readonly LayoutSnapshotIndexBuilder? _layoutIndexes;
+    private readonly CancellationToken _cancellationToken;
     // Spans are now inline values rather than per-span objects. Use paged
     // growth to avoid repeatedly copying a large value array as the semantic
     // graph is built, then freeze once into the snapshot's stable span list.
@@ -36,9 +37,11 @@ internal sealed class MarkdownSemanticDocumentBuilder
 
     public MarkdownSemanticDocumentBuilder(
         string? expectedTextProjection,
-        LayoutSnapshotIndexBuilder? layoutIndexes)
+        LayoutSnapshotIndexBuilder? layoutIndexes,
+        CancellationToken cancellationToken)
     {
-        _text = new SemanticTextProjectionAccumulator(expectedTextProjection);
+        _cancellationToken = cancellationToken;
+        _text = new SemanticTextProjectionAccumulator(expectedTextProjection, cancellationToken);
         _layoutIndexes = layoutIndexes;
         _vectorScenes = new MarkdownSemanticVectorSceneBuilder(_text, _spans, layoutIndexes, _nodeIndexes);
     }
@@ -55,7 +58,7 @@ internal sealed class MarkdownSemanticDocumentBuilder
 
         for (int topLevelOrdinal = 0; topLevelOrdinal < snapshot.Blocks.Count; topLevelOrdinal++)
         {
-            LayoutPassCancellation.GetEffectiveToken(CancellationToken.None).ThrowIfCancellationRequested();
+            _cancellationToken.ThrowIfCancellationRequested();
             _layoutIndexes?.BeginTopLevel(topLevelOrdinal);
             try
             {
@@ -551,7 +554,7 @@ internal sealed class MarkdownSemanticDocumentBuilder
 
     private int TrimTrailingNewline()
     {
-        CancellationToken cancellationToken = LayoutPassCancellation.GetEffectiveToken(CancellationToken.None);
+        CancellationToken cancellationToken = _cancellationToken;
         int lastContentEnd = 0;
         int visitedSpans = 0;
 
@@ -588,7 +591,7 @@ internal sealed class MarkdownSemanticDocumentBuilder
         // Spans are appended in document/text order, and the semantic
         // position index relies on nondecreasing TextEnd values. Only the
         // suffix affected by trimming can be out of range.
-        CancellationToken cancellationToken = LayoutPassCancellation.GetEffectiveToken(CancellationToken.None);
+        CancellationToken cancellationToken = _cancellationToken;
         int visited = 0;
         for (int index = _spans.Count - 1; index >= 0; index--)
         {

@@ -19,11 +19,14 @@ using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
-// Cache/admission state is process-wide; a parallel cache trim or live-output
-// reservation can legitimately invalidate this fixture's warm-constructor proof.
+// Each test owns its cache and admission state. The collection still keeps
+// these fixtures off the shared Win2D device while other bitmap-cache tests
+// use it.
 [Collection(SharedCanvasBitmapCacheTestCollection.Name)]
 public sealed class ImageBoxResidencyTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Fact]
     public async Task ReleasedRasterKeepsGeometryAndAccessibilityAndReusesDocumentSource()
     {
@@ -40,7 +43,7 @@ public sealed class ImageBoxResidencyTests
             resolver,
             new MarkdownImageResolveContext(BaseUri: null));
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(documentScope, session, scale: 1), ImageResourceScope.Shared,
+            DisplaySizedRasterDecodeTests.CreateContext(_renderResources, documentScope, session, scale: 1), _renderResources.Images,
             "https://images.example/residency.png",
             "A retained image description");
 
@@ -98,7 +101,7 @@ public sealed class ImageBoxResidencyTests
             });
         var resolver = new LateResolver();
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
+            DisplaySizedRasterDecodeTests.CreateContext(_renderResources, resolver, session, scale: 1), _renderResources.Images,
             "https://images.example/late.png",
             "Late image");
         int publications = 0;
@@ -140,8 +143,8 @@ public sealed class ImageBoxResidencyTests
                 ReleaseOffscreenImageResources = true,
             });
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(
-                new UnusedResolver(), session, scale: 1), ImageResourceScope.Shared,
+            DisplaySizedRasterDecodeTests.CreateContext(_renderResources, 
+                new UnusedResolver(), session, scale: 1), _renderResources.Images,
             "https://images.example/queued.png",
             "Queued image");
         var queued = new TaskCompletionSource<Action>(
@@ -186,7 +189,7 @@ public sealed class ImageBoxResidencyTests
         using var session = CreateResidencySession();
         var renderer = new ResidencySvgRenderer(blockDispose: true);
         var image = new ImageBox(
-            CreateContext(null, session, renderer), ImageResourceScope.Shared,
+            CreateContext(null, session, renderer), _renderResources.Images,
             CreateSvgDataUri("blocked-dispose-" + Guid.NewGuid().ToString("N")),
             "SVG alternative text");
 
@@ -257,7 +260,7 @@ public sealed class ImageBoxResidencyTests
     {
         var renderer = new ResidencySvgRenderer();
         var image = new ImageBox(
-            CreateContext(null, session: null, renderer), ImageResourceScope.Shared,
+            CreateContext(null, session: null, renderer), _renderResources.Images,
             CreateSvgDataUri("legacy-retirement-" + Guid.NewGuid().ToString("N")),
             "Legacy SVG");
 
@@ -291,7 +294,7 @@ public sealed class ImageBoxResidencyTests
                 IntrinsicAspectRatio: 5,
                 Description: "Large provider document"));
         var image = new ImageBox(
-            CreateContext(null, session, renderer), ImageResourceScope.Shared,
+            CreateContext(null, session, renderer), _renderResources.Images,
             CreateSvgDataUri("tiled-retirement-" + Guid.NewGuid().ToString("N")),
             "Tiled SVG");
 
@@ -308,8 +311,8 @@ public sealed class ImageBoxResidencyTests
             Assert.Equal(0, renderer.Document.DisposeCount);
 
             BitmapOutputAdmission.Snapshot admissionBeforeTilePaint =
-                ImageResourceScope.Shared.BitmapOutput.GetSnapshot();
-            long cacheBytesBeforeTilePaint = ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes;
+                _renderResources.Images.BitmapOutput.GetSnapshot();
+            long cacheBytesBeforeTilePaint = _renderResources.Images.BitmapCache.GetSnapshot().RetainedBytes;
             TaskCompletionSource repaintPulse = new(TaskCreationOptions.RunContinuationsAsynchronously);
             void OnLoadCompleted(object? sender, LoadCompletedEventArgs args)
             {
@@ -353,7 +356,7 @@ public sealed class ImageBoxResidencyTests
             }
             catch (OperationCanceledException exception) when (renderDeadline.IsCancellationRequested)
             {
-                BitmapOutputAdmission.Snapshot admission = ImageResourceScope.Shared.BitmapOutput.GetSnapshot();
+                BitmapOutputAdmission.Snapshot admission = _renderResources.Images.BitmapOutput.GetSnapshot();
                 throw new TimeoutException(
                     $"Visible SVG tile render did not start. " +
                     $"beforePaint(admissionCharged={admissionBeforeTilePaint.ChargedBytes}, " +
@@ -365,9 +368,9 @@ public sealed class ImageBoxResidencyTests
                     $"uncertain={admission.UncertainBytes}, capacity={admission.CapacityBytes}, " +
                     $"visibleLimit={admission.VisibleInitialLimitBytes}, waiters={admission.WaiterCount}, " +
                     $"offered={admission.OfferedBytes}, capacityVersion={admission.CapacityVersion}); " +
-                    $"cache(retained={ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes}, " +
-                    $"pixelLedger={ImageResourceScope.Shared.BitmapCache.GetSnapshot().LivePixelWeightBytes}, " +
-                    $"uncertainPixelLedger={ImageResourceScope.Shared.BitmapCache.GetSnapshot().UncertainDisposePixelWeightBytes}); " +
+                    $"cache(retained={_renderResources.Images.BitmapCache.GetSnapshot().RetainedBytes}, " +
+                    $"pixelLedger={_renderResources.Images.BitmapCache.GetSnapshot().LivePixelWeightBytes}, " +
+                    $"uncertainPixelLedger={_renderResources.Images.BitmapCache.GetSnapshot().UncertainDisposePixelWeightBytes}); " +
                     $"image(work={image.GetWorkState().ActiveWorkCount}, " +
                     $"needsRecovery={image.NeedsBitmapOutputRecovery}, " +
                     $"svgTiles={image.UsesSvgTilesForAutomation}, raster={image.SvgRasterPixelSize}, " +
@@ -404,7 +407,7 @@ public sealed class ImageBoxResidencyTests
     {
         var renderer = new ResidencySvgRenderer(throwOnDispose: true);
         var image = new ImageBox(
-            CreateContext(null, session: null, renderer), ImageResourceScope.Shared,
+            CreateContext(null, session: null, renderer), _renderResources.Images,
             CreateSvgDataUri("dispose-failure-" + Guid.NewGuid().ToString("N")),
             "SVG with provider cleanup failure");
 
@@ -445,7 +448,7 @@ public sealed class ImageBoxResidencyTests
         using var session = CreateResidencySession();
         var renderer = new ResidencySvgRenderer(blockRender: true);
         var image = new ImageBox(
-            CreateContext(null, session, renderer), ImageResourceScope.Shared,
+            CreateContext(null, session, renderer), _renderResources.Images,
             CreateSvgDataUri("late-render-" + Guid.NewGuid().ToString("N")),
             "Late SVG");
         int publications = 0;
@@ -507,7 +510,7 @@ public sealed class ImageBoxResidencyTests
     public async Task RetiredSvgDocumentDrainsItsOwnUseWhileUnrelatedDocumentRemainsActive()
     {
         var image = new ImageBox(
-            CreateContext(null, session: null), ImageResourceScope.Shared,
+            CreateContext(null, session: null), _renderResources.Images,
             CreateSvgDataUri("per-document-use-" + Guid.NewGuid().ToString("N")),
             "Per-document SVG lifetime");
         var oldDocument = new ResidencySvgDocument(blockRender: false, blockDispose: false);
@@ -572,7 +575,7 @@ public sealed class ImageBoxResidencyTests
             DisplaySizedRasterDecodeTests.CreatePng(32, 16),
             $"legacy-residency-{Guid.NewGuid():N}");
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
+            DisplaySizedRasterDecodeTests.CreateContext(_renderResources, resolver, session, scale: 1), _renderResources.Images,
             "https://images.example/legacy.png",
             "Legacy image");
 
@@ -599,7 +602,7 @@ public sealed class ImageBoxResidencyTests
         byte[] bytes = DisplaySizedRasterDecodeTests.CreatePng(83, 27);
         string source = "data:image/png," +
             string.Concat(Array.ConvertAll(bytes, value => $"%{value:X2}"));
-        var image = new ImageBox(CreateContext(null, session: null), ImageResourceScope.Shared, source, "Percent-encoded PNG");
+        var image = new ImageBox(CreateContext(null, session: null), _renderResources.Images, source, "Percent-encoded PNG");
         try
         {
             image.Measure(100);
@@ -622,7 +625,7 @@ public sealed class ImageBoxResidencyTests
         string source = "data:image/png;base64," + Convert.ToBase64String(bytes);
         // Use one resource creator for both halves of this device-cache test.
         CanvasDevice device = CanvasDevice.GetSharedDevice();
-        var warm = new ImageBox(CreateContext(null, session: null, device: device), ImageResourceScope.Shared, source, "Warm cache image");
+        var warm = new ImageBox(CreateContext(null, session: null, device: device), _renderResources.Images, source, "Warm cache image");
         try
         {
             warm.Measure(80);
@@ -630,10 +633,10 @@ public sealed class ImageBoxResidencyTests
             Assert.NotNull(warm.Bitmap);
             Assert.True(MarkdownBuiltInImageSourcePolicy.TryResolve(source, null, out var builtIn));
             CanvasDevice observedDevice = warm.Context.ResourceCreator.Device;
-            bool cached = ImageResourceScope.Shared.BitmapCache.TryAcquire(observedDevice, builtIn.CacheKey, out var cacheProbe);
+            bool cached = _renderResources.Images.BitmapCache.TryAcquire(observedDevice, builtIn.CacheKey, out var cacheProbe);
             cacheProbe?.Dispose();
             Assert.True(cached,
-                $"Warm bitmap was not cached under its built-in source key; creator/device same={ReferenceEquals(device, observedDevice)}, device getter stable={ReferenceEquals(observedDevice, warm.Context.ResourceCreator.Device)}, cache bytes={ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes}.");
+                $"Warm bitmap was not cached under its built-in source key; creator/device same={ReferenceEquals(device, observedDevice)}, device getter stable={ReferenceEquals(observedDevice, warm.Context.ResourceCreator.Device)}, cache bytes={_renderResources.Images.BitmapCache.GetSnapshot().RetainedBytes}.");
         }
         finally
         {
@@ -643,7 +646,7 @@ public sealed class ImageBoxResidencyTests
         // This tests synchronous release of an eligible source-sized warm
         // lease. Display-sized consumers intentionally defer until measured.
         using var session = CreateResidencySession(displaySized: false);
-        var image = new ImageBox(CreateContext(null, session, device: device), ImageResourceScope.Shared, source, "Warm cache image");
+        var image = new ImageBox(CreateContext(null, session, device: device), _renderResources.Images, source, "Warm cache image");
         int drainEvents = 0;
         image.ResidencyWorkDrained += (_, _) => Interlocked.Increment(ref drainEvents);
         try
@@ -723,7 +726,7 @@ public sealed class ImageBoxResidencyTests
             UseDisplaySizedRasterDecode = displaySized,
         });
 
-    private static MarkdownLayoutContext CreateContext(
+    private MarkdownLayoutContext CreateContext(
         IMarkdownImageResolver? resolver,
         MarkdownPerformanceSession? session,
         IMarkdownSvgRenderer? svgRenderer = null,
@@ -758,6 +761,7 @@ public sealed class ImageBoxResidencyTests
             FlowDirection.LeftToRight,
             language: "en-US")
         {
+            RenderResources = _renderResources,
             ImageResolver = resolver,
             PerformanceSession = session,
             PerformanceDocumentOwner = session is null ? null : new object(),

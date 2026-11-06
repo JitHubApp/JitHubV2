@@ -366,6 +366,7 @@ public sealed class VectorNativeDurableRetirementTests
             creator,
             scene,
             CancellationToken.None,
+            new MarkdownRenderResources(),
             deferNativeResources: !eager,
             nativeRetirement: retirement,
             nativeDisposer: disposer.Dispose);
@@ -407,6 +408,7 @@ public sealed class VectorNativeDurableRetirementTests
             creator,
             scene,
             CancellationToken.None,
+            new MarkdownRenderResources(),
             deferNativeResources: false,
             nativeRetirement: retirement,
             nativeDisposer: disposer.Dispose));

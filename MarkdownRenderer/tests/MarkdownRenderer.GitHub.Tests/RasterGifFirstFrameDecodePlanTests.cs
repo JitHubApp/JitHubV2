@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using Xunit;
 
@@ -7,6 +8,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection(NativeWicDecodeTestCollection.CollectionName)]
 public sealed class RasterGifFirstFrameDecodePlanTests
 {
+    private readonly NativeResourceRetirement _retirement = new(createTimer: false);
+
     [Theory]
     [InlineData(0.75, 3)]
     [InlineData(1.0, 4)]
@@ -70,7 +73,7 @@ public sealed class RasterGifFirstFrameDecodePlanTests
         var diagnostics = new RasterNativeWicDiagnostics();
         await Assert.ThrowsAsync<InvalidDataException>(() => Task.Run(() =>
             RasterNativeWicDecoder.DecodeGifFirstFrame(
-                truncated, plan, credit, new RasterNativeWicDecodeOptions(diagnostics), CancellationToken.None)));
+                truncated, plan, credit, _retirement, new RasterNativeWicDecodeOptions(diagnostics), CancellationToken.None)));
         Assert.Equal(1, credit.DisposeCount);
         Assert.Equal(default, diagnostics.GetSnapshot());
     }
@@ -85,15 +88,15 @@ public sealed class RasterGifFirstFrameDecodePlanTests
         cancellation.Cancel();
         var canceled = new RasterNativeWicProductParity.CountingCredit();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Task.Run(() =>
-            RasterNativeWicDecoder.DecodeGifFirstFrame(bytes, plan, canceled, cancellation.Token)));
+            RasterNativeWicDecoder.DecodeGifFirstFrame(bytes, plan, canceled, _retirement, cancellation.Token)));
         Assert.Equal(1, canceled.DisposeCount);
         var rejected = new RasterNativeWicProductParity.CountingCredit();
         await Assert.ThrowsAsync<InvalidDataException>(() => Task.Run(() =>
-            RasterNativeWicDecoder.DecodeGifFirstFrame(bytes, default, rejected, CancellationToken.None)));
+            RasterNativeWicDecoder.DecodeGifFirstFrame(bytes, default, rejected, _retirement, CancellationToken.None)));
         Assert.Equal(1, rejected.DisposeCount);
         var nullSource = new RasterNativeWicProductParity.CountingCredit();
         await Assert.ThrowsAsync<ArgumentNullException>(() => Task.Run(() =>
-            RasterNativeWicDecoder.DecodeGifFirstFrame(null!, plan, nullSource, CancellationToken.None)));
+            RasterNativeWicDecoder.DecodeGifFirstFrame(null!, plan, nullSource, _retirement, CancellationToken.None)));
         Assert.Equal(1, nullSource.DisposeCount);
     }
 

@@ -270,6 +270,8 @@ public sealed class MultiRootInlinePlacementCloneTests
 
     private sealed class InlinePlacementFixture : IAsyncDisposable
     {
+        private readonly MarkdownRenderResources _renderResources = new();
+
         private readonly CanvasDevice _device = new();
         private readonly ThemeSnapshot _theme;
         private readonly MarkdownExtensionRegistry _registry = new();
@@ -327,6 +329,7 @@ public sealed class MultiRootInlinePlacementCloneTests
                 FlowDirection.LeftToRight,
                 language: "en-US")
             {
+                RenderResources = _renderResources,
                 CancellationToken = CancellationToken.None,
                 ImageCancellationToken = CancellationToken.None,
                 ImagePreparationOwner = _imagePreparationOwner,
@@ -436,7 +439,7 @@ public sealed class MultiRootInlinePlacementCloneTests
         {
             string url = $"ms-appx:///inline-placement-{Guid.NewGuid():N}.png";
             Assert.True(MarkdownBuiltInImageSourcePolicy.TryResolve(url, null, out MarkdownBuiltInImageSource resolved));
-            using SharedCanvasBitmapCache.Lease cachedLease = ImageResourceScope.Shared.BitmapCache.StoreAndAcquire(
+            using SharedCanvasBitmapCache.Lease cachedLease = _renderResources.Images.BitmapCache.StoreAndAcquire(
                 _device,
                 resolved.CacheKey,
                 CreateBitmap(_device, 48, 24),
@@ -476,7 +479,7 @@ public sealed class MultiRootInlinePlacementCloneTests
                 await SourceContext.DrainOwnedRetirementsAsync();
             }
 
-            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(_device);
+            _renderResources.Images.BitmapCache.ReleaseDevice(_device);
             _device.Dispose();
         }
 

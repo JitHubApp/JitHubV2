@@ -15,10 +15,11 @@ public sealed class SharedCanvasTextFormatCacheCollection
 [Collection("Shared Canvas text format cache")]
 public sealed class SharedCanvasTextFormatCacheTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Fact]
     public void EqualDescriptor_ReusesFormatAndLeaseSurvivesEviction()
     {
-        SharedCanvasTextFormatCache.Clear();
         var style = new ElementStyle
         {
             FontFamily = "Segoe UI",
@@ -26,70 +27,68 @@ public sealed class SharedCanvasTextFormatCacheTests
         };
 
         using SharedCanvasTextFormatCache.Lease first =
-            SharedCanvasTextFormatCache.Acquire(
+            _renderResources.TextFormats.Acquire(
                 style,
                 CanvasWordWrapping.Wrap,
                 CanvasHorizontalAlignment.Left,
                 FlowDirection.LeftToRight);
         using SharedCanvasTextFormatCache.Lease second =
-            SharedCanvasTextFormatCache.Acquire(
+            _renderResources.TextFormats.Acquire(
                 style,
                 CanvasWordWrapping.Wrap,
                 CanvasHorizontalAlignment.Left,
                 FlowDirection.LeftToRight);
 
         Assert.Same(first.Format, second.Format);
-        Assert.Equal(1, SharedCanvasTextFormatCache.Statistics.Count);
+        Assert.Equal(1, _renderResources.TextFormats.Statistics.Count);
 
-        SharedCanvasTextFormatCache.Clear();
+        _renderResources.TextFormats.Clear();
 
         Assert.Equal(17, first.Format.FontSize);
-        Assert.Equal(0, SharedCanvasTextFormatCache.Statistics.Count);
+        Assert.Equal(0, _renderResources.TextFormats.Statistics.Count);
     }
 
     [Fact]
     public void DirectionAndWrapping_PartitionDescriptors()
     {
-        SharedCanvasTextFormatCache.Clear();
         var style = new ElementStyle();
         using SharedCanvasTextFormatCache.Lease leftToRight =
-            SharedCanvasTextFormatCache.Acquire(
+            _renderResources.TextFormats.Acquire(
                 style,
                 CanvasWordWrapping.Wrap,
                 CanvasHorizontalAlignment.Left,
                 FlowDirection.LeftToRight);
         using SharedCanvasTextFormatCache.Lease rightToLeft =
-            SharedCanvasTextFormatCache.Acquire(
+            _renderResources.TextFormats.Acquire(
                 style,
                 CanvasWordWrapping.NoWrap,
                 CanvasHorizontalAlignment.Left,
                 FlowDirection.RightToLeft);
 
         Assert.NotSame(leftToRight.Format, rightToLeft.Format);
-        Assert.Equal(2, SharedCanvasTextFormatCache.Statistics.Count);
+        Assert.Equal(2, _renderResources.TextFormats.Statistics.Count);
     }
 
     [Fact]
     public void Language_PartitionsDescriptorsAndFlowsToDirectWrite()
     {
-        SharedCanvasTextFormatCache.Clear();
         var style = new ElementStyle();
         using SharedCanvasTextFormatCache.Lease english =
-            SharedCanvasTextFormatCache.Acquire(
+            _renderResources.TextFormats.Acquire(
                 style,
                 CanvasWordWrapping.Wrap,
                 CanvasHorizontalAlignment.Left,
                 FlowDirection.LeftToRight,
                 "en-US");
         using SharedCanvasTextFormatCache.Lease arabic =
-            SharedCanvasTextFormatCache.Acquire(
+            _renderResources.TextFormats.Acquire(
                 style,
                 CanvasWordWrapping.Wrap,
                 CanvasHorizontalAlignment.Left,
                 FlowDirection.LeftToRight,
                 "ar-SA");
         using SharedCanvasTextFormatCache.Lease englishAlternateCase =
-            SharedCanvasTextFormatCache.Acquire(
+            _renderResources.TextFormats.Acquire(
                 style,
                 CanvasWordWrapping.Wrap,
                 CanvasHorizontalAlignment.Left,
@@ -100,7 +99,7 @@ public sealed class SharedCanvasTextFormatCacheTests
         Assert.Same(english.Format, englishAlternateCase.Format);
         Assert.Equal("en-US", english.Format.LocaleName, ignoreCase: true);
         Assert.Equal("ar-SA", arabic.Format.LocaleName, ignoreCase: true);
-        Assert.Equal(2, SharedCanvasTextFormatCache.Statistics.Count);
+        Assert.Equal(2, _renderResources.TextFormats.Statistics.Count);
     }
 
     [Theory]
@@ -112,7 +111,6 @@ public sealed class SharedCanvasTextFormatCacheTests
         float multiplier,
         float expectedLineSpacing)
     {
-        SharedCanvasTextFormatCache.Clear();
         var style = new ElementStyle
         {
             FontFamily = "Segoe UI",
@@ -121,7 +119,7 @@ public sealed class SharedCanvasTextFormatCacheTests
         };
 
         using SharedCanvasTextFormatCache.Lease lease =
-            SharedCanvasTextFormatCache.Acquire(
+            _renderResources.TextFormats.Acquire(
                 style,
                 CanvasWordWrapping.Wrap,
                 CanvasHorizontalAlignment.Left,
@@ -135,7 +133,6 @@ public sealed class SharedCanvasTextFormatCacheTests
     [Fact]
     public void LineHeightMultiplier_PartitionsCachedFormats()
     {
-        SharedCanvasTextFormatCache.Clear();
         var style = new ElementStyle
         {
             FontFamily = "Segoe UI",
@@ -150,19 +147,19 @@ public sealed class SharedCanvasTextFormatCacheTests
         };
 
         using SharedCanvasTextFormatCache.Lease spacious =
-            SharedCanvasTextFormatCache.Acquire(
+            _renderResources.TextFormats.Acquire(
                 style,
                 CanvasWordWrapping.Wrap,
                 CanvasHorizontalAlignment.Left,
                 FlowDirection.LeftToRight);
         using SharedCanvasTextFormatCache.Lease spaciousAgain =
-            SharedCanvasTextFormatCache.Acquire(
+            _renderResources.TextFormats.Acquire(
                 style,
                 CanvasWordWrapping.Wrap,
                 CanvasHorizontalAlignment.Left,
                 FlowDirection.LeftToRight);
         using SharedCanvasTextFormatCache.Lease compact =
-            SharedCanvasTextFormatCache.Acquire(
+            _renderResources.TextFormats.Acquire(
                 compactStyle,
                 CanvasWordWrapping.Wrap,
                 CanvasHorizontalAlignment.Left,
@@ -172,13 +169,12 @@ public sealed class SharedCanvasTextFormatCacheTests
         Assert.NotSame(spacious.Format, compact.Format);
         Assert.Equal(24f, spacious.Format.LineSpacing);
         Assert.Equal(20f, compact.Format.LineSpacing);
-        Assert.Equal(2, SharedCanvasTextFormatCache.Statistics.Count);
+        Assert.Equal(2, _renderResources.TextFormats.Statistics.Count);
     }
 
     [Fact]
     public void LineHeightMultipliersWithSameResolvedSpacing_ReuseDescriptor()
     {
-        SharedCanvasTextFormatCache.Clear();
         var firstStyle = new ElementStyle
         {
             FontFamily = "Segoe UI",
@@ -195,13 +191,13 @@ public sealed class SharedCanvasTextFormatCacheTests
         };
 
         using SharedCanvasTextFormatCache.Lease first =
-            SharedCanvasTextFormatCache.Acquire(
+            _renderResources.TextFormats.Acquire(
                 firstStyle,
                 CanvasWordWrapping.Wrap,
                 CanvasHorizontalAlignment.Left,
                 FlowDirection.LeftToRight);
         using SharedCanvasTextFormatCache.Lease equivalent =
-            SharedCanvasTextFormatCache.Acquire(
+            _renderResources.TextFormats.Acquire(
                 equivalentStyle,
                 CanvasWordWrapping.Wrap,
                 CanvasHorizontalAlignment.Left,
@@ -210,13 +206,12 @@ public sealed class SharedCanvasTextFormatCacheTests
         Assert.Equal(18f, first.Format.LineSpacing);
         Assert.Equal(18f, equivalent.Format.LineSpacing);
         Assert.Same(first.Format, equivalent.Format);
-        Assert.Equal(1, SharedCanvasTextFormatCache.Statistics.Count);
+        Assert.Equal(1, _renderResources.TextFormats.Statistics.Count);
     }
 
     [Fact]
     public void ContentAwareLineSpacing_OmitsNumericSpacingAndPartitionsFromCssTextFormat()
     {
-        SharedCanvasTextFormatCache.Clear();
         var style = new ElementStyle
         {
             FontFamily = "Segoe UI",
@@ -225,20 +220,20 @@ public sealed class SharedCanvasTextFormatCacheTests
         };
 
         using SharedCanvasTextFormatCache.Lease textOnly =
-            SharedCanvasTextFormatCache.Acquire(
+            _renderResources.TextFormats.Acquire(
                 style,
                 CanvasWordWrapping.Wrap,
                 CanvasHorizontalAlignment.Left,
                 FlowDirection.LeftToRight);
         using SharedCanvasTextFormatCache.Lease atomicInline =
-            SharedCanvasTextFormatCache.Acquire(
+            _renderResources.TextFormats.Acquire(
                 style,
                 CanvasWordWrapping.Wrap,
                 CanvasHorizontalAlignment.Left,
                 FlowDirection.LeftToRight,
                 useContentAwareLineSpacing: true);
         using SharedCanvasTextFormatCache.Lease atomicInlineAgain =
-            SharedCanvasTextFormatCache.Acquire(
+            _renderResources.TextFormats.Acquire(
                 style,
                 CanvasWordWrapping.Wrap,
                 CanvasHorizontalAlignment.Left,
@@ -250,13 +245,12 @@ public sealed class SharedCanvasTextFormatCacheTests
         Assert.Equal(1f, atomicInline.Format.LineSpacingBaseline);
         Assert.Same(atomicInline.Format, atomicInlineAgain.Format);
         Assert.NotSame(textOnly.Format, atomicInline.Format);
-        Assert.Equal(2, SharedCanvasTextFormatCache.Statistics.Count);
+        Assert.Equal(2, _renderResources.TextFormats.Statistics.Count);
     }
 
     [Fact]
     public void LineHeightMultiplier_ChangesMeasuredMultilineLayoutHeight()
     {
-        SharedCanvasTextFormatCache.Clear();
         var compactStyle = new ElementStyle
         {
             FontFamily = "Segoe UI",
@@ -272,13 +266,13 @@ public sealed class SharedCanvasTextFormatCacheTests
         const string text = "first line\nsecond line\nthird line\nfourth line";
 
         using SharedCanvasTextFormatCache.Lease compactFormat =
-            SharedCanvasTextFormatCache.Acquire(
+            _renderResources.TextFormats.Acquire(
                 compactStyle,
                 CanvasWordWrapping.NoWrap,
                 CanvasHorizontalAlignment.Left,
                 FlowDirection.LeftToRight);
         using SharedCanvasTextFormatCache.Lease spaciousFormat =
-            SharedCanvasTextFormatCache.Acquire(
+            _renderResources.TextFormats.Acquire(
                 spaciousStyle,
                 CanvasWordWrapping.NoWrap,
                 CanvasHorizontalAlignment.Left,
@@ -299,7 +293,6 @@ public sealed class SharedCanvasTextFormatCacheTests
     [Fact]
     public void LineHeightMultiplier_IsUnscaledByFlowDirectionAndInvalidValuesUseDefault()
     {
-        SharedCanvasTextFormatCache.Clear();
         var styled = new ElementStyle
         {
             FontFamily = "Segoe UI",
@@ -320,25 +313,25 @@ public sealed class SharedCanvasTextFormatCacheTests
         };
 
         using SharedCanvasTextFormatCache.Lease ltr =
-            SharedCanvasTextFormatCache.Acquire(
+            _renderResources.TextFormats.Acquire(
                 styled,
                 CanvasWordWrapping.Wrap,
                 CanvasHorizontalAlignment.Left,
                 FlowDirection.LeftToRight);
         using SharedCanvasTextFormatCache.Lease rtl =
-            SharedCanvasTextFormatCache.Acquire(
+            _renderResources.TextFormats.Acquire(
                 styled,
                 CanvasWordWrapping.Wrap,
                 CanvasHorizontalAlignment.Left,
                 FlowDirection.RightToLeft);
         using SharedCanvasTextFormatCache.Lease defaultSpacing =
-            SharedCanvasTextFormatCache.Acquire(
+            _renderResources.TextFormats.Acquire(
                 invalid,
                 CanvasWordWrapping.Wrap,
                 CanvasHorizontalAlignment.Left,
                 FlowDirection.LeftToRight);
         using SharedCanvasTextFormatCache.Lease overflowSpacing =
-            SharedCanvasTextFormatCache.Acquire(
+            _renderResources.TextFormats.Acquire(
                 overflowing,
                 CanvasWordWrapping.Wrap,
                 CanvasHorizontalAlignment.Left,
@@ -353,7 +346,6 @@ public sealed class SharedCanvasTextFormatCacheTests
     [Fact]
     public void LineHeightMultiplier_ExcessiveFiniteSpacingFallsBackAndSharesDefaultDescriptor()
     {
-        SharedCanvasTextFormatCache.Clear();
         var invalidStyle = new ElementStyle
         {
             FontFamily = "Segoe UI",
@@ -371,13 +363,13 @@ public sealed class SharedCanvasTextFormatCacheTests
         };
 
         using SharedCanvasTextFormatCache.Lease defaultSpacing =
-            SharedCanvasTextFormatCache.Acquire(
+            _renderResources.TextFormats.Acquire(
                 invalidStyle,
                 CanvasWordWrapping.Wrap,
                 CanvasHorizontalAlignment.Left,
                 FlowDirection.LeftToRight);
         using SharedCanvasTextFormatCache.Lease excessiveSpacing =
-            SharedCanvasTextFormatCache.Acquire(
+            _renderResources.TextFormats.Acquire(
                 excessiveFiniteStyle,
                 CanvasWordWrapping.Wrap,
                 CanvasHorizontalAlignment.Left,
@@ -385,13 +377,12 @@ public sealed class SharedCanvasTextFormatCacheTests
 
         Assert.Same(defaultSpacing.Format, excessiveSpacing.Format);
         Assert.Equal(-1f, excessiveSpacing.Format.LineSpacing);
-        Assert.Equal(1, SharedCanvasTextFormatCache.Statistics.Count);
+        Assert.Equal(1, _renderResources.TextFormats.Statistics.Count);
     }
 
     [Fact]
     public void LineHeightMultiplier_AtDimensionCeilingRemainsExplicit()
     {
-        SharedCanvasTextFormatCache.Clear();
         var style = new ElementStyle
         {
             FontFamily = "Segoe UI",
@@ -400,7 +391,7 @@ public sealed class SharedCanvasTextFormatCacheTests
         };
 
         using SharedCanvasTextFormatCache.Lease lease =
-            SharedCanvasTextFormatCache.Acquire(
+            _renderResources.TextFormats.Acquire(
                 style,
                 CanvasWordWrapping.Wrap,
                 CanvasHorizontalAlignment.Left,
@@ -421,9 +412,8 @@ public sealed class SharedCanvasTextFormatCacheTests
             FontSize = 13,
         };
 
-        SharedCanvasTextFormatCache.Clear();
         using SharedCanvasTextFormatCache.Lease lease =
-            SharedCanvasTextFormatCache.Acquire(
+            _renderResources.TextFormats.Acquire(
                 style,
                 CanvasWordWrapping.NoWrap,
                 CanvasHorizontalAlignment.Left,

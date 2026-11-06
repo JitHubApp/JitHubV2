@@ -43,13 +43,14 @@ internal static class InlineTextOrigin
         var padding = box.GetEffectivePadding(style);
         float xDip = (float)(box.Bounds.X + margin.Left + padding.Left);
         float yDip = (float)(box.Bounds.Y + margin.Top + padding.Top + box.ScriptBaselineGeometry.TopInset);
-        LayoutPlacementTransformContext.SnapOriginToDevicePixels(
+        LayoutPlacementTransformContext placement = box.Context.PlacementTransform;
+        placement.SnapOriginToDevicePixels(
             xDip,
             yDip,
             scale,
             out float x,
             out float y);
-        LayoutPlacementTransformContext.SnapFinalOriginToDevicePixels(
+        placement.SnapFinalOriginToDevicePixels(
             xDip,
             yDip,
             scale,

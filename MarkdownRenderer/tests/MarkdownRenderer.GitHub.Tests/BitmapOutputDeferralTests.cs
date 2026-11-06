@@ -22,10 +22,12 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection(SharedCanvasBitmapCacheTestCollection.Name)]
 public sealed class BitmapOutputDeferralTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Fact]
     public async Task RasterOutputDeferralDrainsSourceWorkAndRetriesAfterCapacityReturns()
     {
-        BitmapOutputAdmission admission = ImageResourceScope.Shared.BitmapOutput;
+        BitmapOutputAdmission admission = _renderResources.Images.BitmapOutput;
         List<BitmapOutputAdmission.Reservation> blockers = await SaturateAdmissionAsync(admission);
         using var session = CreateProgressiveSession();
         var resolver = new CountingResolver(
@@ -33,7 +35,7 @@ public sealed class BitmapOutputDeferralTests
             "bitmap-output-raster-" + Guid.NewGuid().ToString("N"),
             "image/png");
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
+            DisplaySizedRasterDecodeTests.CreateContext(_renderResources, resolver, session, scale: 1), _renderResources.Images,
             "https://images.example/admission-raster.png",
             "admitted raster");
         var completed = new TaskCompletionSource<LoadCompletedEventArgs>(
@@ -88,7 +90,7 @@ public sealed class BitmapOutputDeferralTests
         const int outputHeight = 512;
         const long bytesPerOutput = (long)outputWidth * outputHeight * 4;
 
-        BitmapOutputAdmission admission = ImageResourceScope.Shared.BitmapOutput;
+        BitmapOutputAdmission admission = _renderResources.Images.BitmapOutput;
         List<BitmapOutputAdmission.Reservation> blockers = await SaturateAdmissionAsync(admission);
         var items = new List<RasterStormItem>(imageCount);
         MarkdownPerformanceSession? session = null;
@@ -100,7 +102,7 @@ public sealed class BitmapOutputDeferralTests
             await WaitUntilAsync(() => admission.GetSnapshot().ChargedBytes == 0);
             BitmapOutputAdmission.Snapshot empty = admission.GetSnapshot();
             Assert.True(bytesPerOutput * imageCount > empty.CapacityBytes,
-                "The fixture must request more live raster bytes than the process-wide ledger can admit.");
+                "The fixture must request more live raster bytes than the scope's ledger can admit.");
             Assert.True(bytesPerOutput * imageCount > empty.SpeculativeLimitBytes,
                 "The fixture must exceed the background/speculative tier as well as total capacity.");
 
@@ -114,7 +116,7 @@ public sealed class BitmapOutputDeferralTests
                     $"bitmap-output-storm-{index}-{Guid.NewGuid():N}",
                     "image/png");
                 var image = new ImageBox(
-                    DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
+                    DisplaySizedRasterDecodeTests.CreateContext(_renderResources, resolver, session, scale: 1), _renderResources.Images,
                     $"https://images.example/storm/{index}.png",
                     $"storm image {index}");
                 var item = new RasterStormItem(image, resolver);
@@ -161,7 +163,7 @@ public sealed class BitmapOutputDeferralTests
                 TimeSpan.FromSeconds(30));
             Assert.All(initiallyAdmitted, item => Assert.True(item.Image.TryReleaseSuspendedResources()));
             Assert.All(initiallyAdmitted, item => Assert.Null(item.Image.Bitmap));
-            ImageResourceScope.Shared.BitmapCache.Clear();
+            _renderResources.Images.BitmapCache.Clear();
 
             await Task.WhenAll(items.Select(item => item.Published.Task))
                 .WaitAsync(TimeSpan.FromMinutes(2));
@@ -192,7 +194,7 @@ public sealed class BitmapOutputDeferralTests
                 () => items.All(item => item.Image.GetWorkState().ActiveWorkCount == 0),
                 TimeSpan.FromSeconds(30));
             Assert.All(items, item => Assert.True(item.Image.TryReleaseSuspendedResources()));
-            ImageResourceScope.Shared.BitmapCache.Clear();
+            _renderResources.Images.BitmapCache.Clear();
             await WaitUntilAsync(() => admission.GetSnapshot().ChargedBytes == 0);
             Assert.All(items, item => Assert.Null(item.Image.Bitmap));
 
@@ -221,7 +223,7 @@ public sealed class BitmapOutputDeferralTests
                 }
                 finally
                 {
-                    try { ImageResourceScope.Shared.BitmapCache.Clear(); }
+                    try { _renderResources.Images.BitmapCache.Clear(); }
                     finally { ReleaseReservations(blockers); }
                 }
             }
@@ -231,7 +233,7 @@ public sealed class BitmapOutputDeferralTests
     [Fact]
     public async Task FullSvgOutputDeferralDoesNotRenderUntilCapacityReturns()
     {
-        BitmapOutputAdmission admission = ImageResourceScope.Shared.BitmapOutput;
+        BitmapOutputAdmission admission = _renderResources.Images.BitmapOutput;
         List<BitmapOutputAdmission.Reservation> blockers = await SaturateAdmissionAsync(admission);
         using var session = CreateProgressiveSession();
         var renderer = new CountingSvgRenderer(new MarkdownSvgDocumentInfo(
@@ -243,7 +245,7 @@ public sealed class BitmapOutputDeferralTests
             "svg-content:" + Guid.NewGuid().ToString("N"),
             "image/svg+xml");
         var image = new ImageBox(
-            CreateSvgContext(resolver, renderer, session, rasterizationScale: 1), ImageResourceScope.Shared,
+            CreateSvgContext(resolver, renderer, session, rasterizationScale: 1), _renderResources.Images,
             "https://images.example/admission-full.svg",
             "full SVG");
         var completed = new TaskCompletionSource<LoadCompletedEventArgs>(
@@ -291,7 +293,7 @@ public sealed class BitmapOutputDeferralTests
     [Fact]
     public async Task TiledSvgOutputDeferralRetainsAcceptedTreeAndInvalidatesForRetry()
     {
-        BitmapOutputAdmission admission = ImageResourceScope.Shared.BitmapOutput;
+        BitmapOutputAdmission admission = _renderResources.Images.BitmapOutput;
         List<BitmapOutputAdmission.Reservation> blockers = await SaturateAdmissionAsync(admission);
         using var session = CreateProgressiveSession();
         var renderer = new CountingSvgRenderer(new MarkdownSvgDocumentInfo(
@@ -303,7 +305,7 @@ public sealed class BitmapOutputDeferralTests
             "svg-content:" + Guid.NewGuid().ToString("N"),
             "image/svg+xml");
         var image = new ImageBox(
-            CreateSvgContext(resolver, renderer, session, rasterizationScale: 4), ImageResourceScope.Shared,
+            CreateSvgContext(resolver, renderer, session, rasterizationScale: 4), _renderResources.Images,
             "https://images.example/admission-tiled.svg",
             "tiled SVG");
 
@@ -379,7 +381,7 @@ public sealed class BitmapOutputDeferralTests
     [InlineData(true)]
     public async Task CancelingImageOrSessionRemovesTheSourceFreeCapacityWaiter(bool cancelSession)
     {
-        BitmapOutputAdmission admission = ImageResourceScope.Shared.BitmapOutput;
+        BitmapOutputAdmission admission = _renderResources.Images.BitmapOutput;
         List<BitmapOutputAdmission.Reservation> blockers = await SaturateAdmissionAsync(admission);
         using var session = CreateProgressiveSession();
         var resolver = new CountingResolver(
@@ -387,7 +389,7 @@ public sealed class BitmapOutputDeferralTests
             "bitmap-output-cancel-" + Guid.NewGuid().ToString("N"),
             "image/png");
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
+            DisplaySizedRasterDecodeTests.CreateContext(_renderResources, resolver, session, scale: 1), _renderResources.Images,
             "https://images.example/admission-cancel.png",
             "cancel waiter");
 
@@ -422,7 +424,7 @@ public sealed class BitmapOutputDeferralTests
     [Fact]
     public async Task DisabledOffscreenReleasePolicyKeepsLegacyBitmapLoadOutsideSharedLedger()
     {
-        BitmapOutputAdmission admission = ImageResourceScope.Shared.BitmapOutput;
+        BitmapOutputAdmission admission = _renderResources.Images.BitmapOutput;
         List<BitmapOutputAdmission.Reservation> blockers = await SaturateAdmissionAsync(admission);
         using var session = new MarkdownPerformanceSession(
             MarkdownPerformanceOptions.Progressive with
@@ -435,7 +437,7 @@ public sealed class BitmapOutputDeferralTests
             "bitmap-output-legacy-" + Guid.NewGuid().ToString("N"),
             "image/png");
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
+            DisplaySizedRasterDecodeTests.CreateContext(_renderResources, resolver, session, scale: 1), _renderResources.Images,
             "https://images.example/admission-legacy.png",
             "legacy policy");
 
@@ -465,16 +467,16 @@ public sealed class BitmapOutputDeferralTests
     [InlineData("raster-sized")]
     public async Task OversizedLegacyCacheRejectionTrimsCacheOnlyOnWorkerAndPreservesLease(string rejectionPath)
     {
-        ImageResourceScope.Shared.BitmapCache.Clear();
-        await WaitUntilAsync(() => ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes == 0);
-        BitmapOutputAdmission admission = ImageResourceScope.Shared.BitmapOutput;
+        _renderResources.Images.BitmapCache.Clear();
+        await WaitUntilAsync(() => _renderResources.Images.BitmapCache.GetSnapshot().RetainedBytes == 0);
+        BitmapOutputAdmission admission = _renderResources.Images.BitmapOutput;
         long maximumPixels = admission.MaximumSingleOutputBytes / 4;
         int side = checked((int)System.Math.Sqrt(maximumPixels) + 1);
         long oversizedBytes = checked((long)side * side * 4);
         Assert.True(oversizedBytes > admission.MaximumSingleOutputBytes);
-        Assert.True(oversizedBytes < ImageResourceScope.Shared.BitmapCache.GetSnapshot().BudgetBytes);
+        Assert.True(oversizedBytes < _renderResources.Images.BitmapCache.GetSnapshot().BudgetBytes);
 
-        long livePixelsBefore = ImageResourceScope.Shared.BitmapCache.GetSnapshot().LivePixelWeightBytes;
+        long livePixelsBefore = _renderResources.Images.BitmapCache.GetSnapshot().LivePixelWeightBytes;
         long admittedBytesBefore = admission.GetSnapshot().ChargedBytes;
         using var session = new MarkdownPerformanceSession(
             MarkdownPerformanceOptions.Progressive with
@@ -488,7 +490,7 @@ public sealed class BitmapOutputDeferralTests
             cacheKey,
             "image/png");
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
+            DisplaySizedRasterDecodeTests.CreateContext(_renderResources, resolver, session, scale: 1), _renderResources.Images,
             "https://images.example/oversized-legacy-cache.png",
             "oversized cached legacy bitmap");
         SharedCanvasBitmapCache.Lease? survivor = null;
@@ -507,7 +509,7 @@ public sealed class BitmapOutputDeferralTests
             SharedCanvasBitmapCache.Lease seed;
             try
             {
-                seed = ImageResourceScope.Shared.BitmapCache.StoreAndAcquire(device, cacheKey, createdBitmap);
+                seed = _renderResources.Images.BitmapCache.StoreAndAcquire(device, cacheKey, createdBitmap);
                 unownedBitmap = null;
                 cacheSeeded = true;
             }
@@ -517,12 +519,12 @@ public sealed class BitmapOutputDeferralTests
             }
             seed.Dispose(); // Leave the oversized, unadmitted Entry cache-only.
 
-            Assert.True(ImageResourceScope.Shared.BitmapCache.TryAcquire(device, cacheKey, out survivor));
+            Assert.True(_renderResources.Images.BitmapCache.TryAcquire(device, cacheKey, out survivor));
             SharedCanvasBitmapCache.Lease liveSurvivor =
                 Assert.IsType<SharedCanvasBitmapCache.Lease>(survivor);
             Assert.False(liveSurvivor.IsBitmapOutputAdmitted);
             Assert.Equal(livePixelsBefore + oversizedBytes,
-                ImageResourceScope.Shared.BitmapCache.GetSnapshot().LivePixelWeightBytes);
+                _renderResources.Images.BitmapCache.GetSnapshot().LivePixelWeightBytes);
 
             bool admitted = rejectionPath switch
             {
@@ -535,7 +537,7 @@ public sealed class BitmapOutputDeferralTests
 
             await WaitUntilAsync(() =>
             {
-                if (!ImageResourceScope.Shared.BitmapCache.TryAcquire(device, cacheKey, out var probe))
+                if (!_renderResources.Images.BitmapCache.TryAcquire(device, cacheKey, out var probe))
                     return true;
                 probe?.Dispose();
                 return false;
@@ -548,7 +550,7 @@ public sealed class BitmapOutputDeferralTests
             Assert.Equal((uint)side, liveSurvivor.Bitmap.SizeInPixels.Height);
             Assert.Equal(admittedBytesBefore, admission.GetSnapshot().ChargedBytes);
             Assert.Equal(livePixelsBefore + oversizedBytes,
-                ImageResourceScope.Shared.BitmapCache.GetSnapshot().LivePixelWeightBytes);
+                _renderResources.Images.BitmapCache.GetSnapshot().LivePixelWeightBytes);
         }
         finally
         {
@@ -565,13 +567,13 @@ public sealed class BitmapOutputDeferralTests
                 finally
                 {
                     if (cacheSeeded)
-                        ImageResourceScope.Shared.BitmapCache.Clear();
+                        _renderResources.Images.BitmapCache.Clear();
                 }
             }
         }
 
         await WaitUntilAsync(() =>
-            ImageResourceScope.Shared.BitmapCache.GetSnapshot().LivePixelWeightBytes == livePixelsBefore);
+            _renderResources.Images.BitmapCache.GetSnapshot().LivePixelWeightBytes == livePixelsBefore);
         Assert.Equal(admittedBytesBefore, admission.GetSnapshot().ChargedBytes);
     }
 
@@ -604,7 +606,7 @@ public sealed class BitmapOutputDeferralTests
     private static MarkdownPerformanceSession CreateProgressiveSession() =>
         new(MarkdownPerformanceOptions.Progressive with { SourceCacheBudgetBytes = 0 });
 
-    private static MarkdownLayoutContext CreateSvgContext(
+    private MarkdownLayoutContext CreateSvgContext(
         IMarkdownImageResolver resolver,
         IMarkdownSvgRenderer renderer,
         MarkdownPerformanceSession session,
@@ -636,6 +638,7 @@ public sealed class BitmapOutputDeferralTests
             FlowDirection.LeftToRight,
             language: "en-US")
         {
+            RenderResources = _renderResources,
             ImageResolver = resolver,
             SvgRenderer = renderer,
             PerformanceSession = session,
@@ -650,13 +653,13 @@ public sealed class BitmapOutputDeferralTests
             $"<svg xmlns='http://www.w3.org/2000/svg' width='{width}' height='{height}'>" +
             $"<title>{title}</title><rect width='{width}' height='{height}' fill='#2a6'/></svg>");
 
-    private static async Task<List<BitmapOutputAdmission.Reservation>> SaturateAdmissionAsync(
+    private async Task<List<BitmapOutputAdmission.Reservation>> SaturateAdmissionAsync(
         BitmapOutputAdmission admission)
     {
         // Cached admitted bitmaps can keep charges alive even when no image is
         // actively painting. Clear them first so the blockers below, rather
         // than an incidental prior test cache, define the full-ledger setup.
-        ImageResourceScope.Shared.BitmapCache.Clear();
+        _renderResources.Images.BitmapCache.Clear();
         await WaitUntilAsync(() => admission.GetSnapshot().ChargedBytes == 0);
 
         var reservations = new List<BitmapOutputAdmission.Reservation>();
@@ -707,7 +710,7 @@ public sealed class BitmapOutputDeferralTests
         reservations.Clear();
     }
 
-    private static async Task WaitForDeferredAndDrainedAsync(
+    private async Task WaitForDeferredAndDrainedAsync(
         ImageBox image,
         Func<int>? resolverCount = null)
     {
@@ -724,7 +727,7 @@ public sealed class BitmapOutputDeferralTests
         }
         catch (OperationCanceledException) when (timeout.IsCancellationRequested)
         {
-            BitmapOutputAdmission.Snapshot capacity = ImageResourceScope.Shared.BitmapOutput.GetSnapshot();
+            BitmapOutputAdmission.Snapshot capacity = _renderResources.Images.BitmapOutput.GetSnapshot();
             string state =
                 $"{image.OutputDeferral.GetState()}, " +
                 $"activeWork={image.GetWorkState().ActiveWorkCount}, " +

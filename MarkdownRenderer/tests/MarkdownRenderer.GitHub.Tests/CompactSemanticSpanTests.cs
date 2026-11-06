@@ -15,6 +15,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class CompactSemanticSpanTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Fact]
     public void CommonSemanticSpanIsAnInlineValueWithOneOwnerSlot()
     {
@@ -64,7 +66,7 @@ public sealed class CompactSemanticSpanTests
         {
             BlockIndex = context.NextBlockIndex(),
         };
-        var image = new ImageBox(context, ImageResourceScope.Shared, string.Empty, "image alt")
+        var image = new ImageBox(context, context.ImageResources, string.Empty, "image alt")
         {
             BlockIndex = context.NextBlockIndex(),
         };
@@ -119,7 +121,7 @@ public sealed class CompactSemanticSpanTests
         Assert.Same(style, vectorMetadata.VectorTextStyle);
     }
 
-    private static MarkdownLayoutContext CreateContext()
+    private MarkdownLayoutContext CreateContext()
     {
         var style = new ElementStyle();
         var styles = new Dictionary<string, ElementStyle>(StringComparer.Ordinal)
@@ -144,6 +146,6 @@ public sealed class CompactSemanticSpanTests
             theme,
             new MarkdownSourceMap(new string(' ', 32)),
             new MarkdownExtensionRegistry(),
-            FlowDirection.LeftToRight);
+            FlowDirection.LeftToRight) { RenderResources = _renderResources };
     }
 }

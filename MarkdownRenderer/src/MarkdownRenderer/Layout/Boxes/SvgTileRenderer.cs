@@ -134,7 +134,7 @@ internal sealed class SvgTileRenderer
             ComputeTileRanges(plan, destination, visible);
 
         List<SharedCanvasBitmapCache.Lease>? retired = null;
-        List<CancellationTokenSource>? staleWork = null;
+        List<RetirableCancellationTokenSource>? staleWork = null;
         int remainingQueueCapacity;
         if (!plan.TryBeginViewportMutation())
             return;
@@ -271,7 +271,7 @@ internal sealed class SvgTileRenderer
 
     private void RetirePrunedTileState(
         List<SharedCanvasBitmapCache.Lease>? retired,
-        List<CancellationTokenSource>? staleWork)
+        List<RetirableCancellationTokenSource>? staleWork)
     {
         if (retired is not null)
         {
@@ -280,7 +280,7 @@ internal sealed class SvgTileRenderer
         }
         if (staleWork is not null)
         {
-            foreach (CancellationTokenSource cancellation in staleWork)
+            foreach (RetirableCancellationTokenSource cancellation in staleWork)
             {
                 try
                 {
@@ -379,11 +379,11 @@ internal sealed class SvgTileRenderer
             return false;
         }
 
-        CancellationTokenSource workCancellation;
+        RetirableCancellationTokenSource workCancellation;
         var tileDemand = new MarkdownSvgRenderDemand(priority);
         try
         {
-            workCancellation = new CancellationTokenSource();
+            workCancellation = new RetirableCancellationTokenSource();
         }
         catch
         {
@@ -476,20 +476,20 @@ internal sealed class SvgTileRenderer
         long svgSourceBytes = _host.SvgSourceByteLength;
         long targetPixels = (long)key.Width * key.Height;
         string identity = $"{plan.IdentityPrefix}:tile={key.X},{key.Y},{key.Width},{key.Height}";
-        CancellationTokenSource workCancellation = workOwner.Cancellation;
+        RetirableCancellationTokenSource workCancellation = workOwner.Cancellation;
         SharedCanvasBitmapCache.Lease? bitmapLease = null;
         BitmapOutputAdmission.Reservation? bitmapReservation = null;
         CanvasBitmap? ownedBitmap = null;
         SemaphoreSlim? renderGate = null;
         bool renderGateHeld = false;
         bool providerAdmissionHeld = false;
-        CancellationTokenSource? admissionCancellation = null;
+        RetirableCancellationTokenSource? admissionCancellation = null;
 
         try
         {
             if (!_cache.IsCurrentSvgTilePlan(plan) || !_host.IsCurrentSvgRendererState())
                 return;
-            admissionCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            admissionCancellation = RetirableCancellationTokenSource.CreateLinked(
                 lifetimeWork.Token,
                 workCancellation.Token);
             bool providerOwnsAdmission = plan.HostAdmission is not null &&
@@ -703,7 +703,7 @@ internal sealed class SvgTileRenderer
     private void PublishTileOnUiThread(
         SvgTileRenderPlan plan,
         SvgTileKey key,
-        CancellationTokenSource workCancellation,
+        RetirableCancellationTokenSource workCancellation,
         SharedCanvasBitmapCache.Lease publishedLease)
     {
         SvgTilePublicationOwnership publicationOwnership = default;
@@ -757,11 +757,11 @@ internal sealed class SvgTileRenderer
     // work, and finally releases its document use and image-work lease.
     private async Task RetireTileRenderAsync(
         SvgTileKey key,
-        CancellationTokenSource workCancellation,
+        RetirableCancellationTokenSource workCancellation,
         SharedCanvasBitmapCache.Lease? bitmapLease,
         SemaphoreSlim? heldRenderGate,
         bool providerAdmissionHeld,
-        CancellationTokenSource? admissionCancellation,
+        RetirableCancellationTokenSource? admissionCancellation,
         SvgDocumentUseLease documentUse,
         ImageWorkLease lifetimeWork)
     {
@@ -817,7 +817,7 @@ internal sealed class SvgTileRenderer
         }
     }
 
-    internal Task RetireTileCancellationSource(CancellationTokenSource source)
+    internal Task RetireTileCancellationSource(RetirableCancellationTokenSource source)
     {
         Task callbacks = CancellationTokenSourceRetirement.RequestCancellation(source);
 

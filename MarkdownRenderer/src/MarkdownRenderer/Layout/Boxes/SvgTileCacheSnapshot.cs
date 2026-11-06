@@ -12,7 +12,7 @@ namespace MarkdownRenderer.Layout.Boxes;
 internal readonly record struct SvgTileCacheSnapshot(
     IReadOnlyDictionary<SvgTileKey, SharedCanvasBitmapCache.Lease> Tiles,
     IReadOnlyDictionary<SvgTileKey, SharedCanvasBitmapCache.Lease>? FallbackTiles,
-    IReadOnlyDictionary<SvgTileKey, CancellationTokenSource> Work,
+    IReadOnlyDictionary<SvgTileKey, RetirableCancellationTokenSource> Work,
     string? IdentityPrefix,
     int WidthPixels,
     int HeightPixels,

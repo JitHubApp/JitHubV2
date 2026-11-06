@@ -169,7 +169,7 @@ internal sealed class InlineContainerBox : BlockBox
         Action<IDisposable>? nativeDisposer)
     {
         Context = context;
-        _nativeRetirement = nativeRetirement ?? NativeResourceRetirement.Shared;
+        _nativeRetirement = nativeRetirement ?? context.RenderResources.NativeRetirement;
         _nativeDisposer = nativeDisposer;
         // BuildLazy scopes the context hint only while constructing boxes.
         // Later offscreen measurements still need to retain their scalar
@@ -628,7 +628,7 @@ internal sealed class InlineContainerBox : BlockBox
         ElementStyle style,
         CanvasWordWrapping wordWrapping,
         CanvasHorizontalAlignment horizontalAlignment)
-        => SharedCanvasTextFormatCache.Acquire(
+        => Context.RenderResources.TextFormats.Acquire(
             style,
             wordWrapping,
             horizontalAlignment,

@@ -113,6 +113,7 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox, ISelect
             context.ResourceCreator,
             scene,
             context.CancellationToken,
+            context.RenderResources,
             Style.FontFamily
             , context.LayoutDiagnostics
             , deferNativeResources: true,
@@ -210,7 +211,9 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox, ISelect
         // A DirectWrite/Win2D descriptor creation failure must escape through
         // the existing device/native-resource recovery path; swallowing it
         // would publish an unpaintable scene as a settled capacity fallback.
-        return nativeAdmission.CapacityFallbackFormats.PrepareFormat(LayoutContext.FlowDirection);
+        return nativeAdmission.CapacityFallbackFormats.PrepareFormat(
+            LayoutContext.RenderResources.TextFormats,
+            LayoutContext.FlowDirection);
     }
 
     /// <summary>Releases only device resources; the immutable scene stays owned by this box.</summary>
@@ -674,10 +677,10 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox, ISelect
         VectorScenePaintPalette palette = paletteOverride ?? CreatePaintPalette();
         if (CanScrollHorizontally)
         {
-            NativePaintSessionResources.LayerLease layer = NativePaintSessionResources.CreateLayer(ds, 1f, clip);
+            NativePaintSessionResources.LayerLease layer = LayoutContext.RenderResources.PaintSessions.CreateLayer(ds, 1f, clip);
             try
             {
-                _drawing.Paint(ds, _contentBounds, palette, LayoutContext.ThemeSnapshot.IsHighContrast);
+                _drawing.Paint(LayoutContext.PlacementTransform, ds, _contentBounds, palette, LayoutContext.ThemeSnapshot.IsHighContrast);
             }
             catch (Exception primary)
             {
@@ -688,7 +691,7 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox, ISelect
         }
         else
         {
-            _drawing.Paint(ds, _contentBounds, palette, LayoutContext.ThemeSnapshot.IsHighContrast);
+            _drawing.Paint(LayoutContext.PlacementTransform, ds, _contentBounds, palette, LayoutContext.ThemeSnapshot.IsHighContrast);
         }
     }
 

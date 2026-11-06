@@ -62,7 +62,8 @@ internal interface IMarkdownPerformanceSessionInternal : IMarkdownPerformanceSes
         Rect viewport);
     IMarkdownVectorSceneResidencyPolicy? CreateVectorSceneResidencyPolicy(
         IReadOnlyList<BlockBox> blocks,
-        object? documentOwner = null);
+        object? documentOwner = null,
+        LayoutPlacementTransformContext? placementTransform = null);
     Task<bool> PrepareDeferredSceneBandAsync(
         object documentOwner,
         LayoutSnapshot snapshot,

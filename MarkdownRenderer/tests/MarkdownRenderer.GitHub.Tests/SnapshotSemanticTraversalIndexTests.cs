@@ -23,6 +23,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 /// </summary>
 public sealed class SnapshotSemanticTraversalIndexTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Fact]
     public void StandaloneSemanticBuildDoesNotMutateSnapshotIndexesOrFocusArrays()
     {
@@ -107,13 +109,14 @@ public sealed class SnapshotSemanticTraversalIndexTests
 
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
-        using (LayoutPassCancellation.Push(cancellation.Token))
+        using (fixture.Context.PassCancellation.Push(cancellation.Token))
         {
             Assert.ThrowsAny<OperationCanceledException>(() => new LayoutSnapshot(
                 fixture.Roots,
                 fixture.Context.SourceMap,
                 width: 480,
-                height: 640));
+                height: 640,
+                layoutContext: fixture.Context));
         }
 
         before.AssertUnchanged(prior);
@@ -123,7 +126,7 @@ public sealed class SnapshotSemanticTraversalIndexTests
         prior.EndPaint();
     }
 
-    private static TestFixture CreateDecorativeImageFixture()
+    private TestFixture CreateDecorativeImageFixture()
     {
         MarkdownLayoutContext context = CreateContext();
         var paragraph = new InlineContainerBox(context, MarkdownElementKeys.Body)
@@ -142,7 +145,7 @@ public sealed class SnapshotSemanticTraversalIndexTests
         var root = new StackBox { BlockIndex = 100 };
         root.Add(paragraph);
         var standaloneDecorativeImage = new ImageBox(
-            context, ImageResourceScope.Shared,
+            context, context.ImageResources,
             "https://example.test/standalone-decorative.png",
             string.Empty)
         {
@@ -159,7 +162,7 @@ public sealed class SnapshotSemanticTraversalIndexTests
             standaloneDecorativeImage);
     }
 
-    private static MarkdownLayoutContext CreateContext()
+    private MarkdownLayoutContext CreateContext()
     {
         var style = new ElementStyle();
         var styles = new Dictionary<string, ElementStyle>(StringComparer.Ordinal)
@@ -183,7 +186,7 @@ public sealed class SnapshotSemanticTraversalIndexTests
             theme,
             new MarkdownSourceMap("visible link"),
             new MarkdownExtensionRegistry(),
-            FlowDirection.LeftToRight);
+            FlowDirection.LeftToRight) { RenderResources = _renderResources };
     }
 
     private static Rect[] CaptureBounds(TestFixture fixture) =>

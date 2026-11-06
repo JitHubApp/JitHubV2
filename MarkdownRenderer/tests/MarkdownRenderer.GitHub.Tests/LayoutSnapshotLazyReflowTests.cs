@@ -451,7 +451,7 @@ public sealed class LayoutSnapshotLazyReflowTests
         snapshot.EnsureMeasuredBand(new LazyLayoutBand(96.25d, 97), CancellationToken.None);
         Assert.True(snapshot.IsTopLevelBlockMeasured(blocks[3]));
         blocks[2].AfterMeasure = cancellation.Cancel;
-        blocks[3].ThrowIfAmbientCancellationRequestedDuringArrange = true;
+        blocks[3].ObservePassCancellation(snapshot.Geometry.PassCancellation);
 
         Rect[] oldRects = blocks.Select(block => block.Bounds).ToArray();
         bool[] oldMeasured = GetMeasuredMask(snapshot).ToArray();
@@ -463,7 +463,7 @@ public sealed class LayoutSnapshotLazyReflowTests
             .Select(index.GetIndexedBounds)
             .ToArray();
 
-        using (LayoutPassCancellation.Push(cancellation.Token))
+        using (snapshot.Geometry.PassCancellation.Push(cancellation.Token))
         {
             Assert.ThrowsAny<OperationCanceledException>(() => snapshot.EnsureMeasuredBand(
                 new LazyLayoutBand(64.25d, 64.5d), CancellationToken.None));
@@ -633,10 +633,13 @@ public sealed class LayoutSnapshotLazyReflowTests
         internal bool ThrowAfterMeasureMutation { get; set; }
         internal bool ThrowAfterNextArrange { get; set; }
         internal bool ThrowOnEveryArrange { get; set; }
-        internal bool ThrowIfAmbientCancellationRequestedDuringArrange { get; set; }
+        private LayoutPassCancellation? _observedPass;
         internal Action? AfterMeasure { get; set; }
 
         internal void SetMeasuredHeight(float height) => _measuredHeight = height;
+
+        /// <summary>Throws from Arrange when the snapshot's pass token is canceled.</summary>
+        internal void ObservePassCancellation(LayoutPassCancellation pass) => _observedPass = pass;
 
         internal void ResetCounts()
         {
@@ -659,8 +662,7 @@ public sealed class LayoutSnapshotLazyReflowTests
         public override void Arrange(float x, float y, float width)
         {
             ArrangeCount++;
-            if (ThrowIfAmbientCancellationRequestedDuringArrange)
-                LayoutPassCancellation.GetEffectiveToken(CancellationToken.None).ThrowIfCancellationRequested();
+            _observedPass?.GetEffectiveToken(CancellationToken.None).ThrowIfCancellationRequested();
 
             base.Arrange(x, y, width);
             if (ThrowAfterNextArrange)

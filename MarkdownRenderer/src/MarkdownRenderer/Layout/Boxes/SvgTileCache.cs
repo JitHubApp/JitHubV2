@@ -96,12 +96,17 @@ internal sealed class SvgTileCache : ISvgTileGapFill
     /// Paints the current tile grid under the tile lock. Holes fall back to
     /// the previous grid, then to whatever the box paints without tiles.
     /// </summary>
-    internal void PaintTiles(CanvasDrawingSession ds, Rect destination, Rect viewport)
+    internal void PaintTiles(
+        CanvasDrawingSession ds,
+        NativePaintSessionResources paintSessions,
+        Rect destination,
+        Rect viewport)
     {
         lock (_svgTileLock)
         {
             SvgTilePainter.PaintLayer(
                 ds,
+                paintSessions,
                 _svgTiles,
                 destination,
                 viewport,
@@ -179,7 +184,7 @@ internal sealed class SvgTileCache : ISvgTileGapFill
     internal bool TryPublishTile(
         SvgTileRenderPlan plan,
         SvgTileKey key,
-        CancellationTokenSource workCancellation,
+        RetirableCancellationTokenSource workCancellation,
         bool rendererCurrent,
         SharedCanvasBitmapCache.Lease publishedLease,
         ref SvgTilePublicationOwnership publicationOwnership,
@@ -236,10 +241,10 @@ internal sealed class SvgTileCache : ISvgTileGapFill
     /// holds the box's publication lock and retires the result with
     /// <see cref="RetireDetached"/> after releasing it.
     /// </summary>
-    internal (SharedCanvasBitmapCache.Lease[] Tiles, CancellationTokenSource[] Work) DetachAll()
+    internal (SharedCanvasBitmapCache.Lease[] Tiles, RetirableCancellationTokenSource[] Work) DetachAll()
     {
         SharedCanvasBitmapCache.Lease[] tiles;
-        CancellationTokenSource[] work;
+        RetirableCancellationTokenSource[] work;
         lock (_svgTileLock)
         {
             int tileCount = _svgTiles.Count + (_svgFallbackTiles?.Count ?? 0);
@@ -274,11 +279,11 @@ internal sealed class SvgTileCache : ISvgTileGapFill
     }
 
     /// <summary>Retires leases and requests cancellation of work detached by <see cref="DetachAll"/>.</summary>
-    internal void RetireDetached(SharedCanvasBitmapCache.Lease[] tiles, CancellationTokenSource[] work)
+    internal void RetireDetached(SharedCanvasBitmapCache.Lease[] tiles, RetirableCancellationTokenSource[] work)
     {
         foreach (SharedCanvasBitmapCache.Lease tile in tiles)
             _host.TryImageCleanup(tile.Dispose);
-        foreach (CancellationTokenSource cancellation in work)
+        foreach (RetirableCancellationTokenSource cancellation in work)
         {
             try
             {
@@ -348,7 +353,7 @@ internal sealed class SvgTileCache : ISvgTileGapFill
         long demandVersion,
         int maximumTier,
         out long viewportObservationVersion,
-        ref CancellationTokenSource[] canceledWork,
+        ref RetirableCancellationTokenSource[] canceledWork,
         ref int canceledWorkCount)
     {
         bool canPark;
@@ -369,8 +374,8 @@ internal sealed class SvgTileCache : ISvgTileGapFill
                     // or map entry changes. OOM therefore leaves tile ownership
                     // intact and the outer finally still clears the marker.
                     canceledWork = ownedWorkCount == 0
-                        ? Array.Empty<CancellationTokenSource>()
-                        : new CancellationTokenSource[ownedWorkCount];
+                        ? Array.Empty<RetirableCancellationTokenSource>()
+                        : new RetirableCancellationTokenSource[ownedWorkCount];
                     canPark = _viewport.Version == viewportObservationVersion &&
                         IsSvgPressureParkEligibleNoLock(plan, demandVersion, maximumTier) &&
                         ReferenceEquals(_host.SvgParkingPlan, plan);
@@ -390,12 +395,17 @@ internal sealed class SvgTileCache : ISvgTileGapFill
 
     // The caller holds _svgTileLock. A hole in the new tile grid shows the
     // fallback grid, then the previous whole bitmap, then the placeholder.
-    void ISvgTileGapFill.FillSvgTileGap(CanvasDrawingSession ds, Rect destination, Rect gap, bool useFallbackTiles)
+    void ISvgTileGapFill.FillSvgTileGap(
+        CanvasDrawingSession ds,
+        NativePaintSessionResources paintSessions,
+        Rect destination,
+        Rect gap,
+        bool useFallbackTiles)
     {
         if (useFallbackTiles && _svgFallbackTiles is { Count: > 0 } fallback &&
             _svgFallbackWidthPixels > 0 && _svgFallbackHeightPixels > 0)
         {
-            SvgTilePainter.PaintLayer(ds, fallback, destination, gap,
+            SvgTilePainter.PaintLayer(ds, paintSessions, fallback, destination, gap,
                 _svgFallbackWidthPixels, _svgFallbackHeightPixels,
                 _svgFallbackPhysicalViewport, this, useFallbackTiles: false);
         }
@@ -438,7 +448,7 @@ internal sealed class SvgTileCache : ISvgTileGapFill
         int lastVisibleTileX,
         int lastVisibleTileY,
         ref List<SharedCanvasBitmapCache.Lease>? retired,
-        ref List<CancellationTokenSource>? staleWork,
+        ref List<RetirableCancellationTokenSource>? staleWork,
         out int remainingQueueCapacity)
     {
         remainingQueueCapacity = 0;
@@ -556,7 +566,7 @@ internal sealed class SvgTileCache : ISvgTileGapFill
     private bool IsCurrentSvgTileWorkOwnerNoLock(
         SvgTileRenderPlan plan,
         SvgTileKey key,
-        CancellationTokenSource workCancellation)
+        RetirableCancellationTokenSource workCancellation)
     {
         return IsCurrentSvgTilePlan(plan) &&
             _work.IsCurrentOwner(plan, key, workCancellation);
@@ -564,7 +574,7 @@ internal sealed class SvgTileCache : ISvgTileGapFill
 
     internal void CompleteSvgTileWork(
         SvgTileKey key,
-        CancellationTokenSource workCancellation)
+        RetirableCancellationTokenSource workCancellation)
     {
         void Complete()
         {
@@ -749,7 +759,7 @@ internal sealed class SvgTileCache : ISvgTileGapFill
             foreach (SharedCanvasBitmapCache.Lease tile in fallbackTiles)
                 _host.TryImageCleanup(tile.Dispose);
         }
-        foreach (CancellationTokenSource cancellation in transition.Work)
+        foreach (RetirableCancellationTokenSource cancellation in transition.Work)
         {
             try { _ = CancellationTokenSourceRetirement.RequestCancellation(cancellation); }
             catch (Exception exception) { _host.RecordImageRetirementFailure(exception); }

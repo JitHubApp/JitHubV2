@@ -36,6 +36,7 @@ public sealed class LazyIdleImageLayoutCandidateTests
         var context = new MarkdownLayoutContext(seed.Device, seed.SourceContext.ThemeSnapshot, sourceMap,
             registry, rightToLeft ? FlowDirection.RightToLeft : FlowDirection.LeftToRight, language: "en-US")
         {
+            RenderResources = seed.RenderResources,
             ImagePreparationOwner = seed.ImagePreparationOwnerToken,
             PerformanceDocumentOwner = new object(),
             PerformanceSession = session,

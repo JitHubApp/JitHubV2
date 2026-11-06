@@ -34,8 +34,11 @@ public sealed class MarkdownEngine : IDisposable
         long parseCacheBudgetBytes,
         MarkdownParseLimits parseLimits,
         IMarkdownPresentationConfiguration? presentationConfiguration,
-        bool isSharedSingleton)
+        bool isSharedSingleton,
+        MarkdownRenderResources? renderResources = null)
     {
+        // A derived engine renders within its parent's budgets.
+        RenderResources = renderResources ?? MarkdownRenderResources.CreateForEngine();
         Profile = profile;
         Extensions = extensions;
         ParseCacheBudgetBytes = parseCacheBudgetBytes;
@@ -92,6 +95,13 @@ public sealed class MarkdownEngine : IDisposable
     /// and views given a different engine never see them.
     /// </summary>
     internal SharedLayoutMetricsCache LayoutMetrics { get; } = new();
+
+    /// <summary>
+    /// Gets the image caches, budgets and native custody shared by every view
+    /// that renders this engine's documents. Engines derived from this one
+    /// share them; independently built engines own their own.
+    /// </summary>
+    internal MarkdownRenderResources RenderResources { get; }
 
     /// <summary>
     /// Creates a reusable builder initialized from this engine. Opaque

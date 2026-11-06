@@ -7,7 +7,7 @@ public sealed class CancellationTokenSourceRetirementTests
     [Fact]
     public async Task CancellationIsImmediateButCallbacksAndLifetimeRetireBeforeSourceDisposal()
     {
-        var source = new CancellationTokenSource();
+        var source = new RetirableCancellationTokenSource();
         CancellationToken token = source.Token;
         var callbackEntered = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -63,7 +63,7 @@ public sealed class CancellationTokenSourceRetirementTests
     [Fact]
     public async Task ThrowingCancellationRegistrationIsObservedAndCannotPreventRetirement()
     {
-        var source = new CancellationTokenSource();
+        var source = new RetirableCancellationTokenSource();
         using CancellationTokenRegistration registration = source.Token.Register(
             static () => throw new InvalidOperationException("expected callback failure"));
 

@@ -97,7 +97,10 @@ public sealed class InlineSceneResidencyPlacementScopeTests
         Assert.Equal(placementTranslationY, placement.TranslationY);
         var band = new LazyLayoutBand(placement.Top, placement.Bottom);
         var ordinalByBlockIndex = new Dictionary<int, int> { [inline.BlockIndex] = 0 };
-        var policy = new MarkdownVectorSceneResidencyPolicy([inline], nativeAdmission: admission);
+        var policy = new MarkdownVectorSceneResidencyPolicy(
+            [inline],
+            nativeAdmission: admission,
+            placementTransform: context.PlacementTransform);
         try
         {
             // The index is collected while ReplaceActiveBand enters this root's
@@ -109,7 +112,7 @@ public sealed class InlineSceneResidencyPlacementScopeTests
 
             inline.GetSceneGeometryOrigin(out _, out double unplacedOriginY);
             double placedOriginY;
-            using (LayoutPlacementTransformContext.Enter(placement.TranslationX, placement.TranslationY))
+            using (context.PlacementTransform.Enter(placement.TranslationX, placement.TranslationY))
             {
                 inline.GetSceneGeometryOrigin(out _, out placedOriginY);
             }

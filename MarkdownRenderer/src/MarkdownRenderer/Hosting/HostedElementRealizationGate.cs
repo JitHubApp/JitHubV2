@@ -89,7 +89,7 @@ internal sealed class HostedElementRealizationGate<TRequest>
     internal sealed class Operation : IDisposable
     {
         private readonly object _gate = new();
-        private CancellationTokenSource? _cancellation;
+        private RetirableCancellationTokenSource? _cancellation;
         private CancellationTokenRegistration _lifetimeRegistration;
         private bool _hasLifetimeRegistration;
         private Task _cancellationCallbacks = Task.CompletedTask;
@@ -98,7 +98,7 @@ internal sealed class HostedElementRealizationGate<TRequest>
         internal Operation(TRequest request, CancellationToken lifetimeToken)
         {
             Request = request;
-            _cancellation = new CancellationTokenSource();
+            _cancellation = new RetirableCancellationTokenSource();
             CancellationToken = _cancellation.Token;
             if (lifetimeToken.CanBeCanceled)
             {
@@ -141,7 +141,7 @@ internal sealed class HostedElementRealizationGate<TRequest>
 
         public void Dispose()
         {
-            CancellationTokenSource? cancellation;
+            RetirableCancellationTokenSource? cancellation;
             Task cancellationCallbacks;
             CancellationTokenRegistration lifetimeRegistration;
             bool hasLifetimeRegistration;

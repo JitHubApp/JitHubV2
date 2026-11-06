@@ -119,7 +119,7 @@ internal sealed class LayoutHosts :
 
     void ILazyLayoutHost.StopRecoveryClockIfIdle() => Owners.RecoveryWork.StopIfIdle();
 
-    Task ILazyLayoutHost.RetireCancellationTokenSource(CancellationTokenSource? cts, Task? lifetime) =>
+    Task ILazyLayoutHost.RetireCancellationTokenSource(RetirableCancellationTokenSource? cts, Task? lifetime) =>
         Owners.CancellationRetirement.Retire(cts, lifetime);
 
     bool ILayoutCommitHost.IsScrollViewIntermediate => Owners.Scrolling.IsIntermediate;

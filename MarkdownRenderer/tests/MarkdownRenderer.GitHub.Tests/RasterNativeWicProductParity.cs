@@ -1,3 +1,4 @@
+using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Parsing;
 using Xunit;
@@ -26,7 +27,7 @@ internal static class RasterNativeWicProductParity
         Assert.True(RasterNativeWicDecoder.IsQualifiedPlan(plan));
         var credit = new CountingCredit();
         RasterDecodedPixelLease pixels = await Task.Run(() =>
-            RasterNativeWicDecoder.Decode(source, plan, credit, CancellationToken.None));
+            RasterNativeWicDecoder.Decode(source, plan, credit, new NativeResourceRetirement(createTimer: false), CancellationToken.None));
         byte[] borrowed = pixels.Pixels;
         try
         {

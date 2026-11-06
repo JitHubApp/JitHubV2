@@ -21,6 +21,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection(ProcessRasterDecodeCollection.CollectionName)]
 public sealed class ImageBoxSourceLeaseTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Fact]
     public async Task SvgBoxDoesNotPinEvictedSourceAndReentryUsesAuthorizedResolver()
     {
@@ -39,7 +41,7 @@ public sealed class ImageBoxSourceLeaseTests
                 new MarkdownImageResolveContext(null));
         var renderer = new GatedSvgRenderer(blockDocumentDispose: true);
         var image = new ImageBox(
-            CreateContext(renderer, session, documentScope), ImageResourceScope.Shared,
+            CreateContext(renderer, session, documentScope), _renderResources.Images,
             sourceUrl,
             "Evicted SVG source");
 
@@ -131,7 +133,7 @@ public sealed class ImageBoxSourceLeaseTests
         byte[] source = CreateSvgBytes("partition-bound-metadata");
         var session = CreateSession(source.Length + 128L);
         var image = new ImageBox(
-            CreateContext(new GatedSvgRenderer(), session), ImageResourceScope.Shared,
+            CreateContext(new GatedSvgRenderer(), session), _renderResources.Images,
             "https://example.test/partition.svg",
             "Partitioned SVG");
 
@@ -228,7 +230,7 @@ public sealed class ImageBoxSourceLeaseTests
             ((IMarkdownPerformanceSessionInternal)session).OpenDocument(resolver, resolveContext);
         var renderer = new GatedSvgRenderer();
         var image = new ImageBox(
-            CreateContext(renderer, session, documentScope), ImageResourceScope.Shared,
+            CreateContext(renderer, session, documentScope), _renderResources.Images,
             "https://example.test/leased.svg",
             "Leased SVG");
 
@@ -293,7 +295,7 @@ public sealed class ImageBoxSourceLeaseTests
                 new LeasedSvgResolver(MakeSource, sourceTemplate.Length), new MarkdownImageResolveContext(null));
         IMarkdownImageResolver resolver = scope ?? (IMarkdownImageResolver)new GeneratedSvgResolver(MakeSource);
         var renderer = new GatedSvgRenderer(blockRender: true, distinctPreparation: true);
-        var image = new ImageBox(CreateContext(renderer, session, resolver), ImageResourceScope.Shared,
+        var image = new ImageBox(CreateContext(renderer, session, resolver), _renderResources.Images,
             $"https://example.test/{Guid.NewGuid():N}.svg", "Source release before render");
         Exception? primaryFailure = null;
         try
@@ -373,7 +375,7 @@ public sealed class ImageBoxSourceLeaseTests
         long sourceLength = dataUri ? template.Length : new FileInfo(new Uri(source).LocalPath).Length;
         var session = CreateSession(sourceLength + 128L);
         var renderer = new GatedSvgRenderer(blockRender: true, distinctPreparation: true);
-        var image = new ImageBox(CreateContext(renderer, session), ImageResourceScope.Shared, source, "Built-in source release");
+        var image = new ImageBox(CreateContext(renderer, session), _renderResources.Images, source, "Built-in source release");
         Exception? primaryFailure = null;
         try
         {
@@ -428,7 +430,7 @@ public sealed class ImageBoxSourceLeaseTests
         var session = CreateSession(sourceBytes.Length + 128L);
         var renderer = new GatedSvgRenderer();
         var image = new ImageBox(
-            CreateContext(renderer, session), ImageResourceScope.Shared,
+            CreateContext(renderer, session), _renderResources.Images,
             dataUri,
             "Data URI SVG");
 
@@ -476,7 +478,7 @@ public sealed class ImageBoxSourceLeaseTests
         var session = CreateSession(System.Math.Max(8, sourceBytes.Length / 2));
         var renderer = new GatedSvgRenderer();
         var image = new ImageBox(
-            CreateContext(renderer, session), ImageResourceScope.Shared,
+            CreateContext(renderer, session), _renderResources.Images,
             new Uri(path).AbsoluteUri,
             "Oversized local SVG");
 
@@ -515,14 +517,14 @@ public sealed class ImageBoxSourceLeaseTests
     {
         var renderer = new GatedSvgRenderer();
         renderer.ReleaseFirstOpen.TrySetResult();
-        var image = new ImageBox(CreateContext(renderer, session: null), ImageResourceScope.Shared,
+        var image = new ImageBox(CreateContext(renderer, session: null), _renderResources.Images,
             $"https://example.test/pending-{Guid.NewGuid():N}.svg", "Pending SVG");
         IDisposable? openedWork = null;
         Exception? primaryFailure = null;
         try
         {
             image.Measure(80);
-            var opener = new SvgSourceOpener(image.SourceLoadHost, image.Context, ImageResourceScope.Shared,
+            var opener = new SvgSourceOpener(image.SourceLoadHost, image.Context, _renderResources.Images,
                 image.OutputAdmission, image.OutputDeferral, image.Url);
             SvgOpenStageResult result = await opener.OpenAsync(CreateSvgBytes("unconsumed-handoff"),
                     default, image.Url, null,
@@ -572,11 +574,11 @@ public sealed class ImageBoxSourceLeaseTests
             ((IMarkdownPerformanceSessionInternal)session).OpenDocument(resolver, resolveContext);
         var renderer = new GatedSvgRenderer();
         var first = new ImageBox(
-            CreateContext(renderer, session, documentScope), ImageResourceScope.Shared,
+            CreateContext(renderer, session, documentScope), _renderResources.Images,
             "https://example.test/first.svg",
             "First SVG");
         var second = new ImageBox(
-            CreateContext(renderer, session, documentScope), ImageResourceScope.Shared,
+            CreateContext(renderer, session, documentScope), _renderResources.Images,
             "https://example.test/second.svg",
             "Second SVG");
 
@@ -643,7 +645,7 @@ public sealed class ImageBoxSourceLeaseTests
             SourceCacheBudgetBytes = 0,
         });
 
-    private static MarkdownLayoutContext CreateContext(
+    private MarkdownLayoutContext CreateContext(
         IMarkdownSvgRenderer renderer,
         MarkdownPerformanceSession? session,
         IMarkdownImageResolver? resolver = null)
@@ -679,6 +681,7 @@ public sealed class ImageBoxSourceLeaseTests
             FlowDirection.LeftToRight,
             language: "en-US")
         {
+            RenderResources = _renderResources,
             ImageResolver = resolver,
             PerformanceSession = session,
             SvgRenderer = renderer,
@@ -717,11 +720,11 @@ public sealed class ImageBoxSourceLeaseTests
     private static string HashSecurityPartition(string partition) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(partition)));
 
-    private static int RemoveSvgCacheEntries(ImageBox image)
+    private int RemoveSvgCacheEntries(ImageBox image)
     {
         string activeCacheKey = Assert.IsType<string>(image.LoadState.ActiveCacheKey);
         string contentHash = Assert.IsType<string>(image.Svg.ContentHash);
-        return ImageResourceScope.Shared.SvgSources.RemoveWhere(key =>
+        return _renderResources.Images.SvgSources.RemoveWhere(key =>
             string.Equals(key, activeCacheKey, StringComparison.Ordinal) ||
             key.Contains($":content={contentHash}:", StringComparison.Ordinal));
     }
@@ -959,47 +962,6 @@ public sealed class ImageBoxSourceLeaseTests
         if (cleanupFailures.Count == 1)
             ExceptionDispatchInfo.Capture(cleanupFailures[0]).Throw();
         throw new AggregateException("ImageBox test cleanup failed.", cleanupFailures);
-    }
-
-    private sealed class LeasedSvgResolver(Func<byte[]> createBytes, int byteLength) : IMarkdownLeasedImageResolver
-    {
-        private int _bufferAllocationCount;
-
-        internal int BufferAllocationCount => Volatile.Read(ref _bufferAllocationCount);
-
-        public ValueTask<MarkdownImageResolution> ResolveAsync(
-            string source,
-            MarkdownImageResolveContext context,
-            CancellationToken cancellationToken) =>
-            ValueTask.FromResult(MarkdownImageResolution.NotHandled);
-
-        public async ValueTask<MarkdownImageResolutionLease> ResolveWithSourceLeaseAsync(
-            string source,
-            MarkdownImageResolveContext context,
-            IMarkdownImageSourceByteAdmission admission,
-            CancellationToken cancellationToken)
-        {
-            IDisposable reservation = await admission.ReserveAsync(byteLength, cancellationToken)
-                .ConfigureAwait(false);
-            try
-            {
-                byte[] bytes = createBytes();
-                if (bytes.Length != byteLength)
-                    throw new InvalidOperationException("The test resolver returned a buffer of an unexpected size.");
-                Interlocked.Increment(ref _bufferAllocationCount);
-                var result = MarkdownImageResolution.Resolved(new MarkdownImageAsset(
-                    bytes,
-                    "image/svg+xml",
-                    ResolvedUri: new Uri(source),
-                    CacheKey: source));
-                return new MarkdownImageResolutionLease(result, reservation);
-            }
-            catch
-            {
-                reservation.Dispose();
-                throw;
-            }
-        }
     }
 
     private sealed class GatedSvgRenderer : IMarkdownSvgRenderer

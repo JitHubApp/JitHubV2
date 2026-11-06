@@ -32,18 +32,19 @@ public sealed class LayoutPlacementGenerationTests
     [Fact]
     public void PlacementTransformScopeSnapsAtFinalLogicalOriginAndRestoresNestedState()
     {
+        var placement = new LayoutPlacementTransformContext();
         const float scale = 1.5f;
         const float rootLocalX = 392f;
         const float rootLocalY = 127.25f;
 
-        LayoutPlacementTransformContext.SnapOriginToDevicePixels(
+        placement.SnapOriginToDevicePixels(
             rootLocalX, rootLocalY, scale, out float unplacedX, out float unplacedY);
         Assert.Equal(MathF.Round(rootLocalX * scale) / scale, unplacedX);
         Assert.Equal(MathF.Round(rootLocalY * scale) / scale, unplacedY);
 
-        using (LayoutPlacementTransformContext.Enter(0.302f, -0.417f))
+        using (placement.Enter(0.302f, -0.417f))
         {
-            LayoutPlacementTransformContext.SnapOriginToDevicePixels(
+            placement.SnapOriginToDevicePixels(
                 rootLocalX, rootLocalY, scale, out float outerX, out float outerY);
             AssertClose(
                 MathF.Round((rootLocalX + 0.302f) * scale) / scale,
@@ -52,12 +53,12 @@ public sealed class LayoutPlacementGenerationTests
                 MathF.Round((rootLocalY - 0.417f) * scale) / scale,
                 outerY - 0.417f);
 
-            using (LayoutPlacementTransformContext.Enter(-0.187f, 0.913f))
+            using (placement.Enter(-0.187f, 0.913f))
             {
-                LayoutPlacementTransformContext.GetCurrentTranslation(out float nestedX, out float nestedY);
+                placement.GetCurrentTranslation(out float nestedX, out float nestedY);
                 Assert.InRange(nestedX, 0.1149f, 0.1151f);
                 Assert.InRange(nestedY, 0.4959f, 0.4961f);
-                LayoutPlacementTransformContext.SnapOriginToDevicePixels(
+                placement.SnapOriginToDevicePixels(
                     rootLocalX, rootLocalY, scale, out float nestedLocalX, out float nestedLocalY);
                 AssertClose(
                     MathF.Round((rootLocalX + nestedX) * scale) / scale,
@@ -67,12 +68,12 @@ public sealed class LayoutPlacementGenerationTests
                     nestedLocalY + nestedY);
             }
 
-            LayoutPlacementTransformContext.GetCurrentTranslation(out float restoredX, out float restoredY);
+            placement.GetCurrentTranslation(out float restoredX, out float restoredY);
             Assert.Equal(0.302f, restoredX);
             Assert.Equal(-0.417f, restoredY);
         }
 
-        LayoutPlacementTransformContext.GetCurrentTranslation(out float clearedX, out float clearedY);
+        placement.GetCurrentTranslation(out float clearedX, out float clearedY);
         Assert.Equal(0f, clearedX);
         Assert.Equal(0f, clearedY);
     }
@@ -80,67 +81,77 @@ public sealed class LayoutPlacementGenerationTests
     [Fact]
     public void RemovingPlacementPrefixPreservesNonIdentityCallerTransform()
     {
+        var placement = new LayoutPlacementTransformContext();
         var callerTransform = Matrix3x2.CreateScale(0.93f, 0.88f) *
             Matrix3x2.CreateRotation(0.023f) *
             Matrix3x2.CreateTranslation(12.25f, 7.75f);
 
-        using (LayoutPlacementTransformContext.Enter(392.45346f, -23.1875f, callerTransform))
+        using (placement.Enter(392.45346f, -23.1875f, callerTransform))
         {
-            Assert.True(LayoutPlacementTransformContext.TryGetBaseCanvasTransform(out Matrix3x2 baseTransform));
+            Assert.True(placement.TryGetBaseCanvasTransform(out Matrix3x2 baseTransform));
             Assert.Equal(callerTransform, baseTransform);
             Matrix3x2 placedTransform =
                 Matrix3x2.CreateTranslation(392.45346f, -23.1875f) * callerTransform;
             Assert.Equal(
                 callerTransform,
-                LayoutPlacementTransformContext.RemoveCurrentPlacementTranslation(placedTransform));
+                placement.RemoveCurrentPlacementTranslation(placedTransform));
 
-            using (LayoutPlacementTransformContext.Enter(-0.75f, 9.5f))
+            using (placement.Enter(-0.75f, 9.5f))
             {
-                Assert.True(LayoutPlacementTransformContext.TryGetBaseCanvasTransform(out Matrix3x2 nestedBaseTransform));
+                Assert.True(placement.TryGetBaseCanvasTransform(out Matrix3x2 nestedBaseTransform));
                 Assert.Equal(callerTransform, nestedBaseTransform);
-                LayoutPlacementTransformContext.GetCurrentTranslation(out float translationX, out float translationY);
+                placement.GetCurrentTranslation(out float translationX, out float translationY);
                 Matrix3x2 nestedPlacedTransform =
                     Matrix3x2.CreateTranslation(translationX, translationY) * callerTransform;
                 Assert.Equal(
                     callerTransform,
-                    LayoutPlacementTransformContext.RemoveCurrentPlacementTranslation(nestedPlacedTransform));
+                    placement.RemoveCurrentPlacementTranslation(nestedPlacedTransform));
             }
-            Assert.True(LayoutPlacementTransformContext.TryGetBaseCanvasTransform(out Matrix3x2 restoredNestedBaseTransform));
+            Assert.True(placement.TryGetBaseCanvasTransform(out Matrix3x2 restoredNestedBaseTransform));
             Assert.Equal(callerTransform, restoredNestedBaseTransform);
         }
-        Assert.False(LayoutPlacementTransformContext.TryGetBaseCanvasTransform(out _));
+        Assert.False(placement.TryGetBaseCanvasTransform(out _));
     }
 
     private static void AssertClose(float expected, float actual)
         => Assert.InRange(actual, expected - 0.0001f, expected + 0.0001f);
 
     [Fact]
-    public void PlacementTransformScopeRestoresAfterFailureAndIsThreadIsolated()
+    public void PlacementTransformScopeRestoresAfterFailureAndIsPassIsolated()
     {
+        var placement = new LayoutPlacementTransformContext();
         Action cancelInsidePlacementScope = () =>
         {
             using LayoutPlacementTransformContext.Scope scope =
-                LayoutPlacementTransformContext.Enter(14.25f, -9.5f);
-            LayoutPlacementTransformContext.GetCurrentTranslation(out float x, out float y);
+                placement.Enter(14.25f, -9.5f);
+            placement.GetCurrentTranslation(out float x, out float y);
             Assert.Equal(14.25f, x);
             Assert.Equal(-9.5f, y);
             throw new OperationCanceledException();
         };
         Assert.Throws<OperationCanceledException>(cancelInsidePlacementScope);
 
-        LayoutPlacementTransformContext.GetCurrentTranslation(out float restoredX, out float restoredY);
+        placement.GetCurrentTranslation(out float restoredX, out float restoredY);
         Assert.Equal(0f, restoredX);
         Assert.Equal(0f, restoredY);
 
+        // Placement state belongs to one layout context. A concurrent pass
+        // over another context (for example an off-gate clone measurement)
+        // never observes this pass's translation, on any thread.
         using LayoutPlacementTransformContext.Scope activeScope =
-            LayoutPlacementTransformContext.Enter(4f, 8f);
+            placement.Enter(4f, 8f);
+        var otherPass = new LayoutPlacementTransformContext();
+        otherPass.GetCurrentTranslation(out float sameThreadX, out float sameThreadY);
+        Assert.Equal((0f, 0f), (sameThreadX, sameThreadY));
+        Assert.False(otherPass.TryGetBaseCanvasTransform(out _));
+
         int ownerThreadId = Environment.CurrentManagedThreadId;
         int backgroundThreadId = 0;
         (float X, float Y) backgroundTranslation = default;
         var backgroundThread = new Thread(() =>
         {
             backgroundThreadId = Environment.CurrentManagedThreadId;
-            LayoutPlacementTransformContext.GetCurrentTranslation(out float x, out float y);
+            otherPass.GetCurrentTranslation(out float x, out float y);
             backgroundTranslation = (x, y);
         })
         {
@@ -150,6 +161,8 @@ public sealed class LayoutPlacementGenerationTests
         Assert.True(backgroundThread.Join(TimeSpan.FromSeconds(5)), "The placement-isolation thread did not complete.");
         Assert.NotEqual(ownerThreadId, backgroundThreadId);
         Assert.Equal((0f, 0f), backgroundTranslation);
+        placement.GetCurrentTranslation(out float activeX, out float activeY);
+        Assert.Equal((4f, 8f), (activeX, activeY));
     }
 
     [Fact]

@@ -16,6 +16,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection(AllocationSensitiveContractCollection.Name)]
 public sealed class SvgTileQueuePlanTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Fact]
     public void ImmutablePlanRetainsExactDocumentIdentityAndPhysicalDimensions()
     {
@@ -40,7 +42,7 @@ public sealed class SvgTileQueuePlanTests
         var document = new CountingDocument();
         SvgTileRenderPlan plan = NewPlan(document, "svg-cache-prefix:warm", 2048, 2048, 12);
         ImageBox box = CreateBareBox(plan);
-        var cancellation = new CancellationTokenSource();
+        var cancellation = new RetirableCancellationTokenSource();
         try
         {
             RegisterWorkOwner(
@@ -117,10 +119,10 @@ public sealed class SvgTileQueuePlanTests
                     (0, previousTileY, tileSize, tileSize),
                     (0, lastTileY, tileSize, lastTileHeight),
                 ];
-        var originalOwners = new Dictionary<(int X, int Y, int Width, int Height), CancellationTokenSource>();
+        var originalOwners = new Dictionary<(int X, int Y, int Width, int Height), RetirableCancellationTokenSource>();
         foreach (var key in expectedKeys)
         {
-            var owner = new CancellationTokenSource();
+            var owner = new RetirableCancellationTokenSource();
             originalOwners.Add(key, owner);
             RegisterWorkOwner(box, plan, key, owner);
         }
@@ -135,7 +137,7 @@ public sealed class SvgTileQueuePlanTests
         {
             QueueVisible(box, destination, viewport);
 
-            IReadOnlyDictionary<(int X, int Y, int Width, int Height), CancellationTokenSource> pending =
+            IReadOnlyDictionary<(int X, int Y, int Width, int Height), RetirableCancellationTokenSource> pending =
                 Snapshot(box).Work;
             Assert.Equal(expectedKeys.Length, pending.Count);
             foreach (var key in expectedKeys)
@@ -148,8 +150,8 @@ public sealed class SvgTileQueuePlanTests
             // If this regression is reintroduced, cancel the wrongly queued
             // edge work and wait for its ordinary lifetime barrier before
             // disposing the test-only resources.
-            CancellationTokenSource[] liveOwners = Snapshot(box).Work.Values.Distinct().ToArray();
-            foreach (CancellationTokenSource owner in liveOwners)
+            RetirableCancellationTokenSource[] liveOwners = Snapshot(box).Work.Values.Distinct().ToArray();
+            foreach (RetirableCancellationTokenSource owner in liveOwners)
             {
                 try { owner.Cancel(); }
                 catch (ObjectDisposedException) { }
@@ -157,7 +159,7 @@ public sealed class SvgTileQueuePlanTests
 
             await ImageBoxTestState.WaitForImageWorkDrainAsync(box, TimeSpan.FromSeconds(10));
 
-            foreach (CancellationTokenSource owner in originalOwners.Values)
+            foreach (RetirableCancellationTokenSource owner in originalOwners.Values)
                 owner.Dispose();
         }
     }
@@ -169,7 +171,7 @@ public sealed class SvgTileQueuePlanTests
         SvgTileRenderPlan oldPlan = NewPlan(document, "svg-cache-prefix:old-generation", 2048, 2048, 7);
         ImageBox box = CreateBareBox(oldPlan);
         ImageBoxTestState.AdvanceRenderGenerationTo(box, 8);
-        using var currentWork = new CancellationTokenSource();
+        using var currentWork = new RetirableCancellationTokenSource();
         var key = (0, 0, ImageBox.SvgTileSizePixels, ImageBox.SvgTileSizePixels);
         RegisterWorkOwner(box, oldPlan, key, currentWork);
 
@@ -487,7 +489,7 @@ public sealed class SvgTileQueuePlanTests
         SvgTileRenderPlan oldPlan = NewPlan(document, "svg-cache-prefix:old-failure", 2048, 2048, 17);
         ImageBox box = CreateBareBox(oldPlan);
         ImageBoxTestState.AdvanceRenderGenerationTo(box, 18);
-        using var work = new CancellationTokenSource();
+        using var work = new RetirableCancellationTokenSource();
         var key = (0, 0, ImageBox.SvgTileSizePixels, ImageBox.SvgTileSizePixels);
         SvgTileWorkOwner workOwner = RegisterWorkOwner(box, oldPlan, key, work, state: 1);
 
@@ -517,7 +519,7 @@ public sealed class SvgTileQueuePlanTests
         // Close admission only, as the first step of SuspendResources does, so
         // the plan's render generation stays current and suspension alone must
         // reject the queue.
-        Assert.True(box.Lifetime.TrySuspend(out CancellationTokenSource? _, out ImageWorkLease? suspensionWork));
+        Assert.True(box.Lifetime.TrySuspend(out RetirableCancellationTokenSource? _, out ImageWorkLease? suspensionWork));
         suspensionWork?.Dispose();
 
         Assert.Equal(0, Queue(box, plan, 0, 0, 0, 0, 1, MarkdownSvgRenderPriority.Visible));
@@ -565,7 +567,7 @@ public sealed class SvgTileQueuePlanTests
         var document = new CountingDocument();
         SvgTileRenderPlan plan = NewPlan(document, "svg-cache-prefix:removed-owner", 2048, 2048, 37);
         ImageBox box = CreateBareBox(plan);
-        using var work = new CancellationTokenSource();
+        using var work = new RetirableCancellationTokenSource();
         var key = (0, 0, ImageBox.SvgTileSizePixels, ImageBox.SvgTileSizePixels);
         SvgTileWorkOwner workOwner = RegisterWorkOwner(box, plan, key, work, state: 1);
         box.SvgTileCache.AbandonUnscheduledTileWork(key, workOwner);
@@ -582,8 +584,8 @@ public sealed class SvgTileQueuePlanTests
         var document = new CountingDocument();
         SvgTileRenderPlan plan = NewPlan(document, "svg-cache-prefix:replaced-owner", 2048, 2048, 39);
         ImageBox box = CreateBareBox(plan);
-        using var staleWork = new CancellationTokenSource();
-        using var currentWork = new CancellationTokenSource();
+        using var staleWork = new RetirableCancellationTokenSource();
+        using var currentWork = new RetirableCancellationTokenSource();
         var key = (0, 0, ImageBox.SvgTileSizePixels, ImageBox.SvgTileSizePixels);
         SvgTileWorkOwner staleOwner = new(plan, staleWork, plan.Demand) { State = 1 };
         RegisterWorkOwner(box, plan, key, currentWork);
@@ -603,7 +605,7 @@ public sealed class SvgTileQueuePlanTests
         var document = new CountingDocument();
         SvgTileRenderPlan plan = NewPlan(document, "svg-cache-prefix:current-owner", 2048, 2048, 43);
         ImageBox box = CreateBareBox(plan);
-        using var work = new CancellationTokenSource();
+        using var work = new RetirableCancellationTokenSource();
         var key = (0, 0, ImageBox.SvgTileSizePixels, ImageBox.SvgTileSizePixels);
         SvgTileWorkOwner workOwner = RegisterWorkOwner(box, plan, key, work, state: 1);
         if (cancelBeforeInvalidation)
@@ -681,7 +683,7 @@ public sealed class SvgTileQueuePlanTests
             demand,
             ownerSlot: ownerSlot);
 
-    private static ImageBox CreateBareBox(
+    private ImageBox CreateBareBox(
         SvgTileRenderPlan plan,
         IMarkdownSvgRenderer? renderer = null,
         MarkdownPerformanceSession? session = null)
@@ -695,11 +697,12 @@ public sealed class SvgTileQueuePlanTests
                 registry: null!,
                 flowDirection: FlowDirection.LeftToRight)
             {
+                RenderResources = _renderResources,
                 SvgRenderer = renderer,
                 PerformanceSession = session,
                 PerformanceDocumentOwner = session is null ? null : new object(),
             },
-            ImageResourceScope.Shared,
+            _renderResources.Images,
             "https://example.test/tiled.svg",
             "tiled svg");
         ImageBoxTestState.AcceptTiledPlan(box, plan);
@@ -708,7 +711,7 @@ public sealed class SvgTileQueuePlanTests
 
     // Queue-visible paths check that the accepted metadata still names the
     // context's renderer and its cache generation.
-    private static void AdoptRendererMetadata(
+    private void AdoptRendererMetadata(
         ImageBox box,
         QueueTestSvgRenderer renderer,
         IMarkdownSvgDocument document) =>
@@ -723,7 +726,7 @@ public sealed class SvgTileQueuePlanTests
         ImageBox box,
         SvgTileRenderPlan plan,
         (int X, int Y, int Width, int Height) key,
-        CancellationTokenSource cancellation,
+        RetirableCancellationTokenSource cancellation,
         int state = 0) =>
         SvgTileCacheTestOperations.AdmitWork(
             box.SvgTileCache, plan, key, cancellation, claimFailure: state == 1);
@@ -737,7 +740,7 @@ public sealed class SvgTileQueuePlanTests
 
     private static void ReleaseTiles(ImageBox box)
     {
-        (SharedCanvasBitmapCache.Lease[] tiles, CancellationTokenSource[] work) = box.SvgTileCache.DetachAll();
+        (SharedCanvasBitmapCache.Lease[] tiles, RetirableCancellationTokenSource[] work) = box.SvgTileCache.DetachAll();
         box.SvgTileCache.RetireDetached(tiles, work);
     }
 
@@ -774,8 +777,8 @@ public sealed class SvgTileQueuePlanTests
     private static void QueueVisible(ImageBox box, Rect destination, Rect viewport) =>
         box.SvgTileRenderer.QueueVisibleSvgTiles(destination, viewport);
 
-    private static long GetRendererIdentity(IMarkdownSvgRenderer renderer) =>
-        ImageResourceScope.Shared.ProviderIdentities.GetSvgRendererIdentity(renderer);
+    private long GetRendererIdentity(IMarkdownSvgRenderer renderer) =>
+        _renderResources.Images.ProviderIdentities.GetSvgRendererIdentity(renderer);
 
     private static void AssertPlanMember<T>(SvgTileRenderPlan plan, string memberName, T expected)
     {

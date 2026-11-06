@@ -19,6 +19,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class VectorSceneCompactResourceTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     private const float TargetWidth = 76;
     private const float TargetHeight = 62;
     private const float SceneWidth = 64;
@@ -30,7 +32,7 @@ public sealed class VectorSceneCompactResourceTests
     {
         using var device = new CanvasDevice(forceSoftwareRenderer: false);
         MarkdownVectorScene scene = CreateMixedScene(rightToLeft: false);
-        using var drawing = new VectorSceneDrawing(device, scene, CancellationToken.None);
+        using var drawing = new VectorSceneDrawing(device, scene, CancellationToken.None, _renderResources);
 
         Assert.True(drawing.IsPrepared);
         Assert.Equal(CountGeometryCommands(scene), GetArray<CanvasGeometry?>(drawing, "_geometries").Length);
@@ -59,7 +61,7 @@ public sealed class VectorSceneCompactResourceTests
         Array.Fill(commands, primitive);
         var scene = new MarkdownVectorScene(SceneWidth, SceneHeight, 36, commands);
 
-        using var drawing = new VectorSceneDrawing(device, scene, CancellationToken.None);
+        using var drawing = new VectorSceneDrawing(device, scene, CancellationToken.None, _renderResources);
 
         Assert.Same(Array.Empty<CanvasGeometry?>(), GetArray<CanvasGeometry?>(drawing, "_geometries"));
         Assert.Same(Array.Empty<CanvasTextLayout?>(), GetArray<CanvasTextLayout?>(drawing, "_textLayouts"));
@@ -84,7 +86,7 @@ public sealed class VectorSceneCompactResourceTests
         MarkdownVectorCommand fillPath = MarkdownVectorCommand.FillPath(path, 0xFF806040);
         Array.Fill(commands, fillPath, primitiveCount, pathCount);
         var scene = new MarkdownVectorScene(SceneWidth, SceneHeight, 36, commands);
-        using var drawing = new VectorSceneDrawing(device, scene, CancellationToken.None);
+        using var drawing = new VectorSceneDrawing(device, scene, CancellationToken.None, _renderResources);
 
         CanvasGeometry?[] geometries = GetArray<CanvasGeometry?>(drawing, "_geometries");
         CanvasTextLayout?[] textLayouts = GetArray<CanvasTextLayout?>(drawing, "_textLayouts");
@@ -166,7 +168,7 @@ public sealed class VectorSceneCompactResourceTests
                 Color.FromArgb(0xFF, 0xE8, 0xEC, 0xF0),
                 Color.FromArgb(0xFF, 0x12, 0x67, 0xB1));
 
-        using var drawing = new VectorSceneDrawing(device, scene, CancellationToken.None);
+        using var drawing = new VectorSceneDrawing(device, scene, CancellationToken.None, _renderResources);
         Color[] expected = RenderCommandIndexedReference(
             device, scene, rasterizationScale, palette, highContrast);
         Color[] first = RenderCompact(
@@ -310,6 +312,7 @@ public sealed class VectorSceneCompactResourceTests
             Matrix3x2 original = Matrix3x2.CreateTranslation(1.25f, 0.75f);
             session.Transform = original;
             drawing.Paint(
+                new LayoutPlacementTransformContext(),
                 session,
                 new Rect(4, 4, SceneWidth, SceneHeight),
                 palette,

@@ -19,7 +19,7 @@ public sealed class GeometryRecoveryControlContractTests
         bool tokenCanceledBeforeRetirement,
         bool expectedCanceled)
     {
-        using var source = new CancellationTokenSource();
+        using var source = new RetirableCancellationTokenSource();
         if (tokenCanceledBeforeRetirement)
             source.Cancel();
         CancellationToken operationToken = source.Token;

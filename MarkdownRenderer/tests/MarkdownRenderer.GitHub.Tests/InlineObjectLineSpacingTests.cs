@@ -11,6 +11,7 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection("Shared Canvas text format cache")]
 public sealed class InlineObjectLineSpacingTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
     private const float InlineWidth = 311f;
     private const float InlineHeight = 155f;
     private const float LayoutWidth = 660f;
@@ -19,7 +20,6 @@ public sealed class InlineObjectLineSpacingTests
     [Fact]
     public void ContentAwareSpacing_ExpandsTallInlineObjectAndMovesFollowingLine()
     {
-        SharedCanvasTextFormatCache.Clear();
         var style = new ElementStyle
         {
             FontFamily = "Segoe UI",
@@ -27,13 +27,13 @@ public sealed class InlineObjectLineSpacingTests
             LineHeightMultiplier = 1.4f,
         };
         using SharedCanvasTextFormatCache.Lease cssTextFormat =
-            SharedCanvasTextFormatCache.Acquire(
+            _renderResources.TextFormats.Acquire(
                 style,
                 CanvasWordWrapping.Wrap,
                 CanvasHorizontalAlignment.Left,
                 FlowDirection.LeftToRight);
         using SharedCanvasTextFormatCache.Lease contentAwareFormat =
-            SharedCanvasTextFormatCache.Acquire(
+            _renderResources.TextFormats.Acquire(
                 style,
                 CanvasWordWrapping.Wrap,
                 CanvasHorizontalAlignment.Left,
@@ -65,7 +65,6 @@ public sealed class InlineObjectLineSpacingTests
     [Fact]
     public void MixedParagraph_DefaultSpacingPreservesObjectButProportionalOverexpandsObjectLine()
     {
-        SharedCanvasTextFormatCache.Clear();
         const float fontSize = 14f;
         const float cssLineHeight = 28f;
         var style = new ElementStyle
@@ -75,7 +74,7 @@ public sealed class InlineObjectLineSpacingTests
             LineHeightMultiplier = cssLineHeight / fontSize,
         };
         using SharedCanvasTextFormatCache.Lease cssTextFormat =
-            SharedCanvasTextFormatCache.Acquire(
+            _renderResources.TextFormats.Acquire(
                 style,
                 CanvasWordWrapping.Wrap,
                 CanvasHorizontalAlignment.Left,
@@ -162,7 +161,6 @@ public sealed class InlineObjectLineSpacingTests
         string locale,
         string objectKind)
     {
-        SharedCanvasTextFormatCache.Clear();
         const float fontSize = 14f;
         const float authoredLineHeight = 28f;
         var baseFormat = new CanvasTextFormat

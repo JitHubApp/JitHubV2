@@ -20,20 +20,22 @@ internal readonly struct VectorScenePreparation
     private readonly VectorNativeResourceAdmission? _nativeAdmission;
     private readonly FlowDirection _fallbackFlowDirection;
     private readonly MarkdownLayoutDiagnostics? _layoutDiagnostics;
+    private readonly MarkdownRenderResources _renderResources;
 
     private VectorScenePreparation(
         ICanvasResourceCreator resourceCreator,
         string? hostFontFamily,
         VectorNativeResourceAdmission? nativeAdmission,
-        FlowDirection fallbackFlowDirection
-        , MarkdownLayoutDiagnostics? layoutDiagnostics
-        )
+        FlowDirection fallbackFlowDirection,
+        MarkdownLayoutDiagnostics? layoutDiagnostics,
+        MarkdownRenderResources renderResources)
     {
         _resourceCreator = resourceCreator;
         _hostFontFamily = hostFontFamily;
         _nativeAdmission = nativeAdmission;
         _fallbackFlowDirection = fallbackFlowDirection;
         _layoutDiagnostics = layoutDiagnostics;
+        _renderResources = renderResources;
     }
 
     internal static VectorScenePreparation Capture(VectorSceneBox box)
@@ -44,9 +46,9 @@ internal readonly struct VectorScenePreparation
             context.ResourceCreator,
             box.ResolvedStyle.FontFamily,
             box.NativeAdmission,
-            context.FlowDirection
-            , context.LayoutDiagnostics
-            );
+            context.FlowDirection,
+            context.LayoutDiagnostics,
+            context.RenderResources);
     }
 
     internal VectorSceneDrawing Create(
@@ -57,6 +59,7 @@ internal readonly struct VectorScenePreparation
             _resourceCreator,
             scene,
             cancellationToken,
+            _renderResources,
             _hostFontFamily
             , _layoutDiagnostics
             , deferNativeResources, nativeAdmission: _nativeAdmission);
@@ -66,6 +69,8 @@ internal readonly struct VectorScenePreparation
     {
         cancellationToken.ThrowIfCancellationRequested();
         return _nativeAdmission is not null &&
-            _nativeAdmission.CapacityFallbackFormats.PrepareFormat(_fallbackFlowDirection);
+            _nativeAdmission.CapacityFallbackFormats.PrepareFormat(
+                _renderResources.TextFormats,
+                _fallbackFlowDirection);
     }
 }

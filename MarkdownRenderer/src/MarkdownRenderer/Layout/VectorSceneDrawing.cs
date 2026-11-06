@@ -27,6 +27,7 @@ internal sealed class VectorSceneDrawing : IDisposable
     private ICanvasResourceCreator? _resourceCreator;
     private NativeResourceRetirementRecord? _nativeRetirement;
     private readonly NativeResourceRetirement? _nativeRetirementOwner;
+    private readonly MarkdownRenderResources _renderResources;
     private readonly VectorNativeResourceAdmission? _nativeAdmission;
     private VectorNativeResourceCredit? _nativeCredit;
     private volatile VectorNativePreparationStatus _nativePreparationStatus;
@@ -55,6 +56,7 @@ internal sealed class VectorSceneDrawing : IDisposable
         ICanvasResourceCreator resourceCreator,
         MarkdownVectorScene scene,
         CancellationToken cancellationToken,
+        MarkdownRenderResources renderResources,
         string? hostFontFamily = null
         ,
         MarkdownLayoutDiagnostics? layoutDiagnostics = null
@@ -66,6 +68,7 @@ internal sealed class VectorSceneDrawing : IDisposable
     {
         _resourceCreator = resourceCreator ?? throw new ArgumentNullException(nameof(resourceCreator));
         _scene = scene ?? throw new ArgumentNullException(nameof(scene));
+        _renderResources = renderResources ?? throw new ArgumentNullException(nameof(renderResources));
         _hostFontFamily = hostFontFamily;
         _primitives = new VectorScenePrimitivePainter(this);
         _commandPainter = new VectorSceneCommandPainter(this);
@@ -239,7 +242,7 @@ internal sealed class VectorSceneDrawing : IDisposable
             // no uncertain native owner exists and the ledger credit refunds.
             if (_nativeRetirement is null)
             {
-                _nativeRetirement = (_nativeRetirementOwner ?? NativeResourceRetirement.Shared)
+                _nativeRetirement = (_nativeRetirementOwner ?? _renderResources.NativeRetirement)
                     .Reserve(disposer: _nativeDisposer);
                 retirementRecordCreated = true;
             }
@@ -487,6 +490,7 @@ internal sealed class VectorSceneDrawing : IDisposable
     }
 
     internal void Paint(
+        LayoutPlacementTransformContext placement,
         CanvasDrawingSession drawingSession,
         Rect destination,
         VectorScenePaintPalette palette,
@@ -510,6 +514,7 @@ internal sealed class VectorSceneDrawing : IDisposable
         }
 
         _commandPainter.Paint(
+            placement,
             drawingSession,
             scene,
             new VectorScenePaintSlots(geometries, textLayouts, strokeStyles, transformStack, clipStack),
@@ -529,7 +534,7 @@ internal sealed class VectorSceneDrawing : IDisposable
         // An uncertain inner native stack also forbids the outer boxes from
         // popping their session layers. This lookup neither creates state nor
         // allocates retirement owners on the already-failing path.
-        NativePaintSessionResources.PoisonSession(drawingSession);
+        _renderResources.PaintSessions.PoisonSession(drawingSession);
     }
 
     public void Dispose()
@@ -598,8 +603,8 @@ internal sealed class VectorSceneDrawing : IDisposable
         CancellationToken cancellationToken)
         => VectorSceneResourceShapes.EstimateNativeResourceWeightUnits(scene, cancellationToken);
 
-    internal static CanvasStrokeStyle CreateStrokeStyle(MarkdownVectorPaintStyle style)
-        => VectorSceneNativeFactory.CreateStrokeStyle(style);
+    internal static CanvasStrokeStyle CreateStrokeStyle(MarkdownVectorPaintStyle style, NativeResourceRetirement retirement)
+        => VectorSceneNativeFactory.CreateStrokeStyle(style, retirement);
 
     internal static bool RequiresStrokeStyle(MarkdownVectorPaintStyle style)
         => VectorSceneResourceShapes.RequiresStrokeStyle(style);
