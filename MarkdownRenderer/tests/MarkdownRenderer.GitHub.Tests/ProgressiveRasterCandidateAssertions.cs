@@ -1,5 +1,4 @@
-﻿using System.Reflection;
-using MarkdownRenderer.Accessibility;
+﻿using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Images;
@@ -102,8 +101,8 @@ internal static class ProgressiveRasterCandidateAssertions
         IReadOnlyDictionary<int, int> sourceOrdinalIndex = source.Geometry.TopLevelOrdinalByBlockIndex;
         IReadOnlyDictionary<int, int> replacementOrdinalIndex = replacement.Geometry.TopLevelOrdinalByBlockIndex;
         Assert.Equal(
-            GetField<int>(Assert.IsType<BlockOrdinalIndex>(sourceOrdinalIndex), "_denseGeneratedUpperBound"),
-            GetField<int>(Assert.IsType<BlockOrdinalIndex>(replacementOrdinalIndex), "_denseGeneratedUpperBound"));
+            Assert.IsType<BlockOrdinalIndex>(sourceOrdinalIndex).DenseGeneratedUpperBound,
+            Assert.IsType<BlockOrdinalIndex>(replacementOrdinalIndex).DenseGeneratedUpperBound);
         Assert.Equal(
             sourceOrdinalIndex.OrderBy(static pair => pair.Key),
             replacementOrdinalIndex.OrderBy(static pair => pair.Key));
@@ -252,12 +251,6 @@ internal static class ProgressiveRasterCandidateAssertions
         using var target = new CanvasRenderTarget(device, Width, 180, 96);
         using CanvasDrawingSession drawing = target.CreateDrawingSession();
         box.Paint(drawing, new Rect(0, 0, Width, 180));
-    }
-
-    internal static T GetField<T>(object instance, string name)
-    {
-        FieldInfo field = instance.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return Assert.IsType<T>(field.GetValue(instance));
     }
 
     /// <summary>The lazy source after its front image completed, with the geometry it must keep.</summary>
