@@ -249,7 +249,7 @@ internal sealed class TableMeasuredPlacementTransfer
             source.Bounds.Width == _expectedRootWidth &&
             source.Bounds.X == _sourceArrangedX &&
             source.Bounds.Y == _sourceArrangedY &&
-            IsValidMeasuredGeometry(source, _expectedRootWidth, _headerPadding, _bodyPadding);
+            TableMeasuredGeometryFence.IsValidMeasuredGeometry(source, _expectedRootWidth, _headerPadding, _bodyPadding);
     }
 
     private bool SameSourceMargins(TableBox source)
@@ -291,7 +291,7 @@ internal sealed class TableMeasuredPlacementTransfer
             ReferenceEquals(prepared.RowBottomEdges, _sourceRowBottomEdges) ||
             ReferenceEquals(prepared.HeaderCells, _sourceHeaderOuter) ||
             ReferenceEquals(prepared.BodyCells, _sourceBodyOuter) ||
-            !IsValidMeasuredGeometry(prepared, _expectedRootWidth, _headerPadding, _bodyPadding) ||
+            !TableMeasuredGeometryFence.IsValidMeasuredGeometry(prepared, _expectedRootWidth, _headerPadding, _bodyPadding) ||
             !IsFiniteNonnegative(prepared.Bounds) ||
             prepared.Bounds.Width != _expectedRootWidth ||
             prepared.Bounds.X != prepared.ArrangedX ||
@@ -369,63 +369,6 @@ internal sealed class TableMeasuredPlacementTransfer
             paddedCellHeight <= rowHeights[logicalRow];
     }
 
-    internal static bool IsValidMeasuredGeometry(
-        TableBox table,
-        float expectedWidth,
-        Thickness headerPadding,
-        Thickness bodyPadding)
-    {
-        if (!float.IsFinite(expectedWidth) || expectedWidth <= 0 ||
-            !IsFiniteThickness(table.Margin) ||
-            !double.IsFinite(table.CollapsedTopMargin) ||
-            !float.IsFinite(table.ContentWidth) || table.ContentWidth <= 0 ||
-            !float.IsFinite(table.ViewportWidth) || table.ViewportWidth <= 0 ||
-            !float.IsFinite(table.ArrangedX) || !float.IsFinite(table.ArrangedY) ||
-            !float.IsFinite(table.ArrangedWidth) || table.ArrangedWidth != expectedWidth ||
-            table.ColumnWidths is null || table.RowHeights is null ||
-            table.ColumnWidths.Length != table.ColumnCount ||
-            table.RowHeights.Length != table.RowCount ||
-            table.RowBottomEdges.Length != table.RowCount ||
-            !IsFiniteThickness(headerPadding) || !IsFiniteThickness(bodyPadding))
-        {
-            return false;
-        }
-
-        float expectedViewportWidth = Math.Max(
-            1f,
-            expectedWidth - (float)(table.Margin.Left + table.Margin.Right));
-        if (table.ViewportWidth != expectedViewportWidth ||
-            table.ContentWidth != Sum(table.ColumnWidths))
-        {
-            return false;
-        }
-
-        float totalHeight = (float)(table.Margin.Top + table.Margin.Bottom);
-        for (int index = 0; index < table.RowHeights.Length; index++)
-        {
-            float height = table.RowHeights[index];
-            if (!float.IsFinite(height) || height <= 0)
-                return false;
-            totalHeight += height;
-        }
-
-        if (table.ContentWidth > table.ViewportWidth + 0.5f)
-            totalHeight += TableBox.HorizontalScrollbarHeight;
-
-        if (!float.IsFinite(totalHeight) || table.Bounds.Height != totalHeight)
-            return false;
-
-        double bottom = table.ArrangedY + table.Margin.Top;
-        for (int index = 0; index < table.RowHeights.Length; index++)
-        {
-            bottom += table.RowHeights[index];
-            if (!double.IsFinite(bottom) || table.RowBottomEdges[index] != bottom)
-                return false;
-        }
-
-        return true;
-    }
-
     private static float GetColumnStartFor(float[] widths, int logicalColumn, bool rtl)
     {
         float start = 0;
@@ -461,10 +404,6 @@ internal sealed class TableMeasuredPlacementTransfer
         => left.Left == right.Left && left.Top == right.Top &&
            left.Right == right.Right && left.Bottom == right.Bottom;
 
-    private static bool IsFiniteThickness(Thickness value)
-        => double.IsFinite(value.Left) && double.IsFinite(value.Top) &&
-           double.IsFinite(value.Right) && double.IsFinite(value.Bottom);
-
     private static bool IsFiniteNonnegative(Rect rect)
         => double.IsFinite(rect.X) && double.IsFinite(rect.Y) &&
            double.IsFinite(rect.Width) && double.IsFinite(rect.Height) &&
@@ -496,14 +435,6 @@ internal sealed class TableMeasuredPlacementTransfer
                 return false;
         }
         return true;
-    }
-
-    private static float Sum(float[] values)
-    {
-        float sum = 0;
-        for (int index = 0; index < values.Length; index++)
-            sum += values[index];
-        return sum;
     }
 
     private static bool HasCompatiblePlacementContext(
