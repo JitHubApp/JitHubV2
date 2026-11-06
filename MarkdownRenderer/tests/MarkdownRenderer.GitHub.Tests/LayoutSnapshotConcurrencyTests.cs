@@ -79,14 +79,23 @@ public sealed class LayoutSnapshotConcurrencyTests
     {
         var block = new BlockingMeasureBox { BlockIndex = 73 };
         using var snapshot = CreateLazySnapshot(block);
-        Task measure = Task.Run(() =>
-            snapshot.EnsureMeasuredBand(new LazyLayoutBand(0, 100), CancellationToken.None));
+        // Both run on dedicated threads, so the 500 ms bound measures the
+        // read itself and not thread-pool injection while the parallel test
+        // run (and this blocked measurement) occupy pool threads.
+        Task measure = Task.Factory.StartNew(
+            () => snapshot.EnsureMeasuredBand(new LazyLayoutBand(0, 100), CancellationToken.None),
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
         Assert.True(block.MeasureEntered.Wait(TimeSpan.FromSeconds(2)));
 
         try
         {
-            Task<FocusTargetLayoutState> stateRead = Task.Run(() =>
-                snapshot.TryGetFocusTargetLayoutState(block.BlockIndex, out _));
+            Task<FocusTargetLayoutState> stateRead = Task.Factory.StartNew(
+                () => snapshot.TryGetFocusTargetLayoutState(block.BlockIndex, out _),
+                CancellationToken.None,
+                TaskCreationOptions.LongRunning,
+                TaskScheduler.Default);
             Assert.Same(stateRead, await Task.WhenAny(stateRead, Task.Delay(500)));
             Assert.Equal(FocusTargetLayoutState.Busy, await stateRead);
         }
