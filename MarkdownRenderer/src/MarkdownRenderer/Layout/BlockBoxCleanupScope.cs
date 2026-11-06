@@ -93,6 +93,30 @@ internal struct BlockBoxCleanupScope
         }
     }
 
+    /// <summary>Disposes every box of a row-major grid, such as a table's cells.</summary>
+    internal void TryDisposeRows<T>(T[][] rows)
+        where T : BlockBox
+    {
+        for (int row = 0; row < rows.Length; row++)
+        {
+            T[] boxes = rows[row];
+            for (int column = 0; column < boxes.Length; column++)
+                TryDispose(boxes[column]);
+        }
+    }
+
+    /// <summary>Collects the retirement tasks of every box of a row-major grid.</summary>
+    internal void TryCollectRetirementTasks<T>(T[][] rows, List<Task> pendingTasks)
+        where T : BlockBox
+    {
+        for (int row = 0; row < rows.Length; row++)
+        {
+            T[] boxes = rows[row];
+            for (int column = 0; column < boxes.Length; column++)
+                TryCollectRetirementTasks(boxes[column], pendingTasks);
+        }
+    }
+
     internal void ThrowIfAny(string operation)
     {
         if (_failures is not { Count: > 0 } failures)
