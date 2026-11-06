@@ -231,49 +231,14 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             Rect preparedBounds = prepared.Bounds;
             CanvasTextLayout sourceCaption = Assert.IsType<CanvasTextLayout>(source.MeasureCustody.GetLayoutState().Caption);
             CanvasTextLayout preparedCaption = Assert.IsType<CanvasTextLayout>(prepared.MeasureCustody.GetLayoutState().Caption);
-            // Each live state is entered through the deferral's own operations:
-            // a recorded deferred request, and that request after its deferral
-            // flag cleared while its demand, waiter owner and cancellations
-            // remain. ImageBitmapOutputStateTests pins every individual live
-            // field of the HasNoLiveWork gate this transfer consults.
-            var liveStates = new (string Name, Action<ImageBox> Enter)[]
-            {
-                ("recorded deferral", image =>
-                {
-                    RecordLiveBitmapOutputDeferral(image);
-                    ImageBitmapOutputState live = image.OutputDeferral.GetState();
-                    Assert.True(live.Deferred && live.HasDemand && live.HasWaiterOwner);
-                }),
-                ("demand and waiter owner without deferral", image =>
-                {
-                    RecordLiveBitmapOutputDeferral(image);
-                    Assert.True(image.OutputDeferral.ClearBitmapOutputDeferral(preserveRetryOffer: true));
-                    ImageBitmapOutputState live = image.OutputDeferral.GetState();
-                    Assert.False(live.Deferred);
-                    Assert.True(live.HasDemand && live.HasWaiterOwner);
-                }),
-            };
 
-            foreach ((string name, Action<ImageBox> enter) in liveStates)
+            foreach ((string name, Action<ImageBox> enter) in LiveBitmapOutputStates())
             {
                 enter(source);
                 try
                 {
                     Assert.False(source.OutputDeferral.GetState().HasNoLiveWork, name);
-                    Assert.True(snapshot.TryBeginInteraction());
-                    try
-                    {
-                        Assert.False(source.TryTransferMeasuredPlacementFromCompletedClone(
-                            prepared,
-                            expectedLease,
-                            expectedSvgMetadataFence: null,
-                            currentProviderCacheGeneration: 0,
-                            expectedAvailableWidth: Width));
-                    }
-                    finally
-                    {
-                        snapshot.EndInteraction();
-                    }
+                    Assert.False(TransferInsideInteraction(snapshot, source, prepared, expectedLease));
 
                     Assert.Equal(sourceBounds, source.Bounds);
                     Assert.Equal(preparedBounds, prepared.Bounds);
@@ -289,20 +254,7 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
             // Once the live request is retired only inert history remains, and
             // the same transfer is accepted.
             Assert.True(source.OutputDeferral.GetState().HasNoLiveWork);
-            Assert.True(snapshot.TryBeginInteraction());
-            try
-            {
-                Assert.True(source.TryTransferMeasuredPlacementFromCompletedClone(
-                    prepared,
-                    expectedLease,
-                    expectedSvgMetadataFence: null,
-                    currentProviderCacheGeneration: 0,
-                    expectedAvailableWidth: Width));
-            }
-            finally
-            {
-                snapshot.EndInteraction();
-            }
+            Assert.True(TransferInsideInteraction(snapshot, source, prepared, expectedLease));
             Assert.Equal(preparedBounds, source.Bounds);
         }
         finally
@@ -313,6 +265,51 @@ public sealed class ImageBoxMeasuredRasterPlacementTransferTests
                 await prepared.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
             }
             await snapshot.Retire().WaitAsync(TimeSpan.FromSeconds(10));
+        }
+    }
+
+    // Each live state is entered through the deferral's own operations: a
+    // recorded deferred request, and that request after its deferral flag
+    // cleared while its demand, waiter owner and cancellations remain.
+    // ImageBitmapOutputStateTests pins every individual live field of the
+    // HasNoLiveWork gate the measured-placement transfer consults.
+    private static (string Name, Action<ImageBox> Enter)[] LiveBitmapOutputStates() =>
+    [
+        ("recorded deferral", image =>
+        {
+            RecordLiveBitmapOutputDeferral(image);
+            ImageBitmapOutputState live = image.OutputDeferral.GetState();
+            Assert.True(live.Deferred && live.HasDemand && live.HasWaiterOwner);
+        }),
+        ("demand and waiter owner without deferral", image =>
+        {
+            RecordLiveBitmapOutputDeferral(image);
+            Assert.True(image.OutputDeferral.ClearBitmapOutputDeferral(preserveRetryOffer: true));
+            ImageBitmapOutputState live = image.OutputDeferral.GetState();
+            Assert.False(live.Deferred);
+            Assert.True(live.HasDemand && live.HasWaiterOwner);
+        }),
+    ];
+
+    private static bool TransferInsideInteraction(
+        LayoutSnapshot snapshot,
+        ImageBox source,
+        ImageBox prepared,
+        SharedCanvasBitmapCache.Lease expectedLease)
+    {
+        Assert.True(snapshot.TryBeginInteraction());
+        try
+        {
+            return source.TryTransferMeasuredPlacementFromCompletedClone(
+                prepared,
+                expectedLease,
+                expectedSvgMetadataFence: null,
+                currentProviderCacheGeneration: 0,
+                expectedAvailableWidth: Width);
+        }
+        finally
+        {
+            snapshot.EndInteraction();
         }
     }
 
