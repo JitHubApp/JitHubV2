@@ -120,9 +120,9 @@ internal sealed class ImageMeasureCustody
         if (commit)
         {
             ClearInlineCheckpoint();
-            RetireIfDetached(originalPlaceholder, originalPlaceholderRecord,
+            ImageTextLayoutRetirement.RetireIfDetached(originalPlaceholder, originalPlaceholderRecord,
                 Placeholder, PlaceholderRecord);
-            RetireIfDetached(originalCaption, originalCaptionRecord,
+            ImageTextLayoutRetirement.RetireIfDetached(originalCaption, originalCaptionRecord,
                 Caption, CaptionRecord);
             return;
         }
@@ -156,9 +156,9 @@ internal sealed class ImageMeasureCustody
         // Restore the exact original owner pair before publishing the
         // detached candidates. The records are pre-reserved and this
         // handoff invokes no native callbacks under the image lock.
-        RetireIfDetached(candidatePlaceholder, candidatePlaceholderRecord,
+        ImageTextLayoutRetirement.RetireIfDetached(candidatePlaceholder, candidatePlaceholderRecord,
             Placeholder, PlaceholderRecord);
-        RetireIfDetached(candidateCaption, candidateCaptionRecord,
+        ImageTextLayoutRetirement.RetireIfDetached(candidateCaption, candidateCaptionRecord,
             Caption, CaptionRecord);
     }
 
@@ -192,36 +192,6 @@ internal sealed class ImageMeasureCustody
         int generation = unchecked(CheckpointGeneration + 1);
         CheckpointGeneration = generation == 0 ? 1 : generation;
         AdvanceNativeLayoutGenerationNoLock();
-    }
-
-    private static void RetireNativeLayout(
-        CanvasTextLayout? layout,
-        NativeResourceRetirementRecord? retirementRecord)
-    {
-        if (retirementRecord is null)
-        {
-            if (layout is not null)
-                throw new InvalidOperationException("A detached image text layout has no durable retirement owner.");
-            return;
-        }
-
-        // Every participating layout is paired with a record reserved before
-        // construction. Never invoke native disposal on a detached layout or
-        // lose it if Win2D disposal fails.
-        retirementRecord?.Publish();
-    }
-
-    private static void RetireIfDetached(
-        CanvasTextLayout? layout,
-        NativeResourceRetirementRecord? retirementRecord,
-        CanvasTextLayout? activeLayout,
-        NativeResourceRetirementRecord? activeRecord)
-    {
-        if (layout is null && retirementRecord is null)
-            return;
-        if (ReferenceEquals(layout, activeLayout) && ReferenceEquals(retirementRecord, activeRecord))
-            return;
-        RetireNativeLayout(layout, retirementRecord);
     }
 
     internal NativeResourceRetirementRecord ReserveNativeLayoutRetirementRecord() =>
@@ -305,12 +275,12 @@ internal sealed class ImageMeasureCustody
         }
         catch
         {
-            RetireNativeLayout(replacement, replacementRecord);
+            ImageTextLayoutRetirement.RetireNativeLayout(replacement, replacementRecord);
             throw;
         }
 
         if (!checkpointOwnsPrevious)
-            RetireNativeLayout(previous, previousRecord);
+            ImageTextLayoutRetirement.RetireNativeLayout(previous, previousRecord);
     }
 
     internal void ReplaceCaption(
@@ -347,12 +317,12 @@ internal sealed class ImageMeasureCustody
         }
         catch
         {
-            RetireNativeLayout(replacement, replacementRecord);
+            ImageTextLayoutRetirement.RetireNativeLayout(replacement, replacementRecord);
             throw;
         }
 
         if (!checkpointOwnsPrevious)
-            RetireNativeLayout(previous, previousRecord);
+            ImageTextLayoutRetirement.RetireNativeLayout(previous, previousRecord);
     }
 
     internal void RetireNativeLayoutsForDisposal(Action<Exception> addFailure)
@@ -379,7 +349,7 @@ internal sealed class ImageMeasureCustody
             if (!HasValidNativeLayoutCustodyNoLock() ||
                 (originalPlaceholder is null) != (originalPlaceholderRecord is null) ||
                 (originalCaption is null) != (originalCaptionRecord is null) ||
-                !HasCoherentTerminalOwnerPairs(
+                !ImageTextLayoutRetirement.HasCoherentTerminalOwnerPairs(
                     placeholder, placeholderRecord,
                     caption, captionRecord,
                     originalPlaceholder, originalPlaceholderRecord,
@@ -401,15 +371,15 @@ internal sealed class ImageMeasureCustody
         }
 
         NativeRetirementFailurePair placeholderFailure =
-            RetireTerminalNativeLayout(placeholder, placeholderRecord);
+            ImageTextLayoutRetirement.RetireTerminalNativeLayout(placeholder, placeholderRecord);
         NativeRetirementFailurePair captionFailure = default;
         NativeRetirementFailurePair originalPlaceholderFailure = default;
         NativeRetirementFailurePair originalCaptionFailure = default;
         if (!ReferenceEquals(caption, placeholder) || !ReferenceEquals(captionRecord, placeholderRecord))
-            captionFailure = RetireTerminalNativeLayout(caption, captionRecord);
+            captionFailure = ImageTextLayoutRetirement.RetireTerminalNativeLayout(caption, captionRecord);
         if (!ReferenceEquals(originalPlaceholder, placeholder) ||
             !ReferenceEquals(originalPlaceholderRecord, placeholderRecord))
-            originalPlaceholderFailure = RetireTerminalNativeLayout(
+            originalPlaceholderFailure = ImageTextLayoutRetirement.RetireTerminalNativeLayout(
                 originalPlaceholder, originalPlaceholderRecord);
         if ((!ReferenceEquals(originalCaption, placeholder) ||
              !ReferenceEquals(originalCaptionRecord, placeholderRecord)) &&
@@ -418,98 +388,14 @@ internal sealed class ImageMeasureCustody
             (!ReferenceEquals(originalCaption, originalPlaceholder) ||
              !ReferenceEquals(originalCaptionRecord, originalPlaceholderRecord)))
         {
-            originalCaptionFailure = RetireTerminalNativeLayout(originalCaption, originalCaptionRecord);
+            originalCaptionFailure = ImageTextLayoutRetirement.RetireTerminalNativeLayout(originalCaption, originalCaptionRecord);
         }
 
         // Every detached record has either completed or reached the durable
         // retry registry before diagnostics can allocate, aggregate, or fail.
-        AddRetirementFailure(addFailure, placeholderFailure);
-        AddRetirementFailure(addFailure, captionFailure);
-        AddRetirementFailure(addFailure, originalPlaceholderFailure);
-        AddRetirementFailure(addFailure, originalCaptionFailure);
-    }
-
-    private static bool HasCoherentTerminalOwnerPairs(
-        CanvasTextLayout? placeholder,
-        NativeResourceRetirementRecord? placeholderRecord,
-        CanvasTextLayout? caption,
-        NativeResourceRetirementRecord? captionRecord,
-        CanvasTextLayout? originalPlaceholder,
-        NativeResourceRetirementRecord? originalPlaceholderRecord,
-        CanvasTextLayout? originalCaption,
-        NativeResourceRetirementRecord? originalCaptionRecord)
-    {
-        return SameOrSeparateOwner(placeholder, placeholderRecord,
-                   originalPlaceholder, originalPlaceholderRecord) &&
-               SameOrSeparateOwner(caption, captionRecord,
-                   originalCaption, originalCaptionRecord) &&
-               AreDisjointOwners(placeholder, placeholderRecord, caption, captionRecord) &&
-               AreDisjointOwners(placeholder, placeholderRecord, originalCaption, originalCaptionRecord) &&
-               AreDisjointOwners(caption, captionRecord, originalPlaceholder, originalPlaceholderRecord) &&
-               AreDisjointOwners(originalPlaceholder, originalPlaceholderRecord,
-                   originalCaption, originalCaptionRecord);
-    }
-
-    private static bool SameOrSeparateOwner(
-        CanvasTextLayout? leftLayout,
-        NativeResourceRetirementRecord? leftRecord,
-        CanvasTextLayout? rightLayout,
-        NativeResourceRetirementRecord? rightRecord) =>
-        ReferenceEquals(leftLayout, rightLayout) == ReferenceEquals(leftRecord, rightRecord);
-
-    private static bool AreDisjointOwners(
-        CanvasTextLayout? leftLayout,
-        NativeResourceRetirementRecord? leftRecord,
-        CanvasTextLayout? rightLayout,
-        NativeResourceRetirementRecord? rightRecord) =>
-        (leftLayout is null || rightLayout is null || !ReferenceEquals(leftLayout, rightLayout)) &&
-        (leftRecord is null || rightRecord is null || !ReferenceEquals(leftRecord, rightRecord));
-
-    private static NativeRetirementFailurePair RetireTerminalNativeLayout(
-        CanvasTextLayout? layout,
-        NativeResourceRetirementRecord? record)
-    {
-        if (layout is null)
-            return default;
-        if (record is null)
-        {
-            return new NativeRetirementFailurePair(
-                new InvalidOperationException("A terminal image text layout has no pre-reserved native owner."),
-                null);
-        }
-
-        try
-        {
-            // Preserve the existing RetirementTask contract: make one
-            // synchronous best-effort close outside the image lock. A failure
-            // is published before its bounded diagnostic is recorded.
-            record.Disposer(layout);
-            record.SetTemporary(0, null);
-            record.Publish();
-        }
-        catch (Exception failure)
-        {
-            try
-            {
-                record.Publish();
-                return new NativeRetirementFailurePair(failure, null);
-            }
-            catch (Exception publicationFailure)
-            {
-                return new NativeRetirementFailurePair(failure, publicationFailure);
-            }
-        }
-
-        return default;
-    }
-
-    private static void AddRetirementFailure(
-        Action<Exception> addFailure,
-        NativeRetirementFailurePair failures)
-    {
-        if (failures.DisposalFailure is { } disposalFailure)
-            addFailure(disposalFailure);
-        if (failures.PublicationFailure is { } publicationFailure)
-            addFailure(publicationFailure);
+        ImageTextLayoutRetirement.AddRetirementFailure(addFailure, placeholderFailure);
+        ImageTextLayoutRetirement.AddRetirementFailure(addFailure, captionFailure);
+        ImageTextLayoutRetirement.AddRetirementFailure(addFailure, originalPlaceholderFailure);
+        ImageTextLayoutRetirement.AddRetirementFailure(addFailure, originalCaptionFailure);
     }
 }
