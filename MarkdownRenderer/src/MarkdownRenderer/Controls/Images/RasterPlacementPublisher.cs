@@ -74,10 +74,7 @@ internal sealed class RasterPlacementPublisher
     /// or hosted embeds that a private placement cannot carry.
     /// </summary>
     internal RasterPlacementInputs? TryCreateInputs(LayoutSnapshot snapshot, bool optedIn) =>
-        optedIn &&
-        snapshot.TopLevelBlockCount is > 0 and <= LayoutSnapshot.MaximumPrivateRasterPlacementRoots &&
-        _embeds.EmbedPlans.Count == 0 &&
-        _imagePlans.Count is > 0 and <= InlineContainerBox.MaximumPrivateRasterPlacementImages
+        RasterPlacementEligibility.Allows(optedIn, snapshot.TopLevelBlockCount, _embeds.EmbedPlans.Count, _imagePlans.Count)
             ? new RasterPlacementInputs(new WeakReference<RasterPlacementPublisher>(this), _published.Generation,
                 _host.ImagePreparationOwner, _host.ImageLifetime,
                 _retirements, _surface.Scroll?.VerticalOffset)

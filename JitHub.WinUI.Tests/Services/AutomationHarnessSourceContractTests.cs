@@ -476,10 +476,9 @@ public sealed class AutomationHarnessSourceContractTests
         int inputsEnd = rasterPublication.IndexOf("internal void RaiseImageUnavailableIfCurrent(", inputsStart, StringComparison.Ordinal);
         Assert.True(inputsStart >= 0 && inputsEnd > inputsStart);
         string inputs = rasterPublication[inputsStart..inputsEnd];
-        Assert.Contains("snapshot.TopLevelBlockCount is > 0 and <= LayoutSnapshot.MaximumPrivateRasterPlacementRoots", inputs, StringComparison.Ordinal);
-        Assert.Contains("_embeds.EmbedPlans.Count == 0 &&", inputs, StringComparison.Ordinal);
-        Assert.DoesNotContain("CodeBlockActionPlans.Count == 0", inputs, StringComparison.Ordinal);
-        Assert.Contains("_imagePlans.Count is > 0 and <= InlineContainerBox.MaximumPrivateRasterPlacementImages", inputs, StringComparison.Ordinal);
+        // The opt-in, root, hosted-element and image bounds are covered by RasterPlacementEligibilityTests.
+        Assert.Contains("RasterPlacementEligibility.Allows(optedIn, snapshot.TopLevelBlockCount, _embeds.EmbedPlans.Count, _imagePlans.Count)", inputs, StringComparison.Ordinal);
+        Assert.DoesNotContain("CodeBlockActionPlans.Count", inputs, StringComparison.Ordinal);
         Assert.Contains("? new RasterPlacementInputs(new WeakReference<RasterPlacementPublisher>(this), _published.Generation,", inputs, StringComparison.Ordinal);
         Assert.Contains("_host.RequestFullRebuild();", process, StringComparison.Ordinal);
 
