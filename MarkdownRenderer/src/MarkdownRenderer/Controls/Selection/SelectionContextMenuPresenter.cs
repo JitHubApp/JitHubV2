@@ -1,5 +1,6 @@
 using System;
 using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Hosting;
@@ -23,7 +24,7 @@ namespace MarkdownRenderer.Controls.Selection;
 /// published, and the check repeats after every step that can reenter the
 /// renderer, such as a host command provider query.
 /// </remarks>
-internal sealed class SelectionContextMenuPresenter
+internal sealed class SelectionContextMenuPresenter : IContextMenuOpener
 {
     private readonly ISelectionContextMenuHost _host;
     private readonly MarkdownViewSurface _surface;
@@ -102,30 +103,16 @@ internal sealed class SelectionContextMenuPresenter
             return false;
         }
 
-        // Pointer gestures pass the exact geometry generation they used while
-        // interpreting the gesture. Keyboard invocation captures one tuple at
-        // entry, so a later relayout cannot silently retarget the menu.
-        LayoutSnapshot? expectedSnapshot = requiredSnapshot ?? _published.Snapshot;
-        long expectedSnapshotGeneration = requiredSnapshot is null
-            ? _published.Generation
-            : requiredSnapshotGeneration;
-        long expectedLayoutRevision = requiredSnapshot is null
-            ? expectedSnapshot?.LayoutRevision ?? 0
-            : requiredLayoutRevision;
-        if (!IsCurrentSnapshot(
-                expectedSnapshot,
-                expectedSnapshotGeneration,
-                expectedLayoutRevision) ||
+        var fence = ContextMenuSnapshotFence.For(
+            _published, requiredSnapshot, requiredSnapshotGeneration, requiredLayoutRevision);
+        if (!fence.IsCurrent(_lifetime, _published) ||
             !ReferenceEquals(canvas, _surface.Canvas))
         {
             return false;
         }
 
         Close();
-        if (!IsCurrentSnapshot(
-                expectedSnapshot,
-                expectedSnapshotGeneration,
-                expectedLayoutRevision) ||
+        if (!fence.IsCurrent(_lifetime, _published) ||
             !ReferenceEquals(canvas, _surface.Canvas))
         {
             return false;
@@ -135,12 +122,7 @@ internal sealed class SelectionContextMenuPresenter
         ContextMenuTarget target = new();
         try
         {
-            if (!FindTarget(
-                    placementPoint,
-                    expectedSnapshot,
-                    expectedSnapshotGeneration,
-                    expectedLayoutRevision,
-                    out target))
+            if (!FindTarget(placementPoint, fence, out target))
             {
                 return false;
             }
@@ -156,10 +138,7 @@ internal sealed class SelectionContextMenuPresenter
                 AddSelectionItems(menu);
 
             if (!ReferenceEquals(_menu, menu) ||
-                !IsCurrentSnapshot(
-                    expectedSnapshot,
-                    expectedSnapshotGeneration,
-                    expectedLayoutRevision) ||
+                !fence.IsCurrent(_lifetime, _published) ||
                 !ReferenceEquals(canvas, _surface.Canvas))
             {
                 ContextMenuTargets.DisposeContextMenuTarget(target);
@@ -174,10 +153,7 @@ internal sealed class SelectionContextMenuPresenter
             AddSelectAllItem(menu);
 
             if (!ReferenceEquals(_menu, menu) || !_isOpen ||
-                !IsCurrentSnapshot(
-                    expectedSnapshot,
-                    expectedSnapshotGeneration,
-                    expectedLayoutRevision) ||
+                !fence.IsCurrent(_lifetime, _published) ||
                 !ReferenceEquals(canvas, _surface.Canvas))
             {
                 ContextMenuTargets.DisposeContextMenuTarget(target);
@@ -187,10 +163,7 @@ internal sealed class SelectionContextMenuPresenter
 
             // Command providers and MenuFlyout construction can reenter the
             // control. Fence again immediately before exposing the flyout.
-            if (!IsCurrentSnapshot(
-                    expectedSnapshot,
-                    expectedSnapshotGeneration,
-                    expectedLayoutRevision) ||
+            if (!fence.IsCurrent(_lifetime, _published) ||
                 !ReferenceEquals(canvas, _surface.Canvas) ||
                 !ReferenceEquals(_menu, menu) ||
                 !_isOpen)
@@ -344,34 +317,26 @@ internal sealed class SelectionContextMenuPresenter
             Math.Clamp(selectionRect.Bottom, viewportTop, Math.Max(viewportTop, viewportBottom - 1)));
     }
 
-    private bool IsCurrentSnapshot(
-        LayoutSnapshot? snapshot,
-        long snapshotGeneration,
-        long layoutRevision)
-    {
-        return !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
-            ReferenceEquals(snapshot, _published.Snapshot) &&
-            snapshotGeneration == _published.Generation &&
-            (snapshot is null || snapshot.LayoutRevision == layoutRevision);
-    }
+    bool IContextMenuOpener.Show(
+        Point placementPoint,
+        bool touchSelection,
+        LayoutSnapshot? requiredSnapshot,
+        long requiredSnapshotGeneration,
+        long requiredLayoutRevision) =>
+        Show(placementPoint, touchSelection, requiredSnapshot, requiredSnapshotGeneration, requiredLayoutRevision);
 
     private bool FindTarget(
         Point point,
-        LayoutSnapshot? expectedSnapshot,
-        long expectedSnapshotGeneration,
-        long expectedLayoutRevision,
+        ContextMenuSnapshotFence fence,
         out ContextMenuTarget target)
     {
         target = new ContextMenuTarget();
-        if (!IsCurrentSnapshot(
-                expectedSnapshot,
-                expectedSnapshotGeneration,
-                expectedLayoutRevision))
+        if (!fence.IsCurrent(_lifetime, _published))
         {
             return false;
         }
 
-        LayoutSnapshot? snapshot = expectedSnapshot;
+        LayoutSnapshot? snapshot = fence.Snapshot;
         if (snapshot is null)
             return true;
 
@@ -379,20 +344,14 @@ internal sealed class SelectionContextMenuPresenter
         // originally observed tuple is still current. Never substitute a newer
         // snapshot/revision here.
         if (!snapshot.TryBeginInteraction())
-            return IsCurrentSnapshot(
-                expectedSnapshot,
-                expectedSnapshotGeneration,
-                expectedLayoutRevision);
+            return fence.IsCurrent(_lifetime, _published);
 
         bool captured = false;
         try
         {
             try
             {
-                if (IsCurrentSnapshot(
-                        expectedSnapshot,
-                        expectedSnapshotGeneration,
-                        expectedLayoutRevision))
+                if (fence.IsCurrent(_lifetime, _published))
                 {
                     foreach (BlockBox block in snapshot.Blocks)
                     {
@@ -417,10 +376,7 @@ internal sealed class SelectionContextMenuPresenter
             throw;
         }
 
-        if (!captured || !IsCurrentSnapshot(
-                expectedSnapshot,
-                expectedSnapshotGeneration,
-                expectedLayoutRevision))
+        if (!captured || !fence.IsCurrent(_lifetime, _published))
         {
             ContextMenuTargets.DisposeContextMenuTarget(target);
             target = new ContextMenuTarget();

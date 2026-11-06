@@ -50,13 +50,13 @@ internal sealed class PointerInputRouter
     private readonly SelectionHandlesPresenter _handles;
     private readonly DocumentPointerInteraction _document;
     private readonly HorizontalOverflowPointerDrag _horizontalOverflowDrag;
-    private readonly SelectionContextMenuPresenter _contextMenu;
     private readonly SelectionDragShield _dragShield;
     private readonly DeferredGestureAdmission _admission;
     private readonly RecognizedGestureAttribution _attribution;
     private readonly PointerInputDispatcher _dispatcher;
     private readonly DroppedTouchTerminalRetirement _droppedTerminals;
     private readonly PointerPostInteraction _postInteraction;
+    private readonly GestureContextMenuCompletion _contextMenuCompletion;
     private readonly DeferredPointerCaptures _deferredCaptures;
 
     private DeferredInputQueue<PointerInput>? _deferred;
@@ -96,13 +96,13 @@ internal sealed class PointerInputRouter
         _handles = handles;
         _document = document;
         _horizontalOverflowDrag = horizontalOverflowDrag;
-        _contextMenu = contextMenu;
         _dragShield = dragShield;
         _admission = new DeferredGestureAdmission(layout, surface, lifetime, published, viewport, touchTapSuppression, document);
         _attribution = new RecognizedGestureAttribution(viewport, touchSelection, touchTapSuppression);
         _dispatcher = new PointerInputDispatcher(_attribution, touchTapSuppression, document, horizontalOverflowDrag, handles, touchGestures);
         _droppedTerminals = new DroppedTouchTerminalRetirement(host, selection, touchSelection, touchTapSuppression, handles, contextMenu);
         _postInteraction = new PointerPostInteraction(host, surface, lifetime, published, adorner);
+        _contextMenuCompletion = new GestureContextMenuCompletion(lifetime, published, contextMenu);
         _deferredCaptures = new DeferredPointerCaptures(document, horizontalOverflowDrag, handles);
     }
 
@@ -220,7 +220,7 @@ internal sealed class PointerInputRouter
             return DeferRecognizedGestureForGeometry(ref input, snapshot, snapshotGeneration, layoutRevision, waitingBand);
         if (input.ShowContextMenuAfterInteraction)
         {
-            input.Handled = CompleteGestureAfterSnapshotInteraction(
+            input.Handled = _contextMenuCompletion.Complete(
                 input,
                 snapshot,
                 snapshotGeneration,
@@ -857,7 +857,7 @@ internal sealed class PointerInputRouter
     {
         if (menuInput.ShowContextMenuAfterInteraction)
         {
-            _ = CompleteGestureAfterSnapshotInteraction(
+            _ = _contextMenuCompletion.Complete(
                 menuInput,
                 snapshot,
                 snapshotGeneration,
@@ -898,32 +898,6 @@ internal sealed class PointerInputRouter
         _deferred?.Clear();
         _deferredCaptures.ReleaseUnowned();
         _host.ResumePendingRebuildAfterPointerInteraction();
-    }
-
-    private bool CompleteGestureAfterSnapshotInteraction(
-        PointerInput input,
-        LayoutSnapshot snapshot,
-        long snapshotGeneration,
-        long layoutRevision)
-    {
-        if (!input.ShowContextMenuAfterInteraction)
-            return input.Handled;
-
-        if (_lifetime.IsDisposed || _lifetime.IsUnloaded ||
-            !ReferenceEquals(_published.Snapshot, snapshot) ||
-            snapshotGeneration != _published.Generation ||
-            input.GestureLayoutRevision != layoutRevision ||
-            snapshot.LayoutRevision != layoutRevision)
-        {
-            return false;
-        }
-
-        return _contextMenu.Show(
-            input.GesturePosition,
-            touchSelection: input.TouchSelectionContextMenu,
-            requiredSnapshot: snapshot,
-            requiredSnapshotGeneration: snapshotGeneration,
-            requiredLayoutRevision: layoutRevision);
     }
 
     private bool CompletePointerPostInteraction(
