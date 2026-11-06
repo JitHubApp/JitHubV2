@@ -1,29 +1,36 @@
-using System.Collections.Concurrent;
 using MarkdownRenderer.Accessibility;
-using MarkdownRenderer.Document;
-using MarkdownRenderer.Extensions;
-using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Performance;
-using MarkdownRenderer.Theming;
-using Markdig;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
-using Windows.Graphics.DirectX;
 using Windows.UI;
 using Xunit;
+using static MarkdownRenderer.GitHub.Tests.ImageRelayoutTestSupport;
+using static MarkdownRenderer.GitHub.Tests.RootLocalImageRelayoutFixture;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
+/// <summary>
+/// Completed standalone raster image roots relayout through
+/// <c>LayoutSnapshot.TryRelayoutCompletedImageRoot(s)</c> without replacing
+/// their owners, and match a protected full-reflow fallback.
+/// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because it holds the fifteen scenarios
+/// of one entry point (commit, batch commit, cancellation, retry on pointer
+/// input, revision or lease change, lazy snapshots and preflight rejection),
+/// each arranging its own document and stating its own oracle. Documents,
+/// sources and shared oracles live in <see cref="RootLocalImageDocument"/>
+/// and <see cref="RootLocalImageRelayoutFixture"/>.
+/// </remarks>
 [Collection(SharedCanvasBitmapCacheTestCollection.Name)]
 public sealed class RootLocalImageRelayoutTests
 {
     private readonly MarkdownRenderResources _renderResources = new();
-    private const float LayoutWidth = 320f;
-    private const long AutomationGeneration = 4_731;
+    private const float LayoutWidth = RootLocalImageDocument.LayoutWidth;
+    private const long AutomationGeneration = RootLocalImageDocument.AutomationGeneration;
 
     [Theory]
     [InlineData(1f, false, false)]
@@ -54,19 +61,17 @@ public sealed class RootLocalImageRelayoutTests
         var resolver = new ControlledRasterResolver(DisplaySizedRasterDecodeTests.CreatePng(96, 192));
         string sourceText = CreateDocumentSource(resolver, includePendingSibling: true);
         FlowDirection direction = rightToLeft ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
-        await using ImageDocument optimized = BuildDocument(seed, session, resolver, sourceText, direction,
+        await using RootLocalImageDocument optimized = BuildDocument(seed, session, resolver, sourceText, direction,
             rasterizationScale, lazy: false);
-        await using ImageDocument fallback = BuildDocument(seed, session, resolver, sourceText, direction,
+        await using RootLocalImageDocument fallback = BuildDocument(seed, session, resolver, sourceText, direction,
             rasterizationScale, lazy: false);
 
         ImageBox optimizedImage = optimized.TargetImage;
         ImageBox fallbackImage = fallback.TargetImage;
-        Rect optimizedPlaceholderBounds = optimizedImage.Bounds;
-        Rect fallbackPlaceholderBounds = fallbackImage.Bounds;
-        Assert.Equal(optimizedPlaceholderBounds, fallbackPlaceholderBounds);
+        Assert.Equal(optimizedImage.Bounds, fallbackImage.Bounds);
 
-        await LoadTargetAsync(optimizedImage);
-        await LoadTargetAsync(fallbackImage);
+        await LoadImageAsync(optimizedImage);
+        await LoadImageAsync(fallbackImage);
         long sourceWaiterEpoch = await AssertCompletedPlacementTransferPredicatesAsync(
             optimizedImage, LayoutWidth);
         await StartPendingSiblingAsync(optimized);
@@ -102,43 +107,24 @@ public sealed class RootLocalImageRelayoutTests
             Assert.NotEqual(oldSize, snapshot.Size);
             Assert.Equal(fallback.Snapshot.Size, snapshot.Size);
             Assert.Equal(sourceRoots.Length, snapshot.Blocks.Count);
-            for (int ordinal = 0; ordinal < sourceRoots.Length; ordinal++)
-            {
-                Assert.Same(sourceRoots[ordinal], snapshot.Blocks[ordinal]);
-                Assert.Equal(LayoutPlacementTestGeometry.ToLogical(fallback.Snapshot, fallback.Snapshot.Blocks[ordinal]),
-                    LayoutPlacementTestGeometry.ToLogical(snapshot, snapshot.Blocks[ordinal]));
-            }
+            AssertRootsMatchFallback(fallback.Snapshot, snapshot, sourceRoots);
             Assert.NotEqual(oldBounds[targetOrdinal].Height, snapshot.Blocks[targetOrdinal].Bounds.Height);
             Assert.Same(optimizedImage, snapshot.Blocks[targetOrdinal]);
             Assert.NotNull(optimizedImage.Bitmap);
             Assert.NotNull(fallbackImage.Bitmap);
             Assert.Same(optimized.SourceMap, snapshot.SourceMap);
             Assert.Equal(AutomationGeneration, snapshot.AutomationDocumentGeneration);
-            Assert.Equal(oldSemantics.Text, snapshot.SemanticDocument.Text);
-            Assert.Equal(oldSemantics.TextProjectionFingerprint,
-                snapshot.SemanticDocument.TextProjectionFingerprint);
-            Assert.Equal(oldSemantics.SemanticRangeFingerprint,
-                snapshot.SemanticDocument.SemanticRangeFingerprint);
-            Assert.Equal(oldSemantics.TextSpans.Select(static span => (span.TextStart, span.TextEnd)),
-                snapshot.SemanticDocument.TextSpans.Select(static span => (span.TextStart, span.TextEnd)));
+            AssertSemanticTextAndSpansPreserved(oldSemantics, snapshot);
             Assert.Equal(GetSemanticProjection(fallback.Snapshot),
                 GetSemanticProjection(snapshot));
             Assert.Equal(targetResolveCount, resolver.ResolveCountFor(optimized.Resolver.TargetUrl));
             Assert.Equal(pendingResolveCount, resolver.ResolveCountFor(optimized.Resolver.PendingUrl));
-            Assert.NotNull(optimized.PendingImage);
-            Assert.NotNull(fallback.PendingImage);
-            Assert.Null(optimized.PendingImage!.Bitmap);
-            Assert.Null(fallback.PendingImage!.Bitmap);
-
-            AssertViewportIndexMatchesFullRebuild(snapshot);
-            AssertViewportIndexMatchesFullRebuild(fallback.Snapshot);
-            Assert.Equal(Paint(snapshot, seed.Device, rasterizationScale),
-                Paint(fallback.Snapshot, seed.Device, rasterizationScale));
+            AssertPendingSiblingsStillUnloaded(optimized, fallback);
+            AssertViewportIndexAndPixelsMatchFallback(snapshot, fallback.Snapshot, seed.Device, rasterizationScale);
         }
         finally
         {
-            if (constructionContext is not null)
-                await constructionContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            await DrainAsync(constructionContext);
         }
     }
 
@@ -171,9 +157,9 @@ public sealed class RootLocalImageRelayoutTests
         var resolver = new ControlledRasterResolver(DisplaySizedRasterDecodeTests.CreatePng(96, 192));
         string sourceText = CreateBatchDocumentSource(resolver);
         FlowDirection direction = rightToLeft ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
-        await using ImageDocument optimized = BuildDocument(seed, session, resolver, sourceText, direction,
+        await using RootLocalImageDocument optimized = BuildDocument(seed, session, resolver, sourceText, direction,
             rasterizationScale, lazy: false);
-        await using ImageDocument fallback = BuildDocument(seed, session, resolver, sourceText, direction,
+        await using RootLocalImageDocument fallback = BuildDocument(seed, session, resolver, sourceText, direction,
             rasterizationScale, lazy: false);
 
         ImageBox optimizedFirst = optimized.TargetImage;
@@ -183,10 +169,10 @@ public sealed class RootLocalImageRelayoutTests
         Assert.NotEqual(optimizedFirst.BlockIndex, optimizedSecond.BlockIndex);
         Assert.NotEqual(fallbackFirst.BlockIndex, fallbackSecond.BlockIndex);
 
-        await LoadTargetAsync(optimizedFirst);
-        await LoadTargetAsync(optimizedSecond);
-        await LoadTargetAsync(fallbackFirst);
-        await LoadTargetAsync(fallbackSecond);
+        await LoadImageAsync(optimizedFirst);
+        await LoadImageAsync(optimizedSecond);
+        await LoadImageAsync(fallbackFirst);
+        await LoadImageAsync(fallbackSecond);
 
         LayoutSnapshot snapshot = optimized.Snapshot;
         BlockBox[] rootsBefore = snapshot.Blocks.ToArray();
@@ -216,41 +202,24 @@ public sealed class RootLocalImageRelayoutTests
             Assert.Equal(fallback.Snapshot.Size, snapshot.Size);
             Assert.Same(optimized.SourceMap, snapshot.SourceMap);
             Assert.Same(oldSemantics, snapshot.SemanticDocument);
-            Assert.Equal(oldSemantics.TextProjectionFingerprint,
-                snapshot.SemanticDocument.TextProjectionFingerprint);
-            Assert.Equal(oldSemantics.SemanticRangeFingerprint,
-                snapshot.SemanticDocument.SemanticRangeFingerprint);
+            AssertSemanticFingerprintsPreserved(oldSemantics, snapshot);
             Assert.Same(firstBitmap, optimizedFirst.Bitmap);
             Assert.Same(secondBitmap, optimizedSecond.Bitmap);
             Assert.Equal(firstResolveCount, resolver.ResolveCountFor(optimizedFirst.Url));
             Assert.Equal(secondResolveCount, resolver.ResolveCountFor(optimizedSecond.Url));
 
-            LayoutPlacementGeneration fallbackPlacements = fallback.Snapshot.PublishedPlacementGeneration;
-            LayoutPlacementGeneration candidatePlacements = snapshot.PublishedPlacementGeneration;
-
-            for (int ordinal = 0; ordinal < rootsBefore.Length; ordinal++)
-            {
-                Assert.Same(rootsBefore[ordinal], snapshot.Blocks[ordinal]);
-                Rect expectedBounds = LayoutPlacementTestGeometry.ToLogical(
-                    fallback.Snapshot, fallback.Snapshot.Blocks[ordinal]);
-                Rect actualBounds = LayoutPlacementTestGeometry.ToLogical(snapshot, snapshot.Blocks[ordinal]);
-                Assert.Equal(expectedBounds, actualBounds);
-            }
+            AssertRootsMatchFallback(fallback.Snapshot, snapshot, rootsBefore);
             Assert.Equal(GetSemanticProjection(fallback.Snapshot),
                 GetSemanticProjection(snapshot));
             Assert.NotEqual(oldBounds[Array.IndexOf(rootsBefore, optimizedFirst)].Height,
                 optimizedFirst.Bounds.Height);
             Assert.NotEqual(oldBounds[Array.IndexOf(rootsBefore, optimizedSecond)].Height,
                 optimizedSecond.Bounds.Height);
-            AssertViewportIndexMatchesFullRebuild(snapshot);
-            AssertViewportIndexMatchesFullRebuild(fallback.Snapshot);
-            Assert.Equal(Paint(snapshot, seed.Device, rasterizationScale),
-                Paint(fallback.Snapshot, seed.Device, rasterizationScale));
+            AssertViewportIndexAndPixelsMatchFallback(snapshot, fallback.Snapshot, seed.Device, rasterizationScale);
         }
         finally
         {
-            if (constructionContext is not null)
-                await constructionContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            await DrainAsync(constructionContext);
         }
     }
 
@@ -260,12 +229,12 @@ public sealed class RootLocalImageRelayoutTests
         await using var seed = new CompletedRasterPlacementCloneTests.PlacementFixture();
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
         var resolver = new ControlledRasterResolver(DisplaySizedRasterDecodeTests.CreatePng(96, 192));
-        await using ImageDocument document = BuildDocument(seed, session, resolver,
+        await using RootLocalImageDocument document = BuildDocument(seed, session, resolver,
             CreateBatchDocumentSource(resolver), FlowDirection.LeftToRight, 1.5f, lazy: false);
         ImageBox first = document.TargetImage;
         ImageBox second = FindSecondTarget(document);
-        await LoadTargetAsync(first);
-        await LoadTargetAsync(second);
+        await LoadImageAsync(first);
+        await LoadImageAsync(second);
 
         LayoutSnapshot snapshot = document.Snapshot;
         BlockBox[] rootsBefore = snapshot.Blocks.ToArray();
@@ -325,12 +294,10 @@ public sealed class RootLocalImageRelayoutTests
                 Assert.Equal(logicalBoundsBefore[ordinal],
                     LayoutPlacementTestGeometry.ToLogical(snapshot, snapshot.Blocks[ordinal]));
             }
-
         }
         finally
         {
-            if (constructionContext is not null)
-                await constructionContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            await DrainAsync(constructionContext);
         }
 
         Assert.Equal(firstReferences, GetEntryReferenceCount(firstLease));
@@ -343,12 +310,12 @@ public sealed class RootLocalImageRelayoutTests
         await using var seed = new CompletedRasterPlacementCloneTests.PlacementFixture();
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
         var resolver = new ControlledRasterResolver(DisplaySizedRasterDecodeTests.CreatePng(96, 192));
-        await using ImageDocument document = BuildDocument(seed, session, resolver,
+        await using RootLocalImageDocument document = BuildDocument(seed, session, resolver,
             CreateBatchDocumentSource(resolver), FlowDirection.LeftToRight, 1.5f, lazy: false);
         ImageBox first = document.TargetImage;
         ImageBox second = FindSecondTarget(document);
-        await LoadTargetAsync(first);
-        await LoadTargetAsync(second);
+        await LoadImageAsync(first);
+        await LoadImageAsync(second);
 
         LayoutSnapshot snapshot = document.Snapshot;
         BlockBox[] rootsBefore = snapshot.Blocks.ToArray();
@@ -382,16 +349,11 @@ public sealed class RootLocalImageRelayoutTests
             Assert.Same(secondBitmap, second.Bitmap);
             Assert.Same(firstLease, GetImageLease(first));
             Assert.Same(secondLease, GetImageLease(second));
-            for (int ordinal = 0; ordinal < rootsBefore.Length; ordinal++)
-            {
-                Assert.Same(rootsBefore[ordinal], snapshot.Blocks[ordinal]);
-                Assert.Equal(boundsBefore[ordinal], snapshot.Blocks[ordinal].Bounds);
-            }
+            AssertRootsUnchanged(snapshot, rootsBefore, boundsBefore);
         }
         finally
         {
-            if (constructionContext is not null)
-                await constructionContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            await DrainAsync(constructionContext);
         }
 
         Assert.Equal(firstReferences, GetEntryReferenceCount(firstLease));
@@ -404,17 +366,17 @@ public sealed class RootLocalImageRelayoutTests
         await using var seed = new CompletedRasterPlacementCloneTests.PlacementFixture();
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
         var resolver = new ControlledRasterResolver(DisplaySizedRasterDecodeTests.CreatePng(96, 192));
-        await using ImageDocument document = BuildDocument(seed, session, resolver,
+        await using RootLocalImageDocument document = BuildDocument(seed, session, resolver,
             CreateDocumentSource(resolver, includePendingSibling: false), FlowDirection.LeftToRight, 1f,
             lazy: false);
-        await LoadTargetAsync(document.TargetImage);
+        await LoadImageAsync(document.TargetImage);
 
         LayoutSnapshot snapshot = document.Snapshot;
         long pointerEpoch = snapshot.PointerInputEpoch;
         using var entered = new ManualResetEventSlim();
         using var release = new ManualResetEventSlim();
         Task<PreparedImageRelayoutResult>? work = null;
-        var preparedContext = new ContextCapture();
+        var preparedContext = new RootLocalImageRelayoutFixture.ContextCapture();
         try
         {
             work = Task.Run(() =>
@@ -465,8 +427,7 @@ public sealed class RootLocalImageRelayoutTests
                 try { await work.WaitAsync(TimeSpan.FromSeconds(10)); }
                 catch { /* Preserve the assertion/timeout that caused cleanup. */ }
             }
-            if (preparedContext.Value is not null)
-                await preparedContext.Value.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            await DrainAsync(preparedContext.Value);
         }
         Assert.Equal(pointerEpoch, snapshot.PointerInputEpoch);
     }
@@ -477,10 +438,10 @@ public sealed class RootLocalImageRelayoutTests
         await using var seed = new CompletedRasterPlacementCloneTests.PlacementFixture();
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
         var resolver = new ControlledRasterResolver(DisplaySizedRasterDecodeTests.CreatePng(96, 192));
-        await using ImageDocument document = BuildDocument(seed, session, resolver,
+        await using RootLocalImageDocument document = BuildDocument(seed, session, resolver,
             CreateDocumentSource(resolver, includePendingSibling: false), FlowDirection.RightToLeft, 1.5f,
             lazy: false);
-        await LoadTargetAsync(document.TargetImage);
+        await LoadImageAsync(document.TargetImage);
 
         LayoutSnapshot snapshot = document.Snapshot;
         BlockBox[] rootsBefore = snapshot.Blocks.ToArray();
@@ -507,16 +468,11 @@ public sealed class RootLocalImageRelayoutTests
             Assert.Equal(sizeBefore, snapshot.Size);
             Assert.Same(semanticBefore, snapshot.SemanticDocument);
             Assert.Same(bitmapBefore, document.TargetImage.Bitmap);
-            for (int ordinal = 0; ordinal < rootsBefore.Length; ordinal++)
-            {
-                Assert.Same(rootsBefore[ordinal], snapshot.Blocks[ordinal]);
-                Assert.Equal(boundsBefore[ordinal], snapshot.Blocks[ordinal].Bounds);
-            }
+            AssertRootsUnchanged(snapshot, rootsBefore, boundsBefore);
         }
         finally
         {
-            if (constructionContext is not null)
-                await constructionContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            await DrainAsync(constructionContext);
         }
     }
 
@@ -526,10 +482,10 @@ public sealed class RootLocalImageRelayoutTests
         await using var seed = new CompletedRasterPlacementCloneTests.PlacementFixture();
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
         var resolver = new ControlledRasterResolver(DisplaySizedRasterDecodeTests.CreatePng(96, 192));
-        await using ImageDocument document = BuildDocument(seed, session, resolver,
+        await using RootLocalImageDocument document = BuildDocument(seed, session, resolver,
             CreateDocumentSource(resolver, includePendingSibling: false), FlowDirection.LeftToRight, 2f,
             lazy: false);
-        await LoadTargetAsync(document.TargetImage);
+        await LoadImageAsync(document.TargetImage);
 
         LayoutSnapshot snapshot = document.Snapshot;
         BlockBox nonImageSibling = Assert.IsAssignableFrom<BlockBox>(snapshot.Blocks.First(
@@ -563,8 +519,7 @@ public sealed class RootLocalImageRelayoutTests
         }
         finally
         {
-            if (constructionContext is not null)
-                await constructionContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            await DrainAsync(constructionContext);
         }
     }
 
@@ -574,10 +529,10 @@ public sealed class RootLocalImageRelayoutTests
         await using var seed = new CompletedRasterPlacementCloneTests.PlacementFixture();
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
         var resolver = new ControlledRasterResolver(DisplaySizedRasterDecodeTests.CreatePng(96, 192));
-        await using ImageDocument document = BuildDocument(seed, session, resolver,
+        await using RootLocalImageDocument document = BuildDocument(seed, session, resolver,
             CreateDocumentSource(resolver, includePendingSibling: false), FlowDirection.LeftToRight, 1f,
             lazy: false);
-        await LoadTargetAsync(document.TargetImage);
+        await LoadImageAsync(document.TargetImage);
 
         LayoutSnapshot snapshot = document.Snapshot;
         BlockBox[] rootsBefore = snapshot.Blocks.ToArray();
@@ -600,16 +555,11 @@ public sealed class RootLocalImageRelayoutTests
             Assert.Equal(revisionBefore, snapshot.LayoutRevision);
             Assert.Equal(sizeBefore, snapshot.Size);
             Assert.Same(bitmapBefore, document.TargetImage.Bitmap);
-            for (int ordinal = 0; ordinal < rootsBefore.Length; ordinal++)
-            {
-                Assert.Same(rootsBefore[ordinal], snapshot.Blocks[ordinal]);
-                Assert.Equal(boundsBefore[ordinal], snapshot.Blocks[ordinal].Bounds);
-            }
+            AssertRootsUnchanged(snapshot, rootsBefore, boundsBefore);
         }
         finally
         {
-            if (constructionContext is not null)
-                await constructionContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            await DrainAsync(constructionContext);
         }
     }
 
@@ -620,9 +570,9 @@ public sealed class RootLocalImageRelayoutTests
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
         var resolver = new ControlledRasterResolver(DisplaySizedRasterDecodeTests.CreatePng(96, 192));
         string sourceText = CreateLongLazySource(resolver);
-        await using ImageDocument optimized = BuildDocument(seed, session, resolver, sourceText,
+        await using RootLocalImageDocument optimized = BuildDocument(seed, session, resolver, sourceText,
             FlowDirection.LeftToRight, 1.5f, lazy: true);
-        await using ImageDocument fallback = BuildDocument(seed, session, resolver, sourceText,
+        await using RootLocalImageDocument fallback = BuildDocument(seed, session, resolver, sourceText,
             FlowDirection.LeftToRight, 1.5f, lazy: true);
         ImageBox optimizedFarImage = Assert.IsType<ImageBox>(optimized.FarImage);
         ImageBox fallbackFarImage = Assert.IsType<ImageBox>(fallback.FarImage);
@@ -632,8 +582,8 @@ public sealed class RootLocalImageRelayoutTests
         Assert.True(optimized.Snapshot.IsTopLevelBlockMeasured(optimized.TargetImage));
         Assert.False(optimized.Snapshot.IsTopLevelBlockMeasured(optimizedFarImage));
         Assert.False(fallback.Snapshot.IsTopLevelBlockMeasured(fallbackFarImage));
-        await LoadTargetAsync(optimized.TargetImage);
-        await LoadTargetAsync(fallback.TargetImage);
+        await LoadImageAsync(optimized.TargetImage);
+        await LoadImageAsync(fallback.TargetImage);
         Assert.Equal(0, resolver.ResolveCountFor(optimized.Resolver.FarUrl));
 
         LayoutSnapshot snapshot = optimized.Snapshot;
@@ -660,44 +610,24 @@ public sealed class RootLocalImageRelayoutTests
             Assert.Equal(fallback.Snapshot.TopLevelBlockCount, snapshot.Blocks.Count);
             Assert.Equal(measuredCountBefore, snapshot.MeasuredTopLevelBlockCount);
             Assert.Same(semanticsBefore, snapshot.SemanticDocument);
-            Assert.Equal(semanticsBefore.TextProjectionFingerprint,
-                snapshot.SemanticDocument.TextProjectionFingerprint);
-            Assert.Equal(semanticsBefore.SemanticRangeFingerprint,
-                snapshot.SemanticDocument.SemanticRangeFingerprint);
+            AssertSemanticFingerprintsPreserved(semanticsBefore, snapshot);
             Assert.Equal(GetSemanticProjection(fallback.Snapshot),
                 GetSemanticProjection(snapshot));
             Assert.Equal(0, resolver.ResolveCountFor(optimized.Resolver.FarUrl));
             Assert.Null(optimizedFarImage.Bitmap);
             Assert.False(snapshot.IsTopLevelBlockMeasured(optimizedFarImage));
-            for (int ordinal = 0; ordinal < rootsBefore.Length; ordinal++)
-            {
-                Assert.Same(rootsBefore[ordinal], snapshot.Blocks[ordinal]);
-                Assert.Equal(measuredBefore[ordinal], snapshot.IsTopLevelBlockMeasured(snapshot.Blocks[ordinal]));
-            Assert.Equal(LayoutPlacementTestGeometry.ToLogical(fallback.Snapshot, fallback.Snapshot.Blocks[ordinal]),
-                LayoutPlacementTestGeometry.ToLogical(snapshot, snapshot.Blocks[ordinal]));
-            }
+            AssertRootsMatchFallbackWithMeasuredMask(fallback.Snapshot, snapshot, rootsBefore, measuredBefore);
             Assert.NotEqual(boundsBefore[0].Height, snapshot.Blocks[0].Bounds.Height);
             AssertViewportIndexMatchesFullRebuild(snapshot);
             AssertViewportIndexMatchesFullRebuild(fallback.Snapshot);
 
-            using var actualPixels = new CanvasRenderTarget(seed.Device, LayoutWidth, 180, 144);
-            using (CanvasDrawingSession drawing = actualPixels.CreateDrawingSession())
-            {
-                drawing.Clear(Color.FromArgb(0, 0, 0, 0));
-                snapshot.Paint(drawing, new Rect(0, 0, LayoutWidth, 180));
-            }
-            using var expectedPixels = new CanvasRenderTarget(seed.Device, LayoutWidth, 180, 144);
-            using (CanvasDrawingSession drawing = expectedPixels.CreateDrawingSession())
-            {
-                drawing.Clear(Color.FromArgb(0, 0, 0, 0));
-                fallback.Snapshot.Paint(drawing, new Rect(0, 0, LayoutWidth, 180));
-            }
-            Assert.Equal(expectedPixels.GetPixelColors(), actualPixels.GetPixelColors());
+            Color[] actualPixels = PaintViewport(snapshot, seed.Device, height: 180, dpi: 144);
+            Color[] expectedPixels = PaintViewport(fallback.Snapshot, seed.Device, height: 180, dpi: 144);
+            Assert.Equal(expectedPixels, actualPixels);
         }
         finally
         {
-            if (constructionContext is not null)
-                await constructionContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            await DrainAsync(constructionContext);
         }
     }
 
@@ -708,9 +638,9 @@ public sealed class RootLocalImageRelayoutTests
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
         var resolver = new ControlledRasterResolver(DisplaySizedRasterDecodeTests.CreatePng(96, 192));
         string sourceText = CreateLongLazySourceWithPendingSibling(resolver);
-        await using ImageDocument optimized = BuildDocument(seed, session, resolver, sourceText,
+        await using RootLocalImageDocument optimized = BuildDocument(seed, session, resolver, sourceText,
             FlowDirection.LeftToRight, 1.5f, lazy: true, lazyViewportHeight: 600);
-        await using ImageDocument fallback = BuildDocument(seed, session, resolver, sourceText,
+        await using RootLocalImageDocument fallback = BuildDocument(seed, session, resolver, sourceText,
             FlowDirection.LeftToRight, 1.5f, lazy: true, lazyViewportHeight: 600);
 
         ImageBox optimizedTarget = optimized.TargetImage;
@@ -720,17 +650,14 @@ public sealed class RootLocalImageRelayoutTests
         ImageBox fallbackSecond = FindSecondTarget(fallback);
         ImageBox fallbackPending = Assert.IsType<ImageBox>(fallback.PendingImage);
         Assert.True(optimized.Snapshot.TopLevelBlockCount > 64);
-        Assert.True(optimized.Snapshot.IsTopLevelBlockMeasured(optimizedTarget));
-        Assert.True(optimized.Snapshot.IsTopLevelBlockMeasured(optimizedSecond));
-        Assert.True(optimized.Snapshot.IsTopLevelBlockMeasured(optimizedPending));
-        Assert.True(fallback.Snapshot.IsTopLevelBlockMeasured(fallbackSecond));
-        Assert.True(fallback.Snapshot.IsTopLevelBlockMeasured(fallbackPending));
+        AssertMeasured(optimized.Snapshot, optimizedTarget, optimizedSecond, optimizedPending);
+        AssertMeasured(fallback.Snapshot, fallbackSecond, fallbackPending);
         Assert.False(optimized.Snapshot.IsTopLevelBlockMeasured(optimizedFar));
 
-        await LoadTargetAsync(optimizedTarget);
-        await LoadTargetAsync(optimizedSecond);
-        await LoadTargetAsync(fallback.TargetImage);
-        await LoadTargetAsync(fallbackSecond);
+        await LoadImageAsync(optimizedTarget);
+        await LoadImageAsync(optimizedSecond);
+        await LoadImageAsync(fallback.TargetImage);
+        await LoadImageAsync(fallbackSecond);
         await StartPendingSiblingAsync(optimized);
         await StartPendingSiblingAsync(fallback);
         await WaitForPendingWorkAndResolverStabilityAsync(optimized, fallback);
@@ -739,7 +666,6 @@ public sealed class RootLocalImageRelayoutTests
         LayoutSnapshot snapshot = optimized.Snapshot;
         BlockBox[] rootsBefore = snapshot.Blocks.ToArray();
         bool[] measuredBefore = rootsBefore.Select(snapshot.IsTopLevelBlockMeasured).ToArray();
-        Rect[] boundsBefore = rootsBefore.Select(static block => block.Bounds).ToArray();
         Size sizeBefore = snapshot.Size;
         long revisionBefore = snapshot.LayoutRevision;
         MarkdownSemanticDocument semanticBefore = snapshot.SemanticDocument;
@@ -766,35 +692,21 @@ public sealed class RootLocalImageRelayoutTests
             Assert.NotEqual(sizeBefore, snapshot.Size);
             Assert.Equal(fallback.Snapshot.Size, snapshot.Size);
             Assert.Same(semanticBefore, snapshot.SemanticDocument);
-            Assert.Equal(semanticBefore.TextProjectionFingerprint,
-                snapshot.SemanticDocument.TextProjectionFingerprint);
-            Assert.Equal(semanticBefore.SemanticRangeFingerprint,
-                snapshot.SemanticDocument.SemanticRangeFingerprint);
+            AssertSemanticFingerprintsPreserved(semanticBefore, snapshot);
             Assert.Equal(targetResolvesBefore, resolver.ResolveCountFor(optimized.Resolver.TargetUrl));
             Assert.Equal(secondResolvesBefore, resolver.ResolveCountFor(optimized.Resolver.SecondTargetUrl));
             Assert.Equal(pendingResolvesBefore, resolver.ResolveCountFor(optimized.Resolver.PendingUrl));
-            Assert.True(optimizedPending.GetWorkState().ActiveWorkCount > 0);
-            Assert.Equal(pendingWorkBefore, optimizedPending.GetWorkState().ActiveWorkCount);
-            Assert.Null(optimizedPending.Bitmap);
-            Assert.False(snapshot.IsTopLevelBlockMeasured(optimizedFar));
-            Assert.Null(optimizedFar.Bitmap);
+            AssertPendingWorkAndFarRootUntouched(snapshot, optimizedPending, pendingWorkBefore, optimizedFar);
             Assert.NotNull(optimizedTarget.Bitmap);
             Assert.NotNull(optimizedSecond.Bitmap);
 
-            for (int ordinal = 0; ordinal < rootsBefore.Length; ordinal++)
-            {
-                Assert.Same(rootsBefore[ordinal], snapshot.Blocks[ordinal]);
-                Assert.Equal(measuredBefore[ordinal], snapshot.IsTopLevelBlockMeasured(snapshot.Blocks[ordinal]));
-                Assert.Equal(LayoutPlacementTestGeometry.ToLogical(fallback.Snapshot, fallback.Snapshot.Blocks[ordinal]),
-                    LayoutPlacementTestGeometry.ToLogical(snapshot, snapshot.Blocks[ordinal]));
-            }
+            AssertRootsMatchFallbackWithMeasuredMask(fallback.Snapshot, snapshot, rootsBefore, measuredBefore);
             Assert.Equal(PaintViewport(snapshot, seed.Device, height: 600, dpi: 144),
                 PaintViewport(fallback.Snapshot, seed.Device, height: 600, dpi: 144));
         }
         finally
         {
-            if (constructionContext is not null)
-                await constructionContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            await DrainAsync(constructionContext);
         }
     }
 
@@ -804,11 +716,11 @@ public sealed class RootLocalImageRelayoutTests
         await using var seed = new CompletedRasterPlacementCloneTests.PlacementFixture();
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
         var resolver = new ControlledRasterResolver(DisplaySizedRasterDecodeTests.CreatePng(96, 192));
-        await using ImageDocument document = BuildDocument(seed, session, resolver,
+        await using RootLocalImageDocument document = BuildDocument(seed, session, resolver,
             CreateDocumentSource(resolver, includePendingSibling: false),
             FlowDirection.LeftToRight, 1f, lazy: false);
         ImageBox source = document.TargetImage;
-        await LoadTargetAsync(source);
+        await LoadImageAsync(source);
 
         LayoutSnapshot snapshot = document.Snapshot;
         BlockBox[] rootsBefore = snapshot.Blocks.ToArray();
@@ -844,16 +756,11 @@ public sealed class RootLocalImageRelayoutTests
             Assert.Contains(snapshot.Blocks, block => ReferenceEquals(block, source));
             Assert.Equal(sourceBounds, source.Bounds);
             Assert.Equal(0, source.GetWorkState().ActiveWorkCount);
-            for (int ordinal = 0; ordinal < rootsBefore.Length; ordinal++)
-            {
-                Assert.Same(rootsBefore[ordinal], snapshot.Blocks[ordinal]);
-                Assert.Equal(boundsBefore[ordinal], snapshot.Blocks[ordinal].Bounds);
-            }
+            AssertRootsUnchanged(snapshot, rootsBefore, boundsBefore);
         }
         finally
         {
-            if (constructionContext is not null)
-                await constructionContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            await DrainAsync(constructionContext);
         }
     }
 
@@ -863,12 +770,12 @@ public sealed class RootLocalImageRelayoutTests
         await using var seed = new CompletedRasterPlacementCloneTests.PlacementFixture();
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
         var resolver = new ControlledRasterResolver(DisplaySizedRasterDecodeTests.CreatePng(96, 192));
-        await using ImageDocument document = BuildDocument(seed, session, resolver,
+        await using RootLocalImageDocument document = BuildDocument(seed, session, resolver,
             CreateBatchDocumentSource(resolver), FlowDirection.RightToLeft, 2f, lazy: false);
         ImageBox first = document.TargetImage;
         ImageBox second = FindSecondTarget(document);
-        await LoadTargetAsync(first);
-        await LoadTargetAsync(second);
+        await LoadImageAsync(first);
+        await LoadImageAsync(second);
 
         LayoutSnapshot snapshot = document.Snapshot;
         BlockBox[] rootsBefore = snapshot.Blocks.ToArray();
@@ -904,16 +811,11 @@ public sealed class RootLocalImageRelayoutTests
             Assert.Equal(revisionBefore, snapshot.LayoutRevision);
             Assert.Equal(sizeBefore, snapshot.Size);
             Assert.Same(semanticBefore, snapshot.SemanticDocument);
-            for (int ordinal = 0; ordinal < rootsBefore.Length; ordinal++)
-            {
-                Assert.Same(rootsBefore[ordinal], snapshot.Blocks[ordinal]);
-                Assert.Equal(boundsBefore[ordinal], snapshot.Blocks[ordinal].Bounds);
-            }
+            AssertRootsUnchanged(snapshot, rootsBefore, boundsBefore);
         }
         finally
         {
-            if (constructionContext is not null)
-                await constructionContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            await DrainAsync(constructionContext);
         }
     }
 
@@ -923,10 +825,10 @@ public sealed class RootLocalImageRelayoutTests
         await using var seed = new CompletedRasterPlacementCloneTests.PlacementFixture();
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
         var resolver = new ControlledRasterResolver(DisplaySizedRasterDecodeTests.CreatePng(96, 192));
-        await using ImageDocument document = BuildDocument(seed, session, resolver,
+        await using RootLocalImageDocument document = BuildDocument(seed, session, resolver,
             CreateDocumentSource(resolver, includePendingSibling: false),
             FlowDirection.RightToLeft, 2f, lazy: false);
-        await LoadTargetAsync(document.TargetImage);
+        await LoadImageAsync(document.TargetImage);
 
         LayoutSnapshot snapshot = document.Snapshot;
         BlockBox[] rootsBefore = snapshot.Blocks.ToArray();
@@ -957,16 +859,11 @@ public sealed class RootLocalImageRelayoutTests
                 Assert.Equal(sizeBefore, snapshot.Size);
                 Assert.Same(semanticsBefore, snapshot.SemanticDocument);
                 Assert.Same(bitmapBefore, document.TargetImage.Bitmap);
-                for (int ordinal = 0; ordinal < rootsBefore.Length; ordinal++)
-                {
-                    Assert.Same(rootsBefore[ordinal], snapshot.Blocks[ordinal]);
-                    Assert.Equal(boundsBefore[ordinal], snapshot.Blocks[ordinal].Bounds);
-                }
+                AssertRootsUnchanged(snapshot, rootsBefore, boundsBefore);
             }
             finally
             {
-                if (constructionContext is not null)
-                    await constructionContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
+                await DrainAsync(constructionContext);
             }
         }
     }
@@ -977,10 +874,10 @@ public sealed class RootLocalImageRelayoutTests
         await using var seed = new CompletedRasterPlacementCloneTests.PlacementFixture();
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
         var resolver = new ControlledRasterResolver(DisplaySizedRasterDecodeTests.CreatePng(96, 192));
-        await using ImageDocument document = BuildDocument(seed, session, resolver,
+        await using RootLocalImageDocument document = BuildDocument(seed, session, resolver,
             CreateDocumentSource(resolver, includePendingSibling: false), FlowDirection.LeftToRight, 1f,
             lazy: false);
-        await LoadTargetAsync(document.TargetImage);
+        await LoadImageAsync(document.TargetImage);
 
         LayoutSnapshot snapshot = document.Snapshot;
         BlockBox[] rootsBefore = snapshot.Blocks.ToArray();
@@ -1003,16 +900,11 @@ public sealed class RootLocalImageRelayoutTests
             Assert.Null(constructionContext);
             Assert.Equal(revisionBefore, snapshot.LayoutRevision);
             Assert.Equal(sizeBefore, snapshot.Size);
-            for (int ordinal = 0; ordinal < rootsBefore.Length; ordinal++)
-            {
-                Assert.Same(rootsBefore[ordinal], snapshot.Blocks[ordinal]);
-                Assert.Equal(boundsBefore[ordinal], snapshot.Blocks[ordinal].Bounds);
-            }
+            AssertRootsUnchanged(snapshot, rootsBefore, boundsBefore);
         }
         finally
         {
-            if (constructionContext is not null)
-                await constructionContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            await DrainAsync(constructionContext);
         }
     }
 
@@ -1022,12 +914,12 @@ public sealed class RootLocalImageRelayoutTests
         await using var seed = new CompletedRasterPlacementCloneTests.PlacementFixture();
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
         var resolver = new ControlledRasterResolver(DisplaySizedRasterDecodeTests.CreatePng(96, 192));
-        await using ImageDocument document = BuildDocument(seed, session, resolver,
+        await using RootLocalImageDocument document = BuildDocument(seed, session, resolver,
             CreateBatchDocumentSource(resolver), FlowDirection.LeftToRight, 1f, lazy: false);
         ImageBox first = document.TargetImage;
         ImageBox second = FindSecondTarget(document);
-        await LoadTargetAsync(first);
-        await LoadTargetAsync(second);
+        await LoadImageAsync(first);
+        await LoadImageAsync(second);
 
         LayoutSnapshot snapshot = document.Snapshot;
         BlockBox[] rootsBefore = snapshot.Blocks.ToArray();
@@ -1048,115 +940,25 @@ public sealed class RootLocalImageRelayoutTests
         ];
         foreach (IReadOnlyCollection<int> indices in rejectedBatches)
         {
-            MarkdownLayoutContext? rejectedContext = null;
-            try
-            {
-                PreparedImageRelayoutResult result = snapshot.TryRelayoutCompletedImageRoots(
-                    indices, LayoutWidth, CancellationToken.None, out rejectedContext,
-                    expectedPointerInputEpoch: snapshot.PointerInputEpoch);
-                Assert.Equal(PreparedImageRelayoutResult.Unavailable, result);
-                Assert.Null(rejectedContext);
-                Assert.Equal(firstReferences, GetEntryReferenceCount(firstLease));
-                Assert.Equal(secondReferences, GetEntryReferenceCount(secondLease));
-            }
-            finally
-            {
-                if (rejectedContext is not null)
-                    await rejectedContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
-            }
+            await AssertBatchUnavailableWithoutLeaseChangeAsync(
+                snapshot, indices, firstLease, firstReferences, secondLease, secondReferences);
         }
 
         const int firstAltLength = 32 * 1024;
         const int secondAltLength = 32 * 1024 + 1;
         string largeAltSource = CreateBatchDocumentSource(
             resolver, new string('a', firstAltLength), new string('b', secondAltLength));
-        await using ImageDocument overBudget = BuildDocument(seed, session, resolver, largeAltSource,
+        await using RootLocalImageDocument overBudget = BuildDocument(seed, session, resolver, largeAltSource,
             FlowDirection.LeftToRight, 1f, lazy: false);
-        ImageBox overBudgetFirst = overBudget.TargetImage;
-        ImageBox overBudgetSecond = FindSecondTarget(overBudget);
-        Assert.Equal(firstAltLength, overBudgetFirst.Alt.Length);
-        Assert.Equal(secondAltLength, overBudgetSecond.Alt.Length);
-        Assert.True(overBudgetFirst.Alt.Length + overBudgetSecond.Alt.Length >
-                    LayoutSnapshot.MaximumPrivateRasterPlacementTextLength);
-        await LoadTargetAsync(overBudgetFirst);
-        await LoadTargetAsync(overBudgetSecond);
-        SharedCanvasBitmapCache.Lease overBudgetFirstLease = GetImageLease(overBudgetFirst);
-        SharedCanvasBitmapCache.Lease overBudgetSecondLease = GetImageLease(overBudgetSecond);
-        int overBudgetFirstReferences = GetEntryReferenceCount(overBudgetFirstLease);
-        int overBudgetSecondReferences = GetEntryReferenceCount(overBudgetSecondLease);
-        LayoutSnapshot overBudgetSnapshot = overBudget.Snapshot;
-        BlockBox[] overBudgetRoots = overBudgetSnapshot.Blocks.ToArray();
-        Rect[] overBudgetBounds = overBudgetRoots.Select(static block => block.Bounds).ToArray();
-        long overBudgetRevision = overBudgetSnapshot.LayoutRevision;
-        Size overBudgetSize = overBudgetSnapshot.Size;
-        MarkdownLayoutContext? overBudgetContext = null;
-
-        try
-        {
-            PreparedImageRelayoutResult overBudgetResult = overBudgetSnapshot.TryRelayoutCompletedImageRoots(
-                [overBudgetFirst.BlockIndex, overBudgetSecond.BlockIndex], LayoutWidth, CancellationToken.None,
-                out overBudgetContext,
-                expectedPointerInputEpoch: overBudgetSnapshot.PointerInputEpoch);
-
-            Assert.Equal(PreparedImageRelayoutResult.Unavailable, overBudgetResult);
-            Assert.Null(overBudgetContext);
-            Assert.Equal(overBudgetRevision, overBudgetSnapshot.LayoutRevision);
-            Assert.Equal(overBudgetSize, overBudgetSnapshot.Size);
-            for (int ordinal = 0; ordinal < overBudgetRoots.Length; ordinal++)
-            {
-                Assert.Same(overBudgetRoots[ordinal], overBudgetSnapshot.Blocks[ordinal]);
-                Assert.Equal(overBudgetBounds[ordinal], overBudgetSnapshot.Blocks[ordinal].Bounds);
-            }
-            Assert.Equal(overBudgetFirstReferences, GetEntryReferenceCount(overBudgetFirstLease));
-            Assert.Equal(overBudgetSecondReferences, GetEntryReferenceCount(overBudgetSecondLease));
-        }
-        finally
-        {
-            if (overBudgetContext is not null)
-                await overBudgetContext.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
-        }
+        await AssertOverBudgetAltBatchUnavailableAsync(overBudget, firstAltLength, secondAltLength);
 
         Assert.Equal(revisionBefore, snapshot.LayoutRevision);
         Assert.Equal(sizeBefore, snapshot.Size);
         Assert.Same(semanticBefore, snapshot.SemanticDocument);
-        for (int ordinal = 0; ordinal < rootsBefore.Length; ordinal++)
-        {
-            Assert.Same(rootsBefore[ordinal], snapshot.Blocks[ordinal]);
-            Assert.Equal(boundsBefore[ordinal], snapshot.Blocks[ordinal].Bounds);
-        }
+        AssertRootsUnchanged(snapshot, rootsBefore, boundsBefore);
     }
 
-    private static string CreateDocumentSource(ControlledRasterResolver resolver, bool includePendingSibling) =>
-        "# Image relayout\n\n" +
-        $"![target image]({resolver.TargetUrl})\n\n" +
-        "This paragraph has text, a [link](https://example.test/path), and enough words to paint after the image.\n\n" +
-        (includePendingSibling ? $"![pending sibling]({resolver.PendingUrl})\n" : string.Empty);
-
-    private static string CreateBatchDocumentSource(
-        ControlledRasterResolver resolver,
-        string firstAlt = "first completed image",
-        string secondAlt = "second completed image") =>
-        "# Batch image relayout\n\n" +
-        $"![{firstAlt}]({resolver.TargetUrl})\n\n" +
-        "A stable paragraph separates the two standalone raster roots.\n\n" +
-        $"![{secondAlt}]({resolver.SecondTargetUrl})\n\n" +
-        "A trailing paragraph keeps suffix arrangement observable.\n";
-
-    private static string CreateLongLazySource(ControlledRasterResolver resolver) =>
-        $"![target image]({resolver.TargetUrl})\n\n" +
-        string.Join("\n\n", Enumerable.Range(0, 80).Select(static index =>
-            $"Lazy paragraph {index}: preserve the estimated tail and do not realize distant roots.")) +
-        $"\n\n![far image]({resolver.FarUrl})\n";
-
-    private static string CreateLongLazySourceWithPendingSibling(ControlledRasterResolver resolver) =>
-        $"![target image]({resolver.TargetUrl})\n\n" +
-        $"![second target image]({resolver.SecondTargetUrl})\n\n" +
-        $"![pending sibling]({resolver.PendingUrl})\n\n" +
-        string.Join("\n\n", Enumerable.Range(0, 80).Select(static index =>
-            $"Lazy paragraph {index}: keep this distant root estimated during target completion.")) +
-        $"\n\n![far image]({resolver.FarUrl})\n";
-
-    private ImageDocument BuildDocument(
+    private RootLocalImageDocument BuildDocument(
         CompletedRasterPlacementCloneTests.PlacementFixture seed,
         MarkdownPerformanceSession session,
         ControlledRasterResolver resolver,
@@ -1164,349 +966,7 @@ public sealed class RootLocalImageRelayoutTests
         FlowDirection direction,
         float rasterizationScale,
         bool lazy,
-        float lazyViewportHeight = 120)
-    {
-        var registry = new MarkdownExtensionRegistry().ConfigureGitHubReadmeRegistry();
-        Markdig.Syntax.MarkdownDocument parsed = Markdown.Parse(sourceText, registry.BuildPipeline());
-        MarkdownDocument semanticDocument = MarkdownDocument.FromParsed(sourceText, parsed);
-        var sourceMap = new MarkdownSourceMap(sourceText);
-        var context = new MarkdownLayoutContext(
-            seed.Device,
-            seed.SourceContext.ThemeSnapshot,
-            sourceMap,
-            registry,
-            direction,
-            language: "en-US")
-        {
-            RenderResources = _renderResources,
-            CancellationToken = CancellationToken.None,
-            ImageCancellationToken = CancellationToken.None,
-            ImagePreparationOwner = seed.ImagePreparationOwnerToken,
-            PerformanceDocumentOwner = new object(),
-            PerformanceSession = session,
-            ImageResolver = resolver,
-            AllowThirdPartyRemoteImages = true,
-            RasterizationScale = rasterizationScale,
-        };
-
-        LayoutSnapshot? snapshot = null;
-        try
-        {
-            var builder = new LayoutBuilder(context, semanticDocument: semanticDocument);
-            snapshot = lazy
-                ? builder.BuildLazy(parsed, LayoutWidth, viewportTop: 0, viewportHeight: lazyViewportHeight,
-                    overscan: 0, CancellationToken.None)
-                : builder.Build(parsed, LayoutWidth, CancellationToken.None);
-            snapshot.AssignAutomationDocumentGeneration(AutomationGeneration);
-            ImageBox target = Assert.Single(snapshot.Blocks.OfType<ImageBox>(),
-                image => image.Url == resolver.TargetUrl);
-            ImageBox? pending = snapshot.Blocks.OfType<ImageBox>()
-                .SingleOrDefault(image => image.Url == resolver.PendingUrl);
-            ImageBox? far = snapshot.Blocks.OfType<ImageBox>()
-                .SingleOrDefault(image => image.Url == resolver.FarUrl);
-            var result = new ImageDocument(context, snapshot, sourceMap, resolver, target, pending, far);
-            snapshot = null;
-            return result;
-        }
-        catch
-        {
-            try
-            {
-                if (snapshot is not null)
-                    snapshot.Retire().GetAwaiter().GetResult();
-            }
-            finally
-            {
-                context.DrainOwnedRetirementsAsync().GetAwaiter().GetResult();
-            }
-            throw;
-        }
-    }
-
-    private static ImageBox FindSecondTarget(ImageDocument document) =>
-        Assert.Single(document.Snapshot.Blocks.OfType<ImageBox>(),
-            image => image.Url == document.Resolver.SecondTargetUrl);
-
-    private static async Task LoadTargetAsync(ImageBox image)
-    {
-        await DisplaySizedRasterDecodeTests.WaitForLoadAsync(image).WaitAsync(TimeSpan.FromSeconds(10));
-        await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-            () => image.GetWorkState().ActiveWorkCount == 0);
-        Assert.NotNull(image.Bitmap);
-    }
-
-    private static async Task<long> AssertCompletedPlacementTransferPredicatesAsync(
-        ImageBox source,
-        float availableWidth)
-    {
-        MarkdownLayoutContext context = source.Context.CreateRasterPlacementContext(
-            source.Context.ImageCancellationToken,
-            source.Context.ImagePreparationOwner!,
-            retirementSink: null,
-            imageUnavailable: null);
-        ImageBox? prepared = null;
-        try
-        {
-            Assert.True(source.TryCreateCompletedRasterPlacementClone(
-                context,
-                out prepared,
-                out SharedCanvasBitmapCache.Lease? expectedLease,
-                out CompletedSvgPlacementMetadataFence? svgFence));
-            Assert.NotNull(prepared);
-            Assert.NotNull(expectedLease);
-            _ = prepared.Measure(availableWidth);
-            prepared.Arrange(0, 0, availableWidth);
-
-            ImageBitmapOutputState sourceWaiter = source.OutputDeferral.GetState();
-            string waiterState = sourceWaiter.ToString();
-            bool sourcePristineWaiterState = sourceWaiter.IsPristine;
-            bool sourceHasNoLiveWaiterWork = sourceWaiter.HasNoLiveWork;
-            bool preparedWaiterStateIsClear = prepared.OutputDeferral.GetState().HasNoLiveWork;
-            bool sourcePlacementIsCoherent =
-                source.MeasuredPlacement.HasCoherentMeasuredPlacementNoLock(availableWidth, false);
-            bool preparedPlacementIsCoherent =
-                prepared.MeasuredPlacement.HasCoherentMeasuredPlacementNoLock(availableWidth, false);
-            bool inputsMatch = source.MeasuredPlacement.HasMatchingPlacementInputs(prepared);
-            bool transferEligible = source.MeasuredPlacement.IsTransferSourceEligibleNoLock(
-                prepared, expectedLease, svgFence, 0L, availableWidth, false);
-            long sourceWaiterEpoch = sourceWaiter.WaiterEpoch;
-
-            Assert.True(sourceWaiterEpoch > 0,
-                $"The completed source did not exercise historical admission state: {waiterState}");
-            Assert.False(sourcePristineWaiterState,
-                "The old virgin-image predicate unexpectedly classified a completed source as pristine.");
-            Assert.True(sourceHasNoLiveWaiterWork,
-                $"Completed source still has live bitmap-admission work: {waiterState}");
-            Assert.True(preparedWaiterStateIsClear,
-                "Fresh placement unexpectedly owns live bitmap-admission work.");
-            Assert.True(sourcePlacementIsCoherent,
-                "The source placement is not internally coherent before candidate transfer.");
-            Assert.True(preparedPlacementIsCoherent,
-                "The privately measured placement is not internally coherent.");
-            Assert.True(inputsMatch,
-                "The source and private candidate have different placement inputs.");
-            Assert.True(transferEligible,
-                "The transfer eligibility predicate rejected an otherwise prepared raster candidate.");
-            return sourceWaiterEpoch;
-        }
-        finally
-        {
-            if (prepared is not null)
-            {
-                context.DiscardConstructionBlock(prepared);
-                await prepared.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
-            }
-            await context.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
-        }
-    }
-
-    private static CanvasBitmap CreateBitmap(CanvasDevice device, int width, int height)
-    {
-        byte[] pixels = new byte[checked(width * height * 4)];
-        return CanvasBitmap.CreateFromBytes(
-            device,
-            pixels,
-            width,
-            height,
-            DirectXPixelFormat.B8G8R8A8UIntNormalized);
-    }
-
-    private static void InvokeReplaceBitmap(ImageBox image, SharedCanvasBitmapCache.Lease lease)
-    {
-        image.Presentation.Replace(lease.Bitmap, lease);
-    }
-
-    private static async Task StartPendingSiblingAsync(ImageDocument document)
-    {
-        if (document.PendingImage is null)
-            return;
-        document.PendingImage.EnsureLoading();
-        await document.Resolver.WaitForPendingResolveAsync().WaitAsync(TimeSpan.FromSeconds(10));
-    }
-
-    private static async Task WaitForPendingWorkAndResolverStabilityAsync(
-        ImageDocument first,
-        ImageDocument second)
-    {
-        await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-            () => first.PendingImage?.GetWorkState().ActiveWorkCount > 0 &&
-                  second.PendingImage?.GetWorkState().ActiveWorkCount > 0 &&
-                  first.Resolver.ResolveCountFor(first.Resolver.PendingUrl) > 0);
-
-        int previousCount = first.Resolver.ResolveCountFor(first.Resolver.PendingUrl);
-        int stableSamples = 0;
-        for (int attempt = 0; attempt < 400; attempt++)
-        {
-            await Task.Delay(TimeSpan.FromMilliseconds(25));
-            int currentCount = first.Resolver.ResolveCountFor(first.Resolver.PendingUrl);
-            bool bothWorkItemsRemainActive =
-                first.PendingImage?.GetWorkState().ActiveWorkCount > 0 &&
-                second.PendingImage?.GetWorkState().ActiveWorkCount > 0;
-            stableSamples = bothWorkItemsRemainActive && currentCount == previousCount
-                ? stableSamples + 1
-                : 0;
-            previousCount = currentCount;
-            if (stableSamples >= 5)
-                return;
-        }
-
-        throw new TimeoutException("Pending image resolution did not reach a stable, active state.");
-    }
-
-    private static Color[] Paint(LayoutSnapshot snapshot, CanvasDevice device, float rasterizationScale)
-    {
-        float height = (float)System.Math.Max(1, System.Math.Ceiling(snapshot.Size.Height + 1));
-        using var target = new CanvasRenderTarget(device, LayoutWidth, height, 96 * rasterizationScale);
-        using (CanvasDrawingSession drawing = target.CreateDrawingSession())
-        {
-            drawing.Clear(Color.FromArgb(0, 0, 0, 0));
-            snapshot.Paint(drawing, new Rect(0, 0, LayoutWidth, height));
-        }
-        return target.GetPixelColors();
-    }
-
-    private static Color[] PaintViewport(LayoutSnapshot snapshot, CanvasDevice device, float height, float dpi)
-    {
-        using var target = new CanvasRenderTarget(device, LayoutWidth, height, dpi);
-        using (CanvasDrawingSession drawing = target.CreateDrawingSession())
-        {
-            drawing.Clear(Color.FromArgb(0, 0, 0, 0));
-            snapshot.Paint(drawing, new Rect(0, 0, LayoutWidth, height));
-        }
-        return target.GetPixelColors();
-    }
-
-    private static void AssertViewportIndexMatchesFullRebuild(LayoutSnapshot snapshot)
-    {
-        LayoutPlacementGeneration actual = snapshot.PublishedPlacementGeneration;
-        var expected = new ViewportBandIndex(snapshot.Blocks.Count);
-        var queryBands = new List<(double Top, double Bottom)>(snapshot.Blocks.Count * 4 + 1);
-
-        for (int ordinal = 0; ordinal < snapshot.Blocks.Count; ordinal++)
-        {
-            Rect bounds = actual.GetPlacement(ordinal).LogicalBounds;
-            expected.SetEntry(ordinal, ordinal, bounds.Top, bounds.Bottom);
-            queryBands.Add((bounds.Top, bounds.Top));
-            queryBands.Add((bounds.Bottom, bounds.Bottom));
-            queryBands.Add((bounds.Top, bounds.Bottom));
-            if (ordinal + 1 < snapshot.Blocks.Count)
-                queryBands.Add((bounds.Bottom, actual.GetPlacement(ordinal + 1).Top));
-        }
-
-        expected.Commit();
-        queryBands.Add((0, snapshot.Size.Height));
-        Assert.Equal(expected.Count, actual.Count);
-        Assert.Equal(expected.IsDocumentOrder, actual.IsDocumentOrder);
-        for (int entry = 0; entry < expected.Count; entry++)
-        {
-            Assert.Equal(expected.GetBlockOrdinal(entry), actual.GetBlockOrdinal(entry));
-            Assert.Equal(expected.GetBounds(entry), actual.GetIndexedBounds(entry));
-        }
-
-        foreach ((double top, double bottom) in queryBands)
-        {
-            ViewportRange expectedRange = expected.Find(top, bottom);
-            ViewportRange actualRange = actual.Find(top, bottom);
-            Assert.Equal(expectedRange, actualRange);
-            for (int entry = expectedRange.Start; entry < expectedRange.End; entry++)
-                Assert.Equal(expected.GetBlockOrdinal(entry), actual.GetBlockOrdinal(entry));
-        }
-    }
-
-    private static SharedCanvasBitmapCache.Lease GetImageLease(ImageBox image)
-    {
-        return Assert.IsType<SharedCanvasBitmapCache.Lease>(image.Presentation.Lease);
-    }
-
-    private static int GetEntryReferenceCount(SharedCanvasBitmapCache.Lease lease)
-    {
-        int? count = lease.EntryReferenceCount;
-        Assert.True(count.HasValue, "The lease no longer holds a cache entry.");
-        return count.Value;
-    }
-
-    private static (MarkdownSemanticRole Role, int Start, int End, int HeadingLevel,
-        MarkdownAccessibilityRole AccessibilityRole, string? Name, string? Description,
-        string? AutomationId, Rect Bounds)[] GetSemanticProjection(LayoutSnapshot snapshot)
-    {
-        MarkdownSemanticDocument document = snapshot.SemanticDocument;
-        var result = new List<(MarkdownSemanticRole, int, int, int, MarkdownAccessibilityRole,
-            string?, string?, string?, Rect)>();
-        var pending = new Stack<MarkdownSemanticNode>();
-        pending.Push(document.Root);
-        Assert.True(snapshot.TryBeginInteraction());
-        try
-        {
-            while (pending.Count > 0)
-            {
-                MarkdownSemanticNode node = pending.Pop();
-                using LayoutPlacementTransformContext.Scope placementScope =
-                    snapshot.EnterPlacementTransformScopeForBlockIndexUnderPaint(node.LayoutBlockIndex);
-                Rect physicalBounds = node.VectorSceneBox is { } vector
-                    ? node.VectorSemanticIndex >= 0
-                        ? vector.GetVisibleSemanticBounds(node.VectorSemanticIndex)
-                        : vector.Bounds
-                    : node.Bounds;
-                Rect logicalBounds = snapshot.ToLogicalRectForBlockIndexUnderPaint(
-                    node.LayoutBlockIndex,
-                    physicalBounds);
-                result.Add((node.Role, node.TextStart, node.TextEnd, node.HeadingLevel,
-                    node.AccessibilityRole, node.AccessibilityName, node.AccessibilityDescription,
-                    node.AutomationId, logicalBounds));
-                for (int child = node.Children.Count - 1; child >= 0; child--)
-                    pending.Push(node.Children[child]);
-            }
-        }
-        finally
-        {
-            snapshot.EndInteraction();
-        }
-        return result.ToArray();
-    }
-
-    private sealed class ImageDocument : IAsyncDisposable
-    {
-        internal ImageDocument(
-            MarkdownLayoutContext context,
-            LayoutSnapshot snapshot,
-            MarkdownSourceMap sourceMap,
-            ControlledRasterResolver resolver,
-            ImageBox targetImage,
-            ImageBox? pendingImage,
-            ImageBox? farImage)
-        {
-            Context = context;
-            Snapshot = snapshot;
-            SourceMap = sourceMap;
-            Resolver = resolver;
-            TargetImage = targetImage;
-            PendingImage = pendingImage;
-            FarImage = farImage;
-        }
-
-        internal MarkdownLayoutContext Context { get; }
-        internal LayoutSnapshot Snapshot { get; }
-        internal MarkdownSourceMap SourceMap { get; }
-        internal ControlledRasterResolver Resolver { get; }
-        internal ImageBox TargetImage { get; }
-        internal ImageBox? PendingImage { get; }
-        internal ImageBox? FarImage { get; }
-
-        public async ValueTask DisposeAsync()
-        {
-            try
-            {
-                await Snapshot.Retire().WaitAsync(TimeSpan.FromSeconds(10));
-            }
-            finally
-            {
-                await Context.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(10));
-            }
-        }
-    }
-
-    private sealed class ContextCapture
-    {
-        internal MarkdownLayoutContext? Value;
-    }
+        float lazyViewportHeight = 120) =>
+        RootLocalImageDocument.Build(_renderResources, seed, session, resolver, sourceText, direction,
+            rasterizationScale, lazy, lazyViewportHeight);
 }
