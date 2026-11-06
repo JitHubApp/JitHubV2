@@ -47,8 +47,8 @@ public sealed class LayoutBuilderOwnershipTests
         {
             rendererCalls++;
             return new TrackingBox();
-        });
-        using (LayoutPassCancellation.Push(cancellation.Token))
+        }, out MarkdownLayoutContext ambientContext);
+        using (ambientContext.PassCancellation.Push(cancellation.Token))
         {
             OperationCanceledException failure = Assert.Throws<OperationCanceledException>(() =>
             {
@@ -58,15 +58,15 @@ public sealed class LayoutBuilderOwnershipTests
                     ambientBuilder.Build(Markdown.Parse(source), 320);
             });
             Assert.Equal(cancellation.Token, failure.CancellationToken);
-            Assert.Equal(cancellation.Token, LayoutPassCancellation.GetEffectiveToken(CancellationToken.None));
+            Assert.Equal(cancellation.Token, ambientContext.PassCancellation.GetEffectiveToken(CancellationToken.None));
         }
 
         LayoutBuilder contextBuilder = CreateBuilder(source, (_, _) =>
         {
             rendererCalls++;
             return new TrackingBox();
-        }, cancellation.Token);
-        using (LayoutPassCancellation.Push(CancellationToken.None))
+        }, out MarkdownLayoutContext tokenContext, cancellation.Token);
+        using (tokenContext.PassCancellation.Push(CancellationToken.None))
         {
             OperationCanceledException failure = Assert.Throws<OperationCanceledException>(() =>
             {
@@ -76,7 +76,7 @@ public sealed class LayoutBuilderOwnershipTests
                     contextBuilder.Build(Markdown.Parse(source), 320);
             });
             Assert.Equal(cancellation.Token, failure.CancellationToken);
-            Assert.Equal(CancellationToken.None, LayoutPassCancellation.GetEffectiveToken(CancellationToken.None));
+            Assert.Equal(CancellationToken.None, tokenContext.PassCancellation.GetEffectiveToken(CancellationToken.None));
         }
         Assert.Equal(0, rendererCalls);
     }
@@ -87,11 +87,12 @@ public sealed class LayoutBuilderOwnershipTests
         using var outerCancellation = new CancellationTokenSource();
         using var passCancellation = new CancellationTokenSource();
         SemanticTextProjectionAccumulator? accumulator = null;
-        LayoutBuilder builder = CreateBuilder(source, (_, _) =>
+        LayoutBuilder builder = CreateBuilder(source, (_, buildContext) =>
         {
-            Assert.Equal(passCancellation.Token,
-                LayoutPassCancellation.GetEffectiveToken(CancellationToken.None));
-            accumulator = new SemanticTextProjectionAccumulator();
+            CancellationToken passToken = buildContext.PassCancellation.GetEffectiveToken(CancellationToken.None);
+            Assert.Equal(passCancellation.Token, passToken);
+            Assert.Equal(passCancellation.Token, buildContext.CancellationToken);
+            accumulator = new SemanticTextProjectionAccumulator(cancellationToken: passToken);
             accumulator.Append("semantic callback projection");
             return new TrackingBox();
         }, out MarkdownLayoutContext context);
@@ -99,13 +100,13 @@ public sealed class LayoutBuilderOwnershipTests
         LayoutSnapshot? snapshot = null;
         try
         {
-            using (LayoutPassCancellation.Push(outerCancellation.Token))
+            using (context.PassCancellation.Push(outerCancellation.Token))
             {
                 snapshot = lazy
                     ? builder.BuildLazy(Markdown.Parse(source), 320, 0, 400, 100, passCancellation.Token)
                     : builder.Build(Markdown.Parse(source), 320, passCancellation.Token);
                 Assert.Equal(outerCancellation.Token,
-                    LayoutPassCancellation.GetEffectiveToken(CancellationToken.None));
+                    context.PassCancellation.GetEffectiveToken(CancellationToken.None));
                 passCancellation.Cancel();
                 OperationCanceledException failure = Assert.Throws<OperationCanceledException>(
                     () => Assert.IsType<SemanticTextProjectionAccumulator>(accumulator).GetText());
@@ -114,7 +115,7 @@ public sealed class LayoutBuilderOwnershipTests
         }
         finally
         {
-            // ThreadStatic pass scopes end synchronously, before either await.
+            // Pass scopes end synchronously, before either await.
             if (snapshot is not null)
                 await snapshot.Retire().WaitAsync(TimeSpan.FromSeconds(10));
             await context.DrainOwnedRetirementsAsync();
@@ -129,13 +130,13 @@ public sealed class LayoutBuilderOwnershipTests
         var box = new TrackingBox(afterMeasure: cancellation.Cancel);
         LayoutBuilder builder = CreateBuilder(source, (_, _) => box, out MarkdownLayoutContext context);
 
-        using (LayoutPassCancellation.Push(CancellationToken.None))
+        using (context.PassCancellation.Push(CancellationToken.None))
         {
             OperationCanceledException failure = Assert.Throws<OperationCanceledException>(
                 () => builder.Build(Markdown.Parse(source), 320, cancellation.Token));
             Assert.Equal(cancellation.Token, failure.CancellationToken);
             Assert.Equal(CancellationToken.None,
-                LayoutPassCancellation.GetEffectiveToken(CancellationToken.None));
+                context.PassCancellation.GetEffectiveToken(CancellationToken.None));
         }
         await context.DrainOwnedRetirementsAsync();
         Assert.Equal(1, box.DisposeCount);
@@ -177,7 +178,7 @@ public sealed class LayoutBuilderOwnershipTests
             Assert.Equal(2, boxes.Count);
             Assert.All(boxes, box => Assert.Equal(0, box.MeasureCount));
 
-            using (LayoutPassCancellation.Push(ambientCancellation.Token))
+            using (context.PassCancellation.Push(ambientCancellation.Token))
             {
                 OperationCanceledException actual = Assert.Throws<OperationCanceledException>(
                     () => builtSnapshot.EnsureMeasuredBand(
@@ -187,17 +188,17 @@ public sealed class LayoutBuilderOwnershipTests
                 Assert.Equal(ambientCancellation.Token, actual.CancellationToken);
                 Assert.Equal(
                     ambientCancellation.Token,
-                    LayoutPassCancellation.GetEffectiveToken(CancellationToken.None));
+                    context.PassCancellation.GetEffectiveToken(CancellationToken.None));
                 Assert.Equal(1, boxes[0].MeasureCount);
                 Assert.Equal(0, boxes[1].MeasureCount);
             }
 
-            Assert.Equal(CancellationToken.None, LayoutPassCancellation.GetEffectiveToken(CancellationToken.None));
+            Assert.Equal(CancellationToken.None, context.PassCancellation.GetEffectiveToken(CancellationToken.None));
         }
         finally
         {
             // Retire snapshot-owned roots and drain context barriers even if
-            // the assertion fails. The thread-static pass scope above is gone
+            // the assertion fails. The pass scope above is gone
             // before asynchronous cleanup starts.
             try
             {
@@ -232,7 +233,7 @@ public sealed class LayoutBuilderOwnershipTests
         LayoutSnapshot? unexpectedlyPublishedSnapshot = null;
         try
         {
-            using (LayoutPassCancellation.Push(ambientCancellation.Token))
+            using (context.PassCancellation.Push(ambientCancellation.Token))
             {
                 OperationCanceledException actual = Assert.Throws<OperationCanceledException>(() =>
                 {
@@ -258,10 +259,10 @@ public sealed class LayoutBuilderOwnershipTests
                 Assert.Equal(ambientCancellation.Token, actual.CancellationToken);
                 Assert.Equal(
                     ambientCancellation.Token,
-                    LayoutPassCancellation.GetEffectiveToken(CancellationToken.None));
+                    context.PassCancellation.GetEffectiveToken(CancellationToken.None));
             }
 
-            Assert.Equal(CancellationToken.None, LayoutPassCancellation.GetEffectiveToken(CancellationToken.None));
+            Assert.Equal(CancellationToken.None, context.PassCancellation.GetEffectiveToken(CancellationToken.None));
             Assert.Equal(2, boxes.Count);
             Assert.Equal(1, boxes[0].MeasureCount);
             Assert.Equal(0, boxes[1].MeasureCount);
@@ -270,7 +271,7 @@ public sealed class LayoutBuilderOwnershipTests
         {
             // Keep snapshot-owned roots and queued retirement barriers drained
             // even when a regression unexpectedly publishes or one assertion
-            // fails. The thread-static scope above has exited before awaiting.
+            // fails. The pass scope above has exited before awaiting.
             try
             {
                 if (unexpectedlyPublishedSnapshot is not null)

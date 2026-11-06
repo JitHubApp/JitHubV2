@@ -107,13 +107,14 @@ public sealed class SnapshotSemanticTraversalIndexTests
 
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
-        using (LayoutPassCancellation.Push(cancellation.Token))
+        using (fixture.Context.PassCancellation.Push(cancellation.Token))
         {
             Assert.ThrowsAny<OperationCanceledException>(() => new LayoutSnapshot(
                 fixture.Roots,
                 fixture.Context.SourceMap,
                 width: 480,
-                height: 640));
+                height: 640,
+                layoutContext: fixture.Context));
         }
 
         before.AssertUnchanged(prior);

@@ -216,6 +216,9 @@ public sealed class LayoutSnapshotConcurrencyTests
         var leaf = new CancellationAwareLeafBox();
         var root = new NestedMeasureBox(new NestedMeasureBox(leaf));
         using var snapshot = CreateLazySnapshot(root);
+        // The leaf reads the pass token where real boxes read it: the pass
+        // state of the snapshot it belongs to.
+        leaf.PassCancellation = snapshot.Geometry.PassCancellation;
         using var cts = new CancellationTokenSource();
 
         Task<Exception?> work = Task.Run<Exception?>(() => Record.Exception(() =>
@@ -437,12 +440,14 @@ public sealed class LayoutSnapshotConcurrencyTests
     {
         internal ManualResetEventSlim MeasureEntered { get; } = new(initialState: false);
 
+        internal LayoutPassCancellation PassCancellation { get; set; } = new();
+
         public override float Measure(float availableWidth)
         {
             MeasureEntered.Set();
             while (true)
             {
-                LayoutPassCancellation
+                PassCancellation
                     .GetEffectiveToken(CancellationToken.None)
                     .ThrowIfCancellationRequested();
                 Thread.SpinWait(64);

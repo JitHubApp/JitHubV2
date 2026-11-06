@@ -29,9 +29,9 @@ internal sealed class MeasuredBlocksRelayout
     /// </summary>
     internal void RelayoutMeasuredBlocks(float availableWidth, CancellationToken cancellationToken)
     {
-        using var cancellationScope = LayoutPassCancellation.Push(cancellationToken);
         lock (_geometry.Gate)
         {
+            using var cancellationScope = _geometry.PassCancellation.Push(cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             if (_recovery.IsRequired)
                 return;
@@ -69,7 +69,7 @@ internal sealed class MeasuredBlocksRelayout
             bool arrangeAttempted = false;
             try
             {
-                using var commitScope = LayoutPassCancellation.Push(CancellationToken.None);
+                using var commitScope = _geometry.PassCancellation.Push(CancellationToken.None);
                 float[]? continuationUpdate = ArrangeRootsNoLock(heights, contentX, contentWidth, ref arrangeAttempted);
                 _geometry.AvailableWidth = normalizedWidth;
                 _geometry.Size = committedSize;

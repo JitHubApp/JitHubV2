@@ -65,18 +65,22 @@ internal sealed class LayoutSnapshot : System.IDisposable, ILayoutSnapshotRetire
             blockSpacing,
             vectorSceneResidencyPolicy,
             textProjectionReuse: null,
-            generatedBlockIndexUpperBound: 0)
+            generatedBlockIndexUpperBound: 0,
+            layoutContext: null)
     {
     }
 
-    // Keep the original constructor/reflection shape intact. Only builders
-    // with a captured generated-ID domain opt into the compact index.
+    /// <summary>
+    /// Creates a snapshot over boxes built in <paramref name="layoutContext"/>.
+    /// Later passes over the snapshot push their pass state on that context,
+    /// which is where its boxes read it.
+    /// </summary>
     internal LayoutSnapshot(
         IReadOnlyList<BlockBox> blocks,
         MarkdownSourceMap sourceMap,
         float width,
         float height,
-        int generatedBlockIndexUpperBound,
+        MarkdownLayoutContext layoutContext,
         IReadOnlyDictionary<int, int>? footnoteDefBlocks = null,
         IReadOnlyDictionary<int, int>? footnoteRefBlocks = null,
         IReadOnlyDictionary<string, int>? fragmentTargetBlocks = null,
@@ -97,7 +101,42 @@ internal sealed class LayoutSnapshot : System.IDisposable, ILayoutSnapshotRetire
             blockSpacing,
             vectorSceneResidencyPolicy,
             textProjectionReuse: null,
-            generatedBlockIndexUpperBound: generatedBlockIndexUpperBound)
+            generatedBlockIndexUpperBound: 0,
+            layoutContext: layoutContext ?? throw new ArgumentNullException(nameof(layoutContext)))
+    {
+    }
+
+    // Keep the original constructor/reflection shape intact. Only builders
+    // with a captured generated-ID domain opt into the compact index.
+    internal LayoutSnapshot(
+        IReadOnlyList<BlockBox> blocks,
+        MarkdownSourceMap sourceMap,
+        float width,
+        float height,
+        int generatedBlockIndexUpperBound,
+        IReadOnlyDictionary<int, int>? footnoteDefBlocks = null,
+        IReadOnlyDictionary<int, int>? footnoteRefBlocks = null,
+        IReadOnlyDictionary<string, int>? fragmentTargetBlocks = null,
+        SharedLayoutMetrics? sharedLayoutMetrics = null,
+        Thickness documentPadding = default,
+        double blockSpacing = 0,
+        IMarkdownVectorSceneResidencyPolicy? vectorSceneResidencyPolicy = null,
+        MarkdownLayoutContext? layoutContext = null)
+        : this(
+            blocks,
+            sourceMap,
+            width,
+            height,
+            footnoteDefBlocks,
+            footnoteRefBlocks,
+            fragmentTargetBlocks,
+            sharedLayoutMetrics,
+            documentPadding,
+            blockSpacing,
+            vectorSceneResidencyPolicy,
+            textProjectionReuse: null,
+            generatedBlockIndexUpperBound: generatedBlockIndexUpperBound,
+            layoutContext: layoutContext)
     {
     }
 
@@ -114,7 +153,8 @@ internal sealed class LayoutSnapshot : System.IDisposable, ILayoutSnapshotRetire
         double blockSpacing,
         IMarkdownVectorSceneResidencyPolicy? vectorSceneResidencyPolicy,
         MarkdownSemanticTextProjectionReuse? textProjectionReuse,
-        int generatedBlockIndexUpperBound)
+        int generatedBlockIndexUpperBound,
+        MarkdownLayoutContext? layoutContext)
     {
         Blocks = blocks;
         SourceMap = sourceMap;
@@ -131,6 +171,11 @@ internal sealed class LayoutSnapshot : System.IDisposable, ILayoutSnapshotRetire
         _fragmentTargetBlocks = fragmentTargetBlocks ?? new Dictionary<string, int>(StringComparer.Ordinal);
         var blockOrdinals = new Dictionary<BlockBox, int>(Blocks.Count, ReferenceEqualityComparer.Instance);
         var topLevelOrdinalByBlockIndex = new BlockOrdinalIndex(generatedBlockIndexUpperBound);
+        // Later passes over these boxes push their tokens where the boxes
+        // read them: on the context that built them. A snapshot assembled
+        // without naming that context keeps a private instance, so its
+        // passes reach boxes only through their explicit tokens.
+        LayoutPassCancellation passCancellation = layoutContext?.PassCancellation ?? new LayoutPassCancellation();
         _geometry = new LayoutSnapshotGeometry(
             _layoutLock,
             blocks,
@@ -140,7 +185,8 @@ internal sealed class LayoutSnapshot : System.IDisposable, ILayoutSnapshotRetire
             Math.Max(1f, width),
             documentPadding,
             (float)(double.IsFinite(blockSpacing) ? Math.Max(0, blockSpacing) : 0),
-            sharedLayoutMetrics);
+            sharedLayoutMetrics,
+            passCancellation);
         _retirement = new SnapshotRetirement(_layoutLock, this);
         _imageTopLevelOrdinalByIdentity = new Dictionary<ImageBox, int>(ReferenceEqualityComparer.Instance);
         _horizontalOverflow = new SnapshotHorizontalOverflowIndex(_geometry, _recovery, _retirement);
@@ -155,7 +201,11 @@ internal sealed class LayoutSnapshot : System.IDisposable, ILayoutSnapshotRetire
         // Semantic construction already visits every reachable block, table
         // cell and inline run. Collect snapshot-only layout indexes in that
         // traversal rather than rescanning the same tree first.
-        SemanticDocument = MarkdownSemanticDocument.Build(this, matchingTextProjection, indexBuilder);
+        SemanticDocument = MarkdownSemanticDocument.Build(
+            this,
+            matchingTextProjection,
+            indexBuilder,
+            passCancellation.GetEffectiveToken(CancellationToken.None));
         _focusables = new SnapshotFocusablePlan(
             _geometry, _recovery, _retirement, indexBuilder.CompleteFocusablePlan());
         _planCandidates = new LayoutPlanCandidateIndex(

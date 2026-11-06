@@ -109,7 +109,7 @@ internal sealed class LayoutBuilder : ILayoutBlockDispatcher
     {
         CancellationToken effectiveCancellationToken = cancellationToken.CanBeCanceled
             ? cancellationToken : _context.CancellationToken;
-        using var cancellationScope = LayoutPassCancellation.Push(effectiveCancellationToken);
+        using var cancellationScope = _context.PassCancellation.Push(effectiveCancellationToken);
         effectiveCancellationToken.ThrowIfCancellationRequested();
         MarkdownLayoutConstructionScope ownership = _tracker.BeginBlockBuildOwnership();
         LayoutSnapshot? snapshot = null;
@@ -157,7 +157,8 @@ internal sealed class LayoutBuilder : ILayoutBlockDispatcher
                 sharedLayoutMetrics: sharedMetrics,
                 documentPadding: documentPadding,
                 blockSpacing: blockSpacing,
-                vectorSceneResidencyPolicy: vectorSceneResidencyPolicy);
+                vectorSceneResidencyPolicy: vectorSceneResidencyPolicy,
+                layoutContext: _context);
             vectorSceneResidencyPolicy = null;
             ownership.TransferToSnapshot(blocks);
             if (snapshot.VectorSceneResidencyPolicy is not null)
@@ -265,7 +266,7 @@ internal sealed class LayoutBuilder : ILayoutBlockDispatcher
     {
         CancellationToken effectiveCancellationToken = cancellationToken.CanBeCanceled
             ? cancellationToken : _context.CancellationToken;
-        using var cancellationScope = LayoutPassCancellation.Push(effectiveCancellationToken);
+        using var cancellationScope = _context.PassCancellation.Push(effectiveCancellationToken);
         effectiveCancellationToken.ThrowIfCancellationRequested();
         MarkdownLayoutConstructionScope ownership = _tracker.BeginBlockBuildOwnership();
         LayoutSnapshot? snapshot = null;
@@ -298,7 +299,8 @@ internal sealed class LayoutBuilder : ILayoutBlockDispatcher
                 sharedLayoutMetrics: sharedMetrics,
                 documentPadding: _context.ThemeSnapshot.DocumentPadding,
                 blockSpacing: _context.ThemeSnapshot.BlockSpacing,
-                vectorSceneResidencyPolicy: vectorSceneResidencyPolicy);
+                vectorSceneResidencyPolicy: vectorSceneResidencyPolicy,
+                layoutContext: _context);
             vectorSceneResidencyPolicy = null;
             ownership.TransferToSnapshot(blocks);
             if (diagnostics is not null)

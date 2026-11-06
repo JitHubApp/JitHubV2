@@ -138,14 +138,11 @@ public sealed class SemanticTextProjectionAccumulatorTests
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 
-        using (LayoutPassCancellation.Push(cancellation.Token))
-        {
-            var accumulator = new SemanticTextProjectionAccumulator();
-            Assert.Throws<OperationCanceledException>(() => accumulator.Append('x'));
-            Assert.Equal(0, accumulator.Length);
-            Assert.Throws<OperationCanceledException>(() => accumulator.Append(text));
-            Assert.Equal(0, accumulator.Length);
-        }
+        var accumulator = new SemanticTextProjectionAccumulator(cancellationToken: cancellation.Token);
+        Assert.Throws<OperationCanceledException>(() => accumulator.Append('x'));
+        Assert.Equal(0, accumulator.Length);
+        Assert.Throws<OperationCanceledException>(() => accumulator.Append(text));
+        Assert.Equal(0, accumulator.Length);
     }
 
     [Fact]
@@ -163,16 +160,13 @@ public sealed class SemanticTextProjectionAccumulatorTests
         Assert.Equal("X" + suffix, alreadyMaterialized.GetText());
 
         using var cancellation = new CancellationTokenSource();
-        using (LayoutPassCancellation.Push(cancellation.Token))
-        {
-            var canceledFallback = new SemanticTextProjectionAccumulator("expected");
-            canceledFallback.Append("X");
-            cancellation.Cancel();
+        var canceledFallback = new SemanticTextProjectionAccumulator("expected", cancellation.Token);
+        canceledFallback.Append("X");
+        cancellation.Cancel();
 
-            Assert.Throws<OperationCanceledException>(() => canceledFallback.Append(suffix));
-            Assert.Equal(1, canceledFallback.Length);
-            Assert.Equal('X', canceledFallback[0]);
-        }
+        Assert.Throws<OperationCanceledException>(() => canceledFallback.Append(suffix));
+        Assert.Equal(1, canceledFallback.Length);
+        Assert.Equal('X', canceledFallback[0]);
     }
 
     [Fact]

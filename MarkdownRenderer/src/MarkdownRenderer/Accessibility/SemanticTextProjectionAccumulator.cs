@@ -20,10 +20,14 @@ internal sealed class SemanticTextProjectionAccumulator
     private int _matchedLength;
     private int _pendingTrailingNewlines;
 
-    internal SemanticTextProjectionAccumulator(string? expected = null)
+    /// <param name="expected">A prior projection to reuse while the text still matches it.</param>
+    /// <param name="cancellationToken">The token of the layout pass that builds the projection.</param>
+    internal SemanticTextProjectionAccumulator(
+        string? expected = null,
+        CancellationToken cancellationToken = default)
     {
         _expected = expected;
-        _cancellationToken = LayoutPassCancellation.GetEffectiveToken(CancellationToken.None);
+        _cancellationToken = cancellationToken;
         if (expected is null)
             _materialized = new StringBuilder();
     }

@@ -206,10 +206,16 @@ internal sealed class MarkdownLayoutContext
             // control operation, but retaining this check also protects direct
             // relayout callers and test hosts that supply an independent token.
             _cancellationToken.ThrowIfCancellationRequested();
-            return LayoutPassCancellation.GetEffectiveToken(_cancellationToken);
+            return PassCancellation.GetEffectiveToken(_cancellationToken);
         }
         init => _cancellationToken = value;
     }
+
+    /// <summary>
+    /// The token of the measure pass that currently uses this context. A pass
+    /// pushes its token here so that boxes built in this context observe it.
+    /// </summary>
+    internal LayoutPassCancellation PassCancellation { get; } = new();
 
     internal void SetCancellationToken(CancellationToken cancellationToken) =>
         _cancellationToken = cancellationToken;

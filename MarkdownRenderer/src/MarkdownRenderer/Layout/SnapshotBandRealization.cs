@@ -293,12 +293,15 @@ internal sealed class SnapshotBandRealization
         LazyLayoutBand visibleVectorBand,
         CancellationToken cancellationToken)
     {
-        CancellationToken effectiveCancellationToken = cancellationToken.CanBeCanceled
-            ? cancellationToken
-            : LayoutPassCancellation.GetEffectiveToken(CancellationToken.None);
-        using var cancellationScope = LayoutPassCancellation.Push(effectiveCancellationToken);
         lock (_geometry.Gate)
         {
+            // A band realized inside an enclosing pass (the eager build's
+            // residency band) inherits that pass's token. The gate is
+            // reentrant, so the enclosing pass already owns this state.
+            CancellationToken effectiveCancellationToken = cancellationToken.CanBeCanceled
+                ? cancellationToken
+                : _geometry.PassCancellation.GetEffectiveToken(CancellationToken.None);
+            using var cancellationScope = _geometry.PassCancellation.Push(effectiveCancellationToken);
             effectiveCancellationToken.ThrowIfCancellationRequested();
             // A realization can already be queued when its snapshot is
             // replaced. Retirement and measurement share this lock, so check
@@ -427,7 +430,7 @@ internal sealed class SnapshotBandRealization
         // have changed the attempted root's safe-HTML flow identity.
         try
         {
-            using var rollbackScope = LayoutPassCancellation.Push(CancellationToken.None);
+            using var rollbackScope = _geometry.PassCancellation.Push(CancellationToken.None);
             if (firstMeasureAttempted < _geometry.Blocks.Count)
             {
                 // Capacity-only residency refreshes do not mutate

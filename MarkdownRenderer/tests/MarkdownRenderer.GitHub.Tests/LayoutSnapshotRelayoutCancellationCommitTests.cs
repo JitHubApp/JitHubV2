@@ -27,7 +27,7 @@ public sealed class LayoutSnapshotRelayoutCancellationCommitTests
         var trailing = new ProbeBlock(30) { BlockIndex = 2 };
         using LayoutSnapshot snapshot = CreateSnapshot([first, changed, trailing]);
         using var cancellation = new CancellationTokenSource();
-        changed.ObserveCancellationToken(cancellation.Token);
+        changed.ObserveCancellationToken(snapshot.Geometry.PassCancellation, cancellation.Token);
         changed.CancelOnNextArrange(cancellation);
         changed.SetHeight(55);
         double oldHeight = snapshot.Size.Height;
@@ -56,7 +56,7 @@ public sealed class LayoutSnapshotRelayoutCancellationCommitTests
         using LayoutSnapshot snapshot = CreateSnapshot(
             [first, firstChanged, middle, secondChanged, trailing]);
         using var cancellation = new CancellationTokenSource();
-        firstChanged.ObserveCancellationToken(cancellation.Token);
+        firstChanged.ObserveCancellationToken(snapshot.Geometry.PassCancellation, cancellation.Token);
         firstChanged.BeforeArrange = () => Assert.Equal(2, secondChanged.MeasureCount);
         firstChanged.CancelOnNextArrange(cancellation);
         firstChanged.SetHeight(37);
@@ -86,13 +86,13 @@ public sealed class LayoutSnapshotRelayoutCancellationCommitTests
         using var cancellation = new CancellationTokenSource();
         var firstChild = new ProbeBlock(10) { BlockIndex = 100 };
         var secondChild = new ProbeBlock(20) { BlockIndex = 101 };
-        firstChild.ObserveCancellationToken(cancellation.Token);
-        secondChild.ObserveCancellationToken(cancellation.Token);
         var stack = new StackBox { BlockIndex = 0 };
         stack.Add(firstChild);
         stack.Add(secondChild);
         var trailing = new ProbeBlock(30) { BlockIndex = 1 };
         using LayoutSnapshot snapshot = CreateSnapshot([stack, trailing]);
+        firstChild.ObserveCancellationToken(snapshot.Geometry.PassCancellation, cancellation.Token);
+        secondChild.ObserveCancellationToken(snapshot.Geometry.PassCancellation, cancellation.Token);
         firstChild.CancelOnArrangeNumber(cancellation, firstChild.ArrangeCount + 2);
         firstChild.SetHeight(18);
         double oldTrailingTop = trailing.Bounds.Top;
@@ -121,7 +121,7 @@ public sealed class LayoutSnapshotRelayoutCancellationCommitTests
         var table = new TableBox(context, [[header]], [[body]]) { BlockIndex = 1 };
         var trailing = new ProbeBlock(26) { BlockIndex = 2 };
         using LayoutSnapshot snapshot = CreateSnapshot([canceller, table, trailing], context.SourceMap);
-        canceller.ObserveCancellationToken(cancellation.Token);
+        canceller.ObserveCancellationToken(snapshot.Geometry.PassCancellation, cancellation.Token);
         canceller.CancelOnNextArrange(cancellation);
         long oldRevision = snapshot.LayoutRevision;
 
@@ -148,7 +148,7 @@ public sealed class LayoutSnapshotRelayoutCancellationCommitTests
         var trailing = new ProbeBlock(40) { BlockIndex = 2 };
         using LayoutSnapshot snapshot = CreateSnapshot([first, changed, trailing]);
         using var cancellation = new CancellationTokenSource();
-        first.ObserveCancellationToken(cancellation.Token);
+        first.ObserveCancellationToken(snapshot.Geometry.PassCancellation, cancellation.Token);
         first.CancelOnNextArrange(cancellation);
         changed.BlockIndex = 99;
         changed.SetHeight(48);
@@ -224,8 +224,8 @@ public sealed class LayoutSnapshotRelayoutCancellationCommitTests
             .Select(oldIndex.GetIndexedBounds)
             .ToArray();
         using var cancellation = new CancellationTokenSource();
-        firstChanged.ObserveCancellationToken(cancellation.Token);
-        secondChanged.ObserveCancellationToken(cancellation.Token);
+        firstChanged.ObserveCancellationToken(snapshot.Geometry.PassCancellation, cancellation.Token);
+        secondChanged.ObserveCancellationToken(snapshot.Geometry.PassCancellation, cancellation.Token);
         secondChanged.AfterMeasure = cancellation.Cancel;
         firstChanged.SetHeight(37);
         secondChanged.SetHeight(44);
@@ -280,7 +280,7 @@ public sealed class LayoutSnapshotRelayoutCancellationCommitTests
         long oldRevision = snapshot.LayoutRevision;
         int trailingArranges = trailing.ArrangeCount;
         using var cancellation = new CancellationTokenSource();
-        changed.ObserveCancellationToken(cancellation.Token);
+        changed.ObserveCancellationToken(snapshot.Geometry.PassCancellation, cancellation.Token);
         changed.CancelOnNextArrange(cancellation);
 
         snapshot.RelayoutChangedBlocks([changed.BlockIndex], 200, cancellation.Token);
@@ -386,6 +386,7 @@ public sealed class LayoutSnapshotRelayoutCancellationCommitTests
     {
         private float _height = height;
         private CancellationToken _tokenToObserve;
+        private LayoutPassCancellation _pass = new();
         private CancellationTokenSource? _cancelOnArrange;
         private int _cancelAtArrangeCount;
 
@@ -398,8 +399,11 @@ public sealed class LayoutSnapshotRelayoutCancellationCommitTests
 
         internal void SetHeight(float value) => _height = value;
 
-        internal void ObserveCancellationToken(CancellationToken token)
-            => _tokenToObserve = token;
+        internal void ObserveCancellationToken(LayoutPassCancellation pass, CancellationToken token)
+        {
+            _pass = pass;
+            _tokenToObserve = token;
+        }
 
         internal void CancelOnNextArrange(CancellationTokenSource cancellation)
             => CancelOnArrangeNumber(cancellation, ArrangeCount + 1);
@@ -424,13 +428,13 @@ public sealed class LayoutSnapshotRelayoutCancellationCommitTests
             ArrangeCount++;
             base.Arrange(x, y, width);
             LastEffectiveTokenCanBeCanceled =
-                LayoutPassCancellation.GetEffectiveToken(_tokenToObserve).CanBeCanceled;
+                _pass.GetEffectiveToken(_tokenToObserve).CanBeCanceled;
             if (ArrangeCount == _cancelAtArrangeCount && _cancelOnArrange is { } cancellation)
             {
                 _cancelOnArrange = null;
                 cancellation.Cancel();
                 EffectiveTokenCanBeCanceledAtCancellation =
-                    LayoutPassCancellation.GetEffectiveToken(_tokenToObserve).CanBeCanceled;
+                    _pass.GetEffectiveToken(_tokenToObserve).CanBeCanceled;
             }
         }
 

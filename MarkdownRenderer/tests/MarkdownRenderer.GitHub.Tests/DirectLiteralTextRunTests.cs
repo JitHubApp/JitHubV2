@@ -321,12 +321,9 @@ public sealed class DirectLiteralTextRunTests
 
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
-        using (LayoutPassCancellation.Push(cancellation.Token))
-        {
-            var canceled = new SemanticTextProjectionAccumulator();
-            Assert.Throws<OperationCanceledException>(() => canceled.Append(actual.AsSpan()));
-            Assert.Equal(0, canceled.Length);
-        }
+        var canceled = new SemanticTextProjectionAccumulator(cancellationToken: cancellation.Token);
+        Assert.Throws<OperationCanceledException>(() => canceled.Append(actual.AsSpan()));
+        Assert.Equal(0, canceled.Length);
     }
 
     [Fact]

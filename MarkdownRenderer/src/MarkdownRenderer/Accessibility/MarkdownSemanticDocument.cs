@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Windows.Foundation;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout;
@@ -83,18 +84,24 @@ internal sealed class MarkdownSemanticDocument
     internal static MarkdownSemanticDocument Build(
         LayoutSnapshot snapshot,
         MarkdownSemanticTextProjectionReuse? textProjectionReuse)
-        => Build(snapshot, textProjectionReuse, indexBuilder: null);
+        => Build(snapshot, textProjectionReuse, indexBuilder: null, CancellationToken.None);
 
+    /// <param name="snapshot">The snapshot whose tree is projected.</param>
+    /// <param name="textProjectionReuse">An earlier text projection to reuse when it still matches.</param>
+    /// <param name="indexBuilder">Collects the snapshot's layout indexes during the same traversal.</param>
+    /// <param name="cancellationToken">The token of the layout pass that builds the snapshot.</param>
     internal static MarkdownSemanticDocument Build(
         LayoutSnapshot snapshot,
         MarkdownSemanticTextProjectionReuse? textProjectionReuse,
-        LayoutSnapshotIndexBuilder? indexBuilder)
+        LayoutSnapshotIndexBuilder? indexBuilder,
+        CancellationToken cancellationToken)
     {
         if (textProjectionReuse is { } projection &&
             !ReferenceEquals(snapshot.SourceMap, projection.SourceMap))
             textProjectionReuse = null;
 
-        var builder = new MarkdownSemanticDocumentBuilder(textProjectionReuse?.Text, indexBuilder);
+        var builder = new MarkdownSemanticDocumentBuilder(
+            textProjectionReuse?.Text, indexBuilder, cancellationToken);
         return builder.Build(snapshot, textProjectionReuse);
     }
 
