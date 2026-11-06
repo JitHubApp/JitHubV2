@@ -1,4 +1,4 @@
-using System.Reflection;
+using System.Runtime.CompilerServices;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Layout;
@@ -211,27 +211,21 @@ public sealed class ProgressiveSceneBindingTests
     [Fact]
     public void DeferredBindingRetainsOnlyReadonlyMarkerAndOrdinal()
     {
-        var fields = typeof(MarkdownDeferredSceneBinding).GetFields(
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public |
-            System.Reflection.BindingFlags.NonPublic);
-        Assert.Equal(3, fields.Length);
-        Assert.All(fields, static field => Assert.True(field.IsInitOnly));
-        Assert.Contains(fields, static field => field.Name == "Marker" && field.FieldType == typeof(string));
-        Assert.Contains(fields, static field => field.Name == "SceneOrdinal" && field.FieldType == typeof(int));
-        Assert.Contains(fields, static field => field.Name == "ProjectionIdentity" && field.FieldType == typeof(object));
+        object identity = new();
+        var binding = new MarkdownDeferredSceneBinding("scene|marker", 3, identity);
+        Assert.Equal("scene|marker", binding.Marker);
+        Assert.Equal(3, binding.SceneOrdinal);
+        Assert.Same(identity, binding.ProjectionIdentity);
+        // Storage is exactly the marker reference, the ordinal and the
+        // identity reference; any further field would grow the struct.
+        Assert.Equal(3 * IntPtr.Size, Unsafe.SizeOf<MarkdownDeferredSceneBinding>());
 
         Type identityType = typeof(MarkdownSceneProjectionSignature);
         Assert.True(identityType.IsValueType);
         Assert.True(identityType.IsDefined(typeof(System.Runtime.CompilerServices.IsReadOnlyAttribute), inherit: false));
-        FieldInfo[] identityFields = identityType.GetFields(
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public |
-            System.Reflection.BindingFlags.NonPublic);
-        Assert.Equal(4, identityFields.Length);
-        Assert.All(identityFields, static field =>
-        {
-            Assert.True(field.IsInitOnly);
-            Assert.Equal(typeof(ulong), field.FieldType);
-        });
+        // Four 64-bit digest words and nothing that can root an object graph.
+        Assert.Equal(4 * sizeof(ulong), Unsafe.SizeOf<MarkdownSceneProjectionSignature>());
+        Assert.False(RuntimeHelpers.IsReferenceOrContainsReferences<MarkdownSceneProjectionSignature>());
     }
 
     private static object CreateProjectionIdentity()
