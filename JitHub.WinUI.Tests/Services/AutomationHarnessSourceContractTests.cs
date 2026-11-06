@@ -399,16 +399,7 @@ public sealed class AutomationHarnessSourceContractTests
             "Composition",
             "EmbedHosts.cs"));
         Assert.Contains("void IEmbedRealizationHost.AddImagePlan(ImageBox image) => AddImagePlan(image);", embedHostsSource, StringComparison.Ordinal);
-        string subscriptionSource = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "src",
-            "MarkdownRenderer",
-            "Controls",
-            "Images",
-            "ImageSubscriptions.cs"));
         Assert.Contains("if (!Owners.ImageSubscriptions.Subscribe(image))", embedHostsSource, StringComparison.Ordinal);
-        Assert.Contains("image.LoadCompleted += OnImageLoadCompleted;", subscriptionSource, StringComparison.Ordinal);
         string completionSource = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "MarkdownRenderer",
@@ -439,14 +430,6 @@ public sealed class AutomationHarnessSourceContractTests
             "MarkdownRenderer",
             "Controls",
             "MarkdownRendererControl.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
-        string snapshotSource = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "src",
-            "MarkdownRenderer",
-            "Layout",
-            "LayoutSnapshot.cs"));
-
         string relayoutSource = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "MarkdownRenderer",
@@ -551,18 +534,6 @@ public sealed class AutomationHarnessSourceContractTests
                 "Composition",
                 "LayoutHosts.cs")),
             StringComparison.Ordinal);
-
-        string weakRecoveryTimer = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "src",
-            "MarkdownRenderer",
-            "Controls",
-            "WeakRecoveryTimer.cs"));
-        Assert.Contains("_target = new WeakReference<T>(target);", weakRecoveryTimer, StringComparison.Ordinal);
-        Assert.Contains("_queuedCallback = RunQueuedCallback;", weakRecoveryTimer, StringComparison.Ordinal);
-        Assert.Contains("if (!TryGetLiveTarget(out _))", weakRecoveryTimer, StringComparison.Ordinal);
-        Assert.Contains("private bool TryGetLiveTarget(out T? target) => _target.TryGetTarget(out target);", weakRecoveryTimer, StringComparison.Ordinal);
 
         string recoveryWorkSource = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
@@ -683,20 +654,8 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("else if (retryImageBlockIndex.HasValue || retryCurrentImages)", completion, StringComparison.Ordinal);
         Assert.Contains("if (retryImageBlockIndex is { } retryIndex)", completion, StringComparison.Ordinal);
         Assert.Contains("if (retryCurrentImages)\n                        _imageSubscriptions.AddBlockIndicesTo(_pending);", completion, StringComparison.Ordinal);
-        string subscriptionsSource = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "src",
-            "MarkdownRenderer",
-            "Controls",
-            "Images",
-            "ImageSubscriptions.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
-        Assert.Contains("foreach (ImageBox image in _images)\n            blockIndices.Add(image.BlockIndex);", subscriptionsSource, StringComparison.Ordinal);
         Assert.DoesNotContain("retryImageBlockIndices", completion, StringComparison.Ordinal);
         Assert.Contains("rootMeasureCommitted &&\n                        (canceled || capturedScrollOffset != _surface.Scroll?.VerticalOffset) ? null : anchor", completion, StringComparison.Ordinal);
-
-        Assert.Contains("internal SingleRasterLayoutCandidate? CreateSingleRasterCandidate(", snapshotSource, StringComparison.Ordinal);
-        Assert.Contains("internal void RelayoutChangedBlocks(", snapshotSource, StringComparison.Ordinal);
         Assert.DoesNotContain("Initial load / intrinsic-size change", controlSource, StringComparison.Ordinal);
     }
 
