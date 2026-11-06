@@ -63,7 +63,7 @@ public sealed class ImageRelayoutPublicationRetentionTests
                 method.Name.StartsWith("<CreatePublication>", StringComparison.Ordinal)));
 
         FieldInfo[] fields = closure.GetFields(instanceFields);
-        Assert.Contains(fields, field => field.FieldType == typeof(CancellationTokenSource));
+        Assert.Contains(fields, field => field.FieldType == typeof(RetirableCancellationTokenSource));
         Assert.Contains(fields, field => field.FieldType == typeof(WeakReference<ImageRelayout>));
         Assert.DoesNotContain(fields, field =>
             field.FieldType == typeof(LayoutSnapshot) || field.FieldType == typeof(int[]) ||

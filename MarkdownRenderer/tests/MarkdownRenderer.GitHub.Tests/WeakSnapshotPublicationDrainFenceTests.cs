@@ -94,7 +94,7 @@ public sealed class WeakSnapshotPublicationDrainFenceTests
         Assert.Contains(captured, field => field.FieldType == typeof(WeakReference<>).MakeGenericType(owner));
         Assert.DoesNotContain(captured, field => field.FieldType == control || field.FieldType == owner ||
             field.FieldType == typeof(LayoutSnapshot) ||
-            field.FieldType == typeof(CancellationTokenSource) ||
+            typeof(CancellationTokenSource).IsAssignableFrom(field.FieldType) ||
             field.FieldType == typeof(MarkdownRenderer.Layout.Boxes.ImageBox));
     }
 }
