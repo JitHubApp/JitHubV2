@@ -90,9 +90,12 @@ public sealed class MainWindowLaunchContractTests
         // content and observing its Unloaded event need a live XAML runtime.
         string shellPage = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(), "JitHub.WinUI", "Views", "Pages", "ShellPage.xaml.cs"));
+        string detacher = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(), "JitHub.WinUI", "Helpers", "FrameContentDetacher.cs"));
 
-        Assert.Contains("ShellContentFrame.Content = null", shellPage, StringComparison.Ordinal);
-        Assert.Contains("await unloaded.Task.WaitAsync(timeout)", shellPage, StringComparison.Ordinal);
+        Assert.Contains("FrameContentDetacher.DetachAsync(ShellContentFrame,", shellPage, StringComparison.Ordinal);
+        Assert.Contains("frame.Content = null", detacher, StringComparison.Ordinal);
+        Assert.Contains("await unloaded.Task.WaitAsync(unloadTimeout)", detacher, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -235,44 +235,8 @@ public sealed partial class ShellPage : Page
         ConnectedAnimationService.GetForCurrentView().PrepareToAnimate("AppLogoLogoutAnimation", AppLogoShellPage);
     }
 
-    internal async Task DetachNestedContentForMarkdownShutdownAsync(TimeSpan timeout)
-    {
-        FrameworkElement? page = ShellContentFrame.Content as FrameworkElement;
-        if (page is null)
-        {
-            ShellContentFrame.Content = null;
-            return;
-        }
-
-        bool wasLoaded = page.IsLoaded;
-        var unloaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        void OnUnloaded(object sender, RoutedEventArgs args) => unloaded.TrySetResult();
-        if (wasLoaded)
-            page.Unloaded += OnUnloaded;
-
-        try
-        {
-            ShellContentFrame.Content = null;
-            if (!wasLoaded)
-            {
-                return;
-            }
-
-            try
-            {
-                await unloaded.Task.WaitAsync(timeout);
-            }
-            catch (TimeoutException)
-            {
-                // Bounded: the window drains renderers after this returns.
-            }
-        }
-        finally
-        {
-            if (wasLoaded)
-                page.Unloaded -= OnUnloaded;
-        }
-    }
+    internal Task DetachNestedContentForMarkdownShutdownAsync(TimeSpan timeout) =>
+        FrameContentDetacher.DetachAsync(ShellContentFrame, ShellContentFrame.Content as FrameworkElement, timeout);
 
     private void InitializeProductPerformanceBridge()
     {
