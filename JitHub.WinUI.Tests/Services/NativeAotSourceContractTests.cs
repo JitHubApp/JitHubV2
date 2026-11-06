@@ -1,6 +1,7 @@
+using System.Diagnostics;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
-using JitHub.Markdown.Images;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
@@ -43,39 +44,16 @@ public sealed class NativeAotSourceContractTests
         Assert.Contains("<CsWinRTAotWarningLevel>2</CsWinRTAotWarningLevel>", project, StringComparison.Ordinal);
         Assert.Contains("CsWinRT1032", directoryProps, StringComparison.Ordinal);
         Assert.Contains("<RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>", project, StringComparison.Ordinal);
-        Assert.Contains("MarkdownRenderer.Math\\MarkdownRenderer.Math.csproj", project, StringComparison.Ordinal);
-        Assert.Contains("MarkdownRenderer.Mermaid\\MarkdownRenderer.Mermaid.csproj", project, StringComparison.Ordinal);
-        Assert.Contains("MarkdownRenderer.Svg.Resvg\\MarkdownRenderer.Svg.Resvg.csproj", project, StringComparison.Ordinal);
+        // The renderer feature references are checked on the evaluated project by
+        // AppRendererPackagingTests.App_ReferencesEveryShippingRendererFeature.
         Assert.Contains("JitHub.WinUI (AotDebug)", launchSettings, StringComparison.Ordinal);
         Assert.Contains("\"nativeDebugging\": true", launchSettings, StringComparison.Ordinal);
     }
 
-    [Fact]
-    [Trait("Category", "ReleaseSecurity")]
-    public void CsWinRtAotDisposableImplementations_ArePartialForGeneratedAbi()
-    {
-        string root = FindRepositoryRoot();
-        string candidate = File.ReadAllText(Path.Combine(
-            root,
-            "JitHub.Markdown",
-            "Images",
-            "GitHubMarkdownImageCandidate.cs"));
-        string lease = File.ReadAllText(Path.Combine(
-            root,
-            "JitHub.Markdown",
-            "Images",
-            "GitHubImageSourceLease.cs"));
-        string fallback = File.ReadAllText(Path.Combine(
-            root,
-            "JitHub.Markdown",
-            "Images",
-            "MarkdownImageFallbackPipeline.cs"));
-
-        Assert.Contains("public sealed partial class GitHubMarkdownImageCandidate : IDisposable", candidate, StringComparison.Ordinal);
-        Assert.Contains("public sealed partial class GitHubImageSourceLease : IDisposable", lease, StringComparison.Ordinal);
-        Assert.Contains("internal static partial class MarkdownImageFallbackPipeline", fallback, StringComparison.Ordinal);
-        Assert.Contains("private sealed partial class CandidateCancellation : IDisposable", fallback, StringComparison.Ordinal);
-    }
+    // Types that cross the WinRT ABI must be partial so CsWinRT can generate
+    // their AOT vtables. That is a build error, not a test: CsWinRT1028 at
+    // CsWinRTAotWarningLevel 2 with warnings as errors, in JitHub.Markdown
+    // always and in the Release app through eng/NativeAot.props.
 
     [Fact]
     [Trait("Category", "ReleaseSecurity")]
@@ -84,11 +62,11 @@ public sealed class NativeAotSourceContractTests
         string root = FindRepositoryRoot();
         string project = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "JitHub.WinUI.csproj"));
         string ledger = File.ReadAllText(Path.Combine(root, "eng", "native-aot-dependencies.json"));
-        string verifier = File.ReadAllText(Path.Combine(root, "eng", "Verify-NativeAotArtifact.ps1"));
         string graph = project + Environment.NewLine + ledger;
 
+        // Resvg replaces Svg.Skia; the app's reference to it is checked on the
+        // evaluated project by AppRendererPackagingTests.
         Assert.Contains("WinUIEdit" + "\" Version=\"0.0.5-prerelease", project, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("MarkdownRenderer.Svg.Resvg\\MarkdownRenderer.Svg.Resvg.csproj", project, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Microsoft.Services.Store.Engagement\" Version=\"10.2307.3001", project, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("'$(RuntimeIdentifier)' == 'win-arm64'", project, StringComparison.Ordinal);
 
@@ -106,7 +84,20 @@ public sealed class NativeAotSourceContractTests
             Assert.DoesNotContain(removedPackage, graph, StringComparison.OrdinalIgnoreCase);
         }
 
-        Assert.DoesNotContain("libHarfBuzzSharp.dll", verifier, StringComparison.OrdinalIgnoreCase);
+        // That the artifact verifier no longer requires the SkiaSharp natives
+        // (libHarfBuzzSharp.dll) is covered by NativeAotArtifactVerifier_PassesItsSelfTests:
+        // its baseline layout has only the reviewed natives and must be accepted.
+    }
+
+    [Fact]
+    [Trait("Category", "ReleaseSecurity")]
+    public void NativeAotArtifactVerifier_PassesItsSelfTests()
+    {
+        // The self-tests accept a layout of exactly the required natives and
+        // reject hidden CoreCLR, hidden host metadata and reparse points.
+        // Windows PowerShell, as the release gate in JitHub.WinUI.csproj runs scripts.
+        string root = FindRepositoryRoot();
+        RunPowerShell(Path.Combine(root, "eng", "tests", "Verify-NativeAotArtifact.Tests.ps1"));
     }
 
     [Fact]
@@ -115,12 +106,26 @@ public sealed class NativeAotSourceContractTests
     {
         string root = FindRepositoryRoot();
         string restoreScript = File.ReadAllText(Path.Combine(root, "eng", "Restore-NativeAot.ps1"));
-        string nativeAotProps = File.ReadAllText(Path.Combine(root, "eng", "NativeAot.props"));
 
         Assert.Contains("$arguments += '--locked-mode'", restoreScript, StringComparison.Ordinal);
         Assert.Contains("$arguments += '--force'", restoreScript, StringComparison.Ordinal);
-        Assert.DoesNotContain("'-p:PublishAot=true'", restoreScript, StringComparison.Ordinal);
-        Assert.Contains("<PublishAot>true</PublishAot>", nativeAotProps, StringComparison.Ordinal);
+
+        // NativeAot.props turns PublishAot on at the app root (checked above).
+        // Passed as a restore global property instead, it would flow into every
+        // project reference and add the ILCompiler packs to their locks, so the
+        // locked restore above would fail. The committed locks show the result:
+        // only the app's graph carries the AOT compiler.
+        using JsonDocument appLock = ReadLockFile(Path.Combine(root, "JitHub.WinUI", "packages.lock.json"));
+        Assert.True(LockedPackageNames(appLock).Any(IsAotCompilerPackage), "The app lock must record the Native AOT compiler.");
+
+        string[] projectReferences = LockedProjectNames(appLock);
+        Assert.NotEmpty(projectReferences);
+        Dictionary<string, string> projectDirectories = SolutionProjectDirectories(root);
+        Assert.All(projectReferences, project =>
+        {
+            using JsonDocument referenceLock = ReadLockFile(Path.Combine(projectDirectories[project], "packages.lock.json"));
+            Assert.DoesNotContain(LockedPackageNames(referenceLock), IsAotCompilerPackage);
+        });
     }
 
     [Fact]
@@ -193,8 +198,7 @@ public sealed class NativeAotSourceContractTests
         Assert.Contains("device.IsPixelFormatSupported", viewport, StringComparison.Ordinal);
         Assert.Contains("DirectXPixelFormat.R8G8B8A8UIntNormalized", viewport, StringComparison.Ordinal);
         Assert.Contains("DirectXPixelFormat.B8G8R8A8UIntNormalized", viewport, StringComparison.Ordinal);
-        Assert.DoesNotContain("WriteableBitmap", viewport, StringComparison.Ordinal);
-        Assert.DoesNotContain("PixelBuffer", viewport, StringComparison.Ordinal);
+        // WriteableBitmap (and its PixelBuffer) is a banned symbol in eng/BannedSymbols.txt.
         Assert.Contains("AutomationControlType.Image", viewportPeer, StringComparison.Ordinal);
         Assert.Contains("_svgRenderer.CacheInvalidated += OnSvgCacheInvalidated", preview, StringComparison.Ordinal);
         Assert.Contains("_documentHasText", preview, StringComparison.Ordinal);
@@ -295,8 +299,13 @@ public sealed class NativeAotSourceContractTests
 
     [Fact]
     [Trait("Category", "ReleaseSecurity")]
-    public void SvgRuntime_UsesStrictGlobalCacheAndCompletesAsyncShutdownBeforeClose()
+    public void SvgRuntime_UsesStrictGlobalCacheAndRetiresItWithTheMarkdownRuntime()
     {
+        // The window retires the Markdown runtime only after its views'
+        // renderers are gone; that order is covered by MarkdownViewShutdownTests.
+        // StrictResourceLeaseCache itself is covered by StrictResourceLeaseCacheTests.
+        // The resvg dependency licenses ship through
+        // AppRendererPackagingTests.App_PublishesTheRendererAndPlatformThirdPartyNotices.
         string root = FindRepositoryRoot();
         string cache = File.ReadAllText(Path.Combine(
             root,
@@ -310,28 +319,13 @@ public sealed class NativeAotSourceContractTests
             "Services",
             "Markdown",
             "JitHubMarkdownRuntime.cs"));
-        string window = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "MainWindow.xaml.cs"));
-        string project = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "JitHub.WinUI.csproj"));
 
-        Assert.Contains("internal static partial class RepositorySvgGpuCache", cache, StringComparison.Ordinal);
         Assert.Contains("32L * 1024 * 1024", cache, StringComparison.Ordinal);
         Assert.Contains("64L * 1024 * 1024", cache, StringComparison.Ordinal);
         Assert.Contains("StrictResourceLeaseCache<DeviceTileKey, CanvasBitmap>", cache, StringComparison.Ordinal);
         Assert.Contains("AppMemoryUsageIncreased += OnAppMemoryUsageIncreased", cache, StringComparison.Ordinal);
         Assert.Contains("Cache.Trim();", cache, StringComparison.Ordinal);
         Assert.Contains("RepositorySvgGpuCache.Shutdown();", runtime, StringComparison.Ordinal);
-        Assert.Contains("RUST-DEPENDENCY-LICENSES.txt", project, StringComparison.Ordinal);
-
-        int drain = window.IndexOf("private async Task DrainDiagnosticsAndCloseAsync()", StringComparison.Ordinal);
-        int unloadViews = window.IndexOf("await UnloadPageContentBeforeMarkdownShutdownAsync();", drain, StringComparison.Ordinal);
-        int shutdown = window.IndexOf(".MarkdownRuntime.ShutdownAsync();", drain, StringComparison.Ordinal);
-        int allowClose = window.IndexOf("_allowCloseAfterDiagnostics = true;", shutdown, StringComparison.Ordinal);
-        int close = window.IndexOf("Close();", allowClose, StringComparison.Ordinal);
-        Assert.True(drain >= 0);
-        Assert.True(unloadViews > drain);
-        Assert.True(shutdown > unloadViews);
-        Assert.True(allowClose > shutdown);
-        Assert.True(close > allowClose);
     }
 
     [Fact]
@@ -584,6 +578,62 @@ public sealed class NativeAotSourceContractTests
         }
 
         return count;
+    }
+
+    private static JsonDocument ReadLockFile(string path) => JsonDocument.Parse(File.ReadAllText(path));
+
+    // Package names across the neutral graph and every runtime graph.
+    private static IEnumerable<string> LockedPackageNames(JsonDocument lockFile) =>
+        LockedEntries(lockFile)
+            .Where(static entry => entry.Value.GetProperty("type").GetString() != "Project")
+            .Select(static entry => entry.Name);
+
+    private static string[] LockedProjectNames(JsonDocument lockFile) =>
+        LockedEntries(lockFile)
+            .Where(static entry => entry.Value.GetProperty("type").GetString() == "Project")
+            .Select(static entry => entry.Name)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+    private static IEnumerable<JsonProperty> LockedEntries(JsonDocument lockFile) =>
+        lockFile.RootElement
+            .GetProperty("dependencies")
+            .EnumerateObject()
+            .SelectMany(static target => target.Value.EnumerateObject());
+
+    private static bool IsAotCompilerPackage(string package) =>
+        package.Contains("Microsoft.DotNet.ILCompiler", StringComparison.OrdinalIgnoreCase);
+
+    // Lock files name project references by project name; JitHub.slnx locates them.
+    private static Dictionary<string, string> SolutionProjectDirectories(string root) =>
+        XDocument.Load(Path.Combine(root, "JitHub.slnx"))
+            .Root!
+            .Descendants("Project")
+            .Select(project => Path.Combine(root, ((string)project.Attribute("Path")!).Replace('/', Path.DirectorySeparatorChar)))
+            .ToDictionary(
+                static path => Path.GetFileNameWithoutExtension(path),
+                static path => Path.GetDirectoryName(path)!,
+                StringComparer.OrdinalIgnoreCase);
+
+    private static void RunPowerShell(string script)
+    {
+        var start = new ProcessStartInfo("powershell.exe")
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        foreach (string argument in new[] { "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script })
+            start.ArgumentList.Add(argument);
+
+        using Process process = Process.Start(start)!;
+        Task<string> error = process.StandardError.ReadToEndAsync();
+        string output = process.StandardOutput.ReadToEnd();
+        Assert.True(process.WaitForExit(TimeSpan.FromMinutes(2)), $"{Path.GetFileName(script)} did not exit.");
+        Assert.True(
+            process.ExitCode == 0,
+            $"{Path.GetFileName(script)} exited {process.ExitCode}:{Environment.NewLine}{output}{error.Result}");
     }
 
     private static string FindRepositoryRoot()

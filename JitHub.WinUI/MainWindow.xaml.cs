@@ -56,6 +56,9 @@ public sealed partial class MainWindow : Window
     private const int MinimumLaunchWidthDip = 960;
     private const int MinimumLaunchHeightDip = 640;
     private static readonly TimeSpan StatusDisplayDuration = TimeSpan.FromSeconds(5);
+    // How long the close path waits for each removed page to unload and for
+    // its Markdown renderers to retire.
+    private static readonly TimeSpan MarkdownViewUnloadTimeout = TimeSpan.FromSeconds(2);
     private static readonly nuint KeyboardSubclassId = 0x4A484B31;
     private readonly UISettings _uiSettings = new();
     private readonly InputNonClientPointerSource _nonClientPointerSource;
@@ -85,7 +88,6 @@ public sealed partial class MainWindow : Window
     private bool _followSystemTheme;
     private bool _suppressActiveThemeBrushRefresh;
     private bool _allowCloseAfterDiagnostics;
-    private bool _markdownRendererDisposalConfirmed;
     private bool _closingRequestedRaised;
     private Task? _diagnosticsCloseTask;
     private ContentDialog? _activeContentDialog;
@@ -772,68 +774,42 @@ public sealed partial class MainWindow : Window
         finally
         {
             // Markdown controls borrow the process-wide highlighter, engine,
-            // performance session, and SVG worker. Remove the page tree first:
-            // its Unloaded handlers dispose the controls and detach scroll
-            // callbacks before their shared providers are retired.
+            // performance session, and SVG worker. MarkdownViewShutdown removes
+            // the page tree first, so its Unloaded handlers dispose the controls
+            // and detach scroll callbacks, and retires those providers only when
+            // every renderer is gone. Closing stays bounded either way.
             try
             {
-                await UnloadPageContentBeforeMarkdownShutdownAsync();
-            }
-            catch (Exception exception)
-            {
-                App.LogHandledException(exception, "markdown-view-shutdown");
-            }
-
-            if (_markdownRendererDisposalConfirmed)
-            {
-                try
-                {
-                    await ((App)Application.Current).MarkdownRuntime.ShutdownAsync();
-                }
-                catch (Exception exception)
-                {
-                    App.LogHandledException(exception, "markdown-runtime-shutdown");
-                }
-            }
-
-            // Otherwise a borrowed renderer may still call into these
-            // providers. Do not retire them on the way out; closing remains
-            // bounded and process teardown will reclaim them after the window
-            // is gone.
-            _allowCloseAfterDiagnostics = true;
-            Close();
-        }
-    }
-
-    private async Task UnloadPageContentBeforeMarkdownShutdownAsync()
-    {
-        FrameworkElement? page = ContentFrameHost.Content as FrameworkElement;
-
-        if (page is ShellPage shellPage)
-        {
-            try
-            {
-                await shellPage.DetachNestedContentForMarkdownShutdownAsync(TimeSpan.FromSeconds(2));
-            }
-            catch (Exception exception)
-            {
-                App.LogHandledException(exception, "markdown-shell-content-shutdown");
-            }
-
-            await DrainMarkdownViewersBeforeProviderShutdownAsync();
-        }
-
-        if (page is null)
-        {
-            try
-            {
-                ContentFrameHost.Content = null;
+                await RetireMarkdownViewsAndProvidersAsync();
             }
             finally
             {
-                await DrainMarkdownViewersBeforeProviderShutdownAsync();
+                _allowCloseAfterDiagnostics = true;
+                Close();
             }
+        }
+    }
 
+    private Task RetireMarkdownViewsAndProvidersAsync()
+    {
+        App app = (App)Application.Current;
+        FrameworkElement? page = ContentFrameHost.Content as FrameworkElement;
+        Func<Task>? detachNestedContent = page is ShellPage shellPage
+            ? () => shellPage.DetachNestedContentForMarkdownShutdownAsync(MarkdownViewUnloadTimeout)
+            : null;
+
+        return new MarkdownViewShutdown(app.MarkdownRenderers, MarkdownViewUnloadTimeout, App.LogHandledException)
+            .RunAsync(
+                detachNestedContent,
+                () => DetachPageContentAsync(page),
+                () => app.MarkdownRuntime.ShutdownAsync());
+    }
+
+    private async Task DetachPageContentAsync(FrameworkElement? page)
+    {
+        if (page is null)
+        {
+            ContentFrameHost.Content = null;
             return;
         }
 
@@ -850,11 +826,11 @@ public sealed partial class MainWindow : Window
             {
                 try
                 {
-                    await unloaded.Task.WaitAsync(TimeSpan.FromSeconds(2));
+                    await unloaded.Task.WaitAsync(MarkdownViewUnloadTimeout);
                 }
                 catch (TimeoutException)
                 {
-                    // Bounded: continue to the renderer drain below.
+                    // Bounded: MarkdownViewShutdown drains the renderers next.
                 }
             }
         }
@@ -862,25 +838,7 @@ public sealed partial class MainWindow : Window
         {
             if (wasLoaded)
                 page.Unloaded -= OnUnloaded;
-
-            await DrainMarkdownViewersBeforeProviderShutdownAsync();
         }
-    }
-
-    private async Task DrainMarkdownViewersBeforeProviderShutdownAsync()
-    {
-        MarkdownRendererLifetimeRegistry markdownRenderers = ((App)Application.Current).MarkdownRenderers;
-        await markdownRenderers.WaitForRendererDisposalAsync(TimeSpan.FromSeconds(2));
-        try
-        {
-            markdownRenderers.PrepareAllForApplicationShutdown();
-        }
-        catch (Exception exception)
-        {
-            App.LogHandledException(exception, "markdown-renderer-shutdown");
-        }
-
-        _markdownRendererDisposalConfirmed = markdownRenderers.ActiveRendererCount == 0;
     }
 
     private async Task DismissActiveContentDialogBeforeCloseAsync()

@@ -249,10 +249,16 @@
     </ItemGroup>
   </Target>
 
+  <PropertyGroup>
+    <!-- The release gate's test run: only the ReleaseSecurity tests, restored
+         in locked mode, with this gate skipped in the nested build. -->
+    <JitHubReleaseSecurityTestCommand>dotnet test &quot;$(MSBuildThisFileDirectory)..\JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj&quot; -c Release --filter &quot;Category=ReleaseSecurity&quot; -p:RestoreLockedMode=true -p:SkipReleaseSecurityGate=true</JitHubReleaseSecurityTestCommand>
+  </PropertyGroup>
+
   <Target Name="RunReleaseSecurityGate"
           BeforeTargets="Build"
           Condition="'$(Configuration)' == 'Release' and '$(SkipReleaseSecurityGate)' != 'true' and '$(DesignTimeBuild)' != 'true'">
     <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)..\eng\Verify-DependencySecurity.ps1&quot;" />
-    <Exec Command="dotnet test &quot;$(MSBuildThisFileDirectory)..\JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj&quot; -c Release --filter &quot;Category=ReleaseSecurity&quot; -p:RestoreLockedMode=true -p:SkipReleaseSecurityGate=true" />
+    <Exec Command="$(JitHubReleaseSecurityTestCommand)" />
   </Target>
 </Project>

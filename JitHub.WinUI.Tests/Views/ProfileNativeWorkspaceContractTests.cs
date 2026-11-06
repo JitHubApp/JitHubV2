@@ -273,10 +273,6 @@ public sealed class ProfileNativeWorkspaceContractTests
             "ViewModels",
             "Pages",
             "ShellMarkdownRouteNavigator.cs"));
-        string activator = File.ReadAllText(Path.Combine(
-            root,
-            "JitHub.Markdown",
-            "MarkdownLinkActivator.cs"));
         string policy = File.ReadAllText(Path.Combine(
             root,
             "JitHub.Markdown",
@@ -286,7 +282,8 @@ public sealed class ProfileNativeWorkspaceContractTests
         Assert.Contains("MarkdownGitHubRouteKind.PullRequest", policy, StringComparison.Ordinal);
         Assert.Contains("new IssueNavArg(repository, route.Number", navigator, StringComparison.Ordinal);
         Assert.Contains("new PullRequestPageNavArg(repository, route.Number", navigator, StringComparison.Ordinal);
-        Assert.Contains("await _launcher.LaunchAsync(uri)", activator, StringComparison.Ordinal);
+        // Launching a link externally when the shell does not open it is covered
+        // by MarkdownLinkActivatorTests.
     }
 
     private const string XamlNamespace = "http://schemas.microsoft.com/winfx/2006/xaml";

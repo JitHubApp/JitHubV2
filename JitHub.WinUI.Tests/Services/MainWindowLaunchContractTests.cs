@@ -78,56 +78,20 @@ public sealed class MainWindowLaunchContractTests
     }
 
     [Fact]
-    public void MarkdownShutdownDrainsNestedShellContentAndRendererBorrowersBeforeProviderRetirement()
+    public void ShellDetachesItsNestedFrameAndWaitsBoundedForItToUnload()
     {
-        string root = FindRepositoryRoot();
-        string mainWindow = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "MainWindow.xaml.cs"));
-        string shellPage = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "Views", "Pages", "ShellPage.xaml.cs"));
-        int closeFlowStart = mainWindow.IndexOf("private async Task DrainDiagnosticsAndCloseAsync()", StringComparison.Ordinal);
-        int shutdownStart = mainWindow.IndexOf(
-            "private async Task UnloadPageContentBeforeMarkdownShutdownAsync()",
-            StringComparison.Ordinal);
-        int shutdownEnd = mainWindow.IndexOf(
-            "private async Task DismissActiveContentDialogBeforeCloseAsync()",
-            StringComparison.Ordinal);
-        Assert.True(closeFlowStart >= 0 && shutdownStart > closeFlowStart && shutdownEnd > shutdownStart);
-        string closeFlow = mainWindow[closeFlowStart..shutdownStart];
-        string shutdownPath = mainWindow[shutdownStart..shutdownEnd];
+        // The close path's order (nested shell content, a renderer drain, the
+        // window's page, another drain, then the providers only when no
+        // renderer is alive) is covered by MarkdownViewShutdownTests in
+        // JitHub.Markdown.Tests, and renderer retirement by
+        // MarkdownRendererSlotTests, MarkdownRendererLifetimeRegistryTests and
+        // MarkdownRendererDisposalCommitTests. Removing the shell's frame
+        // content and observing its Unloaded event need a live XAML runtime.
+        string shellPage = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(), "JitHub.WinUI", "Views", "Pages", "ShellPage.xaml.cs"));
 
-        int nestedFrameDetach = shutdownPath.IndexOf(
-            "DetachNestedContentForMarkdownShutdownAsync",
-            StringComparison.Ordinal);
-        int rendererDrain = shutdownPath.IndexOf(
-            "DrainMarkdownViewersBeforeProviderShutdownAsync",
-            StringComparison.Ordinal);
-        int outerFrameDetach = shutdownPath.IndexOf(
-            "ContentFrameHost.Content = null",
-            StringComparison.Ordinal);
-        Assert.True(shutdownStart >= 0 && shutdownEnd > shutdownStart);
-        Assert.True(nestedFrameDetach >= 0 && rendererDrain > nestedFrameDetach && outerFrameDetach > rendererDrain);
         Assert.Contains("ShellContentFrame.Content = null", shellPage, StringComparison.Ordinal);
         Assert.Contains("await unloaded.Task.WaitAsync(timeout)", shellPage, StringComparison.Ordinal);
-
-        int rendererWait = shutdownPath.IndexOf(
-            "markdownRenderers.WaitForRendererDisposalAsync(",
-            StringComparison.Ordinal);
-        Assert.True(rendererWait >= 0);
-        int forcedDisposal = shutdownPath.IndexOf(
-            "markdownRenderers.PrepareAllForApplicationShutdown()",
-            rendererWait,
-            StringComparison.Ordinal);
-        int drainCall = closeFlow.IndexOf("await UnloadPageContentBeforeMarkdownShutdownAsync()", StringComparison.Ordinal);
-        int providerRetirement = closeFlow.IndexOf(
-            ".MarkdownRuntime.ShutdownAsync()",
-            StringComparison.Ordinal);
-        Assert.True(forcedDisposal > rendererWait);
-        Assert.True(drainCall >= 0 && providerRetirement > drainCall);
-        Assert.Contains("if (_markdownRendererDisposalConfirmed)", closeFlow, StringComparison.Ordinal);
-        Assert.True(shutdownPath.LastIndexOf("await DrainMarkdownViewersBeforeProviderShutdownAsync()", StringComparison.Ordinal) > outerFrameDetach);
-        Assert.Contains("_markdownRendererDisposalConfirmed = markdownRenderers.ActiveRendererCount == 0;", shutdownPath, StringComparison.Ordinal);
-        // Renderer retirement ordering is covered behaviorally by
-        // MarkdownRendererSlotTests, MarkdownRendererLifetimeRegistryTests and
-        // MarkdownRendererDisposalCommitTests in JitHub.Markdown.Tests.
     }
 
     [Fact]

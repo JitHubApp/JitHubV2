@@ -352,6 +352,9 @@ JitHub.Markdown.MarkdownRendererSlot<TRenderer>.IsRetirementPending.get -> bool
 JitHub.Markdown.MarkdownRendererSlot<TRenderer>.MarkdownRendererSlot(JitHub.Markdown.MarkdownRendererLifetimeRegistry! registry, JitHub.Markdown.IMarkdownRendererSlotHost<TRenderer!>! host, System.Action<System.Threading.Tasks.Task!>! observeRetirement) -> void
 JitHub.Markdown.MarkdownRendererSlot<TRenderer>.Retire() -> void
 JitHub.Markdown.MarkdownRendererSlot<TRenderer>.TryRetireFromLifecycle() -> bool
+JitHub.Markdown.MarkdownViewShutdown
+JitHub.Markdown.MarkdownViewShutdown.MarkdownViewShutdown(JitHub.Markdown.MarkdownRendererLifetimeRegistry! renderers, System.TimeSpan rendererDisposalTimeout, System.Action<System.Exception!, string!>! reportHandledFailure) -> void
+JitHub.Markdown.MarkdownViewShutdown.RunAsync(System.Func<System.Threading.Tasks.Task!>? detachNestedContentAsync, System.Func<System.Threading.Tasks.Task!>! detachContentAsync, System.Func<System.Threading.Tasks.Task!>! shutdownProvidersAsync) -> System.Threading.Tasks.Task!
 JitHub.Markdown.MarkdownViewerFeedback
 JitHub.Markdown.MarkdownViewerFeedback.ActivateDocument(MarkdownRenderer.Images.MarkdownDocumentSource? source) -> void
 JitHub.Markdown.MarkdownViewerFeedback.AllowsThirdPartyRemoteImages.get -> bool

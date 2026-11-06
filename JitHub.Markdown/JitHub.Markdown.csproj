@@ -21,6 +21,12 @@
     <!-- Implies IsTrimmable and the trim, single-file and Native AOT analyzers. -->
     <IsAotCompatible>true</IsAotCompatible>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- Like JitHub.WinUI: types here cross the WinRT ABI in the Native AOT app,
+         so CsWinRT generates their AOT vtables where they are declared (which
+         needs unsafe code), and level 2 makes a type that CsWinRT cannot
+         generate for, such as a non-partial IDisposable, a build error here. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <CsWinRTAotWarningLevel>2</CsWinRTAotWarningLevel>
     <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
   </PropertyGroup>
 
