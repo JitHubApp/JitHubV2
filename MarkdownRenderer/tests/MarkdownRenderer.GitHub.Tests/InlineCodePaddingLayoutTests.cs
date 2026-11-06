@@ -2,7 +2,6 @@ using System.Collections;
 using System.Globalization;
 using System.IO;
 using System.Numerics;
-using System.Reflection;
 using System.Threading;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout;
@@ -973,24 +972,8 @@ public sealed class InlineCodePaddingLayoutTests
 
     private static int[] ClusterCharacterCounts(CanvasTextLayout layout)
     {
-        object? metrics = typeof(CanvasTextLayout)
-            .GetProperty("ClusterMetrics", BindingFlags.Instance | BindingFlags.Public)
-            ?.GetValue(layout);
+        CanvasClusterMetrics[] metrics = layout.ClusterMetrics;
         Assert.NotNull(metrics);
-        Assert.IsAssignableFrom<System.Collections.IEnumerable>(metrics);
-        return ((System.Collections.IEnumerable)metrics)
-            .Cast<object>()
-            .Select(metric => ReadIntegerMember(metric, "CharacterCount"))
-            .ToArray();
-    }
-
-    private static int ReadIntegerMember(object instance, string name)
-    {
-        const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-        Type type = instance.GetType();
-        object? value = type.GetProperty(name, flags)?.GetValue(instance) ??
-            type.GetField(name, flags)?.GetValue(instance);
-        Assert.NotNull(value);
-        return Convert.ToInt32(value, CultureInfo.InvariantCulture);
+        return metrics.Select(static metric => metric.CharacterCount).ToArray();
     }
 }

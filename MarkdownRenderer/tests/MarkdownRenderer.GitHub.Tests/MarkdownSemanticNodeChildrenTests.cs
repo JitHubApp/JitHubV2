@@ -1,5 +1,4 @@
 using System.Collections;
-using System.Reflection;
 using MarkdownRenderer.Accessibility;
 using Xunit;
 
@@ -7,11 +6,6 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class MarkdownSemanticNodeChildrenTests
 {
-    private static readonly FieldInfo ChildStorageField = typeof(MarkdownSemanticNode).GetField(
-        "_children",
-        BindingFlags.Instance | BindingFlags.NonPublic)
-        ?? throw new InvalidOperationException("Semantic child backing field was not found.");
-
     [Fact]
     public void ChildrenView_RemainsStableAndLiveAcrossFirstAndLaterAdditions()
     {
@@ -44,28 +38,47 @@ public sealed class MarkdownSemanticNodeChildrenTests
     [Fact]
     public void SingletonChildUsesDirectStorageAndSecondChildPromotesToCapacityTwoList()
     {
+        // Warm both Add paths and the reference allocation so only storage is measured.
+        var warmup = new MarkdownSemanticNode(MarkdownSemanticRole.Image);
+        warmup.Add(new MarkdownSemanticNode(MarkdownSemanticRole.Paragraph));
+        warmup.Add(new MarkdownSemanticNode(MarkdownSemanticRole.Link));
         var leaf = new MarkdownSemanticNode(MarkdownSemanticRole.Image);
-        Assert.Null(ChildStorageField.GetValue(leaf));
+        var first = new MarkdownSemanticNode(MarkdownSemanticRole.Paragraph);
+        var second = new MarkdownSemanticNode(MarkdownSemanticRole.Link);
+        _ = MeasureCapacityTwoList(first, second);
+        long capacityTwoListBytes = MeasureCapacityTwoList(first, second);
+        Assert.Equal(0, leaf.ChildCount);
 
         MarkdownSemanticChildrenView retainedView = leaf.Children;
-        var first = new MarkdownSemanticNode(MarkdownSemanticRole.Paragraph);
+        long before = GC.GetAllocatedBytesForCurrentThread();
         leaf.Add(first);
+        long firstChildBytes = GC.GetAllocatedBytesForCurrentThread() - before;
 
-        Assert.Same(first, ChildStorageField.GetValue(leaf));
+        // A unary node keeps its child in the existing reference slot.
+        Assert.Equal(0, firstChildBytes);
         Assert.Same(leaf, first.Parent);
         Assert.Single(retainedView);
         Assert.Same(first, retainedView[0]);
 
-        var second = new MarkdownSemanticNode(MarkdownSemanticRole.Link);
+        before = GC.GetAllocatedBytesForCurrentThread();
         leaf.Add(second);
+        long secondChildBytes = GC.GetAllocatedBytesForCurrentThread() - before;
 
-        List<MarkdownSemanticNode> promoted = Assert.IsType<List<MarkdownSemanticNode>>(
-            ChildStorageField.GetValue(leaf));
-        Assert.Equal(2, promoted.Capacity);
+        // The second child promotes storage to exactly one capacity-two list.
+        Assert.Equal(capacityTwoListBytes, secondChildBytes);
         Assert.Equal(2, retainedView.Count);
-        Assert.Same(first, promoted[0]);
-        Assert.Same(second, promoted[1]);
+        Assert.Same(first, retainedView[0]);
+        Assert.Same(second, retainedView[1]);
         Assert.Same(leaf, second.Parent);
+    }
+
+    private static long MeasureCapacityTwoList(MarkdownSemanticNode first, MarkdownSemanticNode second)
+    {
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        List<MarkdownSemanticNode> list = new(2) { first, second };
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        GC.KeepAlive(list);
+        return allocated;
     }
 
     [Fact]
