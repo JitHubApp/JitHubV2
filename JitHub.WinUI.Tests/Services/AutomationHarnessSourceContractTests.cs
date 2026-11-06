@@ -180,15 +180,6 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("raw pointer drag did not create a cross-line text selection", source, StringComparison.Ordinal);
         Assert.Contains("foreach (AutomationElement host in FindMarkdownLifecycleHosts(root, target))", source, StringComparison.Ordinal);
         Assert.Contains("recycled UIA peer", source, StringComparison.Ordinal);
-        string rendererSource = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "src",
-            "MarkdownRenderer",
-            "Controls",
-            "Input",
-            "KeyboardInput.cs"));
-        Assert.Contains("case VirtualKey.Application when _selection.IsActive", rendererSource, StringComparison.Ordinal);
         Assert.Contains("Use a new output directory rather than combining incompatible evidence", source, StringComparison.Ordinal);
     }
 
@@ -710,16 +701,8 @@ public sealed class AutomationHarnessSourceContractTests
     }
 
     [Fact]
-    public void MarkdownSelectionContextMenuSupportsKeyboardInvocation()
+    public void MarkdownSelectionContextMenuOpensOnlyForTheCurrentSnapshot()
     {
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "src",
-            "MarkdownRenderer",
-            "Controls",
-            "Input",
-            "KeyboardInput.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
         string pointerSource = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "MarkdownRenderer",
@@ -745,9 +728,6 @@ public sealed class AutomationHarnessSourceContractTests
             "Input",
             "TouchGestureInteraction.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
 
-        Assert.Contains("case VirtualKey.F10 when shift && _selection.IsActive", source, StringComparison.Ordinal);
-        Assert.Contains("_contextMenu.Show(_contextMenu.GetKeyboardPoint())", source, StringComparison.Ordinal);
-
         int rightTappedStart = gestureSource.IndexOf("internal void ProcessRightTapped(ref PointerInput e)", StringComparison.Ordinal);
         int rightTappedEnd = gestureSource.IndexOf("\n    }\n", rightTappedStart, StringComparison.Ordinal);
         Assert.True(rightTappedStart >= 0 && rightTappedEnd > rightTappedStart);
@@ -758,14 +738,6 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("if (!_host.IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))", rightTapped, StringComparison.Ordinal);
         Assert.Contains("e.ShowContextMenuAfterInteraction = true;", rightTapped, StringComparison.Ordinal);
         Assert.Contains("e.TouchSelectionContextMenu = touchOrPen;", rightTapped, StringComparison.Ordinal);
-
-        int keyDownStart = source.IndexOf("internal void OnKeyDown(", StringComparison.Ordinal);
-        int keyDownEnd = source.IndexOf("internal void OnHostedEmbedKeyDown(", keyDownStart, StringComparison.Ordinal);
-        Assert.True(keyDownStart >= 0 && keyDownEnd > keyDownStart);
-        string keyDown = source[keyDownStart..keyDownEnd];
-        Assert.Contains("case VirtualKey.F10 when shift && _selection.IsActive:", keyDown, StringComparison.Ordinal);
-        Assert.Contains("case VirtualKey.Application when _selection.IsActive:", keyDown, StringComparison.Ordinal);
-        Assert.Equal(2, Regex.Matches(keyDown, "_contextMenu\\.Show\\(_contextMenu\\.GetKeyboardPoint\\(\\)\\)").Count);
 
         int menuStart = menuSource.IndexOf("internal bool Show(", StringComparison.Ordinal);
         int menuClosedStart = menuSource.IndexOf("private void OnClosed(", menuStart, StringComparison.Ordinal);

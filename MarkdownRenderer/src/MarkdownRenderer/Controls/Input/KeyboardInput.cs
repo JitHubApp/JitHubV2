@@ -76,10 +76,8 @@ internal sealed class KeyboardInput
                 _selection.ExtendTo(new DocumentPosition(int.MaxValue, int.MaxValue, int.MaxValue));
                 e.Handled = true;
                 return;
-            case VirtualKey.F10 when shift && _selection.IsActive:
-                e.Handled = _contextMenu.Show(_contextMenu.GetKeyboardPoint());
-                return;
-            case VirtualKey.Application when _selection.IsActive:
+            case VirtualKey.F10 or VirtualKey.Application
+                when MarkdownKeyboardInputPolicy.ShouldOpenSelectionContextMenu(e.Key, shift, _selection.IsActive):
                 e.Handled = _contextMenu.Show(_contextMenu.GetKeyboardPoint());
                 return;
             case VirtualKey.Tab:
