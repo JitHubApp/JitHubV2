@@ -1,6 +1,6 @@
 using System;
 using System.Threading;
-using Microsoft.UI.Dispatching;
+using MarkdownRenderer.Controls.Threading;
 
 namespace MarkdownRenderer.Controls;
 
@@ -11,42 +11,46 @@ namespace MarkdownRenderer.Controls;
 /// tick asks the host to retry that work.
 /// </summary>
 /// <remarks>
-/// The dispatcher timer and its managed fallback reach the clock through a
-/// weak reference only, so neither keeps the renderer alive.
+/// The UI timer and its managed fallback reach the clock through a weak
+/// reference only, so neither keeps the renderer alive.
 /// </remarks>
 internal sealed class RecoveryClock
 {
+    private static readonly TimeSpan Interval = TimeSpan.FromMilliseconds(100);
+
     private readonly IRecoveryClockHost _host;
     private readonly MarkdownViewLifetime _lifetime;
-    private DispatcherQueueTimer? _timer;
+    private readonly IMarkdownUiScheduler? _scheduler;
+    private IMarkdownUiTimer? _timer;
     private WeakRecoveryTimer<RecoveryClock>? _managedTimer;
 
-    internal RecoveryClock(IRecoveryClockHost host, MarkdownViewLifetime lifetime)
+    internal RecoveryClock(IRecoveryClockHost host, MarkdownViewLifetime lifetime, IMarkdownUiScheduler? scheduler)
     {
         _host = host;
         _lifetime = lifetime;
+        _scheduler = scheduler;
     }
 
-    /// <summary>True while a dispatcher or managed timer is running.</summary>
+    /// <summary>True while a UI or managed timer is running.</summary>
     internal bool IsRunning => _timer is not null || _managedTimer is not null;
 
-    /// <summary>Starts the clock unless it is running or there is no dispatcher.</summary>
+    /// <summary>Starts the clock unless it is running or there is no UI scheduler.</summary>
     internal void Start()
     {
-        if (IsRunning || _host.DispatcherQueue is not { } dispatcher)
+        if (IsRunning || _scheduler is not { } scheduler)
             return;
         try
         {
             var receiver = new WeakReference<RecoveryClock>(this);
-            var timer = dispatcher.CreateTimer();
-            timer.Interval = TimeSpan.FromMilliseconds(100);
+            var timer = scheduler.CreateTimer();
+            timer.Interval = Interval;
             timer.IsRepeating = true;
             timer.Tick += (sender, _) =>
             {
                 if (!receiver.TryGetTarget(out var clock) ||
                     !ReferenceEquals(sender, clock._timer))
                 {
-                    try { sender.Stop(); }
+                    try { ((IMarkdownUiTimer)sender!).Stop(); }
                     catch (Exception) { /* A stopped dispatcher has no delivery to recover. */ }
                     return;
                 }
@@ -70,8 +74,8 @@ internal sealed class RecoveryClock
                 try
                 {
                     _managedTimer = new(
-                        this, callback => dispatcher.TryEnqueue(callback.Invoke),
-                        Tick, TimeSpan.FromMilliseconds(100));
+                        this, callback => scheduler.TryEnqueue(MarkdownUiPriority.Normal, callback),
+                        Tick, Interval);
                 }
                 catch (Exception fallbackException)
                 {

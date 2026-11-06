@@ -65,6 +65,18 @@ internal sealed class ImageSubscriptions
         return true;
     }
 
+    /// <summary>
+    /// Subscribes to <paramref name="image"/> and adds it to the image plans,
+    /// unless it is already subscribed and planned.
+    /// </summary>
+    internal void AddPlan(ImageBox image)
+    {
+        if (!Subscribe(image))
+            return;
+
+        _plans.Add(image);
+    }
+
     internal void UnsubscribeAll()
     {
         ResetBitmapOutputRecovery();

@@ -81,7 +81,7 @@ internal sealed class EmbedHosts :
 
     ViewportBandIndex? IEmbedRealizationHost.ImagePlanIndex => Owners.ImagePlans.Index;
 
-    void IEmbedRealizationHost.AddImagePlan(ImageBox image) => AddImagePlan(image);
+    void IEmbedRealizationHost.AddImagePlan(ImageBox image) => Owners.ImageSubscriptions.AddPlan(image);
 
     bool IEmbedRealizationHost.RealizeVisibleImages(
         in VisibleRealizationPass pass,
@@ -150,12 +150,4 @@ internal sealed class EmbedHosts :
 
     Task ICodeBlockHighlightingHost.RetireCancellationTokenSource(RetirableCancellationTokenSource? cts, Task? lifetime) =>
         Owners.CancellationRetirement.Retire(cts, lifetime);
-
-    private void AddImagePlan(Layout.Boxes.ImageBox image)
-    {
-        if (!Owners.ImageSubscriptions.Subscribe(image))
-            return;
-
-        Owners.ImagePlans.Add(image);
-    }
 }

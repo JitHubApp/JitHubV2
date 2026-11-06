@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using MarkdownRenderer.Controls.Threading;
 using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Performance;
@@ -29,7 +30,7 @@ internal static class ImageRelayoutWork
         (int BlockIndex, double OffsetFromTop)? anchor,
         long generation,
         RetirableCancellationTokenSource cancellation,
-        Microsoft.UI.Dispatching.DispatcherQueue? dispatcher,
+        IMarkdownUiScheduler? scheduler,
         WeakReference<ImageRelayout> receiver,
         IMarkdownPerformanceSessionInternal? session,
         RasterPlacementInputs? rasterPlacement,
@@ -159,7 +160,7 @@ internal static class ImageRelayoutWork
             payload.ReleaseAfterWorkDrains();
             try
             {
-                dispatcher?.TryEnqueue(payload.PublishAfterWorkDrains);
+                scheduler?.TryEnqueue(MarkdownUiPriority.Normal, payload.PublishAfterWorkDrains);
             }
             catch (Exception exception)
             {
@@ -202,7 +203,7 @@ internal static class ImageRelayoutWork
                 retryImageBlockIndex = null;
                 rasterPlacement = null;
                 session = null;
-                dispatcher = null;
+                scheduler = null;
                 failure = null;
                 cancellation = null!;
                 receiver = null!;

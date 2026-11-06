@@ -19,7 +19,7 @@ namespace MarkdownRenderer.Controls.Embeds;
 /// elements that fell back to native Markdown (through
 /// <see cref="EmbedPlanServices"/>).
 /// </summary>
-internal sealed class EmbedRealization
+internal sealed class EmbedRealization : IInlinePlanCollector
 {
     private readonly IEmbedRealizationHost _host;
     private readonly MarkdownViewLifetime _lifetime;
@@ -191,42 +191,7 @@ internal sealed class EmbedRealization
             }
             case InlineContainerBox icb:
             {
-                // Most paragraphs contain only text. Avoid walking their runs
-                // and querying DirectWrite geometry when no overlay/image
-                // plan can possibly be produced.
-                if (!icb.HasInlineImages && !icb.HasInlineEmbeds)
-                    break;
-
-                // Register completion before asking DirectWrite for rectangles. During the
-                // first commit an inline image can be measurable but not yet have a stable
-                // character region; paint will start it and completion must still reflow.
-                if (icb.HasInlineImages)
-                {
-                    foreach (var (imageRun, _) in icb.InlineImageRuns)
-                    {
-                        // Image registration must not depend on DirectWrite
-                        // returning a character rectangle for the object
-                        // replacement slot. In particular, a linked image on
-                        // an otherwise empty line can temporarily have no
-                        // region during the first layout pass. Keeping it out
-                        // of the image plans in that state leaves it permanently
-                        // "Loading" because no later viewport pass can start
-                        // it. A missing first-pass rectangle has the default
-                        // origin, which deliberately starts the bounded load;
-                        // EnumerateInlineImageRects synchronizes the real
-                        // bounds as soon as DirectWrite publishes them.
-                        _host.AddImagePlan(imageRun.Image);
-                    }
-                }
-                if (icb.HasInlineEmbeds)
-                    _hostedElements.CollectInline(snapshot, topLevelRoot, icb);
-                // Force enumeration so each ImageBox receives its document
-                // bounds. Images were already added above, independently of
-                // whether this geometry query succeeds.
-                if (icb.HasInlineImages)
-                {
-                    foreach (var _ in icb.EnumerateInlineImageRects()) { }
-                }
+                InlineContainerPlans.Collect(this, snapshot, topLevelRoot, icb);
                 break;
             }
             case CodeBlockBox codeBlock:
@@ -246,6 +211,11 @@ internal sealed class EmbedRealization
                 break;
         }
     }
+
+    void IInlinePlanCollector.AddImagePlan(ImageBox image) => _host.AddImagePlan(image);
+
+    void IInlinePlanCollector.CollectInlineEmbeds(LayoutSnapshot snapshot, BlockBox topLevelRoot, InlineContainerBox box) =>
+        _hostedElements.CollectInline(snapshot, topLevelRoot, box);
 
     /// <summary>Indexes the collected plans by vertical extent.</summary>
     internal void CommitPlanIndexes()

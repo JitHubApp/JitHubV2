@@ -1,11 +1,7 @@
 using System;
 using MarkdownRenderer.Controls.Focus;
 using MarkdownRenderer.Controls.Images;
-using MarkdownRenderer.Controls.Input;
-using MarkdownRenderer.Controls.LazyLayout;
 using MarkdownRenderer.Controls.Pipeline;
-using MarkdownRenderer.Controls.Rendering;
-using RebuildReason = MarkdownRenderer.Controls.MarkdownRebuildCoordinatorReason;
 
 namespace MarkdownRenderer.Controls;
 
@@ -18,59 +14,38 @@ namespace MarkdownRenderer.Controls;
 /// </summary>
 internal sealed class RecoveryClockWork
 {
+    private readonly IRecoveryClockWorkHost _host;
     private readonly MarkdownViewLifetime _lifetime;
     private readonly PublishedLayout _published;
     private readonly RecoveryClock _recoveryClock;
     private readonly LayoutCommitState _layoutCommit;
-    private readonly LayoutCommitPublisher _layoutPublisher;
-    private readonly LazyLayoutRealization _lazyLayout;
     private readonly ImageSubscriptions _imageSubscriptions;
     private readonly ImageRelayout _imageRelayout;
-    private readonly HorizontalOverflowScrollVisuals _overflowScroll;
-    private readonly PendingFocusGeometryWork _focusGeometryWork;
     private readonly FocusableItemsRefreshRequest _focusRefresh;
-    private readonly FocusableItemsPublication _focusableItems;
-    private readonly PointerInputRouter _pointerInput;
-    private readonly GeometryRecovery _geometryRecovery;
-    private readonly RebuildScheduler _rebuild;
 
     internal RecoveryClockWork(
+        IRecoveryClockWorkHost host,
         MarkdownViewLifetime lifetime,
         PublishedLayout published,
         RecoveryClock recoveryClock,
         LayoutCommitState layoutCommit,
-        LayoutCommitPublisher layoutPublisher,
-        LazyLayoutRealization lazyLayout,
         ImageSubscriptions imageSubscriptions,
         ImageRelayout imageRelayout,
-        HorizontalOverflowScrollVisuals overflowScroll,
-        PendingFocusGeometryWork focusGeometryWork,
-        FocusableItemsRefreshRequest focusRefresh,
-        FocusableItemsPublication focusableItems,
-        PointerInputRouter pointerInput,
-        GeometryRecovery geometryRecovery,
-        RebuildScheduler rebuild)
+        FocusableItemsRefreshRequest focusRefresh)
     {
+        _host = host;
         _lifetime = lifetime;
         _published = published;
         _recoveryClock = recoveryClock;
         _layoutCommit = layoutCommit;
-        _layoutPublisher = layoutPublisher;
-        _lazyLayout = lazyLayout;
         _imageSubscriptions = imageSubscriptions;
         _imageRelayout = imageRelayout;
-        _overflowScroll = overflowScroll;
-        _focusGeometryWork = focusGeometryWork;
         _focusRefresh = focusRefresh;
-        _focusableItems = focusableItems;
-        _pointerInput = pointerInput;
-        _geometryRecovery = geometryRecovery;
-        _rebuild = rebuild;
     }
 
     /// <summary>True while lazy band realization or its layout publication is outstanding.</summary>
     internal bool HasPendingLazyLayoutWork =>
-        _lazyLayout.HasPendingWork || _layoutCommit.Pending is not null;
+        _host.HasPendingLazyLayout || _layoutCommit.Pending is not null;
 
     /// <summary>
     /// One recovery clock tick: retries every piece of deferred work whose UI
@@ -84,7 +59,7 @@ internal sealed class RecoveryClockWork
         {
             if (!_lifetime.IsDisposed && !_lifetime.IsUnloaded)
             {
-                if (_geometryRecovery.RequestIfRequired(_published.Snapshot))
+                if (_host.RequestGeometryRecoveryIfRequired(_published.Snapshot))
                 {
                     // Drain canceled image work so its retirement/active flag
                     // can complete, but do not probe or retry failed geometry.
@@ -95,12 +70,12 @@ internal sealed class RecoveryClockWork
                 _imageSubscriptions.ProcessBitmapOutputRecovery();
                 _imageRelayout.ProcessQueued();
                 _imageRelayout.PublishReadyCompletion();
-                _layoutPublisher.PublishPending();
-                _lazyLayout.ProcessQueued();
-                _lazyLayout.TryPublishCompletion();
-                _overflowScroll.ProcessPendingRetry();
-                _focusGeometryWork.Process();
-                _focusableItems.TryPublishPending();
+                _host.PublishPendingLayout();
+                _host.ProcessQueuedLazyLayout();
+                _host.TryPublishLazyLayoutCompletion();
+                _host.ProcessOverflowScrollRetry();
+                _host.ProcessFocusGeometryWork();
+                _host.TryPublishPendingFocusableItems();
                 _imageRelayout.RecoverFaultedHandoff();
             }
         }
@@ -110,12 +85,12 @@ internal sealed class RecoveryClockWork
             if (layoutTicket == _layoutCommit.Ticket)
                 _layoutCommit.ClearPending();
             RelayoutDiagnostics.ReportFailure("layout publication", exception);
-            if (!_geometryRecovery.RequestIfRequired(_published.Snapshot))
-                _rebuild.Request(RebuildReason.Full);
+            if (!_host.RequestGeometryRecoveryIfRequired(_published.Snapshot))
+                _host.RequestFullRebuild();
             else
                 _focusRefresh.ClearForCurrentSnapshot();
             if (_published.Snapshot is { } failedLayoutSnapshot)
-                _pointerInput.OnLazyLayoutCompletion(failedLayoutSnapshot, succeeded: false);
+                _host.NotifyLazyLayoutFailed(failedLayoutSnapshot);
         }
         finally
         {
@@ -129,9 +104,9 @@ internal sealed class RecoveryClockWork
     internal void Stop(bool force = false)
     {
         if (!force && (_imageSubscriptions.HasPendingBitmapOutputRecovery || HasPendingLazyLayoutWork ||
-            _overflowScroll.HasPendingRetry ||
+            _host.HasPendingOverflowScrollRetry ||
             _focusRefresh.Pending.IsPending ||
-            _focusGeometryWork.HasPendingWork))
+            _host.HasPendingFocusGeometryWork))
             return;
 
         if (force)
@@ -146,9 +121,9 @@ internal sealed class RecoveryClockWork
     {
         if (_imageRelayout.HasPendingWork ||
             _imageSubscriptions.HasPendingBitmapOutputRecovery ||
-            _overflowScroll.HasPendingRetry ||
+            _host.HasPendingOverflowScrollRetry ||
             _focusRefresh.Pending.IsPending ||
-            _focusGeometryWork.HasPendingWork ||
+            _host.HasPendingFocusGeometryWork ||
             HasPendingLazyLayoutWork)
         {
             return;

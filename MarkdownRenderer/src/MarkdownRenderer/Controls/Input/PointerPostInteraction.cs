@@ -12,7 +12,7 @@ namespace MarkdownRenderer.Controls.Input;
 /// </summary>
 /// <remarks>
 /// Each step can reenter XAML, so each is followed by the same currency
-/// check. <see cref="PointerInputRouter"/> marks itself as draining around
+/// check. <see cref="DeferredInputReplay"/> marks itself as draining around
 /// <see cref="Run"/> so reentrant input queues instead of nesting here.
 /// </remarks>
 internal sealed class PointerPostInteraction

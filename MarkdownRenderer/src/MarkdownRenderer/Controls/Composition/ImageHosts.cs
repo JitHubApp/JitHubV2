@@ -76,7 +76,11 @@ internal sealed class ImageHosts :
         LayoutCommitState LayoutCommit,
         object ImagePreparationOwnerToken,
         RebuildInputCapture InputCapture,
-        SnapshotExtent Extent);
+        SnapshotExtent Extent,
+        MarkdownViewSurface Surface,
+        PointerInputRouter PointerInput,
+        LayoutCommitPublisher LayoutPublisher,
+        RasterPlacementPublisher RasterPlacement);
 
     internal void Connect(Parts owners) => _owners = owners;
 
@@ -136,11 +140,22 @@ internal sealed class ImageHosts :
         string url, MarkdownImageUnavailableReason reason, MarkdownSvgFailureReason? svgReason) =>
         Owners.Events.RaiseImageUnavailable(url, reason, svgReason);
 
-    Microsoft.UI.Dispatching.DispatcherQueue? IImageRelayoutHost.DispatcherQueue => _control.DispatcherQueue;
-
     IMarkdownPerformanceSession? IImageRelayoutHost.PerformanceSession => _control.PerformanceSession;
 
     float IImageRelayoutHost.LayoutWidth => (float)Math.Max(50, _control.ActualWidth);
+
+    double? IImageRelayoutHost.VerticalScrollOffset => Owners.Surface.Scroll?.VerticalOffset;
+
+    bool IImageRelayoutHost.HasSnapshotInteraction => Owners.PointerInput.HasSnapshotInteraction;
+
+    RasterPlacementInputs? IImageRelayoutHost.TryCreateRasterPlacementInputs(LayoutSnapshot snapshot, bool optedIn) =>
+        Owners.RasterPlacement.TryCreateInputs(snapshot, optedIn);
+
+    bool IImageRelayoutHost.TryPublishRasterPlacement(LayoutSnapshot snapshot, RasterPlacementPlan candidate, long generation) =>
+        Owners.RasterPlacement.TryPublish(snapshot, candidate, generation);
+
+    void IImageRelayoutHost.PublishRelayout(LayoutSnapshot snapshot, (int BlockIndex, double OffsetFromTop)? anchor) =>
+        Owners.LayoutPublisher.Apply(snapshot, anchor);
 
     bool IImageRelayoutHost.DefersToRebuild() => Owners.Rebuild.DefersToRebuild();
 
@@ -153,8 +168,6 @@ internal sealed class ImageHosts :
 
     Task IImageRelayoutHost.RetireCancellationTokenSource(RetirableCancellationTokenSource? cts, Task? lifetime) =>
         Owners.CancellationRetirement.Retire(cts, lifetime);
-
-    Microsoft.UI.Dispatching.DispatcherQueue? IImageLoadCompletionHost.DispatcherQueue => _control.DispatcherQueue;
 
     IMarkdownPerformanceSession? IImageLoadCompletionHost.PerformanceSession => _control.PerformanceSession;
 

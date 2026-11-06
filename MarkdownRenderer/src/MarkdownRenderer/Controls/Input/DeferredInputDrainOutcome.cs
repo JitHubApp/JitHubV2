@@ -3,7 +3,7 @@ using MarkdownRenderer.Layout;
 namespace MarkdownRenderer.Controls.Input;
 
 /// <summary>
-/// Why one <see cref="PointerInputRouter"/> drain pass ended. It is read after
+/// Why one <see cref="DeferredInputReplay"/> drain pass ended. It is read after
 /// the pass's snapshot lease has ended, to run post-interaction work and to
 /// decide whether the queue waits, drains on or is dropped.
 /// </summary>

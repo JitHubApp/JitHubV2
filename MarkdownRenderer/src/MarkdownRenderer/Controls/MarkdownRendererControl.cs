@@ -5,12 +5,14 @@ using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
 using RebuildReason = MarkdownRenderer.Controls.MarkdownRebuildCoordinatorReason;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.CodeBlocks;
+using MarkdownRenderer.Controls.Composition;
+using MarkdownRenderer.Controls.Pipeline;
+using MarkdownRenderer.Controls.Readiness;
 using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Images;
@@ -19,19 +21,6 @@ using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Selection;
 using MarkdownRenderer.Theming;
-using MarkdownRenderer.Controls.Composition;
-using MarkdownRenderer.Controls.Embeds;
-using MarkdownRenderer.Controls.Focus;
-using MarkdownRenderer.Controls.Highlighting;
-using MarkdownRenderer.Controls.Images;
-using MarkdownRenderer.Controls.Rendering;
-using MarkdownRenderer.Controls.Input;
-using MarkdownRenderer.Controls.LazyLayout;
-using MarkdownRenderer.Controls.Navigation;
-using MarkdownRenderer.Controls.Pipeline;
-using MarkdownRenderer.Controls.Providers;
-using MarkdownRenderer.Controls.Readiness;
-using MarkdownRenderer.Controls.Selection;
 
 namespace MarkdownRenderer.Controls;
 
@@ -43,69 +32,17 @@ namespace MarkdownRenderer.Controls;
 /// <see cref="Canvas"/> overlay for hosted WinUI embeds.
 /// </summary>
 /// <remarks>
-/// This file is longer than 500 lines because it is the composition root: the
-/// public dependency properties, events and methods, the constructor that
-/// builds each owner in dependency order, and disposal. Its behavior lives in
-/// those owners; UI Automation peers reach it through <see cref="AutomationHost"/>.
+/// This file is longer than 500 lines because it is the renderer's public
+/// surface: some thirty dependency properties with their CLR wrappers and
+/// documentation, which must be declared on this type, and its events,
+/// methods and disposal. <see cref="MarkdownRendererComposition"/> builds the
+/// owners that hold its behavior; UI Automation peers reach it through
+/// <see cref="AutomationHost"/>.
 /// </remarks>
 public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsyncDisposable,
     IMarkdownPerformanceLegacyParser, IRendererEventSink
 {
-    private readonly MarkdownViewLifetime _lifetime = new();
-    private readonly PublishedLayout _published = new();
-    private readonly SnapshotRetirementTracker _snapshotRetirements = new(
-        static exception => MarkdownDiagnostics.WriteLine(
-            $"[MarkdownRendererControl] retirement failed: {exception.GetType().Name} " +
-            $"(0x{exception.HResult:X8})."));
-    private readonly MarkdownAutomationDocumentGeneration _automationDocumentGenerations = new();
-    private readonly LayoutCommitState _layoutCommit = new();
-    private readonly PointerHoverState _hover = new();
-    private readonly SelectionController _selection = new();
-    private readonly MarkdownTouchSelectionSession _touchSelection = new();
-    private readonly TouchTapSuppressionPolicy _touchTapSuppression = new();
-
-    // Owners the control reads after construction: property callbacks,
-    // public and automation members, and disposal.
-    private readonly MarkdownViewSurface _surface;
-    private readonly MarkdownViewport _viewport;
-    private readonly WindowDestroyingWatch _windowDestroying;
-    private readonly RendererLocalization _localization;
-    private readonly RendererAutomation _automation;
-    private readonly AutomationScrolling _automationScrolling;
-    private readonly RebuildScheduler _rebuild;
-    private readonly RebuildPipeline _pipeline;
-    private readonly DocumentInputs _documentInputs;
-    private readonly CanvasTilePainter _painter;
-    private readonly CanvasEvents _canvasEvents;
-    private readonly CanvasInvalidation _canvasInvalidation;
-    private readonly CanvasDeviceRecovery _deviceRecovery;
-    private readonly SyntheticDeviceReset _deviceReset;
-    private readonly RecoveryClockWork _recoveryWork;
-    private readonly VisibleWorkScheduler _visibleWork;
-    private readonly ScrollViewTracking _scrolling;
-    private readonly LazyLayoutRealization _lazyLayout;
-    private readonly BlockScrollNavigation _blockScroll;
-    private readonly VisibleImageReadiness _imageReadiness;
-    private readonly DeferredSceneReadiness _deferredScenes;
-    private readonly EmbedRealization _embeds;
-    private readonly CodeBlockHighlighting _highlighting;
-    private readonly CodeBlockClipboard _codeBlockClipboard;
-    private readonly PresentationInputChanges _inputChanges;
-    private readonly SelectionAdornerPresenter _adorner;
-    private readonly SelectionCommands _selectionCommands;
-    private readonly SelectionDragShield _dragShield;
-    private readonly SelectionHandlesPresenter _handles;
-    private readonly SelectionChangeHandling _selectionChanges;
-    private readonly TouchSelectionRestore _touchRestore;
-    private readonly InteractionReset _interactionReset;
-    private readonly KeyboardInput _keyboard;
-    private readonly RendererFocusEvents _focusEvents;
-    private readonly HorizontalOverflowScrollVisuals _overflowScroll;
-    private readonly PerformanceSessionSubscription _performanceSession;
-    private readonly SvgRendererSubscription _svgRenderer;
-    private readonly ThemeSubscription _theme;
-    private readonly EnvironmentSubscription _environment;
-    private readonly ViewAttachment _attachment;
+    private readonly MarkdownRendererComposition _parts;
 
     /// <summary>
     /// Overscan band (pixels, each direction) within which off-screen images
@@ -141,7 +78,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <summary>Dependency property backing <see cref="Markdown"/>.</summary>
     public static readonly DependencyProperty MarkdownProperty =
         Register<string>(nameof(Markdown), string.Empty,
-            (d, _) => ((MarkdownRendererControl)d)._documentInputs.OnMarkdownChanged());
+            (d, _) => ((MarkdownRendererControl)d)._parts.DocumentInputs.OnMarkdownChanged());
 
     /// <summary>Gets or sets the markdown source text to render.</summary>
     public string Markdown
@@ -153,7 +90,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <summary>Dependency property backing <see cref="Document"/>.</summary>
     public static readonly DependencyProperty DocumentProperty =
         Register<MarkdownRenderer.Document.MarkdownDocument>(nameof(Document), null,
-            (d, e) => ((MarkdownRendererControl)d)._documentInputs.OnDocumentChanged(e));
+            (d, e) => ((MarkdownRendererControl)d)._parts.DocumentInputs.OnDocumentChanged(e.NewValue));
 
     /// <summary>
     /// Gets or sets an immutable, reusable parsed document. When set, the
@@ -169,7 +106,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <summary>Dependency property backing <see cref="Engine"/>.</summary>
     public static readonly DependencyProperty EngineProperty =
         Register<MarkdownEngine>(nameof(Engine), null,
-            (d, e) => ((MarkdownRendererControl)d)._documentInputs.OnEngineChanged(e));
+            (d, e) => ((MarkdownRendererControl)d)._parts.DocumentInputs.OnEngineChanged(e.OldValue, e.NewValue));
 
     /// <summary>
     /// Gets or sets the immutable parser engine used for markdown replacements.
@@ -186,7 +123,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// assignments are borrowed; only engines assigned through this internal
     /// ownership boundary are disposed with the control.
     /// </summary>
-    internal void SetOwnedEngine(MarkdownEngine engine) => _documentInputs.SetOwnedEngine(engine);
+    internal void SetOwnedEngine(MarkdownEngine engine) => _parts.DocumentInputs.SetOwnedEngine(engine);
 
     /// <summary>Dependency property backing <see cref="StyleSheet"/>.</summary>
     public static readonly DependencyProperty StyleSheetProperty =
@@ -202,7 +139,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <summary>Dependency property backing <see cref="StringProvider"/>.</summary>
     public static readonly DependencyProperty StringProviderProperty =
         Register<IMarkdownStringProvider>(nameof(StringProvider), null,
-            (d, _) => ((MarkdownRendererControl)d)._inputChanges.OnStringProviderChanged());
+            (d, _) => ((MarkdownRendererControl)d)._parts.InputChanges.OnStringProviderChanged());
 
     /// <summary>Gets or sets a host provider for localized visible and automation strings.</summary>
     public IMarkdownStringProvider? StringProvider
@@ -225,7 +162,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <summary>Dependency property backing <see cref="HostedElementFactory"/>.</summary>
     public static readonly DependencyProperty HostedElementFactoryProperty =
         Register<IMarkdownHostedElementFactory>(nameof(HostedElementFactory), null,
-            (d, _) => ((MarkdownRendererControl)d)._inputChanges.OnHostedElementFactoryChanged());
+            (d, _) => ((MarkdownRendererControl)d)._parts.InputChanges.OnHostedElementFactoryChanged());
 
     /// <summary>Gets or sets the viewport-aware factory for declarative hosted content.</summary>
     public IMarkdownHostedElementFactory? HostedElementFactory
@@ -237,7 +174,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <summary>Dependency property backing <see cref="Theme"/>.</summary>
     public static readonly DependencyProperty ThemeProperty =
         Register<MarkdownTheme>(nameof(Theme), null,
-            (d, e) => ((MarkdownRendererControl)d)._theme.OnThemePropertyChanged(e));
+            (d, e) => ((MarkdownRendererControl)d)._parts.Theme.OnThemePropertyChanged(e));
 
     /// <summary>Gets or sets the renderer theme.</summary>
     public MarkdownTheme? Theme
@@ -248,7 +185,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     internal static readonly DependencyProperty ExtensionRegistryProperty =
         Register<MarkdownExtensionRegistry>(nameof(ExtensionRegistry), null,
-            (d, _) => ((MarkdownRendererControl)d)._documentInputs.OnParserConfigurationChanged());
+            (d, _) => ((MarkdownRendererControl)d)._parts.DocumentInputs.OnParserConfigurationChanged());
 
     internal MarkdownExtensionRegistry? ExtensionRegistry
     {
@@ -279,7 +216,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <summary>Dependency property backing <see cref="SvgRenderer"/>.</summary>
     public static readonly DependencyProperty SvgRendererProperty =
         Register<IMarkdownSvgRenderer>(nameof(SvgRenderer), null,
-            static (d, e) => ((MarkdownRendererControl)d)._svgRenderer.OnChanged(e));
+            static (d, e) => ((MarkdownRendererControl)d)._parts.SvgRenderer.OnChanged(e));
 
     /// <summary>
     /// Gets or sets the shared provider used to render admitted static SVG
@@ -308,7 +245,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <summary>Dependency property backing <see cref="PerformanceSession"/>.</summary>
     public static readonly DependencyProperty PerformanceSessionProperty =
         Register<IMarkdownPerformanceSession>(nameof(PerformanceSession), null,
-            (d, e) => ((MarkdownRendererControl)d)._performanceSession.OnChanged(e));
+            (d, e) => ((MarkdownRendererControl)d)._parts.PerformanceSession.OnChanged(e));
 
     /// <summary>
     /// Gets or sets the optional, host-owned resource preparation session. The
@@ -372,7 +309,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <summary>Dependency property backing <see cref="IsSelectionEnabled"/>.</summary>
     public static readonly DependencyProperty IsSelectionEnabledProperty =
         Register<bool>(nameof(IsSelectionEnabled), true,
-            static (d, e) => ((MarkdownRendererControl)d)._selectionChanges.OnSelectionEnabledChanged((bool)e.NewValue));
+            static (d, e) => ((MarkdownRendererControl)d)._parts.SelectionChanges.OnSelectionEnabledChanged((bool)e.NewValue));
 
     /// <summary>
     /// Gets or sets whether read-only text selection is available to mouse,
@@ -398,7 +335,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <summary>Dependency property backing <see cref="CodeBlockCopyButtonLabel"/>.</summary>
     public static readonly DependencyProperty CodeBlockCopyButtonLabelProperty =
         Register<string>(nameof(CodeBlockCopyButtonLabel), null,
-            (d, _) => ((MarkdownRendererControl)d)._embeds.UpdateCodeBlockCopyButtonLabels());
+            (d, _) => ((MarkdownRendererControl)d)._parts.Embeds.UpdateCodeBlockCopyButtonLabels());
 
     /// <summary>
     /// Gets or sets the accessible label and tooltip text used for code-block copy buttons.
@@ -413,7 +350,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <summary>Dependency property backing <see cref="CodeBlockCopiedButtonLabel"/>.</summary>
     public static readonly DependencyProperty CodeBlockCopiedButtonLabelProperty =
         Register<string>(nameof(CodeBlockCopiedButtonLabel), null,
-            (d, _) => ((MarkdownRendererControl)d)._embeds.UpdateCodeBlockCopyButtonLabels());
+            (d, _) => ((MarkdownRendererControl)d)._parts.Embeds.UpdateCodeBlockCopyButtonLabels());
 
     /// <summary>
     /// Gets or sets the accessible label and tooltip text announced briefly after a code block is copied.
@@ -428,7 +365,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <summary>Dependency property backing <see cref="CodeBlockCopyButtonStyle"/>.</summary>
     public static readonly DependencyProperty CodeBlockCopyButtonStyleProperty =
         Register<Style>(nameof(CodeBlockCopyButtonStyle), null,
-            (d, e) => ((MarkdownRendererControl)d)._embeds.UpdateCodeBlockCopyButtonStyles((Style?)e.NewValue));
+            (d, e) => ((MarkdownRendererControl)d)._parts.Embeds.UpdateCodeBlockCopyButtonStyles((Style?)e.NewValue));
 
     /// <summary>Gets or sets the host-provided style for code-block copy buttons.</summary>
     public Style? CodeBlockCopyButtonStyle
@@ -466,7 +403,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <summary>Dependency property backing <see cref="CodeHighlighter"/>.</summary>
     public static readonly DependencyProperty CodeHighlighterProperty =
         Register<ICodeHighlighter>(nameof(CodeHighlighter), null,
-            static (d, e) => ((MarkdownRendererControl)d)._inputChanges.OnCodeHighlighterChanged(e));
+            static (d, e) => ((MarkdownRendererControl)d)._parts.InputChanges.OnCodeHighlighterChanged(e));
 
     /// <summary>
     /// Gets or sets the stable asynchronous, cancellation-aware code highlighter.
@@ -558,7 +495,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
             .BuildScrollView();
 
     /// <summary>What UI Automation peers ask of this renderer.</summary>
-    internal IMarkdownAutomationHost AutomationHost => _automation;
+    internal IMarkdownAutomationHost AutomationHost => _parts.Automation;
 
     /// <summary>Raised when the user activates a non-internal markdown link.</summary>
     public event EventHandler<MarkdownLinkClickEventArgs>? LinkClick;
@@ -589,7 +526,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// being laid out. It is current when <see cref="RenderCompleted"/> is
     /// raised.
     /// </remarks>
-    public Size? RenderedContentSize => _published.Snapshot?.Size;
+    public Size? RenderedContentSize => _parts.Published.Snapshot?.Size;
 
     /// <summary>
     /// Gets the theme the displayed document was rendered for, or null when
@@ -603,7 +540,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <see cref="RenderedContentSize"/>, it changes when a new rendering is
     /// displayed, not when the setting changes.
     /// </remarks>
-    public MarkdownThemeVariant? RenderedThemeVariant => _published.ThemeVariant;
+    public MarkdownThemeVariant? RenderedThemeVariant => _parts.Published.ThemeVariant;
 
     /// <summary>
     /// Raised after every embed realisation pass (initial layout commit,
@@ -613,13 +550,13 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// </summary>
     public event EventHandler? EmbedsRealizationChanged;
 
-    internal bool OwnsScrollViewport => _surface.OwnsScrollViewport;
+    internal bool OwnsScrollViewport => _parts.Surface.OwnsScrollViewport;
 
     /// <summary>
     /// Internal gate-harness signal used to ensure a warm scroll trace starts
     /// only after queued/background band realization has retired.
     /// </summary>
-    internal bool HasPendingLazyLayoutWork => _recoveryWork.HasPendingLazyLayoutWork;
+    internal bool HasPendingLazyLayoutWork => _parts.RecoveryWork.HasPendingLazyLayoutWork;
 
     /// <summary>
     /// Returns a completion task for every renderer-owned resource or work item
@@ -630,10 +567,10 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// independent sample.
     /// </summary>
     internal Task DrainRetiredSnapshotsAsync()
-        => _snapshotRetirements.DrainAsync();
+        => _parts.SnapshotRetirements.DrainAsync();
 
     /// <summary>Releases device-bound snapshot resources before a deliberate Win2D device replacement.</summary>
-    internal void PrepareForSyntheticDeviceReset() => _deviceReset.Prepare();
+    internal void PrepareForSyntheticDeviceReset() => _parts.DeviceReset.Prepare();
 
     /// <inheritdoc />
     protected override AutomationPeer OnCreateAutomationPeer() => new MarkdownAutomationPeer(this);
@@ -643,28 +580,28 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// automation peer to walk the document structure (headings, links, etc.).
     /// May be null before the first layout completes.
     /// </summary>
-    internal LayoutSnapshot? CurrentSnapshot => _published.Snapshot;
+    internal LayoutSnapshot? CurrentSnapshot => _parts.Published.Snapshot;
 
     /// <summary>UI Automation's scroll pattern and ScrollIntoView requests.</summary>
-    internal AutomationScrolling AutomationScrolling => _automationScrolling;
+    internal AutomationScrolling AutomationScrolling => _parts.AutomationScrolling;
 
     /// <summary>Strings and culture resolved from the language snapshot of the committed layout.</summary>
-    internal RendererLocalization Localization => _localization;
+    internal RendererLocalization Localization => _parts.Localization;
 
     /// <summary>
     /// Number of currently-realised hosted embed elements (block + inline).
     /// Exposed for UI-automation tests that want to validate virtualisation
     /// without relying on heuristic descendant counts.
     /// </summary>
-    public int RealizedEmbedCount => _embeds.RealizedEmbedCount;
+    public int RealizedEmbedCount => _parts.Embeds.RealizedEmbedCount;
 
-    internal void SetDisclosureExpanded(LinkRun run, bool expanded) => _documentInputs.SetDisclosureExpanded(run, expanded);
+    internal void SetDisclosureExpanded(LinkRun run, bool expanded) => _parts.DocumentInputs.SetDisclosureExpanded(run, expanded);
 
-    internal void CopyCodeBlockFromAutomation(Layout.Boxes.CodeBlockBox box) => _codeBlockClipboard.CopyFromAutomation(box);
+    internal void CopyCodeBlockFromAutomation(Layout.Boxes.CodeBlockBox box) => _parts.CodeBlockClipboard.CopyFromAutomation(box);
 
-    internal VisibleImageReadiness ImageReadiness => _imageReadiness;
+    internal VisibleImageReadiness ImageReadiness => _parts.ImageReadiness;
 
-    internal DeferredSceneReadiness DeferredSceneReadiness => _deferredScenes;
+    internal DeferredSceneReadiness DeferredSceneReadiness => _parts.DeferredScenes;
 
     /// <summary>
     /// Initializes a renderer with either an owned scroll viewport or an
@@ -675,174 +612,36 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// ancestor viewport through EffectiveViewportChanged.
     /// </param>
     /// <param name="diagnostics">The diagnostics this renderer runs with for its lifetime.</param>
-    /// <remarks>This constructor stays whole because it is the composition root: one line per
-    /// owner in dependency order, and readonly owner fields can be set only in a constructor.</remarks>
     private protected MarkdownRendererControl(bool ownsScrollViewport, MarkdownRendererDiagnosticOptions diagnostics)
     {
-        var events = new RendererEvents(this, _lifetime, DispatcherQueue);
-        var pipelineHosts = new PipelineHosts(this);
-        var layoutHosts = new LayoutHosts(this);
-        var imageHosts = new ImageHosts(this);
-        var focusHosts = new FocusHosts(this);
-        var embedHosts = new EmbedHosts(this);
-        var pointerHosts = new PointerHosts(this);
-        var selectionHosts = new SelectionHosts(this);
-        var imagePrefetch = new ImageSourcePrefetch();
-        var completedImageCarry = new CompletedImageCarryLedger();
-        var imagePreparationOwnerToken = new object();
-        // Hosted-focus readers consume only realization plans published for the
-        // exact snapshot generation and layout revision. The attempt epoch also
-        // invalidates a plan while a same-snapshot rebuild is being transferred.
-        var hostedFocusPlan = new HostedFocusPlanPublication();
-        var cancellationRetirement = new PipelineCancellationRetirement(_snapshotRetirements);
-        var imageLifetime = new ImageLifetimeScope(cancellationRetirement);
-        _touchRestore = new TouchSelectionRestore(_published, _selection, _touchSelection);
-        _localization = new RendererLocalization(pipelineHosts, _published);
-        _surface = new MarkdownViewSurface(ownsScrollViewport);
-        _windowDestroying = new WindowDestroyingWatch(this, _lifetime);
-        var recoveryClock = new RecoveryClock(layoutHosts, _lifetime);
-        _viewport = new MarkdownViewport(this, _surface);
-        var vectorCapacity = new VectorCapacityRetry(layoutHosts, _lifetime, _published, _viewport);
-        var cursor = new PointerCursorPresenter(cursor => ProtectedCursor = cursor);
-        var abbreviationTooltip = new AbbreviationTooltipPresenter(this, _surface, _lifetime, _hover);
-        _adorner = new SelectionAdornerPresenter(selectionHosts, this, _surface, _lifetime, _published, _viewport, _selection, _hover);
-        _deviceRecovery = new CanvasDeviceRecovery(layoutHosts, _lifetime, _published, _surface, _adorner, DispatcherQueue);
-        _canvasInvalidation = new CanvasInvalidation(this, _lifetime, _surface, _deviceRecovery);
-        _selectionCommands = new SelectionCommands(selectionHosts, _published, _selection);
-        var selectionDismissal = new SelectionDismissalHook(selectionHosts, this, _surface, _lifetime, _published, _selection, _selectionCommands);
-        var autoScroll = new SelectionDragAutoScroll(_surface, _viewport);
-        _dragShield = new SelectionDragShield(_surface, _viewport, pointerHosts);
-        _handles = new SelectionHandlesPresenter(selectionHosts, pointerHosts, this, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _adorner, autoScroll);
-        var contextMenu = new SelectionContextMenuPresenter(selectionHosts, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _handles, _adorner, _selectionCommands);
-        var horizontalOverflowDrag = new HorizontalOverflowPointerDrag(pointerHosts, _surface, _published, _touchTapSuppression);
-        var document = new DocumentPointerInteraction(pointerHosts, _surface, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, horizontalOverflowDrag, _handles, autoScroll, _dragShield, _adorner, contextMenu, new PointerHoverTracker(pointerHosts, _published, _hover, cursor, abbreviationTooltip), cursor, abbreviationTooltip);
-        var extent = new SnapshotExtent(this, _surface, _dragShield, document);
-        var touchGestures = new TouchGestureInteraction(pointerHosts, this, _surface, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, horizontalOverflowDrag, document);
-        var pointerInput = new PointerInputRouter(pointerHosts, pointerHosts, DispatcherQueue, _surface, _lifetime, _published, _viewport, _selection, _touchSelection, _touchTapSuppression, _handles, document, horizontalOverflowDrag, touchGestures, contextMenu, _adorner, _dragShield);
-        _rebuild = new RebuildScheduler(pipelineHosts, _lifetime, _surface, pointerInput, cancellationRetirement);
-        var canvasPointerEvents = new CanvasPointerEvents(_surface, pointerInput);
-        _embeds = new EmbedRealization(embedHosts, embedHosts, _surface, _lifetime, _published, _viewport, DispatcherQueue, OnHostedEmbedKeyDown);
-        // Lazy-load queue: all ImageBox instances in the current snapshot.
-        // EnsureLoading() is called for each when its bounds enter the
-        // viewport + LazyImageOverscanPx band.  Images already in the
-        // in-memory cache start loading (no-op) immediately after build.
-        var imagePlans = new ImagePlanSet(_lifetime, _published);
-        var imageSubscriptions = new ImageSubscriptions(imageHosts, _lifetime, _published, imagePlans);
-        var imageResidency = new ImageResidency(imageHosts, _lifetime, _published, imagePlans, _embeds);
-        _highlighting = new CodeBlockHighlighting(embedHosts, _lifetime, _published, _viewport, _embeds);
-        _inputChanges = new PresentationInputChanges(_lifetime, _rebuild, _embeds, _highlighting, _handles);
-        var focus = new KeyboardFocusModel(_lifetime, _published);
-        var focusGeometry = new FocusGeometryReader(_lifetime, _published);
-        var focusRing = new FocusRingPresenter(focusHosts, focus, focusGeometry, _surface, _lifetime, _published, DispatcherQueue);
-        _interactionReset = new InteractionReset(_surface, _selection, _touchSelection, _touchRestore, _touchTapSuppression, pointerInput, document, _handles, autoScroll, _dragShield, contextMenu, _adorner, _hover, abbreviationTooltip, cursor, focus, focusRing);
-        var rasterPlacement = new RasterPlacementPublisher(imageHosts, _lifetime, _published, _layoutCommit, _surface, pointerInput, imageSubscriptions, imagePlans, imageResidency, _embeds, focus, focusRing, hostedFocusPlan, _snapshotRetirements);
-        // A deferred focus-plan refresh is value-only: it never keeps a snapshot,
-        // box, or native resource alive while a geometry lease is busy.
-        var focusRefresh = new FocusableItemsRefreshRequest(_published);
-        var focusableItems = new FocusableItemsPublication(layoutHosts, _lifetime, _published, focusRefresh, focus, recoveryClock);
-        // Used when neither the control, document nor engine supplies a registry.
-        var fallbackRegistry = new MarkdownExtensionRegistry();
-        var layoutSetup = new RebuildLayoutSetup(pipelineHosts, diagnostics, _snapshotRetirements, imagePrefetch, completedImageCarry, imagePlans, _embeds, focusableItems, imagePreparationOwnerToken, fallbackRegistry);
-        var hostedFocus = new HostedElementFocus(focusHosts, _lifetime, _published, focus, hostedFocusPlan, _embeds, focusRing);
-        _overflowScroll = new HorizontalOverflowScrollVisuals(focusHosts, _surface, _lifetime, _published, _selection, focus, _embeds, DispatcherQueue);
-        var reveal = new FocusedItemReveal(focusHosts, _surface, _lifetime, _published, _viewport, focus, _overflowScroll, DispatcherQueue);
-        _automationScrolling = new AutomationScrolling(_surface, reveal);
-        var focusCommit = new FocusedItemCommit(focusHosts, _lifetime, _published, focus, focusRing, reveal, hostedFocus, _embeds, DispatcherQueue);
-        var queuedFocusKeys = new SpatialFocusKeyQueue();
-        var navigator = new KeyboardFocusNavigator(focusHosts, _lifetime, _published, focus, focusGeometry, focusRing, _overflowScroll, _embeds, focusCommit, queuedFocusKeys, DispatcherQueue);
-        var focusGeometryWork = new PendingFocusGeometryWork(focusHosts, _lifetime, _published, focus, focusGeometry, focusRing, reveal, queuedFocusKeys, navigator);
-        var focusEntry = new RendererFocusEntry(focusHosts, _lifetime, focus, focusRing, focusCommit, navigator, DispatcherQueue);
-        var layoutPublisher = new LayoutCommitPublisher(layoutHosts, _lifetime, _published, _layoutCommit, _surface, recoveryClock, pointerInput, _embeds, imageSubscriptions, imagePlans, imageResidency, focus, focusRing, focusCommit, focusRefresh, hostedFocusPlan);
-        _lazyLayout = new LazyLayoutRealization(layoutHosts, _lifetime, _published, _layoutCommit, layoutPublisher, _surface, _viewport, recoveryClock, vectorCapacity, pointerInput, focus, focusCommit);
-        _blockScroll = new BlockScrollNavigation(_lifetime, _published, _surface, _viewport, _lazyLayout, reveal);
-        var links = new LinkActivation(pipelineHosts, _blockScroll);
-        _automation = new RendererAutomation(this, _lifetime, _surface, _viewport, _published, _automationDocumentGenerations, _localization, _selection, focus, focusRing, focusCommit, focusEntry, links, _handles, _overflowScroll);
-        _deferredScenes = new DeferredSceneReadiness(pipelineHosts, _lifetime, _published, _viewport, _rebuild);
-        _imageReadiness = new VisibleImageReadiness(_published, imagePlans, _viewport);
-        _painter = new CanvasTilePainter(layoutHosts, _lifetime, _published, _surface, _lazyLayout, _deviceRecovery, _rebuild, _deferredScenes);
-        _deviceReset = new SyntheticDeviceReset(_published, _snapshotRetirements, _automationDocumentGenerations, _layoutCommit, _automation, _painter, _lazyLayout, vectorCapacity);
-        _canvasEvents = new CanvasEvents(_lifetime, _surface, canvasPointerEvents, _painter, _rebuild);
-        var imageRelayout = new ImageRelayout(imageHosts, _lifetime, _published, _layoutCommit, layoutPublisher, _surface, pointerInput, imageSubscriptions, rasterPlacement, recoveryClock);
-        var imageLoadCompletion = new ImageLoadCompletion(imageHosts, _lifetime, _published, _layoutCommit, imageSubscriptions, imageRelayout);
-        imageSubscriptions.LoadCompleted += imageLoadCompletion.OnLoadCompleted;
-        var geometryRecovery = new GeometryRecovery(_lifetime, _published, _surface, pointerInput, vectorCapacity, horizontalOverflowDrag, focusGeometryWork, _overflowScroll, focusRing, _adorner, _layoutCommit, imageSubscriptions, _lazyLayout, imageRelayout, _interactionReset, _dragShield, contextMenu, abbreviationTooltip, cursor, _handles, _automation, _deviceRecovery, _rebuild);
-        _visibleWork = new VisibleWorkScheduler(this, _published, _highlighting, geometryRecovery);
-        _documentInputs = new DocumentInputs(this, events, _interactionReset, _embeds, _highlighting, _rebuild, _snapshotRetirements);
-        _keyboard = new KeyboardInput(this, _published, _selection, _selectionCommands, contextMenu, focus, focusRing, focusCommit, hostedFocus, navigator, geometryRecovery);
-        _recoveryWork = new RecoveryClockWork(_lifetime, _published, recoveryClock, _layoutCommit, layoutPublisher, _lazyLayout, imageSubscriptions, imageRelayout, _overflowScroll, focusGeometryWork, focusRefresh, focusableItems, pointerInput, geometryRecovery, _rebuild);
-        var textAdorner = new InteractiveTextAdorner(_surface, _published, _selection, _touchSelection, _hover, focus, _adorner, geometryRecovery);
-        _scrolling = new ScrollViewTracking(_surface, _lifetime, _viewport, _lazyLayout, _adorner, textAdorner, _embeds, _visibleWork);
-        _performanceSession = new PerformanceSessionSubscription(this, _lifetime, _snapshotRetirements, _rebuild, _selection, _adorner, textAdorner);
-        _svgRenderer = new SvgRendererSubscription(this, _lifetime, _rebuild, _canvasInvalidation);
-        _theme = new ThemeSubscription(this, _lifetime, _rebuild);
-        _environment = new EnvironmentSubscription(this, _lifetime, _rebuild);
-        var replacementPublisher = new ReplacementPublisher(this, _published, _surface, _rebuild, _touchRestore, _automationDocumentGenerations, _selection, _lazyLayout, _layoutCommit, _scrolling, _painter, _localization, focusRefresh, vectorCapacity, geometryRecovery, imageSubscriptions, imageRelayout, _blockScroll, imagePlans, focus);
-        var width = new LayoutWidthWatch(this, _rebuild);
-        var inputCapture = new RebuildInputCapture(this, _published, imagePreparationOwnerToken, _documentInputs, _localization, _environment, fallbackRegistry);
-        var replacementPresentation = new ReplacementPresentation(_surface, _snapshotRetirements, _rebuild, _layoutCommit, layoutPublisher, _documentInputs, extent, _scrolling, _hover, _selection, _touchRestore, contextMenu, _dragShield, _adorner, textAdorner, _handles, _embeds, imageSubscriptions, imagePlans, imageResidency, focus, focusRing, focusCommit, _highlighting, _visibleWork, _canvasInvalidation, _automation, _deferredScenes);
-        _pipeline = new RebuildPipeline(this, this, _lifetime, _surface, _viewport, _rebuild, inputCapture, layoutSetup, width, imagePrefetch, _automation, replacementPublisher, replacementPresentation);
-        _codeBlockClipboard = new CodeBlockClipboard(this, _embeds, events);
-        var visibleImages = new VisibleImageLoading(this, _lazyLayout, imageResidency, imagePlans, _embeds);
-        var pointerResume = new PointerInteractionResume(_lifetime, _rebuild, imageRelayout);
-        selectionHosts.Connect(new SelectionHosts.Parts(
-            events, _published, _deviceRecovery, _handles, pointerInput, _embeds, _rebuild, geometryRecovery,
-            textAdorner, _touchRestore, _localization, _interactionReset, pointerResume, focus, focusGeometry,
-            focusEntry));
-        pointerHosts.Connect(new PointerHosts.Parts(
-            _published, pointerInput, _embeds, geometryRecovery, textAdorner, _blockScroll, links, _layoutCommit,
-            _lazyLayout, _touchRestore, _interactionReset, pointerResume, focus, _overflowScroll,
-            focusGeometryWork, focusEntry, focusRing));
-        embedHosts.Connect(new EmbedHosts.Parts(
-            events, _published, cancellationRetirement, _rebuild, _canvasInvalidation, _visibleWork, _automation,
-            layoutPublisher, rasterPlacement, _lazyLayout, hostedFocusPlan, _localization, _codeBlockClipboard,
-            visibleImages, hostedFocus, imagePlans, imageSubscriptions));
-        focusHosts.Connect(new FocusHosts.Parts(
-            _surface, _published, _viewport, recoveryClock, _rebuild, geometryRecovery, textAdorner, links,
-            _automation, _layoutCommit, _lazyLayout, focusGeometryWork, focusRing));
-        imageHosts.Connect(new ImageHosts.Parts(
-            events, _hover, cursor, abbreviationTooltip, _adorner, _deviceRecovery, recoveryClock,
-            _snapshotRetirements, cancellationRetirement, _rebuild, _canvasInvalidation, geometryRecovery,
-            textAdorner, _recoveryWork, _visibleWork, _scrolling, _automation, imageLifetime, _layoutCommit,
-            imagePreparationOwnerToken, inputCapture, extent));
-        layoutHosts.Connect(new LayoutHosts.Parts(
-            _deviceRecovery, cancellationRetirement, _rebuild, _canvasInvalidation, geometryRecovery, textAdorner,
-            _recoveryWork, _visibleWork, _scrolling, _deferredScenes, _blockScroll, _automation, _lazyLayout, extent));
-        pipelineHosts.Connect(new PipelineHosts.Parts(
-            events, _documentInputs, _automation, imageLifetime, imageRelayout, _lazyLayout, _pipeline,
-            _touchRestore, _interactionReset, _performanceSession, _environment));
-        _focusEvents = new RendererFocusEvents(this, contextMenu, document, focus, focusEntry, focusRing);
-        _selectionChanges = new SelectionChangeHandling(selectionDismissal, cursor, _rebuild, textAdorner, _automation, _selection, _touchRestore, _touchTapSuppression, _interactionReset);
-        _attachment = new ViewAttachment(this, _surface, _lifetime, _published, cursor, abbreviationTooltip, _adorner, _deviceRecovery, selectionDismissal, _dragShield, _handles, contextMenu, horizontalOverflowDrag, pointerInput, _embeds, _windowDestroying, _snapshotRetirements, _rebuild, _painter, _canvasEvents, geometryRecovery, _recoveryWork, _scrolling, _deferredScenes, _blockScroll, _automation, imageLifetime, _automationDocumentGenerations, _layoutCommit, imageRelayout, vectorCapacity, _lazyLayout, width, _touchSelection, _touchRestore, _touchTapSuppression, _overflowScroll, focusRing, _performanceSession, _svgRenderer, _theme, _environment, imagePlans, imageSubscriptions, imageResidency, imagePrefetch, _highlighting);
+        _parts = new MarkdownRendererComposition(this, ownsScrollViewport, diagnostics, cursor => ProtectedCursor = cursor);
         IsTabStop = true;
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-        Loaded += (_, _) => _attachment.Load();
-        Unloaded += (_, _) => _attachment.Unload();
-        ActualThemeChanged += (_, _) => _theme.OnThemeChanged();
+        Loaded += (_, _) => _parts.Attachment.Load();
+        Unloaded += (_, _) => _parts.Attachment.Unload();
+        ActualThemeChanged += (_, _) => _parts.Theme.OnThemeChanged();
         // Selection changes update the XAML overlay (not the DirectWrite canvas),
         // so tiles are never invalidated during a drag.
-        _selection.Changed += (_, _) => _selectionChanges.OnSelectionChanged();
-        new InheritedLayoutInputWatch(this, _rebuild).Register();
+        _parts.Selection.Changed += (_, _) => _parts.SelectionChanges.OnSelectionChanged();
+        new InheritedLayoutInputWatch(this, _parts.Rebuild).Register();
         BuildVisualTree();
     }
 
-    // Embeds subscribe hosted elements before the keyboard owner exists.
-    private void OnHostedEmbedKeyDown(object sender, KeyRoutedEventArgs e) => _keyboard.OnHostedEmbedKeyDown(sender, e);
-
     private void BuildVisualTree()
     {
-        _canvasEvents.EnsureCanvas();
-        GettingFocus += _focusEvents.OnGettingFocus;
-        GotFocus += _focusEvents.OnGotFocus;
-        LosingFocus += _focusEvents.OnLosingFocus;
-        KeyDown += _keyboard.OnKeyDown;
+        _parts.CanvasEvents.EnsureCanvas();
+        GettingFocus += _parts.FocusEvents.OnGettingFocus;
+        GotFocus += _parts.FocusEvents.OnGotFocus;
+        LosingFocus += _parts.FocusEvents.OnLosingFocus;
+        KeyDown += _parts.Keyboard.OnKeyDown;
 
-        if (!_surface.OwnsScrollViewport)
-            EffectiveViewportChanged += _scrolling.OnEffectiveViewportChanged;
-        Content = _surface.ContentElement;
+        if (!_parts.Surface.OwnsScrollViewport)
+            EffectiveViewportChanged += _parts.Scrolling.OnEffectiveViewportChanged;
+        Content = _parts.Surface.ContentElement;
     }
 
     internal bool TryGetViewport(out double top, out double height, out double width)
-        => _viewport.TryGet(out top, out height, out width);
+        => _parts.Viewport.TryGet(out top, out height, out width);
 
     /// <summary>
     /// Copies the active selection to the clipboard.
@@ -850,41 +649,41 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// <param name="options">Optional copy format options. Defaults use rendered plain text and add CF_HTML.</param>
     /// <returns>True when a selection was copied successfully.</returns>
     public bool CopySelectionToClipboard(MarkdownCopyOptions? options = null)
-        => _selectionCommands.CopyToClipboard(options);
+        => _parts.SelectionCommands.CopyToClipboard(options);
 
     /// <summary>Copies the active selection as exact markdown source plus CF_HTML.</summary>
     public bool CopySelectionAsMarkdown()
-        => _selectionCommands.CopyAsMarkdown();
+        => _parts.SelectionCommands.CopyAsMarkdown();
 
-    internal void ClearSelectionFromCoordinator() => _interactionReset.ClearSelectionForExternalInteraction();
+    internal void ClearSelectionFromCoordinator() => _parts.InteractionReset.ClearSelectionForExternalInteraction();
 
     /// <summary>
     /// Releases renderer resources and detaches Win2D/XAML event handlers.
     /// </summary>
     public void Dispose()
     {
-        if (_lifetime.IsDisposed)
+        if (_parts.Lifetime.IsDisposed)
             return;
 
-        _lifetime.MarkDisposing();
-        _touchRestore.Cancel();
-        _touchTapSuppression.Reset();
-        _deviceRecovery.Stop();
-        _handles.ResetDrag();
-        _touchSelection.Dispose();
-        _handles.StopFrameClock();
-        _windowDestroying.Detach();
-        _attachment.Unload();
-        _adorner.ReleaseForDispose();
-        _published.LayoutDevice = null;
-        _published.RenderResources = null;
-        EffectiveViewportChanged -= _scrolling.OnEffectiveViewportChanged;
+        _parts.Lifetime.MarkDisposing();
+        _parts.TouchRestore.Cancel();
+        _parts.TouchTapSuppression.Reset();
+        _parts.DeviceRecovery.Stop();
+        _parts.Handles.ResetDrag();
+        _parts.TouchSelection.Dispose();
+        _parts.Handles.StopFrameClock();
+        _parts.WindowDestroying.Detach();
+        _parts.Attachment.Unload();
+        _parts.Adorner.ReleaseForDispose();
+        _parts.Published.LayoutDevice = null;
+        _parts.Published.RenderResources = null;
+        EffectiveViewportChanged -= _parts.Scrolling.OnEffectiveViewportChanged;
         DetachCanvasHandlers();
-        _dragShield.Release();
+        _parts.DragShield.Release();
         Content = null;
-        _surface.Detach();
-        _documentInputs.ReleaseOwnedEngine();
-        _lifetime.MarkDisposalComplete();
+        _parts.Surface.Detach();
+        _parts.DocumentInputs.ReleaseOwnedEngine();
+        _parts.Lifetime.MarkDisposalComplete();
         try { Disposed?.Invoke(this, EventArgs.Empty); }
         catch (Exception ex)
         {
@@ -909,13 +708,13 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     public ValueTask DisposeAsync()
     {
         Dispose();
-        if (!_lifetime.IsDisposalComplete)
+        if (!_parts.Lifetime.IsDisposalComplete)
         {
             throw new InvalidOperationException(
                 "The markdown view did not finish an earlier Dispose call and may still hold resources.");
         }
 
-        return new ValueTask(_snapshotRetirements.DrainAsync());
+        return new ValueTask(_parts.SnapshotRetirements.DrainAsync());
     }
 
     /// <summary>
@@ -942,20 +741,20 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     private void DetachCanvasHandlers()
     {
-        _canvasEvents.DetachRenderHandlers();
-        _canvasEvents.DetachInputHandlers();
-        GettingFocus -= _focusEvents.OnGettingFocus;
-        GotFocus -= _focusEvents.OnGotFocus;
-        LosingFocus -= _focusEvents.OnLosingFocus;
-        KeyDown -= _keyboard.OnKeyDown;
-        _handles.DetachHandlers();
+        _parts.CanvasEvents.DetachRenderHandlers();
+        _parts.CanvasEvents.DetachInputHandlers();
+        GettingFocus -= _parts.FocusEvents.OnGettingFocus;
+        GotFocus -= _parts.FocusEvents.OnGotFocus;
+        LosingFocus -= _parts.FocusEvents.OnLosingFocus;
+        KeyDown -= _parts.Keyboard.OnKeyDown;
+        _parts.Handles.DetachHandlers();
     }
 
     /// <summary>Kicks off (or re-kicks) the parse + layout pipeline.</summary>
     public void RequestRebuild()
         => RequestRebuild(RebuildReason.Full);
 
-    private void RequestRebuild(RebuildReason reason) => _rebuild.Request(reason);
+    private void RequestRebuild(RebuildReason reason) => _parts.Rebuild.Request(reason);
 
     /// <summary>
     /// Clears this control's cached WinUI resource-key discovery and rebuilds
@@ -965,10 +764,10 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
     /// </summary>
     public void InvalidateThemeResources()
     {
-        if (_lifetime.IsDisposed)
+        if (_parts.Lifetime.IsDisposed)
             return;
 
-        _pipeline.InvalidateThemeResourceKeys();
+        _parts.Pipeline.InvalidateThemeResourceKeys();
         RequestRebuild(RebuildReason.Restyle);
     }
 
@@ -976,25 +775,25 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         string source,
         MarkdownExtensionRegistry registry,
         CancellationToken cancellationToken) =>
-        _pipeline.ParseLegacyMarkdownAsync(source, registry, cancellationToken);
+        _parts.Pipeline.ParseLegacyMarkdownAsync(source, registry, cancellationToken);
 
     /// <summary>The stage timings of the committed snapshot's pipeline.</summary>
     internal MarkdownPipelineTimingSnapshot GetLastPipelineTimingSnapshot() =>
-        _pipeline.LastTimings;
+        _parts.Pipeline.LastTimings;
 
-    internal void ScheduleVisibleDeferredScenes() => _visibleWork.ScheduleDeferredScenes();
+    internal void ScheduleVisibleDeferredScenes() => _parts.VisibleWork.ScheduleDeferredScenes();
 
     internal void RequestRebuildAfterDeferredScene()
         => RequestRebuild(RebuildReason.SceneMaterialized);
 
     /// <summary>Re-runs the visible deferred-scene probe after the next successful paint.</summary>
     internal void RequestDeferredSceneProbeAfterPaint()
-        => _painter.RequestDeferredSceneProbe();
+        => _parts.Painter.RequestDeferredSceneProbe();
 
     /// <summary>
     /// Scrolls the document so the block with <paramref name="blockIndex"/>
     /// is near the top of the viewport.
     /// </summary>
-    public void ScrollToBlock(int blockIndex) => _blockScroll.ScrollTo(blockIndex);
+    public void ScrollToBlock(int blockIndex) => _parts.BlockScroll.ScrollTo(blockIndex);
 
 }
