@@ -367,10 +367,10 @@ internal sealed class InlineMeasuredPlacementTransfer
         InlineContainerBox source = _source;
         InlineContainerBox prepared = _prepared;
         bool compatibleRootInputs = _isTableCellTransfer
-            ? InlineMeasuredPlacementCapture.AreCompatibleTableCellRootInputs(source, prepared, _allowMeasuredVectorPlacement)
+            ? InlineMeasuredPlacementRootAdmission.AreCompatibleTableCellRootInputs(source, prepared, _allowMeasuredVectorPlacement)
             : _isContainerLeafTransfer
-            ? InlineMeasuredPlacementCapture.AreCompatibleContainerLeafRootInputs(source, prepared, _allowMeasuredVectorPlacement)
-            : InlineMeasuredPlacementCapture.AreCompatibleMeasuredRootInputs(
+            ? InlineMeasuredPlacementRootAdmission.AreCompatibleContainerLeafRootInputs(source, prepared, _allowMeasuredVectorPlacement)
+            : InlineMeasuredPlacementRootAdmission.AreCompatibleMeasuredRootInputs(
                 source, prepared, _expectedAvailableWidth, _allowMeasuredVectorPlacement);
         bool preparedWidthMatches = _isTableCellTransfer
             ? float.IsFinite(prepared.LastMeasuredWidth) && prepared.LastMeasuredWidth > 0f &&
