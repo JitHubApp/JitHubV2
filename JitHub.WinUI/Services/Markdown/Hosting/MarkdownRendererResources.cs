@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using JitHub.Markdown;
 using MarkdownRenderer;
 using MarkdownRenderer.Theming;
@@ -14,7 +15,7 @@ namespace JitHub.Services.Markdown.Hosting;
 internal static class MarkdownRendererResources
 {
     /// <summary>Roles whose background follows the host surface.</summary>
-    public static readonly string[] HostSurfaceRoles =
+    public static readonly ImmutableArray<string> HostSurfaceRoles =
     [
         MarkdownElementKeys.Body,
         MarkdownElementKeys.DefinitionDescription,
@@ -28,7 +29,7 @@ internal static class MarkdownRendererResources
     ];
 
     /// <summary>Roles whose local overrides the host owns and clears before reapplying.</summary>
-    public static readonly string[] StyledRoles =
+    public static readonly ImmutableArray<string> StyledRoles =
     [
         MarkdownElementKeys.Body,
         MarkdownElementKeys.Heading1,

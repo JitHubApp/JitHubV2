@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using JitHub.Markdown;
 using JitHub.Markdown.Automation;
 using JitHub.Services.Markdown.Hosting;
@@ -14,7 +15,7 @@ namespace JitHub.Services.Markdown.Automation;
 /// </summary>
 internal static class MarkdownLifecycleTextScaleResources
 {
-    private static readonly (string Role, string Token, double Fallback)[] ScalableRoleFonts =
+    private static readonly ImmutableArray<(string Role, string Token, double Fallback)> ScalableRoleFonts =
     [
         (MarkdownElementKeys.Body, "AppMarkdownBodyFontSize", 16),
         (MarkdownElementKeys.Heading1, "AppMarkdownHeading1FontSize", 30),

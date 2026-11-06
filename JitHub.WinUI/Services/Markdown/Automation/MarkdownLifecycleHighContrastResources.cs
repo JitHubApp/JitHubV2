@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using JitHub.Services.Markdown.Hosting;
 using MarkdownRenderer;
 using MarkdownRenderer.Theming;
@@ -16,7 +17,7 @@ namespace JitHub.Services.Markdown.Automation;
 /// </summary>
 internal static class MarkdownLifecycleHighContrastResources
 {
-    private static readonly string[] WindowBackgroundRoles =
+    private static readonly ImmutableArray<string> WindowBackgroundRoles =
     [
         MarkdownElementKeys.Body,
         MarkdownElementKeys.CodeInline,
@@ -38,7 +39,7 @@ internal static class MarkdownLifecycleHighContrastResources
         MarkdownElementKeys.AlertCaution,
     ];
 
-    private static readonly string[] TextBorderRoles =
+    private static readonly ImmutableArray<string> TextBorderRoles =
     [
         MarkdownElementKeys.CodeBlock,
         MarkdownElementKeys.CodeBlockHeader,
@@ -48,7 +49,7 @@ internal static class MarkdownLifecycleHighContrastResources
         MarkdownElementKeys.TableCell,
     ];
 
-    private static readonly string[] MonospaceRoles =
+    private static readonly ImmutableArray<string> MonospaceRoles =
     [
         MarkdownElementKeys.CodeInline,
         MarkdownElementKeys.CodeBlock,
@@ -57,7 +58,7 @@ internal static class MarkdownLifecycleHighContrastResources
         MarkdownElementKeys.Diagram,
     ];
 
-    private static readonly string[] LinkAccentRoles =
+    private static readonly ImmutableArray<string> LinkAccentRoles =
     [
         MarkdownElementKeys.Quote,
         MarkdownElementKeys.AlertNote,
