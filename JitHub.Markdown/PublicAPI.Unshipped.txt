@@ -373,6 +373,9 @@ JitHub.Markdown.MarkdownViewerFeedback.Retry() -> void
 JitHub.Markdown.MarkdownViewerTelemetry
 JitHub.Markdown.MarkdownViewerTelemetry.MarkdownViewerTelemetry(JitHub.Markdown.IMarkdownTelemetrySink? telemetryService, System.Func<string?>! getHostKind) -> void
 JitHub.Markdown.MarkdownViewerTelemetry.TrackMarkdownEvent(string! eventName, string? action, string! result, string? resource = null, string? policy = null, string? errorKind = null, string! source = "user") -> void
+JitHub.Markdown.MarkdownWindowCloseCoordinator
+JitHub.Markdown.MarkdownWindowCloseCoordinator.MarkdownWindowCloseCoordinator(JitHub.Markdown.MarkdownRendererLifetimeRegistry! renderers, System.Action<System.Exception!, string!>! reportHandledFailure) -> void
+JitHub.Markdown.MarkdownWindowCloseCoordinator.RetireViewsThenCloseAsync(System.Func<System.TimeSpan, System.Threading.Tasks.Task!>? detachNestedContentAsync, System.Func<System.TimeSpan, System.Threading.Tasks.Task!>! detachPageAsync, System.Func<System.Threading.Tasks.Task!>! shutdownProvidersAsync, System.Action! close) -> System.Threading.Tasks.Task!
 JitHub.Markdown.NoMarkdownHostObserver
 JitHub.Markdown.NoMarkdownHostObserver.OnHostReady(string! automationId) -> void
 JitHub.Markdown.NoMarkdownHostObserver.OnImageUnavailable(string! automationId, string! source, MarkdownRenderer.Images.MarkdownImageUnavailableReason reason) -> void

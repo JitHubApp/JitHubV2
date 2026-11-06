@@ -82,7 +82,8 @@ public sealed class MainWindowLaunchContractTests
     {
         // The close path's order (nested shell content, a renderer drain, the
         // window's page, another drain, then the providers only when no
-        // renderer is alive) is covered by MarkdownViewShutdownTests in
+        // renderer is alive, and the window's close last) is covered by
+        // MarkdownViewShutdownTests and MarkdownWindowCloseCoordinatorTests in
         // JitHub.Markdown.Tests, and renderer retirement by
         // MarkdownRendererSlotTests, MarkdownRendererLifetimeRegistryTests and
         // MarkdownRendererDisposalCommitTests. Removing the shell's frame

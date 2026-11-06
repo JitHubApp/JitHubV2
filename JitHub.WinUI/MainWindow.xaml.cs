@@ -4,13 +4,10 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
-using JitHub.Markdown;
 using JitHub.Models;
 using JitHub.Services;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.Performance;
-using JitHub.WinUI.Views.Controls.Common;
-using JitHub.WinUI.Views.Pages;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Input;
@@ -56,9 +53,6 @@ public sealed partial class MainWindow : Window
     private const int MinimumLaunchWidthDip = 960;
     private const int MinimumLaunchHeightDip = 640;
     private static readonly TimeSpan StatusDisplayDuration = TimeSpan.FromSeconds(5);
-    // How long the close path waits for each removed page to unload and for
-    // its Markdown renderers to retire.
-    private static readonly TimeSpan MarkdownViewUnloadTimeout = TimeSpan.FromSeconds(2);
     private static readonly nuint KeyboardSubclassId = 0x4A484B31;
     private readonly UISettings _uiSettings = new();
     private readonly InputNonClientPointerSource _nonClientPointerSource;
@@ -773,71 +767,7 @@ public sealed partial class MainWindow : Window
         }
         finally
         {
-            // Markdown controls borrow the process-wide highlighter, engine,
-            // performance session, and SVG worker. MarkdownViewShutdown removes
-            // the page tree first, so its Unloaded handlers dispose the controls
-            // and detach scroll callbacks, and retires those providers only when
-            // every renderer is gone. Closing stays bounded either way.
-            try
-            {
-                await RetireMarkdownViewsAndProvidersAsync();
-            }
-            finally
-            {
-                _allowCloseAfterDiagnostics = true;
-                Close();
-            }
-        }
-    }
-
-    private Task RetireMarkdownViewsAndProvidersAsync()
-    {
-        App app = (App)Application.Current;
-        FrameworkElement? page = ContentFrameHost.Content as FrameworkElement;
-        Func<Task>? detachNestedContent = page is ShellPage shellPage
-            ? () => shellPage.DetachNestedContentForMarkdownShutdownAsync(MarkdownViewUnloadTimeout)
-            : null;
-
-        return new MarkdownViewShutdown(app.MarkdownRenderers, MarkdownViewUnloadTimeout, App.LogHandledException)
-            .RunAsync(
-                detachNestedContent,
-                () => DetachPageContentAsync(page),
-                () => app.MarkdownRuntime.ShutdownAsync());
-    }
-
-    private async Task DetachPageContentAsync(FrameworkElement? page)
-    {
-        if (page is null)
-        {
-            ContentFrameHost.Content = null;
-            return;
-        }
-
-        bool wasLoaded = page.IsLoaded;
-        var unloaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        void OnUnloaded(object sender, RoutedEventArgs args) => unloaded.TrySetResult();
-        if (wasLoaded)
-            page.Unloaded += OnUnloaded;
-
-        try
-        {
-            ContentFrameHost.Content = null;
-            if (wasLoaded)
-            {
-                try
-                {
-                    await unloaded.Task.WaitAsync(MarkdownViewUnloadTimeout);
-                }
-                catch (TimeoutException)
-                {
-                    // Bounded: MarkdownViewShutdown drains the renderers next.
-                }
-            }
-        }
-        finally
-        {
-            if (wasLoaded)
-                page.Unloaded -= OnUnloaded;
+            await MarkdownWindowClose.RetireViewsThenCloseAsync(ContentFrameHost, () => { _allowCloseAfterDiagnostics = true; Close(); });
         }
     }
 
@@ -942,9 +872,7 @@ public sealed partial class MainWindow : Window
     {
         if (message == WmFontChange)
         {
-            UiTaskGuard.Observe(
-                ((App)Application.Current).MarkdownRuntime.NotifyFontsChangedAsync(),
-                "ui-markdown-svg-font-change");
+            UiTaskGuard.Observe(((App)Application.Current).MarkdownRuntime.NotifyFontsChangedAsync(), "ui-markdown-svg-font-change");
         }
 
         if ((message == WmKeyDown || message == WmSysKeyDown) &&
