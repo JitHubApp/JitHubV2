@@ -2809,18 +2809,6 @@ public sealed class ImageBoxSvgRendererTests
         }
     }
 
-    private sealed class NotHandledImageResolver : IMarkdownImageResolver
-    {
-        public ValueTask<MarkdownImageResolution> ResolveAsync(
-            string source,
-            MarkdownImageResolveContext context,
-            CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.FromResult(MarkdownImageResolution.NotHandled);
-        }
-    }
-
     private sealed class ThreadRecordingImageResolver(MarkdownImageAsset asset) : IMarkdownImageResolver
     {
         internal int InvokedOnThreadId { get; private set; }

@@ -18,7 +18,6 @@ namespace MarkdownRenderer.GitHub.Tests;
 public sealed class SelectionAdornerViewportParityTests
 {
     private readonly MarkdownRenderResources _renderResources = new();
-
     private static readonly double[] RasterizationScales = [1, 1.25, 1.5, 1.75, 2, 2.25, 3, 4];
     private readonly ITestOutputHelper _output;
 
@@ -1442,43 +1441,6 @@ public sealed class SelectionAdornerViewportParityTests
             ? left.Height
             : bottomEdge - y;
         return new Rect(x, y, width, height);
-    }
-
-    private sealed class CountingSelectionBox : BlockBox
-    {
-        internal CountingSelectionBox(int blockIndex, Rect bounds)
-        {
-            BlockIndex = blockIndex;
-            Bounds = bounds;
-        }
-
-        internal Rect SelectionRect => Bounds;
-        internal int SelectionQueryCount { get; set; }
-
-        public override float Measure(float availableWidth)
-        {
-            Bounds = new Rect(Bounds.X, Bounds.Y, availableWidth, Bounds.Height);
-            return (float)Bounds.Height;
-        }
-
-        public override void Arrange(float x, float y, float width)
-        {
-            Bounds = new Rect(x, y, width, Bounds.Height);
-            IsDirty = false;
-        }
-
-        public override IEnumerable<Rect> GetSelectionRects(DocumentRange range)
-        {
-            SelectionQueryCount++;
-            DocumentRange normalized = range.Normalized();
-            if (BlockIndex >= normalized.Start.BlockIndex && BlockIndex <= normalized.End.BlockIndex &&
-                !normalized.IsEmpty)
-            {
-                yield return Bounds;
-            }
-        }
-
-        public override void Paint(CanvasDrawingSession ds, Rect viewport) { }
     }
 
     private delegate void VisibleAppendDelegate(

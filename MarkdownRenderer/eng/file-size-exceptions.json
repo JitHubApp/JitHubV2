@@ -38,22 +38,22 @@
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/ImageBoxMeasuredPlacementTransferTests.cs",
-      "lines": 1083,
+      "lines": 1066,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/ImageBoxSourceLeaseTests.cs",
-      "lines": 1369,
+      "lines": 1331,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/ImageBoxSvgPublicationCommitTests.cs",
-      "lines": 1107,
+      "lines": 1077,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/ImageBoxSvgRendererTests.cs",
-      "lines": 2835,
+      "lines": 2826,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
@@ -63,7 +63,7 @@
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/LayoutSnapshotIndexConstructionTests.cs",
-      "lines": 1196,
+      "lines": 1184,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
@@ -78,7 +78,7 @@
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/MultiRootRasterLayoutCandidateTests.cs",
-      "lines": 1152,
+      "lines": 1139,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
@@ -93,27 +93,27 @@
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/RootLocalContainerImageRelayoutTests.cs",
-      "lines": 1737,
+      "lines": 1681,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/RootLocalContainerVectorImageRelayoutTests.cs",
-      "lines": 1065,
+      "lines": 1028,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/RootLocalImageRelayoutTests.cs",
-      "lines": 1565,
+      "lines": 1512,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/RootLocalInlineImageRelayoutTests.cs",
-      "lines": 1279,
+      "lines": 1253,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/RootLocalTableImageRelayoutTests.cs",
-      "lines": 2123,
+      "lines": 2080,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
@@ -128,12 +128,12 @@
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/SelectionAdornerViewportParityTests.cs",
-      "lines": 1529,
+      "lines": 1495,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/SvgHostAdmissionCoordinatorTests.cs",
-      "lines": 1389,
+      "lines": 1382,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
@@ -148,7 +148,7 @@
     },
     {
       "path": "tests/MarkdownRenderer.GitHub.Tests/VectorSceneResourceResidencyTests.cs",
-      "lines": 1257,
+      "lines": 1232,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {

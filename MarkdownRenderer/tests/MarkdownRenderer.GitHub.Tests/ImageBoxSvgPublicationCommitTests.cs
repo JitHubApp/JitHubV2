@@ -22,7 +22,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
     {
         var renderer = new TestSvgRenderer();
         var image = CreateImage(renderer);
-        var document = new TestSvgDocument();
+        var document = new PublicationCommitSvgDocument();
         IDisposable? documentUse = null;
         RetirableCancellationTokenSource? tileCancellation = null;
         try
@@ -82,8 +82,8 @@ public sealed class ImageBoxSvgPublicationCommitTests
     {
         var renderer = new TestSvgRenderer();
         var image = CreateImage(renderer);
-        var acceptedDocument = new TestSvgDocument();
-        var candidateDocument = new TestSvgDocument();
+        var acceptedDocument = new PublicationCommitSvgDocument();
+        var candidateDocument = new PublicationCommitSvgDocument();
         IDisposable? acceptedDocumentUse = null;
         Action? queuedPublication = null;
 
@@ -149,8 +149,8 @@ public sealed class ImageBoxSvgPublicationCommitTests
     {
         var renderer = new TestSvgRenderer();
         var image = CreateImage(renderer);
-        var acceptedDocument = new TestSvgDocument();
-        var candidateDocument = new TestSvgDocument();
+        var acceptedDocument = new PublicationCommitSvgDocument();
+        var candidateDocument = new PublicationCommitSvgDocument();
 
         try
         {
@@ -189,8 +189,8 @@ public sealed class ImageBoxSvgPublicationCommitTests
     {
         var renderer = new TestSvgRenderer();
         var image = CreateImage(renderer);
-        var acceptedDocument = new TestSvgDocument();
-        var candidateDocument = new TestSvgDocument();
+        var acceptedDocument = new PublicationCommitSvgDocument();
+        var candidateDocument = new PublicationCommitSvgDocument();
         Action? queuedPublication = null;
 
         try
@@ -233,9 +233,9 @@ public sealed class ImageBoxSvgPublicationCommitTests
     {
         var renderer = new TestSvgRenderer();
         var image = CreateImage(renderer);
-        var acceptedDocument = new TestSvgDocument();
-        var olderCandidateDocument = new TestSvgDocument();
-        var newerDocument = new TestSvgDocument();
+        var acceptedDocument = new PublicationCommitSvgDocument();
+        var olderCandidateDocument = new PublicationCommitSvgDocument();
+        var newerDocument = new PublicationCommitSvgDocument();
         Action? olderPublication = null;
 
         try
@@ -289,8 +289,8 @@ public sealed class ImageBoxSvgPublicationCommitTests
     {
         var renderer = new TestSvgRenderer();
         var image = CreateImage(renderer);
-        var acceptedDocument = new TestSvgDocument();
-        var candidateDocument = new TestSvgDocument();
+        var acceptedDocument = new PublicationCommitSvgDocument();
+        var candidateDocument = new PublicationCommitSvgDocument();
         IDisposable? candidateUse = null;
         RetirableCancellationTokenSource? oldTileWork = null;
         RetirableCancellationTokenSource? lateOldTileWork = null;
@@ -388,7 +388,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
     {
         var renderer = new TestSvgRenderer();
         var image = CreateImage(renderer);
-        var document = new TestSvgDocument();
+        var document = new PublicationCommitSvgDocument();
         IDisposable? candidateUse = null;
         RetirableCancellationTokenSource? tileWork = null;
         object? tileWorkOwner = null;
@@ -453,7 +453,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
     {
         var renderer = new TestSvgRenderer();
         var image = CreateImage(renderer);
-        var currentDocument = new TestSvgDocument();
+        var currentDocument = new PublicationCommitSvgDocument();
 
         try
         {
@@ -480,7 +480,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
     {
         var renderer = new TestSvgRenderer();
         var image = CreateImage(renderer);
-        var currentDocument = new TestSvgDocument();
+        var currentDocument = new PublicationCommitSvgDocument();
 
         try
         {
@@ -522,7 +522,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
     {
         var renderer = new TestSvgRenderer();
         var image = CreateImage(renderer);
-        var candidateDocument = new TestSvgDocument();
+        var candidateDocument = new PublicationCommitSvgDocument();
         IDisposable? firstUse = null;
 
         try
@@ -555,8 +555,8 @@ public sealed class ImageBoxSvgPublicationCommitTests
     {
         var renderer = new TestSvgRenderer();
         var image = CreateImage(renderer);
-        var acceptedDocument = new TestSvgDocument();
-        var candidateDocument = new TestSvgDocument();
+        var acceptedDocument = new PublicationCommitSvgDocument();
+        var candidateDocument = new PublicationCommitSvgDocument();
         IDisposable? candidateUse = null;
 
         try
@@ -619,8 +619,8 @@ public sealed class ImageBoxSvgPublicationCommitTests
                 ReleaseOffscreenImageResources = true,
             });
         var image = CreateImage(renderer, session);
-        var acceptedDocument = new TestSvgDocument();
-        var candidateDocument = new TestSvgDocument();
+        var acceptedDocument = new PublicationCommitSvgDocument();
+        var candidateDocument = new PublicationCommitSvgDocument();
         IDisposable? candidateUse = null;
 
         try
@@ -668,7 +668,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
     {
         var renderer = new TestSvgRenderer();
         var image = CreateImage(renderer);
-        var acceptedDocument = new TestSvgDocument();
+        var acceptedDocument = new PublicationCommitSvgDocument();
 
         try
         {
@@ -720,8 +720,8 @@ public sealed class ImageBoxSvgPublicationCommitTests
     {
         var renderer = new TestSvgRenderer();
         var image = CreateImage(renderer);
-        var acceptedDocument = new TestSvgDocument();
-        var candidateDocument = new TestSvgDocument();
+        var acceptedDocument = new PublicationCommitSvgDocument();
+        var candidateDocument = new PublicationCommitSvgDocument();
         Action? queuedPublication = null;
         bool? layoutInvalidated = null;
         EventHandler<LoadCompletedEventArgs> loadCompleted = (_, args) =>
@@ -775,7 +775,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
     {
         var renderer = new TestSvgRenderer();
         var image = CreateImage(renderer);
-        var acceptedDocument = new TestSvgDocument();
+        var acceptedDocument = new PublicationCommitSvgDocument();
         string cacheKey = "svg-fallback-staging-test:" + Guid.NewGuid().ToString("N");
         object? cacheEntry = null;
 
@@ -868,10 +868,10 @@ public sealed class ImageBoxSvgPublicationCommitTests
         "data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%3E%3C%2Fsvg%3E",
         "Publication commit test");
 
-    private static void TrackDisposalsUnderWorkLock(ImageBox image, params TestSvgDocument[] documents)
+    private static void TrackDisposalsUnderWorkLock(ImageBox image, params PublicationCommitSvgDocument[] documents)
     {
         object workLock = image.Lifetime.Sync;
-        foreach (TestSvgDocument document in documents)
+        foreach (PublicationCommitSvgDocument document in documents)
             document.WorkLock = workLock;
     }
 
@@ -916,7 +916,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
     private void CommitTiled(
         ImageBox image,
         TestSvgRenderer renderer,
-        TestSvgDocument document,
+        PublicationCommitSvgDocument document,
         string identity)
     {
         int generation = AdvanceGeneration(image);
@@ -953,7 +953,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
     private (Action Publish, Action? OnDropped) CreateTiledPublication(
         ImageBox image,
         TestSvgRenderer renderer,
-        TestSvgDocument document,
+        PublicationCommitSvgDocument document,
         string identity,
         bool metadataWasKnown = false,
         Size? intrinsic = null)
@@ -971,7 +971,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
         return Assert.IsType<ValueTuple<Action, Action?>>(publication);
     }
 
-    private static IDisposable AcquireCandidate(ImageBox image, TestSvgDocument document)
+    private static IDisposable AcquireCandidate(ImageBox image, PublicationCommitSvgDocument document)
     {
         SvgDocumentUseLease? lease = image.SvgDocuments.TryAcquireCandidateUse(
             document, out bool ownershipConflict);
@@ -979,7 +979,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
         return Assert.IsAssignableFrom<IDisposable>(lease);
     }
 
-    private static IDisposable AcquireCurrentUse(ImageBox image, TestSvgDocument document) =>
+    private static IDisposable AcquireCurrentUse(ImageBox image, PublicationCommitSvgDocument document) =>
         Assert.IsAssignableFrom<IDisposable>(image.SvgDocuments.TryAcquireUse(document));
 
     private object CreateMetadata(
@@ -1029,7 +1029,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
     }
 
     private static object CreatePlan(
-        TestSvgDocument document,
+        PublicationCommitSvgDocument document,
         string identity,
         int width,
         int height,
@@ -1047,7 +1047,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
 
     private static object? Plan(ImageBox image) => image.Svg.AcceptedPlan;
 
-    private static SvgDocumentUseState DocumentUseState(ImageBox image, TestSvgDocument document)
+    private static SvgDocumentUseState DocumentUseState(ImageBox image, PublicationCommitSvgDocument document)
     {
         lock (image.Lifetime.Sync)
             return image.SvgDocuments.GetUseStateNoLock(document);
@@ -1073,38 +1073,5 @@ public sealed class ImageBoxSvgPublicationCommitTests
             MarkdownSvgOpenRequest request,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException("Publication commit tests do not open provider documents.");
-    }
-
-    private sealed class TestSvgDocument : IMarkdownSvgDocument
-    {
-        private int _disposeCount;
-        private int _disposeWhileWorkLockHeld;
-
-        public MarkdownSvgDocumentInfo Info { get; } = new(
-            IntrinsicWidthDips: 32,
-            IntrinsicHeightDips: 16,
-            IntrinsicAspectRatio: 2);
-
-        internal int DisposeCount => Volatile.Read(ref _disposeCount);
-
-        internal object? WorkLock { get; set; }
-
-        internal bool DisposeWhileWorkLockHeld => Volatile.Read(ref _disposeWhileWorkLockHeld) != 0;
-
-        internal TaskCompletionSource DisposeCompleted { get; } = new(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public ValueTask<MarkdownSvgRaster> RenderAsync(
-            MarkdownSvgRenderRequest request,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException("Publication commit tests do not render SVGs.");
-
-        public void Dispose()
-        {
-            if (WorkLock is { } workLock && Monitor.IsEntered(workLock))
-                Interlocked.Exchange(ref _disposeWhileWorkLockHeld, 1);
-            Interlocked.Increment(ref _disposeCount);
-            DisposeCompleted.TrySetResult();
-        }
     }
 }
