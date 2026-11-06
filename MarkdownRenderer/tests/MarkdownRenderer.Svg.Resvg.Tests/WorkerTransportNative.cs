@@ -20,6 +20,7 @@ internal static partial class WorkerTransportNative
     internal const uint DuplicateSameAccess = 0x00000002;
     internal const int ErrorInvalidHandle = 6;
     internal const int ErrorAccessDenied = 5;
+    internal const int ErrorNotSupported = 50;
 
     [LibraryImport("kernel32.dll")]
     internal static partial nint GetCurrentProcess();
