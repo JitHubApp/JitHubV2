@@ -36,6 +36,14 @@ internal sealed class MarkdownImagePreparationAdmission
 
     internal readonly int MaxConcurrency;
 
+    /// <summary>
+    /// The monitor that guards every admission transition, in the manner of
+    /// <see cref="System.Collections.ICollection.SyncRoot"/>. A holder blocks
+    /// grants, releases and cancellations until it exits, so a caller can order
+    /// its own work against this admission.
+    /// </summary>
+    internal object SyncRoot => _gate;
+
     internal long ActiveBytes
     {
         get { lock (_gate) return _activeBytes; }

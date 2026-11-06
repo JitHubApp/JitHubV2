@@ -24,6 +24,14 @@ internal sealed class FairDocumentAdmission
         _capacity = capacity;
     }
 
+    /// <summary>
+    /// The monitor that guards every admission transition, in the manner of
+    /// <see cref="System.Collections.ICollection.SyncRoot"/>. A holder blocks
+    /// grants, releases and cancellations until it exits, so a caller can order
+    /// its own work against this admission.
+    /// </summary>
+    internal object SyncRoot => _gate;
+
     /// <summary>Slots currently held, sampled under the admission lock.</summary>
     internal int ActiveSlots
     {

@@ -32,6 +32,14 @@ internal sealed class SourceByteAdmission
         _backgroundCapacity = capacity - reservedVisibleBytes;
     }
 
+    /// <summary>
+    /// The monitor that guards every admission transition, in the manner of
+    /// <see cref="System.Collections.ICollection.SyncRoot"/>. A holder blocks
+    /// grants, releases and cancellations until it exits, so a caller can order
+    /// its own work against this admission.
+    /// </summary>
+    internal object SyncRoot => _gate;
+
     internal long Capacity => _capacity;
     internal long BackgroundCapacity => _backgroundCapacity;
 
