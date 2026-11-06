@@ -14,7 +14,10 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// <remarks>
 /// Lock order: a caller may hold the box's image-work lock when it takes this
 /// lock. This type never calls the host's locking members while it holds its
-/// own lock.
+/// own lock. This file is longer than 500 lines because the waiter epoch, its
+/// governor registration, both cancellations and the retry flags are one
+/// state machine under that lock: every operation advances it in
+/// epoch-keyed lock transactions, with governor and host calls between them.
 /// </remarks>
 internal sealed class ImageBitmapOutputDeferral
 {
@@ -543,22 +546,16 @@ internal sealed class ImageBitmapOutputDeferral
         lock (_bitmapOutputSync)
         {
             if (_bitmapOutputDeferred == 0 || _bitmapOutputRetryQueued != 0 ||
-                _bitmapOutputRegistering != 0)
-                return;
-
-            if (_bitmapOutputRegistrationFailed != 0)
-                return;
-            if ((_bitmapOutputRegistrationNeeded == 0 && _bitmapOutputCapacityReady == 0) ||
+                _bitmapOutputRegistering != 0 || _bitmapOutputRegistrationFailed != 0 ||
+                (_bitmapOutputRegistrationNeeded == 0 && _bitmapOutputCapacityReady == 0) ||
                 _bitmapOutputWaiterOwner is null)
             {
                 return;
             }
-            else
-            {
-                _bitmapOutputRetryQueued = 1;
-                owner = _bitmapOutputWaiterOwner;
-                epoch = _bitmapOutputWaiterEpoch;
-            }
+
+            _bitmapOutputRetryQueued = 1;
+            owner = _bitmapOutputWaiterOwner;
+            epoch = _bitmapOutputWaiterEpoch;
         }
 
         if (owner is null)
@@ -600,8 +597,7 @@ internal sealed class ImageBitmapOutputDeferral
 
     private void PrepareDeferredBitmapOutputWaiter(long epoch)
     {
-        bool workDrained = _host.IsImageWorkDrained;
-        if (!workDrained)
+        if (!_host.IsImageWorkDrained)
         {
             lock (_bitmapOutputSync)
                 if (_bitmapOutputWaiterEpoch == epoch)
@@ -609,42 +605,15 @@ internal sealed class ImageBitmapOutputDeferral
             return;
         }
 
-        ImageBitmapOutputWaiter? owner;
-        BitmapOutputAdmission.WaiterRegistration? waiter;
-        long bytes;
-        long observedVersion;
-        bool visible;
-        bool replacement;
-        MarkdownSvgRenderDemand? demand;
-        int generation;
-        int svgGeneration;
-        bool needsTrim;
-        bool creatingRegistration;
-        long observedSlotVersion;
-        lock (_bitmapOutputSync)
-        {
-            if (_bitmapOutputWaiterEpoch != epoch || _bitmapOutputDeferred == 0)
-                return;
-            owner = _bitmapOutputWaiterOwner;
-            waiter = _bitmapOutputWaiter;
-            bytes = _bitmapOutputRequiredBytes;
-            observedVersion = _bitmapOutputCapacityVersion;
-            observedSlotVersion = _bitmapOutputWaiterSlotVersion;
-            visible = _bitmapOutputVisible != 0;
-            replacement = _bitmapOutputReplacement != 0;
-            demand = _bitmapOutputDemand;
-            generation = _bitmapOutputDemandGeneration;
-            svgGeneration = _bitmapOutputSvgGeneration;
-            needsTrim = _bitmapOutputNeedsTrim != 0;
-            _bitmapOutputNeedsTrim = 0;
-            creatingRegistration = waiter is null;
-            _bitmapOutputRegistering = creatingRegistration ? 1 : 0;
-        }
+        if (!TryCaptureWaiterRequest(epoch, out CapturedBitmapOutputWaiterRequest request))
+            return;
 
+        ImageBitmapOutputWaiter? owner = request.Owner;
+        MarkdownSvgRenderDemand? demand = request.Demand;
         if (owner is null || demand is null ||
             !ReferenceEquals(_host.LoadDemand, demand) ||
-            generation != _host.LoadDemandGeneration ||
-            svgGeneration != _host.SvgRenderGeneration ||
+            request.Generation != _host.LoadDemandGeneration ||
+            request.SvgGeneration != _host.SvgRenderGeneration ||
             _imageLifetime.IsCancellationRequested ||
             (_context.PerformanceSession?.IsDisposed ?? false))
         {
@@ -652,7 +621,7 @@ internal sealed class ImageBitmapOutputDeferral
             return;
         }
 
-        if (needsTrim)
+        if (request.NeedsTrim)
         {
             try { _resources.BitmapCache.TrimForBitmapOutputPressure(); }
             catch (Exception exception) { _host.RecordImageRetirementFailure(exception); }
@@ -660,33 +629,91 @@ internal sealed class ImageBitmapOutputDeferral
 
         bool registrationReady = false;
         Exception? registrationFailure = null;
+        BitmapOutputAdmission.WaiterRegistration? waiter = request.Waiter;
         BitmapOutputAdmission.WaiterRegistration? staleWaiter = null;
-        long capacityVersionAtAttempt = observedVersion;
-        long waiterSlotVersionAtAttempt = observedSlotVersion;
+        long capacityVersionAtAttempt = request.ObservedVersion;
+        long waiterSlotVersionAtAttempt = request.ObservedSlotVersion;
         try
         {
             registrationReady = owner.TryJoin(
-                _resources.BitmapOutput,
-                ref waiter,
-                bytes,
-                visible,
-                replacement,
-                observedVersion,
-                ref staleWaiter,
-                ref capacityVersionAtAttempt,
-                ref waiterSlotVersionAtAttempt);
+                _resources.BitmapOutput, ref waiter, request.Bytes, request.Visible,
+                request.Replacement, request.ObservedVersion, ref staleWaiter,
+                ref capacityVersionAtAttempt, ref waiterSlotVersionAtAttempt);
         }
         catch (Exception exception)
         {
             registrationFailure = exception;
         }
 
-        bool keep;
-        bool capacityReady;
-        bool refreshRegistration;
+        bool keep = PublishJoinResult(
+            epoch, owner, waiter, registrationReady, request, capacityVersionAtAttempt,
+            waiterSlotVersionAtAttempt, out bool refreshRegistration, out bool capacityReady);
+        if (!keep)
+        {
+            RetireUnkeptJoin(epoch, owner, request.CreatingRegistration, waiter, staleWaiter,
+                registrationReady, registrationFailure);
+            return;
+        }
+
+        staleWaiter?.Dispose();
+
+        if (refreshRegistration)
+        {
+            ArmDeferredBitmapOutputRetryAfterWorkDrained();
+            return;
+        }
+
+        if (capacityReady)
+            _retry.DispatchBitmapOutputRetry(epoch);
+    }
+
+    // Captures the epoch's request for one governor join outside the lock,
+    // consumes its pending trim, and marks a first registration in progress.
+    private bool TryCaptureWaiterRequest(long epoch, out CapturedBitmapOutputWaiterRequest request)
+    {
         lock (_bitmapOutputSync)
         {
-            keep = registrationReady && waiter is not null &&
+            if (_bitmapOutputWaiterEpoch != epoch || _bitmapOutputDeferred == 0)
+            {
+                request = default;
+                return false;
+            }
+            request = new CapturedBitmapOutputWaiterRequest(
+                _bitmapOutputWaiterOwner,
+                _bitmapOutputWaiter,
+                _bitmapOutputRequiredBytes,
+                _bitmapOutputCapacityVersion,
+                _bitmapOutputWaiterSlotVersion,
+                _bitmapOutputVisible != 0,
+                _bitmapOutputReplacement != 0,
+                _bitmapOutputDemand,
+                _bitmapOutputDemandGeneration,
+                _bitmapOutputSvgGeneration,
+                _bitmapOutputNeedsTrim != 0,
+                _bitmapOutputWaiter is null);
+            _bitmapOutputNeedsTrim = 0;
+            _bitmapOutputRegistering = request.CreatingRegistration ? 1 : 0;
+            return true;
+        }
+    }
+
+    // Publishes a join's outcome for the epoch it was captured in. Returns
+    // whether the joined waiter is kept, and whether the kept waiter must
+    // register again or may dispatch its ready retry.
+    private bool PublishJoinResult(
+        long epoch,
+        ImageBitmapOutputWaiter owner,
+        BitmapOutputAdmission.WaiterRegistration? waiter,
+        bool registrationReady,
+        in CapturedBitmapOutputWaiterRequest request,
+        long capacityVersionAtAttempt,
+        long waiterSlotVersionAtAttempt,
+        out bool refreshRegistration,
+        out bool capacityReady)
+    {
+        lock (_bitmapOutputSync)
+        {
+            bool keep = registrationReady && waiter is not null &&
                 _bitmapOutputWaiterEpoch == epoch &&
                 ReferenceEquals(_bitmapOutputWaiterOwner, owner) &&
                 Volatile.Read(ref _bitmapOutputDeferred) != 0;
@@ -702,10 +729,10 @@ internal sealed class ImageBitmapOutputDeferral
                     // while the governor call is outside this lock. Do not
                     // overwrite that newer request with the captured threshold.
                     _bitmapOutputRegistrationNeeded =
-                        _bitmapOutputRequiredBytes != bytes ||
-                        (_bitmapOutputVisible != 0) != visible ||
-                        (_bitmapOutputReplacement != 0) != replacement ||
-                        _bitmapOutputCapacityVersion != observedVersion
+                        _bitmapOutputRequiredBytes != request.Bytes ||
+                        (_bitmapOutputVisible != 0) != request.Visible ||
+                        (_bitmapOutputReplacement != 0) != request.Replacement ||
+                        _bitmapOutputCapacityVersion != request.ObservedVersion
                             ? 1 : 0;
                 }
                 else if (!registrationReady)
@@ -720,52 +747,50 @@ internal sealed class ImageBitmapOutputDeferral
             capacityReady = keep && !refreshRegistration && _bitmapOutputCapacityReady != 0;
             if (!capacityReady && _bitmapOutputWaiterEpoch == epoch)
                 _bitmapOutputRetryQueued = 0;
+            return keep;
         }
+    }
 
-        if (!keep)
+    // Releases the tokens of a join that was not kept, records its failure,
+    // and signals recovery when the registration itself failed.
+    private void RetireUnkeptJoin(
+        long epoch,
+        ImageBitmapOutputWaiter owner,
+        bool creatingRegistration,
+        BitmapOutputAdmission.WaiterRegistration? waiter,
+        BitmapOutputAdmission.WaiterRegistration? staleWaiter,
+        bool registrationReady,
+        Exception? registrationFailure)
+    {
+        bool disposeRegistration = creatingRegistration || !registrationReady;
+        if (!creatingRegistration && !registrationReady)
         {
-            bool disposeRegistration = creatingRegistration || !registrationReady;
-            if (!creatingRegistration && !registrationReady)
+            lock (_bitmapOutputSync)
             {
-                lock (_bitmapOutputSync)
+                if (_bitmapOutputWaiterEpoch == epoch &&
+                    (ReferenceEquals(_bitmapOutputWaiter, waiter) ||
+                     (staleWaiter is not null && ReferenceEquals(_bitmapOutputWaiter, staleWaiter))))
                 {
-                    if (_bitmapOutputWaiterEpoch == epoch &&
-                        (ReferenceEquals(_bitmapOutputWaiter, waiter) ||
-                         (staleWaiter is not null && ReferenceEquals(_bitmapOutputWaiter, staleWaiter))))
-                    {
-                        _bitmapOutputWaiter = null;
-                        _bitmapOutputRegistrationFailed = 1;
-                        _bitmapOutputRegistrationNeeded = 0;
-                    }
+                    _bitmapOutputWaiter = null;
+                    _bitmapOutputRegistrationFailed = 1;
+                    _bitmapOutputRegistrationNeeded = 0;
                 }
             }
-            // A stale-registration fallback may have created a fresh token
-            // while the ImageBox epoch was replaced. That token was never
-            // stored in the ImageBox and therefore cannot be detached by the
-            // concurrent ClearBitmapOutputDeferral path.
-            if (registrationReady && staleWaiter is not null && waiter is not null)
-                waiter.Dispose();
-            if (staleWaiter is not null)
-                staleWaiter.Dispose();
-            else if (disposeRegistration && waiter is not null)
-                waiter.Dispose();
-            if (registrationFailure is not null)
-                _host.RecordImageRetirementFailure(registrationFailure);
-            if (!registrationReady)
-                SignalBitmapOutputRecoveryIfNeeded(epoch, owner);
-            return;
         }
-
-        staleWaiter?.Dispose();
-
-        if (refreshRegistration)
-        {
-            ArmDeferredBitmapOutputRetryAfterWorkDrained();
-            return;
-        }
-
-        if (capacityReady)
-            _retry.DispatchBitmapOutputRetry(epoch);
+        // A stale-registration fallback may have created a fresh token
+        // while the ImageBox epoch was replaced. That token was never
+        // stored in the ImageBox and therefore cannot be detached by the
+        // concurrent ClearBitmapOutputDeferral path.
+        if (registrationReady && staleWaiter is not null && waiter is not null)
+            waiter.Dispose();
+        if (staleWaiter is not null)
+            staleWaiter.Dispose();
+        else if (disposeRegistration && waiter is not null)
+            waiter.Dispose();
+        if (registrationFailure is not null)
+            _host.RecordImageRetirementFailure(registrationFailure);
+        if (!registrationReady)
+            SignalBitmapOutputRecoveryIfNeeded(epoch, owner);
     }
 
     private void SignalBitmapOutputRecoveryIfNeeded(long epoch, ImageBitmapOutputWaiter? owner)
@@ -823,9 +848,7 @@ internal sealed class ImageBitmapOutputDeferral
         }
 
         waiter?.CompleteRetry(capacityClaimed);
-        if (capacityClaimed)
-            ClearBitmapOutputDeferral(expectedEpoch: epoch);
-        else if (!remainsDeferred)
+        if (capacityClaimed || !remainsDeferred)
             ClearBitmapOutputDeferral(expectedEpoch: epoch);
     }
 
