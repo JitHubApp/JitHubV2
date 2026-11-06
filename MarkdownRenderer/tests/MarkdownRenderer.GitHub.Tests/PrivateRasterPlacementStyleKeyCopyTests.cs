@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Threading.Tasks;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
@@ -70,10 +69,10 @@ public sealed class PrivateRasterPlacementStyleKeyCopyTests
             Assert.NotSame(source.Runs[index].StyleModifierKeys, copied.Runs[index].StyleModifierKeys);
         }
 
-        Assert.Equal(GetKeyList(source, "_styleContextKeys"), GetKeyList(copied, "_styleContextKeys"));
-        Assert.NotSame(GetKeyList(source, "_styleContextKeys"), GetKeyList(copied, "_styleContextKeys"));
-        Assert.Equal(GetKeyList(source, "_styleAliasKeys"), GetKeyList(copied, "_styleAliasKeys"));
-        Assert.NotSame(GetKeyList(source, "_styleAliasKeys"), GetKeyList(copied, "_styleAliasKeys"));
+        Assert.Equal(source.StyleContextKeys, copied.StyleContextKeys);
+        Assert.NotSame(source.StyleContextKeys, copied.StyleContextKeys);
+        Assert.Equal(source.StyleAliasKeys, copied.StyleAliasKeys);
+        Assert.NotSame(source.StyleAliasKeys, copied.StyleAliasKeys);
         IReadOnlyList<IReadOnlyList<string>> sourceEffectiveAliases = GetEffectiveAliases(source);
         IReadOnlyList<IReadOnlyList<string>> copiedEffectiveAliases = GetEffectiveAliases(copied);
         Assert.Equal(sourceEffectiveAliases.Count, copiedEffectiveAliases.Count);
@@ -326,12 +325,6 @@ public sealed class PrivateRasterPlacementStyleKeyCopyTests
         var keys = new string[count];
         Array.Fill(keys, "private-style-key");
         return keys;
-    }
-
-    private static IReadOnlyList<string> GetKeyList(InlineContainerBox box, string fieldName)
-    {
-        FieldInfo field = typeof(InlineContainerBox).GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return Assert.IsAssignableFrom<IReadOnlyList<string>>(field.GetValue(box));
     }
 
     private static IReadOnlyList<IReadOnlyList<string>> GetEffectiveAliases(InlineContainerBox box)

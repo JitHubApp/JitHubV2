@@ -18,6 +18,18 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// Owns a <see cref="CanvasTextLayout"/> built from a single concatenated buffer
 /// with per-run style spans.
 /// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because it is the one entry point that
+/// layout, paint, selection, accessibility and private placement callers use
+/// for an inline container, and the by-value states it owns
+/// (<see cref="InlineRunSequence"/>, <see cref="InlineRunStyleCache"/>,
+/// <see cref="InlineTextLayoutState"/>, <see cref="InlineSelectionLayoutState"/>)
+/// can only be mutated in place through its private fields. Measuring,
+/// painting, hit testing, geometry and placement cloning already live in
+/// their own owners; what remains here is short documented delegation plus the
+/// constructors, run adoption, the measured-placement swap and disposal that
+/// must touch those fields directly.
+/// </remarks>
 internal sealed class InlineContainerBox : BlockBox
 {
     // Keep descriptor scans under the snapshot lock and source-fence checks on

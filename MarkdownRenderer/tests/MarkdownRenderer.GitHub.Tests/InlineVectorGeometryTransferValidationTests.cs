@@ -1,4 +1,3 @@
-using System.Reflection;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Performance;
@@ -46,7 +45,7 @@ public sealed class InlineVectorGeometryTransferValidationTests
             await ImageRelayoutTestSupport.LoadImageAsync(sourceImage);
 
             SourceVectorPlacement sourceBefore = SourceVectorPlacement.Capture(snapshot, source, sourceVector);
-            object sourceVectorState = sourceBefore.VectorState;
+            InlineVectorSceneState sourceVectorState = sourceBefore.VectorState;
             InlineSceneGeometry[] sourcePendingGeometry = sourceBefore.PendingGeometry;
 
             candidateContext = CreateCandidateContext(sourceContext);
@@ -60,10 +59,9 @@ public sealed class InlineVectorGeometryTransferValidationTests
             Assert.True(source.TryCaptureMeasuredPlacementTransferWithMeasuredVectorPlacement(
                 prepared!, LayoutWidth, out InlineMeasuredPlacementTransfer? transfer));
             Assert.NotNull(transfer);
-            object preparedVectorState = prepared!.VectorSceneStateHolder!;
+            InlineVectorSceneState preparedVectorState = prepared!.VectorSceneStateHolder!;
             Assert.NotSame(sourceVectorState, preparedVectorState);
-            InlineSceneGeometry[] initialPreparedGeometry = GetField<InlineSceneGeometry[]>(
-                preparedVectorState, "PendingSceneGeometry");
+            InlineSceneGeometry[] initialPreparedGeometry = preparedVectorState.PendingSceneGeometry;
             Assert.Empty(initialPreparedGeometry);
             // The immutable empty array is intentionally shared; ownership
             // isolation applies to the holder and populated geometry arrays.
@@ -72,8 +70,7 @@ public sealed class InlineVectorGeometryTransferValidationTests
             _ = prepared!.Measure(LayoutWidth);
             prepared.Arrange(0f, 0f, LayoutWidth);
             InlineVectorSceneRun preparedVector = Assert.Single(prepared.Runs.OfType<InlineVectorSceneRun>());
-            InlineSceneGeometry[] candidateGeometry = GetField<InlineSceneGeometry[]>(
-                preparedVectorState, "PendingSceneGeometry");
+            InlineSceneGeometry[] candidateGeometry = preparedVectorState.PendingSceneGeometry;
             Assert.Single(candidateGeometry);
             Assert.NotSame(sourcePendingGeometry, candidateGeometry);
             Assert.True(candidateGeometry[0].RegionCount > 0);
@@ -81,7 +78,9 @@ public sealed class InlineVectorGeometryTransferValidationTests
 
             var malformed = (InlineSceneGeometry[])candidateGeometry.Clone();
             malformed[0] = CreateInvalidGeometry(preparedVector, invalidGeometry);
-            SetField(preparedVectorState, "PendingSceneGeometry", malformed);
+            // Fault injection: DirectWrite never reports these regions, so the
+            // candidate's own pending geometry is replaced in its box-owned holder.
+            preparedVectorState.PendingSceneGeometry = malformed;
 
             Assert.False(transfer!.TryPrepareMeasuredVectorGeometry());
 
@@ -121,32 +120,18 @@ public sealed class InlineVectorGeometryTransferValidationTests
         _ => throw new ArgumentOutOfRangeException(nameof(invalidGeometry)),
     };
 
+    // The Rect constructor rejects a negative width, but a Rect can still
+    // carry one across the WinRT boundary. The CsWinRT projection stores its
+    // extents in public float fields, so the corrupted value is written there.
     private static Rect WithCorruptedNegativeWidth(Rect validRect)
     {
-        object boxedRect = validRect;
-        FieldInfo widthField = Assert.Single(typeof(Rect).GetFields(
-            BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public),
-            static field =>
-                field.Name.Contains("width", StringComparison.OrdinalIgnoreCase) &&
-                (field.FieldType == typeof(float) || field.FieldType == typeof(double)));
-        widthField.SetValue(boxedRect, widthField.FieldType == typeof(float) ? (object)(-1f) : -1d);
-        return Assert.IsType<Rect>(boxedRect);
-    }
-
-    private static T GetField<T>(object instance, string name)
-    {
-        FieldInfo field = instance.GetType().GetField(
-            name, BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException($"Missing test field '{name}'.");
-        return Assert.IsType<T>(field.GetValue(instance));
-    }
-
-    private static void SetField<T>(object instance, string name, T value)
-    {
-        FieldInfo field = instance.GetType().GetField(
-            name, BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException($"Missing test field '{name}'.");
-        field.SetValue(instance, value);
+        Rect corrupted = validRect;
+        corrupted._width = -1f;
+        Assert.Equal(-1d, corrupted.Width);
+        Assert.Equal(validRect.X, corrupted.X);
+        Assert.Equal(validRect.Y, corrupted.Y);
+        Assert.Equal(validRect.Height, corrupted.Height);
+        return corrupted;
     }
 
     /// <summary>
@@ -158,7 +143,7 @@ public sealed class InlineVectorGeometryTransferValidationTests
         InlineContainerBox Source,
         InlineVectorSceneRun Vector,
         CanvasTextLayout Layout,
-        object VectorState,
+        InlineVectorSceneState VectorState,
         InlineSceneGeometry[] PendingGeometry,
         long Revision,
         long SceneGeneration,
@@ -174,14 +159,14 @@ public sealed class InlineVectorGeometryTransferValidationTests
             InlineContainerBox source,
             InlineVectorSceneRun sourceVector)
         {
-            object vectorState = source.VectorSceneStateHolder!;
+            InlineVectorSceneState vectorState = source.VectorSceneStateHolder!;
             return new(
                 snapshot,
                 source,
                 sourceVector,
                 source.TextLayout!,
                 vectorState,
-                GetField<InlineSceneGeometry[]>(vectorState, "PendingSceneGeometry"),
+                vectorState.PendingSceneGeometry,
                 snapshot.LayoutRevision,
                 source.SceneGeometryGeneration,
                 source.SceneCharacterRegionQueryCount,
@@ -202,8 +187,7 @@ public sealed class InlineVectorGeometryTransferValidationTests
             Assert.Equal(Bounds, Source.Bounds);
             Assert.Same(VectorState, Source.VectorSceneStateHolder);
             Assert.Same(Layout, Source.TextLayout!);
-            Assert.Same(PendingGeometry, GetField<InlineSceneGeometry[]>(
-                VectorState, "PendingSceneGeometry"));
+            Assert.Same(PendingGeometry, VectorState.PendingSceneGeometry);
             Assert.Same(Vector.Scene, transfer.Source.Runs.OfType<InlineVectorSceneRun>().Single().Scene);
             Assert.Equal(VectorBounds, Vector.LocalBounds);
             Assert.Equal(VectorWidth, Vector.DesiredWidth);
