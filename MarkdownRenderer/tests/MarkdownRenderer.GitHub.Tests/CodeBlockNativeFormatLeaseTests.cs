@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Reflection;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout;
@@ -21,8 +20,6 @@ public sealed class CodeBlockNativeFormatLeaseTests
 {
     private const float CanvasWidth = 360;
     private const float EnhancedHeaderHeight = 38;
-    private const BindingFlags PrivateInstance = BindingFlags.Instance | BindingFlags.NonPublic;
-    private const BindingFlags InstanceFields = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
     private readonly MarkdownRenderResources _renderResources = new();
 
     [Fact]
@@ -37,10 +34,10 @@ public sealed class CodeBlockNativeFormatLeaseTests
             Paint(first.Box, device, 1);
             Paint(second.Box, device, 1);
 
-            SharedCanvasTextFormatCache.Lease firstHeader = GetLease(first.Box, "_headerTextFormatLease");
-            SharedCanvasTextFormatCache.Lease secondHeader = GetLease(second.Box, "_headerTextFormatLease");
-            SharedCanvasTextFormatCache.Lease firstGutter = GetLease(first.Box, "_lineNumberTextFormatLease");
-            SharedCanvasTextFormatCache.Lease secondGutter = GetLease(second.Box, "_lineNumberTextFormatLease");
+            SharedCanvasTextFormatCache.Lease firstHeader = GetHeaderLease(first.Box);
+            SharedCanvasTextFormatCache.Lease secondHeader = GetHeaderLease(second.Box);
+            SharedCanvasTextFormatCache.Lease firstGutter = GetLineNumberLease(first.Box);
+            SharedCanvasTextFormatCache.Lease secondGutter = GetLineNumberLease(second.Box);
 
             Assert.NotSame(firstHeader, secondHeader);
             Assert.NotSame(firstGutter, secondGutter);
@@ -81,8 +78,8 @@ public sealed class CodeBlockNativeFormatLeaseTests
         try
         {
             Paint(fixture.Box, device, 1);
-            CanvasTextFormat header = GetLease(fixture.Box, "_headerTextFormatLease").Format;
-            CanvasTextFormat gutter = GetLease(fixture.Box, "_lineNumberTextFormatLease").Format;
+            CanvasTextFormat header = GetHeaderLease(fixture.Box).Format;
+            CanvasTextFormat gutter = GetLineNumberLease(fixture.Box).Format;
 
             Assert.Equal(fixture.LanguageStyle.FontFamily, header.FontFamily);
             Assert.Equal(fixture.LanguageStyle.FontSize, header.FontSize);
@@ -134,14 +131,12 @@ public sealed class CodeBlockNativeFormatLeaseTests
                 fixture.Box.Paint(drawing, outside);
             }
 
-            Assert.Null(GetPrivateField(fixture.Box, "_headerTextFormatLease"));
-            Assert.Null(GetPrivateField(fixture.Box, "_lineNumberTextFormatLease"));
+            Assert.Null(fixture.Box.TextFormats.HeaderLease);
+            Assert.Null(fixture.Box.TextFormats.LineNumberLease);
 
             _ = Paint(fixture.Box, device, 1);
-            Assert.IsType<SharedCanvasTextFormatCache.Lease>(
-                GetPrivateField(fixture.Box, "_headerTextFormatLease"));
-            Assert.IsType<SharedCanvasTextFormatCache.Lease>(
-                GetPrivateField(fixture.Box, "_lineNumberTextFormatLease"));
+            Assert.IsType<SharedCanvasTextFormatCache.Lease>(fixture.Box.TextFormats.HeaderLease);
+            Assert.IsType<SharedCanvasTextFormatCache.Lease>(fixture.Box.TextFormats.LineNumberLease);
         }
         finally
         {
@@ -389,32 +384,20 @@ public sealed class CodeBlockNativeFormatLeaseTests
         return new Rect(left, box.Bounds.Y + box.Margin.Top, System.Math.Max(0, right - left), EnhancedHeaderHeight);
     }
 
-    private static SharedCanvasTextFormatCache.Lease GetLease(CodeBlockBox box, string fieldName)
-    {
-        return Assert.IsType<SharedCanvasTextFormatCache.Lease>(GetPrivateField(box, fieldName));
-    }
+    private static SharedCanvasTextFormatCache.Lease GetHeaderLease(CodeBlockBox box)
+        => Assert.IsType<SharedCanvasTextFormatCache.Lease>(box.TextFormats.HeaderLease);
 
-    private static object? GetPrivateField(CodeBlockBox box, string fieldName)
-    {
-        FieldInfo field = Assert.IsAssignableFrom<FieldInfo>(typeof(CodeBlockBox).GetField(fieldName, PrivateInstance));
-        return field.GetValue(box);
-    }
+    private static SharedCanvasTextFormatCache.Lease GetLineNumberLease(CodeBlockBox box)
+        => Assert.IsType<SharedCanvasTextFormatCache.Lease>(box.TextFormats.LineNumberLease);
 
     private static VisualLine[] GetVisualLines(CodeBlockBox box)
     {
-        Array values = box.VisualLineIndex.Lines;
-        Type valueType = values.GetType().GetElementType()!;
-        FieldInfo logicalLineIndex = Assert.IsAssignableFrom<FieldInfo>(valueType.GetField("LogicalLineIndex", InstanceFields));
-        FieldInfo top = Assert.IsAssignableFrom<FieldInfo>(valueType.GetField("Top", InstanceFields));
-        FieldInfo height = Assert.IsAssignableFrom<FieldInfo>(valueType.GetField("Height", InstanceFields));
+        CodeVisualLineInfo[] values = box.VisualLineIndex.Lines;
         var result = new VisualLine[values.Length];
         for (int index = 0; index < values.Length; index++)
         {
-            object value = values.GetValue(index)!;
-            result[index] = new VisualLine(
-                Assert.IsType<int>(logicalLineIndex.GetValue(value)),
-                Assert.IsType<double>(top.GetValue(value)),
-                Assert.IsType<double>(height.GetValue(value)));
+            CodeVisualLineInfo value = values[index];
+            result[index] = new VisualLine(value.LogicalLineIndex, value.Top, value.Height);
         }
         return result;
     }

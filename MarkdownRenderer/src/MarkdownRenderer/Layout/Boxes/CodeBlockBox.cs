@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;
@@ -12,6 +11,18 @@ using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Layout.Boxes;
 
+/// <summary>
+/// A fenced or indented code block: header chrome, an optional gutter, and
+/// the code text split into horizontally scrollable inline chunks.
+/// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because it is the single
+/// <see cref="BlockBox"/> and <see cref="IHorizontalOverflowBox"/>
+/// implementation for a code block: chunk measure/arrange, horizontal
+/// scrolling, chrome geometry and disposal share the same arranged-state
+/// fields. Painting, hit testing, the gutter, the visual-line index, private
+/// placement and the text-format leases live in their own owners.
+/// </remarks>
 internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
 {
     private const float EnhancedHeaderHeight = 38f;
@@ -32,6 +43,8 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
     private readonly List<CodeLineInfo> _lines;
     private readonly CodeBlockVisualLineIndex _visualLineIndex;
     private readonly CodeBlockGutterPainter _gutter;
+    private readonly CodeBlockPrivatePlacement _placement;
+    private readonly CodeBlockTextFormatLeases _textFormats;
     private readonly IReadOnlyList<string> _styleContextKeys;
     private readonly IReadOnlyList<string> _styleAliasKeys;
     private ElementStyle? _codeStyle;
@@ -39,8 +52,6 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
     private ElementStyle? _languageStyle;
     private ElementStyle? _gutterStyle;
     private ElementStyle? _lineNumberStyle;
-    private SharedCanvasTextFormatCache.Lease? _headerTextFormatLease;
-    private SharedCanvasTextFormatCache.Lease? _lineNumberTextFormatLease;
     private float _contentWidth;
     private float _bodyViewportWidth;
     private double _horizontalOffset;
@@ -48,11 +59,6 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
     private float _arrangedY;
     private float _arrangedWidth;
     private bool _hasArrangement;
-    private long _placementRevision;
-    private int _placementDisposed;
-    private bool _isPrivatePlacementCloneShell;
-    private bool _privatePlacementCloneComplete;
-    private int _privatePlacementExpectedChunkCount;
 
     internal float HeaderHeight => Context.CodeBlockChromeMode == CodeBlockChromeMode.PlainMarkdown
         ? 0f
@@ -80,14 +86,16 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
         _gutter = new CodeBlockGutterPainter(this);
         _hitTester = new CodeBlockHitTester(this);
         _painter = new CodeBlockPainter(this);
+        _placement = new CodeBlockPrivatePlacement(this, _chunks);
+        _textFormats = new CodeBlockTextFormatLeases(context);
         Margin = GetCodeStyle().Margin;
     }
 
     private CodeBlockBox(MarkdownLayoutContext targetContext, CodeBlockBox source)
     {
         Context = targetContext;
-        _styleContextKeys = CopyStyleKeys(source._styleContextKeys);
-        _styleAliasKeys = CopyStyleKeys(source._styleAliasKeys);
+        _styleContextKeys = CodeBlockPrivatePlacement.CopyStyleKeys(source._styleContextKeys);
+        _styleAliasKeys = CodeBlockPrivatePlacement.CopyStyleKeys(source._styleAliasKeys);
         Metadata = source.Metadata;
         CodeLanguage = source.CodeLanguage;
         LanguageDisplay = source.LanguageDisplay;
@@ -105,9 +113,9 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
         _painter = new CodeBlockPainter(this);
         _appliedHighlightKey = source._appliedHighlightKey;
         _horizontalOffset = source._horizontalOffset;
-        _placementRevision = source.PrivatePlacementRevision;
-        _isPrivatePlacementCloneShell = true;
-        _privatePlacementExpectedChunkCount = source._chunks.Count;
+        _placement = new CodeBlockPrivatePlacement(
+            this, _chunks, source.PrivatePlacementRevision, source._chunks.Count);
+        _textFormats = new CodeBlockTextFormatLeases(targetContext);
         BlockIndex = source.BlockIndex;
         SafeHtmlInlineFlowScopeId = source.SafeHtmlInlineFlowScopeId;
         CopyPlacementMarginsFrom(source);
@@ -128,6 +136,15 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
     internal CodeBlockGutterPainter Gutter => _gutter;
     internal float MeasuredContentWidth => _contentWidth;
     internal float BodyViewportWidth => _bodyViewportWidth;
+
+    /// <summary>The style-context keys captured when this block was built; a clone shell holds its own copy.</summary>
+    internal IReadOnlyList<string> StyleContextKeys => _styleContextKeys;
+
+    /// <summary>The style-alias keys captured when this block was built; a clone shell holds its own copy.</summary>
+    internal IReadOnlyList<string> StyleAliasKeys => _styleAliasKeys;
+
+    /// <summary>The header and gutter text-format leases this block paints with.</summary>
+    internal CodeBlockTextFormatLeases TextFormats => _textFormats;
     public readonly bool IsCopyButtonEnabled;
     internal bool HasCopyButtonAction =>
         IsCopyButtonEnabled && Context.CodeBlockChromeMode != CodeBlockChromeMode.PlainMarkdown;
@@ -140,88 +157,22 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
     public bool CanScrollHorizontally => HorizontalExtent > HorizontalViewport + 0.5;
     public bool IsRightToLeft => Context.FlowDirection == FlowDirection.RightToLeft;
 
-    internal long PrivatePlacementRevision => Interlocked.Read(ref _placementRevision);
+    internal long PrivatePlacementRevision => _placement.Revision;
 
-    internal int PrivatePlacementForegroundSpanCount
-    {
-        get
-        {
-            int count = 0;
-            foreach (InlineContainerBox chunk in _chunks)
-            {
-                int chunkCount = chunk.PrivateRasterPlacementForegroundSpanCount;
-                if (chunkCount > int.MaxValue - count)
-                    return int.MaxValue;
-                count += chunkCount;
-            }
-            return count;
-        }
-    }
+    internal int PrivatePlacementForegroundSpanCount => _placement.ForegroundSpanCount;
 
-    internal bool IsCurrentPrivatePlacement(long revision)
-        => Volatile.Read(ref _placementDisposed) == 0 && PrivatePlacementRevision == revision;
+    internal bool IsCurrentPrivatePlacement(long revision) => _placement.IsCurrent(revision);
 
     /// <summary>
     /// Allocation-free eligibility and budget scan for the immutable shell
-    /// inputs owned by a code block. Chunk run/image descriptors are scanned
-    /// recursively by PrivateRasterPlacementTree and charged only there.
+    /// inputs owned by a code block; see <see cref="CodeBlockPrivatePlacement.TryGetCounts"/>.
     /// </summary>
     internal bool TryGetPrivatePlacementCounts(
         MarkdownLayoutContext targetContext,
         bool allowUnmeasured,
         out int copiedLineCount,
         out long styleKeyEntries)
-    {
-        ArgumentNullException.ThrowIfNull(targetContext);
-        copiedLineCount = 0;
-        styleKeyEntries = 0;
-        targetContext.CancellationToken.ThrowIfCancellationRequested();
-        if (!IsPrivatePlacementShellEligible(targetContext) ||
-            (!allowUnmeasured && IsDirty) ||
-            BlockIndex <= 0 ||
-            _lines.Count is 0 or > PrivateRasterPlacementTree.MaximumNodes ||
-            _chunks.Count is 0 or > PrivateRasterPlacementTree.MaximumNodes ||
-            !TryAccumulatePrivateStyleKeys(ref styleKeyEntries, _styleContextKeys) ||
-            !TryAccumulatePrivateStyleKeys(ref styleKeyEntries, _styleAliasKeys))
-            return false;
-
-        int expectedOffset = 0;
-        foreach (InlineContainerBox chunk in _chunks)
-        {
-            targetContext.CancellationToken.ThrowIfCancellationRequested();
-            if (chunk is null ||
-                !ReferenceEquals(chunk.Context, Context) ||
-                chunk.ElementKey != MarkdownElementKeys.CodeBlock ||
-                chunk.SafeHtmlInlineFlowScopeId is not null ||
-                chunk.CodeBlockTextOffset != expectedOffset ||
-                chunk.CodeBlockTextLength < 0 ||
-                chunk.CodeBlockTextLength > CodeText.Length - expectedOffset ||
-                chunk.CodeLanguage != CodeLanguage ||
-                chunk.BlockIndex <= 0 ||
-                chunk.Runs.Count != 1 ||
-                chunk.Runs[0] is not TextRun textRun ||
-                textRun.Text.Length != chunk.CodeBlockTextLength ||
-                !CodeText.AsSpan(expectedOffset, chunk.CodeBlockTextLength)
-                    .SequenceEqual(textRun.Text.AsSpan()) ||
-                !chunk.TryGetPrivateRasterPlacementCounts(
-                    targetContext,
-                    Math.Max(1f, (float)chunk.Bounds.Width),
-                    out _, out _, out _,
-                    allowUnmeasuredTextOnly: allowUnmeasured,
-                    allowIdleImagePlacements: false,
-                    allowCodeForegroundSpans: true))
-                return false;
-
-            expectedOffset += chunk.CodeBlockTextLength;
-        }
-
-        if (expectedOffset != CodeText.Length ||
-            !ContextMatchesCodePlacementTarget(targetContext))
-            return false;
-
-        copiedLineCount = _lines.Count;
-        return true;
-    }
+        => _placement.TryGetCounts(targetContext, allowUnmeasured, out copiedLineCount, out styleKeyEntries);
 
     /// <summary>
     /// Creates an unmeasured shell only after bounded source preflight. Native
@@ -247,33 +198,9 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
     {
         ArgumentNullException.ThrowIfNull(chunk);
         Context.CancellationToken.ThrowIfCancellationRequested();
-        int expectedOffset = _chunks.Count == 0
-            ? 0
-            : checked(_chunks[^1].CodeBlockTextOffset + _chunks[^1].CodeBlockTextLength);
-        if (_chunks.Count >= PrivateRasterPlacementTree.MaximumNodes ||
-            !_isPrivatePlacementCloneShell || _privatePlacementCloneComplete ||
-            _chunks.Count >= _privatePlacementExpectedChunkCount ||
-            !ReferenceEquals(chunk.Context, Context) ||
-            chunk.ElementKey != MarkdownElementKeys.CodeBlock ||
-            chunk.SafeHtmlInlineFlowScopeId is not null ||
-            chunk.CodeBlockTextOffset != expectedOffset ||
-            chunk.CodeBlockTextLength < 0 ||
-            chunk.CodeBlockTextLength > CodeText.Length - expectedOffset ||
-            chunk.CodeLanguage != CodeLanguage ||
-            chunk.BlockIndex <= 0 ||
-            chunk.Runs.Count != 1 ||
-            chunk.Runs[0] is not TextRun textRun ||
-            textRun.Text.Length != chunk.CodeBlockTextLength ||
-            !CodeText.AsSpan(expectedOffset, chunk.CodeBlockTextLength)
-                .SequenceEqual(textRun.Text.AsSpan()))
-            throw new InvalidOperationException("A code chunk does not match its private code block shell.");
-
-        if (_chunks.Count + 1 == _privatePlacementExpectedChunkCount &&
-            expectedOffset + chunk.CodeBlockTextLength != CodeText.Length)
-            throw new InvalidOperationException("The private code chunks do not cover their complete text payload.");
-
+        _placement.ValidateChunkAdoption(chunk);
         _chunks.Add(chunk);
-        _privatePlacementCloneComplete = _chunks.Count == _privatePlacementExpectedChunkCount;
+        _placement.RecordChunkAdopted();
         _visualLineIndex.InvalidateTemplate();
     }
 
@@ -303,7 +230,7 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
     public void AddChunk(InlineContainerBox chunk)
     {
         ArgumentNullException.ThrowIfNull(chunk);
-        AdvancePrivatePlacementRevision();
+        _placement.Advance();
         _appliedHighlightKey = null;
         chunk.DrawContainerChrome = false;
         chunk.UseContainerPadding = false;
@@ -323,7 +250,7 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
         if (_appliedHighlightKey == key)
             return false;
 
-        AdvancePrivatePlacementRevision();
+        _placement.Advance();
         var allSpans = spans ?? Array.Empty<CodeBlockHighlightSpan>();
         foreach (var chunk in _chunks)
         {
@@ -347,8 +274,7 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
 
     public override float Measure(float availableWidth)
     {
-        if (_isPrivatePlacementCloneShell && !_privatePlacementCloneComplete)
-            throw new InvalidOperationException("A private code block cannot be measured before all chunks are adopted.");
+        _placement.ThrowIfIncompleteCloneShell();
         ThrowIfCancellationRequested();
         var style = GetCodeStyle();
         Margin = style.Margin;
@@ -403,7 +329,7 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
             Math.Max(0, HorizontalExtent - HorizontalViewport));
         if (clampedOffset != _horizontalOffset)
         {
-            AdvancePrivatePlacementRevision();
+            _placement.Advance();
             _horizontalOffset = clampedOffset;
         }
         y += style.Padding.Bottom;
@@ -480,7 +406,7 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
 
     public override void Dispose()
     {
-        if (Interlocked.Exchange(ref _placementDisposed, 1) != 0)
+        if (!_placement.TryMarkDisposed())
             return;
 
         _visualLineIndex.Release();
@@ -489,8 +415,7 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
         // rather than disposing the underlying native formats directly. Keep
         // cleanup failure reporting bounded and still attempt every chunk.
         BlockBoxCleanupScope cleanup = default;
-        cleanup.TryDisposeAndClear(ref _headerTextFormatLease);
-        cleanup.TryDisposeAndClear(ref _lineNumberTextFormatLease);
+        _textFormats.Release(ref cleanup);
         foreach (InlineContainerBox chunk in _chunks)
             cleanup.TryDispose(chunk);
         cleanup.ThrowIfAny("disposing a code block");
@@ -554,51 +479,10 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
         if (Math.Abs(next - _horizontalOffset) <= 0.1)
             return false;
 
-        AdvancePrivatePlacementRevision();
+        _placement.Advance();
         _horizontalOffset = next;
         ArrangeChunks();
         return true;
-    }
-
-    private bool IsPrivatePlacementShellEligible(MarkdownLayoutContext targetContext)
-        => SafeHtmlInlineFlowScopeId is null &&
-           InlineContainerBox.ArePrivateRasterPlacementContextsCompatible(Context, targetContext) &&
-           IsCopyButtonEnabled == targetContext.IsCodeBlockCopyEnabled;
-
-    private bool ContextMatchesCodePlacementTarget(MarkdownLayoutContext targetContext)
-        => IsPrivatePlacementShellEligible(targetContext) &&
-           Context.IsCodeBlockCopyEnabled == targetContext.IsCodeBlockCopyEnabled &&
-           Context.CodeBlockChromeMode == targetContext.CodeBlockChromeMode &&
-           Context.CodeBlockLineNumberMode == targetContext.CodeBlockLineNumberMode &&
-           Context.CodeBlockWrappingMode == targetContext.CodeBlockWrappingMode;
-
-    private static bool TryAccumulatePrivateStyleKeys(ref long total, IReadOnlyList<string>? keys)
-    {
-        if (keys is null || keys.Count < 0 ||
-            total > InlineContainerBox.MaximumPrivateRasterPlacementStyleKeyCopyEntries - keys.Count)
-            return false;
-        total += keys.Count;
-        return true;
-    }
-
-    private static string[] CopyStyleKeys(IReadOnlyList<string> source)
-    {
-        var copy = new string[source.Count];
-        for (int index = 0; index < copy.Length; index++)
-            copy[index] = source[index];
-        return copy;
-    }
-
-    private void AdvancePrivatePlacementRevision()
-    {
-        while (true)
-        {
-            long current = Interlocked.Read(ref _placementRevision);
-            if (current == long.MaxValue)
-                throw new InvalidOperationException("The code-block placement revision is exhausted.");
-            if (Interlocked.CompareExchange(ref _placementRevision, current + 1, current) == current)
-                return;
-        }
     }
 
     internal double ComputeGutterWidth(ElementStyle style)
@@ -703,27 +587,13 @@ internal sealed class CodeBlockBox : BlockBox, IHorizontalOverflowBox
         if (right <= left)
             return;
 
-        CanvasTextFormat format = (_headerTextFormatLease ??= Context.RenderResources.TextFormats.Acquire(
-            style,
-            CanvasWordWrapping.NoWrap,
-            rtl ? CanvasHorizontalAlignment.Right : CanvasHorizontalAlignment.Left,
-            Context.FlowDirection,
-            Context.Language,
-            useContentAwareLineSpacing: true,
-            verticalAlignment: CanvasVerticalAlignment.Center)).Format;
+        CanvasTextFormat format = _textFormats.GetHeaderFormat(style);
 
         ds.DrawText(HeaderText, new Rect(left, outer.Top, right - left, HeaderHeight), style.Foreground, format);
     }
 
     internal CanvasTextFormat GetLineNumberTextFormat(ElementStyle style)
-        => (_lineNumberTextFormatLease ??= Context.RenderResources.TextFormats.Acquire(
-            style,
-            CanvasWordWrapping.NoWrap,
-            CanvasHorizontalAlignment.Right,
-            FlowDirection.LeftToRight,
-            Context.Language,
-            useContentAwareLineSpacing: true,
-            verticalAlignment: CanvasVerticalAlignment.Top)).Format;
+        => _textFormats.GetLineNumberFormat(style);
 
     internal static Rect Intersect(Rect a, Rect b)
     {
