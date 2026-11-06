@@ -9,7 +9,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 /// <summary>
 /// Reads nested link style maps, spans and uniform text layout typography for
-/// <see cref="RelativeScriptFontSizeTests"/>.
+/// <see cref="RelativeScriptLinkStyleTests"/> and
+/// <see cref="RelativeInlineCodeFontSizeTests"/>.
 /// </summary>
 internal static class LinkInlineStyleMapAssertions
 {
