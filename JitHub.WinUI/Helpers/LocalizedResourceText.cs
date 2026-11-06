@@ -228,28 +228,22 @@ internal static partial class LocalizedResourceText
         }
     }
 
+    /// <summary>
+    /// Installs a lookup factory for the current async flow. Each lookup the
+    /// factory returns receives the normalized resource key and the explicit
+    /// renderer culture, or <see langword="null"/> for the app language.
+    /// </summary>
     internal static IDisposable OverrideResourceLookupFactoryForTests(
-        Func<Func<string, string?>?> factory)
+        Func<Func<string, CultureInfo?, string?>?> factory)
     {
         ArgumentNullException.ThrowIfNull(factory);
 
         TestResourceLookupOverride? previousOverride = TestLookupOverride.Value;
         TestLookupOverride.Value = new TestResourceLookupOverride(() =>
         {
-            Func<string, string?>? lookup = factory();
-            return lookup is null ? null : (key, _) => lookup(key);
+            Func<string, CultureInfo?, string?>? lookup = factory();
+            return lookup is null ? null : (key, culture) => lookup(key, culture);
         });
-        return new RestoreAction(() => TestLookupOverride.Value = previousOverride);
-    }
-
-    internal static IDisposable OverrideCultureAwareResourceLookupForTests(
-        Func<string, CultureInfo?, string?> lookup)
-    {
-        ArgumentNullException.ThrowIfNull(lookup);
-
-        TestResourceLookupOverride? previousOverride = TestLookupOverride.Value;
-        TestLookupOverride.Value = new TestResourceLookupOverride(
-            () => (key, culture) => lookup(key, culture));
         return new RestoreAction(() => TestLookupOverride.Value = previousOverride);
     }
 

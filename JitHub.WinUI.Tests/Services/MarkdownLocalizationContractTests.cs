@@ -25,8 +25,8 @@ public sealed partial class MarkdownLocalizationContractTests
     {
         IReadOnlyDictionary<string, string> english = LoadCatalogValues(FindRepositoryRoot(), "en-US");
         List<string> requested = [];
-        using IDisposable lookup = LocalizedResourceText.OverrideCultureAwareResourceLookupForTests(
-            (resourceKey, _) =>
+        using IDisposable lookup = LocalizedResourceText.OverrideResourceLookupFactoryForTests(
+            () => (resourceKey, _) =>
             {
                 requested.Add(resourceKey);
                 return english.TryGetValue(resourceKey, out string? value) ? value : null;
@@ -46,7 +46,7 @@ public sealed partial class MarkdownLocalizationContractTests
     [Fact]
     public void JitHubProvider_FallsBackToCanonicalTextWithoutAResourceMap()
     {
-        using IDisposable lookup = LocalizedResourceText.OverrideCultureAwareResourceLookupForTests(static (_, _) => null);
+        using IDisposable lookup = LocalizedResourceText.OverrideResourceLookupFactoryForTests(static () => static (_, _) => null);
 
         Assert.All(StableStringKeys(), key =>
             Assert.False(string.IsNullOrWhiteSpace(
