@@ -47,11 +47,6 @@
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
-      "path": "tests/MarkdownRenderer.GitHub.Tests/ProgressiveSceneDeferralTests.cs",
-      "lines": 1904,
-      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
-    },
-    {
       "path": "tests/MarkdownRenderer.GitHub.Tests/ThemeSnapshotContractTests.cs",
       "lines": 1293,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
