@@ -436,35 +436,22 @@ public sealed class AutomationHarnessSourceContractTests
         string imageHostsSource = ReadRendererSource("Controls", "Composition", "ImageHosts.cs");
         Assert.Contains("void IImageRelayoutHost.RequestFullRebuild() => Owners.Rebuild.Request(RebuildReason.Full);", imageHostsSource, StringComparison.Ordinal);
         Assert.Contains("double? IImageRelayoutHost.VerticalScrollOffset => Owners.Surface.Scroll?.VerticalOffset;", imageHostsSource, StringComparison.Ordinal);
-        Assert.Contains(
-            "void IRecoveryClockHost.ProcessRecoveryTick() => Owners.RecoveryWork.ProcessTick();",
-            ReadRendererSource("Controls", "Composition", "LayoutHosts.cs"),
-            StringComparison.Ordinal);
 
+        // The tick's retry order, its geometry-recovery drain, failure fallback and idle stop
+        // are covered by RecoveryClockWorkTests. What the host forwards each retry to needs a live control.
+        string layoutHostsSource = ReadRendererSource("Controls", "Composition", "LayoutHosts.cs");
         string recoveryWorkSource = ReadRendererSource("Controls", "RecoveryClockWork.cs");
-        int recoveryTickStart = recoveryWorkSource.IndexOf("internal void ProcessTick(", StringComparison.Ordinal);
-        int recoveryTickEnd = recoveryWorkSource.IndexOf("internal void Stop(", recoveryTickStart, StringComparison.Ordinal);
-        Assert.True(recoveryTickEnd > recoveryTickStart);
-        string recoveryTick = recoveryWorkSource[recoveryTickStart..recoveryTickEnd];
-        Assert.Contains("internal void ProcessTick()", recoveryTick, StringComparison.Ordinal);
-        Assert.Contains("_imageSubscriptions.ProcessBitmapOutputRecovery();", recoveryTick, StringComparison.Ordinal);
-        Assert.Contains("_imageRelayout.ProcessQueued();", recoveryTick, StringComparison.Ordinal);
-        Assert.Contains("_imageRelayout.PublishReadyCompletion();", recoveryTick, StringComparison.Ordinal);
-        Assert.Contains("internal void PublishReadyCompletion() => _payload?.PublishAfterWorkDrains();", relayoutSource, StringComparison.Ordinal);
-        Assert.Contains("_imageRelayout.RecoverFaultedHandoff();", recoveryTick, StringComparison.Ordinal);
-        Assert.Contains("_layoutPublisher.PublishPending();", recoveryTick, StringComparison.Ordinal);
+        Assert.Contains("_imageSubscriptions.ProcessBitmapOutputRecovery();", recoveryWorkSource, StringComparison.Ordinal);
+        Assert.Contains("_imageRelayout.RecoverFaultedHandoff();", recoveryWorkSource, StringComparison.Ordinal);
+        Assert.Contains("void IRecoveryClockHost.ProcessRecoveryTick() => Owners.RecoveryWork.ProcessTick();", layoutHostsSource, StringComparison.Ordinal);
+        Assert.Contains("void IRecoveryClockWorkHost.PublishPendingLayout() => Owners.LayoutPublisher.PublishPending();", layoutHostsSource, StringComparison.Ordinal);
         string lazyLayoutSource = ReadRendererSource("Controls", "LazyLayout", "LazyLayoutRealization.cs");
-        Assert.Contains("_lazyLayout.ProcessQueued();", recoveryTick, StringComparison.Ordinal);
+        Assert.Contains("void IRecoveryClockWorkHost.ProcessQueuedLazyLayout() => Owners.LazyLayout.ProcessQueued();", layoutHostsSource, StringComparison.Ordinal);
         Assert.Contains("internal void ProcessQueued() => ProcessQueued(_dispatchTicket);", lazyLayoutSource, StringComparison.Ordinal);
-        Assert.Contains("_lazyLayout.TryPublishCompletion();", recoveryTick, StringComparison.Ordinal);
+        Assert.Contains("void IRecoveryClockWorkHost.TryPublishLazyLayoutCompletion() => Owners.LazyLayout.TryPublishCompletion();", layoutHostsSource, StringComparison.Ordinal);
         Assert.Contains("internal void TryPublishCompletion() => TryPublishCompletion(_generation);", lazyLayoutSource, StringComparison.Ordinal);
-        Assert.Contains("_overflowScroll.ProcessPendingRetry();", recoveryTick, StringComparison.Ordinal);
-        Assert.Contains("_focusGeometryWork.Process();", recoveryTick, StringComparison.Ordinal);
-        Assert.Matches(
-            "if\\s*\\(_lifetime\\.IsDisposed \\|\\| _lifetime\\.IsUnloaded\\)\\s*Stop\\(force: true\\);",
-            recoveryTick);
-        Assert.Contains("StopIfIdle();", recoveryTick, StringComparison.Ordinal);
-        Assert.Contains("catch (Exception exception)", recoveryTick, StringComparison.Ordinal);
+        Assert.Contains("void IRecoveryClockWorkHost.ProcessOverflowScrollRetry() => Owners.OverflowScroll.ProcessPendingRetry();", layoutHostsSource, StringComparison.Ordinal);
+        Assert.Contains("void IRecoveryClockWorkHost.ProcessFocusGeometryWork() => Owners.FocusGeometryWork.Process();", layoutHostsSource, StringComparison.Ordinal);
 
         int processStart = relayoutSource.IndexOf("internal void ProcessQueued(long ticket)", StringComparison.Ordinal);
         int completionStart = relayoutSource.IndexOf("internal void Complete(", processStart, StringComparison.Ordinal);

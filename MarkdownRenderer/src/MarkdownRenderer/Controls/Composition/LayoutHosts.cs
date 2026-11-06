@@ -21,6 +21,7 @@ using MarkdownRenderer.Controls.Composition;
 using MarkdownRenderer.Controls.Embeds;
 using MarkdownRenderer.Controls.Focus;
 using MarkdownRenderer.Controls.Images;
+using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Controls.Rendering;
 using MarkdownRenderer.Controls.LazyLayout;
 using MarkdownRenderer.Controls.Navigation;
@@ -43,6 +44,7 @@ internal sealed class LayoutHosts :
     ILayoutCommitHost,
     IFocusableItemsPublicationHost,
     IRecoveryClockHost,
+    IRecoveryClockWorkHost,
     ICanvasDeviceRecoveryHost,
     ICanvasTilePainterHost
 {
@@ -69,7 +71,12 @@ internal sealed class LayoutHosts :
         BlockScrollNavigation BlockScroll,
         RendererAutomation Automation,
         LazyLayoutRealization LazyLayout,
-        SnapshotExtent Extent);
+        SnapshotExtent Extent,
+        LayoutCommitPublisher LayoutPublisher,
+        HorizontalOverflowScrollVisuals OverflowScroll,
+        PendingFocusGeometryWork FocusGeometryWork,
+        FocusableItemsPublication FocusableItems,
+        PointerInputRouter PointerInput);
 
     internal void Connect(Parts owners) => _owners = owners;
 
@@ -153,6 +160,32 @@ internal sealed class LayoutHosts :
     void IFocusableItemsPublicationHost.InvalidateAutomationLayout() => Owners.Automation.InvalidateLayout();
 
     void IRecoveryClockHost.ProcessRecoveryTick() => Owners.RecoveryWork.ProcessTick();
+
+    bool IRecoveryClockWorkHost.HasPendingLazyLayout => Owners.LazyLayout.HasPendingWork;
+
+    bool IRecoveryClockWorkHost.HasPendingOverflowScrollRetry => Owners.OverflowScroll.HasPendingRetry;
+
+    bool IRecoveryClockWorkHost.HasPendingFocusGeometryWork => Owners.FocusGeometryWork.HasPendingWork;
+
+    bool IRecoveryClockWorkHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot) =>
+        Owners.GeometryRecovery.RequestIfRequired(snapshot);
+
+    void IRecoveryClockWorkHost.RequestFullRebuild() => Owners.Rebuild.Request(RebuildReason.Full);
+
+    void IRecoveryClockWorkHost.PublishPendingLayout() => Owners.LayoutPublisher.PublishPending();
+
+    void IRecoveryClockWorkHost.ProcessQueuedLazyLayout() => Owners.LazyLayout.ProcessQueued();
+
+    void IRecoveryClockWorkHost.TryPublishLazyLayoutCompletion() => Owners.LazyLayout.TryPublishCompletion();
+
+    void IRecoveryClockWorkHost.ProcessOverflowScrollRetry() => Owners.OverflowScroll.ProcessPendingRetry();
+
+    void IRecoveryClockWorkHost.ProcessFocusGeometryWork() => Owners.FocusGeometryWork.Process();
+
+    void IRecoveryClockWorkHost.TryPublishPendingFocusableItems() => Owners.FocusableItems.TryPublishPending();
+
+    void IRecoveryClockWorkHost.NotifyLazyLayoutFailed(LayoutSnapshot snapshot) =>
+        Owners.PointerInput.OnLazyLayoutCompletion(snapshot, succeeded: false);
 
     void ICanvasDeviceRecoveryHost.RequestFullRebuild() => Owners.Rebuild.Request(RebuildReason.Full);
 

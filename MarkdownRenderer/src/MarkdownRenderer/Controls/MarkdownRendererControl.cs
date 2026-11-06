@@ -771,7 +771,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
         _visibleWork = new VisibleWorkScheduler(this, _published, _highlighting, geometryRecovery);
         _documentInputs = new DocumentInputs(this, events, _interactionReset, _embeds, _highlighting, _rebuild, _snapshotRetirements);
         _keyboard = new KeyboardInput(this, _published, _selection, _selectionCommands, contextMenu, focus, focusRing, focusCommit, hostedFocus, navigator, geometryRecovery);
-        _recoveryWork = new RecoveryClockWork(_lifetime, _published, recoveryClock, _layoutCommit, layoutPublisher, _lazyLayout, imageSubscriptions, imageRelayout, _overflowScroll, focusGeometryWork, focusRefresh, focusableItems, pointerInput, geometryRecovery, _rebuild);
+        _recoveryWork = new RecoveryClockWork(layoutHosts, _lifetime, _published, recoveryClock, _layoutCommit, imageSubscriptions, imageRelayout, focusRefresh);
         var textAdorner = new InteractiveTextAdorner(_surface, _published, _selection, _touchSelection, _hover, focus, _adorner, geometryRecovery);
         _scrolling = new ScrollViewTracking(_surface, _lifetime, _viewport, _lazyLayout, _adorner, textAdorner, _embeds, _visibleWork);
         _performanceSession = new PerformanceSessionSubscription(this, _lifetime, _snapshotRetirements, _rebuild, _selection, _adorner, textAdorner);
@@ -809,7 +809,8 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
             rasterPlacement));
         layoutHosts.Connect(new LayoutHosts.Parts(
             _deviceRecovery, cancellationRetirement, _rebuild, _canvasInvalidation, geometryRecovery, textAdorner,
-            _recoveryWork, _visibleWork, _scrolling, _deferredScenes, _blockScroll, _automation, _lazyLayout, extent));
+            _recoveryWork, _visibleWork, _scrolling, _deferredScenes, _blockScroll, _automation, _lazyLayout, extent,
+            layoutPublisher, _overflowScroll, focusGeometryWork, focusableItems, pointerInput));
         pipelineHosts.Connect(new PipelineHosts.Parts(
             events, _documentInputs, _automation, imageLifetime, imageRelayout, _lazyLayout, _pipeline,
             _touchRestore, _interactionReset, _performanceSession, _environment));
