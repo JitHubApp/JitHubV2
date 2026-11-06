@@ -1,4 +1,3 @@
-using System.Reflection;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
@@ -39,9 +38,9 @@ internal static class RootLocalTableVectorQueries
         InlineVectorSceneRun vector) =>
         Assert.Single(cells, cell => cell.Runs.Any(run => ReferenceEquals(run, vector)));
 
-    /// <summary>The run's prepared native drawing, read from its private field.</summary>
+    /// <summary>The run's native drawing owner; a measured-placement clone has none.</summary>
     internal static VectorSceneDrawing GetVectorDrawing(InlineVectorSceneRun run) =>
-        Assert.IsType<VectorSceneDrawing>(GetRawField(run, "_drawing"));
+        Assert.IsType<VectorSceneDrawing>(run.Drawing);
 
     internal static InlineVectorSceneRun[] EnumerateVectors(IEnumerable<InlineContainerBox> cells) =>
         cells.SelectMany(static cell => cell.Runs.OfType<InlineVectorSceneRun>()).ToArray();
@@ -66,14 +65,6 @@ internal static class RootLocalTableVectorQueries
             Assert.Equal(expectedSpans[index].RunType, actualSpans[index].RunType);
             Assert.Equal(expectedSpans[index].Rects, actualSpans[index].Rects);
         }
-    }
-
-    private static object? GetRawField(object instance, string name)
-    {
-        FieldInfo field = instance.GetType().GetField(name,
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Missing private test field: " + name);
-        return field.GetValue(instance);
     }
 
     private static SemanticSpanGeometry[] CaptureSemanticSpanGeometry(LayoutSnapshot snapshot) =>

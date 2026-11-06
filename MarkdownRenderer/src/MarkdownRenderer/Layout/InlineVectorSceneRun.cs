@@ -218,6 +218,12 @@ internal sealed class InlineVectorSceneRun : InlineRun, IDisposable
 
     internal bool IsDisposed => _disposed;
 
+    /// <summary>
+    /// The drawing that owns this run's scene and native resources, or null for
+    /// a measured-placement clone, which borrows only the scene value.
+    /// </summary>
+    internal VectorSceneDrawing? Drawing => _drawing;
+
     internal MarkdownVectorScene Scene => _placementScene ??
         _drawing?.Scene ?? throw new ObjectDisposedException(nameof(InlineVectorSceneRun));
 

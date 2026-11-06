@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
 using MarkdownRenderer.Extensions;
@@ -24,7 +23,6 @@ public sealed class VectorSceneCompactResourceTests
     private const float TargetHeight = 62;
     private const float SceneWidth = 64;
     private const float SceneHeight = 48;
-    private const BindingFlags PrivateInstance = BindingFlags.Instance | BindingFlags.NonPublic;
 
     [Fact]
     public void PreparedScratchArraysMatchActualResourceCountsAndMaximumScopeDepths()
@@ -34,13 +32,13 @@ public sealed class VectorSceneCompactResourceTests
         using var drawing = new VectorSceneDrawing(device, scene, CancellationToken.None, _renderResources);
 
         Assert.True(drawing.IsPrepared);
-        Assert.Equal(CountGeometryCommands(scene), GetArray<CanvasGeometry?>(drawing, "_geometries").Length);
-        Assert.Equal(CountTextCommands(scene), GetArray<CanvasTextLayout?>(drawing, "_textLayouts").Length);
-        Assert.Equal(CountStrokeStyles(scene), GetArray<CanvasStrokeStyle?>(drawing, "_strokeStyles").Length);
+        Assert.Equal(CountGeometryCommands(scene), Slots(drawing.GeometrySlots).Count);
+        Assert.Equal(CountTextCommands(scene), Slots(drawing.TextLayoutSlots).Count);
+        Assert.Equal(CountStrokeStyles(scene), Slots(drawing.StrokeStyleSlots).Count);
         Assert.Equal(CountMaximumDepth(scene, MarkdownVectorCommandKind.BeginGroup, MarkdownVectorCommandKind.EndGroup),
-            GetArray<Matrix3x2>(drawing, "_transformStack").Length);
+            Slots(drawing.TransformStackSlots).Count);
         Assert.Equal(CountMaximumDepth(scene, MarkdownVectorCommandKind.BeginClip, MarkdownVectorCommandKind.EndClip),
-            GetArray<CanvasActiveLayer?>(drawing, "_clipStack").Length);
+            Slots(drawing.ClipStackSlots).Count);
 
         // The first path/text commands are intentionally invisible; each still
         // owns a native slot, so the visible commands after them must use their
@@ -62,11 +60,11 @@ public sealed class VectorSceneCompactResourceTests
 
         using var drawing = new VectorSceneDrawing(device, scene, CancellationToken.None, _renderResources);
 
-        Assert.Same(Array.Empty<CanvasGeometry?>(), GetArray<CanvasGeometry?>(drawing, "_geometries"));
-        Assert.Same(Array.Empty<CanvasTextLayout?>(), GetArray<CanvasTextLayout?>(drawing, "_textLayouts"));
-        Assert.Same(Array.Empty<CanvasStrokeStyle?>(), GetArray<CanvasStrokeStyle?>(drawing, "_strokeStyles"));
-        Assert.Same(Array.Empty<Matrix3x2>(), GetArray<Matrix3x2>(drawing, "_transformStack"));
-        Assert.Same(Array.Empty<CanvasActiveLayer?>(), GetArray<CanvasActiveLayer?>(drawing, "_clipStack"));
+        Assert.Same(Array.Empty<CanvasGeometry?>(), Slots(drawing.GeometrySlots));
+        Assert.Same(Array.Empty<CanvasTextLayout?>(), Slots(drawing.TextLayoutSlots));
+        Assert.Same(Array.Empty<CanvasStrokeStyle?>(), Slots(drawing.StrokeStyleSlots));
+        Assert.Same(Array.Empty<Matrix3x2>(), Slots(drawing.TransformStackSlots));
+        Assert.Same(Array.Empty<CanvasActiveLayer?>(), Slots(drawing.ClipStackSlots));
     }
 
     [Fact]
@@ -87,13 +85,13 @@ public sealed class VectorSceneCompactResourceTests
         var scene = new MarkdownVectorScene(SceneWidth, SceneHeight, 36, commands);
         using var drawing = new VectorSceneDrawing(device, scene, CancellationToken.None, _renderResources);
 
-        CanvasGeometry?[] geometries = GetArray<CanvasGeometry?>(drawing, "_geometries");
-        CanvasTextLayout?[] textLayouts = GetArray<CanvasTextLayout?>(drawing, "_textLayouts");
-        CanvasStrokeStyle?[] strokeStyles = GetArray<CanvasStrokeStyle?>(drawing, "_strokeStyles");
-        Matrix3x2[] transforms = GetArray<Matrix3x2>(drawing, "_transformStack");
-        CanvasActiveLayer?[] clips = GetArray<CanvasActiveLayer?>(drawing, "_clipStack");
+        IReadOnlyList<CanvasGeometry?> geometries = Slots(drawing.GeometrySlots);
+        IReadOnlyList<CanvasTextLayout?> textLayouts = Slots(drawing.TextLayoutSlots);
+        IReadOnlyList<CanvasStrokeStyle?> strokeStyles = Slots(drawing.StrokeStyleSlots);
+        IReadOnlyList<Matrix3x2> transforms = Slots(drawing.TransformStackSlots);
+        IReadOnlyList<CanvasActiveLayer?> clips = Slots(drawing.ClipStackSlots);
 
-        Assert.Equal(pathCount, geometries.Length);
+        Assert.Equal(pathCount, geometries.Count);
         Assert.Same(Array.Empty<CanvasTextLayout?>(), textLayouts);
         Assert.Same(Array.Empty<CanvasStrokeStyle?>(), strokeStyles);
         Assert.Same(Array.Empty<Matrix3x2>(), transforms);
@@ -102,11 +100,11 @@ public sealed class VectorSceneCompactResourceTests
         // Compare retained managed scratch-array payload only. This does not
         // estimate Win2D/native allocations, driver memory, or process RSS.
         long retainedPayloadBytes =
-            (long)geometries.Length * IntPtr.Size +
-            (long)textLayouts.Length * IntPtr.Size +
-            (long)strokeStyles.Length * IntPtr.Size +
-            (long)transforms.Length * Marshal.SizeOf<Matrix3x2>() +
-            (long)clips.Length * IntPtr.Size;
+            (long)geometries.Count * IntPtr.Size +
+            (long)textLayouts.Count * IntPtr.Size +
+            (long)strokeStyles.Count * IntPtr.Size +
+            (long)transforms.Count * Marshal.SizeOf<Matrix3x2>() +
+            (long)clips.Count * IntPtr.Size;
         long previousCommandIndexedPayloadBytes = (long)commands.Length *
             (4 * IntPtr.Size + Marshal.SizeOf<Matrix3x2>());
 
@@ -179,11 +177,11 @@ public sealed class VectorSceneCompactResourceTests
         Assert.False(drawing.IsPrepared);
         drawing.PrepareNativeResources(CancellationToken.None);
         Assert.True(drawing.IsPrepared);
-        Assert.Equal(CountGeometryCommands(scene), GetArray<CanvasGeometry?>(drawing, "_geometries").Length);
-        Assert.Equal(CountTextCommands(scene), GetArray<CanvasTextLayout?>(drawing, "_textLayouts").Length);
-        Assert.Equal(CountStrokeStyles(scene), GetArray<CanvasStrokeStyle?>(drawing, "_strokeStyles").Length);
-        Assert.Equal(2, GetArray<Matrix3x2>(drawing, "_transformStack").Length);
-        Assert.Equal(2, GetArray<CanvasActiveLayer?>(drawing, "_clipStack").Length);
+        Assert.Equal(CountGeometryCommands(scene), Slots(drawing.GeometrySlots).Count);
+        Assert.Equal(CountTextCommands(scene), Slots(drawing.TextLayoutSlots).Count);
+        Assert.Equal(CountStrokeStyles(scene), Slots(drawing.StrokeStyleSlots).Count);
+        Assert.Equal(2, Slots(drawing.TransformStackSlots).Count);
+        Assert.Equal(2, Slots(drawing.ClipStackSlots).Count);
 
         Color[] afterReprepare = RenderCompact(
             drawing, device, scene, rasterizationScale, palette, highContrast);
@@ -396,10 +394,7 @@ public sealed class VectorSceneCompactResourceTests
         MarkdownVectorPathOperation.Close(),
     ];
 
-    private static T[] GetArray<T>(VectorSceneDrawing drawing, string fieldName)
-    {
-        FieldInfo field = Assert.IsAssignableFrom<FieldInfo>(
-            typeof(VectorSceneDrawing).GetField(fieldName, PrivateInstance));
-        return Assert.IsAssignableFrom<T[]>(field.GetValue(drawing));
-    }
+    // A prepared drawing owns every slot kind, even when a kind is empty.
+    private static IReadOnlyList<T> Slots<T>(IReadOnlyList<T>? slots) =>
+        Assert.IsAssignableFrom<IReadOnlyList<T>>(slots);
 }

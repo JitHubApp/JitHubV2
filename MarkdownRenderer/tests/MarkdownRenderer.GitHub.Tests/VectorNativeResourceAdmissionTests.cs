@@ -411,9 +411,9 @@ public sealed class VectorNativeResourceAdmissionTests
         Assert.Throws<InvalidOperationException>(() => PaintClippedFillScene(drawing, session));
         Assert.Equal(1, activeLayerDisposeAttempts);
 
-        var clipSlots = Assert.IsType<CanvasActiveLayer?[]>(VectorSceneDrawingNativeSlots.ReadClipStack(drawing));
+        var clipSlots = Assert.IsAssignableFrom<IReadOnlyList<CanvasActiveLayer?>>(drawing.ClipStackSlots);
         CanvasActiveLayer clipLayer = Assert.IsType<CanvasActiveLayer>(clipSlots[0]);
-        var geometrySlots = Assert.IsType<CanvasGeometry?[]>(VectorSceneDrawingNativeSlots.ReadGeometries(drawing));
+        var geometrySlots = Assert.IsAssignableFrom<IReadOnlyList<CanvasGeometry?>>(drawing.GeometrySlots);
         CanvasGeometry clipGeometry = Assert.IsType<CanvasGeometry>(geometrySlots[0]);
         try
         {

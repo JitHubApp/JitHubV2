@@ -78,6 +78,15 @@ internal sealed class NativeResourceRetirement
         get { lock (_gate) return _quarantinedResourceCount; }
     }
 
+    /// <summary>
+    /// The most recently quarantined record: the head of the custody-only
+    /// list whose slots are never retried, or null when nothing is quarantined.
+    /// </summary>
+    internal NativeResourceRetirementRecord? LatestQuarantinedRecord
+    {
+        get { lock (_gate) return _quarantine; }
+    }
+
     /// <summary>The disposal seam this owner was created with, if any.</summary>
     internal Action<IDisposable>? Disposer => _disposer;
 

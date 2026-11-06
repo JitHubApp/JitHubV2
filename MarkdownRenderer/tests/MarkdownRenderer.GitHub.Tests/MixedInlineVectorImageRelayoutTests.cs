@@ -1,4 +1,3 @@
-using System.Reflection;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
@@ -511,7 +510,7 @@ public sealed class MixedInlineVectorImageRelayoutTests
         {
             Assert.True(measuredOnly.IsMeasuredPlacementOnly);
             Assert.False(measuredOnly.IsNativeResourcesPrepared);
-            Assert.Null(ReadRawField(measuredOnly, "_drawing"));
+            Assert.Null(measuredOnly.Drawing);
             Assert.Same(sourceVector.Scene, measuredOnly.Scene);
             Assert.Throws<InvalidOperationException>(() =>
                 measuredOnly.PrepareNativeResources(CancellationToken.None));
@@ -557,12 +556,5 @@ public sealed class MixedInlineVectorImageRelayoutTests
     }
 
     private static VectorSceneDrawing GetVectorDrawing(InlineVectorSceneRun run) =>
-        Assert.IsType<VectorSceneDrawing>(ReadRawField(run, "_drawing"));
-
-    private static object? ReadRawField(object instance, string name)
-    {
-        FieldInfo field = instance.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException($"Missing private test field '{name}'.");
-        return field.GetValue(instance);
-    }
+        Assert.IsType<VectorSceneDrawing>(run.Drawing);
 }
