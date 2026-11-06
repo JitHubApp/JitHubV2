@@ -1,6 +1,8 @@
 using JitHub.Markdown;
 using JitHub.Models;
 using JitHub.Services;
+using JitHub.WinUI.Tests.TestSupport;
+using System.Text;
 using System.Xml.Linq;
 using Xunit;
 
@@ -27,15 +29,42 @@ public sealed class SecurityReleaseGateTests
         Assert.Contains("<RestoreLockedMode>true</RestoreLockedMode>", nativeAotProps, StringComparison.Ordinal);
         Assert.Contains("NU1901;NU1902;NU1903;NU1904", props, StringComparison.Ordinal);
         Assert.Contains("Verify-DependencySecurity.ps1", project, StringComparison.Ordinal);
-        Assert.Contains("Category=ReleaseSecurity", project, StringComparison.Ordinal);
-        Assert.Contains("-p:RestoreLockedMode=true", project, StringComparison.Ordinal);
-        Assert.DoesNotContain("--no-restore", project, StringComparison.Ordinal);
+        // The gate's test run is checked on the evaluated project by
+        // ReleaseGate_RunsOnlyTheReleaseSecurityTestsWithLockedRestore.
         Assert.Contains("--locked-mode", script, StringComparison.Ordinal);
         Assert.Contains("-p:Configuration=Release", script, StringComparison.Ordinal);
         Assert.Contains("--vulnerable", script, StringComparison.Ordinal);
         Assert.Contains("--include-transitive", script, StringComparison.Ordinal);
         Assert.Contains("allowedPrereleasePackages", script, StringComparison.Ordinal);
         Assert.Contains("UriSchemeHttps", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [Trait("Category", "ReleaseSecurity")]
+    public void ReleaseGate_RunsOnlyTheReleaseSecurityTestsWithLockedRestore()
+    {
+        string root = FindRepositoryRoot();
+        MsBuildEvaluation app = MsBuild.Evaluate(
+            Path.Combine(root, "JitHub.WinUI", "JitHub.WinUI.csproj"),
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["Configuration"] = "Release",
+                ["Platform"] = "x64",
+            },
+            ["JitHubReleaseSecurityTestCommand"],
+            []);
+        string[] command = SplitCommandLine(app.GetProperty("JitHubReleaseSecurityTestCommand"));
+
+        Assert.Equal(["dotnet", "test"], command.Take(2));
+        Assert.Equal(
+            Path.Combine(root, "JitHub.WinUI.Tests", "JitHub.WinUI.Tests.csproj"),
+            Path.GetFullPath(command[2]),
+            ignoreCase: true);
+        Assert.Equal("Release", ValueAfter(command, "-c"));
+        Assert.Equal("Category=ReleaseSecurity", ValueAfter(command, "--filter"));
+        Assert.Contains("-p:RestoreLockedMode=true", command);
+        Assert.Contains("-p:SkipReleaseSecurityGate=true", command);
+        Assert.DoesNotContain("--no-restore", command);
     }
 
     [Fact]
@@ -337,6 +366,45 @@ public sealed class SecurityReleaseGateTests
 
         public void Remove(string resource, string userName) =>
             Values.Remove((resource, userName));
+    }
+
+    // Splits an Exec command line on spaces outside double quotes.
+    private static string[] SplitCommandLine(string commandLine)
+    {
+        List<string> arguments = [];
+        StringBuilder current = new();
+        bool quoted = false;
+        foreach (char character in commandLine)
+        {
+            if (character == '"')
+            {
+                quoted = !quoted;
+            }
+            else if (character == ' ' && !quoted)
+            {
+                if (current.Length > 0)
+                {
+                    arguments.Add(current.ToString());
+                    current.Clear();
+                }
+            }
+            else
+            {
+                current.Append(character);
+            }
+        }
+
+        if (current.Length > 0)
+            arguments.Add(current.ToString());
+
+        return [.. arguments];
+    }
+
+    private static string ValueAfter(string[] arguments, string option)
+    {
+        int index = Array.IndexOf(arguments, option);
+        Assert.True(index >= 0 && index + 1 < arguments.Length, $"The command has no {option} value.");
+        return arguments[index + 1];
     }
 
     private static string FindRepositoryRoot()
