@@ -102,11 +102,6 @@
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     },
     {
-      "path": "tests/MarkdownRenderer.GitHub.Tests/RootLocalTableImageRelayoutTests.cs",
-      "lines": 2080,
-      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
-    },
-    {
       "path": "tests/MarkdownRenderer.GitHub.Tests/SafeHtmlRenderingTests.cs",
       "lines": 2547,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
