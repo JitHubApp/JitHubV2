@@ -28,7 +28,8 @@ namespace MarkdownRenderer.Controls.Input;
 /// This file is longer than 500 lines because the queue, its retry timer and
 /// the immediate path are one ordered state machine. Every exit path must end
 /// the lease, the draining flag and the queue in the same order, so the drain
-/// and dispatch methods stay whole rather than being split across files.
+/// pass, its outcome handling and the immediate paths share this class's
+/// queue state rather than being split across files.
 /// Everything outside that state machine already has its own owner:
 /// <see cref="DeferredGestureAdmission"/>, <see cref="RecognizedGestureAttribution"/>,
 /// <see cref="PointerInputDispatcher"/>, <see cref="DroppedTouchTerminalRetirement"/>,
@@ -145,11 +146,6 @@ internal sealed class PointerInputRouter
     /// Dispatches a gesture WinUI recognized on the canvas. Returns whether
     /// the gesture was handled or queued.
     /// </summary>
-    /// <remarks>
-    /// The immediate path stays inline: the context menu must open only after
-    /// <see cref="LayoutSnapshot.EndInteraction"/>, against the same snapshot,
-    /// generation and layout revision the gesture hit-tested.
-    /// </remarks>
     internal bool DispatchRecognizedGesture(PointerInputKind kind, Windows.Foundation.Point point, PointerDeviceType device)
     {
         if (_lifetime.IsDisposed || _lifetime.IsUnloaded || _surface.Canvas is null || _published.Snapshot is not { } snapshot)
@@ -177,80 +173,106 @@ internal sealed class PointerInputRouter
         }
         input.WaitForMeasuredHitTest = _admission.IsMeasuredHitTestGesture(input);
         if (!_draining && (_deferred?.Count ?? 0) == 0 && snapshot.TryBeginInteraction())
-        {
-            long snapshotGeneration = _published.Generation;
-            long layoutRevision = snapshot.LayoutRevision;
-            input.GestureLayoutRevision = layoutRevision;
-            bool waitForGeometry = false;
-            LazyLayoutBand waitingBand = default;
-            try
-            {
-                input.InteractionSnapshot = snapshot;
-                if (_admission.TryGetAdmissionBand(ref input, snapshot, out waitingBand, out bool bandReady) &&
-                    !bandReady)
-                {
-                    PrepareContextGestureForDeferral(ref input);
-                    waitForGeometry = true;
-                }
-                else
-                {
-                    input.WaitForMeasuredHitTest = false;
-                    _dispatcher.Process(ref input);
-                }
-            }
-            finally
-            {
-                input.InteractionSnapshot = null;
-                snapshot.EndInteraction();
-            }
-            if (waitForGeometry)
-            {
-                if (!EnqueueRecognizedGesture(snapshot, input))
-                    return false;
-                if (input.HasPostInteractionWork)
-                {
-                    if (!CompletePointerPostInteraction(
-                            ref input,
-                            snapshot,
-                            snapshotGeneration,
-                            layoutRevision))
-                    {
-                        Reset();
-                        return false;
-                    }
-                }
-                if (input.WaitForLayoutPublication)
-                {
-                    if (_admission.IsLayoutPublished(snapshot))
-                        _retryTimer?.Start();
-                    else
-                        _retryTimer?.Stop();
-                    return true;
-                }
-                RequestDeferredGestureBandRealization(snapshot, waitingBand);
-                return true;
-            }
-            if (input.ShowContextMenuAfterInteraction)
-            {
-                input.Handled = CompleteGestureAfterSnapshotInteraction(
-                    input,
-                    snapshot,
-                    snapshotGeneration,
-                    layoutRevision);
-            }
-            else if (input.HasPostInteractionWork)
-            {
-                CompletePointerPostInteraction(
-                    ref input,
-                    snapshot,
-                    snapshotGeneration,
-                    layoutRevision);
-            }
-            return input.Handled;
-        }
+            return DispatchRecognizedGestureUnderLease(ref input, snapshot);
         if (_host.RequestGeometryRecoveryIfRequired(snapshot))
             return false;
         return EnqueueRecognizedGesture(snapshot, input);
+    }
+
+    /// <summary>
+    /// The immediate path of <see cref="DispatchRecognizedGesture"/>, entered
+    /// holding the snapshot lease. A gesture whose hit-test band is not
+    /// measured yet is queued; any other is dispatched at once.
+    /// </summary>
+    /// <remarks>
+    /// The lease ends before the context menu opens or post-interaction work
+    /// runs, and both are checked against the snapshot, generation and layout
+    /// revision the gesture hit-tested.
+    /// </remarks>
+    private bool DispatchRecognizedGestureUnderLease(ref PointerInput input, LayoutSnapshot snapshot)
+    {
+        long snapshotGeneration = _published.Generation;
+        long layoutRevision = snapshot.LayoutRevision;
+        input.GestureLayoutRevision = layoutRevision;
+        bool waitForGeometry = false;
+        LazyLayoutBand waitingBand = default;
+        try
+        {
+            input.InteractionSnapshot = snapshot;
+            if (_admission.TryGetAdmissionBand(ref input, snapshot, out waitingBand, out bool bandReady) &&
+                !bandReady)
+            {
+                PrepareContextGestureForDeferral(ref input);
+                waitForGeometry = true;
+            }
+            else
+            {
+                input.WaitForMeasuredHitTest = false;
+                _dispatcher.Process(ref input);
+            }
+        }
+        finally
+        {
+            input.InteractionSnapshot = null;
+            snapshot.EndInteraction();
+        }
+        if (waitForGeometry)
+            return DeferRecognizedGestureForGeometry(ref input, snapshot, snapshotGeneration, layoutRevision, waitingBand);
+        if (input.ShowContextMenuAfterInteraction)
+        {
+            input.Handled = CompleteGestureAfterSnapshotInteraction(
+                input,
+                snapshot,
+                snapshotGeneration,
+                layoutRevision);
+        }
+        else if (input.HasPostInteractionWork)
+        {
+            CompletePointerPostInteraction(
+                ref input,
+                snapshot,
+                snapshotGeneration,
+                layoutRevision);
+        }
+        return input.Handled;
+    }
+
+    /// <summary>
+    /// Queues a recognized gesture whose hit-test band is not measured yet,
+    /// runs its post-interaction work, then waits for layout publication or
+    /// requests the band. Returns whether the gesture stays queued.
+    /// </summary>
+    private bool DeferRecognizedGestureForGeometry(
+        ref PointerInput input,
+        LayoutSnapshot snapshot,
+        long snapshotGeneration,
+        long layoutRevision,
+        LazyLayoutBand waitingBand)
+    {
+        if (!EnqueueRecognizedGesture(snapshot, input))
+            return false;
+        if (input.HasPostInteractionWork)
+        {
+            if (!CompletePointerPostInteraction(
+                    ref input,
+                    snapshot,
+                    snapshotGeneration,
+                    layoutRevision))
+            {
+                Reset();
+                return false;
+            }
+        }
+        if (input.WaitForLayoutPublication)
+        {
+            if (_admission.IsLayoutPublished(snapshot))
+                _retryTimer?.Start();
+            else
+                _retryTimer?.Stop();
+            return true;
+        }
+        RequestDeferredGestureBandRealization(snapshot, waitingBand);
+        return true;
     }
 
     /// <summary>
@@ -560,11 +582,11 @@ internal sealed class PointerInputRouter
         return timer;
     }
 
-    /// <remarks>
-    /// One method on purpose: the inner drain holds the snapshot lease, and
-    /// every exit path must end the lease and the draining flag before any
-    /// post-interaction work, then decide whether to wait, continue or drop.
-    /// </remarks>
+    /// <summary>
+    /// Replays queued input against the snapshot it was hit-tested on, one
+    /// snapshot lease per pass, until the queue drains, waits on layout or
+    /// goes stale.
+    /// </summary>
     private void OnRetryTimer(DispatcherQueueTimer sender, object args)
     {
         if (!ReferenceEquals(sender, _retryTimer))
@@ -597,230 +619,276 @@ internal sealed class PointerInputRouter
 
             long snapshotGeneration = _published.Generation;
             long layoutRevision = snapshot.LayoutRevision;
-            PointerInput? postInteractionInput = null;
-            bool waitingForGeometry = false;
-            bool waitingForLayoutPublication = false;
-            bool staleQueue = false;
-            LazyLayoutBand waitingBand = default;
+            DeferredInputDrainOutcome outcome = DrainUnderLease(sender, snapshot, snapshotGeneration, layoutRevision);
+            if (!ContinueAfterDrain(sender, snapshot, snapshotGeneration, layoutRevision, outcome))
+                return;
+        }
+    }
+
+    /// <summary>
+    /// Replays queued input under the snapshot lease the caller just took.
+    /// The lease and the draining flag end on every exit path, before any
+    /// post-interaction work the outcome carries.
+    /// </summary>
+    private DeferredInputDrainOutcome DrainUnderLease(
+        DispatcherQueueTimer sender,
+        LayoutSnapshot snapshot,
+        long snapshotGeneration,
+        long layoutRevision)
+    {
+        var outcome = default(DeferredInputDrainOutcome);
+        try
+        {
             try
             {
-                try
+                _draining = true;
+                while (_deferred?.TryPeek(out var input, out _) == true)
                 {
-                    _draining = true;
-                    while (_deferred?.TryPeek(out var input, out _) == true)
+                    if (_lifetime.IsDisposed || _lifetime.IsUnloaded ||
+                        !ReferenceEquals(_published.Snapshot, snapshot) ||
+                        !ReferenceEquals(_deferredSnapshot, snapshot) ||
+                        (input.GestureSnapshotGeneration != 0 &&
+                         input.GestureSnapshotGeneration != snapshotGeneration))
                     {
-                        if (_lifetime.IsDisposed || _lifetime.IsUnloaded ||
-                            !ReferenceEquals(_published.Snapshot, snapshot) ||
-                            !ReferenceEquals(_deferredSnapshot, snapshot))
-                        {
-                            staleQueue = true;
-                            break;
-                        }
+                        outcome.StaleQueue = true;
+                        break;
+                    }
 
-                        if (input.GestureSnapshotGeneration != 0 &&
-                            input.GestureSnapshotGeneration != snapshotGeneration)
-                        {
-                            staleQueue = true;
-                            break;
-                        }
-
-                        if (input.DeferredTouchGesturePointerId != 0 &&
-                            !_attribution.ResolveDeferredOwner(ref input))
-                        {
-                            _deferred.TryDequeue(out _);
-                            continue;
-                        }
-
-                        if (input.WaitForMeasuredHitTest && !input.ContextCaptureEnded)
-                            PrepareContextGestureForDeferral(ref input);
-
-                        if (input.IsDeferredGeometryWait)
-                        {
-                            bool hasBand = _admission.TryGetAdmissionBand(
-                                ref input,
-                                snapshot,
-                                out waitingBand,
-                                out bool bandReady);
-                            if (input.InvalidDeferredProjection)
-                            {
-                                _deferred.TryDequeue(out _);
-                                if (input.HasPostInteractionWork)
-                                {
-                                    postInteractionInput = input;
-                                    break;
-                                }
-                                continue;
-                            }
-                            if (input.WaitForLayoutPublication)
-                            {
-                                _deferred.TryReplaceHead(
-                                    input,
-                                    blocksSnapshotInteraction: false);
-                                waitingForLayoutPublication = true;
-                                if (input.HasPostInteractionWork)
-                                    postInteractionInput = input;
-                                break;
-                            }
-                            if (hasBand && !bandReady)
-                            {
-                                _deferred.TryReplaceHead(
-                                    input,
-                                    blocksSnapshotInteraction: false);
-                                waitingForGeometry = true;
-                                if (input.HasPostInteractionWork)
-                                    postInteractionInput = input;
-                                break;
-                            }
-                            if (!input.WaitForMeasuredHitTest &&
-                                !_admission.TryReproject(ref input))
-                            {
-                                _deferred.TryDequeue(out _);
-                                if (input.HasPostInteractionWork)
-                                {
-                                    postInteractionInput = input;
-                                    break;
-                                }
-                                continue;
-                            }
-                            input.WaitForMeasuredHitTest = false;
-                        }
-
+                    if (input.DeferredTouchGesturePointerId != 0 &&
+                        !_attribution.ResolveDeferredOwner(ref input))
+                    {
                         _deferred.TryDequeue(out _);
+                        continue;
+                    }
 
-                        input.GestureLayoutRevision = layoutRevision;
-                        input.InteractionSnapshot = snapshot;
-                        try
-                        {
-                            _dispatcher.Process(ref input);
-                        }
-                        finally
-                        {
-                            input.InteractionSnapshot = null;
-                        }
-                        if (input.ShowContextMenuAfterInteraction || input.HasPostInteractionWork)
-                        {
-                            postInteractionInput = input;
+                    if (input.WaitForMeasuredHitTest && !input.ContextCaptureEnded)
+                        PrepareContextGestureForDeferral(ref input);
+
+                    if (input.IsDeferredGeometryWait)
+                    {
+                        DeferredGeometryWaitStep step = AdmitGeometryWait(_deferred, ref input, snapshot, ref outcome);
+                        if (step == DeferredGeometryWaitStep.Skip)
+                            continue;
+                        if (step == DeferredGeometryWaitStep.Stop)
                             break;
-                        }
+                    }
+
+                    _deferred.TryDequeue(out _);
+
+                    input.GestureLayoutRevision = layoutRevision;
+                    input.InteractionSnapshot = snapshot;
+                    try
+                    {
+                        _dispatcher.Process(ref input);
+                    }
+                    finally
+                    {
+                        input.InteractionSnapshot = null;
+                    }
+                    if (input.ShowContextMenuAfterInteraction || input.HasPostInteractionWork)
+                    {
+                        outcome.PostInteractionInput = input;
+                        break;
                     }
                 }
-                finally
-                {
-                    _draining = false;
-                    snapshot.EndInteraction();
-                }
             }
-            catch
+            finally
             {
-                FinishDrain(sender);
-                throw;
-            }
-
-            if (!waitingForGeometry && !waitingForLayoutPublication &&
-                postInteractionInput is { } menuInput)
-            {
-                if (menuInput.ShowContextMenuAfterInteraction)
-                {
-                    _ = CompleteGestureAfterSnapshotInteraction(
-                        menuInput,
-                        snapshot,
-                        snapshotGeneration,
-                        layoutRevision);
-                }
-                else
-                {
-                    CompletePointerPostInteraction(
-                        ref menuInput,
-                        snapshot,
-                        snapshotGeneration,
-                        layoutRevision);
-                }
-                if (_lifetime.IsDisposed || _lifetime.IsUnloaded ||
-                    !ReferenceEquals(_published.Snapshot, snapshot) ||
-                    !ReferenceEquals(_deferredSnapshot, snapshot) ||
-                    snapshotGeneration != _published.Generation ||
-                    snapshot.LayoutRevision != layoutRevision)
-                {
-                    Reset();
-                    return;
-                }
-                if ((_deferred?.Count ?? 0) == 0)
-                {
-                    FinishDrain(sender);
-                    return;
-                }
-                // Process later queued input only after the context menu has
-                // been opened without the snapshot lease. This preserves the
-                // FIFO ordering of gestures even when layout had to defer them.
-                continue;
-            }
-
-            if (staleQueue)
-            {
-                DropQueuePreservingSelection();
-                return;
-            }
-
-            if (waitingForLayoutPublication)
-            {
-                sender.Stop();
-                if (postInteractionInput is { } deferredPost &&
-                    deferredPost.HasPostInteractionWork &&
-                    !CompletePointerPostInteraction(
-                        ref deferredPost,
-                        snapshot,
-                        snapshotGeneration,
-                        layoutRevision))
-                {
-                    DropQueuePreservingSelection();
-                    return;
-                }
-                if (_admission.IsLayoutPublished(snapshot))
-                    sender.Start();
-                return;
-            }
-
-            if (waitingForGeometry)
-            {
-                sender.Stop();
-                if (postInteractionInput is { } deferredPost &&
-                    deferredPost.HasPostInteractionWork &&
-                    !CompletePointerPostInteraction(
-                        ref deferredPost,
-                        snapshot,
-                        snapshotGeneration,
-                        layoutRevision))
-                {
-                    DropQueuePreservingSelection();
-                    return;
-                }
-                if (!_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
-                    ReferenceEquals(_published.Snapshot, snapshot) &&
-                    snapshotGeneration == _published.Generation)
-                {
-                    RequestDeferredGestureBandRealization(snapshot, waitingBand);
-                }
-                else
-                {
-                    DropQueuePreservingSelection();
-                }
-                return;
-            }
-
-            if (_lifetime.IsDisposed || _lifetime.IsUnloaded ||
-                !ReferenceEquals(_published.Snapshot, snapshot) ||
-                !ReferenceEquals(_deferredSnapshot, snapshot))
-            {
-                Reset();
-                return;
-            }
-
-            if ((_deferred?.Count ?? 0) == 0)
-            {
-                FinishDrain(sender);
-                return;
+                _draining = false;
+                snapshot.EndInteraction();
             }
         }
+        catch
+        {
+            FinishDrain(sender);
+            throw;
+        }
+
+        return outcome;
+    }
+
+    /// <summary>
+    /// Decides whether the queue head, a gesture that waited for geometry, can
+    /// be dispatched now. Records in <paramref name="outcome"/> why the drain
+    /// stops when it must wait for layout, or when a dropped gesture still has
+    /// post-interaction work.
+    /// </summary>
+    private DeferredGeometryWaitStep AdmitGeometryWait(
+        DeferredInputQueue<PointerInput> queue,
+        ref PointerInput input,
+        LayoutSnapshot snapshot,
+        ref DeferredInputDrainOutcome outcome)
+    {
+        bool hasBand = _admission.TryGetAdmissionBand(
+            ref input,
+            snapshot,
+            out outcome.WaitingBand,
+            out bool bandReady);
+        if (input.InvalidDeferredProjection)
+            return DropQueueHead(queue, input, ref outcome);
+        if (input.WaitForLayoutPublication)
+        {
+            queue.TryReplaceHead(
+                input,
+                blocksSnapshotInteraction: false);
+            outcome.WaitingForLayoutPublication = true;
+            if (input.HasPostInteractionWork)
+                outcome.PostInteractionInput = input;
+            return DeferredGeometryWaitStep.Stop;
+        }
+        if (hasBand && !bandReady)
+        {
+            queue.TryReplaceHead(
+                input,
+                blocksSnapshotInteraction: false);
+            outcome.WaitingForGeometry = true;
+            if (input.HasPostInteractionWork)
+                outcome.PostInteractionInput = input;
+            return DeferredGeometryWaitStep.Stop;
+        }
+        if (!input.WaitForMeasuredHitTest &&
+            !_admission.TryReproject(ref input))
+        {
+            return DropQueueHead(queue, input, ref outcome);
+        }
+        input.WaitForMeasuredHitTest = false;
+        return DeferredGeometryWaitStep.Dispatch;
+    }
+
+    /// <summary>
+    /// Dequeues a gesture that can no longer be dispatched. The drain stops
+    /// only when the gesture still has post-interaction work to run.
+    /// </summary>
+    private static DeferredGeometryWaitStep DropQueueHead(
+        DeferredInputQueue<PointerInput> queue,
+        PointerInput input,
+        ref DeferredInputDrainOutcome outcome)
+    {
+        queue.TryDequeue(out _);
+        if (!input.HasPostInteractionWork)
+            return DeferredGeometryWaitStep.Skip;
+        outcome.PostInteractionInput = input;
+        return DeferredGeometryWaitStep.Stop;
+    }
+
+    /// <summary>
+    /// After the lease of one drain pass has ended, runs the outcome's
+    /// post-interaction work or waits, drops or finishes the queue. Returns
+    /// true when the drain continues with the next queued input.
+    /// </summary>
+    private bool ContinueAfterDrain(
+        DispatcherQueueTimer sender,
+        LayoutSnapshot snapshot,
+        long snapshotGeneration,
+        long layoutRevision,
+        DeferredInputDrainOutcome outcome)
+    {
+        if (!outcome.WaitingForGeometry && !outcome.WaitingForLayoutPublication &&
+            outcome.PostInteractionInput is { } menuInput)
+        {
+            return CompleteDrainedInput(sender, menuInput, snapshot, snapshotGeneration, layoutRevision);
+        }
+
+        if (outcome.StaleQueue)
+        {
+            DropQueuePreservingSelection();
+            return false;
+        }
+
+        if (outcome.WaitingForLayoutPublication || outcome.WaitingForGeometry)
+        {
+            sender.Stop();
+            if (outcome.PostInteractionInput is { } deferredPost &&
+                deferredPost.HasPostInteractionWork &&
+                !CompletePointerPostInteraction(
+                    ref deferredPost,
+                    snapshot,
+                    snapshotGeneration,
+                    layoutRevision))
+            {
+                DropQueuePreservingSelection();
+                return false;
+            }
+            if (outcome.WaitingForLayoutPublication)
+            {
+                if (_admission.IsLayoutPublished(snapshot))
+                    sender.Start();
+            }
+            else if (!_lifetime.IsDisposed && !_lifetime.IsUnloaded &&
+                ReferenceEquals(_published.Snapshot, snapshot) &&
+                snapshotGeneration == _published.Generation)
+            {
+                RequestDeferredGestureBandRealization(snapshot, outcome.WaitingBand);
+            }
+            else
+            {
+                DropQueuePreservingSelection();
+            }
+            return false;
+        }
+
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded ||
+            !ReferenceEquals(_published.Snapshot, snapshot) ||
+            !ReferenceEquals(_deferredSnapshot, snapshot))
+        {
+            Reset();
+            return false;
+        }
+
+        if ((_deferred?.Count ?? 0) == 0)
+        {
+            FinishDrain(sender);
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Opens the context menu or runs the post-interaction work of the input
+    /// that ended a drain pass, outside the snapshot lease. Returns true when
+    /// later queued input is still current and the drain continues.
+    /// </summary>
+    private bool CompleteDrainedInput(
+        DispatcherQueueTimer sender,
+        PointerInput menuInput,
+        LayoutSnapshot snapshot,
+        long snapshotGeneration,
+        long layoutRevision)
+    {
+        if (menuInput.ShowContextMenuAfterInteraction)
+        {
+            _ = CompleteGestureAfterSnapshotInteraction(
+                menuInput,
+                snapshot,
+                snapshotGeneration,
+                layoutRevision);
+        }
+        else
+        {
+            CompletePointerPostInteraction(
+                ref menuInput,
+                snapshot,
+                snapshotGeneration,
+                layoutRevision);
+        }
+        if (_lifetime.IsDisposed || _lifetime.IsUnloaded ||
+            !ReferenceEquals(_published.Snapshot, snapshot) ||
+            !ReferenceEquals(_deferredSnapshot, snapshot) ||
+            snapshotGeneration != _published.Generation ||
+            snapshot.LayoutRevision != layoutRevision)
+        {
+            Reset();
+            return false;
+        }
+        if ((_deferred?.Count ?? 0) == 0)
+        {
+            FinishDrain(sender);
+            return false;
+        }
+        // Process later queued input only after the context menu has been
+        // opened without the snapshot lease. This preserves the FIFO ordering
+        // of gestures even when layout had to defer them.
+        return true;
     }
 
     private void FinishDrain(DispatcherQueueTimer sender)
