@@ -30,11 +30,6 @@
       "path": "src/MarkdownRenderer.Math/ThirdParty/Typography/Typography.OpenFont/Tables.CFF/Type2CharStringParser.cs",
       "lines": 1253,
       "reason": "Vendored third-party source, kept as upstream wrote it so it can be compared with its release."
-    },
-    {
-      "path": "tests/MarkdownRenderer.Tests/MarkdownEngineTests.cs",
-      "lines": 1340,
-      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     }
   ]
 }
