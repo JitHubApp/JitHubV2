@@ -196,8 +196,12 @@ public sealed class Phase0TelemetryTests : IDisposable
     [Fact]
     public void StoreEventAllowlist_MatchesEmittedLiteralTaxonomy()
     {
-        string productRoot = Path.Combine(FindRepositoryRoot(), "JitHub.WinUI");
-        HashSet<string> emittedEvents = Directory.EnumerateFiles(productRoot, "*.cs", SearchOption.AllDirectories)
+        // JitHub.Markdown emits the Markdown host events through the app's
+        // telemetry service, so its sources are part of the emitted taxonomy.
+        string repositoryRoot = FindRepositoryRoot();
+        HashSet<string> emittedEvents = new[] { "JitHub.WinUI", "JitHub.Markdown" }
+            .SelectMany(project => Directory.EnumerateFiles(
+                Path.Combine(repositoryRoot, project), "*.cs", SearchOption.AllDirectories))
             .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
             .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
             .Where(path => !path.EndsWith("TelemetrySanitizer.cs", StringComparison.OrdinalIgnoreCase))

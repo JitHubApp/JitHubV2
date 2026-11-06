@@ -1,3 +1,4 @@
+using JitHub.Markdown;
 using JitHub.WinUI.Helpers;
 using JitHub.Models;
 using JitHub.Models.PRConversation;
@@ -13,7 +14,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
-using JitHub.Services.Markdown;
 using JitHub.Services;
 using MarkdownRenderer.Images;
 

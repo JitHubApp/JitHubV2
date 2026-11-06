@@ -1,0 +1,43 @@
+#nullable enable
+const MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRenderer.ResvgCommit = "68b14c4c3bccdb60344c777406486b54c36ec1a4" -> string!
+const MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRenderer.ResvgVersion = "0.48.1" -> string!
+const MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererOptions.HardMaxEmbeddedImageBytes = 67108864 -> long
+const MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererOptions.HardMaxEmbeddedImagePixels = 25165824 -> long
+const MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererOptions.HardMaxFilterIntermediateBytes = 134217728 -> long
+const MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererOptions.HardMaxNestedSvgDepth = 4 -> int
+const MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererOptions.HardMaxOutputRasterBytes = 67108864 -> long
+const MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererOptions.HardMaxSourceBytes = 8388608 -> int
+const MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererOptions.HardMaxStructuralCost = 100000 -> int
+const MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererOptions.HardMaxXmlDepth = 128 -> int
+MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRenderer
+MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRenderer.CacheGeneration.get -> long
+MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRenderer.CacheInvalidated -> System.EventHandler?
+MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRenderer.DecodeAsync(MarkdownRenderer.Images.MarkdownRasterDecodeRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.MarkdownRaster!>
+MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRenderer.Dispose() -> void
+MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRenderer.DisposeAsync() -> System.Threading.Tasks.ValueTask
+MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRenderer.NotifyFontsChanged() -> void
+MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRenderer.OpenAsync(MarkdownRenderer.Images.MarkdownSvgOpenRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.IMarkdownSvgDocument!>
+MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRenderer.PrepareSource(byte[]! source, System.Threading.CancellationToken cancellationToken) -> MarkdownRenderer.Images.MarkdownSvgSourcePreparation!
+MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRenderer.ResvgMarkdownSvgRenderer() -> void
+MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRenderer.ResvgMarkdownSvgRenderer(MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererOptions! options) -> void
+MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRenderer.SupportsFormat(MarkdownRenderer.Images.MarkdownRasterFormat format) -> bool
+MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRenderer.TrimCachesAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRenderer.WarmUpAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererExtensions
+MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererOptions
+MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererOptions.MaxEmbeddedImageBytes.get -> long
+MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererOptions.MaxEmbeddedImagePixels.get -> long
+MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererOptions.MaxFilterIntermediateBytes.get -> long
+MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererOptions.MaxNestedSvgDepth.get -> int
+MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererOptions.MaxOutputRasterBytes.get -> long
+MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererOptions.MaxSourceBytes.get -> int
+MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererOptions.MaxStructuralCost.get -> int
+MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererOptions.MaxXmlDepth.get -> int
+MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererOptions.ParsedResourceCacheBytes.get -> long
+MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererOptions.QueueCapacity.get -> int
+MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererOptions.RequestDeadline.get -> System.TimeSpan
+MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererOptions.ResvgMarkdownSvgRendererOptions(int maxSourceBytes = 8388608, int maxXmlDepth = 128, int maxNestedSvgDepth = 4, int maxStructuralCost = 100000, long maxEmbeddedImageBytes = 67108864, long maxEmbeddedImagePixels = 25165824, long maxOutputRasterBytes = 67108864, long maxFilterIntermediateBytes = 134217728, System.TimeSpan? requestDeadline = null, int queueCapacity = 32, long? parsedResourceCacheBytes = null, long? workerCommitBytes = null, string? workerExecutablePath = null) -> void
+MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererOptions.WorkerCommitBytes.get -> long
+MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererOptions.WorkerExecutablePath.get -> string?
+static MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererExtensions.WithResvgSvgRenderer(this MarkdownRenderer.Controls.MarkdownRendererControlBuilder! builder, MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRenderer! renderer) -> MarkdownRenderer.Controls.MarkdownRendererControlBuilder!
+static readonly MarkdownRenderer.Svg.Resvg.ResvgMarkdownSvgRendererOptions.HardMaxRequestDeadline -> System.TimeSpan

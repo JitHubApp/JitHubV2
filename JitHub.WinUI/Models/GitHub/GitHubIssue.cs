@@ -1,8 +1,8 @@
 using System;
 using System.Globalization;
 using System.Text.Json.Serialization;
+using JitHub.Markdown;
 using JitHub.Services;
-using JitHub.Services.Markdown;
 using JitHub.WinUI.Helpers;
 using MarkdownRenderer.Images;
 

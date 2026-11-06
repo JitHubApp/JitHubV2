@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Xunit;
@@ -42,9 +44,16 @@ public sealed class NativeAotSourceContractTests
         Assert.Contains("<CsWinRTAotWarningLevel>2</CsWinRTAotWarningLevel>", project, StringComparison.Ordinal);
         Assert.Contains("CsWinRT1032", directoryProps, StringComparison.Ordinal);
         Assert.Contains("<RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>", project, StringComparison.Ordinal);
+        // The renderer feature references are checked on the evaluated project by
+        // AppRendererPackagingTests.App_ReferencesEveryShippingRendererFeature.
         Assert.Contains("JitHub.WinUI (AotDebug)", launchSettings, StringComparison.Ordinal);
         Assert.Contains("\"nativeDebugging\": true", launchSettings, StringComparison.Ordinal);
     }
+
+    // Types that cross the WinRT ABI must be partial so CsWinRT can generate
+    // their AOT vtables. That is a build error, not a test: CsWinRT1028 at
+    // CsWinRTAotWarningLevel 2 with warnings as errors, in JitHub.Markdown
+    // always and in the Release app through eng/NativeAot.props.
 
     [Fact]
     [Trait("Category", "ReleaseSecurity")]
@@ -55,9 +64,9 @@ public sealed class NativeAotSourceContractTests
         string ledger = File.ReadAllText(Path.Combine(root, "eng", "native-aot-dependencies.json"));
         string graph = project + Environment.NewLine + ledger;
 
+        // Resvg replaces Svg.Skia; the app's reference to it is checked on the
+        // evaluated project by AppRendererPackagingTests.
         Assert.Contains("WinUIEdit" + "\" Version=\"0.0.5-prerelease", project, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Svg.Skia\" Version=\"5.2.1", project, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("SkiaSharp\" Version=\"4.151.1", project, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Microsoft.Services.Store.Engagement\" Version=\"10.2307.3001", project, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("'$(RuntimeIdentifier)' == 'win-arm64'", project, StringComparison.Ordinal);
 
@@ -65,23 +74,58 @@ public sealed class NativeAotSourceContractTests
         {
             "CsvHelper",
             "CommunityToolkit.WinUI.Controls.DataGrid",
+            "MarkdownRenderer.Svg.ThorVG",
+            "Svg.Skia",
+            "SkiaSharp",
             "SkiaSharp.Views.WinUI",
             "Jint",
         })
         {
             Assert.DoesNotContain(removedPackage, graph, StringComparison.OrdinalIgnoreCase);
         }
+
+        // That the artifact verifier no longer requires the SkiaSharp natives
+        // (libHarfBuzzSharp.dll) is covered by NativeAotArtifactVerifier_PassesItsSelfTests:
+        // its baseline layout has only the reviewed natives and must be accepted.
     }
 
     [Fact]
     [Trait("Category", "ReleaseSecurity")]
-    public void LockedNativeAotRestore_AlwaysRegeneratesTheAssetsGraph()
+    public void NativeAotArtifactVerifier_PassesItsSelfTests()
+    {
+        // The self-tests accept a layout of exactly the required natives and
+        // reject hidden CoreCLR, hidden host metadata and reparse points.
+        // Windows PowerShell, as the release gate in JitHub.WinUI.csproj runs scripts.
+        string root = FindRepositoryRoot();
+        RunPowerShell(Path.Combine(root, "eng", "tests", "Verify-NativeAotArtifact.Tests.ps1"));
+    }
+
+    [Fact]
+    [Trait("Category", "ReleaseSecurity")]
+    public void LockedNativeAotRestore_KeepsProjectReferenceLocksOrdinary()
     {
         string root = FindRepositoryRoot();
         string restoreScript = File.ReadAllText(Path.Combine(root, "eng", "Restore-NativeAot.ps1"));
 
         Assert.Contains("$arguments += '--locked-mode'", restoreScript, StringComparison.Ordinal);
         Assert.Contains("$arguments += '--force'", restoreScript, StringComparison.Ordinal);
+
+        // NativeAot.props turns PublishAot on at the app root (checked above).
+        // Passed as a restore global property instead, it would flow into every
+        // project reference and add the ILCompiler packs to their locks, so the
+        // locked restore above would fail. The committed locks show the result:
+        // only the app's graph carries the AOT compiler.
+        using JsonDocument appLock = ReadLockFile(Path.Combine(root, "JitHub.WinUI", "packages.lock.json"));
+        Assert.True(LockedPackageNames(appLock).Any(IsAotCompilerPackage), "The app lock must record the Native AOT compiler.");
+
+        string[] projectReferences = LockedProjectNames(appLock);
+        Assert.NotEmpty(projectReferences);
+        Dictionary<string, string> projectDirectories = SolutionProjectDirectories(root);
+        Assert.All(projectReferences, project =>
+        {
+            using JsonDocument referenceLock = ReadLockFile(Path.Combine(projectDirectories[project], "packages.lock.json"));
+            Assert.DoesNotContain(LockedPackageNames(referenceLock), IsAotCompilerPackage);
+        });
     }
 
     [Fact]
@@ -126,10 +170,41 @@ public sealed class NativeAotSourceContractTests
             "Controls",
             "App",
             "AppSvgViewport.xaml.cs"));
+        string viewportPeer = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Views",
+            "Controls",
+            "App",
+            "AppSvgViewportAutomationPeer.cs"));
+        string preview = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Views",
+            "Controls",
+            "CodeViewer",
+            "Renderers",
+            "SvgPreview.xaml.cs"));
         string matrix = File.ReadAllText(Path.Combine(root, "eng", "Invoke-NativeAotUiMatrix.ps1"));
 
         Assert.Contains("SvgPreviewRenderedImage", viewport, StringComparison.Ordinal);
         Assert.Contains("AccessibilityView.Content", viewport, StringComparison.Ordinal);
+        Assert.Contains("CanvasBitmap.CreateFromBytes", viewport, StringComparison.Ordinal);
+        Assert.Contains("Task.Run(", viewport, StringComparison.Ordinal);
+        Assert.Contains("() => UploadTile(device, rendered)", viewport, StringComparison.Ordinal);
+        Assert.Contains("tileCache.TryReserve", viewport, StringComparison.Ordinal);
+        Assert.Contains("DetachPublishedPlan(plan)", viewport, StringComparison.Ordinal);
+        Assert.Contains("device.ForceSoftwareRenderer", viewport, StringComparison.Ordinal);
+        Assert.Contains("device.IsPixelFormatSupported", viewport, StringComparison.Ordinal);
+        Assert.Contains("DirectXPixelFormat.R8G8B8A8UIntNormalized", viewport, StringComparison.Ordinal);
+        Assert.Contains("DirectXPixelFormat.B8G8R8A8UIntNormalized", viewport, StringComparison.Ordinal);
+        // WriteableBitmap (and its PixelBuffer) is a banned symbol in eng/BannedSymbols.txt.
+        Assert.Contains("AutomationControlType.Image", viewportPeer, StringComparison.Ordinal);
+        Assert.Contains("_svgRenderer.CacheInvalidated += OnSvgCacheInvalidated", preview, StringComparison.Ordinal);
+        Assert.Contains("_documentHasText", preview, StringComparison.Ordinal);
+        Assert.Contains("exception.Reason == MarkdownSvgFailureReason.Canceled", preview, StringComparison.Ordinal);
+        Assert.Contains("request.CancellationToken.IsCancellationRequested", preview, StringComparison.Ordinal);
+        Assert.Contains("MarkdownSvgFailureReason.Timeout", preview, StringComparison.Ordinal);
         Assert.Contains("Wait-ForElement -AppProcessId $appProcessId -AutomationId 'SvgPreviewRenderedImage'", matrix, StringComparison.Ordinal);
         Assert.Contains("Wait-ForElement -AppProcessId $appProcessId -AutomationId 'DashboardWidget_recent_activity'", matrix, StringComparison.Ordinal);
         Assert.Contains("Wait-ForElement -AppProcessId $appProcessId -AutomationId 'DashboardWidget_overview'", matrix, StringComparison.Ordinal);
@@ -220,6 +295,37 @@ public sealed class NativeAotSourceContractTests
         Assert.Contains("HorizontalSignalRatio", matrix, StringComparison.Ordinal);
         Assert.Contains("VerticalSignalRatio", matrix, StringComparison.Ordinal);
         Assert.Contains("-RouteName \"$($route.Name)-failure\"", matrix, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [Trait("Category", "ReleaseSecurity")]
+    public void SvgRuntime_UsesStrictGlobalCacheAndRetiresItWithTheMarkdownRuntime()
+    {
+        // The window retires the Markdown runtime only after its views'
+        // renderers are gone; that order is covered by MarkdownViewShutdownTests.
+        // StrictResourceLeaseCache itself is covered by StrictResourceLeaseCacheTests.
+        // The resvg dependency licenses ship through
+        // AppRendererPackagingTests.App_PublishesTheRendererAndPlatformThirdPartyNotices.
+        string root = FindRepositoryRoot();
+        string cache = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Services",
+            "CodeViewer",
+            "RepositorySvgGpuCache.cs"));
+        string runtime = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Services",
+            "Markdown",
+            "JitHubMarkdownRuntime.cs"));
+
+        Assert.Contains("32L * 1024 * 1024", cache, StringComparison.Ordinal);
+        Assert.Contains("64L * 1024 * 1024", cache, StringComparison.Ordinal);
+        Assert.Contains("StrictResourceLeaseCache<DeviceTileKey, CanvasBitmap>", cache, StringComparison.Ordinal);
+        Assert.Contains("AppMemoryUsageIncreased += OnAppMemoryUsageIncreased", cache, StringComparison.Ordinal);
+        Assert.Contains("_cache.Trim();", cache, StringComparison.Ordinal);
+        Assert.Contains("retired.SvgPreviewTileCache?.Dispose();", runtime, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -472,6 +578,62 @@ public sealed class NativeAotSourceContractTests
         }
 
         return count;
+    }
+
+    private static JsonDocument ReadLockFile(string path) => JsonDocument.Parse(File.ReadAllText(path));
+
+    // Package names across the neutral graph and every runtime graph.
+    private static IEnumerable<string> LockedPackageNames(JsonDocument lockFile) =>
+        LockedEntries(lockFile)
+            .Where(static entry => entry.Value.GetProperty("type").GetString() != "Project")
+            .Select(static entry => entry.Name);
+
+    private static string[] LockedProjectNames(JsonDocument lockFile) =>
+        LockedEntries(lockFile)
+            .Where(static entry => entry.Value.GetProperty("type").GetString() == "Project")
+            .Select(static entry => entry.Name)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+    private static IEnumerable<JsonProperty> LockedEntries(JsonDocument lockFile) =>
+        lockFile.RootElement
+            .GetProperty("dependencies")
+            .EnumerateObject()
+            .SelectMany(static target => target.Value.EnumerateObject());
+
+    private static bool IsAotCompilerPackage(string package) =>
+        package.Contains("Microsoft.DotNet.ILCompiler", StringComparison.OrdinalIgnoreCase);
+
+    // Lock files name project references by project name; JitHub.slnx locates them.
+    private static Dictionary<string, string> SolutionProjectDirectories(string root) =>
+        XDocument.Load(Path.Combine(root, "JitHub.slnx"))
+            .Root!
+            .Descendants("Project")
+            .Select(project => Path.Combine(root, ((string)project.Attribute("Path")!).Replace('/', Path.DirectorySeparatorChar)))
+            .ToDictionary(
+                static path => Path.GetFileNameWithoutExtension(path),
+                static path => Path.GetDirectoryName(path)!,
+                StringComparer.OrdinalIgnoreCase);
+
+    private static void RunPowerShell(string script)
+    {
+        var start = new ProcessStartInfo("powershell.exe")
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        foreach (string argument in new[] { "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script })
+            start.ArgumentList.Add(argument);
+
+        using Process process = Process.Start(start)!;
+        Task<string> error = process.StandardError.ReadToEndAsync();
+        string output = process.StandardOutput.ReadToEnd();
+        Assert.True(process.WaitForExit(TimeSpan.FromMinutes(2)), $"{Path.GetFileName(script)} did not exit.");
+        Assert.True(
+            process.ExitCode == 0,
+            $"{Path.GetFileName(script)} exited {process.ExitCode}:{Environment.NewLine}{output}{error.Result}");
     }
 
     private static string FindRepositoryRoot()

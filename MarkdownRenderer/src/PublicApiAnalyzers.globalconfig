@@ -1,0 +1,39 @@
+is_global = true
+
+# Public API tracking for every shipping renderer assembly. Each project keeps
+# PublicAPI.Shipped.txt and PublicAPI.Unshipped.txt next to its project file;
+# src/Directory.Build.props references the analyzer and includes this file.
+# These rules are errors whatever TreatWarningsAsErrors says.
+#
+# Update the files with the RS0016 code fix in the IDE, or from the repository
+# root with:
+#   dotnet format analyzers <project> --diagnostics RS0016 --severity warn
+
+# One of the two API files is missing. The analyzer stays silent when both
+# are missing, so src/Directory.Build.targets also fails the build then.
+dotnet_diagnostic.RS0048.severity = error
+
+# A public or protected symbol that no API file declares.
+dotnet_diagnostic.RS0016.severity = error
+
+# An API file entry whose symbol no longer exists.
+dotnet_diagnostic.RS0017.severity = error
+
+# A *REMOVED* entry whose symbol still exists.
+dotnet_diagnostic.RS0050.severity = error
+
+# Malformed API files, and a symbol listed more than once.
+dotnet_diagnostic.RS0024.severity = error
+dotnet_diagnostic.RS0025.severity = error
+
+# Nullability is part of the tracked signature: every API file starts with
+# #nullable enable, every entry carries its annotations, and no public member
+# uses a nullable-oblivious reference type.
+dotnet_diagnostic.RS0036.severity = error
+dotnet_diagnostic.RS0037.severity = error
+dotnet_diagnostic.RS0041.severity = error
+
+# Overloads and optional parameters: at most one public overload may take
+# optional parameters, and it must be the overload with the most parameters.
+dotnet_diagnostic.RS0026.severity = error
+dotnet_diagnostic.RS0027.severity = error

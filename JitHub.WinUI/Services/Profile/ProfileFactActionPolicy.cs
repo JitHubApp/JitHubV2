@@ -1,6 +1,6 @@
 using System;
 using System.Linq;
-using JitHub.Services.Markdown;
+using JitHub.Markdown;
 
 namespace JitHub.Services;
 

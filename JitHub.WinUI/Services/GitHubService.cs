@@ -1,10 +1,9 @@
+using JitHub.Markdown.Images;
 using JitHub.Models;
 using JitHub.Models.Base;
 using JitHub.Models.PRConversation;
 using JitHub.WinUI.Helpers;
 using JitHub.Models.LegacyGitHub;
-using JitHub.Services.Markdown;
-using MarkdownRenderer.Images;
 using ApiOptions = JitHub.Models.LegacyGitHub.ApiOptions;
 using CommitRequest = JitHub.Models.LegacyGitHub.CommitRequest;
 using IssueFilter = JitHub.Models.LegacyGitHub.IssueFilter;
@@ -18,7 +17,6 @@ using SearchRepositoriesRequest = JitHub.Models.LegacyGitHub.SearchRepositoriesR
 using SortDirection = JitHub.Models.LegacyGitHub.SortDirection;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -46,7 +44,7 @@ using RestGitHubUser = JitHub.Models.GitHub.GitHubUser;
 
 namespace JitHub.Services
 {
-    public partial class GitHubService : IGitHubService, IMarkdownImageResolver
+    public partial class GitHubService : IGitHubService
     {
         private const long PublicPreviewRepositoryId = 623352671;
         private const long PublicPreviewOwnerId = 170190931;
@@ -54,23 +52,24 @@ namespace JitHub.Services
         private const string PublicPreviewRepositoryName = "JitHubV2";
         private const string PublicPreviewDefaultBranch = "main";
         private readonly IGitHubClientService _gitHubClientService;
-        private readonly IGitHubImageService _gitHubImageService;
-        private readonly IMarkdownRemoteImagePolicy _markdownRemoteImagePolicy;
+        private readonly GitHubMarkdownImageResolver _markdownImageResolver;
         private string? _accessToken;
 
-        public GitHubService(
+        internal GitHubService(
             IGitHubClientService gitHubClientService,
-            IGitHubImageService gitHubImageService,
-            IMarkdownRemoteImagePolicy markdownRemoteImagePolicy)
+            GitHubMarkdownImageResolver markdownImageResolver)
         {
             _gitHubClientService = gitHubClientService;
-            _gitHubImageService = gitHubImageService;
-            _markdownRemoteImagePolicy = markdownRemoteImagePolicy;
+            _markdownImageResolver = markdownImageResolver;
         }
 
         public void SetAccessToken(string? token)
         {
-            _accessToken = string.IsNullOrWhiteSpace(token) ? null : token;
+            string? normalized = string.IsNullOrWhiteSpace(token) ? null : token;
+
+            // Markdown image resolution owns its credential-scoped caches.
+            _markdownImageResolver.SetAccessToken(normalized);
+            _accessToken = normalized;
         }
 
         private string GetAccessTokenOrThrow()
@@ -644,22 +643,6 @@ namespace JitHub.Services
             return string.Equals(encoding, "base64", StringComparison.OrdinalIgnoreCase)
                 ? EncodingType.Base64
                 : EncodingType.Utf8;
-        }
-
-        private static byte[] DecodeGitHubContent(string? content, string? encoding)
-        {
-            if (string.IsNullOrWhiteSpace(content))
-            {
-                return Array.Empty<byte>();
-            }
-
-            if (string.Equals(encoding, "base64", StringComparison.OrdinalIgnoreCase))
-            {
-                string normalized = content.Replace("\r", string.Empty).Replace("\n", string.Empty);
-                return Convert.FromBase64String(normalized);
-            }
-
-            return Encoding.UTF8.GetBytes(content);
         }
 
         private static string BuildRepositorySearchQuery(SearchRepositoriesRequest request)
@@ -2019,198 +2002,7 @@ namespace JitHub.Services
             IReadOnlyList<RestGitHubReaction> reactions = await _gitHubClientService.GetPullRequestReviewCommentReactionsAsync(token, owner, name, commentId);
             return reactions.Select(AdaptReaction).ToList();
         }
-
-        public async ValueTask<MarkdownImageResolution> ResolveAsync(
-            string source,
-            MarkdownImageResolveContext context,
-            CancellationToken cancellationToken)
-        {
-            GitHubMarkdownImageReference imageReference;
-            bool repositoryImageResolved = context.DocumentSource is not null
-                ? GitHubMarkdownImageUrlResolver.TryResolve(source, context.DocumentSource, out imageReference)
-                : GitHubMarkdownImageUrlResolver.TryResolve(
-                    source,
-                    context.BaseUri,
-                    context.DocumentPath,
-                    out imageReference);
-            if (!repositoryImageResolved)
-            {
-                MarkdownImageSourceDisposition disposition =
-                    MarkdownImageSourcePolicy.ClassifyUnownedSource(source, out Uri? publicUri);
-                if (disposition == MarkdownImageSourceDisposition.NotHandled)
-                {
-                    return MarkdownImageResolution.NotHandled;
-                }
-
-                if (disposition == MarkdownImageSourceDisposition.BlockedInsecureRemote)
-                {
-                    return MarkdownImageResolution.Blocked(
-                        MarkdownImageUnavailableReason.InsecureRemoteContent);
-                }
-
-                System.Diagnostics.Debug.Assert(publicUri is not null);
-
-                MarkdownRemoteImageDecision publicDecision = _markdownRemoteImagePolicy.Evaluate(
-                    publicUri!,
-                    context.AllowThirdPartyRemoteImages);
-                if (publicDecision.Access == MarkdownRemoteImageAccess.Block)
-                {
-                    return MarkdownImageResolution.Blocked(publicDecision.UnavailableReason);
-                }
-
-                try
-                {
-                    GitHubImageFetchScope scope = publicDecision.IsThirdParty
-                        ? GitHubImageFetchScope.UserApprovedHttps
-                        : GitHubImageFetchScope.TrustedGitHub;
-                    GitHubCachedImage? publicImage = publicDecision.Access == MarkdownRemoteImageAccess.CacheOnly
-                        ? await _gitHubImageService.TryGetCachedAsync(
-                            publicUri!.ToString(),
-                            scope,
-                            cancellationToken).ConfigureAwait(false)
-                        : await _gitHubImageService.GetAsync(
-                            publicUri!.ToString(),
-                            scope,
-                            cancellationToken).ConfigureAwait(false);
-                    if (publicImage is null && publicDecision.Access == MarkdownRemoteImageAccess.CacheOnly)
-                    {
-                        return MarkdownImageResolution.Blocked(publicDecision.UnavailableReason);
-                    }
-
-                    MarkdownImageAsset? publicAsset = await ReadCachedMarkdownImageAsync(
-                            publicImage,
-                            publicUri,
-                            cancellationToken)
-                        .ConfigureAwait(false);
-                    return publicAsset is null
-                        ? MarkdownImageResolution.Unavailable
-                        : MarkdownImageResolution.Resolved(publicAsset);
-                }
-                catch (OperationCanceledException)
-                {
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Failed to load public markdown image '{source}': {ex.Message}");
-                    return MarkdownImageResolution.Unavailable;
-                }
-            }
-
-            try
-            {
-                Uri rawUri = GitHubMarkdownImageUrlResolver.CreateRawUri(imageReference);
-                MarkdownRemoteImageDecision repositoryDecision = _markdownRemoteImagePolicy.Evaluate(
-                    rawUri,
-                    context.AllowThirdPartyRemoteImages);
-                if (repositoryDecision.Access == MarkdownRemoteImageAccess.Block)
-                {
-                    return MarkdownImageResolution.Blocked(repositoryDecision.UnavailableReason);
-                }
-
-                GitHubCachedImage? cachedImage;
-                if (repositoryDecision.Access == MarkdownRemoteImageAccess.CacheOnly)
-                {
-                    cachedImage = await _gitHubImageService.TryGetCachedAsync(
-                        rawUri.ToString(),
-                        GitHubImageFetchScope.TrustedGitHub,
-                        cancellationToken).ConfigureAwait(false);
-                    if (cachedImage is null)
-                    {
-                        return MarkdownImageResolution.Blocked(repositoryDecision.UnavailableReason);
-                    }
-                }
-                else
-                {
-                    cachedImage = await _gitHubImageService.GetOrFetchAsync(
-                        rawUri.ToString(),
-                        async (_, token) =>
-                        {
-                            string accessToken = GetAccessTokenOrThrow();
-                            RestGitHubRepositoryContent file = await _gitHubClientService.GetRepositoryContentAsync(
-                                accessToken,
-                                imageReference.Owner,
-                                imageReference.Repository,
-                                imageReference.Path,
-                                imageReference.Ref,
-                                token).ConfigureAwait(false);
-                            byte[] fileBytes = DecodeGitHubContent(file.Content, file.Encoding);
-
-                            if (fileBytes.Length == 0 && !string.IsNullOrWhiteSpace(file.Sha))
-                            {
-                                RestGitHubBlob blob = await _gitHubClientService.GetBlobAsync(
-                                    accessToken,
-                                    imageReference.Owner,
-                                    imageReference.Repository,
-                                    file.Sha,
-                                    token).ConfigureAwait(false);
-                                fileBytes = DecodeGitHubContent(blob.Content, blob.Encoding);
-                            }
-
-                            return fileBytes.Length == 0
-                                ? null
-                                : new GitHubImageDownload(fileBytes, GuessImageContentType(imageReference.Path));
-                        },
-                        cancellationToken).ConfigureAwait(false);
-                }
-
-                MarkdownImageAsset? asset = await ReadCachedMarkdownImageAsync(
-                        cachedImage,
-                        rawUri,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-                return asset is null
-                    ? MarkdownImageResolution.Unavailable
-                    : MarkdownImageResolution.Resolved(asset);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Failed to load GitHub markdown image '{source}': {ex.Message}");
-                return MarkdownImageResolution.Unavailable;
-            }
-        }
-
-        private static Task<MarkdownImageAsset?> ReadCachedMarkdownImageAsync(
-            GitHubCachedImage? cachedImage,
-            Uri resolvedUri,
-            CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (cachedImage?.Bytes is not { Length: > 0 } bytes)
-            {
-                return Task.FromResult<MarkdownImageAsset?>(null);
-            }
-
-            return Task.FromResult<MarkdownImageAsset?>(
-                new MarkdownImageAsset(
-                    bytes,
-                    cachedImage.ContentType,
-                    resolvedUri,
-                    CacheKey: cachedImage.FilePath));
-        }
-
-        private static string? GuessImageContentType(string path)
-        {
-            string extension = System.IO.Path.GetExtension(path);
-            return extension.ToLowerInvariant() switch
-            {
-                ".svg" => "image/svg+xml",
-                ".png" => "image/png",
-                ".jpg" or ".jpeg" => "image/jpeg",
-                ".gif" => "image/gif",
-                ".bmp" => "image/bmp",
-                ".webp" => "image/webp",
-                ".ico" => "image/x-icon",
-                ".tif" or ".tiff" => "image/tiff",
-                _ => null,
-            };
-        }
     }
 }
-
 
 

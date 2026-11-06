@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using JitHub.Markdown.Images;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
@@ -23,7 +24,7 @@ public sealed partial class GitHubReadArchitectureConformanceTests
             "GitHubGraphQlTransport.cs",
             "GitHubProfileQueryService.cs",
             // Remote image traffic is separately constrained by MarkdownRemoteImagePolicy.
-            "GitHubImageService.cs"
+            "GitHubImageHttpFetcher.cs"
             ,"GitHubDeviceFlowClient.cs"
         };
 
@@ -172,6 +173,15 @@ public sealed partial class GitHubReadArchitectureConformanceTests
         if (fileName is "GitHubClientService.cs" or "GitHubService.cs" or "GitHubService.Post.cs")
         {
             return true;
+        }
+
+        // Markdown image resolution moved out of GitHubService with exactly these
+        // repository-image and rendered-README reads. It now lives in JitHub.Markdown
+        // and reaches the app's client only through this adapter, which gains no
+        // other direct client reads.
+        if (fileName.Equals("GitHubMarkdownContentClient.cs", StringComparison.OrdinalIgnoreCase))
+        {
+            return method is "GetRepositoryContentAsync" or "GetBlobAsync" or "GetRenderedReadmeHtmlAsync";
         }
 
         return false;

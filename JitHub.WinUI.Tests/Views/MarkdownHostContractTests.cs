@@ -4,11 +4,15 @@ using System.IO;
 using System.Linq;
 using System.Xml;
 using System.Xml.Linq;
-using JitHub.WinUI.Views.Controls.Common;
+using JitHub.Markdown;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Views;
 
+/// <summary>
+/// Checks every XAML markdown host declares its host kind, a stable identity and a
+/// canonical document source, and that product hosts go through MarkdownViewer.
+/// </summary>
 public sealed class MarkdownHostContractTests
 {
     [Fact]
@@ -105,7 +109,10 @@ public sealed class MarkdownHostContractTests
             {
                 bool internalFormPreview = path.EndsWith("MarkdownForm.xaml", StringComparison.OrdinalIgnoreCase) &&
                     host.Name.LocalName == "MarkdownViewer";
-                if (internalFormPreview || host.Attribute("DocumentSource") is not null)
+                bool atomicRepositoryPreview = path.EndsWith("MarkdownPreview.xaml", StringComparison.OrdinalIgnoreCase) &&
+                    File.ReadAllText(Path.ChangeExtension(path, ".xaml.cs"))
+                        .Contains("RichPanel.SetDocumentPayload", StringComparison.Ordinal);
+                if (internalFormPreview || atomicRepositoryPreview || host.Attribute("DocumentSource") is not null)
                 {
                     continue;
                 }
@@ -120,67 +127,14 @@ public sealed class MarkdownHostContractTests
     }
 
     [Fact]
-    public void HostKinds_ResolveStableThemeAndAutomationMetadata()
-    {
-        HashSet<string> automationIds = new(StringComparer.Ordinal);
-        foreach (MarkdownHostKind kind in Enum.GetValues<MarkdownHostKind>())
-        {
-            string value = kind.ToString();
-            Assert.False(string.IsNullOrWhiteSpace(MarkdownHostContract.GetSurfaceColorToken(value)));
-            Assert.StartsWith("#", MarkdownHostContract.GetSurfaceFallback(value, dark: false));
-            Assert.StartsWith("#", MarkdownHostContract.GetSurfaceFallback(value, dark: true));
-            Assert.Contains("Markdown", MarkdownHostContract.GetAutomationName(value), StringComparison.Ordinal);
-            Assert.StartsWith("MarkdownHost_", MarkdownHostContract.GetAutomationId(value), StringComparison.Ordinal);
-            Assert.True(automationIds.Add(MarkdownHostContract.GetAutomationId(value)),
-                $"Duplicate Markdown host automation id for {value}.");
-        }
-    }
-
-    [Fact]
-    public void AutomationIdentity_NormalizesAndSeparatesHostInstances()
-    {
-        Assert.Equal(
-            "MarkdownHost_Comment_IssueComment_42",
-            MarkdownHostContract.GetAutomationId(MarkdownHostContract.Comment, "IssueComment:42"));
-        Assert.NotEqual(
-            MarkdownHostContract.GetAutomationId(MarkdownHostContract.Comment, "IssueComment:42"),
-            MarkdownHostContract.GetAutomationId(MarkdownHostContract.Comment, "IssueComment:43"));
-    }
-
-    [Fact]
-    public void MarkdownViewer_AppliesCanonicalIdentityAndTextScalingToRenderer()
-    {
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "JitHub.WinUI",
-            "Views",
-            "Controls",
-            "Common",
-            "MarkdownViewer.xaml.cs"));
-
-        Assert.Contains("MarkdownHostContract.GetAutomationName(HostKind)", source, StringComparison.Ordinal);
-        Assert.Contains("MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId)", source, StringComparison.Ordinal);
-        Assert.Contains("_uiSettings?.TextScaleFactor", source, StringComparison.Ordinal);
-        Assert.Contains("_uiSettings.TextScaleFactorChanged +=", source, StringComparison.Ordinal);
-        Assert.Contains("_uiSettings.TextScaleFactorChanged -=", source, StringComparison.Ordinal);
-        Assert.Contains("ThemeSettingsHelper.TryGetFor(this)", source, StringComparison.Ordinal);
-        Assert.Contains("AppThemeSettingsMonitor? _themeSettings", source, StringComparison.Ordinal);
-        Assert.Contains("_themeSettings.Changed +=", source, StringComparison.Ordinal);
-        Assert.Contains("_themeSettings.Changed -=", source, StringComparison.Ordinal);
-        Assert.Contains("ThemeSettingsHelper.IsHighContrastActive(_themeSettings)", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("AccessibilitySettings", source, StringComparison.Ordinal);
-        Assert.Contains("QueueRuntimeThemeRefresh", source, StringComparison.Ordinal);
-        Assert.Contains("MarkdownLifecycleAutomationBridge.GetRuntimeSettingsRevision()", source, StringComparison.Ordinal);
-        Assert.Contains("LifecycleRuntimeSettingsTimer_Tick", source, StringComparison.Ordinal);
-        Assert.Contains("_lifecycleRuntimeSettingsTimer.Stop()", source, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void MarkdownViewer_UsesSemanticTokensAndReportsRecoverableRenderFailures()
     {
+        // The viewer's renderer event wiring (RenderCompleted, RenderFailed and
+        // ImageUnavailable into MarkdownViewerFeedback) can only be observed with a
+        // live XAML runtime; the feedback results are covered by MarkdownViewerFeedbackTests.
         string root = FindRepositoryRoot();
         string viewerRoot = Path.Combine(root, "JitHub.WinUI", "Views", "Controls", "Common");
-        string source = File.ReadAllText(Path.Combine(viewerRoot, "MarkdownViewer.xaml.cs"));
+        string resources = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "Styles", "MarkdownRenderer.xaml"));
         XDocument xaml = XDocument.Load(Path.Combine(viewerRoot, "MarkdownViewer.xaml"));
         XElement errorInfoBar = xaml.Descendants().Single(element =>
             element.Name.LocalName == "InfoBar" &&
@@ -188,127 +142,12 @@ public sealed class MarkdownHostContractTests
                 attribute.Name.LocalName == "Name" && attribute.Value == "RenderErrorInfoBar"));
 
         Assert.Equal("{StaticResource AppErrorInfoBarStyle}", (string?)errorInfoBar.Attribute("Style"));
-        Assert.Contains("AppMarkdownBodyFontSize", source, StringComparison.Ordinal);
-        Assert.Contains("AppHighContrastMonoFontFamily", source, StringComparison.Ordinal);
-        Assert.Contains("ThemeSettingsHelper.IsHighContrastActive(_themeSettings)", source, StringComparison.Ordinal);
-        Assert.Contains("AppMarkdownTableCellPadding", source, StringComparison.Ordinal);
-        Assert.Contains("AppMarkdownHeading1Margin", source, StringComparison.Ordinal);
-        Assert.Contains("_renderer.RenderCompleted += OnRendererRenderCompleted", source, StringComparison.Ordinal);
-        Assert.Contains("_renderer.RenderFailed += OnRendererRenderFailed", source, StringComparison.Ordinal);
-        Assert.Contains("MarkdownLifecycleAutomationBridge.RecordRenderFailure", source, StringComparison.Ordinal);
-        Assert.Contains("\"markdown.error\"", source, StringComparison.Ordinal);
-        Assert.Contains("TelemetryTaxonomy.Actions.Retry", source, StringComparison.Ordinal);
-        Assert.Contains("e.Reason == MarkdownImageUnavailableReason.RemoteContentBlocked", source, StringComparison.Ordinal);
-        Assert.Contains("_remoteContentConsent.IsGranted", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("e.Exception.Message", source, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void SafeHtmlDetailsUseStatefulAccessibleDisclosuresAndTelemetry()
-    {
-        string root = FindRepositoryRoot();
-        string renderer = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "MarkdownRenderer.Gfm", "Renderers", "HtmlBlockRenderer.cs"));
-        string control = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "MarkdownRenderer", "Controls", "MarkdownRendererControl.cs"));
-        string peer = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "MarkdownRenderer", "Accessibility", "MarkdownLinkPeer.cs"));
-        string viewer = File.ReadAllText(Path.Combine(
-            root, "JitHub.WinUI", "Views", "Controls", "Common", "MarkdownViewer.xaml.cs"));
-
-        Assert.Contains("details.TryGetAttribute(\"open\"", renderer, StringComparison.Ordinal);
-        Assert.Contains("context.IsDisclosureExpanded", renderer, StringComparison.Ordinal);
-        Assert.Contains("if (!expanded)", renderer, StringComparison.Ordinal);
-        Assert.Contains("DisclosureId = disclosureId", renderer, StringComparison.Ordinal);
-        Assert.Contains("_disclosureStates.Clear()", control, StringComparison.Ordinal);
-        Assert.Contains("DisclosureStates = new Dictionary<string, bool>", control, StringComparison.Ordinal);
-        Assert.Contains("TryActivateDisclosure", control, StringComparison.Ordinal);
-        Assert.Contains("DisclosureToggled?.Invoke", control, StringComparison.Ordinal);
-        Assert.Contains("IExpandCollapseProvider", peer, StringComparison.Ordinal);
-        Assert.Contains("PatternInterface.ExpandCollapse", peer, StringComparison.Ordinal);
-        Assert.Contains("AutomationControlType.Button", peer, StringComparison.Ordinal);
-        Assert.Contains("_renderer.DisclosureToggled += OnRendererDisclosureToggled", viewer, StringComparison.Ordinal);
-        Assert.Contains("TelemetryTaxonomy.Actions.ToggleDetails", viewer, StringComparison.Ordinal);
-        Assert.Contains("TelemetryTaxonomy.Results.Expanded", viewer, StringComparison.Ordinal);
-        Assert.Contains("TelemetryTaxonomy.Results.Collapsed", viewer, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void LinkedMarkdownImagesAreKeyboardAndAutomationHyperlinks()
-    {
-        string root = FindRepositoryRoot();
-        string snapshot = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "MarkdownRenderer", "Layout", "LayoutSnapshot.cs"));
-        string control = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "MarkdownRenderer", "Controls", "MarkdownRendererControl.cs"));
-        string automationPeer = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "MarkdownRenderer", "Accessibility", "MarkdownAutomationPeer.cs"));
-        string imagePeer = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "MarkdownRenderer", "Accessibility", "MarkdownLinkedImagePeer.cs"));
-
-        Assert.Contains("InlineImageRun { IsLinked: true }", snapshot, StringComparison.Ordinal);
-        Assert.Contains("TryGetFocusedLinkedImage", control, StringComparison.Ordinal);
-        Assert.Contains("RaiseLinkedImageClickFromAutomation", control, StringComparison.Ordinal);
-        Assert.Contains("InvalidateAutomationLayout();", control, StringComparison.Ordinal);
-        Assert.Contains("FrameworkElementAutomationPeer.FromElement(this)?.InvalidatePeer();", control, StringComparison.Ordinal);
-        Assert.Contains("RaiseFocusForLinkedImage", automationPeer, StringComparison.Ordinal);
-        Assert.Contains("IInvokeProvider", imagePeer, StringComparison.Ordinal);
-        Assert.Contains("AutomationControlType.Hyperlink", imagePeer, StringComparison.Ordinal);
-        Assert.Contains("_run.AltText", imagePeer, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void MarkdownClipboardActionsUseHostStylingAndResultTelemetry()
-    {
-        string root = FindRepositoryRoot();
-        string control = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "MarkdownRenderer", "Controls", "MarkdownRendererControl.cs"));
-        string viewer = File.ReadAllText(Path.Combine(
-            root, "JitHub.WinUI", "Views", "Controls", "Common", "MarkdownViewer.xaml.cs"));
-
-        Assert.Contains("CodeBlockCopyButtonStyle", control, StringComparison.Ordinal);
-        Assert.Contains("CopyCompleted?.Invoke", control, StringComparison.Ordinal);
-        Assert.Contains("MarkdownCopyKind.CodeBlock", control, StringComparison.Ordinal);
-        Assert.Contains("MarkdownCopyKind.Selection", control, StringComparison.Ordinal);
-        Assert.Contains("_renderer.CopyCompleted += OnRendererCopyCompleted", viewer, StringComparison.Ordinal);
-        Assert.Contains("AppToolbarButtonStyle", viewer, StringComparison.Ordinal);
-        Assert.Contains("TelemetryTaxonomy.Actions.CopyCode", viewer, StringComparison.Ordinal);
-        Assert.Contains("TelemetryTaxonomy.Actions.CopySelection", viewer, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void MarkdownViewer_UsesPerDocumentConsentAndCanonicalSourceContext()
-    {
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "JitHub.WinUI",
-            "Views",
-            "Controls",
-            "Common",
-            "MarkdownViewer.xaml.cs"));
-
-        Assert.Contains("MarkdownRemoteContentConsent", source, StringComparison.Ordinal);
-        Assert.Contains("DocumentSourceProperty", source, StringComparison.Ordinal);
-        Assert.Contains("WithImageDocumentSource(DocumentSource)", source, StringComparison.Ordinal);
-        Assert.Contains("_remoteContentConsent.Grant()", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("_allowRemoteImagesForDocument", source, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void MarkdownForm_DoesNotConvertAutomationIdentityIntoDocumentConsentIdentity()
-    {
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "JitHub.WinUI",
-            "Views",
-            "Controls",
-            "Common",
-            "MarkdownForm.xaml.cs"));
-
-        Assert.Contains("PreviewViewer.DocumentSource = DocumentSource;", source, StringComparison.Ordinal);
-        Assert.Contains("ModeSegmented.SelectedItem = PreviewModeItem;", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("editor:{prefix}", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("new MarkdownDocumentSource", source, StringComparison.Ordinal);
+        Assert.Contains("MarkdownRenderer.Body.FontSize", resources, StringComparison.Ordinal);
+        Assert.Contains("ResourceKey=\"AppMarkdownBodyFontSize\"", resources, StringComparison.Ordinal);
+        Assert.Contains("ResourceKey=\"AppHighContrastMonoFontFamily\"", resources, StringComparison.Ordinal);
+        Assert.Contains("MarkdownRenderer.TableCell.Padding", resources, StringComparison.Ordinal);
+        Assert.Contains("ResourceKey=\"AppMarkdownHeading1Margin\"", resources, StringComparison.Ordinal);
+        Assert.Contains("ResourceKey=\"AppMarkdownStandaloneParagraphMargin\"", resources, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -328,17 +167,9 @@ public sealed class MarkdownHostContractTests
                 element.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml"))?.Value,
                 "PreviewViewer",
                 StringComparison.Ordinal));
-        string source = File.ReadAllText(Path.Combine(
-            root,
-            "JitHub.WinUI",
-            "Views",
-            "Controls",
-            "Common",
-            "MarkdownForm.xaml.cs"));
-
         Assert.Contains("EffectivePreviewAutomationInstanceId", (string?)preview.Attribute("AutomationInstanceId"));
-        Assert.Contains("$\"{ResolveAutomationPrefix()}_Preview\"", source, StringComparison.Ordinal);
-        Assert.Contains("PreviewViewer.AutomationInstanceId = EffectivePreviewAutomationInstanceId;", source, StringComparison.Ordinal);
+        // The preview instance id the form computes and applies is covered by
+        // MarkdownFormAutomationIdentityTests.
     }
 
     [Fact]
@@ -368,206 +199,6 @@ public sealed class MarkdownHostContractTests
     }
 
     [Fact]
-    public void PullRequestConversation_UsesOnDemandComposerAndShyHeader()
-    {
-        string xaml = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "JitHub.WinUI",
-            "Views",
-            "Pages",
-            "RepoPullRequestPage.xaml"));
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "JitHub.WinUI",
-            "Views",
-            "Pages",
-            "RepoPullRequestPage.xaml.cs"));
-
-        Assert.Contains("x:Name=\"RepoPullRequestsOpenCompactCommentButton\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("x:Name=\"PullRequestCommentFlyout\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("x:Name=\"PullRequestCompactCommentForm\"", xaml, StringComparison.Ordinal);
-        Assert.DoesNotContain("x:Name=\"PullRequestCommentForm\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("x:Name=\"PullRequestShySectionComboBox\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("SizeChanged=\"PullRequestScrollableSection_SizeChanged\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("x:Name=\"PullRequestFilesSection\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("Loaded=\"PullRequestScrollableSection_Loaded\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("Unloaded=\"PullRequestScrollableSection_Unloaded\"", xaml, StringComparison.Ordinal);
-        Assert.DoesNotContain("labs:TransitionHelper.Id=\"PullRequestHeaderSurface\"", xaml, StringComparison.Ordinal);
-        Assert.Equal(2, xaml.Split("labs:TransitionHelper.Id=\"PullRequestHeaderChrome\"", StringSplitOptions.None).Length - 1);
-        Assert.Equal(2, xaml.Split("labs:TransitionHelper.Id=\"PullRequestTitle\"", StringSplitOptions.None).Length - 1);
-        Assert.Equal(2, xaml.Split("labs:TransitionHelper.Id=\"PullRequestSectionSelector\"", StringSplitOptions.None).Length - 1);
-        Assert.Contains("Background=\"{ThemeResource AppTransientOverlayBrush}\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("ShyHeaderStartOffset", source, StringComparison.Ordinal);
-        Assert.Contains("ShyHeaderRestoreOffset", source, StringComparison.Ordinal);
-        Assert.Contains("ShyHeaderRevealTravel", source, StringComparison.Ordinal);
-        Assert.Contains("ShyHeaderRehideTravel", source, StringComparison.Ordinal);
-        Assert.Contains("ShyHeaderScrollPolicy.CanCollapse", source, StringComparison.Ordinal);
-        Assert.Contains("PullRequestSectionScrollViewer_ViewChanged", source, StringComparison.Ordinal);
-        Assert.Contains("RegisterPropertyChangedCallback", source, StringComparison.Ordinal);
-        Assert.Contains("FindPrimaryShyHeaderScrollViewer", source, StringComparison.Ordinal);
-        Assert.Contains("AttachShyHeaderScrollViewer(primary);", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("foreach (ScrollViewer candidate in scrollViewers)", source, StringComparison.Ordinal);
-        Assert.Contains("new TransitionHelper", source, StringComparison.Ordinal);
-        Assert.Contains("TargetToggleMethod = VisualStateToggleMethod.ByIsVisible", source, StringComparison.Ordinal);
-        Assert.Contains("new TransitionConfig { Id = \"PullRequestHeaderChrome\", ScaleMode = ScaleMode.Scale, EnableClipAnimation = true }", source, StringComparison.Ordinal);
-        Assert.Contains("new TransitionConfig { Id = \"PullRequestSectionSelector\", ScaleMode = ScaleMode.Scale, EnableClipAnimation = true }", source, StringComparison.Ordinal);
-        Assert.Contains("_headerTransition.StartAsync", source, StringComparison.Ordinal);
-        Assert.Contains("_headerTransition.ReverseAsync", source, StringComparison.Ordinal);
-        Assert.Contains("forceUpdateAnimatedElements: true", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("TryPrepareIncomingSurface", source, StringComparison.Ordinal);
-        Assert.Contains("PullRequestShyHeaderSurface.Visibility = Visibility.Collapsed", source, StringComparison.Ordinal);
-        Assert.Contains("RepoPullRequestPage_Unloaded", source, StringComparison.Ordinal);
-        Assert.Contains("MorphTransitionSafety.TryStop(_headerTransition)", source, StringComparison.Ordinal);
-        Assert.Contains("MorphTransitionSafety.TryResetVisibilityState", source, StringComparison.Ordinal);
-        Assert.Contains("ui-repo-pull-request-header-morph", source, StringComparison.Ordinal);
-        Assert.Contains("AnimateContentReflow", source, StringComparison.Ordinal);
-        Assert.Contains("TranslationTransition", source, StringComparison.Ordinal);
-        Assert.Contains("PullRequestDetailLayout.UpdateLayout()", source, StringComparison.Ordinal);
-        Assert.Contains("generation != _headerTransitionGeneration", source, StringComparison.Ordinal);
-        Assert.Contains("AttachActiveSectionScrollSources", source, StringComparison.Ordinal);
-        Assert.Contains("PullRequestSectionComboBox.Visibility = IsCompactWorkspace", source, StringComparison.Ordinal);
-        Assert.Contains("PullRequestShySectionComboBox.Visibility = !IsCompactWorkspace", source, StringComparison.Ordinal);
-        Assert.Contains("PullRequestCompactCommentForm.FocusEditor()", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("forceInlineComposerForLifecycle", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("JITHUB_MARKDOWN_LIFECYCLE", source, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void IssueConversation_UsesOnDemandComposerAndShyHeader()
-    {
-        string xaml = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "JitHub.WinUI",
-            "Views",
-            "Controls",
-            "Issue",
-            "RepoIssueDetailPane.xaml"));
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "JitHub.WinUI",
-            "Views",
-            "Controls",
-            "Issue",
-            "RepoIssueDetailPane.xaml.cs"));
-
-        Assert.Contains("AutomationProperties.AutomationId=\"RepoIssuesOpenCommentButton\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("x:Name=\"IssueCommentFlyout\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("ViewChanged=\"IssueConversationScrollViewer_ViewChanged\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("AdaptiveWorkspaceMode.Narrow or AdaptiveWorkspaceMode.Compact", source, StringComparison.Ordinal);
-        Assert.Contains("ShyHeaderStartOffset", source, StringComparison.Ordinal);
-        Assert.Contains("ShyHeaderRestoreOffset", source, StringComparison.Ordinal);
-        Assert.Contains("ShyHeaderRevealTravel", source, StringComparison.Ordinal);
-        Assert.Contains("ShyHeaderRehideTravel", source, StringComparison.Ordinal);
-        Assert.Contains("ShyHeaderScrollPolicy.CanCollapse", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("labs:TransitionHelper.Id=\"IssueHeaderSurface\"", xaml, StringComparison.Ordinal);
-        Assert.Equal(2, xaml.Split("labs:TransitionHelper.Id=\"IssueHeaderChrome\"", StringSplitOptions.None).Length - 1);
-        Assert.Equal(2, xaml.Split("labs:TransitionHelper.Id=\"IssueTitle\"", StringSplitOptions.None).Length - 1);
-        Assert.Contains("Background=\"{ThemeResource AppTransientOverlayBrush}\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("new TransitionHelper", source, StringComparison.Ordinal);
-        Assert.Contains("TargetToggleMethod = VisualStateToggleMethod.ByIsVisible", source, StringComparison.Ordinal);
-        Assert.Contains("new TransitionConfig { Id = \"IssueHeaderChrome\", ScaleMode = ScaleMode.Scale, EnableClipAnimation = true }", source, StringComparison.Ordinal);
-        Assert.Contains("_headerTransition.StartAsync", source, StringComparison.Ordinal);
-        Assert.Contains("_headerTransition.ReverseAsync", source, StringComparison.Ordinal);
-        Assert.Contains("forceUpdateAnimatedElements: true", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("TryPrepareIncomingSurface", source, StringComparison.Ordinal);
-        Assert.Contains("RepoIssuesShyHeaderSurface.Visibility = Visibility.Collapsed", source, StringComparison.Ordinal);
-        Assert.Contains("RepoIssueDetailPane_Unloaded", source, StringComparison.Ordinal);
-        Assert.Contains("MorphTransitionSafety.TryStop(_headerTransition)", source, StringComparison.Ordinal);
-        Assert.Contains("MorphTransitionSafety.TryResetVisibilityState", source, StringComparison.Ordinal);
-        Assert.Contains("ui-repo-issue-header-morph", source, StringComparison.Ordinal);
-        Assert.Contains("AnimateContentReflow", source, StringComparison.Ordinal);
-        Assert.Contains("TranslationTransition", source, StringComparison.Ordinal);
-        Assert.Contains("RepoIssuesDetailLayout.UpdateLayout()", source, StringComparison.Ordinal);
-        Assert.Contains("generation != _headerTransitionGeneration", source, StringComparison.Ordinal);
-        Assert.Contains("IssueCommentForm.FocusEditor()", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("IssueCommentForm.EffectiveEditorHeight", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("JITHUB_MARKDOWN_LIFECYCLE", source, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void ShyHeaderMorphs_UseSharedMediumMotionToken()
-    {
-        string root = FindRepositoryRoot();
-        string motionTokens = File.ReadAllText(Path.Combine(
-            root,
-            "JitHub.WinUI",
-            "Styles",
-            "Foundation",
-            "Tokens.Motion.xaml"));
-        string resolver = File.ReadAllText(Path.Combine(
-            root,
-            "JitHub.WinUI",
-            "Helpers",
-            "AppMotionTokens.cs"));
-        string[] shyHeaderSources =
-        [
-            Path.Combine(root, "JitHub.WinUI", "Views", "Pages", "RepoPullRequestPage.xaml.cs"),
-            Path.Combine(root, "JitHub.WinUI", "Views", "Controls", "Issue", "RepoIssueDetailPane.xaml.cs"),
-            Path.Combine(root, "JitHub.WinUI", "Views", "Pages", "DashboardPage.xaml.cs"),
-            Path.Combine(root, "JitHub.WinUI", "Views", "Pages", "ShellPage.xaml.cs")
-        ];
-
-        Assert.Contains("<Duration x:Key=\"AppMediumDuration\">0:0:0.18</Duration>", motionTokens, StringComparison.Ordinal);
-        Assert.Contains("MediumDurationResourceKey = \"AppMediumDuration\"", resolver, StringComparison.Ordinal);
-        Assert.Contains("resources.MergedDictionaries[index]", resolver, StringComparison.Ordinal);
-        Assert.Contains("directValue = resources[resourceKey]", resolver, StringComparison.Ordinal);
-        Assert.Contains("TimeSpan timeSpan when timeSpan > TimeSpan.Zero", resolver, StringComparison.Ordinal);
-        Assert.Contains("Duration xamlDuration when xamlDuration.HasTimeSpan", resolver, StringComparison.Ordinal);
-        Assert.Contains("double seconds when double.IsFinite(seconds)", resolver, StringComparison.Ordinal);
-        Assert.Contains("TimeSpan.FromSeconds(seconds)", resolver, StringComparison.Ordinal);
-        Assert.Contains("Interlocked.CompareExchange(ref _mediumDurationTicks", resolver, StringComparison.Ordinal);
-
-        foreach (string path in shyHeaderSources)
-        {
-            string source = File.ReadAllText(path);
-            Assert.Contains("AppMotionTokens.MediumDuration", source, StringComparison.Ordinal);
-            Assert.DoesNotContain("TimeSpan.FromMilliseconds(240)", source, StringComparison.Ordinal);
-            Assert.DoesNotContain("TimeSpan.FromMilliseconds(220)", source, StringComparison.Ordinal);
-        }
-    }
-
-    [Fact]
-    public void MarkdownViewer_ResolverFailureInstallsDenyAllResolver()
-    {
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "JitHub.WinUI",
-            "Views",
-            "Controls",
-            "Common",
-            "MarkdownViewer.xaml.cs"));
-
-        Assert.Contains("DenyAllMarkdownImageResolver.Instance", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("private readonly IMarkdownImageResolver? _imageResolver", source, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void MarkdownViewer_CodeBackgroundsResolveThroughHighContrastAwareThemeTokens()
-    {
-        string root = FindRepositoryRoot();
-        string viewerSource = File.ReadAllText(Path.Combine(
-            root,
-            "JitHub.WinUI",
-            "Views",
-            "Controls",
-            "Common",
-            "MarkdownViewer.xaml.cs"));
-        string colorTokens = File.ReadAllText(Path.Combine(
-            root,
-            "JitHub.WinUI",
-            "Styles",
-            "Foundation",
-            "Tokens.Colors.xaml"));
-
-        Assert.Contains("ResolveColor(\"AppCanvasInset\"", viewerSource, StringComparison.Ordinal);
-        Assert.Contains("<ResourceDictionary x:Key=\"HighContrast\">", colorTokens, StringComparison.Ordinal);
-        Assert.Contains(
-            "<StaticResource x:Key=\"AppCanvasInsetColor\" ResourceKey=\"SystemColorWindowColor\" />",
-            colorTokens,
-            StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void ProductHosts_DoNotInstantiateRendererDirectly()
     {
         string root = FindRepositoryRoot();
@@ -580,6 +211,56 @@ public sealed class MarkdownHostContractTests
             .ToArray();
 
         Assert.Empty(offenders);
+    }
+
+    [Fact]
+    public void RepositoryMarkdownPreview_LazilyCreatesTheInactivePlainEditor()
+    {
+        string root = FindRepositoryRoot();
+        string previewRoot = Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Views",
+            "Controls",
+            "CodeViewer",
+            "Renderers");
+        XDocument xaml = XDocument.Load(Path.Combine(previewRoot, "MarkdownPreview.xaml"));
+        string source = File.ReadAllText(Path.Combine(previewRoot, "MarkdownPreview.xaml.cs"));
+
+        Assert.DoesNotContain(
+            xaml.Descendants(),
+            element => element.Name.LocalName == "CodeEditorControl");
+        Assert.Contains("x:Name=\"PlainPanelHost\"", File.ReadAllText(Path.Combine(previewRoot, "MarkdownPreview.xaml")), StringComparison.Ordinal);
+        Assert.Contains("private void EnsurePlainPanel()", source, StringComparison.Ordinal);
+        Assert.Contains("if (!rich)", source, StringComparison.Ordinal);
+        Assert.Contains("_plainPanel = new CodeEditorControl", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RepositoryMarkdownPreview_ResynchronizesLatestViewModelStateAfterReload()
+    {
+        string root = FindRepositoryRoot();
+        string source = File.ReadAllText(Path.Combine(
+            root,
+            "JitHub.WinUI",
+            "Views",
+            "Controls",
+            "CodeViewer",
+            "Renderers",
+            "MarkdownPreview.xaml.cs"));
+        const string loadedSignature = "private void OnLoaded(object sender, RoutedEventArgs e)";
+        int loadedStart = source.IndexOf(loadedSignature, StringComparison.Ordinal);
+        int unloadedStart = source.IndexOf("private void OnUnloaded", loadedStart, StringComparison.Ordinal);
+
+        Assert.True(loadedStart >= 0, "MarkdownPreview must synchronize its state when loaded.");
+        Assert.True(unloadedStart > loadedStart, "MarkdownPreview must keep load and unload lifecycle handlers distinct.");
+
+        string onLoaded = source[loadedStart..unloadedStart];
+        Assert.Contains("RepoFilePreviewViewModel? viewModel = ViewModel;", onLoaded, StringComparison.Ordinal);
+        Assert.Contains("SubscribeToViewModel(viewModel);", onLoaded, StringComparison.Ordinal);
+        Assert.Contains("SyncSegmented();", onLoaded, StringComparison.Ordinal);
+        Assert.Contains("SyncPanels();", onLoaded, StringComparison.Ordinal);
+        Assert.Contains("RichPanel.SetDocumentPayload(viewModel?.RichPreviewDocument);", onLoaded, StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()

@@ -77,6 +77,54 @@ public sealed class MainWindowLaunchContractTests
         Assert.Contains("ToolTipService.SetToolTip(owner, null)", source, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ShellDetachesItsNestedFrameAndWaitsBoundedForItToUnload()
+    {
+        // The close path's order (nested shell content, a renderer drain, the
+        // window's page, another drain, then the providers only when no
+        // renderer is alive, and the window's close last) is covered by
+        // MarkdownViewShutdownTests and MarkdownWindowCloseCoordinatorTests in
+        // JitHub.Markdown.Tests, and renderer retirement by
+        // MarkdownRendererSlotTests, MarkdownRendererLifetimeRegistryTests and
+        // MarkdownRendererDisposalCommitTests. Removing the shell's frame
+        // content and observing its Unloaded event need a live XAML runtime.
+        string shellPage = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(), "JitHub.WinUI", "Views", "Pages", "ShellPage.xaml.cs"));
+        string detacher = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(), "JitHub.WinUI", "Helpers", "FrameContentDetacher.cs"));
+
+        Assert.Contains("FrameContentDetacher.DetachAsync(ShellContentFrame,", shellPage, StringComparison.Ordinal);
+        Assert.Contains("frame.Content = null", detacher, StringComparison.Ordinal);
+        Assert.Contains("await unloaded.Task.WaitAsync(unloadTimeout)", detacher, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FailedRendererTeardownCannotReattachOnSubsequentLoaded()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(), "JitHub.WinUI", "Views", "Controls", "Common", "MarkdownViewer.xaml.cs"))
+            .Replace("\r\n", "\n", StringComparison.Ordinal);
+        // The slot latches the fault before it reports teardown failure; that
+        // ordering is covered by MarkdownRendererSlotTests. Refusing to reattach
+        // or recreate after the latch, and showing the notice instead, is
+        // covered by MarkdownRendererAttachmentTests. This pins the viewer's
+        // wiring of the slot's failure report and the attachment to the notice.
+        int failureReport = source.IndexOf(
+            "void IMarkdownRendererSlotHost<MarkdownRendererControl>.OnRendererTeardownFaulted(",
+            StringComparison.Ordinal);
+        int showFailure = source.IndexOf("ShowRendererDisposalFailure();", failureReport, StringComparison.Ordinal);
+
+        Assert.True(failureReport >= 0 && showFailure > failureReport);
+        Assert.Contains(
+            "void IMarkdownRendererAttachmentHost<MarkdownRendererControl>.ShowRendererDisposalFailure() =>\n        ShowRendererDisposalFailure();",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains("_attachment.EnsureRenderer();", source, StringComparison.Ordinal);
+        Assert.Contains("RetryRenderButton.Visibility = Visibility.Collapsed;", source, StringComparison.Ordinal);
+        // Keeping the disposal failure notice open across document resets is
+        // covered by MarkdownViewerFeedbackTests.
+    }
+
     private static string FindRepositoryRoot()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);

@@ -1,12 +1,11 @@
 using CommunityToolkit.WinUI.Controls;
+using JitHub.Markdown;
 using JitHub.WinUI.ViewModels;
 using JitHub.WinUI.Helpers;
-using JitHub.Services.Markdown;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Automation;
 using MarkdownRenderer.Images;
-using System.Threading;
 using Windows.UI.ViewManagement;
 
 // The User Control item template is documented at https://go.microsoft.com/fwlink/?LinkId=234236
@@ -16,39 +15,36 @@ namespace JitHub.WinUI.Views.Controls.Common
     [WinRT.GeneratedBindableCustomProperty]
     public sealed partial class MarkdownForm : UserControl
     {
-        private static long _nextFallbackAutomationIdentity;
-        private readonly string _fallbackAutomationInstanceId = AutomationIdentity.CreateScopedId(
-            "MarkdownForm",
-            $"runtime:{Interlocked.Increment(ref _nextFallbackAutomationIdentity)}");
-        private readonly UISettings? _uiSettings = RuntimeEventSubscription.TryCreate(
-            static () => new UISettings(),
-            nameof(UISettings));
+        private readonly MarkdownFormAutomationIdentity _automationIdentity = new();
+        private readonly MarkdownLifecycleAutomationBridge _lifecycleAutomation;
+        private readonly RuntimeEventSubscription _runtimeEvents;
+        private readonly UISettings? _uiSettings;
         private bool _textScaleSubscribed;
 
         public MarkdownFormViewModel ViewModel { get; } = new();
 
-        public static DependencyProperty ActionContentProperty = DependencyProperty.Register(
+        public static readonly DependencyProperty ActionContentProperty = DependencyProperty.Register(
             nameof(ActionContent),
             typeof(object),
             typeof(MarkdownForm),
             new PropertyMetadata(null, OnActionContentChanged));
 
-        public static DependencyProperty TextProperty = DependencyProperty.Register(
+        public static readonly DependencyProperty TextProperty = DependencyProperty.Register(
             nameof(Text),
             typeof(string),
             typeof(MarkdownForm),
             new PropertyMetadata(default(string), OnBindablePropertyChanged));
-        public static DependencyProperty FormPaddingProperty = DependencyProperty.Register(
+        public static readonly DependencyProperty FormPaddingProperty = DependencyProperty.Register(
             nameof(FormPadding),
             typeof(Thickness),
             typeof(MarkdownForm),
             new PropertyMetadata(new Thickness(0), OnBindablePropertyChanged));
-        public static DependencyProperty EditorHeightProperty = DependencyProperty.Register(
+        public static readonly DependencyProperty EditorHeightProperty = DependencyProperty.Register(
             nameof(EditorHeight),
             typeof(double),
             typeof(MarkdownForm),
             new PropertyMetadata(220d, OnBindablePropertyChanged));
-        public static DependencyProperty DocumentSourceProperty = DependencyProperty.Register(
+        public static readonly DependencyProperty DocumentSourceProperty = DependencyProperty.Register(
             nameof(DocumentSource),
             typeof(MarkdownDocumentSource),
             typeof(MarkdownForm),
@@ -96,7 +92,7 @@ namespace JitHub.WinUI.Views.Controls.Common
         {
             get
             {
-                double scale = MarkdownLifecycleAutomationBridge.GetTextScaleFactor()
+                double scale = _lifecycleAutomation.GetTextScaleFactor()
                     ?? GetSystemTextScaleFactor();
                 double scaledHeight = EditorHeight * System.Math.Clamp(scale, 1, 3);
                 return System.Math.Min(scaledHeight, EditorHeight + 180);
@@ -105,6 +101,10 @@ namespace JitHub.WinUI.Views.Controls.Common
 
         public MarkdownForm()
         {
+            global::JitHub.WinUI.App app = (global::JitHub.WinUI.App)Application.Current;
+            _lifecycleAutomation = app.MarkdownAutomation;
+            _runtimeEvents = app.MarkdownRuntimeEvents;
+            _uiSettings = _runtimeEvents.TryCreate(static () => new UISettings(), nameof(UISettings));
             this.InitializeComponent();
             Loaded += MarkdownForm_Loaded;
             Unloaded += MarkdownForm_Unloaded;
@@ -118,7 +118,8 @@ namespace JitHub.WinUI.Views.Controls.Common
 
         public string EffectiveAutomationInstanceId => ResolveAutomationPrefix();
 
-        public string EffectivePreviewAutomationInstanceId => $"{ResolveAutomationPrefix()}_Preview";
+        public string EffectivePreviewAutomationInstanceId =>
+            MarkdownFormAutomationIdentity.GetPreviewInstanceId(ResolveAutomationPrefix());
 
         public MarkdownDocumentSource? DocumentSource
         {
@@ -134,10 +135,8 @@ namespace JitHub.WinUI.Views.Controls.Common
             // Automation identity is not document identity. An anonymous editor must
             // remain anonymous so recycled controls cannot retain remote-content consent.
             PreviewViewer.DocumentSource = DocumentSource;
-            string previewHostId = MarkdownHostContract.GetAutomationId(
-                MarkdownHostContract.EditorPreview,
-                $"{ResolveAutomationPrefix()}_Preview");
-            if (MarkdownLifecycleAutomationBridge.TargetsHost(previewHostId))
+            string previewHostId = MarkdownFormAutomationIdentity.GetPreviewHostId(ResolveAutomationPrefix());
+            if (_lifecycleAutomation.TargetsHost(previewHostId))
             {
                 // Lifecycle automation still instantiates this real product form. It
                 // selects Preview deterministically even when the public preview keeps
@@ -155,7 +154,7 @@ namespace JitHub.WinUI.Views.Controls.Common
                 return;
             }
 
-            RuntimeEventSubscription.TryUnsubscribe(
+            _runtimeEvents.TryUnsubscribe(
                 () => _uiSettings.TextScaleFactorChanged -= UISettings_TextScaleFactorChanged,
                 _textScaleSubscribed,
                 nameof(UISettings.TextScaleFactorChanged));
@@ -169,7 +168,7 @@ namespace JitHub.WinUI.Views.Controls.Common
                 return;
             }
 
-            _textScaleSubscribed = RuntimeEventSubscription.TrySubscribe(
+            _textScaleSubscribed = _runtimeEvents.TrySubscribe(
                 () => _uiSettings.TextScaleFactorChanged += UISettings_TextScaleFactorChanged,
                 nameof(UISettings.TextScaleFactorChanged));
         }
@@ -191,27 +190,17 @@ namespace JitHub.WinUI.Views.Controls.Common
 
         private void ApplyAutomationIdentity()
         {
-            string prefix = ResolveAutomationPrefix();
-            AutomationProperties.SetAutomationId(ModeSegmented, $"{prefix}_Mode");
-            AutomationProperties.SetAutomationId(WriteModeItem, $"{prefix}_Mode_Write");
-            AutomationProperties.SetAutomationId(PreviewModeItem, $"{prefix}_Mode_Preview");
-            AutomationProperties.SetAutomationId(EditorTextBox, $"{prefix}_Editor");
-            AutomationProperties.SetAutomationId(PreviewViewer, $"{prefix}_Preview");
-            PreviewViewer.AutomationInstanceId = EffectivePreviewAutomationInstanceId;
+            MarkdownFormPeerAutomationIds ids = MarkdownFormAutomationIdentity.GetPeerIds(ResolveAutomationPrefix());
+            AutomationProperties.SetAutomationId(ModeSegmented, ids.Mode);
+            AutomationProperties.SetAutomationId(WriteModeItem, ids.WriteMode);
+            AutomationProperties.SetAutomationId(PreviewModeItem, ids.PreviewMode);
+            AutomationProperties.SetAutomationId(EditorTextBox, ids.Editor);
+            AutomationProperties.SetAutomationId(PreviewViewer, ids.Preview);
+            PreviewViewer.AutomationInstanceId = ids.Preview;
         }
 
-        private string ResolveAutomationPrefix()
-        {
-            if (!string.IsNullOrWhiteSpace(AutomationInstanceId))
-            {
-                return AutomationInstanceId.Trim();
-            }
-
-            string attachedAutomationId = AutomationProperties.GetAutomationId(this);
-            return string.IsNullOrWhiteSpace(attachedAutomationId)
-                ? _fallbackAutomationInstanceId
-                : attachedAutomationId.Trim();
-        }
+        private string ResolveAutomationPrefix() =>
+            _automationIdentity.ResolvePrefix(AutomationInstanceId, AutomationProperties.GetAutomationId(this));
 
         private static void OnAutomationInstanceIdChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {

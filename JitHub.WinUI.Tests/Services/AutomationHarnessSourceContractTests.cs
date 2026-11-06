@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
@@ -179,13 +180,6 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("raw pointer drag did not create a cross-line text selection", source, StringComparison.Ordinal);
         Assert.Contains("foreach (AutomationElement host in FindMarkdownLifecycleHosts(root, target))", source, StringComparison.Ordinal);
         Assert.Contains("recycled UIA peer", source, StringComparison.Ordinal);
-        string rendererSource = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "MarkdownRenderer",
-            "Controls",
-            "MarkdownRendererControl.cs"));
-        Assert.Contains("case VirtualKey.Application when _selection.IsActive", rendererSource, StringComparison.Ordinal);
         Assert.Contains("Use a new output directory rather than combining incompatible evidence", source, StringComparison.Ordinal);
     }
 
@@ -260,13 +254,14 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("RetainedMemoryBudget", source, StringComparison.Ordinal);
         Assert.Contains("AssertAndRecordMarkdownMemoryBudget", source, StringComparison.Ordinal);
         Assert.Contains("RunMarkdownSecurityPolicyLifecycleCase", source, StringComparison.Ordinal);
-        Assert.Contains("Lifecycle oversized SVG", File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "JitHub.WinUI",
-            "Views",
-            "Controls",
-            "Common",
-            "MarkdownViewer.xaml.cs")), StringComparison.Ordinal);
+        // The security lifecycle case looks for this image in the fixture the app renders.
+        Assert.Contains(
+            "Lifecycle oversized SVG",
+            new JitHub.Markdown.Automation.MarkdownLifecycleFixtureDocument(
+                targetHost: null,
+                corpusPath: null,
+                includeSecurityFixture: true).Compose(string.Empty, "MarkdownHost"),
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -371,100 +366,181 @@ public sealed class AutomationHarnessSourceContractTests
     }
 
     [Fact]
-    public void MarkdownImageTerminalFailureRelayoutsOnlyUnconstrainedInlineFallbacks()
-    {
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "MarkdownRenderer",
-            "Layout",
-            "Boxes",
-            "ImageBox.cs"));
-        int publishFailure = source.IndexOf("private void PublishFailure", StringComparison.Ordinal);
-
-        Assert.True(publishFailure >= 0);
-        string failureImplementation = source[publishFailure..];
-        Assert.Contains("UpdatePlaceholder(maxWidth, _imageHeight)", failureImplementation, StringComparison.Ordinal);
-        Assert.Contains("layoutInvalidated: ShouldExpandInlineFailure", failureImplementation, StringComparison.Ordinal);
-        Assert.Contains("_requestedWidth is null", source, StringComparison.Ordinal);
-        Assert.Contains("_requestedHeight is null", source, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void MarkdownImagePlaceholderUsesThemeTypographyAndPaintsInlineAltText()
-    {
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "MarkdownRenderer",
-            "Layout",
-            "Boxes",
-            "ImageBox.cs"));
-
-        Assert.Contains("PaintPlaceholder(ds, rect);", source, StringComparison.Ordinal);
-        Assert.Contains("EnsureLoading();", source, StringComparison.Ordinal);
-        Assert.Contains("WaitAsync(ImageResolverTimeout", source, StringComparison.Ordinal);
-        Assert.Contains("compactInlineFailure", source, StringComparison.Ordinal);
-        Assert.Contains("MeasureInlineFailureWidth", source, StringComparison.Ordinal);
-        Assert.Contains("GetInlineFailureText()", source, StringComparison.Ordinal);
-        Assert.Contains("CanvasWordWrapping.NoWrap", source, StringComparison.Ordinal);
-        Assert.Contains("GetStyle(MarkdownElementKeys.ImageCaption)", source, StringComparison.Ordinal);
-        Assert.Contains("FontFamily = style.FontFamily", source, StringComparison.Ordinal);
-        Assert.Contains("FontSize = style.FontSize", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("FontFamily = \"Segoe UI Variable\"", source, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void MarkdownInlineImagesSubscribeBeforeViewportGeometryIsAvailable()
     {
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "MarkdownRenderer",
-            "Controls",
-            "MarkdownRendererControl.cs"));
-
-        Assert.Contains("if (run is InlineImageRun imageRun)", source, StringComparison.Ordinal);
-        Assert.Contains("RegisterImage(imageRun.Image);", source, StringComparison.Ordinal);
-        Assert.Contains("_subscribedImages.Contains(image)", source, StringComparison.Ordinal);
-        Assert.Contains("UnsubscribeAllImages();", source, StringComparison.Ordinal);
+        // Planning inline images before reading their geometry, planning images with no
+        // character region, and subscribing each plan once are covered by
+        // InlineContainerPlansTests; ignoring completions of unsubscribed images by
+        // ImageLoadCompletionTests. What stays here is the control's wiring of those
+        // owners, which needs a live control.
+        string embedSource = ReadRendererSource("Controls", "Embeds", "EmbedRealization.cs");
+        Assert.Contains("InlineContainerPlans.Collect(this, snapshot, topLevelRoot, icb);", embedSource, StringComparison.Ordinal);
+        Assert.Contains("void IInlinePlanCollector.AddImagePlan(ImageBox image) => _host.AddImagePlan(image);", embedSource, StringComparison.Ordinal);
+        Assert.Contains(
+            "void IEmbedRealizationHost.AddImagePlan(ImageBox image) => Owners.ImageSubscriptions.AddPlan(image);",
+            ReadRendererSource("Controls", "Composition", "EmbedHosts.cs"),
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "imageSubscriptions.LoadCompleted += imageLoadCompletion.OnLoadCompleted;",
+            ReadRendererSource("Controls", "Composition", "MarkdownRendererComposition.cs"),
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_imageSubscriptions.UnsubscribeAll();",
+            ReadRendererSource("Controls", "ViewAttachment.cs"),
+            StringComparison.Ordinal);
     }
 
     [Fact]
     public void MarkdownImageCompletionRelayoutsTheCommittedSnapshotWithoutResolverLoop()
     {
-        string controlSource = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "MarkdownRenderer",
-            "Controls",
-            "MarkdownRendererControl.cs"));
-        string snapshotSource = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "MarkdownRenderer",
-            "Layout",
-            "LayoutSnapshot.cs"));
+        // Queueing, coalescing, the Low dispatch, the missing-clock rebuild, rejected and
+        // stale dispatches, rebuild and gesture deferral, generation and cancellation fences,
+        // pointer-input retries and the scroll anchor are covered by ImageRelayoutTests;
+        // completion membership and the queued root by ImageLoadCompletionTests; the
+        // recovery clock's weak repeating timer and managed fallback by RecoveryClockTests.
+        // What stays here needs a live control (host wiring), a performance session and
+        // raster placement (private candidates), or a rebuild pipeline.
+        string controlSource = ReadRendererSource("Controls", "MarkdownRendererControl.cs");
+        string relayoutSource = ReadRendererSource("Controls", "Images", "ImageRelayout.cs");
+        string workSource = ReadRendererSource("Controls", "Images", "ImageRelayoutWork.cs");
+        string imageHostsSource = ReadRendererSource("Controls", "Composition", "ImageHosts.cs");
+        Assert.Contains("void IImageRelayoutHost.RequestFullRebuild() => Owners.Rebuild.Request(RebuildReason.Full);", imageHostsSource, StringComparison.Ordinal);
+        Assert.Contains("double? IImageRelayoutHost.VerticalScrollOffset => Owners.Surface.Scroll?.VerticalOffset;", imageHostsSource, StringComparison.Ordinal);
 
-        Assert.Contains("QueueImageRelayout();", controlSource, StringComparison.Ordinal);
-        Assert.Contains("snapshot.RelayoutMeasuredBlocks", controlSource, StringComparison.Ordinal);
+        // The tick's retry order, its geometry-recovery drain, failure fallback and idle stop
+        // are covered by RecoveryClockWorkTests. What the host forwards each retry to needs a live control.
+        string layoutHostsSource = ReadRendererSource("Controls", "Composition", "LayoutHosts.cs");
+        string recoveryWorkSource = ReadRendererSource("Controls", "RecoveryClockWork.cs");
+        Assert.Contains("_imageSubscriptions.ProcessBitmapOutputRecovery();", recoveryWorkSource, StringComparison.Ordinal);
+        Assert.Contains("_imageRelayout.RecoverFaultedHandoff();", recoveryWorkSource, StringComparison.Ordinal);
+        Assert.Contains("void IRecoveryClockHost.ProcessRecoveryTick() => Owners.RecoveryWork.ProcessTick();", layoutHostsSource, StringComparison.Ordinal);
+        Assert.Contains("void IRecoveryClockWorkHost.PublishPendingLayout() => Owners.LayoutPublisher.PublishPending();", layoutHostsSource, StringComparison.Ordinal);
+        string lazyLayoutSource = ReadRendererSource("Controls", "LazyLayout", "LazyLayoutRealization.cs");
+        Assert.Contains("void IRecoveryClockWorkHost.ProcessQueuedLazyLayout() => Owners.LazyLayout.ProcessQueued();", layoutHostsSource, StringComparison.Ordinal);
+        Assert.Contains("internal void ProcessQueued() => ProcessQueued(_dispatchTicket);", lazyLayoutSource, StringComparison.Ordinal);
+        Assert.Contains("void IRecoveryClockWorkHost.TryPublishLazyLayoutCompletion() => Owners.LazyLayout.TryPublishCompletion();", layoutHostsSource, StringComparison.Ordinal);
+        Assert.Contains("internal void TryPublishCompletion() => TryPublishCompletion(_generation);", lazyLayoutSource, StringComparison.Ordinal);
+        Assert.Contains("void IRecoveryClockWorkHost.ProcessOverflowScrollRetry() => Owners.OverflowScroll.ProcessPendingRetry();", layoutHostsSource, StringComparison.Ordinal);
+        Assert.Contains("void IRecoveryClockWorkHost.ProcessFocusGeometryWork() => Owners.FocusGeometryWork.Process();", layoutHostsSource, StringComparison.Ordinal);
+
+        int processStart = relayoutSource.IndexOf("internal void ProcessQueued(long ticket)", StringComparison.Ordinal);
+        int completionStart = relayoutSource.IndexOf("internal void Complete(", processStart, StringComparison.Ordinal);
+        Assert.True(processStart >= 0 && completionStart > processStart);
+        string process = relayoutSource[processStart..completionStart];
+        Assert.Contains("bool IImageRelayoutHost.DefersToRebuild() => Owners.Rebuild.DefersToRebuild();", imageHostsSource, StringComparison.Ordinal);
+        string schedulerSource = ReadRendererSource("Controls", "Pipeline", "RebuildScheduler.cs");
+        int defersStart = schedulerSource.IndexOf("internal bool DefersToRebuild()", StringComparison.Ordinal);
+        int defersEnd = schedulerSource.IndexOf("internal void QueuePendingIfIdle()", defersStart, StringComparison.Ordinal);
+        Assert.True(defersStart >= 0 && defersEnd > defersStart);
+        string defers = schedulerSource[defersStart..defersEnd];
+        Assert.Contains("OnPipelineCompleted(_activeGeneration);", defers, StringComparison.Ordinal);
+        Assert.Contains("return _coordinator.HasPendingOrBuilding;", defers, StringComparison.Ordinal);
+        Assert.Contains("private readonly SortedSet<int> _pending = [];", relayoutSource, StringComparison.Ordinal);
+        Assert.Contains("optedIn: session is not null", process, StringComparison.Ordinal);
+        string rasterPublication = ReadRendererSource("Controls", "Images", "RasterPlacementPublisher.cs");
+        Assert.Contains("TryPrepareCodeBlockActionPublication(plan", rasterPublication, StringComparison.Ordinal);
+        Assert.Contains("ReferenceEquals(newPlan.Box, identity.Placement)", rasterPublication, StringComparison.Ordinal);
+        Assert.Contains("_host.TryCreateRasterPlacementInputs(snapshot, optedIn: session is not null);", process, StringComparison.Ordinal);
+        Assert.Contains("Owners.RasterPlacement.TryCreateInputs(snapshot, optedIn)", imageHostsSource, StringComparison.Ordinal);
+        int inputsStart = rasterPublication.IndexOf("internal RasterPlacementInputs? TryCreateInputs(", StringComparison.Ordinal);
+        int inputsEnd = rasterPublication.IndexOf("internal void RaiseImageUnavailableIfCurrent(", inputsStart, StringComparison.Ordinal);
+        Assert.True(inputsStart >= 0 && inputsEnd > inputsStart);
+        string inputs = rasterPublication[inputsStart..inputsEnd];
+        // The opt-in, root, hosted-element and image bounds are covered by RasterPlacementEligibilityTests.
+        Assert.Contains("RasterPlacementEligibility.Allows(optedIn, snapshot.TopLevelBlockCount, _embeds.EmbedPlans.Count, _imagePlans.Count)", inputs, StringComparison.Ordinal);
+        Assert.DoesNotContain("CodeBlockActionPlans.Count", inputs, StringComparison.Ordinal);
+        Assert.Contains("? new RasterPlacementInputs(new WeakReference<RasterPlacementPublisher>(this), _published.Generation,", inputs, StringComparison.Ordinal);
+        Assert.Contains("_host.RequestFullRebuild();", process, StringComparison.Ordinal);
+
+        int runStart = workSource.IndexOf("internal static async Task RunAsync(", StringComparison.Ordinal);
+        int publicationStart = workSource.IndexOf("private static WeakSnapshotPublication<LayoutSnapshot> CreatePublication(", runStart, StringComparison.Ordinal);
+        Assert.True(runStart >= 0 && publicationStart > runStart);
+        string run = workSource[runStart..publicationStart];
+        int privateCandidate = run.IndexOf("payload.Snapshot.CreateSingleRasterCandidate(", StringComparison.Ordinal);
+        int fallbackRelayout = run.IndexOf("payload.Snapshot.TryRelayoutChangedBlocks(", StringComparison.Ordinal);
+        int constructionDrain = run.IndexOf("candidateContext.DrainOwnedRetirementsAsync(failure)", StringComparison.Ordinal);
+        int candidateBind = run.IndexOf("rasterPlacement!.Bind(candidate.Snapshot)", StringComparison.Ordinal);
+        Assert.True(privateCandidate >= 0 && fallbackRelayout > privateCandidate);
+        Assert.True(constructionDrain > fallbackRelayout && candidateBind > constructionDrain);
+        int rootPreparation = run.IndexOf("payload.Snapshot.TryRelayoutCompletedImageRoots(", StringComparison.Ordinal);
+        Assert.True(rootPreparation >= 0 && rootPreparation < privateCandidate && rootPreparation < fallbackRelayout);
+        Assert.Contains("else if (result == PreparedImageRelayoutResult.Unavailable)", run, StringComparison.Ordinal);
+        Assert.Contains("retryCurrentImages = true;", run, StringComparison.Ordinal);
+        Assert.DoesNotContain("retryImageBlockIndices", run, StringComparison.Ordinal);
+        Assert.Contains("rootMeasureContext.DrainOwnedRetirementsAsync(failure)", run, StringComparison.Ordinal);
+        Assert.Contains("await Task.WhenAll(candidateDrain, rootMeasureDrain)", run, StringComparison.Ordinal);
+        Assert.Contains("if (candidate is null)", run, StringComparison.Ordinal);
+        Assert.Contains("!cancellation.IsCancellationRequested && session?.IsDisposed != true", run, StringComparison.Ordinal);
+        Assert.Contains("if (!payload.TryOwnPublication(publication))", run, StringComparison.Ordinal);
+        Assert.Contains("payload.ReleaseAfterWorkDrains();", run, StringComparison.Ordinal);
+        Assert.Contains("candidate?.Dispose();", run, StringComparison.Ordinal);
+        Assert.Contains("candidatePlan?.Dispose();", run, StringComparison.Ordinal);
+
+        string publicationFactory = workSource[publicationStart..];
+        Assert.Contains("int? retryImageBlockIndex", publicationFactory, StringComparison.Ordinal);
+        Assert.Contains("bool retryCurrentImages", publicationFactory, StringComparison.Ordinal);
+        Assert.DoesNotContain("int[]", publicationFactory, StringComparison.Ordinal);
+        Assert.DoesNotContain("retryImageBlockIndices", publicationFactory, StringComparison.Ordinal);
+        string completion = relayoutSource[completionStart..];
+        Assert.Contains("current && snapshot is not null && !_lifetime.IsDisposed && !_lifetime.IsUnloaded &&\n                (!canceled || rootMeasureCommitted)", completion, StringComparison.Ordinal);
+        Assert.Contains("// A private whole-tree candidate has not committed and is excluded.", completion, StringComparison.Ordinal);
+        Assert.Contains("_host.TryPublishRasterPlacement(snapshot, candidate, generation)", completion, StringComparison.Ordinal);
+        Assert.Contains("Owners.RasterPlacement.TryPublish(snapshot, candidate, generation)", imageHostsSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("retryImageBlockIndices", completion, StringComparison.Ordinal);
+        Assert.Contains("rootMeasureCommitted &&\n                        (canceled || capturedScrollOffset != _host.VerticalScrollOffset) ? null : anchor", completion, StringComparison.Ordinal);
         Assert.DoesNotContain("Initial load / intrinsic-size change", controlSource, StringComparison.Ordinal);
-        Assert.Contains("internal void RelayoutMeasuredBlocks", snapshotSource, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "Initial load / intrinsic-size change",
+            ReadRendererSource("Controls", "Composition", "MarkdownRendererComposition.cs"),
+            StringComparison.Ordinal);
     }
 
     [Fact]
-    public void MarkdownSelectionContextMenuSupportsKeyboardInvocation()
+    public void MarkdownSelectionContextMenuOpensOnlyForTheCurrentSnapshot()
     {
-        string source = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "MarkdownRenderer",
-            "MarkdownRenderer",
-            "Controls",
-            "MarkdownRendererControl.cs"));
+        // The menu's snapshot, generation and layout revision fence, the keyboard capture of
+        // the published tuple, and opening a gesture's menu only for the exact tuple it
+        // hit-tested are covered by ContextMenuSnapshotFenceTests. What stays here needs
+        // live XAML: right-tap recognition, the MenuFlyout and its target disposal, and
+        // ending the snapshot lease before the menu opens.
+        string pointerSource = ReadRendererSource("Controls", "Input", "PointerInputRouter.cs");
+        string menuSource = ReadRendererSource("Controls", "Selection", "SelectionContextMenuPresenter.cs");
+        string gestureSource = ReadRendererSource("Controls", "Input", "TouchGestureInteraction.cs");
 
-        Assert.Contains("case VirtualKey.F10 when shift && _selection.IsActive", source, StringComparison.Ordinal);
-        Assert.Contains("ShowSelectionContextMenu(GetKeyboardContextMenuPoint())", source, StringComparison.Ordinal);
-        Assert.Contains("ShowSelectionContextMenu(pt)", source, StringComparison.Ordinal);
+        int rightTappedStart = gestureSource.IndexOf("internal void ProcessRightTapped(ref PointerInput e)", StringComparison.Ordinal);
+        int rightTappedEnd = gestureSource.IndexOf("\n    }\n", rightTappedStart, StringComparison.Ordinal);
+        Assert.True(rightTappedStart >= 0 && rightTappedEnd > rightTappedStart);
+        string rightTapped = gestureSource[rightTappedStart..rightTappedEnd];
+        Assert.Contains("long snapshotGeneration = _published.Generation;", rightTapped, StringComparison.Ordinal);
+        Assert.Contains("if (touchOrPen && (!_selection.IsActive || !IsPointInsideSelection(snapshot, pt)))", rightTapped, StringComparison.Ordinal);
+        Assert.Contains("TrySelectWordForTouchContext(\n                pt,\n                snapshot,\n                snapshotGeneration,\n                layoutRevision,", rightTapped, StringComparison.Ordinal);
+        Assert.Contains("if (!_host.IsCurrentScrollTarget(snapshot, snapshotGeneration, layoutRevision))", rightTapped, StringComparison.Ordinal);
+        Assert.Contains("e.ShowContextMenuAfterInteraction = true;", rightTapped, StringComparison.Ordinal);
+        Assert.Contains("e.TouchSelectionContextMenu = touchOrPen;", rightTapped, StringComparison.Ordinal);
+
+        int menuStart = menuSource.IndexOf("internal bool Show(", StringComparison.Ordinal);
+        int menuClosedStart = menuSource.IndexOf("private void OnClosed(", menuStart, StringComparison.Ordinal);
+        Assert.True(menuStart >= 0 && menuClosedStart > menuStart);
+        string menu = menuSource[menuStart..menuClosedStart];
+        Assert.Contains("ContextMenuSnapshotFence.For(\n            _published, requiredSnapshot, requiredSnapshotGeneration, requiredLayoutRevision);", menu, StringComparison.Ordinal);
+        Assert.Contains("\n        Close();\n", menu, StringComparison.Ordinal);
+        Assert.Contains("if (!FindTarget(placementPoint, fence, out target))", menu, StringComparison.Ordinal);
+        Assert.Contains("menu.ShowAt(canvas, placementPoint);", menu, StringComparison.Ordinal);
+        Assert.Equal(4, Regex.Matches(menu, "DisposeContextMenuTarget\\(target\\);").Count);
+        Assert.Contains("!ReferenceEquals(_menu, menu) ||\n                !fence.IsCurrent(_lifetime, _published) ||", menu, StringComparison.Ordinal);
+        Assert.Contains("catch (Exception ex)\n        {\n            ContextMenuTargets.DisposeContextMenuTarget(target);", menu, StringComparison.Ordinal);
+
+        Assert.Contains("_contextMenuCompletion = new GestureContextMenuCompletion(lifetime, published, contextMenu);", pointerSource, StringComparison.Ordinal);
+        string gestureRoutingSource = ReadRendererSource("Controls", "Input", "RecognizedGestureRouting.cs");
+        int recognizedGestureStart = gestureRoutingSource.IndexOf("private bool DispatchUnderLease(", StringComparison.Ordinal);
+        int geometryDeferralStart = gestureRoutingSource.IndexOf("private bool DeferForGeometry(", recognizedGestureStart, StringComparison.Ordinal);
+        Assert.True(recognizedGestureStart >= 0 && geometryDeferralStart > recognizedGestureStart);
+        string recognizedGesture = gestureRoutingSource[recognizedGestureStart..geometryDeferralStart];
+        int endInteraction = recognizedGesture.IndexOf("snapshot.EndInteraction();", StringComparison.Ordinal);
+        int postInteractionMenu = recognizedGesture.IndexOf("_contextMenuCompletion.Complete(", endInteraction, StringComparison.Ordinal);
+        Assert.True(endInteraction >= 0 && postInteractionMenu > endInteraction);
+        Assert.Contains("if (input.ShowContextMenuAfterInteraction)", recognizedGesture, StringComparison.Ordinal);
+        Assert.Contains("snapshotGeneration,\n                layoutRevision);", recognizedGesture[postInteractionMenu..], StringComparison.Ordinal);
     }
 
     [Fact]
@@ -838,6 +914,11 @@ public sealed class AutomationHarnessSourceContractTests
         Assert.Contains("PrintWindow(windowHandle, deviceContext, PwRenderFullContent)", source, StringComparison.Ordinal);
         Assert.Contains("GetPhysicalWindowBounds(windowHandle)", source, StringComparison.Ordinal);
     }
+
+    private static string ReadRendererSource(params string[] pathFromRendererProject) =>
+        File.ReadAllText(Path.Combine(
+            [FindRepositoryRoot(), "MarkdownRenderer", "src", "MarkdownRenderer", .. pathFromRendererProject]))
+            .Replace("\r\n", "\n", StringComparison.Ordinal);
 
     private static string FindRepositoryRoot()
     {

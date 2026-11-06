@@ -8,10 +8,10 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
+using JitHub.Markdown;
 using JitHub.Models.GitHub;
 using JitHub.Models.NavArgs;
 using JitHub.Services;
-using JitHub.Services.Markdown;
 using JitHub.WinUI.Helpers;
 using MarkdownRenderer.Images;
 

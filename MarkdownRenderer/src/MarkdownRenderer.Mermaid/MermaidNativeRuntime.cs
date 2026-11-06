@@ -1,0 +1,156 @@
+using System.Runtime.InteropServices;
+
+[assembly: DefaultDllImportSearchPaths(DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.SafeDirectories)]
+
+namespace MarkdownRenderer.Mermaid;
+
+/// <summary>Safely probes the optional native engine without executing parser or layout work.</summary>
+public static class MermaidNativeRuntime
+{
+    public static MermaidNativeRuntimeInfo Probe() => ProbeCore(null);
+
+    internal static MermaidNativeRuntimeInfo ProbeCore(string? explicitLibraryPath)
+    {
+        nint library = 0;
+        try
+        {
+            return TryLoad(explicitLibraryPath, out library) ?? InspectLoadedLibrary(library);
+        }
+        catch (BadImageFormatException)
+        {
+            return new MermaidNativeRuntimeInfo(
+                MermaidNativeRuntimeStatus.IncompatibleArchitecture,
+                default,
+                "The native Mermaid engine does not match the process architecture.");
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or EntryPointNotFoundException or FileLoadException)
+        {
+            return new MermaidNativeRuntimeInfo(
+                MermaidNativeRuntimeStatus.LoadFailure,
+                default,
+                "The optional native Mermaid engine could not be loaded safely.");
+        }
+        finally
+        {
+            if (library != 0)
+            {
+                NativeLibrary.Free(library);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Loads the selected or bundled native library. Returns the probe result
+    /// when the library is for another architecture or cannot be loaded, and
+    /// <see langword="null"/> once <paramref name="library"/> is loaded.
+    /// </summary>
+    private static MermaidNativeRuntimeInfo? TryLoad(string? explicitLibraryPath, out nint library)
+    {
+        library = 0;
+        if (explicitLibraryPath is not null && File.Exists(explicitLibraryPath) &&
+            TryReadMachine(explicitLibraryPath, out Architecture architecture) &&
+            architecture != RuntimeInformation.ProcessArchitecture)
+        {
+            return new MermaidNativeRuntimeInfo(
+                MermaidNativeRuntimeStatus.IncompatibleArchitecture,
+                default,
+                $"The native Mermaid engine targets {architecture}, but the process targets {RuntimeInformation.ProcessArchitecture}.");
+        }
+
+        const DllImportSearchPath searchPath = DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.SafeDirectories;
+        bool loaded = explicitLibraryPath is null
+            ? NativeLibrary.TryLoad(NativeMethods.LibraryName, typeof(MermaidNativeRuntime).Assembly, searchPath, out library)
+            : NativeLibrary.TryLoad(explicitLibraryPath, out library);
+        if (loaded)
+            return null;
+
+        bool selectedLibraryExists = explicitLibraryPath is not null && File.Exists(explicitLibraryPath);
+        return new MermaidNativeRuntimeInfo(
+            selectedLibraryExists
+                ? MermaidNativeRuntimeStatus.LoadFailure
+                : MermaidNativeRuntimeStatus.NotInstalled,
+            default,
+            selectedLibraryExists
+                ? "The selected native Mermaid library is present but cannot be loaded."
+                : "The optional native Mermaid engine is not installed for this process architecture.");
+    }
+
+    /// <summary>Checks a loaded library's exports and ABI version without running parser or layout work.</summary>
+    private static unsafe MermaidNativeRuntimeInfo InspectLoadedLibrary(nint library)
+    {
+        foreach (string export in NativeMethods.RequiredExports)
+        {
+            if (!NativeLibrary.TryGetExport(library, export, out _))
+            {
+                return new MermaidNativeRuntimeInfo(
+                    MermaidNativeRuntimeStatus.MissingExport,
+                    default,
+                    $"The native Mermaid engine does not export {export}.");
+            }
+        }
+
+        NativeLibrary.TryGetExport(library, "mmir_get_abi_version", out nint versionAddress);
+        var getVersion = (delegate* unmanaged[Cdecl]<uint>)versionAddress;
+        uint packedVersion = getVersion();
+        var version = new MermaidNativeAbiVersion((ushort)(packedVersion >> 16), (ushort)(packedVersion & 0xffff));
+        if (version.Major != NativeMethods.AbiMajor || version.Minor < NativeMethods.AbiMinor)
+        {
+            return new MermaidNativeRuntimeInfo(
+                MermaidNativeRuntimeStatus.IncompatibleAbi,
+                version,
+                $"Native Mermaid ABI {version.Major}.{version.Minor} is incompatible with required ABI {NativeMethods.AbiMajor}.{NativeMethods.AbiMinor}.");
+        }
+
+        return new MermaidNativeRuntimeInfo(
+            MermaidNativeRuntimeStatus.Available,
+            version,
+            "The native Mermaid engine is available.");
+    }
+
+    private static bool TryReadMachine(string path, out Architecture architecture)
+    {
+        architecture = default;
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+            Span<byte> dosHeader = stackalloc byte[64];
+            if (stream.Read(dosHeader) != dosHeader.Length || dosHeader[0] != (byte)'M' || dosHeader[1] != (byte)'Z')
+            {
+                return false;
+            }
+
+            int peOffset = BitConverter.ToInt32(dosHeader[0x3c..]);
+            if (peOffset < 64 || peOffset > stream.Length - 6)
+            {
+                return false;
+            }
+
+            stream.Position = peOffset;
+            Span<byte> signature = stackalloc byte[6];
+            if (stream.Read(signature) != signature.Length ||
+                signature[0] != (byte)'P' || signature[1] != (byte)'E' || signature[2] != 0 || signature[3] != 0)
+            {
+                return false;
+            }
+
+            Architecture? detected = BitConverter.ToUInt16(signature[4..]) switch
+            {
+                0x014c => Architecture.X86,
+                0x8664 => Architecture.X64,
+                0xaa64 => Architecture.Arm64,
+                _ => null,
+            };
+            if (detected is null)
+            {
+                return false;
+            }
+
+            architecture = detected.Value;
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return false;
+        }
+    }
+}

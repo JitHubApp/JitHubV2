@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using JitHub.Models.CodeViewer;
+using MarkdownRenderer.Images;
 
 namespace JitHub.WinUI.ViewModels.CodeViewer;
 
@@ -19,6 +20,18 @@ public sealed partial class RepoFilePreviewViewModel : ObservableObject
 
     [ObservableProperty]
     public partial string? Text { get; set; }
+
+    private MarkdownViewerDocumentPayload? _richPreviewDocument;
+
+    /// <summary>
+    /// Atomically publishes the rich renderer's text and matching repository
+    /// identity after the rest of this preview has been prepared.
+    /// </summary>
+    internal MarkdownViewerDocumentPayload? RichPreviewDocument
+    {
+        get => _richPreviewDocument;
+        set => SetProperty(ref _richPreviewDocument, value);
+    }
 
     [ObservableProperty]
     public partial byte[]? Bytes { get; set; }
@@ -60,6 +73,7 @@ public sealed partial class RepoFilePreviewViewModel : ObservableObject
         Kind = RepoFilePreviewKind.Code;
         LanguageId = string.Empty;
         Text = null;
+        RichPreviewDocument = null;
         Bytes = null;
         ImageMimeType = null;
         ByteSize = 0;
@@ -76,6 +90,7 @@ public sealed partial class RepoFilePreviewViewModel : ObservableObject
         Kind = RepoFilePreviewKind.Code;
         LanguageId = string.Empty;
         Text = null;
+        RichPreviewDocument = null;
         Bytes = null;
         ImageMimeType = null;
         ByteSize = 0;
@@ -87,3 +102,13 @@ public sealed partial class RepoFilePreviewViewModel : ObservableObject
         ShowRichPreview = true;
     }
 }
+
+/// <summary>
+/// One prepared Markdown render input. Text and its repository identity are
+/// published together so the renderer never observes a mixed-document state.
+/// </summary>
+internal sealed record MarkdownViewerDocumentPayload(
+    string Markdown,
+    string? BaseUrl,
+    string? DocumentPath,
+    MarkdownDocumentSource? DocumentSource);

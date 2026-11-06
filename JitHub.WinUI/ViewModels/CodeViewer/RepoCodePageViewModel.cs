@@ -12,6 +12,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using JitHub.Markdown;
 using JitHub.Models.CodeViewer;
 using JitHub.Services;
 using JitHub.Services.CodeViewer;
@@ -1211,6 +1212,22 @@ public sealed partial class RepoCodePageViewModel : ObservableObject
         Preview.ErrorMessage = null;
         Preview.CurrentFile = node;
         Preview.IsLoading = false;
+        // Publish the rich document last, with its repository identity, so the
+        // renderer never pairs this file's text with another file's image
+        // resolution context.
+        Preview.RichPreviewDocument = descriptor.Kind == RepoFilePreviewKind.Markdown &&
+            Preview.Text is { } markdown
+                ? new MarkdownViewerDocumentPayload(
+                    markdown,
+                    prepared.GitHubUrl,
+                    node.Path,
+                    MarkdownDocumentSourceFactory.TryCreateRepositoryFile(
+                        node.Sha ?? node.Path,
+                        prepared.GitHubUrl,
+                        node.Path,
+                        Tree.RootTreeSha,
+                        Volatile.Read(ref _initializeGeneration).ToString(CultureInfo.InvariantCulture)))
+                : null;
 
         if (Breadcrumb.IsPathTransitioning ||
             !string.Equals(Breadcrumb.CurrentPath, node.Path, StringComparison.Ordinal))

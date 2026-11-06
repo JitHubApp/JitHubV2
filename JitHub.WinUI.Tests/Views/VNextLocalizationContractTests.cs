@@ -163,8 +163,6 @@ public sealed class VNextLocalizationContractTests
             "PullRequestTimelineItemViewModel.cs"));
         string contributionGraph = File.ReadAllText(Path.Combine(
             root, "JitHub.WinUI", "Views", "Controls", "Profile", "ProfileContributionGraph.xaml.cs"));
-        string markdown = File.ReadAllText(Path.Combine(
-            root, "JitHub.WinUI", "Views", "Controls", "Common", "MarkdownViewer.xaml.cs"));
 
         Assert.Contains("ShellText($\"Command.", shell, StringComparison.Ordinal);
         Assert.Contains("ShellFormat(\"RepositoryStatus.", shell, StringComparison.Ordinal);
@@ -175,8 +173,8 @@ public sealed class VNextLocalizationContractTests
         Assert.DoesNotContain("Text(\" requested review from \")", timeline, StringComparison.Ordinal);
         Assert.Contains("Profile.ContributionGraph.KeyboardHelp", contributionGraph, StringComparison.Ordinal);
         Assert.Contains("Profile.ContributionGraph.DayAccessibleName", contributionGraph, StringComparison.Ordinal);
-        Assert.Contains("Markdown.RemoteImage.InsecureMessage", markdown, StringComparison.Ordinal);
-        Assert.Contains("Markdown.RemoteImage.ProtectedTitle", markdown, StringComparison.Ordinal);
+        // The Markdown remote-image notice text is resource-backed; that is
+        // covered by MarkdownViewerFeedbackTests.ImageUnavailable_NoticeTextComesFromTheAppResources.
     }
 
     [Fact]
@@ -271,7 +269,8 @@ public sealed class VNextLocalizationContractTests
         Assert.Contains("Path.Combine(AppContext.BaseDirectory, \"resources.pri\")", localizedResourceText, StringComparison.Ordinal);
         Assert.Contains("new ResourceManager(resourceFilePath)", localizedResourceText, StringComparison.Ordinal);
         Assert.Contains("TryGetSubtree(\"Resources\")", localizedResourceText, StringComparison.Ordinal);
-        Assert.Contains("resourceContext.QualifierValues[\"Language\"] = languageOverride", localizedResourceText, StringComparison.Ordinal);
+        Assert.Contains("string language = culture?.Name ?? ApplicationLanguages.PrimaryLanguageOverride", localizedResourceText, StringComparison.Ordinal);
+        Assert.Contains("resourceContext.QualifierValues[\"Language\"] = language", localizedResourceText, StringComparison.Ordinal);
         Assert.Contains("resourceMap.TryGetValue(resourceKey, resourceContext)", localizedResourceText, StringComparison.Ordinal);
         Assert.DoesNotContain("ResourceLoader", localizedResourceText, StringComparison.Ordinal);
         Assert.DoesNotContain("using Windows.ApplicationModel.Resources;", localizedResourceText, StringComparison.Ordinal);

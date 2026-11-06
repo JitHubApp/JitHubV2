@@ -8,11 +8,18 @@ using System.Threading.Tasks;
 using JitHub.Models;
 using JitHub.Models.GitHub;
 using JitHub.WinUI;
+using JitHub.WinUI.Helpers;
 
 namespace JitHub.Services;
 
 public sealed class AuthService : IAuthService
 {
+    /// <summary>
+    /// Raised after this service clears the signed-in session, so account-scoped
+    /// resources such as prepared Markdown can be released.
+    /// </summary>
+    internal event Action? AuthenticationCleared;
+
     private readonly IAppConfig _appConfigService;
     private readonly IAccountService _accountService;
     private readonly IGitHubClientService _gitHubClientService;
@@ -907,6 +914,14 @@ public sealed class AuthService : IAuthService
         AuthenticatedUser = null;
         _gitHubService.SetAccessToken(null);
         _initializeTask = Task.CompletedTask;
+        try
+        {
+            AuthenticationCleared?.Invoke();
+        }
+        catch (Exception exception)
+        {
+            HandledFailureReporter.Report(exception, "markdown-account-resource-retirement");
+        }
     }
 
     private void RestoreSavedSessionAfterFailedSignIn(

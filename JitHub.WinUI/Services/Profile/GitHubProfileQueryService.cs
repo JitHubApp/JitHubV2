@@ -11,8 +11,8 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Markdown;
 using JitHub.Models.GitHub;
-using JitHub.Services.Markdown;
 
 namespace JitHub.Services;
 

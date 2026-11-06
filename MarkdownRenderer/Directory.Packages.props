@@ -1,0 +1,31 @@
+<Project>
+  <!-- One version per package for every renderer project. Transitive pinning
+       is deliberately off: these pins apply to direct references only. -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
+    <PackageVersion Include="FlaUI.Core" Version="5.0.0" />
+    <PackageVersion Include="FlaUI.UIA3" Version="5.0.0" />
+    <PackageVersion Include="Markdig" Version="0.42.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" Version="5.6.0" />
+    <PackageVersion Include="Microsoft.Graphics.Win2D" Version="1.4.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
+    <!-- Shared with the JitHub app through the repository Directory.Build.props. -->
+    <PackageVersion Include="Microsoft.Windows.SDK.BuildTools" Version="$(JitHubWindowsSdkBuildToolsVersion)" />
+    <PackageVersion Include="Microsoft.Windows.SDK.BuildTools.WinUIAnalyzer" Version="0.7.0" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK" Version="1.8.260710003" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK.Runtime" Version="1.8.260710003" />
+    <PackageVersion Include="System.Drawing.Common" Version="9.0.0" />
+    <!-- Exact: the offline compliance gate needs this precise archive and
+         license (see eng/ComplianceDependencyRestore). -->
+    <PackageVersion Include="System.Memory" Version="[4.6.0]" />
+    <PackageVersion Include="TextMateSharp" Version="2.0.3" />
+    <PackageVersion Include="TextMateSharp.Grammars" Version="2.0.3" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageVersion Include="Xunit.SkippableFact" Version="1.4.13" />
+  </ItemGroup>
+</Project>

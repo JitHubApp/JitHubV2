@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All</RootNamespace>
+    <AssemblyName>MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All</AssemblyName>
+    <UseWinUI>true</UseWinUI>
+    <WinUISDKReferences>false</WinUISDKReferences>
+    <PackageId>MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All</PackageId>
+    <Description>Complete upstream grammar provider for MarkdownRenderer TextMate highlighting.</Description>
+    <PackageTags>markdown;winui;syntax-highlighting;textmate;grammars;all</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MarkdownRenderer.SyntaxHighlighting.TextMate.Engine\MarkdownRenderer.SyntaxHighlighting.TextMate.Engine.csproj" />
+    <PackageReference Include="TextMateSharp.Grammars" />
+    <None Include="..\..\eng\textmate\THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="THIRD-PARTY-NOTICES.md" Visible="false" />
+    <None Include="..\..\eng\textmate\GRAMMAR-PROVENANCE.v2.0.3.json" Pack="true" PackagePath="licenses/GRAMMAR-PROVENANCE.json" Visible="false" />
+  </ItemGroup>
+</Project>

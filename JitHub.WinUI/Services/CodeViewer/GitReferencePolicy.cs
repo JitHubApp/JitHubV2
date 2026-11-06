@@ -1,26 +1,11 @@
-using System;
+using JitHub.Markdown;
 
 namespace JitHub.Services.CodeViewer;
 
 public static class GitReferencePolicy
 {
-    public static bool IsImmutableObjectId(string? value)
-    {
-        if (value is null || value.Length is not (40 or 64))
-        {
-            return false;
-        }
-
-        foreach (char character in value)
-        {
-            if (!Uri.IsHexDigit(character))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
+    /// <summary>Returns whether the value is a full Git object id; see <see cref="GitObjectIdPolicy"/>.</summary>
+    public static bool IsImmutableObjectId(string? value) => GitObjectIdPolicy.IsImmutableObjectId(value);
 
     public static string CacheResourceFor(string? value) =>
         IsImmutableObjectId(value)

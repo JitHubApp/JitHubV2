@@ -2,7 +2,6 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.Windows.Globalization;
 using Microsoft.Windows.AppLifecycle;
-using JitHub.Services.Markdown;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -35,9 +34,6 @@ internal static class Program
             CurrentLaunchOptions = LaunchOptions.Parse(args, GetLaunchArgumentText(activationArguments));
             JitHub.Services.RepositoryActionAutomationScenario.ConfigureWebsiteShowcase(
                 CurrentLaunchOptions.WebsiteShowcase);
-            MarkdownLifecycleAutomationBridge.ConfigureLaunchOptions(
-                CurrentLaunchOptions.MarkdownLifecycleFixture,
-                CurrentLaunchOptions.MarkdownLifecycleHost);
             ConfigureAutomationLanguageOverride();
             LogStartupPhase("main.launch-options-ready");
 

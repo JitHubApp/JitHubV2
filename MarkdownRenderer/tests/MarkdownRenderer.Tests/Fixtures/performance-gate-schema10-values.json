@@ -1,0 +1,32 @@
+{
+  "firstViewportReferenceTrialP95Milliseconds": [
+    [100, 102, 98, 98, 102, 100],
+    [50, 52, 48, 48, 52, 50],
+    [200, 202, 198, 198, 202, 200],
+    [100, 102, 98, 98, 102, 100],
+    [300, 302, 298, 298, 302, 300],
+    [200, 202, 198, 198, 202, 200]
+  ],
+  "firstViewportCandidateTrialP95Milliseconds": [
+    [105, 107, 103, 103, 107, 105],
+    [53, 55, 51, 51, 55, 53],
+    [210, 212, 208, 208, 212, 210],
+    [105, 107, 103, 103, 107, 105],
+    [315, 317, 313, 313, 317, 315],
+    [210, 212, 208, 208, 212, 210]
+  ],
+  "scrollReferenceUiP95Milliseconds": [1.04, 1.00, 0.96, 1.02, 0.98],
+  "scrollCandidateUiP95Milliseconds": [1.09, 1.05, 1.01, 1.07, 1.03],
+  "scrollReferenceUiP99Milliseconds": [2.08, 2.00, 1.92, 2.04, 1.96],
+  "scrollCandidateUiP99Milliseconds": [2.18, 2.10, 2.02, 2.14, 2.06],
+  "scrollReferenceFrameP95Milliseconds": [4.16, 4.00, 3.84, 4.08, 3.92],
+  "scrollCandidateFrameP95Milliseconds": [6.16, 6.00, 5.84, 6.08, 5.92],
+  "scrollReferenceAllocationP95Bytes": [104, 100, 96, 102, 98],
+  "scrollCandidateAllocationP95Bytes": [168, 164, 160, 166, 162],
+  "sourceLookupReferenceTrialBatchTicks": [25072, 24560, 24048, 24816, 24304],
+  "sourceLookupCandidateTrialBatchTicks": [26300, 25788, 25276, 26044, 25532],
+  "cancellationReferenceTrialP95Milliseconds": [15.10, 15.00, 14.90, 15.05, 14.95],
+  "cancellationCandidateTrialP95Milliseconds": [15.85, 15.75, 15.65, 15.80, 15.70],
+  "cancellationReferenceWarmupMilliseconds": [10.10, 10.00, 9.90, 10.05, 9.95],
+  "cancellationCandidateWarmupMilliseconds": [10.10, 10.00, 9.90, 10.05, 9.95]
+}

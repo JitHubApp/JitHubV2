@@ -33,7 +33,7 @@ public sealed partial class MainWindow : Window
 {
     private const uint ImageIcon = 1;
     private const uint LrLoadFromFile = 0x00000010;
-    private const uint WmClose = 0x0010;
+    private const uint WmFontChange = 0x001D;
     private const uint WmSetIcon = 0x0080;
     private const uint WmKeyDown = 0x0100;
     private const uint WmSysKeyDown = 0x0104;
@@ -193,7 +193,6 @@ public sealed partial class MainWindow : Window
         Closed += (_, _) =>
         {
             _productPerformanceVisualProbe?.Dispose();
-            MarkdownRenderer.MarkdownRendererRuntime.Shutdown();
             _ = RemoveWindowSubclass(_hwnd, _keyboardSubclassProc, KeyboardSubclassId);
             _rootLayout.Loaded -= RootLayout_Loaded;
             _rootLayout.ActualThemeChanged -= RootLayout_ActualThemeChanged;
@@ -768,8 +767,7 @@ public sealed partial class MainWindow : Window
         }
         finally
         {
-            _allowCloseAfterDiagnostics = true;
-            Close();
+            await MarkdownWindowClose.RetireViewsThenCloseAsync(ContentFrameHost, () => { _allowCloseAfterDiagnostics = true; Close(); });
         }
     }
 
@@ -872,9 +870,9 @@ public sealed partial class MainWindow : Window
 
     private nint KeyboardSubclassProc(nint hWnd, uint message, nint wParam, nint lParam, nuint subclassId, nuint refData)
     {
-        if (message == WmClose)
+        if (message == WmFontChange)
         {
-            MarkdownRenderer.MarkdownRendererRuntime.BeginShutdown();
+            UiTaskGuard.Observe(((App)Application.Current).MarkdownRuntime.NotifyFontsChangedAsync(), "ui-markdown-svg-font-change");
         }
 
         if ((message == WmKeyDown || message == WmSysKeyDown) &&

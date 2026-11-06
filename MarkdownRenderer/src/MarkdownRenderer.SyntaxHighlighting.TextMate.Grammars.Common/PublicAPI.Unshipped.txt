@@ -1,0 +1,8 @@
+#nullable enable
+MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.CommonTextMateGrammarProvider
+MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.CommonTextMateGrammarProvider.CommonTextMateGrammarProvider() -> void
+MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.CommonTextMateGrammarProvider.CommonTextMateGrammarProvider(MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateHighlighterOptions? options) -> void
+MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.CommonTextMateGrammarProvider.Dispose() -> void
+MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.CommonTextMateGrammarProvider.HighlightAsync(MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarHighlightRequest! request, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<MarkdownRenderer.SyntaxHighlighting.TextMate.TextMateGrammarHighlightResult?>
+MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.CommonTextMateGrammarProvider.Revision.get -> int
+static MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.CommonTextMateGrammarProvider.SupportedLanguageIds.get -> System.Collections.Generic.IReadOnlyList<string!>!
