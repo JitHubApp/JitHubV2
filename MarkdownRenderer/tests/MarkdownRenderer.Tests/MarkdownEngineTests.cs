@@ -455,13 +455,7 @@ public sealed class MarkdownEngineTests
     [Fact]
     public async Task EngineDisposalDoesNotWaitForCancellationRegistrationsAndRetiresResourcesAfterThem()
     {
-        var callbackRegistered = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        var callbackEntered = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        var callbackExited = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        using var callbackRelease = new ManualResetEventSlim();
+        using var blocking = new CancellationBlockingParagraphRenderer();
         TrackingDisposable? resource = null;
 
         var builder = new MarkdownEngineBuilder();
@@ -471,44 +465,12 @@ public sealed class MarkdownEngineTests
             {
                 resource = new TrackingDisposable(() => { });
                 return new MarkdownOwnedExtension(
-                    new ConfigurableExtension(
-                        "tests.dispose-blocking-cancellation",
-                        extensionBuilder => extensionBuilder.RegisterBlock(
-                            MarkdownSyntaxKinds.Block.Paragraph,
-                            (context, contentBuilder) =>
-                            {
-                                _ = context.CancellationToken.Register(() =>
-                                {
-                                    callbackEntered.TrySetResult();
-                                    try
-                                    {
-                                        if (!callbackRelease.Wait(TimeSpan.FromSeconds(5)))
-                                        {
-                                            throw new TimeoutException(
-                                                "Cancellation callback was not released.");
-                                        }
-                                    }
-                                    finally
-                                    {
-                                        callbackExited.TrySetResult();
-                                    }
-                                });
-                                callbackRegistered.TrySetResult();
-                                if (!SpinWait.SpinUntil(
-                                        () => context.CancellationToken.IsCancellationRequested,
-                                        TimeSpan.FromSeconds(5)))
-                                {
-                                    throw new TimeoutException(
-                                        "Engine disposal did not request cancellation.");
-                                }
-
-                                context.CancellationToken.ThrowIfCancellationRequested();
-                            })),
+                    new ConfigurableExtension("tests.dispose-blocking-cancellation", blocking.Register),
                     resource);
             });
         MarkdownEngine engine = builder.Build();
         Task parse = engine.ParseAsync("active");
-        await callbackRegistered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await blocking.CallbackRegistered.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         Task dispose = Task.Run(engine.Dispose);
         try
@@ -519,7 +481,7 @@ public sealed class MarkdownEngineTests
             // than two seconds to inject that worker even though Dispose has
             // already met its bounded-return contract above. This wait checks
             // eventual ordering, not callback-start latency.
-            await callbackEntered.Task.WaitAsync(TimeSpan.FromSeconds(15));
+            await blocking.CallbackEntered.Task.WaitAsync(TimeSpan.FromSeconds(15));
             await Assert.ThrowsAnyAsync<OperationCanceledException>(
                 () => parse.WaitAsync(TimeSpan.FromSeconds(2)));
             Assert.NotNull(resource);
@@ -527,10 +489,10 @@ public sealed class MarkdownEngineTests
         }
         finally
         {
-            callbackRelease.Set();
+            blocking.CallbackRelease.Set();
         }
 
-        await callbackExited.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await blocking.CallbackExited.Task.WaitAsync(TimeSpan.FromSeconds(2));
         Assert.True(SpinWait.SpinUntil(
             () => resource!.IsDisposed,
             TimeSpan.FromSeconds(2)));

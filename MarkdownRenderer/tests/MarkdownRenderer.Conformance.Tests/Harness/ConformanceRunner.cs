@@ -29,58 +29,13 @@ public sealed class ConformanceRunner
         {
             cancellationToken.ThrowIfCancellationRequested();
             MarkdownEngine engine = GetEngine(definition, example, engines);
-            string planHash = string.Empty;
             string expectedHtmlHash = HashNormalizedHtml(example.Html);
-            string actualHtmlHash = string.Empty;
-            string? failure = null;
-            try
-            {
-                MarkdownDocument document = await engine.ParseAsync(example.Markdown, cancellationToken)
-                    .ConfigureAwait(false);
-                ValidateDocument(example, document);
-                byte[] first = SemanticPlanSerializer.Serialize(definition.Profile, document);
-                byte[] second = SemanticPlanSerializer.Serialize(definition.Profile, document);
-                if (!first.AsSpan().SequenceEqual(second))
-                    throw new InvalidDataException("Semantic plan serialization was not deterministic.");
-                using var _ = JsonDocument.Parse(first);
-                planHash = SemanticPlanSerializer.Sha256(first);
-
-                string expectedHtml = NormalizeHtml(example.Html);
-                string actualHtml = NormalizeHtml(
-                    engine.RenderSpecificationHtmlForValidation(example.Markdown));
-                actualHtmlHash = HashNormalizedHtml(actualHtml);
-                if (!string.Equals(expectedHtml, actualHtml, StringComparison.Ordinal))
-                {
-                    int difference = FirstDifference(expectedHtml, actualHtml);
-                    throw new InvalidDataException(
-                        $"Official reference HTML differs at UTF-16 offset " +
-                        $"{difference}. Expected SHA-256 {expectedHtmlHash}; actual {actualHtmlHash}. " +
-                        $"Expected near difference: '{Excerpt(expectedHtml, difference)}'; " +
-                        $"actual: '{Excerpt(actualHtml, difference)}'.");
-                }
-            }
-            catch (Exception exception) when (exception is not OperationCanceledException)
-            {
-                failure = $"{exception.GetType().Name}: {exception.Message}";
-            }
+            (string planHash, string actualHtmlHash, string? failure) = await CheckExampleAsync(
+                definition, example, engine, expectedHtmlHash, cancellationToken).ConfigureAwait(false);
 
             bool allowlisted = allowlist.TryGet(definition.Id, example.Example, out var exceptionEntry);
-            ConformanceStatus status;
             string? issue = exceptionEntry?.Issue;
-            if (failure is null && allowlisted)
-            {
-                status = ConformanceStatus.Fail;
-                failure = $"Stale exception: {exceptionEntry!.Reason}";
-            }
-            else if (failure is not null && allowlisted)
-            {
-                status = ConformanceStatus.Exception;
-                failure = $"{failure} Allowlisted: {exceptionEntry!.Reason}";
-            }
-            else
-            {
-                status = failure is null ? ConformanceStatus.Pass : ConformanceStatus.Fail;
-            }
+            (ConformanceStatus status, failure) = ApplyAllowlist(failure, allowlisted, exceptionEntry);
 
             results.Add(new ConformanceResult(
                 definition.Id,
@@ -95,6 +50,66 @@ public sealed class ConformanceRunner
         }
 
         return results.AsReadOnly();
+    }
+
+    // Parses one example, checks its semantic plan is deterministic and valid
+    // JSON, and compares its HTML with the official reference. The hashes
+    // computed before a failure are returned with it.
+    private static async Task<(string PlanHash, string ActualHtmlHash, string? Failure)> CheckExampleAsync(
+        CorpusDefinition definition,
+        SpecExample example,
+        MarkdownEngine engine,
+        string expectedHtmlHash,
+        CancellationToken cancellationToken)
+    {
+        string planHash = string.Empty;
+        string actualHtmlHash = string.Empty;
+        try
+        {
+            MarkdownDocument document = await engine.ParseAsync(example.Markdown, cancellationToken)
+                .ConfigureAwait(false);
+            ValidateDocument(example, document);
+            byte[] first = SemanticPlanSerializer.Serialize(definition.Profile, document);
+            byte[] second = SemanticPlanSerializer.Serialize(definition.Profile, document);
+            if (!first.AsSpan().SequenceEqual(second))
+                throw new InvalidDataException("Semantic plan serialization was not deterministic.");
+            using var _ = JsonDocument.Parse(first);
+            planHash = SemanticPlanSerializer.Sha256(first);
+
+            string expectedHtml = NormalizeHtml(example.Html);
+            string actualHtml = NormalizeHtml(
+                engine.RenderSpecificationHtmlForValidation(example.Markdown));
+            actualHtmlHash = HashNormalizedHtml(actualHtml);
+            if (!string.Equals(expectedHtml, actualHtml, StringComparison.Ordinal))
+            {
+                int difference = FirstDifference(expectedHtml, actualHtml);
+                throw new InvalidDataException(
+                    $"Official reference HTML differs at UTF-16 offset " +
+                    $"{difference}. Expected SHA-256 {expectedHtmlHash}; actual {actualHtmlHash}. " +
+                    $"Expected near difference: '{Excerpt(expectedHtml, difference)}'; " +
+                    $"actual: '{Excerpt(actualHtml, difference)}'.");
+            }
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return (planHash, actualHtmlHash, $"{exception.GetType().Name}: {exception.Message}");
+        }
+
+        return (planHash, actualHtmlHash, null);
+    }
+
+    // An allowlisted example that now passes is a stale exception and fails;
+    // an allowlisted failure is reported as an exception with its reason.
+    private static (ConformanceStatus Status, string? Failure) ApplyAllowlist(
+        string? failure,
+        bool allowlisted,
+        ConformanceExceptionEntry? exceptionEntry)
+    {
+        if (failure is null && allowlisted)
+            return (ConformanceStatus.Fail, $"Stale exception: {exceptionEntry!.Reason}");
+        if (failure is not null && allowlisted)
+            return (ConformanceStatus.Exception, $"{failure} Allowlisted: {exceptionEntry!.Reason}");
+        return (failure is null ? ConformanceStatus.Pass : ConformanceStatus.Fail, failure);
     }
 
     private static MarkdownEngine GetEngine(

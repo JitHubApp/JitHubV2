@@ -59,16 +59,7 @@ public sealed class SvgComplianceTests(SvgComplianceFixture fixture) : IClassFix
         Assert.True(File.Exists(path), $"fixture not found: {path}");
 
         byte[] svg = File.ReadAllBytes(path);
-
-        // Pull intrinsic dimensions from the fixture — every authored
-        // fixture sets explicit width/height plus a viewBox.
-        var (iw, ih) = SvgIntrinsics.TryExtractIntrinsicSize(svg);
-        Assert.True(iw > 0 && ih > 0, $"fixture {fixtureRelPath} is missing intrinsic w/h");
-        int cssWidth = (int)Math.Round(iw);
-        int cssHeight = (int)Math.Round(ih);
-        int w = checked((int)Math.Ceiling(cssWidth * scale));
-        int h = checked((int)Math.Ceiling(cssHeight * scale));
-        Assert.True(w > 0 && h > 0, $"fixture {fixtureRelPath} has zero-sized intrinsic ({w}×{h})");
+        (int cssWidth, int cssHeight, int w, int h) = ResolveFixtureSize(svg, fixtureRelPath, scale);
 
         // 1) Full provider pipeline: host preflight, isolated worker, shared
         // memory protocol, parsed-tree cache, and returned premultiplied pixels.
@@ -77,10 +68,70 @@ public sealed class SvgComplianceTests(SvgComplianceFixture fixture) : IClassFix
         using MarkdownSvgRaster raster = await document.RenderAsync(
             new MarkdownSvgRenderRequest(w, h)
             { PhysicalViewport = new MarkdownSvgPhysicalViewport(cssWidth * scale, cssHeight * scale) });
+        byte[] oursRgba = ToStraightRgba(raster, w, h);
+
+        // Persist our render for inspection regardless of compare outcome.
+        string artifactsDir = CreateArtifactsDirectory(fixtureRelPath, scale);
+        PixelComparer.SaveRgbaAsPng(oursRgba, w, h, Path.Combine(artifactsDir, "ours.png"));
+        if (fixtureRelPath == "20-stress/katex-182-unique-images.svg")
+            AssertEveryKaTeXImageVisible(oursRgba, w, h, scale);
+
+        // 2) Browser render — skip if no Chromium installed.
+        SkipWithoutBrowserOracle(artifactsDir, oursRgba.Length);
+
+        byte[] browserPng = await fixture.Browser.RasterizeAsync(svg, cssWidth, cssHeight, scale);
+        Assert.False(string.IsNullOrEmpty(fixture.Browser.BackendEvidenceJson));
+        File.WriteAllText(Path.Combine(artifactsDir, "edge-backend.json"), fixture.Browser.BackendEvidenceJson);
+
+        var (browserRgba, bw, bh) = PixelComparer.LoadPngAsRgba(browserPng);
+        Assert.Equal(w, bw);
+        Assert.Equal(h, bh);
+
+        // CDP captures the exact requested physical viewport, with no
+        // browser-frame allowance or cropped common comparison rectangle.
+        byte[] browserCropped = PixelComparer.CropToRequiredBounds(browserRgba, bw, bh, w, h);
+        PixelComparer.SaveRgbaAsPng(browserCropped, w, h, Path.Combine(artifactsDir, "browser.png"));
+        if (fixtureRelPath == "20-stress/katex-182-unique-images.svg")
+            AssertEveryKaTeXImageVisible(browserCropped, w, h, scale);
+
+        var diff = PixelComparer.Compare(oursRgba, browserCropped, w, h, channelTolerance: 2);
+        FidelityGate gate = FidelityGate.For(fixtureRelPath);
+        WriteDiffStats(Path.Combine(artifactsDir, "diff-stats.txt"), w, h, diff);
+
+        // Capture both native paths before enforcing either comparison,
+        // so a provider mismatch cannot conceal an additional ImageBox,
+        // composition, or device-cache defect in the same fixture.
+        byte[] composed = await SvgMarkdownRasterizer.RasterizeAsync(svg, cssWidth, cssHeight, Renderer, scale);
+        PixelComparer.SaveRgbaAsPng(composed, w, h, Path.Combine(artifactsDir, "markdown.png"));
+        if (fixtureRelPath == "20-stress/katex-182-unique-images.svg")
+            AssertEveryKaTeXImageVisible(composed, w, h, scale);
+        var composedDiff = PixelComparer.Compare(composed, browserCropped, w, h, channelTolerance: 2);
+        WriteDiffStats(Path.Combine(artifactsDir, "markdown-diff-stats.txt"), w, h, composedDiff);
+        AssertWithinGate(fixtureRelPath, diff, gate);
+        AssertWithinGate($"{fixtureRelPath} Markdown composition", composedDiff, gate);
+    }
+
+    // Every authored fixture sets explicit width/height plus a viewBox; the
+    // physical size is the ceiling of that CSS size at the requested scale.
+    private static (int CssWidth, int CssHeight, int Width, int Height) ResolveFixtureSize(
+        byte[] svg, string fixtureRelPath, double scale)
+    {
+        var (iw, ih) = SvgIntrinsics.TryExtractIntrinsicSize(svg);
+        Assert.True(iw > 0 && ih > 0, $"fixture {fixtureRelPath} is missing intrinsic w/h");
+        int cssWidth = (int)Math.Round(iw);
+        int cssHeight = (int)Math.Round(ih);
+        int w = checked((int)Math.Ceiling(cssWidth * scale));
+        int h = checked((int)Math.Ceiling(cssHeight * scale));
+        Assert.True(w > 0 && h > 0, $"fixture {fixtureRelPath} has zero-sized intrinsic ({w}×{h})");
+        return (cssWidth, cssHeight, w, h);
+    }
+
+    private static byte[] ToStraightRgba(MarkdownSvgRaster raster, int w, int h)
+    {
         Assert.Equal(w * h * 4, raster.LengthBytes);
         Assert.Equal(w, raster.WidthPixels);
         Assert.Equal(h, raster.HeightPixels);
-        byte[] oursRgba = raster.PixelFormat switch
+        return raster.PixelFormat switch
         {
             MarkdownSvgPixelFormat.Rgba8Premultiplied =>
                 PixelComparer.RgbaPremulToRgba(raster.Pixels.Span, w, h),
@@ -88,8 +139,10 @@ public sealed class SvgComplianceTests(SvgComplianceFixture fixture) : IClassFix
                 PixelComparer.BgraPremulToRgba(raster.Pixels.ToArray(), w, h),
             _ => throw new InvalidDataException($"Unknown SVG pixel format {raster.PixelFormat}."),
         };
+    }
 
-        // Persist our render for inspection regardless of compare outcome.
+    private static string CreateArtifactsDirectory(string fixtureRelPath, double scale)
+    {
         string? artifactRoot = Environment.GetEnvironmentVariable("MARKDOWN_RENDERER_SVG_ARTIFACT_ROOT");
         var artifactsDir = Path.Combine(
             string.IsNullOrWhiteSpace(artifactRoot)
@@ -97,11 +150,13 @@ public sealed class SvgComplianceTests(SvgComplianceFixture fixture) : IClassFix
                 : Path.GetFullPath(artifactRoot),
             fixtureRelPath.Replace('/', '_').Replace(".svg", "") + $"_scale-{scale * 100:0}");
         Directory.CreateDirectory(artifactsDir);
-        PixelComparer.SaveRgbaAsPng(oursRgba, w, h, Path.Combine(artifactsDir, "ours.png"));
-        if (fixtureRelPath == "20-stress/katex-182-unique-images.svg")
-            AssertEveryKaTeXImageVisible(oursRgba, w, h, scale);
+        return artifactsDir;
+    }
 
-        // 2) Browser render — skip if no Chromium installed.
+    // Release runs set MARKDOWN_RENDERER_REQUIRE_EDGE_ORACLE and must compare
+    // against Edge; elsewhere a missing browser skips the comparison visibly.
+    private static void SkipWithoutBrowserOracle(string artifactsDir, int oursByteCount)
+    {
         var browserBin = HeadlessBrowserRasterizer.TryFindBrowser();
         bool requireEdgeOracle = string.Equals(
             Environment.GetEnvironmentVariable("MARKDOWN_RENDERER_REQUIRE_EDGE_ORACLE"),
@@ -117,7 +172,7 @@ public sealed class SvgComplianceTests(SvgComplianceFixture fixture) : IClassFix
         {
             File.WriteAllText(Path.Combine(artifactsDir, "skipped.txt"),
                 "No headless Edge/Chrome found; browser comparison skipped.\n" +
-                "resvg render produced " + oursRgba.Length + " bytes.\n");
+                "resvg render produced " + oursByteCount + " bytes.\n");
             // Use xunit.skippablefact Skip.If so local dashboards show "skipped"
             // rather than a silent green pass — making it clear the pixel
             // comparison did not run on this machine.
@@ -125,73 +180,34 @@ public sealed class SvgComplianceTests(SvgComplianceFixture fixture) : IClassFix
                 "No headless Edge/Chrome installed; browser comparison requires " +
                 "msedge or google-chrome to be on PATH or in well-known locations.");
         }
+    }
 
-        byte[] browserPng = await fixture.Browser.RasterizeAsync(svg, cssWidth, cssHeight, scale);
-        Assert.False(string.IsNullOrEmpty(fixture.Browser.BackendEvidenceJson));
-        File.WriteAllText(Path.Combine(artifactsDir, "edge-backend.json"), fixture.Browser.BackendEvidenceJson);
+    private static void WriteDiffStats(string path, int width, int height, PixelComparer.DiffReport diff) =>
+        File.WriteAllText(path,
+            $"{width}x{height}\nmaxChannelDelta={diff.MaxChannelDelta}\nmeanChannelDelta={diff.MeanChannelDelta:F3}\n" +
+            $"differingPixelFraction={diff.DifferingPixelFraction:F4}\nssim={diff.StructuralSimilarity:F6}\n" +
+            $"alphaBoundaryTolerancePx=0\nssimWindow=8x8-local-premultiplied\nalphaIoU={diff.AlphaIntersectionOverUnion:F6}\n");
 
+    private static void AssertWithinGate(string label, PixelComparer.DiffReport diff, FidelityGate gate)
+    {
+        Assert.True(diff.MeanChannelDelta <= gate.MaxMeanChannelDelta,
+            $"{label}: mean channel delta {diff.MeanChannelDelta:F3} > {gate.MaxMeanChannelDelta}");
+        Assert.True(diff.StructuralSimilarity >= gate.MinimumSsim,
+            $"{label}: SSIM {diff.StructuralSimilarity:F6} < {gate.MinimumSsim:F3}");
+        Assert.True(diff.AlphaIntersectionOverUnion >= gate.MinimumAlphaIou,
+            $"{label}: exact alpha IoU " +
+            $"{diff.AlphaIntersectionOverUnion:F6} < {gate.MinimumAlphaIou:F3}");
+    }
+
+    // Geometry/raster fixtures use the strict gate; text and filter fixtures
+    // use the documented looser one.
+    private readonly record struct FidelityGate(double MaxMeanChannelDelta, double MinimumSsim, double MinimumAlphaIou)
+    {
+        internal static FidelityGate For(string fixtureRelPath)
         {
-            var (browserRgba, bw, bh) = PixelComparer.LoadPngAsRgba(browserPng);
-            Assert.Equal(w, bw);
-            Assert.Equal(h, bh);
-
-            // CDP captures the exact requested physical viewport, with no
-            // browser-frame allowance or cropped common comparison rectangle.
-            int cw = w;
-            int ch = h;
-            byte[] oursCropped = oursRgba;
-            byte[] browserCropped = PixelComparer.CropToRequiredBounds(
-                browserRgba,
-                bw,
-                bh,
-                w,
-                h);
-
-            PixelComparer.SaveRgbaAsPng(browserCropped, cw, ch, Path.Combine(artifactsDir, "browser.png"));
-            if (fixtureRelPath == "20-stress/katex-182-unique-images.svg")
-                AssertEveryKaTeXImageVisible(browserCropped, w, h, scale);
-
-            var diff = PixelComparer.Compare(oursCropped, browserCropped, cw, ch, channelTolerance: 2);
             bool textOrFilter = fixtureRelPath.StartsWith("08-filters/", StringComparison.OrdinalIgnoreCase) ||
                 fixtureRelPath.StartsWith("13-text/", StringComparison.OrdinalIgnoreCase);
-            double maxMeanChannelDelta = textOrFilter ? 5 : 2;
-            double minimumSsim = textOrFilter ? 0.980 : 0.995;
-            double minimumAlphaIou = textOrFilter ? 0.980 : 0.995;
-            File.WriteAllText(Path.Combine(artifactsDir, "diff-stats.txt"),
-                $"{cw}x{ch}\nmaxChannelDelta={diff.MaxChannelDelta}\nmeanChannelDelta={diff.MeanChannelDelta:F3}\n" +
-                $"differingPixelFraction={diff.DifferingPixelFraction:F4}\nssim={diff.StructuralSimilarity:F6}\n" +
-                $"alphaBoundaryTolerancePx=0\nssimWindow=8x8-local-premultiplied\nalphaIoU={diff.AlphaIntersectionOverUnion:F6}\n");
-
-            // Capture both native paths before enforcing either comparison,
-            // so a provider mismatch cannot conceal an additional ImageBox,
-            // composition, or device-cache defect in the same fixture.
-            byte[] composed = await SvgMarkdownRasterizer.RasterizeAsync(svg, cssWidth, cssHeight, Renderer, scale);
-            PixelComparer.SaveRgbaAsPng(composed, w, h, Path.Combine(artifactsDir, "markdown.png"));
-            if (fixtureRelPath == "20-stress/katex-182-unique-images.svg")
-                AssertEveryKaTeXImageVisible(composed, w, h, scale);
-            var composedDiff = PixelComparer.Compare(composed, browserCropped, w, h, channelTolerance: 2);
-            File.WriteAllText(Path.Combine(artifactsDir, "markdown-diff-stats.txt"),
-                $"{w}x{h}\nmaxChannelDelta={composedDiff.MaxChannelDelta}\n" +
-                $"meanChannelDelta={composedDiff.MeanChannelDelta:F3}\n" +
-                $"differingPixelFraction={composedDiff.DifferingPixelFraction:F4}\n" +
-                $"ssim={composedDiff.StructuralSimilarity:F6}\nalphaBoundaryTolerancePx=0\nssimWindow=8x8-local-premultiplied\n" +
-                $"alphaIoU={composedDiff.AlphaIntersectionOverUnion:F6}\n");
-            Assert.True(diff.MeanChannelDelta <= maxMeanChannelDelta,
-                $"{fixtureRelPath}: mean channel delta {diff.MeanChannelDelta:F3} > {maxMeanChannelDelta}");
-            Assert.True(diff.StructuralSimilarity >= minimumSsim,
-                $"{fixtureRelPath}: SSIM {diff.StructuralSimilarity:F6} < {minimumSsim:F3}");
-            Assert.True(diff.AlphaIntersectionOverUnion >= minimumAlphaIou,
-                $"{fixtureRelPath}: exact alpha IoU " +
-                $"{diff.AlphaIntersectionOverUnion:F6} < {minimumAlphaIou:F3}");
-            Assert.True(composedDiff.MeanChannelDelta <= maxMeanChannelDelta,
-                $"{fixtureRelPath} Markdown composition: mean channel delta " +
-                $"{composedDiff.MeanChannelDelta:F3} > {maxMeanChannelDelta}");
-            Assert.True(composedDiff.StructuralSimilarity >= minimumSsim,
-                $"{fixtureRelPath} Markdown composition: SSIM " +
-                $"{composedDiff.StructuralSimilarity:F6} < {minimumSsim:F3}");
-            Assert.True(composedDiff.AlphaIntersectionOverUnion >= minimumAlphaIou,
-                $"{fixtureRelPath} Markdown composition: exact alpha IoU " +
-                $"{composedDiff.AlphaIntersectionOverUnion:F6} < {minimumAlphaIou:F3}");
+            return textOrFilter ? new FidelityGate(5, 0.980, 0.980) : new FidelityGate(2, 0.995, 0.995);
         }
     }
 
@@ -212,19 +228,5 @@ public sealed class SvgComplianceTests(SvgComplianceFixture fixture) : IClassFix
                 rgba[pixel + 3] == 255,
                 $"KaTeX-shaped image {image} is missing or has incorrect pixels.");
         }
-    }
-}
-
-public sealed class SvgComplianceFixture : IAsyncLifetime
-{
-    internal ResvgMarkdownSvgRenderer Renderer { get; } = new();
-    internal PersistentEdgeSvgRasterizer Browser { get; } = new();
-
-    public Task InitializeAsync() => Task.CompletedTask;
-
-    public async Task DisposeAsync()
-    {
-        try { await Renderer.DisposeAsync(); }
-        finally { await Browser.DisposeAsync(); }
     }
 }

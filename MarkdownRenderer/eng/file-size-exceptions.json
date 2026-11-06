@@ -98,7 +98,7 @@
     },
     {
       "path": "tests/MarkdownRenderer.Tests/MarkdownEngineTests.cs",
-      "lines": 1378,
+      "lines": 1340,
       "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     }
   ]
