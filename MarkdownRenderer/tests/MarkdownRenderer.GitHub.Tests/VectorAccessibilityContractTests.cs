@@ -17,6 +17,7 @@ using System.Globalization;
 using Windows.Foundation;
 using Windows.UI;
 using Xunit;
+using static MarkdownRenderer.GitHub.Tests.VectorAccessibilityAssertions;
 using LinkTarget = MarkdownRenderer.Controls.Input.LinkTarget;
 
 namespace MarkdownRenderer.GitHub.Tests;
@@ -212,21 +213,8 @@ public sealed class VectorAccessibilityContractTests
             var selection = new SelectionController();
             selection.SetAnchor(new DocumentPosition(1, 0, 0));
             selection.ExtendTo(new DocumentPosition(1, 0, 1));
-            var selectionRects = new List<Rect>();
-            var selectionBackgrounds = new List<SelectionBackgroundGeometry>();
-            Assert.True(snapshot.TryBeginPaint());
-            try
-            {
-                selection.AppendVisibleHighlightRects(
-                    snapshot,
-                    new Rect(0, 0, 100, targetHeight),
-                    selectionRects,
-                    selectionBackgrounds);
-            }
-            finally
-            {
-                snapshot.EndPaint();
-            }
+            (List<Rect> selectionRects, List<SelectionBackgroundGeometry> selectionBackgrounds) =
+                CollectVisibleHighlights(snapshot, selection, width: 100, targetHeight);
 
             // Selection, caret, and hit geometry continue to cover the full
             // atomic block. Only the adorner background follows scene content.
@@ -252,46 +240,8 @@ public sealed class VectorAccessibilityContractTests
                     new Rect(0, 0, 100, targetHeight));
             }
 
-            Color[] pixels = target.GetPixelColors();
-            Rect contentBounds = vector.VisibleContentBounds;
-            Color transparentScenePixel = ReadPixel(
-                pixels,
-                100,
-                contentBounds.Left + 5,
-                contentBounds.Top + 5);
-            Color blackScenePixel = ReadPixel(
-                pixels,
-                100,
-                contentBounds.Left + 11,
-                contentBounds.Top + 11);
-            Color outlinePixel = ReadPixel(
-                pixels,
-                100,
-                contentBounds.Left,
-                contentBounds.Top + contentBounds.Height / 2);
-            Color outsideScenePixel = ReadPixel(
-                pixels,
-                100,
-                vector.Bounds.Right - 10,
-                contentBounds.Top + 5);
-
-            Color expectedTransparentPixel = highContrast
-                ? selectedBackground
-                : BlendOverWhite(selectedBackground, 0.25f);
-            AssertColorClose(expectedTransparentPixel, transparentScenePixel, tolerance: 2);
-            Assert.Equal(white, outsideScenePixel);
-            AssertColorClose(
-                highContrast
-                    ? context.ThemeSnapshot.SelectionForegroundColor
-                    : Color.FromArgb(0xFF, 0, 0, 0),
-                blackScenePixel,
-                tolerance: 1);
-            AssertColorClose(
-                highContrast
-                    ? context.ThemeSnapshot.SelectionForegroundColor
-                    : selectedBackground,
-                outlinePixel,
-                tolerance: 8);
+            AssertSelectedTransparentScenePixels(
+                target.GetPixelColors(), vector, context.ThemeSnapshot, selectedBackground, white, highContrast);
         }
         finally
         {
@@ -447,64 +397,7 @@ public sealed class VectorAccessibilityContractTests
         MarkdownVectorPaintStyle sharedPaint = MarkdownVectorPaintStyle.CreateSemantic(
             MarkdownVectorPaintRole.Foreground,
             MarkdownVectorPaintRole.Authored);
-        var hostText = new MarkdownVectorTextStyle(
-            "Scene fallback",
-            18,
-            fontWeight: 650,
-            italic: true,
-            fontRole: MarkdownVectorFontRole.Host);
-        MarkdownVectorSemanticItem[] semantics =
-        [
-            new(
-                1,
-                MarkdownVectorSemanticRole.Diagram,
-                "Text style diagram",
-                null,
-                -1,
-                new SourceSpan(0, 10),
-                new MarkdownVectorRectangle(0, 0, 160, 50)),
-            new(
-                2,
-                MarkdownVectorSemanticRole.Node,
-                "Linked label",
-                null,
-                0,
-                new SourceSpan(0, 5),
-                new MarkdownVectorRectangle(5, 5, 70, 30),
-                MarkdownVectorSemanticFlags.Linked),
-            new(
-                3,
-                MarkdownVectorSemanticRole.Node,
-                "Plain label",
-                null,
-                0,
-                new SourceSpan(6, 4),
-                new MarkdownVectorRectangle(85, 5, 70, 30)),
-        ];
-        MarkdownVectorCommand[] commands =
-        [
-            MarkdownVectorCommand.DrawText(
-                "Linked label",
-                new MarkdownVectorPoint(10, 25),
-                hostText,
-                sharedPaint,
-                semanticIndex: 1),
-            MarkdownVectorCommand.DrawText(
-                "Plain label",
-                new MarkdownVectorPoint(90, 25),
-                new MarkdownVectorTextStyle("Authored face", 14, fontWeight: 350),
-                sharedPaint,
-                semanticIndex: 2),
-        ];
-        var scene = new MarkdownVectorScene(
-            160,
-            50,
-            40,
-            commands,
-            referenceFontSize: 16,
-            new MarkdownVectorRectangle(0, 0, 160, 50),
-            semantics,
-            [new MarkdownVectorLinkAction(1, "https://example.test/linked", action: null)]);
+        MarkdownVectorScene scene = CreateLinkedTextStyleScene(sharedPaint, out MarkdownVectorCommand[] commands);
         MarkdownLayoutContext context = CreateContext(isHighContrast: highContrast);
         var vector = new VectorSceneBox(
             context,
@@ -598,42 +491,12 @@ public sealed class VectorAccessibilityContractTests
                 accentPath.Style!,
                 MarkdownVectorSemanticRole.Node));
 
-        Color lightSurface = VectorSceneDrawing.ResolveColor(
-            semanticRectangle.Style!.FillArgb,
-            semanticRectangle.Style.Opacity,
-            light,
-            semanticRectangle.Style.FillRole,
-            highContrast: false);
-        Color darkSurface = VectorSceneDrawing.ResolveColor(
-            semanticRectangle.Style.FillArgb,
-            semanticRectangle.Style.Opacity,
-            dark,
-            semanticRectangle.Style.FillRole,
-            highContrast: false);
-        Color authoredLight = VectorSceneDrawing.ResolveColor(
-            authoredRectangle.Style!.FillArgb,
-            authoredRectangle.Style.Opacity,
-            light,
-            authoredRectangle.Style.FillRole,
-            highContrast: false);
-        Color authoredDark = VectorSceneDrawing.ResolveColor(
-            authoredRectangle.Style.FillArgb,
-            authoredRectangle.Style.Opacity,
-            dark,
-            authoredRectangle.Style.FillRole,
-            highContrast: false);
-        Color lightAccent = VectorSceneDrawing.ResolveColor(
-            accentPath.Style!.FillArgb,
-            accentPath.Style.Opacity,
-            light,
-            accentPath.Style.FillRole,
-            highContrast: false);
-        Color darkAccent = VectorSceneDrawing.ResolveColor(
-            accentPath.Style.FillArgb,
-            accentPath.Style.Opacity,
-            dark,
-            accentPath.Style.FillRole,
-            highContrast: false);
+        Color lightSurface = ResolveFill(semanticRectangle, light);
+        Color darkSurface = ResolveFill(semanticRectangle, dark);
+        Color authoredLight = ResolveFill(authoredRectangle, light);
+        Color authoredDark = ResolveFill(authoredRectangle, dark);
+        Color lightAccent = ResolveFill(accentPath, light);
+        Color darkAccent = ResolveFill(accentPath, dark);
 
         Assert.Equal(light.Surface, lightSurface);
         Assert.Equal(dark.Surface, darkSurface);
@@ -1016,46 +879,9 @@ public sealed class VectorAccessibilityContractTests
                 out InlineRun resolvedRun));
             Assert.Same(paragraph, resolvedInline);
             Assert.Same(math, resolvedRun);
-            Assert.True(LinkTargets.TryCreateLinkedAtomicTarget(math, out LinkTarget target));
-            Assert.False(LinkTargets.TryCreateLinkedAtomicTarget(unlinkedMath, out _));
-            LinkTarget? keyboardTarget = LinkTargets.FindLinkTargetInBlock(
-                paragraph,
-                new DocumentPosition(paragraph.BlockIndex, math.InlineIndex, 0),
-                point: null);
+            AssertLinkedMathActivationTargets(paragraph, math, unlinkedMath, linkUrl, linkTitle);
 
-            Assert.NotNull(keyboardTarget);
-            Assert.Equal(linkUrl, target.Url);
-            Assert.Equal(linkTitle, target.Title);
-            Assert.Equal(math.SourceSpan, target.SourceSpan);
-            Assert.Null(target.Run);
-            Assert.Equal(target.Url, keyboardTarget.Value.Url);
-            Assert.Equal(target.Title, keyboardTarget.Value.Title);
-            Assert.Equal(target.SourceSpan, keyboardTarget.Value.SourceSpan);
-
-            MarkdownSemanticDocument document = snapshot.SemanticDocument;
-            MarkdownSemanticNode mathNode = Assert.Single(
-                MarkdownSemanticDocument.EnumerateDepthFirst(document.Root),
-                node => ReferenceEquals(node.InlineRun, math));
-            Assert.Equal(MarkdownSemanticRole.Math, mathNode.Role);
-            Assert.Equal("x squared", mathNode.AccessibilityName);
-            Assert.Equal(linkTitle, mathNode.HelpText);
-            Assert.Equal(semanticText, document.GetText(mathNode));
-            MarkdownTextSpan mathSpan = Assert.Single(
-                document.TextSpans,
-                span => ReferenceEquals(span.InlineRun, math) &&
-                    span.TextStart == mathNode.TextStart && span.TextEnd == mathNode.TextEnd);
-            Assert.Equal(semanticText, document.Text[mathSpan.TextStart..mathSpan.TextEnd]);
-            // Adjacent atomic labels need a semantic space, not a second Math
-            // node or a duplicate formula. The boundary maps to this same atom.
-            MarkdownTextSpan boundary = Assert.Single(
-                document.TextSpans,
-                span => ReferenceEquals(span.InlineRun, math) &&
-                    span.TextStart == mathNode.TextEnd);
-            Assert.Equal(" ", document.Text[boundary.TextStart..boundary.TextEnd]);
-            Assert.Equal(2, document.TextSpans.Count(span => ReferenceEquals(span.InlineRun, math)));
-            Assert.DoesNotContain(
-                MarkdownSemanticDocument.EnumerateDepthFirst(document.Root),
-                node => ReferenceEquals(node.InlineRun, math) && node.Role == MarkdownSemanticRole.Link);
+            AssertLinkedMathHasOneSemanticNode(snapshot, math, semanticText, linkTitle);
         }
         finally
         {
@@ -1426,40 +1252,6 @@ public sealed class VectorAccessibilityContractTests
         return Assert.Single(builder.Build().Items);
     }
 
-    private static Color ReadPixel(Color[] pixels, int width, double x, double y)
-    {
-        int pixelX = System.Math.Clamp((int)System.Math.Floor(x), 0, width - 1);
-        int pixelY = System.Math.Clamp((int)System.Math.Floor(y), 0, pixels.Length / width - 1);
-        return pixels[pixelY * width + pixelX];
-    }
-
-    private static Color BlendOverWhite(Color foreground, float opacity)
-    {
-        float alpha = System.Math.Clamp(
-            System.MathF.Round(foreground.A * opacity),
-            0f,
-            255f) / 255f;
-        return Color.FromArgb(
-            0xFF,
-            BlendChannel(foreground.R, alpha),
-            BlendChannel(foreground.G, alpha),
-            BlendChannel(foreground.B, alpha));
-    }
-
-    private static byte BlendChannel(byte foreground, float alpha) =>
-        (byte)System.Math.Clamp(
-            (int)System.MathF.Round(foreground * alpha + 255f * (1f - alpha)),
-            0,
-            255);
-
-    private static void AssertColorClose(Color expected, Color actual, int tolerance)
-    {
-        Assert.InRange(System.Math.Abs(expected.A - actual.A), 0, tolerance);
-        Assert.InRange(System.Math.Abs(expected.R - actual.R), 0, tolerance);
-        Assert.InRange(System.Math.Abs(expected.G - actual.G), 0, tolerance);
-        Assert.InRange(System.Math.Abs(expected.B - actual.B), 0, tolerance);
-    }
-
     private static Size MeasureBlockScene(
         MarkdownVectorScene scene,
         float resolvedStyleFontSize,
@@ -1542,12 +1334,6 @@ public sealed class VectorAccessibilityContractTests
             StringProvider = stringProvider,
         };
     }
-
-    private static Color ToColor(uint argb) => Color.FromArgb(
-        (byte)(argb >> 24),
-        (byte)(argb >> 16),
-        (byte)(argb >> 8),
-        (byte)argb);
 
     private sealed class RecordingStringProvider(string value) : IMarkdownStringProvider
     {
