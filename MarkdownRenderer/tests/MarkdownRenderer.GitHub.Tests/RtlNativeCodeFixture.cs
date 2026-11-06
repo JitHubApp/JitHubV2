@@ -16,7 +16,7 @@ namespace MarkdownRenderer.GitHub.Tests;
 /// <summary>
 /// A native, line-numbered C# code block laid out alone at a fractional origin,
 /// with a selection spanning every chunk. Used by
-/// <see cref="SelectionAdornerViewportParityTests"/> to compare code selection
+/// <see cref="SelectionAdornerCodeChunkParityTests"/> to compare code selection
 /// geometry with DirectWrite in both flow directions.
 /// </summary>
 internal sealed class RtlNativeCodeFixture(

@@ -16,9 +16,10 @@ using Xunit;
 namespace MarkdownRenderer.GitHub.Tests;
 
 /// <summary>
-/// Builds the safe HTML and GitHub README layouts that
-/// <see cref="SafeHtmlRenderingTests"/> inspects, flattens their boxes and
-/// runs, and provides its string provider and deferred image resolver.
+/// Builds the safe HTML and GitHub README layouts that the SafeHtml rendering
+/// test classes, such as <see cref="SafeHtmlContentStructureTests"/>, inspect,
+/// flattens their boxes and runs, and provides their string provider and
+/// deferred image resolver.
 /// </summary>
 internal static class SafeHtmlRenderingFixture
 {

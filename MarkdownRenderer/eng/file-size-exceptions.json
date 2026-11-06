@@ -30,66 +30,6 @@
       "path": "src/MarkdownRenderer.Math/ThirdParty/Typography/Typography.OpenFont/Tables.CFF/Type2CharStringParser.cs",
       "lines": 1253,
       "reason": "Vendored third-party source, kept as upstream wrote it so it can be compared with its release."
-    },
-    {
-      "path": "tests/MarkdownRenderer.GitHub.Tests/ImageBoxSvgRendererTests.cs",
-      "lines": 2826,
-      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
-    },
-    {
-      "path": "tests/MarkdownRenderer.GitHub.Tests/MarkdownPerformanceSessionTests.cs",
-      "lines": 1239,
-      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
-    },
-    {
-      "path": "tests/MarkdownRenderer.GitHub.Tests/MarkdownPerformanceSourceLeaseTests.cs",
-      "lines": 1014,
-      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
-    },
-    {
-      "path": "tests/MarkdownRenderer.GitHub.Tests/ProgressiveSceneDeferralTests.cs",
-      "lines": 1904,
-      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
-    },
-    {
-      "path": "tests/MarkdownRenderer.GitHub.Tests/RelativeScriptFontSizeTests.cs",
-      "lines": 1264,
-      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
-    },
-    {
-      "path": "tests/MarkdownRenderer.GitHub.Tests/SafeHtmlRenderingTests.cs",
-      "lines": 2247,
-      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
-    },
-    {
-      "path": "tests/MarkdownRenderer.GitHub.Tests/ScriptBaselineGeometryTests.cs",
-      "lines": 1465,
-      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
-    },
-    {
-      "path": "tests/MarkdownRenderer.GitHub.Tests/SelectionAdornerViewportParityTests.cs",
-      "lines": 1221,
-      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
-    },
-    {
-      "path": "tests/MarkdownRenderer.GitHub.Tests/SvgHostAdmissionCoordinatorTests.cs",
-      "lines": 1360,
-      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
-    },
-    {
-      "path": "tests/MarkdownRenderer.GitHub.Tests/ThemeSnapshotContractTests.cs",
-      "lines": 1293,
-      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
-    },
-    {
-      "path": "tests/MarkdownRenderer.GitHub.Tests/VectorAccessibilityContractTests.cs",
-      "lines": 1348,
-      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
-    },
-    {
-      "path": "tests/MarkdownRenderer.Tests/MarkdownEngineTests.cs",
-      "lines": 1340,
-      "reason": "Test file that predates the size rule; split by fixture in a later structure step."
     }
   ]
 }
