@@ -14,7 +14,11 @@ namespace JitHub.Services;
 
 public sealed class AuthService : IAuthService
 {
-    internal static event Action? AuthenticationCleared;
+    /// <summary>
+    /// Raised after this service clears the signed-in session, so account-scoped
+    /// resources such as prepared Markdown can be released.
+    /// </summary>
+    internal event Action? AuthenticationCleared;
 
     private readonly IAppConfig _appConfigService;
     private readonly IAccountService _accountService;

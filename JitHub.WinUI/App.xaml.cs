@@ -56,7 +56,6 @@ public partial class App : Application
         AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
         AppDomain.CurrentDomain.ProcessExit += CurrentDomain_ProcessExit;
         TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
-        AuthService.AuthenticationCleared += MarkdownRuntime.ResetPerformanceSession;
         InitializeComponent();
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
         ThemeService initialThemeService = new(new SettingService());
@@ -267,7 +266,12 @@ public partial class App : Application
             provider.GetRequiredService<IGitHubClientService>(),
             provider.GetRequiredService<GitHubMarkdownImageResolver>()));
         RegisterMarkdownHostBoundaries(services);
-        services.AddSingleton<IAuthService, AuthService>();
+        services.AddSingleton<IAuthService>(provider =>
+        {
+            AuthService authService = ActivatorUtilities.CreateInstance<AuthService>(provider);
+            authService.AuthenticationCleared += MarkdownRuntime.ResetPerformanceSession;
+            return authService;
+        });
         services.AddSingleton<IThemeService, ThemeService>();
         services.AddSingleton<ISettingsPreferencesService, SettingsPreferencesService>();
         services.AddSingleton<LocalizationService>();
