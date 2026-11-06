@@ -108,7 +108,16 @@ internal static class WorkerTransportExchanges
             Assert.False(CompareObjectHandles(current, identity));
         }
         else
-            Assert.Equal(ErrorInvalidHandle, Marshal.GetLastPInvokeError());
+        {
+            // An empty slot fails with ERROR_INVALID_HANDLE. A slot the child
+            // reused for an object type that cannot be duplicated (for example an
+            // ETW registration) fails with ERROR_NOT_SUPPORTED. The section and
+            // file objects this probe tracks always duplicate, so either error
+            // proves the original object is no longer at that slot.
+            int error = Marshal.GetLastPInvokeError();
+            Assert.True(error is ErrorInvalidHandle or ErrorNotSupported,
+                $"Expected the remote handle to be closed; DuplicateHandle returned {error}.");
+        }
     }
 
     internal static void AssertRemoteHandleUnavailable(SafeProcessHandle workerProcess, ulong remoteHandle)
