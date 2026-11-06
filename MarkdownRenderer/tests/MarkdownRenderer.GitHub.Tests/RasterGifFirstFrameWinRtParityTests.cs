@@ -24,6 +24,11 @@ namespace MarkdownRenderer.GitHub.Tests;
 /// transparent-canvas, fractional-rectangle, Linear Win2D composition. This
 /// does not qualify animation playback, general GIF fidelity, or memory bounds.
 /// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because the parity proof needs its own
+/// WinRT reference decoder and legacy Win2D composition path, and every case
+/// compares the owned native decode against that same reference.
+/// </remarks>
 [Collection(SharedCanvasBitmapCacheTestCollection.Name)]
 public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output)
 {
@@ -40,16 +45,7 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
                      .Append(OwnedNativeWicGifFixtureFactory.CreateOverFrameLimitStaticPreview()))
         {
             RasterImageBudgetResult budget = RasterImageResourceBudget.Validate(fixture.Bytes);
-            Assert.True(budget.Accepted || budget.CanRenderStaticPreview,
-                $"{fixture.Name}: {budget.Reason}");
-            Assert.Equal("GIF", budget.Format);
-            Assert.Equal(fixture.CanvasWidth, budget.Width);
-            Assert.Equal(fixture.CanvasHeight, budget.Height);
-            Assert.Equal(fixture.FrameCount, budget.FrameCount);
-            Assert.Equal((fixture.FirstFrame.Left, fixture.FirstFrame.Top,
-                    fixture.FirstFrame.Width, fixture.FirstFrame.Height),
-                (budget.FirstFrame!.Value.Left, budget.FirstFrame.Value.Top,
-                    budget.FirstFrame.Value.Width, budget.FirstFrame.Value.Height));
+            AssertBudgetDescribesFixture(fixture, budget);
 
             var sizing = new RasterImageSizingRequest(
                 availableWidth: fixture.CanvasWidth,
@@ -59,17 +55,7 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
                 maximumPixels: RasterPixelLimit);
             Assert.True(RasterGifFirstFrameDecodePlan.TryCreate(
                 fixture.Bytes, budget, sizing, out RasterGifFirstFrameDecodePlan plan), fixture.Name);
-            Assert.Equal(fixture.CanvasWidth, plan.CanvasWidth);
-            Assert.Equal(fixture.CanvasHeight, plan.CanvasHeight);
-            Assert.Equal(fixture.FrameCount, plan.FrameCount);
-            Assert.Equal(fixture.FirstFrame.Left, plan.FrameLeft);
-            Assert.Equal(fixture.FirstFrame.Top, plan.FrameTop);
-            Assert.Equal(fixture.FirstFrame.Width, plan.FrameWidth);
-            Assert.Equal(fixture.FirstFrame.Height, plan.FrameHeight);
-            Assert.Equal(plan.RequiresComposition,
-                fixture.FirstFrame.Left != 0 || fixture.FirstFrame.Top != 0 ||
-                fixture.FirstFrame.Width != fixture.CanvasWidth ||
-                fixture.FirstFrame.Height != fixture.CanvasHeight);
+            AssertPlanDescribesFixture(fixture, plan);
 
             byte[] expectedFrame = await DecodeWinRtGifFrameBytesAsync(
                 fixture.Bytes,
@@ -97,19 +83,7 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
                 Assert.Equal((byte)0, value);
 
             if (fixture.FrameCount > 1)
-            {
-                byte[] secondFrame = await DecodeWinRtGifFrameBytesAsync(
-                    fixture.Bytes,
-                    frameIndex: 1,
-                    fixture.FirstFrame.Width,
-                    fixture.FirstFrame.Height,
-                    fixture.FrameCount,
-                    fixture.Frames[1].Width,
-                    fixture.Frames[1].Height);
-                Assert.False(secondFrame.AsSpan().SequenceEqual(expectedFrame),
-                    $"{fixture.Name}: later-frame control data must differ from frame zero.");
-                Array.Clear(secondFrame);
-            }
+                await AssertLaterFrameDiffersFromFrameZeroAsync(fixture, expectedFrame);
             Array.Clear(expectedFrame);
 
             output.WriteLine(
@@ -138,59 +112,8 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
                      OwnedNativeWicGifFixtureFactory.CreateCoreMatrix()
                          .Append(OwnedNativeWicGifFixtureFactory.CreateOverFrameLimitStaticPreview()))
             {
-                RasterImageBudgetResult budget = RasterImageResourceBudget.Validate(fixture.Bytes);
-                Assert.True(budget.Accepted || budget.CanRenderStaticPreview,
-                    $"{fixture.Name}: {budget.Reason}");
-                var resolver = new GifResolver(fixture.Bytes, $"owned-gif-first-frame-{fixture.Name}-{Guid.NewGuid():N}");
-                using var session = new MarkdownPerformanceSession(
-                    MarkdownPerformanceOptions.Progressive with
-                    {
-                        UseDisplaySizedRasterDecode = true,
-                        MaxRasterOutputPixels = RasterPixelLimit,
-                    });
-                var context = CreateContext(device, resolver, session);
-                var image = new ImageBox(context, context.ImageResources, $"https://images.example/{fixture.Name}.gif", fixture.Name);
-                try
-                {
-                    float availableWidth = fixture.CanvasWidth;
-                    double scale = 1d;
-                    var sizing = new RasterImageSizingRequest(
-                        availableWidth,
-                        scale,
-                        requestedWidth: null,
-                        requestedHeight: null,
-                        maximumPixels: RasterPixelLimit);
-                    (int canvasWidth, int canvasHeight) = sizing.GetSize(fixture.CanvasWidth, fixture.CanvasHeight);
-                    byte[] expected = await DecodeLegacyImageBoxCanvasAsync(
-                        fixture.Bytes, budget, device, canvasWidth, canvasHeight);
-
-                    await LoadImageAsync(image, availableWidth);
-                    Assert.NotNull(image.Bitmap);
-                    Assert.Equal((uint)canvasWidth, image.Bitmap.SizeInPixels.Width);
-                    Assert.Equal((uint)canvasHeight, image.Bitmap.SizeInPixels.Height);
-                    byte[] actual = image.Bitmap.GetPixelBytes();
-                    try
-                    {
-                        Assert.Equal(expected, actual);
-                    }
-                    finally
-                    {
-                        Array.Clear(actual);
-                        Array.Clear(expected);
-                    }
-
-                    Assert.Equal(MarkdownImageAccessibilityState.Loaded, image.AccessibilityState);
-                    image.Measure(availableWidth);
-                    Assert.Equal(fixture.CanvasWidth, image.MeasuredImageWidth, precision: 2);
-                    Assert.Equal((float)fixture.CanvasHeight, image.MeasuredImageHeight, precision: 2);
-                    exercised++;
-                }
-                finally
-                {
-                    image.Dispose();
-                    await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-                        () => image.GetWorkState().ActiveWorkCount == 0);
-                }
+                await AssertImageBoxCanvasMatchesLegacyCompositionAsync(device, fixture);
+                exercised++;
             }
         }
         finally
@@ -317,22 +240,8 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
         Assert.Equal(unprofiledFixture.Bytes.Length + profile.Length + profileBlocks + 15,
             profiledFixture.Bytes.Length);
 
-        byte[] unprofiledWinRt = await DecodeWinRtGifFrameBytesAsync(
-            unprofiledFixture.Bytes,
-            frameIndex: 0,
-            unprofiledFixture.FirstFrame.Width,
-            unprofiledFixture.FirstFrame.Height,
-            unprofiledFixture.FrameCount,
-            unprofiledFixture.FirstFrame.Width,
-            unprofiledFixture.FirstFrame.Height);
-        byte[] profiledWinRt = await DecodeWinRtGifFrameBytesAsync(
-            profiledFixture.Bytes,
-            frameIndex: 0,
-            profiledFixture.FirstFrame.Width,
-            profiledFixture.FirstFrame.Height,
-            profiledFixture.FrameCount,
-            profiledFixture.FirstFrame.Width,
-            profiledFixture.FirstFrame.Height);
+        byte[] unprofiledWinRt = await DecodeWinRtFirstFrameBytesAsync(unprofiledFixture);
+        byte[] profiledWinRt = await DecodeWinRtFirstFrameBytesAsync(profiledFixture);
         bool winRtAppliedProfile = !unprofiledWinRt.AsSpan().SequenceEqual(profiledWinRt);
         output.WriteLine(winRtAppliedProfile
             ? "WinRT changed GIF pixels for the project-authored ICCRGBG1 profile; exact parity is required."
@@ -354,6 +263,81 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
         }
         Assert.Equal(1, credit.DisposeCount);
 
+        try
+        {
+            await AssertProfiledImageBoxMatchesLegacyCanvasAsync(profiledFixture, budget, plan);
+        }
+        finally
+        {
+            Array.Clear(profiledWinRt);
+            Array.Clear(unprofiledWinRt);
+            Array.Clear(profile);
+        }
+    }
+
+    private async Task AssertImageBoxCanvasMatchesLegacyCompositionAsync(
+        CanvasDevice device,
+        OwnedNativeWicGifFixtureFactory.Fixture fixture)
+    {
+        RasterImageBudgetResult budget = RasterImageResourceBudget.Validate(fixture.Bytes);
+        Assert.True(budget.Accepted || budget.CanRenderStaticPreview,
+            $"{fixture.Name}: {budget.Reason}");
+        var resolver = new GifResolver(fixture.Bytes, $"owned-gif-first-frame-{fixture.Name}-{Guid.NewGuid():N}");
+        using var session = new MarkdownPerformanceSession(
+            MarkdownPerformanceOptions.Progressive with
+            {
+                UseDisplaySizedRasterDecode = true,
+                MaxRasterOutputPixels = RasterPixelLimit,
+            });
+        var context = CreateContext(device, resolver, session);
+        var image = new ImageBox(context, context.ImageResources, $"https://images.example/{fixture.Name}.gif", fixture.Name);
+        try
+        {
+            float availableWidth = fixture.CanvasWidth;
+            double scale = 1d;
+            var sizing = new RasterImageSizingRequest(
+                availableWidth,
+                scale,
+                requestedWidth: null,
+                requestedHeight: null,
+                maximumPixels: RasterPixelLimit);
+            (int canvasWidth, int canvasHeight) = sizing.GetSize(fixture.CanvasWidth, fixture.CanvasHeight);
+            byte[] expected = await DecodeLegacyImageBoxCanvasAsync(
+                fixture.Bytes, budget, device, canvasWidth, canvasHeight);
+
+            await LoadImageAsync(image, availableWidth);
+            Assert.NotNull(image.Bitmap);
+            Assert.Equal((uint)canvasWidth, image.Bitmap.SizeInPixels.Width);
+            Assert.Equal((uint)canvasHeight, image.Bitmap.SizeInPixels.Height);
+            byte[] actual = image.Bitmap.GetPixelBytes();
+            try
+            {
+                Assert.Equal(expected, actual);
+            }
+            finally
+            {
+                Array.Clear(actual);
+                Array.Clear(expected);
+            }
+
+            Assert.Equal(MarkdownImageAccessibilityState.Loaded, image.AccessibilityState);
+            image.Measure(availableWidth);
+            Assert.Equal(fixture.CanvasWidth, image.MeasuredImageWidth, precision: 2);
+            Assert.Equal((float)fixture.CanvasHeight, image.MeasuredImageHeight, precision: 2);
+        }
+        finally
+        {
+            image.Dispose();
+            await DisplaySizedRasterDecodeTests.WaitUntilAsync(
+                () => image.GetWorkState().ActiveWorkCount == 0);
+        }
+    }
+
+    private async Task AssertProfiledImageBoxMatchesLegacyCanvasAsync(
+        OwnedNativeWicGifFixtureFactory.Fixture profiledFixture,
+        RasterImageBudgetResult budget,
+        RasterGifFirstFrameDecodePlan plan)
+    {
         _renderResources.Images.BitmapCache.Clear();
         await DisplaySizedRasterDecodeTests.WaitUntilAsync(
             () => _renderResources.Images.BitmapCache.GetSnapshot().RetainedBytes == 0);
@@ -399,11 +383,68 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
             _renderResources.Images.BitmapCache.Clear();
             await DisplaySizedRasterDecodeTests.WaitUntilAsync(
                 () => _renderResources.Images.BitmapCache.GetSnapshot().RetainedBytes == 0);
-            Array.Clear(profiledWinRt);
-            Array.Clear(unprofiledWinRt);
-            Array.Clear(profile);
         }
     }
+
+    private static void AssertBudgetDescribesFixture(
+        OwnedNativeWicGifFixtureFactory.Fixture fixture,
+        RasterImageBudgetResult budget)
+    {
+        Assert.True(budget.Accepted || budget.CanRenderStaticPreview,
+            $"{fixture.Name}: {budget.Reason}");
+        Assert.Equal("GIF", budget.Format);
+        Assert.Equal(fixture.CanvasWidth, budget.Width);
+        Assert.Equal(fixture.CanvasHeight, budget.Height);
+        Assert.Equal(fixture.FrameCount, budget.FrameCount);
+        Assert.Equal((fixture.FirstFrame.Left, fixture.FirstFrame.Top,
+                fixture.FirstFrame.Width, fixture.FirstFrame.Height),
+            (budget.FirstFrame!.Value.Left, budget.FirstFrame.Value.Top,
+                budget.FirstFrame.Value.Width, budget.FirstFrame.Value.Height));
+    }
+
+    private static void AssertPlanDescribesFixture(
+        OwnedNativeWicGifFixtureFactory.Fixture fixture,
+        RasterGifFirstFrameDecodePlan plan)
+    {
+        Assert.Equal(fixture.CanvasWidth, plan.CanvasWidth);
+        Assert.Equal(fixture.CanvasHeight, plan.CanvasHeight);
+        Assert.Equal(fixture.FrameCount, plan.FrameCount);
+        Assert.Equal(fixture.FirstFrame.Left, plan.FrameLeft);
+        Assert.Equal(fixture.FirstFrame.Top, plan.FrameTop);
+        Assert.Equal(fixture.FirstFrame.Width, plan.FrameWidth);
+        Assert.Equal(fixture.FirstFrame.Height, plan.FrameHeight);
+        Assert.Equal(plan.RequiresComposition,
+            fixture.FirstFrame.Left != 0 || fixture.FirstFrame.Top != 0 ||
+            fixture.FirstFrame.Width != fixture.CanvasWidth ||
+            fixture.FirstFrame.Height != fixture.CanvasHeight);
+    }
+
+    private static async Task AssertLaterFrameDiffersFromFrameZeroAsync(
+        OwnedNativeWicGifFixtureFactory.Fixture fixture,
+        byte[] frameZero)
+    {
+        byte[] secondFrame = await DecodeWinRtGifFrameBytesAsync(
+            fixture.Bytes,
+            frameIndex: 1,
+            fixture.FirstFrame.Width,
+            fixture.FirstFrame.Height,
+            fixture.FrameCount,
+            fixture.Frames[1].Width,
+            fixture.Frames[1].Height);
+        Assert.False(secondFrame.AsSpan().SequenceEqual(frameZero),
+            $"{fixture.Name}: later-frame control data must differ from frame zero.");
+        Array.Clear(secondFrame);
+    }
+
+    private static Task<byte[]> DecodeWinRtFirstFrameBytesAsync(OwnedNativeWicGifFixtureFactory.Fixture fixture) =>
+        DecodeWinRtGifFrameBytesAsync(
+            fixture.Bytes,
+            frameIndex: 0,
+            fixture.FirstFrame.Width,
+            fixture.FirstFrame.Height,
+            fixture.FrameCount,
+            fixture.FirstFrame.Width,
+            fixture.FirstFrame.Height);
 
     private static OwnedNativeWicGifFixtureFactory.Fixture CreateDpiFixture()
     {
