@@ -21,6 +21,40 @@ namespace MarkdownRenderer.GitHub.Tests;
 /// </summary>
 public sealed class StackChildrenIndexedTraversalTests
 {
+    private static readonly MarkdownSemanticRole[] ExpectedPreorderRoles =
+    [
+        MarkdownSemanticRole.Document,
+        MarkdownSemanticRole.Group,
+        MarkdownSemanticRole.Paragraph,
+        MarkdownSemanticRole.Link,
+        MarkdownSemanticRole.List,
+        MarkdownSemanticRole.ListItem,
+        MarkdownSemanticRole.Paragraph,
+        MarkdownSemanticRole.Group,
+        MarkdownSemanticRole.Paragraph,
+        MarkdownSemanticRole.Link,
+        MarkdownSemanticRole.List,
+        MarkdownSemanticRole.ListItem,
+        MarkdownSemanticRole.Paragraph,
+        MarkdownSemanticRole.Group,
+        MarkdownSemanticRole.Paragraph,
+        MarkdownSemanticRole.Link,
+        MarkdownSemanticRole.ListItem,
+        MarkdownSemanticRole.Paragraph,
+        MarkdownSemanticRole.Group,
+        MarkdownSemanticRole.Paragraph,
+        MarkdownSemanticRole.Link,
+        MarkdownSemanticRole.List,
+        MarkdownSemanticRole.ListItem,
+        MarkdownSemanticRole.Paragraph,
+        MarkdownSemanticRole.Group,
+        MarkdownSemanticRole.Paragraph,
+        MarkdownSemanticRole.Link,
+        MarkdownSemanticRole.Group,
+        MarkdownSemanticRole.Paragraph,
+        MarkdownSemanticRole.Link,
+    ];
+
     [Fact]
     public void NestedListsAndQuotesPreserveSemanticPreorderTextRangesAndFocusOrder()
     {
@@ -86,46 +120,24 @@ public sealed class StackChildrenIndexedTraversalTests
         MarkdownSemanticNode[] preorder = MarkdownSemanticDocument
             .EnumerateDepthFirst(document.Root)
             .ToArray();
-        Assert.Equal(
-            new[]
-            {
-                MarkdownSemanticRole.Document,
-                MarkdownSemanticRole.Group,
-                MarkdownSemanticRole.Paragraph,
-                MarkdownSemanticRole.Link,
-                MarkdownSemanticRole.List,
-                MarkdownSemanticRole.ListItem,
-                MarkdownSemanticRole.Paragraph,
-                MarkdownSemanticRole.Group,
-                MarkdownSemanticRole.Paragraph,
-                MarkdownSemanticRole.Link,
-                MarkdownSemanticRole.List,
-                MarkdownSemanticRole.ListItem,
-                MarkdownSemanticRole.Paragraph,
-                MarkdownSemanticRole.Group,
-                MarkdownSemanticRole.Paragraph,
-                MarkdownSemanticRole.Link,
-                MarkdownSemanticRole.ListItem,
-                MarkdownSemanticRole.Paragraph,
-                MarkdownSemanticRole.Group,
-                MarkdownSemanticRole.Paragraph,
-                MarkdownSemanticRole.Link,
-                MarkdownSemanticRole.List,
-                MarkdownSemanticRole.ListItem,
-                MarkdownSemanticRole.Paragraph,
-                MarkdownSemanticRole.Group,
-                MarkdownSemanticRole.Paragraph,
-                MarkdownSemanticRole.Link,
-                MarkdownSemanticRole.Group,
-                MarkdownSemanticRole.Paragraph,
-                MarkdownSemanticRole.Link,
-            },
-            preorder.Select(static node => node.Role));
+        Assert.Equal(ExpectedPreorderRoles, preorder.Select(static node => node.Role));
 
         Assert.Equal(
             "quote-one\n•\nquote-nested\n1.\nouter-one\n2.\nouter-two\n•\ninner-two\ntail-quote",
             document.Text);
 
+        AssertLinksMapToTheirSource(snapshot, document, preorder, expectedLinks);
+        AssertListLevelsAndPositions(preorder);
+
+        Assert.Equal(expectedFocus, snapshot.CollectFocusableItems());
+    }
+
+    private static void AssertLinksMapToTheirSource(
+        LayoutSnapshot snapshot,
+        MarkdownSemanticDocument document,
+        MarkdownSemanticNode[] preorder,
+        List<LinkRun> expectedLinks)
+    {
         MarkdownSemanticNode[] links = preorder
             .Where(static node => node.Role == MarkdownSemanticRole.Link)
             .ToArray();
@@ -150,7 +162,10 @@ public sealed class StackChildrenIndexedTraversalTests
             Assert.True(snapshot.SourceMap.TryMapRange(range, out SourceSpan mappedSource));
             Assert.Equal(expectedRun.SourceSpan, mappedSource);
         }
+    }
 
+    private static void AssertListLevelsAndPositions(MarkdownSemanticNode[] preorder)
+    {
         MarkdownSemanticNode[] lists = preorder
             .Where(static node => node.Role == MarkdownSemanticRole.List)
             .ToArray();
@@ -173,10 +188,7 @@ public sealed class StackChildrenIndexedTraversalTests
             item => Assert.Equal((1, 2, 2), (item.Level, item.PositionInSet, item.SizeOfSet)));
         Assert.Collection(nestedItems,
             item => Assert.Equal((2, 1, 1), (item.Level, item.PositionInSet, item.SizeOfSet)));
-
-        Assert.Equal(expectedFocus, snapshot.CollectFocusableItems());
     }
-
     private static MarkdownLayoutContext CreateContext(string source)
     {
         var style = new ElementStyle();

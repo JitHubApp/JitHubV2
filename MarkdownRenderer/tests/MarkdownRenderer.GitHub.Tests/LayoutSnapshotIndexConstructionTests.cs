@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Threading;
 using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.CodeBlocks;
@@ -25,6 +24,11 @@ namespace MarkdownRenderer.GitHub.Tests;
 /// Protects the constructor's fused snapshot-index traversal against the
 /// independent, former per-index preorder walks.
 /// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because every scenario compares the fused
+/// constructor indexes with the same legacy per-index walks, and those shared
+/// legacy comparison helpers belong with the scenarios that use them.
+/// </remarks>
 public sealed class LayoutSnapshotIndexConstructionTests
 {
     private readonly MarkdownRenderResources _renderResources = new();
@@ -37,7 +41,7 @@ public sealed class LayoutSnapshotIndexConstructionTests
     public void FusedIndexesAndFocusablePlanMatchLegacyPreorder(
         FlowDirection flowDirection, int generatedBlockIndexUpperBound)
     {
-        Fixture fixture = CreateFixture(flowDirection);
+        SnapshotIndexFixture fixture = SnapshotIndexFixture.Create(_renderResources, flowDirection);
         using LayoutSnapshot snapshot = new(
             fixture.Roots,
             fixture.Context.SourceMap,
@@ -45,7 +49,18 @@ public sealed class LayoutSnapshotIndexConstructionTests
             height: 640,
             generatedBlockIndexUpperBound: generatedBlockIndexUpperBound);
 
-        LegacyIndexes expected = LegacyIndexes.Build(fixture.Roots);
+        LegacySnapshotIndexes expected = LegacySnapshotIndexes.Build(fixture.Roots);
+        AssertFusedIndexesMatchLegacy(snapshot, expected);
+        AssertDuplicateOwnershipRules(snapshot, fixture);
+        AssertLegacyFocusPlanShape(expected, fixture);
+
+        // Dynamic overflow entries are resolved at collection time; the
+        // constructor must not allocate and then discard a fixed item array.
+        Assert.Null(snapshot.Focusables.FixedItems);
+    }
+
+    private static void AssertFusedIndexesMatchLegacy(LayoutSnapshot snapshot, LegacySnapshotIndexes expected)
+    {
         AssertDictionaryEquals(expected.BlockOrdinals, ReadField<Dictionary<BlockBox, int>>(snapshot.Geometry.BlockOrdinals));
         AssertDictionaryEquals(
             expected.TopLevelOrdinalByBlockIndex,
@@ -61,7 +76,10 @@ public sealed class LayoutSnapshotIndexConstructionTests
             ReadField<Dictionary<int, IHorizontalOverflowBox>>(snapshot.HorizontalOverflow.ByBlockIndex));
         object focusPlanValue = snapshot.Focusables.Entries;
         AssertFocusablePlanEquals(expected.FocusablePlan, Assert.IsAssignableFrom<Array>(focusPlanValue));
+    }
 
+    private static void AssertDuplicateOwnershipRules(LayoutSnapshot snapshot, SnapshotIndexFixture fixture)
+    {
         // Shared image identity is stable within one root but deliberately
         // becomes ambiguous when the same image is encountered under another
         // top-level root. Duplicate block indexes remain first-wins for root
@@ -78,7 +96,10 @@ public sealed class LayoutSnapshotIndexConstructionTests
         Assert.Same(fixture.OuterOverflowOwner, horizontalByIndex[fixture.NestedOverflowDescendantBlockIndex]);
         Assert.Same(fixture.Table, horizontalByIndex[fixture.TableCellBlockIndex]);
         Assert.Same(fixture.LastDuplicateOverflowOwner, horizontalByIndex[fixture.DuplicateOverflowBlockIndex]);
+    }
 
+    private static void AssertLegacyFocusPlanShape(LegacySnapshotIndexes expected, SnapshotIndexFixture fixture)
+    {
         // Code chunks still contribute image/block/overflow indexing, but the
         // legacy focus walk never descended into them, even when they contain
         // dense syntax runs, links, and images.
@@ -112,10 +133,6 @@ public sealed class LayoutSnapshotIndexConstructionTests
             entry.Item.InlineIndex == fixture.ReadOnlyTaskRun.InlineIndex);
         Assert.DoesNotContain(expected.FocusablePlan, entry =>
             entry.Item.BlockIndex == fixture.DecorativeImage.BlockIndex);
-
-        // Dynamic overflow entries are resolved at collection time; the
-        // constructor must not allocate and then discard a fixed item array.
-        Assert.Null(snapshot.Focusables.FixedItems);
     }
 
     [Theory]
@@ -123,7 +140,7 @@ public sealed class LayoutSnapshotIndexConstructionTests
     [InlineData(FlowDirection.RightToLeft)]
     public void LayoutPlanCandidateIndexMatchesLegacyRealizationTraversal(FlowDirection flowDirection)
     {
-        Fixture fixture = CreateFixture(flowDirection);
+        SnapshotIndexFixture fixture = SnapshotIndexFixture.Create(_renderResources, flowDirection);
         using LayoutSnapshot snapshot = new(
             fixture.Roots,
             fixture.Context.SourceMap,
@@ -176,15 +193,7 @@ public sealed class LayoutSnapshotIndexConstructionTests
         const int secondMeasuredOrdinal = 5_000;
         const int thirdMeasuredOrdinal = 7_000;
         const float width = 360;
-        Block sourceBlock = Markdig.Markdown.Parse("embedded")[0];
-        var roots = new BlockBox[blockCount];
-        for (int ordinal = 0; ordinal < roots.Length; ordinal++)
-        {
-            roots[ordinal] = new EmbedBox(sourceBlock, TestEmbedFactory.Instance)
-            {
-                BlockIndex = ordinal,
-            };
-        }
+        BlockBox[] roots = CreateFixedEmbedRoots(blockCount);
 
         using var snapshot = new LayoutSnapshot(
             roots,
@@ -224,51 +233,76 @@ public sealed class LayoutSnapshotIndexConstructionTests
         try
         {
             Assert.Equal(blockCount, snapshot.GetLayoutPlanCandidatesUnderPaint().Length);
-
-            bool[] measuredMask = ReadField<bool[]>(snapshot.Geometry.MeasuredTopLevelBlocks);
-            var expectedOrdinals = new List<int>();
-            for (int ordinal = 0; ordinal < measuredMask.Length; ordinal++)
-            {
-                if (measuredMask[ordinal])
-                    expectedOrdinals.Add(ordinal);
-            }
-            Assert.InRange(expectedOrdinals.Count, 3, 99);
-            Assert.Contains(firstMeasuredOrdinal, expectedOrdinals);
-            Assert.Contains(secondMeasuredOrdinal, expectedOrdinals);
-            Assert.Contains(thirdMeasuredOrdinal, expectedOrdinals);
-
-            List<int> finalizedOrdinals = ReadField<List<int>>(snapshot.PlanCandidates.MeasuredRootOrdinals);
-            Assert.Equal(expectedOrdinals, finalizedOrdinals);
-            Assert.True(ReadField<bool>(snapshot.PlanCandidates.MeasuredRootOrdinalsAreSorted));
-            int[] ordinalsBeforeEnumeration = finalizedOrdinals.ToArray();
-
-            var candidates = snapshot.GetMeasuredLayoutPlanCandidatesUnderPaint();
-            var actual = new List<LayoutPlanCandidate>();
-            while (candidates.MoveNext())
-                actual.Add(candidates.Current);
-
-            Assert.Equal(expectedOrdinals.Count, actual.Count);
-            for (int index = 0; index < actual.Count; index++)
-            {
-                Assert.Equal(expectedOrdinals[index], actual[index].TopLevelOrdinal);
-                Assert.Same(roots[expectedOrdinals[index]], actual[index].Box);
-            }
-            Assert.Same(finalizedOrdinals, ReadField<List<int>>(snapshot.PlanCandidates.MeasuredRootOrdinals));
-            Assert.Equal(ordinalsBeforeEnumeration, finalizedOrdinals);
-            Assert.True(ReadField<bool>(snapshot.PlanCandidates.MeasuredRootOrdinalsAreSorted));
-            Assert.True(snapshot.TryGetMeasuredBlockByOrdinalUnderPaint(
-                secondMeasuredOrdinal,
-                out BlockBox secondMeasuredRoot));
-            Assert.Same(roots[secondMeasuredOrdinal], secondMeasuredRoot);
-            Assert.True(snapshot.TryGetMeasuredBlockByOrdinalUnderPaint(
-                firstMeasuredOrdinal,
-                out BlockBox firstMeasuredRoot));
-            Assert.Same(roots[firstMeasuredOrdinal], firstMeasuredRoot);
+            AssertFinalizedMeasuredOrdinals(
+                snapshot, roots, firstMeasuredOrdinal, secondMeasuredOrdinal, thirdMeasuredOrdinal);
         }
         finally
         {
             snapshot.EndInteraction();
         }
+    }
+
+    private static BlockBox[] CreateFixedEmbedRoots(int blockCount)
+    {
+        Block sourceBlock = Markdig.Markdown.Parse("embedded")[0];
+        var roots = new BlockBox[blockCount];
+        for (int ordinal = 0; ordinal < roots.Length; ordinal++)
+        {
+            roots[ordinal] = new EmbedBox(sourceBlock, SnapshotIndexEmbedFactory.Instance)
+            {
+                BlockIndex = ordinal,
+            };
+        }
+
+        return roots;
+    }
+
+    private static void AssertFinalizedMeasuredOrdinals(
+        LayoutSnapshot snapshot,
+        BlockBox[] roots,
+        int firstMeasuredOrdinal,
+        int secondMeasuredOrdinal,
+        int thirdMeasuredOrdinal)
+    {
+        bool[] measuredMask = ReadField<bool[]>(snapshot.Geometry.MeasuredTopLevelBlocks);
+        var expectedOrdinals = new List<int>();
+        for (int ordinal = 0; ordinal < measuredMask.Length; ordinal++)
+        {
+            if (measuredMask[ordinal])
+                expectedOrdinals.Add(ordinal);
+        }
+        Assert.InRange(expectedOrdinals.Count, 3, 99);
+        Assert.Contains(firstMeasuredOrdinal, expectedOrdinals);
+        Assert.Contains(secondMeasuredOrdinal, expectedOrdinals);
+        Assert.Contains(thirdMeasuredOrdinal, expectedOrdinals);
+
+        List<int> finalizedOrdinals = ReadField<List<int>>(snapshot.PlanCandidates.MeasuredRootOrdinals);
+        Assert.Equal(expectedOrdinals, finalizedOrdinals);
+        Assert.True(ReadField<bool>(snapshot.PlanCandidates.MeasuredRootOrdinalsAreSorted));
+        int[] ordinalsBeforeEnumeration = finalizedOrdinals.ToArray();
+
+        var candidates = snapshot.GetMeasuredLayoutPlanCandidatesUnderPaint();
+        var actual = new List<LayoutPlanCandidate>();
+        while (candidates.MoveNext())
+            actual.Add(candidates.Current);
+
+        Assert.Equal(expectedOrdinals.Count, actual.Count);
+        for (int index = 0; index < actual.Count; index++)
+        {
+            Assert.Equal(expectedOrdinals[index], actual[index].TopLevelOrdinal);
+            Assert.Same(roots[expectedOrdinals[index]], actual[index].Box);
+        }
+        Assert.Same(finalizedOrdinals, ReadField<List<int>>(snapshot.PlanCandidates.MeasuredRootOrdinals));
+        Assert.Equal(ordinalsBeforeEnumeration, finalizedOrdinals);
+        Assert.True(ReadField<bool>(snapshot.PlanCandidates.MeasuredRootOrdinalsAreSorted));
+        Assert.True(snapshot.TryGetMeasuredBlockByOrdinalUnderPaint(
+            secondMeasuredOrdinal,
+            out BlockBox secondMeasuredRoot));
+        Assert.Same(roots[secondMeasuredOrdinal], secondMeasuredRoot);
+        Assert.True(snapshot.TryGetMeasuredBlockByOrdinalUnderPaint(
+            firstMeasuredOrdinal,
+            out BlockBox firstMeasuredRoot));
+        Assert.Same(roots[firstMeasuredOrdinal], firstMeasuredRoot);
     }
 
     [Fact]
@@ -339,8 +373,8 @@ public sealed class LayoutSnapshotIndexConstructionTests
         Block sourceBlock = Markdig.Markdown.Parse("embedded")[0];
         BlockBox[] roots =
         [
-            new EmbedBox(sourceBlock, TestEmbedFactory.Instance) { BlockIndex = 0 },
-            new EmbedBox(sourceBlock, TestEmbedFactory.Instance) { BlockIndex = 1 },
+            new EmbedBox(sourceBlock, SnapshotIndexEmbedFactory.Instance) { BlockIndex = 0 },
+            new EmbedBox(sourceBlock, SnapshotIndexEmbedFactory.Instance) { BlockIndex = 1 },
         ];
         var residencyPolicy = new ThrowingVectorResidencyPolicy(throwOnCall: 2);
         using var snapshot = new LayoutSnapshot(
@@ -377,8 +411,8 @@ public sealed class LayoutSnapshotIndexConstructionTests
     [InlineData(FlowDirection.RightToLeft)]
     public void FixedFocusableItemsMatchLegacyPlanWhenNoDynamicOverflow(FlowDirection flowDirection)
     {
-        MarkdownLayoutContext context = CreateContext(flowDirection);
-        var paragraph = NewParagraph(context, blockIndex: 801);
+        MarkdownLayoutContext context = SnapshotIndexFixture.CreateContext(_renderResources, flowDirection);
+        var paragraph = SnapshotIndexFixture.NewParagraph(context, blockIndex: 801);
         var link = new LinkRun("fixed link", "https://example.test/fixed-link");
         paragraph.Add(link);
         var inlineAction = new InlineEmbedRun(16, 16, static () => null!);
@@ -388,7 +422,7 @@ public sealed class LayoutSnapshotIndexConstructionTests
         root.Add(paragraph);
         var blockEmbed = new EmbedBox(
             Markdig.Markdown.Parse("fixed block embed")[0],
-            TestEmbedFactory.Instance)
+            SnapshotIndexEmbedFactory.Instance)
         {
             BlockIndex = 802,
         };
@@ -400,7 +434,7 @@ public sealed class LayoutSnapshotIndexConstructionTests
             width: 360,
             height: 640);
 
-        LegacyIndexes expected = LegacyIndexes.Build(new BlockBox[] { root });
+        LegacySnapshotIndexes expected = LegacySnapshotIndexes.Build(new BlockBox[] { root });
         Assert.All(expected.FocusablePlan, entry => Assert.Null(entry.Overflow));
         FocusableItem[] actual = ReadField<FocusableItem[]>(snapshot.Focusables.FixedItems);
         Assert.Equal(expected.FocusablePlan.Count, actual.Length);
@@ -419,8 +453,8 @@ public sealed class LayoutSnapshotIndexConstructionTests
     {
         const int blockIndex = 803;
         const string linkedImageTarget = "https://example.test/image-target";
-        MarkdownLayoutContext context = CreateContext(FlowDirection.LeftToRight);
-        var paragraph = NewParagraph(context, blockIndex);
+        MarkdownLayoutContext context = SnapshotIndexFixture.CreateContext(_renderResources, FlowDirection.LeftToRight);
+        var paragraph = SnapshotIndexFixture.NewParagraph(context, blockIndex);
         var precedingLink = new LinkRun("before", "https://example.test/before");
         var linkedEmptyAltImage = new InlineImageRun(
             context,
@@ -516,300 +550,6 @@ public sealed class LayoutSnapshotIndexConstructionTests
         }
     }
 
-    private Fixture CreateFixture(FlowDirection flowDirection)
-    {
-        MarkdownLayoutContext context = CreateContext(flowDirection);
-        var root = new StackBox { BlockIndex = 100 };
-
-        var inline = NewParagraph(context, blockIndex: 101);
-        inline.Add(new TextRun("text before"));
-        inline.Add(new LinkRun("linked text", "https://example.test/link"));
-        var sharedInlineImageRun = new InlineImageRun(context, "shared", "https://example.test/shared.png");
-        inline.Add(sharedInlineImageRun);
-        var sameRootImageRun = new InlineImageRun(context, "same root", "https://example.test/same-root.png");
-        inline.Add(sameRootImageRun);
-        inline.Add(new InlineImageRun(context, string.Empty, "https://example.test/decorative-inline.png"));
-        var readOnlyTask = new InlineEmbedRun(18, 18, static () => null!)
-        {
-            AutomationMetadata = new InlineEmbedAutomationMetadata(
-                "Complete",
-                "Incomplete",
-                "Read only",
-                "Toggle",
-                "task-readonly",
-                isChecked: false),
-        };
-        inline.Add(readOnlyTask);
-        inline.Add(new InlineEmbedRun(18, 18, static () => null!));
-        var linkedInlineVector = new InlineVectorSceneRun(
-            context,
-            CreateVectorScene(Array.Empty<MarkdownVectorSemanticItem>()),
-            "math",
-            "math",
-            accessibilityDescription: null,
-            elementKey: MarkdownElementKeys.Math)
-        {
-            LinkUrl = "https://example.test/math",
-        };
-        inline.Add(linkedInlineVector);
-        root.Add(inline);
-
-        // Repeat the same image identity within root zero, then under a
-        // different root below. These aliases exercise the old identity index
-        // ambiguity rule without loading or retaining a bitmap.
-        root.Add(sharedInlineImageRun.Image);
-        root.Add(sharedInlineImageRun.Image);
-        root.Add(sameRootImageRun.Image);
-        root.Add(sameRootImageRun.Image);
-
-        var tableHeaderLink = NewParagraph(context, 201, MarkdownElementKeys.TableCell);
-        tableHeaderLink.Add(new LinkRun("table link", "https://example.test/table"));
-        var secondTableHeaderLink = NewParagraph(context, 211, MarkdownElementKeys.TableCell);
-        secondTableHeaderLink.Add(new LinkRun("second header link", "https://example.test/table-header-2"));
-        var tableBodyTask = NewParagraph(context, 202, MarkdownElementKeys.TableCell);
-        tableBodyTask.Add(new InlineEmbedRun(16, 16, () => null!)
-        {
-            AutomationMetadata = new InlineEmbedAutomationMetadata(
-                "Done",
-                "Not done",
-                "Read only task",
-                "Toggle",
-                "task-table",
-                isChecked: true),
-        });
-        var secondTableBodyLink = NewParagraph(context, 212, MarkdownElementKeys.TableCell);
-        secondTableBodyLink.Add(new LinkRun("body link", "https://example.test/table-body"));
-        var laterTableCell = NewParagraph(context, 213, MarkdownElementKeys.TableCell);
-        laterTableCell.Add(new TextRun("later row"));
-        var tableCellImageRun = new InlineImageRun(context, "table cell image", "https://example.test/table-cell.png");
-        laterTableCell.Add(tableCellImageRun);
-        var table = new TableBox(
-            context,
-            new[] { new[] { tableHeaderLink, secondTableHeaderLink } },
-            new[] { new[] { tableBodyTask, secondTableBodyLink }, new[] { laterTableCell } })
-        {
-            BlockIndex = 200,
-        };
-        var outerOverflowOwner = new TestOverflowStackBox { BlockIndex = 190 };
-        outerOverflowOwner.Add(NewParagraph(context, 199));
-        outerOverflowOwner.Add(table);
-        root.Add(outerOverflowOwner);
-
-        CodeBlockBox copyCodeBlock = CreateCodeBlock(context, 200, isCopyButtonEnabled: true);
-        var codeChunk = NewParagraph(context, 202, MarkdownElementKeys.CodeBlock);
-        for (int index = 0; index < 128; index++)
-            codeChunk.Add(new TextRun($"syntax-{index}"));
-        codeChunk.Add(new LinkRun("chunk link must not focus", "https://example.test/chunk"));
-        var codeChunkImageRun = new InlineImageRun(context, "code image", "https://example.test/code.png");
-        codeChunk.Add(codeChunkImageRun);
-        copyCodeBlock.AddChunk(codeChunk);
-        root.Add(copyCodeBlock);
-
-        MarkdownLayoutContext plainContext = CreateContext(flowDirection, CodeBlockChromeMode.PlainMarkdown);
-        CodeBlockBox plainMarkdownCodeBlock = CreateCodeBlock(
-            plainContext,
-            203,
-            isCopyButtonEnabled: true);
-        root.Add(plainMarkdownCodeBlock);
-
-        VectorSceneBox fallbackVector = CreateVectorBox(context, 200, Array.Empty<MarkdownVectorSemanticItem>());
-        root.Add(fallbackVector);
-
-        MarkdownVectorSemanticItem[] vectorSemantics =
-        [
-            CreateSemantic(1, MarkdownVectorSemanticFlags.Focusable),
-            CreateSemantic(2, MarkdownVectorSemanticFlags.Focusable | MarkdownVectorSemanticFlags.Decorative),
-        ];
-        VectorSceneBox focusableVector = CreateVectorBox(context, 200, vectorSemantics);
-        root.Add(focusableVector);
-
-        var blockEmbed = new EmbedBox(
-            Markdig.Markdown.Parse("embedded block")[0],
-            TestEmbedFactory.Instance)
-        {
-            BlockIndex = 205,
-        };
-        root.Add(blockEmbed);
-
-        var hostedBuilder = new MarkdownContentBuilder();
-        hostedBuilder.AddHostedElement(
-            "test.hosted",
-            new SourceSpan(0, 1),
-            MarkdownStyleRole.Body,
-            MarkdownAccessibilityRole.Group,
-            accessibilityName: "Hosted region");
-        MarkdownContentFragment hostedFragment = hostedBuilder.Build();
-        var hosted = new DeclarativeHostedElementBox(
-            context,
-            Assert.Single(hostedFragment.Items),
-            new HostedElementFallbackKey(hostedFragment))
-        {
-            BlockIndex = 206,
-        };
-        root.Add(hosted);
-
-        var marker = NewParagraph(context, 208, MarkdownElementKeys.ListMarker);
-        marker.Add(new InlineEmbedRun(14, 14, () => null!)
-        {
-            AutomationMetadata = new InlineEmbedAutomationMetadata(
-                "Checked",
-                "Unchecked",
-                "Task state",
-                "Toggle task",
-                "task-list-marker",
-                isChecked: true),
-        });
-        var listContent = new StackBox { BlockIndex = 209 };
-        var listParagraph = NewParagraph(context, 210);
-        listParagraph.Add(new LinkRun("list link", "https://example.test/list"));
-        listContent.Add(listParagraph);
-        var listItem = new ListItemBox(marker, listContent, markerWidth: 22)
-        {
-            FlowDirection = flowDirection,
-            BlockIndex = 207,
-        };
-        root.Add(listItem);
-
-        var secondRoot = new StackBox { BlockIndex = 100 };
-        secondRoot.Add(sharedInlineImageRun.Image);
-        var decorativeImage = new ImageBox(context, context.ImageResources, "https://example.test/decorative.png", string.Empty)
-        {
-            BlockIndex = 220,
-        };
-
-        return new Fixture(
-            context,
-            new BlockBox[] { root, secondRoot, decorativeImage },
-            sharedInlineImageRun.Image,
-            sameRootImageRun.Image,
-            codeChunkImageRun.Image,
-            tableCellImageRun.Image,
-            decorativeImage,
-            codeChunk,
-            table,
-            outerOverflowOwner,
-            copyCodeBlock,
-            plainMarkdownCodeBlock,
-            fallbackVector,
-            focusableVector,
-            hosted,
-            blockEmbed,
-            inline,
-            readOnlyTask,
-            DuplicateTopLevelBlockIndex: 100,
-            DuplicateOverflowBlockIndex: 200,
-            NestedOverflowDescendantBlockIndex: 199,
-            TableCellBlockIndex: 201,
-            LastDuplicateOverflowOwner: focusableVector);
-    }
-
-    private static CodeBlockBox CreateCodeBlock(
-        MarkdownLayoutContext context,
-        int blockIndex,
-        bool isCopyButtonEnabled)
-    {
-        const string code = "var answer = 42;";
-        CodeBlockMetadata metadata = CodeBlockMetadata.FromDeclarative(
-            new SourceSpan(0, code.Length),
-            code,
-            "csharp",
-            new Dictionary<string, string>());
-        return new CodeBlockBox(context, metadata, code, isCopyButtonEnabled, showLineNumbers: false)
-        {
-            BlockIndex = blockIndex,
-        };
-    }
-
-    private static VectorSceneBox CreateVectorBox(
-        MarkdownLayoutContext context,
-        int blockIndex,
-        IReadOnlyList<MarkdownVectorSemanticItem> semantics)
-    {
-        var builder = new MarkdownContentBuilder();
-        builder.AddVectorScene(
-            CreateVectorScene(semantics),
-            new SourceSpan(0, 1),
-            MarkdownStyleRole.Diagram,
-            MarkdownAccessibilityRole.Diagram,
-            accessibilityName: "Test diagram");
-        MarkdownContentFragment fragment = builder.Build();
-        return new VectorSceneBox(context, Assert.Single(fragment.Items), MarkdownElementKeys.Diagram)
-        {
-            BlockIndex = blockIndex,
-        };
-    }
-
-    private static MarkdownVectorScene CreateVectorScene(
-        IReadOnlyList<MarkdownVectorSemanticItem> semantics)
-        => new(
-            width: 24,
-            height: 12,
-            baseline: 10,
-            commands: Array.Empty<MarkdownVectorCommand>(),
-            referenceFontSize: 12,
-            viewport: new MarkdownVectorRectangle(0, 0, 24, 12),
-            semantics: semantics,
-            links: Array.Empty<MarkdownVectorLinkAction>());
-
-    private static MarkdownVectorSemanticItem CreateSemantic(
-        uint sourceId,
-        MarkdownVectorSemanticFlags flags)
-        => new(
-            sourceId: sourceId,
-            role: MarkdownVectorSemanticRole.Node,
-            name: $"node {sourceId}",
-            description: null,
-            parentIndex: -1,
-            sourceSpan: new SourceSpan(checked((int)sourceId), 1),
-            bounds: new MarkdownVectorRectangle(0, 0, 8, 6),
-            flags: flags);
-
-    private static InlineContainerBox NewParagraph(
-        MarkdownLayoutContext context,
-        int blockIndex,
-        string? elementKey = null)
-        => new(context, elementKey ?? MarkdownElementKeys.Body)
-        {
-            BlockIndex = blockIndex,
-        };
-
-    private MarkdownLayoutContext CreateContext(
-        FlowDirection flowDirection,
-        CodeBlockChromeMode codeBlockChromeMode = CodeBlockChromeMode.Enhanced)
-    {
-        var style = new ElementStyle();
-        var styles = new Dictionary<string, ElementStyle>(StringComparer.Ordinal)
-        {
-            [MarkdownElementKeys.Body] = style,
-            [MarkdownElementKeys.ListMarker] = style,
-            [MarkdownElementKeys.TableCell] = style,
-            [MarkdownElementKeys.CodeBlock] = style,
-            [MarkdownElementKeys.Math] = style,
-            [MarkdownElementKeys.Diagram] = style,
-            [MarkdownElementKeys.Link] = style,
-        };
-        Color black = Color.FromArgb(255, 0, 0, 0);
-        var theme = new ThemeSnapshot(
-            styles,
-            new Dictionary<string, ElementStyleOverride>(),
-            black,
-            black,
-            black,
-            black,
-            isDark: false,
-            isHighContrast: false,
-            textScaleFactor: 1);
-        return new MarkdownLayoutContext(
-            CanvasDevice.GetSharedDevice(),
-            theme,
-            new MarkdownSourceMap(new string('x', 4096)),
-            new MarkdownExtensionRegistry(),
-            flowDirection)
-        {
-            RenderResources = _renderResources,
-            CodeBlockChromeMode = codeBlockChromeMode,
-        };
-    }
 
     private static T ReadField<T>(object? value)
         => Assert.IsType<T>(value);
@@ -843,16 +583,12 @@ public sealed class LayoutSnapshotIndexConstructionTests
     private static void AssertFocusablePlanEquals(IReadOnlyList<LegacyFocusableEntry> expected, Array actual)
     {
         Assert.Equal(expected.Count, actual.Length);
+        FocusablePlanEntry[] entries = Assert.IsType<FocusablePlanEntry[]>(actual);
         for (int index = 0; index < expected.Count; index++)
         {
-            object entry = actual.GetValue(index)!;
-            Type entryType = entry.GetType();
-            var item = Assert.IsType<FocusableItem>(
-                entryType.GetField("Item", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!
-                    .GetValue(entry));
-            var overflow = (IHorizontalOverflowBox?)entryType
-                .GetField("HorizontalOverflow", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!
-                .GetValue(entry);
+            FocusablePlanEntry entry = entries[index];
+            FocusableItem item = entry.Item;
+            IHorizontalOverflowBox? overflow = entry.HorizontalOverflow;
             Assert.Equal(expected[index].Item.BlockIndex, item.BlockIndex);
             Assert.Equal(expected[index].Item.InlineIndex, item.InlineIndex);
             Assert.Equal(expected[index].Item.Kind, item.Kind);
@@ -870,315 +606,6 @@ public sealed class LayoutSnapshotIndexConstructionTests
         {
             Assert.True(actual.TryGetValue(entry.Key, out int actualValue));
             Assert.Equal(entry.Value, actualValue);
-        }
-    }
-
-    private sealed class LegacyIndexes
-    {
-        internal readonly Dictionary<BlockBox, int> BlockOrdinals = new(ReferenceEqualityComparer.Instance);
-        internal readonly Dictionary<int, int> TopLevelOrdinalByBlockIndex = new();
-        internal readonly Dictionary<ImageBox, int> ImageTopLevelOrdinalByIdentity = new(ReferenceEqualityComparer.Instance);
-        internal readonly HashSet<IHorizontalOverflowBox> HorizontalOverflowBoxes = new(ReferenceEqualityComparer.Instance);
-        internal readonly Dictionary<int, IHorizontalOverflowBox> HorizontalOverflowByBlockIndex = new();
-        internal readonly List<LegacyFocusableEntry> FocusablePlan = new();
-
-        internal static LegacyIndexes Build(IReadOnlyList<BlockBox> roots)
-        {
-            var indexes = new LegacyIndexes();
-            for (int ordinal = 0; ordinal < roots.Count; ordinal++)
-            {
-                BlockBox root = roots[ordinal];
-                indexes.BlockOrdinals[root] = ordinal;
-                IndexBlockTree(root, ordinal, indexes.TopLevelOrdinalByBlockIndex);
-                IndexImageTree(root, ordinal, indexes.ImageTopLevelOrdinalByIdentity);
-                BuildLegacyFocusablePlan(root, indexes.FocusablePlan);
-                CollectLegacyHorizontalOverflow(
-                    root,
-                    indexes.HorizontalOverflowBoxes,
-                    indexes.HorizontalOverflowByBlockIndex,
-                    ancestor: null);
-            }
-            return indexes;
-        }
-
-        private static void IndexBlockTree(BlockBox box, int ordinal, Dictionary<int, int> byBlockIndex)
-        {
-            byBlockIndex.TryAdd(box.BlockIndex, ordinal);
-            switch (box)
-            {
-                case ListItemBox item:
-                    IndexBlockTree(item.Marker, ordinal, byBlockIndex);
-                    IndexBlockTree(item.Content, ordinal, byBlockIndex);
-                    break;
-                case StackBox stack:
-                    foreach (BlockBox child in stack.Children)
-                        IndexBlockTree(child, ordinal, byBlockIndex);
-                    break;
-                case CodeBlockBox code:
-                    foreach (InlineContainerBox chunk in code.Chunks)
-                        IndexBlockTree(chunk, ordinal, byBlockIndex);
-                    break;
-                case TableBox table:
-                    foreach (InlineContainerBox cell in table.GetCellBoxes())
-                        IndexBlockTree(cell, ordinal, byBlockIndex);
-                    break;
-            }
-        }
-
-        private static void IndexImageTree(
-            BlockBox box,
-            int ordinal,
-            Dictionary<ImageBox, int> byImageIdentity)
-        {
-            switch (box)
-            {
-                case ImageBox image:
-                    AddImageOwner(image, ordinal, byImageIdentity);
-                    break;
-                case InlineContainerBox inline:
-                    foreach ((InlineImageRun run, _) in inline.InlineImageRuns)
-                        AddImageOwner(run.Image, ordinal, byImageIdentity);
-                    break;
-                case ListItemBox item:
-                    IndexImageTree(item.Marker, ordinal, byImageIdentity);
-                    IndexImageTree(item.Content, ordinal, byImageIdentity);
-                    break;
-                case StackBox stack:
-                    foreach (BlockBox child in stack.Children)
-                        IndexImageTree(child, ordinal, byImageIdentity);
-                    break;
-                case CodeBlockBox code:
-                    foreach (InlineContainerBox chunk in code.Chunks)
-                        IndexImageTree(chunk, ordinal, byImageIdentity);
-                    break;
-                case TableBox table:
-                    foreach (InlineContainerBox cell in table.GetCellBoxes())
-                        IndexImageTree(cell, ordinal, byImageIdentity);
-                    break;
-            }
-        }
-
-        private static void AddImageOwner(
-            ImageBox image,
-            int ordinal,
-            Dictionary<ImageBox, int> byImageIdentity)
-        {
-            if (byImageIdentity.TryGetValue(image, out int existing) && existing != ordinal)
-                byImageIdentity[image] = -1;
-            else
-                byImageIdentity[image] = ordinal;
-        }
-
-        private static void CollectLegacyHorizontalOverflow(
-            BlockBox box,
-            HashSet<IHorizontalOverflowBox> result,
-            Dictionary<int, IHorizontalOverflowBox> byBlockIndex,
-            IHorizontalOverflowBox? ancestor)
-        {
-            if (box is IHorizontalOverflowBox overflow)
-            {
-                result.Add(overflow);
-                ancestor = overflow;
-            }
-            if (ancestor is not null)
-                byBlockIndex[box.BlockIndex] = ancestor;
-
-            switch (box)
-            {
-                case ListItemBox item:
-                    CollectLegacyHorizontalOverflow(item.Marker, result, byBlockIndex, ancestor);
-                    CollectLegacyHorizontalOverflow(item.Content, result, byBlockIndex, ancestor);
-                    break;
-                case StackBox stack:
-                    foreach (BlockBox child in stack.Children)
-                        CollectLegacyHorizontalOverflow(child, result, byBlockIndex, ancestor);
-                    break;
-                case CodeBlockBox code:
-                    foreach (InlineContainerBox chunk in code.Chunks)
-                        CollectLegacyHorizontalOverflow(chunk, result, byBlockIndex, ancestor);
-                    break;
-                case TableBox table:
-                    foreach (InlineContainerBox cell in table.GetCellBoxes())
-                        CollectLegacyHorizontalOverflow(cell, result, byBlockIndex, ancestor);
-                    break;
-            }
-        }
-
-        private static void BuildLegacyFocusablePlan(BlockBox box, List<LegacyFocusableEntry> plan)
-        {
-            int descendantStart = plan.Count;
-            switch (box)
-            {
-                case InlineContainerBox inline:
-                    foreach (InlineRun run in inline.Runs)
-                    {
-                        if (run is LinkRun or InlineImageRun { IsLinked: true } or
-                            InlineVectorSceneRun { IsLinked: true })
-                        {
-                            plan.Add(new LegacyFocusableEntry(
-                                new FocusableItem(inline.BlockIndex, run.InlineIndex, FocusableItemKind.Link),
-                                null));
-                        }
-                        else if (run is InlineEmbedRun embed && LayoutSnapshot.IsInlineEmbedKeyboardFocusable(embed))
-                        {
-                            plan.Add(new LegacyFocusableEntry(
-                                new FocusableItem(inline.BlockIndex, run.InlineIndex, FocusableItemKind.InlineEmbed),
-                                null));
-                        }
-                    }
-                    break;
-                case EmbedBox embed:
-                    plan.Add(new LegacyFocusableEntry(
-                        new FocusableItem(embed.BlockIndex, 0, FocusableItemKind.BlockEmbed),
-                        null));
-                    break;
-                case DeclarativeHostedElementBox hosted:
-                    plan.Add(new LegacyFocusableEntry(
-                        new FocusableItem(hosted.BlockIndex, 0, FocusableItemKind.DeclarativeHostedElement),
-                        null));
-                    break;
-                case CodeBlockBox code when code.HasCopyButtonAction:
-                    plan.Add(new LegacyFocusableEntry(
-                        new FocusableItem(code.BlockIndex, 0, FocusableItemKind.CodeBlockCopy),
-                        null));
-                    break;
-                case VectorSceneBox vector:
-                    for (int semanticIndex = 0; semanticIndex < vector.SemanticItems.Count; semanticIndex++)
-                    {
-                        if (MarkdownVectorSemanticPolicy.IsKeyboardFocusable(vector.SemanticItems[semanticIndex].Flags))
-                        {
-                            plan.Add(new LegacyFocusableEntry(
-                                new FocusableItem(vector.BlockIndex, semanticIndex, FocusableItemKind.VectorSemantic),
-                                null));
-                        }
-                    }
-                    break;
-                case ListItemBox item:
-                    BuildLegacyFocusablePlan(item.Marker, plan);
-                    BuildLegacyFocusablePlan(item.Content, plan);
-                    break;
-                case TableBox table:
-                    foreach (InlineContainerBox cell in table.GetCellBoxes())
-                        BuildLegacyFocusablePlan(cell, plan);
-                    break;
-                case StackBox stack:
-                    foreach (BlockBox child in stack.Children)
-                        BuildLegacyFocusablePlan(child, plan);
-                    break;
-            }
-
-            if (plan.Count == descendantStart && box is IHorizontalOverflowBox overflow)
-            {
-                plan.Add(new LegacyFocusableEntry(
-                    new FocusableItem(box.BlockIndex, 0, FocusableItemKind.HorizontalOverflow),
-                    overflow));
-            }
-        }
-    }
-
-    private sealed record Fixture(
-        MarkdownLayoutContext Context,
-        IReadOnlyList<BlockBox> Roots,
-        ImageBox SharedImage,
-        ImageBox SameRootImage,
-        ImageBox CodeChunkImage,
-        ImageBox TableCellImage,
-        ImageBox DecorativeImage,
-        InlineContainerBox CodeChunk,
-        TableBox Table,
-        IHorizontalOverflowBox OuterOverflowOwner,
-        CodeBlockBox CopyCodeBlock,
-        CodeBlockBox PlainMarkdownCodeBlock,
-        VectorSceneBox FallbackVector,
-        VectorSceneBox FocusableVector,
-        DeclarativeHostedElementBox HostedElement,
-        EmbedBox BlockEmbed,
-        InlineContainerBox ReadOnlyTaskParagraph,
-        InlineEmbedRun ReadOnlyTaskRun,
-        int DuplicateTopLevelBlockIndex,
-        int DuplicateOverflowBlockIndex,
-        int NestedOverflowDescendantBlockIndex,
-        int TableCellBlockIndex,
-        IHorizontalOverflowBox LastDuplicateOverflowOwner);
-
-    private sealed record LegacyFocusableEntry(FocusableItem Item, IHorizontalOverflowBox? Overflow);
-
-    private sealed class TestOverflowStackBox : StackBox, IHorizontalOverflowBox
-    {
-        public double HorizontalOffset => 0;
-        public double HorizontalExtent => 200;
-        public double HorizontalViewport => 100;
-        public bool CanScrollHorizontally => true;
-        public bool IsRightToLeft => false;
-        public Windows.Foundation.Rect HorizontalViewportBounds => default;
-        public Windows.Foundation.Rect HorizontalScrollTrackBounds => default;
-        public Windows.Foundation.Rect HorizontalScrollThumbBounds => default;
-        public bool SetHorizontalOffset(double offset) => false;
-        public bool ScrollHorizontal(double delta) => false;
-    }
-
-    private sealed class TestEmbedFactory : IMarkdownEmbedFactory
-    {
-        internal static readonly TestEmbedFactory Instance = new();
-        public bool CanCreate(Block block) => true;
-        public float MeasureHeight(Block block, float availableWidth) => 20;
-        public FrameworkElement CreateBlock(Block block) => null!;
-    }
-
-    private sealed class ThrowingVectorResidencyPolicy : IMarkdownVectorSceneResidencyPolicy
-    {
-        internal const string FailureMessage = "test residency preparation failure";
-        private readonly int _throwOnCall;
-        private int _replaceCallCount;
-
-        internal ThrowingVectorResidencyPolicy(int throwOnCall)
-            => _throwOnCall = throwOnCall;
-
-        public int ActiveSceneCount => 0;
-        public long ActiveEstimatedBytes => 0;
-        public int InlineGeometryIndexBuildCount => 0;
-        public int CommandGraphEstimateCount => 0;
-        public int ActiveInlineSceneGeometryIndexCount => 0;
-        public List<string> VisibleDeferredSceneMarkerScratch { get; } = new();
-
-        public bool AreNativeResourcesPrepared(
-            IReadOnlyList<int> topLevelOrdinals,
-            LazyLayoutBand band,
-            LayoutPlacementGeneration placements,
-            IReadOnlyDictionary<int, int> topLevelOrdinalByBlockIndex)
-            => false;
-
-        public bool ReplaceActiveBand(
-            IReadOnlyList<int> topLevelOrdinals,
-            LazyLayoutBand band,
-            LayoutPlacementGeneration placements,
-            IReadOnlyDictionary<int, int> topLevelOrdinalByBlockIndex,
-            CancellationToken cancellationToken)
-        {
-            if (++_replaceCallCount == _throwOnCall)
-                throw new InvalidOperationException(FailureMessage);
-            return false;
-        }
-
-        public bool TryAppendVisibleInlineSceneMarkers(
-            InlineContainerBox inline,
-            double viewportTop,
-            double viewportBottom,
-            Windows.Foundation.Rect? viewport,
-            List<string> markerKeys,
-            ref bool visibleSceneResourcesReady)
-            => false;
-
-        public void ReleaseUnpinnedResources(
-            IReadOnlyList<int> topLevelOrdinals,
-            LazyLayoutBand band,
-            LayoutPlacementGeneration placements,
-            IReadOnlyDictionary<int, int> topLevelOrdinalByBlockIndex)
-        {
-        }
-
-        public void Dispose()
-        {
         }
     }
 }

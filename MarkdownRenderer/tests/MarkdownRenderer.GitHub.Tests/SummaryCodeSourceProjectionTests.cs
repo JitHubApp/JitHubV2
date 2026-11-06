@@ -29,37 +29,7 @@ public sealed class SummaryCodeSourceProjectionTests
     {
         const string firstLine = "SUMMARY-CODE-FIRST-LINE";
         const string secondLine = "SUMMARY-CODE-SECOND-LINE";
-        string[] lines = preparedTablePrefix
-            ?
-            [
-                "| Name | Value |",
-                "| --- | --- |",
-                "| alpha | beta |",
-                "row-without-a-pipe",
-                string.Empty,
-                "<details open><summary>Summary before a discarded gap",
-                string.Empty,
-                "  ```text",
-                "  " + firstLine,
-                "  " + secondLine,
-                "  ```",
-                "  </summary>",
-                "<p>Disclosure body</p>",
-                "</details>",
-            ]
-            :
-            [
-                "<details open><summary>Summary before a discarded gap",
-                string.Empty,
-                "  ```text",
-                "  " + firstLine,
-                "  " + secondLine,
-                "  ```",
-                "  </summary>",
-                "<p>Disclosure body</p>",
-                "</details>",
-            ];
-        string source = string.Join(newline, lines);
+        string source = CreateSource(preparedTablePrefix, newline, firstLine, secondLine);
 
         Gfm029Compatibility.PreparedSource prepared = Gfm029Compatibility.PrepareSource(
             source,
@@ -104,6 +74,41 @@ public sealed class SummaryCodeSourceProjectionTests
         Assert.True(snapshot.SourceMap.TryMapRange(range, out SourceSpan codeMapped));
         Assert.Equal(expectedTerminator, codeMapped);
         Assert.Equal(newline, snapshot.SourceMap.Slice(range));
+    }
+
+    private static string CreateSource(bool preparedTablePrefix, string newline, string firstLine, string secondLine)
+    {
+        string[] lines = preparedTablePrefix
+            ?
+            [
+                "| Name | Value |",
+                "| --- | --- |",
+                "| alpha | beta |",
+                "row-without-a-pipe",
+                string.Empty,
+                "<details open><summary>Summary before a discarded gap",
+                string.Empty,
+                "  ```text",
+                "  " + firstLine,
+                "  " + secondLine,
+                "  ```",
+                "  </summary>",
+                "<p>Disclosure body</p>",
+                "</details>",
+            ]
+            :
+            [
+                "<details open><summary>Summary before a discarded gap",
+                string.Empty,
+                "  ```text",
+                "  " + firstLine,
+                "  " + secondLine,
+                "  ```",
+                "  </summary>",
+                "<p>Disclosure body</p>",
+                "</details>",
+            ];
+        return string.Join(newline, lines);
     }
 
     private static ThemeSnapshot CreateTheme()

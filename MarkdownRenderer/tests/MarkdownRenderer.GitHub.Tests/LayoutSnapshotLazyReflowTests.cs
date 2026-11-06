@@ -9,27 +9,39 @@ using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
+/// <summary>
+/// Protects lazy-layout band realization and suffix reflow: which roots are
+/// measured or rearranged, the published placement index, and rollback after
+/// failure or cancellation.
+/// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because it holds eleven separate
+/// realization, rollback and fallback scenarios, and each one asserts the
+/// bounds, measure and arrange counts of every root in its sequence. The probe
+/// roots and snapshot builders already live in <see cref="LazyReflowProbeBlock"/>
+/// and <see cref="LazyReflowSnapshots"/>.
+/// </remarks>
 public sealed class LayoutSnapshotLazyReflowTests
 {
-    private const float Width = 180f;
+    private const float Width = LazyReflowSnapshots.DefaultWidth;
 
     [Fact]
     public void NearEndRealizationInHundredThousandRootsArrangesOnlyChangedSuffix()
     {
         const int blockCount = 100_000;
         const int lastOrdinal = blockCount - 1;
-        var blocks = new ProbeBlock[blockCount];
+        var blocks = new LazyReflowProbeBlock[blockCount];
         for (int blockOrdinal = 0; blockOrdinal < blocks.Length; blockOrdinal++)
         {
             // Every estimate is 32. The final block alone measures to a new
             // height, forcing an actual suffix commit instead of the no-op path.
-            blocks[blockOrdinal] = new ProbeBlock(blockOrdinal == lastOrdinal ? 40f : 32f)
+            blocks[blockOrdinal] = new LazyReflowProbeBlock(blockOrdinal == lastOrdinal ? 40f : 32f)
             {
                 BlockIndex = blockOrdinal,
             };
         }
 
-        using var snapshot = CreateUnmeasuredSnapshot(blocks);
+        using var snapshot = LazyReflowSnapshots.CreateUnmeasuredSnapshot(blocks);
         snapshot.EnableLazyLayout(Width, 0, viewportHeight: 1, overscan: 0,
             CancellationToken.None);
 
@@ -88,9 +100,9 @@ public sealed class LayoutSnapshotLazyReflowTests
     public void ExactMeasuredEstimateDoesNotRearrangeSiblingsAndPublishesMeasuredGeneration()
     {
         var blocks = Enumerable.Range(0, 24)
-            .Select(index => new ProbeBlock(32) { BlockIndex = index })
+            .Select(index => new LazyReflowProbeBlock(32) { BlockIndex = index })
             .ToArray();
-        using var snapshot = CreateUnmeasuredSnapshot(blocks);
+        using var snapshot = LazyReflowSnapshots.CreateUnmeasuredSnapshot(blocks);
         snapshot.EnableLazyLayout(Width, 0, 1, 0, CancellationToken.None);
 
         int targetOrdinal = 12;
@@ -99,7 +111,7 @@ public sealed class LayoutSnapshotLazyReflowTests
         var oldIndexRects = Enumerable.Range(0, blocks.Length)
             .Select(index.GetIndexedBounds)
             .ToArray();
-        foreach (ProbeBlock block in blocks)
+        foreach (LazyReflowProbeBlock block in blocks)
             block.ResetCounts();
         long oldRevision = snapshot.LayoutRevision;
         Size oldSize = snapshot.Size;
@@ -136,12 +148,12 @@ public sealed class LayoutSnapshotLazyReflowTests
         const int blockCount = 14;
         var metrics = new SharedLayoutMetrics(blockCount, estimatedKeyWeightBytes: 1);
         var blocks = Enumerable.Range(0, blockCount)
-            .Select(index => new ProbeBlock(index == blockCount - 1 ? 40f : 32f)
+            .Select(index => new LazyReflowProbeBlock(index == blockCount - 1 ? 40f : 32f)
             {
                 BlockIndex = index,
             })
             .ToArray();
-        using var snapshot = CreateUnmeasuredSnapshot(blocks, sharedLayoutMetrics: metrics);
+        using var snapshot = LazyReflowSnapshots.CreateUnmeasuredSnapshot(blocks, sharedLayoutMetrics: metrics);
         snapshot.EnableLazyLayout(Width, 0, 1, 0, CancellationToken.None);
 
         int prefixOrdinal = 5;
@@ -172,12 +184,12 @@ public sealed class LayoutSnapshotLazyReflowTests
         const int changedOrdinal = 8;
         const int finalOrdinal = blockCount - 1;
         var blocks = Enumerable.Range(0, blockCount)
-            .Select(index => new ProbeBlock(index == finalOrdinal ? 40f : 32f)
+            .Select(index => new LazyReflowProbeBlock(index == finalOrdinal ? 40f : 32f)
             {
                 BlockIndex = index,
             })
             .ToArray();
-        using var snapshot = CreateUnmeasuredSnapshot(blocks);
+        using var snapshot = LazyReflowSnapshots.CreateUnmeasuredSnapshot(blocks);
         snapshot.EnableLazyLayout(Width, 0, 1, 0, CancellationToken.None);
         snapshot.EnsureMeasuredBand(new LazyLayoutBand(0, (finalOrdinal * 32d) - 0.25d),
             CancellationToken.None);
@@ -185,7 +197,7 @@ public sealed class LayoutSnapshotLazyReflowTests
 
         Rect[] committedPrefix = blocks.Take(finalOrdinal).Select(block => block.Bounds).ToArray();
         LayoutPlacementGeneration index = GetViewportIndex(snapshot);
-        foreach (ProbeBlock block in blocks)
+        foreach (LazyReflowProbeBlock block in blocks)
             block.ResetCounts();
 
         blocks[changedOrdinal].SetMeasuredHeight(40);
@@ -238,11 +250,11 @@ public sealed class LayoutSnapshotLazyReflowTests
         const double spacing = 4.35d;
         var padding = new Thickness(3.7, 16_777_217.1d, 5.2, 8.9);
 
-        ProbeBlock[] eagerBlocks = CreateBlocks(heights, flowScopes);
-        using LayoutSnapshot eager = CreateEagerSnapshot(eagerBlocks, width, padding, spacing);
+        LazyReflowProbeBlock[] eagerBlocks = LazyReflowSnapshots.CreateBlocks(heights, flowScopes);
+        using LayoutSnapshot eager = LazyReflowSnapshots.CreateEagerSnapshot(eagerBlocks, width, padding, spacing);
 
-        ProbeBlock[] lazyBlocks = CreateBlocks(heights, flowScopes);
-        using LayoutSnapshot lazy = CreateUnmeasuredSnapshot(lazyBlocks, width, padding, spacing);
+        LazyReflowProbeBlock[] lazyBlocks = LazyReflowSnapshots.CreateBlocks(heights, flowScopes);
+        using LayoutSnapshot lazy = LazyReflowSnapshots.CreateUnmeasuredSnapshot(lazyBlocks, width, padding, spacing);
         lazy.EnableLazyLayout(
             width,
             viewportTop: 0,
@@ -254,6 +266,21 @@ public sealed class LayoutSnapshotLazyReflowTests
         Assert.Equal(heights.Length, lazy.MeasuredTopLevelBlockCount);
         Assert.Equal(heights.Length, lazy.TopLevelBlockCount);
 
+        AssertSequentialFloatPlacement(lazy, lazyBlocks, eagerBlocks, heights, flowScopes, width, padding, spacing);
+        AssertScrollAnchorsMatch(eager, lazy, eagerBlocks, padding);
+        AssertBandQueriesMatch(eager, lazy, eagerBlocks);
+    }
+
+    private static void AssertSequentialFloatPlacement(
+        LayoutSnapshot lazy,
+        LazyReflowProbeBlock[] lazyBlocks,
+        LazyReflowProbeBlock[] eagerBlocks,
+        float[] heights,
+        int?[] flowScopes,
+        float width,
+        Thickness padding,
+        double spacing)
+    {
         float expectedY = (float)padding.Top;
         float contentWidth = (float)System.Math.Max(1, width - padding.Left - padding.Right);
         float contentX = (float)padding.Left;
@@ -269,7 +296,14 @@ public sealed class LayoutSnapshotLazyReflowTests
         }
         expectedY += (float)padding.Bottom;
         Assert.Equal((double)expectedY, lazy.Size.Height);
+    }
 
+    private static void AssertScrollAnchorsMatch(
+        LayoutSnapshot eager,
+        LayoutSnapshot lazy,
+        LazyReflowProbeBlock[] eagerBlocks,
+        Thickness padding)
+    {
         double[] anchorOffsets =
         [
             (float)padding.Top + 5.25d,
@@ -285,7 +319,13 @@ public sealed class LayoutSnapshotLazyReflowTests
             Assert.Equal(eagerAnchor.OffsetFromTop, lazyAnchor.OffsetFromTop);
             Assert.Equal(eagerAnchor.Height, lazyAnchor.Height);
         }
+    }
 
+    private static void AssertBandQueriesMatch(
+        LayoutSnapshot eager,
+        LayoutSnapshot lazy,
+        LazyReflowProbeBlock[] eagerBlocks)
+    {
         (double Top, double Bottom)[] queryBands =
         [
             (eagerBlocks[1].Bounds.Top + 1, eagerBlocks[4].Bounds.Bottom - 1),
@@ -317,7 +357,7 @@ public sealed class LayoutSnapshotLazyReflowTests
             {
                 eager.EndInteraction();
             }
-        }
+    }
     }
 
     [Theory]
@@ -326,12 +366,12 @@ public sealed class LayoutSnapshotLazyReflowTests
     public void MeasureOrArrangeFailureBeforeMaskCommitRestoresCommittedLazyState(bool failArrange)
     {
         var blocks = Enumerable.Range(0, 8)
-            .Select(index => new ProbeBlock(32) { BlockIndex = index })
+            .Select(index => new LazyReflowProbeBlock(32) { BlockIndex = index })
             .ToArray();
-        using var snapshot = CreateUnmeasuredSnapshot(blocks);
+        using var snapshot = LazyReflowSnapshots.CreateUnmeasuredSnapshot(blocks);
         snapshot.EnableLazyLayout(Width, 0, 1, 0, CancellationToken.None);
 
-        ProbeBlock failing = blocks[3];
+        LazyReflowProbeBlock failing = blocks[3];
         if (failArrange)
         {
             failing.SetMeasuredHeight(47);
@@ -354,7 +394,7 @@ public sealed class LayoutSnapshotLazyReflowTests
 
         InvalidOperationException failure = Assert.Throws<InvalidOperationException>(() =>
             snapshot.EnsureMeasuredBand(new LazyLayoutBand(96.25d, 97), CancellationToken.None));
-        Assert.Equal(failArrange ? ProbeBlock.ArrangeFailure : ProbeBlock.MeasureFailure, failure.Message);
+        Assert.Equal(failArrange ? LazyReflowProbeBlock.ArrangeFailure : LazyReflowProbeBlock.MeasureFailure, failure.Message);
 
         AssertGeometryRecoveryReadGate(snapshot, blocks[3].Bounds.Top, blocks[3].Bounds.Bottom);
         Assert.Equal(oldSize, snapshot.Size);
@@ -378,9 +418,9 @@ public sealed class LayoutSnapshotLazyReflowTests
     public void ShiftedViewportBandMeasuresRootsNewlyEnteringToFixedPoint()
     {
         var blocks = Enumerable.Range(0, 7)
-            .Select(index => new ProbeBlock(index == 3 ? 5f : 32f) { BlockIndex = index })
+            .Select(index => new LazyReflowProbeBlock(index == 3 ? 5f : 32f) { BlockIndex = index })
             .ToArray();
-        using var snapshot = CreateUnmeasuredSnapshot(blocks);
+        using var snapshot = LazyReflowSnapshots.CreateUnmeasuredSnapshot(blocks);
         snapshot.EnableLazyLayout(Width, 0, 1, 0, CancellationToken.None);
         long oldRevision = snapshot.LayoutRevision;
 
@@ -404,9 +444,9 @@ public sealed class LayoutSnapshotLazyReflowTests
     {
         using var cancellation = new CancellationTokenSource();
         var blocks = Enumerable.Range(0, 7)
-            .Select(index => new ProbeBlock(index == 3 ? 5f : 32f) { BlockIndex = index })
+            .Select(index => new LazyReflowProbeBlock(index == 3 ? 5f : 32f) { BlockIndex = index })
             .ToArray();
-        using var snapshot = CreateUnmeasuredSnapshot(blocks);
+        using var snapshot = LazyReflowSnapshots.CreateUnmeasuredSnapshot(blocks);
         snapshot.EnableLazyLayout(Width, 0, 1, 0, CancellationToken.None);
         blocks[3].AfterMeasure = cancellation.Cancel;
 
@@ -444,9 +484,9 @@ public sealed class LayoutSnapshotLazyReflowTests
     {
         using var cancellation = new CancellationTokenSource();
         var blocks = Enumerable.Range(0, 8)
-            .Select(index => new ProbeBlock(32) { BlockIndex = index })
+            .Select(index => new LazyReflowProbeBlock(32) { BlockIndex = index })
             .ToArray();
-        using var snapshot = CreateUnmeasuredSnapshot(blocks);
+        using var snapshot = LazyReflowSnapshots.CreateUnmeasuredSnapshot(blocks);
         snapshot.EnableLazyLayout(Width, 0, 1, 0, CancellationToken.None);
         snapshot.EnsureMeasuredBand(new LazyLayoutBand(96.25d, 97), CancellationToken.None);
         Assert.True(snapshot.IsTopLevelBlockMeasured(blocks[3]));
@@ -489,9 +529,9 @@ public sealed class LayoutSnapshotLazyReflowTests
     public async Task PersistentMeasuredSuffixArrangeFailureFailsClosedAndRetiresCleanly()
     {
         var blocks = Enumerable.Range(0, 8)
-            .Select(index => new ProbeBlock(32) { BlockIndex = index })
+            .Select(index => new LazyReflowProbeBlock(32) { BlockIndex = index })
             .ToArray();
-        var snapshot = CreateUnmeasuredSnapshot(blocks);
+        var snapshot = LazyReflowSnapshots.CreateUnmeasuredSnapshot(blocks);
         snapshot.EnableLazyLayout(Width, 0, 1, 0, CancellationToken.None);
         snapshot.EnsureMeasuredBand(new LazyLayoutBand(96.25d, 97), CancellationToken.None);
         Assert.True(snapshot.IsTopLevelBlockMeasured(blocks[3]));
@@ -501,7 +541,7 @@ public sealed class LayoutSnapshotLazyReflowTests
         AggregateException failure = Assert.Throws<AggregateException>(() =>
             snapshot.EnsureMeasuredBand(new LazyLayoutBand(64.25d, 64.5d), CancellationToken.None));
         Assert.Contains(failure.InnerExceptions, exception =>
-            exception is InvalidOperationException { Message: ProbeBlock.ArrangeFailure });
+            exception is InvalidOperationException { Message: LazyReflowProbeBlock.ArrangeFailure });
         Assert.True(failure.InnerExceptions.Count >= 2);
         Assert.False(snapshot.TryBeginInteraction());
         Assert.False(snapshot.TryBeginPaint());
@@ -516,10 +556,10 @@ public sealed class LayoutSnapshotLazyReflowTests
     {
         var blocks = Enumerable.Range(0, 5)
             .Select(index => index == 0
-                ? new OffsetProbeBlock(32, 64) { BlockIndex = index }
-                : new OffsetProbeBlock(32, 0) { BlockIndex = index })
+                ? new LazyReflowOffsetProbeBlock(32, 64) { BlockIndex = index }
+                : new LazyReflowOffsetProbeBlock(32, 0) { BlockIndex = index })
             .ToArray();
-        using var snapshot = CreateEagerSnapshot(blocks, Width, default, 0);
+        using var snapshot = LazyReflowSnapshots.CreateEagerSnapshot(blocks, Width, default, 0);
 
         LayoutPlacementGeneration index = GetViewportIndex(snapshot);
         Assert.False(index.IsDocumentOrder);
@@ -530,74 +570,6 @@ public sealed class LayoutSnapshotLazyReflowTests
 
         Assert.True(blocks[0].ArrangeCount > firstArrangeCount);
         Assert.False(GetViewportIndex(snapshot).IsDocumentOrder);
-    }
-
-    private static LayoutSnapshot CreateUnmeasuredSnapshot(
-        ProbeBlock[] blocks,
-        float width = Width,
-        Thickness padding = default,
-        double spacing = 0,
-        SharedLayoutMetrics? sharedLayoutMetrics = null)
-    {
-        for (int index = 0; index < blocks.Length; index++)
-            blocks[index].BlockIndex = index;
-
-        return new LayoutSnapshot(
-            blocks,
-            new MarkdownSourceMap(string.Empty),
-            width,
-            height: 0,
-            sharedLayoutMetrics: sharedLayoutMetrics,
-            documentPadding: padding,
-            blockSpacing: spacing);
-    }
-
-    private static LayoutSnapshot CreateEagerSnapshot(
-        ProbeBlock[] blocks,
-        float width,
-        Thickness padding,
-        double spacing)
-    {
-        float contentWidth = (float)System.Math.Max(1, width - padding.Left - padding.Right);
-        float x = (float)padding.Left;
-        float y = (float)padding.Top;
-        float blockSpacing = (float)spacing;
-        for (int ordinal = 0; ordinal < blocks.Length; ordinal++)
-        {
-            ProbeBlock block = blocks[ordinal];
-            block.Measure(contentWidth);
-            block.Arrange(x, y, contentWidth);
-            y += (float)block.Bounds.Height;
-            if (ordinal < blocks.Length - 1 &&
-                !StackBox.SharesSafeHtmlInlineFlow(blocks[ordinal], blocks[ordinal + 1]))
-            {
-                y += blockSpacing;
-            }
-        }
-
-        y += (float)padding.Bottom;
-        return new LayoutSnapshot(
-            blocks,
-            new MarkdownSourceMap(string.Empty),
-            width,
-            y,
-            documentPadding: padding,
-            blockSpacing: spacing);
-    }
-
-    private static ProbeBlock[] CreateBlocks(float[] heights, int?[] flowScopes)
-    {
-        var blocks = new ProbeBlock[heights.Length];
-        for (int index = 0; index < heights.Length; index++)
-        {
-            blocks[index] = new ProbeBlock(heights[index])
-            {
-                BlockIndex = index,
-                SafeHtmlInlineFlowScopeId = flowScopes[index],
-            };
-        }
-
-        return blocks;
     }
 
     private static LayoutPlacementGeneration GetViewportIndex(LayoutSnapshot snapshot)
@@ -618,76 +590,5 @@ public sealed class LayoutSnapshotLazyReflowTests
             bottom,
             out IReadOnlyList<BlockBox> blocks));
         Assert.Empty(blocks);
-    }
-
-    private class ProbeBlock(float height) : BlockBox
-    {
-        internal const string MeasureFailure = "probe measure failure";
-        internal const string ArrangeFailure = "probe arrange failure";
-
-        private float _measuredHeight = height;
-
-        internal int MeasureCount { get; private set; }
-        internal int ArrangeCount { get; private set; }
-        internal int DisposeCount { get; private set; }
-        internal bool ThrowAfterMeasureMutation { get; set; }
-        internal bool ThrowAfterNextArrange { get; set; }
-        internal bool ThrowOnEveryArrange { get; set; }
-        private LayoutPassCancellation? _observedPass;
-        internal Action? AfterMeasure { get; set; }
-
-        internal void SetMeasuredHeight(float height) => _measuredHeight = height;
-
-        /// <summary>Throws from Arrange when the snapshot's pass token is canceled.</summary>
-        internal void ObservePassCancellation(LayoutPassCancellation pass) => _observedPass = pass;
-
-        internal void ResetCounts()
-        {
-            MeasureCount = 0;
-            ArrangeCount = 0;
-        }
-
-        public override float Measure(float availableWidth)
-        {
-            MeasureCount++;
-            Bounds = new Rect(13, 17, availableWidth, _measuredHeight + 19);
-            if (ThrowAfterMeasureMutation)
-                throw new InvalidOperationException(MeasureFailure);
-
-            Bounds = new Rect(0, 0, availableWidth, _measuredHeight);
-            AfterMeasure?.Invoke();
-            return _measuredHeight;
-        }
-
-        public override void Arrange(float x, float y, float width)
-        {
-            ArrangeCount++;
-            _observedPass?.GetEffectiveToken(CancellationToken.None).ThrowIfCancellationRequested();
-
-            base.Arrange(x, y, width);
-            if (ThrowAfterNextArrange)
-            {
-                ThrowAfterNextArrange = false;
-                Bounds = new Rect(x + 9, y + 11, width, Bounds.Height + 13);
-                throw new InvalidOperationException(ArrangeFailure);
-            }
-            if (ThrowOnEveryArrange)
-                throw new InvalidOperationException(ArrangeFailure);
-        }
-
-        public override void Paint(CanvasDrawingSession drawingSession, Rect viewport) { }
-
-        public override void Dispose()
-        {
-            DisposeCount++;
-        }
-    }
-
-    private sealed class OffsetProbeBlock(float height, float verticalOffset) : ProbeBlock(height)
-    {
-        public override void Arrange(float x, float y, float width)
-        {
-            base.Arrange(x, y + verticalOffset, width);
-        }
     }
 }
