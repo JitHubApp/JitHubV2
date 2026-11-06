@@ -19,6 +19,12 @@ using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
+/// <remarks>
+/// This file is longer than 500 lines because its scripted SVG renderer,
+/// preparation lease, provider source owner and document doubles record each
+/// step of the host-preparation admission protocol that only this class drives,
+/// and they stay private beside the scenarios that read them.
+/// </remarks>
 [Collection(ProcessRasterDecodeCollection.CollectionName)]
 public sealed class SvgHostPreparationAdmissionTests
 {
@@ -306,33 +312,8 @@ public sealed class SvgHostPreparationAdmissionTests
     public async Task OpenedSvgKeepsProviderAndDocumentOwnersUntilCanceledRenderDrains()
     {
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
-        var renderer = new PreparationAdmissionRenderer
-        {
-            ScratchMode = ScratchReply.Granted,
-            ScratchPeakBytes = PreparationScratchBytes,
-        };
-        string preparedSvg = GeneratedSvgResolver.CreateSvg(Guid.NewGuid().ToString("N"));
-        renderer.Prepare = (_, token) =>
-        {
-            token.ThrowIfCancellationRequested();
-            byte[] preparedBytes = Encoding.UTF8.GetBytes(preparedSvg);
-            renderer.LastPreparedSource = new WeakReference<byte[]>(preparedBytes);
-            return MarkdownSvgSourcePreparation.Admit(preparedBytes);
-        };
-
         const long providerSourceWeight = 32_768;
-        TrackingSvgDocument? openedDocument = null;
-        TrackingProviderSourceOwner? sourceOwner = null;
-        renderer.OpenResultFactory = (_, _) =>
-        {
-            sourceOwner = renderer.CreateProviderSourceOwner(providerSourceWeight);
-            openedDocument = new TrackingSvgDocument(sourceOwner);
-            renderer.LastOpenedDocument = openedDocument;
-            return MarkdownSvgAdmissionResult.Opened(
-                openedDocument,
-                providerSourceWeight,
-                renderer.AdmissionDomain);
-        };
+        PreparationAdmissionRenderer renderer = CreateOpeningRenderer(providerSourceWeight);
 
         var image = CreateImage(
             renderer,
@@ -345,8 +326,9 @@ public sealed class SvgHostPreparationAdmissionTests
             image.EnsureLoading();
             await renderer.OpenStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
-            openedDocument = Assert.IsType<TrackingSvgDocument>(renderer.LastOpenedDocument);
-            sourceOwner = Assert.IsType<TrackingProviderSourceOwner>(renderer.LastProviderSourceOwner);
+            TrackingSvgDocument openedDocument = Assert.IsType<TrackingSvgDocument>(renderer.LastOpenedDocument);
+            TrackingProviderSourceOwner sourceOwner =
+                Assert.IsType<TrackingProviderSourceOwner>(renderer.LastProviderSourceOwner);
             await openedDocument.RenderStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
             TrackingPreparationLease preparationLease =
@@ -383,6 +365,36 @@ public sealed class SvgHostPreparationAdmissionTests
             renderer.LastOpenedDocument?.ReleaseRender();
             await RetireAsync(image);
         }
+    }
+
+    // A renderer whose granted preparation admits a generated SVG and whose
+    // open returns a tracked document owning a provider source of the given weight.
+    private static PreparationAdmissionRenderer CreateOpeningRenderer(long providerSourceWeight)
+    {
+        var renderer = new PreparationAdmissionRenderer
+        {
+            ScratchMode = ScratchReply.Granted,
+            ScratchPeakBytes = PreparationScratchBytes,
+        };
+        string preparedSvg = GeneratedSvgResolver.CreateSvg(Guid.NewGuid().ToString("N"));
+        renderer.Prepare = (_, token) =>
+        {
+            token.ThrowIfCancellationRequested();
+            byte[] preparedBytes = Encoding.UTF8.GetBytes(preparedSvg);
+            renderer.LastPreparedSource = new WeakReference<byte[]>(preparedBytes);
+            return MarkdownSvgSourcePreparation.Admit(preparedBytes);
+        };
+        renderer.OpenResultFactory = (_, _) =>
+        {
+            TrackingProviderSourceOwner sourceOwner = renderer.CreateProviderSourceOwner(providerSourceWeight);
+            var openedDocument = new TrackingSvgDocument(sourceOwner);
+            renderer.LastOpenedDocument = openedDocument;
+            return MarkdownSvgAdmissionResult.Opened(
+                openedDocument,
+                providerSourceWeight,
+                renderer.AdmissionDomain);
+        };
+        return renderer;
     }
 
     [Theory]

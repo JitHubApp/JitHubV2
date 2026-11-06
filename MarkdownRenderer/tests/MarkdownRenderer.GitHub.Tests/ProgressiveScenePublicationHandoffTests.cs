@@ -14,6 +14,12 @@ using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
+/// <remarks>
+/// This file is longer than 500 lines because each publication handoff race
+/// (cancellation, reentrant dispatch, callback failure, late dispatcher
+/// refusal) needs its own scripted dispatcher, and the shared scene extension,
+/// publication queue and cleanup recorders those races use live beside them.
+/// </remarks>
 public sealed class ProgressiveScenePublicationHandoffTests
 {
     private const string MarkerAttribute = MarkdownContentAttributes.DeferredScene;
@@ -333,45 +339,17 @@ public sealed class ProgressiveScenePublicationHandoffTests
             CancellationToken.None))!;
         plan.UpdateVisibleMarkers([marker]);
 
-        using var callbackEntered = new ManualResetEventSlim();
-        using var releaseCallback = new ManualResetEventSlim();
-        var callbackStarted = NewSignal();
-        var dispatcherDecided = NewSignal();
-        var callbackTaskSource = new TaskCompletionSource<Task>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var enqueueFailure = new InvalidOperationException("dispatcher enqueue failed after callback started");
-        Assert.True(plan.TrySchedule(
-            marker,
-            action =>
-            {
-                Task callbackTask = Task.Run(action);
-                callbackTaskSource.TrySetResult(callbackTask);
-                if (!callbackEntered.Wait(TimeSpan.FromSeconds(10)))
-                    throw new TimeoutException("The publication callback did not enter before the dispatcher decision.");
-
-                dispatcherDecided.TrySetResult();
-                if (throws)
-                    throw enqueueFailure;
-                return false;
-            },
-            () =>
-            {
-                callbackStarted.TrySetResult();
-                callbackEntered.Set();
-                if (!releaseCallback.Wait(TimeSpan.FromSeconds(10)))
-                    throw new TimeoutException("The publication callback release barrier was not signaled.");
-            }));
+        using var race = new LateDispatcherRace(throws);
+        Assert.True(plan.TrySchedule(marker, race.EnqueueAfterCallbackStarts, race.RunPublicationCallback));
 
         Task? retirement = null;
         Task? callbackExecution = null;
-        Exception? retirementFailure = null;
-        Exception? planFailure = null;
-        Exception? sessionFailure = null;
-        Exception? callbackEscape = null;
+        var failures = new HandoffCleanupFailures();
         try
         {
-            await callbackStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            await dispatcherDecided.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            callbackExecution = await callbackTaskSource.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await race.CallbackStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await race.DispatcherDecided.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            callbackExecution = await race.CallbackTask.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
             // The dispatcher has rejected/thrown, but DispatchCore already
             // changed the envelope to Executing. Neither owner nor session
@@ -385,80 +363,19 @@ public sealed class ProgressiveScenePublicationHandoffTests
         }
         finally
         {
-            releaseCallback.Set();
-            if (callbackExecution is not null)
-            {
-                try
-                {
-                    await callbackExecution.WaitAsync(TimeSpan.FromSeconds(10));
-                }
-                catch (Exception exception)
-                {
-                    callbackEscape = exception;
-                }
-            }
-
-            retirement ??= disposeSession
-                ? session.DisposeAsync().AsTask()
-                : plan.Retire();
-            try
-            {
-                await retirement.WaitAsync(TimeSpan.FromSeconds(10));
-            }
-            catch (Exception exception)
-            {
-                retirementFailure = exception;
-            }
-
-            try
-            {
-                await plan.Retire().WaitAsync(TimeSpan.FromSeconds(10));
-            }
-            catch (Exception exception)
-            {
-                planFailure = exception;
-            }
-            try
-            {
-                await session.DisposeAsync();
-            }
-            catch (Exception exception)
-            {
-                sessionFailure = exception;
-            }
+            race.ReleaseCallback.Set();
+            await ReleaseAndRetireRecordingFailuresAsync(
+                callbackExecution,
+                retirement,
+                () => disposeSession ? session.DisposeAsync().AsTask() : plan.Retire(),
+                plan,
+                session,
+                failures);
         }
 
-        if (throws)
-        {
-            // This test creates a plan directly rather than registering it
-            // with the session, so the session barrier must wait for the
-            // active lease but only the plan's own barrier reports its fault.
-            Assert.NotNull(planFailure);
-            Assert.Contains(
-                EnumerateExceptions(planFailure!),
-                exception => exception is InvalidOperationException &&
-                    exception.Message == enqueueFailure.Message);
-            if (disposeSession)
-            {
-                Assert.Null(retirementFailure);
-            }
-            else
-            {
-                Assert.NotNull(retirementFailure);
-                Assert.Contains(
-                    EnumerateExceptions(retirementFailure!),
-                    exception => exception is InvalidOperationException &&
-                        exception.Message == enqueueFailure.Message);
-            }
-        }
-        else
-        {
-            Assert.Null(planFailure);
-            Assert.Null(retirementFailure);
-        }
-
-        Assert.Null(sessionFailure);
-        Assert.Null(callbackEscape);
+        AssertFaultReportedOnlyByPlanBarrier(throws, disposeSession, failures, race.EnqueueFailure);
+        Assert.Null(failures.Session);
+        Assert.Null(failures.CallbackEscape);
         Assert.False(plan.TryGetResult(marker, out _));
         GC.KeepAlive(document);
         GC.KeepAlive(engine);
@@ -532,6 +449,146 @@ public sealed class ProgressiveScenePublicationHandoffTests
         .OrderBy(static content => content.SourceSpan.Start)
         .Select(static content => (string)content.Attributes[MarkerAttribute])
         .ToArray();
+
+    // Waits for the released callback, then the chosen retirement (started here
+    // if the scenario did not reach it), the plan's own barrier and the session,
+    // in that order, recording each one's failure.
+    private static async Task ReleaseAndRetireRecordingFailuresAsync(
+        Task? callbackExecution,
+        Task? retirement,
+        Func<Task> startRetirement,
+        MarkdownProgressiveScenePlan plan,
+        MarkdownPerformanceSession session,
+        HandoffCleanupFailures failures)
+    {
+        if (callbackExecution is not null)
+        {
+            try
+            {
+                await callbackExecution.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+            catch (Exception exception)
+            {
+                failures.CallbackEscape = exception;
+            }
+        }
+
+        retirement ??= startRetirement();
+        try
+        {
+            await retirement.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        catch (Exception exception)
+        {
+            failures.Retirement = exception;
+        }
+
+        try
+        {
+            await plan.Retire().WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        catch (Exception exception)
+        {
+            failures.Plan = exception;
+        }
+        try
+        {
+            await session.DisposeAsync();
+        }
+        catch (Exception exception)
+        {
+            failures.Session = exception;
+        }
+    }
+
+    private static void AssertFaultReportedOnlyByPlanBarrier(
+        bool throws,
+        bool disposeSession,
+        HandoffCleanupFailures failures,
+        InvalidOperationException enqueueFailure)
+    {
+        if (throws)
+        {
+            // This test creates a plan directly rather than registering it
+            // with the session, so the session barrier must wait for the
+            // active lease but only the plan's own barrier reports its fault.
+            Assert.NotNull(failures.Plan);
+            Assert.Contains(
+                EnumerateExceptions(failures.Plan!),
+                exception => exception is InvalidOperationException &&
+                    exception.Message == enqueueFailure.Message);
+            if (disposeSession)
+            {
+                Assert.Null(failures.Retirement);
+            }
+            else
+            {
+                Assert.NotNull(failures.Retirement);
+                Assert.Contains(
+                    EnumerateExceptions(failures.Retirement!),
+                    exception => exception is InvalidOperationException &&
+                        exception.Message == enqueueFailure.Message);
+            }
+        }
+        else
+        {
+            Assert.Null(failures.Plan);
+            Assert.Null(failures.Retirement);
+        }
+    }
+
+    private sealed class HandoffCleanupFailures
+    {
+        internal Exception? Retirement { get; set; }
+        internal Exception? Plan { get; set; }
+        internal Exception? Session { get; set; }
+        internal Exception? CallbackEscape { get; set; }
+    }
+
+    /// <summary>
+    /// A dispatcher that starts the publication callback on the thread pool,
+    /// waits until the callback has entered, and only then rejects (or throws),
+    /// so the plan sees a refusal after its callback already began executing.
+    /// </summary>
+    private sealed class LateDispatcherRace(bool throws) : IDisposable
+    {
+        private readonly ManualResetEventSlim _callbackEntered = new();
+
+        internal ManualResetEventSlim ReleaseCallback { get; } = new();
+        internal TaskCompletionSource CallbackStarted { get; } = NewSignal();
+        internal TaskCompletionSource DispatcherDecided { get; } = NewSignal();
+        internal TaskCompletionSource<Task> CallbackTask { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal InvalidOperationException EnqueueFailure { get; } =
+            new("dispatcher enqueue failed after callback started");
+
+        internal bool EnqueueAfterCallbackStarts(Action action)
+        {
+            Task callbackTask = Task.Run(action);
+            CallbackTask.TrySetResult(callbackTask);
+            if (!_callbackEntered.Wait(TimeSpan.FromSeconds(10)))
+                throw new TimeoutException("The publication callback did not enter before the dispatcher decision.");
+
+            DispatcherDecided.TrySetResult();
+            if (throws)
+                throw EnqueueFailure;
+            return false;
+        }
+
+        internal void RunPublicationCallback()
+        {
+            CallbackStarted.TrySetResult();
+            _callbackEntered.Set();
+            if (!ReleaseCallback.Wait(TimeSpan.FromSeconds(10)))
+                throw new TimeoutException("The publication callback release barrier was not signaled.");
+        }
+
+        public void Dispose()
+        {
+            ReleaseCallback.Dispose();
+            _callbackEntered.Dispose();
+        }
+    }
 
     private static TaskCompletionSource NewSignal() =>
         new(TaskCreationOptions.RunContinuationsAsynchronously);

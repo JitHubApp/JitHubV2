@@ -29,53 +29,17 @@ public sealed class SvgSourceMetadataPerformanceTests(ITestOutputHelper output)
 
         // Warm each real implementation on the exact same immutable bytes so
         // regex/JIT startup is excluded from the comparison.
-        SvgTitleExtractor.Metadata warmTitle = default;
-        (double Width, double Height) warmSize = default;
-        SvgSourceMetadata warmMetadata = default;
-        for (int index = 0; index < 3; index++)
-        {
-            warmTitle = SvgTitleExtractor.Extract(fixture.Bytes);
-            warmSize = SvgIntrinsics.TryExtractIntrinsicSize(fixture.Bytes);
-            warmMetadata = SvgSourceMetadata.Extract(fixture.Bytes, CancellationToken.None);
-        }
+        SvgSourceMetadata warmMetadata = WarmAndAssertImplementationsAgree(fixture);
 
-        Assert.Equal("KaTeX fixture title", warmTitle.Title);
-        Assert.Equal("182 unique embedded PNGs", warmTitle.Desc);
-        Assert.Equal((890d, 158d), warmSize);
-        Assert.Equal(warmTitle.Title, warmMetadata.Title);
-        Assert.Equal(warmTitle.Desc, warmMetadata.Desc);
-        Assert.Equal(warmSize.Width, warmMetadata.Geometry.IntrinsicWidth);
-        Assert.Equal(warmSize.Height, warmMetadata.Geometry.IntrinsicHeight);
+        CollectFully();
+        LegacyMeasurement legacy = MeasureLegacyHelpers(fixture);
+        SvgTitleExtractor.Metadata legacyTitle = legacy.Title;
+        (double Width, double Height) legacySize = legacy.Size;
+        long legacyAllocatedBytes = legacy.AllocatedBytes;
+        Stopwatch legacyTimer = legacy.Timer;
 
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-        GC.Collect();
-
-        var legacyTimer = new Stopwatch();
-        SvgTitleExtractor.Metadata legacyTitle = default;
-        (double Width, double Height) legacySize = default;
-        long legacyBefore = GC.GetAllocatedBytesForCurrentThread();
-        legacyTimer.Start();
-        for (int index = 0; index < MeasurementIterations; index++)
-        {
-            legacyTitle = SvgTitleExtractor.Extract(fixture.Bytes);
-            legacySize = SvgIntrinsics.TryExtractIntrinsicSize(fixture.Bytes);
-        }
-        legacyTimer.Stop();
-        long legacyAllocatedBytes = GC.GetAllocatedBytesForCurrentThread() - legacyBefore;
-
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-        GC.Collect();
-
-        var onePassTimer = new Stopwatch();
-        SvgSourceMetadata onePass = default;
-        long onePassBefore = GC.GetAllocatedBytesForCurrentThread();
-        onePassTimer.Start();
-        for (int index = 0; index < MeasurementIterations; index++)
-            onePass = SvgSourceMetadata.Extract(fixture.Bytes, CancellationToken.None);
-        onePassTimer.Stop();
-        long onePassAllocatedBytes = GC.GetAllocatedBytesForCurrentThread() - onePassBefore;
+        CollectFully();
+        (SvgSourceMetadata onePass, long onePassAllocatedBytes, Stopwatch onePassTimer) = MeasureOnePass(fixture);
 
         // Retain final values through the measurements; timing is reported as
         // diagnostic evidence only, never as a release/Edge latency gate.
@@ -104,6 +68,66 @@ public sealed class SvgSourceMetadataPerformanceTests(ITestOutputHelper output)
             onePassAllocatedBytes <= legacyAllocatedBytes * 0.70d,
             $"Expected at least a 30% managed-allocation reduction; one-pass used {onePassAllocatedBytes} bytes " +
             $"versus {legacyAllocatedBytes} bytes in the retained title+geometry helpers.");
+    }
+
+    private static SvgSourceMetadata WarmAndAssertImplementationsAgree(Fixture fixture)
+    {
+        SvgTitleExtractor.Metadata warmTitle = default;
+        (double Width, double Height) warmSize = default;
+        SvgSourceMetadata warmMetadata = default;
+        for (int index = 0; index < 3; index++)
+        {
+            warmTitle = SvgTitleExtractor.Extract(fixture.Bytes);
+            warmSize = SvgIntrinsics.TryExtractIntrinsicSize(fixture.Bytes);
+            warmMetadata = SvgSourceMetadata.Extract(fixture.Bytes, CancellationToken.None);
+        }
+
+        Assert.Equal("KaTeX fixture title", warmTitle.Title);
+        Assert.Equal("182 unique embedded PNGs", warmTitle.Desc);
+        Assert.Equal((890d, 158d), warmSize);
+        Assert.Equal(warmTitle.Title, warmMetadata.Title);
+        Assert.Equal(warmTitle.Desc, warmMetadata.Desc);
+        Assert.Equal(warmSize.Width, warmMetadata.Geometry.IntrinsicWidth);
+        Assert.Equal(warmSize.Height, warmMetadata.Geometry.IntrinsicHeight);
+        return warmMetadata;
+    }
+
+    private static void CollectFully()
+    {
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+    }
+
+    // Measures the retained title and geometry helpers this pass replaced.
+    private static LegacyMeasurement MeasureLegacyHelpers(Fixture fixture)
+    {
+        var legacyTimer = new Stopwatch();
+        SvgTitleExtractor.Metadata legacyTitle = default;
+        (double Width, double Height) legacySize = default;
+        long legacyBefore = GC.GetAllocatedBytesForCurrentThread();
+        legacyTimer.Start();
+        for (int index = 0; index < MeasurementIterations; index++)
+        {
+            legacyTitle = SvgTitleExtractor.Extract(fixture.Bytes);
+            legacySize = SvgIntrinsics.TryExtractIntrinsicSize(fixture.Bytes);
+        }
+        legacyTimer.Stop();
+        long legacyAllocatedBytes = GC.GetAllocatedBytesForCurrentThread() - legacyBefore;
+        return new LegacyMeasurement(legacyTitle, legacySize, legacyAllocatedBytes, legacyTimer);
+    }
+
+    private static (SvgSourceMetadata Result, long AllocatedBytes, Stopwatch Timer) MeasureOnePass(Fixture fixture)
+    {
+        var onePassTimer = new Stopwatch();
+        SvgSourceMetadata onePass = default;
+        long onePassBefore = GC.GetAllocatedBytesForCurrentThread();
+        onePassTimer.Start();
+        for (int index = 0; index < MeasurementIterations; index++)
+            onePass = SvgSourceMetadata.Extract(fixture.Bytes, CancellationToken.None);
+        onePassTimer.Stop();
+        long onePassAllocatedBytes = GC.GetAllocatedBytesForCurrentThread() - onePassBefore;
+        return (onePass, onePassAllocatedBytes, onePassTimer);
     }
 
     private static Fixture CreateKatexShapedFixture()
@@ -210,4 +234,10 @@ public sealed class SvgSourceMetadataPerformanceTests(ITestOutputHelper output)
     }
 
     private readonly record struct Fixture(byte[] Bytes, int UniquePayloadCount, int Width, int Height);
+
+    private readonly record struct LegacyMeasurement(
+        SvgTitleExtractor.Metadata Title,
+        (double Width, double Height) Size,
+        long AllocatedBytes,
+        Stopwatch Timer);
 }

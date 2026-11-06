@@ -90,82 +90,102 @@ public sealed class ExifRasterCachePolicyTests
                 MaxRasterOutputPixels = lowPixelLimit,
             });
 
-        ImageBox? highImage = null;
-        ImageBox? lowImage = null;
-        ImageBox? repeatedImage = null;
+        var images = new CeilingImages();
         try
         {
             if (highLimitFirst)
             {
-                highImage = await LoadAtLimitAsync(
+                images.High = await LoadAtLimitAsync(
                     resolver,
                     highSession,
                     highPixelLimit,
                     expectedWidth: 500,
                     expectedHeight: 1000);
-                long preparations = highSession.GetSnapshot().CpuPreparations;
-                repeatedImage = await LoadAtLimitAsync(
-                    resolver,
-                    highSession,
-                    highPixelLimit,
-                    expectedWidth: 500,
-                    expectedHeight: 1000);
-                Assert.Same(highImage.Bitmap, repeatedImage.Bitmap);
-                Assert.Equal(preparations, highSession.GetSnapshot().CpuPreparations);
+                await LoadRepeatedFromWarmCacheAsync(
+                    images, images.High, resolver, highSession, highPixelLimit, expectedWidth: 500, expectedHeight: 1000);
 
-                lowImage = await LoadAtLimitAsync(
+                images.Low = await LoadAtLimitAsync(
                     resolver,
                     lowSession,
                     lowPixelLimit,
                     expectedWidth: 447,
                     expectedHeight: 894);
-                Assert.NotSame(highImage.Bitmap, lowImage.Bitmap);
+                Assert.NotSame(images.High.Bitmap, images.Low.Bitmap);
             }
             else
             {
-                lowImage = await LoadAtLimitAsync(
+                images.Low = await LoadAtLimitAsync(
                     resolver,
                     lowSession,
                     lowPixelLimit,
                     expectedWidth: 447,
                     expectedHeight: 894);
+                await LoadRepeatedFromWarmCacheAsync(
+                    images, images.Low, resolver, lowSession, lowPixelLimit, expectedWidth: 447, expectedHeight: 894);
 
-                long preparations = lowSession.GetSnapshot().CpuPreparations;
-                repeatedImage = await LoadAtLimitAsync(
-                    resolver,
-                    lowSession,
-                    lowPixelLimit,
-                    expectedWidth: 447,
-                    expectedHeight: 894);
-                Assert.Same(lowImage.Bitmap, repeatedImage.Bitmap);
-                Assert.Equal(preparations, lowSession.GetSnapshot().CpuPreparations);
-
-                highImage = await LoadAtLimitAsync(
+                images.High = await LoadAtLimitAsync(
                     resolver,
                     highSession,
                     highPixelLimit,
                     expectedWidth: 500,
                     expectedHeight: 1000);
-                Assert.NotSame(lowImage.Bitmap, highImage.Bitmap);
+                Assert.NotSame(images.Low.Bitmap, images.High.Bitmap);
             }
 
-            Assert.NotNull(highImage.Bitmap);
-            Assert.NotNull(lowImage.Bitmap);
-            Assert.Equal(500u, highImage.Bitmap.SizeInPixels.Width);
-            Assert.Equal(1000u, highImage.Bitmap.SizeInPixels.Height);
-            Assert.Equal(447u, lowImage.Bitmap.SizeInPixels.Width);
-            Assert.Equal(894u, lowImage.Bitmap.SizeInPixels.Height);
-            Assert.True(
-                (long)highImage.Bitmap.SizeInPixels.Width * highImage.Bitmap.SizeInPixels.Height <= highPixelLimit);
-            Assert.True(
-                (long)lowImage.Bitmap.SizeInPixels.Width * lowImage.Bitmap.SizeInPixels.Height <= lowPixelLimit);
+            AssertEachCeilingHonored(images.High, images.Low, highPixelLimit, lowPixelLimit);
         }
         finally
         {
-            highImage?.Dispose();
-            lowImage?.Dispose();
-            repeatedImage?.Dispose();
+            images.High?.Dispose();
+            images.Low?.Dispose();
+            images.Repeated?.Dispose();
         }
+    }
+
+    private async Task LoadRepeatedFromWarmCacheAsync(
+        CeilingImages images,
+        ImageBox warm,
+        IMarkdownImageResolver resolver,
+        MarkdownPerformanceSession session,
+        long pixelLimit,
+        uint expectedWidth,
+        uint expectedHeight)
+    {
+        long preparations = session.GetSnapshot().CpuPreparations;
+        images.Repeated = await LoadAtLimitAsync(
+            resolver,
+            session,
+            pixelLimit,
+            expectedWidth,
+            expectedHeight);
+        Assert.Same(warm.Bitmap, images.Repeated.Bitmap);
+        Assert.Equal(preparations, session.GetSnapshot().CpuPreparations);
+    }
+
+    private static void AssertEachCeilingHonored(
+        ImageBox highImage,
+        ImageBox lowImage,
+        long highPixelLimit,
+        long lowPixelLimit)
+    {
+        Assert.NotNull(highImage.Bitmap);
+        Assert.NotNull(lowImage.Bitmap);
+        Assert.Equal(500u, highImage.Bitmap.SizeInPixels.Width);
+        Assert.Equal(1000u, highImage.Bitmap.SizeInPixels.Height);
+        Assert.Equal(447u, lowImage.Bitmap.SizeInPixels.Width);
+        Assert.Equal(894u, lowImage.Bitmap.SizeInPixels.Height);
+        Assert.True(
+            (long)highImage.Bitmap.SizeInPixels.Width * highImage.Bitmap.SizeInPixels.Height <= highPixelLimit);
+        Assert.True(
+            (long)lowImage.Bitmap.SizeInPixels.Width * lowImage.Bitmap.SizeInPixels.Height <= lowPixelLimit);
+    }
+
+    /// <summary>The images one ceiling-order case loads, disposed together when the case ends.</summary>
+    private sealed class CeilingImages
+    {
+        internal ImageBox? High;
+        internal ImageBox? Low;
+        internal ImageBox? Repeated;
     }
 
     [Theory]

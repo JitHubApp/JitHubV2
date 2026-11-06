@@ -33,7 +33,7 @@ public sealed class RasterDecoderImageBoxTests : IAsyncLifetime
     [Fact]
     public async Task RegisteredProviderGetsExactDisplayPlanAndPixelOwnerIsDisposedAfterUpload()
     {
-        byte[] source = CreateWebP(640, 360);
+        byte[] source = MinimalWebPFixture.Create(640, 360);
         var decoder = new FakeRasterDecoder(MarkdownRasterFormat.WebP);
         var image = CreateImage(source, decoder, scale: 1);
         try
@@ -73,7 +73,7 @@ public sealed class RasterDecoderImageBoxTests : IAsyncLifetime
     {
         const int sourceWidth = 2048;
         const int sourceHeight = 8193;
-        byte[] source = CreateWebP(sourceWidth, sourceHeight);
+        byte[] source = MinimalWebPFixture.Create(sourceWidth, sourceHeight);
         RasterImageBudgetResult budget = RasterImageResourceBudget.Validate(source);
         Assert.False(budget.Accepted);
         Assert.True(budget.CanRenderStaticPreview);
@@ -137,7 +137,7 @@ public sealed class RasterDecoderImageBoxTests : IAsyncLifetime
     public async Task InvalidProviderOutputFailsClosedAndReleasesAnyOwner(InvalidProviderOutput output)
     {
         var decoder = new FakeRasterDecoder(MarkdownRasterFormat.WebP) { InvalidOutput = output };
-        var image = CreateImage(CreateWebP(64, 32), decoder, scale: 1);
+        var image = CreateImage(MinimalWebPFixture.Create(64, 32), decoder, scale: 1);
         try
         {
             image.Measure(200);
@@ -164,7 +164,7 @@ public sealed class RasterDecoderImageBoxTests : IAsyncLifetime
         {
             Failure = new MarkdownRasterException(MarkdownRasterFailureReason.UnsupportedContent),
         };
-        var failedImage = CreateImage(CreateWebP(64, 32), failedDecoder, scale: 1);
+        var failedImage = CreateImage(MinimalWebPFixture.Create(64, 32), failedDecoder, scale: 1);
         try
         {
             failedImage.Measure(200);
@@ -183,7 +183,7 @@ public sealed class RasterDecoderImageBoxTests : IAsyncLifetime
             Failure = new MarkdownRasterException(MarkdownRasterFailureReason.Canceled),
         };
         var canceledImage = CreateImage(
-            CreateWebP(64, 32), canceledDecoder, scale: 1,
+            MinimalWebPFixture.Create(64, 32), canceledDecoder, scale: 1,
             imageUnavailable: (_, _, _) => Interlocked.Increment(ref unavailable));
         try
         {
@@ -205,7 +205,7 @@ public sealed class RasterDecoderImageBoxTests : IAsyncLifetime
     [Fact]
     public async Task RasterDecodeFailureIsPartitionedByProviderIdentity()
     {
-        byte[] source = CreateWebP(64, 32);
+        byte[] source = MinimalWebPFixture.Create(64, 32);
         string cacheKey = $"raster-provider-retry-{Guid.NewGuid():N}";
         var firstDecoder = new FakeRasterDecoder(MarkdownRasterFormat.WebP)
         {
@@ -266,7 +266,7 @@ public sealed class RasterDecoderImageBoxTests : IAsyncLifetime
     [Fact]
     public async Task ResourceLimitFailureCanRetrySameProviderAtSmallerDisplaySize()
     {
-        byte[] source = CreateWebP(640, 360);
+        byte[] source = MinimalWebPFixture.Create(640, 360);
         string cacheKey = $"raster-provider-smaller-retry-{Guid.NewGuid():N}";
         var decoder = new FakeRasterDecoder(MarkdownRasterFormat.WebP)
         {
@@ -316,7 +316,7 @@ public sealed class RasterDecoderImageBoxTests : IAsyncLifetime
             PendingResult = new TaskCompletionSource<MarkdownRaster>(
                 TaskCreationOptions.RunContinuationsAsynchronously),
         };
-        var image = CreateImage(CreateWebP(64, 32), decoder, scale: 1);
+        var image = CreateImage(MinimalWebPFixture.Create(64, 32), decoder, scale: 1);
         image.Measure(200);
         try
         {
@@ -348,40 +348,15 @@ public sealed class RasterDecoderImageBoxTests : IAsyncLifetime
         // the old request is still in flight, independent of decode concurrency.
         byte[] replacementBytes = DisplaySizedRasterDecodeTests.CreatePng(71, 37);
         string replacementSource = "data:image/png;base64," + Convert.ToBase64String(replacementBytes);
-        var warmImage = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(_renderResources, resolver: null!, session: null, scale: 1), _renderResources.Images,
-            replacementSource,
-            "Current document local image");
-        try
-        {
-            warmImage.Measure(71);
-            if (warmImage.Bitmap is null)
-                await DisplaySizedRasterDecodeTests.WaitForLoadAsync(warmImage);
-            Assert.NotNull(warmImage.Bitmap);
-            Assert.Equal(MarkdownImageAccessibilityState.Loaded, warmImage.AccessibilityState);
-        }
-        finally
-        {
-            warmImage.Dispose();
-        }
+        await WarmLocalImageAsync(replacementSource);
 
         var oldDecoder = new FakeRasterDecoder(MarkdownRasterFormat.WebP)
         {
             PendingResult = new TaskCompletionSource<MarkdownRaster>(
                 TaskCreationOptions.RunContinuationsAsynchronously),
         };
-        int unavailableNotifications = 0;
-        int oldPublications = 0;
-        ImageBox oldImage = CreateImage(
-            CreateWebP(64, 32),
-            oldDecoder,
-            scale: 1,
-            imageUnavailable: (_, _, _) => Interlocked.Increment(ref unavailableNotifications));
-        oldImage.LoadCompleted += (_, args) =>
-        {
-            if (!args.IsBitmapOutputRecoverySignal)
-                Interlocked.Increment(ref oldPublications);
-        };
+        var oldNotifications = new LateImageNotifications();
+        ImageBox oldImage = CreateCountedImage(oldDecoder, oldNotifications);
         ImageBox? currentImage = null;
 
         try
@@ -418,8 +393,8 @@ public sealed class RasterDecoderImageBoxTests : IAsyncLifetime
             Assert.Null(oldImage.Bitmap);
             Assert.Same(currentBitmap, currentImage.Bitmap);
             Assert.Equal(MarkdownImageAccessibilityState.Loaded, currentImage.AccessibilityState);
-            Assert.Equal(0, Volatile.Read(ref unavailableNotifications));
-            Assert.Equal(0, Volatile.Read(ref oldPublications));
+            Assert.Equal(0, Volatile.Read(ref oldNotifications.Unavailable));
+            Assert.Equal(0, Volatile.Read(ref oldNotifications.Publications));
             Assert.Equal(0, _renderResources.Images.Preparation.PendingRequests);
         }
         finally
@@ -437,6 +412,47 @@ public sealed class RasterDecoderImageBoxTests : IAsyncLifetime
         }
     }
 
+    private async Task WarmLocalImageAsync(string replacementSource)
+    {
+        var warmImage = new ImageBox(
+            DisplaySizedRasterDecodeTests.CreateContext(_renderResources, resolver: null!, session: null, scale: 1), _renderResources.Images,
+            replacementSource,
+            "Current document local image");
+        try
+        {
+            warmImage.Measure(71);
+            if (warmImage.Bitmap is null)
+                await DisplaySizedRasterDecodeTests.WaitForLoadAsync(warmImage);
+            Assert.NotNull(warmImage.Bitmap);
+            Assert.Equal(MarkdownImageAccessibilityState.Loaded, warmImage.AccessibilityState);
+        }
+        finally
+        {
+            warmImage.Dispose();
+        }
+    }
+
+    private ImageBox CreateCountedImage(FakeRasterDecoder decoder, LateImageNotifications notifications)
+    {
+        ImageBox image = CreateImage(
+            MinimalWebPFixture.Create(64, 32),
+            decoder,
+            scale: 1,
+            imageUnavailable: (_, _, _) => Interlocked.Increment(ref notifications.Unavailable));
+        image.LoadCompleted += (_, args) =>
+        {
+            if (!args.IsBitmapOutputRecoverySignal)
+                Interlocked.Increment(ref notifications.Publications);
+        };
+        return image;
+    }
+
+    private sealed class LateImageNotifications
+    {
+        internal int Unavailable;
+        internal int Publications;
+    }
+
     private ImageBox CreateImage(
         byte[] source,
         IMarkdownRasterDecoder? decoder,
@@ -451,122 +467,12 @@ public sealed class RasterDecoderImageBoxTests : IAsyncLifetime
         return new ImageBox(context, context.ImageResources, "https://images.example/asset", string.Empty);
     }
 
-    private static byte[] CreateWebP(int width, int height)
-    {
-        using var body = new MemoryStream();
-        Span<byte> extendedHeader = stackalloc byte[10];
-        extendedHeader.Clear();
-        WriteUInt24LittleEndian(extendedHeader[4..], checked((uint)(width - 1)));
-        WriteUInt24LittleEndian(extendedHeader[7..], checked((uint)(height - 1)));
-        WriteWebPChunk(body, "VP8X"u8, extendedHeader);
-        WriteWebPChunk(body, "VP8 "u8, [0, 0, 0, 0x9D, 0x01, 0x2A, 0, 0, 0, 0]);
-        byte[] chunks = body.ToArray();
-        byte[] result = new byte[checked(12 + chunks.Length)];
-        "RIFF"u8.CopyTo(result);
-        BinaryPrimitives.WriteUInt32LittleEndian(result.AsSpan(4), checked((uint)(result.Length - 8)));
-        "WEBP"u8.CopyTo(result.AsSpan(8));
-        chunks.CopyTo(result, 12);
-        return result;
-    }
-
-    private static void WriteWebPChunk(Stream stream, ReadOnlySpan<byte> type, ReadOnlySpan<byte> payload)
-    {
-        Span<byte> header = stackalloc byte[8];
-        type.CopyTo(header);
-        BinaryPrimitives.WriteUInt32LittleEndian(header[4..], checked((uint)payload.Length));
-        stream.Write(header);
-        stream.Write(payload);
-        if ((payload.Length & 1) != 0)
-            stream.WriteByte(0);
-    }
-
-    private static void WriteUInt24LittleEndian(Span<byte> bytes, uint value)
-    {
-        bytes[0] = (byte)value;
-        bytes[1] = (byte)(value >> 8);
-        bytes[2] = (byte)(value >> 16);
-    }
-
     private sealed class RasterResolver(byte[] bytes, string cacheKey) : IMarkdownImageResolver
     {
         public ValueTask<MarkdownImageResolution> ResolveAsync(
             string source, MarkdownImageResolveContext context, CancellationToken cancellationToken) =>
             ValueTask.FromResult(MarkdownImageResolution.Resolved(
                 new MarkdownImageAsset(bytes, "image/webp", CacheKey: cacheKey)));
-    }
-
-    private sealed class FakeRasterDecoder(params MarkdownRasterFormat[] formats) : IMarkdownRasterDecoder, IDisposable
-    {
-        private readonly MarkdownRasterFormat[] _formats = formats;
-        private int _calls;
-        private int _disposeCount;
-
-        internal int Calls => Volatile.Read(ref _calls);
-        internal int DisposeCount => Volatile.Read(ref _disposeCount);
-        internal MarkdownRasterDecodeRequest? LastRequest { get; private set; }
-        internal TrackingMemoryOwner? LastOwner { get; private set; }
-        internal InvalidProviderOutput InvalidOutput { get; init; }
-        internal int FailAboveTargetWidth { get; init; } = int.MaxValue;
-        internal Exception? Failure { get; init; }
-        internal TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        internal TaskCompletionSource<MarkdownRaster>? PendingResult { get; init; }
-
-        public void Dispose() => Interlocked.Increment(ref _disposeCount);
-
-        public bool SupportsFormat(MarkdownRasterFormat format) => Array.IndexOf(_formats, format) >= 0;
-
-        public ValueTask<MarkdownRaster> DecodeAsync(
-            MarkdownRasterDecodeRequest request,
-            CancellationToken cancellationToken = default)
-        {
-            Interlocked.Increment(ref _calls);
-            LastRequest = request;
-            Started.TrySetResult();
-            if (Failure is not null)
-                return ValueTask.FromException<MarkdownRaster>(Failure);
-            if (request.TargetWidthPixels > FailAboveTargetWidth)
-            {
-                return ValueTask.FromException<MarkdownRaster>(
-                    new MarkdownRasterException(MarkdownRasterFailureReason.ResourceLimitExceeded));
-            }
-            if (PendingResult is not null)
-                return new ValueTask<MarkdownRaster>(PendingResult.Task);
-            if (InvalidOutput == InvalidProviderOutput.Null)
-                return ValueTask.FromResult<MarkdownRaster>(null!);
-            return ValueTask.FromResult(CreateRaster(request));
-        }
-
-        internal MarkdownRaster CreateRaster(MarkdownRasterDecodeRequest request)
-        {
-            int width = InvalidOutput == InvalidProviderOutput.WrongGeometry
-                ? checked(request.TargetWidthPixels + 1)
-                : request.TargetWidthPixels;
-            int height = request.TargetHeightPixels;
-            int length = checked(width * height * 4);
-            var owner = new TrackingMemoryOwner(length);
-            LastOwner = owner;
-            MarkdownRasterPixelFormat format = InvalidOutput == InvalidProviderOutput.WrongPixelFormat
-                ? MarkdownRasterPixelFormat.Rgba8Premultiplied
-                : request.PixelFormat;
-            return new MarkdownRaster(owner, width, height, checked(width * 4), format);
-        }
-    }
-
-    private sealed class TrackingMemoryOwner(int length) : IMemoryOwner<byte>
-    {
-        private byte[]? _buffer = new byte[length];
-        private int _disposeCount;
-
-        internal bool IsDisposed => Volatile.Read(ref _buffer) is null;
-        internal int DisposeCount => Volatile.Read(ref _disposeCount);
-        public Memory<byte> Memory => Volatile.Read(ref _buffer)
-            ?? throw new ObjectDisposedException(nameof(TrackingMemoryOwner));
-
-        public void Dispose()
-        {
-            Interlocked.Increment(ref _disposeCount);
-            Interlocked.Exchange(ref _buffer, null);
-        }
     }
 
     public enum InvalidProviderOutput

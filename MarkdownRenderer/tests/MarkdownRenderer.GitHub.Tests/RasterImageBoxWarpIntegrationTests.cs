@@ -54,6 +54,71 @@ public sealed class RasterImageBoxWarpIntegrationTests(ITestOutputHelper output)
         Assert.True(device.ForceSoftwareRenderer,
             "The integration path must execute through Win2D's software renderer; do not silently use hardware fallback.");
 
+        WarpReference reference = await CreateWarpReferenceAsync();
+        var resolver = new CountingResolver(reference.Source, $"owned-native-wic-warp-{Guid.NewGuid():N}");
+        object documentOwner = new();
+        MarkdownPerformanceSession session = CreateExclusiveReservationSession();
+        var resolveContext = new MarkdownImageResolveContext(BaseUri: null);
+        IMarkdownPerformanceDocumentScope resolverScope = session.OpenDocument(resolver, resolveContext);
+
+        RasterNativeWicDiagnosticSnapshot nativeBefore = _renderResources.Images.NativeWic.GetSnapshot();
+        ImageBox? first = null;
+        ImageBox? warmCache = null;
+        ImageBox? coldBitmapWarmSource = null;
+        try
+        {
+            first = CreateImage(device, resolverScope, session, documentOwner);
+            await LoadAndAssertGeometryAsync(first);
+            CanvasBitmap firstBitmap = Assert.IsType<CanvasBitmap>(first.Bitmap);
+            AssertBitmapMatchesEveryReferenceByte(firstBitmap, reference);
+            Assert.Equal(MarkdownImageAccessibilityState.Loaded, first.AccessibilityState);
+            Assert.Equal(1, resolver.ResolveCount);
+            long sourceCacheBytes = session.GetSnapshot().SourceCacheBytes;
+            Assert.True(sourceCacheBytes >= reference.Source.Length,
+                "The resolved source must actually reside in the session cache before bitmap eviction.");
+
+            RasterNativeWicDiagnosticSnapshot afterFirst = await AssertFirstPublicationChargesAsync(
+                processAdmission, outputAdmission, outputBaseline, reference, nativeBefore);
+
+            // Hold the complete process decode admission while requesting an
+            // identical image. A warm bitmap cache hit must finish without
+            // needing a decoder slot; a hidden decode/fallback would remain
+            // blocked here and time out.
+            using (IDisposable decodeBlocker = await processAdmission.EnterAsync(
+                new object(), processAdmission.CapacityBytes, exclusive: true, CancellationToken.None))
+            {
+                warmCache = CreateImage(device, resolverScope, session, documentOwner);
+                await LoadAndAssertGeometryAsync(warmCache);
+                AssertWarmCacheHitUsedNoDecoder(warmCache, firstBitmap, resolver, processAdmission, afterFirst);
+            }
+
+            warmCache.Dispose();
+            first.Dispose();
+            _renderResources.Images.BitmapCache.Clear();
+            await WaitForRetirementBaselineAsync(
+                processAdmission, outputAdmission, outputBaseline, livePixelWeightBaseline);
+            Assert.Equal(sourceCacheBytes, session.GetSnapshot().SourceCacheBytes);
+
+            // The resolver bytes remain in the same performance session's
+            // authorized source cache while the device bitmap cache is empty.
+            // Recreating the image must perform a new decode/upload, without
+            // another host resolve, and produce the same orientation-aware pixels.
+            RasterNativeWicDiagnosticSnapshot beforeSourceWarmDecode = _renderResources.Images.NativeWic.GetSnapshot();
+            coldBitmapWarmSource = CreateImage(device, resolverScope, session, documentOwner);
+            await LoadAndAssertGeometryAsync(coldBitmapWarmSource);
+            AssertSourceCacheHitRedecoded(coldBitmapWarmSource, firstBitmap, reference, resolver, session,
+                sourceCacheBytes, beforeSourceWarmDecode);
+        }
+        finally
+        {
+            await DrainScenarioAsync(
+                [coldBitmapWarmSource, warmCache, first], processAdmission, outputAdmission, outputBaseline,
+                livePixelWeightBaseline, resolverScope, session);
+        }
+    }
+
+    private static async Task<WarpReference> CreateWarpReferenceAsync()
+    {
         byte[] source = await OwnedNativeWicGeneralFixtureFactory.CreatePatternedJpegAsync(
             Orientation, SourceWidth, SourceHeight);
         RasterImageBudgetResult budget = RasterImageResourceBudget.Validate(source);
@@ -74,137 +139,127 @@ public sealed class RasterImageBoxWarpIntegrationTests(ITestOutputHelper output)
         Assert.True((long)expectedWidth * expectedHeight <= RasterPixelLimit);
         byte[] expectedPixels = await DecodeWinRtPreviewAsync(
             source, expectedWidth, expectedHeight, Orientation);
+        return new WarpReference(source, expectedPixels, expectedWidth, expectedHeight);
+    }
 
-        var resolver = new CountingResolver(source, $"owned-native-wic-warp-{Guid.NewGuid():N}");
-        object documentOwner = new();
-        var session = new MarkdownPerformanceSession(
-            MarkdownPerformanceOptions.Progressive with
-            {
-                // The accepted source is larger than this output cap, making
-                // its codec reservation exclusive while preserving a useful
-                // orientation-sensitive 17x28 output.
-                MaxRasterOutputPixels = RasterPixelLimit,
-            });
-        var resolveContext = new MarkdownImageResolveContext(BaseUri: null);
-        IMarkdownPerformanceDocumentScope resolverScope = session.OpenDocument(resolver, resolveContext);
+    private static MarkdownPerformanceSession CreateExclusiveReservationSession() =>
+        new(MarkdownPerformanceOptions.Progressive with
+        {
+            // The accepted source is larger than this output cap, making
+            // its codec reservation exclusive while preserving a useful
+            // orientation-sensitive 17x28 output.
+            MaxRasterOutputPixels = RasterPixelLimit,
+        });
 
-        RasterNativeWicDiagnosticSnapshot nativeBefore = _renderResources.Images.NativeWic.GetSnapshot();
-        ImageBox? first = null;
-        ImageBox? warmCache = null;
-        ImageBox? coldBitmapWarmSource = null;
-        CanvasBitmap? firstBitmapIdentity = null;
+    private async Task<RasterNativeWicDiagnosticSnapshot> AssertFirstPublicationChargesAsync(
+        MarkdownImagePreparationAdmission processAdmission,
+        BitmapOutputAdmission outputAdmission,
+        BitmapOutputAdmission.Snapshot outputBaseline,
+        WarpReference reference,
+        RasterNativeWicDiagnosticSnapshot nativeBefore)
+    {
+        await WaitForProcessAdmissionIdleAsync(processAdmission);
+        Assert.Equal(0, processAdmission.ActiveCount);
+        Assert.Equal(0, processAdmission.ActiveBytes);
+        Assert.Equal(outputBaseline.ChargedBytes + reference.Width * (long)reference.Height * 4,
+            outputAdmission.GetSnapshot().ChargedBytes);
+
+        RasterNativeWicDiagnosticSnapshot afterFirst = _renderResources.Images.NativeWic.GetSnapshot();
+        Assert.True(afterFirst.NativeStarted > nativeBefore.NativeStarted,
+            "The diagnostic build must prove that ImageBox entered the owned native WIC branch.");
+        Assert.True(afterFirst.PixelLeaseCompleted > nativeBefore.PixelLeaseCompleted,
+            "The diagnostic build must prove that native WIC returned a pixel lease to ImageBox.");
+        output.WriteLine($"Native path deltas after ImageBox publication: started=" +
+            $"{afterFirst.NativeStarted - nativeBefore.NativeStarted}, " +
+            $"pixelLeases={afterFirst.PixelLeaseCompleted - nativeBefore.PixelLeaseCompleted}.");
+        return afterFirst;
+    }
+
+    private void AssertWarmCacheHitUsedNoDecoder(
+        ImageBox warmCache,
+        CanvasBitmap firstBitmap,
+        CountingResolver resolver,
+        MarkdownImagePreparationAdmission processAdmission,
+        RasterNativeWicDiagnosticSnapshot afterFirst)
+    {
+        Assert.Same(firstBitmap, warmCache.Bitmap);
+        Assert.Equal(1, resolver.ResolveCount);
+        Assert.Equal(1, processAdmission.ActiveCount);
+        Assert.Equal(processAdmission.CapacityBytes, processAdmission.ActiveBytes);
+
+        RasterNativeWicDiagnosticSnapshot afterWarmCache = _renderResources.Images.NativeWic.GetSnapshot();
+        Assert.Equal(afterFirst.NativeStarted, afterWarmCache.NativeStarted);
+        Assert.Equal(afterFirst.PixelLeaseCompleted, afterWarmCache.PixelLeaseCompleted);
+    }
+
+    private void AssertSourceCacheHitRedecoded(
+        ImageBox coldBitmapWarmSource,
+        CanvasBitmap firstBitmapIdentity,
+        WarpReference reference,
+        CountingResolver resolver,
+        MarkdownPerformanceSession session,
+        long sourceCacheBytes,
+        RasterNativeWicDiagnosticSnapshot beforeSourceWarmDecode)
+    {
+        CanvasBitmap redecodedBitmap = Assert.IsType<CanvasBitmap>(coldBitmapWarmSource.Bitmap);
+        Assert.NotSame(firstBitmapIdentity, redecodedBitmap);
+        AssertBitmapMatchesEveryReferenceByte(redecodedBitmap, reference);
+        Assert.Equal(1, resolver.ResolveCount);
+        Assert.Equal(sourceCacheBytes, session.GetSnapshot().SourceCacheBytes);
+        Assert.Equal(MarkdownImageAccessibilityState.Loaded, coldBitmapWarmSource.AccessibilityState);
+
+        RasterNativeWicDiagnosticSnapshot afterSourceWarmDecode = _renderResources.Images.NativeWic.GetSnapshot();
+        Assert.True(afterSourceWarmDecode.NativeStarted > beforeSourceWarmDecode.NativeStarted,
+            "Evicting the Win2D bitmap must make the ImageBox source-cache hit decode again.");
+        Assert.True(afterSourceWarmDecode.PixelLeaseCompleted > beforeSourceWarmDecode.PixelLeaseCompleted,
+            "The re-decode must complete native pixel ownership before publication.");
+    }
+
+    private async Task DrainScenarioAsync(
+        ImageBox?[] imagesInDisposalOrder,
+        MarkdownImagePreparationAdmission processAdmission,
+        BitmapOutputAdmission outputAdmission,
+        BitmapOutputAdmission.Snapshot outputBaseline,
+        long livePixelWeightBaseline,
+        IMarkdownPerformanceDocumentScope resolverScope,
+        MarkdownPerformanceSession session)
+    {
         try
         {
-            first = CreateImage(device, resolverScope, session, documentOwner);
-            await LoadAndAssertGeometryAsync(first);
-            CanvasBitmap firstBitmap = Assert.IsType<CanvasBitmap>(first.Bitmap);
-            firstBitmapIdentity = firstBitmap;
-            AssertBitmapMatchesEveryReferenceByte(firstBitmap, expectedPixels, expectedWidth, expectedHeight);
-            Assert.Equal(MarkdownImageAccessibilityState.Loaded, first.AccessibilityState);
-            Assert.Equal(1, resolver.ResolveCount);
-            long sourceCacheBytes = session.GetSnapshot().SourceCacheBytes;
-            Assert.True(sourceCacheBytes >= source.Length,
-                "The resolved source must actually reside in the session cache before bitmap eviction.");
-
-            await WaitForProcessAdmissionIdleAsync(processAdmission);
-            Assert.Equal(0, processAdmission.ActiveCount);
-            Assert.Equal(0, processAdmission.ActiveBytes);
-            Assert.Equal(outputBaseline.ChargedBytes + expectedWidth * (long)expectedHeight * 4,
-                outputAdmission.GetSnapshot().ChargedBytes);
-
-            RasterNativeWicDiagnosticSnapshot afterFirst = _renderResources.Images.NativeWic.GetSnapshot();
-            Assert.True(afterFirst.NativeStarted > nativeBefore.NativeStarted,
-                "The diagnostic build must prove that ImageBox entered the owned native WIC branch.");
-            Assert.True(afterFirst.PixelLeaseCompleted > nativeBefore.PixelLeaseCompleted,
-                "The diagnostic build must prove that native WIC returned a pixel lease to ImageBox.");
-            output.WriteLine($"Native path deltas after ImageBox publication: started=" +
-                $"{afterFirst.NativeStarted - nativeBefore.NativeStarted}, " +
-                $"pixelLeases={afterFirst.PixelLeaseCompleted - nativeBefore.PixelLeaseCompleted}.");
-
-            // Hold the complete process decode admission while requesting an
-            // identical image. A warm bitmap cache hit must finish without
-            // needing a decoder slot; a hidden decode/fallback would remain
-            // blocked here and time out.
-            using (IDisposable decodeBlocker = await processAdmission.EnterAsync(
-                new object(), processAdmission.CapacityBytes, exclusive: true, CancellationToken.None))
-            {
-                warmCache = CreateImage(device, resolverScope, session, documentOwner);
-                await LoadAndAssertGeometryAsync(warmCache);
-                Assert.Same(firstBitmap, warmCache.Bitmap);
-                Assert.Equal(1, resolver.ResolveCount);
-                Assert.Equal(1, processAdmission.ActiveCount);
-                Assert.Equal(processAdmission.CapacityBytes, processAdmission.ActiveBytes);
-
-                RasterNativeWicDiagnosticSnapshot afterWarmCache = _renderResources.Images.NativeWic.GetSnapshot();
-                Assert.Equal(afterFirst.NativeStarted, afterWarmCache.NativeStarted);
-                Assert.Equal(afterFirst.PixelLeaseCompleted, afterWarmCache.PixelLeaseCompleted);
-            }
-
-            warmCache.Dispose();
-            first.Dispose();
-            _renderResources.Images.BitmapCache.Clear();
-            await WaitForRetirementBaselineAsync(
-                processAdmission, outputAdmission, outputBaseline, livePixelWeightBaseline);
-            Assert.Equal(sourceCacheBytes, session.GetSnapshot().SourceCacheBytes);
-
-            // The resolver bytes remain in the same performance session's
-            // authorized source cache while the device bitmap cache is empty.
-            // Recreating the image must perform a new decode/upload, without
-            // another host resolve, and produce the same orientation-aware pixels.
-            RasterNativeWicDiagnosticSnapshot beforeSourceWarmDecode = _renderResources.Images.NativeWic.GetSnapshot();
-            coldBitmapWarmSource = CreateImage(device, resolverScope, session, documentOwner);
-            await LoadAndAssertGeometryAsync(coldBitmapWarmSource);
-            CanvasBitmap redecodedBitmap = Assert.IsType<CanvasBitmap>(coldBitmapWarmSource.Bitmap);
-            Assert.NotSame(firstBitmapIdentity, redecodedBitmap);
-            AssertBitmapMatchesEveryReferenceByte(redecodedBitmap, expectedPixels, expectedWidth, expectedHeight);
-            Assert.Equal(1, resolver.ResolveCount);
-            Assert.Equal(sourceCacheBytes, session.GetSnapshot().SourceCacheBytes);
-            Assert.Equal(MarkdownImageAccessibilityState.Loaded, coldBitmapWarmSource.AccessibilityState);
-
-            RasterNativeWicDiagnosticSnapshot afterSourceWarmDecode = _renderResources.Images.NativeWic.GetSnapshot();
-            Assert.True(afterSourceWarmDecode.NativeStarted > beforeSourceWarmDecode.NativeStarted,
-                "Evicting the Win2D bitmap must make the ImageBox source-cache hit decode again.");
-            Assert.True(afterSourceWarmDecode.PixelLeaseCompleted > beforeSourceWarmDecode.PixelLeaseCompleted,
-                "The re-decode must complete native pixel ownership before publication.");
+            foreach (ImageBox? image in imagesInDisposalOrder)
+                image?.Dispose();
+            await WaitForImageWorkToDrainAsync(imagesInDisposalOrder);
         }
         finally
         {
             try
             {
-                coldBitmapWarmSource?.Dispose();
-                warmCache?.Dispose();
-                first?.Dispose();
-                await WaitForImageWorkToDrainAsync(first, warmCache, coldBitmapWarmSource);
+                _renderResources.Images.BitmapCache.Clear();
+                await WaitForRetirementBaselineAsync(
+                    processAdmission, outputAdmission, outputBaseline, livePixelWeightBaseline);
             }
             finally
             {
                 try
                 {
-                    _renderResources.Images.BitmapCache.Clear();
-                    await WaitForRetirementBaselineAsync(
-                        processAdmission, outputAdmission, outputBaseline, livePixelWeightBaseline);
+                    resolverScope.Dispose();
                 }
                 finally
                 {
                     try
                     {
-                        resolverScope.Dispose();
+                        await session.DisposeAsync();
                     }
                     finally
                     {
-                        try
-                        {
-                            await session.DisposeAsync();
-                        }
-                        finally
-                        {
-                            await WaitForProcessAdmissionIdleAsync(processAdmission);
-                        }
+                        await WaitForProcessAdmissionIdleAsync(processAdmission);
                     }
                 }
             }
         }
     }
+
+    private sealed record WarpReference(byte[] Source, byte[] Pixels, int Width, int Height);
 
     private ImageBox CreateImage(
         CanvasDevice device,
@@ -278,12 +333,11 @@ public sealed class RasterImageBoxWarpIntegrationTests(ITestOutputHelper output)
         Assert.NotNull(image.Bitmap);
     }
 
-    private static void AssertBitmapMatchesEveryReferenceByte(
-        CanvasBitmap bitmap,
-        byte[] expectedBgra,
-        int expectedWidth,
-        int expectedHeight)
+    private static void AssertBitmapMatchesEveryReferenceByte(CanvasBitmap bitmap, WarpReference reference)
     {
+        byte[] expectedBgra = reference.Pixels;
+        int expectedWidth = reference.Width;
+        int expectedHeight = reference.Height;
         Assert.Equal((uint)expectedWidth, bitmap.SizeInPixels.Width);
         Assert.Equal((uint)expectedHeight, bitmap.SizeInPixels.Height);
         Color[] actualColors = bitmap.GetPixelColors();

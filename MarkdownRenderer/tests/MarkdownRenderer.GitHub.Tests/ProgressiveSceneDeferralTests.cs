@@ -248,16 +248,10 @@ public sealed class ProgressiveSceneDeferralTests
 
         using LayoutSnapshot pendingSnapshot = BuildLayout(progressive, FlowDirection.RightToLeft);
         using LayoutSnapshot materializedSnapshot = BuildLayout(eager, FlowDirection.RightToLeft);
-        InlineVectorSceneRun[] pendingMath = EnumerateInlineContainers(pendingSnapshot.Blocks)
-            .SelectMany(static box => box.Runs)
-            .OfType<InlineVectorSceneRun>()
-            .Where(static run => run.ElementKey == MarkdownElementKeys.Math)
-            .ToArray();
-        InlineVectorSceneRun[] materializedMath = EnumerateInlineContainers(materializedSnapshot.Blocks)
-            .SelectMany(static box => box.Runs)
-            .OfType<InlineVectorSceneRun>()
-            .Where(static run => run.ElementKey == MarkdownElementKeys.Math)
-            .ToArray();
+        InlineVectorSceneRun[] pendingMath =
+            InlineMathPlaceholderAssertions.FindMathRuns(EnumerateInlineContainers(pendingSnapshot.Blocks));
+        InlineVectorSceneRun[] materializedMath =
+            InlineMathPlaceholderAssertions.FindMathRuns(EnumerateInlineContainers(materializedSnapshot.Blocks));
 
         Assert.Equal(3, pendingMath.Length);
         Assert.Equal(pendingMath.Length, materializedMath.Length);
@@ -272,33 +266,8 @@ public sealed class ProgressiveSceneDeferralTests
 
         foreach (InlineVectorSceneRun pending in pendingMath)
         {
-            InlineVectorSceneRun realized = Assert.Single(
-                materializedMath,
-                run => run.SourceSpan == pending.SourceSpan);
-            Assert.Equal(1, realized.RenderedLength);
-            Assert.Equal("\uFFFC", realized.Text);
-            Assert.Equal(pending.AccessibleText, realized.AccessibleText);
-            Assert.Null(realized.DeferredSceneMarker);
-
-            InlineContainerBox pendingBox = Assert.Single(
-                EnumerateInlineContainers(pendingSnapshot.Blocks),
-                box => box.Runs.Contains(pending));
-            int start = pendingBox.GetBufferCharOffset(new DocumentPosition(
-                pendingBox.BlockIndex,
-                pending.InlineIndex,
-                0));
-            int end = pendingBox.GetBufferCharOffset(new DocumentPosition(
-                pendingBox.BlockIndex,
-                pending.InlineIndex,
-                pending.RenderedLength));
-            Assert.Equal(1, end - start);
-            var selectedFormula = new DocumentRange(
-                new DocumentPosition(pendingBox.BlockIndex, pending.InlineIndex, 0),
-                new DocumentPosition(pendingBox.BlockIndex, pending.InlineIndex, 1));
-            Assert.True(pendingSnapshot.SourceMap.TryMapRange(selectedFormula, out SourceSpan mappedSpan));
-            Assert.Equal(pending.SourceSpan, mappedSpan);
-            Assert.Equal(source.Substring(pending.SourceSpan.Start, pending.SourceSpan.Length),
-                pendingSnapshot.SourceMap.Slice(selectedFormula));
+            InlineMathPlaceholderAssertions.AssertRealizedTwinAndAtomicSourceMapping(
+                pending, materializedMath, EnumerateInlineContainers(pendingSnapshot.Blocks), pendingSnapshot, source);
         }
 
         Assert.Equal(pendingSnapshot.SemanticDocument.Text, materializedSnapshot.SemanticDocument.Text);
