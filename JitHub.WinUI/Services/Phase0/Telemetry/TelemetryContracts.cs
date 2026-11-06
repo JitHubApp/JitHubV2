@@ -2,13 +2,16 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Markdown;
 
 namespace JitHub.Services;
 
-public interface ITelemetryService
+/// <summary>
+/// The app's telemetry service. Its <see cref="IMarkdownTelemetrySink.TrackEvent"/>
+/// is the event entry point for every feature, Markdown hosts included.
+/// </summary>
+public interface ITelemetryService : IMarkdownTelemetrySink
 {
-    void TrackEvent(string name, IReadOnlyDictionary<string, string?>? properties = null);
-
     void TrackMetric(string name, double value, IReadOnlyDictionary<string, string?>? properties = null);
 
     IPerformanceTrace StartTrace(string name, IReadOnlyDictionary<string, string?>? properties = null);

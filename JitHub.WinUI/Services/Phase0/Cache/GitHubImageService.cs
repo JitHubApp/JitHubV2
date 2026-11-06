@@ -5,6 +5,7 @@ using System.Net.Http;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Markdown.Images;
 using MarkdownRenderer.Images;
 
 namespace JitHub.Services;
@@ -23,11 +24,8 @@ namespace JitHub.Services;
 /// </remarks>
 public sealed partial class GitHubImageService : IGitHubImageService, IGitHubLeasedImageService, IDisposable
 {
-    // Large project READMEs commonly contain optimized screenshots and animated
-    // demonstrations above 10 MiB. Compressed bytes remain bounded here while
-    // RasterImageResourceBudget independently caps dimensions, frames, pixels,
-    // and decoded memory before the renderer admits the payload.
-    internal const int MaxImageBytes = 32 * 1024 * 1024;
+    // Markdown image resolution shares this ceiling; see GitHubImageLimits.
+    internal const int MaxImageBytes = GitHubImageLimits.MaxImageBytes;
 
     private readonly GitHubImageAccountScope _accounts;
     private readonly GitHubImageCacheTier _cache;

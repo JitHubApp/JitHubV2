@@ -1,12 +1,16 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Markdown;
 
 namespace JitHub.Services;
 
-public interface IExternalUriLauncher
+/// <summary>
+/// Launches a URI in the reader's default handler. Markdown hosts use the same
+/// <see cref="IMarkdownLinkLauncher.LaunchAsync"/> contract for document links.
+/// </summary>
+public interface IExternalUriLauncher : IMarkdownLinkLauncher
 {
-    Task<bool> LaunchAsync(Uri uri, CancellationToken cancellationToken = default);
 }
 
 public sealed class WindowsExternalUriLauncher : IExternalUriLauncher

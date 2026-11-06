@@ -2,7 +2,6 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.Windows.Globalization;
 using Microsoft.Windows.AppLifecycle;
-using JitHub.Services.Markdown;
 using System;
 using System.Collections.Generic;
 using System.IO;

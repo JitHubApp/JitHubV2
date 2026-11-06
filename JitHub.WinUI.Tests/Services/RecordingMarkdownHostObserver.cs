@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using JitHub.Services.Markdown;
+using JitHub.Markdown;
 using MarkdownRenderer.Images;
 
 namespace JitHub.WinUI.Tests.Services;

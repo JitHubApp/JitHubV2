@@ -5,8 +5,8 @@ using System.Net.Http;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Markdown.Images;
 using JitHub.Services;
-using JitHub.Services.Markdown;
 using MarkdownRenderer.Images;
 using Xunit;
 using static JitHub.WinUI.Tests.Services.GitHubImageServiceHttpDoubles;
@@ -21,28 +21,6 @@ namespace JitHub.WinUI.Tests.Services;
 public sealed class GitHubImageServiceDestinationPolicyTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "JitHubImageServiceTests", Guid.NewGuid().ToString("N"));
-
-    [Theory]
-    [InlineData("http://example.test/image.png", "SharedHttps")]
-    [InlineData("https://example.test/image.png", "SharedHttps")]
-    [InlineData("images/local.png", "NotHandled")]
-    [InlineData("ms-appx:///Assets/image.png", "NotHandled")]
-    public void MarkdownImageSourcePolicy_UsesHttpsOnly(
-        string source,
-        string expectedName)
-    {
-        MarkdownImageSourceDisposition expected = Enum.Parse<MarkdownImageSourceDisposition>(expectedName);
-        MarkdownImageSourceDisposition actual =
-            MarkdownImageSourcePolicy.ClassifyUnownedSource(source, out Uri? absoluteUri);
-
-        Assert.Equal(expected, actual);
-        Assert.Equal(Uri.TryCreate(source, UriKind.Absolute, out _), absoluteUri is not null);
-        if (source.StartsWith("http://", StringComparison.Ordinal))
-        {
-            Assert.Equal(Uri.UriSchemeHttps, absoluteUri!.Scheme);
-            Assert.Equal("https://example.test/image.png", absoluteUri.AbsoluteUri);
-        }
-    }
 
     [Fact]
     public async Task GetOrFetchAsync_AcceptsEveryAdvertisedMarkdownImageFormat()

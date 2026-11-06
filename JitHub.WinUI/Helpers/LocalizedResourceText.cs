@@ -91,7 +91,7 @@ internal static partial class LocalizedResourceText
         // The lookup can be created before App exists, so read the launch
         // options directly instead of the app's bridge instance. The answer is
         // fixed for the process once launch options are parsed.
-        if (new JitHub.Services.Markdown.MarkdownLifecycleAutomationBridge(
+        if (new JitHub.Markdown.MarkdownLifecycleAutomationBridge(
                 Program.CurrentLaunchOptions.MarkdownLifecycleFixture,
                 Program.CurrentLaunchOptions.MarkdownLifecycleHost).IsResourceMapForcedAbsent)
         {

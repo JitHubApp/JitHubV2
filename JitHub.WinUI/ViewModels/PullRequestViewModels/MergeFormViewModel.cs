@@ -1,3 +1,4 @@
+using JitHub.Markdown;
 using JitHub.Services;
 using JitHub.WinUI.ViewModels.Base;
 using JitHub.Models.LegacyGitHub;
@@ -9,7 +10,6 @@ using System.Linq;
 using System.Windows.Input;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Input;
-using JitHub.Services.Markdown;
 using MarkdownRenderer.Images;
 
 namespace JitHub.WinUI.ViewModels.PullRequestViewModels

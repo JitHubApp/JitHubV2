@@ -6,7 +6,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Services;
-using JitHub.Services.Markdown;
 using MarkdownRenderer.Images;
 using Xunit;
 using static JitHub.WinUI.Tests.Services.GitHubImageServiceAdmissionDoubles;

@@ -2,7 +2,7 @@ using System;
 using System.Globalization;
 using System.Net;
 using JitHub.Markdown;
-using JitHub.Services.Markdown;
+using JitHub.Markdown.Images;
 
 namespace JitHub.Services;
 

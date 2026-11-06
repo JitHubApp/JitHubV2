@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using JitHub.Markdown.Svg;
 using Microsoft.Graphics.Canvas;
 
 namespace JitHub.Services.CodeViewer;
@@ -144,9 +145,9 @@ internal static partial class RepositorySvgGpuCache
 
     internal sealed partial class Lease : IDisposable
     {
-        private StrictResourceLeaseCache<DeviceTileKey, CanvasBitmap>.Lease? _inner;
+        private StrictResourceLease<DeviceTileKey, CanvasBitmap>? _inner;
 
-        internal Lease(StrictResourceLeaseCache<DeviceTileKey, CanvasBitmap>.Lease inner) =>
+        internal Lease(StrictResourceLease<DeviceTileKey, CanvasBitmap> inner) =>
             _inner = inner;
 
         internal CanvasBitmap Bitmap =>
@@ -161,13 +162,13 @@ internal static partial class RepositorySvgGpuCache
 
     internal sealed partial class Reservation : IDisposable
     {
-        private StrictResourceLeaseCache<DeviceTileKey, CanvasBitmap>.Reservation? _inner;
+        private StrictResourceReservation<DeviceTileKey, CanvasBitmap>? _inner;
 
         internal Reservation(
-            StrictResourceLeaseCache<DeviceTileKey, CanvasBitmap>.Reservation inner) =>
+            StrictResourceReservation<DeviceTileKey, CanvasBitmap> inner) =>
             _inner = inner;
 
-        internal StrictResourceLeaseCache<DeviceTileKey, CanvasBitmap>.Reservation Inner =>
+        internal StrictResourceReservation<DeviceTileKey, CanvasBitmap> Inner =>
             _inner ?? throw new ObjectDisposedException(nameof(Reservation));
 
         public void Dispose()

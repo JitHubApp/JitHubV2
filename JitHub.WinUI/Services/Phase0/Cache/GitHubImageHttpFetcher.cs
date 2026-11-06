@@ -7,7 +7,7 @@ using System.Net.Http.Headers;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Services.Markdown;
+using JitHub.Markdown.Images;
 using MarkdownRenderer.Images;
 
 namespace JitHub.Services;

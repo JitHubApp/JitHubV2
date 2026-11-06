@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using JitHub.Markdown.Images;
 using JitHub.Services;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Performance;

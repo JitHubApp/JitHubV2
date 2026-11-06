@@ -5,7 +5,6 @@ using System.Linq;
 using System.Xml;
 using System.Xml.Linq;
 using JitHub.Markdown;
-using JitHub.Services.Markdown;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Views;

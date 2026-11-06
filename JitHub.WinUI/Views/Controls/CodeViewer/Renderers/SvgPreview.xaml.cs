@@ -5,7 +5,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Services;
 using JitHub.Services.CodeViewer;
-using JitHub.Services.Markdown;
 using JitHub.WinUI.ViewModels.CodeViewer;
 using JitHub.WinUI.Views.Controls.App;
 using MarkdownRenderer.Images;

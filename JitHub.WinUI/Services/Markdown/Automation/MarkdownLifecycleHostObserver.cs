@@ -1,4 +1,5 @@
 using System;
+using JitHub.Markdown;
 using MarkdownRenderer.Images;
 
 namespace JitHub.Services.Markdown.Automation;

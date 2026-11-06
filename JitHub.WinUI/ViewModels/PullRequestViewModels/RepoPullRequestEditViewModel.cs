@@ -1,3 +1,4 @@
+using JitHub.Markdown;
 using JitHub.Services;
 using JitHub.WinUI.ViewModels.Base;
 using CommunityToolkit.Mvvm.DependencyInjection;
@@ -11,7 +12,6 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Input;
-using JitHub.Services.Markdown;
 using MarkdownRenderer.Images;
 
 namespace JitHub.WinUI.ViewModels.PullRequestViewModels
