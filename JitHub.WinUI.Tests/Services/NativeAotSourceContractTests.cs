@@ -198,8 +198,7 @@ public sealed class NativeAotSourceContractTests
         Assert.Contains("device.IsPixelFormatSupported", viewport, StringComparison.Ordinal);
         Assert.Contains("DirectXPixelFormat.R8G8B8A8UIntNormalized", viewport, StringComparison.Ordinal);
         Assert.Contains("DirectXPixelFormat.B8G8R8A8UIntNormalized", viewport, StringComparison.Ordinal);
-        Assert.DoesNotContain("WriteableBitmap", viewport, StringComparison.Ordinal);
-        Assert.DoesNotContain("PixelBuffer", viewport, StringComparison.Ordinal);
+        // WriteableBitmap (and its PixelBuffer) is a banned symbol in eng/BannedSymbols.txt.
         Assert.Contains("AutomationControlType.Image", viewportPeer, StringComparison.Ordinal);
         Assert.Contains("_svgRenderer.CacheInvalidated += OnSvgCacheInvalidated", preview, StringComparison.Ordinal);
         Assert.Contains("_documentHasText", preview, StringComparison.Ordinal);
