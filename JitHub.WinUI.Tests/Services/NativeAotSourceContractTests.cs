@@ -1,6 +1,5 @@
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
-using JitHub.Markdown.Images;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
@@ -50,32 +49,10 @@ public sealed class NativeAotSourceContractTests
         Assert.Contains("\"nativeDebugging\": true", launchSettings, StringComparison.Ordinal);
     }
 
-    [Fact]
-    [Trait("Category", "ReleaseSecurity")]
-    public void CsWinRtAotDisposableImplementations_ArePartialForGeneratedAbi()
-    {
-        string root = FindRepositoryRoot();
-        string candidate = File.ReadAllText(Path.Combine(
-            root,
-            "JitHub.Markdown",
-            "Images",
-            "GitHubMarkdownImageCandidate.cs"));
-        string lease = File.ReadAllText(Path.Combine(
-            root,
-            "JitHub.Markdown",
-            "Images",
-            "GitHubImageSourceLease.cs"));
-        string fallback = File.ReadAllText(Path.Combine(
-            root,
-            "JitHub.Markdown",
-            "Images",
-            "MarkdownImageFallbackPipeline.cs"));
-
-        Assert.Contains("public sealed partial class GitHubMarkdownImageCandidate : IDisposable", candidate, StringComparison.Ordinal);
-        Assert.Contains("public sealed partial class GitHubImageSourceLease : IDisposable", lease, StringComparison.Ordinal);
-        Assert.Contains("internal static partial class MarkdownImageFallbackPipeline", fallback, StringComparison.Ordinal);
-        Assert.Contains("private sealed partial class CandidateCancellation : IDisposable", fallback, StringComparison.Ordinal);
-    }
+    // Types that cross the WinRT ABI must be partial so CsWinRT can generate
+    // their AOT vtables. That is a build error, not a test: CsWinRT1028 at
+    // CsWinRTAotWarningLevel 2 with warnings as errors, in JitHub.Markdown
+    // always and in the Release app through eng/NativeAot.props.
 
     [Fact]
     [Trait("Category", "ReleaseSecurity")]
@@ -313,7 +290,6 @@ public sealed class NativeAotSourceContractTests
         string window = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "MainWindow.xaml.cs"));
         string project = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "JitHub.WinUI.csproj"));
 
-        Assert.Contains("internal static partial class RepositorySvgGpuCache", cache, StringComparison.Ordinal);
         Assert.Contains("32L * 1024 * 1024", cache, StringComparison.Ordinal);
         Assert.Contains("64L * 1024 * 1024", cache, StringComparison.Ordinal);
         Assert.Contains("StrictResourceLeaseCache<DeviceTileKey, CanvasBitmap>", cache, StringComparison.Ordinal);
