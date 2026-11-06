@@ -789,7 +789,7 @@ public sealed class RootLocalContainerVectorImageRelayoutTests
             {
                 using LayoutPlacementTransformContext.Scope placementScope =
                     snapshot.EnterPlacementTransformScopeForTopLevelBlockUnderPaint(topLevelOwner);
-                LayoutPlacementTransformContext.GetCurrentTranslation(out _, out float translationY);
+                snapshot.PlacementTransform.GetCurrentTranslation(out _, out float translationY);
                 Rect logicalBounds = snapshot.ToLogicalRectForTopLevelBlockUnderPaint(topLevelOwner, image.Bounds);
                 return new InlineImagePlacementTrace(
                     logicalBounds, image.Bounds, topLevelOwner.Bounds, translationY, "standalone");
@@ -806,7 +806,7 @@ public sealed class RootLocalContainerVectorImageRelayoutTests
         {
             using LayoutPlacementTransformContext.Scope placementScope =
                 snapshot.EnterPlacementTransformScopeForBlockIndexUnderPaint(inlineOwner.BlockIndex);
-            LayoutPlacementTransformContext.GetCurrentTranslation(out _, out float translationY);
+            snapshot.PlacementTransform.GetCurrentTranslation(out _, out float translationY);
             (InlineImageRun Run, Rect Rect) placement = Assert.Single(
                 inlineOwner.EnumerateInlineImageRects(), entry => ReferenceEquals(entry.Run.Image, image));
             Rect logicalBounds = snapshot.ToLogicalRectForBlockIndexUnderPaint(
@@ -962,7 +962,7 @@ public sealed class RootLocalContainerVectorImageRelayoutTests
                     using LayoutPlacementTransformContext.Scope placementScope =
                         snapshot.EnterPlacementTransformScopeForBlockIndexUnderPaint(inline.BlockIndex);
                     inline.GetSceneGeometryOrigin(out double originX, out double originY);
-                    LayoutPlacementTransformContext.GetCurrentTranslation(out float translationX, out float translationY);
+                    snapshot.PlacementTransform.GetCurrentTranslation(out float translationX, out float translationY);
                     float paintOriginX = (float)originX;
                     float paintOriginY = (float)originY;
                     float finalPaintOriginX = paintOriginX + translationX;

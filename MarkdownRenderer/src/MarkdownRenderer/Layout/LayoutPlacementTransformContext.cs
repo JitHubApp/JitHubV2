@@ -6,39 +6,35 @@ namespace MarkdownRenderer.Layout;
 /// <summary>
 /// Carries the immutable root-placement translation through synchronous box
 /// geometry queries. Inline text must snap against its final logical origin,
-/// even while the box itself still owns root-local Bounds. The scope is
-/// thread-local, nestable, value-only, and deliberately contains no await point.
+/// even while the box itself still owns root-local Bounds. Scopes are
+/// nestable, value-only, and deliberately contain no await point.
 /// </summary>
-internal static class LayoutPlacementTransformContext
+/// <remarks>
+/// Each <see cref="MarkdownLayoutContext"/> owns one instance, which its boxes
+/// read. A placement clone gets a fresh context and so a fresh instance. Only
+/// the pass that owns the context enters a scope: the builder or a clone's
+/// measurement before publication, and afterwards the holder of the snapshot
+/// layout gate, which paint, hit testing and every geometry read take.
+/// </remarks>
+internal sealed class LayoutPlacementTransformContext
 {
-    [ThreadStatic]
-    private static float _translationX;
+    private float _translationX;
+    private float _translationY;
+    private int _scopeToken;
+    private int _nextScopeToken;
+    private Matrix3x2 _baseCanvasTransform;
+    private bool _hasBaseCanvasTransform;
 
-    [ThreadStatic]
-    private static float _translationY;
-
-    [ThreadStatic]
-    private static int _scopeToken;
-
-    [ThreadStatic]
-    private static int _nextScopeToken;
-
-    [ThreadStatic]
-    private static Matrix3x2 _baseCanvasTransform;
-
-    [ThreadStatic]
-    private static bool _hasBaseCanvasTransform;
-
-    internal static Scope Enter(float translationX, float translationY)
+    internal Scope Enter(float translationX, float translationY)
         => EnterCore(translationX, translationY, hasBaseCanvasTransform: false, default);
 
-    internal static Scope Enter(
+    internal Scope Enter(
         float translationX,
         float translationY,
         Matrix3x2 baseCanvasTransform)
         => EnterCore(translationX, translationY, hasBaseCanvasTransform: true, baseCanvasTransform);
 
-    private static Scope EnterCore(
+    private Scope EnterCore(
         float translationX,
         float translationY,
         bool hasBaseCanvasTransform,
@@ -69,7 +65,7 @@ internal static class LayoutPlacementTransformContext
             _hasBaseCanvasTransform = true;
         }
         _scopeToken = token;
-        return new Scope(previousX, previousY, previousToken, token,
+        return new Scope(this, previousX, previousY, previousToken, token,
             previousBaseCanvasTransform, previousHasBaseCanvasTransform);
     }
 
@@ -78,7 +74,7 @@ internal static class LayoutPlacementTransformContext
     /// translation produces the same device-pixel position as a fresh layout
     /// at that final logical origin.
     /// </summary>
-    internal static void SnapOriginToDevicePixels(
+    internal void SnapOriginToDevicePixels(
         float rootLocalX,
         float rootLocalY,
         float scale,
@@ -94,7 +90,7 @@ internal static class LayoutPlacementTransformContext
         snappedRootLocalY = MathF.Round((rootLocalY + translationY) * scale) / scale - translationY;
     }
 
-    internal static void SnapFinalOriginToDevicePixels(
+    internal void SnapFinalOriginToDevicePixels(
         float rootLocalX,
         float rootLocalY,
         float scale,
@@ -113,7 +109,7 @@ internal static class LayoutPlacementTransformContext
     /// DrawTextLayout is then submitted at its final snapped logical origin,
     /// keeping DirectWrite's effective transform identical to fresh layout.
     /// </summary>
-    internal static Matrix3x2 RemoveCurrentPlacementTranslation(Matrix3x2 transform)
+    internal Matrix3x2 RemoveCurrentPlacementTranslation(Matrix3x2 transform)
     {
         float translationX = _translationX;
         float translationY = _translationY;
@@ -122,7 +118,7 @@ internal static class LayoutPlacementTransformContext
             : Matrix3x2.CreateTranslation(-translationX, -translationY) * transform;
     }
 
-    internal static bool TryGetBaseCanvasTransform(out Matrix3x2 transform)
+    internal bool TryGetBaseCanvasTransform(out Matrix3x2 transform)
     {
         transform = _baseCanvasTransform;
         return _hasBaseCanvasTransform;
@@ -135,7 +131,7 @@ internal static class LayoutPlacementTransformContext
     /// transform composition on top of that matrix and should carry this base
     /// forward alongside that composition rather than trying to invert it.
     /// </summary>
-    internal static bool TryGetPlacementFreeCanvasTransform(
+    internal bool TryGetPlacementFreeCanvasTransform(
         Matrix3x2 currentTransform,
         out Matrix3x2 transform)
     {
@@ -151,14 +147,35 @@ internal static class LayoutPlacementTransformContext
         return true;
     }
 
-    internal static void GetCurrentTranslation(out float translationX, out float translationY)
+    internal void GetCurrentTranslation(out float translationX, out float translationY)
     {
         translationX = _translationX;
         translationY = _translationY;
     }
 
+    private void Exit(
+        float previousX,
+        float previousY,
+        int previousToken,
+        int token,
+        Matrix3x2 previousBaseCanvasTransform,
+        bool previousHasBaseCanvasTransform)
+    {
+        // The token makes copied/double-disposed scopes harmless and keeps
+        // a misplaced outer Dispose from erasing a still-active inner one.
+        if (_scopeToken != token)
+            return;
+
+        _translationX = previousX;
+        _translationY = previousY;
+        _baseCanvasTransform = previousBaseCanvasTransform;
+        _hasBaseCanvasTransform = previousHasBaseCanvasTransform;
+        _scopeToken = previousToken;
+    }
+
     internal readonly struct Scope : IDisposable
     {
+        private readonly LayoutPlacementTransformContext? _owner;
         private readonly float _previousX;
         private readonly float _previousY;
         private readonly int _previousToken;
@@ -167,6 +184,7 @@ internal static class LayoutPlacementTransformContext
         private readonly bool _previousHasBaseCanvasTransform;
 
         internal Scope(
+            LayoutPlacementTransformContext owner,
             float previousX,
             float previousY,
             int previousToken,
@@ -174,6 +192,7 @@ internal static class LayoutPlacementTransformContext
             Matrix3x2 previousBaseCanvasTransform,
             bool previousHasBaseCanvasTransform)
         {
+            _owner = owner;
             _previousX = previousX;
             _previousY = previousY;
             _previousToken = previousToken;
@@ -182,18 +201,12 @@ internal static class LayoutPlacementTransformContext
             _previousHasBaseCanvasTransform = previousHasBaseCanvasTransform;
         }
 
-        public void Dispose()
-        {
-            // The token makes copied/double-disposed scopes harmless and keeps
-            // a misplaced outer Dispose from erasing a still-active inner one.
-            if (_scopeToken != _token)
-                return;
-
-            _translationX = _previousX;
-            _translationY = _previousY;
-            _baseCanvasTransform = _previousBaseCanvasTransform;
-            _hasBaseCanvasTransform = _previousHasBaseCanvasTransform;
-            _scopeToken = _previousToken;
-        }
+        public void Dispose() => _owner?.Exit(
+            _previousX,
+            _previousY,
+            _previousToken,
+            _token,
+            _previousBaseCanvasTransform,
+            _previousHasBaseCanvasTransform);
     }
 }

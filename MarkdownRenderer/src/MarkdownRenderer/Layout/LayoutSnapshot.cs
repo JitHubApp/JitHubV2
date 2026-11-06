@@ -176,6 +176,8 @@ internal sealed class LayoutSnapshot : System.IDisposable, ILayoutSnapshotRetire
         // without naming that context keeps a private instance, so its
         // passes reach boxes only through their explicit tokens.
         LayoutPassCancellation passCancellation = layoutContext?.PassCancellation ?? new LayoutPassCancellation();
+        LayoutPlacementTransformContext placementTransform =
+            layoutContext?.PlacementTransform ?? new LayoutPlacementTransformContext();
         _geometry = new LayoutSnapshotGeometry(
             _layoutLock,
             blocks,
@@ -186,7 +188,8 @@ internal sealed class LayoutSnapshot : System.IDisposable, ILayoutSnapshotRetire
             documentPadding,
             (float)(double.IsFinite(blockSpacing) ? Math.Max(0, blockSpacing) : 0),
             sharedLayoutMetrics,
-            passCancellation);
+            passCancellation,
+            placementTransform);
         _retirement = new SnapshotRetirement(_layoutLock, this);
         _imageTopLevelOrdinalByIdentity = new Dictionary<ImageBox, int>(ReferenceEqualityComparer.Instance);
         _horizontalOverflow = new SnapshotHorizontalOverflowIndex(_geometry, _recovery, _retirement);
@@ -336,6 +339,12 @@ internal sealed class LayoutSnapshot : System.IDisposable, ILayoutSnapshotRetire
 
     /// <summary>Mutable committed geometry, guarded by the snapshot layout gate.</summary>
     internal LayoutSnapshotGeometry Geometry => _geometry;
+
+    /// <summary>
+    /// The root-placement translation this snapshot's boxes read. Enter a
+    /// root's translation here only under a read or paint lease.
+    /// </summary>
+    internal LayoutPlacementTransformContext PlacementTransform => _geometry.PlacementTransform;
 
     /// <summary>Generated block-index bound this snapshot (and its private clones) were built with.</summary>
     internal int GeneratedBlockIndexUpperBound => _rasterCandidates.GeneratedBlockIndexUpperBound;

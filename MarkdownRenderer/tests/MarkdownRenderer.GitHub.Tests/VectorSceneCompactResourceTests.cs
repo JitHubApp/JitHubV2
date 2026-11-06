@@ -310,6 +310,7 @@ public sealed class VectorSceneCompactResourceTests
             Matrix3x2 original = Matrix3x2.CreateTranslation(1.25f, 0.75f);
             session.Transform = original;
             drawing.Paint(
+                new LayoutPlacementTransformContext(),
                 session,
                 new Rect(4, 4, SceneWidth, SceneHeight),
                 palette,

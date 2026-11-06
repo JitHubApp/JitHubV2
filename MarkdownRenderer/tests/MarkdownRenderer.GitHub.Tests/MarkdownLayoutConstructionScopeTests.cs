@@ -170,6 +170,7 @@ public sealed class MarkdownLayoutConstructionScopeTests
             staging.Dispose();
 
             Assert.Throws<ObjectDisposedException>(() => scene.Paint(
+                placement: new LayoutPlacementTransformContext(),
                 drawingSession: null!,
                 baseX: 0,
                 baseY: 0,

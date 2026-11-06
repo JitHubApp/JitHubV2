@@ -386,7 +386,7 @@ public sealed class MixedInlineVectorImageRelayoutTests
                     out LayoutPlacementGeneration placements,
                     out IReadOnlyDictionary<int, int> ordinalByBlockIndex));
                 Assert.True(MarkdownProgressiveScenePlan.TryCollectVisibleDeferredSceneMarkers(
-                    measuredBlocks, measuredOrdinals, placements, ordinalByBlockIndex,
+                    measuredBlocks, measuredOrdinals, placements, document.Snapshot.PlacementTransform, ordinalByBlockIndex,
                     0, 1024, viewport: null, residencyPolicy: policy,
                     out IReadOnlyList<string> visibleMarkers, out _));
                 Assert.Contains(deferredMarker, visibleMarkers);
@@ -423,6 +423,7 @@ public sealed class MixedInlineVectorImageRelayoutTests
                     translatedBlocks,
                     translatedOrdinals,
                     translatedPlacements,
+                    document.Snapshot.PlacementTransform,
                     translatedOrdinalByBlockIndex,
                     translatedVisibleBand.Top,
                     translatedVisibleBand.Bottom,

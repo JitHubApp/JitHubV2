@@ -105,6 +105,7 @@ internal sealed class ImagePlaceholderLayout
         try
         {
             PlacementAwareTextDrawing.DrawAtRootLocalOrigin(
+                Context.PlacementTransform,
                 ds,
                 _measure.Placeholder,
                 (float)rect.X + Math.Min(horizontalPadding, (float)rect.Width / 4f),

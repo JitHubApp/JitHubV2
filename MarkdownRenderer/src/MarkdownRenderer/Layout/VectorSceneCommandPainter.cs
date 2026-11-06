@@ -23,6 +23,7 @@ internal sealed class VectorSceneCommandPainter
     internal VectorSceneCommandPainter(VectorSceneDrawing host) => _host = host;
 
     internal void Paint(
+        LayoutPlacementTransformContext placement,
         CanvasDrawingSession drawingSession,
         MarkdownVectorScene scene,
         VectorScenePaintSlots slots,
@@ -38,12 +39,12 @@ internal sealed class VectorSceneCommandPainter
         }
 
         Matrix3x2 callerTransform = drawingSession.Transform;
-        bool hasPlacement = LayoutPlacementTransformContext.TryGetPlacementFreeCanvasTransform(
+        bool hasPlacement = placement.TryGetPlacementFreeCanvasTransform(
             callerTransform,
             out Matrix3x2 placementFreeCallerTransform);
         if (hasPlacement)
         {
-            LayoutPlacementTransformContext.GetCurrentTranslation(
+            placement.GetCurrentTranslation(
                 out float placementX,
                 out float placementY);
             destination = new Rect(

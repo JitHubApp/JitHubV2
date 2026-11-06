@@ -59,10 +59,13 @@ internal sealed class LayoutSnapshotGeometry
         Thickness documentPadding,
         float blockSpacing,
         SharedLayoutMetrics? sharedLayoutMetrics,
-        LayoutPassCancellation passCancellation)
+        LayoutPassCancellation passCancellation,
+        LayoutPlacementTransformContext placementTransform)
     {
         ArgumentNullException.ThrowIfNull(passCancellation);
+        ArgumentNullException.ThrowIfNull(placementTransform);
         PassCancellation = passCancellation;
+        PlacementTransform = placementTransform;
         _gate = gate;
         _blocks = blocks;
         _blockOrdinals = blockOrdinals;
@@ -82,6 +85,13 @@ internal sealed class LayoutSnapshotGeometry
     /// here only while it holds <see cref="Gate"/>.
     /// </summary>
     internal LayoutPassCancellation PassCancellation { get; }
+
+    /// <summary>
+    /// The root-placement translation the snapshot's boxes read. Paint, hit
+    /// testing and geometry reads enter a root's translation here only while
+    /// they hold <see cref="Gate"/>.
+    /// </summary>
+    internal LayoutPlacementTransformContext PlacementTransform { get; }
 
     internal IReadOnlyList<BlockBox> Blocks => _blocks;
 

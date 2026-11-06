@@ -217,6 +217,12 @@ internal sealed class MarkdownLayoutContext
     /// </summary>
     internal LayoutPassCancellation PassCancellation { get; } = new();
 
+    /// <summary>
+    /// The root-placement translation of the query, paint or measure that is
+    /// reading boxes built in this context.
+    /// </summary>
+    internal LayoutPlacementTransformContext PlacementTransform { get; } = new();
+
     internal void SetCancellationToken(CancellationToken cancellationToken) =>
         _cancellationToken = cancellationToken;
 

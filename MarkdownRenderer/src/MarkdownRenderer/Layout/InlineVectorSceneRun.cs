@@ -321,6 +321,7 @@ internal sealed class InlineVectorSceneRun : InlineRun, IDisposable
     }
 
     internal void Paint(
+        LayoutPlacementTransformContext placement,
         CanvasDrawingSession drawingSession,
         float baseX,
         float baseY,
@@ -339,6 +340,7 @@ internal sealed class InlineVectorSceneRun : InlineRun, IDisposable
         if (_drawing?.IsPrepared == true)
         {
             _drawing.Paint(
+                placement,
                 drawingSession,
                 bounds,
                 _paintPalette with { Foreground = semanticForeground },

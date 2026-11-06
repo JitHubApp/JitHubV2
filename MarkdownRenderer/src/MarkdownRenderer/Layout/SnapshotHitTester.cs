@@ -38,7 +38,7 @@ internal sealed class SnapshotHitTester
                 LayoutRootPlacement placement = placements.GetPlacement(n);
                 if (!placement.Measured) continue;
                 using LayoutPlacementTransformContext.Scope placementScope =
-                    LayoutPlacementTransformContext.Enter(placement.TranslationX, placement.TranslationY);
+                    _geometry.PlacementTransform.Enter(placement.TranslationX, placement.TranslationY);
                 if (b.HitTest(placements.ToPhysicalPoint(n, point), out position)) return true;
             }
         }
@@ -72,7 +72,7 @@ internal sealed class SnapshotHitTester
                 }
 
                 using LayoutPlacementTransformContext.Scope placementScope =
-                    LayoutPlacementTransformContext.Enter(placement.TranslationX, placement.TranslationY);
+                    _geometry.PlacementTransform.Enter(placement.TranslationX, placement.TranslationY);
                 if (block.HitTestSelectionEndpoint(
                         placements.ToPhysicalPoint(ordinal, point), out position))
                     return true;
@@ -108,7 +108,7 @@ internal sealed class SnapshotHitTester
                 }
 
                 using LayoutPlacementTransformContext.Scope placementScope =
-                    LayoutPlacementTransformContext.Enter(placement.TranslationX, placement.TranslationY);
+                    _geometry.PlacementTransform.Enter(placement.TranslationX, placement.TranslationY);
                 if (TryHitTestVectorText(
                         _geometry.Blocks[ordinal], placements.ToPhysicalPoint(ordinal, point), out position))
                     return true;

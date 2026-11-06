@@ -677,7 +677,7 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox, ISelect
             NativePaintSessionResources.LayerLease layer = NativePaintSessionResources.CreateLayer(ds, 1f, clip);
             try
             {
-                _drawing.Paint(ds, _contentBounds, palette, LayoutContext.ThemeSnapshot.IsHighContrast);
+                _drawing.Paint(LayoutContext.PlacementTransform, ds, _contentBounds, palette, LayoutContext.ThemeSnapshot.IsHighContrast);
             }
             catch (Exception primary)
             {
@@ -688,7 +688,7 @@ internal sealed class VectorSceneBox : BlockBox, IHorizontalOverflowBox, ISelect
         }
         else
         {
-            _drawing.Paint(ds, _contentBounds, palette, LayoutContext.ThemeSnapshot.IsHighContrast);
+            _drawing.Paint(LayoutContext.PlacementTransform, ds, _contentBounds, palette, LayoutContext.ThemeSnapshot.IsHighContrast);
         }
     }
 

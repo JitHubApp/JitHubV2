@@ -144,7 +144,7 @@ internal sealed class LayoutBuilder : ILayoutBlockDispatcher
             var fragments = _context.SnapshotFragmentTargets();
             vectorSceneResidencyPolicy =
                 _context.PerformanceSession?.CreateVectorSceneResidencyPolicy(
-                    blocks, _context.PerformanceDocumentOwner);
+                    blocks, _context.PerformanceDocumentOwner, _context.PlacementTransform);
             snapshot = new LayoutSnapshot(
                 blocks,
                 _context.SourceMap,
@@ -286,7 +286,7 @@ internal sealed class LayoutBuilder : ILayoutBlockDispatcher
             var fragments = _context.SnapshotFragmentTargets();
             vectorSceneResidencyPolicy =
                 _context.PerformanceSession?.CreateVectorSceneResidencyPolicy(
-                    blocks, _context.PerformanceDocumentOwner);
+                    blocks, _context.PerformanceDocumentOwner, _context.PlacementTransform);
             snapshot = new LayoutSnapshot(
                 blocks,
                 _context.SourceMap,

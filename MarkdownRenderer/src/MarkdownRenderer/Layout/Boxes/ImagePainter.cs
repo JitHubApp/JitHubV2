@@ -67,7 +67,7 @@ internal sealed class ImagePainter
         {
             var cs = _box.Context.ThemeSnapshot.GetStyle(MarkdownElementKeys.ImageCaption);
             PlacementAwareTextDrawing.DrawAtRootLocalOrigin(
-                ds, _measure.Caption, x, GetCaptionY(cs), cs.Foreground);
+                _box.Context.PlacementTransform, ds, _measure.Caption, x, GetCaptionY(cs), cs.Foreground);
         }
     }
 
@@ -157,7 +157,7 @@ internal sealed class ImagePainter
         if (_measure.Caption is not null)
         {
             var cs = _box.Context.ThemeSnapshot.GetStyle(MarkdownElementKeys.ImageCaption);
-            PlacementAwareTextDrawing.DrawAtRootLocalOrigin(ds, _measure.Caption, x, GetCaptionY(cs), color);
+            PlacementAwareTextDrawing.DrawAtRootLocalOrigin(_box.Context.PlacementTransform, ds, _measure.Caption, x, GetCaptionY(cs), color);
         }
     }
 

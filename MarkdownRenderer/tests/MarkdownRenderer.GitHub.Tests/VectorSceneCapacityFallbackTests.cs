@@ -244,18 +244,20 @@ public sealed class VectorSceneCapacityFallbackTests
             using (CanvasDrawingSession drawing = target.CreateDrawingSession())
             {
                 drawing.Clear(ClearColor);
-                run.Paint(drawing, 0, 0, SceneColor, highContrast: false);
+                run.Paint(new LayoutPlacementTransformContext(), drawing, 0, 0, SceneColor, highContrast: false);
             }
             Assert.Contains(target.GetPixelColors(), pixel => pixel != ClearColor);
 
             run.Dispose();
             Assert.Throws<ObjectDisposedException>(() => run.Paint(
+                new LayoutPlacementTransformContext(),
                 null!, 0, 0, SceneColor, highContrast: false));
 
             Assert.False(clone.IsNativeResourcesPrepared);
             Assert.False(clone.IsCapacityFallbackPaintable);
             Assert.Equal(VectorNativePreparationStatus.NotPrepared, clone.NativePreparationStatus);
             Assert.Throws<InvalidOperationException>(() => clone.Paint(
+                new LayoutPlacementTransformContext(),
                 null!, 0, 0, SceneColor, highContrast: false));
         }
         finally
@@ -315,6 +317,7 @@ public sealed class VectorSceneCapacityFallbackTests
                             drawing.Transform = originalTransform;
                             var cacheBeforePaint = SharedCanvasTextFormatCache.Statistics;
                             run.Paint(
+                                new LayoutPlacementTransformContext(),
                                 drawing,
                                 0,
                                 0,

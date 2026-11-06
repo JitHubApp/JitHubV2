@@ -28,6 +28,7 @@ namespace MarkdownRenderer.Performance;
 internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneResidencyPolicy
 {
     private readonly VectorSceneBandCollector _bandCollector;
+    private readonly LayoutPlacementTransformContext _placementTransform;
     private MarkdownProgressiveScenePlan? _graphPlan;
     private readonly List<VectorSceneBox> _pendingGraphRebinds = [];
     private readonly List<VectorSceneBox> _graphStatusChanges = [];
@@ -58,9 +59,13 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
         IReadOnlyList<BlockBox> blocks,
         MarkdownProgressiveScenePlan? graphPlan = null,
         VectorNativeResourceAdmission? nativeAdmission = null,
-        MarkdownVectorSceneEstimateCache? estimates = null)
+        MarkdownVectorSceneEstimateCache? estimates = null,
+        LayoutPlacementTransformContext? placementTransform = null)
     {
         _bandCollector = new VectorSceneBandCollector(blocks ?? throw new ArgumentNullException(nameof(blocks)));
+        // Scene preparation reads root geometry under the snapshot gate, in
+        // the placement state of the context that built these blocks.
+        _placementTransform = placementTransform ?? new LayoutPlacementTransformContext();
         _graphPlan = graphPlan;
         _nativeAdmission = nativeAdmission;
         // A policy without a scope memoizes only its own walks.
@@ -235,7 +240,7 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
                 // index even when all of its scenes are already prepared.
                 LayoutRootPlacement placement = placements.GetPlacement(ordinal);
                 using LayoutPlacementTransformContext.Scope placementScope =
-                    LayoutPlacementTransformContext.Enter(placement.TranslationX, placement.TranslationY);
+                    _placementTransform.Enter(placement.TranslationX, placement.TranslationY);
                 if (!_bandCollector.TryCollectVisibleBlockScenes(
                         _bandCollector.GetRoot(ordinal),
                         rootLocalBand,
@@ -352,7 +357,7 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
             cancellationToken.ThrowIfCancellationRequested();
             LayoutRootPlacement placement = placements.GetPlacement(ordinal);
             using LayoutPlacementTransformContext.Scope placementScope =
-                LayoutPlacementTransformContext.Enter(placement.TranslationX, placement.TranslationY);
+                _placementTransform.Enter(placement.TranslationX, placement.TranslationY);
             if (!_bandCollector.TryGetRootLocalBand(
                     ordinal,
                     band,
@@ -579,7 +584,7 @@ internal sealed class MarkdownVectorSceneResidencyPolicy : IMarkdownVectorSceneR
 
             LayoutRootPlacement placement = placements.GetPlacement(ordinal);
             using LayoutPlacementTransformContext.Scope placementScope =
-                LayoutPlacementTransformContext.Enter(placement.TranslationX, placement.TranslationY);
+                _placementTransform.Enter(placement.TranslationX, placement.TranslationY);
             if (!_bandCollector.TryCollectVisibleBlockScenes(
                     _bandCollector.GetRoot(ordinal),
                     rootLocalBand,

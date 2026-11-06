@@ -47,7 +47,7 @@ internal static class InlineTextPainter
         }
 
         Matrix3x2 originalTransform = drawingSession.Transform;
-        if (!LayoutPlacementTransformContext.TryGetPlacementFreeCanvasTransform(
+        if (!box.Context.PlacementTransform.TryGetPlacementFreeCanvasTransform(
                 originalTransform,
                 out Matrix3x2 placementFreeTransform))
         {
@@ -104,7 +104,7 @@ internal static class InlineTextPainter
             foregroundOverrideLength);
 
         Matrix3x2 originalTransform = drawingSession.Transform;
-        if (!LayoutPlacementTransformContext.TryGetPlacementFreeCanvasTransform(
+        if (!box.Context.PlacementTransform.TryGetPlacementFreeCanvasTransform(
                 originalTransform,
                 out Matrix3x2 placementFreeTransform) ||
             originalTransform == placementFreeTransform)

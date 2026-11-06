@@ -405,6 +405,7 @@ public sealed class VectorNativeResourceAdmissionTests
             .GetField("_geometries", BindingFlags.Instance | BindingFlags.NonPublic)!;
 
         Assert.Throws<InvalidOperationException>(() => drawing.Paint(
+            new LayoutPlacementTransformContext(),
             session,
             new Windows.Foundation.Rect(0, 0, 24, 24),
             new VectorScenePaintPalette(

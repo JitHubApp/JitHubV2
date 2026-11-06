@@ -246,7 +246,7 @@ internal sealed class CompletedImageRootRelayout
         BlockBox prepared = batch.Prepared[index]!;
         float contentX = batch.ContentX;
         float measuredHeight;
-        using (LayoutPlacementTransformContext.Enter(contentX, flowY))
+        using (batch.Context!.PlacementTransform.Enter(contentX, flowY))
         {
             measuredHeight = prepared.Measure(batch.ContentWidth);
         }

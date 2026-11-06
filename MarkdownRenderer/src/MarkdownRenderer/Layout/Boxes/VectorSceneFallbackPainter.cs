@@ -41,6 +41,7 @@ internal sealed class VectorSceneFallbackPainter
         try
         {
             PlacementAwareTextDrawing.DrawAtRootLocalOrigin(
+                _host.LayoutContext.PlacementTransform,
                 drawingSession,
                 layout,
                 left,

@@ -98,6 +98,7 @@ internal sealed class MarkdownVisibleSceneReadinessProbe(IMarkdownPerformanceSes
             visibleBlocks,
             visibleOrdinals,
             placements,
+            snapshot.PlacementTransform,
             topLevelOrdinalByBlockIndex,
             viewport.Top,
             viewport.Bottom,

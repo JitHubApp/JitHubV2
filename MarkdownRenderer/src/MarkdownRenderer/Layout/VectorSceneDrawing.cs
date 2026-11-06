@@ -487,6 +487,7 @@ internal sealed class VectorSceneDrawing : IDisposable
     }
 
     internal void Paint(
+        LayoutPlacementTransformContext placement,
         CanvasDrawingSession drawingSession,
         Rect destination,
         VectorScenePaintPalette palette,
@@ -510,6 +511,7 @@ internal sealed class VectorSceneDrawing : IDisposable
         }
 
         _commandPainter.Paint(
+            placement,
             drawingSession,
             scene,
             new VectorScenePaintSlots(geometries, textLayouts, strokeStyles, transformStack, clipStack),

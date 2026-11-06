@@ -66,6 +66,7 @@ public sealed class VectorSceneClipLifetimeTests
         try
         {
             Assert.Same(failure, Assert.Throws<InvalidOperationException>(() => drawing.Paint(
+                new LayoutPlacementTransformContext(),
                 session, new Rect(0, 0, 20, 20),
                 new VectorScenePaintPalette(Black, White, Blue), highContrast: false)));
             Assert.Equal(original, session.Transform);
@@ -189,6 +190,7 @@ public sealed class VectorSceneClipLifetimeTests
         try
         {
             Assert.Same(factoryFailure, Assert.Throws<InvalidOperationException>(() => drawing.Paint(
+                new LayoutPlacementTransformContext(),
                 session,
                 new Rect(0, 0, 24, 24),
                 new VectorScenePaintPalette(Black, White, Blue),
@@ -327,6 +329,7 @@ public sealed class VectorSceneClipLifetimeTests
         try
         {
             Assert.Same(factoryFailure, Assert.Throws<InvalidOperationException>(() => drawing.Paint(
+                new LayoutPlacementTransformContext(),
                 session,
                 new Rect(0, 0, 24, 24),
                 new VectorScenePaintPalette(Black, White, Blue),
@@ -440,7 +443,7 @@ public sealed class VectorSceneClipLifetimeTests
                 ds.Clear(Color.FromArgb(0, 0, 0, 0));
                 Matrix3x2 original = Matrix3x2.CreateTranslation(4, 5);
                 ds.Transform = original;
-                drawing.Paint(ds, new Rect(0, 0, 20, 20),
+                drawing.Paint(new LayoutPlacementTransformContext(), ds, new Rect(0, 0, 20, 20),
                     new VectorScenePaintPalette(Black, White, Blue), highContrast: false);
                 Assert.Equal(original, ds.Transform);
                 ds.FillRectangle(new Rect(0, 0, 2, 2), Green);

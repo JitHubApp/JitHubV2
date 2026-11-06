@@ -592,6 +592,7 @@ public sealed class VectorSceneResourceResidencyTests
                 visibleBlocks,
                 visibleOrdinals,
                 placements,
+                snapshot.PlacementTransform,
                 ordinalByBlockIndex,
                 band.Top,
                 band.Bottom,
@@ -692,6 +693,7 @@ public sealed class VectorSceneResourceResidencyTests
                 visibleBlocks,
                 visibleOrdinals,
                 placements,
+                snapshot.PlacementTransform,
                 ordinalByBlockIndex,
                 visible.Top,
                 visible.Bottom,
@@ -713,6 +715,7 @@ public sealed class VectorSceneResourceResidencyTests
                 outsideBlocks,
                 outsideOrdinals,
                 outsidePlacements,
+                snapshot.PlacementTransform,
                 outsideOrdinalByBlockIndex,
                 outside.Top,
                 outside.Bottom,
@@ -859,6 +862,7 @@ public sealed class VectorSceneResourceResidencyTests
             using var target = new CanvasRenderTarget(CanvasDevice.GetSharedDevice(), 64, 64, 96);
             using CanvasDrawingSession drawingSession = target.CreateDrawingSession();
             deferredRun.Paint(
+                deferredContext.PlacementTransform,
                 drawingSession,
                 baseX: 0,
                 baseY: 0,

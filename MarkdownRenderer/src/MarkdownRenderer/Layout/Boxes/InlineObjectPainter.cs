@@ -90,6 +90,7 @@ internal static class InlineObjectPainter
             if (!InlineDecorationPainter.Intersects(bounds, viewport))
                 continue;
             vector.Paint(
+                box.Context.PlacementTransform,
                 drawingSession,
                 baseX,
                 baseY,
@@ -124,6 +125,7 @@ internal static class InlineObjectPainter
             if (!InlineDecorationPainter.Intersects(bounds, viewport))
                 continue;
             vector.Paint(
+                box.Context.PlacementTransform,
                 drawingSession,
                 baseX,
                 baseY,
