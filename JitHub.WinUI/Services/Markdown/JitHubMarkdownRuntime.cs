@@ -32,6 +32,7 @@ internal sealed class JitHubMarkdownRuntime
     private MarkdownEngine? _engine;
     private TextMateCodeBlockSyntaxHighlighter? _codeHighlighter;
     private ResvgMarkdownSvgRenderer? _svgRenderer;
+    private RepositorySvgRasterizer? _svgPreviewRasterizer;
     private MarkdownPerformanceSession? _performanceSession;
     private long _performanceAccountId = long.MinValue;
     private Task? _shutdownTask;
@@ -85,6 +86,23 @@ internal sealed class JitHubMarkdownRuntime
     /// not capability discovery from a control's SVG renderer property.
     /// </summary>
     internal IMarkdownRasterDecoder RasterDecoder => GetOrCreateSvgRenderer();
+
+    /// <summary>
+    /// Gets the standalone repository SVG preview's adapter over
+    /// <see cref="SvgRenderer"/>. Every preview shares it, so they share one
+    /// partition of the tile cache, as they share the renderer.
+    /// </summary>
+    internal IRepositorySvgRasterizer SvgPreviewRasterizer
+    {
+        get
+        {
+            lock (_gate)
+            {
+                ThrowIfShuttingDown();
+                return _svgPreviewRasterizer ??= new RepositorySvgRasterizer(GetOrCreateSvgRenderer());
+            }
+        }
+    }
 
     /// <summary>Gets one shared opt-in preparation session for the active account.</summary>
     internal MarkdownPerformanceSession GetPerformanceSession(long accountId)
@@ -211,6 +229,7 @@ internal sealed class JitHubMarkdownRuntime
         _engine = null;
         _codeHighlighter = null;
         _svgRenderer = null;
+        _svgPreviewRasterizer = null;
         _performanceSession = null;
         _performanceAccountId = long.MinValue;
         _fontChanges.Cancel();

@@ -215,16 +215,17 @@ public sealed class RepositorySvgRasterizerTests
         {
             CacheGeneration = 4,
         };
+        RepositorySvgRasterizer rasterizer = new(renderer);
 
         using RepositorySvgDocument first = Assert.IsType<RepositorySvgDocument>(
-            await new RepositorySvgRasterizer(renderer).LoadAsync(
+            await rasterizer.LoadAsync(
                 ValidSvg,
                 "en-US",
                 MarkdownSvgColorScheme.Light,
                 new MarkdownSvgColor(1, 2, 3),
                 CancellationToken.None));
         using RepositorySvgDocument second = Assert.IsType<RepositorySvgDocument>(
-            await new RepositorySvgRasterizer(renderer).LoadAsync(
+            await rasterizer.LoadAsync(
                 ValidSvg,
                 "ar-SA",
                 MarkdownSvgColorScheme.Dark,
@@ -237,19 +238,23 @@ public sealed class RepositorySvgRasterizerTests
     [Fact]
     public async Task CacheIdentity_PartitionsByRendererButIgnoresUnusedFontGeneration()
     {
+        // The runtime shares one rasterizer per renderer, so a rasterizer's
+        // partition is its renderer's partition.
         MarkdownSvgDocumentInfo info = new(10, 8);
         FakeSvgRenderer firstRenderer = new(new FakeSvgDocument(info)) { CacheGeneration = 4 };
         FakeSvgRenderer secondRenderer = new(new FakeSvgDocument(info)) { CacheGeneration = 4 };
+        RepositorySvgRasterizer firstRasterizer = new(firstRenderer);
+        RepositorySvgRasterizer secondRasterizer = new(secondRenderer);
 
         using RepositorySvgDocument first = Assert.IsType<RepositorySvgDocument>(
-            await new RepositorySvgRasterizer(firstRenderer).LoadAsync(
+            await firstRasterizer.LoadAsync(
                 ValidSvg,
                 null,
                 MarkdownSvgColorScheme.Light,
                 null,
                 CancellationToken.None));
         using RepositorySvgDocument otherRenderer = Assert.IsType<RepositorySvgDocument>(
-            await new RepositorySvgRasterizer(secondRenderer).LoadAsync(
+            await secondRasterizer.LoadAsync(
                 ValidSvg,
                 null,
                 MarkdownSvgColorScheme.Light,
@@ -258,7 +263,7 @@ public sealed class RepositorySvgRasterizerTests
 
         firstRenderer.CacheGeneration = 5;
         using RepositorySvgDocument nextGeneration = Assert.IsType<RepositorySvgDocument>(
-            await new RepositorySvgRasterizer(firstRenderer).LoadAsync(
+            await firstRasterizer.LoadAsync(
                 ValidSvg,
                 null,
                 MarkdownSvgColorScheme.Light,
@@ -279,9 +284,17 @@ public sealed class RepositorySvgRasterizerTests
             UsesCurrentColor: true,
             UsesColorScheme: true);
         FakeSvgRenderer renderer = new(new FakeSvgDocument(info)) { CacheGeneration = 4 };
+        RepositorySvgRasterizer rasterizer = new(renderer);
 
         using RepositorySvgDocument first = Assert.IsType<RepositorySvgDocument>(
-            await new RepositorySvgRasterizer(renderer).LoadAsync(
+            await rasterizer.LoadAsync(
+                ValidSvg,
+                "en-US",
+                MarkdownSvgColorScheme.Light,
+                new MarkdownSvgColor(1, 2, 3),
+                CancellationToken.None));
+        using RepositorySvgDocument unchanged = Assert.IsType<RepositorySvgDocument>(
+            await rasterizer.LoadAsync(
                 ValidSvg,
                 "en-US",
                 MarkdownSvgColorScheme.Light,
@@ -289,13 +302,14 @@ public sealed class RepositorySvgRasterizerTests
                 CancellationToken.None));
         renderer.CacheGeneration = 5;
         using RepositorySvgDocument second = Assert.IsType<RepositorySvgDocument>(
-            await new RepositorySvgRasterizer(renderer).LoadAsync(
+            await rasterizer.LoadAsync(
                 ValidSvg,
                 "ar-SA",
                 MarkdownSvgColorScheme.Dark,
                 new MarkdownSvgColor(4, 5, 6),
                 CancellationToken.None));
 
+        Assert.Equal(first.CacheIdentity, unchanged.CacheIdentity);
         Assert.NotEqual(first.CacheIdentity, second.CacheIdentity);
     }
 

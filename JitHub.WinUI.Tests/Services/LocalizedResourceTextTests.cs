@@ -51,7 +51,7 @@ public sealed class LocalizedResourceTextTests
     public void GetString_UsesResolvedRuntimeResource()
     {
         using IDisposable restore = LocalizedResourceText.OverrideResourceLookupFactoryForTests(
-            static () => static key => key == "Shell/Navigation/CollapsePane"
+            static () => static (key, _) => key == "Shell/Navigation/CollapsePane"
                 ? "⟦Collapse navigation pane ~~~~~~~~~⟧"
                 : null);
 
@@ -67,8 +67,8 @@ public sealed class LocalizedResourceTextTests
     {
         CultureInfo requestedCulture = CultureInfo.GetCultureInfo("fr-FR");
         CultureInfo? observedCulture = null;
-        using IDisposable restore = LocalizedResourceText.OverrideCultureAwareResourceLookupForTests(
-            (key, culture) =>
+        using IDisposable restore = LocalizedResourceText.OverrideResourceLookupFactoryForTests(
+            () => (key, culture) =>
             {
                 observedCulture = culture;
                 return key == "MarkdownRenderer/Command/Copy" ? "Copier" : null;
@@ -87,7 +87,7 @@ public sealed class LocalizedResourceTextTests
     public void Format_UsesFallback_WhenLocalizedFormatIsMalformed()
     {
         using IDisposable restore = LocalizedResourceText.OverrideResourceLookupFactoryForTests(
-            static () => static _ => "Loaded {0 items");
+            static () => static (_, _) => "Loaded {0 items");
 
         Assert.Equal(
             "Loaded 3 items",
@@ -108,7 +108,7 @@ public sealed class LocalizedResourceTextTests
         Task<string> scopedLookup = Task.Run(async () =>
         {
             using IDisposable restore = LocalizedResourceText.OverrideResourceLookupFactoryForTests(
-                static () => static _ => "Scoped value");
+                static () => static (_, _) => "Scoped value");
             overrideInstalled.SetResult(true);
             await allowScopedLookup.Task;
             return LocalizedResourceText.GetString("Automation.Scoped.Key", "Scoped fallback");

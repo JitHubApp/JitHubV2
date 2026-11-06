@@ -1,6 +1,5 @@
 using System;
 using System.Globalization;
-using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,19 +27,23 @@ internal interface IRepositorySvgRasterizer
 /// Adapts JitHub's repository preview viewport to the shared, isolated SVG
 /// provider. This type borrows the renderer and never owns or disposes it.
 /// </summary>
+/// <remarks>
+/// Each adapter is its own partition of the process-wide tile cache, so the
+/// renderer's owner creates one adapter per renderer and shares it (see
+/// <c>JitHubMarkdownRuntime.SvgPreviewRasterizer</c>). Tiles from one
+/// renderer are then never served for another.
+/// </remarks>
 internal sealed class RepositorySvgRasterizer(IMarkdownSvgRenderer renderer) : IRepositorySvgRasterizer
 {
     private const double DefaultWidthDips = 300;
     private const double DefaultHeightDips = 150;
 
-    private static readonly ConditionalWeakTable<IMarkdownSvgRenderer, RendererIdentity> RendererIdentities = new();
-    private static long _nextRendererIdentity;
-
     private readonly IMarkdownSvgRenderer _renderer =
         renderer ?? throw new ArgumentNullException(nameof(renderer));
-    private readonly long _rendererIdentity = RendererIdentities.GetValue(
-        renderer,
-        static _ => new RendererIdentity(Interlocked.Increment(ref _nextRendererIdentity))).Value;
+
+    // A random identity needs no process-wide counter or renderer table, and
+    // no other adapter can share it.
+    private readonly string _rendererIdentity = Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
 
     public async ValueTask<RepositorySvgDocument?> LoadAsync(
         byte[]? bytes,
@@ -189,7 +192,7 @@ internal sealed class RepositorySvgRasterizer(IMarkdownSvgRenderer renderer) : I
     private static string CreateCacheIdentity(
         string contentHash,
         MarkdownSvgDocumentInfo info,
-        long rendererIdentity,
+        string rendererIdentity,
         long cacheGeneration,
         string? locale,
         MarkdownSvgColorScheme colorScheme,
@@ -198,7 +201,7 @@ internal sealed class RepositorySvgRasterizer(IMarkdownSvgRenderer renderer) : I
         string identity = string.Concat(
             contentHash,
             "|policy:1|renderer:",
-            rendererIdentity.ToString(CultureInfo.InvariantCulture));
+            rendererIdentity);
         if (info.HasText)
         {
             identity = string.Concat(
@@ -228,11 +231,6 @@ internal sealed class RepositorySvgRasterizer(IMarkdownSvgRenderer renderer) : I
         }
 
         return identity;
-    }
-
-    private sealed class RendererIdentity(long value)
-    {
-        internal long Value { get; } = value;
     }
 }
 
