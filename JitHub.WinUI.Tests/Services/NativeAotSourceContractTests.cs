@@ -300,8 +300,13 @@ public sealed class NativeAotSourceContractTests
 
     [Fact]
     [Trait("Category", "ReleaseSecurity")]
-    public void SvgRuntime_UsesStrictGlobalCacheAndCompletesAsyncShutdownBeforeClose()
+    public void SvgRuntime_UsesStrictGlobalCacheAndRetiresItWithTheMarkdownRuntime()
     {
+        // The window retires the Markdown runtime only after its views'
+        // renderers are gone; that order is covered by MarkdownViewShutdownTests.
+        // StrictResourceLeaseCache itself is covered by StrictResourceLeaseCacheTests.
+        // The resvg dependency licenses ship through
+        // AppRendererPackagingTests.App_PublishesTheRendererAndPlatformThirdPartyNotices.
         string root = FindRepositoryRoot();
         string cache = File.ReadAllText(Path.Combine(
             root,
@@ -315,7 +320,6 @@ public sealed class NativeAotSourceContractTests
             "Services",
             "Markdown",
             "JitHubMarkdownRuntime.cs"));
-        string window = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "MainWindow.xaml.cs"));
 
         Assert.Contains("32L * 1024 * 1024", cache, StringComparison.Ordinal);
         Assert.Contains("64L * 1024 * 1024", cache, StringComparison.Ordinal);
@@ -323,17 +327,6 @@ public sealed class NativeAotSourceContractTests
         Assert.Contains("AppMemoryUsageIncreased += OnAppMemoryUsageIncreased", cache, StringComparison.Ordinal);
         Assert.Contains("Cache.Trim();", cache, StringComparison.Ordinal);
         Assert.Contains("RepositorySvgGpuCache.Shutdown();", runtime, StringComparison.Ordinal);
-
-        int drain = window.IndexOf("private async Task DrainDiagnosticsAndCloseAsync()", StringComparison.Ordinal);
-        int unloadViews = window.IndexOf("await UnloadPageContentBeforeMarkdownShutdownAsync();", drain, StringComparison.Ordinal);
-        int shutdown = window.IndexOf(".MarkdownRuntime.ShutdownAsync();", drain, StringComparison.Ordinal);
-        int allowClose = window.IndexOf("_allowCloseAfterDiagnostics = true;", shutdown, StringComparison.Ordinal);
-        int close = window.IndexOf("Close();", allowClose, StringComparison.Ordinal);
-        Assert.True(drain >= 0);
-        Assert.True(unloadViews > drain);
-        Assert.True(shutdown > unloadViews);
-        Assert.True(allowClose > shutdown);
-        Assert.True(close > allowClose);
     }
 
     [Fact]
