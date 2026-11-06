@@ -66,6 +66,9 @@ internal sealed class InlineContainerBox : BlockBox
     internal ScriptBaselineGeometry ScriptBaselineGeometry => _textLayout.ScriptBaselineGeometry;
     internal CanvasLineMetrics[]? CachedLineMetrics => _textLayout.CachedLineMetrics;
     internal bool HasReadLineMetrics => _textLayout.HasReadLineMetrics;
+    /// <inheritdoc cref="InlineTextLayoutState.ReplaceCachedLineMetrics"/>
+    internal void ReplaceCachedLineMetrics(CanvasLineMetrics[]? metrics, bool read) =>
+        _textLayout.ReplaceCachedLineMetrics(metrics, read);
     // Owned by value and mutated in place; never copy it out of this field.
     private InlineSelectionLayoutState _selection;
     internal CanvasTextLayout? SelectionLayout => _selection.Layout;

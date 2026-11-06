@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
-using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -32,8 +31,6 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection("Shared Canvas text format cache")]
 public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper output)
 {
-    private const BindingFlags InstanceFields = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-
     private readonly ITestOutputHelper _output = output;
 
     [Theory]
@@ -657,15 +654,10 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
         => SetLineMetricsCache(chunk, metrics, read: true);
 
     // Fault injection: no product path yields malformed DirectWrite line
-    // metrics, so crafted ones are written into the chunk's owned text-layout
-    // state. The struct is read as a boxed copy and written back whole.
+    // metrics, so crafted ones replace the chunk's cached metrics.
     private static void SetLineMetricsCache(InlineContainerBox chunk, CanvasLineMetrics[]? metrics, bool read)
     {
-        FieldInfo stateField = GetRequiredPrivateField(typeof(InlineContainerBox), "_textLayout");
-        object state = stateField.GetValue(chunk)!;
-        GetRequiredPrivateField(typeof(InlineTextLayoutState), "_cachedLineMetrics").SetValue(state, metrics);
-        GetRequiredPrivateField(typeof(InlineTextLayoutState), "_lineMetricsRead").SetValue(state, read);
-        stateField.SetValue(chunk, state);
+        chunk.ReplaceCachedLineMetrics(metrics, read);
         Assert.Same(metrics, chunk.CachedLineMetrics);
         Assert.Equal(read, chunk.HasReadLineMetrics);
     }
@@ -885,8 +877,6 @@ public sealed class CodeBlockVisualLinePlacementCacheTests(ITestOutputHelper out
         return result;
     }
 
-    private static FieldInfo GetRequiredPrivateField(Type type, string name)
-        => Assert.IsAssignableFrom<FieldInfo>(type.GetField(name, InstanceFields));
 
     private readonly record struct LinePlacement(int LogicalLineIndex, double Top, double Height);
 }
