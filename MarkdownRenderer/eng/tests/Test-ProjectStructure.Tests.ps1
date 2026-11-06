@@ -163,6 +163,24 @@ try {
         "MRS0010 eng/file-size-exceptions.json: 'tests/Lib.Tests/LibraryTests.cs' is 1 lines"
     )
 
+    Assert-Check 'MRS0011 shipping project with its own runtimes or platform target' {
+        param($tree)
+        Write-TreeFile $tree 'src/Lib/Lib.csproj' @'
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+  <ItemGroup><InternalsVisibleTo Include="Lib.Tests" /></ItemGroup>
+</Project>
+'@
+        # Test projects choose their own host platform.
+        Write-TreeFile $tree 'tests/Lib.Tests/Lib.Tests.csproj' '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><RuntimeIdentifier>win-x64</RuntimeIdentifier></PropertyGroup></Project>'
+    } @(
+        'MRS0011 src/Lib/Lib.csproj: declares RuntimeIdentifiers.'
+        'MRS0011 src/Lib/Lib.csproj: declares PlatformTarget.'
+    )
+
     Assert-Check 'MRS0010 size exceptions with missing members' {
         param($tree)
         Write-SizeExceptions $tree @(

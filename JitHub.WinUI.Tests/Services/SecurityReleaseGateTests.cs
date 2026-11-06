@@ -44,77 +44,48 @@ public sealed class SecurityReleaseGateTests
 
     [Fact]
     [Trait("Category", "ReleaseSecurity")]
-    public void RidNeutralShippingProjects_DeclareSupportedRuntimes_AndAppGraphLocksThem()
+    public void AppGraphRendererLocks_RecordEverySupportedRuntime()
     {
+        // The JitHub release gate restores and audits only the app graph.
+        // Feature packs outside that graph own their locks in their
+        // package-specific release gates and must not couple this build to
+        // unrelated restore-lane state. That every shipping renderer project
+        // inherits its runtimes and AnyCPU target from MarkdownRenderer/src
+        // is enforced by the structure gate (MRS0011); that every packed
+        // managed asset is AnyCPU IL, and that MarkdownRenderer.All ships no
+        // assembly, by MarkdownRenderer/eng/Test-ManagedPackageArchitecture.ps1.
         string root = FindRepositoryRoot();
-        (string RelativePath, bool ProducesManagedAssembly, bool CoveredByAppReleaseGate)[] projects =
+        string[] appGraphProjects =
         [
-            (Path.Combine("MarkdownRenderer", "src", "MarkdownRenderer", "MarkdownRenderer.csproj"), true, true),
-            (Path.Combine("MarkdownRenderer", "src", "MarkdownRenderer.Math", "MarkdownRenderer.Math.csproj"), true, false),
-            (Path.Combine("MarkdownRenderer", "src", "MarkdownRenderer.SyntaxHighlighting.TextMate", "MarkdownRenderer.SyntaxHighlighting.TextMate.csproj"), true, true),
-            (Path.Combine("MarkdownRenderer", "src", "MarkdownRenderer.SyntaxHighlighting.TextMate.Engine", "MarkdownRenderer.SyntaxHighlighting.TextMate.Engine.csproj"), true, true),
-            (Path.Combine("MarkdownRenderer", "src", "MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common", "MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common.csproj"), true, true),
-            (Path.Combine("MarkdownRenderer", "src", "MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All", "MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.All.csproj"), true, false),
-            (Path.Combine("MarkdownRenderer", "src", "MarkdownRenderer.All", "MarkdownRenderer.All.csproj"), false, false)
+            "MarkdownRenderer",
+            "MarkdownRenderer.SyntaxHighlighting.TextMate",
+            "MarkdownRenderer.SyntaxHighlighting.TextMate.Engine",
+            "MarkdownRenderer.SyntaxHighlighting.TextMate.Grammars.Common",
         ];
         string[] expectedRids = ["win-arm64", "win-x64", "win-x86"];
 
-        // Every shipping project inherits its supported runtimes and its
-        // architecture-neutral PlatformTarget from the shared src props.
-        XDocument sharedProps = XDocument.Load(
-            Path.Combine(root, "MarkdownRenderer", "src", "Directory.Build.props"));
-        XElement sharedRoot = Assert.IsType<XElement>(sharedProps.Root);
-        string[] declaredRids = Assert.Single(
-                sharedRoot.Elements("PropertyGroup").Elements("RuntimeIdentifiers"))
-            .Value
-            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        Assert.Equal(expectedRids, declaredRids.Order(StringComparer.Ordinal));
-        Assert.Equal(
-            "AnyCPU",
-            Assert.Single(sharedRoot.Elements("PropertyGroup").Elements("PlatformTarget")).Value);
-
-        foreach ((string relativePath, bool producesManagedAssembly, bool coveredByAppReleaseGate) in projects)
+        foreach (string project in appGraphProjects)
         {
-            string projectPath = Path.Combine(root, relativePath);
-            XDocument project = XDocument.Load(projectPath);
-            XElement projectRoot = Assert.IsType<XElement>(project.Root);
-            Assert.Empty(projectRoot.Elements("PropertyGroup").Elements("RuntimeIdentifiers"));
-            Assert.Empty(projectRoot.Elements("PropertyGroup").Elements("PlatformTarget"));
+            string lockPath = Path.Combine(root, "MarkdownRenderer", "src", project, "packages.lock.json");
+            using System.Text.Json.JsonDocument lockFile = System.Text.Json.JsonDocument.Parse(
+                File.ReadAllText(lockPath));
+            string[] targetFrameworks = lockFile.RootElement
+                .GetProperty("dependencies")
+                .EnumerateObject()
+                .Select(static property => property.Name)
+                .ToArray();
 
-            if (!producesManagedAssembly)
-            {
-                XElement includeBuildOutput = Assert.Single(
-                    projectRoot.Elements("PropertyGroup").Elements("IncludeBuildOutput"));
-                Assert.Equal("false", includeBuildOutput.Value, ignoreCase: true);
-            }
-
-            if (coveredByAppReleaseGate)
-            {
-                // The JitHub release gate restores and audits only the app graph.
-                // Feature packs outside that graph own their locks in their
-                // package-specific release gates and must not couple this build
-                // to unrelated restore-lane state.
-                string lockPath = Path.Combine(Path.GetDirectoryName(projectPath)!, "packages.lock.json");
-                using System.Text.Json.JsonDocument lockFile = System.Text.Json.JsonDocument.Parse(
-                    File.ReadAllText(lockPath));
-                string[] targetFrameworks = lockFile.RootElement
-                    .GetProperty("dependencies")
-                    .EnumerateObject()
-                    .Select(static property => property.Name)
-                    .ToArray();
-
-                string neutralTarget = Assert.Single(
-                    targetFrameworks,
-                    static target => !target.Contains('/', StringComparison.Ordinal));
-                string[] expectedTargets =
-                [
-                    neutralTarget,
-                    .. expectedRids.Select(rid => $"{neutralTarget}/{rid}")
-                ];
-                Assert.Equal(
-                    expectedTargets.Order(StringComparer.Ordinal),
-                    targetFrameworks.Order(StringComparer.Ordinal));
-            }
+            string neutralTarget = Assert.Single(
+                targetFrameworks,
+                static target => !target.Contains('/', StringComparison.Ordinal));
+            string[] expectedTargets =
+            [
+                neutralTarget,
+                .. expectedRids.Select(rid => $"{neutralTarget}/{rid}")
+            ];
+            Assert.Equal(
+                expectedTargets.Order(StringComparer.Ordinal),
+                targetFrameworks.Order(StringComparer.Ordinal));
         }
     }
 
