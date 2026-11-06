@@ -932,6 +932,7 @@ public sealed class RootLocalInlineImageRelayoutTests
             direction,
             language: "en-US")
         {
+            RenderResources = seed.RenderResources,
             CancellationToken = CancellationToken.None,
             ImageCancellationToken = CancellationToken.None,
             ImagePreparationOwner = seed.ImagePreparationOwnerToken,

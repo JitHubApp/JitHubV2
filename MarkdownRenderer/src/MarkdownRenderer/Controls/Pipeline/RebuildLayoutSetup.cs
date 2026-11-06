@@ -117,6 +117,9 @@ internal sealed class RebuildLayoutSetup
             device,
             reason,
             layoutDiagnostics,
+            // Views that are not given an engine render within the default
+            // engine's budgets, as they parse with it.
+            (source.Engine ?? MarkdownEngine.Default).RenderResources,
             ct);
         return new RebuildLayoutPlan
         {
@@ -286,6 +289,7 @@ internal sealed class RebuildLayoutSetup
         CanvasDevice device,
         RebuildReason reason,
         MarkdownLayoutDiagnostics? layoutDiagnostics,
+        MarkdownRenderResources renderResources,
         CancellationToken ct)
     {
         var imageCarryIdentity = new Layout.Boxes.MarkdownImageCarryIdentity(
@@ -322,6 +326,7 @@ internal sealed class RebuildLayoutSetup
             // token so benign width/theme relayouts do not cancel committed
             // image boxes before they can publish their result.
             CancellationToken = ct,
+            RenderResources = renderResources,
             ImageCancellationToken = _host.ImageLifetimeCts?.Token ?? CancellationToken.None,
             // Failed layout construction can retire images after the control's
             // current drain epoch has started. Keep a context-local barrier and

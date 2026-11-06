@@ -17,6 +17,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class DisplaySizedRasterDecodeTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Fact]
     public async Task RetiringBoxCancelsQueuedRasterPreparationAndDrainsItsLifetime()
     {
@@ -25,7 +27,7 @@ public sealed class DisplaySizedRasterDecodeTests
         using IDisposable held = await session.EnterCpuPreparationAsync(
             new object(), CancellationToken.None);
         var resolver = new ByteResolver(CreatePng(1024, 512), $"retired-raster-{Guid.NewGuid():N}");
-        var image = new ImageBox(CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
+        var image = new ImageBox(CreateContext(_renderResources, resolver, session, scale: 1), _renderResources.Images,
             "https://images.example/retired.png", string.Empty);
         int publications = 0;
         image.LoadCompleted += (_, _) => Interlocked.Increment(ref publications);
@@ -59,7 +61,7 @@ public sealed class DisplaySizedRasterDecodeTests
     {
         byte[] source = CreatePng(width: 1024, height: 512);
         var resolver = new ByteResolver(source, $"eager-raster-{Guid.NewGuid():N}");
-        var image = new ImageBox(CreateContext(resolver, session: null, scale: 1), ImageResourceScope.Shared,
+        var image = new ImageBox(CreateContext(_renderResources, resolver, session: null, scale: 1), _renderResources.Images,
             "https://images.example/large.png", string.Empty);
         try
         {
@@ -91,7 +93,7 @@ public sealed class DisplaySizedRasterDecodeTests
         var resolver = new ByteResolver(source, $"display-raster-{Guid.NewGuid():N}");
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
         var image = new ImageBox(
-            CreateContext(resolver, session, rasterizationScale), ImageResourceScope.Shared,
+            CreateContext(_renderResources, resolver, session, rasterizationScale), _renderResources.Images,
             "https://images.example/large.png",
             string.Empty);
         try
@@ -117,9 +119,9 @@ public sealed class DisplaySizedRasterDecodeTests
         byte[] source = CreatePng(width: 1024, height: 512);
         var resolver = new ByteResolver(source, $"display-width-{Guid.NewGuid():N}");
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
-        var first = new ImageBox(CreateContext(resolver, session, 1), ImageResourceScope.Shared,
+        var first = new ImageBox(CreateContext(_renderResources, resolver, session, 1), _renderResources.Images,
             "https://images.example/large.png", string.Empty);
-        var second = new ImageBox(CreateContext(resolver, session, 1), ImageResourceScope.Shared,
+        var second = new ImageBox(CreateContext(_renderResources, resolver, session, 1), _renderResources.Images,
             "https://images.example/large.png", string.Empty);
         try
         {
@@ -149,7 +151,7 @@ public sealed class DisplaySizedRasterDecodeTests
     {
         var resolver = new ByteResolver(CreatePng(1024, 512), $"authored-raster-{Guid.NewGuid():N}");
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
-        var image = new ImageBox(CreateContext(resolver, session, scale: 2), ImageResourceScope.Shared,
+        var image = new ImageBox(CreateContext(_renderResources, resolver, session, scale: 2), _renderResources.Images,
             "https://images.example/authored.png", string.Empty,
             new SafeHtmlLength(authoredWidth, false), new SafeHtmlLength(authoredHeight, false));
         try
@@ -181,11 +183,11 @@ public sealed class DisplaySizedRasterDecodeTests
                 UseDisplaySizedRasterDecode = displaySized,
                 MaxRasterOutputPixels = pixelLimit,
             });
-        var eager = new ImageBox(CreateContext(resolver, null, 1), ImageResourceScope.Shared,
+        var eager = new ImageBox(CreateContext(_renderResources, resolver, null, 1), _renderResources.Images,
             "https://images.example/shared.png", string.Empty);
-        var bounded = new ImageBox(CreateContext(resolver, session, scale), ImageResourceScope.Shared,
+        var bounded = new ImageBox(CreateContext(_renderResources, resolver, session, scale), _renderResources.Images,
             "https://images.example/shared.png", string.Empty);
-        var reused = new ImageBox(CreateContext(resolver, session, scale), ImageResourceScope.Shared,
+        var reused = new ImageBox(CreateContext(_renderResources, resolver, session, scale), _renderResources.Images,
             "https://images.example/shared.png", string.Empty);
         try
         {
@@ -211,7 +213,7 @@ public sealed class DisplaySizedRasterDecodeTests
     public async Task BuiltInSourceConstructorDoesNotBypassDisplaySizedDecode()
     {
         string source = "data:image/png;base64," + Convert.ToBase64String(CreatePng(1024, 512));
-        var eager = new ImageBox(CreateContext(null!, null, 1), ImageResourceScope.Shared, source, string.Empty);
+        var eager = new ImageBox(CreateContext(_renderResources, null!, null, 1), _renderResources.Images, source, string.Empty);
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
         ImageBox? bounded = null;
         try
@@ -219,7 +221,7 @@ public sealed class DisplaySizedRasterDecodeTests
             eager.Measure(200);
             await WaitForLoadAsync(eager);
             Assert.Equal(1024u, eager.Bitmap!.SizeInPixels.Width);
-            bounded = new ImageBox(CreateContext(null!, session, 1), ImageResourceScope.Shared, source, string.Empty);
+            bounded = new ImageBox(CreateContext(_renderResources, null!, session, 1), _renderResources.Images, source, string.Empty);
             Assert.Null(bounded.Bitmap);
             bounded.Measure(200);
             await WaitForLoadAsync(bounded);
@@ -233,7 +235,7 @@ public sealed class DisplaySizedRasterDecodeTests
     public async Task SourceSizedCacheStillReusesAnEntryWithinTheConsumersPixelCeiling()
     {
         var resolver = new ByteResolver(CreatePng(64, 32), $"small-policy-raster-{Guid.NewGuid():N}");
-        var eager = new ImageBox(CreateContext(resolver, null, 1), ImageResourceScope.Shared,
+        var eager = new ImageBox(CreateContext(_renderResources, resolver, null, 1), _renderResources.Images,
             "https://images.example/small.png", string.Empty);
         using var session = new MarkdownPerformanceSession(
             MarkdownPerformanceOptions.Progressive with
@@ -241,7 +243,7 @@ public sealed class DisplaySizedRasterDecodeTests
                 UseDisplaySizedRasterDecode = false,
                 MaxRasterOutputPixels = 10_000,
             });
-        var reused = new ImageBox(CreateContext(resolver, session, 1), ImageResourceScope.Shared,
+        var reused = new ImageBox(CreateContext(_renderResources, resolver, session, 1), _renderResources.Images,
             "https://images.example/small.png", string.Empty);
         try
         {
@@ -259,9 +261,9 @@ public sealed class DisplaySizedRasterDecodeTests
         byte[] source = CreatePng(width: 1024, height: 512);
         var resolver = new ByteResolver(source, $"display-upgrade-{Guid.NewGuid():N}");
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
-        var preview = new ImageBox(CreateContext(resolver, session, 1), ImageResourceScope.Shared,
+        var preview = new ImageBox(CreateContext(_renderResources, resolver, session, 1), _renderResources.Images,
             "https://images.example/large.png", string.Empty);
-        var larger = new ImageBox(CreateContext(resolver, session, 1), ImageResourceScope.Shared,
+        var larger = new ImageBox(CreateContext(_renderResources, resolver, session, 1), _renderResources.Images,
             "https://images.example/large.png", string.Empty);
         try
         {
@@ -302,10 +304,10 @@ public sealed class DisplaySizedRasterDecodeTests
         Uri resolvedUri = new("https://images.example/account/avatar.png");
         using var session = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
         var portrait = new ImageBox(
-            CreateContext(new UnkeyedResolver(CreatePng(512, 1024), resolvedUri), session, 1), ImageResourceScope.Shared,
+            CreateContext(_renderResources, new UnkeyedResolver(CreatePng(512, 1024), resolvedUri), session, 1), _renderResources.Images,
             resolvedUri.AbsoluteUri, string.Empty);
         var landscape = new ImageBox(
-            CreateContext(new UnkeyedResolver(CreatePng(1024, 512), resolvedUri), session, 1), ImageResourceScope.Shared,
+            CreateContext(_renderResources, new UnkeyedResolver(CreatePng(1024, 512), resolvedUri), session, 1), _renderResources.Images,
             resolvedUri.AbsoluteUri, string.Empty);
         try
         {
@@ -334,9 +336,9 @@ public sealed class DisplaySizedRasterDecodeTests
         using var previewSession = new MarkdownPerformanceSession(MarkdownPerformanceOptions.Progressive);
         using var exactOnlySession = new MarkdownPerformanceSession(
             MarkdownPerformanceOptions.Progressive with { UseCachedRasterPreview = false });
-        var cached = new ImageBox(CreateContext(resolver, previewSession, 1), ImageResourceScope.Shared,
+        var cached = new ImageBox(CreateContext(_renderResources, resolver, previewSession, 1), _renderResources.Images,
             "https://images.example/large.png", string.Empty);
-        var exactOnly = new ImageBox(CreateContext(resolver, exactOnlySession, 1), ImageResourceScope.Shared,
+        var exactOnly = new ImageBox(CreateContext(_renderResources, resolver, exactOnlySession, 1), _renderResources.Images,
             "https://images.example/large.png", string.Empty);
         try
         {
@@ -369,7 +371,7 @@ public sealed class DisplaySizedRasterDecodeTests
         var resolver = new ByteResolver(source, $"display-budget-{Guid.NewGuid():N}");
         using var session = new MarkdownPerformanceSession(
             MarkdownPerformanceOptions.Progressive with { MaxRasterOutputPixels = 10_000 });
-        var image = new ImageBox(CreateContext(resolver, session, 1), ImageResourceScope.Shared,
+        var image = new ImageBox(CreateContext(_renderResources, resolver, session, 1), _renderResources.Images,
             "https://images.example/large.png", string.Empty);
         try
         {
@@ -407,7 +409,7 @@ public sealed class DisplaySizedRasterDecodeTests
                 UseDisplaySizedRasterDecode = false,
                 MaxRasterOutputPixels = outputPixelLimit,
             });
-        var image = new ImageBox(CreateContext(resolver, session, 1), ImageResourceScope.Shared,
+        var image = new ImageBox(CreateContext(_renderResources, resolver, session, 1), _renderResources.Images,
             "https://images.example/tall.png", string.Empty);
         var publications = new List<bool>();
         image.LoadCompleted += (_, result) => publications.Add(result.LayoutInvalidated);
@@ -459,6 +461,7 @@ public sealed class DisplaySizedRasterDecodeTests
     }
 
     internal static MarkdownLayoutContext CreateContext(
+        MarkdownRenderResources renderResources,
         IMarkdownImageResolver resolver,
         MarkdownPerformanceSession? session,
         double scale,
@@ -481,6 +484,7 @@ public sealed class DisplaySizedRasterDecodeTests
             CanvasDevice.GetSharedDevice(), theme, new MarkdownSourceMap(string.Empty),
             new MarkdownExtensionRegistry(), FlowDirection.LeftToRight, language: "en-US")
         {
+            RenderResources = renderResources,
             ImageResolver = resolver,
             RasterDecoder = rasterDecoder,
             PerformanceSession = session,

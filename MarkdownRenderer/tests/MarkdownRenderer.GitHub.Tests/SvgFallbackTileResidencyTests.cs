@@ -16,6 +16,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection(AllocationSensitiveContractCollection.Name)]
 public sealed class SvgFallbackTileResidencyTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     private const int TileSize = 1024;
 
     [Fact]
@@ -381,7 +383,7 @@ public sealed class SvgFallbackTileResidencyTests
             visible,
             currentTiles);
 
-    private static ImageBox CreateBareBox(
+    private ImageBox CreateBareBox(
         SvgTileRenderPlan plan,
         IMarkdownSvgRenderer renderer)
     {
@@ -394,9 +396,10 @@ public sealed class SvgFallbackTileResidencyTests
             registry: null!,
             flowDirection: FlowDirection.LeftToRight)
         {
+            RenderResources = _renderResources,
             SvgRenderer = renderer,
         };
-        var box = new ImageBox(context, ImageResourceScope.Shared, "https://example.test/tiled.svg", "tiled svg");
+        var box = new ImageBox(context, context.ImageResources, "https://example.test/tiled.svg", "tiled svg");
         ImageBoxTestState.AcceptTiledPlan(box, plan);
         ImageBoxTestState.AdoptSvgMetadata(
             box,
@@ -407,8 +410,8 @@ public sealed class SvgFallbackTileResidencyTests
         return box;
     }
 
-    private static long GetRendererIdentity(IMarkdownSvgRenderer renderer) =>
-        ImageResourceScope.Shared.ProviderIdentities.GetSvgRendererIdentity(renderer);
+    private long GetRendererIdentity(IMarkdownSvgRenderer renderer) =>
+        _renderResources.Images.ProviderIdentities.GetSvgRendererIdentity(renderer);
 
     private static void QueueVisible(ImageBox box, Rect destination, Rect viewport) =>
         box.SvgTileRenderer.QueueVisibleSvgTiles(destination, viewport);

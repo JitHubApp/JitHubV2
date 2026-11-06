@@ -13,6 +13,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection(SharedCanvasBitmapCacheTestCollection.Name)]
 public sealed class SingleRasterLayoutCandidateTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     private const float Width = 320f;
 
     [Fact]
@@ -210,7 +212,7 @@ public sealed class SingleRasterLayoutCandidateTests
                 20,
                 DirectXPixelFormat.B8G8R8A8UIntNormalized);
             SharedCanvasBitmapCache.Lease replacementLease =
-                ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(replacementBitmap);
+                _renderResources.Images.BitmapCache.CreateUncachedLease(replacementBitmap);
             fixture.ImageRun.Image.Presentation.Replace(replacementBitmap, replacementLease);
 
             Assert.False(candidate.HasCurrentSourceRaster());

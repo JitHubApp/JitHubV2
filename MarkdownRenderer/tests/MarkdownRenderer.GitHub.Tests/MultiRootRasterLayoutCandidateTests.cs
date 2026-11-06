@@ -78,6 +78,7 @@ public sealed class MultiRootRasterLayoutCandidateTests
             ImagePreparationOwner = seed.ImagePreparationOwnerToken,
             PerformanceDocumentOwner = documentOwner,
             PerformanceSession = session,
+            RenderResources = seed.SourceContext.RenderResources,
             RasterizationScale = rasterizationScale,
             ImageResolver = resolver,
             AllowThirdPartyRemoteImages = true,
@@ -1048,6 +1049,7 @@ public sealed class MultiRootRasterLayoutCandidateTests
                 RasterizationScale = seed.SourceContext.RasterizationScale,
                 ImagePreparationOwner = seed.SourceContext.ImagePreparationOwner,
                 DisclosureStates = seed.SourceContext.DisclosureStates,
+                RenderResources = seed.SourceContext.RenderResources,
             };
 
             var roots = new InlineContainerBox[specifications.Length];

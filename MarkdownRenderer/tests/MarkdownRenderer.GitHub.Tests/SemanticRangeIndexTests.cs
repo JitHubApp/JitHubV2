@@ -17,11 +17,13 @@ namespace MarkdownRenderer.GitHub.Tests;
 /// <summary>Ordered semantic metadata tests; these do not qualify native UIA geometry.</summary>
 public sealed class SemanticRangeIndexTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Fact]
     public void ImageRangesMatchLinearOracleIncludingEmptyAltAndInlineImages()
     {
         MarkdownLayoutContext context = CreateContext();
-        var blockImage = new ImageBox(context, ImageResourceScope.Shared, string.Empty, "block");
+        var blockImage = new ImageBox(context, context.ImageResources, string.Empty, "block");
         var inlineImage = new InlineImageRun(context, "inline", string.Empty);
         try
         {
@@ -155,7 +157,7 @@ public sealed class SemanticRangeIndexTests
             MarkdownAccessibilityRole.Diagram);
         var vector = new VectorSceneBox(context, Assert.Single(contentBuilder.Build().Items),
             MarkdownElementKeys.Diagram) { BlockIndex = context.NextBlockIndex() };
-        BlockBox[] blocks = [Paragraph("first"), new ImageBox(context, ImageResourceScope.Shared, string.Empty, string.Empty),
+        BlockBox[] blocks = [Paragraph("first"), new ImageBox(context, context.ImageResources, string.Empty, string.Empty),
             group, table, vector, Paragraph("last\n\n")];
         using var snapshot = new LayoutSnapshot(blocks, context.SourceMap, 200, 400);
         MarkdownSemanticDocument document = snapshot.SemanticDocument;
@@ -268,7 +270,7 @@ public sealed class SemanticRangeIndexTests
         IReadOnlyList<MarkdownTextSpan> spans)
         => new(root, text, spans);
 
-    private static MarkdownLayoutContext CreateContext()
+    private MarkdownLayoutContext CreateContext()
     {
         var style = new ElementStyle();
         Color color = Color.FromArgb(255, 0, 0, 0);
@@ -276,7 +278,7 @@ public sealed class SemanticRangeIndexTests
             new Dictionary<string, ElementStyleOverride>(), color, color, color, color,
             isDark: false, isHighContrast: false, textScaleFactor: 1);
         return new MarkdownLayoutContext(CanvasDevice.GetSharedDevice(), theme, new MarkdownSourceMap(""),
-            new MarkdownExtensionRegistry(), FlowDirection.LeftToRight);
+            new MarkdownExtensionRegistry(), FlowDirection.LeftToRight) { RenderResources = _renderResources };
     }
 
     private sealed class CountingList<T>(T[] items) : IReadOnlyList<T>

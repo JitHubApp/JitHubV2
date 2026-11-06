@@ -1,3 +1,4 @@
+using MarkdownRenderer.Layout;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -12,11 +13,13 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection(SharedCanvasBitmapCacheTestCollection.Name)]
 public sealed class BitmapOutputRecoverySignalTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Fact]
     public async Task SharedWaiterOverflowEmitsOneSourceFreeSignalAndRecoveryDoesNotStartLoading()
     {
-        BitmapOutputAdmission admission = ImageResourceScope.Shared.BitmapOutput;
-        ImageResourceScope.Shared.BitmapCache.Clear();
+        BitmapOutputAdmission admission = _renderResources.Images.BitmapOutput;
+        _renderResources.Images.BitmapCache.Clear();
         await DisplaySizedRasterDecodeTests.WaitUntilAsync(() =>
         {
             BitmapOutputAdmission.Snapshot snapshot = admission.GetSnapshot();
@@ -81,7 +84,7 @@ public sealed class BitmapOutputRecoverySignalTests
             GC.KeepAlive(waiterOwners);
 
             image = new ImageBox(
-                DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
+                DisplaySizedRasterDecodeTests.CreateContext(_renderResources, resolver, session, scale: 1), _renderResources.Images,
                 "https://images.example/waiter-overflow.png",
                 "waiter overflow");
             var signal = new TaskCompletionSource<LoadCompletedEventArgs>(
@@ -143,7 +146,7 @@ public sealed class BitmapOutputRecoverySignalTests
                 registration.Dispose();
             foreach (BitmapOutputAdmission.Reservation reservation in reservations)
                 reservation.Dispose();
-            ImageResourceScope.Shared.BitmapCache.Clear();
+            _renderResources.Images.BitmapCache.Clear();
             GC.KeepAlive(waiterOwners);
         }
 

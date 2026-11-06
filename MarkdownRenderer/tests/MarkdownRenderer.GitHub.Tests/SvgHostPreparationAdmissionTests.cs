@@ -22,6 +22,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection(ProcessRasterDecodeCollection.CollectionName)]
 public sealed class SvgHostPreparationAdmissionTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     private const long PreparationScratchBytes = 2L * 1024 * 1024;
 
     [Fact]
@@ -420,7 +422,7 @@ public sealed class SvgHostPreparationAdmissionTests
         }
     }
 
-    private static ImageBox CreateImage(
+    private ImageBox CreateImage(
         IMarkdownSvgRenderer renderer,
         GeneratedSvgResolver resolver,
         MarkdownPerformanceSession? session,
@@ -460,6 +462,7 @@ public sealed class SvgHostPreparationAdmissionTests
             FlowDirection.LeftToRight,
             language: "en-US")
         {
+            RenderResources = _renderResources,
             ImageResolver = resolver,
             SvgRenderer = renderer,
             PerformanceSession = session,
@@ -469,7 +472,7 @@ public sealed class SvgHostPreparationAdmissionTests
         };
 
         return new ImageBox(
-            context, ImageResourceScope.Shared,
+            context, context.ImageResources,
             $"https://example.test/svg-preparation/{Guid.NewGuid():N}.svg",
             alt: "SVG preparation admission test");
     }

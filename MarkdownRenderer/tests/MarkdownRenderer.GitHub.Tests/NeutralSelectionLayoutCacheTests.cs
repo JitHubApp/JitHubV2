@@ -386,6 +386,8 @@ public sealed class NeutralSelectionLayoutCacheTests(ITestOutputHelper output)
 
     private sealed class Harness : IDisposable
     {
+        private readonly MarkdownRenderResources _renderResources = new();
+
         private readonly List<InlineContainerBox> _ownedBoxes = new();
         private readonly MarkdownSourceMap _sourceMap = new(Text);
         private readonly MarkdownExtensionRegistry _registry = new();
@@ -441,6 +443,7 @@ public sealed class NeutralSelectionLayoutCacheTests(ITestOutputHelper output)
         internal MarkdownLayoutContext CreateContext(CancellationToken cancellationToken = default) =>
             new(ResourceCreator, _theme, _sourceMap, _registry, FlowDirection, language: "en-US")
             {
+                RenderResources = _renderResources,
                 DisclosureStates = _disclosureStates,
                 CancellationToken = cancellationToken,
             };
@@ -463,7 +466,7 @@ public sealed class NeutralSelectionLayoutCacheTests(ITestOutputHelper output)
 
             try
             {
-                ImageResourceScope.Shared.BitmapCache.ReleaseDevice(Device);
+                _renderResources.Images.BitmapCache.ReleaseDevice(Device);
             }
             finally
             {

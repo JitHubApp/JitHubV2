@@ -11,6 +11,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection(SharedCanvasBitmapCacheTestCollection.Name)]
 public sealed class MultiRasterLayoutCandidateTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     private const float Width = 320f;
 
     [Fact]
@@ -374,7 +376,7 @@ public sealed class MultiRasterLayoutCandidateTests
             Assert.IsType<MarkdownLayoutContext>(constructionContext));
     }
 
-    private static void ReplaceBitmap(ImageBox image, CanvasDevice device, int width, int height)
+    private void ReplaceBitmap(ImageBox image, CanvasDevice device, int width, int height)
     {
         var bitmap = CanvasBitmap.CreateFromBytes(
             device,
@@ -382,7 +384,7 @@ public sealed class MultiRasterLayoutCandidateTests
             width,
             height,
             DirectXPixelFormat.B8G8R8A8UIntNormalized);
-        SharedCanvasBitmapCache.Lease lease = ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(bitmap);
+        SharedCanvasBitmapCache.Lease lease = _renderResources.Images.BitmapCache.CreateUncachedLease(bitmap);
         try
         {
             image.Presentation.Replace(bitmap, lease);

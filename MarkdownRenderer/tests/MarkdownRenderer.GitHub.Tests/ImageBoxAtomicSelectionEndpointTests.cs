@@ -17,12 +17,14 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection(AllocationSensitiveContractCollection.Name)]
 public sealed class ImageBoxAtomicSelectionEndpointTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Fact]
     public async Task PromotedImageUsesBeforeAfterEndpointAndReturnsOnlyItsAtomicSlot()
     {
         MarkdownLayoutContext context = CreateContext();
         var image = new ImageBox(
-            context, ImageResourceScope.Shared,
+            context, context.ImageResources,
             string.Empty,
             "final image",
             new SafeHtmlLength(80, IsPercent: false),
@@ -117,7 +119,7 @@ public sealed class ImageBoxAtomicSelectionEndpointTests
         return target.GetPixelColors().ToArray();
     }
 
-    private static MarkdownLayoutContext CreateContext()
+    private MarkdownLayoutContext CreateContext()
     {
         var body = new ElementStyle
         {
@@ -147,6 +149,6 @@ public sealed class ImageBoxAtomicSelectionEndpointTests
             new MarkdownSourceMap("![final image](missing.png)"),
             new MarkdownExtensionRegistry(),
             Microsoft.UI.Xaml.FlowDirection.LeftToRight,
-            language: "en-US");
+            language: "en-US") { RenderResources = _renderResources };
     }
 }

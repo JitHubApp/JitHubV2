@@ -17,6 +17,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection(SharedCanvasBitmapCacheTestCollection.Name)]
 public sealed class SourceSliceMeasuredPlacementTransferTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     private const int DirectSliceLength = 8192;
 
     [Fact]
@@ -42,7 +44,7 @@ public sealed class SourceSliceMeasuredPlacementTransferTests
             string imageUri = new Uri($"ms-appx:///source-slice-placement-{Guid.NewGuid():N}.png").AbsoluteUri;
             Assert.True(MarkdownBuiltInImageSourcePolicy.TryResolve(
                 imageUri, null, out MarkdownBuiltInImageSource resolved));
-            using (ImageResourceScope.Shared.BitmapCache.StoreAndAcquire(
+            using (_renderResources.Images.BitmapCache.StoreAndAcquire(
                        device,
                        resolved.CacheKey,
                        CreateBitmap(device, 64, 32),
@@ -174,12 +176,12 @@ public sealed class SourceSliceMeasuredPlacementTransferTests
                     await imageRun.Image.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
             }
 
-            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(device);
+            _renderResources.Images.BitmapCache.ReleaseDevice(device);
             device.Dispose();
         }
     }
 
-    private static MarkdownLayoutContext CreateContext(
+    private MarkdownLayoutContext CreateContext(
         CanvasDevice device,
         ThemeSnapshot theme,
         MarkdownSourceMap sourceMap,
@@ -195,6 +197,7 @@ public sealed class SourceSliceMeasuredPlacementTransferTests
             FlowDirection.LeftToRight,
             language: "en-US")
         {
+            RenderResources = _renderResources,
             PerformanceDocumentOwner = documentOwner,
             ImagePreparationOwner = preparationOwner,
             DisclosureStates = disclosures,

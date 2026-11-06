@@ -142,6 +142,7 @@ internal sealed class ReplacementPublisher
         ForgetSnapshotScopedWork(sameDocument);
         _published.Snapshot = snapshot;
         _published.LayoutDevice = plan.Device;
+        _published.RenderResources = plan.Context.RenderResources;
         // Publish presentation state with the new snapshot before any
         // dependency-property notification can re-enter UIA or menu queries.
         // These immutable objects therefore always describe the same commit.

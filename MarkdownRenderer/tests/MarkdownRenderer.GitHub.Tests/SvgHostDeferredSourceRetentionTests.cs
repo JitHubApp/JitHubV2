@@ -16,6 +16,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection(ProcessRasterDecodeCollection.CollectionName)]
 public sealed class SvgHostDeferredSourceRetentionTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Fact]
     public async Task CompletedImageBoxCapacityDenialDoesNotRetainResolverSourceBytes()
     {
@@ -23,7 +25,7 @@ public sealed class SvgHostDeferredSourceRetentionTests
         var resolver = new GeneratedSvgResolver();
         var renderer = new CapacityDeniedRenderer(admission);
         var image = new ImageBox(
-            CreateContext(renderer, resolver), ImageResourceScope.Shared,
+            CreateContext(renderer, resolver), _renderResources.Images,
             "https://example.test/oversized-source.svg",
             alt: string.Empty);
 
@@ -52,7 +54,7 @@ public sealed class SvgHostDeferredSourceRetentionTests
         }
     }
 
-    private static MarkdownLayoutContext CreateContext(
+    private MarkdownLayoutContext CreateContext(
         IMarkdownSvgRenderer renderer,
         IMarkdownImageResolver resolver)
     {
@@ -88,6 +90,7 @@ public sealed class SvgHostDeferredSourceRetentionTests
             FlowDirection.LeftToRight,
             language: "en-US")
         {
+            RenderResources = _renderResources,
             ImageResolver = resolver,
             SvgRenderer = renderer,
             ImageCancellationToken = CancellationToken.None,

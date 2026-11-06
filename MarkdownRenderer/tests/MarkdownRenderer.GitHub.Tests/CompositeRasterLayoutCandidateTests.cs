@@ -76,6 +76,7 @@ public sealed class CompositeRasterLayoutCandidateTests
             ImageCancellationToken = CancellationToken.None,
             ImagePreparationOwner = fixture.ImagePreparationOwnerToken,
             PerformanceDocumentOwner = fixture.PerformanceDocumentOwner,
+            RenderResources = fixture.RenderResources,
         };
         MarkdownDocument semanticDocument = MarkdownDocument.FromParsed(sourceText, parsed);
         LayoutSnapshot source = new LayoutBuilder(context, semanticDocument: semanticDocument)
@@ -637,6 +638,7 @@ public sealed class CompositeRasterLayoutCandidateTests
             CancellationToken = CancellationToken.None,
             ImageCancellationToken = CancellationToken.None,
             RetirementSink = template.RetirementSink,
+            RenderResources = template.RenderResources,
             RasterizationScale = rasterizationScale,
             IsCodeBlockCopyEnabled = template.IsCodeBlockCopyEnabled,
             CodeBlockLineNumberMode = template.CodeBlockLineNumberMode,

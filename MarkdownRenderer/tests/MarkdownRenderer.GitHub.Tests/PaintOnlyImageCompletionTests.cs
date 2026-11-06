@@ -25,6 +25,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection(SharedCanvasBitmapCacheTestCollection.Name)]
 public sealed class PaintOnlyImageCompletionTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -120,7 +122,7 @@ public sealed class PaintOnlyImageCompletionTests
         var sourceMap = new MarkdownSourceMap(imageUrl);
         MarkdownLayoutContext context = CreateContext(sourceMap, resolver, session);
         var image = new ImageBox(
-            context, ImageResourceScope.Shared,
+            context, context.ImageResources,
             imageUrl,
             "badge",
             new SafeHtmlLength(80, IsPercent: false),
@@ -171,7 +173,7 @@ public sealed class PaintOnlyImageCompletionTests
         var sourceMap = new MarkdownSourceMap(imageUrl);
         MarkdownLayoutContext context = CreateContext(sourceMap, resolver, session: null);
         var image = new ImageBox(
-            context, ImageResourceScope.Shared,
+            context, context.ImageResources,
             imageUrl,
             "badge",
             new SafeHtmlLength(80, IsPercent: false),
@@ -221,7 +223,7 @@ public sealed class PaintOnlyImageCompletionTests
             ? null
             : new SafeHtmlLength(40, IsPercent: heightKind == 2);
         var image = new ImageBox(
-            context, ImageResourceScope.Shared,
+            context, context.ImageResources,
             imageUrl,
             "badge",
             requestedWidth,
@@ -252,7 +254,7 @@ public sealed class PaintOnlyImageCompletionTests
     private static Point Center(Rect rect)
         => new(rect.X + rect.Width / 2, rect.Y + rect.Height / 2);
 
-    private static MarkdownLayoutContext CreateContext(
+    private MarkdownLayoutContext CreateContext(
         MarkdownSourceMap sourceMap,
         IMarkdownImageResolver resolver,
         MarkdownPerformanceSession? session)
@@ -283,6 +285,7 @@ public sealed class PaintOnlyImageCompletionTests
             FlowDirection.LeftToRight,
             language: "en-US")
         {
+            RenderResources = _renderResources,
             ImageResolver = resolver,
             PerformanceSession = session,
             PerformanceDocumentOwner = session is null ? null : new object(),

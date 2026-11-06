@@ -105,6 +105,8 @@ public sealed class InlineDecorativeImageFailureCollapseTests
 
     private sealed class Fixture : IDisposable
     {
+        private readonly MarkdownRenderResources _renderResources = new();
+
         private readonly CanvasDevice _device;
         private readonly MarkdownLayoutContext _context;
         private readonly int _imageSourceStart;
@@ -157,6 +159,7 @@ public sealed class InlineDecorativeImageFailureCollapseTests
                 FlowDirection.LeftToRight,
                 language: "en-US")
             {
+                RenderResources = _renderResources,
                 ImageResolver = new BlockedResolver(),
                 ImageCancellationToken = CancellationToken.None,
             };
@@ -246,7 +249,7 @@ public sealed class InlineDecorativeImageFailureCollapseTests
         public void Dispose()
         {
             Box.Dispose();
-            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(_device);
+            _renderResources.Images.BitmapCache.ReleaseDevice(_device);
             _device.Dispose();
         }
     }

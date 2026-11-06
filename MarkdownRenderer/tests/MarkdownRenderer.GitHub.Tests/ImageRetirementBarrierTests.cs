@@ -18,12 +18,14 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class ImageRetirementBarrierTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task ReadyImageRetirementLeavesCallerBeforeNativeCleanup(bool throwOnDispose)
     {
-        var image = new ImageBox(CreateContext(renderer: null), ImageResourceScope.Shared, "", "ready image");
+        var image = new ImageBox(CreateContext(renderer: null), _renderResources.Images, "", "ready image");
         var document = new BlockingReadySvgDocument(throwOnDispose);
         image.SvgDocuments.SetCurrentNoLock(document);
         var callerReturned = new TaskCompletionSource(
@@ -149,7 +151,7 @@ public sealed class ImageRetirementBarrierTests
     [Fact]
     public async Task AcceptedQueuedPublicationRemainsInRetirementBarrierUntilExactlyOnceDrop()
     {
-        var image = new ImageBox(CreateContext(renderer: null), ImageResourceScope.Shared, CreateSvgDataUri(), "queued publication");
+        var image = new ImageBox(CreateContext(renderer: null), _renderResources.Images, CreateSvgDataUri(), "queued publication");
         byte[] rawBytes = [1, 2, 3, 4];
         // The box has no SVG renderer; accepted metadata never reads it.
         ImageBoxTestState.AdoptSvgMetadata(
@@ -194,7 +196,7 @@ public sealed class ImageRetirementBarrierTests
     [Fact]
     public async Task ImageRetirementWaitsForTileCancellationCallbacksBeforeDisposingSource()
     {
-        var image = new ImageBox(CreateContext(renderer: null), ImageResourceScope.Shared, "", "tile cancellation");
+        var image = new ImageBox(CreateContext(renderer: null), _renderResources.Images, "", "tile cancellation");
         using var source = new RetirableCancellationTokenSource();
         var callbackStarted = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -253,7 +255,7 @@ public sealed class ImageRetirementBarrierTests
     [Fact]
     public async Task RejectedQueuedPublicationDropsOwnedResourceOnceAndRetires()
     {
-        var image = new ImageBox(CreateContext(renderer: null), ImageResourceScope.Shared, "", "rejected publication");
+        var image = new ImageBox(CreateContext(renderer: null), _renderResources.Images, "", "rejected publication");
         int dropped = 0;
 
         image.PublishOnUiThread(
@@ -270,7 +272,7 @@ public sealed class ImageRetirementBarrierTests
     [Fact]
     public async Task ImageRetirementFaultsOnRejectedPublicationCleanupFailure()
     {
-        var image = new ImageBox(CreateContext(renderer: null), ImageResourceScope.Shared, "", "rejected cleanup");
+        var image = new ImageBox(CreateContext(renderer: null), _renderResources.Images, "", "rejected cleanup");
         int dropped = 0;
 
         InvalidOperationException rejected = Assert.Throws<InvalidOperationException>(() =>
@@ -297,7 +299,7 @@ public sealed class ImageRetirementBarrierTests
     {
         var resolver = new NonCooperativeImageResolver();
         var image = new ImageBox(
-            CreateContext(renderer: null, resolver: resolver), ImageResourceScope.Shared,
+            CreateContext(renderer: null, resolver: resolver), _renderResources.Images,
             "https://example.test/late.png",
             "late response");
         image.Measure(80);
@@ -318,7 +320,7 @@ public sealed class ImageRetirementBarrierTests
     {
         var renderer = new NonCooperativeSvgRenderer(throwOnDocumentDispose: true);
         MarkdownLayoutContext context = CreateContext(renderer);
-        var image = new ImageBox(context, ImageResourceScope.Shared, CreateSvgDataUri(), "late SVG cleanup failure");
+        var image = new ImageBox(context, context.ImageResources, CreateSvgDataUri(), "late SVG cleanup failure");
         image.Measure(80);
         image.EnsureLoading();
 
@@ -346,7 +348,7 @@ public sealed class ImageRetirementBarrierTests
     {
         var renderer = new NonCooperativeSvgRenderer(throwOnDocumentDispose: true);
         MarkdownLayoutContext context = CreateContext(renderer);
-        var image = new ImageBox(context, ImageResourceScope.Shared, CreateSvgDataUri(), "adopted SVG cleanup failure");
+        var image = new ImageBox(context, context.ImageResources, CreateSvgDataUri(), "adopted SVG cleanup failure");
         image.Measure(80);
 
         var root = new StackBox();
@@ -369,7 +371,7 @@ public sealed class ImageRetirementBarrierTests
         Assert.Equal(1, renderer.DocumentDisposeCount);
     }
 
-    private static MarkdownLayoutContext CreateContext(
+    private MarkdownLayoutContext CreateContext(
         IMarkdownSvgRenderer? renderer,
         IMarkdownImageResolver? resolver = null)
     {
@@ -407,6 +409,7 @@ public sealed class ImageRetirementBarrierTests
             FlowDirection.LeftToRight,
             language: "en-US")
         {
+            RenderResources = _renderResources,
             ImageResolver = resolver,
             SvgRenderer = renderer,
             ImageCancellationToken = CancellationToken.None,

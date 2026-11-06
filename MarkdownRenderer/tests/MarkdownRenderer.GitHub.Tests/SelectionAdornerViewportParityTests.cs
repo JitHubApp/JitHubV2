@@ -17,6 +17,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class SelectionAdornerViewportParityTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     private static readonly double[] RasterizationScales = [1, 1.25, 1.5, 1.75, 2, 2.25, 3, 4];
     private readonly ITestOutputHelper _output;
 
@@ -534,7 +536,7 @@ public sealed class SelectionAdornerViewportParityTests
         using var device = new CanvasDevice(forceSoftwareRenderer: true);
         Assert.True(device.ForceSoftwareRenderer);
         MarkdownLayoutContext context = CreateEndpointContext(device);
-        var image = new ImageBox(context, ImageResourceScope.Shared, string.Empty, "offscreen image") { BlockIndex = 1 };
+        var image = new ImageBox(context, context.ImageResources, string.Empty, "offscreen image") { BlockIndex = 1 };
         image.Measure(176);
         image.Arrange(0, 0, 176);
         Assert.True(image.Bounds.Height > 0);
@@ -1068,7 +1070,7 @@ public sealed class SelectionAdornerViewportParityTests
         }
     }
 
-    private static RtlNativeCodeFixture CreateRtlNativeCodeFixture(
+    private RtlNativeCodeFixture CreateRtlNativeCodeFixture(
         CanvasDevice device,
         float rasterizationScale,
         CanvasWordWrapping wrapping,
@@ -1134,6 +1136,7 @@ public sealed class SelectionAdornerViewportParityTests
             flowDirection,
             language: "en-US")
         {
+            RenderResources = _renderResources,
             RasterizationScale = rasterizationScale,
             IsCodeBlockCopyEnabled = true,
         };
@@ -1220,7 +1223,7 @@ public sealed class SelectionAdornerViewportParityTests
         }
     }
 
-    private static NativeOverflowFixture CreateNativeOverflowFixture(
+    private NativeOverflowFixture CreateNativeOverflowFixture(
         CanvasDevice device,
         FlowDirection flowDirection,
         float rasterizationScale)
@@ -1276,6 +1279,7 @@ public sealed class SelectionAdornerViewportParityTests
             flowDirection,
             language: "en-US")
         {
+            RenderResources = _renderResources,
             RasterizationScale = rasterizationScale,
             IsCodeBlockCopyEnabled = true,
         };
@@ -1368,7 +1372,7 @@ public sealed class SelectionAdornerViewportParityTests
         return new NativeOverflowFixture(device, context, snapshot, table, codeBlock, selection, width);
     }
 
-    private static MarkdownLayoutContext CreateEndpointContext(CanvasDevice device)
+    private MarkdownLayoutContext CreateEndpointContext(CanvasDevice device)
     {
         var body = new ElementStyle
         {
@@ -1396,7 +1400,7 @@ public sealed class SelectionAdornerViewportParityTests
             new MarkdownSourceMap("offscreen image endpoint"),
             new MarkdownExtensionRegistry(),
             FlowDirection.LeftToRight,
-            language: "en-US");
+            language: "en-US") { RenderResources = _renderResources };
     }
 
     private static void ResetCounts(IEnumerable<CountingSelectionBox> boxes)

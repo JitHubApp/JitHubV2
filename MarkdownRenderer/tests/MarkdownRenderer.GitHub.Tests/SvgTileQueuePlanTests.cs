@@ -16,6 +16,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection(AllocationSensitiveContractCollection.Name)]
 public sealed class SvgTileQueuePlanTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Fact]
     public void ImmutablePlanRetainsExactDocumentIdentityAndPhysicalDimensions()
     {
@@ -681,7 +683,7 @@ public sealed class SvgTileQueuePlanTests
             demand,
             ownerSlot: ownerSlot);
 
-    private static ImageBox CreateBareBox(
+    private ImageBox CreateBareBox(
         SvgTileRenderPlan plan,
         IMarkdownSvgRenderer? renderer = null,
         MarkdownPerformanceSession? session = null)
@@ -695,11 +697,12 @@ public sealed class SvgTileQueuePlanTests
                 registry: null!,
                 flowDirection: FlowDirection.LeftToRight)
             {
+                RenderResources = _renderResources,
                 SvgRenderer = renderer,
                 PerformanceSession = session,
                 PerformanceDocumentOwner = session is null ? null : new object(),
             },
-            ImageResourceScope.Shared,
+            _renderResources.Images,
             "https://example.test/tiled.svg",
             "tiled svg");
         ImageBoxTestState.AcceptTiledPlan(box, plan);
@@ -708,7 +711,7 @@ public sealed class SvgTileQueuePlanTests
 
     // Queue-visible paths check that the accepted metadata still names the
     // context's renderer and its cache generation.
-    private static void AdoptRendererMetadata(
+    private void AdoptRendererMetadata(
         ImageBox box,
         QueueTestSvgRenderer renderer,
         IMarkdownSvgDocument document) =>
@@ -774,8 +777,8 @@ public sealed class SvgTileQueuePlanTests
     private static void QueueVisible(ImageBox box, Rect destination, Rect viewport) =>
         box.SvgTileRenderer.QueueVisibleSvgTiles(destination, viewport);
 
-    private static long GetRendererIdentity(IMarkdownSvgRenderer renderer) =>
-        ImageResourceScope.Shared.ProviderIdentities.GetSvgRendererIdentity(renderer);
+    private long GetRendererIdentity(IMarkdownSvgRenderer renderer) =>
+        _renderResources.Images.ProviderIdentities.GetSvgRendererIdentity(renderer);
 
     private static void AssertPlanMember<T>(SvgTileRenderPlan plan, string memberName, T expected)
     {

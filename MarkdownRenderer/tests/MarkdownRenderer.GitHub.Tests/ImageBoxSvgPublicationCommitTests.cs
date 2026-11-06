@@ -15,6 +15,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class ImageBoxSvgPublicationCommitTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Fact]
     public async Task TiledFailureTransfersPreparedCleanupLeaseUntilTheLastDocumentUseDrains()
     {
@@ -801,7 +803,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
             // tiled before any CanvasDevice access. It cannot use an exact whole-
             // bitmap cache entry and therefore exercises the miss/fallback path.
             long rendererIdentity =
-                ImageResourceScope.Shared.ProviderIdentities.GetSvgRendererIdentity(renderer);
+                _renderResources.Images.ProviderIdentities.GetSvgRendererIdentity(renderer);
             var candidateInfo = new MarkdownSvgDocumentInfo(
                 IntrinsicWidthDips: 20_000,
                 IntrinsicHeightDips: 20_000,
@@ -823,10 +825,10 @@ public sealed class ImageBoxSvgPublicationCommitTests
                 null);
             cacheEntry = entry;
 
-            ImageResourceScope.Shared.SvgSources.Set(cacheKey, entry);
+            _renderResources.Images.SvgSources.Set(cacheKey, entry);
 
             var sourceLoader = new ImageSourceLoader(
-                image.SourceLoadHost, image.Context, ImageResourceScope.Shared, image.OutputAdmission, image.OutputDeferral,
+                image.SourceLoadHost, image.Context, _renderResources.Images, image.OutputAdmission, image.OutputDeferral,
                 image.SvgHostDeferral, image.Url, requestedWidth: null, requestedHeight: null);
             Assert.False(sourceLoader.TryLoadFallbackFromProcessCache(cacheKey, expectedWork: null));
 
@@ -853,16 +855,16 @@ public sealed class ImageBoxSvgPublicationCommitTests
         finally
         {
             if (cacheEntry is not null)
-                _ = ImageResourceScope.Shared.SvgSources.Remove(cacheKey);
+                _ = _renderResources.Images.SvgSources.Remove(cacheKey);
             image.Dispose();
             await image.RetirementTask.WaitAsync(TimeSpan.FromSeconds(10));
         }
     }
 
-    private static ImageBox CreateImage(
+    private ImageBox CreateImage(
         TestSvgRenderer renderer,
         MarkdownPerformanceSession? session = null) => new(
-        CreateContext(renderer, session), ImageResourceScope.Shared,
+        CreateContext(renderer, session), _renderResources.Images,
         "data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%3E%3C%2Fsvg%3E",
         "Publication commit test");
 
@@ -873,7 +875,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
             document.WorkLock = workLock;
     }
 
-    private static MarkdownLayoutContext CreateContext(
+    private MarkdownLayoutContext CreateContext(
         TestSvgRenderer renderer,
         MarkdownPerformanceSession? session)
     {
@@ -902,6 +904,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
             FlowDirection.LeftToRight,
             language: "en-US")
         {
+            RenderResources = _renderResources,
             SvgRenderer = renderer,
             ImageCancellationToken = CancellationToken.None,
             RasterizationScale = 1,
@@ -910,7 +913,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
         };
     }
 
-    private static void CommitTiled(
+    private void CommitTiled(
         ImageBox image,
         TestSvgRenderer renderer,
         TestSvgDocument document,
@@ -947,7 +950,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
             image.SvgTileCache.AbandonUnscheduledTileWork(key, workOwner);
     }
 
-    private static (Action Publish, Action? OnDropped) CreateTiledPublication(
+    private (Action Publish, Action? OnDropped) CreateTiledPublication(
         ImageBox image,
         TestSvgRenderer renderer,
         TestSvgDocument document,
@@ -979,7 +982,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
     private static IDisposable AcquireCurrentUse(ImageBox image, TestSvgDocument document) =>
         Assert.IsAssignableFrom<IDisposable>(image.SvgDocuments.TryAcquireUse(document));
 
-    private static object CreateMetadata(
+    private object CreateMetadata(
         ImageBox image,
         TestSvgRenderer renderer,
         int generation,
@@ -990,7 +993,7 @@ public sealed class ImageBoxSvgPublicationCommitTests
         byte[] source = [1, 2, 3, 4];
         Size intrinsicSize = intrinsic ?? new Size(32, 16);
         long rendererIdentity =
-            ImageResourceScope.Shared.ProviderIdentities.GetSvgRendererIdentity(renderer);
+            _renderResources.Images.ProviderIdentities.GetSvgRendererIdentity(renderer);
         var info = new MarkdownSvgDocumentInfo(
             IntrinsicWidthDips: intrinsicSize.Width,
             IntrinsicHeightDips: intrinsicSize.Height,

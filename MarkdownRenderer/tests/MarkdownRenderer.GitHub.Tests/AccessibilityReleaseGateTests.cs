@@ -21,6 +21,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class AccessibilityReleaseGateTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Fact]
     public void EmbeddedUnavailableStatusUsesPackagedEnglishResourceWhenProviderHasNoValue()
     {
@@ -112,11 +114,11 @@ public sealed class AccessibilityReleaseGateTests
     public void EmptyAltBlockImageIsExcludedButMeaningfulFailureRemainsSemantic()
     {
         MarkdownLayoutContext context = CreateContext("fr-FR");
-        var decorative = new ImageBox(context, ImageResourceScope.Shared, string.Empty, string.Empty)
+        var decorative = new ImageBox(context, context.ImageResources, string.Empty, string.Empty)
         {
             BlockIndex = context.NextBlockIndex(),
         };
-        var meaningful = new ImageBox(context, ImageResourceScope.Shared, string.Empty, "Build status")
+        var meaningful = new ImageBox(context, context.ImageResources, string.Empty, "Build status")
         {
             BlockIndex = context.NextBlockIndex(),
         };
@@ -454,7 +456,7 @@ public sealed class AccessibilityReleaseGateTests
         };
     }
 
-    private static MarkdownLayoutContext CreateContext(
+    private MarkdownLayoutContext CreateContext(
         string language,
         IMarkdownStringProvider? stringProvider = null)
     {
@@ -465,7 +467,7 @@ public sealed class AccessibilityReleaseGateTests
             MarkdownElementKeys.ImageCaption,
             MarkdownElementKeys.ListMarker,
         ];
-        var styles = keys.ToDictionary(static key => key, _ => style, StringComparer.Ordinal);
+        var styles = keys.ToDictionary(key => key, _ => style, StringComparer.Ordinal);
         Color transparent = Color.FromArgb(0, 0, 0, 0);
         var theme = new ThemeSnapshot(
             styles,
@@ -485,6 +487,7 @@ public sealed class AccessibilityReleaseGateTests
             FlowDirection.LeftToRight,
             language: language)
         {
+            RenderResources = _renderResources,
             StringProvider = stringProvider,
         };
     }

@@ -1,3 +1,4 @@
+using MarkdownRenderer.Layout;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Parsing;
@@ -10,6 +11,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection(SharedCanvasBitmapCacheTestCollection.Name)]
 public sealed class PrefetchedRasterGeometryTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     private const string Source = "https://images.example/prefetched-geometry.png";
 
     [Theory]
@@ -182,7 +185,7 @@ public sealed class PrefetchedRasterGeometryTests
             new ByteResolver(DisplaySizedRasterDecodeTests.CreatePng(1024, 512)));
         await scope.PrefetchAsync([Source], CancellationToken.None);
         using var images = new ImageCustody();
-        ImageBox image = images.Own(new ImageBox(DisplaySizedRasterDecodeTests.CreateContext(scope, session, 2), ImageResourceScope.Shared,
+        ImageBox image = images.Own(new ImageBox(DisplaySizedRasterDecodeTests.CreateContext(_renderResources, scope, session, 2), _renderResources.Images,
             Source, "A real caption", new SafeHtmlLength(authoredWidth, false),
             new SafeHtmlLength(authoredHeight, false)));
         image.MinimumParagraphLineHeight = 24;
@@ -207,7 +210,7 @@ public sealed class PrefetchedRasterGeometryTests
             new ByteResolver(DisplaySizedRasterDecodeTests.CreatePng(1024, 512)));
         await scope.PrefetchAsync([Source], CancellationToken.None);
         using var images = new ImageCustody();
-        ImageBox image = images.Own(new ImageBox(DisplaySizedRasterDecodeTests.CreateContext(scope, session, 2), ImageResourceScope.Shared,
+        ImageBox image = images.Own(new ImageBox(DisplaySizedRasterDecodeTests.CreateContext(_renderResources, scope, session, 2), _renderResources.Images,
             Source, string.Empty, new SafeHtmlLength(50, true), new SafeHtmlLength(80, true)));
         image.Margin = new Microsoft.UI.Xaml.Thickness(10, 4, 20, 8);
         image.MinimumParagraphLineHeight = 64;
@@ -230,9 +233,9 @@ public sealed class PrefetchedRasterGeometryTests
         using IMarkdownPerformanceDocumentScope scope = OpenScope(session,
             new ByteResolver(DisplaySizedRasterDecodeTests.CreatePng(1024, 512)));
         await scope.PrefetchAsync([Source], CancellationToken.None);
-        var context = DisplaySizedRasterDecodeTests.CreateContext(scope, session, 1);
+        var context = DisplaySizedRasterDecodeTests.CreateContext(_renderResources, scope, session, 1);
         using var images = new ImageCustody();
-        ImageBox image = images.Own(new ImageBox(context, ImageResourceScope.Shared, Source, string.Empty));
+        ImageBox image = images.Own(new ImageBox(context, context.ImageResources, Source, string.Empty));
         image.Measure(200);
         Assert.True(image.TryCreatePrivateImagePlacementClone(context,
             out ImageBox? clone, out var lease, out var svgFence, out bool idle, out int generation));
@@ -256,9 +259,9 @@ public sealed class PrefetchedRasterGeometryTests
         ((IMarkdownPerformanceSessionInternal)session).OpenDocument(resolver,
             new MarkdownImageResolveContext(BaseUri: null));
 
-    private static ImageBox CreateImage(IMarkdownImageResolver resolver,
+    private ImageBox CreateImage(IMarkdownImageResolver resolver,
         MarkdownPerformanceSession session, double scale) =>
-        new(DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale), ImageResourceScope.Shared, Source, string.Empty);
+        new(DisplaySizedRasterDecodeTests.CreateContext(_renderResources, resolver, session, scale), _renderResources.Images, Source, string.Empty);
 
     private sealed class ImageCustody : IDisposable
     {

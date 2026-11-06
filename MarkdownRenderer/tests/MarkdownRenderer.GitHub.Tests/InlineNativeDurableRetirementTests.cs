@@ -416,6 +416,8 @@ public sealed class InlineNativeDurableRetirementTests
 
     private sealed class Harness : IDisposable
     {
+        private readonly MarkdownRenderResources _renderResources = new();
+
         private readonly MarkdownSourceMap _sourceMap = new(Text);
         private readonly MarkdownExtensionRegistry _registry = new();
         private readonly IReadOnlyDictionary<string, bool> _disclosureStates =
@@ -455,13 +457,14 @@ public sealed class InlineNativeDurableRetirementTests
         internal MarkdownLayoutContext CreateContext(CancellationToken cancellationToken = default) =>
             new(Creator, _theme, _sourceMap, _registry, FlowDirection.LeftToRight, language: "en-US")
             {
+                RenderResources = _renderResources,
                 CancellationToken = cancellationToken,
                 DisclosureStates = _disclosureStates,
             };
 
         public void Dispose()
         {
-            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(Device);
+            _renderResources.Images.BitmapCache.ReleaseDevice(Device);
             Device.Dispose();
         }
     }

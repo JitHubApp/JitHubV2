@@ -450,6 +450,8 @@ public sealed class MultiRasterPlacementCloneTests
 
     internal sealed class MultiRasterFixture : IAsyncDisposable
     {
+        private readonly MarkdownRenderResources _renderResources = new();
+
         private const string SvgDataUri = "data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%2710%27%20height%3D%275%27%2F%3E";
         private readonly CanvasDevice _device = new();
         private readonly ThemeSnapshot _theme;
@@ -582,6 +584,7 @@ public sealed class MultiRasterPlacementCloneTests
                 SourceContext.Dispatcher,
                 SourceContext.Language)
             {
+                RenderResources = _renderResources,
                 CancellationToken = CancellationToken.None,
                 ImageCancellationToken = SourceContext.ImageCancellationToken,
                 RetirementSink = SourceContext.RetirementSink,
@@ -631,7 +634,7 @@ public sealed class MultiRasterPlacementCloneTests
         private MarkdownLayoutContext? CandidateContext { get; set; }
         private InlineContainerBox? Candidate { get; set; }
 
-        internal void ReleaseCacheEntries() => ImageResourceScope.Shared.BitmapCache.ReleaseDevice(_device);
+        internal void ReleaseCacheEntries() => _renderResources.Images.BitmapCache.ReleaseDevice(_device);
 
         internal async Task RetireSourceAsync()
         {
@@ -669,7 +672,7 @@ public sealed class MultiRasterPlacementCloneTests
             if (Candidate is not null && CandidateContext is not null)
                 await RetireCandidateAsync(CandidateContext, Candidate);
             await RetireSourceAsync();
-            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(_device);
+            _renderResources.Images.BitmapCache.ReleaseDevice(_device);
             _device.Dispose();
         }
 
@@ -685,6 +688,7 @@ public sealed class MultiRasterPlacementCloneTests
                 flowDirection,
                 language: "en-US")
             {
+                RenderResources = _renderResources,
                 CancellationToken = cancellationToken,
                 ImageCancellationToken = CancellationToken.None,
                 ImagePreparationOwner = _imagePreparationOwner,
@@ -697,7 +701,7 @@ public sealed class MultiRasterPlacementCloneTests
             Assert.True(MarkdownBuiltInImageSourcePolicy.TryResolve(source, null, out MarkdownBuiltInImageSource resolved));
             int width = 64 + imageOrdinal * 8;
             int height = 32 + imageOrdinal * 4;
-            using SharedCanvasBitmapCache.Lease lease = ImageResourceScope.Shared.BitmapCache.StoreAndAcquire(
+            using SharedCanvasBitmapCache.Lease lease = _renderResources.Images.BitmapCache.StoreAndAcquire(
                 _device,
                 resolved.CacheKey,
                 CreateBitmap(_device, width, height),

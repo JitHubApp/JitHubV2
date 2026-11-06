@@ -28,13 +28,15 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection(SharedCanvasBitmapCacheTestCollection.Name)]
 public sealed class AnimatedWebpFirstCanvasImageBoxTests(ITestOutputHelper output)
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Trait("Requires", "WicWebpDecoder")]
     [Fact]
     public async Task ImageBoxPublishesFirstCanvasAndSkipsStaticProviderForAnimation()
     {
-        ImageResourceScope.Shared.BitmapCache.Clear();
+        _renderResources.Images.BitmapCache.Clear();
         await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-            () => ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes == 0);
+            () => _renderResources.Images.BitmapCache.GetSnapshot().RetainedBytes == 0);
 
         byte[] source = CreateAnimatedWebp();
         RasterImageBudgetResult budget = RasterImageResourceBudget.Validate(source);
@@ -63,7 +65,7 @@ public sealed class AnimatedWebpFirstCanvasImageBoxTests(ITestOutputHelper outpu
                         MaxRasterOutputPixels = 16,
                     });
                 MarkdownLayoutContext context = CreateContext(device, resolver, session, provider);
-                var image = new ImageBox(context, ImageResourceScope.Shared, "https://images.example/partial-animation.webp", "frame one");
+                var image = new ImageBox(context, context.ImageResources, "https://images.example/partial-animation.webp", "frame one");
 
                 try
                 {
@@ -117,9 +119,9 @@ public sealed class AnimatedWebpFirstCanvasImageBoxTests(ITestOutputHelper outpu
         {
             if (noProviderPixels is not null)
                 Array.Clear(noProviderPixels);
-            ImageResourceScope.Shared.BitmapCache.Clear();
+            _renderResources.Images.BitmapCache.Clear();
             await DisplaySizedRasterDecodeTests.WaitUntilAsync(
-                () => ImageResourceScope.Shared.BitmapCache.GetSnapshot().RetainedBytes == 0);
+                () => _renderResources.Images.BitmapCache.GetSnapshot().RetainedBytes == 0);
         }
     }
 
@@ -217,7 +219,7 @@ public sealed class AnimatedWebpFirstCanvasImageBoxTests(ITestOutputHelper outpu
         }
     }
 
-    private static MarkdownLayoutContext CreateContext(
+    private MarkdownLayoutContext CreateContext(
         CanvasDevice device,
         IMarkdownImageResolver resolver,
         MarkdownPerformanceSession session,
@@ -249,6 +251,7 @@ public sealed class AnimatedWebpFirstCanvasImageBoxTests(ITestOutputHelper outpu
             FlowDirection.LeftToRight,
             language: "en-US")
         {
+            RenderResources = _renderResources,
             ImageResolver = resolver,
             RasterDecoder = rasterDecoder,
             PerformanceSession = session,

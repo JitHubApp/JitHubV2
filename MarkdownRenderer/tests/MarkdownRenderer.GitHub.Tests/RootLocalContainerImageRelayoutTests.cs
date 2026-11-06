@@ -1210,6 +1210,7 @@ public sealed class RootLocalContainerImageRelayoutTests
             direction,
             language: "en-US")
         {
+            RenderResources = seed.RenderResources,
             CancellationToken = CancellationToken.None,
             ImageCancellationToken = CancellationToken.None,
             ImagePreparationOwner = seed.ImagePreparationOwnerToken,

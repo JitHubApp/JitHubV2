@@ -20,6 +20,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection(SharedCanvasBitmapCacheTestCollection.Name)]
 public sealed class MarkdownLayoutConstructionScopeTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     private const string OnePixelPng =
         "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 
@@ -28,7 +30,7 @@ public sealed class MarkdownLayoutConstructionScopeTests
     {
         using var device = new CanvasDevice();
         CanvasBitmap cachedBitmap = CreateBitmap(device);
-        SharedCanvasBitmapCache.Lease cacheLease = ImageResourceScope.Shared.BitmapCache.StoreAndAcquire(
+        SharedCanvasBitmapCache.Lease cacheLease = _renderResources.Images.BitmapCache.StoreAndAcquire(
             device,
             OnePixelPng,
             cachedBitmap);
@@ -52,7 +54,7 @@ public sealed class MarkdownLayoutConstructionScopeTests
         }
         finally
         {
-            ImageResourceScope.Shared.BitmapCache.ReleaseDevice(device);
+            _renderResources.Images.BitmapCache.ReleaseDevice(device);
         }
 
         // If the partially-built HTML tree did not release its ImageBox
@@ -319,7 +321,7 @@ public sealed class MarkdownLayoutConstructionScopeTests
         }
     }
 
-    private static MarkdownLayoutContext CreateContext(
+    private MarkdownLayoutContext CreateContext(
         ICanvasResourceCreator device,
         string source,
         MarkdownExtensionRegistry registry,
@@ -352,6 +354,7 @@ public sealed class MarkdownLayoutConstructionScopeTests
             registry,
             Microsoft.UI.Xaml.FlowDirection.LeftToRight)
         {
+            RenderResources = _renderResources,
             CancellationToken = cancellationToken,
             StringProvider = stringProvider,
         };

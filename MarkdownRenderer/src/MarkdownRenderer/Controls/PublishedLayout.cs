@@ -57,6 +57,13 @@ internal sealed class PublishedLayout
     public CanvasDevice? LayoutDevice { get; set; }
 
     /// <summary>
+    /// The caches and native custody the boxes of <see cref="Snapshot"/> use:
+    /// those of the engine whose document it shows. Device-loss recovery
+    /// releases the lost device from them.
+    /// </summary>
+    public MarkdownRenderResources? RenderResources { get; set; }
+
+    /// <summary>
     /// The theme <see cref="Snapshot"/> was laid out with. UI work after the
     /// commit (focus ring, selection, automation text attributes) reads its
     /// colours here, so they always match the painted snapshot.

@@ -23,12 +23,14 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection(SharedCanvasBitmapCacheTestCollection.Name)]
 public sealed class CompletedSvgPlacementCloneTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     private const float LayoutWidth = 320f;
 
     [Fact]
     public async Task FullSnapshotCandidateClonesAcceptedSvgAndPaintsAfterSourceRetirement()
     {
-        await using var fixture = await SvgPlacementFixture.CreateReadyAsync(hasText: true);
+        await using var fixture = await SvgPlacementFixture.CreateReadyAsync(_renderResources, hasText: true);
         LayoutSnapshot sourceSnapshot = Assert.IsType<LayoutSnapshot>(fixture.Snapshot);
         InlineImageRun sourceRun = fixture.ImageRun;
         ImageBox sourceImage = sourceRun.Image;
@@ -127,7 +129,7 @@ public sealed class CompletedSvgPlacementCloneTests
     [Fact]
     public async Task LazyRasterPlacementCloneRebuildsMeasuredCandidateRootIndex()
     {
-        await using var fixture = await SvgPlacementFixture.CreateReadyAsync(hasText: true);
+        await using var fixture = await SvgPlacementFixture.CreateReadyAsync(_renderResources, hasText: true);
         LayoutSnapshot sourceSnapshot = Assert.IsType<LayoutSnapshot>(fixture.Snapshot);
         sourceSnapshot.EnableLazyLayout(
             LayoutWidth,
@@ -180,7 +182,7 @@ public sealed class CompletedSvgPlacementCloneTests
     [Fact]
     public async Task TextSvgProviderFenceIsSeparateFromLocalRasterFenceAndRunsOutsideLocks()
     {
-        await using var fixture = await SvgPlacementFixture.CreateReadyAsync(hasText: true);
+        await using var fixture = await SvgPlacementFixture.CreateReadyAsync(_renderResources, hasText: true);
         LayoutSnapshot snapshot = Assert.IsType<LayoutSnapshot>(fixture.Snapshot);
         object layoutLock = snapshot.Geometry.Gate;
         object imageLock = fixture.Image.Lifetime.Sync;
@@ -214,7 +216,7 @@ public sealed class CompletedSvgPlacementCloneTests
     [Fact]
     public async Task TextFreeSvgDoesNotDependOnFontGenerationOrReadItForProviderFence()
     {
-        await using var fixture = await SvgPlacementFixture.CreateReadyAsync(hasText: false);
+        await using var fixture = await SvgPlacementFixture.CreateReadyAsync(_renderResources, hasText: false);
         LayoutSnapshot snapshot = Assert.IsType<LayoutSnapshot>(fixture.Snapshot);
         SingleRasterLayoutCandidate candidate = Assert.IsType<SingleRasterLayoutCandidate>(
             snapshot.CreateSingleRasterCandidate(
@@ -234,7 +236,7 @@ public sealed class CompletedSvgPlacementCloneTests
     [Fact]
     public async Task SameLeaseSvgMetadataMutationInvalidatesThePrivatePlacementFence()
     {
-        await using var fixture = await SvgPlacementFixture.CreateReadyAsync(hasText: true);
+        await using var fixture = await SvgPlacementFixture.CreateReadyAsync(_renderResources, hasText: true);
         MarkdownLayoutContext target = fixture.CreateTargetContext();
         Assert.True(fixture.Image.TryCreateCompletedRasterPlacementClone(
             target,
@@ -262,7 +264,7 @@ public sealed class CompletedSvgPlacementCloneTests
     [Fact]
     public async Task ProviderGetterReentryIsFollowedByLocalMetadataFence()
     {
-        await using var fixture = await SvgPlacementFixture.CreateReadyAsync(hasText: true);
+        await using var fixture = await SvgPlacementFixture.CreateReadyAsync(_renderResources, hasText: true);
         LayoutSnapshot snapshot = Assert.IsType<LayoutSnapshot>(fixture.Snapshot);
         SingleRasterLayoutCandidate candidate = Assert.IsType<SingleRasterLayoutCandidate>(
             snapshot.CreateSingleRasterCandidate(
@@ -289,7 +291,7 @@ public sealed class CompletedSvgPlacementCloneTests
     [Fact]
     public async Task CanceledImageThemeAndDpiMismatchRejectSvgClone()
     {
-        await using var fixture = await SvgPlacementFixture.CreateReadyAsync(hasText: true);
+        await using var fixture = await SvgPlacementFixture.CreateReadyAsync(_renderResources, hasText: true);
 
         using var imageCancellation = new RetirableCancellationTokenSource();
         imageCancellation.Cancel();
@@ -303,7 +305,7 @@ public sealed class CompletedSvgPlacementCloneTests
     [Fact]
     public async Task TiledSvgNeverEntersTheFullBitmapPlacementPath()
     {
-        await using var fixture = await SvgPlacementFixture.CreateStartedAsync(
+        await using var fixture = await SvgPlacementFixture.CreateStartedAsync(_renderResources, 
             hasText: false,
             rasterizationScale: 4,
             intrinsicWidth: 5_000,
@@ -320,7 +322,7 @@ public sealed class CompletedSvgPlacementCloneTests
     [Fact]
     public async Task ExistingSvgFallbackTileStateRejectsFullBitmapClone()
     {
-        await using var fixture = await SvgPlacementFixture.CreateReadyAsync(hasText: false);
+        await using var fixture = await SvgPlacementFixture.CreateReadyAsync(_renderResources, hasText: false);
         ImageBox image = fixture.Image;
         SvgTileCache cache = image.SvgTileCache;
         SvgTileRenderPlan previous = TestSvgTileCacheHost.Plan("svg-cache-prefix:previous-good", 1024, 1024);
@@ -364,7 +366,7 @@ public sealed class CompletedSvgPlacementCloneTests
         {
             HoldOpenUntilCanceled = true,
         };
-        await using var fixture = await SvgPlacementFixture.CreateStartedAsync(renderer: renderer);
+        await using var fixture = await SvgPlacementFixture.CreateStartedAsync(_renderResources, renderer: renderer);
         await renderer.OpenStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.True(fixture.Image.GetWorkState().ActiveWorkCount > 0);
         AssertCloneRejected(fixture.Image, fixture.CreateTargetContext());
@@ -375,7 +377,7 @@ public sealed class CompletedSvgPlacementCloneTests
     {
         var renderer = new HostDeferredSvgRenderer(
             new MarkdownSvgDocumentInfo(80, 40, 2, "provider description", HasText: false));
-        await using var fixture = await SvgPlacementFixture.CreateStartedAsync(renderer: renderer);
+        await using var fixture = await SvgPlacementFixture.CreateStartedAsync(_renderResources, renderer: renderer);
         // Registration precedes dispatch of the provider's asynchronous wait.
         // Observe both milestones rather than racing that queued callback.
         await WaitUntilAsync(() => GetField<int>(fixture.Image.SvgHostDeferral, "_svgHostDeferred") != 0 &&
@@ -391,7 +393,7 @@ public sealed class CompletedSvgPlacementCloneTests
         SvgPlacementFixture? fixture = null;
         try
         {
-            SvgPlacementFixture readyFixture = await SvgPlacementFixture.CreateStartedAsync();
+            SvgPlacementFixture readyFixture = await SvgPlacementFixture.CreateStartedAsync(_renderResources);
             fixture = readyFixture;
             await WaitUntilAsync(() => readyFixture.Image.OutputDeferral.GetState().Deferred &&
                 readyFixture.Image.OutputDeferral.GetState().HasWaiter &&
@@ -432,10 +434,10 @@ public sealed class CompletedSvgPlacementCloneTests
         await context.DrainOwnedRetirementsAsync().WaitAsync(TimeSpan.FromSeconds(20));
     }
 
-    private static async Task<List<BitmapOutputAdmission.Reservation>> SaturateAdmissionAsync()
+    private async Task<List<BitmapOutputAdmission.Reservation>> SaturateAdmissionAsync()
     {
-        BitmapOutputAdmission admission = ImageResourceScope.Shared.BitmapOutput;
-        ImageResourceScope.Shared.BitmapCache.Clear();
+        BitmapOutputAdmission admission = _renderResources.Images.BitmapOutput;
+        _renderResources.Images.BitmapCache.Clear();
         await WaitUntilAsync(() => admission.GetSnapshot().ChargedBytes == 0);
         var reservations = new List<BitmapOutputAdmission.Reservation>();
         while (true)
@@ -494,6 +496,7 @@ public sealed class CompletedSvgPlacementCloneTests
         private bool _disposed;
 
         private SvgPlacementFixture(
+            MarkdownRenderResources renderResources,
             bool hasText,
             double rasterizationScale,
             double intrinsicWidth,
@@ -501,6 +504,7 @@ public sealed class CompletedSvgPlacementCloneTests
             float layoutWidth,
             TestSvgRenderer? renderer)
         {
+            RenderResources = renderResources;
             RasterizationScale = rasterizationScale;
             LayoutWidth = layoutWidth;
             ImagePreparationOwner = new object();
@@ -536,6 +540,7 @@ public sealed class CompletedSvgPlacementCloneTests
         }
 
         internal static async Task<SvgPlacementFixture> CreateReadyAsync(
+            MarkdownRenderResources renderResources,
             bool hasText,
             double rasterizationScale = 1,
             double intrinsicWidth = 80,
@@ -544,6 +549,7 @@ public sealed class CompletedSvgPlacementCloneTests
             TestSvgRenderer? renderer = null)
         {
             var fixture = new SvgPlacementFixture(
+                renderResources,
                 hasText, rasterizationScale, intrinsicWidth, intrinsicHeight, layoutWidth, renderer);
             try
             {
@@ -559,6 +565,7 @@ public sealed class CompletedSvgPlacementCloneTests
         }
 
         internal static async Task<SvgPlacementFixture> CreateStartedAsync(
+            MarkdownRenderResources renderResources,
             bool hasText = true,
             double rasterizationScale = 1,
             double intrinsicWidth = 80,
@@ -567,6 +574,7 @@ public sealed class CompletedSvgPlacementCloneTests
             TestSvgRenderer? renderer = null)
         {
             var fixture = new SvgPlacementFixture(
+                renderResources,
                 hasText, rasterizationScale, intrinsicWidth, intrinsicHeight, layoutWidth, renderer);
             try
             {
@@ -581,6 +589,7 @@ public sealed class CompletedSvgPlacementCloneTests
             }
         }
 
+        internal MarkdownRenderResources RenderResources { get; }
         internal TestSvgRenderer Renderer { get; }
         internal SvgResolver Resolver { get; }
         internal MarkdownPerformanceSession Session { get; }
@@ -621,6 +630,7 @@ public sealed class CompletedSvgPlacementCloneTests
                 SourceContext.Dispatcher,
                 SourceContext.Language)
             {
+                RenderResources = RenderResources,
                 CancellationToken = CancellationToken.None,
                 ImageCancellationToken = imageToken,
                 ImageResolver = SourceContext.ImageResolver,
@@ -662,6 +672,7 @@ public sealed class CompletedSvgPlacementCloneTests
                 FlowDirection.LeftToRight,
                 language: "en-US")
             {
+                RenderResources = RenderResources,
                 ImageResolver = Resolver,
                 SvgRenderer = Renderer,
                 PerformanceSession = Session,

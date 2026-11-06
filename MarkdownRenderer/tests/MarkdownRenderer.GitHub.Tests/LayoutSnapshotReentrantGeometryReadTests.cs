@@ -14,6 +14,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection(SharedCanvasBitmapCacheTestCollection.Name)]
 public sealed class LayoutSnapshotReentrantGeometryReadTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     private const float LayoutWidth = 320f;
 
     [Theory]
@@ -33,6 +35,7 @@ public sealed class LayoutSnapshotReentrantGeometryReadTests
             FlowDirection.LeftToRight,
             language: "en-US")
         {
+            RenderResources = _renderResources,
             ImagePreparationOwner = seed.ImagePreparationOwnerToken,
             PerformanceDocumentOwner = seed.PerformanceDocumentOwner,
             PerformanceSession = session,
@@ -41,8 +44,8 @@ public sealed class LayoutSnapshotReentrantGeometryReadTests
             RasterizationScale = 1,
         };
 
-        var first = new ImageBox(context, ImageResourceScope.Shared, resolver.FirstUrl, "First completed image") { BlockIndex = 701 };
-        var second = new ImageBox(context, ImageResourceScope.Shared, resolver.SecondUrl, "Second completed image") { BlockIndex = 702 };
+        var first = new ImageBox(context, context.ImageResources, resolver.FirstUrl, "First completed image") { BlockIndex = 701 };
+        var second = new ImageBox(context, context.ImageResources, resolver.SecondUrl, "Second completed image") { BlockIndex = 702 };
         var suffix = new ReentrantFailureBlock { BlockIndex = 703 };
         LayoutSnapshot? snapshot = null;
         MarkdownLayoutContext? constructionContext = null;

@@ -1,3 +1,4 @@
+using MarkdownRenderer.Layout;
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
@@ -9,10 +10,12 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class BitmapOutputAdmissionTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Fact]
     public void SharedBudgetUsesArchitectureSpecificCapAndTransitionTiers()
     {
-        BitmapOutputAdmission admission = ImageResourceScope.Shared.BitmapOutput;
+        BitmapOutputAdmission admission = _renderResources.Images.BitmapOutput;
         long capacity = Environment.Is64BitProcess ? 64L * 1024 * 1024 : 32L * 1024 * 1024;
         long headroom = Environment.Is64BitProcess ? 16L * 1024 * 1024 : 8L * 1024 * 1024;
 

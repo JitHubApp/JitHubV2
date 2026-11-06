@@ -41,6 +41,9 @@ internal sealed class SharedCanvasBitmapCache
 
     private readonly SemaphoreSlim[] _decodeStripes = CreateDecodeStripes();
 
+    // Releases this cache's partition when one of its devices is lost.
+    private readonly SharedCanvasBitmapCacheDeviceWatch _deviceWatch;
+
     /// <summary>Creates a cache that charges lazy admission to <paramref name="outputAdmission"/>.</summary>
     /// <param name="outputAdmission">The scope's bitmap output admission.</param>
     /// <param name="budgetBytes">The retained-byte budget of the LRU.</param>
@@ -55,6 +58,7 @@ internal sealed class SharedCanvasBitmapCache
     {
         ArgumentNullException.ThrowIfNull(outputAdmission);
         _outputAdmission = outputAdmission;
+        _deviceWatch = new SharedCanvasBitmapCacheDeviceWatch(this);
         _cache = new(
             budgetBytes,
             weightSelector ?? (static entry => entry.WeightBytes),
@@ -321,6 +325,7 @@ internal sealed class SharedCanvasBitmapCache
                 // commit; allocation failure therefore leaves it unpublished.
                 _cache.Set(new SharedCanvasBitmapCacheKey(device, identity), entry);
                 insertionCompleted = true;
+                _deviceWatch.Watch(device);
             }
             return lease;
         }
@@ -477,6 +482,7 @@ internal sealed class SharedCanvasBitmapCache
     {
         ArgumentNullException.ThrowIfNull(device);
         _cache.RemoveWhere(key => ReferenceEquals(key.Device, device));
+        _deviceWatch.Forget(device);
     }
 
     internal void Clear() => _cache.Clear();

@@ -450,6 +450,7 @@ public sealed class CodeBlockLayoutCandidateTests
                     rightToLeft ? FlowDirection.RightToLeft : FlowDirection.LeftToRight,
                     language: "en-US")
                 {
+                    RenderResources = seed.RenderResources,
                     CancellationToken = CancellationToken.None,
                     ImageCancellationToken = CancellationToken.None,
                     ImagePreparationOwner = seed.ImagePreparationOwnerToken,

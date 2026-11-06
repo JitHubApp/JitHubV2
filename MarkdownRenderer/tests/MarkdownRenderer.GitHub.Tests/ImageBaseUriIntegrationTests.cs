@@ -14,6 +14,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class ImageBaseUriIntegrationTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Fact]
     public async Task RelativeFileSvgLoadsThroughTheResolvedBaseUri()
     {
@@ -28,7 +30,7 @@ public sealed class ImageBaseUriIntegrationTests
                 "<title>Local icon</title><rect width='12' height='8' fill='#336699'/></svg>");
 
             var image = new ImageBox(
-                CreateContext(new Uri(Path.Combine(root, "readme.md"))), ImageResourceScope.Shared,
+                CreateContext(new Uri(Path.Combine(root, "readme.md"))), _renderResources.Images,
                 "assets/icon.svg",
                 "local icon");
             try
@@ -68,7 +70,7 @@ public sealed class ImageBaseUriIntegrationTests
                 CreateSvg("Second document"));
 
             var first = new ImageBox(
-                CreateContext(new Uri(Path.Combine(firstRoot, "readme.md"))), ImageResourceScope.Shared,
+                CreateContext(new Uri(Path.Combine(firstRoot, "readme.md"))), _renderResources.Images,
                 "assets/icon.svg",
                 "first");
             try
@@ -82,7 +84,7 @@ public sealed class ImageBaseUriIntegrationTests
             }
 
             var second = new ImageBox(
-                CreateContext(new Uri(Path.Combine(secondRoot, "readme.md"))), ImageResourceScope.Shared,
+                CreateContext(new Uri(Path.Combine(secondRoot, "readme.md"))), _renderResources.Images,
                 "assets/icon.svg",
                 "second");
             try
@@ -120,7 +122,7 @@ public sealed class ImageBaseUriIntegrationTests
         }
     }
 
-    private static MarkdownLayoutContext CreateContext(Uri imageBaseUri)
+    private MarkdownLayoutContext CreateContext(Uri imageBaseUri)
     {
         var style = new ElementStyle();
         string[] keys =
@@ -129,7 +131,7 @@ public sealed class ImageBaseUriIntegrationTests
             MarkdownElementKeys.ImageCaption,
             MarkdownElementKeys.ListMarker,
         ];
-        var styles = keys.ToDictionary(static key => key, _ => style, StringComparer.Ordinal);
+        var styles = keys.ToDictionary(key => key, _ => style, StringComparer.Ordinal);
         Color transparent = Color.FromArgb(0, 0, 0, 0);
         var theme = new ThemeSnapshot(
             styles,
@@ -149,6 +151,7 @@ public sealed class ImageBaseUriIntegrationTests
             FlowDirection.LeftToRight,
             language: "en-US")
         {
+            RenderResources = _renderResources,
             ImageBaseUri = imageBaseUri,
             ImageCancellationToken = CancellationToken.None,
             SvgRenderer = TestSvgRenderer.Instance,

@@ -1,3 +1,4 @@
+using MarkdownRenderer.Layout;
 using System.Buffers.Binary;
 using System.Numerics;
 using MarkdownRenderer.Images;
@@ -13,6 +14,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection(SharedCanvasBitmapCacheTestCollection.Name)]
 public sealed class GifRasterCanvasTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Fact]
     public async Task PublishedBitmapKeepsLogicalCanvasAndTransparentPaddingAroundOffsetFrame()
     {
@@ -21,7 +24,7 @@ public sealed class GifRasterCanvasTests
             $"gif-offset-{Guid.NewGuid():N}");
         using var session = ProgressiveSession();
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
+            DisplaySizedRasterDecodeTests.CreateContext(_renderResources, resolver, session, scale: 1), _renderResources.Images,
             "https://images.example/offset.gif",
             string.Empty);
 
@@ -72,7 +75,7 @@ public sealed class GifRasterCanvasTests
             $"gif-transparent-{Guid.NewGuid():N}");
         using var session = ProgressiveSession();
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
+            DisplaySizedRasterDecodeTests.CreateContext(_renderResources, resolver, session, scale: 1), _renderResources.Images,
             "https://images.example/transparent-offset.gif",
             string.Empty);
 
@@ -100,7 +103,7 @@ public sealed class GifRasterCanvasTests
             CreateGif(4, 4, left: 1, top: 1, frameWidth: 2, frameHeight: 3),
             $"gif-source-sized-{rasterizationScale}-{Guid.NewGuid():N}");
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session: null, rasterizationScale), ImageResourceScope.Shared,
+            DisplaySizedRasterDecodeTests.CreateContext(_renderResources, resolver, session: null, rasterizationScale), _renderResources.Images,
             "https://images.example/source-sized.gif",
             string.Empty);
 
@@ -141,7 +144,7 @@ public sealed class GifRasterCanvasTests
             $"gif-dpi-{rasterizationScale}-{Guid.NewGuid():N}");
         using var session = ProgressiveSession();
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, rasterizationScale), ImageResourceScope.Shared,
+            DisplaySizedRasterDecodeTests.CreateContext(_renderResources, resolver, session, rasterizationScale), _renderResources.Images,
             "https://images.example/dpi.gif",
             string.Empty);
 
@@ -171,7 +174,7 @@ public sealed class GifRasterCanvasTests
             $"gif-fractional-cap-{Guid.NewGuid():N}");
         using var session = ProgressiveSession(maximumPixels: 1);
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
+            DisplaySizedRasterDecodeTests.CreateContext(_renderResources, resolver, session, scale: 1), _renderResources.Images,
             "https://images.example/fractional.gif",
             string.Empty);
 
@@ -208,7 +211,7 @@ public sealed class GifRasterCanvasTests
             maximumPixels: 1,
             displaySizedDecode: displaySizedDecode);
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale: 1), ImageResourceScope.Shared,
+            DisplaySizedRasterDecodeTests.CreateContext(_renderResources, resolver, session, scale: 1), _renderResources.Images,
             "https://images.example/outside-canvas.gif",
             string.Empty);
 
@@ -246,8 +249,8 @@ public sealed class GifRasterCanvasTests
         Assert.True(budget.Accepted || budget.CanRenderStaticPreview, budget.Reason);
 
         var image = new ImageBox(
-            DisplaySizedRasterDecodeTests.CreateContext(
-                new GifResolver(bytes, $"gif-overhang-{Guid.NewGuid():N}"), session: null, scale: 1), ImageResourceScope.Shared,
+            DisplaySizedRasterDecodeTests.CreateContext(_renderResources, 
+                new GifResolver(bytes, $"gif-overhang-{Guid.NewGuid():N}"), session: null, scale: 1), _renderResources.Images,
             "https://images.example/overhang.gif",
             string.Empty);
         try
@@ -311,12 +314,12 @@ public sealed class GifRasterCanvasTests
         }
     }
 
-    private static ImageBox CreateImage(
+    private ImageBox CreateImage(
         IMarkdownImageResolver resolver,
         MarkdownPerformanceSession session,
         double scale,
         string name) => new(
-            DisplaySizedRasterDecodeTests.CreateContext(resolver, session, scale), ImageResourceScope.Shared,
+            DisplaySizedRasterDecodeTests.CreateContext(_renderResources, resolver, session, scale), _renderResources.Images,
             $"https://images.example/{name}",
             string.Empty);
 

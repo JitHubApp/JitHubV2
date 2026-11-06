@@ -14,6 +14,7 @@ public sealed class MarkdownEngineBuilder
     private MarkdownParseLimits _parseLimits = MarkdownParseLimits.Default;
     private MarkdownProfile _profile = MarkdownProfiles.CommonMark;
     private IMarkdownPresentationConfiguration? _presentationConfiguration;
+    private readonly MarkdownRenderer.Layout.MarkdownRenderResources? _renderResources;
 
     /// <summary>Creates a builder with the default CommonMark configuration.</summary>
     public MarkdownEngineBuilder()
@@ -23,7 +24,8 @@ public sealed class MarkdownEngineBuilder
     /// <summary>
     /// Creates a reusable derivation of an existing engine configuration,
     /// preserving its profile, extensions, admission/cache limits, and opaque
-    /// presentation snapshot.
+    /// presentation snapshot. Engines built from it share the image caches and
+    /// rendering budgets of <paramref name="engine"/>.
     /// </summary>
     public MarkdownEngineBuilder(MarkdownEngine engine)
     {
@@ -34,6 +36,8 @@ public sealed class MarkdownEngineBuilder
         _parseCacheBudgetBytes = engine.ParseCacheBudgetBytes;
         _parseLimits = engine.ParseLimits;
         _presentationConfiguration = engine.PresentationConfiguration;
+        // Engines derived from an engine render within its budgets.
+        _renderResources = engine.RenderResources;
     }
 
     /// <summary>
@@ -221,7 +225,8 @@ public sealed class MarkdownEngineBuilder
                 _parseCacheBudgetBytes,
                 _parseLimits,
                 presentation,
-                isSharedSingleton);
+                isSharedSingleton,
+                _renderResources);
         }
         catch
         {

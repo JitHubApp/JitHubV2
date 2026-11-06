@@ -1,3 +1,4 @@
+using MarkdownRenderer.Layout;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,6 +10,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class RasterDecodeAdmissionEstimateTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Fact]
     public async Task OwnedStaticWeightAccountsForSourceScratchAndOverlappingOutput()
     {
@@ -77,7 +80,7 @@ public sealed class RasterDecodeAdmissionEstimateTests
             sourceBytes, providerWorkingBytes, uploadBytes);
 
         Assert.Equal(sourceBytes + providerWorkingBytes + uploadBytes, weight);
-        Assert.True(weight > ImageResourceScope.Shared.Preparation.CapacityBytes / 2,
+        Assert.True(weight > _renderResources.Images.Preparation.CapacityBytes / 2,
             "The full provider bound plus the host upload copy is conservative and may serialize portable decodes.");
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             RasterDecodeAdmissionEstimate.ForPortableProvider(-1, providerWorkingBytes, uploadBytes));

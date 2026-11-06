@@ -18,6 +18,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection(AllocationSensitiveContractCollection.Name)]
 public sealed class ImageBoxVisibleArtworkSelectionEndpointTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     private const int ImageSize = 96;
     private const int AvailableWidth = 120;
     private const float Left = 31;
@@ -40,7 +42,7 @@ public sealed class ImageBoxVisibleArtworkSelectionEndpointTests
         string alt = string.Join(" ", Enumerable.Repeat("caption", 80));
         MarkdownLayoutContext context = CreateContext(flowDirection, textScaleFactor, alt);
         var image = new ImageBox(
-            context, ImageResourceScope.Shared,
+            context, context.ImageResources,
             SvgDataUri,
             alt,
             new SafeHtmlLength(ImageSize, IsPercent: false),
@@ -130,7 +132,7 @@ public sealed class ImageBoxVisibleArtworkSelectionEndpointTests
         }
     }
 
-    private static MarkdownLayoutContext CreateContext(
+    private MarkdownLayoutContext CreateContext(
         FlowDirection flowDirection,
         double textScaleFactor,
         string sourceAlt)
@@ -163,6 +165,6 @@ public sealed class ImageBoxVisibleArtworkSelectionEndpointTests
             new MarkdownSourceMap($"![{sourceAlt}]({SvgDataUri})"),
             new MarkdownExtensionRegistry(),
             flowDirection,
-            language: "en-US");
+            language: "en-US") { RenderResources = _renderResources };
     }
 }

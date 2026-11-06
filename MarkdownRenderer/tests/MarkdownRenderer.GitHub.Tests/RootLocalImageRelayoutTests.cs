@@ -21,6 +21,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection(SharedCanvasBitmapCacheTestCollection.Name)]
 public sealed class RootLocalImageRelayoutTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     private const float LayoutWidth = 320f;
     private const long AutomationGeneration = 4_731;
 
@@ -828,7 +830,7 @@ public sealed class RootLocalImageRelayoutTests
                 {
                     replacementBitmap = CreateBitmap(seed.Device, 24, 12);
                     SharedCanvasBitmapCache.Lease replacementLease =
-                        ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(replacementBitmap);
+                        _renderResources.Images.BitmapCache.CreateUncachedLease(replacementBitmap);
                     InvokeReplaceBitmap(source, replacementLease);
                 }),
                 expectedPointerInputEpoch: snapshot.PointerInputEpoch);
@@ -890,7 +892,7 @@ public sealed class RootLocalImageRelayoutTests
                 {
                     replacementBitmap = CreateBitmap(seed.Device, 24, 12);
                     InvokeReplaceBitmap(second,
-                        ImageResourceScope.Shared.BitmapCache.CreateUncachedLease(replacementBitmap));
+                        _renderResources.Images.BitmapCache.CreateUncachedLease(replacementBitmap));
                 }),
                 expectedPointerInputEpoch: snapshot.PointerInputEpoch);
 
@@ -1155,7 +1157,7 @@ public sealed class RootLocalImageRelayoutTests
             $"Lazy paragraph {index}: keep this distant root estimated during target completion.")) +
         $"\n\n![far image]({resolver.FarUrl})\n";
 
-    private static ImageDocument BuildDocument(
+    private ImageDocument BuildDocument(
         CompletedRasterPlacementCloneTests.PlacementFixture seed,
         MarkdownPerformanceSession session,
         ControlledRasterResolver resolver,
@@ -1177,6 +1179,7 @@ public sealed class RootLocalImageRelayoutTests
             direction,
             language: "en-US")
         {
+            RenderResources = _renderResources,
             CancellationToken = CancellationToken.None,
             ImageCancellationToken = CancellationToken.None,
             ImagePreparationOwner = seed.ImagePreparationOwnerToken,

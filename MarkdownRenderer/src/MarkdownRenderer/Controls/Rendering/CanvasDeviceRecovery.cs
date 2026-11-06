@@ -1,6 +1,7 @@
 using System;
 using MarkdownRenderer.Controls.Selection;
 using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Layout;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Dispatching;
 
@@ -66,14 +67,17 @@ internal sealed class CanvasDeviceRecovery
                 $"[MarkdownRendererControl] canvas device query failed: {deviceException.Message}");
         }
 
+        MarkdownRenderResources? resources = _published.RenderResources;
         _adorner.TryReleaseSurface();
         // Snapshot bitmaps are cached under the layout (shared) device, which
         // need not be the CanvasVirtualControl device.
-        ReleaseImageDeviceResources(layoutDevice);
+        ReleaseImageDeviceResources(resources, layoutDevice);
         if (!ReferenceEquals(canvasDevice, layoutDevice))
-            ReleaseImageDeviceResources(canvasDevice);
+            ReleaseImageDeviceResources(resources, canvasDevice);
         // Exceptions were caught instead of reaching Win2D, so notify each
         // genuinely lost device as the manual device-loss contract requires.
+        // Every other cache holding bitmaps on a lost device watches it and
+        // releases them when it is notified.
         NotifyLostDevices(failureHResult, layoutDevice, surfaceDevice, canvasDevice);
 
         if (_queued || _lifetime.IsDisposed || _lifetime.IsUnloaded)
@@ -148,14 +152,14 @@ internal sealed class CanvasDeviceRecovery
         _adorner.Invalidate();
     }
 
-    private static void ReleaseImageDeviceResources(CanvasDevice? device)
+    private static void ReleaseImageDeviceResources(MarkdownRenderResources? resources, CanvasDevice? device)
     {
-        if (device is null)
+        if (resources is null || device is null)
             return;
 
         try
         {
-            Layout.Boxes.ImageResourceScope.Shared.ReleaseDevice(device);
+            resources.ReleaseDevice(device);
         }
         catch (Exception releaseException)
         {
