@@ -10,6 +10,13 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// owner confirms successful disposal. It bounds participating outputs, not
 /// process RSS or allocations made by external/native libraries.
 /// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because the charged and uncertain byte
+/// ledger, the waiter table and the notification sweep are one state machine
+/// under one lock and one capacity version; the nested reservation and waiter
+/// registration handles are thin views whose every operation is a ledger
+/// transition on that lock.
+/// </remarks>
 internal sealed class BitmapOutputAdmission
 {
     private const long MiB = 1024L * 1024L;

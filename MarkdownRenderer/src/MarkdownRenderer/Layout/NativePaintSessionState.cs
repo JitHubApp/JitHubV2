@@ -8,6 +8,12 @@ namespace MarkdownRenderer.Layout;
 /// reserves pooled owner nodes, closes them in LIFO order, and poisons the
 /// session so uncertain native slots move to nonretryable custody.
 /// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because layers and auxiliaries are one
+/// state machine under one gate: a layer pins its clip auxiliary, both kinds
+/// share the single in-flight operation slot, and poisoning must retire
+/// every active, pending and pooled node of either kind together.
+/// </remarks>
 internal sealed class NativePaintSessionState
 {
     private readonly object _gate = new();

@@ -11,6 +11,12 @@ namespace MarkdownRenderer.Layout.Boxes;
 /// stream, decoder, frame, color contexts and transform, scaler and format
 /// converters, and the native pointers they hand out, released on dispose.
 /// </summary>
+/// <remarks>
+/// This file is longer than 500 lines because every stage adopts its COM
+/// objects and borrowed pointers into this graph's slots and pointer table,
+/// and one Dispose must release them all in reverse construction order,
+/// quarantining the whole graph if any release or outstanding pointer fails.
+/// </remarks>
 internal sealed unsafe class RasterNativeWicGraph : IDisposable
 {
     private const int MaximumColorContexts = 16;
