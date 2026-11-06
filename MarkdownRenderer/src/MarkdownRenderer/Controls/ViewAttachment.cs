@@ -90,6 +90,11 @@ internal sealed class ViewAttachment
     private readonly ImageSourcePrefetch _imagePrefetch;
     private readonly CodeBlockHighlighting _highlighting;
 
+    /// <remarks>
+    /// This constructor stays whole because it only stores, one line each, the
+    /// owners whose order <see cref="Load"/> and <see cref="Unload"/> set; it
+    /// has no logic of its own.
+    /// </remarks>
     internal ViewAttachment(
         MarkdownRendererControl control,
         MarkdownViewSurface surface,
