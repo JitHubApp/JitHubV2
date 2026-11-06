@@ -12,7 +12,6 @@ using Microsoft.Graphics.Canvas.Geometry;
 using Microsoft.Graphics.Canvas.Text;
 using Windows.Foundation;
 using Windows.UI;
-using Windows.UI.Text;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;
@@ -169,8 +168,9 @@ public sealed class VectorSceneCompactResourceTests
                 Color.FromArgb(0xFF, 0x12, 0x67, 0xB1));
 
         using var drawing = new VectorSceneDrawing(device, scene, CancellationToken.None, _renderResources);
-        Color[] expected = RenderCommandIndexedReference(
-            device, scene, rasterizationScale, palette, highContrast);
+        Color[] expected = CommandIndexedVectorReferenceRenderer.Render(
+            device, scene, TargetWidth, TargetHeight, new Rect(4, 4, SceneWidth, SceneHeight),
+            rasterizationScale, palette, highContrast);
         Color[] first = RenderCompact(
             drawing, device, scene, rasterizationScale, palette, highContrast);
         Assert.Equal(expected, first);
@@ -198,7 +198,27 @@ public sealed class VectorSceneCompactResourceTests
             "Segoe UI", 11, fontWeight: 600, italic: true,
             rightToLeft: rightToLeft,
             alignment: rightToLeft ? MarkdownVectorTextAlignment.End : MarkdownVectorTextAlignment.Start);
+        MixedScenePaints paints = CreateMixedScenePaints();
+        MarkdownVectorCommand[] commands = CreateMixedCommands(rightToLeft, hiddenText, currentColorText, paints);
 
+        return new MarkdownVectorScene(
+            SceneWidth,
+            SceneHeight,
+            36,
+            commands,
+            referenceFontSize: 12,
+            viewport: new MarkdownVectorRectangle(0, 0, SceneWidth, SceneHeight),
+            semantics: Array.Empty<MarkdownVectorSemanticItem>(),
+            links: Array.Empty<MarkdownVectorLinkAction>());
+    }
+
+    /// <summary>
+    /// The mixed scene's paints: a dashed semantic shape, an alpha-zero and
+    /// opacity-zero shape and text style that must stay invisible, and a
+    /// current-color style that maps to the link color in High Contrast.
+    /// </summary>
+    private static MixedScenePaints CreateMixedScenePaints()
+    {
         MarkdownVectorPaintStyle visibleShape = MarkdownVectorPaintStyle.CreateSemantic(
             MarkdownVectorPaintRole.Surface,
             MarkdownVectorPaintRole.Foreground,
@@ -233,7 +253,17 @@ public sealed class VectorSceneCompactResourceTests
         MarkdownVectorPaintStyle hiddenTextStyle = new(
             fillArgb: 0x00000000,
             opacity: 0f);
+        return new MixedScenePaints(visibleShape, hiddenShape, currentColorStyle, hiddenTextStyle);
+    }
 
+    private static MarkdownVectorCommand[] CreateMixedCommands(
+        bool rightToLeft,
+        MarkdownVectorTextStyle hiddenText,
+        MarkdownVectorTextStyle currentColorText,
+        MixedScenePaints paints)
+    {
+        (MarkdownVectorPaintStyle visibleShape, MarkdownVectorPaintStyle hiddenShape,
+            MarkdownVectorPaintStyle currentColorStyle, MarkdownVectorPaintStyle hiddenTextStyle) = paints;
         MarkdownVectorPathOperation[] firstPath = TrianglePath(13, 9, 14);
         MarkdownVectorPathOperation[] secondPath =
         [
@@ -284,17 +314,14 @@ public sealed class VectorSceneCompactResourceTests
             MarkdownVectorCommand.DrawLine(
                 new MarkdownVectorPoint(5, 42), new MarkdownVectorPoint(56, 41), currentColorStyle),
         ];
-
-        return new MarkdownVectorScene(
-            SceneWidth,
-            SceneHeight,
-            36,
-            commands,
-            referenceFontSize: 12,
-            viewport: new MarkdownVectorRectangle(0, 0, SceneWidth, SceneHeight),
-            semantics: Array.Empty<MarkdownVectorSemanticItem>(),
-            links: Array.Empty<MarkdownVectorLinkAction>());
+        return commands;
     }
+
+    private sealed record MixedScenePaints(
+        MarkdownVectorPaintStyle VisibleShape,
+        MarkdownVectorPaintStyle HiddenShape,
+        MarkdownVectorPaintStyle CurrentColor,
+        MarkdownVectorPaintStyle HiddenText);
 
     private static Color[] RenderCompact(
         VectorSceneDrawing drawing,
@@ -323,410 +350,16 @@ public sealed class VectorSceneCompactResourceTests
         return target.GetPixelColors();
     }
 
-    /// <summary>
-    /// Frozen command-indexed Win2D oracle for the pre-compaction storage shape.
-    /// Native objects live at their command ordinal; painting never uses the
-    /// compact sequential type cursors under test.
-    /// </summary>
-    private static Color[] RenderCommandIndexedReference(
-        CanvasDevice device,
-        MarkdownVectorScene scene,
-        float rasterizationScale,
-        VectorScenePaintPalette palette,
-        bool highContrast)
-    {
-        int commandCount = scene.Commands.Count;
-        var geometries = new CanvasGeometry?[commandCount];
-        var textLayouts = new CanvasTextLayout?[commandCount];
-        var strokeStyles = new CanvasStrokeStyle?[commandCount];
-        var transformStack = new Matrix3x2[commandCount];
-        var clipStack = new CanvasActiveLayer?[commandCount];
-
-        try
-        {
-            for (int index = 0; index < commandCount; index++)
-            {
-                MarkdownVectorCommand command = scene.Commands[index];
-                if (RequiresGeometry(command.Kind))
-                {
-                    geometries[index] = CreateGeometry(
-                        device,
-                        command.Path,
-                        command.Style?.FillRule ?? MarkdownVectorFillRule.Nonzero);
-                }
-
-                if (RequiresTextLayout(command))
-                    textLayouts[index] = CreateTextLayout(device, scene, command.Text!, command.TextStyle!);
-
-                if (command.Style is { } style && RequiresStrokeStyle(style))
-                    strokeStyles[index] = CreateStrokeStyle(style);
-            }
-
-            using var target = new CanvasRenderTarget(
-                device, TargetWidth, TargetHeight, 96 * rasterizationScale);
-            using (CanvasDrawingSession session = target.CreateDrawingSession())
-            {
-                session.Clear(Color.FromArgb(0, 0, 0, 0));
-                Matrix3x2 original = Matrix3x2.CreateTranslation(1.25f, 0.75f);
-                session.Transform = VectorViewportTransform.Create(
-                    scene.Viewport,
-                    new Rect(4, 4, SceneWidth, SceneHeight)).Matrix * original;
-                int transformDepth = 0;
-                int clipDepth = 0;
-                try
-                {
-                    for (int index = 0; index < commandCount; index++)
-                    {
-                        MarkdownVectorCommand command = scene.Commands[index];
-                        MarkdownVectorPaintStyle? style = command.Style;
-                        CanvasGeometry? geometry = geometries[index];
-                        CanvasTextLayout? textLayout = textLayouts[index];
-                        CanvasStrokeStyle? strokeStyle = strokeStyles[index];
-
-                        switch (command.Kind)
-                        {
-                            case MarkdownVectorCommandKind.BeginGroup:
-                                transformStack[transformDepth++] = session.Transform;
-                                session.Transform = ToMatrix(command.Transform) * session.Transform;
-                                break;
-                            case MarkdownVectorCommandKind.EndGroup:
-                                if (transformDepth > 0)
-                                    session.Transform = transformStack[--transformDepth];
-                                break;
-                            case MarkdownVectorCommandKind.BeginClip:
-                                if (geometry is not null)
-                                    clipStack[clipDepth++] = session.CreateLayer(1f, geometry);
-                                break;
-                            case MarkdownVectorCommandKind.EndClip:
-                                if (clipDepth > 0)
-                                {
-                                    int activeIndex = --clipDepth;
-                                    clipStack[activeIndex]?.Dispose();
-                                    clipStack[activeIndex] = null;
-                                }
-                                break;
-                            case MarkdownVectorCommandKind.FillPath when geometry is not null:
-                                session.FillGeometry(
-                                    geometry,
-                                    ResolveLegacyColor(command.ColorArgb, palette, highContrast));
-                                break;
-                            case MarkdownVectorCommandKind.StrokePath when geometry is not null:
-                                session.DrawGeometry(
-                                    geometry,
-                                    ResolveLegacyColor(command.ColorArgb, palette, highContrast),
-                                    command.StrokeWidth);
-                                break;
-                            case MarkdownVectorCommandKind.FillRectangle:
-                                session.FillRectangle(
-                                    ToRect(command.Rectangle),
-                                    ResolveLegacyColor(command.ColorArgb, palette, highContrast));
-                                break;
-                            case MarkdownVectorCommandKind.StrokeRectangle:
-                                session.DrawRectangle(
-                                    ToRect(command.Rectangle),
-                                    ResolveLegacyColor(command.ColorArgb, palette, highContrast),
-                                    command.StrokeWidth);
-                                break;
-                            case MarkdownVectorCommandKind.StrokeLine:
-                                session.DrawLine(
-                                    command.Start.X, command.Start.Y,
-                                    command.End.X, command.End.Y,
-                                    ResolveLegacyColor(command.ColorArgb, palette, highContrast),
-                                    command.StrokeWidth);
-                                break;
-                            case MarkdownVectorCommandKind.DrawRectangle when style is not null:
-                                DrawStyledRectangle(session, command, style, strokeStyle, palette, highContrast);
-                                break;
-                            case MarkdownVectorCommandKind.DrawPath when style is not null:
-                                DrawStyledPath(session, command, geometry, style, strokeStyle, palette, highContrast);
-                                break;
-                            case MarkdownVectorCommandKind.DrawLine when style is not null:
-                                if (style.StrokeWidth > 0)
-                                {
-                                    Color lineColor = ResolveStyleColor(
-                                        command, style, fill: false, text: false, palette, highContrast);
-                                    if (lineColor.A > 0)
-                                    {
-                                        session.DrawLine(
-                                            command.Start.X, command.Start.Y,
-                                            command.End.X, command.End.Y,
-                                            lineColor, style.StrokeWidth, strokeStyle);
-                                    }
-                                }
-                                break;
-                            case MarkdownVectorCommandKind.DrawEllipse when style is not null:
-                                DrawStyledEllipse(session, command, style, strokeStyle, palette, highContrast);
-                                break;
-                            case MarkdownVectorCommandKind.DrawText when style is not null && textLayout is not null:
-                                Color textColor = ResolveStyleColor(
-                                    command, style, fill: true, text: true, palette, highContrast);
-                                if (textColor.A > 0)
-                                {
-                                    Vector2 origin = ResolveTextOrigin(command, textLayout);
-                                    session.DrawTextLayout(textLayout, origin.X, origin.Y, textColor);
-                                }
-                                break;
-                        }
-                    }
-                }
-                finally
-                {
-                    while (clipDepth > 0)
-                    {
-                        int activeIndex = --clipDepth;
-                        clipStack[activeIndex]?.Dispose();
-                        clipStack[activeIndex] = null;
-                    }
-                    session.Transform = original;
-                }
-            }
-
-            return target.GetPixelColors();
-        }
-        finally
-        {
-            DisposeAll(geometries);
-            DisposeAll(textLayouts);
-            DisposeAll(strokeStyles);
-            DisposeAll(clipStack);
-        }
-    }
-
-    private static CanvasGeometry CreateGeometry(
-        ICanvasResourceCreator resourceCreator,
-        IReadOnlyList<MarkdownVectorPathOperation> operations,
-        MarkdownVectorFillRule fillRule)
-    {
-        using var builder = new CanvasPathBuilder(resourceCreator);
-        builder.SetFilledRegionDetermination(fillRule == MarkdownVectorFillRule.EvenOdd
-            ? CanvasFilledRegionDetermination.Alternate
-            : CanvasFilledRegionDetermination.Winding);
-
-        bool figureOpen = false;
-        foreach (MarkdownVectorPathOperation operation in operations)
-        {
-            switch (operation.Kind)
-            {
-                case MarkdownVectorPathOperationKind.Move:
-                    if (figureOpen)
-                        builder.EndFigure(CanvasFigureLoop.Open);
-                    builder.BeginFigure(ToVector2(operation.Point1));
-                    figureOpen = true;
-                    break;
-                case MarkdownVectorPathOperationKind.Line when figureOpen:
-                    builder.AddLine(ToVector2(operation.Point1));
-                    break;
-                case MarkdownVectorPathOperationKind.QuadraticBezier when figureOpen:
-                    builder.AddQuadraticBezier(ToVector2(operation.Point1), ToVector2(operation.Point2));
-                    break;
-                case MarkdownVectorPathOperationKind.CubicBezier when figureOpen:
-                    builder.AddCubicBezier(
-                        ToVector2(operation.Point1),
-                        ToVector2(operation.Point2),
-                        ToVector2(operation.Point3));
-                    break;
-                case MarkdownVectorPathOperationKind.Close when figureOpen:
-                    builder.EndFigure(CanvasFigureLoop.Closed);
-                    figureOpen = false;
-                    break;
-            }
-        }
-        if (figureOpen)
-            builder.EndFigure(CanvasFigureLoop.Open);
-        return CanvasGeometry.CreatePath(builder);
-    }
-
-    private static CanvasTextLayout CreateTextLayout(
-        ICanvasResourceCreator resourceCreator,
-        MarkdownVectorScene scene,
-        string text,
-        MarkdownVectorTextStyle style)
-    {
-        (float width, float height) = VectorSceneDrawing.ResolveTextLayoutSize(scene, text, style);
-        using var format = new CanvasTextFormat
-        {
-            FontFamily = VectorSceneDrawing.ResolveFontFamily(style, hostFontFamily: null),
-            FontSize = style.FontSize,
-            FontWeight = new FontWeight { Weight = style.FontWeight },
-            FontStyle = style.Italic ? FontStyle.Italic : FontStyle.Normal,
-            Direction = style.RightToLeft
-                ? CanvasTextDirection.RightToLeftThenTopToBottom
-                : CanvasTextDirection.LeftToRightThenTopToBottom,
-            WordWrapping = CanvasWordWrapping.NoWrap,
-        };
-        return new CanvasTextLayout(resourceCreator, text, format, width, height);
-    }
-
-    private static CanvasStrokeStyle CreateStrokeStyle(MarkdownVectorPaintStyle style)
-    {
-        var result = new CanvasStrokeStyle
-        {
-            StartCap = ToCanvasCap(style.LineCap),
-            EndCap = ToCanvasCap(style.LineCap),
-            DashCap = ToCanvasCap(style.LineCap),
-            LineJoin = ToCanvasJoin(style.LineJoin),
-            DashOffset = style.DashOffset,
-            TransformBehavior = style.NonScalingStroke
-                ? CanvasStrokeTransformBehavior.Fixed
-                : CanvasStrokeTransformBehavior.Normal,
-        };
-        if (style.DashArray.Count > 0)
-        {
-            var dashes = new float[style.DashArray.Count];
-            for (int index = 0; index < dashes.Length; index++)
-                dashes[index] = style.DashArray[index];
-            result.CustomDashStyle = dashes;
-        }
-        return result;
-    }
-
-    private static void DrawStyledRectangle(
-        CanvasDrawingSession session,
-        MarkdownVectorCommand command,
-        MarkdownVectorPaintStyle style,
-        CanvasStrokeStyle? strokeStyle,
-        VectorScenePaintPalette palette,
-        bool highContrast)
-    {
-        Rect rectangle = ToRect(command.Rectangle);
-        Color fill = ResolveStyleColor(command, style, fill: true, text: false, palette, highContrast);
-        if (fill.A > 0)
-            session.FillRectangle(rectangle, fill);
-        Color stroke = ResolveStyleColor(command, style, fill: false, text: false, palette, highContrast);
-        if (style.StrokeWidth > 0 && stroke.A > 0)
-            session.DrawRectangle(rectangle, stroke, style.StrokeWidth, strokeStyle);
-    }
-
-    private static void DrawStyledPath(
-        CanvasDrawingSession session,
-        MarkdownVectorCommand command,
-        CanvasGeometry? geometry,
-        MarkdownVectorPaintStyle style,
-        CanvasStrokeStyle? strokeStyle,
-        VectorScenePaintPalette palette,
-        bool highContrast)
-    {
-        if (geometry is null)
-            return;
-        Color fill = ResolveStyleColor(command, style, fill: true, text: false, palette, highContrast);
-        if (fill.A > 0)
-            session.FillGeometry(geometry, fill);
-        Color stroke = ResolveStyleColor(command, style, fill: false, text: false, palette, highContrast);
-        if (style.StrokeWidth > 0 && stroke.A > 0)
-            session.DrawGeometry(geometry, stroke, style.StrokeWidth, strokeStyle);
-    }
-
-    private static void DrawStyledEllipse(
-        CanvasDrawingSession session,
-        MarkdownVectorCommand command,
-        MarkdownVectorPaintStyle style,
-        CanvasStrokeStyle? strokeStyle,
-        VectorScenePaintPalette palette,
-        bool highContrast)
-    {
-        MarkdownVectorRectangle rectangle = command.Rectangle;
-        float centerX = rectangle.X + rectangle.Width / 2f;
-        float centerY = rectangle.Y + rectangle.Height / 2f;
-        float radiusX = rectangle.Width / 2f;
-        float radiusY = rectangle.Height / 2f;
-        Color fill = ResolveStyleColor(command, style, fill: true, text: false, palette, highContrast);
-        if (fill.A > 0)
-            session.FillEllipse(centerX, centerY, radiusX, radiusY, fill);
-        Color stroke = ResolveStyleColor(command, style, fill: false, text: false, palette, highContrast);
-        if (style.StrokeWidth > 0 && stroke.A > 0)
-            session.DrawEllipse(centerX, centerY, radiusX, radiusY, stroke, style.StrokeWidth, strokeStyle);
-    }
-
-    private static Color ResolveStyleColor(
-        MarkdownVectorCommand command,
-        MarkdownVectorPaintStyle style,
-        bool fill,
-        bool text,
-        VectorScenePaintPalette palette,
-        bool highContrast)
-    {
-        uint? argb;
-        MarkdownVectorPaintRole declaredRole;
-        MarkdownVectorPaintRole fallbackRole;
-        if (text)
-        {
-            argb = style.FillArgb ?? style.StrokeArgb;
-            bool useFill = style.FillArgb is not null || style.StrokeArgb is null;
-            declaredRole = useFill ? style.FillRole : style.StrokeRole;
-            fallbackRole = useFill
-                ? style.HighContrastFillRole ?? MarkdownVectorPaintRole.Foreground
-                : style.HighContrastStrokeRole ?? MarkdownVectorPaintRole.Foreground;
-        }
-        else if (fill)
-        {
-            argb = style.FillArgb;
-            declaredRole = style.FillRole;
-            fallbackRole = style.HighContrastFillRole ??
-                VectorSceneDrawing.InferFillRole(command, style, semanticRole: null);
-        }
-        else
-        {
-            argb = style.StrokeArgb;
-            declaredRole = style.StrokeRole;
-            fallbackRole = style.HighContrastStrokeRole ?? MarkdownVectorPaintRole.Foreground;
-        }
-
-        MarkdownVectorPaintRole role = VectorSceneDrawing.ResolvePaintRole(
-            command, declaredRole, argb, fallbackRole, highContrast, linkedSemantic: false);
-        return VectorSceneDrawing.ResolveColor(argb, style.Opacity, palette, role, highContrast);
-    }
-
-    private static Color ResolveLegacyColor(
-        uint? argb,
-        VectorScenePaintPalette palette,
-        bool highContrast) =>
-        VectorSceneDrawing.ResolveColor(
-            argb,
-            opacity: 1f,
-            palette,
-            highContrast ? MarkdownVectorPaintRole.Foreground : MarkdownVectorPaintRole.Authored,
-            highContrast);
-
-    private static Vector2 ResolveTextOrigin(MarkdownVectorCommand command, CanvasTextLayout layout)
-    {
-        float baseline = layout.LineMetrics.Length > 0
-            ? layout.LineMetrics[0].Baseline
-            : command.TextStyle!.FontSize * 0.8f;
-        float width = (float)System.Math.Max(0, layout.DrawBounds.Width);
-        float x = command.TextStyle!.Alignment switch
-        {
-            MarkdownVectorTextAlignment.Center => command.Start.X - width / 2f,
-            MarkdownVectorTextAlignment.End => command.Start.X - width,
-            _ => command.Start.X,
-        };
-        return new Vector2(x, command.Start.Y - baseline);
-    }
-
-    private static bool RequiresGeometry(MarkdownVectorCommandKind kind)
-        => kind is MarkdownVectorCommandKind.FillPath or
-            MarkdownVectorCommandKind.StrokePath or
-            MarkdownVectorCommandKind.DrawPath or
-            MarkdownVectorCommandKind.BeginClip;
-
-    private static bool RequiresTextLayout(MarkdownVectorCommand command)
-        => command.Kind == MarkdownVectorCommandKind.DrawText &&
-            command.Text is not null && command.TextStyle is not null;
-
-    private static bool RequiresStrokeStyle(MarkdownVectorPaintStyle style)
-        => style.StrokeWidth > 0 &&
-            (style.NonScalingStroke ||
-             style.DashArray.Count > 0 ||
-             style.LineCap != MarkdownVectorLineCap.Flat ||
-             style.LineJoin != MarkdownVectorLineJoin.Miter);
-
     private static int CountGeometryCommands(MarkdownVectorScene scene)
-        => scene.Commands.Count(command => RequiresGeometry(command.Kind));
+        => scene.Commands.Count(command =>
+            CommandIndexedVectorNativeFactory.RequiresGeometry(command.Kind));
 
     private static int CountTextCommands(MarkdownVectorScene scene)
-        => scene.Commands.Count(RequiresTextLayout);
+        => scene.Commands.Count(CommandIndexedVectorNativeFactory.RequiresTextLayout);
 
     private static int CountStrokeStyles(MarkdownVectorScene scene)
-        => scene.Commands.Count(command => command.Style is { } style && RequiresStrokeStyle(style));
+        => scene.Commands.Count(command =>
+            command.Style is { } style && CommandIndexedVectorNativeFactory.RequiresStrokeStyle(style));
 
     private static int CountMaximumDepth(
         MarkdownVectorScene scene,
@@ -746,20 +379,6 @@ public sealed class VectorSceneCompactResourceTests
         return maximum;
     }
 
-    private static CanvasCapStyle ToCanvasCap(MarkdownVectorLineCap value) => value switch
-    {
-        MarkdownVectorLineCap.Round => CanvasCapStyle.Round,
-        MarkdownVectorLineCap.Square => CanvasCapStyle.Square,
-        _ => CanvasCapStyle.Flat,
-    };
-
-    private static CanvasLineJoin ToCanvasJoin(MarkdownVectorLineJoin value) => value switch
-    {
-        MarkdownVectorLineJoin.Round => CanvasLineJoin.Round,
-        MarkdownVectorLineJoin.Bevel => CanvasLineJoin.Bevel,
-        _ => CanvasLineJoin.Miter,
-    };
-
     private static MarkdownVectorPathOperation[] TrianglePath(float x, float y, float size) =>
     [
         MarkdownVectorPathOperation.MoveTo(new MarkdownVectorPoint(x, y)),
@@ -777,27 +396,10 @@ public sealed class VectorSceneCompactResourceTests
         MarkdownVectorPathOperation.Close(),
     ];
 
-    private static Matrix3x2 ToMatrix(MarkdownVectorTransform value) =>
-        new(value.M11, value.M12, value.M21, value.M22, value.M31, value.M32);
-
-    private static Vector2 ToVector2(MarkdownVectorPoint point) => new(point.X, point.Y);
-
-    private static Rect ToRect(MarkdownVectorRectangle rectangle) =>
-        new(rectangle.X, rectangle.Y, rectangle.Width, rectangle.Height);
-
     private static T[] GetArray<T>(VectorSceneDrawing drawing, string fieldName)
     {
         FieldInfo field = Assert.IsAssignableFrom<FieldInfo>(
             typeof(VectorSceneDrawing).GetField(fieldName, PrivateInstance));
         return Assert.IsAssignableFrom<T[]>(field.GetValue(drawing));
-    }
-
-    private static void DisposeAll<T>(T?[] resources) where T : class, IDisposable
-    {
-        for (int index = 0; index < resources.Length; index++)
-        {
-            resources[index]?.Dispose();
-            resources[index] = null;
-        }
     }
 }

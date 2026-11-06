@@ -12,6 +12,9 @@ using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using Windows.UI;
 using Xunit;
+using static MarkdownRenderer.GitHub.Tests.VectorSceneGraphLiveness;
+using static MarkdownRenderer.GitHub.Tests.VectorSemanticHitOracleAssertions;
+using static MarkdownRenderer.GitHub.Tests.VectorTerminalRetirementScenes;
 
 namespace MarkdownRenderer.GitHub.Tests;
 
@@ -189,33 +192,10 @@ public sealed class VectorSceneTerminalRetirementTests
         Task retirement = snapshot.Retire();
         await retirement.WaitAsync(TimeSpan.FromSeconds(10));
 
-        Assert.Equal("Search index", document.GetText(linkedLabel));
-        Assert.Equal("Search index", document.Text);
-        Assert.Equal(bounds, linkedLabel.Bounds);
-        Assert.Equal("Pipeline search index", diagram.AccessibilityName);
-        Assert.Equal("A pipeline diagram.", diagram.AccessibilityDescription);
-        Assert.Equal("Search index", linkedLabel.AccessibilityName);
-        Assert.Equal("Indexed label.", linkedLabel.AccessibilityDescription);
-        Assert.Equal("https://example.test/search", linkedLabel.HelpText);
-        Assert.Equal(new SourceSpan(4, 24), block.SourceRange);
-        Assert.Equal(new SourceSpan(8, 12), semanticItem.SourceSpan);
-        Assert.Equal("Search index", semanticItem.Name);
-        Assert.Equal(bounds, block.GetSemanticBounds(linkedLabel.VectorSemanticIndex));
-        Assert.Equal(semanticItem, block.GetSemanticItem(linkedLabel.VectorSemanticIndex));
-        Assert.True(block.TryGetLink(linkedLabel.VectorSemanticIndex, out MarkdownVectorLinkAction? retiredLink));
-        Assert.NotNull(retiredLink);
-        Assert.Equal("https://example.test/search", retiredLink.Target);
-        Assert.True(retiredLink.External);
+        AssertRetiredLinkedLabelMetadata(document, diagram, linkedLabel, block, semanticItem, bounds);
         AssertVectorHitParity(block, hitPoint, hitOracle);
         Assert.Equal(rects, document.GetDocumentRects(linkedLabel.TextStart, linkedLabel.TextEnd).ToArray());
-        MarkdownTextFormatCache formatCache = MarkdownTextFormatCache.Create(document, theme);
-        MarkdownTextStyleRun styleRun = Assert.Single(
-            Enumerable.Range(0, formatCache.RunCount).Select(formatCache.GetRun));
-        Assert.Equal(1, formatCache.RunCount);
-        Assert.Equal(MarkdownElementKeys.Diagram, styleRun.ElementKey);
-        Assert.Equal("Authored Diagram Face", styleRun.Style.FontFamily);
-        Assert.Equal(18, styleRun.Style.FontSize, precision: 3);
-        Assert.Equal(Color.FromArgb(0xFF, 0x24, 0x68, 0xAC), styleRun.Style.Foreground);
+        MarkdownTextStyleRun styleRun = AssertSingleAuthoredDiagramStyleRun(document, theme);
 
         // Rebuild both projections only after terminal retirement. Neither the
         // semantic builder nor focus-plan construction may need the Scene root.
@@ -233,13 +213,7 @@ public sealed class VectorSceneTerminalRetirementTests
         Assert.Equal(diagram.AccessibilityDescription, rebuiltDiagram.AccessibilityDescription);
         Assert.Equal(linkedLabel.HelpText, rebuiltLinkedLabel.HelpText);
         Assert.Equal(snapshot.CollectFocusableItems(), rebuiltSnapshot.CollectFocusableItems());
-        MarkdownTextFormatCache rebuiltFormatCache = MarkdownTextFormatCache.Create(rebuilt, theme);
-        MarkdownTextStyleRun rebuiltStyleRun = Assert.Single(
-            Enumerable.Range(0, rebuiltFormatCache.RunCount).Select(rebuiltFormatCache.GetRun));
-        Assert.Equal(styleRun.ElementKey, rebuiltStyleRun.ElementKey);
-        Assert.Equal(styleRun.Style.FontFamily, rebuiltStyleRun.Style.FontFamily);
-        Assert.Equal(styleRun.Style.FontSize, rebuiltStyleRun.Style.FontSize);
-        Assert.Equal(styleRun.Style.Foreground, rebuiltStyleRun.Style.Foreground);
+        AssertRebuiltStyleRunMatches(rebuilt, theme, styleRun);
 
         AssertSceneGraphCollected(
             graph,
@@ -411,97 +385,60 @@ public sealed class VectorSceneTerminalRetirementTests
         Assert.Throws<ObjectDisposedException>(() => second.PrepareNativeResources(CancellationToken.None));
     }
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static (LayoutSnapshot Snapshot, VectorSceneBox Block, InlineContainerBox Inline,
-        WeakSceneGraph Graph) CreateSharedSceneSnapshot()
+    private static void AssertRetiredLinkedLabelMetadata(
+        MarkdownSemanticDocument document,
+        MarkdownSemanticNode diagram,
+        MarkdownSemanticNode linkedLabel,
+        VectorSceneBox block,
+        MarkdownVectorSemanticItem semanticItem,
+        Rect bounds)
     {
-        MarkdownLayoutContext context = CreateContext();
-        MarkdownVectorScene scene = CreateScene();
-        WeakSceneGraph graph = CreateWeakSceneGraph(scene);
-        var contentBuilder = new MarkdownContentBuilder();
-        contentBuilder.AddVectorScene(
-            scene,
-            new SourceSpan(0, 1),
-            MarkdownStyleRole.Diagram,
-            MarkdownAccessibilityRole.Diagram,
-            accessibilityName: "Retirement test diagram");
-        MarkdownContent content = Assert.Single(contentBuilder.Build().Items);
-        var block = new VectorSceneBox(context, content, MarkdownElementKeys.Diagram)
-        {
-            BlockIndex = 0,
-        };
-        block.PrepareNativeResources(CancellationToken.None);
-
-        var inline = new InlineContainerBox(context, MarkdownElementKeys.Body)
-        {
-            BlockIndex = 1,
-        };
-        var run = new InlineVectorSceneRun(
-            context,
-            scene,
-            semanticText: "x",
-            accessibilityName: "Inline math x",
-            accessibilityDescription: "A shared scene graph.",
-            elementKey: MarkdownElementKeys.Math);
-        inline.Add(run);
-        run.PrepareNativeResources(CancellationToken.None);
-
-        var snapshot = new LayoutSnapshot(
-            new BlockBox[] { block, inline },
-            context.SourceMap,
-            width: 320,
-            height: 80);
-        return (snapshot, block, inline, graph);
+        Assert.Equal("Search index", document.GetText(linkedLabel));
+        Assert.Equal("Search index", document.Text);
+        Assert.Equal(bounds, linkedLabel.Bounds);
+        Assert.Equal("Pipeline search index", diagram.AccessibilityName);
+        Assert.Equal("A pipeline diagram.", diagram.AccessibilityDescription);
+        Assert.Equal("Search index", linkedLabel.AccessibilityName);
+        Assert.Equal("Indexed label.", linkedLabel.AccessibilityDescription);
+        Assert.Equal("https://example.test/search", linkedLabel.HelpText);
+        Assert.Equal(new SourceSpan(4, 24), block.SourceRange);
+        Assert.Equal(new SourceSpan(8, 12), semanticItem.SourceSpan);
+        Assert.Equal("Search index", semanticItem.Name);
+        Assert.Equal(bounds, block.GetSemanticBounds(linkedLabel.VectorSemanticIndex));
+        Assert.Equal(semanticItem, block.GetSemanticItem(linkedLabel.VectorSemanticIndex));
+        Assert.True(block.TryGetLink(linkedLabel.VectorSemanticIndex, out MarkdownVectorLinkAction? retiredLink));
+        Assert.NotNull(retiredLink);
+        Assert.Equal("https://example.test/search", retiredLink.Target);
+        Assert.True(retiredLink.External);
     }
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static (VectorSceneBox First, VectorSceneBox Second,
-        WeakSceneGraph Graph) CreateSharedPreparedBoxes()
+    private static MarkdownTextStyleRun AssertSingleAuthoredDiagramStyleRun(
+        MarkdownSemanticDocument document,
+        ThemeSnapshot theme)
     {
-        MarkdownLayoutContext context = CreateContext();
-        MarkdownVectorScene scene = CreateScene();
-        WeakSceneGraph graph = CreateWeakSceneGraph(scene);
-        VectorSceneBox first = CreateVectorBox(context, scene, blockIndex: 0);
-        VectorSceneBox second = CreateVectorBox(context, scene, blockIndex: 1);
-        first.PrepareNativeResources(CancellationToken.None);
-        second.PrepareNativeResources(CancellationToken.None);
-        return (first, second, graph);
+        MarkdownTextFormatCache formatCache = MarkdownTextFormatCache.Create(document, theme);
+        MarkdownTextStyleRun styleRun = Assert.Single(
+            Enumerable.Range(0, formatCache.RunCount).Select(formatCache.GetRun));
+        Assert.Equal(1, formatCache.RunCount);
+        Assert.Equal(MarkdownElementKeys.Diagram, styleRun.ElementKey);
+        Assert.Equal("Authored Diagram Face", styleRun.Style.FontFamily);
+        Assert.Equal(18, styleRun.Style.FontSize, precision: 3);
+        Assert.Equal(Color.FromArgb(0xFF, 0x24, 0x68, 0xAC), styleRun.Style.Foreground);
+        return styleRun;
     }
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static (InlineVectorSceneRun Run, WeakSceneGraph Graph) CreateInlineRunForMetrics(
-        float width,
-        float height,
-        float baseline,
-        float referenceFontSize)
+    private static void AssertRebuiltStyleRunMatches(
+        MarkdownSemanticDocument rebuilt,
+        ThemeSnapshot theme,
+        MarkdownTextStyleRun styleRun)
     {
-        MarkdownLayoutContext context = CreateContext();
-        MarkdownVectorPathOperation[] path =
-        [
-            MarkdownVectorPathOperation.MoveTo(new MarkdownVectorPoint(1, 1)),
-            MarkdownVectorPathOperation.LineTo(new MarkdownVectorPoint(30, 1)),
-            MarkdownVectorPathOperation.LineTo(new MarkdownVectorPoint(30, 30)),
-            MarkdownVectorPathOperation.Close(),
-        ];
-        MarkdownVectorScene scene = new(
-            width,
-            height,
-            baseline,
-            commands: [MarkdownVectorCommand.FillPath(path)],
-            referenceFontSize: referenceFontSize);
-        WeakSceneGraph graph = CreateWeakSceneGraph(scene);
-        var run = new InlineVectorSceneRun(
-            context,
-            scene,
-            semanticText: "x squared",
-            accessibilityName: "Inline math x",
-            accessibilityDescription: "A shared scene graph.",
-            elementKey: MarkdownElementKeys.Math)
-        {
-            LinkUrl = "https://example.test/formula",
-            LinkTitle = "Formula documentation",
-        };
-        return (run, graph);
+        MarkdownTextFormatCache rebuiltFormatCache = MarkdownTextFormatCache.Create(rebuilt, theme);
+        MarkdownTextStyleRun rebuiltStyleRun = Assert.Single(
+            Enumerable.Range(0, rebuiltFormatCache.RunCount).Select(rebuiltFormatCache.GetRun));
+        Assert.Equal(styleRun.ElementKey, rebuiltStyleRun.ElementKey);
+        Assert.Equal(styleRun.Style.FontFamily, rebuiltStyleRun.Style.FontFamily);
+        Assert.Equal(styleRun.Style.FontSize, rebuiltStyleRun.Style.FontSize);
+        Assert.Equal(styleRun.Style.Foreground, rebuiltStyleRun.Style.Foreground);
     }
 
     private static void AssertInlineMetrics(
@@ -513,530 +450,5 @@ public sealed class VectorSceneTerminalRetirementTests
         Assert.Equal(expectedWidth, run.DesiredWidth, precision: 4);
         Assert.Equal(expectedHeight, run.DesiredHeight, precision: 4);
         Assert.Equal(expectedBaseline, run.DesiredBaseline, precision: 4);
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static (LayoutSnapshot Snapshot, VectorSceneBox Block, ThemeSnapshot Theme,
-        WeakSceneGraph Graph) CreateSemanticSceneSnapshot()
-    {
-        MarkdownLayoutContext context = CreateContext();
-        context.UseProgressiveNativeSceneResidency = true;
-        MarkdownVectorSemanticItem[] semantics =
-        [
-            new(
-                1,
-                MarkdownVectorSemanticRole.Diagram,
-                "Pipeline search index",
-                "A pipeline diagram.",
-                -1,
-                new SourceSpan(4, 24),
-                new MarkdownVectorRectangle(0, 0, 160, 50)),
-            new(
-                2,
-                MarkdownVectorSemanticRole.Node,
-                "Search index",
-                "Indexed label.",
-                0,
-                new SourceSpan(8, 12),
-                new MarkdownVectorRectangle(10, 8, 90, 24),
-                MarkdownVectorSemanticFlags.Focusable |
-                MarkdownVectorSemanticFlags.Selectable |
-                MarkdownVectorSemanticFlags.Linked),
-        ];
-        MarkdownVectorTextStyle textStyle = new("Authored Diagram Face", 18);
-        MarkdownVectorPaintStyle paintStyle = new(fillArgb: 0xFF2468AC);
-        MarkdownVectorPathOperation[] path =
-        [
-            MarkdownVectorPathOperation.MoveTo(new MarkdownVectorPoint(1, 1)),
-            MarkdownVectorPathOperation.LineTo(new MarkdownVectorPoint(4, 1)),
-            MarkdownVectorPathOperation.LineTo(new MarkdownVectorPoint(4, 4)),
-            MarkdownVectorPathOperation.Close(),
-        ];
-        MarkdownVectorCommand[] commands =
-        [
-            MarkdownVectorCommand.FillPath(path),
-            MarkdownVectorCommand.DrawText(
-                "Indexed label",
-                new MarkdownVectorPoint(12, 25),
-                textStyle,
-                paintStyle,
-                semanticIndex: 1),
-        ];
-        MarkdownVectorScene scene = new(
-            width: 160,
-            height: 50,
-            baseline: 40,
-            commands: commands,
-            referenceFontSize: 16,
-            viewport: new MarkdownVectorRectangle(0, 0, 160, 50),
-            semantics: semantics,
-            links: [new MarkdownVectorLinkAction(1, "https://example.test/search", action: null, external: true)]);
-        var projectedLinks = Assert.IsAssignableFrom<IList<MarkdownVectorLinkAction?>>(scene.SemanticLinks);
-        Assert.True(projectedLinks.IsReadOnly);
-        Assert.Throws<NotSupportedException>(() => projectedLinks[1] = null);
-        WeakSceneGraph graph = CreateWeakSceneGraph(scene);
-        var contentBuilder = new MarkdownContentBuilder();
-        contentBuilder.AddVectorScene(
-            scene,
-            new SourceSpan(4, 24),
-            MarkdownStyleRole.Diagram,
-            MarkdownAccessibilityRole.Diagram,
-            accessibilityName: "Pipeline search index",
-            accessibilityDescription: "A pipeline diagram.");
-        var block = new VectorSceneBox(
-            context,
-            Assert.Single(contentBuilder.Build().Items),
-            MarkdownElementKeys.Diagram)
-        {
-            BlockIndex = 0,
-        };
-        block.Measure(160);
-        block.Arrange(0, 0, 160);
-        var snapshot = new LayoutSnapshot(
-            new BlockBox[] { block },
-            context.SourceMap,
-            width: 160,
-            height: (float)block.Bounds.Height);
-        return (snapshot, block, context.ThemeSnapshot, graph);
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static (VectorSceneBox Block, WeakSceneGraph Graph) CreateDeepSemanticProjectionBox()
-    {
-        const int semanticCount = 4096;
-        MarkdownLayoutContext context = CreateContext();
-        var semantics = new MarkdownVectorSemanticItem[semanticCount];
-        for (int index = 0; index < semanticCount - 1; index++)
-        {
-            semantics[index] = new MarkdownVectorSemanticItem(
-                (uint)(index + 1),
-                index == 0 ? MarkdownVectorSemanticRole.Label : MarkdownVectorSemanticRole.Group,
-                index == 0 ? "Deepest text" : null,
-                null,
-                index + 1,
-                new SourceSpan(0, 1),
-                new MarkdownVectorRectangle(0, 0, 64, 64));
-        }
-        semantics[^1] = new MarkdownVectorSemanticItem(
-            (uint)semanticCount,
-            MarkdownVectorSemanticRole.Diagram,
-            "Reverse ordered root",
-            "Root surface is inherited by the deepest text.",
-            -1,
-            new SourceSpan(0, 1),
-            new MarkdownVectorRectangle(0, 0, 64, 64));
-
-        MarkdownVectorPathOperation[] rootPath =
-        [
-            MarkdownVectorPathOperation.MoveTo(new MarkdownVectorPoint(0, 0)),
-            MarkdownVectorPathOperation.LineTo(new MarkdownVectorPoint(64, 0)),
-            MarkdownVectorPathOperation.LineTo(new MarkdownVectorPoint(64, 64)),
-            MarkdownVectorPathOperation.LineTo(new MarkdownVectorPoint(0, 64)),
-            MarkdownVectorPathOperation.Close(),
-        ];
-        MarkdownVectorPaintStyle rootSurface = MarkdownVectorPaintStyle.CreateSemantic(
-                MarkdownVectorPaintRole.Authored,
-                MarkdownVectorPaintRole.Authored,
-                fillArgb: 0xFF123456)
-            .WithHighContrastRoles(MarkdownVectorPaintRole.Surface, MarkdownVectorPaintRole.Foreground);
-        MarkdownVectorScene scene = new(
-            width: 64,
-            height: 64,
-            baseline: 48,
-            commands:
-            [
-                MarkdownVectorCommand.DrawPath(
-                    rootPath,
-                    rootSurface,
-                    isClosed: true,
-                    semanticIndex: semanticCount - 1),
-                MarkdownVectorCommand.DrawText(
-                    "Deepest text",
-                    new MarkdownVectorPoint(4, 32),
-                    new MarkdownVectorTextStyle("Authored Deep Face", 12),
-                    MarkdownVectorPaintStyle.CreateSemantic(
-                        MarkdownVectorPaintRole.Foreground,
-                        MarkdownVectorPaintRole.Authored),
-                    semanticIndex: 0),
-            ],
-            referenceFontSize: 12,
-            viewport: new MarkdownVectorRectangle(0, 0, 64, 64),
-            semantics,
-            links: Array.Empty<MarkdownVectorLinkAction>());
-        WeakSceneGraph graph = CreateWeakSceneGraph(scene);
-        var contentBuilder = new MarkdownContentBuilder();
-        contentBuilder.AddVectorScene(
-            scene,
-            new SourceSpan(0, 1),
-            MarkdownStyleRole.Diagram,
-            MarkdownAccessibilityRole.Diagram,
-            accessibilityName: "Reverse ordered root",
-            accessibilityDescription: "Root surface is inherited by the deepest text.");
-        var block = new VectorSceneBox(
-            context,
-            Assert.Single(contentBuilder.Build().Items),
-            MarkdownElementKeys.Diagram)
-        {
-            BlockIndex = 0,
-        };
-        return (block, graph);
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static (LayoutSnapshot Snapshot, VectorSceneBox Block, WeakSceneGraph Graph)
-        CreateOverlappingNestedSemanticSnapshot(FlowDirection flowDirection)
-    {
-        MarkdownLayoutContext context = CreateContext(flowDirection);
-        MarkdownVectorSemanticFlags interactiveFlags =
-            MarkdownVectorSemanticFlags.Focusable |
-            MarkdownVectorSemanticFlags.Selectable |
-            MarkdownVectorSemanticFlags.Linked;
-        MarkdownVectorSemanticItem[] semantics =
-        [
-            new(
-                1,
-                MarkdownVectorSemanticRole.Diagram,
-                "Root diagram",
-                null,
-                -1,
-                new SourceSpan(0, 24),
-                new MarkdownVectorRectangle(0, 0, 160, 50),
-                MarkdownVectorSemanticFlags.Selectable),
-            new(
-                2,
-                MarkdownVectorSemanticRole.Node,
-                "Broad child",
-                null,
-                0,
-                new SourceSpan(0, 16),
-                new MarkdownVectorRectangle(10, 5, 130, 35),
-                interactiveFlags),
-            new(
-                3,
-                MarkdownVectorSemanticRole.Label,
-                "Deep child",
-                null,
-                1,
-                new SourceSpan(4, 8),
-                new MarkdownVectorRectangle(60, 10, 50, 20),
-                interactiveFlags),
-            new(
-                4,
-                MarkdownVectorSemanticRole.Node,
-                "Narrow sibling",
-                null,
-                0,
-                new SourceSpan(16, 8),
-                new MarkdownVectorRectangle(10, 5, 20, 10),
-                interactiveFlags),
-            new(
-                5,
-                MarkdownVectorSemanticRole.Node,
-                "Decorative overlay",
-                null,
-                0,
-                new SourceSpan(20, 4),
-                new MarkdownVectorRectangle(144, 42, 14, 7),
-                interactiveFlags | MarkdownVectorSemanticFlags.Decorative),
-        ];
-        MarkdownVectorPathOperation[] path =
-        [
-            MarkdownVectorPathOperation.MoveTo(new MarkdownVectorPoint(1, 1)),
-            MarkdownVectorPathOperation.LineTo(new MarkdownVectorPoint(4, 1)),
-            MarkdownVectorPathOperation.LineTo(new MarkdownVectorPoint(4, 4)),
-            MarkdownVectorPathOperation.Close(),
-        ];
-        MarkdownVectorScene scene = new(
-            width: 160,
-            height: 50,
-            baseline: 40,
-            commands: [MarkdownVectorCommand.FillPath(path)],
-            referenceFontSize: 16,
-            viewport: new MarkdownVectorRectangle(0, 0, 160, 50),
-            semantics: semantics,
-            links:
-            [
-                new MarkdownVectorLinkAction(1, "https://example.test/broad", action: null, external: true),
-                new MarkdownVectorLinkAction(2, "https://example.test/deep", action: null, external: true),
-                new MarkdownVectorLinkAction(3, "https://example.test/narrow", action: null, external: true),
-                new MarkdownVectorLinkAction(4, "https://example.test/decorative", action: null, external: true),
-            ]);
-        WeakSceneGraph graph = CreateWeakSceneGraph(scene);
-        var contentBuilder = new MarkdownContentBuilder();
-        contentBuilder.AddVectorScene(
-            scene,
-            new SourceSpan(0, 24),
-            MarkdownStyleRole.Diagram,
-            MarkdownAccessibilityRole.Diagram,
-            accessibilityName: "Nested diagram");
-        var block = new VectorSceneBox(
-            context,
-            Assert.Single(contentBuilder.Build().Items),
-            MarkdownElementKeys.Diagram)
-        {
-            BlockIndex = 0,
-        };
-        block.Measure(160);
-        block.Arrange(0, 0, 160);
-        var snapshot = new LayoutSnapshot(
-            new BlockBox[] { block },
-            context.SourceMap,
-            width: 160,
-            height: (float)block.Bounds.Height);
-        return (snapshot, block, graph);
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static SemanticHitOracle CaptureNativeSemanticHitOracle(
-        VectorSceneBox block,
-        Point point)
-    {
-        MarkdownVectorScene scene = block.Scene;
-        int selectableIndex = FindNativeSemanticHit(scene, block, point, SemanticHitKind.Selectable);
-        int textIndex = FindNativeSemanticHit(scene, block, point, SemanticHitKind.Text);
-        int linkedIndex = FindNativeSemanticHit(scene, block, point, SemanticHitKind.Linked);
-        return new SemanticHitOracle(
-            selectableIndex,
-            textIndex,
-            linkedIndex,
-            NativePositionForHit(block, point, selectableIndex),
-            NativePositionForHit(block, point, textIndex),
-            linkedIndex >= 0
-                ? scene.GetLinkAction(linkedIndex)
-                : null);
-    }
-
-    private static int FindNativeSemanticHit(
-        MarkdownVectorScene scene,
-        VectorSceneBox block,
-        Point point,
-        SemanticHitKind kind)
-    {
-        if (!block.ContainsSceneViewport(point))
-            return -1;
-
-        int bestIndex = -1;
-        int bestDepth = -1;
-        double bestArea = double.PositiveInfinity;
-        for (int index = 0; index < scene.Semantics.Count; index++)
-        {
-            MarkdownVectorSemanticItem semantic = scene.Semantics[index];
-            bool eligible = kind switch
-            {
-                SemanticHitKind.Selectable => MarkdownVectorSemanticPolicy.IsSelectable(semantic.Flags),
-                SemanticHitKind.Linked => MarkdownVectorSemanticPolicy.IsInvokable(
-                    semantic.Flags,
-                    scene.GetLinkAction(index) is not null),
-                SemanticHitKind.Text => MarkdownVectorSemanticPolicy.IsExposed(semantic.Flags) &&
-                                        !string.IsNullOrWhiteSpace(semantic.Name) &&
-                                        !(semantic.ParentIndex < 0 &&
-                                          semantic.Role == MarkdownVectorSemanticRole.Diagram),
-                _ => false,
-            };
-            if (!eligible)
-                continue;
-
-            Rect bounds = block.GetSemanticBounds(index);
-            if (!bounds.Contains(point))
-                continue;
-
-            int depth = scene.GetSemanticDepth(index);
-            double area = bounds.Width * bounds.Height;
-            if (depth < bestDepth || (depth == bestDepth && area > bestArea))
-                continue;
-
-            bestIndex = index;
-            bestDepth = depth;
-            bestArea = area;
-        }
-
-        return bestIndex;
-    }
-
-    private static DocumentPosition NativePositionForHit(
-        VectorSceneBox block,
-        Point point,
-        int semanticIndex)
-    {
-        if (semanticIndex < 0)
-            return DocumentPosition.Zero;
-
-        Rect bounds = block.GetSemanticBounds(semanticIndex);
-        return new DocumentPosition(
-            block.BlockIndex,
-            semanticIndex,
-            point.X <= bounds.Left + bounds.Width / 2 ? 0 : 1);
-    }
-
-    private static void AssertVectorHitParity(
-        VectorSceneBox block,
-        Point point,
-        SemanticHitOracle expected)
-    {
-        bool selectableHit = block.HitTest(point, out DocumentPosition selectablePosition);
-        Assert.Equal(expected.SelectableIndex >= 0, selectableHit);
-        Assert.Equal(expected.SelectablePosition, selectablePosition);
-        Assert.Equal(expected.SelectableIndex >= 0, block.IsSelectableAt(point));
-
-        bool textHit = block.TryGetTextPositionAt(point, out DocumentPosition textPosition);
-        Assert.Equal(expected.TextIndex >= 0, textHit);
-        Assert.Equal(expected.TextPosition, textPosition);
-
-        bool linkedHit = block.TryGetLinkAt(point, out MarkdownVectorLinkAction? link);
-        Assert.Equal(expected.LinkedIndex >= 0, linkedHit);
-        Assert.Same(expected.LinkAction, link);
-    }
-
-    private static VectorSceneBox CreateVectorBox(
-        MarkdownLayoutContext context,
-        MarkdownVectorScene scene,
-        int blockIndex)
-    {
-        var contentBuilder = new MarkdownContentBuilder();
-        contentBuilder.AddVectorScene(
-            scene,
-            new SourceSpan(blockIndex, 1),
-            MarkdownStyleRole.Diagram,
-            MarkdownAccessibilityRole.Diagram,
-            accessibilityName: "Shared owner test");
-        return new VectorSceneBox(
-            context,
-            Assert.Single(contentBuilder.Build().Items),
-            MarkdownElementKeys.Diagram)
-        {
-            BlockIndex = blockIndex,
-        };
-    }
-
-    private static MarkdownLayoutContext CreateContext(
-        FlowDirection flowDirection = FlowDirection.LeftToRight)
-    {
-        var style = new ElementStyle
-        {
-            FontSize = 16,
-            Foreground = Color.FromArgb(0xFF, 0x20, 0x20, 0x20),
-            Background = Color.FromArgb(0xFF, 0xFA, 0xFA, 0xFA),
-        };
-        var styles = new Dictionary<string, ElementStyle>(StringComparer.Ordinal)
-        {
-            [MarkdownElementKeys.Body] = style,
-            [MarkdownElementKeys.Math] = style,
-            [MarkdownElementKeys.Diagram] = new ElementStyle
-            {
-                FontSize = 16,
-                FontFamily = "Host Diagram Face",
-                Foreground = Color.FromArgb(0xFF, 0x20, 0x20, 0x20),
-                Background = Color.FromArgb(0xFF, 0xFA, 0xFA, 0xFA),
-            },
-            [MarkdownElementKeys.Link] = style,
-        };
-        var theme = new ThemeSnapshot(
-            styles,
-            new Dictionary<string, ElementStyleOverride>(StringComparer.Ordinal),
-            surfaceColor: style.Background!.Value,
-            selectionHighlightColor: Color.FromArgb(0xFF, 0x00, 0x66, 0xCC),
-            selectionForegroundColor: Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF),
-            focusVisualColor: style.Foreground,
-            isDark: false,
-            isHighContrast: false,
-            textScaleFactor: 1);
-        return new MarkdownLayoutContext(
-            CanvasDevice.GetSharedDevice(),
-            theme,
-            new MarkdownSourceMap(new string(' ', 100)),
-            new MarkdownExtensionRegistry(),
-            flowDirection);
-    }
-
-    private static MarkdownVectorScene CreateScene()
-    {
-        MarkdownVectorPathOperation[] path =
-        [
-            MarkdownVectorPathOperation.MoveTo(new MarkdownVectorPoint(1, 1)),
-            MarkdownVectorPathOperation.LineTo(new MarkdownVectorPoint(30, 1)),
-            MarkdownVectorPathOperation.LineTo(new MarkdownVectorPoint(30, 30)),
-            MarkdownVectorPathOperation.Close(),
-        ];
-        return new MarkdownVectorScene(
-            width: 40,
-            height: 40,
-            baseline: 40,
-            commands: [MarkdownVectorCommand.FillPath(path)]);
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static WeakSceneGraph CreateWeakSceneGraph(MarkdownVectorScene scene)
-    {
-        MarkdownVectorCommand command = scene.Commands[0];
-        return new WeakSceneGraph(
-            new WeakReference<MarkdownVectorScene>(scene),
-            new WeakReference<IReadOnlyList<MarkdownVectorCommand>>(scene.Commands),
-            new WeakReference<MarkdownVectorCommand>(command),
-            new WeakReference<IReadOnlyList<MarkdownVectorPathOperation>>(command.Path));
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static bool IsSceneGraphAlive(WeakSceneGraph graph) =>
-        graph.Scene.TryGetTarget(out _) ||
-        graph.Commands.TryGetTarget(out _) ||
-        graph.FirstCommand.TryGetTarget(out _) ||
-        graph.FirstPath.TryGetTarget(out _);
-
-    private enum SemanticHitKind
-    {
-        Selectable,
-        Linked,
-        Text,
-    }
-
-    private readonly record struct SemanticHitOracle(
-        int SelectableIndex,
-        int TextIndex,
-        int LinkedIndex,
-        DocumentPosition SelectablePosition,
-        DocumentPosition TextPosition,
-        MarkdownVectorLinkAction? LinkAction);
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void AssertSceneGraphCollected(
-        WeakSceneGraph graph,
-        params object[] owners)
-    {
-        for (int attempt = 0; attempt < 8; attempt++)
-        {
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-            GC.Collect();
-            if (!IsSceneGraphAlive(graph))
-            {
-                KeepOwnersAlive(owners);
-                return;
-            }
-            Thread.Sleep(10);
-        }
-
-        KeepOwnersAlive(owners);
-        Assert.False(
-            IsSceneGraphAlive(graph),
-            "A terminally retired owner retained the scene, command collection, command, or path graph.");
-    }
-
-    private sealed class WeakSceneGraph(
-        WeakReference<MarkdownVectorScene> scene,
-        WeakReference<IReadOnlyList<MarkdownVectorCommand>> commands,
-        WeakReference<MarkdownVectorCommand> firstCommand,
-        WeakReference<IReadOnlyList<MarkdownVectorPathOperation>> firstPath)
-    {
-        internal WeakReference<MarkdownVectorScene> Scene { get; } = scene;
-        internal WeakReference<IReadOnlyList<MarkdownVectorCommand>> Commands { get; } = commands;
-        internal WeakReference<MarkdownVectorCommand> FirstCommand { get; } = firstCommand;
-        internal WeakReference<IReadOnlyList<MarkdownVectorPathOperation>> FirstPath { get; } = firstPath;
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void KeepOwnersAlive(object[] owners)
-    {
-        foreach (object owner in owners)
-            GC.KeepAlive(owner);
     }
 }

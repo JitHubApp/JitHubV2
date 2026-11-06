@@ -77,17 +77,7 @@ public sealed class VectorSceneStateTests
         {
             SourceSpan = new SourceSpan(0, 1),
         };
-        var vector = new InlineVectorSceneRun(
-            context,
-            new MarkdownVectorScene(24f, 12f, 9f, Array.Empty<MarkdownVectorCommand>()),
-            semanticText: "formula",
-            accessibilityName: "formula",
-            accessibilityDescription: null,
-            elementKey: MarkdownElementKeys.Math)
-        {
-            SourceSpan = new SourceSpan(1, 1),
-            DeferredSceneMarker = "test-deferred-scene",
-        };
+        InlineVectorSceneRun vector = CreateDeferredFormulaRun(context);
         bool imageOwnershipDetached = false;
 
         try
@@ -101,12 +91,7 @@ public sealed class VectorSceneStateTests
 
             InlineVectorSceneState state = GetVectorState(box)
                 ?? throw new InvalidOperationException("Adding an inline vector did not create its state holder.");
-            Assert.Equal(1, state.VectorSceneRunCount);
-            Assert.True(state.HasDeferredSceneMarker);
-            Assert.Equal(0L, state.SceneGeometryGeneration);
-            Assert.Equal(0L, state.PendingSceneGeometryGeneration);
-            Assert.Equal(0, state.SceneCharacterRegionQueryCount);
-            Assert.Empty(state.PendingSceneGeometry);
+            AssertFreshDeferredVectorState(state);
 
             InlineImageRun detachedImage = Assert.Single(box.DetachInlineImagesForTransfer());
             Assert.Same(image, detachedImage);
@@ -119,22 +104,10 @@ public sealed class VectorSceneStateTests
             Assert.Empty(state.PendingSceneGeometry);
 
             _ = box.Measure(320f);
-            Assert.True(box.SceneGeometryGeneration > 0);
-            Assert.True(box.SceneCharacterRegionQueryCount > 0);
-            Assert.Equal(1, box.VectorSceneRunCount);
-            Assert.True(box.TryGetCurrentSceneGeometry(out long generation, out InlineSceneGeometry[] geometry));
-            Assert.Equal(box.SceneGeometryGeneration, generation);
-            Assert.Single(geometry);
-            Assert.Same(vector, geometry[0].Run);
+            long generation = AssertMeasuredVectorGeometry(box, vector);
 
             box.ReleasePendingSceneGeometry(generation);
-            Assert.Same(state, GetVectorState(box));
-            Assert.Empty(state.PendingSceneGeometry);
-            Assert.Equal(0L, state.PendingSceneGeometryGeneration);
-            Assert.True(box.SceneCharacterRegionQueryCount > 0);
-            Assert.False(box.TryGetCurrentSceneGeometry(
-                out _, out InlineSceneGeometry[] releasedGeometry));
-            Assert.Empty(releasedGeometry);
+            AssertReleasedVectorGeometryKeepsTelemetry(box, state);
         }
         finally
         {
@@ -155,4 +128,52 @@ public sealed class VectorSceneStateTests
 
     private static InlineVectorSceneState? GetVectorState(InlineContainerBox box)
         => box.VectorSceneStateHolder;
+
+    private static InlineVectorSceneRun CreateDeferredFormulaRun(MarkdownLayoutContext context)
+        => new(
+            context,
+            new MarkdownVectorScene(24f, 12f, 9f, Array.Empty<MarkdownVectorCommand>()),
+            semanticText: "formula",
+            accessibilityName: "formula",
+            accessibilityDescription: null,
+            elementKey: MarkdownElementKeys.Math)
+        {
+            SourceSpan = new SourceSpan(1, 1),
+            DeferredSceneMarker = "test-deferred-scene",
+        };
+
+    private static void AssertFreshDeferredVectorState(InlineVectorSceneState state)
+    {
+        Assert.Equal(1, state.VectorSceneRunCount);
+        Assert.True(state.HasDeferredSceneMarker);
+        Assert.Equal(0L, state.SceneGeometryGeneration);
+        Assert.Equal(0L, state.PendingSceneGeometryGeneration);
+        Assert.Equal(0, state.SceneCharacterRegionQueryCount);
+        Assert.Empty(state.PendingSceneGeometry);
+    }
+
+    private static long AssertMeasuredVectorGeometry(InlineContainerBox box, InlineVectorSceneRun vector)
+    {
+        Assert.True(box.SceneGeometryGeneration > 0);
+        Assert.True(box.SceneCharacterRegionQueryCount > 0);
+        Assert.Equal(1, box.VectorSceneRunCount);
+        Assert.True(box.TryGetCurrentSceneGeometry(out long generation, out InlineSceneGeometry[] geometry));
+        Assert.Equal(box.SceneGeometryGeneration, generation);
+        Assert.Single(geometry);
+        Assert.Same(vector, geometry[0].Run);
+        return generation;
+    }
+
+    private static void AssertReleasedVectorGeometryKeepsTelemetry(
+        InlineContainerBox box,
+        InlineVectorSceneState state)
+    {
+        Assert.Same(state, GetVectorState(box));
+        Assert.Empty(state.PendingSceneGeometry);
+        Assert.Equal(0L, state.PendingSceneGeometryGeneration);
+        Assert.True(box.SceneCharacterRegionQueryCount > 0);
+        Assert.False(box.TryGetCurrentSceneGeometry(
+            out _, out InlineSceneGeometry[] releasedGeometry));
+        Assert.Empty(releasedGeometry);
+    }
 }
