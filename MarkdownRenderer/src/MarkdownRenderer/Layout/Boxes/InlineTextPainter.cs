@@ -270,7 +270,7 @@ internal static class InlineTextPainter
         // preserve the same native ordering and work for wrapped selections.
         foreach (var rect in visibleSelectionRects)
         {
-            NativePaintSessionResources.LayerLease layer = NativePaintSessionResources.CreateLayer(ds, 1.0f, rect);
+            NativePaintSessionResources.LayerLease layer = box.Context.RenderResources.PaintSessions.CreateLayer(ds, 1.0f, rect);
             try
             {
                 DrawTextLayoutAtFinalOrigin(box, ds, layout, textOriginX, textOriginY, color);
@@ -325,7 +325,7 @@ internal static class InlineTextPainter
                     continue;
                 }
 
-                NativePaintSessionResources.LayerLease layer = NativePaintSessionResources.CreateLayer(ds, 1.0f, rect);
+                NativePaintSessionResources.LayerLease layer = box.Context.RenderResources.PaintSessions.CreateLayer(ds, 1.0f, rect);
                 try
                 {
                     DrawTextLayoutAtFinalOrigin(

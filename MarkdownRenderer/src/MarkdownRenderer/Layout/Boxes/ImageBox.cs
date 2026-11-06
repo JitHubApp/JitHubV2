@@ -82,7 +82,7 @@ internal sealed class ImageBox : BlockBox, ISelectionBackgroundGeometrySource, I
         string alt,
         SafeHtmlLength? requestedWidth = null,
         SafeHtmlLength? requestedHeight = null)
-        : this(context, resources, url, alt, requestedWidth, requestedHeight, NativeResourceRetirement.Shared, null, null)
+        : this(context, resources, url, alt, requestedWidth, requestedHeight, context.RenderResources.NativeRetirement, null, null)
     {
     }
 

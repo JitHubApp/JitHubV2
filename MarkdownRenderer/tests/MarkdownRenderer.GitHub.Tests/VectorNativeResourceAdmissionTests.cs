@@ -16,6 +16,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 [Collection(AllocationSensitiveContractCollection.Name)]
 public sealed class VectorNativeResourceAdmissionTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     [Fact]
     public void ReservationIsBoundedDistinguishesSceneLimitAndRefundsExactlyOnce()
     {
@@ -206,6 +208,7 @@ public sealed class VectorNativeResourceAdmissionTests
                    new ForbiddenResourceCreator(),
                    scene,
                    CancellationToken.None,
+                   _renderResources,
                    deferNativeResources: true,
                    nativeAdmission: capacity))
         {
@@ -223,6 +226,7 @@ public sealed class VectorNativeResourceAdmissionTests
             new ForbiddenResourceCreator(),
             scene,
             CancellationToken.None,
+            _renderResources,
             deferNativeResources: true,
             nativeAdmission: sceneLimit);
         Assert.False(oversizedDrawing.TryPrepareNativeResources(CancellationToken.None, out VectorNativePreparationOutcome tooLarge));
@@ -234,6 +238,7 @@ public sealed class VectorNativeResourceAdmissionTests
             new ForbiddenResourceCreator(),
             scene,
             CancellationToken.None,
+            _renderResources,
             nativeAdmission: sceneLimit));
     }
 
@@ -285,6 +290,7 @@ public sealed class VectorNativeResourceAdmissionTests
             device,
             scene,
             CancellationToken.None,
+            _renderResources,
             deferNativeResources: true,
             nativeRetirement: retirement,
             nativeDisposer: faultPlan.Dispose,
@@ -313,6 +319,7 @@ public sealed class VectorNativeResourceAdmissionTests
             device,
             scene,
             CancellationToken.None,
+            _renderResources,
             deferNativeResources: true,
             nativeRetirement: retirement,
             nativeAdmission: admission);
@@ -342,6 +349,7 @@ public sealed class VectorNativeResourceAdmissionTests
             device,
             scene,
             CancellationToken.None,
+            _renderResources,
             deferNativeResources: true,
             nativeRetirement: retirement,
             nativeDisposer: faultPlan.Dispose,
@@ -382,6 +390,7 @@ public sealed class VectorNativeResourceAdmissionTests
             device,
             scene,
             CancellationToken.None,
+            _renderResources,
             deferNativeResources: true,
             nativeRetirement: retirement,
             nativeDisposer: resource =>
@@ -448,7 +457,7 @@ public sealed class VectorNativeResourceAdmissionTests
     public void LegacyDrawingWithoutAdmissionRemainsEagerAndOutsideLedger()
     {
         using var device = new CanvasDevice(forceSoftwareRenderer: false);
-        using var drawing = new VectorSceneDrawing(device, PathScene(), CancellationToken.None);
+        using var drawing = new VectorSceneDrawing(device, PathScene(), CancellationToken.None, _renderResources);
 
         Assert.True(drawing.IsPrepared);
         Assert.Equal(VectorNativePreparationStatus.Prepared, drawing.PreparationStatus);

@@ -1,3 +1,4 @@
+using System;
 using System.Threading;
 using MarkdownRenderer.Theming;
 using Microsoft.Graphics.Canvas.Text;
@@ -25,11 +26,15 @@ internal sealed class VectorSceneCapacityFallbackFormats
 
     /// <summary>
     /// Creates/pins the fixed format only from an off-frame preparation path.
-    /// The returned descriptor remains owned by the shared cache lease, never
-    /// by a scene/run, and is borrowed directly during painting.
+    /// The returned descriptor remains owned by the lease taken from
+    /// <paramref name="formats"/>, never by a scene/run, and is borrowed
+    /// directly during painting.
     /// </summary>
-    internal bool PrepareFormat(FlowDirection flowDirection)
+    /// <param name="formats">The store of the document that prepares the scene.</param>
+    /// <param name="flowDirection">The direction of the fallback text.</param>
+    internal bool PrepareFormat(SharedCanvasTextFormatStore formats, FlowDirection flowDirection)
     {
+        ArgumentNullException.ThrowIfNull(formats);
         lock (_gate)
         {
             ref SharedCanvasTextFormatCache.Lease? slot = ref
@@ -46,7 +51,7 @@ internal sealed class VectorSceneCapacityFallbackFormats
                 LineHeightMultiplier = 1f,
                 FontStyle = FontStyle.Normal,
             };
-            SharedCanvasTextFormatCache.Lease lease = SharedCanvasTextFormatCache.Acquire(
+            SharedCanvasTextFormatCache.Lease lease = formats.Acquire(
                 style,
                 CanvasWordWrapping.Wrap,
                 CanvasHorizontalAlignment.Center,

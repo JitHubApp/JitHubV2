@@ -38,8 +38,11 @@ internal sealed class WicDecodeOperationOwner : IDisposable
         _retirementRecord.SetTemporary(0, this);
     }
 
-    internal static WicDecodeOperationOwner Create(NativeResourceRetirement? retirement = null) =>
-        new(retirement ?? NativeResourceRetirement.Shared);
+    internal static WicDecodeOperationOwner Create(NativeResourceRetirement retirement)
+    {
+        ArgumentNullException.ThrowIfNull(retirement);
+        return new(retirement);
+    }
 
     internal int LastFailureHResult => Volatile.Read(ref _lastFailureHResult);
 

@@ -350,7 +350,7 @@ public sealed class ImageBoxSvgRendererTests
             using (CanvasDrawingSession drawing = target.CreateDrawingSession())
             {
                 drawing.Clear(background);
-                SvgTilePainter.PaintLayer(drawing, current, destination, destination,
+                SvgTilePainter.PaintLayer(drawing, _renderResources.PaintSessions, current, destination, destination,
                     columns * tilePixels, rows * tilePixels, null, host.Cache, useFallbackTiles: true);
                 Assert.Equal(CanvasAntialiasing.Antialiased, drawing.Antialiasing);
             }
@@ -391,7 +391,7 @@ public sealed class ImageBoxSvgRendererTests
             using CanvasDrawingSession drawing = target.CreateDrawingSession();
             drawing.Antialiasing = antialiasing;
             var injected = new InvalidOperationException("injected tile clip factory failure");
-            NativePaintSessionResources.RegisterTestOwner(drawing, retirement,
+            _renderResources.PaintSessions.RegisterTestOwner(drawing, retirement,
                 afterLayerReservation: () => throw injected);
             Rect destination = image.AutomationRenderDestination;
             Assert.Same(injected, Assert.Throws<InvalidOperationException>(() =>

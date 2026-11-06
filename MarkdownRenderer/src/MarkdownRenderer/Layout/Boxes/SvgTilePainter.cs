@@ -21,6 +21,7 @@ internal static class SvgTilePainter
     // The caller holds its tile lock throughout both coverage and drawing.
     internal static void PaintLayer(
         CanvasDrawingSession ds,
+        NativePaintSessionResources paintSessions,
         Dictionary<SvgTileKey, SharedCanvasBitmapCache.Lease> tiles,
         Rect destination, Rect viewport, int widthPixels, int heightPixels,
         MarkdownSvgPhysicalViewport? physicalViewport, ISvgTileGapFill fill, bool useFallbackTiles)
@@ -65,23 +66,23 @@ internal static class SvgTilePainter
             {
                 double rowTop = coverage[index].Top;
                 double rowBottom = coverage[index].Bottom;
-                PaintGap(ds, destination,
+                PaintGap(ds, paintSessions, destination,
                     visible.Left, y, visible.Right, rowTop, fill, useFallbackTiles);
                 double x = visible.Left;
                 do
                 {
                     Rect covered = coverage[index++];
-                    PaintGap(ds, destination,
+                    PaintGap(ds, paintSessions, destination,
                         x, rowTop, covered.Left, rowBottom, fill, useFallbackTiles);
                     x = covered.Right;
                 }
                 while (index < count && coverage[index].Top == rowTop);
 
-                PaintGap(ds, destination,
+                PaintGap(ds, paintSessions, destination,
                     x, rowTop, visible.Right, rowBottom, fill, useFallbackTiles);
                 y = rowBottom;
             }
-            PaintGap(ds, destination,
+            PaintGap(ds, paintSessions, destination,
                 visible.Left, y, visible.Right, visible.Bottom, fill, useFallbackTiles);
 
             DrawTileSet(ds, tiles, destination, viewport,
@@ -94,7 +95,7 @@ internal static class SvgTilePainter
         }
     }
 
-    private static void PaintGap(CanvasDrawingSession ds, Rect destination,
+    private static void PaintGap(CanvasDrawingSession ds, NativePaintSessionResources paintSessions, Rect destination,
         double left, double top, double right, double bottom, ISvgTileGapFill fill, bool useFallbackTiles)
     {
         // Adjacent physical edges can differ by one floating-point unit after
@@ -112,7 +113,7 @@ internal static class SvgTilePainter
             try
             {
                 ds.Antialiasing = CanvasAntialiasing.Aliased;
-                clip = NativePaintSessionResources.CreateLayer(ds, 1f, gap);
+                clip = paintSessions.CreateLayer(ds, 1f, gap);
             }
             catch (Exception creation)
             {
@@ -127,7 +128,7 @@ internal static class SvgTilePainter
             // Keep restoration inside the lease's failure scope as well:
             // device loss here must not abandon an already-pushed clip.
             ds.Antialiasing = originalAntialiasing;
-            fill.FillSvgTileGap(ds, destination, gap, useFallbackTiles);
+            fill.FillSvgTileGap(ds, paintSessions, destination, gap, useFallbackTiles);
         }
         catch (Exception primary)
         {

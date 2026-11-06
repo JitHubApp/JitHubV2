@@ -9,6 +9,12 @@ namespace MarkdownRenderer.Layout;
 /// handoff never allocates a queue node or retains a document/exception graph.
 /// This bounds retry service work, not aggregate native memory or backlog.
 /// </summary>
+/// <remarks>
+/// Each <see cref="MarkdownRenderResources"/> owns one instance with a retry
+/// clock. While retryable records are pending the armed clock roots its
+/// owner, so their retries continue after the engine that created them is
+/// gone; quarantined records live as long as the owner.
+/// </remarks>
 internal sealed class NativeResourceRetirement
 {
     private const int MaximumRecordsPerPass = 8;
@@ -26,10 +32,9 @@ internal sealed class NativeResourceRetirement
     private long _publicationVersion;
     private int _lastClockFailureHResult;
 
-    // Initialize the sole recovery clock before any participating factory.
-    // It must not first allocate a timer on an already-failing cleanup path.
-    internal static NativeResourceRetirement Shared { get; } = new(createTimer: true);
-
+    // Production owners create their recovery clock when they are
+    // constructed, before any participating factory, so a timer is never
+    // first allocated on an already-failing cleanup path.
     internal NativeResourceRetirement(bool createTimer)
     {
         if (createTimer)

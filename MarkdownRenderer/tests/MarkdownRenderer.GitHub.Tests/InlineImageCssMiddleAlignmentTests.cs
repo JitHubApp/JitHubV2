@@ -34,7 +34,6 @@ public sealed class InlineImageCssMiddleAlignmentTests
         double textScaleFactor,
         bool rightToLeft)
     {
-        SharedCanvasTextFormatCache.Clear();
         using var device = new CanvasDevice(forceSoftwareRenderer: true);
         FlowDirection flowDirection = rightToLeft
             ? FlowDirection.RightToLeft
@@ -89,7 +88,6 @@ public sealed class InlineImageCssMiddleAlignmentTests
     [Fact]
     public async Task DefaultMarkdownProfileRetainsLegacyCenteredImagePlacement()
     {
-        SharedCanvasTextFormatCache.Clear();
         using var device = new CanvasDevice(forceSoftwareRenderer: true);
         MarkdownLayoutContext context = CreateContext(device, middleAligned: false, textScaleFactor: 1d);
         var box = new InlineContainerBox(context, MarkdownElementKeys.Body)
@@ -130,7 +128,6 @@ public sealed class InlineImageCssMiddleAlignmentTests
     [Fact]
     public async Task MeasuredImageMetricsRemainAvailableToGeometryAndSelectionAfterCancellation()
     {
-        SharedCanvasTextFormatCache.Clear();
         using var device = new CanvasDevice(forceSoftwareRenderer: true);
         using var cancellation = new CancellationTokenSource();
         const int imageCount = 40;
@@ -219,7 +216,6 @@ public sealed class InlineImageCssMiddleAlignmentTests
         double textScaleFactor,
         bool rightToLeft)
     {
-        SharedCanvasTextFormatCache.Clear();
         using var device = new CanvasDevice(forceSoftwareRenderer: true);
         MarkdownLayoutContext context = CreateContext(
             device,
@@ -293,7 +289,7 @@ public sealed class InlineImageCssMiddleAlignmentTests
     private static float GetResolvedXHeightDip(MarkdownLayoutContext context)
     {
         ElementStyle style = context.ThemeSnapshot.GetStyle(MarkdownElementKeys.Body);
-        using SharedCanvasTextFormatCache.Lease format = SharedCanvasTextFormatCache.Acquire(
+        using SharedCanvasTextFormatCache.Lease format = context.RenderResources.TextFormats.Acquire(
             style,
             CanvasWordWrapping.NoWrap,
             CanvasHorizontalAlignment.Left,

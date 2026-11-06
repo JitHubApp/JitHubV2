@@ -5,8 +5,8 @@ using System.Threading;
 namespace MarkdownRenderer.Layout.Boxes;
 
 /// <summary>
-/// Process-wide admission for renderer-owned bitmap outputs. The ledger is
-/// acquired before native bitmap construction and remains charged until the
+/// One image resource scope's admission for renderer-owned bitmap outputs.
+/// The ledger is acquired before native bitmap construction and remains charged until the
 /// owner confirms successful disposal. It bounds participating outputs, not
 /// process RSS or allocations made by external/native libraries.
 /// </summary>

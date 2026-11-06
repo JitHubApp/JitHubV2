@@ -101,7 +101,7 @@ internal sealed class ImagePlaceholderLayout
 
         float horizontalPadding = compactInlineFailure ? 8f : 12f;
         float verticalPadding = compactInlineFailure ? 0f : 8f;
-        NativePaintSessionResources.LayerLease clip = NativePaintSessionResources.CreateLayer(ds, 1f, rect);
+        NativePaintSessionResources.LayerLease clip = Context.RenderResources.PaintSessions.CreateLayer(ds, 1f, rect);
         try
         {
             PlacementAwareTextDrawing.DrawAtRootLocalOrigin(
@@ -125,7 +125,7 @@ internal sealed class ImagePlaceholderLayout
     {
         var style = Context.ThemeSnapshot.GetStyle(MarkdownElementKeys.ImageCaption);
         bool compactInlineFailure = _measure.IsInlineLayout && _load.IsFailed;
-        using SharedCanvasTextFormatCache.Lease formatLease = SharedCanvasTextFormatCache.Acquire(
+        using SharedCanvasTextFormatCache.Lease formatLease = Context.RenderResources.TextFormats.Acquire(
             style,
             compactInlineFailure ? CanvasWordWrapping.NoWrap : CanvasWordWrapping.Wrap,
             CanvasHorizontalAlignment.Center,
@@ -186,7 +186,7 @@ internal sealed class ImagePlaceholderLayout
     internal float MeasureInlineFailureWidth(float maxWidth, float height)
     {
         var style = Context.ThemeSnapshot.GetStyle(MarkdownElementKeys.ImageCaption);
-        using SharedCanvasTextFormatCache.Lease formatLease = SharedCanvasTextFormatCache.Acquire(
+        using SharedCanvasTextFormatCache.Lease formatLease = Context.RenderResources.TextFormats.Acquire(
             style,
             CanvasWordWrapping.NoWrap,
             CanvasHorizontalAlignment.Left,

@@ -427,7 +427,7 @@ public sealed class AutomationHarnessSourceContractTests
             @"internal void UpdatePlaceholder\([\s\S]*?\n    }").Value;
         Assert.NotEmpty(placeholder);
         Assert.Matches(
-            @"SharedCanvasTextFormatCache\.Acquire\(\s*style,\s*compactInlineFailure \? CanvasWordWrapping\.NoWrap : CanvasWordWrapping\.Wrap,\s*CanvasHorizontalAlignment\.Center,\s*Context\.FlowDirection,\s*Context\.Language,\s*true,\s*CanvasVerticalAlignment\.Center\)",
+            @"Context\.RenderResources\.TextFormats\.Acquire\(\s*style,\s*compactInlineFailure \? CanvasWordWrapping\.NoWrap : CanvasWordWrapping\.Wrap,\s*CanvasHorizontalAlignment\.Center,\s*Context\.FlowDirection,\s*Context\.Language,\s*true,\s*CanvasVerticalAlignment\.Center\)",
             placeholder);
         string formatSource = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(), "MarkdownRenderer", "src", "MarkdownRenderer", "Layout",

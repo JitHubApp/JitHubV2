@@ -82,7 +82,7 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
             var credit = new RasterNativeWicProductParity.CountingCredit();
             using RasterDecodedPixelLease decoded = await Task.Run(() =>
                 RasterNativeWicDecoder.DecodeGifFirstFrame(
-                    fixture.Bytes, plan, credit, CancellationToken.None));
+                    fixture.Bytes, plan, credit, _renderResources.NativeRetirement, CancellationToken.None));
             Assert.Equal(plan.DecodeWidth, decoded.Width);
             Assert.Equal(plan.DecodeHeight, decoded.Height);
             Assert.Equal(expectedFrame.Length, decoded.Pixels.Length);
@@ -346,7 +346,7 @@ public sealed class RasterGifFirstFrameWinRtParityTests(ITestOutputHelper output
         var credit = new RasterNativeWicProductParity.CountingCredit();
         using (RasterDecodedPixelLease decoded = await Task.Run(() =>
                    RasterNativeWicDecoder.DecodeGifFirstFrame(
-                       profiledFixture.Bytes, plan, credit, CancellationToken.None)))
+                       profiledFixture.Bytes, plan, credit, _renderResources.NativeRetirement, CancellationToken.None)))
         {
             Assert.Equal(profiledWinRt.Length, decoded.Pixels.Length);
             Assert.True(profiledWinRt.AsSpan().SequenceEqual(decoded.Pixels),

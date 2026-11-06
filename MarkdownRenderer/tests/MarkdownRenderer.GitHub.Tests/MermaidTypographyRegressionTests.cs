@@ -14,6 +14,8 @@ namespace MarkdownRenderer.GitHub.Tests;
 
 public sealed class MermaidTypographyRegressionTests
 {
+    private readonly MarkdownRenderResources _renderResources = new();
+
     private const string FlowchartSource = """
         flowchart LR
           A(["Invokable Mermaid node"]) --> B[/"Markdown source"/]
@@ -61,6 +63,7 @@ public sealed class MermaidTypographyRegressionTests
             device,
             scene,
             CancellationToken.None,
+            _renderResources,
             hostThemeFontFamily);
         Rect shapeBounds = shape.Kind switch
         {

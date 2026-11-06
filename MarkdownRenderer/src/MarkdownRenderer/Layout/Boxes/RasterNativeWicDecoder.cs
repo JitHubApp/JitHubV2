@@ -64,44 +64,50 @@ internal static class RasterNativeWicDecoder
         byte[] source,
         RasterImageDecodePlan plan,
         IDisposable processDecodeCredit,
+        NativeResourceRetirement retirement,
         CancellationToken cancellationToken) =>
-        Decode(source, plan, processDecodeCredit, default, cancellationToken);
+        Decode(source, plan, processDecodeCredit, retirement, default, cancellationToken);
 
-    /// <inheritdoc cref="Decode(byte[], RasterImageDecodePlan, IDisposable, CancellationToken)"/>
+    /// <inheritdoc cref="Decode(byte[], RasterImageDecodePlan, IDisposable, NativeResourceRetirement, CancellationToken)"/>
     /// <param name="source">The admitted encoded source.</param>
     /// <param name="plan">The validated decode plan for <paramref name="source"/>.</param>
     /// <param name="processDecodeCredit">The process decode credit this call consumes.</param>
+    /// <param name="retirement">The owner that keeps an uncertain native teardown.</param>
     /// <param name="options">The pixel-copy strategy and decode observer.</param>
     /// <param name="cancellationToken">Cancels between native calls.</param>
     internal static RasterDecodedPixelLease Decode(
         byte[] source,
         RasterImageDecodePlan plan,
         IDisposable processDecodeCredit,
+        NativeResourceRetirement retirement,
         RasterNativeWicDecodeOptions options,
         CancellationToken cancellationToken) =>
-        DecodeCore(source, plan, default, isGif: false, processDecodeCredit, options, cancellationToken);
+        DecodeCore(source, plan, default, isGif: false, processDecodeCredit, retirement, options, cancellationToken);
 
     internal static RasterDecodedPixelLease DecodeGifFirstFrame(
         byte[] source,
         RasterGifFirstFrameDecodePlan plan,
         IDisposable processDecodeCredit,
+        NativeResourceRetirement retirement,
         CancellationToken cancellationToken) =>
-        DecodeGifFirstFrame(source, plan, processDecodeCredit, default, cancellationToken);
+        DecodeGifFirstFrame(source, plan, processDecodeCredit, retirement, default, cancellationToken);
 
     internal static RasterDecodedPixelLease DecodeGifFirstFrame(
         byte[] source,
         RasterGifFirstFrameDecodePlan plan,
         IDisposable processDecodeCredit,
+        NativeResourceRetirement retirement,
         RasterNativeWicDecodeOptions options,
         CancellationToken cancellationToken) =>
-        DecodeCore(source, default, plan, isGif: true, processDecodeCredit, options, cancellationToken);
+        DecodeCore(source, default, plan, isGif: true, processDecodeCredit, retirement, options, cancellationToken);
 
     private static RasterDecodedPixelLease DecodeCore(
         byte[] source, RasterImageDecodePlan staticPlan, RasterGifFirstFrameDecodePlan gifPlan,
-        bool isGif, IDisposable processDecodeCredit, RasterNativeWicDecodeOptions options,
-        CancellationToken cancellationToken)
+        bool isGif, IDisposable processDecodeCredit, NativeResourceRetirement retirement,
+        RasterNativeWicDecodeOptions options, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(processDecodeCredit);
+        ArgumentNullException.ThrowIfNull(retirement);
         IDisposable? untransferredProcessCredit = processDecodeCredit;
         RasterDecodedPixelLease? pixelLease = null;
         RasterNativeWicGraph? graph = null;
@@ -138,7 +144,7 @@ internal static class RasterNativeWicDecoder
             // Reserve durable custody and root the complete managed owner graph
             // before the first native factory can allocate an interface.
             NativeResourceRetirementRecord retirementRecord =
-                NativeResourceRetirement.Shared.Reserve(resourceGroupCount: 0, temporarySlotCount: 1);
+                retirement.Reserve(resourceGroupCount: 0, temporarySlotCount: 1);
             graph = new RasterNativeWicGraph(source, plan, rawPixels!, pixelLease!, retirementRecord);
             retirementRecord.SetTemporary(0, graph, retryable: false);
             graphOwnsLease = true;

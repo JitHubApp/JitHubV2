@@ -7,6 +7,7 @@ using MarkdownRenderer.Layout;
 using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Theming;
 using Microsoft.Graphics.Canvas;
+using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
 using Windows.UI;
 using Xunit;
@@ -28,6 +29,9 @@ public sealed class EngineRenderResourceOwnershipTests
 
         Assert.NotSame(first.RenderResources, second.RenderResources);
         Assert.NotSame(first.RenderResources.Images, second.RenderResources.Images);
+        Assert.NotSame(first.RenderResources.TextFormats, second.RenderResources.TextFormats);
+        Assert.NotSame(first.RenderResources.PaintSessions, second.RenderResources.PaintSessions);
+        Assert.NotSame(first.RenderResources.NativeRetirement, second.RenderResources.NativeRetirement);
         Assert.NotSame(MarkdownEngine.Default.RenderResources, first.RenderResources);
     }
 
@@ -44,6 +48,26 @@ public sealed class EngineRenderResourceOwnershipTests
         Assert.Same(parent.RenderResources, rebuilt.RenderResources);
         Assert.Same(parent.RenderResources, reconfigured.RenderResources);
         Assert.Same(parent.RenderResources, grandchild.RenderResources);
+    }
+
+    [Fact]
+    public void TextFormatsAreSharedWithinOneOwnerOnly()
+    {
+        var owner = new MarkdownRenderResources();
+        var other = new MarkdownRenderResources();
+        var style = new ElementStyle { FontFamily = "Segoe UI", FontSize = 15 };
+
+        using SharedCanvasTextFormatCache.Lease first = owner.TextFormats.Acquire(
+            style, CanvasWordWrapping.Wrap, CanvasHorizontalAlignment.Left, FlowDirection.LeftToRight);
+        using SharedCanvasTextFormatCache.Lease again = owner.TextFormats.Acquire(
+            style, CanvasWordWrapping.Wrap, CanvasHorizontalAlignment.Left, FlowDirection.LeftToRight);
+        using SharedCanvasTextFormatCache.Lease foreign = other.TextFormats.Acquire(
+            style, CanvasWordWrapping.Wrap, CanvasHorizontalAlignment.Left, FlowDirection.LeftToRight);
+
+        Assert.Same(first.Format, again.Format);
+        Assert.NotSame(first.Format, foreign.Format);
+        Assert.Equal(1, owner.TextFormats.Statistics.Count);
+        Assert.Equal(1, other.TextFormats.Statistics.Count);
     }
 
     [Fact]

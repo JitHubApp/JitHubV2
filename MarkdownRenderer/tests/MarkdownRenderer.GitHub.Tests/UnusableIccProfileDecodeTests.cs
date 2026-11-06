@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Text;
+using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using Xunit;
 
@@ -35,7 +36,7 @@ public sealed class UnusableIccProfileDecodeTests
         Assert.True(RasterImageDecodePlan.TryCreate(source, budget, sizing, out var plan));
         var credit = new RasterNativeWicProductParity.CountingCredit();
         using RasterDecodedPixelLease lease = Task.Run(
-            () => RasterNativeWicDecoder.Decode(source, plan, credit, CancellationToken.None))
+            () => RasterNativeWicDecoder.Decode(source, plan, credit, new NativeResourceRetirement(createTimer: false), CancellationToken.None))
             .GetAwaiter().GetResult();
         Assert.Equal(budget.Width, lease.Width);
         return lease.Pixels.ToArray();

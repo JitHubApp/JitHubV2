@@ -128,7 +128,7 @@ internal sealed class ImageLayoutMeasurer
         {
             MarkdownLayoutContext context = _box.Context;
             var cs = context.ThemeSnapshot.GetStyle(MarkdownElementKeys.ImageCaption);
-            using SharedCanvasTextFormatCache.Lease cfmtLease = SharedCanvasTextFormatCache.Acquire(
+            using SharedCanvasTextFormatCache.Lease cfmtLease = context.RenderResources.TextFormats.Acquire(
                 cs,
                 CanvasWordWrapping.Wrap,
                 CanvasHorizontalAlignment.Center,

@@ -90,9 +90,10 @@ internal static class VectorSceneNativeFactory
         return new Vector2(x, command.Start.Y - baseline);
     }
 
-    internal static CanvasStrokeStyle CreateStrokeStyle(MarkdownVectorPaintStyle style)
+    internal static CanvasStrokeStyle CreateStrokeStyle(MarkdownVectorPaintStyle style, NativeResourceRetirement owner)
     {
-        NativeResourceRetirementRecord retirement = NativeResourceRetirement.Shared.Reserve(
+        ArgumentNullException.ThrowIfNull(owner);
+        NativeResourceRetirementRecord retirement = owner.Reserve(
             resourceGroupCount: 0, temporarySlotCount: 1);
         CanvasStrokeStyle? result = new CanvasStrokeStyle();
         try

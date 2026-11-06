@@ -43,7 +43,7 @@ internal sealed class CodeBlockPainter
         // local clip only for a genuinely overflowing no-wrap block.
         if (_host.MeasuredContentWidth > _host.BodyViewportWidth + 0.5f)
         {
-            NativePaintSessionResources.LayerLease layer = NativePaintSessionResources.CreateLayer(ds, 1.0f, clip);
+            NativePaintSessionResources.LayerLease layer = _host.Context.RenderResources.PaintSessions.CreateLayer(ds, 1.0f, clip);
             try
             {
                 PaintVisibleChunks(ds, viewport);
@@ -138,7 +138,7 @@ internal sealed class CodeBlockPainter
     internal void PaintSelectionForeground(CanvasDrawingSession ds, DocumentRange range, Windows.UI.Color color, Rect viewport)
     {
         var clip = _host.CodeViewportRect(_host.OuterRect(), _host.GetCodeStyle());
-        NativePaintSessionResources.LayerLease layer = NativePaintSessionResources.CreateLayer(ds, 1.0f, clip);
+        NativePaintSessionResources.LayerLease layer = _host.Context.RenderResources.PaintSessions.CreateLayer(ds, 1.0f, clip);
         try
         {
             int first = _host.FindFirstVisibleChunk(viewport.Top);

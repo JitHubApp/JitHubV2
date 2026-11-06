@@ -325,12 +325,12 @@ public sealed class SharedCanvasTextFormatNativeCustodyTests
     }
 
     [Fact]
-    public void FaultInjectionCannotBeAttachedToProcessRetirementOwner()
+    public void FaultInjectionCannotBeAttachedToProductionRetirementOwner()
     {
         var disposer = new FormatDisposalProbe();
         Assert.Throws<ArgumentException>(() => new SharedCanvasTextFormatStore(
             1_024,
-            NativeResourceRetirement.Shared,
+            new NativeResourceRetirement(createTimer: true),
             new SharedCanvasTextFormatStoreHooks
             {
                 NativeDisposer = disposer.Dispose,

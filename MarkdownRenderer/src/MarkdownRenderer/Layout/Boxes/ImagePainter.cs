@@ -105,7 +105,7 @@ internal sealed class ImagePainter
         }
 
         NativePaintSessionResources.LayerLease selectionLayer =
-            NativePaintSessionResources.CreateLayer(ds, 0.82f, rect);
+            _box.Context.RenderResources.PaintSessions.CreateLayer(ds, 0.82f, rect);
         try
         {
             PaintInline(ds, rect, viewport);
@@ -139,7 +139,7 @@ internal sealed class ImagePainter
         if (imageRect.Width > 0 && imageRect.Height > 0)
         {
             NativePaintSessionResources.LayerLease selectionLayer =
-                NativePaintSessionResources.CreateLayer(ds, 0.82f, imageRect);
+                _box.Context.RenderResources.PaintSessions.CreateLayer(ds, 0.82f, imageRect);
             try
             {
                 PaintImageContent(ds, imageRect, viewport);
@@ -281,7 +281,7 @@ internal sealed class ImagePainter
             return;
         }
 
-        _box.SvgTileCache.PaintTiles(ds, destination, viewport);
+        _box.SvgTileCache.PaintTiles(ds, _box.Context.RenderResources.PaintSessions, destination, viewport);
         _box.SvgTileRenderer.QueueVisibleSvgTiles(destination, viewport);
     }
 

@@ -36,7 +36,9 @@ public sealed class VectorSceneCapacityFallbackTests
         var first = new VectorNativeResourceAdmission(capacityWeightUnits: 10, maximumSceneWeightUnits: 10);
         var second = new VectorNativeResourceAdmission(capacityWeightUnits: 10, maximumSceneWeightUnits: 10);
 
-        Assert.True(first.CapacityFallbackFormats.PrepareFormat(FlowDirection.LeftToRight));
+        Assert.True(first.CapacityFallbackFormats.PrepareFormat(
+            new MarkdownRenderResources().TextFormats,
+            FlowDirection.LeftToRight));
 
         Assert.Equal(1, PreparedFallbackDescriptorCount(first));
         Assert.Equal(0, PreparedFallbackDescriptorCount(second));
@@ -131,10 +133,10 @@ public sealed class VectorSceneCapacityFallbackTests
             Assert.True(foundUnaffectedOpaqueFallbackGlyph,
                 "The selected fallback should repaint at full opacity so opaque text remains legible.");
 
-            var cacheBeforePaint = SharedCanvasTextFormatCache.Statistics;
+            var cacheBeforePaint = context.RenderResources.TextFormats.Statistics;
             for (int index = 0; index < 4; index++)
                 _ = PaintBlock(box, height, selection: null);
-            Assert.Equal(cacheBeforePaint, SharedCanvasTextFormatCache.Statistics);
+            Assert.Equal(cacheBeforePaint, context.RenderResources.TextFormats.Statistics);
             Assert.InRange(PreparedFallbackDescriptorCount(admission), 1, 2);
 
             box.Dispose();
@@ -315,7 +317,7 @@ public sealed class VectorSceneCapacityFallbackTests
                             drawing.Clear(ClearColor);
                             Matrix3x2 originalTransform = Matrix3x2.CreateTranslation(3, 5);
                             drawing.Transform = originalTransform;
-                            var cacheBeforePaint = SharedCanvasTextFormatCache.Statistics;
+                            var cacheBeforePaint = context.RenderResources.TextFormats.Statistics;
                             run.Paint(
                                 new LayoutPlacementTransformContext(),
                                 drawing,
@@ -337,7 +339,7 @@ public sealed class VectorSceneCapacityFallbackTests
                                 format,
                                 scale);
                             Assert.Equal(callerTransform, drawing.Transform);
-                            Assert.Equal(cacheBeforePaint, SharedCanvasTextFormatCache.Statistics);
+                            Assert.Equal(cacheBeforePaint, context.RenderResources.TextFormats.Statistics);
                         }
 
                         Windows.Graphics.Imaging.BitmapSize pixelSize = target.SizeInPixels;

@@ -33,7 +33,7 @@ internal static class MarkdownDetachedSceneFallback
             !double.IsFinite(width) || width <= 0 || !double.IsFinite(height) || height <= 0)
             return false;
 
-        // Participating scenes use one borrowed process-wide DrawText format
+        // Participating scenes use one borrowed engine-owned DrawText format
         // and a bounded source caption. Do not create a per-box CanvasTextLayout
         // outside the native-scene admission ledger. Existing fault-injection
         // and default eager contracts remain on the legacy factory path.
@@ -58,7 +58,7 @@ internal static class MarkdownDetachedSceneFallback
         // Reserve custody before invoking either the built-in or a supplied
         // factory. If native cleanup fails, this record can be published
         // without allocating a retirement queue node on the failure path.
-        NativeResourceRetirementRecord retirement = (nativeRetirement ?? NativeResourceRetirement.Shared).Reserve(
+        NativeResourceRetirementRecord retirement = (nativeRetirement ?? box.LayoutContext.RenderResources.NativeRetirement).Reserve(
             resourceGroupCount: 0,
             temporarySlotCount: 1,
             disposer: nativeDisposer);
@@ -198,7 +198,7 @@ internal static class MarkdownDetachedSceneFallback
         CanvasTextLayout? candidate = null;
         try
         {
-            using (SharedCanvasTextFormatCache.Lease format = SharedCanvasTextFormatCache.Acquire(
+            using (SharedCanvasTextFormatCache.Lease format = context.RenderResources.TextFormats.Acquire(
                 style,
                 CanvasWordWrapping.Wrap,
                 CanvasHorizontalAlignment.Left,

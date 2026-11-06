@@ -6,7 +6,9 @@ namespace MarkdownRenderer.Layout;
 
 /// <summary>
 /// The caches, budgets and native custody that the documents of one engine
-/// share while they are laid out and painted.
+/// share while they are laid out and painted: image caches and admissions,
+/// text-format descriptors, paint-session tracking and the retirement owner
+/// that retries failed native cleanup.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -45,12 +47,25 @@ internal sealed class MarkdownRenderResources
     {
         ArgumentNullException.ThrowIfNull(images);
         Images = images;
+        // Create the retry clock before any participating native factory.
+        NativeRetirement = new NativeResourceRetirement(createTimer: true);
+        TextFormats = new SharedCanvasTextFormatStore(SharedCanvasTextFormatCache.DefaultBudgetBytes, NativeRetirement);
+        PaintSessions = new NativePaintSessionResources(NativeRetirement);
         if (trimOnMemoryPressure)
             _memoryPressure = ImageMemoryPressureSubscription.TrySubscribe(images);
     }
 
     /// <summary>The image caches, budgets and admission gates.</summary>
     internal ImageResourceScope Images { get; }
+
+    /// <summary>Durable custody for native resources whose cleanup failed.</summary>
+    internal NativeResourceRetirement NativeRetirement { get; }
+
+    /// <summary>The bounded store of immutable text-format descriptors.</summary>
+    internal SharedCanvasTextFormatStore TextFormats { get; }
+
+    /// <summary>The per-drawing-session paint resources.</summary>
+    internal NativePaintSessionResources PaintSessions { get; }
 
     /// <summary>
     /// Creates the resources an engine owns. They also trim their image

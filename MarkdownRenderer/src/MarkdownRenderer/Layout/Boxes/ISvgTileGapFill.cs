@@ -12,7 +12,12 @@ internal interface ISvgTileGapFill
     /// <summary>
     /// Fills <paramref name="gap"/> of the image at <paramref name="destination"/>;
     /// <paramref name="useFallbackTiles"/> is false while painting the fallback
-    /// grid itself.
+    /// grid itself. Clips go through <paramref name="paintSessions"/>.
     /// </summary>
-    void FillSvgTileGap(CanvasDrawingSession ds, Rect destination, Rect gap, bool useFallbackTiles);
+    void FillSvgTileGap(
+        CanvasDrawingSession ds,
+        NativePaintSessionResources paintSessions,
+        Rect destination,
+        Rect gap,
+        bool useFallbackTiles);
 }

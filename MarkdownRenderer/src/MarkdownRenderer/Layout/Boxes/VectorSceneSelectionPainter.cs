@@ -102,7 +102,7 @@ internal sealed class VectorSceneSelectionPainter
                 color)
             : null;
         NativePaintSessionResources.LayerLease sceneLayer =
-            NativePaintSessionResources.CreateLayer(ds, 1f, sceneViewport);
+            _host.LayoutContext.RenderResources.PaintSessions.CreateLayer(ds, 1f, sceneViewport);
         try
         {
             if (_host.Drawing.IsPrepared)
@@ -122,7 +122,7 @@ internal sealed class VectorSceneSelectionPainter
         if (_host.CanScrollHorizontally)
         {
             NativePaintSessionResources.LayerLease scrollbarLayer =
-                NativePaintSessionResources.CreateLayer(ds, 0.82f, _host.HorizontalScrollTrackBounds);
+                _host.LayoutContext.RenderResources.PaintSessions.CreateLayer(ds, 0.82f, _host.HorizontalScrollTrackBounds);
             try
             {
                 _host.PaintHorizontalScrollbar(ds);

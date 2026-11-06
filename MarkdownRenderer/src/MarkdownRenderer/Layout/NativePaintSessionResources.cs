@@ -14,11 +14,25 @@ namespace MarkdownRenderer.Layout;
 /// slot to nonretryable custody so a background clock never pops a layer after
 /// its drawing session has returned.
 /// </summary>
-internal static class NativePaintSessionResources
+/// <remarks>
+/// Each <see cref="MarkdownRenderResources"/> owns one instance, so the
+/// sessions its documents paint into are tracked with its native
+/// retirement owner.
+/// </remarks>
+internal sealed class NativePaintSessionResources
 {
-    private static readonly ConditionalWeakTable<CanvasDrawingSession, NativePaintSessionState> s_sessions = new();
+    private readonly ConditionalWeakTable<CanvasDrawingSession, NativePaintSessionState> _sessions = new();
+    private readonly NativeResourceRetirement _retirement;
 
-    internal static LayerLease CreateLayer(CanvasDrawingSession drawingSession, float opacity, Windows.Foundation.Rect clip)
+    /// <summary>Creates paint-session tracking that retires through <paramref name="retirement"/>.</summary>
+    /// <param name="retirement">The owner of failed paint resources.</param>
+    internal NativePaintSessionResources(NativeResourceRetirement retirement)
+    {
+        ArgumentNullException.ThrowIfNull(retirement);
+        _retirement = retirement;
+    }
+
+    internal LayerLease CreateLayer(CanvasDrawingSession drawingSession, float opacity, Windows.Foundation.Rect clip)
     {
         ArgumentNullException.ThrowIfNull(drawingSession);
         NativePaintSessionState state = GetState(drawingSession);
@@ -47,7 +61,7 @@ internal static class NativePaintSessionResources
         }
     }
 
-    internal static LayerLease CreateLayer(
+    internal LayerLease CreateLayer(
         CanvasDrawingSession drawingSession,
         float opacity,
         CanvasGeometry clip,
@@ -56,7 +70,7 @@ internal static class NativePaintSessionResources
         ArgumentNullException.ThrowIfNull(drawingSession);
         ArgumentNullException.ThrowIfNull(clip);
         NativePaintSessionState? state = clipOwner.State;
-        if (state is null || !s_sessions.TryGetValue(drawingSession, out NativePaintSessionState? registered) ||
+        if (state is null || !_sessions.TryGetValue(drawingSession, out NativePaintSessionState? registered) ||
             !ReferenceEquals(state, registered))
         {
             var invalid = new InvalidOperationException("The clip geometry owner does not belong to this drawing session.");
@@ -99,7 +113,7 @@ internal static class NativePaintSessionResources
     }
 
     /// <summary>Reserve source-free custody before creating a native clip geometry.</summary>
-    internal static AuxiliaryLease ReserveAuxiliary(CanvasDrawingSession drawingSession)
+    internal AuxiliaryLease ReserveAuxiliary(CanvasDrawingSession drawingSession)
     {
         ArgumentNullException.ThrowIfNull(drawingSession);
         return GetState(drawingSession).ReserveAuxiliary();
@@ -107,7 +121,7 @@ internal static class NativePaintSessionResources
 
     // Isolated tests inject a timerless owner and native fault plan before a
     // real Win2D drawing session is used. Production never supplies callbacks.
-    internal static void RegisterTestOwner(
+    internal void RegisterTestOwner(
         CanvasDrawingSession drawingSession,
         NativeResourceRetirement retirement,
         Action<IDisposable>? disposer = null,
@@ -117,7 +131,7 @@ internal static class NativePaintSessionResources
         ArgumentNullException.ThrowIfNull(retirement);
         if (!retirement.AllowsTestDisposer && (disposer is not null || afterLayerReservation is not null))
             throw new ArgumentException("Paint-resource fault injection requires an isolated retirement owner.", nameof(retirement));
-        s_sessions.Add(drawingSession, new NativePaintSessionState(retirement, disposer, afterLayerReservation));
+        _sessions.Add(drawingSession, new NativePaintSessionState(retirement, disposer, afterLayerReservation));
     }
 
     /// <summary>
@@ -125,17 +139,18 @@ internal static class NativePaintSessionResources
     /// stack failed. This path never allocates a state/CWT entry or invokes a
     /// native close; it only transfers pre-reserved owners to durable custody.
     /// </summary>
-    internal static void PoisonSession(CanvasDrawingSession drawingSession)
+    internal void PoisonSession(CanvasDrawingSession drawingSession)
     {
         ArgumentNullException.ThrowIfNull(drawingSession);
-        if (s_sessions.TryGetValue(drawingSession, out NativePaintSessionState? state))
+        if (_sessions.TryGetValue(drawingSession, out NativePaintSessionState? state))
             state.PoisonFromExternalLayerFailure();
     }
 
-    private static NativePaintSessionState GetState(CanvasDrawingSession drawingSession) =>
-        s_sessions.GetValue(
+    private NativePaintSessionState GetState(CanvasDrawingSession drawingSession) =>
+        _sessions.GetOrAdd(
             drawingSession,
-            static _ => new NativePaintSessionState(NativeResourceRetirement.Shared, null, null));
+            static (_, retirement) => new NativePaintSessionState(retirement, null, null),
+            _retirement);
 
     /// <summary>A stack-only token; stale copies cannot close a reused node.</summary>
     internal readonly struct LayerLease

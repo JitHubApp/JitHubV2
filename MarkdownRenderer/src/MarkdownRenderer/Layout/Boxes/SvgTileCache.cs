@@ -96,12 +96,17 @@ internal sealed class SvgTileCache : ISvgTileGapFill
     /// Paints the current tile grid under the tile lock. Holes fall back to
     /// the previous grid, then to whatever the box paints without tiles.
     /// </summary>
-    internal void PaintTiles(CanvasDrawingSession ds, Rect destination, Rect viewport)
+    internal void PaintTiles(
+        CanvasDrawingSession ds,
+        NativePaintSessionResources paintSessions,
+        Rect destination,
+        Rect viewport)
     {
         lock (_svgTileLock)
         {
             SvgTilePainter.PaintLayer(
                 ds,
+                paintSessions,
                 _svgTiles,
                 destination,
                 viewport,
@@ -390,12 +395,17 @@ internal sealed class SvgTileCache : ISvgTileGapFill
 
     // The caller holds _svgTileLock. A hole in the new tile grid shows the
     // fallback grid, then the previous whole bitmap, then the placeholder.
-    void ISvgTileGapFill.FillSvgTileGap(CanvasDrawingSession ds, Rect destination, Rect gap, bool useFallbackTiles)
+    void ISvgTileGapFill.FillSvgTileGap(
+        CanvasDrawingSession ds,
+        NativePaintSessionResources paintSessions,
+        Rect destination,
+        Rect gap,
+        bool useFallbackTiles)
     {
         if (useFallbackTiles && _svgFallbackTiles is { Count: > 0 } fallback &&
             _svgFallbackWidthPixels > 0 && _svgFallbackHeightPixels > 0)
         {
-            SvgTilePainter.PaintLayer(ds, fallback, destination, gap,
+            SvgTilePainter.PaintLayer(ds, paintSessions, fallback, destination, gap,
                 _svgFallbackWidthPixels, _svgFallbackHeightPixels,
                 _svgFallbackPhysicalViewport, this, useFallbackTiles: false);
         }
