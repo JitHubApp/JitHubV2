@@ -589,10 +589,7 @@ public sealed partial class ShellPage : Page
 
     private async Task OpenLaunchRepositoryPageAsync()
     {
-        if (!((App)Application.Current).MarkdownAutomation.IsEnabled)
-        {
-            await Task.Delay(350);
-        }
+        await Task.Delay(350);
 
         _ = DispatcherQueue.TryEnqueue(() =>
             ViewModel.OpenRepositoryPage(

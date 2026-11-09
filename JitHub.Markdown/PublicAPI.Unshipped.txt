@@ -18,10 +18,6 @@ const JitHub.Markdown.MarkdownHostContract.Conversation = "Conversation" -> stri
 const JitHub.Markdown.MarkdownHostContract.EditorPreview = "EditorPreview" -> string!
 const JitHub.Markdown.MarkdownHostContract.ProfileReadme = "ProfileReadme" -> string!
 const JitHub.Markdown.MarkdownHostContract.RepositoryReadme = "RepositoryReadme" -> string!
-JitHub.Markdown.Automation.MarkdownLifecycleFixtureDocument
-JitHub.Markdown.Automation.MarkdownLifecycleFixtureDocument.Compose(string! markdown, string! automationId) -> string!
-JitHub.Markdown.Automation.MarkdownLifecycleFixtureDocument.MarkdownLifecycleFixtureDocument(string? targetHost, string? corpusPath, bool includeSecurityFixture) -> void
-JitHub.Markdown.Automation.MarkdownLifecycleTextScale
 JitHub.Markdown.AutomationScopedId
 JitHub.Markdown.CommentMarkdownFormatter
 JitHub.Markdown.DenyAllMarkdownImageResolver
@@ -170,11 +166,6 @@ JitHub.Markdown.Images.IGitHubMarkdownImageResolverProvider
 JitHub.Markdown.Images.IGitHubMarkdownImageResolverProvider.CreateMarkdownImageResolver() -> MarkdownRenderer.Images.IMarkdownImageResolver!
 JitHub.Markdown.Images.IGitHubRepositoryImageClient
 JitHub.Markdown.Images.IGitHubRepositoryImageClient.GetRepositoryImageContentAsync(string! token, string! owner, string! name, string! path, string? gitRef, MarkdownRenderer.Images.IMarkdownImageSourceByteAdmission! admission, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<JitHub.Markdown.Images.GitHubImageDownload?>!
-JitHub.Markdown.IMarkdownHostObserver
-JitHub.Markdown.IMarkdownHostObserver.OnHostReady(string! automationId) -> void
-JitHub.Markdown.IMarkdownHostObserver.OnImageUnavailable(string! automationId, string! source, MarkdownRenderer.Images.MarkdownImageUnavailableReason reason) -> void
-JitHub.Markdown.IMarkdownHostObserver.OnRenderFailed(string! automationId, System.Exception! exception) -> void
-JitHub.Markdown.IMarkdownHostObserver.TryCaptureLinkRoute(string! automationId, System.Uri! uri, string! disposition) -> bool
 JitHub.Markdown.IMarkdownLinkLauncher
 JitHub.Markdown.IMarkdownLinkLauncher.LaunchAsync(System.Uri! uri, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
 JitHub.Markdown.IMarkdownRemoteImagePolicy
@@ -208,7 +199,6 @@ JitHub.Markdown.IMarkdownUiDispatcher.TryEnqueue(System.Action! callback) -> boo
 JitHub.Markdown.IMarkdownViewerNoticePresenter
 JitHub.Markdown.IMarkdownViewerNoticePresenter.AllowsThirdPartyRemoteImagesByDefault.get -> bool
 JitHub.Markdown.IMarkdownViewerNoticePresenter.ApplyRemoteImageGrant() -> void
-JitHub.Markdown.IMarkdownViewerNoticePresenter.AutomationId.get -> string!
 JitHub.Markdown.IMarkdownViewerNoticePresenter.CloseRemoteImageNotice() -> void
 JitHub.Markdown.IMarkdownViewerNoticePresenter.HostKind.get -> string?
 JitHub.Markdown.IMarkdownViewerNoticePresenter.IsRendererDisposalFaulted.get -> bool
@@ -269,28 +259,9 @@ JitHub.Markdown.MarkdownHostKind.Conversation = 0 -> JitHub.Markdown.MarkdownHos
 JitHub.Markdown.MarkdownHostKind.EditorPreview = 4 -> JitHub.Markdown.MarkdownHostKind
 JitHub.Markdown.MarkdownHostKind.ProfileReadme = 3 -> JitHub.Markdown.MarkdownHostKind
 JitHub.Markdown.MarkdownHostKind.RepositoryReadme = 2 -> JitHub.Markdown.MarkdownHostKind
-JitHub.Markdown.MarkdownLifecycleAutomationBridge
-JitHub.Markdown.MarkdownLifecycleAutomationBridge.GetRuntimeSettingsRevision() -> int
-JitHub.Markdown.MarkdownLifecycleAutomationBridge.GetTextScaleFactor() -> double?
-JitHub.Markdown.MarkdownLifecycleAutomationBridge.IsEnabled.get -> bool
-JitHub.Markdown.MarkdownLifecycleAutomationBridge.IsHighContrastEnabled.get -> bool
-JitHub.Markdown.MarkdownLifecycleAutomationBridge.IsResourceMapForcedAbsent.get -> bool
-JitHub.Markdown.MarkdownLifecycleAutomationBridge.MarkdownLifecycleAutomationBridge(bool launchFixtureEnabled, string? launchTargetHost) -> void
-JitHub.Markdown.MarkdownLifecycleAutomationBridge.RecordImageUnavailable(string! automationId, string! source, MarkdownRenderer.Images.MarkdownImageUnavailableReason reason) -> void
-JitHub.Markdown.MarkdownLifecycleAutomationBridge.RecordLinkRoute(string! automationId, System.Uri! uri, string! disposition) -> bool
-JitHub.Markdown.MarkdownLifecycleAutomationBridge.RecordRenderFailure(string! automationId, System.Exception! exception) -> void
-JitHub.Markdown.MarkdownLifecycleAutomationBridge.SignalAppReady() -> void
-JitHub.Markdown.MarkdownLifecycleAutomationBridge.SignalHostReady(string! automationId) -> void
-JitHub.Markdown.MarkdownLifecycleAutomationBridge.SignalResourceMapFallback(string! fallback) -> void
-JitHub.Markdown.MarkdownLifecycleAutomationBridge.TargetHost.get -> string?
-JitHub.Markdown.MarkdownLifecycleAutomationBridge.TargetsHost(string! automationId) -> bool
-JitHub.Markdown.MarkdownLifecycleImageResolver
-JitHub.Markdown.MarkdownLifecycleImageResolver.PrefetchAsync(System.Collections.Generic.IReadOnlyList<string!>! sources, MarkdownRenderer.Images.MarkdownImageResolveContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask
-JitHub.Markdown.MarkdownLifecycleImageResolver.ResolveAsync(string! source, MarkdownRenderer.Images.MarkdownImageResolveContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.MarkdownImageResolution>
-JitHub.Markdown.MarkdownLifecycleImageResolver.ResolveWithSourceByteAdmissionAsync(string! source, MarkdownRenderer.Images.MarkdownImageResolveContext! context, MarkdownRenderer.Images.IMarkdownImageSourceByteAdmission! admission, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<MarkdownRenderer.Images.MarkdownImageResolution>
 JitHub.Markdown.MarkdownLinkActivator
-JitHub.Markdown.MarkdownLinkActivator.ActivateAsync(string? url, System.Uri! baseUri, MarkdownRenderer.Images.MarkdownDocumentSource? documentSource, string! automationId) -> System.Threading.Tasks.Task!
-JitHub.Markdown.MarkdownLinkActivator.MarkdownLinkActivator(JitHub.Markdown.IMarkdownRouteNavigator! navigator, JitHub.Markdown.IMarkdownLinkLauncher! launcher, JitHub.Markdown.IMarkdownHostObserver! observer, JitHub.Markdown.MarkdownViewerTelemetry! telemetry) -> void
+JitHub.Markdown.MarkdownLinkActivator.ActivateAsync(string? url, System.Uri! baseUri, MarkdownRenderer.Images.MarkdownDocumentSource? documentSource) -> System.Threading.Tasks.Task!
+JitHub.Markdown.MarkdownLinkActivator.MarkdownLinkActivator(JitHub.Markdown.IMarkdownRouteNavigator! navigator, JitHub.Markdown.IMarkdownLinkLauncher! launcher, JitHub.Markdown.MarkdownViewerTelemetry! telemetry) -> void
 JitHub.Markdown.MarkdownLinkNavigationPolicy
 JitHub.Markdown.MarkdownReadingRegionLayout
 JitHub.Markdown.MarkdownReadingRegionSize
@@ -359,7 +330,7 @@ JitHub.Markdown.MarkdownViewerFeedback
 JitHub.Markdown.MarkdownViewerFeedback.ActivateDocument(MarkdownRenderer.Images.MarkdownDocumentSource? source) -> void
 JitHub.Markdown.MarkdownViewerFeedback.AllowsThirdPartyRemoteImages.get -> bool
 JitHub.Markdown.MarkdownViewerFeedback.GrantRemoteImages() -> void
-JitHub.Markdown.MarkdownViewerFeedback.MarkdownViewerFeedback(JitHub.Markdown.IMarkdownViewerNoticePresenter! presenter, JitHub.Markdown.IMarkdownHostObserver! observer, JitHub.Markdown.MarkdownViewerTelemetry! telemetry, JitHub.Markdown.IMarkdownResourceText! text) -> void
+JitHub.Markdown.MarkdownViewerFeedback.MarkdownViewerFeedback(JitHub.Markdown.IMarkdownViewerNoticePresenter! presenter, JitHub.Markdown.MarkdownViewerTelemetry! telemetry, JitHub.Markdown.IMarkdownResourceText! text) -> void
 JitHub.Markdown.MarkdownViewerFeedback.OnCopyCompleted(bool copiedCodeBlock, bool succeeded) -> void
 JitHub.Markdown.MarkdownViewerFeedback.OnDisclosureToggled(bool isExpanded) -> void
 JitHub.Markdown.MarkdownViewerFeedback.OnImageUnavailable(string! source, MarkdownRenderer.Images.MarkdownImageUnavailableReason reason) -> void
@@ -376,11 +347,6 @@ JitHub.Markdown.MarkdownViewerTelemetry.TrackMarkdownEvent(string! eventName, st
 JitHub.Markdown.MarkdownWindowCloseCoordinator
 JitHub.Markdown.MarkdownWindowCloseCoordinator.MarkdownWindowCloseCoordinator(JitHub.Markdown.MarkdownRendererLifetimeRegistry! renderers, System.Action<System.Exception!, string!>! reportHandledFailure) -> void
 JitHub.Markdown.MarkdownWindowCloseCoordinator.RetireViewsThenCloseAsync(System.Func<System.TimeSpan, System.Threading.Tasks.Task!>? detachNestedContentAsync, System.Func<System.TimeSpan, System.Threading.Tasks.Task!>! detachPageAsync, System.Func<System.Threading.Tasks.Task!>! shutdownProvidersAsync, System.Action! close) -> System.Threading.Tasks.Task!
-JitHub.Markdown.NoMarkdownHostObserver
-JitHub.Markdown.NoMarkdownHostObserver.OnHostReady(string! automationId) -> void
-JitHub.Markdown.NoMarkdownHostObserver.OnImageUnavailable(string! automationId, string! source, MarkdownRenderer.Images.MarkdownImageUnavailableReason reason) -> void
-JitHub.Markdown.NoMarkdownHostObserver.OnRenderFailed(string! automationId, System.Exception! exception) -> void
-JitHub.Markdown.NoMarkdownHostObserver.TryCaptureLinkRoute(string! automationId, System.Uri! uri, string! disposition) -> bool
 JitHub.Markdown.RuntimeEventSubscription
 JitHub.Markdown.RuntimeEventSubscription.RuntimeEventSubscription(System.Action<System.Exception!, string!>! report) -> void
 JitHub.Markdown.RuntimeEventSubscription.TryCreate<T>(System.Func<T!>! factory, string! sourceName) -> T?
@@ -423,7 +389,6 @@ override JitHub.Markdown.MarkdownFormPeerAutomationIds.GetHashCode() -> int
 override JitHub.Markdown.MarkdownGitHubRoute.GetHashCode() -> int
 override JitHub.Markdown.MarkdownReadingRegionSize.GetHashCode() -> int
 override JitHub.Markdown.MarkdownRemoteImageDecision.GetHashCode() -> int
-static JitHub.Markdown.Automation.MarkdownLifecycleTextScale.ToTokenScale(double requestedScale, double? observedSystemScale) -> double
 static JitHub.Markdown.AutomationScopedId.Create(string! prefix, string? scope, string? suffix = null) -> string!
 static JitHub.Markdown.CommentMarkdownFormatter.AppendQuote(string? draft, string? body) -> string!
 static JitHub.Markdown.DenyAllMarkdownImageResolver.CreateOrDenyAll(System.Func<MarkdownRenderer.Images.IMarkdownImageResolver?>! createResolver) -> MarkdownRenderer.Images.IMarkdownImageResolver!
@@ -472,7 +437,6 @@ static JitHub.Markdown.MarkdownHostContract.GetSurfaceColorToken(string? value) 
 static JitHub.Markdown.MarkdownHostContract.GetSurfaceFallback(string? value, bool dark) -> string!
 static JitHub.Markdown.MarkdownHostContract.GetTelemetrySection(string? value) -> string!
 static JitHub.Markdown.MarkdownHostContract.Parse(string? value) -> JitHub.Markdown.MarkdownHostKind
-static JitHub.Markdown.MarkdownLifecycleImageResolver.Create(MarkdownRenderer.Images.IMarkdownImageResolver! inner) -> MarkdownRenderer.Images.IMarkdownImageResolver!
 static JitHub.Markdown.MarkdownLinkNavigationPolicy.ClassifyGitHubRoute(System.Uri? uri) -> JitHub.Markdown.MarkdownGitHubRoute
 static JitHub.Markdown.MarkdownLinkNavigationPolicy.IsAllowedLaunchUri(System.Uri? uri) -> bool
 static JitHub.Markdown.MarkdownLinkNavigationPolicy.TryResolveLaunchUri(string? value, System.Uri! baseUri, MarkdownRenderer.Images.MarkdownDocumentSource? documentSource, out System.Uri? uri, out bool mayNavigateInternally) -> bool
@@ -483,6 +447,5 @@ static JitHub.Markdown.MarkdownReadingRegionSize.operator ==(JitHub.Markdown.Mar
 static JitHub.Markdown.MarkdownRemoteImageDecision.operator !=(JitHub.Markdown.MarkdownRemoteImageDecision left, JitHub.Markdown.MarkdownRemoteImageDecision right) -> bool
 static JitHub.Markdown.MarkdownRemoteImageDecision.operator ==(JitHub.Markdown.MarkdownRemoteImageDecision left, JitHub.Markdown.MarkdownRemoteImageDecision right) -> bool
 static JitHub.Markdown.MarkdownRemoteImagePolicy.IsTrustedGitHubHost(string? host) -> bool
-static JitHub.Markdown.NoMarkdownHostObserver.Instance.get -> JitHub.Markdown.NoMarkdownHostObserver!
 static JitHub.Markdown.Svg.RepositorySvgPixelFormatPolicy.Select(bool forceSoftwareRenderer, bool rgbaSupported) -> MarkdownRenderer.Images.MarkdownSvgPixelFormat
 virtual JitHub.Markdown.Images.GitHubImageFetcher.Invoke(JitHub.Markdown.Images.GitHubImageCacheEntry? cachedEntry, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<JitHub.Markdown.Images.GitHubImageDownload?>!

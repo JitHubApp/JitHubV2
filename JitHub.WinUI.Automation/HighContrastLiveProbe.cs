@@ -319,16 +319,7 @@ internal static class HighContrastLiveProbe
                     Path.Combine(options.OutputDirectory, "high-contrast-live-markdown-760x650.png"),
                     "Repository README Markdown at compact width");
             },
-            startInfo =>
-            {
-                startInfo.ArgumentList.Add($"--repo={options.RepositoryFullName}");
-                startInfo.Environment["JITHUB_MARKDOWN_LIFECYCLE_FIXTURE"] = "1";
-                startInfo.Environment["JITHUB_MARKDOWN_LIFECYCLE_HOST"] = hostId;
-                startInfo.Environment["JITHUB_AUTOMATION_TEXT_SCALE_FACTOR"] = "1";
-                startInfo.Environment["JITHUB_MARKDOWN_RENDER_FAILURE_EVIDENCE_PATH"] = Path.Combine(
-                    options.OutputDirectory,
-                    "high-contrast-live-markdown-render-failure.txt");
-            });
+            startInfo => startInfo.ArgumentList.Add($"--repo={options.RepositoryFullName}"));
     }
 
     private static void ValidateMarkdownHostViewport(
@@ -344,11 +335,11 @@ internal static class HighContrastLiveProbe
             description,
             () =>
             {
+                // The host renders the repository's real README; wait until its
+                // TextPattern exposes rendered text before selecting it.
                 AutomationElement? candidate = FindVisible(window, hostId);
                 string text = candidate?.Patterns.Text.PatternOrDefault?.DocumentRange.GetText(-1) ?? string.Empty;
-                return text.Contains("Lifecycle long document final marker", StringComparison.Ordinal)
-                    ? candidate
-                    : null;
+                return string.IsNullOrWhiteSpace(text) ? null : candidate;
             });
         Assert(host.Patterns.Text.IsSupported, $"{description} does not expose TextPattern.");
         Assert(host.Properties.IsKeyboardFocusable.ValueOrDefault, $"{description} is not keyboard focusable.");

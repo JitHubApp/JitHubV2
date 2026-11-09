@@ -10,9 +10,6 @@ internal sealed record LaunchOptions(
     string? Palette = null,
     string? Repository = null,
     string? Branch = null,
-    bool MarkdownLifecycleFixture = false,
-    string? MarkdownLifecycleHost = null,
-    string? MarkdownCorpusPath = null,
     bool WebsiteShowcase = false)
 {
     private const int MaximumActivationArgumentLength = 32_767;
@@ -55,9 +52,6 @@ internal sealed record LaunchOptions(
         string? palette = null;
         string? repository = null;
         string? branch = null;
-        bool markdownLifecycleFixture = false;
-        string? markdownLifecycleHost = null;
-        string? markdownCorpusPath = null;
         bool websiteShowcase = false;
 
         IEnumerable<string> effectiveArguments = TokenizeActivationArguments(activationArguments)
@@ -118,29 +112,9 @@ internal sealed record LaunchOptions(
                 continue;
             }
 
-            if (string.Equals(arg, "--markdown-lifecycle-fixture", System.StringComparison.OrdinalIgnoreCase))
-            {
-                markdownLifecycleFixture = true;
-                continue;
-            }
-
             if (string.Equals(arg, "--website-showcase", System.StringComparison.OrdinalIgnoreCase))
             {
                 websiteShowcase = true;
-                continue;
-            }
-
-            const string markdownHostPrefix = "--markdown-lifecycle-host=";
-            if (arg.StartsWith(markdownHostPrefix, System.StringComparison.OrdinalIgnoreCase))
-            {
-                markdownLifecycleHost = arg[markdownHostPrefix.Length..].Trim();
-                continue;
-            }
-
-            const string markdownCorpusPrefix = "--markdown-corpus=";
-            if (arg.StartsWith(markdownCorpusPrefix, System.StringComparison.OrdinalIgnoreCase))
-            {
-                markdownCorpusPath = arg[markdownCorpusPrefix.Length..].Trim();
             }
         }
 
@@ -158,9 +132,6 @@ internal sealed record LaunchOptions(
             palette,
             repository,
             branch,
-            markdownLifecycleFixture,
-            markdownLifecycleHost,
-            markdownCorpusPath,
             websiteShowcase);
     }
 

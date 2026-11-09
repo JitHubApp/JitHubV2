@@ -43,8 +43,19 @@ public sealed class MarkdownViewerFeedbackTests
         harness.Feedback.OnImageUnavailable("https://example.com/a.png", MarkdownImageUnavailableReason.RemoteContentBlocked);
 
         Assert.Empty(harness.Presenter.Calls);
-        Assert.Empty(harness.Observer.Calls);
         Assert.Empty(harness.Events);
+    }
+
+    [Fact]
+    public void InsecureImage_IsExplainedWithoutOfferingToLoadItEvenWhenTheHostAllowsThirdPartyImages()
+    {
+        var harness = new FeedbackHarness { AllowsByDefault = true };
+
+        harness.Feedback.OnImageUnavailable("http://example.com/a.png", MarkdownImageUnavailableReason.InsecureRemoteContent);
+
+        Assert.Equal(["update-remote", "open-remote"], harness.Presenter.Calls);
+        Assert.False(harness.Presenter.LastOfferedLoadImages);
+        Assert.Equal(TelemetryTaxonomy.Results.Rejected, harness.LastEvent("result"));
     }
 
     [Fact]
@@ -117,8 +128,6 @@ public sealed class MarkdownViewerFeedbackTests
         Assert.Equal(TelemetryTaxonomy.Results.Deferred, harness.Events[0].Properties["result"]);
         Assert.Equal("suppressed", harness.Events[1].Properties["policy"]);
         Assert.Equal(TelemetryTaxonomy.Results.Rejected, harness.Events[1].Properties["result"]);
-        Assert.Equal(3, harness.Observer.ImagesUnavailable.Count);
-        Assert.All(harness.Observer.ImagesUnavailable, static entry => Assert.Equal("markdown-test", entry.AutomationId));
 
         harness.Feedback.ActivateDocument(null);
         harness.Feedback.OnImageUnavailable("d", MarkdownImageUnavailableReason.MeteredConnection);
@@ -181,7 +190,6 @@ public sealed class MarkdownViewerFeedbackTests
         harness.Feedback.OnRenderFailed(failure);
         harness.Feedback.OnRenderFailed(failure);
 
-        Assert.Equal([("markdown-test", (Exception)failure), ("markdown-test", failure)], harness.Observer.RenderFailures);
         Assert.Equal(2, harness.Presenter.Count("error-open"));
         Assert.Single(harness.Events);
         Assert.Equal("markdown.error", harness.Events[0].Name);
@@ -236,7 +244,6 @@ public sealed class MarkdownViewerFeedbackTests
         // which reuses the render-error notice, stays up.
         Assert.Equal(["close-remote", "close-remote"], harness.Presenter.Calls);
         Assert.Empty(harness.Events);
-        Assert.Empty(harness.Observer.RenderFailures);
     }
 
     [Fact]
@@ -278,7 +285,6 @@ public sealed class MarkdownViewerFeedbackTests
                     new Dictionary<string, string?>(call.ArgAt<IReadOnlyDictionary<string, string?>>(1)!))));
             Feedback = new MarkdownViewerFeedback(
                 Presenter,
-                Observer,
                 new MarkdownViewerTelemetry(telemetry, () => HostKind),
                 Text);
         }
@@ -290,8 +296,6 @@ public sealed class MarkdownViewerFeedbackTests
         public string? HostKind { get; set; }
 
         public RecordingPresenter Presenter { get; }
-
-        public RecordingMarkdownHostObserver Observer { get; } = new();
 
         public List<RecordedEvent> Events { get; } = [];
 
@@ -335,8 +339,6 @@ public sealed class MarkdownViewerFeedbackTests
         public bool LastOfferedLoadImages { get; private set; }
 
         public string? HostKind => _harness.HostKind;
-
-        public string AutomationId => "markdown-test";
 
         public bool AllowsThirdPartyRemoteImagesByDefault => _harness.AllowsByDefault;
 

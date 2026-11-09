@@ -64,8 +64,6 @@ public sealed class HighContrastLiveProbeContractTests
         Assert.Contains("ProfileModeOverviewItem", source, StringComparison.Ordinal);
         Assert.Contains("ProfileContributionGraph", source, StringComparison.Ordinal);
         Assert.Contains("MarkdownHost_RepositoryReadme_RepoCodeReadme", source, StringComparison.Ordinal);
-        Assert.Contains("JITHUB_MARKDOWN_LIFECYCLE_FIXTURE", source, StringComparison.Ordinal);
-        Assert.Contains("Lifecycle long document final marker", source, StringComparison.Ordinal);
         Assert.Contains("keyboard text selection", source, StringComparison.Ordinal);
         Assert.Contains("AssertSelected", source, StringComparison.Ordinal);
         Assert.Contains("AssertFocusPixelsChanged", source, StringComparison.Ordinal);

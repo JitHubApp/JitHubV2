@@ -10,9 +10,6 @@ public interface IMarkdownViewerNoticePresenter
     /// <summary>Gets the host kind, which selects compact notice titles.</summary>
     string? HostKind { get; }
 
-    /// <summary>Gets the host's renderer automation id.</summary>
-    string AutomationId { get; }
-
     /// <summary>Gets whether the host loads secure third-party images without per-document consent.</summary>
     bool AllowsThirdPartyRemoteImagesByDefault { get; }
 

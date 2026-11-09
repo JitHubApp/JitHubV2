@@ -257,8 +257,7 @@ ignores cancellation; the provider retains its own hard transaction deadline.
 Late resolver successes and their cleanup completion are also tracked during
 retirement. Ordinary raw `ResolveAsync` consumers and nonparticipating legacy
 resolvers remain compatible but do not receive this pre-materialization guarantee.
-JitHub's lifecycle wrappers preserve leased capability only when the inner
-resolver supports it. JitHub's production GitHub adapter transfers source owners through HTTP/memory/disk, stale/refresh,
+JitHub's production GitHub adapter transfers source owners through HTTP/memory/disk, stale/refresh,
 authenticated repository, LFS and hedge routes. It advertises the leased
 capability only when its configured image service supports it, and reuses one
 facade per provider to preserve shared-flight/cache identity across views. Large

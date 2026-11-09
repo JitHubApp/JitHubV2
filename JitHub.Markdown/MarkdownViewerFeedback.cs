@@ -12,7 +12,6 @@ namespace JitHub.Markdown;
 public sealed class MarkdownViewerFeedback
 {
     private readonly IMarkdownViewerNoticePresenter _presenter;
-    private readonly IMarkdownHostObserver _observer;
     private readonly MarkdownViewerTelemetry _telemetry;
     private readonly IMarkdownResourceText _text;
     private readonly MarkdownRemoteContentConsent _remoteContentConsent = new();
@@ -22,17 +21,14 @@ public sealed class MarkdownViewerFeedback
     private bool _retryRenderPending;
 
     /// <param name="presenter">The host that shows the notices.</param>
-    /// <param name="observer">The host milestone observer.</param>
     /// <param name="telemetry">The host's telemetry.</param>
     /// <param name="text">The app's localized notice text.</param>
     public MarkdownViewerFeedback(
         IMarkdownViewerNoticePresenter presenter,
-        IMarkdownHostObserver observer,
         MarkdownViewerTelemetry telemetry,
         IMarkdownResourceText text)
     {
         _presenter = presenter ?? throw new ArgumentNullException(nameof(presenter));
-        _observer = observer ?? throw new ArgumentNullException(nameof(observer));
         _telemetry = telemetry ?? throw new ArgumentNullException(nameof(telemetry));
         _text = text ?? throw new ArgumentNullException(nameof(text));
     }
@@ -84,8 +80,6 @@ public sealed class MarkdownViewerFeedback
         {
             return;
         }
-
-        _observer.OnImageUnavailable(_presenter.AutomationId, source, reason);
 
         if (_reportedImageUnavailableReasons.Add(reason))
         {
@@ -220,7 +214,6 @@ public sealed class MarkdownViewerFeedback
         if (_presenter.IsRendererDisposalFaulted)
             return;
 
-        _observer.OnRenderFailed(_presenter.AutomationId, exception);
         _presenter.SetRenderErrorNoticeOpen(true);
         bool wasRetry = _retryRenderPending;
         _retryRenderPending = false;
