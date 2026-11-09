@@ -23,13 +23,14 @@ public sealed class AuthService : IAuthService
     private readonly IAppConfig _appConfigService;
     private readonly IAccountService _accountService;
     private readonly IGitHubClientService _gitHubClientService;
-    private readonly IGitHubService _gitHubService;
-    private readonly NavigationService _navigationService;
+    private readonly IGitHubAccessTokenSink _accessTokenSink;
+    private readonly IUnauthorizedNavigator _unauthorizedNavigator;
     private readonly IAuthCredentialStore _credentialStore;
     private readonly IAccountWorkQuiescence _accountWork;
     private readonly ITelemetryService _telemetryService;
     private readonly IDeviceAuthorizationPrompt _devicePrompt;
     private readonly IGitHubDeviceFlowClient _deviceClient;
+    private readonly LaunchOptions _launchOptions;
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
     private readonly object _proactiveRefreshGate = new();
     private Task? _proactiveRefreshTask;
@@ -42,24 +43,26 @@ public sealed class AuthService : IAuthService
         IAppConfig appConfigService,
         IAccountService accountService,
         IGitHubClientService gitHubClientService,
-        IGitHubService gitHubService,
-        NavigationService navigationService,
+        IGitHubAccessTokenSink accessTokenSink,
+        IUnauthorizedNavigator unauthorizedNavigator,
         IAuthCredentialStore credentialStore,
         IAccountWorkQuiescence accountWork,
         ITelemetryService telemetryService,
         IDeviceAuthorizationPrompt devicePrompt,
-        IGitHubDeviceFlowClient deviceClient)
+        IGitHubDeviceFlowClient deviceClient,
+        LaunchOptions launchOptions)
     {
         _appConfigService = appConfigService;
         _accountService = accountService;
         _gitHubClientService = gitHubClientService;
-        _gitHubService = gitHubService;
-        _navigationService = navigationService;
+        _accessTokenSink = accessTokenSink;
+        _unauthorizedNavigator = unauthorizedNavigator;
         _credentialStore = credentialStore;
         _accountWork = accountWork;
         _telemetryService = SafeTelemetryService.Wrap(telemetryService);
         _devicePrompt = devicePrompt;
         _deviceClient = deviceClient;
+        _launchOptions = launchOptions;
     }
 
     public bool Authenticated { get; set; }
@@ -214,7 +217,7 @@ public sealed class AuthService : IAuthService
                     throw new OperationCanceledException("The active account changed during authorization.");
                 }
                 _credentialStore.SaveAccountSession(userId, session);
-                _gitHubService.SetAccessToken(session.AccessToken);
+                _accessTokenSink.SetAccessToken(session.AccessToken);
                 Interlocked.Increment(ref _sessionGeneration);
             }
             finally
@@ -291,7 +294,7 @@ public sealed class AuthService : IAuthService
         _accountWork.Activate(user.Id.ToString(System.Globalization.CultureInfo.InvariantCulture));
         AuthenticatedUser = user;
         Authenticated = true;
-        _gitHubService.SetAccessToken(session.AccessToken);
+        _accessTokenSink.SetAccessToken(session.AccessToken);
         _initializeTask = Task.CompletedTask;
     }
 
@@ -330,10 +333,10 @@ public sealed class AuthService : IAuthService
 
         try
         {
-            if (Program.CurrentLaunchOptions.IsPublicPreviewOverride && GitHubClientService.IsPublicAccessToken(token))
+            if (_launchOptions.IsPublicPreviewOverride && GitHubClientService.IsPublicAccessToken(token))
             {
                 GitHubUser previewUser = CreatePublicPreviewUser();
-                _gitHubService.SetAccessToken(token);
+                _accessTokenSink.SetAccessToken(token);
                 AuthenticatedUser = previewUser;
                 Authenticated = true;
                 stopwatch.Stop();
@@ -355,7 +358,7 @@ public sealed class AuthService : IAuthService
             {
                 throw new GitHubAuthenticationException("The stored GitHub session belongs to a different account.");
             }
-            _gitHubService.SetAccessToken(_credentialStore.GetAccountSession(user.Id)?.AccessToken ?? token);
+            _accessTokenSink.SetAccessToken(_credentialStore.GetAccountSession(user.Id)?.AccessToken ?? token);
             _accountService.SaveUser(user.Id);
             _accountWork.Activate(user.Id.ToString(System.Globalization.CultureInfo.InvariantCulture));
             AuthenticatedUser = user;
@@ -469,7 +472,7 @@ public sealed class AuthService : IAuthService
 
     public string? GetToken(long userId)
     {
-        if (Program.CurrentLaunchOptions.IsPublicPreviewOverride)
+        if (_launchOptions.IsPublicPreviewOverride)
         {
             return GitHubClientService.PublicAccessToken;
         }
@@ -528,7 +531,7 @@ public sealed class AuthService : IAuthService
 
     public async Task<string?> GetValidTokenAsync(long userId, CancellationToken cancellationToken = default)
     {
-        if (Program.CurrentLaunchOptions.IsPublicPreviewOverride)
+        if (_launchOptions.IsPublicPreviewOverride)
         {
             return GitHubClientService.PublicAccessToken;
         }
@@ -582,7 +585,7 @@ public sealed class AuthService : IAuthService
                 }
                 replacement = replacement with { GrantedScopes = session.GrantedScopes };
                 _credentialStore.SaveAccountSession(userId, replacement);
-                _gitHubService.SetAccessToken(replacement.AccessToken);
+                _accessTokenSink.SetAccessToken(replacement.AccessToken);
                 RecoveryState = AuthSessionRecoveryState.None;
                 return replacement.AccessToken;
             }
@@ -637,7 +640,7 @@ public sealed class AuthService : IAuthService
             Interlocked.Increment(ref _sessionGeneration);
             ClearAuthenticationState(clearPersistedSession: true);
             RecoveryState = AuthSessionRecoveryState.None;
-            _navigationService.Unauthorized();
+            _unauthorizedNavigator.Unauthorized();
             TrackEvent(
                 "auth.action.executed",
                 AuthProperties("session", TelemetryTaxonomy.Results.Success, duration.Elapsed, "sign_out"));
@@ -717,7 +720,7 @@ public sealed class AuthService : IAuthService
                 // An expired token can be refreshed after connectivity returns.
                 Authenticated = false;
                 AuthenticatedUser = null;
-                _gitHubService.SetAccessToken(null);
+                _accessTokenSink.SetAccessToken(null);
                 RecoveryState = AuthSessionRecoveryState.Offline;
                 _initializeTask = Task.CompletedTask;
                 return;
@@ -736,7 +739,7 @@ public sealed class AuthService : IAuthService
         }
 
         // Make the token available to startup data loaders immediately while we validate/refresh the session.
-        _gitHubService.SetAccessToken(token);
+        _accessTokenSink.SetAccessToken(token);
 
         try
         {
@@ -789,7 +792,7 @@ public sealed class AuthService : IAuthService
             }
             Authenticated = false;
             AuthenticatedUser = null;
-            _gitHubService.SetAccessToken(token);
+            _accessTokenSink.SetAccessToken(token);
             _initializeTask = null;
             RecoveryState = AuthSessionRecoveryState.ServiceUnavailable;
             stopwatch.Stop();
@@ -805,7 +808,7 @@ public sealed class AuthService : IAuthService
             }
             Authenticated = false;
             AuthenticatedUser = null;
-            _gitHubService.SetAccessToken(token);
+            _accessTokenSink.SetAccessToken(token);
             _initializeTask = null;
             RecoveryState = AuthSessionRecoveryState.Offline;
             stopwatch.Stop();
@@ -912,7 +915,7 @@ public sealed class AuthService : IAuthService
 
         Authenticated = false;
         AuthenticatedUser = null;
-        _gitHubService.SetAccessToken(null);
+        _accessTokenSink.SetAccessToken(null);
         _initializeTask = Task.CompletedTask;
         try
         {

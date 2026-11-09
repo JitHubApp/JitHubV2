@@ -39,7 +39,7 @@ public sealed class PullRequestPagedDataIntegrityTests
     public async Task CreateAndMetadataOptions_AutoPageBeyondOneHundred()
     {
         RepositoryMetadataQueryService queryService = new();
-        GitHubPullRequestQueryService service = new(queryService);
+        GitHubPullRequestQueryService service = new(queryService, new LaunchOptions());
 
         PullRequestPagedSection<GitHubBranch> branches = await service.GetAllRepositoryBranchesAsync(
             "token", "42", "owner", "repo");
@@ -74,7 +74,7 @@ public sealed class PullRequestPagedDataIntegrityTests
     public async Task MetadataLaterPageFailure_ReturnsUsablePartialPrefix()
     {
         RepositoryMetadataQueryService queryService = new(failSecondPage: true);
-        GitHubPullRequestQueryService service = new(queryService);
+        GitHubPullRequestQueryService service = new(queryService, new LaunchOptions());
 
         PullRequestPagedSection<GitHubLabel> result = await service.GetAllRepositoryLabelsAsync(
             "token", "42", "owner", "repo");
@@ -89,7 +89,7 @@ public sealed class PullRequestPagedDataIntegrityTests
     public async Task PullRequestReactionReads_AutoPageThroughSharedQueryFacade()
     {
         RepositoryMetadataQueryService queryService = new();
-        GitHubPullRequestQueryService service = new(queryService);
+        GitHubPullRequestQueryService service = new(queryService, new LaunchOptions());
 
         PullRequestPagedSection<GitHubReaction> pullRequest = await service.GetAllPullRequestReactionsAsync(
             "token", "42", "owner", "repo", 17);
@@ -115,7 +115,7 @@ public sealed class PullRequestPagedDataIntegrityTests
     public async Task PullRequestListLaterPageFailure_PublishesPartialWithoutDroppingExistingTail()
     {
         RepositoryMetadataQueryService queryService = new(failSecondPage: true);
-        GitHubPullRequestQueryService service = new(queryService);
+        GitHubPullRequestQueryService service = new(queryService, new LaunchOptions());
         GitHubPullRequest[] published =
         [
             new GitHubPullRequest { Number = 1, Title = "Published first" },

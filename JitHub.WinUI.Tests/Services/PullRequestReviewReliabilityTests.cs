@@ -72,7 +72,7 @@ public sealed class PullRequestReviewReliabilityTests
     public async Task CapabilityRefreshInvalidatesSpecificTagsAndUsesNetworkOnlyReads()
     {
         RecordingQueryService query = new();
-        GitHubPullRequestQueryService service = new(query);
+        GitHubPullRequestQueryService service = new(query, new LaunchOptions());
 
         await service.InvalidatePullRequestAsync("42", "octo", "hello", 17);
         PullRequestCapabilitySnapshot? snapshot = await service.RefreshPullRequestCapabilitiesAsync(

@@ -137,7 +137,7 @@ public sealed class VNextShellHomeServiceTests
     public async Task PullRequestConversationQuery_LoadsOnlyVisibleConversationSections()
     {
         RecordingQueryService query = new();
-        GitHubPullRequestQueryService service = new(query);
+        GitHubPullRequestQueryService service = new(query, new LaunchOptions());
 
         PullRequestConversationAggregate? aggregate = await service.GetPullRequestConversationAsync(
             "token",
@@ -175,7 +175,7 @@ public sealed class VNextShellHomeServiceTests
     public async Task PullRequestDetailQuery_PaginatesEveryCollectionSectionBeyondPageOne()
     {
         PagedPullRequestRecordingQueryService query = new();
-        GitHubPullRequestQueryService service = new(query);
+        GitHubPullRequestQueryService service = new(query, new LaunchOptions());
 
         PullRequestDetailAggregate? aggregate = await service.GetPullRequestDetailAsync(
             "token",
@@ -201,7 +201,7 @@ public sealed class VNextShellHomeServiceTests
     public async Task PullRequestList_PaginatesProgressivelyBeyondFirstPage()
     {
         PagedPullRequestRecordingQueryService query = new();
-        GitHubPullRequestQueryService service = new(query);
+        GitHubPullRequestQueryService service = new(query, new LaunchOptions());
         List<PullRequestPagedSection<GitHubPullRequest>> progress = [];
 
         PullRequestPagedSection<GitHubPullRequest> result = await service.GetAllPullRequestsAsync(
@@ -224,7 +224,7 @@ public sealed class VNextShellHomeServiceTests
     public async Task PullRequestList_RefreshesStaleShortPageBeforeDeclaringComplete()
     {
         StaleShortPullRequestQueryService query = new();
-        GitHubPullRequestQueryService service = new(query);
+        GitHubPullRequestQueryService service = new(query, new LaunchOptions());
 
         PullRequestPagedSection<GitHubPullRequest> result = await service.GetAllPullRequestsAsync(
             "token",
@@ -243,7 +243,7 @@ public sealed class VNextShellHomeServiceTests
     public async Task PullRequestList_LaterPageFailurePreservesLoadedPrefix()
     {
         PagedPullRequestRecordingQueryService query = new(failSecondPullRequestPage: true);
-        GitHubPullRequestQueryService service = new(query);
+        GitHubPullRequestQueryService service = new(query, new LaunchOptions());
 
         PullRequestPagedSection<GitHubPullRequest> result = await service.GetAllPullRequestsAsync(
             "token",
@@ -262,7 +262,7 @@ public sealed class VNextShellHomeServiceTests
     public async Task PullRequestPrefetch_IsBoundedToVisibleConversationAndUsesPrefetchPriority()
     {
         PagedPullRequestRecordingQueryService query = new();
-        GitHubPullRequestQueryService service = new(query);
+        GitHubPullRequestQueryService service = new(query, new LaunchOptions());
 
         PullRequestConversationAggregate? aggregate = await service.GetPullRequestPrefetchAsync(
             "token", "42", "octo", "hello-world", 17);
@@ -279,7 +279,7 @@ public sealed class VNextShellHomeServiceTests
     public async Task PullRequestPagedSection_LaterPageFailureKeepsLoadedRowsAndReportsError()
     {
         PagedPullRequestRecordingQueryService query = new(failSecondCommentsPage: true);
-        GitHubPullRequestQueryService service = new(query);
+        GitHubPullRequestQueryService service = new(query, new LaunchOptions());
 
         PullRequestPagedSection<GitHubIssueComment> result = await service.GetAllPullRequestCommentsAsync(
             "token",
@@ -298,7 +298,7 @@ public sealed class VNextShellHomeServiceTests
     public async Task PullRequestCommits_ReportsGitHubsExplicitTwoHundredFiftyCommitLimit()
     {
         PagedPullRequestRecordingQueryService query = new(fullCommitPages: true);
-        GitHubPullRequestQueryService service = new(query);
+        GitHubPullRequestQueryService service = new(query, new LaunchOptions());
 
         PullRequestPagedSection<GitHubCommit> result = await service.GetAllPullRequestCommitsAsync(
             "token", "42", "octo", "hello-world", 17);

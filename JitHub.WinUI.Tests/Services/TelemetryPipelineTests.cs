@@ -677,7 +677,7 @@ public sealed class TelemetryPipelineTests : IDisposable
     [Fact]
     public void StoreTelemetrySink_ReportsAvailabilityAndRejectsDynamicEvents()
     {
-        StoreTelemetrySink sink = new();
+        StoreTelemetrySink sink = new(log: null, "store_engagement_architecture_unavailable");
 
         Assert.False(string.IsNullOrWhiteSpace(sink.AvailabilityStatus));
         sink.TrackEvent("shell.search.submitted");

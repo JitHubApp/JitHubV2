@@ -4,9 +4,6 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-#if STORE_ENGAGEMENT_AVAILABLE
-using Microsoft.Services.Store.Engagement;
-#endif
 
 namespace JitHub.Services;
 
@@ -19,17 +16,20 @@ public interface IStoreTelemetrySink
     void TrackEvent(string name);
 }
 
+/// <summary>
+/// Forwards allow-listed event names to the Microsoft Store engagement logger
+/// on a paced background queue. The app owns the optional Store Engagement
+/// framework: it resolves the native logger and hands this sink its
+/// <c>Log</c> method together with the availability it observed.
+/// </summary>
 public sealed class StoreTelemetrySink : IStoreTelemetrySink
 {
     private const int DefaultQueueCapacity = 256;
     private static readonly TimeSpan DefaultDispatchInterval = TimeSpan.FromSeconds(1);
 
-#if STORE_ENGAGEMENT_AVAILABLE
-    private readonly StoreServicesCustomEventLogger? _logger;
-#endif
     private readonly object _queueGate = new();
     private readonly HashSet<string> _pendingNames = new(StringComparer.Ordinal);
-    private readonly Action<string>? _testLogger;
+    private readonly Action<string>? _log;
     private readonly Channel<string>? _queue;
     private readonly Task _dispatchTask;
     private readonly TimeSpan _dispatchInterval;
@@ -38,53 +38,46 @@ public sealed class StoreTelemetrySink : IStoreTelemetrySink
     private long _coalescedEventCount;
     private long _droppedEventCount;
 
-    public StoreTelemetrySink()
+    /// <summary>
+    /// Creates a sink that dispatches through <paramref name="log"/>, or that
+    /// drops every event when no logger is available.
+    /// </summary>
+    /// <param name="log">The native logger's log method, or <see langword="null"/> when there is none.</param>
+    /// <param name="availabilityStatus">Why the logger is or is not available, as reported by diagnostics.</param>
+    public StoreTelemetrySink(Action<string>? log, string availabilityStatus)
+        : this(log, availabilityStatus, DefaultDispatchInterval, DefaultQueueCapacity)
     {
-        _dispatchInterval = DefaultDispatchInterval;
-#if STORE_ENGAGEMENT_AVAILABLE
-        try
-        {
-            _logger = StoreServicesCustomEventLogger.GetDefault();
-            _availabilityStatus = _logger is null
-                ? "store_engagement_logger_unavailable"
-                : "available";
-        }
-        catch (Exception exception)
-        {
-            _logger = null;
-            _availabilityStatus = exception.GetType().Name;
-        }
-#else
-        _availabilityStatus = "store_engagement_architecture_unavailable";
-#endif
-
-        if (HasLogger)
-        {
-            _queue = CreateQueue(DefaultQueueCapacity);
-            _acceptingEvents = true;
-            _dispatchTask = Task.Run(DispatchLoopAsync);
-        }
-        else
-        {
-            _dispatchTask = Task.CompletedTask;
-        }
     }
 
     internal StoreTelemetrySink(
         Action<string>? logger,
         TimeSpan dispatchInterval,
         int queueCapacity = DefaultQueueCapacity)
+        : this(
+            logger,
+            logger is null ? "store_engagement_logger_unavailable" : "available",
+            dispatchInterval,
+            queueCapacity)
     {
+    }
+
+    private StoreTelemetrySink(
+        Action<string>? log,
+        string availabilityStatus,
+        TimeSpan dispatchInterval,
+        int queueCapacity)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(availabilityStatus);
         ArgumentOutOfRangeException.ThrowIfLessThan(queueCapacity, 1);
         if (dispatchInterval < TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(dispatchInterval));
         }
 
-        _testLogger = logger;
+        _log = log;
         _dispatchInterval = dispatchInterval;
-        _availabilityStatus = logger is null ? "store_engagement_logger_unavailable" : "available";
-        if (logger is not null)
+        _availabilityStatus = availabilityStatus;
+        if (log is not null)
         {
             _queue = CreateQueue(queueCapacity);
             _acceptingEvents = true;
@@ -169,17 +162,7 @@ public sealed class StoreTelemetrySink : IStoreTelemetrySink
         return true;
     }
 
-    private bool HasLogger
-    {
-        get
-        {
-#if STORE_ENGAGEMENT_AVAILABLE
-            return _logger is not null || _testLogger is not null;
-#else
-            return _testLogger is not null;
-#endif
-        }
-    }
+    private bool HasLogger => _log is not null;
 
     private static Channel<string> CreateQueue(int capacity) =>
         Channel.CreateBounded<string>(new BoundedChannelOptions(capacity)
@@ -236,16 +219,5 @@ public sealed class StoreTelemetrySink : IStoreTelemetrySink
         }
     }
 
-    private void DispatchEvent(string name)
-    {
-        if (_testLogger is not null)
-        {
-            _testLogger(name);
-            return;
-        }
-
-#if STORE_ENGAGEMENT_AVAILABLE
-        _logger?.Log(name);
-#endif
-    }
+    private void DispatchEvent(string name) => _log?.Invoke(name);
 }

@@ -3,7 +3,7 @@ using System.Linq;
 
 namespace JitHub.WinUI;
 
-internal sealed record LaunchOptions(
+public sealed record LaunchOptions(
     string? Page = null,
     string? Scenario = null,
     string? Theme = null,

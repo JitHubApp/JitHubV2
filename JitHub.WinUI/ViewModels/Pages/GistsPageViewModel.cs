@@ -375,7 +375,7 @@ public sealed partial class GistEditorSession : ObservableObject
     }
 }
 
-public sealed partial class GistsPageViewModel : ViewModelBase, IDisposable, IAsyncDisposable
+public sealed partial class GistsPageViewModel : ObservableObject, IDisposable, IAsyncDisposable
 {
     private const int PageSize = 100;
     private readonly IGitHubGistQueryService _queryService;

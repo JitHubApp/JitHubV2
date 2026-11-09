@@ -5,7 +5,7 @@ using Microsoft.UI.Xaml.Media.Animation;
 
 namespace JitHub.Services;
 
-public class NavigationService
+public class NavigationService : IUnauthorizedNavigator
 {
     private readonly Frame _rootFrame;
     private ICommand? _changeTabTitleCommand;

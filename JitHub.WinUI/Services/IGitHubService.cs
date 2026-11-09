@@ -21,9 +21,8 @@ using System.Threading.Tasks;
 
 namespace JitHub.Services
 {
-    public interface IGitHubService
+    public interface IGitHubService : IGitHubAccessTokenSink
     {
-        void SetAccessToken(string? token);
         Task<User> GetCurrentUser();
         Task<Repository> GetRepository(string owner, string name, CancellationToken cancellationToken = default);
         Task<Repository> GetRepository(long id, CancellationToken cancellationToken = default);

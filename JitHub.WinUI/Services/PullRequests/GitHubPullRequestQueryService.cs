@@ -16,10 +16,12 @@ public sealed class GitHubPullRequestQueryService : IGitHubPullRequestQueryServi
     private const int PullRequestListApiLimit = 5000;
     private const int PullRequestCommitApiLimit = 250;
     private readonly IGitHubQueryService _queryService;
+    private readonly LaunchOptions _launchOptions;
 
-    public GitHubPullRequestQueryService(IGitHubQueryService queryService)
+    public GitHubPullRequestQueryService(IGitHubQueryService queryService, LaunchOptions launchOptions)
     {
         _queryService = queryService;
+        _launchOptions = launchOptions;
     }
 
     public Task<PullRequestPagedSection<GitHubBranch>> GetAllRepositoryBranchesAsync(
@@ -1485,7 +1487,7 @@ public sealed class GitHubPullRequestQueryService : IGitHubPullRequestQueryServi
             Reactions = new GitHubReactionSummary()
         };
 
-    private static GitHubIssueComment[] CreatePreviewComments(int pullRequestNumber)
+    private GitHubIssueComment[] CreatePreviewComments(int pullRequestNumber)
     {
         int count = IsShyHeaderAutomationScenario()
             ? 12
@@ -1518,7 +1520,7 @@ public sealed class GitHubPullRequestQueryService : IGitHubPullRequestQueryServi
             .ToArray();
     }
 
-    private static GitHubCommit[] CreatePreviewCommits()
+    private GitHubCommit[] CreatePreviewCommits()
     {
         if (IsShyHeaderAutomationScenario())
         {
@@ -1553,7 +1555,7 @@ public sealed class GitHubPullRequestQueryService : IGitHubPullRequestQueryServi
         ];
     }
 
-    private static GitHubCommitFile[] CreatePreviewFiles()
+    private GitHubCommitFile[] CreatePreviewFiles()
     {
         if (IsShyHeaderAutomationScenario())
         {
@@ -1590,7 +1592,7 @@ public sealed class GitHubPullRequestQueryService : IGitHubPullRequestQueryServi
         ];
     }
 
-    private static GitHubPullRequestReview[] CreatePreviewReviews(bool includeIdentitylessItems)
+    private GitHubPullRequestReview[] CreatePreviewReviews(bool includeIdentitylessItems)
     {
         List<GitHubPullRequestReview> reviews = IsShyHeaderAutomationScenario()
             ? Enumerable.Range(1, 18)
@@ -1718,21 +1720,21 @@ public sealed class GitHubPullRequestQueryService : IGitHubPullRequestQueryServi
         return [.. comments];
     }
 
-    private static bool IsReplyIdentityAutomationScenario() =>
+    private bool IsReplyIdentityAutomationScenario() =>
         AppDataPathPolicy.TryGetAutomationRoots(out _, out _) &&
         string.Equals(
-            Program.CurrentLaunchOptions.Scenario,
+            _launchOptions.Scenario,
             "pr-reply-identities",
             StringComparison.OrdinalIgnoreCase);
 
-    private static bool IsShyHeaderAutomationScenario() =>
+    private bool IsShyHeaderAutomationScenario() =>
         AppDataPathPolicy.TryGetAutomationRoots(out _, out _) &&
         string.Equals(
-            Program.CurrentLaunchOptions.Scenario,
+            _launchOptions.Scenario,
             "pr-shy-header",
             StringComparison.OrdinalIgnoreCase);
 
-    private static GitHubIssueEvent[] CreatePreviewEvents()
+    private GitHubIssueEvent[] CreatePreviewEvents()
     {
         if (IsShyHeaderAutomationScenario())
         {
