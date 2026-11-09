@@ -3825,7 +3825,7 @@
   <data name="PagesSettingsPageSettingsViewSourceButton.Content" xml:space="preserve">
     <value>⟦View source ~~~~~~⟧</value>
   </data>
-  <data name="PagesSettingsPageTextBlockAllPhase0CacheData.Text" xml:space="preserve">
+  <data name="PagesSettingsPageTextBlockAllCacheData.Text" xml:space="preserve">
     <value>⟦All Phase 0 cache data ~~~~~~~~⟧</value>
   </data>
   <data name="PagesSettingsPageTextBlockAvatarAndImageCache.Text" xml:space="preserve">

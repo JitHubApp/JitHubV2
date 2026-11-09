@@ -12,9 +12,9 @@ using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
 
-public sealed class Phase0CacheStoreTests : IDisposable
+public sealed class SqliteGitHubCacheStoreTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "JitHubPhase0CacheTests", Guid.NewGuid().ToString());
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "JitHubCacheStoreTests", Guid.NewGuid().ToString());
 
     public void Dispose()
     {
@@ -34,12 +34,12 @@ public sealed class Phase0CacheStoreTests : IDisposable
     public async Task PutThenGet_ReturnsFreshEntry()
     {
         SqliteGitHubCacheStore store = CreateStore();
-        GitHubQuery<Phase0TestPayload> query = CreateQuery("u1", "test/items?b=2&a=1", TimeSpan.FromMinutes(5));
-        Phase0TestPayload payload = new() { Name = "one", Body = "body" };
+        GitHubQuery<CachedQueryTestPayload> query = CreateQuery("u1", "test/items?b=2&a=1", TimeSpan.FromMinutes(5));
+        CachedQueryTestPayload payload = new() { Name = "one", Body = "body" };
 
         await store.PutAsync(query, CreateResponse(payload));
 
-        CachedResult<Phase0TestPayload>? result = await store.TryGetAsync(query);
+        CachedResult<CachedQueryTestPayload>? result = await store.TryGetAsync(query);
         Assert.NotNull(result);
         Assert.Equal(CacheState.Fresh, result!.CacheState);
         Assert.Equal("one", result.Value!.Name);
@@ -60,11 +60,11 @@ public sealed class Phase0CacheStoreTests : IDisposable
     public async Task ExpiredTtl_ReturnsStaleEntry()
     {
         SqliteGitHubCacheStore store = CreateStore();
-        GitHubQuery<Phase0TestPayload> query = CreateQuery("u1", "test/stale", TimeSpan.FromMilliseconds(-1));
+        GitHubQuery<CachedQueryTestPayload> query = CreateQuery("u1", "test/stale", TimeSpan.FromMilliseconds(-1));
 
-        await store.PutAsync(query, CreateResponse(new Phase0TestPayload { Name = "stale" }));
+        await store.PutAsync(query, CreateResponse(new CachedQueryTestPayload { Name = "stale" }));
 
-        CachedResult<Phase0TestPayload>? result = await store.TryGetAsync(query);
+        CachedResult<CachedQueryTestPayload>? result = await store.TryGetAsync(query);
         Assert.NotNull(result);
         Assert.Equal(CacheState.Stale, result!.CacheState);
     }
@@ -73,10 +73,10 @@ public sealed class Phase0CacheStoreTests : IDisposable
     public async Task DifferentUserPartition_DoesNotShareEntry()
     {
         SqliteGitHubCacheStore store = CreateStore();
-        GitHubQuery<Phase0TestPayload> userOne = CreateQuery("u1", "test/shared", TimeSpan.FromMinutes(5));
-        GitHubQuery<Phase0TestPayload> userTwo = CreateQuery("u2", "test/shared", TimeSpan.FromMinutes(5));
+        GitHubQuery<CachedQueryTestPayload> userOne = CreateQuery("u1", "test/shared", TimeSpan.FromMinutes(5));
+        GitHubQuery<CachedQueryTestPayload> userTwo = CreateQuery("u2", "test/shared", TimeSpan.FromMinutes(5));
 
-        await store.PutAsync(userOne, CreateResponse(new Phase0TestPayload { Name = "private" }));
+        await store.PutAsync(userOne, CreateResponse(new CachedQueryTestPayload { Name = "private" }));
 
         Assert.Null(await store.TryGetAsync(userTwo));
     }
@@ -85,17 +85,17 @@ public sealed class Phase0CacheStoreTests : IDisposable
     public async Task SameStorageKeyForTwoUsers_PersistsBothAccountPartitions()
     {
         SqliteGitHubCacheStore store = CreateStore();
-        GitHubQuery<Phase0TestPayload> userOne = CreateQuery("u1", "test/shared-key", TimeSpan.FromMinutes(5)) with
+        GitHubQuery<CachedQueryTestPayload> userOne = CreateQuery("u1", "test/shared-key", TimeSpan.FromMinutes(5)) with
         {
             CacheKey = "deliberately-identical"
         };
-        GitHubQuery<Phase0TestPayload> userTwo = CreateQuery("u2", "test/shared-key", TimeSpan.FromMinutes(5)) with
+        GitHubQuery<CachedQueryTestPayload> userTwo = CreateQuery("u2", "test/shared-key", TimeSpan.FromMinutes(5)) with
         {
             CacheKey = "deliberately-identical"
         };
 
-        await store.PutAsync(userOne, CreateResponse(new Phase0TestPayload { Name = "one" }));
-        await store.PutAsync(userTwo, CreateResponse(new Phase0TestPayload { Name = "two" }));
+        await store.PutAsync(userOne, CreateResponse(new CachedQueryTestPayload { Name = "one" }));
+        await store.PutAsync(userTwo, CreateResponse(new CachedQueryTestPayload { Name = "two" }));
 
         Assert.Equal("one", (await store.TryGetAsync(userOne))?.Value?.Name);
         Assert.Equal("two", (await store.TryGetAsync(userTwo))?.Value?.Name);
@@ -114,8 +114,8 @@ public sealed class Phase0CacheStoreTests : IDisposable
         string payloadRoot = Path.Combine(_root, "payloads");
         Directory.CreateDirectory(payloadRoot);
         string json = JsonSerializer.Serialize(
-            new Phase0TestPayload { Name = "legacy", Body = "body" },
-            Phase0TestJsonContext.Default.Phase0TestPayload);
+            new CachedQueryTestPayload { Name = "legacy", Body = "body" },
+            ServiceTestJsonContext.Default.CachedQueryTestPayload);
         await using (SqliteConnection connection = new($"Data Source={databasePath}"))
         {
             await connection.OpenAsync();
@@ -142,7 +142,7 @@ public sealed class Phase0CacheStoreTests : IDisposable
         }
 
         SqliteGitHubCacheStore store = new(databasePath, payloadRoot, GitHubCachePolicy.Default);
-        GitHubQuery<Phase0TestPayload> query = CreateQuery("u1", "legacy/path", TimeSpan.FromMinutes(5)) with
+        GitHubQuery<CachedQueryTestPayload> query = CreateQuery("u1", "legacy/path", TimeSpan.FromMinutes(5)) with
         {
             CacheKey = "legacy-key"
         };
@@ -200,8 +200,8 @@ public sealed class Phase0CacheStoreTests : IDisposable
     public async Task ClearAll_LockedPayloadReportsPartialFailureAndPassesAfterRelease()
     {
         SqliteGitHubCacheStore store = CreateStore();
-        GitHubQuery<Phase0TestPayload> query = CreateQuery("u1", "test/locked-clear", TimeSpan.FromMinutes(5));
-        await store.PutAsync(query, CreateResponse(new Phase0TestPayload { Name = "large", Body = new string('x', 140_000) }));
+        GitHubQuery<CachedQueryTestPayload> query = CreateQuery("u1", "test/locked-clear", TimeSpan.FromMinutes(5));
+        await store.PutAsync(query, CreateResponse(new CachedQueryTestPayload { Name = "large", Body = new string('x', 140_000) }));
         string payload = Assert.Single(Directory.GetFiles(Path.Combine(_root, "payloads"), "*.json"));
 
         await using (FileStream locked = new(payload, FileMode.Open, FileAccess.Read, FileShare.Read))
@@ -221,9 +221,9 @@ public sealed class Phase0CacheStoreTests : IDisposable
     public async Task InvalidateTags_RemovesMatchingEntries()
     {
         SqliteGitHubCacheStore store = CreateStore();
-        GitHubQuery<Phase0TestPayload> query = CreateQuery("u1", "test/tagged", TimeSpan.FromMinutes(5), ["repo"]);
+        GitHubQuery<CachedQueryTestPayload> query = CreateQuery("u1", "test/tagged", TimeSpan.FromMinutes(5), ["repo"]);
 
-        await store.PutAsync(query, CreateResponse(new Phase0TestPayload { Name = "tagged" }));
+        await store.PutAsync(query, CreateResponse(new CachedQueryTestPayload { Name = "tagged" }));
         await store.InvalidateTagsAsync(["repo"]);
 
         Assert.Null(await store.TryGetAsync(query));
@@ -233,12 +233,12 @@ public sealed class Phase0CacheStoreTests : IDisposable
     public async Task PayloadCap_EvictsOldestPayloadFile()
     {
         SqliteGitHubCacheStore store = CreateStore(payloadSoftCapBytes: 180_000);
-        GitHubQuery<Phase0TestPayload> first = CreateQuery("u1", "test/large-first", TimeSpan.FromMinutes(5));
-        GitHubQuery<Phase0TestPayload> second = CreateQuery("u1", "test/large-second", TimeSpan.FromMinutes(5));
+        GitHubQuery<CachedQueryTestPayload> first = CreateQuery("u1", "test/large-first", TimeSpan.FromMinutes(5));
+        GitHubQuery<CachedQueryTestPayload> second = CreateQuery("u1", "test/large-second", TimeSpan.FromMinutes(5));
         string largeBody = new('x', 140_000);
 
-        await store.PutAsync(first, CreateResponse(new Phase0TestPayload { Name = "first", Body = largeBody }));
-        await store.PutAsync(second, CreateResponse(new Phase0TestPayload { Name = "second", Body = largeBody }));
+        await store.PutAsync(first, CreateResponse(new CachedQueryTestPayload { Name = "first", Body = largeBody }));
+        await store.PutAsync(second, CreateResponse(new CachedQueryTestPayload { Name = "second", Body = largeBody }));
 
         Assert.Null(await store.TryGetAsync(first));
         Assert.NotNull(await store.TryGetAsync(second));
@@ -249,13 +249,13 @@ public sealed class Phase0CacheStoreTests : IDisposable
     public async Task MetadataCap_EvictsOldestInlineEntry()
     {
         SqliteGitHubCacheStore store = CreateStore(metadataSoftCapBytes: 6_000);
-        GitHubQuery<Phase0TestPayload> first = CreateQuery("u1", "test/metadata-first", TimeSpan.FromMinutes(5));
-        GitHubQuery<Phase0TestPayload> second = CreateQuery("u1", "test/metadata-second", TimeSpan.FromMinutes(5));
+        GitHubQuery<CachedQueryTestPayload> first = CreateQuery("u1", "test/metadata-first", TimeSpan.FromMinutes(5));
+        GitHubQuery<CachedQueryTestPayload> second = CreateQuery("u1", "test/metadata-second", TimeSpan.FromMinutes(5));
         string body = new('m', 4_000);
 
-        await store.PutAsync(first, CreateResponse(new Phase0TestPayload { Name = "first", Body = body }));
+        await store.PutAsync(first, CreateResponse(new CachedQueryTestPayload { Name = "first", Body = body }));
         await Task.Delay(5);
-        await store.PutAsync(second, CreateResponse(new Phase0TestPayload { Name = "second", Body = body }));
+        await store.PutAsync(second, CreateResponse(new CachedQueryTestPayload { Name = "second", Body = body }));
 
         Assert.Null(await store.TryGetAsync(first));
         Assert.NotNull(await store.TryGetAsync(second));
@@ -266,15 +266,15 @@ public sealed class Phase0CacheStoreTests : IDisposable
     public async Task OverwriteLargePayloadWithInlinePayload_RemovesOldPayloadFile()
     {
         SqliteGitHubCacheStore store = CreateStore();
-        GitHubQuery<Phase0TestPayload> query = CreateQuery("u1", "test/overwrite", TimeSpan.FromMinutes(5));
+        GitHubQuery<CachedQueryTestPayload> query = CreateQuery("u1", "test/overwrite", TimeSpan.FromMinutes(5));
 
-        await store.PutAsync(query, CreateResponse(new Phase0TestPayload { Name = "large", Body = new string('x', 140_000) }));
+        await store.PutAsync(query, CreateResponse(new CachedQueryTestPayload { Name = "large", Body = new string('x', 140_000) }));
         Assert.Single(Directory.GetFiles(Path.Combine(_root, "payloads"), "*.json"));
 
-        await store.PutAsync(query, CreateResponse(new Phase0TestPayload { Name = "small", Body = "small" }));
+        await store.PutAsync(query, CreateResponse(new CachedQueryTestPayload { Name = "small", Body = "small" }));
 
         Assert.Empty(Directory.GetFiles(Path.Combine(_root, "payloads"), "*.json"));
-        CachedResult<Phase0TestPayload>? result = await store.TryGetAsync(query);
+        CachedResult<CachedQueryTestPayload>? result = await store.TryGetAsync(query);
         Assert.Equal("small", result?.Value?.Body);
     }
 
@@ -282,9 +282,9 @@ public sealed class Phase0CacheStoreTests : IDisposable
     public async Task LargePayload_UpdateFailureKeepsCommittedGenerationAndRemovesNewGeneration()
     {
         SqliteGitHubCacheStore store = CreateStore();
-        GitHubQuery<Phase0TestPayload> query = CreateQuery("u1", "test/atomic", TimeSpan.FromMinutes(5));
+        GitHubQuery<CachedQueryTestPayload> query = CreateQuery("u1", "test/atomic", TimeSpan.FromMinutes(5));
         string originalBody = new('a', 140_000);
-        await store.PutAsync(query, CreateResponse(new Phase0TestPayload { Name = "original", Body = originalBody }));
+        await store.PutAsync(query, CreateResponse(new CachedQueryTestPayload { Name = "original", Body = originalBody }));
         string originalFile = Assert.Single(Directory.GetFiles(Path.Combine(_root, "payloads"), "*.json"));
 
         await using (SqliteConnection connection = new($"Data Source={Path.Combine(_root, "cache.db")}"))
@@ -304,10 +304,10 @@ public sealed class Phase0CacheStoreTests : IDisposable
 
         await Assert.ThrowsAsync<SqliteException>(() => store.PutAsync(
             query,
-            CreateResponse(new Phase0TestPayload { Name = "replacement", Body = new string('b', 140_000) })));
+            CreateResponse(new CachedQueryTestPayload { Name = "replacement", Body = new string('b', 140_000) })));
 
         Assert.Equal(originalFile, Assert.Single(Directory.GetFiles(Path.Combine(_root, "payloads"), "*.json")));
-        CachedResult<Phase0TestPayload>? visible = await store.TryGetAsync(query);
+        CachedResult<CachedQueryTestPayload>? visible = await store.TryGetAsync(query);
         Assert.Equal("original", visible?.Value?.Name);
         Assert.Equal(originalBody, visible?.Value?.Body);
     }
@@ -318,7 +318,7 @@ public sealed class Phase0CacheStoreTests : IDisposable
         SqliteGitHubCacheStore store = CreateStore();
         await store.PutAsync(
             CreateQuery("u1", "test/orphan", TimeSpan.FromMinutes(5)),
-            CreateResponse(new Phase0TestPayload { Name = "active", Body = new string('x', 140_000) }));
+            CreateResponse(new CachedQueryTestPayload { Name = "active", Body = new string('x', 140_000) }));
         string orphanPath = Path.Combine(_root, "payloads", $"orphan.{Guid.NewGuid():N}.json");
         await File.WriteAllTextAsync(orphanPath, "orphan");
 
@@ -339,7 +339,7 @@ public sealed class Phase0CacheStoreTests : IDisposable
         SqliteGitHubCacheStore store = CreateStore();
         await store.PutAsync(
             CreateQuery("u1", "test/missing", TimeSpan.FromMinutes(5)),
-            CreateResponse(new Phase0TestPayload { Name = "missing", Body = new string('x', 140_000) }));
+            CreateResponse(new CachedQueryTestPayload { Name = "missing", Body = new string('x', 140_000) }));
         File.Delete(Assert.Single(Directory.GetFiles(Path.Combine(_root, "payloads"), "*.json")));
 
         CacheStoreInspection inspection = await store.InspectAsync();
@@ -353,13 +353,13 @@ public sealed class Phase0CacheStoreTests : IDisposable
     public async Task UnsafePayloadIdentity_IsQuarantinedWithoutReadingOrDeletingOutsideRoot()
     {
         SqliteGitHubCacheStore store = CreateStore();
-        GitHubQuery<Phase0TestPayload> query = CreateQuery(
+        GitHubQuery<CachedQueryTestPayload> query = CreateQuery(
             "u1",
             "test/unsafe-payload",
             TimeSpan.FromMinutes(5));
         await store.PutAsync(
             query,
-            CreateResponse(new Phase0TestPayload { Name = "large", Body = new string('x', 140_000) }));
+            CreateResponse(new CachedQueryTestPayload { Name = "large", Body = new string('x', 140_000) }));
         string outsidePath = Path.Combine(_root, "outside.json");
         await File.WriteAllTextAsync(outsidePath, "outside-sentinel");
         string databasePath = Path.Combine(_root, "cache.db");
@@ -392,7 +392,7 @@ public sealed class Phase0CacheStoreTests : IDisposable
         SqliteGitHubCacheStore store = CreateStore();
         await store.PutAsync(
             CreateQuery("u1", "test/accounting", TimeSpan.FromMinutes(5)),
-            CreateResponse(new Phase0TestPayload { Name = "inline", Body = new string('x', 100_000) }));
+            CreateResponse(new CachedQueryTestPayload { Name = "inline", Body = new string('x', 100_000) }));
 
         CacheStoreInspection inspection = await store.InspectAsync();
 
@@ -457,7 +457,7 @@ public sealed class Phase0CacheStoreTests : IDisposable
         return Convert.ToInt64(await command.ExecuteScalarAsync());
     }
 
-    private static GitHubQuery<Phase0TestPayload> CreateQuery(
+    private static GitHubQuery<CachedQueryTestPayload> CreateQuery(
         string userId,
         string path,
         TimeSpan ttl,
@@ -472,14 +472,14 @@ public sealed class Phase0CacheStoreTests : IDisposable
                 HttpMethod.Get,
                 path,
                 acceptMediaType: null,
-                Phase0TestJsonContext.Default.Phase0TestPayload.Type),
+                ServiceTestJsonContext.Default.CachedQueryTestPayload.Type),
             GitHubCachePolicy.MutableResource,
             ttl,
-            Phase0TestJsonContext.Default.Phase0TestPayload,
+            ServiceTestJsonContext.Default.CachedQueryTestPayload,
             tags,
             GitHubRequestPriority.Visible);
 
-    private static GitHubRestResponse<Phase0TestPayload> CreateResponse(Phase0TestPayload payload) =>
+    private static GitHubRestResponse<CachedQueryTestPayload> CreateResponse(CachedQueryTestPayload payload) =>
         new(
             HttpStatusCode.OK,
             payload,

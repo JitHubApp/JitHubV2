@@ -183,7 +183,9 @@ The repository-level version of these rules is in `AGENTS.md`.
 
 ### Data, Cache, And Quiet Updates
 
-- Phase 0 infrastructure lives under `Services/Phase0`:
+- The shared data infrastructure lives in purpose-named folders: `Services/GitHub`
+  (transport, query service, response cache, prefetch), `Services/Images`,
+  `Services/Storage` (storage paths and the cache registry) and `Services/Telemetry`:
   - REST transport with conditional requests, ETag/Last-Modified, 304 reuse,
     rate-limit metadata, retry delay, and request priority lanes.
   - Account-partitioned stale-first query service and SQLite metadata store.

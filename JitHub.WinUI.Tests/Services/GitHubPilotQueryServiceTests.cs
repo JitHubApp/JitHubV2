@@ -12,9 +12,9 @@ using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
 
-public sealed class Phase0PilotQueryServiceTests : IDisposable
+public sealed class GitHubPilotQueryServiceTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "JitHubPhase0PilotTests", Guid.NewGuid().ToString());
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "JitHubPilotQueryTests", Guid.NewGuid().ToString());
 
     public void Dispose()
     {
@@ -40,7 +40,7 @@ public sealed class Phase0PilotQueryServiceTests : IDisposable
             path,
             GitHubCachePolicy.SearchResource,
             TimeSpan.FromMilliseconds(-1),
-            Phase0GitHubJsonSerializerContext.Default.GitHubRepositorySearchResponse,
+            GitHubQueryJsonSerializerContext.Default.GitHubRepositorySearchResponse,
             ["repo-search"]);
         await store.PutAsync(
             seedQuery,
@@ -69,7 +69,7 @@ public sealed class Phase0PilotQueryServiceTests : IDisposable
             path,
             GitHubCachePolicy.RepositoryResource,
             TimeSpan.FromMilliseconds(-1),
-            Phase0GitHubJsonSerializerContext.Default.GitHubRepositoryArray,
+            GitHubQueryJsonSerializerContext.Default.GitHubRepositoryArray,
             ["user-repos", "repo"]);
         await store.PutAsync(seedQuery, CreateResponse(new[] { repository }));
         GitHubPilotQueryService pilot = CreatePilot(store, new FailingTransport());

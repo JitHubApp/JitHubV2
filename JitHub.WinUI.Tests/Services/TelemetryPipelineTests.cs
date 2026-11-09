@@ -17,9 +17,9 @@ using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
 
-public sealed class Phase0TelemetryTests : IDisposable
+public sealed class TelemetryPipelineTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "JitHubPhase0TelemetryTests", Guid.NewGuid().ToString());
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "JitHubTelemetryTests", Guid.NewGuid().ToString());
 
     public void Dispose()
     {

@@ -53,7 +53,7 @@ public sealed class GitHubPilotQueryService : IGitHubPilotQueryService
                     userId,
                     $"repos/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(name)}",
                     GitHubCachePolicy.RepositoryResource,
-                    Phase0GitHubJsonSerializerContext.Default.GitHubRepository,
+                    GitHubQueryJsonSerializerContext.Default.GitHubRepository,
                     (string[])["repo", "repo-exact"],
                     GitHubRequestPriority.Visible);
                 CachedResult<GitHubRepository> exactResult = await _queryService.GetAsync(
@@ -77,7 +77,7 @@ public sealed class GitHubPilotQueryService : IGitHubPilotQueryService
             userId,
             path,
             GitHubCachePolicy.SearchResource,
-            Phase0GitHubJsonSerializerContext.Default.GitHubRepositorySearchResponse,
+            GitHubQueryJsonSerializerContext.Default.GitHubRepositorySearchResponse,
             (string[])["repo-search"],
             GitHubRequestPriority.UserInitiated);
         CachedResult<GitHubRepositorySearchResponse> searchResult = await _queryService.GetAsync(
@@ -122,7 +122,7 @@ public sealed class GitHubPilotQueryService : IGitHubPilotQueryService
             userId,
             path,
             GitHubCachePolicy.RepositoryResource,
-            Phase0GitHubJsonSerializerContext.Default.GitHubRepositoryArray,
+            GitHubQueryJsonSerializerContext.Default.GitHubRepositoryArray,
             (string[])["user-repos", "repo"],
             GitHubRequestPriority.Visible);
 

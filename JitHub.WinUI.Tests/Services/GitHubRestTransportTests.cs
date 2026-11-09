@@ -17,7 +17,7 @@ public sealed class RequestTransportTimingCollection
 }
 
 [Collection(RequestTransportTimingCollection.Name)]
-public sealed class Phase0RequestTransportTests
+public sealed class GitHubRestTransportTests
 {
     [Fact]
     public async Task RequestQueue_DedupesInFlightRequests()
@@ -383,14 +383,14 @@ public sealed class Phase0RequestTransportTests
         GitHubRestTransport transport = new(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
         DateTimeOffset lastModified = DateTimeOffset.UtcNow.AddMinutes(-10);
 
-        GitHubRestResponse<Phase0TestPayload> response = await transport.SendJsonAsync(
+        GitHubRestResponse<CachedQueryTestPayload> response = await transport.SendJsonAsync(
             new GitHubRestRequest(
                 GitHubAuthenticationConstants.PublicAccessToken,
                 HttpMethod.Get,
                 "test/path",
                 "\"etag-1\"",
                 lastModified),
-            Phase0TestJsonContext.Default.Phase0TestPayload);
+            ServiceTestJsonContext.Default.CachedQueryTestPayload);
 
         Assert.NotNull(captured);
         Assert.Equal("\"etag-1\"", Assert.Single(captured!.Headers.IfNoneMatch).Tag);
@@ -420,7 +420,7 @@ public sealed class Phase0RequestTransportTests
         await Assert.ThrowsAnyAsync<ArgumentException>(() =>
             transport.SendJsonAsync(
                 new GitHubRestRequest("secret-token", HttpMethod.Get, path),
-                Phase0TestJsonContext.Default.Phase0TestPayload));
+                ServiceTestJsonContext.Default.CachedQueryTestPayload));
 
         Assert.Equal(0, sends);
     }
@@ -443,19 +443,19 @@ public sealed class Phase0RequestTransportTests
             HttpMethod.Get,
             "repos/octo/app",
             "application/vnd.github+json",
-            typeof(Phase0TestPayload));
+            typeof(CachedQueryTestPayload));
         string mediaVariant = GitHubQueryKeys.Create(
             "u1",
             HttpMethod.Get,
             "repos/octo/app",
             "application/vnd.github.star+json",
-            typeof(Phase0TestPayload));
+            typeof(CachedQueryTestPayload));
         string typeVariant = GitHubQueryKeys.Create(
             "u1",
             HttpMethod.Get,
             "repos/octo/app",
             "application/vnd.github+json",
-            typeof(Phase0TestPayload[]));
+            typeof(CachedQueryTestPayload[]));
 
         Assert.NotEqual(baseline, mediaVariant);
         Assert.NotEqual(baseline, typeVariant);
@@ -466,7 +466,7 @@ public sealed class Phase0RequestTransportTests
                 HttpMethod.Get,
                 "repos/octo/app",
                 "application/vnd.github+json",
-                typeof(Phase0TestPayload)));
+                typeof(CachedQueryTestPayload)));
     }
 
     [Fact]
@@ -485,7 +485,7 @@ public sealed class Phase0RequestTransportTests
         GitHubAuthenticationException exception = await Assert.ThrowsAsync<GitHubAuthenticationException>(() =>
             transport.SendJsonAsync(
                 new GitHubRestRequest("token", HttpMethod.Get, "user"),
-                Phase0TestJsonContext.Default.Phase0TestPayload));
+                ServiceTestJsonContext.Default.CachedQueryTestPayload));
 
         Assert.Equal("Bad credentials", exception.Message);
     }
@@ -508,7 +508,7 @@ public sealed class Phase0RequestTransportTests
         GitHubRateLimitException exception = await Assert.ThrowsAsync<GitHubRateLimitException>(() =>
             transport.SendJsonAsync(
                 new GitHubRestRequest("token", HttpMethod.Get, "user"),
-                Phase0TestJsonContext.Default.Phase0TestPayload));
+                ServiceTestJsonContext.Default.CachedQueryTestPayload));
 
         Assert.Equal(HttpStatusCode.Forbidden, exception.StatusCode);
         Assert.Equal(TimeSpan.FromSeconds(7), exception.RetryDelay);

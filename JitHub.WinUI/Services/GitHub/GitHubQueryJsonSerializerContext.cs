@@ -53,6 +53,6 @@ namespace JitHub.Services;
 [JsonSerializable(typeof(GitHubTree))]
 [JsonSerializable(typeof(GitHubRepositoryContent[]))]
 [JsonSerializable(typeof(GitHubBlob))]
-internal sealed partial class Phase0GitHubJsonSerializerContext : JsonSerializerContext
+internal sealed partial class GitHubQueryJsonSerializerContext : JsonSerializerContext
 {
 }

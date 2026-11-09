@@ -111,7 +111,7 @@ public sealed class CacheRegistryTests : IDisposable
     public async Task ClearEvictable_ClearsNetworkCachesButPreservesStarsUserData()
     {
         Harness harness = CreateHarness();
-        GitHubQuery<Phase0TestPayload> query = CreateQuery();
+        GitHubQuery<CachedQueryTestPayload> query = CreateQuery();
         await harness.QueryCache.PutAsync(query, CreateResponse());
         await harness.ImageCache.PutAsync("avatar", [1, 2, 3], ".png");
         RepoFileCacheKey fileKey = new("owner", "repo", "sha");
@@ -478,7 +478,7 @@ public sealed class CacheRegistryTests : IDisposable
     public async Task ClearEvictable_AttemptsEveryOwnerAndReportsPartialFailure()
     {
         Harness harness = CreateHarness();
-        GitHubQuery<Phase0TestPayload> query = CreateQuery();
+        GitHubQuery<CachedQueryTestPayload> query = CreateQuery();
         await harness.QueryCache.PutAsync(query, CreateResponse());
         await harness.ImageCache.PutAsync("avatar", [1, 2, 3], ".png");
         RepoFileCacheKey fileKey = new("owner", "repo", "sha");
@@ -519,7 +519,7 @@ public sealed class CacheRegistryTests : IDisposable
             new CacheRegistry(paths, query, images, files, stars, recovery));
     }
 
-    private static GitHubQuery<Phase0TestPayload> CreateQuery() => new(
+    private static GitHubQuery<CachedQueryTestPayload> CreateQuery() => new(
         "token",
         "u1",
         HttpMethod.Get,
@@ -527,13 +527,13 @@ public sealed class CacheRegistryTests : IDisposable
         GitHubQueryKeys.Create("u1", HttpMethod.Get, "test/cache-owner"),
         GitHubCachePolicy.MutableResource,
         TimeSpan.FromMinutes(5),
-        Phase0TestJsonContext.Default.Phase0TestPayload,
+        ServiceTestJsonContext.Default.CachedQueryTestPayload,
         ["registry"],
         GitHubRequestPriority.Visible);
 
-    private static GitHubRestResponse<Phase0TestPayload> CreateResponse() => new(
+    private static GitHubRestResponse<CachedQueryTestPayload> CreateResponse() => new(
         HttpStatusCode.OK,
-        new Phase0TestPayload { Name = "registry", Body = "body" },
+        new CachedQueryTestPayload { Name = "registry", Body = "body" },
         IsNotModified: false,
         ETag: "\"registry\"",
         LastModified: DateTimeOffset.UtcNow,

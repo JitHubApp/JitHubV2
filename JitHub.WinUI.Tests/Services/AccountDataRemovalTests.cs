@@ -391,8 +391,8 @@ public sealed class AccountDataRemovalTests : IDisposable
             Path.Combine(_root, "query-cache.db"),
             payloadRoot,
             GitHubCachePolicy.Default);
-        GitHubQuery<Phase0TestPayload> userOne = CreateQuery("101", "shared") with { CacheKey = "same-key" };
-        GitHubQuery<Phase0TestPayload> userTwo = CreateQuery("202", "shared") with { CacheKey = "same-key" };
+        GitHubQuery<CachedQueryTestPayload> userOne = CreateQuery("101", "shared") with { CacheKey = "same-key" };
+        GitHubQuery<CachedQueryTestPayload> userTwo = CreateQuery("202", "shared") with { CacheKey = "same-key" };
         await store.PutAsync(userOne, CreateResponse("one", new string('a', 140_000)));
         await store.PutAsync(userTwo, CreateResponse("two", new string('b', 140_000)));
 
@@ -487,7 +487,7 @@ public sealed class AccountDataRemovalTests : IDisposable
         }
     }
 
-    private static GitHubQuery<Phase0TestPayload> CreateQuery(string userId, string path) => new(
+    private static GitHubQuery<CachedQueryTestPayload> CreateQuery(string userId, string path) => new(
         GitHubAuthenticationConstants.PublicAccessToken,
         userId,
         HttpMethod.Get,
@@ -495,13 +495,13 @@ public sealed class AccountDataRemovalTests : IDisposable
         GitHubQueryKeys.Create(userId, HttpMethod.Get, path),
         GitHubCachePolicy.MutableResource,
         TimeSpan.FromMinutes(5),
-        Phase0TestJsonContext.Default.Phase0TestPayload,
+        ServiceTestJsonContext.Default.CachedQueryTestPayload,
         ["account-test"],
         GitHubRequestPriority.Visible);
 
-    private static GitHubRestResponse<Phase0TestPayload> CreateResponse(string name, string body) => new(
+    private static GitHubRestResponse<CachedQueryTestPayload> CreateResponse(string name, string body) => new(
         HttpStatusCode.OK,
-        new Phase0TestPayload { Name = name, Body = body },
+        new CachedQueryTestPayload { Name = name, Body = body },
         false,
         "etag",
         null,

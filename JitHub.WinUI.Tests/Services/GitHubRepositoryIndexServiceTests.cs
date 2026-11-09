@@ -18,7 +18,7 @@ public sealed class GitHubRepositoryIndexServiceTests
     {
         GitHubRepository? repository = JsonSerializer.Deserialize(
             """{"id":42,"name":"sample","full_name":"owner/sample","owner":{"login":"owner"},"permissions":{"admin":true,"maintain":true,"push":true,"triage":true,"pull":true}}""",
-            Phase0GitHubJsonSerializerContext.Default.GitHubRepository);
+            GitHubQueryJsonSerializerContext.Default.GitHubRepository);
 
         Assert.NotNull(repository);
         Assert.NotNull(repository.Permissions);
