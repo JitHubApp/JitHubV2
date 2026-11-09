@@ -1,5 +1,6 @@
 using Xunit;
 using System.Text.RegularExpressions;
+using JitHub.WinUI.Tests.TestSupport;
 
 namespace JitHub.WinUI.Tests.Services;
 
@@ -1198,13 +1199,14 @@ public sealed class ProductPerformanceProbeContractTests
         string root = FindRepositoryRoot();
         string productSource = string.Join(
             Environment.NewLine,
-            Directory.EnumerateFiles(Path.Combine(root, "JitHub.WinUI"), "*.cs", SearchOption.AllDirectories)
+            ProductSourceTree.EnumerateFiles("*.cs")
+                .Select(static file => file.FullPath)
                 .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
                 .Select(File.ReadAllText));
 
         string budgetSource = File.ReadAllText(Path.Combine(
             root,
-            "JitHub.WinUI",
+            "JitHub.Performance",
             "Services",
             "Performance",
             "ProductPerformanceBudget.cs"));

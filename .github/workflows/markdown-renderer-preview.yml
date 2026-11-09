@@ -13,6 +13,8 @@ on:
       - JitHub.WinUI.Tests/**
       - JitHub.Markdown/**
       - JitHub.Markdown.Tests/**
+      - JitHub.Performance/**
+      - JitHub.Shared/**
       - docs/markdown-renderer/**
       - JitHub.slnx
       - .github/workflows/markdown-renderer-preview.yml
@@ -30,6 +32,8 @@ on:
       - JitHub.WinUI.Tests/**
       - JitHub.Markdown/**
       - JitHub.Markdown.Tests/**
+      - JitHub.Performance/**
+      - JitHub.Shared/**
       - docs/markdown-renderer/**
       - JitHub.slnx
       - .github/workflows/markdown-renderer-preview.yml

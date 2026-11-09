@@ -25,6 +25,7 @@
     <Platform Solution="Debug|Any CPU" Project="x64" />
     <Platform Solution="Release|Any CPU" Project="x86" />
   </Project>
+  <Project Path="JitHub.Performance/JitHub.Performance.csproj" />
   <Project Path="JitHub.Shared/JitHub.Shared.csproj" />
   <Project Path="JitHub.Web.Tests/JitHub.Web.Tests.csproj" />
   <Project Path="JitHub.Web/JitHub.Web.csproj" />

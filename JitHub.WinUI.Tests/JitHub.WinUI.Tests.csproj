@@ -104,7 +104,7 @@
     <Compile Include="..\JitHub.WinUI\Services\Me\*.cs" Link="Services\Me\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Notifications\*.cs" Link="Services\Notifications\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Gists\*.cs" Link="Services\Gists\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Performance\*.cs" Link="Services\Performance\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Performance\ProductPerformanceLargeAccountFixture.cs" Link="Services\Performance\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Profile\*.cs" Link="Services\Profile\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\PullRequests\*.cs" Link="Services\PullRequests\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Repositories\*.cs" Link="Services\Repositories\%(Filename)%(Extension)" />
@@ -139,6 +139,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\JitHub.Markdown\JitHub.Markdown.csproj" />
+    <ProjectReference Include="..\JitHub.Performance\JitHub.Performance.csproj" />
     <ProjectReference Include="..\JitHub.Shared\JitHub.Shared.csproj" />
     <ProjectReference Include="..\MarkdownRenderer\src\MarkdownRenderer\MarkdownRenderer.csproj" />
   </ItemGroup>

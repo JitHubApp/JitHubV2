@@ -18,6 +18,7 @@ internal static class ProductSourceTree
     public static IReadOnlyList<string> ProjectNames { get; } =
     [
         "JitHub.WinUI",
+        "JitHub.Performance",
         "JitHub.Shared"
     ];
 

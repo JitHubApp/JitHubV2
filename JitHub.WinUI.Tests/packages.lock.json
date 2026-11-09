@@ -330,6 +330,9 @@
           "MarkdownRenderer": "[1.0.0-preview.1, )"
         }
       },
+      "jithub.performance": {
+        "type": "Project"
+      },
       "jithub.shared": {
         "type": "Project"
       },
