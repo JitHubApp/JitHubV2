@@ -139,8 +139,8 @@ public sealed class DashboardWorkspaceContractTests
         XElement horizontalPanel = Assert.Single(compact.Descendants(), element => element.Name.LocalName == "ItemsStackPanel");
         string source = File.ReadAllText(Path("JitHub.WinUI", "Views", "Pages", "DashboardPage.xaml.cs"));
         string models = File.ReadAllText(Path("JitHub.WinUI", "ViewModels", "Pages", "DashboardModels.cs"));
-        string contracts = File.ReadAllText(Path("JitHub.WinUI", "Services", "Dashboard", "DashboardHomeContracts.cs"));
-        string queryService = File.ReadAllText(Path("JitHub.WinUI", "Services", "Dashboard", "GitHubDashboardQueryService.cs"));
+        string contracts = File.ReadAllText(Path("JitHub.Core", "Services", "Dashboard", "DashboardHomeContracts.cs"));
+        string queryService = File.ReadAllText(Path("JitHub.Core", "Services", "Dashboard", "GitHubDashboardQueryService.cs"));
         string brushes = File.ReadAllText(Path("JitHub.WinUI", "Styles", "Foundation", "Tokens.Brushes.xaml"));
         string colors = File.ReadAllText(Path("JitHub.WinUI", "Styles", "Foundation", "Tokens.Colors.xaml"));
         string motionTokens = File.ReadAllText(Path("JitHub.WinUI", "Helpers", "AppMotionTokens.cs"));
@@ -398,7 +398,7 @@ public sealed class DashboardWorkspaceContractTests
             "Pages",
             "DashboardPageViewModel.cs"));
         string workflow = File.ReadAllText(Path(
-            "JitHub.WinUI",
+            "JitHub.Core",
             "Services",
             "Notifications",
             "NotificationOpenWorkflow.cs"));

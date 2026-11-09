@@ -18,13 +18,15 @@ internal static class ProductSourceTree
     public static IReadOnlyList<string> ProjectNames { get; } =
     [
         "JitHub.WinUI",
+        "JitHub.Core",
         "JitHub.Performance",
         "JitHub.Shared"
     ];
 
     /// <summary>
-    /// Every file that matches <paramref name="searchPattern"/> under the
-    /// product projects, ordered by project and then by path.
+    /// Every source file that matches <paramref name="searchPattern"/> under
+    /// the product projects, ordered by project and then by path. Build output
+    /// under bin and obj is not source and is skipped.
     /// </summary>
     public static IEnumerable<ProductSourceFile> EnumerateFiles(string searchPattern)
     {
@@ -35,10 +37,13 @@ internal static class ProductSourceTree
             foreach (string path in Directory.EnumerateFiles(projectRoot, searchPattern, SearchOption.AllDirectories)
                          .OrderBy(static path => path, StringComparer.OrdinalIgnoreCase))
             {
-                yield return new ProductSourceFile(
-                    projectName,
-                    path,
-                    Path.GetRelativePath(projectRoot, path).Replace(Path.DirectorySeparatorChar, '/'));
+                string relativePath = Path.GetRelativePath(projectRoot, path).Replace(Path.DirectorySeparatorChar, '/');
+                if (IsBuildOutput(relativePath))
+                {
+                    continue;
+                }
+
+                yield return new ProductSourceFile(projectName, path, relativePath);
             }
         }
     }
@@ -62,6 +67,11 @@ internal static class ProductSourceTree
             _ => throw new InvalidOperationException($"More than one product project contains '{relativePath}'.")
         };
     }
+
+    private static bool IsBuildOutput(string relativePath) =>
+        relativePath.Split('/')[..^1].Any(static directory =>
+            directory.Equals("bin", StringComparison.OrdinalIgnoreCase) ||
+            directory.Equals("obj", StringComparison.OrdinalIgnoreCase));
 
     private static string FindRepositoryRoot()
     {

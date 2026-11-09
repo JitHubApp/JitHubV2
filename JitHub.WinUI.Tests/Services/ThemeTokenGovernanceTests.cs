@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
 using System.Globalization;
+using JitHub.WinUI.Tests.TestSupport;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
@@ -167,7 +168,6 @@ public sealed class ThemeTokenGovernanceTests
     [Fact]
     public void RuntimeCreatedUiUsesTypographyAndCornerTokensInsteadOfLiterals()
     {
-        string productRoot = Path.Combine(FindRepositoryRoot(), "JitHub.WinUI");
         Regex literalFontSize = new(
             @"\bFontSize\s*=\s*\d+(?:\.\d+)?\b",
             RegexOptions.CultureInvariant);
@@ -176,8 +176,7 @@ public sealed class ThemeTokenGovernanceTests
             RegexOptions.CultureInvariant);
         List<string> violations = [];
 
-        foreach (string path in Directory.EnumerateFiles(productRoot, "*.cs", SearchOption.AllDirectories)
-                     .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)))
+        foreach (string path in ProductSourceTree.EnumerateFiles("*.cs").Select(static file => file.FullPath))
         {
             string[] lines = File.ReadAllLines(path);
             for (int index = 0; index < lines.Length; index++)

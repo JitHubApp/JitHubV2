@@ -196,10 +196,11 @@ public sealed class TelemetryPipelineTests : IDisposable
     [Fact]
     public void StoreEventAllowlist_MatchesEmittedLiteralTaxonomy()
     {
-        // JitHub.Markdown emits the Markdown host events through the app's
-        // telemetry service, so its sources are part of the emitted taxonomy.
+        // JitHub.Core holds most of the app's emitters, and JitHub.Markdown
+        // emits the Markdown host events through the app's telemetry service,
+        // so their sources are part of the emitted taxonomy.
         string repositoryRoot = FindRepositoryRoot();
-        HashSet<string> emittedEvents = new[] { "JitHub.WinUI", "JitHub.Markdown" }
+        HashSet<string> emittedEvents = new[] { "JitHub.WinUI", "JitHub.Core", "JitHub.Markdown" }
             .SelectMany(project => Directory.EnumerateFiles(
                 Path.Combine(repositoryRoot, project), "*.cs", SearchOption.AllDirectories))
             .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))

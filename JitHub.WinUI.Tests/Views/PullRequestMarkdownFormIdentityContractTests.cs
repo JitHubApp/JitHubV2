@@ -197,7 +197,7 @@ public sealed class PullRequestMarkdownFormIdentityContractTests
     {
         string harness = File.ReadAllText(ReadPath("JitHub.WinUI.Automation", "Program.cs"));
         string queryFixture = File.ReadAllText(ReadPath(
-            "JitHub.WinUI",
+            "JitHub.Core",
             "Services",
             "PullRequests",
             "GitHubPullRequestQueryService.cs"));

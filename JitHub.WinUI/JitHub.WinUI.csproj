@@ -164,6 +164,7 @@
 
   <ItemGroup>
     <AdditionalFiles Include="..\eng\BannedSymbols.txt" />
+    <ProjectReference Include="..\JitHub.Core\JitHub.Core.csproj" />
     <ProjectReference Include="..\JitHub.Markdown\JitHub.Markdown.csproj" />
     <ProjectReference Include="..\JitHub.Performance\JitHub.Performance.csproj" />
     <ProjectReference Include="..\JitHub.Shared\JitHub.Shared.csproj" />

@@ -11,6 +11,7 @@ on:
       - MarkdownRenderer/**
       - JitHub.WinUI/**
       - JitHub.WinUI.Tests/**
+      - JitHub.Core/**
       - JitHub.Markdown/**
       - JitHub.Markdown.Tests/**
       - JitHub.Performance/**
@@ -30,6 +31,7 @@ on:
       - MarkdownRenderer/**
       - JitHub.WinUI/**
       - JitHub.WinUI.Tests/**
+      - JitHub.Core/**
       - JitHub.Markdown/**
       - JitHub.Markdown.Tests/**
       - JitHub.Performance/**

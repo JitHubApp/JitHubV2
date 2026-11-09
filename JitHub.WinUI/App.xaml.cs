@@ -290,7 +290,15 @@ public partial class App : Application
         services.AddSingleton<StarLibrarySessionState>();
         services.AddTransient<StarLibraryPageViewModel>();
         services.AddTransient<GistsPageViewModel>();
-        services.AddTransient<NotificationsPageViewModel>();
+        services.AddTransient(static provider => new NotificationsPageViewModel(
+            provider.GetRequiredService<IGitHubNotificationQueryService>(),
+            provider.GetRequiredService<IAuthService>(),
+            provider.GetRequiredService<IAccountService>(),
+            provider.GetRequiredService<ITelemetryService>(),
+            provider.GetRequiredService<NotificationInboxState>(),
+            provider.GetRequiredService<ShellPageViewModel>().OpenNotification,
+            provider.GetRequiredService<IApplicationTaskCoordinator>(),
+            provider.GetRequiredService<ShellPageViewModel>().PrefetchNotificationAsync));
         services.AddSingleton<ShellPageViewModel>();
         services.AddTransient<RepoCodePageViewModel>();
 

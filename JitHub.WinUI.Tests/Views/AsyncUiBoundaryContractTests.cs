@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using JitHub.WinUI.Tests.TestSupport;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Views;
@@ -8,11 +9,10 @@ public sealed class AsyncUiBoundaryContractTests
     [Fact]
     public void ProductUi_DoesNotUseUnobservedAsyncVoidBoundaries()
     {
-        string productRoot = Path.Combine(FindRepositoryRoot(), "JitHub.WinUI");
-        foreach (string path in EnumerateProductSources(productRoot))
+        foreach (ProductSourceFile file in ProductSourceTree.EnumerateFiles("*.cs"))
         {
-            string source = File.ReadAllText(path);
-            string relativePath = Path.GetRelativePath(productRoot, path);
+            string source = File.ReadAllText(file.FullPath);
+            string relativePath = file.RelativePath.Replace('/', Path.DirectorySeparatorChar);
             Assert.DoesNotMatch(
                 new Regex(@"\basync\s+void\b", RegexOptions.CultureInvariant),
                 source);
@@ -84,14 +84,6 @@ public sealed class AsyncUiBoundaryContractTests
         }
     }
 
-    private static IEnumerable<string> EnumerateProductSources(string productRoot) =>
-        Directory.EnumerateFiles(productRoot, "*.cs", SearchOption.AllDirectories)
-            .Where(path => !path.Contains(
-                $"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
-                StringComparison.OrdinalIgnoreCase))
-            .Where(path => !path.Contains(
-                $"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
-                StringComparison.OrdinalIgnoreCase));
 
     private static string FindRepositoryRoot()
     {

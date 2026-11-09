@@ -43,7 +43,7 @@ public sealed class CanonicalRouteTelemetryCoverageTests
             ]
         },
         {
-            "JitHub.WinUI/Services/Issues/IssueTelemetry.cs",
+            "JitHub.Core/Services/Issues/IssueTelemetry.cs",
             [
                 "issues.opened",
                 "issues.list.loaded",
@@ -69,11 +69,11 @@ public sealed class CanonicalRouteTelemetryCoverageTests
             ]
         },
         {
-            "JitHub.WinUI/ViewModels/Pages/NotificationsPageViewModel.cs",
+            "JitHub.Core/ViewModels/Pages/NotificationsPageViewModel.cs",
             ["notifications.opened", "notifications.list.loaded", "notifications.filter.changed", "notifications.action.executed"]
         },
         {
-            "JitHub.WinUI/ViewModels/Pages/GistsPageViewModel.cs",
+            "JitHub.Core/ViewModels/Pages/GistsPageViewModel.cs",
             ["gists.opened", "gists.list.loaded", "gists.filter.changed", "gists.action.executed"]
         },
         {
@@ -81,7 +81,7 @@ public sealed class CanonicalRouteTelemetryCoverageTests
             ["repositories.opened", "repositories.action.executed"]
         },
         {
-            "JitHub.WinUI/ViewModels/Pages/RepoSearchResultPageViewModel.cs",
+            "JitHub.Core/ViewModels/Pages/RepoSearchResultPageViewModel.cs",
             [
                 "repository_search.opened",
                 "repository_search.loaded",
@@ -90,7 +90,7 @@ public sealed class CanonicalRouteTelemetryCoverageTests
             ]
         },
         {
-            "JitHub.WinUI/Services/Repositories/GitHubRepositoryIndexService.cs",
+            "JitHub.Core/Services/Repositories/GitHubRepositoryIndexService.cs",
             ["repositories.sync.completed"]
         },
         {
@@ -98,7 +98,7 @@ public sealed class CanonicalRouteTelemetryCoverageTests
             ["stars.filter.changed", "stars.sort.changed", "stars.action.executed"]
         },
         {
-            "JitHub.WinUI/Services/Stars/GitHubStarLibraryService.cs",
+            "JitHub.Core/Services/Stars/GitHubStarLibraryService.cs",
             [
                 "stars.sync.completed",
                 "stars.category.created",
@@ -115,7 +115,7 @@ public sealed class CanonicalRouteTelemetryCoverageTests
             ]
         },
         {
-            "JitHub.WinUI/Services/PullRequests/PullRequestTelemetry.cs",
+            "JitHub.Core/Services/PullRequests/PullRequestTelemetry.cs",
             [
                 "pull_requests.prefetch.started",
                 "pull_requests.prefetch.completed"
@@ -133,7 +133,7 @@ public sealed class CanonicalRouteTelemetryCoverageTests
             ]
         },
         {
-            "JitHub.WinUI/ViewModels/CodeViewer/RepoCodePageViewModel.cs",
+            "JitHub.Core/ViewModels/CodeViewer/RepoCodePageViewModel.cs",
             [
                 "repo_code.opened",
                 "repo_code.loaded",
@@ -149,15 +149,15 @@ public sealed class CanonicalRouteTelemetryCoverageTests
             ["profile.opened", "profile.loaded", "profile.section.opened", "profile.action.executed", "profile.error"]
         },
         {
-            "JitHub.WinUI/ViewModels/Pages/SettingsPageViewModel.cs",
+            "JitHub.Core/ViewModels/Pages/SettingsPageViewModel.cs",
             ["settings.opened", "settings.loaded", "settings.action.executed", "settings.error"]
         },
         {
-            "JitHub.WinUI/ViewModels/Pages/LoginPageViewModel.cs",
+            "JitHub.Core/ViewModels/Pages/LoginPageViewModel.cs",
             ["auth.opened", "auth.action.executed"]
         },
         {
-            "JitHub.WinUI/Services/AuthService.cs",
+            "JitHub.Core/Services/AuthService.cs",
             ["auth.flow.started", "auth.flow.completed", "auth.session.loaded", "auth.action.executed", "auth.error"]
         }
     };

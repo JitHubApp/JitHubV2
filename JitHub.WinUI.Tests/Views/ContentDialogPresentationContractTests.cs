@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using JitHub.WinUI.Tests.TestSupport;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Views;
@@ -8,16 +9,18 @@ public sealed class ContentDialogPresentationContractTests
     [Fact]
     public void ProductContentDialogs_UseSingleFlightPresenter()
     {
-        string viewsRoot = FindRepositoryDirectory("JitHub.WinUI", "Views");
-        string presenterPath = Path.Combine(viewsRoot, "Dialogs", "AppContentDialogPresenter.cs");
-        string[] directPresentations = Directory
-            .EnumerateFiles(viewsRoot, "*.cs", SearchOption.AllDirectories)
-            .Where(path => !string.Equals(path, presenterPath, StringComparison.OrdinalIgnoreCase))
-            .SelectMany(path => Regex.Matches(
-                    File.ReadAllText(path),
+        string presenterPath = Path.Combine(
+            FindRepositoryDirectory("JitHub.WinUI", "Views"),
+            "Dialogs",
+            "AppContentDialogPresenter.cs");
+        string[] directPresentations = ProductSourceTree.EnumerateFiles("*.cs")
+            .Where(file => file.RelativePath.StartsWith("Views/", StringComparison.Ordinal))
+            .Where(file => !string.Equals(file.FullPath, presenterPath, StringComparison.OrdinalIgnoreCase))
+            .SelectMany(file => Regex.Matches(
+                    File.ReadAllText(file.FullPath),
                     @"\b(?:dialog|confirmation|empty)\.ShowAsync\s*\(\s*\)",
                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)
-                .Select(match => $"{Path.GetRelativePath(viewsRoot, path)}: {match.Value}"))
+                .Select(match => $"{file.RelativePath}: {match.Value}"))
             .ToArray();
 
         Assert.Empty(directPresentations);
@@ -116,10 +119,8 @@ public sealed class ContentDialogPresentationContractTests
             "ViewModels",
             "Pages",
             "ProfilePageViewModel.cs"));
-        string[] productSources = Directory
-            .EnumerateFiles(productRoot, "*.cs", SearchOption.AllDirectories)
-            .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
-            .Select(File.ReadAllText)
+        string[] productSources = ProductSourceTree.EnumerateFiles("*.cs")
+            .Select(static file => File.ReadAllText(file.FullPath))
             .ToArray();
 
         Assert.Contains("Dialogs/Status/Working", presenter, StringComparison.Ordinal);
@@ -226,7 +227,6 @@ public sealed class ContentDialogPresentationContractTests
     [Fact]
     public void UserFacingFailureProperties_DoNotExposeRawExceptionMessages()
     {
-        string productRoot = FindRepositoryDirectory("JitHub.WinUI");
         Regex unsafeAssignment = new(
             @"(?:StatusText|DetailStatusText|ErrorText|ErrorMessage|ReplyErrorMessage|LoadError)\s*=\s*[^;\r\n]*(?:ex|exception|error)\.Message",
             RegexOptions.CultureInvariant);
@@ -234,13 +234,11 @@ public sealed class ContentDialogPresentationContractTests
             @"\bShow[A-Za-z]+\s*\([^;\r\n]*(?:ex|exception|error)\.Message",
             RegexOptions.CultureInvariant);
 
-        string[] violations = Directory
-            .EnumerateFiles(productRoot, "*.cs", SearchOption.AllDirectories)
-            .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
-            .SelectMany(path => File.ReadLines(path)
+        string[] violations = ProductSourceTree.EnumerateFiles("*.cs")
+            .SelectMany(file => File.ReadLines(file.FullPath)
                 .Select((line, index) => (line, index))
                 .Where(item => unsafeAssignment.IsMatch(item.line) || unsafePresentation.IsMatch(item.line))
-                .Select(item => $"{Path.GetRelativePath(productRoot, path)}:{item.index + 1}: {item.line.Trim()}"))
+                .Select(item => $"{file.ProjectName}/{file.RelativePath}:{item.index + 1}: {item.line.Trim()}"))
             .ToArray();
 
         Assert.Empty(violations);

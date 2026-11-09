@@ -110,7 +110,7 @@ public sealed class PullRequestResponsiveActionContractTests
             "JitHub.WinUI.Automation",
             "Program.cs"));
         string queryService = File.ReadAllText(SourcePath(
-            "JitHub.WinUI",
+            "JitHub.Core",
             "Services",
             "PullRequests",
             "GitHubPullRequestQueryService.cs"));

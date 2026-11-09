@@ -1,4 +1,5 @@
 using System.Xml.Linq;
+using JitHub.WinUI.Tests.TestSupport;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Views;
@@ -205,20 +206,15 @@ public sealed class MyWorkItemsDataIntegrityContractTests
         FindRepositoryRoot(),
         "JitHub.WinUI", "Views", "Pages", fileName);
 
-    private static string GetViewModelPath(string fileName) => Path.Combine(
-        FindRepositoryRoot(),
-        "JitHub.WinUI", "ViewModels", "Pages", fileName);
+    private static string GetViewModelPath(string fileName) =>
+        ProductSourceTree.GetFullPath($"ViewModels/Pages/{fileName}");
 
     private static string GetControlPath(string fileName) => Path.Combine(
         FindRepositoryRoot(),
         "JitHub.WinUI", "Views", "Controls", "Common", fileName);
 
-    private static string GetServicePath(params string[] segments) => Path.Combine(
-        [
-            FindRepositoryRoot(),
-            "JitHub.WinUI", "Services",
-            .. segments
-        ]);
+    private static string GetServicePath(params string[] segments) =>
+        ProductSourceTree.GetFullPath(string.Join('/', ["Services", .. segments]));
 
     private static string FindRepositoryRoot()
     {

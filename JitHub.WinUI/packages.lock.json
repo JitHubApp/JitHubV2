@@ -450,6 +450,20 @@
           "Onigwrap": "1.0.10"
         }
       },
+      "jithub.core": {
+        "type": "Project",
+        "dependencies": {
+          "CommunityToolkit.Common": "[8.2.1, )",
+          "CommunityToolkit.Mvvm": "[8.4.2, )",
+          "JitHub.Markdown": "[1.0.0, )",
+          "JitHub.Performance": "[1.0.0, )",
+          "JitHub.Shared": "[1.0.0, )",
+          "MarkdownRenderer": "[1.0.0-preview.1, )",
+          "Microsoft.Data.Sqlite": "[10.0.8, )",
+          "Microsoft.WindowsAppSDK": "[1.8.260710003, )",
+          "SQLitePCLRaw.bundle_e_sqlite3": "[3.0.3, )"
+        }
+      },
       "jithub.markdown": {
         "type": "Project",
         "dependencies": {
