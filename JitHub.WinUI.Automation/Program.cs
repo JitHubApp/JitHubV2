@@ -8484,7 +8484,7 @@ static void RunSettingsDarkAndLightProbe(CaptureOptions options)
             ("SettingsClearStarLibraryButton", "SettingsConfirmClearStarsLibrary", "Clear the Stars library?"),
             ("SettingsClearImageCacheButton", "SettingsConfirmClearImageCache", "Clear avatar and image cache?"),
             ("SettingsClearRepoFileCacheButton", "SettingsConfirmClearRepoFileCache", "Clear repository file cache?"),
-            ("SettingsClearAllCacheButton", "SettingsConfirmClearAllCache", "Clear all Phase 0 cache data?")
+            ("SettingsClearAllCacheButton", "SettingsConfirmClearAllCache", "Clear all cache data?")
         ];
         foreach ((string actionId, string dialogId, string name) in dataConfirmations)
         {

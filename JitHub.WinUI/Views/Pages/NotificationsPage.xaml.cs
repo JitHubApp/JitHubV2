@@ -227,7 +227,7 @@ public sealed partial class NotificationsPage : Page
     {
         // The destination owns its authoritative post-frame load. Cancel a pending
         // incidental-hover prediction; a prediction that already crossed the dwell
-        // threshold is intentionally allowed to finish in the Phase 0 cache.
+        // threshold is intentionally allowed to finish in the GitHub query cache.
         ViewModel.CancelDestinationPrefetch();
         string expectedDestinationRoute = item.Thread.Subject.Type switch
         {

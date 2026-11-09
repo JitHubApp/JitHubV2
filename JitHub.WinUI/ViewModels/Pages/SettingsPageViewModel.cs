@@ -525,8 +525,8 @@ public sealed partial class SettingsPageViewModel : ObservableObject
 
     public Task ClearAllCacheAsync(CancellationToken cancellationToken = default) =>
         RunMutationAsync(
-            L("Settings/Status/ClearingAllCache", "Clearing Phase 0 cache data..."),
-            L("Settings/Status/AllCacheCleared", "Phase 0 cache data was cleared."),
+            L("Settings/Status/ClearingAllCache", "Clearing cache data..."),
+            L("Settings/Status/AllCacheCleared", "Cache data was cleared."),
             TelemetryTaxonomy.Actions.ClearAllCache,
             token => _diagnosticsService.ClearAllCacheAsync(token),
             cancellationToken);

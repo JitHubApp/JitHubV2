@@ -633,7 +633,7 @@ public sealed partial class NotificationsPageViewModel : ObservableObject, IDisp
             }
 
             // Once prediction passes the intent threshold, let the request finish. A click can
-            // then join the same Phase 0 request even after this page unloads.
+            // then join the same query-service request even after this page unloads.
             await _prefetchNotification!(item.Thread, CancellationToken.None).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -706,7 +706,7 @@ public sealed partial class NotificationsPageViewModel : ObservableObject, IDisp
         try
         {
             // Navigation owns this promoted request. It intentionally survives the inbox page
-            // unloading so the destination can join the Phase 0 in-flight query immediately.
+            // unloading so the destination can join the query service's in-flight query immediately.
             await prefetchTask.ConfigureAwait(false);
         }
         catch

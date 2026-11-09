@@ -3826,7 +3826,7 @@
     <value>View source</value>
   </data>
   <data name="PagesSettingsPageTextBlockAllCacheData.Text" xml:space="preserve">
-    <value>All Phase 0 cache data</value>
+    <value>All cache data</value>
   </data>
   <data name="PagesSettingsPageTextBlockAvatarAndImageCache.Text" xml:space="preserve">
     <value>Avatar and image cache</value>
@@ -4462,7 +4462,7 @@
     <value>Clear cache data</value>
   </data>
   <data name="Settings/Dialogs/ClearAllCache/Title" xml:space="preserve">
-    <value>Clear all Phase 0 cache data?</value>
+    <value>Clear all cache data?</value>
   </data>
   <data name="Settings/Dialogs/ClearDiagnostics/Body" xml:space="preserve">
     <value>This clears the local diagnostics NDJSON file. It does not change telemetry settings or cached GitHub data.</value>
@@ -4531,10 +4531,10 @@
     <value>Action failed: {0}</value>
   </data>
   <data name="Settings/Status/AllCacheCleared" xml:space="preserve">
-    <value>Phase 0 cache data was cleared.</value>
+    <value>Cache data was cleared.</value>
   </data>
   <data name="Settings/Status/ClearingAllCache" xml:space="preserve">
-    <value>Clearing Phase 0 cache data...</value>
+    <value>Clearing cache data...</value>
   </data>
   <data name="Settings/Status/ClearingDiagnostics" xml:space="preserve">
     <value>Clearing diagnostics...</value>
