@@ -50,7 +50,7 @@ public sealed class GitHubStarQueryServiceTests
 
         GitHubStarredRepository[]? result = JsonSerializer.Deserialize(
             json,
-            Phase0GitHubJsonSerializerContext.Default.GitHubStarredRepositoryArray);
+            GitHubQueryJsonSerializerContext.Default.GitHubStarredRepositoryArray);
 
         Assert.NotNull(result);
         Assert.Single(result!);

@@ -981,7 +981,7 @@ public sealed class GitHubGistQueryService : IGitHubGistQueryService
             partition,
             $"gists/{Uri.EscapeDataString(gistId)}",
             GitHubCachePolicy.MutableResource,
-            Phase0GitHubJsonSerializerContext.Default.GitHubGist,
+            GitHubQueryJsonSerializerContext.Default.GitHubGist,
             [GistCacheTagPolicy.Detail(partition, gistId)],
             priority);
 
@@ -1141,7 +1141,7 @@ public sealed class GitHubGistQueryService : IGitHubGistQueryService
             partition,
             $"gists?per_page={pageSize}&page={page}",
             GitHubCachePolicy.MutableResource,
-            Phase0GitHubJsonSerializerContext.Default.GitHubGistArray,
+            GitHubQueryJsonSerializerContext.Default.GitHubGistArray,
             [GistCacheTagPolicy.List(partition)],
             priority);
     }

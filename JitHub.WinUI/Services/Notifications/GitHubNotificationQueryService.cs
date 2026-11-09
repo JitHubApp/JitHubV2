@@ -63,7 +63,7 @@ public sealed class GitHubNotificationQueryService : IGitHubNotificationQuerySer
             userId,
             path,
             GitHubCachePolicy.MutableResource,
-            Phase0GitHubJsonSerializerContext.Default.GitHubNotificationThreadArray,
+            GitHubQueryJsonSerializerContext.Default.GitHubNotificationThreadArray,
             ["notifications", $"notifications-{filter.ToString().ToLowerInvariant()}"]);
         return _queryService.GetAsync(query, fetchPolicy, cancellationToken);
     }
@@ -88,7 +88,7 @@ public sealed class GitHubNotificationQueryService : IGitHubNotificationQuerySer
             userId,
             path,
             GitHubCachePolicy.MutableResource,
-            Phase0GitHubJsonSerializerContext.Default.GitHubNotificationSubscription,
+            GitHubQueryJsonSerializerContext.Default.GitHubNotificationSubscription,
             ["notifications", $"notification-thread-{normalizedThreadId}"]);
         return _queryService.GetAsync(query, fetchPolicy, cancellationToken);
     }

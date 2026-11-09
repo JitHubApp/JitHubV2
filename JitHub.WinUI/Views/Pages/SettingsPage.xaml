@@ -1084,8 +1084,8 @@
                                             </Grid.RowDefinitions>
                                             <StackPanel Spacing="{ThemeResource AppGap4}">
                                                 <TextBlock
-                                                    x:Uid="PagesSettingsPageTextBlockAllPhase0CacheData" Style="{StaticResource ListItemTitleTextBlockStyle}"
-                                                    Text="All Phase 0 cache data" />
+                                                    x:Uid="PagesSettingsPageTextBlockAllCacheData" Style="{StaticResource ListItemTitleTextBlockStyle}"
+                                                    Text="All cache data" />
                                                 <TextBlock
                                                     x:Uid="PagesSettingsPageTextBlockClearQueryMetadataPayloadsAvat" Style="{StaticResource SectionSecondaryTextBlockStyle}"
                                                     Text="Clear query metadata, payloads, avatars, images, and repository file previews."

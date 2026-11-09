@@ -21,12 +21,40 @@ public sealed class MarkdownLinkActivatorTests
         var harness = new ActivatorHarness();
         harness.Navigator.Result = true;
 
-        await harness.Activator.ActivateAsync("https://github.com/owner/repo/issues/7", GitHubBase, null, "markdown-test");
+        await harness.Activator.ActivateAsync("https://github.com/owner/repo/issues/7", GitHubBase, null);
 
         Assert.Equal([new Uri("https://github.com/owner/repo/issues/7")], harness.Navigator.Opened);
         await harness.Launcher.DidNotReceive().LaunchAsync(Arg.Any<Uri>(), Arg.Any<CancellationToken>());
-        Assert.Equal("issue", Assert.Single(harness.Observer.LinkRoutes).Disposition);
         Assert.Equal(TelemetryTaxonomy.Results.Success, harness.LastResult);
+    }
+
+    [Theory]
+    [InlineData("https://github.com/octocat")]
+    [InlineData("https://github.com/octocat/Hello-World")]
+    public async Task UserAndRepositoryRoots_OpenInAppWhenTheShellConfirmsThem(string url)
+    {
+        var harness = new ActivatorHarness();
+        harness.Navigator.Result = true;
+
+        await harness.Activator.ActivateAsync(url, GitHubBase, null);
+
+        Assert.Equal([new Uri(url)], harness.Navigator.Opened);
+        await harness.Launcher.DidNotReceive().LaunchAsync(Arg.Any<Uri>(), Arg.Any<CancellationToken>());
+        Assert.Equal(TelemetryTaxonomy.Results.Success, harness.LastResult);
+    }
+
+    [Fact]
+    public async Task RelativeLinkWithoutRepositoryContext_NeverAsksTheShellToRouteIt()
+    {
+        var harness = new ActivatorHarness();
+        harness.Navigator.Result = true;
+        harness.Launcher.LaunchAsync(Arg.Any<Uri>(), Arg.Any<CancellationToken>()).Returns(true);
+
+        await harness.Activator.ActivateAsync("/octocat/Hello-World", new Uri("https://github.com/"), null);
+
+        Assert.Empty(harness.Navigator.Opened);
+        await harness.Launcher.Received(1).LaunchAsync(new Uri("https://github.com/octocat/Hello-World"), Arg.Any<CancellationToken>());
+        Assert.Equal(TelemetryTaxonomy.Results.Launched, harness.LastResult);
     }
 
     [Fact]
@@ -35,7 +63,7 @@ public sealed class MarkdownLinkActivatorTests
         var harness = new ActivatorHarness();
         harness.Launcher.LaunchAsync(Arg.Any<Uri>(), Arg.Any<CancellationToken>()).Returns(true);
 
-        await harness.Activator.ActivateAsync("https://github.com/owner/repo/pull/9", GitHubBase, null, "markdown-test");
+        await harness.Activator.ActivateAsync("https://github.com/owner/repo/pull/9", GitHubBase, null);
 
         await harness.Launcher.Received(1).LaunchAsync(new Uri("https://github.com/owner/repo/pull/9"), Arg.Any<CancellationToken>());
         Assert.Equal(TelemetryTaxonomy.Results.Launched, harness.LastResult);
@@ -47,24 +75,10 @@ public sealed class MarkdownLinkActivatorTests
         var harness = new ActivatorHarness();
         harness.Launcher.LaunchAsync(Arg.Any<Uri>(), Arg.Any<CancellationToken>()).Returns(false);
 
-        await harness.Activator.ActivateAsync("https://example.com/docs", GitHubBase, null, "markdown-test");
+        await harness.Activator.ActivateAsync("https://example.com/docs", GitHubBase, null);
 
         await harness.Launcher.Received(1).LaunchAsync(new Uri("https://example.com/docs"), Arg.Any<CancellationToken>());
-        Assert.Equal(("markdown-test", new Uri("https://example.com/docs"), "external-browser"), Assert.Single(harness.Observer.LinkRoutes));
         Assert.Equal(TelemetryTaxonomy.Results.Failed, harness.LastResult);
-    }
-
-    [Fact]
-    public async Task CapturedActivation_NeitherNavigatesNorLaunches()
-    {
-        var harness = new ActivatorHarness();
-        harness.Observer.CaptureLinks = true;
-
-        await harness.Activator.ActivateAsync("https://github.com/owner", GitHubBase, null, "markdown-test");
-
-        Assert.Empty(harness.Navigator.Opened);
-        await harness.Launcher.DidNotReceive().LaunchAsync(Arg.Any<Uri>(), Arg.Any<CancellationToken>());
-        Assert.Equal(TelemetryTaxonomy.Results.Success, harness.LastResult);
     }
 
     [Fact]
@@ -72,9 +86,8 @@ public sealed class MarkdownLinkActivatorTests
     {
         var harness = new ActivatorHarness();
 
-        await harness.Activator.ActivateAsync("javascript:alert(1)", GitHubBase, null, "markdown-test");
+        await harness.Activator.ActivateAsync("javascript:alert(1)", GitHubBase, null);
 
-        Assert.Empty(harness.Observer.LinkRoutes);
         Assert.Empty(harness.Navigator.Opened);
         await harness.Launcher.DidNotReceive().LaunchAsync(Arg.Any<Uri>(), Arg.Any<CancellationToken>());
         Assert.Equal(TelemetryTaxonomy.Results.Rejected, harness.LastResult);
@@ -87,7 +100,7 @@ public sealed class MarkdownLinkActivatorTests
         harness.Launcher.LaunchAsync(Arg.Any<Uri>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("Launch failed."));
 
-        await harness.Activator.ActivateAsync("https://example.com/docs", GitHubBase, null, "markdown-test");
+        await harness.Activator.ActivateAsync("https://example.com/docs", GitHubBase, null);
 
         Assert.Equal("markdown.error", harness.Events[^1].Name);
         Assert.Equal(TelemetryTaxonomy.ErrorKinds.Launch, harness.Events[^1].Properties["error_kind"]);
@@ -103,8 +116,7 @@ public sealed class MarkdownLinkActivatorTests
         await harness.Activator.ActivateAsync(
             "https://example.com/absolute",
             new Uri("https://github.com/owner/repo/blob/main/docs/guide.md"),
-            source,
-            "markdown-test");
+            source);
 
         await harness.Launcher.Received(1).LaunchAsync(new Uri("https://example.com/absolute"), Arg.Any<CancellationToken>());
     }
@@ -122,15 +134,12 @@ public sealed class MarkdownLinkActivatorTests
             Activator = new MarkdownLinkActivator(
                 Navigator,
                 Launcher,
-                Observer,
                 new MarkdownViewerTelemetry(telemetry, static () => "RepositoryReadme"));
         }
 
         public RecordingNavigator Navigator { get; } = new();
 
         public IExternalUriLauncher Launcher { get; } = Substitute.For<IExternalUriLauncher>();
-
-        public RecordingMarkdownHostObserver Observer { get; } = new();
 
         public List<(string Name, Dictionary<string, string?> Properties)> Events { get; } = [];
 

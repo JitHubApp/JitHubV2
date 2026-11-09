@@ -97,7 +97,7 @@ public sealed class RepositoryForkOwnershipStoreTests : IDisposable
             ["Version"] = 0,
             ["Items"] = JsonSerializer.SerializeToNode(
                 new[] { known },
-                Phase0TestJsonContext.Default.RepositoryForkOwnershipStateArray)
+                ServiceTestJsonContext.Default.RepositoryForkOwnershipStateArray)
         };
         await File.WriteAllTextAsync(path, oldDocument.ToJsonString());
 

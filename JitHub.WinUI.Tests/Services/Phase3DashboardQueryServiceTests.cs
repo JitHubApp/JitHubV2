@@ -116,7 +116,7 @@ public sealed class Phase3DashboardQueryServiceTests
 
         GitHubNotificationThread? thread = JsonSerializer.Deserialize(
             json,
-            Phase0GitHubJsonSerializerContext.Default.GitHubNotificationThread);
+            GitHubQueryJsonSerializerContext.Default.GitHubNotificationThread);
 
         Assert.NotNull(thread);
         Assert.True(thread!.Unread);

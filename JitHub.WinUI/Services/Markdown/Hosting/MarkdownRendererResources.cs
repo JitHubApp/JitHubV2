@@ -115,26 +115,6 @@ internal static class MarkdownRendererResources
         }
     }
 
-    /// <summary>Resolves a numeric app design token.</summary>
-    /// <param name="tokenName">The token's resource key.</param>
-    /// <param name="fallback">The value to use when the token is missing or not numeric.</param>
-    /// <returns>The token's value.</returns>
-    public static double ResolveDouble(string tokenName, double fallback)
-    {
-        if (TryResolveAppResource(tokenName, out object? value))
-        {
-            return value switch
-            {
-                double number => number,
-                float number => number,
-                int number => number,
-                _ => fallback,
-            };
-        }
-
-        return fallback;
-    }
-
     /// <summary>Resolves a thickness app design token.</summary>
     /// <param name="tokenName">The token's resource key.</param>
     /// <param name="fallback">The value to use when the token is missing.</param>

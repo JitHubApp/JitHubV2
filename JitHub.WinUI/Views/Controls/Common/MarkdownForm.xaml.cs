@@ -16,7 +16,6 @@ namespace JitHub.WinUI.Views.Controls.Common
     public sealed partial class MarkdownForm : UserControl
     {
         private readonly MarkdownFormAutomationIdentity _automationIdentity = new();
-        private readonly MarkdownLifecycleAutomationBridge _lifecycleAutomation;
         private readonly RuntimeEventSubscription _runtimeEvents;
         private readonly UISettings? _uiSettings;
         private bool _textScaleSubscribed;
@@ -92,8 +91,7 @@ namespace JitHub.WinUI.Views.Controls.Common
         {
             get
             {
-                double scale = _lifecycleAutomation.GetTextScaleFactor()
-                    ?? GetSystemTextScaleFactor();
+                double scale = GetSystemTextScaleFactor();
                 double scaledHeight = EditorHeight * System.Math.Clamp(scale, 1, 3);
                 return System.Math.Min(scaledHeight, EditorHeight + 180);
             }
@@ -102,7 +100,6 @@ namespace JitHub.WinUI.Views.Controls.Common
         public MarkdownForm()
         {
             global::JitHub.WinUI.App app = (global::JitHub.WinUI.App)Application.Current;
-            _lifecycleAutomation = app.MarkdownAutomation;
             _runtimeEvents = app.MarkdownRuntimeEvents;
             _uiSettings = _runtimeEvents.TryCreate(static () => new UISettings(), nameof(UISettings));
             this.InitializeComponent();
@@ -135,16 +132,6 @@ namespace JitHub.WinUI.Views.Controls.Common
             // Automation identity is not document identity. An anonymous editor must
             // remain anonymous so recycled controls cannot retain remote-content consent.
             PreviewViewer.DocumentSource = DocumentSource;
-            string previewHostId = MarkdownFormAutomationIdentity.GetPreviewHostId(ResolveAutomationPrefix());
-            if (_lifecycleAutomation.TargetsHost(previewHostId))
-            {
-                // Lifecycle automation still instantiates this real product form. It
-                // selects Preview deterministically even when the public preview keeps
-                // mutation controls disabled.
-                IsEnabled = true;
-                ViewModel.SelectedBodyView = "Preview";
-                ModeSegmented.SelectedItem = PreviewModeItem;
-            }
         }
 
         private void MarkdownForm_Unloaded(object sender, RoutedEventArgs e)

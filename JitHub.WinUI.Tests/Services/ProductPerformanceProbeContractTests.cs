@@ -1366,7 +1366,7 @@ public sealed class ProductPerformanceProbeContractTests
             ["gists"] = "JitHub.WinUI/Services/Gists/GitHubGistQueryService.cs",
             ["notifications"] = "JitHub.WinUI/Services/Notifications/GitHubNotificationQueryService.cs",
             ["repo_manage"] = "JitHub.WinUI/Services/Repositories/GitHubRepositoryIndexService.cs",
-            ["repo_search"] = "JitHub.WinUI/Services/Phase0/GitHub/GitHubRepositorySearchQueryService.cs",
+            ["repo_search"] = "JitHub.WinUI/Services/Repositories/GitHubRepositorySearchQueryService.cs",
             ["repo_code"] = "JitHub.WinUI/Services/CodeViewer/GitHubRepoCodeQueryService.cs",
             ["repo_issues"] = "JitHub.WinUI/Services/Issues/GitHubIssueQueryService.cs",
             ["repo_pull_requests"] = "JitHub.WinUI/Services/PullRequests/GitHubPullRequestQueryService.cs",

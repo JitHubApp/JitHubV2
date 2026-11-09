@@ -72,7 +72,7 @@ public sealed class Phase1SettingsDiagnosticsServiceTests : IDisposable
     public async Task ClearDiagnostics_RemovesDiagnosticsFileAndKeepsCache()
     {
         TestHarness harness = CreateHarness(storeAvailable: true);
-        GitHubQuery<Phase0TestPayload> query = CreateQuery("cache", TimeSpan.FromMinutes(5));
+        GitHubQuery<CachedQueryTestPayload> query = CreateQuery("cache", TimeSpan.FromMinutes(5));
         await harness.CacheStore.PutAsync(query, CreateResponse("cache", "body"));
         await harness.DiagnosticsStore.AppendAsync(CreateDiagnostic("settings.clear"));
 
@@ -86,7 +86,7 @@ public sealed class Phase1SettingsDiagnosticsServiceTests : IDisposable
     public async Task ClearQueryCache_RemovesMetadataEntriesAndPayloadFiles()
     {
         TestHarness harness = CreateHarness(storeAvailable: true);
-        GitHubQuery<Phase0TestPayload> query = CreateQuery("large", TimeSpan.FromMinutes(5));
+        GitHubQuery<CachedQueryTestPayload> query = CreateQuery("large", TimeSpan.FromMinutes(5));
         await harness.CacheStore.PutAsync(query, CreateResponse("large", new string('x', 140_000)));
         Assert.NotEmpty(Directory.GetFiles(harness.Paths.PayloadRootPath, "*.json"));
 
@@ -134,7 +134,7 @@ public sealed class Phase1SettingsDiagnosticsServiceTests : IDisposable
     public async Task ClearAllCache_ClearsQueryAndImagesWithoutTouchingDiagnostics()
     {
         TestHarness harness = CreateHarness(storeAvailable: true);
-        GitHubQuery<Phase0TestPayload> query = CreateQuery("all", TimeSpan.FromMinutes(5));
+        GitHubQuery<CachedQueryTestPayload> query = CreateQuery("all", TimeSpan.FromMinutes(5));
         await harness.CacheStore.PutAsync(query, CreateResponse("all", new string('x', 140_000)));
         await harness.ImageCacheStore.PutAsync("avatar", [1, 2, 3, 4], ".png");
         RepoFileCacheKey fileKey = new("owner", "repo", "clear-all");
@@ -268,7 +268,7 @@ public sealed class Phase1SettingsDiagnosticsServiceTests : IDisposable
         return new TestHarness(paths, cacheStore, imageStore, repoFileCache, diagnosticsStore, settings, service);
     }
 
-    private static GitHubQuery<Phase0TestPayload> CreateQuery(string key, TimeSpan ttl) =>
+    private static GitHubQuery<CachedQueryTestPayload> CreateQuery(string key, TimeSpan ttl) =>
         new(
             GitHubAuthenticationConstants.PublicAccessToken,
             "u1",
@@ -277,14 +277,14 @@ public sealed class Phase1SettingsDiagnosticsServiceTests : IDisposable
             GitHubQueryKeys.Create("u1", HttpMethod.Get, $"test/{key}"),
             GitHubCachePolicy.MutableResource,
             ttl,
-            Phase0TestJsonContext.Default.Phase0TestPayload,
+            ServiceTestJsonContext.Default.CachedQueryTestPayload,
             ["settings"],
             GitHubRequestPriority.Visible);
 
-    private static GitHubRestResponse<Phase0TestPayload> CreateResponse(string name, string body) =>
+    private static GitHubRestResponse<CachedQueryTestPayload> CreateResponse(string name, string body) =>
         new(
             HttpStatusCode.OK,
-            new Phase0TestPayload { Name = name, Body = body },
+            new CachedQueryTestPayload { Name = name, Body = body },
             IsNotModified: false,
             ETag: "\"etag-settings\"",
             LastModified: DateTimeOffset.UtcNow,

@@ -22,7 +22,6 @@ public sealed class AutomationProcessCleanupContractTests
         Assert.DoesNotContain("EnablePerMonitorDpiAwareness", source, StringComparison.Ordinal);
         Assert.Contains("DwmGetWindowAttribute(", source, StringComparison.Ordinal);
         Assert.Contains("NativeMethods.GetPhysicalWindowBounds(GetNativeWindowHandle(window))", source, StringComparison.Ordinal);
-        Assert.Contains("physicalWindowBounds.Width / (double)Math.Max(1, automationWindowBounds.Width)", source, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -40,35 +39,6 @@ public sealed class AutomationProcessCleanupContractTests
         Assert.Contains("catch (InvalidOperationException)", method, StringComparison.Ordinal);
         Assert.Equal(2, CountOccurrences(method, "return true;"));
         Assert.DoesNotContain("catch (ArgumentException)\n    {\n        return false;", method, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void MarkdownLifecycle_PrefersAReadyPreviewHostBeforeOperatingModeChrome()
-    {
-        string source = File.ReadAllText(FindRepositoryFile(
-            "JitHub.WinUI.Automation",
-            "Program.cs"));
-
-        Assert.Contains("AutomationElement? activePreview", source, StringComparison.Ordinal);
-        Assert.Contains("element.Patterns.Text.IsSupported", source, StringComparison.Ordinal);
-        Assert.Contains("if (activePreview is null)", source, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void MarkdownLifecycle_CapturesHostPreparationFailures()
-    {
-        string source = File.ReadAllText(FindRepositoryFile(
-            "JitHub.WinUI.Automation",
-            "Program.cs"));
-
-        Assert.Contains("CaptureMarkdownLifecycleFailureState(", source, StringComparison.Ordinal);
-        Assert.Contains("\"host preparation failed\"", source, StringComparison.Ordinal);
-        Assert.Contains("PrintVisibleAutomationIds(window", source, StringComparison.Ordinal);
-        Assert.Contains("diagnostic screenshot failed without replacing the product failure", source, StringComparison.Ordinal);
-        Assert.Contains("AutomationWindowHandleCache.TryGet(window", source, StringComparison.Ordinal);
-        Assert.Contains("window = ReacquireJitHubWindow(", source, StringComparison.Ordinal);
-        Assert.Contains("FindExpectedJitHubWindow(application, automation, processId)", source, StringComparison.Ordinal);
-        Assert.Contains("bool alreadySized", source, StringComparison.Ordinal);
     }
 
     private static int CountOccurrences(string source, string value)

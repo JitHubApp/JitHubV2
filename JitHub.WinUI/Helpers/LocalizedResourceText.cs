@@ -88,16 +88,6 @@ internal static partial class LocalizedResourceText
 
     private static ResourceLookup? CreateResourceLookup()
     {
-        // The lookup can be created before App exists, so read the launch
-        // options directly instead of the app's bridge instance. The answer is
-        // fixed for the process once launch options are parsed.
-        if (new JitHub.Markdown.MarkdownLifecycleAutomationBridge(
-                Program.CurrentLaunchOptions.MarkdownLifecycleFixture,
-                Program.CurrentLaunchOptions.MarkdownLifecycleHost).IsResourceMapForcedAbsent)
-        {
-            return null;
-        }
-
         // MRT activation can terminate an isolated test host before managed exception
         // handling runs because that process has no Windows application resource map.
         // The production executable owns the PRI context; every other host uses the

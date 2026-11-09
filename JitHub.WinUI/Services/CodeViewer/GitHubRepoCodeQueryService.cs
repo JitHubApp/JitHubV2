@@ -39,7 +39,7 @@ public sealed class GitHubRepoCodeQueryService : IGitHubRepoCodeQueryService
             userId,
             $"repos/{Escape(owner)}/{Escape(repositoryName)}/git/trees/{Escape(gitRef)}?recursive=1",
             GitReferencePolicy.CacheResourceFor(gitRef),
-            Phase0GitHubJsonSerializerContext.Default.GitHubTree,
+            GitHubQueryJsonSerializerContext.Default.GitHubTree,
             ["repo-code", "repo-code-tree", CreateRepositoryTag(owner, repositoryName)]);
         return ExecuteAsync(query, fetchPolicy, cancellationToken);
     }
@@ -68,7 +68,7 @@ public sealed class GitHubRepoCodeQueryService : IGitHubRepoCodeQueryService
             userId,
             relativePath,
             GitReferencePolicy.CacheResourceFor(gitRef),
-            Phase0GitHubJsonSerializerContext.Default.GitHubRepositoryContentArray,
+            GitHubQueryJsonSerializerContext.Default.GitHubRepositoryContentArray,
             ["repo-code", "repo-code-directory", CreateRepositoryTag(owner, repositoryName)]);
         return ExecuteAsync(query, fetchPolicy, cancellationToken);
     }
@@ -111,7 +111,7 @@ public sealed class GitHubRepoCodeQueryService : IGitHubRepoCodeQueryService
             userId,
             $"repos/{Escape(owner)}/{Escape(repositoryName)}/git/blobs/{Escape(sha)}",
             GitHubCachePolicy.ImmutableShaResource,
-            Phase0GitHubJsonSerializerContext.Default.GitHubBlob,
+            GitHubQueryJsonSerializerContext.Default.GitHubBlob,
             ["repo-code", "repo-code-blob", CreateRepositoryTag(owner, repositoryName), CreateBlobTag(owner, repositoryName, sha)],
             priority);
         return ExecuteAsync(query, fetchPolicy, cancellationToken);

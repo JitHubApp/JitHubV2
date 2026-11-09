@@ -5,22 +5,18 @@ namespace JitHub.WinUI.Tests;
 public sealed class LaunchOptionsTests
 {
     [Fact]
-    public void Parse_ReadsPackagedLaunchArgumentsAndQuotedCorpusPath()
+    public void Parse_ReadsPackagedLaunchArgumentsAndQuotedValues()
     {
         LaunchOptions options = LaunchOptions.Parse(
             [],
             "--page=repo --theme=dark --palette=github --repo=sindresorhus/awesome " +
-            "--markdown-lifecycle-fixture " +
-            "--markdown-lifecycle-host=MarkdownHost_RepositoryReadme " +
-            "--markdown-corpus=\"C:\\readmes\\awesome README.md\"");
+            "--scenario=\"C:\\readmes\\awesome README.md\"");
 
         Assert.Equal("repo", options.Page);
         Assert.Equal("dark", options.Theme);
         Assert.Equal("github", options.Palette);
         Assert.Equal("sindresorhus/awesome", options.RepositoryFullName);
-        Assert.True(options.MarkdownLifecycleFixture);
-        Assert.Equal("MarkdownHost_RepositoryReadme", options.MarkdownLifecycleHost);
-        Assert.Equal("C:\\readmes\\awesome README.md", options.MarkdownCorpusPath);
+        Assert.Equal("C:\\readmes\\awesome README.md", options.Scenario);
     }
 
     [Fact]

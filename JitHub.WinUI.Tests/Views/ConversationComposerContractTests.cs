@@ -75,8 +75,6 @@ public sealed class ConversationComposerContractTests
         Assert.Contains("PullRequestSectionComboBox.Visibility = IsCompactWorkspace", source, StringComparison.Ordinal);
         Assert.Contains("PullRequestShySectionComboBox.Visibility = !IsCompactWorkspace", source, StringComparison.Ordinal);
         Assert.Contains("PullRequestCompactCommentForm.FocusEditor()", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("forceInlineComposerForLifecycle", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("JITHUB_MARKDOWN_LIFECYCLE", source, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -128,7 +126,6 @@ public sealed class ConversationComposerContractTests
         Assert.Contains("generation != _headerTransitionGeneration", source, StringComparison.Ordinal);
         Assert.Contains("IssueCommentForm.FocusEditor()", source, StringComparison.Ordinal);
         Assert.DoesNotContain("IssueCommentForm.EffectiveEditorHeight", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("JITHUB_MARKDOWN_LIFECYCLE", source, StringComparison.Ordinal);
     }
 
     [Fact]

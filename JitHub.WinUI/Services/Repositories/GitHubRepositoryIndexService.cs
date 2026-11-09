@@ -263,7 +263,7 @@ public sealed class GitHubRepositoryIndexService : IGitHubRepositoryIndexService
             GitHubQueryKeys.Create(partition, HttpMethod.Get, relativePath),
             GitHubCachePolicy.RepositoryResource,
             GitHubCachePolicy.TtlForResource(GitHubCachePolicy.RepositoryResource),
-            Phase0GitHubJsonSerializerContext.Default.GitHubRepositoryArray,
+            GitHubQueryJsonSerializerContext.Default.GitHubRepositoryArray,
             (string[])["account-repositories", AccountTag(partition), "user-repos", "repo"],
             priority);
     }

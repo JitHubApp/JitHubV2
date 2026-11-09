@@ -88,7 +88,7 @@ public sealed class GitHubMeQueryService : IGitHubMeQueryService
                 userId,
                 $"search/issues?q={Uri.EscapeDataString(search)}&sort=updated&order=desc&per_page={ClampPageSize(pageSize)}&page={ClampPage(page)}",
                 GitHubCachePolicy.SearchResource,
-                Phase0GitHubJsonSerializerContext.Default.GitHubSearchIssuesResponse,
+                GitHubQueryJsonSerializerContext.Default.GitHubSearchIssuesResponse,
                 ["me-issues", "search"],
                 page == 1 ? GitHubRequestPriority.Visible : GitHubRequestPriority.BackgroundRefresh);
         return refresh
@@ -168,7 +168,7 @@ public sealed class GitHubMeQueryService : IGitHubMeQueryService
                 userId,
                 $"search/issues?q={Uri.EscapeDataString(search)}&sort=updated&order=desc&per_page={ClampPageSize(pageSize)}&page={ClampPage(page)}",
                 GitHubCachePolicy.SearchResource,
-                Phase0GitHubJsonSerializerContext.Default.GitHubSearchIssuesResponse,
+                GitHubQueryJsonSerializerContext.Default.GitHubSearchIssuesResponse,
                 ["me-pull-requests", "search"],
                 page == 1 ? GitHubRequestPriority.Visible : GitHubRequestPriority.BackgroundRefresh);
         return refresh
@@ -201,7 +201,7 @@ public sealed class GitHubMeQueryService : IGitHubMeQueryService
                 userId,
                 $"repos/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(repositoryName)}/issues/{issueNumber}",
                 GitHubCachePolicy.MutableResource,
-                Phase0GitHubJsonSerializerContext.Default.GitHubIssue,
+                GitHubQueryJsonSerializerContext.Default.GitHubIssue,
                 ["me-issues", "issue-detail"]),
             QueryFetchPolicy.StaleFirst,
             cancellationToken);
@@ -270,7 +270,7 @@ public sealed class GitHubMeQueryService : IGitHubMeQueryService
                 userId,
                 $"repos/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(repositoryName)}/issues/{issueNumber}/comments?sort=created&direction=asc&per_page={ClampPageSize(pageSize)}&page={ClampPage(page)}",
                 GitHubCachePolicy.MutableResource,
-                Phase0GitHubJsonSerializerContext.Default.GitHubIssueCommentArray,
+                GitHubQueryJsonSerializerContext.Default.GitHubIssueCommentArray,
                 ["me-issues", "issue-comments"],
                 page == 1 ? GitHubRequestPriority.Visible : GitHubRequestPriority.BackgroundRefresh);
         return refresh
@@ -298,7 +298,7 @@ public sealed class GitHubMeQueryService : IGitHubMeQueryService
             userId,
             $"repos/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(repositoryName)}/issues/{issueNumber}",
             GitHubCachePolicy.MutableResource,
-            Phase0GitHubJsonSerializerContext.Default.GitHubIssue,
+            GitHubQueryJsonSerializerContext.Default.GitHubIssue,
             ["me-issues", "issue-detail"],
             GitHubRequestPriority.Prefetch);
         GitHubQuery<GitHubIssueComment[]> commentsQuery = CreateQuery(
@@ -306,7 +306,7 @@ public sealed class GitHubMeQueryService : IGitHubMeQueryService
             userId,
             $"repos/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(repositoryName)}/issues/{issueNumber}/comments?sort=created&direction=asc&per_page=50&page=1",
             GitHubCachePolicy.MutableResource,
-            Phase0GitHubJsonSerializerContext.Default.GitHubIssueCommentArray,
+            GitHubQueryJsonSerializerContext.Default.GitHubIssueCommentArray,
             ["me-issues", "issue-comments"],
             GitHubRequestPriority.Prefetch);
         Task<CachedResult<GitHubIssue>> issueTask = _queryService.GetAsync(
@@ -336,7 +336,7 @@ public sealed class GitHubMeQueryService : IGitHubMeQueryService
                 userId,
                 $"user/starred?sort=updated&direction=desc&per_page={ClampPageSize(pageSize)}&page=1",
                 GitHubCachePolicy.RepositoryResource,
-                Phase0GitHubJsonSerializerContext.Default.GitHubRepositoryArray,
+                GitHubQueryJsonSerializerContext.Default.GitHubRepositoryArray,
                 ["me-stars", "repo"]),
             QueryFetchPolicy.StaleFirst,
             cancellationToken);
@@ -359,7 +359,7 @@ public sealed class GitHubMeQueryService : IGitHubMeQueryService
                 userId,
                 $"gists?per_page={ClampPageSize(pageSize)}&page=1",
                 GitHubCachePolicy.MutableResource,
-                Phase0GitHubJsonSerializerContext.Default.GitHubGistArray,
+                GitHubQueryJsonSerializerContext.Default.GitHubGistArray,
                 ["me-gists"]),
             QueryFetchPolicy.StaleFirst,
             cancellationToken);

@@ -49,7 +49,7 @@ public sealed class GitHubStarQueryService : IGitHubStarQueryService
             GitHubQueryKeys.Create(normalizedUserId, HttpMethod.Get, path) + ":star-media-v1",
             GitHubCachePolicy.MutableResource,
             GitHubCachePolicy.TtlForResource(GitHubCachePolicy.MutableResource),
-            Phase0GitHubJsonSerializerContext.Default.GitHubStarredRepositoryArray,
+            GitHubQueryJsonSerializerContext.Default.GitHubStarredRepositoryArray,
             (string[])["me-stars", "star-library", "repo"],
             priority,
             StarMediaType);

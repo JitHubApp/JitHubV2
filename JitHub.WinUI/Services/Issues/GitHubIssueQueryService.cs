@@ -205,7 +205,7 @@ public sealed class GitHubIssueQueryService : IGitHubIssueQueryService
             accessToken,
             userId,
             $"repos/{Escape(owner)}/{Escape(repositoryName)}/issues/{issueNumber}",
-            Phase0GitHubJsonSerializerContext.Default.GitHubIssue,
+            GitHubQueryJsonSerializerContext.Default.GitHubIssue,
             ["issues", "issue-detail", IssueTag(owner, repositoryName, issueNumber)],
             cancellationToken);
 
@@ -220,7 +220,7 @@ public sealed class GitHubIssueQueryService : IGitHubIssueQueryService
             accessToken,
             userId,
             $"repos/{Escape(owner)}/{Escape(repositoryName)}/issues/{issueNumber}",
-            Phase0GitHubJsonSerializerContext.Default.GitHubIssue,
+            GitHubQueryJsonSerializerContext.Default.GitHubIssue,
             ["issues", "issue-detail", IssueTag(owner, repositoryName, issueNumber)],
             cancellationToken);
 
@@ -259,7 +259,7 @@ public sealed class GitHubIssueQueryService : IGitHubIssueQueryService
             accessToken,
             userId,
             $"repos/{Escape(owner)}/{Escape(repositoryName)}/issues/{issueNumber}/comments?sort=created&direction=asc&per_page={ClampPageSize(pageSize)}&page={Math.Max(1, pageNumber)}",
-            Phase0GitHubJsonSerializerContext.Default.GitHubIssueCommentArray,
+            GitHubQueryJsonSerializerContext.Default.GitHubIssueCommentArray,
             ["issues", "issue-comments", IssueTag(owner, repositoryName, issueNumber)],
             cancellationToken,
             pageNumber == 1 ? GitHubRequestPriority.Visible : GitHubRequestPriority.BackgroundRefresh);
@@ -309,7 +309,7 @@ public sealed class GitHubIssueQueryService : IGitHubIssueQueryService
             accessToken,
             userId,
             $"repos/{Escape(owner)}/{Escape(repositoryName)}/issues/{issueNumber}",
-            Phase0GitHubJsonSerializerContext.Default.GitHubIssue,
+            GitHubQueryJsonSerializerContext.Default.GitHubIssue,
             ["issues", "issue-detail", issueTag],
             cancellationToken,
             GitHubRequestPriority.Prefetch);
@@ -318,7 +318,7 @@ public sealed class GitHubIssueQueryService : IGitHubIssueQueryService
             accessToken,
             userId,
             $"repos/{Escape(owner)}/{Escape(repositoryName)}/issues/{issueNumber}/comments?sort=created&direction=asc&per_page={PageSize}&page=1",
-            Phase0GitHubJsonSerializerContext.Default.GitHubIssueCommentArray,
+            GitHubQueryJsonSerializerContext.Default.GitHubIssueCommentArray,
             ["issues", "issue-comments", issueTag],
             cancellationToken,
             GitHubRequestPriority.Prefetch);
@@ -365,7 +365,7 @@ public sealed class GitHubIssueQueryService : IGitHubIssueQueryService
             accessToken,
             userId,
             $"repos/{Escape(owner)}/{Escape(repositoryName)}/issues/{issueNumber}/events?per_page={ClampPageSize(pageSize)}&page={Math.Max(1, pageNumber)}",
-            Phase0GitHubJsonSerializerContext.Default.GitHubIssueEventArray,
+            GitHubQueryJsonSerializerContext.Default.GitHubIssueEventArray,
             ["issues", "issue-timeline", IssueTag(owner, repositoryName, issueNumber)],
             cancellationToken,
             pageNumber == 1 ? GitHubRequestPriority.Visible : GitHubRequestPriority.BackgroundRefresh);
@@ -429,7 +429,7 @@ public sealed class GitHubIssueQueryService : IGitHubIssueQueryService
                 accessToken,
                 userId,
                 $"repos/{Escape(owner)}/{Escape(repositoryName)}/assignees?per_page={PageSize}&page={page}",
-                Phase0GitHubJsonSerializerContext.Default.GitHubActorArray,
+                GitHubQueryJsonSerializerContext.Default.GitHubActorArray,
                 ["issues", "issue-metadata", RepositoryTag(owner, repositoryName)],
                 token,
                 page == 1 ? GitHubRequestPriority.Visible : GitHubRequestPriority.BackgroundRefresh,
@@ -442,7 +442,7 @@ public sealed class GitHubIssueQueryService : IGitHubIssueQueryService
                 accessToken,
                 userId,
                 $"repos/{Escape(owner)}/{Escape(repositoryName)}/labels?per_page={PageSize}&page={page}",
-                Phase0GitHubJsonSerializerContext.Default.GitHubLabelArray,
+                GitHubQueryJsonSerializerContext.Default.GitHubLabelArray,
                 ["issues", "issue-metadata", RepositoryTag(owner, repositoryName)],
                 token,
                 page == 1 ? GitHubRequestPriority.Visible : GitHubRequestPriority.BackgroundRefresh,
@@ -455,7 +455,7 @@ public sealed class GitHubIssueQueryService : IGitHubIssueQueryService
                 accessToken,
                 userId,
                 $"repos/{Escape(owner)}/{Escape(repositoryName)}/milestones?state=all&per_page={PageSize}&page={page}",
-                Phase0GitHubJsonSerializerContext.Default.GitHubMilestoneArray,
+                GitHubQueryJsonSerializerContext.Default.GitHubMilestoneArray,
                 ["issues", "issue-metadata", RepositoryTag(owner, repositoryName)],
                 token,
                 page == 1 ? GitHubRequestPriority.Visible : GitHubRequestPriority.BackgroundRefresh,
@@ -572,7 +572,7 @@ public sealed class GitHubIssueQueryService : IGitHubIssueQueryService
                 accessToken,
                 userId,
                 relativePath,
-                Phase0GitHubJsonSerializerContext.Default.GitHubReactionArray,
+                GitHubQueryJsonSerializerContext.Default.GitHubReactionArray,
                 tags,
                 cancellationToken,
                 priority,
@@ -581,7 +581,7 @@ public sealed class GitHubIssueQueryService : IGitHubIssueQueryService
                 accessToken,
                 userId,
                 relativePath,
-                Phase0GitHubJsonSerializerContext.Default.GitHubReactionArray,
+                GitHubQueryJsonSerializerContext.Default.GitHubReactionArray,
                 tags,
                 cancellationToken,
                 priority,
@@ -653,7 +653,7 @@ public sealed class GitHubIssueQueryService : IGitHubIssueQueryService
             userId,
             BuildIssueListPath(owner, repositoryName, queryOptions, pageSize, pageNumber),
             GitHubCachePolicy.MutableResource,
-            Phase0GitHubJsonSerializerContext.Default.GitHubIssueArray,
+            GitHubQueryJsonSerializerContext.Default.GitHubIssueArray,
             ["issues", "issue-list", RepositoryTag(owner, repositoryName)],
             pageNumber == 1 ? GitHubRequestPriority.Visible : GitHubRequestPriority.BackgroundRefresh);
         return refresh

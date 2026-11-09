@@ -54,8 +54,6 @@ public sealed partial class MarkdownViewer :
     private readonly RuntimeEventSubscription _runtimeEvents;
     private readonly MarkdownTheme _theme = new();
     private readonly IMarkdownImageResolver _imageResolver;
-    private readonly IMarkdownHostObserver _hostObserver;
-    private readonly IMarkdownViewerAutomationHooks _automation;
     private readonly MarkdownViewerFeedback _feedback;
     private readonly MarkdownLinkActivator _links;
     private MarkdownViewerDocumentPayload? _documentPayload;
@@ -65,7 +63,6 @@ public sealed partial class MarkdownViewer :
     private readonly MarkdownRendererInitialLayoutGate _layoutGate;
     private readonly MarkdownRendererAttachment<MarkdownRendererControl> _attachment;
     private bool _paletteSubscribed;
-    private IDisposable? _runtimeSettingsWatch;
 
     public static readonly DependencyProperty TextProperty = DependencyProperty.Register(
         nameof(Text),
@@ -276,12 +273,9 @@ public sealed partial class MarkdownViewer :
         _layoutGate = new MarkdownRendererInitialLayoutGate(this);
         _attachment = new MarkdownRendererAttachment<MarkdownRendererControl>(_rendererSlot, this);
 
-        _hostObserver = ResolveService<IMarkdownHostObserver>() ?? NoMarkdownHostObserver.Instance;
-        _automation = ResolveService<IMarkdownViewerAutomationHooks>() ?? NoMarkdownViewerAutomationHooks.Instance;
         var telemetry = new MarkdownViewerTelemetry(ResolveTelemetryService(), () => HostKind);
         _feedback = new MarkdownViewerFeedback(
             this,
-            _hostObserver,
             telemetry,
             LocalizedMarkdownResourceText.Instance);
         // Links launch through Windows directly. The DI launcher can be a
@@ -289,18 +283,9 @@ public sealed partial class MarkdownViewer :
         _links = new MarkdownLinkActivator(
             ResolveService<IMarkdownRouteNavigator>() ?? new ShellMarkdownRouteNavigator(Ioc.Default),
             new WindowsExternalUriLauncher(),
-            _hostObserver,
             telemetry);
 
-        // The production app defaults to trusted HTTPS image loading. An
-        // automation host can opt into the configurable privacy mode so that
-        // the prompt, consent, and retry path remain covered as well.
-        if (_automation.RequiresRemoteImageConsent)
-        {
-            AllowThirdPartyRemoteImagesByDefault = false;
-        }
-
-        _imageResolver = _automation.WrapImageResolver(ResolveImageResolver());
+        _imageResolver = ResolveImageResolver();
 
         Loaded += (_, _) =>
         {
@@ -436,7 +421,6 @@ public sealed partial class MarkdownViewer :
                 () => ThemePaletteRuntime.PaletteChanged += ThemePaletteRuntime_PaletteChanged,
                 nameof(ThemePaletteRuntime.PaletteChanged));
         }
-        _runtimeSettingsWatch ??= _automation.WatchRuntimeSettings(DispatcherQueue, QueueRendererResourceRefresh);
     }
 
     private void UnsubscribeRuntimeSettings()
@@ -447,8 +431,6 @@ public sealed partial class MarkdownViewer :
             nameof(ThemePaletteRuntime.PaletteChanged));
 
         _paletteSubscribed = false;
-        _runtimeSettingsWatch?.Dispose();
-        _runtimeSettingsWatch = null;
     }
 
 
@@ -571,7 +553,6 @@ public sealed partial class MarkdownViewer :
         string automationId = MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId);
         AutomationProperties.SetName(renderer, MarkdownHostContract.GetAutomationName(HostKind));
         AutomationProperties.SetAutomationId(renderer, automationId);
-        _hostObserver.OnHostReady(automationId);
         renderer.HorizontalAlignment = HorizontalAlignment.Stretch;
         renderer.VerticalAlignment = VerticalAlignment.Stretch;
     }
@@ -607,15 +588,9 @@ public sealed partial class MarkdownViewer :
     void IMarkdownRendererSlotHost<MarkdownRendererControl>.OnRendererTeardownFaulted(Exception exception)
     {
         ShowRendererDisposalFailure();
-        _hostObserver.OnRenderFailed(
-            MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId),
-            exception);
     }
 
     string? IMarkdownViewerNoticePresenter.HostKind => HostKind;
-
-    string IMarkdownViewerNoticePresenter.AutomationId =>
-        MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId);
 
     bool IMarkdownViewerNoticePresenter.AllowsThirdPartyRemoteImagesByDefault => AllowThirdPartyRemoteImagesByDefault;
 
@@ -726,7 +701,7 @@ public sealed partial class MarkdownViewer :
             return;
         }
 
-        string markdown = GetEffectiveMarkdown(CurrentDocument().Markdown);
+        string markdown = CurrentDocument().Markdown ?? string.Empty;
         bool markdownChanged = !string.Equals(renderer.Markdown, markdown, StringComparison.Ordinal);
         if (markdownChanged)
         {
@@ -739,10 +714,6 @@ public sealed partial class MarkdownViewer :
             renderer,
             MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId));
     }
-    private string GetEffectiveMarkdown(string? sourceMarkdown) =>
-        _automation.ComposeMarkdown(
-            sourceMarkdown ?? string.Empty,
-            MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId));
     private void OnRendererImageUnavailable(object? sender, MarkdownImageUnavailableEventArgs e) =>
         _feedback.OnImageUnavailable(e.Source, e.Reason);
 
@@ -773,8 +744,7 @@ public sealed partial class MarkdownViewer :
             () => _links.ActivateAsync(
                 e.Url,
                 MarkdownRendererConfigurator.ResolveImageBaseUri(document.BaseUrl),
-                document.DocumentSource,
-                MarkdownHostContract.GetAutomationId(HostKind, AutomationInstanceId)),
+                document.DocumentSource),
             "ui-markdown-viewer");
     }
     private void ApplyRendererResources()
@@ -787,7 +757,6 @@ public sealed partial class MarkdownViewer :
         ResourceDictionary resources = _rendererSlot.Current.Resources;
         MarkdownRendererResources.RemoveLocalOverrides(resources);
         MarkdownRendererResources.ApplyHostSurface(resources, SurfaceColorToken, HostKind);
-        _automation.ApplyRendererResources(resources);
 
         // The renderer recompiles one immutable style snapshot. Its shared
         // environment monitor remains the sole owner of real theme, accent,

@@ -26,7 +26,6 @@ public sealed class KeyboardAccessibilityAutomationContractTests
             "RunKeyboardAdaptiveDrawerMatrix(options);",
             "RunKeyboardContextMenuMatrix(options);",
             "RunKeyboardDialogMatrix(options);",
-            "RunKeyboardMarkdownMatrix(options);",
             "RunKeyboardCommitDiffSearchMatrix(options);",
         ];
 
@@ -47,7 +46,6 @@ public sealed class KeyboardAccessibilityAutomationContractTests
             "VirtualKeyShort.ENTER",
             "VirtualKeyShort.ESCAPE",
             "VirtualKeyShort.F10",
-            "VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_C",
         ];
         Assert.All(requiredInput, input => Assert.Contains(input, source, StringComparison.Ordinal));
 
@@ -58,7 +56,6 @@ public sealed class KeyboardAccessibilityAutomationContractTests
             "AssertPaneFocusReturned",
             "Gist context menu restores row focus",
             "Sign-out dialog restores opener focus",
-            "Markdown context menu restores host focus",
             "Shift+Tab returns to diff search",
         ];
         Assert.All(focusAssertions, assertion => Assert.Contains(assertion, source, StringComparison.Ordinal));
@@ -102,13 +99,6 @@ public sealed class KeyboardAccessibilityAutomationContractTests
                 "SettingsSignOutButton",
                 "SignOutConfirmationDialog",
                 "AssertDialogFocusContained",
-            ],
-            ["Markdown"] =
-            [
-                "MarkdownHost_Conversation_RepoIssuesBody",
-                "Patterns.Text.PatternOrDefault",
-                "ControlType.Hyperlink",
-                "Patterns.Invoke",
             ],
             ["commit diff search"] =
             [
@@ -164,7 +154,6 @@ public sealed class KeyboardAccessibilityAutomationContractTests
             "RunKeyboardAdaptiveDrawerMatrix",
             "RunKeyboardContextMenuMatrix",
             "RunKeyboardDialogMatrix",
-            "RunKeyboardMarkdownMatrix",
             "RunKeyboardCommitDiffSearchMatrix",
         ];
 

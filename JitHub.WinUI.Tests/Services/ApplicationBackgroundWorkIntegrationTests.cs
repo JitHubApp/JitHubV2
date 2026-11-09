@@ -109,7 +109,7 @@ public sealed class ApplicationBackgroundWorkIntegrationTests
     [Fact]
     public void ConcurrentRepositoryLoadsObserveFaultsBeforeOwnerCancellationCanExit()
     {
-        string observer = Read("JitHub.WinUI", "Services", "Phase0", "Telemetry", "BackgroundTaskObserver.cs");
+        string observer = Read("JitHub.WinUI", "Services", "Telemetry", "BackgroundTaskObserver.cs");
         string repository = Read(
             "JitHub.WinUI",
             "ViewModels",

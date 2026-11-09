@@ -96,10 +96,10 @@
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\IRepoTreeService.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\CodeViewer\RepoTreeService.cs" Link="Services\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\GitHubApiException.cs" Link="Services\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Phase0\*.cs" Link="Services\Phase0\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Phase0\Cache\*.cs" Link="Services\Phase0\Cache\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Phase0\GitHub\*.cs" Link="Services\Phase0\GitHub\%(Filename)%(Extension)" />
-    <Compile Include="..\JitHub.WinUI\Services\Phase0\Telemetry\*.cs" Link="Services\Phase0\Telemetry\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\GitHub\*.cs" Link="Services\GitHub\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Images\*.cs" Link="Services\Images\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Storage\*.cs" Link="Services\Storage\%(Filename)%(Extension)" />
+    <Compile Include="..\JitHub.WinUI\Services\Telemetry\*.cs" Link="Services\Telemetry\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Dashboard\*.cs" Link="Services\Dashboard\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Commits\*.cs" Link="Services\Commits\%(Filename)%(Extension)" />
     <Compile Include="..\JitHub.WinUI\Services\Issues\*.cs" Link="Services\Issues\%(Filename)%(Extension)" />

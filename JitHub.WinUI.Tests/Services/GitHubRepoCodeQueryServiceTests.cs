@@ -103,7 +103,7 @@ public sealed class GitHubRepoCodeQueryServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Tree_UsesPhase0CacheAndRepositoryInvalidationTag()
+    public async Task Tree_UsesQueryCacheAndRepositoryInvalidationTag()
     {
         (GitHubRepoCodeQueryService service, SqliteGitHubCacheStore store, RecordingTransport transport) = CreateService();
 

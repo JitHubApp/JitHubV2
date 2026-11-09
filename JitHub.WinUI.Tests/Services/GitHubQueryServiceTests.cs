@@ -13,9 +13,9 @@ using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
 
-public sealed class Phase0QueryServiceTests : IDisposable
+public sealed class GitHubQueryServiceTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "JitHubPhase0QueryTests", Guid.NewGuid().ToString());
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "JitHubQueryServiceTests", Guid.NewGuid().ToString());
 
     public void Dispose()
     {
@@ -35,12 +35,12 @@ public sealed class Phase0QueryServiceTests : IDisposable
     public async Task GetAsync_MissFetchesAndSecondReadUsesFreshCache()
     {
         SqliteGitHubCacheStore store = CreateStore();
-        FakeTransport transport = new(new Phase0TestPayload { Name = "network" });
+        FakeTransport transport = new(new CachedQueryTestPayload { Name = "network" });
         GitHubQueryService service = CreateService(store, transport);
-        GitHubQuery<Phase0TestPayload> query = CreateQuery("test/fresh", TimeSpan.FromMinutes(5));
+        GitHubQuery<CachedQueryTestPayload> query = CreateQuery("test/fresh", TimeSpan.FromMinutes(5));
 
-        CachedResult<Phase0TestPayload> first = await service.GetAsync(query, QueryFetchPolicy.StaleFirst);
-        CachedResult<Phase0TestPayload> second = await service.GetAsync(query, QueryFetchPolicy.StaleFirst);
+        CachedResult<CachedQueryTestPayload> first = await service.GetAsync(query, QueryFetchPolicy.StaleFirst);
+        CachedResult<CachedQueryTestPayload> second = await service.GetAsync(query, QueryFetchPolicy.StaleFirst);
 
         Assert.Equal("network", first.Value!.Name);
         Assert.Equal(CacheState.Fresh, second.CacheState);
@@ -51,13 +51,13 @@ public sealed class Phase0QueryServiceTests : IDisposable
     public async Task GetAsync_StaleCacheReturnsCachedValueBeforeBackgroundRefresh()
     {
         SqliteGitHubCacheStore store = CreateStore();
-        GitHubQuery<Phase0TestPayload> query = CreateQuery("test/stale", TimeSpan.FromMilliseconds(-1));
-        await store.PutAsync(query, CreateResponse(new Phase0TestPayload { Name = "cached" }));
+        GitHubQuery<CachedQueryTestPayload> query = CreateQuery("test/stale", TimeSpan.FromMilliseconds(-1));
+        await store.PutAsync(query, CreateResponse(new CachedQueryTestPayload { Name = "cached" }));
         TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        FakeTransport transport = new(new Phase0TestPayload { Name = "refreshed" }, release.Task);
+        FakeTransport transport = new(new CachedQueryTestPayload { Name = "refreshed" }, release.Task);
         GitHubQueryService service = CreateService(store, transport);
 
-        CachedResult<Phase0TestPayload> result = await service.GetAsync(query, QueryFetchPolicy.StaleFirst);
+        CachedResult<CachedQueryTestPayload> result = await service.GetAsync(query, QueryFetchPolicy.StaleFirst);
 
         Assert.Equal("cached", result.Value!.Name);
         Assert.Equal(CacheState.Stale, result.CacheState);
@@ -74,7 +74,7 @@ public sealed class Phase0QueryServiceTests : IDisposable
         RecordingTelemetryService telemetry = new();
         GitHubQueryService service = new(
             store,
-            new FakeTransport(new Phase0TestPayload { Name = "network" }),
+            new FakeTransport(new CachedQueryTestPayload { Name = "network" }),
             new GitHubRequestQueue(),
             telemetry);
 
@@ -112,7 +112,7 @@ public sealed class Phase0QueryServiceTests : IDisposable
         RecordingTelemetryService telemetry = new();
         GitHubQueryService service = new(
             store,
-            new FakeTransport(new Phase0TestPayload { Name = "unused" }),
+            new FakeTransport(new CachedQueryTestPayload { Name = "unused" }),
             new GitHubRequestQueue(),
             telemetry);
         using CancellationTokenSource cancellation = new();
@@ -132,18 +132,18 @@ public sealed class Phase0QueryServiceTests : IDisposable
     public async Task GetAsync_StalePrefetchPreservesPrefetchLaneDuringBackgroundRefresh()
     {
         SqliteGitHubCacheStore store = CreateStore();
-        GitHubQuery<Phase0TestPayload> query = CreateQuery(
+        GitHubQuery<CachedQueryTestPayload> query = CreateQuery(
             "test/stale-prefetch-priority",
             TimeSpan.FromMilliseconds(-1)) with
         {
             Priority = GitHubRequestPriority.Prefetch
         };
-        await store.PutAsync(query, CreateResponse(new Phase0TestPayload { Name = "cached" }));
+        await store.PutAsync(query, CreateResponse(new CachedQueryTestPayload { Name = "cached" }));
         TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        FakeTransport transport = new(new Phase0TestPayload { Name = "refreshed" }, release.Task);
+        FakeTransport transport = new(new CachedQueryTestPayload { Name = "refreshed" }, release.Task);
         GitHubQueryService service = CreateService(store, transport);
 
-        CachedResult<Phase0TestPayload> result = await service.GetAsync(query, QueryFetchPolicy.StaleFirst);
+        CachedResult<CachedQueryTestPayload> result = await service.GetAsync(query, QueryFetchPolicy.StaleFirst);
         await AsyncTestWait.UntilAsync(() => transport.LastRequest is not null);
 
         Assert.Equal("cached", result.Value!.Name);
@@ -155,8 +155,8 @@ public sealed class Phase0QueryServiceTests : IDisposable
     public async Task GetAsync_NetworkOnlyPromotesMatchingQueuedStaleRefreshToForeground()
     {
         SqliteGitHubCacheStore store = CreateStore();
-        GitHubQuery<Phase0TestPayload> query = CreateQuery("test/stale-promotion", TimeSpan.FromMilliseconds(-1));
-        await store.PutAsync(query, CreateResponse(new Phase0TestPayload { Name = "cached" }));
+        GitHubQuery<CachedQueryTestPayload> query = CreateQuery("test/stale-promotion", TimeSpan.FromMilliseconds(-1));
+        await store.PutAsync(query, CreateResponse(new CachedQueryTestPayload { Name = "cached" }));
         GitHubRequestQueue queue = new(foregroundReadConcurrency: 1, backgroundReadConcurrency: 1, mutationConcurrency: 1);
         TaskCompletionSource releaseBlocker = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource blockerStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -168,14 +168,14 @@ public sealed class Phase0QueryServiceTests : IDisposable
         });
         await blockerStarted.Task;
 
-        FakeTransport transport = new(new Phase0TestPayload { Name = "network" });
+        FakeTransport transport = new(new CachedQueryTestPayload { Name = "network" });
         GitHubQueryService service = new(store, transport, queue, new NoopTelemetryService());
-        CachedResult<Phase0TestPayload> stale = await service.GetAsync(query, QueryFetchPolicy.StaleFirst);
+        CachedResult<CachedQueryTestPayload> stale = await service.GetAsync(query, QueryFetchPolicy.StaleFirst);
         Assert.Equal("cached", stale.Value!.Name);
         await AsyncTestWait.UntilAsync(() => queue.InFlightCount == 2);
 
-        GitHubQuery<Phase0TestPayload> foregroundQuery = query with { Priority = GitHubRequestPriority.UserInitiated };
-        CachedResult<Phase0TestPayload> refreshed = await service
+        GitHubQuery<CachedQueryTestPayload> foregroundQuery = query with { Priority = GitHubRequestPriority.UserInitiated };
+        CachedResult<CachedQueryTestPayload> refreshed = await service
             .GetAsync(foregroundQuery, QueryFetchPolicy.NetworkOnly)
             .WaitAsync(AsyncTestWait.HangGuard);
 
@@ -191,20 +191,20 @@ public sealed class Phase0QueryServiceTests : IDisposable
     public async Task GetAsync_CancelledForegroundJoinDoesNotCancelStaleBackgroundRefresh()
     {
         SqliteGitHubCacheStore store = CreateStore();
-        GitHubQuery<Phase0TestPayload> query = CreateQuery("test/stale-caller-cancellation", TimeSpan.FromMilliseconds(-1));
-        await store.PutAsync(query, CreateResponse(new Phase0TestPayload { Name = "cached" }));
+        GitHubQuery<CachedQueryTestPayload> query = CreateQuery("test/stale-caller-cancellation", TimeSpan.FromMilliseconds(-1));
+        await store.PutAsync(query, CreateResponse(new CachedQueryTestPayload { Name = "cached" }));
         TaskCompletionSource releaseTransport = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        FakeTransport transport = new(new Phase0TestPayload { Name = "network" }, releaseTransport.Task);
+        FakeTransport transport = new(new CachedQueryTestPayload { Name = "network" }, releaseTransport.Task);
         GitHubRequestQueue queue = new(foregroundReadConcurrency: 1, backgroundReadConcurrency: 1, mutationConcurrency: 1);
         GitHubQueryService service = new(store, transport, queue, new NoopTelemetryService());
 
-        CachedResult<Phase0TestPayload> stale = await service.GetAsync(query, QueryFetchPolicy.StaleFirst);
+        CachedResult<CachedQueryTestPayload> stale = await service.GetAsync(query, QueryFetchPolicy.StaleFirst);
         Assert.Equal("cached", stale.Value!.Name);
         await AsyncTestWait.UntilAsync(() => transport.CallCount == 1);
 
         using CancellationTokenSource callerCancellation = new();
-        GitHubQuery<Phase0TestPayload> foregroundQuery = query with { Priority = GitHubRequestPriority.UserInitiated };
-        Task<CachedResult<Phase0TestPayload>> foreground = service.GetAsync(
+        GitHubQuery<CachedQueryTestPayload> foregroundQuery = query with { Priority = GitHubRequestPriority.UserInitiated };
+        Task<CachedResult<CachedQueryTestPayload>> foreground = service.GetAsync(
             foregroundQuery,
             QueryFetchPolicy.NetworkOnly,
             callerCancellation.Token);
@@ -223,12 +223,12 @@ public sealed class Phase0QueryServiceTests : IDisposable
     public async Task RefreshAsync_NotModifiedReusesCachedPayloadAndValidators()
     {
         SqliteGitHubCacheStore store = CreateStore();
-        GitHubQuery<Phase0TestPayload> query = CreateQuery("test/not-modified", TimeSpan.FromMinutes(5));
-        await store.PutAsync(query, CreateResponse(new Phase0TestPayload { Name = "cached" }, etag: "\"etag-cached\""));
+        GitHubQuery<CachedQueryTestPayload> query = CreateQuery("test/not-modified", TimeSpan.FromMinutes(5));
+        await store.PutAsync(query, CreateResponse(new CachedQueryTestPayload { Name = "cached" }, etag: "\"etag-cached\""));
         FakeTransport transport = new(notModified: true);
         GitHubQueryService service = CreateService(store, transport);
 
-        CachedResult<Phase0TestPayload> result = await service.RefreshAsync(query);
+        CachedResult<CachedQueryTestPayload> result = await service.RefreshAsync(query);
 
         Assert.Equal("cached", result.Value!.Name);
         Assert.Equal(CacheState.Fresh, result.CacheState);
@@ -240,7 +240,7 @@ public sealed class Phase0QueryServiceTests : IDisposable
     {
         SqliteGitHubCacheStore store = CreateStore();
         FakeTransport transport = new(
-            new Phase0TestPayload { Name = "after-retry" },
+            new CachedQueryTestPayload { Name = "after-retry" },
             rateLimitFailures: 1);
         GitHubQueryService service = new(
             store,
@@ -248,9 +248,9 @@ public sealed class Phase0QueryServiceTests : IDisposable
             new GitHubRequestQueue(),
             new NoopTelemetryService(),
             (_, _) => Task.CompletedTask);
-        GitHubQuery<Phase0TestPayload> query = CreateQuery("test/retry", TimeSpan.FromMinutes(5));
+        GitHubQuery<CachedQueryTestPayload> query = CreateQuery("test/retry", TimeSpan.FromMinutes(5));
 
-        CachedResult<Phase0TestPayload> result = await service.RefreshAsync(query);
+        CachedResult<CachedQueryTestPayload> result = await service.RefreshAsync(query);
 
         Assert.Equal("after-retry", result.Value!.Name);
         Assert.Equal(2, transport.CallCount);
@@ -260,7 +260,7 @@ public sealed class Phase0QueryServiceTests : IDisposable
     public async Task RefreshAsync_UpdatesAdaptivePrefetchRateLimitHeadroomForTheAccount()
     {
         SqliteGitHubCacheStore store = CreateStore();
-        FakeTransport transport = new(new Phase0TestPayload { Name = "network" });
+        FakeTransport transport = new(new CachedQueryTestPayload { Name = "network" });
         AdaptivePrefetchPolicy policy = new(new AvailablePrefetchEnvironment(), new NoopTelemetryService());
         GitHubQueryService service = new(
             store,
@@ -269,7 +269,7 @@ public sealed class Phase0QueryServiceTests : IDisposable
             new NoopTelemetryService(),
             new ApplicationTaskCoordinator(),
             policy);
-        GitHubQuery<Phase0TestPayload> query = CreateQuery("test/rate-headroom", TimeSpan.FromMinutes(5));
+        GitHubQuery<CachedQueryTestPayload> query = CreateQuery("test/rate-headroom", TimeSpan.FromMinutes(5));
 
         _ = await service.RefreshAsync(query);
 
@@ -325,9 +325,9 @@ public sealed class Phase0QueryServiceTests : IDisposable
     public async Task QueryCache_RejectsUnstableAccountPartitionBeforeCacheOrTransport(string accountPartition)
     {
         SqliteGitHubCacheStore store = CreateStore();
-        FakeTransport transport = new(new Phase0TestPayload { Name = "must-not-load" });
+        FakeTransport transport = new(new CachedQueryTestPayload { Name = "must-not-load" });
         GitHubQueryService service = CreateService(store, transport);
-        GitHubQuery<Phase0TestPayload> query = CreateQuery("test/account-partition", TimeSpan.FromMinutes(5)) with
+        GitHubQuery<CachedQueryTestPayload> query = CreateQuery("test/account-partition", TimeSpan.FromMinutes(5)) with
         {
             UserId = accountPartition,
             CacheKey = GitHubQueryKeys.Create(accountPartition, HttpMethod.Get, "test/account-partition")
@@ -354,16 +354,16 @@ public sealed class Phase0QueryServiceTests : IDisposable
         BlockingPutCacheStore store = new(innerStore);
         AccountWorkQuiescence accountWork = new();
         GitHubRequestQueue queue = new(accountWork);
-        FakeTransport transport = new(new Phase0TestPayload { Name = "late" });
+        FakeTransport transport = new(new CachedQueryTestPayload { Name = "late" });
         GitHubQueryService service = new(store, transport, queue, new NoopTelemetryService());
-        GitHubQuery<Phase0TestPayload> query = CreateQuery("test/cleanup-race", TimeSpan.FromMinutes(5));
+        GitHubQuery<CachedQueryTestPayload> query = CreateQuery("test/cleanup-race", TimeSpan.FromMinutes(5));
 
         // The final assertion relies on the partition starting empty. Checking that here
         // also creates the SQLite schema up front, so slow first-use disk I/O on a loaded
         // runner is not part of the refresh being raced below.
         Assert.Null(await innerStore.TryGetAsync(query));
 
-        Task<CachedResult<Phase0TestPayload>> refresh = service.RefreshAsync(query);
+        Task<CachedResult<CachedQueryTestPayload>> refresh = service.RefreshAsync(query);
         await store.PutStarted.Task.WaitAsync(AsyncTestWait.HangGuard);
 
         Task quiesce = accountWork.QuiesceAsync("u1");
@@ -393,7 +393,7 @@ public sealed class Phase0QueryServiceTests : IDisposable
             new GitHubRequestQueue(),
             new NoopTelemetryService());
 
-    private static GitHubQuery<Phase0TestPayload> CreateQuery(string path, TimeSpan ttl) =>
+    private static GitHubQuery<CachedQueryTestPayload> CreateQuery(string path, TimeSpan ttl) =>
         new(
             GitHubAuthenticationConstants.PublicAccessToken,
             "u1",
@@ -404,15 +404,15 @@ public sealed class Phase0QueryServiceTests : IDisposable
                 HttpMethod.Get,
                 path,
                 acceptMediaType: null,
-                Phase0TestJsonContext.Default.Phase0TestPayload.Type),
+                ServiceTestJsonContext.Default.CachedQueryTestPayload.Type),
             GitHubCachePolicy.MutableResource,
             ttl,
-            Phase0TestJsonContext.Default.Phase0TestPayload,
+            ServiceTestJsonContext.Default.CachedQueryTestPayload,
             ["test"],
             GitHubRequestPriority.Visible);
 
-    private static GitHubRestResponse<Phase0TestPayload> CreateResponse(
-        Phase0TestPayload payload,
+    private static GitHubRestResponse<CachedQueryTestPayload> CreateResponse(
+        CachedQueryTestPayload payload,
         string etag = "\"etag\"") =>
         new(
             HttpStatusCode.OK,
@@ -428,7 +428,7 @@ public sealed class Phase0QueryServiceTests : IDisposable
 
     private sealed class FakeTransport : IGitHubRestTransport
     {
-        private readonly Phase0TestPayload? _payload;
+        private readonly CachedQueryTestPayload? _payload;
         private readonly bool _notModified;
         private readonly Task? _waitFor;
         private readonly int? _responseRemaining;
@@ -437,7 +437,7 @@ public sealed class Phase0QueryServiceTests : IDisposable
         private int _rateLimitFailures;
 
         public FakeTransport(
-            Phase0TestPayload? payload = null,
+            CachedQueryTestPayload? payload = null,
             Task? waitFor = null,
             bool notModified = false,
             int rateLimitFailures = 0,
@@ -498,7 +498,7 @@ public sealed class Phase0QueryServiceTests : IDisposable
 
             return new GitHubRestResponse<T>(
                 HttpStatusCode.OK,
-                (T)(object)(_payload ?? new Phase0TestPayload { Name = "default" }),
+                (T)(object)(_payload ?? new CachedQueryTestPayload { Name = "default" }),
                 IsNotModified: false,
                 ETag: "\"etag-network\"",
                 LastModified: DateTimeOffset.UtcNow,

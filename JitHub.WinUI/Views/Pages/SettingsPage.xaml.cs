@@ -513,7 +513,7 @@ public sealed partial class SettingsPage : Page
         {
             await RunExclusiveUiActionAsync(sender as Control, async () =>
             {
-                if (await ConfirmAsync(L("Settings/Dialogs/ClearAllCache/Title", "Clear all Phase 0 cache data?"), L("Settings/Dialogs/ClearAllCache/Body", "This clears GitHub query metadata, payload files, avatars, images, and repository file previews. It does not clear diagnostics or Stars categories."), L("Settings/Dialogs/ClearAllCache/Primary", "Clear cache data"), "SettingsConfirmClearAllCache"))
+                if (await ConfirmAsync(L("Settings/Dialogs/ClearAllCache/Title", "Clear all cache data?"), L("Settings/Dialogs/ClearAllCache/Body", "This clears GitHub query metadata, payload files, avatars, images, and repository file previews. It does not clear diagnostics or Stars categories."), L("Settings/Dialogs/ClearAllCache/Primary", "Clear cache data"), "SettingsConfirmClearAllCache"))
                 {
                     await ViewModel.ClearAllCacheAsync();
                 }

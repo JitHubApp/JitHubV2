@@ -42,7 +42,7 @@ public sealed class GitHubDashboardQueryService : IGitHubDashboardQueryService
                     normalizedUserId,
                     "user",
                     GitHubCachePolicy.MutableResource,
-                    Phase0GitHubJsonSerializerContext.Default.GitHubUser,
+                    GitHubQueryJsonSerializerContext.Default.GitHubUser,
                     (string[])["dashboard-user"],
                     GitHubRequestPriority.Visible),
                 new GitHubUser(),
@@ -165,7 +165,7 @@ public sealed class GitHubDashboardQueryService : IGitHubDashboardQueryService
             userId,
             $"user/repos?sort=updated&direction=desc&per_page={RecentRepositoryCount}&page=1",
             GitHubCachePolicy.RepositoryResource,
-            Phase0GitHubJsonSerializerContext.Default.GitHubRepositoryArray,
+            GitHubQueryJsonSerializerContext.Default.GitHubRepositoryArray,
             (string[])["dashboard-recent-repos", "user-repos", "repo"],
             GitHubRequestPriority.Visible);
         return await FetchSectionAsync(query, Array.Empty<GitHubRepository>(), cancellationToken);
@@ -187,7 +187,7 @@ public sealed class GitHubDashboardQueryService : IGitHubDashboardQueryService
             userId,
             path,
             GitHubCachePolicy.MutableResource,
-            Phase0GitHubJsonSerializerContext.Default.GitHubActivityEventArray,
+            GitHubQueryJsonSerializerContext.Default.GitHubActivityEventArray,
             received
                 ? (string[])["dashboard-received-events"]
                 : (string[])["dashboard-user-events"],
@@ -205,7 +205,7 @@ public sealed class GitHubDashboardQueryService : IGitHubDashboardQueryService
             userId,
             $"notifications?all=false&participating=false&per_page={NotificationCount}",
             GitHubCachePolicy.MutableResource,
-            Phase0GitHubJsonSerializerContext.Default.GitHubNotificationThreadArray,
+            GitHubQueryJsonSerializerContext.Default.GitHubNotificationThreadArray,
             (string[])["dashboard-notifications", "notifications"],
             GitHubRequestPriority.Visible);
         return await FetchSectionAsync(
@@ -225,7 +225,7 @@ public sealed class GitHubDashboardQueryService : IGitHubDashboardQueryService
             userId,
             "user/starred?sort=updated&direction=desc&per_page=12&page=1",
             GitHubCachePolicy.RepositoryResource,
-            Phase0GitHubJsonSerializerContext.Default.GitHubRepositoryArray,
+            GitHubQueryJsonSerializerContext.Default.GitHubRepositoryArray,
             (string[])["dashboard-starred-repos", "repo"],
             GitHubRequestPriority.Visible);
         return await FetchSectionAsync(query, Array.Empty<GitHubRepository>(), cancellationToken);
@@ -244,7 +244,7 @@ public sealed class GitHubDashboardQueryService : IGitHubDashboardQueryService
             userId,
             path,
             GitHubCachePolicy.SearchResource,
-            Phase0GitHubJsonSerializerContext.Default.GitHubSearchCountResponse,
+            GitHubQueryJsonSerializerContext.Default.GitHubSearchCountResponse,
             (string[])[tag],
             GitHubRequestPriority.Visible);
         return await FetchSectionAsync(query, new GitHubSearchCountResponse(), cancellationToken);
@@ -267,7 +267,7 @@ public sealed class GitHubDashboardQueryService : IGitHubDashboardQueryService
                 userId,
                 $"search/repositories?q={Uri.EscapeDataString(queryText)}&sort=stars&order=desc&per_page=8&page=1",
                 GitHubCachePolicy.SearchResource,
-                Phase0GitHubJsonSerializerContext.Default.GitHubRepositorySearchResponse,
+                GitHubQueryJsonSerializerContext.Default.GitHubRepositorySearchResponse,
                 (string[])["dashboard-recommendation-search", "repo-search"],
                 GitHubRequestPriority.Visible);
             DashboardSectionResult<GitHubRepositorySearchResponse> search = await FetchSectionAsync(
