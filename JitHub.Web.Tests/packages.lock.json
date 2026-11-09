@@ -114,9 +114,13 @@
           "xunit.extensibility.core": "[2.9.2]"
         }
       },
+      "jithub.shared": {
+        "type": "Project"
+      },
       "jithub.web": {
         "type": "Project",
         "dependencies": {
+          "JitHub.Shared": "[1.0.0, )",
           "Microsoft.Extensions.Caching.StackExchangeRedis": "[10.0.8, )"
         }
       }

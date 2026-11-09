@@ -456,6 +456,9 @@
           "MarkdownRenderer": "[1.0.0-preview.1, )"
         }
       },
+      "jithub.shared": {
+        "type": "Project"
+      },
       "markdownrenderer": {
         "type": "Project",
         "dependencies": {

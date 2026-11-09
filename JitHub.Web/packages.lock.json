@@ -29,6 +29,9 @@
         "dependencies": {
           "Pipelines.Sockets.Unofficial": "2.2.8"
         }
+      },
+      "jithub.shared": {
+        "type": "Project"
       }
     }
   }

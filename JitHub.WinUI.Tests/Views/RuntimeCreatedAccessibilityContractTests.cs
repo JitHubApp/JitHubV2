@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using JitHub.WinUI.Tests.TestSupport;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Views;
@@ -29,12 +30,10 @@ public sealed class RuntimeCreatedAccessibilityContractTests
 
     public static IEnumerable<object[]> RuntimeCreationSites()
     {
-        string productRoot = Path.Combine(FindRepositoryRoot(), "JitHub.WinUI");
-        foreach (string path in Directory.EnumerateFiles(productRoot, "*.cs", SearchOption.AllDirectories)
-                     .Where(static path => !IsGeneratedOrBuildOutput(path))
-                     .OrderBy(static path => path, StringComparer.OrdinalIgnoreCase))
+        foreach (ProductSourceFile file in ProductSourceTree.EnumerateFiles("*.cs")
+                     .Where(static file => !IsGeneratedOrBuildOutput(file.FullPath)))
         {
-            yield return [Path.GetRelativePath(productRoot, path).Replace(Path.DirectorySeparatorChar, '/')];
+            yield return [file.RelativePath];
         }
     }
 
@@ -251,24 +250,6 @@ public sealed class RuntimeCreatedAccessibilityContractTests
         return -1;
     }
 
-    private static string ReadProductSource(string relativePath) => File.ReadAllText(Path.Combine(
-        FindRepositoryRoot(),
-        "JitHub.WinUI",
-        relativePath.Replace('/', Path.DirectorySeparatorChar)));
-
-    private static string FindRepositoryRoot()
-    {
-        DirectoryInfo? current = new(AppContext.BaseDirectory);
-        while (current is not null)
-        {
-            if (File.Exists(Path.Combine(current.FullName, "Directory.Build.props")))
-            {
-                return current.FullName;
-            }
-
-            current = current.Parent;
-        }
-
-        throw new DirectoryNotFoundException("Could not locate the repository root.");
-    }
+    private static string ReadProductSource(string relativePath) =>
+        File.ReadAllText(ProductSourceTree.GetFullPath(relativePath));
 }
