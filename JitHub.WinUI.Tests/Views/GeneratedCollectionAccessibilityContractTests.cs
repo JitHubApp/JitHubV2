@@ -11,6 +11,7 @@ using JitHub.Services;
 using JitHub.Services.CodeViewer;
 using JitHub.WinUI.ViewModels.CodeViewer;
 using JitHub.WinUI.ViewModels.Pages;
+using JitHub.WinUI.Tests.TestSupport;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Views;
@@ -312,7 +313,7 @@ public sealed class GeneratedCollectionAccessibilityContractTests
     {
         string viewModelSource = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
-            "JitHub.WinUI",
+            "JitHub.Core",
             "ViewModels",
             "Pages",
             "StarRepositoryViewItem.cs"));
@@ -463,10 +464,8 @@ public sealed class GeneratedCollectionAccessibilityContractTests
         }
     };
 
-    private static string ReadProductSource(string relativePath) => File.ReadAllText(Path.Combine(
-        FindRepositoryRoot(),
-        "JitHub.WinUI",
-        relativePath.Replace('/', Path.DirectorySeparatorChar)));
+    private static string ReadProductSource(string relativePath) =>
+        File.ReadAllText(ProductSourceTree.GetFullPath(relativePath));
 
     private static string FindRepositoryRoot()
     {

@@ -73,7 +73,7 @@ public sealed class GistsWorkspaceContractTests
     {
         string source = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
-            "JitHub.WinUI",
+            "JitHub.Core",
             "ViewModels",
             "Pages",
             "GistsPageViewModel.cs"));
@@ -198,7 +198,7 @@ public sealed class GistsWorkspaceContractTests
     {
         string viewModelSource = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
-            "JitHub.WinUI",
+            "JitHub.Core",
             "ViewModels",
             "Pages",
             "GistsPageViewModel.cs"));
@@ -221,7 +221,7 @@ public sealed class GistsWorkspaceContractTests
     {
         string source = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
-            "JitHub.WinUI",
+            "JitHub.Core",
             "ViewModels",
             "Pages",
             "GistsPageViewModel.cs"));
@@ -257,7 +257,7 @@ public sealed class GistsWorkspaceContractTests
     {
         string source = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
-            "JitHub.WinUI",
+            "JitHub.Core",
             "ViewModels",
             "Pages",
             "GistsPageViewModel.cs"));

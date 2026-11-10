@@ -1,3 +1,4 @@
+using JitHub.WinUI.Tests.TestSupport;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
@@ -28,7 +29,7 @@ public sealed class ReleaseExceptionContainmentContractTests
         string root = FindRepositoryRoot();
         string source = File.ReadAllText(Path.Combine(
             root,
-            "JitHub.WinUI",
+            "JitHub.Core",
             "ViewModels",
             "CodeViewer",
             "RepoFileTreeViewModel.cs"));
@@ -42,12 +43,9 @@ public sealed class ReleaseExceptionContainmentContractTests
     [Fact]
     public void ProductCode_HasNoContinuationBasedExceptionOwnership()
     {
-        string productRoot = Path.Combine(FindRepositoryRoot(), "JitHub.WinUI");
-        string[] offenders = Directory
-            .EnumerateFiles(productRoot, "*.cs", SearchOption.AllDirectories)
-            .Where(path => !IsGeneratedPath(path))
-            .Where(path => File.ReadAllText(path).Contains(".ContinueWith(", StringComparison.Ordinal))
-            .Select(path => Path.GetRelativePath(productRoot, path))
+        string[] offenders = ProductSourceTree.EnumerateFiles("*.cs")
+            .Where(file => File.ReadAllText(file.FullPath).Contains(".ContinueWith(", StringComparison.Ordinal))
+            .Select(static file => $"{file.ProjectName}/{file.RelativePath}")
             .OrderBy(static path => path, StringComparer.Ordinal)
             .ToArray();
 
@@ -73,13 +71,12 @@ public sealed class ReleaseExceptionContainmentContractTests
     [Fact]
     public void GitHubErrorReaders_DoNotConvertCancellationIntoApiFailures()
     {
-        string servicesRoot = Path.Combine(FindRepositoryRoot(), "JitHub.WinUI", "Services");
         string[] sourceFiles =
         [
-            Path.Combine(servicesRoot, "Gists", "GitHubGistQueryService.cs"),
-            Path.Combine(servicesRoot, "Notifications", "GitHubNotificationQueryService.cs"),
-            Path.Combine(servicesRoot, "Profile", "GitHubGraphQlTransport.cs"),
-            Path.Combine(servicesRoot, "Profile", "GitHubProfileQueryService.cs")
+            ProductSourceTree.GetFullPath("Services/Gists/GitHubGistQueryService.cs"),
+            ProductSourceTree.GetFullPath("Services/Notifications/GitHubNotificationQueryService.cs"),
+            ProductSourceTree.GetFullPath("Services/Profile/GitHubGraphQlTransport.cs"),
+            ProductSourceTree.GetFullPath("Services/Profile/GitHubProfileQueryService.cs")
         ];
 
         foreach (string sourceFile in sourceFiles)
@@ -107,7 +104,7 @@ public sealed class ReleaseExceptionContainmentContractTests
         string root = FindRepositoryRoot();
         string helper = File.ReadAllText(Path.Combine(
             root,
-            "JitHub.WinUI",
+            "JitHub.Core",
             "Helpers",
             "UserFacingError.cs"));
         string app = File.ReadAllText(Path.Combine(root, "JitHub.WinUI", "App.xaml.cs"));
@@ -140,12 +137,9 @@ public sealed class ReleaseExceptionContainmentContractTests
     [Fact]
     public void ProductFailures_AreNotOwnedOnlyByTheVisualStudioDebugger()
     {
-        string productRoot = Path.Combine(FindRepositoryRoot(), "JitHub.WinUI");
-        string[] offenders = Directory
-            .EnumerateFiles(productRoot, "*.cs", SearchOption.AllDirectories)
-            .Where(path => !IsGeneratedPath(path))
-            .Where(path => File.ReadAllText(path).Contains("Debug.Write", StringComparison.Ordinal))
-            .Select(path => Path.GetRelativePath(productRoot, path))
+        string[] offenders = ProductSourceTree.EnumerateFiles("*.cs")
+            .Where(file => File.ReadAllText(file.FullPath).Contains("Debug.Write", StringComparison.Ordinal))
+            .Select(static file => $"{file.ProjectName}/{file.RelativePath}")
             .OrderBy(static path => path, StringComparer.Ordinal)
             .ToArray();
 
@@ -169,10 +163,6 @@ public sealed class ReleaseExceptionContainmentContractTests
 
     private static string NormalizeNewlines(string value) =>
         value.Replace("\r\n", "\n", StringComparison.Ordinal);
-
-    private static bool IsGeneratedPath(string path) =>
-        path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ||
-        path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase);
 
     private static string FindRepositoryRoot()
     {

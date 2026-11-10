@@ -1,5 +1,6 @@
 using Xunit;
 using System.Text.RegularExpressions;
+using JitHub.WinUI.Tests.TestSupport;
 
 namespace JitHub.WinUI.Tests.Services;
 
@@ -246,7 +247,7 @@ public sealed class ProductPerformanceProbeContractTests
 
         string notificationsViewModel = File.ReadAllText(Path.Combine(
             root,
-            "JitHub.WinUI",
+            "JitHub.Core",
             "ViewModels",
             "Pages",
             "NotificationsPageViewModel.cs"));
@@ -641,7 +642,7 @@ public sealed class ProductPerformanceProbeContractTests
 
         string repoFileTreeViewModel = File.ReadAllText(Path.Combine(
             root,
-            "JitHub.WinUI",
+            "JitHub.Core",
             "ViewModels",
             "CodeViewer",
             "RepoFileTreeViewModel.cs"));
@@ -733,15 +734,15 @@ public sealed class ProductPerformanceProbeContractTests
 
         string repoCodeSelectionViewModelSource = File.ReadAllText(Path.Combine(
             root,
-            "JitHub.WinUI",
+            "JitHub.Core",
             "ViewModels",
             "CodeViewer",
             "RepoCodePageViewModel.cs"));
         int primeSelectionStart = repoCodeSelectionViewModelSource.IndexOf(
-            "internal bool PrimeTreeNodeSelection(",
+            "public bool PrimeTreeNodeSelection(",
             StringComparison.Ordinal);
         int hydrateSelectionStart = repoCodeSelectionViewModelSource.IndexOf(
-            "internal async Task HydratePrimedTreeNodeSelectionAsync(",
+            "public async Task HydratePrimedTreeNodeSelectionAsync(",
             primeSelectionStart,
             StringComparison.Ordinal);
         string primeSelection = repoCodeSelectionViewModelSource[primeSelectionStart..hydrateSelectionStart];
@@ -868,7 +869,7 @@ public sealed class ProductPerformanceProbeContractTests
 
         string repoCodeViewModelSource = File.ReadAllText(Path.Combine(
             root,
-            "JitHub.WinUI",
+            "JitHub.Core",
             "ViewModels",
             "CodeViewer",
             "RepoCodePageViewModel.cs"));
@@ -907,7 +908,7 @@ public sealed class ProductPerformanceProbeContractTests
 
         string pullRequestQueryService = File.ReadAllText(Path.Combine(
             root,
-            "JitHub.WinUI",
+            "JitHub.Core",
             "Services",
             "PullRequests",
             "GitHubPullRequestQueryService.cs"));
@@ -1198,13 +1199,14 @@ public sealed class ProductPerformanceProbeContractTests
         string root = FindRepositoryRoot();
         string productSource = string.Join(
             Environment.NewLine,
-            Directory.EnumerateFiles(Path.Combine(root, "JitHub.WinUI"), "*.cs", SearchOption.AllDirectories)
+            ProductSourceTree.EnumerateFiles("*.cs")
+                .Select(static file => file.FullPath)
                 .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
                 .Select(File.ReadAllText));
 
         string budgetSource = File.ReadAllText(Path.Combine(
             root,
-            "JitHub.WinUI",
+            "JitHub.Performance",
             "Services",
             "Performance",
             "ProductPerformanceBudget.cs"));
@@ -1278,12 +1280,12 @@ public sealed class ProductPerformanceProbeContractTests
 
         string viewModel = File.ReadAllText(Path.Combine(
             root,
-            "JitHub.WinUI",
+            "JitHub.Core",
             "ViewModels",
             "CodeViewer",
             "RepoCodePageViewModel.cs"));
-        int primeMethod = viewModel.IndexOf("internal bool PrimeTreeNodeSelection(", StringComparison.Ordinal);
-        int hydrateMethod = viewModel.IndexOf("internal async Task HydratePrimedTreeNodeSelectionAsync(", StringComparison.Ordinal);
+        int primeMethod = viewModel.IndexOf("public bool PrimeTreeNodeSelection(", StringComparison.Ordinal);
+        int hydrateMethod = viewModel.IndexOf("public async Task HydratePrimedTreeNodeSelectionAsync(", StringComparison.Ordinal);
         Assert.True(primeMethod >= 0 && hydrateMethod > primeMethod);
         string primeBody = viewModel[primeMethod..hydrateMethod];
         Assert.Contains("Tree.SelectedNode = current;", primeBody, StringComparison.Ordinal);
@@ -1357,20 +1359,20 @@ public sealed class ProductPerformanceProbeContractTests
         string root = FindRepositoryRoot();
         Dictionary<string, string> consumers = new(StringComparer.Ordinal)
         {
-            ["home"] = "JitHub.WinUI/Services/Dashboard/GitHubDashboardQueryService.cs",
+            ["home"] = "JitHub.Core/Services/Dashboard/GitHubDashboardQueryService.cs",
             ["settings"] = "JitHub.WinUI/Performance/ProductPerformanceVisualProbe.cs",
-            ["profile"] = "JitHub.WinUI/Services/Profile/GitHubProfileQueryService.cs",
-            ["my_issues"] = "JitHub.WinUI/Services/Me/GitHubMeQueryService.cs",
-            ["my_pull_requests"] = "JitHub.WinUI/Services/Me/GitHubMeQueryService.cs",
-            ["stars"] = "JitHub.WinUI/Services/Stars/GitHubStarQueryService.cs",
-            ["gists"] = "JitHub.WinUI/Services/Gists/GitHubGistQueryService.cs",
-            ["notifications"] = "JitHub.WinUI/Services/Notifications/GitHubNotificationQueryService.cs",
-            ["repo_manage"] = "JitHub.WinUI/Services/Repositories/GitHubRepositoryIndexService.cs",
-            ["repo_search"] = "JitHub.WinUI/Services/Repositories/GitHubRepositorySearchQueryService.cs",
-            ["repo_code"] = "JitHub.WinUI/Services/CodeViewer/GitHubRepoCodeQueryService.cs",
-            ["repo_issues"] = "JitHub.WinUI/Services/Issues/GitHubIssueQueryService.cs",
-            ["repo_pull_requests"] = "JitHub.WinUI/Services/PullRequests/GitHubPullRequestQueryService.cs",
-            ["repo_commits"] = "JitHub.WinUI/Services/Commits/GitHubCommitQueryService.cs"
+            ["profile"] = "JitHub.Core/Services/Profile/GitHubProfileQueryService.cs",
+            ["my_issues"] = "JitHub.Core/Services/Me/GitHubMeQueryService.cs",
+            ["my_pull_requests"] = "JitHub.Core/Services/Me/GitHubMeQueryService.cs",
+            ["stars"] = "JitHub.Core/Services/Stars/GitHubStarQueryService.cs",
+            ["gists"] = "JitHub.Core/Services/Gists/GitHubGistQueryService.cs",
+            ["notifications"] = "JitHub.Core/Services/Notifications/GitHubNotificationQueryService.cs",
+            ["repo_manage"] = "JitHub.Core/Services/Repositories/GitHubRepositoryIndexService.cs",
+            ["repo_search"] = "JitHub.Core/Services/Repositories/GitHubRepositorySearchQueryService.cs",
+            ["repo_code"] = "JitHub.Core/Services/CodeViewer/GitHubRepoCodeQueryService.cs",
+            ["repo_issues"] = "JitHub.Core/Services/Issues/GitHubIssueQueryService.cs",
+            ["repo_pull_requests"] = "JitHub.Core/Services/PullRequests/GitHubPullRequestQueryService.cs",
+            ["repo_commits"] = "JitHub.Core/Services/Commits/GitHubCommitQueryService.cs"
         };
 
         Assert.Equal(14, consumers.Count);

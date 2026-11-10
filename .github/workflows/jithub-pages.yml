@@ -5,13 +5,13 @@ on:
     branches: [main]
     paths:
       - 'JitHub.Site/**'
-      - 'JitHub.WinUI/Models/ThemePaletteCatalog.cs'
+      - 'JitHub.Shared/Models/ThemePaletteCatalog.cs'
       - '.github/workflows/jithub-pages.yml'
   pull_request:
     branches: [main]
     paths:
       - 'JitHub.Site/**'
-      - 'JitHub.WinUI/Models/ThemePaletteCatalog.cs'
+      - 'JitHub.Shared/Models/ThemePaletteCatalog.cs'
       - '.github/workflows/jithub-pages.yml'
   workflow_dispatch:
 

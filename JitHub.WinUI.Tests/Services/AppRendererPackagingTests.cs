@@ -37,6 +37,10 @@ public sealed class AppRendererPackagingTests
         @"ThirdPartyNotices\Microsoft.WindowsAppSDK\WinUI-NOTICE.txt",
     ];
 
+    // The item types whose copy-to-publish files a project contributes to its
+    // own publish folder and, through ProjectReference, to a referencing app's.
+    private static readonly string[] CopiedItemTypes = ["Content", "None"];
+
     [Fact]
     [Trait("Category", "ReleaseSecurity")]
     public void App_ReferencesEveryShippingRendererFeature()
@@ -57,10 +61,9 @@ public sealed class AppRendererPackagingTests
     public void App_PublishesTheRendererAndPlatformThirdPartyNotices()
     {
         string root = FindRepositoryRoot();
-        MsBuildEvaluation app = EvaluateApp(root, "Content");
-        Dictionary<string, MsBuildItem> published = app.GetItems("Content")
-            .GroupBy(static content => PublishedPath(content), StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(static group => group.Key, static group => group.Last(), StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, MsBuildItem> published = PublishedFiles(root)
+            .GroupBy(static file => file.Path, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(static group => group.Key, static group => group.Last().Item, StringComparer.OrdinalIgnoreCase);
 
         Assert.All(RequiredNotices, notice =>
         {
@@ -74,22 +77,54 @@ public sealed class AppRendererPackagingTests
         });
     }
 
-    private static string PublishedPath(MsBuildItem content)
+    /// <summary>
+    /// The files the app's publish copies by item: those of its referenced
+    /// projects, which the SDK collects from immediate references only, and
+    /// then the app's own, which publish last and so win a shared path.
+    /// </summary>
+    private static IEnumerable<(string Path, MsBuildItem Item)> PublishedFiles(string root)
     {
-        string link = content.GetMetadata("Link");
-        return string.IsNullOrEmpty(link) ? content.Identity : link;
+        MsBuildEvaluation app = EvaluateApp(root, ["ProjectReference", .. CopiedItemTypes]);
+        string[] references = app.GetItems("ProjectReference")
+            .Where(static reference => !string.Equals(reference.GetMetadata("Private"), "false", StringComparison.OrdinalIgnoreCase))
+            .Select(static reference => reference.GetMetadata("FullPath"))
+            .ToArray();
+        MsBuildEvaluation[] referencedProjects = references
+            .AsParallel()
+            .AsOrdered()
+            .Select(static project => Evaluate(project, CopiedItemTypes))
+            .ToArray();
+
+        return referencedProjects
+            .Append(app)
+            .SelectMany(static project => CopiedItemTypes.SelectMany(project.GetItems))
+            .Where(static item => item.GetMetadata("CopyToPublishDirectory") is "PreserveNewest" or "Always")
+            .Select(static item => (PublishedPath(item), item));
     }
 
-    private static MsBuildEvaluation EvaluateApp(string root, string itemType) =>
+    private static string PublishedPath(MsBuildItem item)
+    {
+        string targetPath = item.GetMetadata("TargetPath");
+        if (!string.IsNullOrEmpty(targetPath))
+            return targetPath;
+
+        string link = item.GetMetadata("Link");
+        return string.IsNullOrEmpty(link) ? item.Identity : link;
+    }
+
+    private static MsBuildEvaluation EvaluateApp(string root, params string[] itemTypes) =>
+        Evaluate(Path.Combine(root, "JitHub.WinUI", "JitHub.WinUI.csproj"), itemTypes);
+
+    private static MsBuildEvaluation Evaluate(string projectPath, IEnumerable<string> itemTypes) =>
         MsBuild.Evaluate(
-            Path.Combine(root, "JitHub.WinUI", "JitHub.WinUI.csproj"),
+            projectPath,
             new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["Configuration"] = "Release",
                 ["Platform"] = "x64",
             },
             [],
-            [itemType]);
+            itemTypes);
 
     private static string FindRepositoryRoot()
     {

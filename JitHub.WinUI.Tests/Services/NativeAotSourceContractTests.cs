@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using JitHub.WinUI.Tests.TestSupport;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
@@ -373,8 +374,10 @@ public sealed class NativeAotSourceContractTests
     {
         string root = FindRepositoryRoot();
         string appRoot = Path.Combine(root, "JitHub.WinUI");
-        string[] sourcePaths = Directory.EnumerateFiles(appRoot, "*.cs", SearchOption.AllDirectories)
-            .Where(path => !IsBuildOutput(path))
+        // The bindable types live in the app and in the libraries it
+        // references, so every product source is searched for them.
+        string[] sourcePaths = ProductSourceTree.EnumerateFiles("*.cs")
+            .Select(static file => file.FullPath)
             .ToArray();
         string allSource = string.Join(Environment.NewLine, sourcePaths.Select(File.ReadAllText));
 
@@ -445,7 +448,7 @@ public sealed class NativeAotSourceContractTests
         string root = FindRepositoryRoot();
         string models = File.ReadAllText(Path.Combine(
             root,
-            "JitHub.WinUI",
+            "JitHub.Core",
             "Services",
             "Commits",
             "CommitDiffModels.cs"));
@@ -480,7 +483,7 @@ public sealed class NativeAotSourceContractTests
         string root = FindRepositoryRoot();
         string viewModel = File.ReadAllText(Path.Combine(
             root,
-            "JitHub.WinUI",
+            "JitHub.Core",
             "ViewModels",
             "Pages",
             "SettingsPageViewModel.cs"));

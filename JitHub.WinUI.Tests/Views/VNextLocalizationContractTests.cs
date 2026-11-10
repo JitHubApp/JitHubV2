@@ -251,7 +251,7 @@ public sealed class VNextLocalizationContractTests
 
         string localizationService = File.ReadAllText(Path.Combine(
             root,
-            "JitHub.WinUI",
+            "JitHub.Core",
             "Services",
             "LocalizationService.cs"));
         Assert.Contains("LocalizedResourceText.GetString", localizationService, StringComparison.Ordinal);
@@ -261,7 +261,7 @@ public sealed class VNextLocalizationContractTests
 
         string localizedResourceText = File.ReadAllText(Path.Combine(
             root,
-            "JitHub.WinUI",
+            "JitHub.Core",
             "Helpers",
             "LocalizedResourceText.cs"));
         Assert.Contains("Microsoft.Windows.ApplicationModel.Resources", localizedResourceText, StringComparison.Ordinal);

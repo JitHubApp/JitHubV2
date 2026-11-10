@@ -23,8 +23,21 @@
                       GeneratePathProperty="true"
                       PrivateAssets="all"
                       ExcludeAssets="compile;runtime" />
-    <None Include="..\..\eng\textmate\THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="THIRD-PARTY-NOTICES.md" Visible="false" />
-    <None Include="..\..\eng\textmate\GRAMMAR-PROVENANCE.v2.0.3.json" Pack="true" PackagePath="licenses/GRAMMAR-PROVENANCE.json" Visible="false" />
+    <!--
+      The grammar notices and provenance live in eng\textmate because both
+      grammar packages and the TextMate release-evidence scripts share them.
+      Common is the grammar provider apps ship, so it also carries them through
+      ProjectReference into the app's output and publish folders; Grammars.All
+      packs them without copying, so a project referencing both gets one copy.
+    -->
+    <None Include="..\..\eng\textmate\THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="THIRD-PARTY-NOTICES.md" Visible="false"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest"
+          TargetPath="ThirdPartyNotices\MarkdownRenderer.TextMate\THIRD-PARTY-NOTICES.md" />
+    <None Include="..\..\eng\textmate\GRAMMAR-PROVENANCE.v2.0.3.json" Pack="true" PackagePath="licenses/GRAMMAR-PROVENANCE.json" Visible="false"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest"
+          TargetPath="ThirdPartyNotices\MarkdownRenderer.TextMate\GRAMMAR-PROVENANCE.json" />
   </ItemGroup>
 
   <ItemGroup>

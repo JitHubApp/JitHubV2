@@ -394,7 +394,7 @@ public sealed class RepoCodeAccessibilityContractTests
         string dataTable = File.ReadAllText(Path.Combine(
             root, "JitHub.WinUI", "Views", "Controls", "App", "AppDataTable.xaml.cs"));
         string breadcrumb = File.ReadAllText(Path.Combine(
-            root, "JitHub.WinUI", "ViewModels", "CodeViewer", "RepoCodeBreadcrumbViewModel.cs"));
+            root, "JitHub.Core", "ViewModels", "CodeViewer", "RepoCodeBreadcrumbViewModel.cs"));
         string page = File.ReadAllText(Path.Combine(
             root, "JitHub.WinUI", "Views", "Pages", "RepoCodePage.xaml.cs"));
 

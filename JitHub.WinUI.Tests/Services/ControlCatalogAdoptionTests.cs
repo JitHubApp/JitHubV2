@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using JitHub.WinUI.Tests.TestSupport;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
@@ -87,7 +88,6 @@ public sealed partial class ControlCatalogAdoptionTests
     public void EveryCatalogStyle_HasAConcreteConsumerOutsideTheCatalog()
     {
         string root = FindRepositoryRoot();
-        string productRoot = Path.Combine(root, "JitHub.WinUI");
         string catalogPath = GetCatalogPath(root);
         XDocument catalog = XDocument.Load(catalogPath);
         XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
@@ -99,10 +99,10 @@ public sealed partial class ControlCatalogAdoptionTests
             .Select(static key => key!)
             .ToArray();
 
-        string[] consumerSources = Directory.EnumerateFiles(productRoot, "*.*", SearchOption.AllDirectories)
+        string[] consumerSources = ProductSourceTree.EnumerateFiles("*.*")
+            .Select(static file => file.FullPath)
             .Where(path => path.EndsWith(".xaml", StringComparison.OrdinalIgnoreCase)
                 || path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
-            .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
             .Where(path => !string.Equals(path, catalogPath, StringComparison.OrdinalIgnoreCase))
             .Select(File.ReadAllText)
             .ToArray();
@@ -457,13 +457,11 @@ public sealed partial class ControlCatalogAdoptionTests
     [Fact]
     public void RuntimeContentDialogs_ApplyBothCatalogDialogPrimitivesPerInstance()
     {
-        string productRoot = Path.Combine(FindRepositoryRoot(), "JitHub.WinUI");
         int discovered = 0;
         Dictionary<string, int> discoveredByFile = new(StringComparer.OrdinalIgnoreCase);
-        foreach (string path in Directory.EnumerateFiles(productRoot, "*.cs", SearchOption.AllDirectories)
-                     .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)))
+        foreach (ProductSourceFile file in ProductSourceTree.EnumerateFiles("*.cs"))
         {
-            string source = File.ReadAllText(path);
+            string source = File.ReadAllText(file.FullPath);
             MatchCollection declarations = ContentDialogDeclarationRegex().Matches(source);
             for (int index = 0; index < declarations.Count; index++)
             {
@@ -474,7 +472,7 @@ public sealed partial class ControlCatalogAdoptionTests
                 Assert.Contains($"AppDialogStyleCatalog.Apply({variable});", instanceScope, StringComparison.Ordinal);
                 Assert.Contains($"AutomationProperties.SetAutomationId({variable}", instanceScope, StringComparison.Ordinal);
                 discovered++;
-                string relativePath = Path.GetRelativePath(productRoot, path);
+                string relativePath = file.RelativePath.Replace('/', Path.DirectorySeparatorChar);
                 discoveredByFile[relativePath] = discoveredByFile.GetValueOrDefault(relativePath) + 1;
             }
         }
@@ -483,7 +481,8 @@ public sealed partial class ControlCatalogAdoptionTests
         Assert.Equal(
             ExpectedRuntimeDialogInstancesByFile.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase),
             discoveredByFile.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase));
-        string catalogSource = File.ReadAllText(Path.Combine(productRoot, "Views", "Dialogs", "AppDialogStyleCatalog.cs"));
+        string catalogSource = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(), "JitHub.WinUI", "Views", "Dialogs", "AppDialogStyleCatalog.cs"));
         Assert.Contains("GetStyle(\"AppContentDialogStyle\")", catalogSource, StringComparison.Ordinal);
         Assert.Contains("GetStyle(\"AppDialogContentStyle\")", catalogSource, StringComparison.Ordinal);
     }

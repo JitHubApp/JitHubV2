@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using JitHub.Markdown.Images;
+using JitHub.WinUI.Tests.TestSupport;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
@@ -35,7 +36,7 @@ public sealed partial class GitHubReadArchitectureConformanceTests
         string settings = Read(root, "JitHub.WinUI", "Views", "Pages", "SettingsPage.xaml.cs");
         string settingsViewModel = Read(
             root,
-            "JitHub.WinUI",
+            "JitHub.Core",
             "ViewModels",
             "Pages",
             "SettingsPageViewModel.cs");
@@ -46,7 +47,7 @@ public sealed partial class GitHubReadArchitectureConformanceTests
             "Settings",
             "SettingsSourceNavigationService.cs");
         string shell = Read(root, "JitHub.WinUI", "ViewModels", "Pages", "ShellPageViewModel.cs");
-        string stars = Read(root, "JitHub.WinUI", "Services", "Stars", "GitHubStarLibraryService.cs");
+        string stars = Read(root, "JitHub.Core", "Services", "Stars", "GitHubStarLibraryService.cs");
 
         Assert.Contains("ViewModel.OpenSourceRepositoryAsync", settings, StringComparison.Ordinal);
         Assert.Contains("ISettingsSourceNavigationService", settingsViewModel, StringComparison.Ordinal);
@@ -66,8 +67,8 @@ public sealed partial class GitHubReadArchitectureConformanceTests
     public void ProfileGraphQlReadsUseTheSharedAccountPartitionedQueryFacade()
     {
         string root = FindRepositoryRoot();
-        string profile = Read(root, "JitHub.WinUI", "Services", "Profile", "GitHubProfileQueryService.cs");
-        string graphQlQuery = Read(root, "JitHub.WinUI", "Services", "Profile", "GitHubGraphQlQueryService.cs");
+        string profile = Read(root, "JitHub.Core", "Services", "Profile", "GitHubProfileQueryService.cs");
+        string graphQlQuery = Read(root, "JitHub.Core", "Services", "Profile", "GitHubGraphQlQueryService.cs");
 
         Assert.Contains("IGitHubGraphQlQueryService", profile, StringComparison.Ordinal);
         Assert.Contains("_graphQlQueryService.GetAsync", profile, StringComparison.Ordinal);
@@ -93,7 +94,7 @@ public sealed partial class GitHubReadArchitectureConformanceTests
     public void ProfileMutationsUseOwnedAccountWorkAndViewModelCancellation()
     {
         string root = FindRepositoryRoot();
-        string service = Read(root, "JitHub.WinUI", "Services", "Profile", "GitHubProfileQueryService.cs");
+        string service = Read(root, "JitHub.Core", "Services", "Profile", "GitHubProfileQueryService.cs");
         string viewModel = Read(root, "JitHub.WinUI", "ViewModels", "Pages", "ProfilePageViewModel.cs");
 
         Assert.Contains("_requestQueue.EnqueueForAccountAsync", service, StringComparison.Ordinal);
@@ -113,10 +114,9 @@ public sealed partial class GitHubReadArchitectureConformanceTests
     public void ReachableOwnersDoNotAddDirectGitHubClientReads()
     {
         string root = FindRepositoryRoot();
-        string appRoot = Path.Combine(root, "JitHub.WinUI");
         List<string> violations = [];
 
-        foreach (string file in EnumerateOwnerFiles(appRoot))
+        foreach (string file in EnumerateOwnerFiles())
         {
             string fileName = Path.GetFileName(file);
             string source = File.ReadAllText(file);
@@ -138,8 +138,7 @@ public sealed partial class GitHubReadArchitectureConformanceTests
     public void ViewsAndViewModelsDoNotInvokeLegacyGitHubReads()
     {
         string root = FindRepositoryRoot();
-        string appRoot = Path.Combine(root, "JitHub.WinUI");
-        string[] violations = EnumerateOwnerFiles(appRoot)
+        string[] violations = EnumerateOwnerFiles()
             .Where(file => file.Contains($"{Path.DirectorySeparatorChar}Views{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ||
                            file.Contains($"{Path.DirectorySeparatorChar}ViewModels{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
             .Where(file => FindReadInvocations(File.ReadAllText(file), LegacyServiceDeclarationRegex()).Any())
@@ -153,8 +152,7 @@ public sealed partial class GitHubReadArchitectureConformanceTests
     public void DirectHttpTrafficIsConfinedToDocumentedAdapters()
     {
         string root = FindRepositoryRoot();
-        string servicesRoot = Path.Combine(root, "JitHub.WinUI", "Services");
-        string[] violations = Directory.EnumerateFiles(servicesRoot, "*.cs", SearchOption.AllDirectories)
+        string[] violations = EnumerateProductFiles("Services")
             .Where(file => FindHttpInvocations(File.ReadAllText(file)).Any())
             .Where(file => !DirectHttpAdapters.Contains(Path.GetFileName(file)))
             .Select(file => Path.GetRelativePath(root, file))
@@ -187,12 +185,17 @@ public sealed partial class GitHubReadArchitectureConformanceTests
         return false;
     }
 
-    private static IEnumerable<string> EnumerateOwnerFiles(string appRoot) =>
+    // Views, view models and services live in the app and in the libraries it
+    // references (JitHub.Core and the others ProductSourceTree lists), in the
+    // same folder layout, so each owner folder is scanned in every project.
+    private static IEnumerable<string> EnumerateOwnerFiles() =>
         new[] { "Views", "ViewModels", "Services" }
-            .SelectMany(directory => Directory.EnumerateFiles(
-                Path.Combine(appRoot, directory),
-                "*.cs",
-                SearchOption.AllDirectories));
+            .SelectMany(EnumerateProductFiles);
+
+    private static IEnumerable<string> EnumerateProductFiles(string directory) =>
+        ProductSourceTree.EnumerateFiles("*.cs")
+            .Where(file => file.RelativePath.StartsWith(directory + "/", StringComparison.Ordinal))
+            .Select(static file => file.FullPath);
 
     private static IEnumerable<string> FindReadInvocations(string source, Regex declarationRegex)
     {

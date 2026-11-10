@@ -11,8 +11,11 @@ on:
       - MarkdownRenderer/**
       - JitHub.WinUI/**
       - JitHub.WinUI.Tests/**
+      - JitHub.Core/**
       - JitHub.Markdown/**
       - JitHub.Markdown.Tests/**
+      - JitHub.Performance/**
+      - JitHub.Shared/**
       - docs/markdown-renderer/**
       - JitHub.slnx
       - .github/workflows/markdown-renderer-preview.yml
@@ -28,8 +31,11 @@ on:
       - MarkdownRenderer/**
       - JitHub.WinUI/**
       - JitHub.WinUI.Tests/**
+      - JitHub.Core/**
       - JitHub.Markdown/**
       - JitHub.Markdown.Tests/**
+      - JitHub.Performance/**
+      - JitHub.Shared/**
       - docs/markdown-renderer/**
       - JitHub.slnx
       - .github/workflows/markdown-renderer-preview.yml

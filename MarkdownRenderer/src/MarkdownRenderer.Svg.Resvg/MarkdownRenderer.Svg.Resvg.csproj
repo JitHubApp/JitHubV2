@@ -45,6 +45,12 @@
     <None Include="$(ResvgWorkerDirectory)\RESVG_WORKER_IDENTITY.json" Pack="true" PackagePath="provenance\RESVG_WORKER_IDENTITY.json" Visible="false" Condition="'$(RequireResvgWorkerSignatures)' != 'true' and '$(ResvgWorkerDirectory)' != '$(MSBuildProjectDirectory)' and Exists('$(ResvgWorkerDirectory)\RESVG_WORKER_IDENTITY.json')" />
     <None Update="licenses\RESVG-LICENSE-MIT.txt" Pack="true" PackagePath="licenses\RESVG-LICENSE-MIT.txt" />
     <None Update="licenses\RUST-DEPENDENCY-LICENSES.txt" Pack="true" PackagePath="licenses\RUST-DEPENDENCY-LICENSES.txt" />
+    <!-- The notices an app that ships this feature must carry. They flow through
+         ProjectReference into the app's output and publish folders. -->
+    <None Update="THIRD-PARTY-NOTICES.md;licenses\RESVG-LICENSE-MIT.txt;licenses\RUST-DEPENDENCY-LICENSES.txt;RESVG_PROVENANCE.json;NATIVE_RUST_DEPENDENCIES.json"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest"
+          TargetPath="ThirdPartyNotices\MarkdownRenderer.Svg.Resvg\%(Filename)%(Extension)" />
     <None Update="native\Cargo.lock" Pack="true" PackagePath="provenance\native\Cargo.lock" />
     <None Update="native\PROTOCOL.md" Pack="true" PackagePath="build\native\PROTOCOL.md" />
     <None Update="runtimes\win-x86\native\MarkdownRenderer.Svg.Resvg.Worker.exe" Pack="true" PackagePath="runtimes\win-x86\native\MarkdownRenderer.Svg.Resvg.Worker.exe" Condition="'$(ResvgWorkerDirectory)' == '$(MSBuildProjectDirectory)' and Exists('runtimes\win-x86\native\MarkdownRenderer.Svg.Resvg.Worker.exe')" />

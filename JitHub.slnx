@@ -9,6 +9,14 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
+  <Project Path="JitHub.Core/JitHub.Core.csproj">
+    <Platform Solution="*|ARM" Project="x86" />
+    <Platform Solution="*|ARM64" Project="ARM64" />
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="*|x86" Project="x86" />
+    <Platform Solution="Debug|Any CPU" Project="x64" />
+    <Platform Solution="Release|Any CPU" Project="x86" />
+  </Project>
   <Project Path="JitHub.Markdown/JitHub.Markdown.csproj">
     <Platform Solution="*|ARM" Project="x86" />
     <Platform Solution="*|ARM64" Project="ARM64" />
@@ -25,6 +33,8 @@
     <Platform Solution="Debug|Any CPU" Project="x64" />
     <Platform Solution="Release|Any CPU" Project="x86" />
   </Project>
+  <Project Path="JitHub.Performance/JitHub.Performance.csproj" />
+  <Project Path="JitHub.Shared/JitHub.Shared.csproj" />
   <Project Path="JitHub.Web.Tests/JitHub.Web.Tests.csproj" />
   <Project Path="JitHub.Web/JitHub.Web.csproj" />
   <Project Path="JitHub.WinUI.Automation/JitHub.WinUI.Automation.csproj" />

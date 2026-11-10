@@ -190,13 +190,16 @@ public partial class App : Application
     private IServiceProvider BuildServices()
     {
         var services = new ServiceCollection();
+        services.AddSingleton(Program.CurrentLaunchOptions);
         services.AddSingleton(new NavigationService(_mainWindow!.ContentFrameHost));
+        services.AddSingleton<IUnauthorizedNavigator>(
+            static provider => provider.GetRequiredService<NavigationService>());
         services.AddSingleton<DialogPresentationCoordinator>();
         services.AddSingleton<ModalService>();
         services.AddSingleton<INotificationService, NotificationService>();
         services.AddSingleton<IAppStoragePathProvider, AppStoragePathProvider>();
         services.AddSingleton<ILocalDiagnosticsStore, LocalDiagnosticsStore>();
-        services.AddSingleton<IStoreTelemetrySink, StoreTelemetrySink>();
+        services.AddSingleton<IStoreTelemetrySink>(static _ => StoreEngagementTelemetrySinkFactory.Create());
         services.AddSingleton<ITelemetryService, TelemetryService>();
         services.AddSingleton<IAccountWorkQuiescence, AccountWorkQuiescence>();
         services.AddSingleton<IApplicationTaskCoordinator, ApplicationTaskCoordinator>();
@@ -252,6 +255,8 @@ public partial class App : Application
         services.AddSingleton<IGitHubService>(static provider => new GitHubService(
             provider.GetRequiredService<IGitHubClientService>(),
             provider.GetRequiredService<GitHubMarkdownImageResolver>()));
+        services.AddSingleton<IGitHubAccessTokenSink>(
+            static provider => provider.GetRequiredService<IGitHubService>());
         RegisterMarkdownHostBoundaries(services);
         services.AddSingleton<IAuthService>(provider =>
         {
@@ -285,7 +290,15 @@ public partial class App : Application
         services.AddSingleton<StarLibrarySessionState>();
         services.AddTransient<StarLibraryPageViewModel>();
         services.AddTransient<GistsPageViewModel>();
-        services.AddTransient<NotificationsPageViewModel>();
+        services.AddTransient(static provider => new NotificationsPageViewModel(
+            provider.GetRequiredService<IGitHubNotificationQueryService>(),
+            provider.GetRequiredService<IAuthService>(),
+            provider.GetRequiredService<IAccountService>(),
+            provider.GetRequiredService<ITelemetryService>(),
+            provider.GetRequiredService<NotificationInboxState>(),
+            provider.GetRequiredService<ShellPageViewModel>().OpenNotification,
+            provider.GetRequiredService<IApplicationTaskCoordinator>(),
+            provider.GetRequiredService<ShellPageViewModel>().PrefetchNotificationAsync));
         services.AddSingleton<ShellPageViewModel>();
         services.AddTransient<RepoCodePageViewModel>();
 

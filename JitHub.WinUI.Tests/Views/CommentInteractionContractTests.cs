@@ -4,6 +4,7 @@ using System.Linq;
 using System.Xml.Linq;
 using JitHub.Markdown;
 using JitHub.WinUI.Helpers;
+using JitHub.WinUI.Tests.TestSupport;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Views;
@@ -180,7 +181,7 @@ public sealed class CommentInteractionContractTests
     [Fact]
     public void GitHubClientSupportsCommentEditingModerationAndReactions()
     {
-        string service = File.ReadAllText(ReadPath("JitHub.WinUI", "Services", "GitHubClientService.cs"));
+        string service = File.ReadAllText(ReadPath("JitHub.Core", "Services", "GitHubClientService.cs"));
 
         Assert.Contains("UpdateIssueCommentAsync", service, StringComparison.Ordinal);
         Assert.Contains("DeleteIssueCommentAsync", service, StringComparison.Ordinal);
@@ -199,7 +200,7 @@ public sealed class CommentInteractionContractTests
         string issueViewModel = File.ReadAllText(ReadPath("JitHub.WinUI", "ViewModels", "Pages", "RepoIssuePageViewModel.cs"));
         string pullRequestPage = File.ReadAllText(ReadPath("JitHub.WinUI", "Views", "Pages", "RepoPullRequestPage.xaml.cs"));
         string pullRequestViewModel = File.ReadAllText(ReadPath("JitHub.WinUI", "ViewModels", "Pages", "RepoPullRequestPageViewModel.cs"));
-        string clipboard = File.ReadAllText(ReadPath("JitHub.WinUI", "Helpers", "PlatformHelper.cs"));
+        string clipboard = File.ReadAllText(ReadPath("JitHub.Core", "Helpers", "PlatformHelper.cs"));
 
         Assert.Contains("TrackCommentQuoteReply", issuePage, StringComparison.Ordinal);
         Assert.Contains("TrackCommentCopyLink(PlatformHelper.CopyString", issuePage, StringComparison.Ordinal);
@@ -215,9 +216,8 @@ public sealed class CommentInteractionContractTests
         Assert.Contains("catch (Exception ex)", clipboard, StringComparison.Ordinal);
 
         string productRoot = FindRepositoryRoot();
-        string[] directClipboardWrites = Directory
-            .EnumerateFiles(Path.Combine(productRoot, "JitHub.WinUI"), "*.cs", SearchOption.AllDirectories)
-            .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
+        string[] directClipboardWrites = ProductSourceTree.EnumerateFiles("*.cs")
+            .Select(static file => file.FullPath)
             .Where(path => !path.EndsWith(Path.Combine("Helpers", "PlatformHelper.cs"), StringComparison.OrdinalIgnoreCase))
             .Where(path => File.ReadAllText(path).Contains("Clipboard.SetContent", StringComparison.Ordinal))
             .Select(path => Path.GetRelativePath(productRoot, path))
@@ -255,12 +255,12 @@ public sealed class CommentInteractionContractTests
     public void PreviewDataExercisesReactionCountsAndNestedReviewReplies()
     {
         string issues = File.ReadAllText(ReadPath(
-            "JitHub.WinUI",
+            "JitHub.Core",
             "Services",
             "Issues",
             "GitHubIssueQueryService.cs"));
         string pullRequests = File.ReadAllText(ReadPath(
-            "JitHub.WinUI",
+            "JitHub.Core",
             "Services",
             "PullRequests",
             "GitHubPullRequestQueryService.cs"));

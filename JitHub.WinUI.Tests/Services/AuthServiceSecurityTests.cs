@@ -670,8 +670,8 @@ public sealed class AuthServiceSecurityTests
         RecordingTelemetryService telemetry = new();
         AuthService service = new(
             new TestAppConfig(), account, client, githubService,
-            new NavigationService(), credentials,
-            new AccountWorkQuiescence(), telemetry, prompt, deviceClient);
+            new RecordingUnauthorizedNavigator(), credentials,
+            new AccountWorkQuiescence(), telemetry, prompt, deviceClient, new LaunchOptions());
         return new(service, client, githubService, credentials, account, telemetry, prompt, deviceClient);
     }
 
@@ -698,10 +698,16 @@ public sealed class AuthServiceSecurityTests
         public long GetUser() => UserId;
     }
 
-    private sealed class RecordingGitHubService : IGitHubService
+    private sealed class RecordingGitHubService : IGitHubAccessTokenSink
     {
         public string? AccessToken { get; private set; }
         public void SetAccessToken(string? token) => AccessToken = token;
+    }
+
+    private sealed class RecordingUnauthorizedNavigator : IUnauthorizedNavigator
+    {
+        public int UnauthorizedCallCount { get; private set; }
+        public void Unauthorized() => UnauthorizedCallCount++;
     }
 
     private sealed class MemoryCredentialVaultBackend : ICredentialVaultBackend

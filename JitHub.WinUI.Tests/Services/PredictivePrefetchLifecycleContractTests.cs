@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Xml.Linq;
+using JitHub.WinUI.Tests.TestSupport;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;
@@ -155,26 +156,6 @@ public sealed class PredictivePrefetchLifecycleContractTests
         Assert.Contains("repo_pull_requests.hover.cancelled", codeBehind, StringComparison.Ordinal);
     }
 
-    private static string ReadProductFile(params string[] relativeSegments)
-    {
-        string root = FindRepositoryRoot();
-        string path = Path.Combine([root, "JitHub.WinUI", .. relativeSegments]);
-        return File.ReadAllText(path);
-    }
-
-    private static string FindRepositoryRoot()
-    {
-        DirectoryInfo? current = new(AppContext.BaseDirectory);
-        while (current is not null)
-        {
-            if (Directory.Exists(Path.Combine(current.FullName, "JitHub.WinUI")))
-            {
-                return current.FullName;
-            }
-
-            current = current.Parent;
-        }
-
-        throw new DirectoryNotFoundException("Could not locate the JitHub repository root.");
-    }
+    private static string ReadProductFile(params string[] relativeSegments) =>
+        File.ReadAllText(ProductSourceTree.GetFullPath(string.Join('/', relativeSegments)));
 }

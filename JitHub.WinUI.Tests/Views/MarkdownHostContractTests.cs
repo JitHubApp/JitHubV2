@@ -5,6 +5,7 @@ using System.Linq;
 using System.Xml;
 using System.Xml.Linq;
 using JitHub.Markdown;
+using JitHub.WinUI.Tests.TestSupport;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Views;
@@ -202,8 +203,9 @@ public sealed class MarkdownHostContractTests
     public void ProductHosts_DoNotInstantiateRendererDirectly()
     {
         string root = FindRepositoryRoot();
-        string viewsRoot = Path.Combine(root, "JitHub.WinUI", "Views");
-        string[] offenders = Directory.EnumerateFiles(viewsRoot, "*.*", SearchOption.AllDirectories)
+        string[] offenders = ProductSourceTree.EnumerateFiles("*.*")
+            .Where(static file => file.RelativePath.StartsWith("Views/", StringComparison.Ordinal))
+            .Select(static file => file.FullPath)
             .Where(path => Path.GetExtension(path) is ".cs" or ".xaml")
             .Where(path => !path.EndsWith("MarkdownViewer.xaml.cs", StringComparison.OrdinalIgnoreCase))
             .Where(path => File.ReadAllText(path).Contains("MarkdownRendererControl", StringComparison.Ordinal))
