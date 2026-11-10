@@ -67,7 +67,7 @@ public sealed class MarkdownHostResourceContractTests
         string control = File.ReadAllText(Path.Combine(
             root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "MarkdownRendererControl.cs"));
         string peer = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Accessibility", "MarkdownLinkPeer.cs"));
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Accessibility", "Internal", "Peers", "MarkdownLinkPeer.cs"));
 
         // Recording, raising and restyling a toggle, forgetting states when the document or
         // parser changes, the per-pipeline ordinal copy and the off-thread post are covered by
@@ -75,13 +75,13 @@ public sealed class MarkdownHostResourceContractTests
         // of a disclosure run, raising the public event and the peer's patterns need a live
         // control or XAML runtime.
         string inputCapture = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Pipeline", "RebuildInputCapture.cs"));
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Internal", "Pipeline", "Rebuild", "RebuildInputCapture.cs"));
         Assert.Contains("DisclosureStates = _documentInputs.CopyDisclosureStates()", inputCapture, StringComparison.Ordinal);
         string layoutSetup = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Pipeline", "RebuildLayoutSetup.cs"));
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Internal", "Pipeline", "Rebuild", "RebuildLayoutSetup.cs"));
         Assert.Contains("DisclosureStates = inputs.DisclosureStates", layoutSetup, StringComparison.Ordinal);
         string linkActivation = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Input", "LinkActivation.cs"));
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Internal", "Input", "Links", "LinkActivation.cs"));
         Assert.Contains("TryActivateDisclosure", linkActivation, StringComparison.Ordinal);
         Assert.Contains("DisclosureToggled?.Invoke", control, StringComparison.Ordinal);
         Assert.Contains("IExpandCollapseProvider", peer, StringComparison.Ordinal);
@@ -99,14 +99,14 @@ public sealed class MarkdownHostResourceContractTests
         // and linked-image activation targets by LinkedAtomicTargetTests.
         string root = FindRepositoryRoot();
         string automationPeer = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Accessibility", "MarkdownAutomationPeer.cs"));
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Accessibility", "Internal", "Peers", "MarkdownAutomationPeer.cs"));
         string imagePeer = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Accessibility", "MarkdownLinkedImagePeer.cs"));
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Accessibility", "Internal", "Peers", "MarkdownLinkedImagePeer.cs"));
 
         string automation = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "RendererAutomation.cs"));
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Internal", "RendererAutomation.cs"));
         string focusableItems = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Focus", "FocusableItemsPublication.cs"));
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Internal", "Focus", "FocusableItemsPublication.cs"));
         Assert.Contains("TryGetFocusedLinkedAtomic", automation, StringComparison.Ordinal);
         Assert.Contains("_owner.AutomationHost.ActivateLinkedAtomic(_run);", imagePeer, StringComparison.Ordinal);
         Assert.Contains("LinkTargets.TryCreateLinkedAtomicTarget(run, out LinkTarget target)", automation, StringComparison.Ordinal);
@@ -128,12 +128,12 @@ public sealed class MarkdownHostResourceContractTests
         string control = File.ReadAllText(Path.Combine(
             root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "MarkdownRendererControl.cs"));
         string selectionCommands = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Selection", "SelectionCommands.cs"));
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Internal", "Selection", "SelectionCommands.cs"));
 
         Assert.Contains("CodeBlockCopyButtonStyle", control, StringComparison.Ordinal);
         Assert.Contains("CopyCompleted?.Invoke", control, StringComparison.Ordinal);
         string codeBlockClipboard = File.ReadAllText(Path.Combine(
-            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Embeds", "CodeBlockClipboard.cs"));
+            root, "MarkdownRenderer", "src", "MarkdownRenderer", "Controls", "Internal", "Embeds", "CodeBlockClipboard.cs"));
         Assert.Contains("MarkdownCopyKind.CodeBlock", codeBlockClipboard, StringComparison.Ordinal);
         Assert.Contains("_host.RaiseCopyCompleted(MarkdownCopyKind.Selection", selectionCommands, StringComparison.Ordinal);
         // Copy telemetry results are covered by MarkdownViewerFeedbackTests. The viewer
@@ -198,7 +198,9 @@ public sealed class MarkdownHostResourceContractTests
             "src",
             "MarkdownRenderer",
             "Controls",
+            "Internal",
             "Pipeline",
+            "Commit",
             "ReplacementPublisher.cs"));
         Assert.Contains("bool sameDocumentIdentity = _committedImageDocumentId == imageDocumentId", renderer, StringComparison.Ordinal);
         Assert.Contains("string? imageDocumentId = plan.Inputs.ImageDocumentSource?.DocumentId;", renderer, StringComparison.Ordinal);

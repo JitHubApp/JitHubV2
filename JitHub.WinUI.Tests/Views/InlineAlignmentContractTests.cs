@@ -250,6 +250,7 @@ public sealed class InlineAlignmentContractTests
             "src",
             "MarkdownRenderer",
             "Gfm",
+            "Internal",
             "Renderers",
             "TaskListItemRenderer.cs"));
         string factorySource = File.ReadAllText(Path.Combine(
@@ -258,6 +259,8 @@ public sealed class InlineAlignmentContractTests
             "src",
             "MarkdownRenderer",
             "Layout",
+            "Internal",
+            "TaskMarkers",
             "TaskMarkerControlFactory.cs"));
 
         Assert.Contains("GetTaskMarkerSize(context.ThemeSnapshot, editableRequested)", rendererSource, StringComparison.Ordinal);
