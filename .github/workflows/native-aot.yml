@@ -27,6 +27,14 @@ jobs:
         shell: pwsh
         run: .\eng\Test-RepositoryProjectStructure.ps1
 
+      - name: Test source organization check
+        shell: pwsh
+        run: .\eng\tests\Test-SourceOrganization.Tests.ps1
+
+      - name: Check that C# sources follow their namespaces and folders
+        shell: pwsh
+        run: .\eng\Test-SourceOrganization.ps1
+
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: ./global.json
