@@ -1,4 +1,4 @@
-using JitHub.Markdown;
+using JitHub.Markdown.Links;
 using JitHub.Models;
 using JitHub.Services;
 using JitHub.WinUI.Tests.TestSupport;

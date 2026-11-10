@@ -1,6 +1,6 @@
 ﻿using System.Globalization;
 
-namespace JitHub.Markdown;
+namespace JitHub.Markdown.Localization;
 
 /// <summary>
 /// Looks up the app's localized text for a resource key. Every caller supplies

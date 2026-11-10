@@ -1,8 +1,9 @@
 using System;
 using System.Collections.Generic;
 using JitHub.Markdown.Hosting;
+using JitHub.Markdown.Telemetry.Internal;
 
-namespace JitHub.Markdown;
+namespace JitHub.Markdown.Telemetry;
 
 /// <summary>
 /// Emits a Markdown host's telemetry events with the shared property schema.

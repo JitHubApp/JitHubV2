@@ -1,4 +1,4 @@
-﻿namespace JitHub.Markdown;
+﻿namespace JitHub.Markdown.Telemetry.Internal;
 
 /// <summary>
 /// The identifier-free telemetry dimension values Markdown hosts emit. They are

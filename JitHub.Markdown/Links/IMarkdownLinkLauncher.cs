@@ -2,7 +2,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace JitHub.Markdown;
+namespace JitHub.Markdown.Links;
 
 /// <summary>Opens a Markdown link outside the app, in the reader's default handler.</summary>
 public interface IMarkdownLinkLauncher

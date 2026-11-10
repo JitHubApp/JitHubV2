@@ -1,8 +1,10 @@
 using System;
 using System.Threading.Tasks;
+using JitHub.Markdown.Telemetry;
+using JitHub.Markdown.Telemetry.Internal;
 using MarkdownRenderer.Images;
 
-namespace JitHub.Markdown;
+namespace JitHub.Markdown.Links;
 
 /// <summary>
 /// Routes a clicked Markdown link: rejects unsafe targets, opens supported

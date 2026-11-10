@@ -1,9 +1,12 @@
 using System;
 using System.Collections.Generic;
 using JitHub.Markdown.Hosting;
+using JitHub.Markdown.Localization;
+using JitHub.Markdown.Telemetry;
+using JitHub.Markdown.Telemetry.Internal;
 using MarkdownRenderer.Images;
 
-namespace JitHub.Markdown;
+namespace JitHub.Markdown.Notices;
 
 /// <summary>
 /// Owns a Markdown host's per-document feedback state: remote-image consent,

@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
 
-namespace JitHub.Markdown;
+namespace JitHub.Markdown.Telemetry;
 
 /// <summary>
 /// Receives the telemetry events a Markdown host emits. The app's telemetry

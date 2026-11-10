@@ -1,8 +1,9 @@
 using System;
+using JitHub.Markdown.Links;
 using MarkdownRenderer.Images;
 using Xunit;
 
-namespace JitHub.Markdown.Tests;
+namespace JitHub.Markdown.Tests.Links;
 
 public sealed class MarkdownLinkNavigationPolicyTests
 {

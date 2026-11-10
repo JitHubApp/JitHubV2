@@ -1,4 +1,4 @@
-namespace JitHub.Markdown;
+namespace JitHub.Markdown.Notices;
 
 /// <summary>
 /// What <see cref="MarkdownViewerFeedback"/> needs from the Markdown host that

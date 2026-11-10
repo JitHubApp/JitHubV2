@@ -2,7 +2,7 @@ using System;
 using System.Globalization;
 using MarkdownRenderer.Hosting;
 
-namespace JitHub.Markdown;
+namespace JitHub.Markdown.Localization;
 
 /// <summary>
 /// Bridges MarkdownRenderer's stable localization keys to JitHub's MRT

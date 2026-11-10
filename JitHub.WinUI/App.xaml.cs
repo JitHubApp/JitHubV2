@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.DependencyInjection;
 using JitHub.Markdown;
 using JitHub.Markdown.Images;
 using JitHub.Markdown.Lifetime;
+using JitHub.Markdown.Links;
 using JitHub.Markdown.Runtime;
 using JitHub.Models;
 using JitHub.Models.NavArgs;

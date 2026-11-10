@@ -1,4 +1,4 @@
-namespace JitHub.Markdown;
+namespace JitHub.Markdown.Links;
 
 public readonly record struct MarkdownGitHubRoute(
     MarkdownGitHubRouteKind Kind,

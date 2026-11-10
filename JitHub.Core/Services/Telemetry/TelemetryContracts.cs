@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Markdown;
+using JitHub.Markdown.Telemetry;
 
 namespace JitHub.Services;
 

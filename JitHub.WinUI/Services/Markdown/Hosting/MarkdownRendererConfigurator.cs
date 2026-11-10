@@ -1,6 +1,6 @@
 using System;
 using CommunityToolkit.Mvvm.DependencyInjection;
-using JitHub.Markdown;
+using JitHub.Markdown.Localization;
 using MarkdownRenderer;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Controls;

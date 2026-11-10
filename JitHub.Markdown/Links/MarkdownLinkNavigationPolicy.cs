@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using MarkdownRenderer.Images;
 
-namespace JitHub.Markdown;
+namespace JitHub.Markdown.Links;
 
 public static class MarkdownLinkNavigationPolicy
 {

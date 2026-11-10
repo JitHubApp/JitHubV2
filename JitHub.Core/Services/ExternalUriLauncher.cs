@@ -1,7 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Markdown;
+using JitHub.Markdown.Links;
 
 namespace JitHub.Services;
 

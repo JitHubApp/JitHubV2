@@ -1,4 +1,4 @@
-namespace JitHub.Markdown;
+namespace JitHub.Markdown.Links;
 
 public enum MarkdownGitHubRouteKind
 {

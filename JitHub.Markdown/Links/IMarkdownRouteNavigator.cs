@@ -1,6 +1,6 @@
 using System;
 
-namespace JitHub.Markdown;
+namespace JitHub.Markdown.Links;
 
 /// <summary>Opens a GitHub link inside JitHub instead of the browser.</summary>
 public interface IMarkdownRouteNavigator

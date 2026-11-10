@@ -1,7 +1,7 @@
 using System;
 using System.Globalization;
 using System.Linq;
-using JitHub.Markdown;
+using JitHub.Markdown.Links;
 
 namespace JitHub.Services;
 

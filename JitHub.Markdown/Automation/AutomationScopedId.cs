@@ -2,7 +2,7 @@
 using System.Security.Cryptography;
 using System.Text;
 
-namespace JitHub.Markdown;
+namespace JitHub.Markdown.Automation;
 
 /// <summary>
 /// Builds UI Automation ids that are readable and stable for one scope: a
