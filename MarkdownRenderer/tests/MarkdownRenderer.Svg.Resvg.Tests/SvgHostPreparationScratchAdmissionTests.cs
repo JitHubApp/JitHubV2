@@ -1,5 +1,5 @@
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Svg.Resvg.Internal;
+using MarkdownRenderer.Svg.Resvg.Internal.Sources;
 using Xunit;
 
 namespace MarkdownRenderer.Svg.Resvg.Tests;

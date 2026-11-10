@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.Tracing;
 using System.Threading;
-using MarkdownRenderer.Svg.Resvg.Internal;
+using MarkdownRenderer.Svg.Resvg.Internal.Diagnostics;
 using Xunit;
 
 namespace MarkdownRenderer.Svg.Resvg.Tests;

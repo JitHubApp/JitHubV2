@@ -1,6 +1,9 @@
 using System.Security.Cryptography;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Svg.Resvg.Internal;
+using MarkdownRenderer.Svg.Resvg.Internal.Documents;
+using MarkdownRenderer.Svg.Resvg.Internal.Preflight;
+using MarkdownRenderer.Svg.Resvg.Internal.Sources;
+using MarkdownRenderer.Svg.Resvg.Internal.Workers;
 using Xunit;
 
 namespace MarkdownRenderer.Svg.Resvg.Tests;

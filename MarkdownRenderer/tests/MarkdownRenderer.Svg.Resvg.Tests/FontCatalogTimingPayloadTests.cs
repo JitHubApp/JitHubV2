@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Text;
 using MarkdownRenderer.Svg.Resvg.Internal;
+using MarkdownRenderer.Svg.Resvg.Internal.Fonts;
 using Xunit;
 
 namespace MarkdownRenderer.Svg.Resvg.Tests;

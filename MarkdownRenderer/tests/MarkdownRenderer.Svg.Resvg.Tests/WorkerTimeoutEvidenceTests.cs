@@ -2,6 +2,8 @@ using System.Collections.Concurrent;
 using System.Diagnostics.Tracing;
 using System.Security.Cryptography;
 using MarkdownRenderer.Svg.Resvg.Internal;
+using MarkdownRenderer.Svg.Resvg.Internal.Diagnostics;
+using MarkdownRenderer.Svg.Resvg.Internal.Workers.Processes;
 using Xunit;
 
 namespace MarkdownRenderer.Svg.Resvg.Tests;

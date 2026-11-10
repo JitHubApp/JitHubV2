@@ -4,7 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Svg.Resvg.Internal;
+using MarkdownRenderer.Svg.Resvg.Internal.Workers.Processes;
 using Xunit;
 
 namespace MarkdownRenderer.Svg.Resvg.Tests;

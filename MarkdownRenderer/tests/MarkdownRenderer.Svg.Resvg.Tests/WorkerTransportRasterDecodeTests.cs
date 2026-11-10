@@ -1,6 +1,8 @@
 using System.Buffers.Binary;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Svg.Resvg.Internal;
+using MarkdownRenderer.Svg.Resvg.Internal.Workers.Processes;
+using MarkdownRenderer.Svg.Resvg.Internal.Workers.Transport;
 using Xunit;
 using static MarkdownRenderer.Svg.Resvg.Tests.WorkerTransportExchanges;
 using static MarkdownRenderer.Svg.Resvg.Tests.WorkerTransportNative;

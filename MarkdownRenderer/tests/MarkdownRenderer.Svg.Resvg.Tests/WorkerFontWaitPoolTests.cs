@@ -1,6 +1,9 @@
 using System.Collections.Concurrent;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Svg.Resvg.Internal;
+using MarkdownRenderer.Svg.Resvg.Internal.Diagnostics;
+using MarkdownRenderer.Svg.Resvg.Internal.Workers.FontReadiness;
+using MarkdownRenderer.Svg.Resvg.Internal.Workers.Scheduling;
 using Xunit;
 
 namespace MarkdownRenderer.Svg.Resvg.Tests;

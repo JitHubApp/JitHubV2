@@ -2,7 +2,8 @@ using System.Runtime.InteropServices;
 using System.Buffers.Binary;
 using System.Security.AccessControl;
 using System.Security.Principal;
-using MarkdownRenderer.Svg.Resvg.Internal;
+using MarkdownRenderer.Svg.Resvg.Internal.Workers.Processes;
+using MarkdownRenderer.Svg.Resvg.Internal.Workers.Transport;
 using Xunit;
 
 namespace MarkdownRenderer.Svg.Resvg.Tests;

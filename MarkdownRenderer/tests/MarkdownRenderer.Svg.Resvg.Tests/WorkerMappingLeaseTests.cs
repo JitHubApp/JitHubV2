@@ -3,6 +3,8 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Svg.Resvg.Internal;
+using MarkdownRenderer.Svg.Resvg.Internal.Workers.Processes;
+using MarkdownRenderer.Svg.Resvg.Internal.Workers.Transport;
 using Microsoft.Win32.SafeHandles;
 using Xunit;
 

@@ -1,4 +1,5 @@
-using MarkdownRenderer.Svg.Resvg.Internal;
+
+using MarkdownRenderer.Svg.Resvg.Internal.Workers.Processes;
 
 namespace MarkdownRenderer.Svg.Resvg.Tests;
 

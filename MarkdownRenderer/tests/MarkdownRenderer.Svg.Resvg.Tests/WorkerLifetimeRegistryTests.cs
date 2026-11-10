@@ -1,5 +1,5 @@
 using System.Runtime.CompilerServices;
-using MarkdownRenderer.Svg.Resvg.Internal;
+using MarkdownRenderer.Svg.Resvg.Internal.Workers.Processes;
 using Xunit;
 
 namespace MarkdownRenderer.Svg.Resvg.Tests;

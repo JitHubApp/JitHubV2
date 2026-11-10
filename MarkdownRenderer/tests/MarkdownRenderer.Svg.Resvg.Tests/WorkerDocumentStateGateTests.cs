@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 using System.IO;
-using MarkdownRenderer.Svg.Resvg.Internal;
+using MarkdownRenderer.Svg.Resvg.Internal.Workers;
 using Xunit;
 
 namespace MarkdownRenderer.Svg.Resvg.Tests;

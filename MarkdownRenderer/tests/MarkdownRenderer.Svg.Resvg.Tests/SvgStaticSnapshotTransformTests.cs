@@ -1,5 +1,6 @@
 using System.Text;
-using MarkdownRenderer.Svg.Resvg.Internal;
+using MarkdownRenderer.Svg.Resvg.Internal.Preparation;
+using MarkdownRenderer.Svg.Resvg.Internal.StaticSnapshots;
 using Xunit;
 
 namespace MarkdownRenderer.Svg.Resvg.Tests;

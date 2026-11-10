@@ -2,6 +2,7 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Svg.Resvg.Internal;
+using MarkdownRenderer.Svg.Resvg.Internal.Workers.Transport;
 using Xunit;
 
 namespace MarkdownRenderer.Svg.Resvg.Tests;

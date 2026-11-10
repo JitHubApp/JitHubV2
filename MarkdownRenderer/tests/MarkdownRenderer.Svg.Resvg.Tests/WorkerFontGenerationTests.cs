@@ -1,6 +1,11 @@
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Svg.Resvg.Internal;
 using System.Runtime.CompilerServices;
+using MarkdownRenderer.Svg.Resvg.Internal.Fonts;
+using MarkdownRenderer.Svg.Resvg.Internal.Workers.FontReadiness;
+using MarkdownRenderer.Svg.Resvg.Internal.Workers.Processes;
+using MarkdownRenderer.Svg.Resvg.Internal.Workers.Scheduling;
+using MarkdownRenderer.Svg.Resvg.Internal.Workers.Transport;
 using Xunit;
 
 namespace MarkdownRenderer.Svg.Resvg.Tests;

@@ -1,6 +1,12 @@
 using System.Runtime.InteropServices;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Svg.Resvg.Internal;
+using MarkdownRenderer.Svg.Resvg.Internal.Diagnostics;
+using MarkdownRenderer.Svg.Resvg.Internal.Workers;
+using MarkdownRenderer.Svg.Resvg.Internal.Workers.FontReadiness;
+using MarkdownRenderer.Svg.Resvg.Internal.Workers.Processes;
+using MarkdownRenderer.Svg.Resvg.Internal.Workers.Scheduling;
+using MarkdownRenderer.Svg.Resvg.Internal.Workers.Transport;
 
 namespace MarkdownRenderer.Svg.Resvg.Tests;
 

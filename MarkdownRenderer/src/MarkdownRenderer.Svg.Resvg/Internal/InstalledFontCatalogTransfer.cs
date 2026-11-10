@@ -1,7 +1,10 @@
 using System.Buffers.Binary;
 using System.Runtime.InteropServices;
+using MarkdownRenderer.Svg.Resvg.Internal.Fonts;
+using MarkdownRenderer.Svg.Resvg.Internal.Workers.Processes;
+using MarkdownRenderer.Svg.Resvg.Internal.Workers.Transport;
 using Microsoft.Win32.SafeHandles;
-using static MarkdownRenderer.Svg.Resvg.Internal.InstalledFontNativeMethods;
+using static MarkdownRenderer.Svg.Resvg.Internal.Fonts.InstalledFontNativeMethods;
 
 namespace MarkdownRenderer.Svg.Resvg.Internal;
 
