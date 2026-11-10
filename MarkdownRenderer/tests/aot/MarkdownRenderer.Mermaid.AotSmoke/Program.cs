@@ -2,6 +2,7 @@ using MarkdownRenderer;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Mermaid;
+using MarkdownRenderer.Mermaid.Native;
 
 MermaidNativeRuntimeInfo runtime = MermaidNativeRuntime.Probe();
 if (!runtime.IsAvailable)

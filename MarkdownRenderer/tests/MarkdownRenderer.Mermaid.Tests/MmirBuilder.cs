@@ -1,5 +1,5 @@
 using System.Buffers.Binary;
-using MarkdownRenderer.Mermaid;
+using MarkdownRenderer.Mermaid.Internal.Scenes;
 
 namespace MarkdownRenderer.Mermaid.Tests;
 

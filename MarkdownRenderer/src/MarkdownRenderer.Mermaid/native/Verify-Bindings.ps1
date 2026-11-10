@@ -6,7 +6,7 @@ $root = Split-Path -Parent $PSScriptRoot
 $contractPath = Join-Path $PSScriptRoot 'abi/mmir-v1.json'
 $contract = Get-Content -LiteralPath $contractPath -Raw | ConvertFrom-Json
 $header = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'include/markdown_renderer_mermaid.h') -Raw
-$managed = Get-Content -LiteralPath (Join-Path $root 'NativeInterop.Generated.cs') -Raw
+$managed = Get-Content -LiteralPath (Join-Path $root 'Native/Internal/NativeInterop.Generated.cs') -Raw
 $rust = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'src/abi_generated.rs') -Raw
 
 if ($contract.abi.callingConvention -ne 'cdecl' -or $contract.abi.endianness -ne 'little') {

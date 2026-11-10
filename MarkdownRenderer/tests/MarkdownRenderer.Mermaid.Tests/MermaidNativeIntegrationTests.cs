@@ -1,6 +1,10 @@
 using System.Runtime.InteropServices;
 using System.Text;
 using MarkdownRenderer.Mermaid;
+using MarkdownRenderer.Mermaid.Internal.Rendering;
+using MarkdownRenderer.Mermaid.Internal.Scenes;
+using MarkdownRenderer.Mermaid.Native;
+using MarkdownRenderer.Mermaid.Native.Internal;
 
 namespace MarkdownRenderer.Mermaid.Tests;
 

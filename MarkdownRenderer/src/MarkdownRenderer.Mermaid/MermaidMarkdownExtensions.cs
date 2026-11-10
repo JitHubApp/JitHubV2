@@ -5,6 +5,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
+using MarkdownRenderer.Mermaid.Internal.Rendering;
+using MarkdownRenderer.Mermaid.Internal.Scenes;
+using MarkdownRenderer.Mermaid.Internal.VectorScenes;
+using MarkdownRenderer.Mermaid.Localization;
 using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Mermaid;

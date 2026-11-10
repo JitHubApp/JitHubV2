@@ -1,5 +1,7 @@
 using System.Text;
-using MarkdownRenderer.Mermaid;
+using MarkdownRenderer.Mermaid.Internal.Caching;
+using MarkdownRenderer.Mermaid.Internal.Rendering;
+using MarkdownRenderer.Mermaid.Internal.Scenes;
 
 namespace MarkdownRenderer.Mermaid.Tests;
 
