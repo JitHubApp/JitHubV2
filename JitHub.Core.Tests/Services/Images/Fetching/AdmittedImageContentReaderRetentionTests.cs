@@ -10,6 +10,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Core.Tests.TestSupport;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Performance;
 using Xunit;
@@ -110,7 +111,7 @@ public sealed class AdmittedImageContentReaderRetentionTests
         ReaderRun run = StartChunkedFinalAdmissionWait(cancellation.Token);
         using (run.Content)
         {
-            await run.Admission.SecondReservationStarted.WaitAsync(TimeSpan.FromSeconds(3));
+            await run.Admission.SecondReservationStarted.WaitAsync(AsyncTestWait.HangGuard);
             Assert.Equal(2, run.Admission.ReserveCalls);
             Assert.Equal(40, run.Admission.LastRequestedBytes);
             Assert.Equal(0, run.Admission.ReservedBeforeSecondRequest);

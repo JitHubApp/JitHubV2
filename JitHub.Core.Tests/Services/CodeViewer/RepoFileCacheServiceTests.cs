@@ -9,6 +9,7 @@ using JitHub.Core.Models.CodeViewer;
 using JitHub.Core.Services.Accounts;
 using JitHub.Core.Services.CodeViewer;
 using JitHub.Core.Services.Storage;
+using JitHub.Core.Tests.TestSupport;
 using Xunit;
 
 namespace JitHub.Core.Tests.Services.CodeViewer;
@@ -639,7 +640,7 @@ public class RepoFileCacheServiceTests : IDisposable
             CancellationToken.None));
 
         activeProducer.Dispose();
-        await quiesce.WaitAsync(TimeSpan.FromSeconds(2));
+        await quiesce.WaitAsync(AsyncTestWait.HangGuard);
         await cache.ClearPartitionAsync("42");
 
         Assert.False(cache.TryGet(existingKey, out _));

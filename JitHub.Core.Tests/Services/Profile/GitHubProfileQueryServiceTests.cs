@@ -20,18 +20,13 @@ using JitHub.Core.Services.GitHub.Transport;
 using JitHub.Core.Services.Lifecycle;
 using JitHub.Core.Services.Me;
 using JitHub.Core.Services.Profile;
+using JitHub.Core.Tests.TestSupport;
 using Xunit;
 
 namespace JitHub.Core.Tests.Services.Profile;
 
 public sealed class GitHubProfileQueryServiceTests
 {
-    // Upper bound for work the test expects to finish (a request starting,
-    // cancellation, quiescence and the shutdown drain). It only turns a hang into
-    // a failure, so it is generous: CI runs these suites in parallel on a shared
-    // runner.
-    private static readonly TimeSpan ExpectedCompletionBound = TimeSpan.FromSeconds(15);
-
     [Fact]
     public async Task GetProfileAsync_PublicPreviewReturnsRichNativeProfileSnapshot()
     {
@@ -380,10 +375,10 @@ public sealed class GitHubProfileQueryServiceTests
             "token",
             "42",
             new GitHubUserProfileUpdateRequest { Name = "Updated name" });
-        await handler.Started.Task.WaitAsync(ExpectedCompletionBound);
+        await handler.Started.Task.WaitAsync(AsyncTestWait.HangGuard);
 
-        await coordinator.CancelAccountAsync("42").WaitAsync(ExpectedCompletionBound);
-        await accountWork.QuiesceAsync("42").WaitAsync(ExpectedCompletionBound);
+        await coordinator.CancelAccountAsync("42").WaitAsync(AsyncTestWait.HangGuard);
+        await accountWork.QuiesceAsync("42").WaitAsync(AsyncTestWait.HangGuard);
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => mutation);
         Assert.True(handler.CancellationObserved.Task.IsCompletedSuccessfully);
@@ -413,7 +408,7 @@ public sealed class GitHubProfileQueryServiceTests
             "42",
             new GitHubUserProfileUpdateRequest { Name = "Updated name" },
             cancellation.Token);
-        await handler.Started.Task.WaitAsync(ExpectedCompletionBound);
+        await handler.Started.Task.WaitAsync(AsyncTestWait.HangGuard);
 
         cancellation.Cancel();
 
@@ -440,11 +435,11 @@ public sealed class GitHubProfileQueryServiceTests
             new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
 
         Task mutation = service.FollowUserAsync("token", "42", "octocat");
-        await handler.Started.Task.WaitAsync(ExpectedCompletionBound);
+        await handler.Started.Task.WaitAsync(AsyncTestWait.HangGuard);
 
         ApplicationTaskShutdownResult shutdown = await coordinator
-            .ShutdownAsync(ExpectedCompletionBound)
-            .WaitAsync(ExpectedCompletionBound + ExpectedCompletionBound);
+            .ShutdownAsync(AsyncTestWait.HangGuard)
+            .WaitAsync(AsyncTestWait.HangGuard + AsyncTestWait.HangGuard);
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => mutation);
         Assert.True(shutdown.Completed);

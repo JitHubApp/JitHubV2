@@ -11,6 +11,7 @@ using JitHub.Core.Services.GitHub;
 using JitHub.Core.Services.GitHub.Caching;
 using JitHub.Core.Services.Issues;
 using JitHub.Core.Services.Me;
+using JitHub.Core.Tests.TestSupport;
 using Xunit;
 
 namespace JitHub.Core.Tests.Services.Issues;
@@ -103,7 +104,7 @@ public sealed class GitHubIssueQueryServiceTests
                 return Task.CompletedTask;
             });
 
-        IssuePagedSection<GitHubIssue> firstPage = await firstPagePublished.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        IssuePagedSection<GitHubIssue> firstPage = await firstPagePublished.Task.WaitAsync(AsyncTestWait.HangGuard);
         Assert.Equal(PagedDataCompleteness.Loading, firstPage.State.Completeness);
         Assert.False(load.IsCompleted);
 
@@ -233,7 +234,7 @@ public sealed class GitHubIssueQueryServiceTests
             });
 
         IssuePagedSection<GitHubIssueComment> firstPage =
-            await firstPagePublished.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            await firstPagePublished.Task.WaitAsync(AsyncTestWait.HangGuard);
         Assert.Equal(PagedDataCompleteness.Loading, firstPage.State.Completeness);
         Assert.False(load.IsCompleted);
 

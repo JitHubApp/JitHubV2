@@ -57,9 +57,9 @@ public sealed class GistsPageViewModelTests
         GistsPageViewModel viewModel = CreateViewModel(queryService);
 
         await viewModel.InitializeAsync();
-        await queryService.SynchronizationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await queryService.SynchronizationStarted.Task.WaitAsync(AsyncTestWait.HangGuard);
 
-        await viewModel.StopAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        await viewModel.StopAsync().WaitAsync(AsyncTestWait.HangGuard);
 
         Assert.True(queryService.SynchronizationCancellationObserved);
         Assert.Equal(1, queryService.DrainCalls);
@@ -80,9 +80,9 @@ public sealed class GistsPageViewModelTests
         viewModel.SearchText = "ab";
         viewModel.SearchText = "abc";
 
-        await viewModel.StopAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        await viewModel.StopAsync().WaitAsync(AsyncTestWait.HangGuard);
         await viewModel.InitializeAsync();
-        await viewModel.StopAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        await viewModel.StopAsync().WaitAsync(AsyncTestWait.HangGuard);
 
         Assert.Equal(2, queryService.DrainCalls);
     }
@@ -163,7 +163,7 @@ public sealed class GistsPageViewModelTests
         GistsPageViewModel viewModel = CreateViewModel(queryService);
 
         await viewModel.InitializeAsync();
-        await queryService.DetailRefreshStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await queryService.DetailRefreshStarted.Task.WaitAsync(AsyncTestWait.HangGuard);
         Assert.Equal("Cached detail", viewModel.SelectedDescription);
 
         queryService.ReleaseDetailRefresh.TrySetResult();
@@ -186,7 +186,7 @@ public sealed class GistsPageViewModelTests
         GistsPageViewModel viewModel = CreateViewModel(queryService);
 
         await viewModel.InitializeAsync();
-        await queryService.SynchronizationCompleted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await queryService.SynchronizationCompleted.Task.WaitAsync(AsyncTestWait.HangGuard);
         await WaitUntilAsync(() => viewModel.SelectedGistItem?.StableKey == "remaining");
 
         Assert.Single(viewModel.Gists);
@@ -205,8 +205,8 @@ public sealed class GistsPageViewModelTests
         session.SelectedFile!.Content = "draft";
 
         Task<bool> mutation = viewModel.CreateGistAsync(session);
-        await queryService.MutationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
-        await viewModel.StopAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        await queryService.MutationStarted.Task.WaitAsync(AsyncTestWait.HangGuard);
+        await viewModel.StopAsync().WaitAsync(AsyncTestWait.HangGuard);
 
         Assert.False(await mutation);
         Assert.True(queryService.MutationCancellationObserved);
@@ -311,7 +311,7 @@ public sealed class GistsPageViewModelTests
         session.SelectedFile!.Content = "saved remotely";
 
         bool succeeded = await viewModel.CreateGistAsync(session);
-        await queryService.SynchronizationFailed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await queryService.SynchronizationFailed.Task.WaitAsync(AsyncTestWait.HangGuard);
         await WaitUntilAsync(() => viewModel.IsDurabilityWarningVisible);
 
         Assert.True(succeeded);
@@ -423,11 +423,11 @@ public sealed class GistsPageViewModelTests
         await WaitUntilAsync(() => viewModel.CanLoadFullFile);
 
         Task load = viewModel.LoadFullFileCommand.ExecuteAsync(null);
-        await queryService.RawRefreshStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await queryService.RawRefreshStarted.Task.WaitAsync(AsyncTestWait.HangGuard);
         Assert.Equal("cached full content", viewModel.SelectedFileContent);
 
         queryService.ReleaseRawRefresh.TrySetResult();
-        await load.WaitAsync(TimeSpan.FromSeconds(2));
+        await load.WaitAsync(AsyncTestWait.HangGuard);
 
         Assert.True(viewModel.IsSelectedFilePreviewCapped);
         Assert.Equal(GistFileRenderPolicy.MaximumPreviewCharacters, viewModel.SelectedFileContent.Length);
@@ -522,7 +522,7 @@ public sealed class GistsPageViewModelTests
         GistViewItem selected = viewModel.Gists[2500];
         viewModel.SelectedGistItem = selected;
         viewModel.SetSort(GistLibrarySort.Title);
-        await viewModel.WaitForProjectionAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        await viewModel.WaitForProjectionAsync().WaitAsync(AsyncTestWait.HangGuard);
 
         Assert.Same(selected, viewModel.SelectedGistItem);
         Assert.Contains(viewModel.Gists, item => ReferenceEquals(item, selected));

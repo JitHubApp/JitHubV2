@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using JitHub.Core.Services.GitHub.Caching;
 using JitHub.Core.Services.Images;
 using JitHub.Core.Services.Images.Caching;
+using JitHub.Core.Tests.TestSupport;
 using JitHub.Markdown.Images.Caching;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Performance;
@@ -47,14 +48,14 @@ public sealed class GitHubImageServiceFlightRetirementTests : IDisposable
 
         Task<GitHubImageSourceLease?> firstTask = leased.GetOrFetchLeasedAsync(
             "https://images.example.com/leased-fanout.png", fetcher, admission);
-        await fetchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await fetchStarted.Task.WaitAsync(AsyncTestWait.HangGuard);
         Task<GitHubImageSourceLease?> secondTask = leased.GetOrFetchLeasedAsync(
             "https://images.example.com/leased-fanout.png", fetcher, admission);
         await Task.Delay(50);
         finishFetch.TrySetResult();
 
         GitHubImageSourceLease?[] handles = await Task.WhenAll(firstTask, secondTask)
-            .WaitAsync(TimeSpan.FromSeconds(5));
+            .WaitAsync(AsyncTestWait.HangGuard);
         Assert.All(handles, handle => Assert.NotNull(handle));
         Assert.NotSame(handles[0], handles[1]);
         Assert.Equal(1, fetchCount);
@@ -66,7 +67,7 @@ public sealed class GitHubImageServiceFlightRetirementTests : IDisposable
         Assert.Equal(PngBytes.Length, admission.ActiveBytes);
         Assert.Equal(PngBytes, handles[1]!.Image.Bytes);
         handles[1]!.Dispose();
-        await admission.TrackedWork[0].WaitAsync(TimeSpan.FromSeconds(5));
+        await admission.TrackedWork[0].WaitAsync(AsyncTestWait.HangGuard);
         Assert.Equal(0, admission.ActiveBytes);
     }
 
@@ -114,14 +115,14 @@ public sealed class GitHubImageServiceFlightRetirementTests : IDisposable
 
         try
         {
-            await fetchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await fetchStarted.Task.WaitAsync(AsyncTestWait.HangGuard);
             retirement = Assert.Single(admission.TrackedWork);
             callerCancellation.Cancel();
 
-            Task completed = await Task.WhenAny(canceledFlight, Task.Delay(TimeSpan.FromSeconds(2)));
+            Task completed = await Task.WhenAny(canceledFlight, Task.Delay(AsyncTestWait.HangGuard));
             Assert.Same(canceledFlight, completed);
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => canceledFlight);
-            await callbackEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await callbackEntered.Task.WaitAsync(AsyncTestWait.HangGuard);
             Assert.False(retirement.IsCompleted);
             Assert.Equal(0, admission.ActiveBytes);
         }
@@ -131,8 +132,8 @@ public sealed class GitHubImageServiceFlightRetirementTests : IDisposable
             await hostRegistration.DisposeAsync();
         }
 
-        await callbackFinished.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        await retirement.WaitAsync(TimeSpan.FromSeconds(5));
+        await callbackFinished.Task.WaitAsync(AsyncTestWait.HangGuard);
+        await retirement.WaitAsync(AsyncTestWait.HangGuard);
         Assert.Equal(1, admission.TrackWorkCount);
     }
 
@@ -157,7 +158,7 @@ public sealed class GitHubImageServiceFlightRetirementTests : IDisposable
             admission);
 
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => pending.WaitAsync(TimeSpan.FromSeconds(5)));
+            () => pending.WaitAsync(AsyncTestWait.HangGuard));
         Assert.Equal(1, admission.TrackWorkCount);
         Assert.Equal(0, fetchCount);
         Assert.Equal(0, admission.ActiveBytes);
@@ -185,12 +186,12 @@ public sealed class GitHubImageServiceFlightRetirementTests : IDisposable
             fetcher,
             admission,
             cancellation.Token);
-        await fetchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await fetchStarted.Task.WaitAsync(AsyncTestWait.HangGuard);
         cancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
 
         finishFetch.TrySetResult();
-        await admission.WaitUntilReleasedAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        await admission.WaitUntilReleasedAsync().WaitAsync(AsyncTestWait.HangGuard);
         Assert.Equal(0, admission.ActiveBytes);
         Assert.Null(await service.TryGetCachedAsync(
             "https://images.example.com/leased-late-cancel.png",
@@ -234,11 +235,11 @@ public sealed class GitHubImageServiceFlightRetirementTests : IDisposable
             callerCancellation.Token);
         try
         {
-            await fetchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await fetchStarted.Task.WaitAsync(AsyncTestWait.HangGuard);
             callerCancellation.Cancel();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => canceledFlight);
-            await callbackInvoked.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            await callbackFinished.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await callbackInvoked.Task.WaitAsync(AsyncTestWait.HangGuard);
+            await callbackFinished.Task.WaitAsync(AsyncTestWait.HangGuard);
 
             GitHubImageFetcher replacementFetcher = async (_, token) =>
             {
@@ -248,7 +249,7 @@ public sealed class GitHubImageServiceFlightRetirementTests : IDisposable
             using GitHubImageSourceLease? replacement = await leased.GetOrFetchLeasedAsync(
                 "https://images.example.com/leased-callback-fault.png",
                 replacementFetcher,
-                admission).WaitAsync(TimeSpan.FromSeconds(5));
+                admission).WaitAsync(AsyncTestWait.HangGuard);
 
             Assert.NotNull(replacement);
             Assert.Equal(PngBytes, replacement!.Image.Bytes);
@@ -294,10 +295,10 @@ public sealed class GitHubImageServiceFlightRetirementTests : IDisposable
             admission);
         try
         {
-            await fetchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await fetchStarted.Task.WaitAsync(AsyncTestWait.HangGuard);
 
             Assert.Null(Record.Exception(service.Dispose));
-            await callbackFinished.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await callbackFinished.Task.WaitAsync(AsyncTestWait.HangGuard);
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
             Assert.Equal(0, admission.ActiveBytes);
         }
@@ -348,12 +349,12 @@ public sealed class GitHubImageServiceFlightRetirementTests : IDisposable
             callerCancellation.Token);
         try
         {
-            await fetchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await fetchStarted.Task.WaitAsync(AsyncTestWait.HangGuard);
             callerCancellation.Cancel();
-            Task completed = await Task.WhenAny(canceledFlight, Task.Delay(TimeSpan.FromSeconds(2)));
+            Task completed = await Task.WhenAny(canceledFlight, Task.Delay(AsyncTestWait.HangGuard));
             Assert.Same(canceledFlight, completed);
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => canceledFlight);
-            await callbackEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await callbackEntered.Task.WaitAsync(AsyncTestWait.HangGuard);
 
             GitHubImageFetcher replacementFetcher = async (_, token) =>
             {
@@ -363,7 +364,7 @@ public sealed class GitHubImageServiceFlightRetirementTests : IDisposable
             using GitHubImageSourceLease? replacement = await leased.GetOrFetchLeasedAsync(
                 "https://images.example.com/leased-callback-block.png",
                 replacementFetcher,
-                admission).WaitAsync(TimeSpan.FromSeconds(5));
+                admission).WaitAsync(AsyncTestWait.HangGuard);
 
             Assert.NotNull(replacement);
             Assert.Equal(PngBytes, replacement!.Image.Bytes);
@@ -375,7 +376,7 @@ public sealed class GitHubImageServiceFlightRetirementTests : IDisposable
             await hostRegistration.DisposeAsync();
         }
 
-        await callbackFinished.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await callbackFinished.Task.WaitAsync(AsyncTestWait.HangGuard);
     }
 
     private GitHubImageService CreateService(HttpMessageHandler handler)

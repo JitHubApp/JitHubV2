@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Core.Services.Accounts;
 using JitHub.Core.Services.Lifecycle;
+using JitHub.Core.Tests.TestSupport;
 using Xunit;
 
 namespace JitHub.Core.Tests.Services.Lifecycle;
@@ -22,7 +23,7 @@ public sealed class ApplicationTaskCoordinatorTests
             firstEntered.SetResult();
             await releaseFirst.Task.WaitAsync(token);
         });
-        await firstEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await firstEntered.Task.WaitAsync(AsyncTestWait.HangGuard);
 
         Task second = gate.RunAsync(_ =>
         {
@@ -33,7 +34,7 @@ public sealed class ApplicationTaskCoordinatorTests
         await Task.Delay(30);
         Assert.False(secondEntered.Task.IsCompleted);
         releaseFirst.SetResult();
-        await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(2));
+        await Task.WhenAll(first, second).WaitAsync(AsyncTestWait.HangGuard);
         Assert.True(secondEntered.Task.IsCompletedSuccessfully);
     }
 
@@ -79,7 +80,7 @@ public sealed class ApplicationTaskCoordinatorTests
             token => Task.Delay(Timeout.InfiniteTimeSpan, token),
             new ApplicationTaskOptions(taskName, "42"));
 
-        await coordinator.CancelAccountAsync("42").WaitAsync(TimeSpan.FromSeconds(2));
+        await coordinator.CancelAccountAsync("42").WaitAsync(AsyncTestWait.HangGuard);
 
         Assert.True(started.IsCompletedSuccessfully);
         Assert.Equal(0, coordinator.ActiveTaskCount);
@@ -104,7 +105,7 @@ public sealed class ApplicationTaskCoordinatorTests
 
         ApplicationTaskShutdownResult result = await coordinator
             .ShutdownAsync(TimeSpan.FromSeconds(2))
-            .WaitAsync(TimeSpan.FromSeconds(3));
+            .WaitAsync(AsyncTestWait.HangGuard);
 
         Assert.True(result.Completed);
         Assert.Equal(0, result.PendingTaskCount);
@@ -257,7 +258,7 @@ public sealed class ApplicationTaskCoordinatorTests
             },
             new ApplicationTaskOptions("test.synchronous_start", "42")));
 
-        Assert.True(entered.Wait(TimeSpan.FromSeconds(2)));
+        Assert.True(entered.Wait(AsyncTestWait.HangGuard));
         Task cancellation = coordinator.CancelAccountAsync("42");
         await Task.Delay(40);
 
@@ -265,7 +266,7 @@ public sealed class ApplicationTaskCoordinatorTests
         Assert.Equal(1, coordinator.ActiveTaskCount);
 
         release.Set();
-        await Task.WhenAll(running, cancellation).WaitAsync(TimeSpan.FromSeconds(2));
+        await Task.WhenAll(running, cancellation).WaitAsync(AsyncTestWait.HangGuard);
         Assert.Equal(0, coordinator.ActiveTaskCount);
     }
 
@@ -285,14 +286,14 @@ public sealed class ApplicationTaskCoordinatorTests
             },
             new ApplicationTaskOptions("test.synchronous_shutdown")));
 
-        Assert.True(entered.Wait(TimeSpan.FromSeconds(2)));
+        Assert.True(entered.Wait(AsyncTestWait.HangGuard));
         ApplicationTaskShutdownResult result = await coordinator.ShutdownAsync(TimeSpan.FromMilliseconds(40));
 
         Assert.False(result.Completed);
         Assert.Equal(1, result.PendingTaskCount);
 
         release.Set();
-        await running.WaitAsync(TimeSpan.FromSeconds(2));
+        await running.WaitAsync(AsyncTestWait.HangGuard);
         Assert.Equal(0, coordinator.ActiveTaskCount);
     }
 }

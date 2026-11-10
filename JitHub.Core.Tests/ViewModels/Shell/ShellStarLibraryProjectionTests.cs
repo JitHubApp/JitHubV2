@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using JitHub.Core.Services.Stars;
+using JitHub.Core.Tests.TestSupport;
 using JitHub.Core.ViewModels.Shell;
 using NSubstitute;
 using Xunit;
@@ -74,7 +75,7 @@ public sealed class ShellStarLibraryProjectionTests
         try
         {
             await action();
-            return await completion.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            return await completion.Task.WaitAsync(AsyncTestWait.HangGuard);
         }
         finally
         {
