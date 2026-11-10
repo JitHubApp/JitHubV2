@@ -1,6 +1,7 @@
 using System.Collections.Generic;
+using JitHub.Core.Services.Telemetry;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Commits;
 
 public enum CommitActionKind
 {

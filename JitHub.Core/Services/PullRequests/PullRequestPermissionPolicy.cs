@@ -1,7 +1,9 @@
 using System;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub.Issues;
+using JitHub.Core.Models.GitHub.PullRequests;
+using JitHub.Core.Models.GitHub.Repositories;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.PullRequests;
 
 public sealed record PullRequestCapabilities(
     bool CanEdit,

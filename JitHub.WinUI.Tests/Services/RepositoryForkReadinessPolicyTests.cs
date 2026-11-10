@@ -2,7 +2,8 @@ using System;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Services;
+using JitHub.Core.Services.GitHub.Transport;
+using JitHub.Core.Services.Repositories;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;

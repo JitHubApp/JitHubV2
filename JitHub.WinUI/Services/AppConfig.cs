@@ -1,5 +1,6 @@
 using System;
-using JitHub.Models;
+using JitHub.Core.Models.Authentication;
+using JitHub.Core.Services.Configuration;
 using Microsoft.Extensions.Configuration;
 
 namespace JitHub.Services;

@@ -5,9 +5,10 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.CodeViewer;
-using JitHub.Services;
-using JitHub.Services.CodeViewer;
+using JitHub.Core.Models.CodeViewer;
+using JitHub.Core.Services.Accounts;
+using JitHub.Core.Services.CodeViewer;
+using JitHub.Core.Services.Storage;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;

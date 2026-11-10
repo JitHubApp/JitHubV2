@@ -1,8 +1,11 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Core.Services.Layout;
+using JitHub.Core.Services.Me;
+using JitHub.Core.Services.PullRequests;
+using JitHub.Core.ViewModels.Me;
 using JitHub.Services;
-using JitHub.Services.Layout;
 using JitHub.WinUI.Performance;
 using JitHub.WinUI.ViewModels.Pages;
 using JitHub.WinUI.Views.Controls.Common;

@@ -1,7 +1,8 @@
 using System.Threading;
 using System.Collections.Generic;
-using JitHub.Models.GitHub;
-using JitHub.WinUI.ViewModels.Common;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.ViewModels;
+using JitHub.Core.ViewModels.Repositories;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.ViewModels;

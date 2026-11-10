@@ -8,10 +8,11 @@
     xmlns:commit="using:JitHub.WinUI.Views.Controls.Commit"
     xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-    xmlns:github="using:JitHub.Models.GitHub"
+    xmlns:github="using:JitHub.Core.Models.GitHub.Commits"
+    xmlns:pullrequests="using:JitHub.Core.Models.GitHub.PullRequests"
     xmlns:labs="using:CommunityToolkit.WinUI"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:services="using:JitHub.Services"
+    xmlns:services="using:JitHub.Core.Services.Commits"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     xmlns:viewmodels="using:JitHub.WinUI.ViewModels.Pages"
     x:DataType="viewmodels:RepoCommitsPageViewModel"
@@ -223,7 +224,7 @@
             </Grid>
         </DataTemplate>
 
-        <DataTemplate x:Key="AssociatedPullRequestTemplate" x:DataType="github:GitHubPullRequest">
+        <DataTemplate x:Key="AssociatedPullRequestTemplate" x:DataType="pullrequests:GitHubPullRequest">
             <Grid
                 MinHeight="{ThemeResource AppDimension34}"
                 Margin="{ThemeResource AppMargin0_0_0_8}"

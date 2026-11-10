@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Core.Services.CodeViewer;
+using JitHub.Core.Services.Localization;
 using JitHub.Markdown.Svg;
 using JitHub.Services.CodeViewer;
 using JitHub.WinUI.Helpers;

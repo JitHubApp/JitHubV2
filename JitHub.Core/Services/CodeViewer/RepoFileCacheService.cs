@@ -8,10 +8,14 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.CodeViewer;
+using JitHub.Core.Models.CodeViewer;
+using JitHub.Core.Services.Accounts;
+using JitHub.Core.Services.GitHub;
+using JitHub.Core.Services.Lifecycle;
+using JitHub.Core.Services.Storage;
 using Windows.Storage;
 
-namespace JitHub.Services.CodeViewer;
+namespace JitHub.Core.Services.CodeViewer;
 
 /// <summary>
 /// Two-tier (in-memory LRU + disk) cache for repository file blobs.

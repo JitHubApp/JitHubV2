@@ -1,4 +1,4 @@
-using JitHub.WinUI.Helpers;
+using JitHub.Core.Services.Theming;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;

@@ -2,9 +2,17 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub.Activities;
+using JitHub.Core.Models.GitHub.Commits;
+using JitHub.Core.Models.GitHub.Issues;
+using JitHub.Core.Models.GitHub.Notifications;
+using JitHub.Core.Models.GitHub.PullRequests;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Models.GitHub.Users;
+using JitHub.Core.Services.Profile;
+using JitHub.Core.Services.Storage;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Performance;
 
 public static class ProductPerformanceLargeAccountFixture
 {

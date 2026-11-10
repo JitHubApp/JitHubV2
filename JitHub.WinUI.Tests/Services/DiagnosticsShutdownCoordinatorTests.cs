@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Services;
+using JitHub.Core.Services.Telemetry;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;

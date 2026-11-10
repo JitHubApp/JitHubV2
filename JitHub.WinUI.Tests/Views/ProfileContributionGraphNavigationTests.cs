@@ -1,6 +1,6 @@
 using System;
 using System.IO;
-using JitHub.WinUI.Views.Controls.Profile;
+using JitHub.Core.Services.Profile;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Views;

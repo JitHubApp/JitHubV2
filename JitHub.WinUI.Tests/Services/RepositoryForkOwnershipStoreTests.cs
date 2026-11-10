@@ -3,7 +3,7 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
-using JitHub.Services;
+using JitHub.Core.Services.Repositories;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;

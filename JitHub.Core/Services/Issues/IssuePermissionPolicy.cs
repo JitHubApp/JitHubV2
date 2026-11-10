@@ -1,7 +1,9 @@
 using System;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub.Issues;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Services.GitHub.Transport;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Issues;
 
 public sealed record IssueViewerCapabilities(
     bool CanCreateIssue,

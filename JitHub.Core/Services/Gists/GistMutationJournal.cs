@@ -6,9 +6,11 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub.Gists;
+using JitHub.Core.Services.GitHub;
+using JitHub.Core.Services.Storage;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Gists;
 
 public enum GistMutationKind
 {

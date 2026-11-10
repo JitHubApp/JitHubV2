@@ -75,7 +75,7 @@ public sealed class GistsWorkspaceContractTests
             FindRepositoryRoot(),
             "JitHub.Core",
             "ViewModels",
-            "Pages",
+            "Gists",
             "GistsPageViewModel.cs"));
 
         Assert.Contains("private const int PageSize = 100", source, StringComparison.Ordinal);
@@ -200,7 +200,7 @@ public sealed class GistsWorkspaceContractTests
             FindRepositoryRoot(),
             "JitHub.Core",
             "ViewModels",
-            "Pages",
+            "Gists",
             "GistsPageViewModel.cs"));
         string pageSource = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
@@ -223,7 +223,7 @@ public sealed class GistsWorkspaceContractTests
             FindRepositoryRoot(),
             "JitHub.Core",
             "ViewModels",
-            "Pages",
+            "Gists",
             "GistsPageViewModel.cs"));
         string pageSource = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
@@ -259,7 +259,7 @@ public sealed class GistsWorkspaceContractTests
             FindRepositoryRoot(),
             "JitHub.Core",
             "ViewModels",
-            "Pages",
+            "Gists",
             "GistsPageViewModel.cs"));
 
         Assert.Contains("\"cached_first\"", source, StringComparison.Ordinal);

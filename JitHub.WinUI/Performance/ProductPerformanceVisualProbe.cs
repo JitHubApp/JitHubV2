@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Threading;
+using JitHub.Core.Services.Storage;
 using JitHub.Services;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;

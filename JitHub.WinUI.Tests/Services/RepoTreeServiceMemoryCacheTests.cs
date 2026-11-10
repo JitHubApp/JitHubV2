@@ -2,10 +2,13 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.CodeViewer;
-using JitHub.Models.GitHub;
-using JitHub.Services;
-using JitHub.Services.CodeViewer;
+using JitHub.Core.Models.CodeViewer;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Models.GitHub.Users;
+using JitHub.Core.Services.Accounts;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.CodeViewer;
+using JitHub.Core.Services.GitHub.Caching;
 using NSubstitute;
 using Xunit;
 

@@ -1,8 +1,9 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Core.Services.Storage;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Settings;
 
 public interface ISettingsDiagnosticsService
 {

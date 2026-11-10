@@ -1,8 +1,9 @@
-using JitHub.Models.GitHub;
 using JitHub.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using JitHub.Models.LegacyGitHub;
+using JitHub.Core.Models.GitHub.Users;
+using JitHub.Core.Services.Authentication;
 using System;
 
 namespace JitHub.WinUI.ViewModels.Base

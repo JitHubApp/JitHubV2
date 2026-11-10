@@ -1,6 +1,8 @@
+using JitHub.Core.Models.Authentication;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.Configuration;
+using JitHub.Core.Services.Telemetry;
 using JitHub.Markdown.Links;
-using JitHub.Models;
-using JitHub.Services;
 using JitHub.WinUI.Tests.TestSupport;
 using System.Text;
 using System.Xml.Linq;

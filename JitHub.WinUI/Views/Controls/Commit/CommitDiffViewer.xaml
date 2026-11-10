@@ -7,7 +7,7 @@
     xmlns:commit="using:JitHub.WinUI.Views.Controls.Commit"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:services="using:JitHub.Services"
+    xmlns:services="using:JitHub.Core.Services.Commits"
     d:DesignHeight="640"
     d:DesignWidth="960"
     mc:Ignorable="d">

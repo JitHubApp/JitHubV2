@@ -1,7 +1,8 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Services;
+using JitHub.Core.Services.Accounts;
+using JitHub.Core.Services.Lifecycle;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;

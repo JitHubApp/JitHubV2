@@ -1,6 +1,8 @@
-using JitHub.Models.GitHub;
-using JitHub.Services;
-using JitHub.WinUI.ViewModels.Pages;
+using JitHub.Core.Models.GitHub.Commits;
+using JitHub.Core.Models.GitHub.Issues;
+using JitHub.Core.Models.GitHub.Users;
+using JitHub.Core.Services.Profile;
+using JitHub.Core.ViewModels.Me;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.ViewModels;

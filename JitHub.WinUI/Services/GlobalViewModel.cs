@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using JitHub.Core.Services.Settings;
 
 namespace JitHub.Services;
 

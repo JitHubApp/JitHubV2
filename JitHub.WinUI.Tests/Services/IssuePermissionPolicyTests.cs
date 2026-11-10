@@ -1,5 +1,8 @@
-using JitHub.Models.GitHub;
-using JitHub.Services;
+using JitHub.Core.Models.GitHub.Issues;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Models.GitHub.Users;
+using JitHub.Core.Services.GitHub.Transport;
+using JitHub.Core.Services.Issues;
 using System;
 using System.Net;
 using Xunit;

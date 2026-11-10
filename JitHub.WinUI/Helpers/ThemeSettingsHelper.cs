@@ -4,6 +4,7 @@ using System.Threading;
 using Microsoft.UI;
 using Microsoft.UI.System;
 using Microsoft.UI.Xaml;
+using JitHub.Core.Services.Telemetry;
 
 namespace JitHub.WinUI.Helpers;
 

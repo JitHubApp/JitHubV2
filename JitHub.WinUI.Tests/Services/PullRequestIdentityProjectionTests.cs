@@ -1,5 +1,6 @@
-using JitHub.Models.GitHub;
-using JitHub.Services;
+using JitHub.Core.Models.GitHub.PullRequests;
+using JitHub.Core.Models.GitHub.Users;
+using JitHub.Core.Services.PullRequests;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;

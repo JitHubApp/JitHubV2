@@ -3,7 +3,6 @@ using System.IO;
 using System.Linq;
 using System.Xml.Linq;
 using JitHub.Markdown.Authoring;
-using JitHub.WinUI.Helpers;
 using JitHub.WinUI.Tests.TestSupport;
 using Xunit;
 
@@ -181,7 +180,7 @@ public sealed class CommentInteractionContractTests
     [Fact]
     public void GitHubClientSupportsCommentEditingModerationAndReactions()
     {
-        string service = File.ReadAllText(ReadPath("JitHub.Core", "Services", "GitHubClientService.cs"));
+        string service = File.ReadAllText(ReadPath("JitHub.Core", "Services", "GitHub", "GitHubClientService.cs"));
 
         Assert.Contains("UpdateIssueCommentAsync", service, StringComparison.Ordinal);
         Assert.Contains("DeleteIssueCommentAsync", service, StringComparison.Ordinal);

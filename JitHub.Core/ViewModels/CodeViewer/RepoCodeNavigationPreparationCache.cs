@@ -3,10 +3,10 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Services;
-using JitHub.Services.CodeViewer;
+using JitHub.Core.Services.Accounts;
+using JitHub.Core.Services.CodeViewer;
 
-namespace JitHub.WinUI.ViewModels.CodeViewer;
+namespace JitHub.Core.ViewModels.CodeViewer;
 
 /// <summary>
 /// Warms the non-visual repository tree projection before navigation. Prepared

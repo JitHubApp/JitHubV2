@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Dashboard;
 
 public static class DashboardWidgetIds
 {

@@ -3,7 +3,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Telemetry;
 
 public enum DiagnosticsShutdownStatus
 {

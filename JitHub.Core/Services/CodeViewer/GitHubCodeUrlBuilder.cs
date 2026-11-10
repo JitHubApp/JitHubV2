@@ -1,7 +1,7 @@
 using System;
 using System.Linq;
 
-namespace JitHub.Services.CodeViewer;
+namespace JitHub.Core.Services.CodeViewer;
 
 public static class GitHubCodeUrlBuilder
 {

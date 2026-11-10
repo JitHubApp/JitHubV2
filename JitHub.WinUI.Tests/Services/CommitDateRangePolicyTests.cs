@@ -1,5 +1,5 @@
 using System;
-using JitHub.Services;
+using JitHub.Core.Services.Commits;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;

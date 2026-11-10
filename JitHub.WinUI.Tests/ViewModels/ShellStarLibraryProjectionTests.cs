@@ -1,8 +1,8 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Services;
-using JitHub.WinUI.ViewModels.Pages;
+using JitHub.Core.Services.Stars;
+using JitHub.Core.ViewModels.Shell;
 using NSubstitute;
 using Xunit;
 

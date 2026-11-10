@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Profile;
 
 public static class UserIdentityAutomationId
 {

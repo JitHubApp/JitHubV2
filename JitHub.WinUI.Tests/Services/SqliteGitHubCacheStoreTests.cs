@@ -5,8 +5,13 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.GitHub;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.GitHub.Transport;
+using JitHub.Core.Services.Images.Caching;
+using JitHub.Core.Services.Storage;
 using JitHub.Markdown.Images.Caching;
-using JitHub.Services;
 using Microsoft.Data.Sqlite;
 using Xunit;
 

@@ -3,9 +3,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Services.CodeViewer;
+using JitHub.Core.Services.CodeViewer;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.Images.Caching;
+using JitHub.Core.Services.Stars;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Storage;
 
 public static class CacheOwnerIds
 {

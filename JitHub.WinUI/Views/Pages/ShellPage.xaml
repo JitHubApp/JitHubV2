@@ -9,7 +9,7 @@
     xmlns:labs="using:CommunityToolkit.WinUI"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
-    xmlns:shell="using:JitHub.WinUI.ViewModels.Pages"
+    xmlns:shell="using:JitHub.Core.ViewModels.Shell"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     Background="{ThemeResource AppTransparentBrush}"
     Loaded="Page_Loaded"

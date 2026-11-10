@@ -1,7 +1,7 @@
 using System;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using JitHub.Core.Services.Profile;
 using JitHub.Models;
-using JitHub.Services;
 using JitHub.WinUI.ViewModels.Pages;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;

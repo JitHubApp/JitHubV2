@@ -9,8 +9,9 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using JitHub.Core.Services.Storage;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Telemetry;
 
 public sealed partial class LocalDiagnosticsStore : ILocalDiagnosticsStore
 {

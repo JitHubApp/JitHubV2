@@ -1,4 +1,4 @@
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Settings;
 
 public interface ISettingsPreferencesService
 {

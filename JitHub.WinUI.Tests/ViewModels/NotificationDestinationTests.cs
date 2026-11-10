@@ -1,5 +1,6 @@
-using JitHub.Models.GitHub;
-using JitHub.Services;
+using JitHub.Core.Models.GitHub.Notifications;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Services.Notifications;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.ViewModels;

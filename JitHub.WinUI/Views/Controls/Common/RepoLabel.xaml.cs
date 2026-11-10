@@ -1,8 +1,8 @@
 using System;
+using JitHub.Core.Services.Accessibility;
 using JitHub.Models;
 using JitHub.Models.Base;
 using JitHub.Models.LegacyGitHub;
-using JitHub.Services.Accessibility;
 using JitHub.WinUI.Helpers;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;

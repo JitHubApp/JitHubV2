@@ -8,10 +8,15 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
-using JitHub.Models.GitHub;
-using JitHub.Services;
-using JitHub.WinUI.Helpers;
-using JitHub.WinUI.ViewModels.Common;
+using JitHub.Core.Helpers;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Services.Accounts;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.GitHub;
+using JitHub.Core.Services.GitHub.Transport;
+using JitHub.Core.Services.Repositories;
+using JitHub.Core.Services.Telemetry;
+using JitHub.Core.ViewModels.Collections;
 using Microsoft.UI.Dispatching;
 
 namespace JitHub.WinUI.ViewModels.Pages;
@@ -501,7 +506,7 @@ public sealed partial class RepoManagePageViewModel : ViewModelBase
                 }
                 catch (GitHubApiException ex)
                 {
-                    failures.Add($"{repositoryItem.Repository.FullName}: {JitHub.WinUI.Helpers.UserFacingError.For(ex, JitHub.WinUI.Helpers.UserFacingErrorKind.Action, "repository-delete")}");
+                    failures.Add($"{repositoryItem.Repository.FullName}: {JitHub.Core.Helpers.UserFacingError.For(ex, JitHub.Core.Helpers.UserFacingErrorKind.Action, "repository-delete")}");
                 }
                 catch (HttpRequestException)
                 {
@@ -509,7 +514,7 @@ public sealed partial class RepoManagePageViewModel : ViewModelBase
                 }
                 catch (Exception ex)
                 {
-                    failures.Add($"{repositoryItem.Repository.FullName}: {JitHub.WinUI.Helpers.UserFacingError.For(ex, JitHub.WinUI.Helpers.UserFacingErrorKind.Action, "repository-delete")}");
+                    failures.Add($"{repositoryItem.Repository.FullName}: {JitHub.Core.Helpers.UserFacingError.For(ex, JitHub.Core.Helpers.UserFacingErrorKind.Action, "repository-delete")}");
                 }
                 finally
                 {
@@ -658,9 +663,9 @@ public sealed partial class RepoManagePageViewModel : ViewModelBase
         {
             StatusText = Repositories.Count > 0
                 ? GetString("RepoManage.SyncFailureCachedStatus", "Some repositories may be out of date.")
-                : JitHub.WinUI.Helpers.UserFacingError.For(
+                : JitHub.Core.Helpers.UserFacingError.For(
                     ex,
-                    JitHub.WinUI.Helpers.UserFacingErrorKind.Loading,
+                    JitHub.Core.Helpers.UserFacingErrorKind.Loading,
                     "repository-library");
             IsRetryVisible = true;
             UpdateVisibility();

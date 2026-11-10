@@ -1,6 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
-using JitHub.WinUI.ViewModels.Common;
+using JitHub.Core.ViewModels.Collections;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.ViewModels;

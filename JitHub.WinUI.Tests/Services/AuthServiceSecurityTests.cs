@@ -1,6 +1,11 @@
-using JitHub.Models;
-using JitHub.Models.GitHub;
-using JitHub.Services;
+using JitHub.Core.Models.Activation;
+using JitHub.Core.Models.Authentication;
+using JitHub.Core.Models.GitHub.Users;
+using JitHub.Core.Services.Accounts;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.Configuration;
+using JitHub.Core.Services.GitHub;
+using JitHub.Core.Services.GitHub.Transport;
 using JitHub.WinUI.Tests.TestDoubles;
 using NSubstitute;
 using Xunit;

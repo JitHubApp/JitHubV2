@@ -9,11 +9,23 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using JitHub.Core.Helpers;
+using JitHub.Core.Models.GitHub.Commits;
+using JitHub.Core.Models.GitHub.PullRequests;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Services.Accounts;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.Commits;
+using JitHub.Core.Services.GitHub;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.GitHub.Prefetch;
+using JitHub.Core.Services.GitHub.Transport;
+using JitHub.Core.Services.Lifecycle;
+using JitHub.Core.Services.Me;
+using JitHub.Core.Services.Profile;
+using JitHub.Core.Services.Telemetry;
 using JitHub.Markdown.Documents;
-using JitHub.Models.GitHub;
 using JitHub.Models.NavArgs;
-using JitHub.Services;
-using JitHub.WinUI.ViewModels.Common;
 using MarkdownRenderer.Images;
 
 namespace JitHub.WinUI.ViewModels.Pages;
@@ -979,9 +991,9 @@ public sealed partial class RepoCommitsPageViewModel : ViewModelBase
                 firstPage.IsRefreshInProgress,
                 firstPage.RefreshError is null
                     ? null
-                    : JitHub.WinUI.Helpers.UserFacingError.For(
+                    : JitHub.Core.Helpers.UserFacingError.For(
                         firstPage.RefreshError,
-                        JitHub.WinUI.Helpers.UserFacingErrorKind.Refresh,
+                        JitHub.Core.Helpers.UserFacingErrorKind.Refresh,
                         "commit-list"),
                 PagedDataCompleteness.Loading,
                 firstPage.Value?.Length ?? 0,

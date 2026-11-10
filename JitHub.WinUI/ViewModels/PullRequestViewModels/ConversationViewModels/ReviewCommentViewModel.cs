@@ -5,6 +5,8 @@ using System.Text;
 using System.Windows.Input;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Input;
+using JitHub.Core.Helpers;
+using JitHub.Core.Services.PullRequests;
 using JitHub.Markdown.Documents;
 using JitHub.Models.LegacyGitHub;
 using JitHub.Models.PRConversation;
@@ -186,9 +188,9 @@ public partial class ReviewCommentViewModel : RepoViewModel
             }
             catch (Exception ex)
             {
-                ReplyErrorMessage = JitHub.WinUI.Helpers.UserFacingError.For(
+                ReplyErrorMessage = JitHub.Core.Helpers.UserFacingError.For(
                     ex,
-                    JitHub.WinUI.Helpers.UserFacingErrorKind.Action,
+                    JitHub.Core.Helpers.UserFacingErrorKind.Action,
                     "pull-request-review-reply");
             }
             finally

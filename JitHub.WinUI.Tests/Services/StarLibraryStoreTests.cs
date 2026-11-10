@@ -4,8 +4,9 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.GitHub;
-using JitHub.Services;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Services.Stars;
+using JitHub.Core.Services.Storage;
 using Microsoft.Data.Sqlite;
 using Xunit;
 

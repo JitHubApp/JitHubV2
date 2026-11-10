@@ -1,6 +1,6 @@
 using System;
 
-namespace JitHub.Services.CodeViewer;
+namespace JitHub.Core.Services.CodeViewer;
 
 public readonly record struct ViewportZoomTarget(
     double HorizontalOffset,

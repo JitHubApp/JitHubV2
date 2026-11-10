@@ -1,4 +1,4 @@
-using JitHub.Services;
+using JitHub.Core.Services.Commits;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 

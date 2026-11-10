@@ -6,9 +6,17 @@ using System.Net.Http;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub;
+using JitHub.Core.Models.GitHub.Issues;
+using JitHub.Core.Models.GitHub.Users;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.GitHub;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.GitHub.Transport;
+using JitHub.Core.Services.Me;
+using JitHub.Core.Services.Performance;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Issues;
 
 public sealed class GitHubIssueQueryService : IGitHubIssueQueryService
 {
@@ -152,9 +160,9 @@ public sealed class GitHubIssueQueryService : IGitHubIssueQueryService
             }
             catch (Exception ex)
             {
-                errorMessage = JitHub.WinUI.Helpers.UserFacingError.For(
+                errorMessage = JitHub.Core.Helpers.UserFacingError.For(
                     ex,
-                    JitHub.WinUI.Helpers.UserFacingErrorKind.Refresh,
+                    JitHub.Core.Helpers.UserFacingErrorKind.Refresh,
                     "issue-list");
                 completeness = PagedDataCompleteness.Partial;
                 break;
@@ -724,9 +732,9 @@ public sealed class GitHubIssueQueryService : IGitHubIssueQueryService
                     {
                         state = ToState(result) with
                         {
-                            ErrorMessage = JitHub.WinUI.Helpers.UserFacingError.For(
+                            ErrorMessage = JitHub.Core.Helpers.UserFacingError.For(
                                 ex,
-                                JitHub.WinUI.Helpers.UserFacingErrorKind.Refresh,
+                                JitHub.Core.Helpers.UserFacingErrorKind.Refresh,
                                 "issue-section"),
                             Completeness = PagedDataCompleteness.Partial,
                             LoadedItemCount = items.Count,
@@ -749,11 +757,11 @@ public sealed class GitHubIssueQueryService : IGitHubIssueQueryService
             {
                 state = new IssueSectionState(
                     CacheState.Error,
-                    ErrorMessage: JitHub.WinUI.Helpers.UserFacingError.For(
+                    ErrorMessage: JitHub.Core.Helpers.UserFacingError.For(
                         ex,
                         items.Count > 0
-                            ? JitHub.WinUI.Helpers.UserFacingErrorKind.Refresh
-                            : JitHub.WinUI.Helpers.UserFacingErrorKind.Loading,
+                            ? JitHub.Core.Helpers.UserFacingErrorKind.Refresh
+                            : JitHub.Core.Helpers.UserFacingErrorKind.Loading,
                         "issue-section"),
                     Completeness: PagedDataCompleteness.Partial,
                     LoadedItemCount: items.Count,
@@ -981,9 +989,9 @@ public sealed class GitHubIssueQueryService : IGitHubIssueQueryService
             result.IsRefreshInProgress,
             result.RefreshError is null
                 ? null
-                : JitHub.WinUI.Helpers.UserFacingError.For(
+                : JitHub.Core.Helpers.UserFacingError.For(
                     result.RefreshError,
-                    JitHub.WinUI.Helpers.UserFacingErrorKind.Refresh,
+                    JitHub.Core.Helpers.UserFacingErrorKind.Refresh,
                     "issue-section"));
 
     private static string BuildIssueListPath(

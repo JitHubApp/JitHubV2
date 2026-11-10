@@ -1,3 +1,4 @@
+using JitHub.Core.Services.Settings;
 using JitHub.Services;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using System;

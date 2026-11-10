@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Xml.Linq;
-using JitHub.Models.CodeViewer;
-using JitHub.Services.CodeViewer;
-using JitHub.WinUI.ViewModels.CodeViewer;
+using JitHub.Core.Models.CodeViewer;
+using JitHub.Core.Services.CodeViewer;
+using JitHub.Core.ViewModels.CodeViewer;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;

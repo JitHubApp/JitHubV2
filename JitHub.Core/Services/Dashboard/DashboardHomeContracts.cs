@@ -3,9 +3,14 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub.Activities;
+using JitHub.Core.Models.GitHub.Notifications;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Models.GitHub.Users;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.Me;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Dashboard;
 
 public sealed record DashboardHomeSnapshot(
     GitHubUser? User,

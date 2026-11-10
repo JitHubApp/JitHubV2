@@ -4,9 +4,12 @@ using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub.Activities;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Models.GitHub.Users;
+using JitHub.Core.Services.Dashboard;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Profile;
 
 public interface IGitHubProfileQueryService
 {

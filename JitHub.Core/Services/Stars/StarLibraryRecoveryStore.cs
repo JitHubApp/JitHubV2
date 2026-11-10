@@ -6,8 +6,10 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Core.Services.GitHub;
+using JitHub.Core.Services.Storage;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Stars;
 
 public sealed partial class StarLibraryRecoveryStore : IStarLibraryRecoveryStore
 {

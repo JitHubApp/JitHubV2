@@ -13,6 +13,8 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Navigation;
 using JitHub.WinUI.ViewModels.RepositoryViewModels;
+using JitHub.Core.Models.Navigation;
+using JitHub.Core.Services.Localization;
 using Page = Microsoft.UI.Xaml.Controls.Page;
 
 // The Blank Page item template is documented at https://go.microsoft.com/fwlink/?LinkId=234238

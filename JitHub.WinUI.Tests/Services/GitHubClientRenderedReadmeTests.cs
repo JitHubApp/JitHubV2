@@ -5,7 +5,7 @@ using System.Net.Http;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Services;
+using JitHub.Core.Services.GitHub;
 using MarkdownRenderer.Images;
 using Xunit;
 using static JitHub.WinUI.Tests.Services.GitHubImageServiceHttpDoubles;

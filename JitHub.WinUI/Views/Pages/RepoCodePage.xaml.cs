@@ -2,13 +2,15 @@ using System;
 using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Core.Helpers;
+using JitHub.Core.Services.CodeViewer;
+using JitHub.Core.Services.Layout;
+using JitHub.Core.Services.Localization;
+using JitHub.Core.ViewModels.CodeViewer;
 using JitHub.Models.NavArgs;
 using JitHub.Services;
-using JitHub.Services.CodeViewer;
-using JitHub.Services.Layout;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.Performance;
-using JitHub.WinUI.ViewModels.CodeViewer;
 using JitHub.WinUI.Views.Controls.CodeViewer;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
@@ -117,7 +119,7 @@ public sealed partial class RepoCodePage : Page, IRepositoryCompactCommandProvid
             }
             catch (Exception ex)
             {
-                ShowError(JitHub.WinUI.Helpers.UserFacingError.For(ex, JitHub.WinUI.Helpers.UserFacingErrorKind.Loading, "repository-code"));
+                ShowError(JitHub.Core.Helpers.UserFacingError.For(ex, JitHub.Core.Helpers.UserFacingErrorKind.Loading, "repository-code"));
             }
         }, "ui-repo-code-page");
     }

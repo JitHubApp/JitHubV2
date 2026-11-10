@@ -38,7 +38,7 @@ public sealed partial class GitHubReadArchitectureConformanceTests
             root,
             "JitHub.Core",
             "ViewModels",
-            "Pages",
+            "Settings",
             "SettingsPageViewModel.cs");
         string settingsNavigation = Read(
             root,

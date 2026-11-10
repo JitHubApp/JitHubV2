@@ -1,6 +1,9 @@
 using System.Globalization;
-using JitHub.Models.GitHub;
-using JitHub.Services;
+using JitHub.Core.Models.GitHub.Commits;
+using JitHub.Core.Models.GitHub.PullRequests;
+using JitHub.Core.Services.Commits;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.Me;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;

@@ -6,10 +6,15 @@ using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
 using System.Threading;
+using JitHub.Core.Models.CodeViewer;
+using JitHub.Core.Services.CodeViewer;
+using JitHub.Core.Services.GitHub;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.GitHub.Transport;
+using JitHub.Core.Services.Images.Caching;
+using JitHub.Core.Services.Stars;
+using JitHub.Core.Services.Storage;
 using JitHub.Markdown.Images.Caching;
-using JitHub.Models.CodeViewer;
-using JitHub.Services;
-using JitHub.Services.CodeViewer;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;

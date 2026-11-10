@@ -1,4 +1,4 @@
-namespace JitHub.Services.Accessibility;
+namespace JitHub.Core.Services.Accessibility;
 
 public static class HighContrastVisualPolicy
 {

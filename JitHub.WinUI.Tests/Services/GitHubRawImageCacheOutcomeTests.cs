@@ -6,9 +6,11 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.Images;
+using JitHub.Core.Services.Images.Caching;
 using JitHub.Markdown.Images.Caching;
 using JitHub.Markdown.Images.Repository;
-using JitHub.Services;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;

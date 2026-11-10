@@ -11,10 +11,21 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Core.Models.GitHub;
+using JitHub.Core.Models.GitHub.Activities;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Models.GitHub.Users;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.Dashboard;
+using JitHub.Core.Services.GitHub;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.GitHub.Transport;
+using JitHub.Core.Services.Lifecycle;
+using JitHub.Core.Services.Me;
+using JitHub.Core.Services.Performance;
 using JitHub.Markdown.Documents;
-using JitHub.Models.GitHub;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Profile;
 
 public sealed class GitHubProfileQueryService : IGitHubProfileQueryService
 {
@@ -616,9 +627,9 @@ public sealed class GitHubProfileQueryService : IGitHubProfileQueryService
                             lastResult,
                             PagedDataCompleteness.Partial,
                             loadedPages,
-                            JitHub.WinUI.Helpers.UserFacingError.For(
+                            JitHub.Core.Helpers.UserFacingError.For(
                                 ex,
-                                JitHub.WinUI.Helpers.UserFacingErrorKind.Refresh,
+                                JitHub.Core.Helpers.UserFacingErrorKind.Refresh,
                                 "profile-organizations"));
                     }
                 }
@@ -634,9 +645,9 @@ public sealed class GitHubProfileQueryService : IGitHubProfileQueryService
                     lastResult,
                     PagedDataCompleteness.Partial,
                     loadedPages,
-                    JitHub.WinUI.Helpers.UserFacingError.For(
+                    JitHub.Core.Helpers.UserFacingError.For(
                         ex,
-                        JitHub.WinUI.Helpers.UserFacingErrorKind.Refresh,
+                        JitHub.Core.Helpers.UserFacingErrorKind.Refresh,
                         "profile-organizations"));
             }
 
@@ -676,9 +687,9 @@ public sealed class GitHubProfileQueryService : IGitHubProfileQueryService
             result?.StaleAfter,
             result?.IsRefreshInProgress ?? false,
             errorMessage ?? (result?.RefreshError is Exception refreshError
-                ? JitHub.WinUI.Helpers.UserFacingError.For(
+                ? JitHub.Core.Helpers.UserFacingError.For(
                     refreshError,
-                    JitHub.WinUI.Helpers.UserFacingErrorKind.Refresh,
+                    JitHub.Core.Helpers.UserFacingErrorKind.Refresh,
                     "profile-organizations")
                 : null),
             RequiresReconnect: false,
@@ -785,9 +796,9 @@ public sealed class GitHubProfileQueryService : IGitHubProfileQueryService
                 result.IsRefreshInProgress,
                 result.RefreshError is null
                     ? null
-                    : JitHub.WinUI.Helpers.UserFacingError.For(
+                    : JitHub.Core.Helpers.UserFacingError.For(
                         result.RefreshError,
-                        JitHub.WinUI.Helpers.UserFacingErrorKind.Refresh,
+                        JitHub.Core.Helpers.UserFacingErrorKind.Refresh,
                         "profile-section"));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -798,9 +809,9 @@ public sealed class GitHubProfileQueryService : IGitHubProfileQueryService
                 null,
                 null,
                 IsRefreshInProgress: false,
-                ErrorMessage: JitHub.WinUI.Helpers.UserFacingError.For(
+                ErrorMessage: JitHub.Core.Helpers.UserFacingError.For(
                     ex,
-                    JitHub.WinUI.Helpers.UserFacingErrorKind.Loading,
+                    JitHub.Core.Helpers.UserFacingErrorKind.Loading,
                     "profile-section"));
         }
     }
@@ -1319,9 +1330,9 @@ public sealed class GitHubProfileQueryService : IGitHubProfileQueryService
                 cancellationToken);
             if (!string.IsNullOrWhiteSpace(error?.Message))
             {
-                return JitHub.WinUI.Helpers.UserFacingError.ForInternalMessage(
+                return JitHub.Core.Helpers.UserFacingError.ForInternalMessage(
                     error.Message,
-                    JitHub.WinUI.Helpers.UserFacingErrorKind.Action,
+                    JitHub.Core.Helpers.UserFacingErrorKind.Action,
                     "profile-api");
             }
         }

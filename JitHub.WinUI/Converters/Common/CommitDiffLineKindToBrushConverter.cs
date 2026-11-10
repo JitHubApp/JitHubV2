@@ -1,5 +1,5 @@
 using System;
-using JitHub.Services;
+using JitHub.Core.Services.Commits;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Media;

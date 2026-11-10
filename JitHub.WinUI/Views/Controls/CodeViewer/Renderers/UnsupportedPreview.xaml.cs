@@ -1,10 +1,12 @@
 using System;
 using System.Globalization;
+using JitHub.Core.Helpers;
+using JitHub.Core.Models.CodeViewer;
+using JitHub.Core.Services.Localization;
+using JitHub.Core.Services.Telemetry;
+using JitHub.Core.ViewModels.CodeViewer;
 using JitHub.Markdown.Links;
-using JitHub.Models.CodeViewer;
-using JitHub.Services;
 using JitHub.WinUI.Helpers;
-using JitHub.WinUI.ViewModels.CodeViewer;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -58,17 +60,17 @@ public sealed partial class UnsupportedPreview : UserControl
             string? url = ViewModel?.GitHubBlobUrl;
             if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) || !MarkdownLinkNavigationPolicy.IsAllowedLaunchUri(uri))
             {
-                CompleteAction(JitHub.Services.CodeViewer.RepoCodeTelemetryActions.ExternalOpen, succeeded: false);
+                CompleteAction(JitHub.Core.Services.CodeViewer.RepoCodeTelemetryActions.ExternalOpen, succeeded: false);
                 return;
             }
 
             try
             {
-                CompleteAction(JitHub.Services.CodeViewer.RepoCodeTelemetryActions.ExternalOpen, await Windows.System.Launcher.LaunchUriAsync(uri));
+                CompleteAction(JitHub.Core.Services.CodeViewer.RepoCodeTelemetryActions.ExternalOpen, await Windows.System.Launcher.LaunchUriAsync(uri));
             }
             catch (Exception)
             {
-                CompleteAction(JitHub.Services.CodeViewer.RepoCodeTelemetryActions.ExternalOpen, succeeded: false);
+                CompleteAction(JitHub.Core.Services.CodeViewer.RepoCodeTelemetryActions.ExternalOpen, succeeded: false);
             }
         }, "ui-unsupported-preview");
     }
@@ -77,7 +79,7 @@ public sealed partial class UnsupportedPreview : UserControl
     {
         string? url = ViewModel?.GitHubRawUrl;
         CompleteAction(
-            JitHub.Services.CodeViewer.RepoCodeTelemetryActions.CopyRaw,
+            JitHub.Core.Services.CodeViewer.RepoCodeTelemetryActions.CopyRaw,
             PlatformHelper.CopyString(url));
     }
 

@@ -2,11 +2,11 @@ using System;
 using System.Globalization;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Services.Dashboard;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.ViewModels.Repositories;
 using JitHub.Models.Activities;
-using JitHub.Models.GitHub;
-using JitHub.Services;
-using JitHub.WinUI.Helpers;
-using JitHub.WinUI.ViewModels.Common;
 
 namespace JitHub.WinUI.ViewModels.Pages;
 

@@ -2,7 +2,7 @@
     x:Class="JitHub.WinUI.Views.Controls.CodeViewer.FilePreviewHost"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:vm="using:JitHub.WinUI.ViewModels.CodeViewer"
+    xmlns:vm="using:JitHub.Core.ViewModels.CodeViewer"
     xmlns:renderers="using:JitHub.WinUI.Views.Controls.CodeViewer.Renderers"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
     Background="{ThemeResource AppCanvasBrush}">

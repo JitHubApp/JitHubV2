@@ -1,5 +1,5 @@
-using JitHub.Services;
-using JitHub.WinUI.ViewModels.Pages;
+using JitHub.Core.Services.Telemetry;
+using JitHub.Core.ViewModels.Shell;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.ViewModels;

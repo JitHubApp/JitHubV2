@@ -5,7 +5,7 @@
     xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:viewModels="using:JitHub.WinUI.ViewModels.Pages"
+    xmlns:viewModels="using:JitHub.Core.ViewModels.Search"
     x:DataType="viewModels:RepoSearchResultPageViewModel"
     Background="{ThemeResource AppCanvasBrush}"
     SizeChanged="PageRoot_SizeChanged"

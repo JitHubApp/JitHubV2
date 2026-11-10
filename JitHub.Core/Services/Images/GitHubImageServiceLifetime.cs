@@ -1,6 +1,6 @@
 using System.Threading;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Images;
 
 /// <summary>
 /// The disposal state one image service shares with the parts it composes, so

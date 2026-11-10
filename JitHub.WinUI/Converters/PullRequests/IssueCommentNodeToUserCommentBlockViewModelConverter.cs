@@ -1,5 +1,4 @@
 using JitHub.Models.PRConversation;
-using JitHub.Services;
 using JitHub.WinUI.ViewModels.IssueViewModels;
 using JitHub.WinUI.ViewModels.UserViewModel;
 using CommunityToolkit.Mvvm.DependencyInjection;

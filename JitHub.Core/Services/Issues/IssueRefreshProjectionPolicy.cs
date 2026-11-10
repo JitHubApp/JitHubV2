@@ -1,9 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub;
+using JitHub.Core.Models.GitHub.Issues;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.Me;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Issues;
 
 public static class IssueRefreshProjectionPolicy
 {

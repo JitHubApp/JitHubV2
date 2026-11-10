@@ -1,4 +1,4 @@
-using JitHub.Services;
+using JitHub.Core.Services.Performance;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;

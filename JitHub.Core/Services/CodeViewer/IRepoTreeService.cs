@@ -2,9 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.CodeViewer;
+using JitHub.Core.Models.CodeViewer;
+using JitHub.Core.Services.GitHub.Caching;
 
-namespace JitHub.Services.CodeViewer;
+namespace JitHub.Core.Services.CodeViewer;
 
 public sealed record RepoCodeLoadResult<T>(
     T Value,

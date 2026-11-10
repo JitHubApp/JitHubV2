@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Text;
-using JitHub.Models.GitHub;
-using JitHub.Services;
+using JitHub.Core.Models.GitHub.Commits;
+using JitHub.Core.Services.Commits;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;

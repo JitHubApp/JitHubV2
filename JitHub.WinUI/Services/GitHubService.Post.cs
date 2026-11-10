@@ -1,6 +1,8 @@
 using JitHub.WinUI.Helpers;
 using JitHub.Models.PRConversation;
 using JitHub.Models.LegacyGitHub;
+using JitHub.Core.Services.GitHub.Transport;
+using JitHub.Core.Services.Repositories;
 using IssueUpdate = JitHub.Models.LegacyGitHub.IssueUpdate;
 using MergePullRequest = JitHub.Models.LegacyGitHub.MergePullRequest;
 using NewPullRequest = JitHub.Models.LegacyGitHub.NewPullRequest;
@@ -15,7 +17,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using RestGitHubIssue = JitHub.Models.GitHub.GitHubIssue;
+using RestGitHubIssue = JitHub.Core.Models.GitHub.Issues.GitHubIssue;
 
 namespace JitHub.Services
 {
@@ -26,9 +28,9 @@ namespace JitHub.Services
             try
             {
                 string token = GetAccessTokenOrThrow();
-                JitHub.Models.GitHub.GitHubRepository createdRepository = await _gitHubClientService.CreateRepositoryAsync(
+                JitHub.Core.Models.GitHub.Repositories.GitHubRepository createdRepository = await _gitHubClientService.CreateRepositoryAsync(
                     token,
-                    new JitHub.Models.GitHub.GitHubRepositoryCreateOptions
+                    new JitHub.Core.Models.GitHub.Repositories.GitHubRepositoryCreateOptions
                     {
                         Name = repo.Name,
                         Description = string.IsNullOrWhiteSpace(repo.Description) ? null : repo.Description,
@@ -182,7 +184,7 @@ namespace JitHub.Services
             {
                 string token = GetAccessTokenOrThrow();
                 (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId, cancellationToken);
-                JitHub.Models.GitHub.GitHubRepository forkedRepository = await _gitHubClientService.ForkRepositoryAsync(
+                JitHub.Core.Models.GitHub.Repositories.GitHubRepository forkedRepository = await _gitHubClientService.ForkRepositoryAsync(
                     token,
                     owner,
                     name,
@@ -375,7 +377,7 @@ namespace JitHub.Services
         {
             string token = GetAccessTokenOrThrow();
             (string owner, string name) = await GetRepositoryIdentityAsync(token, repoId);
-            JitHub.Models.GitHub.GitHubPullRequestMergeResult result = await _gitHubClientService.MergePullRequestAsync(
+            JitHub.Core.Models.GitHub.PullRequests.GitHubPullRequestMergeResult result = await _gitHubClientService.MergePullRequestAsync(
                 token,
                 owner,
                 name,
@@ -404,7 +406,7 @@ namespace JitHub.Services
         public async Task<ReviewCommentNode> ReplyToReview(Repository repo, int number, string replyText, long inReplyToId)
         {
             string token = GetAccessTokenOrThrow();
-            JitHub.Models.GitHub.GitHubPullRequestReviewComment replyComment = await _gitHubClientService.ReplyToPullRequestReviewCommentAsync(
+            JitHub.Core.Models.GitHub.PullRequests.GitHubPullRequestReviewComment replyComment = await _gitHubClientService.ReplyToPullRequestReviewCommentAsync(
                 token,
                 repo.Owner.Login,
                 repo.Name,

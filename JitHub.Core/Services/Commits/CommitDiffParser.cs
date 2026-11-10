@@ -5,9 +5,9 @@ using System.IO;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub.Commits;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Commits;
 
 public static partial class CommitDiffParser
 {

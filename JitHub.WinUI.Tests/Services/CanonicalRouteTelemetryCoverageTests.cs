@@ -69,11 +69,11 @@ public sealed class CanonicalRouteTelemetryCoverageTests
             ]
         },
         {
-            "JitHub.Core/ViewModels/Pages/NotificationsPageViewModel.cs",
+            "JitHub.Core/ViewModels/Notifications/NotificationsPageViewModel.cs",
             ["notifications.opened", "notifications.list.loaded", "notifications.filter.changed", "notifications.action.executed"]
         },
         {
-            "JitHub.Core/ViewModels/Pages/GistsPageViewModel.cs",
+            "JitHub.Core/ViewModels/Gists/GistsPageViewModel.cs",
             ["gists.opened", "gists.list.loaded", "gists.filter.changed", "gists.action.executed"]
         },
         {
@@ -81,7 +81,7 @@ public sealed class CanonicalRouteTelemetryCoverageTests
             ["repositories.opened", "repositories.action.executed"]
         },
         {
-            "JitHub.Core/ViewModels/Pages/RepoSearchResultPageViewModel.cs",
+            "JitHub.Core/ViewModels/Search/RepoSearchResultPageViewModel.cs",
             [
                 "repository_search.opened",
                 "repository_search.loaded",
@@ -149,15 +149,15 @@ public sealed class CanonicalRouteTelemetryCoverageTests
             ["profile.opened", "profile.loaded", "profile.section.opened", "profile.action.executed", "profile.error"]
         },
         {
-            "JitHub.Core/ViewModels/Pages/SettingsPageViewModel.cs",
+            "JitHub.Core/ViewModels/Settings/SettingsPageViewModel.cs",
             ["settings.opened", "settings.loaded", "settings.action.executed", "settings.error"]
         },
         {
-            "JitHub.Core/ViewModels/Pages/LoginPageViewModel.cs",
+            "JitHub.Core/ViewModels/Authentication/LoginPageViewModel.cs",
             ["auth.opened", "auth.action.executed"]
         },
         {
-            "JitHub.Core/Services/AuthService.cs",
+            "JitHub.Core/Services/Authentication/AuthService.cs",
             ["auth.flow.started", "auth.flow.completed", "auth.session.loaded", "auth.action.executed", "auth.error"]
         }
     };

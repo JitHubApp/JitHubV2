@@ -2,7 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Settings;
 
 public sealed class SettingsActionGate
 {

@@ -4,10 +4,10 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.CodeViewer;
-using JitHub.Services;
-using JitHub.Services.CodeViewer;
-using JitHub.WinUI.ViewModels.CodeViewer;
+using JitHub.Core.Models.CodeViewer;
+using JitHub.Core.Services.CodeViewer;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.ViewModels.CodeViewer;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.ViewModels;

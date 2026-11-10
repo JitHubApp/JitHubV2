@@ -2,11 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Input;
+using JitHub.Core.Services.Localization;
+using JitHub.Core.Services.Profile;
 using JitHub.Models.Activities;
 using JitHub.Models.LegacyGitHub;
 using JitHub.Models.PRConversation;
-using JitHub.Services;
-using JitHub.WinUI.Helpers;
 
 namespace JitHub.WinUI.ViewModels.PullRequestViewModels.ConversationViewModels;
 

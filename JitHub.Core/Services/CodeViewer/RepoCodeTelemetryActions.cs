@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
-using JitHub.Services;
+using JitHub.Core.Services.Telemetry;
 
-namespace JitHub.Services.CodeViewer;
+namespace JitHub.Core.Services.CodeViewer;
 
 public static class RepoCodeTelemetryActions
 {

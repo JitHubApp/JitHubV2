@@ -1,8 +1,10 @@
 using System.Globalization;
 using System.Linq;
-using JitHub.Models.GitHub;
-using JitHub.Services;
-using JitHub.WinUI.ViewModels.Pages;
+using JitHub.Core.Models.GitHub.Issues;
+using JitHub.Core.Models.GitHub.PullRequests;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.Me;
+using JitHub.Core.Services.PullRequests;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.ViewModels;

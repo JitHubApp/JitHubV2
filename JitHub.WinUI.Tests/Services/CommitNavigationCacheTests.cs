@@ -4,8 +4,13 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.GitHub;
-using JitHub.Services;
+using JitHub.Core.Models.GitHub.Commits;
+using JitHub.Core.Models.GitHub.PullRequests;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Services.Accounts;
+using JitHub.Core.Services.Commits;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.Telemetry;
 using NSubstitute;
 using Xunit;
 

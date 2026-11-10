@@ -3,7 +3,7 @@ using System.Globalization;
 using System.Linq;
 using JitHub.Markdown.Links;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Profile;
 
 public enum ProfileStatKind
 {

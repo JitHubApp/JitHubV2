@@ -1,5 +1,5 @@
 using System;
-using JitHub.Services.Layout;
+using JitHub.Core.Services.Layout;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Windows.Foundation;

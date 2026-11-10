@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
-using JitHub.Services.CodeViewer;
+using JitHub.Core.Services.CodeViewer;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;

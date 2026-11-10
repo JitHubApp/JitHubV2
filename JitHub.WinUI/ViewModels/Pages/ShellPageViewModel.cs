@@ -9,17 +9,36 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
-using JitHub.Models.GitHub;
 using JitHub.Models.NavArgs;
 using JitHub.Services;
-using JitHub.Services.CodeViewer;
 using JitHub.WinUI.Helpers;
-using JitHub.WinUI.ViewModels.Common;
-using JitHub.WinUI.ViewModels.CodeViewer;
 using JitHub.WinUI.Views.Controls.Common;
 using JitHub.WinUI.Views.Controls.Repo;
 using JitHub.WinUI.Views.Pages;
 using JitHub.WinUI.Views.Pages.Design;
+using JitHub.Core.Helpers;
+using JitHub.Core.Models.GitHub.Issues;
+using JitHub.Core.Models.GitHub.Notifications;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Models.GitHub.Users;
+using JitHub.Core.Models.Navigation;
+using JitHub.Core.Services.Accounts;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.Commits;
+using JitHub.Core.Services.Dialogs;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.GitHub.Transport;
+using JitHub.Core.Services.Issues;
+using JitHub.Core.Services.Localization;
+using JitHub.Core.Services.Navigation;
+using JitHub.Core.Services.Notifications;
+using JitHub.Core.Services.PullRequests;
+using JitHub.Core.Services.Repositories;
+using JitHub.Core.Services.Stars;
+using JitHub.Core.Services.Telemetry;
+using JitHub.Core.ViewModels.CodeViewer;
+using JitHub.Core.ViewModels.Collections;
+using JitHub.Core.ViewModels.Shell;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Animation;
@@ -570,9 +589,9 @@ public sealed partial class ShellPageViewModel : ViewModelBase
         }
         catch (GitHubApiException ex)
         {
-            RepositoryRailStatusText = JitHub.WinUI.Helpers.UserFacingError.For(
+            RepositoryRailStatusText = JitHub.Core.Helpers.UserFacingError.For(
                 ex,
-                JitHub.WinUI.Helpers.UserFacingErrorKind.Refresh,
+                JitHub.Core.Helpers.UserFacingErrorKind.Refresh,
                 "shell-repositories");
             HasRepositoryRailError = true;
             TrackRailRefreshFailure(nameof(GitHubApiException));

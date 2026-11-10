@@ -1,5 +1,5 @@
 using System.Collections.Generic;
-using JitHub.Services;
+using JitHub.Core.Services.Settings;
 
 namespace JitHub.WinUI.Tests.Services;
 

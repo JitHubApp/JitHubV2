@@ -249,7 +249,7 @@ public sealed class ProductPerformanceProbeContractTests
             root,
             "JitHub.Core",
             "ViewModels",
-            "Pages",
+            "Notifications",
             "NotificationsPageViewModel.cs"));
         Assert.Contains("TimeSpan.FromMilliseconds(150)", notificationsViewModel, StringComparison.Ordinal);
         Assert.Contains("token => MarkReadAfterOpenAsync(item, token)", notificationsViewModel, StringComparison.Ordinal);

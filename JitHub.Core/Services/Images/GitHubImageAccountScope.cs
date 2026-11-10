@@ -1,8 +1,9 @@
 using System;
 using System.Globalization;
 using System.Threading;
+using JitHub.Core.Services.Accounts;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Images;
 
 /// <summary>
 /// Partitions image work by the signed-in account: it names the account whose

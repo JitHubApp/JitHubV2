@@ -1,4 +1,4 @@
-using JitHub.Services;
+using JitHub.Core.Services.Navigation;
 using System;
 using System.IO;
 using Xunit;

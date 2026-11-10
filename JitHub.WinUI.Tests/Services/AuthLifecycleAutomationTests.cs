@@ -1,7 +1,9 @@
 using System.Net;
 using System.Net.Http.Headers;
-using JitHub.Models;
-using JitHub.Services;
+using JitHub.Core.Models.Authentication;
+using JitHub.Core.Services.Accounts;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.Configuration;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;

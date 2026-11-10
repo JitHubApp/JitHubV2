@@ -1,4 +1,4 @@
-using JitHub.Services;
+using JitHub.Core.Services.Authentication;
 using JitHub.WinUI.ViewModels.Base;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;

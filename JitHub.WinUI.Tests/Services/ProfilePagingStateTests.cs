@@ -1,6 +1,8 @@
 using System;
 using System.Linq;
-using JitHub.Services;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.Me;
+using JitHub.Core.Services.Profile;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;

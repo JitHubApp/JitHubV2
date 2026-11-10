@@ -2,12 +2,17 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using JitHub.WinUI.Helpers;
+using JitHub.Core.Helpers;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.Dialogs;
+using JitHub.Core.Services.Localization;
+using JitHub.Core.Services.Navigation;
+using JitHub.Core.Services.Storage;
 
 namespace JitHub.WinUI.Views.Dialogs;
 

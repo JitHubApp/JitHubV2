@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
-using JitHub.Services;
+using JitHub.Core.Services.Commits;
+using JitHub.Core.Services.Telemetry;
 using JitHub.WinUI.Tests.TestDoubles;
 using Xunit;
 

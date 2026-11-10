@@ -5,9 +5,14 @@ using System.Linq;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub.Issues;
+using JitHub.Core.Services.Accounts;
+using JitHub.Core.Services.GitHub;
+using JitHub.Core.Services.GitHub.Prefetch;
+using JitHub.Core.Services.Lifecycle;
+using JitHub.Core.Services.Me;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Issues;
 
 public enum IssuePrefetchReason
 {

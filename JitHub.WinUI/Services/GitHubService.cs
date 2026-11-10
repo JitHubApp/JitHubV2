@@ -4,6 +4,7 @@ using JitHub.Models.Base;
 using JitHub.Models.PRConversation;
 using JitHub.WinUI.Helpers;
 using JitHub.Models.LegacyGitHub;
+using JitHub.Core.Services.GitHub;
 using ApiOptions = JitHub.Models.LegacyGitHub.ApiOptions;
 using CommitRequest = JitHub.Models.LegacyGitHub.CommitRequest;
 using IssueFilter = JitHub.Models.LegacyGitHub.IssueFilter;
@@ -21,26 +22,26 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using RestGitHubActor = JitHub.Models.GitHub.GitHubActor;
-using RestGitHubBlob = JitHub.Models.GitHub.GitHubBlob;
-using RestGitHubBranch = JitHub.Models.GitHub.GitHubBranch;
-using RestGitHubCommit = JitHub.Models.GitHub.GitHubCommit;
-using RestGitHubCommitComment = JitHub.Models.GitHub.GitHubCommitComment;
-using RestGitHubCommitFile = JitHub.Models.GitHub.GitHubCommitFile;
-using RestGitHubCommitStats = JitHub.Models.GitHub.GitHubCommitStats;
-using RestGitHubIssue = JitHub.Models.GitHub.GitHubIssue;
-using RestGitHubIssueComment = JitHub.Models.GitHub.GitHubIssueComment;
-using RestGitHubIssueEvent = JitHub.Models.GitHub.GitHubIssueEvent;
-using RestGitHubLabel = JitHub.Models.GitHub.GitHubLabel;
-using RestGitHubMilestone = JitHub.Models.GitHub.GitHubMilestone;
-using RestGitHubPullRequest = JitHub.Models.GitHub.GitHubPullRequest;
-using RestGitHubPullRequestReview = JitHub.Models.GitHub.GitHubPullRequestReview;
-using RestGitHubReaction = JitHub.Models.GitHub.GitHubReaction;
-using RestGitHubRepository = JitHub.Models.GitHub.GitHubRepository;
-using RestGitHubRepositoryContent = JitHub.Models.GitHub.GitHubRepositoryContent;
-using RestGitHubReactionSummary = JitHub.Models.GitHub.GitHubReactionSummary;
-using RestGitHubReviewComment = JitHub.Models.GitHub.GitHubPullRequestReviewComment;
-using RestGitHubUser = JitHub.Models.GitHub.GitHubUser;
+using RestGitHubActor = JitHub.Core.Models.GitHub.Users.GitHubActor;
+using RestGitHubBlob = JitHub.Core.Models.GitHub.Repositories.GitHubBlob;
+using RestGitHubBranch = JitHub.Core.Models.GitHub.Repositories.GitHubBranch;
+using RestGitHubCommit = JitHub.Core.Models.GitHub.Commits.GitHubCommit;
+using RestGitHubCommitComment = JitHub.Core.Models.GitHub.Commits.GitHubCommitComment;
+using RestGitHubCommitFile = JitHub.Core.Models.GitHub.Commits.GitHubCommitFile;
+using RestGitHubCommitStats = JitHub.Core.Models.GitHub.Commits.GitHubCommitStats;
+using RestGitHubIssue = JitHub.Core.Models.GitHub.Issues.GitHubIssue;
+using RestGitHubIssueComment = JitHub.Core.Models.GitHub.Issues.GitHubIssueComment;
+using RestGitHubIssueEvent = JitHub.Core.Models.GitHub.Issues.GitHubIssueEvent;
+using RestGitHubLabel = JitHub.Core.Models.GitHub.Issues.GitHubLabel;
+using RestGitHubMilestone = JitHub.Core.Models.GitHub.Issues.GitHubMilestone;
+using RestGitHubPullRequest = JitHub.Core.Models.GitHub.PullRequests.GitHubPullRequest;
+using RestGitHubPullRequestReview = JitHub.Core.Models.GitHub.PullRequests.GitHubPullRequestReview;
+using RestGitHubReaction = JitHub.Core.Models.GitHub.GitHubReaction;
+using RestGitHubRepository = JitHub.Core.Models.GitHub.Repositories.GitHubRepository;
+using RestGitHubRepositoryContent = JitHub.Core.Models.GitHub.Repositories.GitHubRepositoryContent;
+using RestGitHubReactionSummary = JitHub.Core.Models.GitHub.GitHubReactionSummary;
+using RestGitHubReviewComment = JitHub.Core.Models.GitHub.PullRequests.GitHubPullRequestReviewComment;
+using RestGitHubUser = JitHub.Core.Models.GitHub.Users.GitHubUser;
 
 namespace JitHub.Services
 {
@@ -539,7 +540,7 @@ namespace JitHub.Services
                 false);
         }
 
-        private static User AdaptRepositoryOwner(JitHub.Models.GitHub.GitHubRepositoryOwner owner)
+        private static User AdaptRepositoryOwner(JitHub.Core.Models.GitHub.Repositories.GitHubRepositoryOwner owner)
         {
             return new User(
                 owner.AvatarUrl ?? string.Empty,
@@ -693,9 +694,9 @@ namespace JitHub.Services
             return direction == SortDirection.Ascending ? "asc" : "desc";
         }
 
-        private static JitHub.Models.GitHub.GitHubIssueQueryOptions AdaptIssueQueryOptions(RepositoryIssueRequest request)
+        private static JitHub.Core.Models.GitHub.GitHubIssueQueryOptions AdaptIssueQueryOptions(RepositoryIssueRequest request)
         {
-            return new JitHub.Models.GitHub.GitHubIssueQueryOptions
+            return new JitHub.Core.Models.GitHub.GitHubIssueQueryOptions
             {
                 State = AdaptIssueStateFilter(request.State),
                 Sort = AdaptIssueSort(request.SortProperty),
@@ -710,9 +711,9 @@ namespace JitHub.Services
             };
         }
 
-        private static JitHub.Models.GitHub.GitHubIssueQueryOptions AdaptIssueQueryOptions(IssueRequest request)
+        private static JitHub.Core.Models.GitHub.GitHubIssueQueryOptions AdaptIssueQueryOptions(IssueRequest request)
         {
-            return new JitHub.Models.GitHub.GitHubIssueQueryOptions
+            return new JitHub.Core.Models.GitHub.GitHubIssueQueryOptions
             {
                 State = AdaptIssueStateFilter(request.State),
                 Sort = AdaptIssueSort(request.SortProperty),
@@ -723,9 +724,9 @@ namespace JitHub.Services
             };
         }
 
-        private static JitHub.Models.GitHub.GitHubPullRequestQueryOptions AdaptPullRequestQueryOptions(PullRequestRequest request)
+        private static JitHub.Core.Models.GitHub.GitHubPullRequestQueryOptions AdaptPullRequestQueryOptions(PullRequestRequest request)
         {
-            return new JitHub.Models.GitHub.GitHubPullRequestQueryOptions
+            return new JitHub.Core.Models.GitHub.GitHubPullRequestQueryOptions
             {
                 State = AdaptIssueStateFilter(request.State),
                 Sort = request.SortProperty switch
@@ -811,7 +812,7 @@ namespace JitHub.Services
                 false);
         }
 
-        private static Committer AdaptCommitter(JitHub.Models.GitHub.GitHubCommitSignature signature)
+        private static Committer AdaptCommitter(JitHub.Core.Models.GitHub.Commits.GitHubCommitSignature signature)
         {
             return new Committer(
                 signature.Name ?? string.Empty,
@@ -911,7 +912,7 @@ namespace JitHub.Services
                 AdaptReactionSummary(comment.Reactions));
         }
 
-        private static CompareResult AdaptCompareResult(JitHub.Models.GitHub.GitHubCompareResult compareResult)
+        private static CompareResult AdaptCompareResult(JitHub.Core.Models.GitHub.Commits.GitHubCompareResult compareResult)
         {
             return new CompareResult(
                 string.Empty,
@@ -976,7 +977,7 @@ namespace JitHub.Services
             return builder.ToString();
         }
 
-        private static GitReference AdaptPullRequestBranch(JitHub.Models.GitHub.GitHubPullRequestBranch branch)
+        private static GitReference AdaptPullRequestBranch(JitHub.Core.Models.GitHub.PullRequests.GitHubPullRequestBranch branch)
         {
             return new GitReference(
                 string.Empty,
@@ -1641,9 +1642,9 @@ namespace JitHub.Services
             return nodes;
         }
 
-        public async Task<JitHub.Models.CodeViewer.RepoTree> GetRepoTreeAsync(string owner, string name, string refOrSha, CancellationToken ct)
+        public async Task<JitHub.Core.Models.CodeViewer.RepoTree> GetRepoTreeAsync(string owner, string name, string refOrSha, CancellationToken ct)
         {
-            Models.GitHub.GitHubTree gitTree = await _gitHubClientService.GetTreeAsync(
+            JitHub.Core.Models.GitHub.Repositories.GitHubTree gitTree = await _gitHubClientService.GetTreeAsync(
                 GetAccessTokenOrThrow(),
                 owner,
                 name,
@@ -1653,9 +1654,9 @@ namespace JitHub.Services
             return BuildRepoTree(gitTree);
         }
 
-        private static JitHub.Models.CodeViewer.RepoTree BuildRepoTree(Models.GitHub.GitHubTree gitTree)
+        private static JitHub.Core.Models.CodeViewer.RepoTree BuildRepoTree(JitHub.Core.Models.GitHub.Repositories.GitHubTree gitTree)
         {
-            var root = new JitHub.Models.CodeViewer.RepoTreeNode
+            var root = new JitHub.Core.Models.CodeViewer.RepoTreeNode
             {
                 Name = string.Empty,
                 Path = string.Empty,
@@ -1664,7 +1665,7 @@ namespace JitHub.Services
             };
 
             // index of path -> node for fast lookup while building tree
-            var nodeMap = new Dictionary<string, JitHub.Models.CodeViewer.RepoTreeNode>(StringComparer.Ordinal)
+            var nodeMap = new Dictionary<string, JitHub.Core.Models.CodeViewer.RepoTreeNode>(StringComparer.Ordinal)
             {
                 [string.Empty] = root
             };
@@ -1683,7 +1684,7 @@ namespace JitHub.Services
             // Sort each directory's children: directories first, then files, each group alphabetical
             SortChildren(root);
 
-            return new JitHub.Models.CodeViewer.RepoTree
+            return new JitHub.Core.Models.CodeViewer.RepoTree
             {
                 Sha = gitTree.Sha,
                 Truncated = gitTree.Truncated,
@@ -1691,10 +1692,10 @@ namespace JitHub.Services
             };
         }
 
-        private static JitHub.Models.CodeViewer.RepoTreeNode EnsurePath(
+        private static JitHub.Core.Models.CodeViewer.RepoTreeNode EnsurePath(
             string path,
-            Models.GitHub.GitHubTreeEntry? entry,
-            Dictionary<string, JitHub.Models.CodeViewer.RepoTreeNode> nodeMap)
+            JitHub.Core.Models.GitHub.Repositories.GitHubTreeEntry? entry,
+            Dictionary<string, JitHub.Core.Models.CodeViewer.RepoTreeNode> nodeMap)
         {
             if (nodeMap.TryGetValue(path, out var existing))
                 return existing;
@@ -1703,10 +1704,10 @@ namespace JitHub.Services
             string parentPath = slashIndex < 0 ? string.Empty : path[..slashIndex];
             string name = slashIndex < 0 ? path : path[(slashIndex + 1)..];
 
-            JitHub.Models.CodeViewer.RepoTreeNode parent = EnsurePath(parentPath, null, nodeMap);
+            JitHub.Core.Models.CodeViewer.RepoTreeNode parent = EnsurePath(parentPath, null, nodeMap);
 
             bool isDir = entry is null || string.Equals(entry.Type, "tree", StringComparison.Ordinal);
-            var node = new JitHub.Models.CodeViewer.RepoTreeNode
+            var node = new JitHub.Core.Models.CodeViewer.RepoTreeNode
             {
                 Name = name,
                 Path = path,
@@ -1717,13 +1718,13 @@ namespace JitHub.Services
             };
 
             nodeMap[path] = node;
-            ((List<JitHub.Models.CodeViewer.RepoTreeNode>)parent.Children).Add(node);
+            ((List<JitHub.Core.Models.CodeViewer.RepoTreeNode>)parent.Children).Add(node);
             return node;
         }
 
-        private static void SortChildren(JitHub.Models.CodeViewer.RepoTreeNode node)
+        private static void SortChildren(JitHub.Core.Models.CodeViewer.RepoTreeNode node)
         {
-            var list = (List<JitHub.Models.CodeViewer.RepoTreeNode>)node.Children;
+            var list = (List<JitHub.Core.Models.CodeViewer.RepoTreeNode>)node.Children;
             list.Sort(static (a, b) =>
             {
                 if (a.IsDirectory != b.IsDirectory)

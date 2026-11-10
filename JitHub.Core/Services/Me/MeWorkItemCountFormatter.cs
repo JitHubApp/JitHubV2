@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Me;
 
 public sealed record MeWorkItemCountFormats(
     string Loading,

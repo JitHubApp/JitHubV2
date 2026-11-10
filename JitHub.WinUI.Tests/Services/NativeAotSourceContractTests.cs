@@ -485,7 +485,7 @@ public sealed class NativeAotSourceContractTests
             root,
             "JitHub.Core",
             "ViewModels",
-            "Pages",
+            "Settings",
             "SettingsPageViewModel.cs"));
         string view = File.ReadAllText(Path.Combine(
             root,

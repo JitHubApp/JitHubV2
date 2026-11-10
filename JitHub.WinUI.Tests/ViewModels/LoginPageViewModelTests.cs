@@ -4,10 +4,12 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.GitHub;
-using JitHub.Services;
+using JitHub.Core.Models.GitHub.Users;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.GitHub.Transport;
+using JitHub.Core.Services.Telemetry;
+using JitHub.Core.ViewModels.Authentication;
 using JitHub.WinUI.Tests.TestDoubles;
-using JitHub.WinUI.ViewModels.Pages;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.ViewModels;

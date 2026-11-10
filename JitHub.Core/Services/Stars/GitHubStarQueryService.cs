@@ -3,9 +3,13 @@ using System.Net.Http;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.GitHub;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.Performance;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Stars;
 
 public sealed class GitHubStarQueryService : IGitHubStarQueryService
 {

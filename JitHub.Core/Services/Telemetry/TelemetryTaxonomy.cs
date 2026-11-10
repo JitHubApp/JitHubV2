@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using JitHub.Shared.Theming;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Telemetry;
 
 public static class TelemetryTaxonomy
 {

@@ -1,8 +1,10 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.Storage;
+using JitHub.Core.ViewModels.Authentication;
 using JitHub.Services;
-using JitHub.WinUI.ViewModels.Pages;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 

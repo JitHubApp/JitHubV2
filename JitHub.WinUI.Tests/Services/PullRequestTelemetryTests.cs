@@ -1,5 +1,7 @@
 using System.Collections.Generic;
-using JitHub.Services;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.PullRequests;
+using JitHub.Core.Services.Telemetry;
 using JitHub.WinUI.Tests.TestDoubles;
 using Xunit;
 

@@ -1,4 +1,4 @@
-using JitHub.Services.CodeViewer;
+using JitHub.Core.Services.CodeViewer;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;

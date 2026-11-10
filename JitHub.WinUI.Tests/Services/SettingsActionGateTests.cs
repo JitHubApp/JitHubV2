@@ -1,6 +1,6 @@
 using System;
 using System.Threading.Tasks;
-using JitHub.Services;
+using JitHub.Core.Services.Settings;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;

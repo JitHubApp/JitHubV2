@@ -1,8 +1,7 @@
-using JitHub.Services;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Input;
 using JitHub.Models.LegacyGitHub;
-using JitHub.WinUI.Helpers;
+using JitHub.Core.Helpers;
 using System.Windows.Input;
 
 namespace JitHub.Models.PRConversation

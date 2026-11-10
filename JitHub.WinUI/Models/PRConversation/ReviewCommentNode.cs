@@ -2,7 +2,7 @@ using JitHub.WinUI.ViewModels.IssueViewModels;
 using JitHub.WinUI.ViewModels.UserViewModel;
 using CommunityToolkit.Mvvm.Input;
 using JitHub.Models.LegacyGitHub;
-using JitHub.WinUI.Helpers;
+using JitHub.Core.Helpers;
 using System;
 using System.Collections.Generic;
 using System.Linq;

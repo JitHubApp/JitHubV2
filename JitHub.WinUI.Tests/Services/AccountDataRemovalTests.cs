@@ -1,9 +1,24 @@
 using System.Net;
 using System.Net.Http;
-using JitHub.Models.CodeViewer;
-using JitHub.Models.GitHub;
-using JitHub.Services;
-using JitHub.Services.CodeViewer;
+using JitHub.Core.Models.CodeViewer;
+using JitHub.Core.Models.GitHub.Gists;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Services.Accounts;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.CodeViewer;
+using JitHub.Core.Services.Commits;
+using JitHub.Core.Services.Configuration;
+using JitHub.Core.Services.Gists;
+using JitHub.Core.Services.GitHub;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.GitHub.Transport;
+using JitHub.Core.Services.Images.Caching;
+using JitHub.Core.Services.Issues;
+using JitHub.Core.Services.Lifecycle;
+using JitHub.Core.Services.PullRequests;
+using JitHub.Core.Services.Repositories;
+using JitHub.Core.Services.Stars;
+using JitHub.Core.Services.Telemetry;
 using NSubstitute;
 using Xunit;
 
@@ -539,9 +554,9 @@ public sealed class AccountDataRemovalTests : IDisposable
         DateTimeOffset.UtcNow,
         DateTimeOffset.UtcNow);
 
-    private sealed class TestAppConfig : JitHub.Services.IAppConfig
+    private sealed class TestAppConfig : JitHub.Core.Services.Configuration.IAppConfig
     {
-        public JitHub.Models.Credential Credential { get; } = new() { ClientId = "account-removal-test" };
+        public JitHub.Core.Models.Authentication.Credential Credential { get; } = new() { ClientId = "account-removal-test" };
     }
 
     private sealed class MemoryCredentialVaultBackend : ICredentialVaultBackend

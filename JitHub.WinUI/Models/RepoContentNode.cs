@@ -1,5 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub.Repositories;
 using JitHub.Models.LegacyGitHub;
 using System;
 using System.Collections.Generic;

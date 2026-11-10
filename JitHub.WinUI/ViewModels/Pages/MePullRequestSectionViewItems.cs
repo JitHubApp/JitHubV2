@@ -3,10 +3,14 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
-using JitHub.Models.GitHub;
-using JitHub.Services;
-using JitHub.WinUI.Helpers;
-using JitHub.WinUI.ViewModels.Common;
+using JitHub.Core.Models.GitHub.Commits;
+using JitHub.Core.Models.GitHub.Issues;
+using JitHub.Core.Models.GitHub.PullRequests;
+using JitHub.Core.Models.GitHub.Users;
+using JitHub.Core.Services.Localization;
+using JitHub.Core.Services.Profile;
+using JitHub.Core.Services.PullRequests;
+using JitHub.Core.ViewModels.Collections;
 using MarkdownRenderer.Images;
 
 namespace JitHub.WinUI.ViewModels.Pages;

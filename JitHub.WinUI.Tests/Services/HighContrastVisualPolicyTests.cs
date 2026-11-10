@@ -1,4 +1,4 @@
-using JitHub.Services.Accessibility;
+using JitHub.Core.Services.Accessibility;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;

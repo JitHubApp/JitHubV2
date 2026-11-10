@@ -1,4 +1,3 @@
-using JitHub.WinUI.Helpers;
 using CommunityToolkit.Mvvm.ComponentModel;
 using JitHub.Models.LegacyGitHub;
 

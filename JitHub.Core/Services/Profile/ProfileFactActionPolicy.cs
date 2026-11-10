@@ -2,7 +2,7 @@ using System;
 using System.Linq;
 using JitHub.Markdown.Links;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Profile;
 
 public static class ProfileFactActionPolicy
 {

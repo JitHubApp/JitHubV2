@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Commits;
 
 public sealed class CommitDiffDocumentCache
 {

@@ -2,8 +2,10 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Xml.Linq;
-using JitHub.Models.GitHub;
-using JitHub.Services;
+using JitHub.Core.Models.GitHub.PullRequests;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.Me;
+using JitHub.Core.Services.PullRequests;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Views;

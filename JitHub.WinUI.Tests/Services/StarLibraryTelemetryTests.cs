@@ -1,4 +1,5 @@
-using JitHub.Services;
+using JitHub.Core.Services.Stars;
+using JitHub.Core.Services.Telemetry;
 using JitHub.WinUI.Tests.TestDoubles;
 using Xunit;
 

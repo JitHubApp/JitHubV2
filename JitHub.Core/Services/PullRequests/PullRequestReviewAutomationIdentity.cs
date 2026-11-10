@@ -3,7 +3,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.PullRequests;
 
 public static class PullRequestReviewAutomationIdentity
 {

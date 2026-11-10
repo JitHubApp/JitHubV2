@@ -1,4 +1,4 @@
-using JitHub.Services;
+using JitHub.Core.Services.Telemetry;
 
 namespace JitHub.WinUI.Tests.TestDoubles;
 

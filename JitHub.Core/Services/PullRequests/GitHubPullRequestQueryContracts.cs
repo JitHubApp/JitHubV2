@@ -1,9 +1,16 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub;
+using JitHub.Core.Models.GitHub.Commits;
+using JitHub.Core.Models.GitHub.Issues;
+using JitHub.Core.Models.GitHub.PullRequests;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Models.GitHub.Users;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.Me;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.PullRequests;
 
 public enum PullRequestWorkspaceSection
 {
@@ -428,9 +435,9 @@ public interface IGitHubPullRequestQueryService
 
     private static string? SafeRefreshError(Exception? error) => error is null
         ? null
-        : JitHub.WinUI.Helpers.UserFacingError.For(
+        : JitHub.Core.Helpers.UserFacingError.For(
             error,
-            JitHub.WinUI.Helpers.UserFacingErrorKind.Refresh,
+            JitHub.Core.Helpers.UserFacingErrorKind.Refresh,
             "pull-request-section");
 
     private static PullRequestPagedSection<T> CreateUnavailableRepositoryMetadataSection<T>()

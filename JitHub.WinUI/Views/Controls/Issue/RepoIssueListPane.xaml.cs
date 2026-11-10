@@ -1,7 +1,8 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub.Issues;
+using JitHub.Core.Services.Issues;
 using JitHub.Services;
 using JitHub.WinUI.Performance;
 using JitHub.WinUI.ViewModels.Pages;

@@ -3,8 +3,13 @@ using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.GitHub.Prefetch;
+using JitHub.Core.Services.GitHub.Transport;
+using JitHub.Core.Services.Lifecycle;
+using JitHub.Core.Services.Telemetry;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.GitHub;
 
 public interface IGitHubQueryService
 {

@@ -8,7 +8,10 @@
     xmlns:commit="using:JitHub.WinUI.Views.Controls.Commit"
     xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-    xmlns:github="using:JitHub.Models.GitHub"
+    xmlns:github="using:JitHub.Core.Models.GitHub.Issues"
+    xmlns:commits="using:JitHub.Core.Models.GitHub.Commits"
+    xmlns:pullrequests="using:JitHub.Core.Models.GitHub.PullRequests"
+    xmlns:users="using:JitHub.Core.Models.GitHub.Users"
     xmlns:labs="using:CommunityToolkit.WinUI"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
@@ -27,7 +30,7 @@
             <ItemsStackPanel CacheLength="8" />
         </ItemsPanelTemplate>
 
-        <DataTemplate x:Key="RepoPullRequestListItemTemplate" x:DataType="github:GitHubPullRequest">
+        <DataTemplate x:Key="RepoPullRequestListItemTemplate" x:DataType="pullrequests:GitHubPullRequest">
             <Grid
                 MinHeight="{ThemeResource AppDimension52}"
                 AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
@@ -167,7 +170,7 @@
             </Border>
         </DataTemplate>
 
-        <DataTemplate x:Key="RepoPullRequestCommitTemplate" x:DataType="github:GitHubCommit">
+        <DataTemplate x:Key="RepoPullRequestCommitTemplate" x:DataType="commits:GitHubCommit">
             <Border
                 Margin="{ThemeResource AppMargin0_0_0_10}"
                 Padding="{ThemeResource AppPadding12}"
@@ -448,7 +451,7 @@
             </Border>
         </DataTemplate>
 
-        <DataTemplate x:Key="RepoPullRequestReviewerActorTemplate" x:DataType="github:GitHubActor">
+        <DataTemplate x:Key="RepoPullRequestReviewerActorTemplate" x:DataType="users:GitHubActor">
             <Grid
                 MinHeight="{ThemeResource AppDimension34}"
                 Margin="{ThemeResource AppMargin0_0_0_6}"
@@ -474,7 +477,7 @@
             </Grid>
         </DataTemplate>
 
-        <DataTemplate x:Key="RepoPullRequestAssigneeActorTemplate" x:DataType="github:GitHubActor">
+        <DataTemplate x:Key="RepoPullRequestAssigneeActorTemplate" x:DataType="users:GitHubActor">
             <Grid
                 MinHeight="{ThemeResource AppDimension34}"
                 Margin="{ThemeResource AppMargin0_0_0_6}"

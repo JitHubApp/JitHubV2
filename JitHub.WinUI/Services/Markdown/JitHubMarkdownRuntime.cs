@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Core.Services.CodeViewer;
 using JitHub.Markdown.Runtime;
 using JitHub.Services.CodeViewer;
 using MarkdownRenderer;

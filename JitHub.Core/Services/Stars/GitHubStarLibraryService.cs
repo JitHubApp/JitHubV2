@@ -5,10 +5,17 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.GitHub;
-using JitHub.WinUI.Helpers;
+using JitHub.Core.Helpers;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Services.Accounts;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.GitHub;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.Lifecycle;
+using JitHub.Core.Services.Repositories;
+using JitHub.Core.Services.Telemetry;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Stars;
 
 public sealed partial class GitHubStarLibraryService : IGitHubStarLibraryService, IDisposable
 {
@@ -388,9 +395,9 @@ public sealed partial class GitHubStarLibraryService : IGitHubStarLibraryService
                 IsComplete = fullSync && reconciliationPageApplied ? false : previous.IsComplete,
                 IsSyncing = false,
                 IndexedCount = existing.TotalCount,
-                ErrorMessage = JitHub.WinUI.Helpers.UserFacingError.For(
+                ErrorMessage = JitHub.Core.Helpers.UserFacingError.For(
                     ex,
-                    JitHub.WinUI.Helpers.UserFacingErrorKind.Refresh,
+                    JitHub.Core.Helpers.UserFacingErrorKind.Refresh,
                     "stars-sync")
             };
             await _store.SaveSyncStateAsync(failed, CancellationToken.None);
@@ -584,9 +591,9 @@ public sealed partial class GitHubStarLibraryService : IGitHubStarLibraryService
                         userId,
                         mutation.RepositoryId,
                         mutation.DesiredStarred,
-                        JitHub.WinUI.Helpers.UserFacingError.For(
+                        JitHub.Core.Helpers.UserFacingError.For(
                             ex,
-                            JitHub.WinUI.Helpers.UserFacingErrorKind.Action,
+                            JitHub.Core.Helpers.UserFacingErrorKind.Action,
                             "stars-mutation"),
                         CancellationToken.None);
                     TrackEventSafely("stars.action.executed", new Dictionary<string, string?>
@@ -726,9 +733,9 @@ public sealed partial class GitHubStarLibraryService : IGitHubStarLibraryService
                 isStarred,
                 DateTimeOffset.UtcNow,
                 0,
-                JitHub.WinUI.Helpers.UserFacingError.For(
+                JitHub.Core.Helpers.UserFacingError.For(
                     ex,
-                    JitHub.WinUI.Helpers.UserFacingErrorKind.Refresh,
+                    JitHub.Core.Helpers.UserFacingErrorKind.Refresh,
                     "stars-recovery"));
             try
             {
@@ -869,9 +876,9 @@ public sealed partial class GitHubStarLibraryService : IGitHubStarLibraryService
                     entry with
                     {
                         AttemptCount = entry.AttemptCount + 1,
-                        LastError = JitHub.WinUI.Helpers.UserFacingError.For(
+                        LastError = JitHub.Core.Helpers.UserFacingError.For(
                             ex,
-                            JitHub.WinUI.Helpers.UserFacingErrorKind.Action,
+                            JitHub.Core.Helpers.UserFacingErrorKind.Action,
                             "stars-recovery")
                     },
                     CancellationToken.None);

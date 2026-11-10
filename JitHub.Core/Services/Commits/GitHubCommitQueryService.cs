@@ -6,9 +6,18 @@ using System.Net.Http;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub.Commits;
+using JitHub.Core.Models.GitHub.PullRequests;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Models.GitHub.Users;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.GitHub;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.GitHub.Transport;
+using JitHub.Core.Services.Me;
+using JitHub.Core.Services.Performance;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Commits;
 
 public sealed class GitHubCommitQueryService : IGitHubCommitQueryService
 {
@@ -642,9 +651,9 @@ public sealed class GitHubCommitQueryService : IGitHubCommitQueryService
                     {
                         state = CreateState(result) with
                         {
-                            ErrorMessage = JitHub.WinUI.Helpers.UserFacingError.For(
+                            ErrorMessage = JitHub.Core.Helpers.UserFacingError.For(
                                 ex,
-                                JitHub.WinUI.Helpers.UserFacingErrorKind.Refresh,
+                                JitHub.Core.Helpers.UserFacingErrorKind.Refresh,
                                 "commit-section"),
                             Completeness = PagedDataCompleteness.Partial,
                             LoadedItemCount = items.Count,
@@ -668,9 +677,9 @@ public sealed class GitHubCommitQueryService : IGitHubCommitQueryService
                 state = state with
                 {
                     CacheState = CacheState.Error,
-                    ErrorMessage = JitHub.WinUI.Helpers.UserFacingError.For(
+                    ErrorMessage = JitHub.Core.Helpers.UserFacingError.For(
                         ex,
-                        JitHub.WinUI.Helpers.UserFacingErrorKind.Refresh,
+                        JitHub.Core.Helpers.UserFacingErrorKind.Refresh,
                         "commit-section")
                 };
                 break;
@@ -788,9 +797,9 @@ public sealed class GitHubCommitQueryService : IGitHubCommitQueryService
             result.IsRefreshInProgress,
             result.RefreshError is null
                 ? null
-                : JitHub.WinUI.Helpers.UserFacingError.For(
+                : JitHub.Core.Helpers.UserFacingError.For(
                     result.RefreshError,
-                    JitHub.WinUI.Helpers.UserFacingErrorKind.Refresh,
+                    JitHub.Core.Helpers.UserFacingErrorKind.Refresh,
                     "commit-section"));
 
     private static void AddOptionalQueryParameter(List<string> queryParts, string name, string? value)

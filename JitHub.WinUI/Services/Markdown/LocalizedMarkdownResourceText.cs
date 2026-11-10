@@ -1,6 +1,6 @@
 ﻿using System.Globalization;
+using JitHub.Core.Services.Localization;
 using JitHub.Markdown.Localization;
-using JitHub.WinUI.Helpers;
 
 namespace JitHub.Services.Markdown;
 

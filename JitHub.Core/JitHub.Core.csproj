@@ -4,8 +4,9 @@
        settings and diagnostics, code viewer services, and the view models
        and view items the pages bind to. The app (JitHub.WinUI) holds the
        pages, controls, resources and composition root, and references this
-       project; JitHub.WinUI.Tests tests it directly. Folders and namespaces
-       are the ones these files had in the app. -->
+       project; JitHub.WinUI.Tests tests it directly. Code is organized by
+       layer, then area (Models, Services, ViewModels), and every namespace is
+       JitHub.Core plus the folder path. -->
   <PropertyGroup>
     <!-- Match JitHub.WinUI and the projects it references. Like JitHub.Markdown
          and the renderer, it uses the SDK's default Windows projection so
@@ -13,7 +14,7 @@
          version. -->
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
-    <RootNamespace>JitHub</RootNamespace>
+    <RootNamespace>JitHub.Core</RootNamespace>
     <Nullable>enable</Nullable>
     <!-- The SDK defaults Platform to AnyCPU before this file is evaluated. -->
     <Platform Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU' or '$(Platform)' == 'Any CPU'">x64</Platform>

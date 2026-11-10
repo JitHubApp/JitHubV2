@@ -3,12 +3,12 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using JitHub.Markdown.Links;
-using JitHub.Services.CodeViewer;
-using JitHub.Services;
-using JitHub.WinUI.Helpers;
+using JitHub.Core.Helpers;
+using JitHub.Core.Services.CodeViewer;
+using JitHub.Core.Services.Telemetry;
 using Windows.System;
 
-namespace JitHub.WinUI.ViewModels.CodeViewer;
+namespace JitHub.Core.ViewModels.CodeViewer;
 
 public sealed partial class RepoCodeBreadcrumbViewModel : ObservableObject
 {

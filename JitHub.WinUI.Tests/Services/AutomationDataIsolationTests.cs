@@ -1,5 +1,6 @@
 using System.IO;
-using JitHub.Services;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.Storage;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;

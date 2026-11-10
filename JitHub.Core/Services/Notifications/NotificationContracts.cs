@@ -1,8 +1,9 @@
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub.Notifications;
+using JitHub.Core.Services.GitHub.Caching;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Notifications;
 
 public enum NotificationListFilter
 {

@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
-using JitHub.Services;
+using JitHub.Core.Services.Theming;
 using JitHub.Shared.Theming;
 using Xunit;
 

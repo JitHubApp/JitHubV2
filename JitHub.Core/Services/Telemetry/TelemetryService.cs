@@ -1,8 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using JitHub.Core.Services.Settings;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Telemetry;
 
 public sealed partial class TelemetryService : ITelemetryService
 {

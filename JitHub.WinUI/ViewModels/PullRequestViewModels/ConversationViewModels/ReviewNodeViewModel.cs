@@ -1,10 +1,11 @@
 using JitHub.Models.PRConversation;
 using JitHub.WinUI.ViewModels.Base;
 using JitHub.Models.LegacyGitHub;
+using JitHub.Core.Services.Profile;
+using JitHub.Core.Services.PullRequests;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using JitHub.Services;
 
 namespace JitHub.WinUI.ViewModels.PullRequestViewModels.ConversationViewModels
 {

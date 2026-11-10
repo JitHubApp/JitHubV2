@@ -7,10 +7,11 @@
     xmlns:app="using:JitHub.WinUI.Views.Controls.App"
     xmlns:common="using:JitHub.WinUI.Views.Controls.Common"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-    xmlns:github="using:JitHub.Models.GitHub"
+    xmlns:github="using:JitHub.Core.Models.GitHub"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     xmlns:viewmodels="using:JitHub.WinUI.ViewModels.Pages"
+    xmlns:me="using:JitHub.Core.ViewModels.Me"
     x:DataType="viewmodels:MyIssuesPageViewModel"
     Background="{ThemeResource AppTransparentBrush}"
     mc:Ignorable="d">
@@ -60,7 +61,7 @@
             </Grid>
         </DataTemplate>
 
-        <DataTemplate x:Key="CommentTemplate" x:DataType="viewmodels:MeIssueCommentViewItem">
+        <DataTemplate x:Key="CommentTemplate" x:DataType="me:MeIssueCommentViewItem">
             <Border
                 Margin="{ThemeResource AppMargin0_0_0_12}"
                 Padding="{ThemeResource AppPadding14}"

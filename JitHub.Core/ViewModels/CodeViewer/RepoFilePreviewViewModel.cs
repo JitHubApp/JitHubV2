@@ -1,9 +1,9 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using JitHub.Models.CodeViewer;
+using JitHub.Core.Models.CodeViewer;
 using MarkdownRenderer.Images;
 
-namespace JitHub.WinUI.ViewModels.CodeViewer;
+namespace JitHub.Core.ViewModels.CodeViewer;
 
 public sealed partial class RepoFilePreviewViewModel : ObservableObject
 {

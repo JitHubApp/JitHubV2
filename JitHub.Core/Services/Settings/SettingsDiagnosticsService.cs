@@ -5,8 +5,11 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.Storage;
+using JitHub.Core.Services.Telemetry;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Settings;
 
 public sealed class SettingsDiagnosticsService : ISettingsDiagnosticsService
 {

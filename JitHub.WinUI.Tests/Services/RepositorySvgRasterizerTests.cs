@@ -1,6 +1,6 @@
 using System.Buffers;
 using System.Text;
-using JitHub.Services.CodeViewer;
+using JitHub.Core.Services.CodeViewer;
 using MarkdownRenderer.Images;
 using Xunit;
 

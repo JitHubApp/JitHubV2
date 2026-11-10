@@ -2,9 +2,11 @@ using System;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub.Gists;
+using JitHub.Core.Services.GitHub;
+using JitHub.Core.Services.GitHub.Caching;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Gists;
 
 public enum GistVisibilityFilter
 {

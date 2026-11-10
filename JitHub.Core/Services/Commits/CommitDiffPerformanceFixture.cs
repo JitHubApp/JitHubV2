@@ -1,9 +1,9 @@
 using System;
 using System.Linq;
 using System.Text;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub.Commits;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Commits;
 
 internal static class CommitDiffPerformanceFixture
 {

@@ -4,12 +4,15 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models;
-using JitHub.Services;
+using JitHub.Core.Models.Theming;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.Settings;
+using JitHub.Core.Services.Storage;
+using JitHub.Core.Services.Telemetry;
+using JitHub.Core.ViewModels.Settings;
 using JitHub.Shared.Theming;
 using JitHub.WinUI.Tests.Services;
 using JitHub.WinUI.Tests.TestDoubles;
-using JitHub.WinUI.ViewModels.Pages;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.ViewModels;

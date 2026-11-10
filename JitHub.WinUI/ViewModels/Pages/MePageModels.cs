@@ -9,11 +9,26 @@ using MarkdownRenderer.Images;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using JitHub.Models.GitHub;
+using JitHub.Core.Helpers;
+using JitHub.Core.Models.GitHub.Commits;
+using JitHub.Core.Models.GitHub.Issues;
+using JitHub.Core.Models.GitHub.PullRequests;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Models.GitHub.Users;
+using JitHub.Core.Models.Navigation;
+using JitHub.Core.Services.Accounts;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.GitHub.Transport;
+using JitHub.Core.Services.Issues;
+using JitHub.Core.Services.Localization;
+using JitHub.Core.Services.Me;
+using JitHub.Core.Services.Profile;
+using JitHub.Core.Services.PullRequests;
+using JitHub.Core.Services.Telemetry;
+using JitHub.Core.ViewModels.Collections;
+using JitHub.Core.ViewModels.Me;
 using JitHub.Models.NavArgs;
-using JitHub.Services;
-using JitHub.WinUI.Helpers;
-using JitHub.WinUI.ViewModels.Common;
 
 namespace JitHub.WinUI.ViewModels.Pages;
 
@@ -874,9 +889,9 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
         {
             trace.SetProperty("result", MeListTelemetryOutcomePolicy.ForException(ex));
             StatusText = Items.Count == 0
-                ? JitHub.WinUI.Helpers.UserFacingError.For(
+                ? JitHub.Core.Helpers.UserFacingError.For(
                     ex,
-                    JitHub.WinUI.Helpers.UserFacingErrorKind.Loading,
+                    JitHub.Core.Helpers.UserFacingErrorKind.Loading,
                     "my-work-items")
                 : GetString(
                     "MyWorkItems.Error.RefreshFailed",
@@ -1130,9 +1145,9 @@ public abstract partial class MeSearchPageViewModelBase : ViewModelBase
         catch (Exception ex) when (ex is GitHubApiException or System.Net.Http.HttpRequestException)
         {
             DetailStatusText = Comments.Count == 0
-                ? JitHub.WinUI.Helpers.UserFacingError.For(
+                ? JitHub.Core.Helpers.UserFacingError.For(
                     ex,
-                    JitHub.WinUI.Helpers.UserFacingErrorKind.Loading,
+                    JitHub.Core.Helpers.UserFacingErrorKind.Loading,
                     "my-issues-detail")
                 : GetString(
                     "MyWorkItems.Error.DetailRefreshFailedCached",

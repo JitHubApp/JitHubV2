@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using JitHub.Models.CodeViewer;
+using JitHub.Core.Models.CodeViewer;
 using MarkdownRenderer;
 
-namespace JitHub.Services.CodeViewer;
+namespace JitHub.Core.Services.CodeViewer;
 
 /// <summary>
 /// Determines how a file should be rendered in the code viewer.

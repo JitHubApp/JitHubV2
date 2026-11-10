@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Input;
 using JitHub.Models.LegacyGitHub;
+using JitHub.Core.Services.Telemetry;
 using NewRepository = JitHub.Models.LegacyGitHub.NewRepository;
 using RepositoryVisibility = JitHub.Models.LegacyGitHub.RepositoryVisibility;
 using System;
@@ -23,8 +24,8 @@ public partial class RepoFormViewModel : ObservableObject
         private List<RepositoryVisibility> _visibilities = [];
         private RepositoryVisibility _selectedVisibility;
         private bool _createReadme;
-        private List<Models.License> _licenses = [];
-        private Models.License? _selectedLicense;
+        private List<JitHub.Core.Models.Repositories.License> _licenses = [];
+        private JitHub.Core.Models.Repositories.License? _selectedLicense;
         private ICommand? _refreshCommand;
         private ModalSession? _modalSession;
 
@@ -64,12 +65,12 @@ public partial class RepoFormViewModel : ObservableObject
             get => _createReadme;
             set => SetProperty(ref _createReadme, value);
         }
-        public List<Models.License> Licenses
+        public List<JitHub.Core.Models.Repositories.License> Licenses
         {
             get => _licenses;
             set => SetProperty(ref _licenses, value);
         }
-        public Models.License? SelectedLicense
+        public JitHub.Core.Models.Repositories.License? SelectedLicense
         {
             get => _selectedLicense;
             set
@@ -86,7 +87,7 @@ public partial class RepoFormViewModel : ObservableObject
 
         public RepoFormViewModel()
         {
-            Licenses = Models.License.GetLicenses().ToList();
+            Licenses = JitHub.Core.Models.Repositories.License.GetLicenses().ToList();
             Visibilities = new List<RepositoryVisibility>()
             {
                 RepositoryVisibility.Internal,

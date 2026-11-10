@@ -5,7 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace JitHub.Services.CodeViewer;
+namespace JitHub.Core.Services.CodeViewer;
 
 /// <summary>
 /// Loads language-map.json at startup and resolves WinUIEdit HighlightingLanguage ids

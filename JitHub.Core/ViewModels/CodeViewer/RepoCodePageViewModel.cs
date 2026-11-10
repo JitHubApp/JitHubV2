@@ -12,14 +12,21 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using JitHub.Core.Helpers;
+using JitHub.Core.Models.CodeViewer;
+using JitHub.Core.Services.Accounts;
+using JitHub.Core.Services.CodeViewer;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.GitHub.Prefetch;
+using JitHub.Core.Services.GitHub.Transport;
+using JitHub.Core.Services.Lifecycle;
+using JitHub.Core.Services.Localization;
+using JitHub.Core.Services.Telemetry;
 using JitHub.Markdown.Documents;
-using JitHub.Models.CodeViewer;
 using JitHub.Services;
-using JitHub.Services.CodeViewer;
-using JitHub.WinUI.Helpers;
 using Microsoft.UI.Dispatching;
 
-namespace JitHub.WinUI.ViewModels.CodeViewer;
+namespace JitHub.Core.ViewModels.CodeViewer;
 
 public sealed partial class RepoCodePageViewModel : ObservableObject
 {

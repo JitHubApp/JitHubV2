@@ -1,4 +1,4 @@
-namespace JitHub.Services.Layout;
+namespace JitHub.Core.Services.Layout;
 
 public enum SettingsWorkspaceMode
 {

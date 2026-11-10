@@ -5,10 +5,22 @@ using System.Net.Http;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.GitHub;
-using JitHub.WinUI;
+using JitHub.Core.Models.Activation;
+using JitHub.Core.Models.GitHub;
+using JitHub.Core.Models.GitHub.Commits;
+using JitHub.Core.Models.GitHub.Issues;
+using JitHub.Core.Models.GitHub.PullRequests;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Models.GitHub.Users;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.GitHub;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.Me;
+using JitHub.Core.Services.Performance;
+using JitHub.Core.Services.Storage;
+using JitHub.Services;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.PullRequests;
 
 public sealed class GitHubPullRequestQueryService : IGitHubPullRequestQueryService
 {
@@ -1380,9 +1392,9 @@ public sealed class GitHubPullRequestQueryService : IGitHubPullRequestQueryServi
                 result.IsRefreshInProgress,
                 result.RefreshError is null
                     ? null
-                    : JitHub.WinUI.Helpers.UserFacingError.For(
+                    : JitHub.Core.Helpers.UserFacingError.For(
                         result.RefreshError,
-                        JitHub.WinUI.Helpers.UserFacingErrorKind.Refresh,
+                        JitHub.Core.Helpers.UserFacingErrorKind.Refresh,
                         "pull-request-section"));
 
     private static GitHubQuery<T> CreateQuery<T>(

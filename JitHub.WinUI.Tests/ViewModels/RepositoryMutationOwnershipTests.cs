@@ -1,4 +1,4 @@
-using JitHub.WinUI.ViewModels.Common;
+using JitHub.Core.ViewModels.Repositories;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.ViewModels;

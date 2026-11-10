@@ -1,6 +1,5 @@
 using CommunityToolkit.Common.Collections;
-using CommunityToolkit.WinUI;
-using JitHub.WinUI.Behaviors;
+using JitHub.Core.ViewModels.Collections;
 using Microsoft.UI.Xaml.Data;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.Foundation;

@@ -1,4 +1,5 @@
 using Xunit;
+using JitHub.Core.Models.Activation;
 
 namespace JitHub.WinUI.Tests;
 

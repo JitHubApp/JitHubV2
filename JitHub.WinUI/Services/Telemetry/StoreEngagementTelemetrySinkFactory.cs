@@ -1,6 +1,7 @@
 using System;
 #if STORE_ENGAGEMENT_AVAILABLE
 using Microsoft.Services.Store.Engagement;
+using JitHub.Core.Services.Telemetry;
 #endif
 
 namespace JitHub.Services;

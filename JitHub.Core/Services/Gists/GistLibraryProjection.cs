@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub.Gists;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Gists;
 
 public static class GistLibraryProjection
 {

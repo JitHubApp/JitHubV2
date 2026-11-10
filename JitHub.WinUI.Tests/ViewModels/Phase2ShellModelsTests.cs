@@ -1,8 +1,8 @@
 using System;
 using System.Windows.Input;
-using JitHub.Models.GitHub;
-using JitHub.Models.NavArgs;
-using JitHub.WinUI.ViewModels.Pages;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Models.Navigation;
+using JitHub.Core.ViewModels.Shell;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.ViewModels;

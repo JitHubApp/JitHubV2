@@ -10,7 +10,6 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Services;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Performance;
 using Xunit;

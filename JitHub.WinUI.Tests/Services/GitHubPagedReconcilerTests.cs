@@ -1,5 +1,6 @@
-using JitHub.Models.GitHub;
-using JitHub.Services;
+using JitHub.Core.Models.GitHub.Issues;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.Me;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;

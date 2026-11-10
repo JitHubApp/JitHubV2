@@ -8,13 +8,24 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using JitHub.Core.Helpers;
+using JitHub.Core.Models.GitHub.Activities;
+using JitHub.Core.Models.GitHub.Notifications;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Models.GitHub.Users;
+using JitHub.Core.Models.Navigation;
+using JitHub.Core.Services.Accounts;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.Dashboard;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.GitHub.Transport;
+using JitHub.Core.Services.Localization;
+using JitHub.Core.Services.Notifications;
+using JitHub.Core.Services.Telemetry;
+using JitHub.Core.ViewModels.Collections;
 using JitHub.Models.Activities;
-using JitHub.Models.GitHub;
 using JitHub.Models.NavArgs;
-using JitHub.Services;
-using JitHub.WinUI.Helpers;
 using JitHub.WinUI.ViewModels.Activities;
-using JitHub.WinUI.ViewModels.Common;
 
 namespace JitHub.WinUI.ViewModels.Pages;
 
@@ -330,9 +341,9 @@ public sealed partial class DashboardPageViewModel : ViewModelBase
         {
             DashboardStatusText = HasAnyDashboardContent()
                 ? L("Dashboard/Status/RefreshFailedCached", "Home refresh failed. Showing cached dashboard data.")
-                : JitHub.WinUI.Helpers.UserFacingError.For(
+                : JitHub.Core.Helpers.UserFacingError.For(
                     ex,
-                    JitHub.WinUI.Helpers.UserFacingErrorKind.Refresh,
+                    JitHub.Core.Helpers.UserFacingErrorKind.Refresh,
                     "dashboard");
             _telemetryService.TrackEvent(
                 "dashboard.refresh.completed",

@@ -1,7 +1,8 @@
 using System;
 using System.Collections.Generic;
+using JitHub.Core.Services.Telemetry;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Stars;
 
 public static class StarLibraryTelemetry
 {

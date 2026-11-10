@@ -2,14 +2,17 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Threading.Tasks;
+using JitHub.Core.Models.Theming;
+using JitHub.Core.Services.Dialogs;
+using JitHub.Core.Services.Layout;
+using JitHub.Core.Services.Localization;
+using JitHub.Core.Services.Settings;
+using JitHub.Core.ViewModels.Settings;
 using JitHub.Models;
 using JitHub.Services;
-using JitHub.Services.Layout;
 using JitHub.WinUI.Helpers;
-using JitHub.WinUI.ViewModels.Pages;
 using JitHub.WinUI.Views.Controls.App;
 using JitHub.WinUI.Views.Dialogs;
-using JitHubModels = JitHub.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -298,7 +301,7 @@ public sealed partial class SettingsPage : Page
     {
         if (!_isSynchronizingThemeCards && SystemThemeButton.IsChecked == true)
         {
-            ViewModel.SelectTheme(JitHubModels.ThemeConst.System);
+            ViewModel.SelectTheme(ThemeConst.System);
         }
     }
 
@@ -306,7 +309,7 @@ public sealed partial class SettingsPage : Page
     {
         if (!_isSynchronizingThemeCards && LightThemeButton.IsChecked == true)
         {
-            ViewModel.SelectTheme(JitHubModels.ThemeConst.Light);
+            ViewModel.SelectTheme(ThemeConst.Light);
         }
     }
 
@@ -314,7 +317,7 @@ public sealed partial class SettingsPage : Page
     {
         if (!_isSynchronizingThemeCards && DarkThemeButton.IsChecked == true)
         {
-            ViewModel.SelectTheme(JitHubModels.ThemeConst.Dark);
+            ViewModel.SelectTheme(ThemeConst.Dark);
         }
     }
 

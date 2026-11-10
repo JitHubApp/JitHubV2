@@ -1,4 +1,4 @@
-using JitHub.Services;
+using JitHub.Core.Services.PullRequests;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;

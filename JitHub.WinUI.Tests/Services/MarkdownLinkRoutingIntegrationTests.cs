@@ -1,8 +1,8 @@
 using System;
 using System.IO;
+using JitHub.Core.ViewModels.CodeViewer;
 using JitHub.Markdown.Documents;
 using JitHub.Markdown.Links;
-using JitHub.WinUI.ViewModels.CodeViewer;
 using MarkdownRenderer.Images;
 using Xunit;
 

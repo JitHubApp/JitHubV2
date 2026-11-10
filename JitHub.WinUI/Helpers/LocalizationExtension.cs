@@ -1,4 +1,4 @@
-using JitHub.Services;
+using JitHub.Core.Services.Localization;
 
 namespace JitHub.WinUI.Helpers;
 

@@ -1,5 +1,4 @@
 using JitHub.Markdown.Documents;
-using JitHub.WinUI.Helpers;
 using JitHub.Models;
 using JitHub.Models.PRConversation;
 using JitHub.WinUI.ViewModels.Base;
@@ -15,6 +14,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using JitHub.Services;
+using JitHub.Core.Helpers;
+using JitHub.Core.Services.Issues;
+using JitHub.Core.Services.Localization;
+using JitHub.Core.Services.Profile;
+using JitHub.Core.Services.PullRequests;
+using JitHub.Core.Services.Telemetry;
 using MarkdownRenderer.Images;
 
 namespace JitHub.WinUI.ViewModels.UserViewModel

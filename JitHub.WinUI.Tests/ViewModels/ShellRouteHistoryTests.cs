@@ -1,5 +1,5 @@
 using System;
-using JitHub.WinUI.ViewModels.Pages;
+using JitHub.Core.ViewModels.Shell;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.ViewModels;

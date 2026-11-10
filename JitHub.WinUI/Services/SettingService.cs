@@ -5,6 +5,8 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using Windows.Storage;
+using JitHub.Core.Services.Settings;
+using JitHub.Core.Services.Storage;
 
 namespace JitHub.Services;
 

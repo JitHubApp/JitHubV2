@@ -2,9 +2,10 @@ using JitHub.Models;
 using JitHub.Models.Base;
 using JitHub.Models.PRConversation;
 using JitHub.Models.LegacyGitHub;
+using JitHub.Core.Services.Authentication;
 using ApiOptions = JitHub.Models.LegacyGitHub.ApiOptions;
 using CommitRequest = JitHub.Models.LegacyGitHub.CommitRequest;
-using GitHubIssueModel = JitHub.Models.GitHub.GitHubIssue;
+using GitHubIssueModel = JitHub.Core.Models.GitHub.Issues.GitHubIssue;
 using IssueRequest = JitHub.Models.LegacyGitHub.IssueRequest;
 using IssueUpdate = JitHub.Models.LegacyGitHub.IssueUpdate;
 using MergePullRequest = JitHub.Models.LegacyGitHub.MergePullRequest;
@@ -41,7 +42,7 @@ namespace JitHub.Services
         Task<RepoContentNode> GetFileContent(string owner, string name, string path, string _ref);
         Task<Blob> GetBlocFromGit(string owner, string name, string _ref);
         Task<ICollection<RepoContentNode>> GetRepoContents(string owner, string name, string path, string _ref);
-        Task<JitHub.Models.CodeViewer.RepoTree> GetRepoTreeAsync(string owner, string name, string refOrSha, CancellationToken ct);
+        Task<JitHub.Core.Models.CodeViewer.RepoTree> GetRepoTreeAsync(string owner, string name, string refOrSha, CancellationToken ct);
         Task<CompareResult> CompareCommits(string owner, string name, string @base, string head);
         Task<ICollection<Branch>> GetRepoBranches(
             string owner,

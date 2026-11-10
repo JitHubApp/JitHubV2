@@ -1,5 +1,5 @@
 using System.Collections;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub;
 using MarkdownRenderer.Images;
 
 namespace JitHub.WinUI.ViewModels.Pages;

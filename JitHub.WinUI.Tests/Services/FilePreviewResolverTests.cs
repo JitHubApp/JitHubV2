@@ -2,8 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
-using JitHub.Models.CodeViewer;
-using JitHub.Services.CodeViewer;
+using JitHub.Core.Models.CodeViewer;
+using JitHub.Core.Services.CodeViewer;
 using MarkdownRenderer;
 using Xunit;
 

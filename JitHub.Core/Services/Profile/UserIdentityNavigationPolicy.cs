@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Profile;
 
 public readonly record struct UserIdentityPresentation(string DisplayName, string? AuthenticatedLogin);
 

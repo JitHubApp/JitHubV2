@@ -1,6 +1,6 @@
 using System.Globalization;
 using System.Runtime.InteropServices;
-using JitHub.WinUI.Helpers;
+using JitHub.Core.Services.Localization;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;

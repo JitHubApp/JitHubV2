@@ -2,6 +2,7 @@ using System;
 using System.Windows.Input;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Animation;
+using JitHub.Core.Services.Authentication;
 
 namespace JitHub.Services;
 

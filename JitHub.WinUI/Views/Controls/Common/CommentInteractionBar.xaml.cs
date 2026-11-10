@@ -1,5 +1,5 @@
 using System;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub;
 using JitHub.WinUI.Helpers;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;

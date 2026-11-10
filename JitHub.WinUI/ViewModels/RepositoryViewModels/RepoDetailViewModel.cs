@@ -2,11 +2,25 @@ using JitHub.WinUI.Helpers;
 using JitHub.Models.NavArgs;
 using JitHub.Services;
 using JitHub.WinUI.ViewModels.Base;
-using JitHub.WinUI.ViewModels.Common;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Input;
-using JitHub.Models.GitHub;
 using JitHub.Models.LegacyGitHub;
+using JitHub.Core.Helpers;
+using JitHub.Core.Models.GitHub;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Models.Navigation;
+using JitHub.Core.Services.Accounts;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.GitHub;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.GitHub.Transport;
+using JitHub.Core.Services.Localization;
+using JitHub.Core.Services.Repositories;
+using JitHub.Core.Services.Stars;
+using JitHub.Core.Services.Telemetry;
+using JitHub.Core.ViewModels;
+using JitHub.Core.ViewModels.Collections;
+using JitHub.Core.ViewModels.Repositories;
 using NewRepositoryFork = JitHub.Models.LegacyGitHub.NewRepositoryFork;
 using System;
 using System.Collections.Generic;
@@ -1640,9 +1654,9 @@ namespace JitHub.WinUI.ViewModels.RepositoryViewModels
                 if (IsMutationUiCurrent(repository, queryContext, generation, mutationVersion, _starMutationVersion))
                 {
                     ShowActionStatus(
-                        JitHub.WinUI.Helpers.UserFacingError.For(
+                        JitHub.Core.Helpers.UserFacingError.For(
                             ex,
-                            JitHub.WinUI.Helpers.UserFacingErrorKind.Action,
+                            JitHub.Core.Helpers.UserFacingErrorKind.Action,
                             "repository-action"),
                         RepositoryActionStatusKind.Warning);
                 }

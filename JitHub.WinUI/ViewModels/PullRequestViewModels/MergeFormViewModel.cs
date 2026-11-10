@@ -2,6 +2,8 @@ using JitHub.Markdown.Documents;
 using JitHub.Services;
 using JitHub.WinUI.ViewModels.Base;
 using JitHub.Models.LegacyGitHub;
+using JitHub.Core.Helpers;
+using JitHub.Core.Services.Telemetry;
 using MergePullRequest = JitHub.Models.LegacyGitHub.MergePullRequest;
 using PullRequestMergeMethod = JitHub.Models.LegacyGitHub.PullRequestMergeMethod;
 using System;
@@ -113,9 +115,9 @@ public partial class MergeFormViewModel : RepoViewModel
             }
             catch (Exception ex)
             {
-                Error = JitHub.WinUI.Helpers.UserFacingError.For(
+                Error = JitHub.Core.Helpers.UserFacingError.For(
                     ex,
-                    JitHub.WinUI.Helpers.UserFacingErrorKind.Action,
+                    JitHub.Core.Helpers.UserFacingErrorKind.Action,
                     "pull-request-merge");
             }
             finally

@@ -1,6 +1,6 @@
 using System;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Commits;
 
 public static class CommitDateRangePolicy
 {

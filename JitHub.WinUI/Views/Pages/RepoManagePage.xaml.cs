@@ -5,10 +5,13 @@ using System.Threading.Tasks;
 using JitHub.WinUI.ViewModels.Pages;
 using JitHub.WinUI.Views.Controls.Common;
 using JitHub.WinUI.Views.Dialogs;
-using JitHub.Models.GitHub;
 using JitHub.Services;
-using JitHub.Services.Layout;
 using JitHub.WinUI.Performance;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Services.Dialogs;
+using JitHub.Core.Services.Layout;
+using JitHub.Core.Services.Localization;
+using JitHub.Core.Services.Storage;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -521,7 +524,7 @@ public sealed partial class RepoManagePage : Page
                     if (!await ViewModel.EnsureDeletionScopeAsync())
                     {
                         return DialogMutationResult.Failure(
-                            JitHub.WinUI.Helpers.LocalizedResourceText.GetString(
+                            JitHub.Core.Services.Localization.LocalizedResourceText.GetString(
                                 "RepoManage/DeletePermissionRequired",
                                 "Repository deletion permission is required before JitHub can continue."));
                     }

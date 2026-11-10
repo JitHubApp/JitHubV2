@@ -1,4 +1,5 @@
 using System;
+using JitHub.Core.Services.Dialogs;
 
 namespace JitHub.Services;
 

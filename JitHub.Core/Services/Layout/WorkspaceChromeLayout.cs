@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace JitHub.Services.Layout;
+namespace JitHub.Core.Services.Layout;
 
 public enum WorkspaceChromeMode
 {

@@ -1,11 +1,13 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Services.Layout;
 using JitHub.Services;
 using JitHub.WinUI.Performance;
 using JitHub.WinUI.Views.Controls.Common;
 using JitHub.WinUI.ViewModels.Pages;
+using JitHub.Core.Services.Layout;
+using JitHub.Core.Services.Me;
+using JitHub.Core.ViewModels.Me;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;

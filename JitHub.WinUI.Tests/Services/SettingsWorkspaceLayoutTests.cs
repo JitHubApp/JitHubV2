@@ -1,4 +1,4 @@
-using JitHub.Services.Layout;
+using JitHub.Core.Services.Layout;
 using System;
 using System.Collections.Generic;
 using System.IO;

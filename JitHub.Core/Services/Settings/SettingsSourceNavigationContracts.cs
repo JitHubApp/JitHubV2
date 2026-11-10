@@ -1,7 +1,8 @@
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Core.Services.GitHub.Caching;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Settings;
 
 public enum SettingsSourceNavigationResult
 {

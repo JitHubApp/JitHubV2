@@ -12,8 +12,12 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.GitHub;
-using JitHub.Services;
+using JitHub.Core.Models.GitHub.Gists;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.Gists;
+using JitHub.Core.Services.GitHub;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.GitHub.Transport;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;

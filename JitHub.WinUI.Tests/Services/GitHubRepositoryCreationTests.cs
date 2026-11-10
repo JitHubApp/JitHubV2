@@ -5,9 +5,9 @@ using System.Net.Http;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models;
-using JitHub.Models.GitHub;
-using JitHub.Services;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Models.Repositories;
+using JitHub.Core.Services.GitHub;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Services;

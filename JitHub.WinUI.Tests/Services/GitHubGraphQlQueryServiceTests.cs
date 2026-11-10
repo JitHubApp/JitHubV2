@@ -6,7 +6,13 @@ using System.Net.Http;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Services;
+using JitHub.Core.Services.GitHub;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.GitHub.Prefetch;
+using JitHub.Core.Services.GitHub.Transport;
+using JitHub.Core.Services.Lifecycle;
+using JitHub.Core.Services.Profile;
+using JitHub.Core.Services.Telemetry;
 using JitHub.WinUI.Tests.TestDoubles;
 using Xunit;
 
@@ -212,7 +218,7 @@ public sealed class GitHubGraphQlQueryServiceTests : IDisposable
             transport.SendAsync<GitHubProfileGraphQlData>(
                 "token",
                 new GitHubGraphQlRequest { Query = "query { viewer { login } }" },
-                JitHub.Models.GitHub.GitHubJsonSerializerContext.Default.GitHubProfileGraphQlResponse));
+                JitHub.Core.Models.GitHub.GitHubJsonSerializerContext.Default.GitHubProfileGraphQlResponse));
 
         Assert.Equal(HttpStatusCode.TooManyRequests, exception.StatusCode);
         Assert.Equal(TimeSpan.FromSeconds(1), exception.RetryDelay);
@@ -241,7 +247,7 @@ public sealed class GitHubGraphQlQueryServiceTests : IDisposable
             transport.SendAsync<GitHubProfileGraphQlData>(
                 "token",
                 new GitHubGraphQlRequest { Query = "query { viewer { login } }" },
-                JitHub.Models.GitHub.GitHubJsonSerializerContext.Default.GitHubProfileGraphQlResponse));
+                JitHub.Core.Models.GitHub.GitHubJsonSerializerContext.Default.GitHubProfileGraphQlResponse));
 
         Assert.Equal(HttpStatusCode.OK, exception.StatusCode);
         Assert.Equal(TimeSpan.FromSeconds(1), exception.RetryDelay);
@@ -270,7 +276,7 @@ public sealed class GitHubGraphQlQueryServiceTests : IDisposable
         GitHubGraphQlResponse<GitHubProfileGraphQlData> result = await transport.SendAsync<GitHubProfileGraphQlData>(
             "token",
             new GitHubGraphQlRequest { Query = "query { user(login: \"octocat\") { login } }" },
-            JitHub.Models.GitHub.GitHubJsonSerializerContext.Default.GitHubProfileGraphQlResponse);
+            JitHub.Core.Models.GitHub.GitHubJsonSerializerContext.Default.GitHubProfileGraphQlResponse);
 
         Assert.Equal(42, result.RateLimitRemaining);
         Assert.Equal(resetAt.ToUnixTimeSeconds(), result.RateLimitReset?.ToUnixTimeSeconds());
@@ -338,10 +344,10 @@ public sealed class GitHubGraphQlQueryServiceTests : IDisposable
                 HttpMethod.Post,
                 relativePath,
                 acceptMediaType: null,
-                JitHub.Models.GitHub.GitHubJsonSerializerContext.Default.GitHubProfileGraphQlData.Type),
+                JitHub.Core.Models.GitHub.GitHubJsonSerializerContext.Default.GitHubProfileGraphQlData.Type),
             "profile_graphql",
             ttl,
-            JitHub.Models.GitHub.GitHubJsonSerializerContext.Default.GitHubProfileGraphQlData,
+            JitHub.Core.Models.GitHub.GitHubJsonSerializerContext.Default.GitHubProfileGraphQlData,
             ["profile", "profile-graphql"]);
         return new GitHubGraphQlQuery<GitHubProfileGraphQlData>(
             cacheQuery,
@@ -350,7 +356,7 @@ public sealed class GitHubGraphQlQueryServiceTests : IDisposable
                 Query = "query Profile($login: String!) { user(login: $login) { login } }",
                 Variables = new Dictionary<string, string?> { ["login"] = "octocat" }
             },
-            JitHub.Models.GitHub.GitHubJsonSerializerContext.Default.GitHubProfileGraphQlResponse);
+            JitHub.Core.Models.GitHub.GitHubJsonSerializerContext.Default.GitHubProfileGraphQlResponse);
     }
 
     private static GitHubProfileGraphQlData CreatePayload(string login) => new()

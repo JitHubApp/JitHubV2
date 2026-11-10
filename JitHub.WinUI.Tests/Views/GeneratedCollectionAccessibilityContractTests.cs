@@ -5,13 +5,16 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Windows.Input;
 using System.Xml.Linq;
-using JitHub.Models.CodeViewer;
-using JitHub.Models.GitHub;
-using JitHub.Services;
-using JitHub.Services.CodeViewer;
-using JitHub.WinUI.ViewModels.CodeViewer;
-using JitHub.WinUI.ViewModels.Pages;
 using JitHub.WinUI.Tests.TestSupport;
+using JitHub.Core.Models.CodeViewer;
+using JitHub.Core.Models.GitHub.Commits;
+using JitHub.Core.Models.GitHub.Gists;
+using JitHub.Core.Models.GitHub.Issues;
+using JitHub.Core.Models.GitHub.PullRequests;
+using JitHub.Core.Services.CodeViewer;
+using JitHub.Core.ViewModels.CodeViewer;
+using JitHub.Core.ViewModels.Gists;
+using JitHub.Core.ViewModels.Shell;
 using Xunit;
 
 namespace JitHub.WinUI.Tests.Views;
@@ -112,7 +115,7 @@ public sealed class GeneratedCollectionAccessibilityContractTests
     public void CriticalDynamicCollectionsUseItemKeysInsteadOfContainerIndexes()
     {
         string meItems = ReadProductSource("ViewModels/Pages/MePageModels.cs");
-        string issueComments = ReadProductSource("ViewModels/Pages/MeIssueCommentViewItem.cs");
+        string issueComments = ReadProductSource("ViewModels/Me/MeIssueCommentViewItem.cs");
         string pullRequestSections = ReadProductSource("ViewModels/Pages/MePullRequestSectionViewItems.cs");
         string myIssues = ReadProductSource("Views/Pages/MyIssuesPage.xaml.cs");
         string myPullRequests = ReadProductSource("Views/Pages/MyPullRequestsPage.xaml.cs");
@@ -315,7 +318,7 @@ public sealed class GeneratedCollectionAccessibilityContractTests
             FindRepositoryRoot(),
             "JitHub.Core",
             "ViewModels",
-            "Pages",
+            "Stars",
             "StarRepositoryViewItem.cs"));
 
         Assert.Contains("public string AutomationName", viewModelSource, StringComparison.Ordinal);

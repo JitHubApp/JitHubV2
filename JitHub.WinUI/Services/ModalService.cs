@@ -1,5 +1,7 @@
 using System;
 using System.Windows.Input;
+using JitHub.Core.Services.Dialogs;
+using JitHub.Core.Services.Telemetry;
 using JitHub.Models.NavArgs;
 using Microsoft.UI.Xaml;
 

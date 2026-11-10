@@ -6,10 +6,14 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using JitHub.Models.CodeViewer;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.CodeViewer;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Services.Accounts;
+using JitHub.Core.Services.Authentication;
+using JitHub.Core.Services.GitHub;
+using JitHub.Core.Services.GitHub.Caching;
 
-namespace JitHub.Services.CodeViewer;
+namespace JitHub.Core.Services.CodeViewer;
 
 public sealed class RepoTreeService : IRepoTreeService
 {
@@ -534,9 +538,9 @@ public sealed class RepoTreeService : IRepoTreeService
             source.IsRefreshInProgress,
             source.RefreshError is null
                 ? null
-                : JitHub.WinUI.Helpers.UserFacingError.For(
+                : JitHub.Core.Helpers.UserFacingError.For(
                     source.RefreshError,
-                    JitHub.WinUI.Helpers.UserFacingErrorKind.Refresh,
+                    JitHub.Core.Helpers.UserFacingErrorKind.Refresh,
                     "repository-tree"),
             source.FetchedAt,
             source.StaleAfter);

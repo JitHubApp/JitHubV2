@@ -1,4 +1,5 @@
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Models.Navigation;
 using JitHub.Models.LegacyGitHub;
 
 namespace JitHub.Models.NavArgs;

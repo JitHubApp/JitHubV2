@@ -1,6 +1,8 @@
 using System;
+using JitHub.Core.Models.GitHub.Repositories;
+using JitHub.Core.Models.Navigation;
+using JitHub.Core.ViewModels.Shell;
 using JitHub.Markdown.Links;
-using JitHub.Models.GitHub;
 using JitHub.Models.NavArgs;
 using Microsoft.Extensions.DependencyInjection;
 

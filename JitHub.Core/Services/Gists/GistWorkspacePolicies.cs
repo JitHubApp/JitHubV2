@@ -1,9 +1,9 @@
 using System;
 using System.Globalization;
 using System.Threading;
-using JitHub.Models.GitHub;
+using JitHub.Core.Models.GitHub.Gists;
 
-namespace JitHub.Services;
+namespace JitHub.Core.Services.Gists;
 
 public sealed class GistSynchronizationGate
 {

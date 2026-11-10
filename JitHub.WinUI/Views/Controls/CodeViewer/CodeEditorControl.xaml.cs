@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
+using JitHub.Core.Services.Localization;
 using JitHub.Services;
 using JitHub.WinUI.Helpers;
 using JitHub.WinUI.Views.Controls.Common;
