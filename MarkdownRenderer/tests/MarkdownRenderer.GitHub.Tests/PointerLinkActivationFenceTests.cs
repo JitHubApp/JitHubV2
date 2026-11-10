@@ -1,6 +1,7 @@
 using System;
 using System.Windows.Input;
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Controls.Internal.Input.Links;
 using MarkdownRenderer.Hosting;
 using Xunit;
 

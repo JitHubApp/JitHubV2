@@ -4,8 +4,10 @@ using System.Diagnostics.CodeAnalysis;
 using Markdig.Syntax;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Hosting;
-using MarkdownRenderer.Html.Renderers;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Hosting.Internal;
+using MarkdownRenderer.Html.Internal.Renderers;
+using MarkdownRenderer.Parsing.Internal;
+using MarkdownRenderer.Parsing.Internal.SafeHtml;
 
 namespace MarkdownRenderer.Html;
 

@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.RenderResources;
 using Xunit;
 using static MarkdownRenderer.GitHub.Tests.ImageBoxSvgRendererFixture;
 

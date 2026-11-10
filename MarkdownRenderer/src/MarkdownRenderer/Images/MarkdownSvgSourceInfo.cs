@@ -1,4 +1,4 @@
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Images.Internal.Svg;
 
 namespace MarkdownRenderer.Images;
 

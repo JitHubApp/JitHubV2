@@ -1,11 +1,17 @@
 using System.Runtime.CompilerServices;
 using MarkdownRenderer.Controls;
-using MarkdownRenderer.Controls.Images;
-using MarkdownRenderer.Controls.Pipeline;
+using MarkdownRenderer.Controls.Internal.Images;
+using MarkdownRenderer.Controls.Internal.Pipeline;
+using MarkdownRenderer.Controls.Internal.Pipeline.Commit;
+using MarkdownRenderer.Controls.Internal.Recovery;
+using MarkdownRenderer.Controls.Internal.View;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Internal.Concurrency;
+using MarkdownRenderer.Layout.Internal.Context;
+using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.RenderResources;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Performance;
 using Xunit;
 

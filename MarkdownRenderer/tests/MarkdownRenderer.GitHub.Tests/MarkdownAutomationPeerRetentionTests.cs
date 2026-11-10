@@ -2,9 +2,11 @@ using System;
 using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using MarkdownRenderer.Accessibility;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Accessibility.Internal.Peers;
+using MarkdownRenderer.Accessibility.Internal.Semantics;
+using MarkdownRenderer.Layout.Internal.CodeBlocks;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
 using Xunit;
 using Microsoft.UI.Xaml.Automation;
 

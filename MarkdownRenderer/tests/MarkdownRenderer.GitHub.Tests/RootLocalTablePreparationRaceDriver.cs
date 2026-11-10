@@ -1,7 +1,8 @@
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
 using Xunit;
 using TablePreparationRace = MarkdownRenderer.GitHub.Tests.RootLocalTableImageRelayoutTests.TablePreparationRace;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Snapshots;
+using MarkdownRenderer.Layout.Internal.Tables;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

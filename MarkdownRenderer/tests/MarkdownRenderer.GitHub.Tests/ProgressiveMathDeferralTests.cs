@@ -1,10 +1,13 @@
-using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using MarkdownRenderer.Math;
 using MarkdownRenderer.Mermaid;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
+using MarkdownRenderer.Performance.Internal.ProgressiveScenes;
 using MarkdownRenderer.Theming;
 using Microsoft.UI.Xaml;
 using Xunit;

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using MarkdownRenderer.Extensions.Internal;
 using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Extensions;

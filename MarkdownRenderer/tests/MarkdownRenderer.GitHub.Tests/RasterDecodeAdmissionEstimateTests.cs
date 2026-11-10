@@ -1,10 +1,12 @@
-using MarkdownRenderer.Layout;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout.Boxes;
 using Xunit;
+using MarkdownRenderer.Images.Internal;
+using MarkdownRenderer.Images.Internal.Raster;
+using MarkdownRenderer.Layout.Internal.Images.Raster;
+using MarkdownRenderer.Layout.Internal.RenderResources;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

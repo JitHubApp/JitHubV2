@@ -1,5 +1,5 @@
 using BenchmarkDotNet.Attributes;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Placement;
 
 namespace MarkdownRenderer.Benchmarks;
 

@@ -1,7 +1,9 @@
-using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
+using MarkdownRenderer.Layout.Internal.Images.Svg.Tiles;
+using MarkdownRenderer.Layout.Internal.RenderResources;
 using Microsoft.Graphics.Canvas;
 using Windows.Foundation;
 using Windows.UI;

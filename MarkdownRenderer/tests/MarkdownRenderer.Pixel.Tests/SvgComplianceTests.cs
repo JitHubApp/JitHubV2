@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Images.Internal.Svg;
 using MarkdownRenderer.Svg.Resvg;
 using Xunit;
 

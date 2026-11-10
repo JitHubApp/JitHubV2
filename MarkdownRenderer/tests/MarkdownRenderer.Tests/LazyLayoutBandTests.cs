@@ -1,6 +1,6 @@
-using MarkdownRenderer.Layout;
 using Windows.Foundation;
 using Xunit;
+using MarkdownRenderer.Layout.Internal.LazyLayout;
 
 namespace MarkdownRenderer.Tests;
 

@@ -4,10 +4,22 @@ using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Diagnostics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Diagnostics.Internal;
+using MarkdownRenderer.Images.Internal;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.LazyLayout;
+using MarkdownRenderer.Layout.Internal.Placement;
+using MarkdownRenderer.Layout.Internal.Snapshots;
+using MarkdownRenderer.Layout.Internal.Vectors.Drawing;
+using MarkdownRenderer.Performance.Internal;
+using MarkdownRenderer.Performance.Internal.CompletedScenes;
+using MarkdownRenderer.Performance.Internal.ProgressiveScenes;
+using MarkdownRenderer.Performance.Internal.Residency;
+using MarkdownRenderer.Performance.Internal.Scheduling;
+using MarkdownRenderer.Performance.Internal.Session;
+using MarkdownRenderer.Performance.Internal.Session.ImageSources;
 using Windows.Foundation;
 
 namespace MarkdownRenderer.Performance;
@@ -146,7 +158,7 @@ public sealed class MarkdownPerformanceSession :
         MarkdownEngine? engine,
         MarkdownRenderer.Document.MarkdownDocument? document,
         string? source,
-        MarkdownRenderer.Parsing.MarkdownExtensionRegistry legacyRegistry,
+        MarkdownRenderer.Parsing.Internal.MarkdownExtensionRegistry legacyRegistry,
         object documentOwner,
         CancellationToken cancellationToken) =>
         _parsePipeline.ParseAndPrepareDocumentAsync(
@@ -283,7 +295,7 @@ public sealed class MarkdownPerformanceSession :
         string source,
         int registryRevision,
         Markdig.Syntax.MarkdownDocument document,
-        MarkdownRenderer.Parsing.SafeHtmlRenderPolicy? safeHtmlPolicy,
+        MarkdownRenderer.Parsing.Internal.SafeHtml.SafeHtmlRenderPolicy? safeHtmlPolicy,
         IMarkdownImageResolver resolver,
         MarkdownImageResolveContext context) =>
         _documentScopes.Prepare(

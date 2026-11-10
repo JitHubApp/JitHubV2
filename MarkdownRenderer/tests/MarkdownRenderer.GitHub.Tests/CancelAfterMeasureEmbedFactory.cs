@@ -1,5 +1,6 @@
 ﻿using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Hosting;
+using MarkdownRenderer.Hosting.Internal;
 using Markdig.Syntax;
 using Microsoft.UI.Xaml;
 

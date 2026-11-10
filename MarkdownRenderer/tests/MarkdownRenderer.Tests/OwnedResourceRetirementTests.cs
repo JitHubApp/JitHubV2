@@ -1,4 +1,6 @@
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Controls.Internal.Pipeline;
+using MarkdownRenderer.Internal.Concurrency;
 using Xunit;
 
 namespace MarkdownRenderer.Tests;

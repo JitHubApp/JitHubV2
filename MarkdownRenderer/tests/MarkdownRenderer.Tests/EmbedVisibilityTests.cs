@@ -1,4 +1,5 @@
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Controls.Internal.Embeds;
 using Xunit;
 
 namespace MarkdownRenderer.Tests;

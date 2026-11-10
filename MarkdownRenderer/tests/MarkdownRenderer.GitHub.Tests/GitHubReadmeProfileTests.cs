@@ -5,7 +5,7 @@ using Markdig.Syntax;
 using MarkdownRenderer.Gfm;
 using MarkdownRenderer.GitHub;
 using MarkdownRenderer.Html;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

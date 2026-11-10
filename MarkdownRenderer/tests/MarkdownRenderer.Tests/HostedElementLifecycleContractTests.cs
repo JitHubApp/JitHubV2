@@ -1,6 +1,7 @@
-using MarkdownRenderer.Accessibility;
+using MarkdownRenderer.Accessibility.Internal.Peers;
 using MarkdownRenderer.Hosting;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Hosting.Internal;
+using MarkdownRenderer.Layout.Internal.Focus;
 using Xunit;
 
 namespace MarkdownRenderer.Tests;

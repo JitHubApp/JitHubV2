@@ -1,8 +1,14 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Context;
+using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.PrivatePlacement;
+using MarkdownRenderer.Layout.Internal.Snapshots;
+using MarkdownRenderer.Layout.Internal.Tables;
 using MarkdownRenderer.Theming;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;

@@ -1,6 +1,7 @@
 using MarkdownRenderer.CodeBlocks;
+using MarkdownRenderer.CodeBlocks.Internal;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.RenderResources;
 using MarkdownRenderer.Theming;
 using Xunit;
 

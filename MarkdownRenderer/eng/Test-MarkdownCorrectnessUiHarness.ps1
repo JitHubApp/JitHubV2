@@ -512,7 +512,7 @@ foreach ($nativeProofFailure in @('lastNativeCanceled', 'nativeCanceledPacketCou
     try { Assert-SyntheticTouchDelivery -Before $cancelBefore -After $changedProof -ExpectedPoint $expectedTouchPoint -ExpectedState 'Canceled' | Out-Null } catch { $rejected = $true }
     if (-not $rejected) { throw "A raw release was relabeled as cancellation without valid $nativeProofFailure evidence." }
 }
-$pointerInputSourcePath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Controls\Input\RoutedPointerInputRouting.cs'
+$pointerInputSourcePath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Controls\Internal\Input\RoutedPointerInputRouting.cs'
 $pointerInputSource = Get-Content -LiteralPath $pointerInputSourcePath -Raw
 $dispatcherStart = $pointerInputSource.IndexOf('internal void Dispatch(', [StringComparison]::Ordinal)
 $dispatcherEnd = if ($dispatcherStart -ge 0) { $pointerInputSource.IndexOf('private void ProcessUnderLease(', $dispatcherStart, [StringComparison]::Ordinal) } else { -1 }
@@ -522,7 +522,7 @@ $dispatcherBody = if ($dispatcherEnd -gt $dispatcherStart) { $pointerInputSource
 $deferStart = $pointerInputSource.IndexOf('private void Defer(', [StringComparison]::Ordinal)
 $deferEnd = if ($deferStart -ge 0) { $pointerInputSource.IndexOf('private void CancelDeferredGesture(', $deferStart, [StringComparison]::Ordinal) } else { -1 }
 $deferBody = if ($deferStart -ge 0 -and $deferEnd -gt $deferStart) { $pointerInputSource.Substring($deferStart, $deferEnd - $deferStart) } else { '' }
-$captureSourcePath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Controls\Input\DeferredPointerCaptures.cs'
+$captureSourcePath = Join-Path $PSScriptRoot '..\src\MarkdownRenderer\Controls\Internal\Input\Deferred\DeferredPointerCaptures.cs'
 $captureSource = Get-Content -LiteralPath $captureSourcePath -Raw
 $captureStart = $captureSource.IndexOf('internal void CaptureForDeferral(', [StringComparison]::Ordinal)
 $captureEnd = if ($captureStart -ge 0) { $captureSource.IndexOf('internal void ReleaseAll()', $captureStart, [StringComparison]::Ordinal) } else { -1 }

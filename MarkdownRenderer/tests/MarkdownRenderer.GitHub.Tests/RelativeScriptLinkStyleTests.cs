@@ -1,6 +1,9 @@
 using MarkdownRenderer.Html;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.Snapshots;
+using MarkdownRenderer.Layout.Internal.Tables;
 using MarkdownRenderer.Theming;
 using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;

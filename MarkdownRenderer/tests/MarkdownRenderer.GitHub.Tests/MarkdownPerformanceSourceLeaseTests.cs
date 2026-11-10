@@ -1,5 +1,9 @@
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Internal;
+using MarkdownRenderer.Internal.Concurrency;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
+using MarkdownRenderer.Performance.Internal.Session;
 using Xunit;
 using static MarkdownRenderer.GitHub.Tests.MarkdownPerformanceSourceLeaseFixture;
 

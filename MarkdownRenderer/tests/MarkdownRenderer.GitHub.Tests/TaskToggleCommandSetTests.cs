@@ -1,7 +1,8 @@
 using System.Windows.Input;
-using MarkdownRenderer.Gfm.Renderers;
+using MarkdownRenderer.Gfm.Internal.Renderers;
 using MarkdownRenderer.Hosting;
-using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

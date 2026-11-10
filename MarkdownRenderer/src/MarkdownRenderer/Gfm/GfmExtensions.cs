@@ -8,9 +8,10 @@ using Markdig.Extensions.Figures;
 using Markdig.Extensions.Tables;
 using Markdig.Syntax;
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Gfm.Internal.Renderers;
 using MarkdownRenderer.Hosting;
-using MarkdownRenderer.Gfm.Renderers;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Hosting.Internal;
+using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Gfm;

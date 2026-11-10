@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using MarkdownRenderer.Controls;
-using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Controls.Internal.Pipeline;
+using MarkdownRenderer.Diagnostics.Internal;
 
 namespace MarkdownRenderer.PerformanceHarness;
 

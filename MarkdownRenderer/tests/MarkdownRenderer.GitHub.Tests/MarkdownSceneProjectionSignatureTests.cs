@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.Threading;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal.CompletedScenes;
 using MarkdownRenderer.Theming;
 using Xunit;
 

@@ -4,7 +4,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using MarkdownRenderer.Controls;
-using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Diagnostics.Internal;
 
 namespace MarkdownRenderer.PerformanceHarness;
 

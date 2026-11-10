@@ -5,7 +5,7 @@ using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 using Markdig.Extensions.Tables;
 using Markdig.Extensions.TaskLists;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal;
 
 namespace MarkdownRenderer.Tests;
 

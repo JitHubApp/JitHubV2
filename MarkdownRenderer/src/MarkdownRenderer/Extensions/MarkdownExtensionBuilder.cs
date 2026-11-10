@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using MarkdownRenderer.Extensions.Internal;
 
 namespace MarkdownRenderer.Extensions;
 

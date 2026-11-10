@@ -1,4 +1,5 @@
 using MarkdownRenderer.CodeBlocks;
+using MarkdownRenderer.CodeBlocks.Internal;
 using Xunit;
 
 namespace MarkdownRenderer.Tests;

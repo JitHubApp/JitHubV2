@@ -1,10 +1,20 @@
 using System.Collections;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Document;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Parsing;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Parsing.Internal;
+using MarkdownRenderer.Theming.Internal;
+using MarkdownRenderer.Images.Internal;
+using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
+using MarkdownRenderer.Layout.Internal.Images.Loading;
+using MarkdownRenderer.Layout.Internal.Context;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Inlines.Placement;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.PrivatePlacement;
+using MarkdownRenderer.Layout.Internal.RenderResources;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
@@ -152,7 +162,7 @@ public sealed class CompletedRasterPlacementCloneTests
         clone.Measure(320f);
         clone.Arrange(0, 0, 320f);
         Assert.Equal(resolvedIntrinsic, clonedImage.Presentation.RasterIntrinsicSize);
-        Assert.Equal(MarkdownRenderer.Accessibility.MarkdownImageAccessibilityState.Loaded,
+        Assert.Equal(MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownImageAccessibilityState.Loaded,
             clonedImage.AccessibilityState);
     }
 

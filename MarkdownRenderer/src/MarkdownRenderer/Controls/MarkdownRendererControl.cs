@@ -7,18 +7,24 @@ using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
-using RebuildReason = MarkdownRenderer.Controls.MarkdownRebuildCoordinatorReason;
-using MarkdownRenderer.Accessibility;
+using RebuildReason = MarkdownRenderer.Controls.Internal.Pipeline.Rebuild.MarkdownRebuildCoordinatorReason;
+using MarkdownRenderer.Accessibility.Internal.Peers;
 using MarkdownRenderer.CodeBlocks;
-using MarkdownRenderer.Controls.Composition;
-using MarkdownRenderer.Controls.Pipeline;
-using MarkdownRenderer.Controls.Readiness;
-using MarkdownRenderer.Diagnostics;
+using MarkdownRenderer.Controls.Internal;
+using MarkdownRenderer.Controls.Internal.Composition;
+using MarkdownRenderer.Controls.Internal.Navigation;
+using MarkdownRenderer.Controls.Internal.Pipeline;
+using MarkdownRenderer.Controls.Internal.Readiness;
+using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Hosting;
+using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Layout.Internal.CodeBlocks;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.Snapshots;
+using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
 using MarkdownRenderer.Selection;
 using MarkdownRenderer.Theming;
 
@@ -597,7 +603,7 @@ public abstract class MarkdownRendererControl : UserControl, IDisposable, IAsync
 
     internal void SetDisclosureExpanded(LinkRun run, bool expanded) => _parts.DocumentInputs.SetDisclosureExpanded(run, expanded);
 
-    internal void CopyCodeBlockFromAutomation(Layout.Boxes.CodeBlockBox box) => _parts.CodeBlockClipboard.CopyFromAutomation(box);
+    internal void CopyCodeBlockFromAutomation(CodeBlockBox box) => _parts.CodeBlockClipboard.CopyFromAutomation(box);
 
     internal VisibleImageReadiness ImageReadiness => _parts.ImageReadiness;
 

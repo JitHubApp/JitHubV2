@@ -1,8 +1,10 @@
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Math;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
+using MarkdownRenderer.Performance.Internal.ProgressiveScenes;
 using MarkdownRenderer.Theming;
 using Xunit;
 using static MarkdownRenderer.GitHub.Tests.ProgressiveSceneDeferralFixture;

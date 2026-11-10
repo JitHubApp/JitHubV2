@@ -4,7 +4,6 @@ using System.Globalization;
 using System.Text;
 using System.Threading;
 using System.Xml;
-using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Svg.Resvg.Internal.StaticSnapshots;
 using Xunit;
 

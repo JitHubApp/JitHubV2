@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.GitHub;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal;
 using Microsoft.UI.Xaml;
 using Windows.UI;
 using Xunit;

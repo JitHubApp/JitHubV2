@@ -1,6 +1,9 @@
 using System.Runtime.CompilerServices;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
+using MarkdownRenderer.Layout.Internal.Images.Loading;
+using MarkdownRenderer.Layout.Internal.Images.Svg;
+using MarkdownRenderer.Layout.Internal.Images.Svg.Rendering;
 using Xunit;
 using static MarkdownRenderer.GitHub.Tests.SvgPublicationCommitTestOperations;
 

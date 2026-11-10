@@ -1,6 +1,9 @@
 using System.Collections.Concurrent;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Internal;
+using MarkdownRenderer.Internal.Concurrency;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
 using Xunit;
 using static MarkdownRenderer.GitHub.Tests.MarkdownPerformanceSourceLeaseFixture;
 

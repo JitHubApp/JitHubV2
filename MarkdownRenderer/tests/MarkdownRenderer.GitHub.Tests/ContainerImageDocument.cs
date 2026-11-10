@@ -1,5 +1,6 @@
-﻿using MarkdownRenderer.Layout;
-using MarkdownRenderer.Document;
+﻿using MarkdownRenderer.Document;
+using MarkdownRenderer.Layout.Internal.Context;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

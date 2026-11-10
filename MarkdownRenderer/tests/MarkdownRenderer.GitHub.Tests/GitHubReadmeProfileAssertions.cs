@@ -1,5 +1,6 @@
 using MarkdownRenderer.GitHub;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal;
 using Windows.UI;
 using Xunit;
 

@@ -1,7 +1,7 @@
 using System.Text;
 using System.Xml;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Images.Internal.Svg;
 using Xunit;
 
 namespace MarkdownRenderer.Tests;

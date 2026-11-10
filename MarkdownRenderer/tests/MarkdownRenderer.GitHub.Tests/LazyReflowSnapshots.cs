@@ -1,6 +1,7 @@
 using MarkdownRenderer.Document;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.RenderResources;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using Microsoft.UI.Xaml;
 
 namespace MarkdownRenderer.GitHub.Tests;

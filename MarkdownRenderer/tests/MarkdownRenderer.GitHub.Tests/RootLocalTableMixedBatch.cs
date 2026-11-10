@@ -1,5 +1,9 @@
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.Snapshots;
+using MarkdownRenderer.Layout.Internal.Tables;
 using Microsoft.Graphics.Canvas.Text;
 using Xunit;
 using static MarkdownRenderer.GitHub.Tests.RootLocalTableQueries;

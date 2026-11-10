@@ -1,7 +1,10 @@
-using MarkdownRenderer.Layout;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Images.Internal.Raster;
+using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Images.Raster;
+using MarkdownRenderer.Layout.Internal.RenderResources;
+using MarkdownRenderer.Performance.Internal;
 using Xunit;
 using static MarkdownRenderer.GitHub.Tests.DisplaySizedRasterDecodeTests;
 

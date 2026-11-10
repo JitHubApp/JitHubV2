@@ -1,6 +1,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.CodeBlocks;
+using MarkdownRenderer.CodeBlocks.Internal;
 using MarkdownRenderer.Hosting;
 using Xunit;
 

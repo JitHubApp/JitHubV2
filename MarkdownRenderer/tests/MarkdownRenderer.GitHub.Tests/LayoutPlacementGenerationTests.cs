@@ -1,9 +1,10 @@
 using System;
 using System.Numerics;
 using System.Threading;
-using MarkdownRenderer.Layout;
 using Windows.Foundation;
 using Xunit;
+using MarkdownRenderer.Layout.Internal.LazyLayout;
+using MarkdownRenderer.Layout.Internal.Placement;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

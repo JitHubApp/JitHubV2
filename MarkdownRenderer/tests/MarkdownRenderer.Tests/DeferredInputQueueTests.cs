@@ -1,4 +1,6 @@
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Controls.Internal.Input.Deferred;
+using MarkdownRenderer.Controls.Internal.Input.Gestures;
 using Xunit;
 
 namespace MarkdownRenderer.Tests;

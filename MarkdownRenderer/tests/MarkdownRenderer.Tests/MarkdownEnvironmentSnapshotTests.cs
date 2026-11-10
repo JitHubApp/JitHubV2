@@ -1,4 +1,5 @@
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal.Environment;
 using Xunit;
 
 namespace MarkdownRenderer.Tests;

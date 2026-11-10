@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal.Scheduling;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

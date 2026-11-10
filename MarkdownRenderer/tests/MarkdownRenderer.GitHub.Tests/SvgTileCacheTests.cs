@@ -1,6 +1,8 @@
 using System.Threading;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Internal.Concurrency;
+using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
+using MarkdownRenderer.Layout.Internal.Images.Svg.Tiles;
 using Xunit;
 using SvgTileKey = (int X, int Y, int Width, int Height);
 

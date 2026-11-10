@@ -1,4 +1,5 @@
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Controls.Internal.Recovery;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

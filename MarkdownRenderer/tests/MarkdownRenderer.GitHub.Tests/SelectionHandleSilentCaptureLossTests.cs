@@ -1,5 +1,5 @@
-using MarkdownRenderer.Controls.Selection;
 using Xunit;
+using MarkdownRenderer.Controls.Internal.Selection.TouchSelection;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

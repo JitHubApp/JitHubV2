@@ -1,12 +1,13 @@
 using System.Runtime.CompilerServices;
 using System.Text;
-using MarkdownRenderer.Accessibility;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Layout.Internal.Context;
+using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.RenderResources;
+using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal;
 using Microsoft.UI.Xaml;
 using Windows.UI;
 using Xunit;

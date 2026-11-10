@@ -1,8 +1,8 @@
 // MarkdownLayoutDiagnostics exists only in the EnableMarkdownLayoutDiagnostics
 // lane, like the other diagnostics-only renderer contracts in this project.
 using System.Diagnostics;
-using MarkdownRenderer.Layout;
 using Xunit;
+using MarkdownRenderer.Layout.Internal.Context;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

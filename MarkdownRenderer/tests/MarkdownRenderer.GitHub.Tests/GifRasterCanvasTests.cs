@@ -1,13 +1,14 @@
-using MarkdownRenderer.Layout;
 using System.Buffers.Binary;
 using System.Numerics;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Performance;
 using Microsoft.Graphics.Canvas;
 using Windows.Foundation;
 using Windows.UI;
 using Xunit;
+using MarkdownRenderer.Images.Internal.Raster;
+using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.RenderResources;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

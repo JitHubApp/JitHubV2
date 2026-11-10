@@ -1,5 +1,10 @@
 using System.Windows.Input;
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Controls.Internal.Input;
+using MarkdownRenderer.Controls.Internal.Input.Gestures;
+using MarkdownRenderer.Controls.Internal.Input.Links;
+using MarkdownRenderer.Controls.Internal.Selection;
+using MarkdownRenderer.Controls.Internal.Selection.ContextMenu;
 using MarkdownRenderer.Hosting;
 using Xunit;
 

@@ -2,8 +2,10 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Controls.Internal.Images;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

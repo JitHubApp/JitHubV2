@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Internal;
 using Xunit;
 
 namespace MarkdownRenderer.Tests;

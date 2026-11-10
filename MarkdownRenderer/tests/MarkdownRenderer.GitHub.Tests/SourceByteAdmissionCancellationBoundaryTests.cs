@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal.Scheduling;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

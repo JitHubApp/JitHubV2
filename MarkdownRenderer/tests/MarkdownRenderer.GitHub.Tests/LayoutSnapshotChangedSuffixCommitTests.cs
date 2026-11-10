@@ -1,7 +1,8 @@
 using System.Threading;
 using MarkdownRenderer.Document;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Boxes;
+using MarkdownRenderer.Layout.Internal.Placement;
+using MarkdownRenderer.Layout.Internal.Snapshots;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;

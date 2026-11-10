@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Runtime.CompilerServices;
 using MarkdownRenderer.Controls;
+using MarkdownRenderer.Controls.Internal.Pipeline;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

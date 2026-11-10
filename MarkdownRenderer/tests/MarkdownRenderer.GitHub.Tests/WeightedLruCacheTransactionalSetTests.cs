@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
-using MarkdownRenderer.Utilities;
 using Xunit;
+using MarkdownRenderer.Internal.Caching;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

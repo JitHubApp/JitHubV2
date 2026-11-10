@@ -1,5 +1,6 @@
 using MarkdownRenderer.Controls;
-using MarkdownRenderer.Controls.Providers;
+using MarkdownRenderer.Controls.Internal.Providers;
+using MarkdownRenderer.Controls.Internal.View;
 using MarkdownRenderer.Performance;
 using Xunit;
 

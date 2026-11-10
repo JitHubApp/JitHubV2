@@ -7,10 +7,14 @@ using Windows.Foundation;
 using Windows.UI;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Layout.Internal.Context;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Inlines.Placement;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.RenderResources;
+using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

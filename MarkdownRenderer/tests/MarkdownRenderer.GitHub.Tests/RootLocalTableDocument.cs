@@ -1,8 +1,10 @@
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Images;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Layout.Internal.Building;
+using MarkdownRenderer.Layout.Internal.Context;
+using MarkdownRenderer.Layout.Internal.Snapshots;
+using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance;
 using Markdig;
 using Microsoft.UI.Xaml;

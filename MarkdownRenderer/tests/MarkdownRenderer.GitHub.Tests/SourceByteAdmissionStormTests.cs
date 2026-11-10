@@ -1,5 +1,6 @@
 using System.Threading.Channels;
 using MarkdownRenderer.Performance;
+using MarkdownRenderer.Performance.Internal.Scheduling;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

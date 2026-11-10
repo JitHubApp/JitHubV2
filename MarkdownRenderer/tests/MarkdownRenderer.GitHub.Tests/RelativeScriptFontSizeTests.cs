@@ -1,8 +1,12 @@
 using Markdig.Syntax.Inlines;
-using MarkdownRenderer.Layout;
-using MarkdownRenderer.Layout.Boxes;
-using MarkdownRenderer.Parsing;
+using MarkdownRenderer.Layout.Internal.Context;
+using MarkdownRenderer.Layout.Internal.Inlines;
+using MarkdownRenderer.Layout.Internal.Inlines.Runs;
+using MarkdownRenderer.Layout.Internal.SafeHtml;
+using MarkdownRenderer.Layout.Internal.Snapshots;
+using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using MarkdownRenderer.Theming;
+using MarkdownRenderer.Theming.Internal;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;

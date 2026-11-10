@@ -2,6 +2,7 @@ using System.Text;
 using Markdig.Extensions.Tables;
 using Markdig.Syntax;
 using MarkdownRenderer.GitHub;
+using MarkdownRenderer.GitHub.Internal;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

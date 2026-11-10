@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
-using MarkdownRenderer.Accessibility;
 using Xunit;
+using MarkdownRenderer.Accessibility.Internal;
 
 namespace MarkdownRenderer.Tests;
 

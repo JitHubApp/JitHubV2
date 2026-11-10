@@ -1,8 +1,9 @@
 using System.Reflection;
 using Markdig.Syntax;
-using MarkdownRenderer.Html.Renderers;
-using MarkdownRenderer.Parsing;
 using Xunit;
+using MarkdownRenderer.Html.Internal.Renderers;
+using MarkdownRenderer.Parsing.Internal;
+using MarkdownRenderer.Parsing.Internal.SafeHtml;
 
 namespace MarkdownRenderer.Html.Tests;
 
