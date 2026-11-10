@@ -19,6 +19,14 @@ jobs:
         shell: pwsh
         run: .\eng\Test-JitHubStorePackageVersion.ps1
 
+      - name: Test project folder check
+        shell: pwsh
+        run: .\eng\tests\Test-RepositoryProjectStructure.Tests.ps1
+
+      - name: Check that projects build only their own folders
+        shell: pwsh
+        run: .\eng\Test-RepositoryProjectStructure.ps1
+
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: ./global.json
