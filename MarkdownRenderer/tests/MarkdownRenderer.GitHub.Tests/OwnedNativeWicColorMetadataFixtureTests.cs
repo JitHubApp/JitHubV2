@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Text;
+using MarkdownRenderer.Images.Internal.Raster;
 using MarkdownRenderer.Layout.Boxes;
 using Xunit;
 

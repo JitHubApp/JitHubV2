@@ -1,6 +1,7 @@
 using System;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Accessibility.Internal.Semantics;

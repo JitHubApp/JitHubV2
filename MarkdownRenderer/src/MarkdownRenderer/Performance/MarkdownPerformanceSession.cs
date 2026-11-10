@@ -8,6 +8,7 @@ using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Diagnostics.Internal;
+using MarkdownRenderer.Images.Internal;
 using Windows.Foundation;
 
 namespace MarkdownRenderer.Performance;

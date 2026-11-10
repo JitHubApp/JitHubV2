@@ -3,6 +3,7 @@ using System.Threading;
 using MarkdownRenderer.Controls.Embeds;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Performance;
 using Microsoft.UI.Dispatching;
 

@@ -18,6 +18,8 @@ using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Theming.Internal;
+using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Images.Placement;
 
 namespace MarkdownRenderer.Layout;
 
@@ -351,13 +353,13 @@ internal sealed class MarkdownLayoutContext
     /// Image boxes keep it so a later rebuild can tell whether their completed
     /// result still applies.
     /// </summary>
-    internal Boxes.MarkdownImageCarryIdentity? ImageCarryIdentity { get; init; }
+    internal MarkdownImageCarryIdentity? ImageCarryIdentity { get; init; }
 
     /// <summary>
     /// Completed image results from earlier layouts of the same document, by
     /// source URL. Already filtered to <see cref="ImageCarryIdentity"/>.
     /// </summary>
-    internal System.Collections.Generic.IReadOnlyDictionary<string, Boxes.CompletedImageCarry>? CompletedImageCarry { get; init; }
+    internal System.Collections.Generic.IReadOnlyDictionary<string, CompletedImageCarry>? CompletedImageCarry { get; init; }
 
     /// <summary>Returns the effective state of a safe HTML disclosure.</summary>
     public bool IsDisclosureExpanded(string id, bool defaultExpanded) =>

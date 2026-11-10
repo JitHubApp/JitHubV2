@@ -6,6 +6,7 @@ using MarkdownRenderer.Accessibility.Internal.Peers;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images;
 using static MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownTextSpanProjection;
 
 namespace MarkdownRenderer.Accessibility.Internal.Semantics;

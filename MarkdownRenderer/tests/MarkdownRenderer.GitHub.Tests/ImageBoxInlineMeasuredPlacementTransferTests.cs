@@ -1,6 +1,9 @@
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
+using MarkdownRenderer.Layout.Internal.Images.Placement;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

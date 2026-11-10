@@ -7,6 +7,9 @@ using Windows.Graphics.DirectX;
 using Xunit;
 using MarkdownRenderer.Internal.Caching;
 using MarkdownRenderer.Diagnostics.Internal;
+using MarkdownRenderer.Images.Internal.Raster;
+using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
+using MarkdownRenderer.Layout.Internal.Images.BitmapOutput;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

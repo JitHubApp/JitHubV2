@@ -3,6 +3,7 @@ using Windows.Foundation;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Controls.Input;
 using MarkdownRenderer.Diagnostics.Internal;
+using MarkdownRenderer.Layout.Internal.Images;
 
 namespace MarkdownRenderer.Controls.Selection;
 
@@ -40,7 +41,7 @@ internal static class ContextMenuTargets
                 target.CodeLanguage = code.CodeLanguage;
                 target.CodeSourceRange = GetSourceRange(code);
                 return true;
-            case Layout.Boxes.ImageBox image:
+            case ImageBox image:
                 target.ImageUrl = image.Url;
                 target.ImageSourceRange = GetSourceRange(image);
                 target.SetImageBitmapLease(image.AcquireBitmapLease());
@@ -141,7 +142,7 @@ internal static class ContextMenuTargets
                 return;
         }
 
-        if (box is Layout.Boxes.ImageBox image)
+        if (box is ImageBox image)
         {
             foreach (var entry in image.Context.SourceMap.Entries)
             {

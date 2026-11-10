@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Theming;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;

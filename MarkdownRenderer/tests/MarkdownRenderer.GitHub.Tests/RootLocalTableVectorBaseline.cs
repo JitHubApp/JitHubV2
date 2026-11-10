@@ -5,6 +5,8 @@ using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.Math;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Text;

@@ -15,6 +15,7 @@ using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Theming.Internal;
+using MarkdownRenderer.Layout.Internal.Images;
 using Markdig;
 using Microsoft.Graphics.Canvas;
 using Microsoft.UI.Xaml;

@@ -2,8 +2,10 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Text;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Internal;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images;
 using Xunit;
 using static MarkdownRenderer.GitHub.Tests.ImageBoxSvgRendererFixture;
 

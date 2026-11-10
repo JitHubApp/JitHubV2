@@ -3,6 +3,8 @@ using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
 using Microsoft.Graphics.Canvas;
 using Windows.Graphics.DirectX;
 using Xunit;

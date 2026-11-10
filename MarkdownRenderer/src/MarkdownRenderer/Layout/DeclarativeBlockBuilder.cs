@@ -8,6 +8,7 @@ using MarkdownRenderer.Theming;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Parsing.Internal.SafeHtml;
+using MarkdownRenderer.Layout.Internal.Images;
 
 namespace MarkdownRenderer.Layout;
 

@@ -1,4 +1,5 @@
 using Windows.Foundation;
+using MarkdownRenderer.Layout.Internal.Images;
 
 namespace MarkdownRenderer.Layout.Boxes;
 

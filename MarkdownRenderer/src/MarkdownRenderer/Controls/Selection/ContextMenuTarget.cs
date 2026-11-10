@@ -1,11 +1,12 @@
 using System;
 using System.Threading;
+using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
 
 namespace MarkdownRenderer.Controls.Selection;
 
 internal sealed class ContextMenuTarget : IDisposable
 {
-    private Layout.Boxes.SharedCanvasBitmapCache.Lease? _imageBitmapLease;
+    private SharedCanvasBitmapCache.Lease? _imageBitmapLease;
 
     public string? LinkUrl { get; set; }
     public SourceSpan LinkSourceRange { get; set; }
@@ -17,12 +18,12 @@ internal sealed class ContextMenuTarget : IDisposable
     public MarkdownTableClipboardSnapshot? TableSnapshot { get; set; }
     public SourceSpan TableSourceRange { get; set; }
 
-    public Layout.Boxes.SharedCanvasBitmapCache.Lease? ImageBitmapLease =>
+    public SharedCanvasBitmapCache.Lease? ImageBitmapLease =>
         Volatile.Read(ref _imageBitmapLease);
 
-    public void SetImageBitmapLease(Layout.Boxes.SharedCanvasBitmapCache.Lease? lease)
+    public void SetImageBitmapLease(SharedCanvasBitmapCache.Lease? lease)
     {
-        Layout.Boxes.SharedCanvasBitmapCache.Lease? previous =
+        SharedCanvasBitmapCache.Lease? previous =
             Interlocked.Exchange(ref _imageBitmapLease, lease);
         previous?.Dispose();
     }

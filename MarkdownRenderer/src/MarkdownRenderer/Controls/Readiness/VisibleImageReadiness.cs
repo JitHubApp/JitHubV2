@@ -1,6 +1,7 @@
 using MarkdownRenderer.Controls.Images;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images;
 using Windows.Foundation;
 
 namespace MarkdownRenderer.Controls.Readiness;

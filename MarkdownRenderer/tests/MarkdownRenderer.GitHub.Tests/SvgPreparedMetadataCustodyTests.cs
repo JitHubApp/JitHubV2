@@ -3,7 +3,9 @@ using System.Reflection;
 using System.Text;
 using System.Threading;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Internal.Svg;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images.Svg.Rendering;
 using Windows.Foundation;
 using Xunit;
 

@@ -9,6 +9,7 @@ using Windows.Foundation;
 using Windows.UI;
 using MarkdownRenderer.CodeBlocks;
 using MarkdownRenderer.Document;
+using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Layout.Boxes;

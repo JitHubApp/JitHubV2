@@ -11,6 +11,8 @@ using MarkdownRenderer.Performance;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Accessibility.Internal.Peers;
 using MarkdownRenderer.Accessibility.Internal.Semantics;
+using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Images.Placement;
 
 namespace MarkdownRenderer.Layout;
 

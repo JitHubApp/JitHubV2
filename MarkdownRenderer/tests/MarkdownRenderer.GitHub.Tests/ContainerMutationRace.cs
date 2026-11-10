@@ -1,5 +1,6 @@
 ﻿using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using Xunit;

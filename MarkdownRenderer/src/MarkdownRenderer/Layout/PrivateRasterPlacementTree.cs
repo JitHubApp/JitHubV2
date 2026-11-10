@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Layout;

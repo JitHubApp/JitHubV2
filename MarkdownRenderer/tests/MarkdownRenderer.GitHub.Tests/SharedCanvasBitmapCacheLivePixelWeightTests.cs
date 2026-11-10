@@ -7,6 +7,8 @@ using Microsoft.Graphics.Canvas;
 using Windows.Graphics.DirectX;
 using Windows.Foundation;
 using Xunit;
+using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
+using MarkdownRenderer.Layout.Internal.Images.BitmapOutput;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

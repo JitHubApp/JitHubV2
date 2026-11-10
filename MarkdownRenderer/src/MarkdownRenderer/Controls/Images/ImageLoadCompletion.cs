@@ -2,6 +2,7 @@ using System;
 using MarkdownRenderer.Controls.Pipeline;
 using MarkdownRenderer.Controls.Threading;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Performance;
 
 namespace MarkdownRenderer.Controls.Images;

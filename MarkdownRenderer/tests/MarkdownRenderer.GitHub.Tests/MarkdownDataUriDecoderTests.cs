@@ -3,6 +3,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Internal;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

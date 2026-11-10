@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
+using MarkdownRenderer.Images.Internal.Raster;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images.Raster;
 using Xunit;
 using Xunit.Abstractions;
 

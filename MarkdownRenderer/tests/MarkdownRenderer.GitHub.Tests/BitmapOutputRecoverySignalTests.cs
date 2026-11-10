@@ -7,6 +7,8 @@ using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Performance;
 using Xunit;
+using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Images.BitmapOutput;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

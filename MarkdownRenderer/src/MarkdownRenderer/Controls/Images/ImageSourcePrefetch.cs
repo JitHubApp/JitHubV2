@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Internal;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Parsing.Internal.SafeHtml;
 

@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Diagnostics.Internal;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Internal;
 using MarkdownRenderer.Internal.Concurrency;
 
 namespace MarkdownRenderer.Performance;

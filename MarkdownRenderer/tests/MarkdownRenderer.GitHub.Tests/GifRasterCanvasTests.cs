@@ -8,6 +8,8 @@ using Microsoft.Graphics.Canvas;
 using Windows.Foundation;
 using Windows.UI;
 using Xunit;
+using MarkdownRenderer.Images.Internal.Raster;
+using MarkdownRenderer.Layout.Internal.Images;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

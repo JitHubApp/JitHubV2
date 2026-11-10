@@ -7,6 +7,7 @@ using Windows.Foundation;
 using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
 using Xunit;
+using MarkdownRenderer.Layout.Internal.Images;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

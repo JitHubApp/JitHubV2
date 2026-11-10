@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using MarkdownRenderer.Layout.Boxes;
 using Xunit;
+using MarkdownRenderer.Layout.Internal.Images.BitmapOutput;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

@@ -5,8 +5,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Internal.Raster;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Performance;
 using Xunit;
 

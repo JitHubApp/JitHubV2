@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MarkdownRenderer.Images;
 using Xunit;
+using MarkdownRenderer.Images.Internal;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

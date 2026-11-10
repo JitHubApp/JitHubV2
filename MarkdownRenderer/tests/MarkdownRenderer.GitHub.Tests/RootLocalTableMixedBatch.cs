@@ -1,5 +1,6 @@
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images;
 using Microsoft.Graphics.Canvas.Text;
 using Xunit;
 using static MarkdownRenderer.GitHub.Tests.RootLocalTableQueries;

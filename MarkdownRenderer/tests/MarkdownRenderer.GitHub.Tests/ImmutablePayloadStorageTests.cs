@@ -18,8 +18,12 @@ using MarkdownRenderer.Extensions.Internal;
 using MarkdownRenderer.Gfm.Internal.Compatibility;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Hosting.Internal;
+using MarkdownRenderer.Images.Internal.Raster;
+using MarkdownRenderer.Images.Internal.Svg;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using MarkdownRenderer.Theming;
@@ -68,7 +72,7 @@ public sealed class ImmutablePayloadStorageTests
             typeof(SharedCanvasBitmapCacheEntry), typeof(SharedCanvasTextFormatEntry), typeof(SharedLayoutMetrics),
             typeof(LayoutSnapshot), typeof(IntrinsicWidthMetrics), typeof(VectorSceneBox),
             typeof(MarkdownEnvironmentMonitor.Subscription), typeof(ParsedMarkdown), typeof(HostedElementFallbackKey),
-            typeof(MarkdownRenderer.Images.MarkdownImagePreparationAdmission), typeof(TextElementBoundaryIndex),
+            typeof(MarkdownRenderer.Images.Internal.MarkdownImagePreparationAdmission), typeof(TextElementBoundaryIndex),
             typeof(LayoutSnapshotCommittedMetadata), typeof(FocusablePlanEntry), typeof(LazyLayoutCommit),
             typeof(SnapshotScrollAnchor), typeof(CodeBlockBox), typeof(ListItemBox), typeof(InlineContainerBox),
             typeof(ImageBox), typeof(CompiledMarkdownStyleSheet), typeof(SvgIntrinsics.SvgRootGeometry),

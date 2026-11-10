@@ -5,6 +5,8 @@ using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Performance;
 using Xunit;
 using MarkdownRenderer.Accessibility.Internal.Semantics;
+using MarkdownRenderer.Images.Internal.Raster;
+using MarkdownRenderer.Layout.Internal.Images;
 
 namespace MarkdownRenderer.GitHub.Tests;
 

@@ -4,6 +4,7 @@ using Windows.Foundation;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images;
 
 namespace MarkdownRenderer.Accessibility.Internal.Semantics;
 

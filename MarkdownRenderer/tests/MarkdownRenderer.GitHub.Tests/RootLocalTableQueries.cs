@@ -3,6 +3,8 @@ using MarkdownRenderer.Document;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
 using MarkdownRenderer.Selection;
 using MarkdownRenderer.Selection.Internal;
 using Microsoft.Graphics.Canvas;

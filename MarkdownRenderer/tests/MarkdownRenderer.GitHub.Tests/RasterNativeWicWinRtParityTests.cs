@@ -1,7 +1,9 @@
 using System.Buffers.Binary;
 using System.Runtime.InteropServices.WindowsRuntime;
+using MarkdownRenderer.Images.Internal.Raster;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images.Raster;
 using Windows.Foundation;
 using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;

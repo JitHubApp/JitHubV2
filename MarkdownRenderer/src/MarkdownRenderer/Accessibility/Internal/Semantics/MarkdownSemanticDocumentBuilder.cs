@@ -7,6 +7,7 @@ using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Theming;
 using static MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticInlineText;
 using static MarkdownRenderer.Accessibility.Internal.Semantics.MarkdownSemanticNodeFactory;

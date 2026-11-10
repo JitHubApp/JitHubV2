@@ -8,6 +8,7 @@ using MarkdownRenderer.Controls.Images;
 using MarkdownRenderer.Document;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Images.Placement;
 using MarkdownRenderer.Parsing.Internal;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Theming;
@@ -294,7 +295,7 @@ internal sealed class RebuildLayoutSetup
         MarkdownRenderResources renderResources,
         CancellationToken ct)
     {
-        var imageCarryIdentity = new Layout.Boxes.MarkdownImageCarryIdentity(
+        var imageCarryIdentity = new MarkdownImageCarryIdentity(
             parsed.SourceText,
             inputs.ImageBaseUri,
             inputs.ImageDocumentPath,
@@ -305,7 +306,7 @@ internal sealed class RebuildLayoutSetup
             inputs.SvgRenderer,
             inputs.RasterDecoder,
             inputs.AllowThirdPartyRemoteImages);
-        IReadOnlyDictionary<string, Layout.Boxes.CompletedImageCarry>? completedImageCarrySnapshot =
+        IReadOnlyDictionary<string, CompletedImageCarry>? completedImageCarrySnapshot =
             _completedImageCarry.Capture(
                 imageCarryIdentity,
                 // A permanent failure is carried only across an automatic

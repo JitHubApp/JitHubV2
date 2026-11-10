@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Internal;
 using MarkdownRenderer.Performance;
 using Xunit;
 

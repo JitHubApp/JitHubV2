@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
+using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Images.Placement;
 
 namespace MarkdownRenderer.Layout.Boxes;
 

@@ -1,5 +1,6 @@
 using Windows.Foundation;
 using MarkdownRenderer.Layout;
+using MarkdownRenderer.Layout.Internal.Images;
 
 namespace MarkdownRenderer.Controls.Images;
 
@@ -12,14 +13,14 @@ internal sealed class ImagePlanPublication(
     LayoutSnapshot Snapshot,
     long SnapshotGeneration,
     long LayoutRevision,
-    Layout.Boxes.ImageBox[] Images,
+    ImageBox[] Images,
     Rect[] ImageBounds,
     ViewportBandIndex? Index)
 {
     internal readonly LayoutSnapshot Snapshot = Snapshot;
     internal readonly long SnapshotGeneration = SnapshotGeneration;
     internal readonly long LayoutRevision = LayoutRevision;
-    internal readonly Layout.Boxes.ImageBox[] Images = Images;
+    internal readonly ImageBox[] Images = Images;
     internal readonly Rect[] ImageBounds = ImageBounds;
     internal readonly ViewportBandIndex? Index = Index;
 }

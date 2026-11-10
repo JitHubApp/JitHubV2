@@ -11,6 +11,7 @@ using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Hosting.Internal;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Performance;
 
 namespace MarkdownRenderer.Accessibility.Internal.Peers;

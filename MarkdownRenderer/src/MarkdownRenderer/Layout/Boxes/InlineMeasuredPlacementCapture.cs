@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Microsoft.Graphics.Canvas.Text;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
+using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Theming;
 
 namespace MarkdownRenderer.Layout.Boxes;

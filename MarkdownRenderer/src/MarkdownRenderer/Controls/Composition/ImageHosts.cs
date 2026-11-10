@@ -28,6 +28,7 @@ using MarkdownRenderer.Controls.Pipeline;
 using MarkdownRenderer.Controls.Readiness;
 using MarkdownRenderer.Controls.Selection;
 using MarkdownRenderer.Internal.Concurrency;
+using MarkdownRenderer.Layout.Internal.Images;
 
 namespace MarkdownRenderer.Controls.Composition;
 
@@ -176,7 +177,7 @@ internal sealed class ImageHosts :
     bool IImageLoadCompletionHost.RequestGeometryRecoveryIfRequired(LayoutSnapshot? snapshot) =>
         Owners.GeometryRecovery.RequestIfRequired(snapshot);
 
-    void IImageLoadCompletionHost.NotifyImageStatusChanged(Layout.Boxes.ImageBox image) =>
+    void IImageLoadCompletionHost.NotifyImageStatusChanged(ImageBox image) =>
         Owners.Automation.FindPeer()?
             .NotifyImageStatusChanged(image);
 

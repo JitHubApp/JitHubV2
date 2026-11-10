@@ -2,6 +2,7 @@ using System.Threading;
 using MarkdownRenderer.Hosting;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images;
 using Microsoft.UI.Xaml;
 
 namespace MarkdownRenderer.Controls.Embeds;

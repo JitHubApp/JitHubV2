@@ -1,6 +1,7 @@
 using Markdig;
 using System.Text;
 using MarkdownRenderer.Images;
+using MarkdownRenderer.Images.Internal;
 using MarkdownRenderer.Parsing.Internal.SafeHtml;
 using Xunit;
 

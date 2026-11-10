@@ -1,4 +1,7 @@
 using System;
+using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
+using MarkdownRenderer.Layout.Internal.Images.Placement;
 using MarkdownRenderer.Parsing.Internal.SafeHtml;
 
 namespace MarkdownRenderer.Layout;
@@ -11,7 +14,7 @@ internal sealed class InlineImageRun : InlineRun
     public readonly string? LinkTitle;
     public bool IsLinked => !string.IsNullOrWhiteSpace(LinkUrl);
     public readonly string AltText;
-    public readonly Boxes.ImageBox Image;
+    public readonly ImageBox Image;
     internal float DesiredWidth { get; private set; }
     internal float DesiredHeight { get; private set; }
 
@@ -30,7 +33,7 @@ internal sealed class InlineImageRun : InlineRun
         Title = title;
         LinkUrl = linkUrl;
         LinkTitle = linkTitle;
-        Image = new Boxes.ImageBox(context, context.ImageResources, Url, AltText, requestedWidth, requestedHeight)
+        Image = new ImageBox(context, context.ImageResources, Url, AltText, requestedWidth, requestedHeight)
         {
             Margin = default
         };
@@ -39,7 +42,7 @@ internal sealed class InlineImageRun : InlineRun
         RenderedLength = 1;
     }
 
-    private InlineImageRun(InlineImageRun source, Boxes.ImageBox image)
+    private InlineImageRun(InlineImageRun source, ImageBox image)
         : base(source)
     {
         Url = source.Url;
@@ -66,9 +69,9 @@ internal sealed class InlineImageRun : InlineRun
     internal bool TryCreatePrivateImagePlacementClone(
         MarkdownLayoutContext targetContext,
         out InlineImageRun? placement,
-        out Boxes.ImageBox? expectedSourceImage,
-        out Boxes.SharedCanvasBitmapCache.Lease? expectedSourceLease,
-        out Boxes.CompletedSvgPlacementMetadataFence? svgMetadataFence,
+        out ImageBox? expectedSourceImage,
+        out SharedCanvasBitmapCache.Lease? expectedSourceLease,
+        out CompletedSvgPlacementMetadataFence? svgMetadataFence,
         out bool isIdleDescriptor,
         out int expectedIdleLoadDemandGeneration)
     {
@@ -81,7 +84,7 @@ internal sealed class InlineImageRun : InlineRun
 
         if (!Image.TryCreatePrivateImagePlacementClone(
                 targetContext,
-                out Boxes.ImageBox? clonedImage,
+                out ImageBox? clonedImage,
                 out expectedSourceLease,
                 out svgMetadataFence,
                 out isIdleDescriptor,
@@ -130,9 +133,9 @@ internal sealed class InlineImageRun : InlineRun
     internal bool TryCreatePrivateRasterPlacementClone(
         MarkdownLayoutContext targetContext,
         out InlineImageRun? placement,
-        out Boxes.ImageBox? expectedSourceImage,
-        out Boxes.SharedCanvasBitmapCache.Lease? expectedSourceLease,
-        out Boxes.CompletedSvgPlacementMetadataFence? svgMetadata)
+        out ImageBox? expectedSourceImage,
+        out SharedCanvasBitmapCache.Lease? expectedSourceLease,
+        out CompletedSvgPlacementMetadataFence? svgMetadata)
     {
         placement = null;
         expectedSourceImage = null;
@@ -140,7 +143,7 @@ internal sealed class InlineImageRun : InlineRun
         svgMetadata = null;
         if (!Image.TryCreateCompletedRasterPlacementClone(
                 targetContext,
-                out Boxes.ImageBox? clonedImage,
+                out ImageBox? clonedImage,
                 out expectedSourceLease,
                 out svgMetadata) ||
             clonedImage is null)

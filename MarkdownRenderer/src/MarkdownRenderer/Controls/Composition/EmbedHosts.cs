@@ -27,6 +27,7 @@ using MarkdownRenderer.Controls.Selection;
 using MarkdownRenderer.Controls.Threading;
 using MarkdownRenderer.Internal.Concurrency;
 using MarkdownRenderer.Theming.Internal;
+using MarkdownRenderer.Layout.Internal.Images;
 
 namespace MarkdownRenderer.Controls.Composition;
 

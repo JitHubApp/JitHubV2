@@ -3,6 +3,8 @@ using System.Text;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Images.Svg;
 using Xunit;
 using static MarkdownRenderer.GitHub.Tests.ImageBoxSvgRendererFixture;
 

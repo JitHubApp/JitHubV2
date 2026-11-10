@@ -3,6 +3,7 @@ using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Boxes;
 using MarkdownRenderer.Performance;
 using MarkdownRenderer.Parsing.Internal.SafeHtml;
+using MarkdownRenderer.Layout.Internal.Images;
 using Windows.Foundation;
 using Xunit;
 

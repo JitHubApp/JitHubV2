@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Images.Placement;
 using MarkdownRenderer.Theming;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;

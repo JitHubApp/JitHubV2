@@ -3,6 +3,7 @@ using MarkdownRenderer.Controls.Images;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

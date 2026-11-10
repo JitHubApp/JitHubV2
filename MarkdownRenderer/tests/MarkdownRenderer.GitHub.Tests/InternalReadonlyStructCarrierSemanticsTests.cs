@@ -1,5 +1,7 @@
+using MarkdownRenderer.Images.Internal.Raster;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images.Placement;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

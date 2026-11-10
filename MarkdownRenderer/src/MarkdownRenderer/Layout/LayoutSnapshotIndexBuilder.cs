@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Extensions.Internal;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images;
 
 namespace MarkdownRenderer.Layout;
 

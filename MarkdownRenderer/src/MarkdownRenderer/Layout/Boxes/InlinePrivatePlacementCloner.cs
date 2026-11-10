@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Images.BitmapCache;
+using MarkdownRenderer.Layout.Internal.Images.Placement;
 
 namespace MarkdownRenderer.Layout.Boxes;
 

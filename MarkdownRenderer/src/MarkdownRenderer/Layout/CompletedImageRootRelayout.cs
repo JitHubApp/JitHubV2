@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Threading;
 using Microsoft.Graphics.Canvas.Text;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Images.Placement;
 
 namespace MarkdownRenderer.Layout;
 

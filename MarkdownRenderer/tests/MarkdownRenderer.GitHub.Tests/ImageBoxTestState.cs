@@ -3,6 +3,10 @@ using System.Diagnostics;
 using System.Threading.Tasks;
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Images.Svg;
+using MarkdownRenderer.Layout.Internal.Images.Svg.Rendering;
+using MarkdownRenderer.Layout.Internal.Images.Svg.Tiles;
 using Windows.Foundation;
 
 namespace MarkdownRenderer.GitHub.Tests;

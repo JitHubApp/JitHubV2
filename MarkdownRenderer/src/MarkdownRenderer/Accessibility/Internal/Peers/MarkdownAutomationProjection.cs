@@ -9,6 +9,7 @@ using MarkdownRenderer.Accessibility.Internal.TextRanges;
 using MarkdownRenderer.Controls;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images;
 
 namespace MarkdownRenderer.Accessibility.Internal.Peers;
 

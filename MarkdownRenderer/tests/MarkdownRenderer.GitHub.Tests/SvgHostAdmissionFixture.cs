@@ -1,6 +1,8 @@
 using MarkdownRenderer.Images;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images;
+using MarkdownRenderer.Layout.Internal.Images.Svg.HostAdmission;
 using Microsoft.UI.Xaml;
 using Xunit;
 

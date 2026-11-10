@@ -3,6 +3,7 @@ using System.Text;
 using MarkdownRenderer.Internal.Hashing;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images.Svg.Rendering;
 using Xunit;
 
 namespace MarkdownRenderer.GitHub.Tests;

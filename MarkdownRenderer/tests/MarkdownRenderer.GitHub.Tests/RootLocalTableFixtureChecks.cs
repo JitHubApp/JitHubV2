@@ -1,6 +1,7 @@
 using MarkdownRenderer.Accessibility.Internal.Semantics;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Theming;
 using Xunit;
 using static MarkdownRenderer.GitHub.Tests.RootLocalTableQueries;

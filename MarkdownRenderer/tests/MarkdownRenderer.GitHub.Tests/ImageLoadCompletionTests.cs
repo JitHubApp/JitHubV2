@@ -2,6 +2,7 @@ using MarkdownRenderer.Controls.Images;
 using MarkdownRenderer.Controls.Threading;
 using MarkdownRenderer.Layout;
 using MarkdownRenderer.Layout.Boxes;
+using MarkdownRenderer.Layout.Internal.Images;
 using MarkdownRenderer.Performance;
 using Xunit;
 
