@@ -11,12 +11,16 @@ public sealed class KeyboardAccessibilityAutomationContractTests
     public void HarnessExposesOneRepeatableKeyboardAccessibilityMatrixProbe()
     {
         string source = LoadAutomationSource();
+        string catalog = LoadProbeCatalog();
 
         Assert.Contains(
-            "string.Equals(options.Probe, \"keyboard-accessibility-matrix\", StringComparison.OrdinalIgnoreCase)",
-            source,
+            "new Dictionary<string, Action<CaptureOptions>>(StringComparer.OrdinalIgnoreCase)",
+            catalog,
             StringComparison.Ordinal);
-        Assert.Contains("RunKeyboardAccessibilityMatrixProbe(options);", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "{ \"keyboard-accessibility-matrix\", KeyboardAccessibilityMatrixProbe.RunKeyboardAccessibilityMatrixProbe },",
+            catalog,
+            StringComparison.Ordinal);
 
         string matrix = ExtractMethod(source, "static void RunKeyboardAccessibilityMatrixProbe", "static void RunKeyboardListTraversalMatrix");
         string[] passes =
@@ -159,9 +163,9 @@ public sealed class KeyboardAccessibilityAutomationContractTests
 
         for (int index = 0; index < methods.Length; index++)
         {
-            string nextMarker = index + 1 < methods.Length
+            string? nextMarker = index + 1 < methods.Length
                 ? $"static void {methods[index + 1]}"
-                : "static void RunMyIssuesPageProbe";
+                : null;
             string method = ExtractMethod(source, $"static void {methods[index]}", nextMarker);
             Assert.Contains("using var app = LaunchApplication", method, StringComparison.Ordinal);
             Assert.Contains("finally", method, StringComparison.Ordinal);
@@ -173,21 +177,41 @@ public sealed class KeyboardAccessibilityAutomationContractTests
     private static string ExtractKeyboardMatrixRegion(string source) => ExtractMethod(
         source,
         "static void RunKeyboardAccessibilityMatrixProbe",
-        "static void RunMyIssuesPageProbe");
+        endMarker: null);
 
-    private static string ExtractMethod(string source, string startMarker, string endMarker)
+    /// <summary>
+    /// The source from <paramref name="startMarker"/> up to
+    /// <paramref name="endMarker"/>, or to the end of the matrix source when the
+    /// method is the last one in it.
+    /// </summary>
+    private static string ExtractMethod(string source, string startMarker, string? endMarker)
     {
         int start = source.IndexOf(startMarker, StringComparison.Ordinal);
-        int end = source.IndexOf(endMarker, start + startMarker.Length, StringComparison.Ordinal);
         Assert.True(start >= 0, $"Could not find '{startMarker}'.");
+        if (endMarker is null)
+        {
+            return source[start..];
+        }
+
+        int end = source.IndexOf(endMarker, start + startMarker.Length, StringComparison.Ordinal);
         Assert.True(end > start, $"Could not find '{endMarker}' after '{startMarker}'.");
         return source[start..end];
     }
 
-    private static string LoadAutomationSource() => File.ReadAllText(Path.Combine(
+    /// <summary>
+    /// The keyboard accessibility matrix: every class in its folder of the
+    /// automation project, in file name order.
+    /// </summary>
+    private static string LoadAutomationSource() => string.Concat(Directory
+        .EnumerateFiles(Path.Combine(FindRepositoryRoot(), "JitHub.WinUI.Automation", "Probes", "KeyboardAccessibility"), "*.cs")
+        .Order(StringComparer.Ordinal)
+        .Select(File.ReadAllText));
+
+    private static string LoadProbeCatalog() => File.ReadAllText(Path.Combine(
         FindRepositoryRoot(),
         "JitHub.WinUI.Automation",
-        "Program.cs"));
+        "Probes",
+        "ProbeCatalog.cs"));
 
     private static string FindRepositoryRoot()
     {

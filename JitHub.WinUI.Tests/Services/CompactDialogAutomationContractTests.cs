@@ -9,8 +9,8 @@ public sealed class CompactDialogAutomationContractTests
     [Fact]
     public void MatrixUsesRealPreviewRoutesAndEveryCompactViewport()
     {
-        string source = Load("JitHub.WinUI.Automation", "CompactDialogMatrixProbe.cs");
-        string program = Load("JitHub.WinUI.Automation", "Program.cs");
+        string source = LoadMatrixSource();
+        string catalog = Load("JitHub.WinUI.Automation", "Probes", "ProbeCatalog.cs");
 
         Assert.Contains("new(900, 700)", source, StringComparison.Ordinal);
         Assert.Contains("new(760, 650)", source, StringComparison.Ordinal);
@@ -24,16 +24,16 @@ public sealed class CompactDialogAutomationContractTests
         Assert.DoesNotContain("design-lab", source, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("mock page", source, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(
-            "string.Equals(options.Probe, CompactDialogMatrixProbe.ProbeName, StringComparison.OrdinalIgnoreCase)",
-            program,
+            "new Dictionary<string, Action<CaptureOptions>>(StringComparer.OrdinalIgnoreCase)",
+            catalog,
             StringComparison.Ordinal);
-        Assert.Contains("CompactDialogMatrixProbe.Run(options);", program, StringComparison.Ordinal);
+        Assert.Contains("{ CompactDialogMatrixProbe.ProbeName, CompactDialogMatrixProbe.Run },", catalog, StringComparison.Ordinal);
     }
 
     [Fact]
     public void MatrixInventoriesEveryAuditedDialogSurface()
     {
-        string source = Load("JitHub.WinUI.Automation", "CompactDialogMatrixProbe.cs");
+        string source = LoadMatrixSource();
         string[] requiredAutomationIds =
         [
             "ShellModalOverlay",
@@ -62,7 +62,7 @@ public sealed class CompactDialogAutomationContractTests
     [Fact]
     public void MatrixAssertsVisualKeyboardDismissalAndDedupeContracts()
     {
-        string source = Load("JitHub.WinUI.Automation", "CompactDialogMatrixProbe.cs");
+        string source = LoadMatrixSource();
         string[] requiredContracts =
         [
             "AssertDialogVisualContract",
@@ -190,6 +190,16 @@ public sealed class CompactDialogAutomationContractTests
         Assert.InRange(metrics.MaximumWidth, 1, 620);
         Assert.InRange(metrics.MaximumHeight, 1, 720);
     }
+
+    /// <summary>
+    /// The compact dialog matrix probe is a family of classes in one folder of
+    /// the automation project; its contracts hold across all of them.
+    /// </summary>
+    private static string LoadMatrixSource() =>
+        string.Concat(Directory
+            .EnumerateFiles(Path.Combine(FindRepositoryRoot(), "JitHub.WinUI.Automation", "Probes", "Dialogs"), "*.cs")
+            .Order(StringComparer.Ordinal)
+            .Select(File.ReadAllText));
 
     private static string Load(params string[] path) =>
         File.ReadAllText(Path.Combine(new[] { FindRepositoryRoot() }.Concat(path).ToArray()));

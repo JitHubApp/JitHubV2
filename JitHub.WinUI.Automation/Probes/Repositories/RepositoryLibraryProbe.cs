@@ -1,14 +1,20 @@
 using System.Diagnostics;
 using System.Drawing;
-using System.Drawing.Imaging;
-using System.Runtime.InteropServices;
 using FlaUI.Core;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Input;
 using FlaUI.Core.Tools;
 using FlaUI.Core.WindowsAPI;
 using FlaUI.UIA3;
+using JitHub.WinUI.Automation.Options;
+using static JitHub.WinUI.Automation.Probes.Repositories.RepositoryLibraryPointer;
+using static JitHub.WinUI.Automation.Probes.Repositories.RepositoryLibraryScreenshots;
 
+namespace JitHub.WinUI.Automation.Probes.Repositories;
+
+/// <summary>
+/// Runs the repository-library probe across its viewports.
+/// </summary>
 internal static class RepositoryLibraryProbe
 {
     private static readonly (int Width, int Height)[] Viewports =
@@ -20,6 +26,10 @@ internal static class RepositoryLibraryProbe
         (640, 600)
     ];
 
+    // This method stays whole because it drives one launched repository-library session in a fixed order, with hover,
+    // search, filter, sort, bulk selection screenshot diffs, keyboard and pointer context menus, delete-cancel, the
+    // viewport sweep, row navigation and Ctrl+K reactivation, and each step reuses the rows and pointer state the last
+    // one left.
     public static void Run(CaptureOptions options)
     {
         Directory.CreateDirectory(options.OutputDirectory);
@@ -356,34 +366,6 @@ internal static class RepositoryLibraryProbe
         window.Move(30, 30);
     }
 
-    private static void MovePointer(AutomationElement element)
-    {
-        Rectangle bounds = element.BoundingRectangle;
-        Point target = new(bounds.X + Math.Min(96, bounds.Width / 2), bounds.Y + Math.Min(24, bounds.Height / 2));
-        SendMouseMove(target);
-    }
-
-    private static void MovePointerAwayFromRows(Window window)
-    {
-        Rectangle bounds = window.BoundingRectangle;
-        Mouse.MoveTo(new Point(bounds.X + Math.Min(300, Math.Max(180, bounds.Width / 4)), bounds.Y + 18));
-    }
-
-    private static void RightClickVisible(Window window, AutomationElement element)
-    {
-        window.SetForeground();
-        if (element.Patterns.ScrollItem.IsSupported)
-        {
-            element.Patterns.ScrollItem.Pattern.ScrollIntoView();
-            Thread.Sleep(100);
-        }
-
-        element.FocusNative();
-        Rectangle bounds = element.BoundingRectangle;
-        Assert(bounds.Width > 0 && bounds.Height > 0, "Repository row has no visible pointer target.");
-        Mouse.RightClick(new Point(bounds.X + bounds.Width / 2, bounds.Y + Math.Min(24, bounds.Height / 2)));
-    }
-
     private static void AssertInside(Window window, AutomationElement element, string description)
     {
         Rectangle outer = window.BoundingRectangle;
@@ -411,223 +393,7 @@ internal static class RepositoryLibraryProbe
         return label;
     }
 
-    private static ScreenshotTarget CreateScreenshotTarget(Window window)
-    {
-        COMException? lastError = null;
-        for (int attempt = 0; attempt < 8; attempt++)
-        {
-            try
-            {
-                IntPtr windowHandle = new(window.Properties.NativeWindowHandle.ValueOrDefault);
-                int processId = window.Properties.ProcessId.ValueOrDefault;
-                if (windowHandle != IntPtr.Zero && processId > 0)
-                {
-                    _ = GetWindowThreadProcessId(windowHandle, out uint actualProcessId);
-                    if (actualProcessId == (uint)processId)
-                    {
-                        return new ScreenshotTarget(windowHandle, processId);
-                    }
-                }
-            }
-            catch (COMException exception)
-            {
-                lastError = exception;
-            }
-
-            Thread.Sleep(75);
-        }
-
-        throw new InvalidOperationException("Could not resolve the verified native JitHub window for screenshots.", lastError);
-    }
-
-    private static void CaptureScreenshot(ScreenshotTarget target, string path)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(path) ?? Environment.CurrentDirectory);
-        AssertNoForeignJitHubProcesses(target);
-        NativeRect nativeBounds = default;
-        bool hasBounds = false;
-        for (int attempt = 0; attempt < 5 && !hasBounds; attempt++)
-        {
-            if (IsWindow(target.WindowHandle))
-            {
-                _ = GetWindowThreadProcessId(target.WindowHandle, out uint actualProcessId);
-                if (actualProcessId != (uint)target.ProcessId)
-                {
-                    throw new InvalidOperationException(
-                        $"Native window ownership changed before screenshot '{path}': expected {target.ProcessId}, actual {actualProcessId}.");
-                }
-
-                _ = SetForegroundWindow(target.WindowHandle);
-                hasBounds = GetWindowRect(target.WindowHandle, out nativeBounds);
-            }
-
-            if (!hasBounds)
-            {
-                Thread.Sleep(100);
-            }
-        }
-
-        if (!hasBounds)
-        {
-            throw new InvalidOperationException($"Could not read current native bounds for screenshot '{path}'.");
-        }
-
-        Thread.Sleep(100);
-
-        Rectangle bounds = Rectangle.FromLTRB(
-            nativeBounds.Left,
-            nativeBounds.Top,
-            nativeBounds.Right,
-            nativeBounds.Bottom);
-        if (bounds.Width <= 0 || bounds.Height <= 0)
-        {
-            throw new InvalidOperationException($"Native screenshot bounds are empty for '{path}'.");
-        }
-
-        using Bitmap bitmap = new(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb);
-        using (Graphics graphics = Graphics.FromImage(bitmap))
-        {
-            graphics.CopyFromScreen(bounds.Location, Point.Empty, bounds.Size, CopyPixelOperation.SourceCopy);
-        }
-
-        AssertNoForeignJitHubProcesses(target);
-
-        bitmap.Save(path, ImageFormat.Png);
-    }
-
-    private static void AssertNoForeignJitHubProcesses(ScreenshotTarget target)
-    {
-        int[] foreignProcessIds = Process.GetProcessesByName("JitHub.WinUI")
-            .Where(process => process.Id != target.ProcessId && !process.HasExited)
-            .Select(static process => process.Id)
-            .OrderBy(static processId => processId)
-            .ToArray();
-        if (foreignProcessIds.Length > 0)
-        {
-            throw new InvalidOperationException(
-                $"Foreign JitHub windows were active during screenshot capture: {string.Join(", ", foreignProcessIds)}.");
-        }
-    }
-
-    private static bool ScreenshotRegionDiffers(
-        string beforePath,
-        string afterPath,
-        ScreenshotTarget target,
-        Rectangle screenRegion)
-    {
-        if (!GetWindowRect(target.WindowHandle, out NativeRect nativeBounds))
-        {
-            throw new InvalidOperationException("Could not resolve the native window bounds for hover comparison.");
-        }
-
-        Rectangle region = new(
-            screenRegion.X - nativeBounds.Left,
-            screenRegion.Y - nativeBounds.Top,
-            screenRegion.Width,
-            screenRegion.Height);
-        using Bitmap before = new(beforePath);
-        using Bitmap after = new(afterPath);
-        region.Intersect(new Rectangle(0, 0, before.Width, before.Height));
-        if (region.Width <= 0 || region.Height <= 0 || before.Size != after.Size)
-        {
-            return false;
-        }
-
-        int changedPixels = 0;
-        int requiredChanges = Math.Max(12, region.Width * region.Height / 500);
-        for (int y = region.Top; y < region.Bottom; y += 2)
-        {
-            for (int x = region.Left; x < region.Right; x += 2)
-            {
-                if (before.GetPixel(x, y) != after.GetPixel(x, y) && ++changedPixels >= requiredChanges)
-                {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetWindowRect(IntPtr windowHandle, out NativeRect bounds);
-
-    private static void SendMouseMove(Point target)
-    {
-        int virtualLeft = GetSystemMetrics(76);
-        int virtualTop = GetSystemMetrics(77);
-        int virtualWidth = Math.Max(2, GetSystemMetrics(78));
-        int virtualHeight = Math.Max(2, GetSystemMetrics(79));
-        int normalizedX = (int)Math.Round((target.X - virtualLeft) * 65535d / (virtualWidth - 1));
-        int normalizedY = (int)Math.Round((target.Y - virtualTop) * 65535d / (virtualHeight - 1));
-        NativeInput[] inputs =
-        [
-            new NativeInput
-            {
-                Type = 0,
-                Mouse = new NativeMouseInput
-                {
-                    X = normalizedX,
-                    Y = normalizedY,
-                    Flags = 0x0001 | 0x4000 | 0x8000
-                }
-            }
-        ];
-
-        if (SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeInput>()) != inputs.Length)
-        {
-            throw new InvalidOperationException("Could not deliver native mouse input for repository hover verification.");
-        }
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct NativeInput
-    {
-        public uint Type;
-        public NativeMouseInput Mouse;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct NativeMouseInput
-    {
-        public int X;
-        public int Y;
-        public uint MouseData;
-        public uint Flags;
-        public uint Time;
-        public UIntPtr ExtraInfo;
-    }
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern uint SendInput(uint inputCount, NativeInput[] inputs, int inputSize);
-
-    [DllImport("user32.dll")]
-    private static extern int GetSystemMetrics(int index);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool IsWindow(IntPtr windowHandle);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetForegroundWindow(IntPtr windowHandle);
-
-    [DllImport("user32.dll")]
-    private static extern uint GetWindowThreadProcessId(IntPtr windowHandle, out uint processId);
-
-    private readonly record struct ScreenshotTarget(IntPtr WindowHandle, int ProcessId);
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct NativeRect
-    {
-        public int Left;
-        public int Top;
-        public int Right;
-        public int Bottom;
-    }
-
-    private static void Assert(bool condition, string message)
+    internal static void Assert(bool condition, string message)
     {
         if (!condition)
         {

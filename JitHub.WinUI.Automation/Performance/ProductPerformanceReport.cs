@@ -2,6 +2,8 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using JitHub.Services;
 
+namespace JitHub.WinUI.Automation.Performance;
+
 internal sealed record ProductPerformanceReport(
     int SchemaVersion,
     DateTimeOffset CreatedAt,
