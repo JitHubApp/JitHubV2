@@ -2,8 +2,9 @@ using System.Text;
 using MarkdownRenderer.Mermaid.Internal.Caching;
 using MarkdownRenderer.Mermaid.Internal.Rendering;
 using MarkdownRenderer.Mermaid.Internal.Scenes;
+using MarkdownRenderer.Mermaid.Tests.TestSupport;
 
-namespace MarkdownRenderer.Mermaid.Tests;
+namespace MarkdownRenderer.Mermaid.Tests.Internal.Caching;
 
 /// <summary>Scene cache admission bounds and producer deadlines.</summary>
 public sealed class MermaidSceneCacheAdmissionTests

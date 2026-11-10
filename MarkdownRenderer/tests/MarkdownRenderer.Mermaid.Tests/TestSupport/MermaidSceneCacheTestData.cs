@@ -5,7 +5,7 @@ using MarkdownRenderer.Mermaid.Internal.Caching;
 using MarkdownRenderer.Mermaid.Internal.Rendering;
 using MarkdownRenderer.Mermaid.Internal.Scenes;
 
-namespace MarkdownRenderer.Mermaid.Tests;
+namespace MarkdownRenderer.Mermaid.Tests.TestSupport;
 
 /// <summary>Keys, scenes and render results for scene cache tests.</summary>
 internal static class MermaidSceneCacheTestData

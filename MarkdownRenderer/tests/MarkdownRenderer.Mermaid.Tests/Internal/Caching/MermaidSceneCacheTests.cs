@@ -5,8 +5,9 @@ using MarkdownRenderer.Mermaid.Internal.Caching;
 using MarkdownRenderer.Mermaid.Internal.Rendering;
 using MarkdownRenderer.Mermaid.Internal.Scenes;
 using MarkdownRenderer.Mermaid.Native.Internal;
+using MarkdownRenderer.Mermaid.Tests.TestSupport;
 
-namespace MarkdownRenderer.Mermaid.Tests;
+namespace MarkdownRenderer.Mermaid.Tests.Internal.Caching;
 
 public sealed class MermaidSceneCacheTests
 {

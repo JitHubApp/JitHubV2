@@ -1,7 +1,7 @@
 using System.Buffers.Binary;
 using MarkdownRenderer.Mermaid.Internal.Scenes;
 
-namespace MarkdownRenderer.Mermaid.Tests;
+namespace MarkdownRenderer.Mermaid.Tests.TestSupport;
 
 /// <summary>Builds minimal MMIR buffers for decoder tests.</summary>
 internal static class MmirBuilder

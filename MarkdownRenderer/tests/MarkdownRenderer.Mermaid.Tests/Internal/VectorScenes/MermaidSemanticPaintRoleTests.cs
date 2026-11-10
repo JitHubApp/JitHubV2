@@ -2,7 +2,7 @@ using MarkdownRenderer.Document;
 using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Theming;
 
-namespace MarkdownRenderer.Mermaid.Tests;
+namespace MarkdownRenderer.Mermaid.Tests.Internal.VectorScenes;
 
 public sealed class MermaidSemanticPaintRoleTests
 {

@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 using MarkdownRenderer.Mermaid;
 using MarkdownRenderer.Mermaid.Native.Internal;
 
-namespace MarkdownRenderer.Mermaid.Tests;
+namespace MarkdownRenderer.Mermaid.Tests.TestSupport;
 
 /// <summary>Creates native Mermaid engines and their default options for ABI tests.</summary>
 internal static class MermaidNativeTestEngines

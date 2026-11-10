@@ -2,7 +2,7 @@ using MarkdownRenderer.Extensions;
 using MarkdownRenderer.Mermaid.Internal.Scenes;
 using MarkdownRenderer.Mermaid.Internal.VectorScenes;
 
-namespace MarkdownRenderer.Mermaid.Tests;
+namespace MarkdownRenderer.Mermaid.Tests.Internal.VectorScenes;
 
 public sealed class MermaidVectorSceneAdapterTests
 {

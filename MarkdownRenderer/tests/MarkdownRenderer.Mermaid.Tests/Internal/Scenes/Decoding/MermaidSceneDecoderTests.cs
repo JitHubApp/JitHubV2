@@ -3,8 +3,9 @@ using MarkdownRenderer.Mermaid;
 using MarkdownRenderer.Mermaid.Internal.Rendering;
 using MarkdownRenderer.Mermaid.Internal.Scenes;
 using MarkdownRenderer.Mermaid.Internal.Scenes.Decoding;
+using MarkdownRenderer.Mermaid.Tests.TestSupport;
 
-namespace MarkdownRenderer.Mermaid.Tests;
+namespace MarkdownRenderer.Mermaid.Tests.Internal.Scenes.Decoding;
 
 public sealed class MermaidSceneDecoderTests
 {
