@@ -1,8 +1,9 @@
 ﻿using System;
 using System.Threading.Tasks;
+using JitHub.Markdown.Lifetime.Internal;
 using Xunit;
 
-namespace JitHub.Markdown.Tests;
+namespace JitHub.Markdown.Tests.Lifetime.Internal;
 
 /// <summary>
 /// Covers the renderer disposal commit: a renderer stays tracked until its

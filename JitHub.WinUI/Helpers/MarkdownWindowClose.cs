@@ -1,6 +1,6 @@
 using System;
 using System.Threading.Tasks;
-using JitHub.Markdown;
+using JitHub.Markdown.Lifetime;
 using JitHub.WinUI.Views.Pages;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;

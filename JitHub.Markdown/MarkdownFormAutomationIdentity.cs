@@ -1,4 +1,5 @@
 using System;
+using JitHub.Markdown.Hosting;
 
 namespace JitHub.Markdown;
 

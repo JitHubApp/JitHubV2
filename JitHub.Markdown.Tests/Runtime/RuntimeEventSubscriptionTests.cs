@@ -1,9 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using JitHub.Markdown.Runtime;
 using Xunit;
 
-namespace JitHub.Markdown.Tests;
+namespace JitHub.Markdown.Tests.Runtime;
 
 public sealed class RuntimeEventSubscriptionTests
 {

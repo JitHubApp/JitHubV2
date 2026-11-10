@@ -1,6 +1,6 @@
 using System;
 
-namespace JitHub.Markdown;
+namespace JitHub.Markdown.Runtime;
 
 /// <summary>
 /// The UI thread a Markdown host lives on.

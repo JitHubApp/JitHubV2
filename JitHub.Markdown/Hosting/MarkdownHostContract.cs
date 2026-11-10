@@ -1,7 +1,7 @@
 using System;
 using System.Text;
 
-namespace JitHub.Markdown;
+namespace JitHub.Markdown.Hosting;
 
 public static class MarkdownHostContract
 {

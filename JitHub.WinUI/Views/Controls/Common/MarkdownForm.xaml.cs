@@ -1,5 +1,6 @@
 using CommunityToolkit.WinUI.Controls;
 using JitHub.Markdown;
+using JitHub.Markdown.Runtime;
 using JitHub.WinUI.ViewModels;
 using JitHub.WinUI.Helpers;
 using Microsoft.UI.Xaml;

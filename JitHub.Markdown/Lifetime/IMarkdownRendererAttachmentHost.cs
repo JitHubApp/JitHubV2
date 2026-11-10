@@ -1,6 +1,6 @@
 using System;
 
-namespace JitHub.Markdown;
+namespace JitHub.Markdown.Lifetime;
 
 /// <summary>
 /// What a <see cref="MarkdownRendererAttachment{TRenderer}"/> needs from the

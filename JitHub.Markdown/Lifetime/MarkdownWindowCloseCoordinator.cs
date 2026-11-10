@@ -1,7 +1,7 @@
 using System;
 using System.Threading.Tasks;
 
-namespace JitHub.Markdown;
+namespace JitHub.Markdown.Lifetime;
 
 /// <summary>
 /// The main window's Markdown close sequence. Markdown controls borrow the

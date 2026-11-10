@@ -1,7 +1,7 @@
 using System;
 using System.Threading.Tasks;
 
-namespace JitHub.Markdown;
+namespace JitHub.Markdown.Lifetime;
 
 /// <summary>
 /// The window close path's Markdown teardown. Pages own the Markdown views and

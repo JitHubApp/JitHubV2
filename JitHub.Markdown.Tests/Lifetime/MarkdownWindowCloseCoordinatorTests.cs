@@ -1,9 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using JitHub.Markdown.Lifetime;
 using Xunit;
 
-namespace JitHub.Markdown.Tests;
+namespace JitHub.Markdown.Tests.Lifetime;
 
 // The drains and the provider gate inside the sequence are covered by
 // MarkdownViewShutdownTests; these cover what the window's close adds.

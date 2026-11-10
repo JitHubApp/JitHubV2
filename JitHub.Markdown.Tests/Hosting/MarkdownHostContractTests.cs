@@ -1,8 +1,9 @@
 using System;
 using System.Collections.Generic;
+using JitHub.Markdown.Hosting;
 using Xunit;
 
-namespace JitHub.Markdown.Tests;
+namespace JitHub.Markdown.Tests.Hosting;
 
 public sealed class MarkdownHostContractTests
 {

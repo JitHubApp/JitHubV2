@@ -1,9 +1,10 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using JitHub.Markdown.Runtime;
 using Xunit;
 
-namespace JitHub.Markdown.Tests;
+namespace JitHub.Markdown.Tests.Runtime;
 
 /// <summary>
 /// Covers how <see cref="JitHubMarkdownRuntime"/> dispatches system font changes to

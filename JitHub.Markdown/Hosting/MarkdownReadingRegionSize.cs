@@ -1,6 +1,6 @@
 using Microsoft.UI.Xaml;
 
-namespace JitHub.Markdown;
+namespace JitHub.Markdown.Hosting;
 
 /// <summary>The width constraints a Markdown host applies to its reading region.</summary>
 /// <param name="Width">The explicit width, or <see cref="double.NaN"/> to stretch.</param>

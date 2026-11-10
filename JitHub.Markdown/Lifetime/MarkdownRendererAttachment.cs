@@ -1,6 +1,6 @@
 using System;
 
-namespace JitHub.Markdown;
+namespace JitHub.Markdown.Lifetime;
 
 /// <summary>
 /// Decides when a Markdown host creates, queues or reattaches the renderer in

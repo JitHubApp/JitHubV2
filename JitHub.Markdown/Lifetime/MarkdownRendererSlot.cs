@@ -1,8 +1,10 @@
 using System;
 using System.Diagnostics;
 using System.Threading.Tasks;
+using JitHub.Markdown.Lifetime.Internal;
+using JitHub.Markdown.Runtime;
 
-namespace JitHub.Markdown;
+namespace JitHub.Markdown.Lifetime;
 
 /// <summary>
 /// Owns one Markdown host's renderer from creation until its retired resources

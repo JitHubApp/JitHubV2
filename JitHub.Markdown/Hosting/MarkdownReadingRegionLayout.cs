@@ -1,6 +1,6 @@
 using Microsoft.UI.Xaml;
 
-namespace JitHub.Markdown;
+namespace JitHub.Markdown.Hosting;
 
 /// <summary>
 /// Sizes a Markdown host's reading region from the host's own width. The

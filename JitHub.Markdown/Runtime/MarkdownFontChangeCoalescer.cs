@@ -1,7 +1,7 @@
 using System;
 using System.Threading.Tasks;
 
-namespace JitHub.Markdown;
+namespace JitHub.Markdown.Runtime;
 
 /// <summary>
 /// Coalesces system font-change notifications into one background dispatch.

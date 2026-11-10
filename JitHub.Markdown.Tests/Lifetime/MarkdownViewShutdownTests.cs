@@ -1,9 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using JitHub.Markdown.Lifetime;
 using Xunit;
 
-namespace JitHub.Markdown.Tests;
+namespace JitHub.Markdown.Tests.Lifetime;
 
 public sealed class MarkdownViewShutdownTests
 {

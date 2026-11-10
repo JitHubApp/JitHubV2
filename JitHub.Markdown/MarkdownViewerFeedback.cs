@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using JitHub.Markdown.Hosting;
 using MarkdownRenderer.Images;
 
 namespace JitHub.Markdown;

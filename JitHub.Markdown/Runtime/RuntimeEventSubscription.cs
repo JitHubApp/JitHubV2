@@ -2,7 +2,7 @@ using System;
 using System.Runtime.InteropServices;
 using System.Threading;
 
-namespace JitHub.Markdown;
+namespace JitHub.Markdown.Runtime;
 
 /// <summary>
 /// Makes optional Windows runtime event sources best-effort without weakening

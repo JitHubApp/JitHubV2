@@ -1,4 +1,4 @@
-namespace JitHub.Markdown;
+namespace JitHub.Markdown.Lifetime;
 
 /// <summary>
 /// A Markdown host that borrows a renderer and must release it before the

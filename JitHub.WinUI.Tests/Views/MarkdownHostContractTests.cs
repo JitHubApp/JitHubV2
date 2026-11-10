@@ -4,7 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Xml;
 using System.Xml.Linq;
-using JitHub.Markdown;
+using JitHub.Markdown.Hosting;
 using JitHub.WinUI.Tests.TestSupport;
 using Xunit;
 
