@@ -404,9 +404,12 @@ The repository-level version of these rules is in `AGENTS.md`.
 
 ## Test And Tooling Inventory
 
-- `JitHub.WinUI.Tests`: service, policy, architecture, view-model, XAML/source
-  contracts, security, responsiveness, telemetry, performance-budget, cache,
-  pagination, and no-flash tests.
+- `JitHub.Core.Tests`: service, policy, view-model, security, telemetry,
+  performance-budget, cache, pagination, and no-flash tests of `JitHub.Core`,
+  in folders that mirror it.
+- `JitHub.WinUI.Tests`: XAML, resource, project, manifest, packaging, release
+  gate, architecture, responsiveness, and UI-automation-harness contracts of the
+  app's own files, in folders that mirror the app.
 - `JitHub.Web.Tests`: OAuth callback, one-time handoff, redirect policy,
   forwarded-header trust, expiry/replay, and backend behavior.
 - `MarkdownRenderer.Tests`: parser/layout/lifecycle/selection/accessibility/image,
@@ -656,16 +659,20 @@ before rebuilding all configurations and generating screenshots.
 .\eng\Restore-NativeAot.ps1 -Architecture arm64
 .\eng\Update-NativeAotDependencyLedger.ps1 -Verify
 
+dotnet restore JitHub.Core.Tests\JitHub.Core.Tests.csproj --locked-mode
 dotnet restore JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj --locked-mode
 dotnet restore JitHub.Web.Tests\JitHub.Web.Tests.csproj --locked-mode
 ```
 
-Do not change `JitHub.WinUI.Tests.csproj` to `AnyCPU`. Its default platform must
-remain `x64`; changing it moves output and breaks source-path contract tests.
+Do not change `JitHub.Core.Tests.csproj` or `JitHub.WinUI.Tests.csproj` to
+`AnyCPU`. Their default platform must remain `x64`; changing it moves output and
+breaks source-path contract tests.
 
 ### 3. Run Core Tests Sequentially
 
 ```powershell
+dotnet test JitHub.Core.Tests\JitHub.Core.Tests.csproj -c Debug --no-restore
+dotnet test JitHub.Core.Tests\JitHub.Core.Tests.csproj -c Release --no-restore
 dotnet test JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj -c Debug --no-restore
 dotnet test JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj -c Release --no-restore
 

@@ -12,6 +12,7 @@ on:
       - JitHub.WinUI/**
       - JitHub.WinUI.Tests/**
       - JitHub.Core/**
+      - JitHub.Core.Tests/**
       - JitHub.Markdown/**
       - JitHub.Markdown.Tests/**
       - JitHub.Performance/**
@@ -32,6 +33,7 @@ on:
       - JitHub.WinUI/**
       - JitHub.WinUI.Tests/**
       - JitHub.Core/**
+      - JitHub.Core.Tests/**
       - JitHub.Markdown/**
       - JitHub.Markdown.Tests/**
       - JitHub.Performance/**
@@ -454,8 +456,9 @@ jobs:
         run: |
           $app = '.\JitHub.WinUI\JitHub.WinUI.csproj'
           $tests = '.\JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj'
+          $coreTests = '.\JitHub.Core.Tests\JitHub.Core.Tests.csproj'
           $markdownTests = '.\JitHub.Markdown.Tests\JitHub.Markdown.Tests.csproj'
-          foreach ($project in @($markdownTests, $tests, $app)) {
+          foreach ($project in @($markdownTests, $coreTests, $tests, $app)) {
             & dotnet restore $project `
               -p:Configuration=$env:CONFIGURATION `
               -p:Platform=$env:PLATFORM `
@@ -471,6 +474,14 @@ jobs:
             --no-restore `
             --disable-build-servers
           if ($LASTEXITCODE -ne 0) { throw 'JitHub consumer tests failed to build.' }
+
+          & dotnet build $coreTests `
+            --configuration $env:CONFIGURATION `
+            -p:Platform=$env:PLATFORM `
+            -p:UseSharedCompilation=false `
+            --no-restore `
+            --disable-build-servers
+          if ($LASTEXITCODE -ne 0) { throw 'JitHub.Core tests failed to build.' }
 
           & dotnet build $markdownTests `
             --configuration $env:CONFIGURATION `
@@ -500,6 +511,16 @@ jobs:
             --results-directory $results `
             --logger 'trx;LogFileName=jithub-consumer.trx'
           if ($LASTEXITCODE -ne 0) { throw 'JitHub consumer tests failed.' }
+
+          & dotnet test $coreTests `
+            --configuration $env:CONFIGURATION `
+            -p:Platform=$env:PLATFORM `
+            --no-build `
+            --no-restore `
+            --disable-build-servers `
+            --results-directory $results `
+            --logger 'trx;LogFileName=jithub-core.trx'
+          if ($LASTEXITCODE -ne 0) { throw 'JitHub.Core tests failed.' }
 
           & dotnet test $markdownTests `
             --configuration $env:CONFIGURATION `

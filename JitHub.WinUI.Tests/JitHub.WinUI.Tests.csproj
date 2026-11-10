@@ -22,7 +22,6 @@
   <ItemGroup>
     <ProjectReference Include="..\JitHub.Core\JitHub.Core.csproj" />
     <ProjectReference Include="..\JitHub.Markdown\JitHub.Markdown.csproj" />
-    <ProjectReference Include="..\JitHub.Performance\JitHub.Performance.csproj" />
     <ProjectReference Include="..\JitHub.Shared\JitHub.Shared.csproj" />
     <ProjectReference Include="..\MarkdownRenderer\src\MarkdownRenderer\MarkdownRenderer.csproj" />
   </ItemGroup>
@@ -37,10 +36,6 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.8" />
-    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
-    <PackageReference Include="NSubstitute" Version="5.3.0" />
-    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.10.0" />
     <PackageReference Include="coverlet.collector" Version="6.0.2">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>

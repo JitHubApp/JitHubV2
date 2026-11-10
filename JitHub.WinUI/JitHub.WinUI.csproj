@@ -237,8 +237,11 @@
 
   <PropertyGroup>
     <!-- The release gate's test run: only the ReleaseSecurity tests, restored
-         in locked mode, with this gate skipped in the nested build. -->
-    <JitHubReleaseSecurityTestCommand>dotnet test &quot;$(MSBuildThisFileDirectory)..\JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj&quot; -c Release --filter &quot;Category=ReleaseSecurity&quot; -p:RestoreLockedMode=true -p:SkipReleaseSecurityGate=true</JitHubReleaseSecurityTestCommand>
+         in locked mode, with this gate skipped in the nested build. They live
+         in the tests of JitHub.Core and the tests of the app's own files; the
+         second run starts only when the first passes. -->
+    <JitHubReleaseSecurityTestArguments>-c Release --filter &quot;Category=ReleaseSecurity&quot; -p:RestoreLockedMode=true -p:SkipReleaseSecurityGate=true</JitHubReleaseSecurityTestArguments>
+    <JitHubReleaseSecurityTestCommand>dotnet test &quot;$(MSBuildThisFileDirectory)..\JitHub.Core.Tests\JitHub.Core.Tests.csproj&quot; $(JitHubReleaseSecurityTestArguments) &amp;&amp; dotnet test &quot;$(MSBuildThisFileDirectory)..\JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj&quot; $(JitHubReleaseSecurityTestArguments)</JitHubReleaseSecurityTestCommand>
   </PropertyGroup>
 
   <Target Name="RunReleaseSecurityGate"

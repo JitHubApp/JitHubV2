@@ -39,13 +39,23 @@ jobs:
 
       - name: Restore tests
         shell: pwsh
+        run: |
+          foreach ($project in '.\JitHub.Core.Tests\JitHub.Core.Tests.csproj', '.\JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj') {
+            dotnet restore $project -p:Platform=x64 -p:RuntimeIdentifier=win-x64 --locked-mode
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+      - name: Run JitHub.Core unit tests
+        shell: pwsh
         run: >
-          dotnet restore .\JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj
+          dotnet test .\JitHub.Core.Tests\JitHub.Core.Tests.csproj
+          -c Debug
           -p:Platform=x64
           -p:RuntimeIdentifier=win-x64
-          --locked-mode
+          --no-restore
+          --logger "trx;LogFileName=native-aot-core-tests.trx"
 
-      - name: Run unit tests
+      - name: Run app unit tests
         shell: pwsh
         run: >
           dotnet test .\JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj
@@ -60,7 +70,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: native-aot-test-results
-          path: '**/native-aot-tests.trx'
+          path: '**/native-aot*-tests.trx'
           if-no-files-found: warn
           retention-days: 7
 

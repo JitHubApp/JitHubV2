@@ -4,13 +4,13 @@
        settings and diagnostics, code viewer services, and the view models
        and view items the pages bind to. The app (JitHub.WinUI) holds the
        pages, controls, resources and composition root, and references this
-       project; JitHub.WinUI.Tests tests it directly. Code is organized by
+       project; JitHub.Core.Tests tests it directly. Code is organized by
        layer, then area (Models, Services, ViewModels), and every namespace is
        JitHub.Core plus the folder path. -->
   <PropertyGroup>
     <!-- Match JitHub.WinUI and the projects it references. Like JitHub.Markdown
          and the renderer, it uses the SDK's default Windows projection so
-         that JitHub.WinUI.Tests, which also uses the default, resolves one
+         that JitHub.Core.Tests, which also uses the default, resolves one
          version. -->
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
@@ -40,7 +40,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="JitHub.WinUI.Tests" />
+    <InternalsVisibleTo Include="JitHub.Core.Tests" />
   </ItemGroup>
 
   <ItemGroup>

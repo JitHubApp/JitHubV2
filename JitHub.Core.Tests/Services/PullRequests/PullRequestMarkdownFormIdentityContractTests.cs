@@ -1,0 +1,160 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Xml.Linq;
+using JitHub.Core.Models.GitHub.PullRequests;
+using JitHub.Core.Services.GitHub.Caching;
+using JitHub.Core.Services.Me;
+using JitHub.Core.Services.PullRequests;
+using Xunit;
+
+namespace JitHub.Core.Tests.Services.PullRequests;
+
+public sealed class PullRequestMarkdownFormIdentityContractTests
+{
+    [Fact]
+    public void SimultaneousReviewThreadsUseDistinctStableReplyFormScopes()
+    {
+        string first = CreateScope(id: 101, nodeId: "PRRC_first") + "_ReplyForm";
+        string second = CreateScope(id: 102, nodeId: "PRRC_second") + "_ReplyForm";
+        string recycledFirst = CreateScope(id: 101, nodeId: "PRRC_first") + "_ReplyForm";
+
+        Assert.NotEqual(first, second);
+        Assert.Equal(first, recycledFirst);
+        Assert.EndsWith("_ReplyForm", first, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ZeroIdReviewThreadsUseStableGitHubFallbackIdentity()
+    {
+        string first = CreateScope(id: 0, nodeId: "PRRC_zero_first") + "_ReplyForm";
+        string second = CreateScope(id: 0, nodeId: "PRRC_zero_second") + "_ReplyForm";
+        string recycledFirst = CreateScope(id: 0, nodeId: "PRRC_zero_first") + "_ReplyForm";
+
+        Assert.False(string.IsNullOrWhiteSpace(first));
+        Assert.NotEqual(first, second);
+        Assert.Equal(first, recycledFirst);
+    }
+
+    [Fact]
+    public void NullNodeIdentityFallsBackToStableReviewCoordinates()
+    {
+        DateTimeOffset createdAt = new(2026, 7, 29, 12, 0, 0, TimeSpan.Zero);
+        string first = PullRequestReviewAutomationIdentity.CreateScope(
+            "PullRequestReviewThread",
+            id: 0,
+            nodeId: null,
+            reviewId: 11,
+            position: null,
+            originalPosition: 7,
+            createdAt);
+        string recycled = PullRequestReviewAutomationIdentity.CreateScope(
+            "PullRequestReviewThread",
+            id: 0,
+            nodeId: null,
+            reviewId: 11,
+            position: null,
+            originalPosition: 7,
+            createdAt);
+        string other = PullRequestReviewAutomationIdentity.CreateScope(
+            "PullRequestReviewThread",
+            id: 0,
+            nodeId: null,
+            reviewId: 12,
+            position: null,
+            originalPosition: 7,
+            createdAt);
+
+        Assert.False(string.IsNullOrWhiteSpace(first));
+        Assert.Equal(first, recycled);
+        Assert.NotEqual(first, other);
+    }
+
+    [Fact]
+    public void FullyIdentitylessReviewCommentsUseStableOwnerOrdinalScopes()
+    {
+        string first = CreateIdentitylessScope("pr:42:thread:0");
+        string recreatedFirst = CreateIdentitylessScope("pr:42:thread:0");
+        string second = CreateIdentitylessScope("pr:42:thread:1");
+
+        Assert.False(string.IsNullOrWhiteSpace(first));
+        Assert.Equal(first, recreatedFirst);
+        Assert.NotEqual(first, second);
+        Assert.DoesNotContain("pr_42", first, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void SimultaneousNullZeroIdReplyFormsStayUniqueAcrossRecreation()
+    {
+        string[] initial =
+        [
+            $"{CreateIdentitylessScope("pr:73:thread:0")}_ReplyForm",
+            $"{CreateIdentitylessScope("pr:73:thread:1")}_ReplyForm"
+        ];
+        string[] recreated =
+        [
+            $"{CreateIdentitylessScope("pr:73:thread:0")}_ReplyForm",
+            $"{CreateIdentitylessScope("pr:73:thread:1")}_ReplyForm"
+        ];
+
+        Assert.Equal(2, initial.Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(initial, recreated);
+    }
+
+    [Fact]
+    public void FullyIdentitylessScopeRequiresCallerOwnedContext()
+    {
+        Assert.Throws<ArgumentException>(() => PullRequestReviewAutomationIdentity.CreateScope(
+            "PullRequestReviewThread",
+            id: 0,
+            nodeId: null,
+            reviewId: null,
+            position: null,
+            originalPosition: null,
+            createdAt: default));
+    }
+
+    [Fact]
+    public void SectionProjectionPreservesSimultaneousIdentitylessReviewCommentsByStableOrdinal()
+    {
+        GitHubPullRequestReviewComment[] comments =
+        [
+            new() { Id = 0, NodeId = null },
+            new() { Id = 0, NodeId = null }
+        ];
+        PullRequestSectionState complete = new(
+            CacheState.Fresh,
+            Completeness: PagedDataCompleteness.Complete);
+
+        GitHubPullRequestReviewComment[] projected = PullRequestSectionProjectionPolicy.ProjectSection(
+            comments,
+            [],
+            complete,
+            static (_, ordinal) => $"pr:73:review-comment:{ordinal}");
+
+        Assert.Equal(2, projected.Length);
+        Assert.Same(comments[0], projected[0]);
+        Assert.Same(comments[1], projected[1]);
+    }
+
+    private static string CreateScope(long id, string? nodeId) =>
+        PullRequestReviewAutomationIdentity.CreateScope(
+            "PullRequestReviewThread",
+            id,
+            nodeId,
+            reviewId: 9,
+            position: 4,
+            originalPosition: 4,
+            new DateTimeOffset(2026, 7, 29, 12, 0, 0, TimeSpan.Zero));
+
+    private static string CreateIdentitylessScope(string deterministicContext) =>
+        PullRequestReviewAutomationIdentity.CreateScope(
+            "PullRequestReviewThread",
+            id: 0,
+            nodeId: null,
+            reviewId: null,
+            position: null,
+            originalPosition: null,
+            createdAt: default,
+            deterministicContext);
+}

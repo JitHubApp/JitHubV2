@@ -30,17 +30,23 @@ jobs:
       - name: Restore performance projects
         shell: pwsh
         run: |
+          dotnet restore .\JitHub.Core.Tests\JitHub.Core.Tests.csproj -p:Platform=x64
           dotnet restore .\JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj -p:Platform=x64
           dotnet restore .\JitHub.WinUI.PerformanceGate\JitHub.WinUI.PerformanceGate.csproj -p:Platform=x64
           dotnet restore .\JitHub.WinUI.Automation\JitHub.WinUI.Automation.csproj
 
       - name: Run performance contract tests
         shell: pwsh
-        run: >
-          dotnet test .\JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj
-          -c Release -p:Platform=x64 --no-restore
-          --filter "FullyQualifiedName~ProductPerformance"
-          --logger "trx;LogFileName=product-performance-contracts.trx"
+        run: |
+          dotnet test .\JitHub.Core.Tests\JitHub.Core.Tests.csproj `
+            -c Release -p:Platform=x64 --no-restore `
+            --filter "FullyQualifiedName~ProductPerformance" `
+            --logger "trx;LogFileName=product-performance-core-contracts.trx"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet test .\JitHub.WinUI.Tests\JitHub.WinUI.Tests.csproj `
+            -c Release -p:Platform=x64 --no-restore `
+            --filter "FullyQualifiedName~ProductPerformance" `
+            --logger "trx;LogFileName=product-performance-contracts.trx"
 
       - name: Build performance gate
         shell: pwsh
