@@ -44,6 +44,16 @@ Working code is not enough. Review every change against these rules, and flag a 
 - Shared settings live in `Directory.Build.props`. Package versions live in `Directory.Packages.props` (central package management), one version per package. A project file holds only what is unique to that project.
 - Package assets such as icons and READMEs come from the product's own folder, never from another product's project.
 
+### Source organization
+
+- A file's namespace is the project's root namespace plus its folder path (IDE0130). The root namespace is the assembly name. Declare one namespace per file, file-scoped. Vendored `ThirdParty/` code keeps its upstream layout and namespaces.
+- Organize by responsibility, never flat. Libraries group by feature (`Parsing`, `Layout`, `Images`), then by role where that helps. Apps group by layer, then area: `Models/<Area>`, `Services/<Area>`, `ViewModels/<Area>`, `Views/<Area>`. Folder and namespace names are nouns naming a responsibility, never `Misc`, `Common`, phases or ticket names.
+- A folder holds at most 30 C# files directly. A project's root folder holds at most 10, and only entry points (`Program`, `App`, `MainWindow`), assembly-level files (`AssemblyInfo.cs`, `GlobalUsings.cs`) and, in a library, the few front-door public types of the root namespace.
+- In a library that tracks its public API with `PublicAPI.Shipped.txt`, the tree shows what is public. Public top-level types live in the feature namespaces consumers import. Every non-public top-level type lives under an `Internal` folder inside the feature it serves (`Layout/Internal/`), in a `.Internal` namespace. Do not change accessibility to satisfy this rule; a type that is wrongly public or internal changes through `PublicAPI.Unshipped.txt`.
+- Every other project (app-internal libraries, the app, samples, perf, tools and tests) follows the rest of this section, but not the `Internal` rule.
+- Tests sit at the folder and namespace that mirror what they test, or the closest product folder when a test covers several: a test of `X.Layout.Internal.Boxes.InlineContainerBox` is `Layout/Internal/Boxes/InlineContainerBoxTests.cs` in `X.Tests.Layout.Internal.Boxes`. Helpers inside a test project go in `TestSupport/`; helpers shared across test projects go in a test-support project.
+- `eng/Test-SourceOrganization.ps1` checks the namespace, folder size and `Internal` rules in CI. A deliberate exception goes in `eng/source-organization-exceptions.json` with a specific reason, and its entry is removed with the fix.
+
 ### Public API
 
 - The public surface is deliberate and tracked with `Microsoft.CodeAnalysis.PublicApiAnalyzers` (`PublicAPI.Shipped.txt` and `PublicAPI.Unshipped.txt`). Missing or removed entries are build errors.
