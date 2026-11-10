@@ -3,6 +3,7 @@ using FlaUI.Core.Definitions;
 using FlaUI.Core.Input;
 using FlaUI.Core.Tools;
 using FlaUI.Core.WindowsAPI;
+using MarkdownRenderer.Sample.Automation.Native;
 using MarkdownRenderer.Sample.Automation.Uia;
 using static MarkdownRenderer.Sample.Automation.Native.NativeMouse;
 using static MarkdownRenderer.Sample.Automation.Uia.AutomationElementText;

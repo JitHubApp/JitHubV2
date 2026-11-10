@@ -1,4 +1,6 @@
-namespace MarkdownRenderer.Sample.Automation;
+using MarkdownRenderer.Sample.Automation.Runs;
+
+namespace MarkdownRenderer.Sample.Automation.Options;
 
 /// <summary>
 /// The driver's command line: <c>--app-path &lt;exe&gt;</c> names the sample

@@ -1,7 +1,8 @@
 using MarkdownRenderer.Sample.Automation;
+using MarkdownRenderer.Sample.Automation.Runs;
 using Xunit;
 
-namespace MarkdownRenderer.Sample.Automation.Tests;
+namespace MarkdownRenderer.Sample.Automation.Tests.Runs;
 
 public sealed class ProbeRunnerTests
 {

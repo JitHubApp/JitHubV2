@@ -4,11 +4,14 @@ using FlaUI.Core.Definitions;
 using FlaUI.Core.Input;
 using FlaUI.Core.WindowsAPI;
 using FlaUI.UIA3;
+using MarkdownRenderer.Sample.Automation.Applications;
+using MarkdownRenderer.Sample.Automation.Probes;
+using MarkdownRenderer.Sample.Automation.Uia;
 using static MarkdownRenderer.Sample.Automation.Probes.AccessibilityLabKeyboardProbes;
 using static MarkdownRenderer.Sample.Automation.Uia.AutomationElementText;
 using static MarkdownRenderer.Sample.Automation.Uia.SampleWindowQueries;
 
-namespace MarkdownRenderer.Sample.Automation;
+namespace MarkdownRenderer.Sample.Automation.Runs;
 
 /// <summary>
 /// Runs the --narrator-smoke pass: starts Narrator over the Accessibility Lab and captures what it highlights.

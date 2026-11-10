@@ -1,4 +1,4 @@
-namespace MarkdownRenderer.Sample.Automation;
+namespace MarkdownRenderer.Sample.Automation.Applications;
 
 internal static class ProcessExitValidation
 {

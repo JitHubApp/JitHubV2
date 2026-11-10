@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using FlaUI.Core.AutomationElements;
+using MarkdownRenderer.Sample.Automation.Applications;
+using MarkdownRenderer.Sample.Automation.Uia;
 using static MarkdownRenderer.Sample.Automation.Uia.ProbeAssert;
 
 namespace MarkdownRenderer.Sample.Automation.Probes;

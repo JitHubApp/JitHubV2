@@ -1,3 +1,7 @@
+using MarkdownRenderer.Sample.Automation.Applications;
+using MarkdownRenderer.Sample.Automation.Options;
+using MarkdownRenderer.Sample.Automation.Runs;
+
 namespace MarkdownRenderer.Sample.Automation;
 
 /// <summary>

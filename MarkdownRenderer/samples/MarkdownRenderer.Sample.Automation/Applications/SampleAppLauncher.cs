@@ -4,7 +4,7 @@ using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Tools;
 using FlaUI.UIA3;
 
-namespace MarkdownRenderer.Sample.Automation;
+namespace MarkdownRenderer.Sample.Automation.Applications;
 
 /// <summary>
 /// Starts the sample executable for one driver run and waits until its window

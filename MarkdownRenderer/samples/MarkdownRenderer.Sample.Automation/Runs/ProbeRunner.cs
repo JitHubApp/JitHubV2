@@ -1,4 +1,4 @@
-namespace MarkdownRenderer.Sample.Automation;
+namespace MarkdownRenderer.Sample.Automation.Runs;
 
 /// <summary>
 /// Runs named probes for one driver run, records which passed and which

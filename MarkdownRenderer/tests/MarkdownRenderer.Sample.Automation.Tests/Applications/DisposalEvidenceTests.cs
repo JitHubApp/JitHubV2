@@ -1,7 +1,8 @@
 using MarkdownRenderer.Sample.Automation;
+using MarkdownRenderer.Sample.Automation.Applications;
 using Xunit;
 
-namespace MarkdownRenderer.Sample.Automation.Tests;
+namespace MarkdownRenderer.Sample.Automation.Tests.Applications;
 
 public sealed class DisposalEvidenceTests
 {

@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace MarkdownRenderer.Sample.Automation;
+namespace MarkdownRenderer.Sample.Automation.Applications;
 
 /// <summary>
 /// Reads the JSON the sample writes when a renderer is disposed (the file named

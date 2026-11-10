@@ -1,7 +1,9 @@
 using MarkdownRenderer.Sample.Automation;
+using MarkdownRenderer.Sample.Automation.Options;
+using MarkdownRenderer.Sample.Automation.Runs;
 using Xunit;
 
-namespace MarkdownRenderer.Sample.Automation.Tests;
+namespace MarkdownRenderer.Sample.Automation.Tests.Options;
 
 public sealed class AutomationOptionsTests
 {

@@ -1,10 +1,11 @@
 using FlaUI.Core;
 using FlaUI.Core.AutomationElements;
 using FlaUI.UIA3;
+using MarkdownRenderer.Sample.Automation.Applications;
 using MarkdownRenderer.Sample.Automation.Probes;
 using MarkdownRenderer.Sample.Automation.Uia;
 
-namespace MarkdownRenderer.Sample.Automation;
+namespace MarkdownRenderer.Sample.Automation.Runs;
 
 /// <summary>
 /// The default driver pass: launches the sample once and runs every probe
